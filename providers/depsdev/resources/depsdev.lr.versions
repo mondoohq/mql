@@ -1,0 +1,35 @@
+# Copyright (c) Mondoo, Inc.
+# SPDX-License-Identifier: BUSL-1.1
+
+depsdev 11.0.1
+depsdev.package 11.0.1
+depsdev.package.currentVersion 11.0.1
+depsdev.package.latestPublished 11.0.1
+depsdev.package.latestVersion 11.0.1
+depsdev.package.name 11.0.1
+depsdev.package.project 11.0.1
+depsdev.package.versions 11.0.1
+depsdev.packageVersion 11.0.1
+depsdev.packageVersion.isDefault 11.0.1
+depsdev.packageVersion.licenses 11.0.1
+depsdev.packageVersion.publishedAt 11.0.1
+depsdev.packageVersion.version 11.0.1
+depsdev.packages 11.0.1
+depsdev.project 11.0.1
+depsdev.project.description 11.0.1
+depsdev.project.forksCount 11.0.1
+depsdev.project.homepage 11.0.1
+depsdev.project.id 11.0.1
+depsdev.project.license 11.0.1
+depsdev.project.openIssuesCount 11.0.1
+depsdev.project.scorecard 11.0.1
+depsdev.project.starsCount 11.0.1
+depsdev.scorecard 11.0.1
+depsdev.scorecard.checks 11.0.1
+depsdev.scorecard.date 11.0.1
+depsdev.scorecard.overallScore 11.0.1
+depsdev.scorecardCheck 11.0.1
+depsdev.scorecardCheck.documentation 11.0.1
+depsdev.scorecardCheck.name 11.0.1
+depsdev.scorecardCheck.reason 11.0.1
+depsdev.scorecardCheck.score 11.0.1

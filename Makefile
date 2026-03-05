@@ -218,7 +218,8 @@ providers/build: \
 	providers/build/mondoo \
 	providers/build/cloudflare \
 	providers/build/nmap \
-	providers/build/tailscale
+	providers/build/tailscale \
+	providers/build/depsdev
 
 .PHONY: providers/install
 # Note we need \ to escape the target line into multiple lines
@@ -252,7 +253,8 @@ providers/install: \
 	providers/install/mondoo \
 	providers/install/cloudflare \
 	providers/install/nmap \
-	providers/install/tailscale
+	providers/install/tailscale \
+	providers/install/depsdev
 
 providers/build/mock: providers/lr
 	./lr go providers-sdk/v1/testutils/mockprovider/resources/mockprovider.lr
@@ -404,6 +406,11 @@ providers/build/tailscale: providers/lr
 	@$(call buildProvider, providers/tailscale)
 providers/install/tailscale:
 	@$(call installProvider, providers/tailscale)
+
+providers/build/depsdev: providers/lr
+	@$(call buildProvider, providers/depsdev)
+providers/install/depsdev:
+	@$(call installProvider, providers/depsdev)
 
 providers/build/ipinfo: providers/lr
 	@$(call buildProvider, providers/ipinfo)
