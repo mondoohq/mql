@@ -1484,10 +1484,10 @@ func (g *mqlGcpProjectComputeService) networks() ([]any, error) {
 				"mtu":                                   llx.IntData(network.Mtu),
 				"networkFirewallPolicyEnforcementOrder": llx.StringData(network.NetworkFirewallPolicyEnforcementOrder),
 				"created":                               llx.TimeDataPtr(parseTime(network.CreationTimestamp)),
-				"peerings":                              llx.ArrayData(peerings, types.Dict),
 				"routingMode":                           llx.StringData(routingMode),
 				"mode":                                  llx.StringData(networkMode(network)),
 				"subnetworkUrls":                        llx.ArrayData(convert.SliceAnyToInterface(network.Subnetworks), types.String),
+				"peerings":                              llx.ArrayData(peerings, types.Dict),
 				"internalIpv6Range":                     llx.StringData(network.InternalIpv6Range),
 				"firewallPolicy":                        llx.StringData(network.FirewallPolicy),
 			})
