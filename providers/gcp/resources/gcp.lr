@@ -467,6 +467,18 @@ gcp.project @defaults("name number") {
   alloydb() gcp.project.alloydbService
   // GCP Certificate Authority Service resources
   certificateAuthority() gcp.project.certificateAuthorityService
+  // GCP Cloud Filestore resources
+  filestore() gcp.project.filestoreService
+  // GCP Cloud Tasks resources
+  cloudTasks() gcp.project.cloudTasksService
+  // GCP Cloud Scheduler resources
+  cloudScheduler() gcp.project.cloudSchedulerService
+  // GCP App Engine resources
+  appEngine() gcp.project.appEngineService
+  // GCP Cloud Deploy resources
+  cloudDeploy() gcp.project.cloudDeployService
+  // GCP Dataflow resources
+  dataflow() gcp.project.dataflowService
 }
 
 // Google Cloud (GCP) service
@@ -4530,6 +4542,226 @@ private gcp.project.computeService.firewallPolicy.rule @defaults("priority actio
   securityProfileGroup string
 }
 
+// Google Cloud (GCP) retry configuration (shared across Cloud Tasks and Cloud Scheduler)
+private gcp.retryConfig @defaults("maxAttempts maxDoublings") {
+  // Internal ID
+  id string
+  // Maximum number of attempts (0 means unlimited)
+  maxAttempts int
+  // Minimum time between retries
+  minBackoff string
+  // Maximum time between retries
+  maxBackoff string
+  // Maximum number of times the retry interval will be doubled
+  maxDoublings int
+  // Maximum total time to retry a failed task or job
+  maxRetryDuration string
+}
+
+// Google Cloud (GCP) Filestore service
+private gcp.project.filestoreService {
+  // Project ID
+  projectId string
+  // List of Filestore instances
+  instances() []gcp.project.filestoreService.instance
+}
+
+// Google Cloud (GCP) Filestore instance
+private gcp.project.filestoreService.instance @defaults("name state tier") {
+  // Project ID
+  projectId string
+  // Full resource name
+  name string
+  // User-assigned description
+  description string
+  // The service tier (BASIC_HDD, BASIC_SSD, HIGH_SCALE_SSD, ENTERPRISE, ZONAL, REGIONAL)
+  tier string
+  // The current state of the instance (CREATING, READY, REPAIRING, etc.)
+  state string
+  // The time the instance was created
+  createTime time
+  // Resource labels
+  labels map[string]string
+  // File share configurations
+  fileShares []gcp.project.filestoreService.instance.fileShare
+  // Network configurations
+  networks []gcp.project.filestoreService.instance.network
+  // KMS key name used for data encryption
+  kmsKeyName string
+  // Whether the instance satisfies zone separation (Pzi)
+  satisfiesPzi bool
+  // Whether the instance satisfies physical zone separation (Pzs)
+  satisfiesPzs bool
+  // Whether deletion protection is enabled
+  deletionProtectionEnabled bool
+  // Protocol used (NFS_V3, NFS_V4_1)
+  protocol string
+}
+
+// Google Cloud (GCP) Filestore instance file share
+private gcp.project.filestoreService.instance.fileShare @defaults("name capacityGb") {
+  // Internal ID
+  id string
+  // Share name
+  name string
+  // File share capacity in GiB
+  capacityGb int
+}
+
+// Google Cloud (GCP) Filestore instance network configuration
+private gcp.project.filestoreService.instance.network @defaults("network ipAddresses") {
+  // Internal ID
+  id string
+  // The name of the VPC network
+  network string
+  // Network mode (MODE_IPV4)
+  modes []string
+  // The assigned IP addresses
+  ipAddresses []string
+  // The name of the reserved IP range (if any)
+  reservedIpRange string
+  // Network connect mode (DIRECT_PEERING, PRIVATE_SERVICE_ACCESS)
+  connectMode string
+}
+
+// Google Cloud (GCP) Cloud Tasks service
+private gcp.project.cloudTasksService {
+  // Project ID
+  projectId string
+  // List of Cloud Tasks queues
+  queues() []gcp.project.cloudTasksService.queue
+}
+
+// Google Cloud (GCP) Cloud Tasks queue
+private gcp.project.cloudTasksService.queue @defaults("name state") {
+  // Project ID
+  projectId string
+  // Full resource name
+  name string
+  // The current state of the queue (RUNNING, PAUSED, DISABLED)
+  state string
+  // Rate limits for task dispatches
+  rateLimits dict
+  // Retry configuration
+  retryConfig gcp.retryConfig
+  // Overrides for task-level app_engine_routing (App Engine queues only)
+  appEngineRoutingOverride dict
+}
+
+// Google Cloud (GCP) Cloud Scheduler service
+private gcp.project.cloudSchedulerService {
+  // Project ID
+  projectId string
+  // List of Cloud Scheduler jobs
+  jobs() []gcp.project.cloudSchedulerService.job
+}
+
+// Google Cloud (GCP) Cloud Scheduler job
+private gcp.project.cloudSchedulerService.job @defaults("name state schedule") {
+  // Project ID
+  projectId string
+  // Full resource name
+  name string
+  // Cron-style schedule specification (e.g. "0 5 * * *")
+  schedule string
+  // Time zone for the schedule (e.g. "America/New_York")
+  timeZone string
+  // The current state of the job (ENABLED, PAUSED, DISABLED, UPDATE_FAILED)
+  state string
+  // Description of the job
+  description string
+  // The time the job was last scheduled to run
+  lastAttemptTime time
+  // The next time the job is scheduled to run
+  scheduleTime time
+  // User-updated time for the job
+  userUpdateTime time
+  // Retry configuration
+  retryConfig gcp.retryConfig
+  // Target type: "httpTarget", "pubsubTarget", or "appEngineHttpTarget"
+  targetType string
+}
+
+// Google Cloud (GCP) App Engine service
+private gcp.project.appEngineService {
+  // Project ID
+  projectId string
+  // The App Engine application
+  application() gcp.project.appEngineService.application
+  // List of App Engine services
+  services() []gcp.project.appEngineService.service
+}
+
+// Google Cloud (GCP) App Engine application
+private gcp.project.appEngineService.application @defaults("id locationId servingStatus") {
+  // Project ID
+  projectId string
+  // Application identifier (same as project ID)
+  id string
+  // Location from which the application is served (e.g. "us-central")
+  locationId string
+  // Serving status (SERVING, USER_DISABLED, SYSTEM_DISABLED)
+  servingStatus string
+  // Default hostname for the application
+  defaultHostname string
+  // Default Cookie expiration for the application
+  defaultCookieExpiration string
+  // The Google Cloud Storage bucket for default staging
+  codeBucket string
+  // The default Google Cloud Storage bucket for Blobstore and Log
+  defaultBucket string
+  // GCR domain used for storing managed Docker images (e.g. "us.gcr.io")
+  gcrDomain string
+  // The type of the Cloud Firestore or Cloud Datastore database
+  databaseType string
+  // Auth domain
+  authDomain string
+  // Feature settings
+  featureSettings dict
+  // IAP configuration
+  iap dict
+}
+
+// Google Cloud (GCP) App Engine service
+private gcp.project.appEngineService.service @defaults("id") {
+  // Project ID
+  projectId string
+  // Relative name of the service (e.g., "default")
+  id string
+  // Full resource name
+  name string
+  // Resource labels
+  labels map[string]string
+  // Traffic split configuration
+  split dict
+  // Versions of this service
+  versions() []gcp.project.appEngineService.version
+}
+
+// Google Cloud (GCP) App Engine version
+private gcp.project.appEngineService.version @defaults("id servingStatus") {
+  // Project ID
+  projectId string
+  // Service ID this version belongs to
+  serviceId string
+  // Relative name of the version (e.g., "v1")
+  id string
+  // Full resource name
+  name string
+  // Serving status (SERVING, STOPPED)
+  servingStatus string
+  // The runtime (e.g., "python39", "go121", "nodejs20")
+  runtime string
+  // App Engine execution environment (standard or flex)
+  env string
+  // The time the version was created
+  createTime time
+  // The version of the API in the given runtime environment
+  runtimeApiVersion string
+  // VPC access connector configuration
+  vpcAccessConnector dict
+}
+
 // Google Cloud (GCP) Compute health check
 private gcp.project.computeService.healthCheck @defaults("name type") {
   // Unique identifier
@@ -4680,4 +4912,104 @@ private gcp.project.computeService.network.peering @defaults("name state") {
   exportSubnetRoutesWithPublicIp bool
   // Whether to import subnet routes with public IP ranges
   importSubnetRoutesWithPublicIp bool
+}
+
+// Google Cloud (GCP) Cloud Deploy service
+private gcp.project.cloudDeployService {
+  // Project ID
+  projectId string
+  // Delivery pipelines
+  deliveryPipelines() []gcp.project.cloudDeployService.deliveryPipeline
+  // Targets
+  targets() []gcp.project.cloudDeployService.target
+}
+
+// Google Cloud (GCP) Cloud Deploy delivery pipeline
+private gcp.project.cloudDeployService.deliveryPipeline @defaults("name") {
+  // Project ID
+  projectId string
+  // Full resource name
+  name string
+  // User-assigned unique identifier
+  uid string
+  // Description
+  description string
+  // Resource annotations
+  annotations map[string]string
+  // Resource labels
+  labels map[string]string
+  // Creation time
+  createTime time
+  // Last update time
+  updateTime time
+  // Whether the pipeline is suspended
+  suspended bool
+  // Serial pipeline configuration (stages)
+  serialPipeline dict
+  // Pipeline conditions
+  condition dict
+}
+
+// Google Cloud (GCP) Cloud Deploy target
+private gcp.project.cloudDeployService.target @defaults("name") {
+  // Project ID
+  projectId string
+  // Full resource name
+  name string
+  // User-assigned unique identifier
+  uid string
+  // Description
+  description string
+  // Resource annotations
+  annotations map[string]string
+  // Resource labels
+  labels map[string]string
+  // Creation time
+  createTime time
+  // Last update time
+  updateTime time
+  // Whether approval is required for this target
+  requireApproval bool
+  // GKE cluster target
+  gke dict
+  // Cloud Run target
+  run dict
+  // Custom target type
+  customTarget dict
+  // Execution configs
+  executionConfigs []dict
+}
+
+// Google Cloud (GCP) Dataflow service
+private gcp.project.dataflowService {
+  // Project ID
+  projectId string
+  // Dataflow jobs
+  jobs() []gcp.project.dataflowService.job
+}
+
+// Google Cloud (GCP) Dataflow job
+private gcp.project.dataflowService.job @defaults("name currentState") {
+  // Project ID
+  projectId string
+  // Unique job identifier
+  id string
+  // User-assigned job name
+  name string
+  // Type of job (JOB_TYPE_BATCH, JOB_TYPE_STREAMING)
+  type string
+  // Current state of the job (JOB_STATE_RUNNING, JOB_STATE_DONE, etc.)
+  currentState string
+  // Timestamp when the job was created
+  createTime time
+  // Region/location of the job
+  location string
+  // Resource labels
+  labels map[string]string
+  // The environment the job runs in
+  environment dict
+  // The SDK pipeline options
+  pipelineDescription dict
+  // Timestamp of the current state
+  currentStateTime time
 }

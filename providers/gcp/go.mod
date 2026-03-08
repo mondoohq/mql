@@ -9,8 +9,11 @@ require (
 	cloud.google.com/go/alloydb v1.21.0
 	cloud.google.com/go/bigquery v1.74.0
 	cloud.google.com/go/bigtable v1.42.0
+	cloud.google.com/go/cloudtasks v1.13.7
 	cloud.google.com/go/compute v1.56.0
 	cloud.google.com/go/container v1.46.0
+	cloud.google.com/go/deploy v1.27.3
+	cloud.google.com/go/filestore v1.10.3
 	cloud.google.com/go/firestore v1.21.0
 	cloud.google.com/go/functions v1.19.7
 	cloud.google.com/go/iam v1.5.3
@@ -23,6 +26,7 @@ require (
 	cloud.google.com/go/recommender v1.13.6
 	cloud.google.com/go/redis v1.18.3
 	cloud.google.com/go/run v1.15.0
+	cloud.google.com/go/scheduler v1.11.8
 	cloud.google.com/go/security v1.19.2
 	cloud.google.com/go/serviceusage v1.9.7
 	cloud.google.com/go/spanner v1.88.0

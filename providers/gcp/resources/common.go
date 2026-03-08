@@ -35,6 +35,25 @@ func protoToDict(msg proto.Message) (map[string]any, error) {
 	return result, nil
 }
 
+func (g *mqlGcpRetryConfig) id() (string, error) {
+	return g.Id.Data, g.Id.Error
+}
+
+func newRetryConfigResource(runtime *plugin.Runtime, parentId string, maxAttempts int64, minBackoff, maxBackoff string, maxDoublings int64, maxRetryDuration string) (*mqlGcpRetryConfig, error) {
+	res, err := CreateResource(runtime, "gcp.retryConfig", map[string]*llx.RawData{
+		"id":               llx.StringData(parentId + "/retryConfig"),
+		"maxAttempts":      llx.IntData(maxAttempts),
+		"minBackoff":       llx.StringData(minBackoff),
+		"maxBackoff":       llx.StringData(maxBackoff),
+		"maxDoublings":     llx.IntData(maxDoublings),
+		"maxRetryDuration": llx.StringData(maxRetryDuration),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGcpRetryConfig), nil
+}
+
 func RegionNameFromRegionUrl(regionUrl string) string {
 	regionUrlSegments := strings.Split(regionUrl, "/")
 	return regionUrlSegments[len(regionUrlSegments)-1]
