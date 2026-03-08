@@ -32,8 +32,11 @@ const (
 	// DefaultRefreshInterval is the minimum time between update checks in seconds (1 hour)
 	DefaultRefreshInterval = 3600
 	// EnvAutoUpdate can be set to "false" or "0" to disable auto-update.
-	// This is also set to "false" after an update to prevent infinite loops.
 	EnvAutoUpdate = "MONDOO_AUTO_UPDATE"
+	// envBinarySelfUpdateSkip is an internal env var set after a binary self-update
+	// to prevent infinite update loops. Unlike EnvAutoUpdate, this only affects
+	// binary self-update and not provider auto-update.
+	envBinarySelfUpdateSkip = "MONDOO_BINARY_SELF_UPDATE_SKIP"
 	// DefaultReleaseURL is the URL to fetch the latest release information
 	DefaultReleaseURL = "https://releases.mondoo.com/mql/latest.json"
 	// markerFilePrefix is the prefix for per-binary marker files that track when the last update check occurred.
@@ -79,7 +82,13 @@ func CheckAndUpdate(cfg Config) (bool, error) {
 		return false, nil
 	}
 
-	// Skip if auto-update is disabled (also prevents infinite loops after an update)
+	// Skip if this is a re-exec'd process after a binary self-update (prevents infinite loops)
+	if os.Getenv(envBinarySelfUpdateSkip) == "1" {
+		log.Debug().Msg("self-update: skipping, already updated in this session")
+		return false, nil
+	}
+
+	// Skip if auto-update is disabled via environment
 	if val := os.Getenv(EnvAutoUpdate); val == "false" || val == "0" {
 		log.Debug().Msg("self-update: skipping, disabled via environment")
 		return false, nil
