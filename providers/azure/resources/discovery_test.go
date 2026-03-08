@@ -40,4 +40,8 @@ func TestGetDiscoveryTargets(t *testing.T) {
 	// test random
 	config.Discover.Targets = []string{"postgres-servers", "keyvaults-vaults", "instances"}
 	require.Equal(t, []string{DiscoveryPostgresServers, DiscoveryKeyVaults, DiscoveryInstances}, getDiscoveryTargets(config))
+
+	// test standard cli run without options
+	config.Discover.Targets = []string{}
+	require.Equal(t, Auto, getDiscoveryTargets(config))
 }
