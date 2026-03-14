@@ -30,6 +30,8 @@ message ServiceAccountCredentials {
   string api_endpoint = 5;
   // Scope MRN for the service account, either organization or a space
   string scope_mrn = 6;
+  // Platform-signed JWT token for bearer authentication (WIF token exchange)
+  string token = 7;
 }
 
 service AgentManager {

@@ -16,6 +16,7 @@ import (
 	rangerUtils "go.mondoo.com/mql/v13/utils/ranger"
 	"go.mondoo.com/ranger-rpc"
 	guard_cert_auth "go.mondoo.com/ranger-rpc/plugins/authentication/cert"
+	"go.mondoo.com/ranger-rpc/plugins/authentication/statictoken"
 	"go.mondoo.com/ranger-rpc/plugins/rangerguard/crypto"
 )
 
@@ -33,6 +34,9 @@ var SysInfoProvider func() *rangerUtils.ClientSysInfo
 func NewServiceAccountRangerPlugin(credentials *ServiceAccountCredentials) (ranger.ClientPlugin, error) {
 	if credentials == nil {
 		return nil, errors.New("agent credentials must be set")
+	}
+	if credentials.Token != "" {
+		return statictoken.NewRangerPlugin(credentials.Token), nil
 	}
 
 	// verify that we can read the private key
