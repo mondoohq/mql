@@ -176,10 +176,8 @@ func (g *mqlGcpProject) cloudFunctions() ([]any, error) {
 			"buildName":           llx.StringData(f.BuildName),
 			"secretEnvVars":       llx.MapData(secretEnvVars, types.Dict),
 			"secretVolumes":       llx.ArrayData(secretVolumes, types.Dict),
-			"dockerRepository": llx.StringData(f.DockerRepository),
-			"dockerRegistry":   llx.StringData(f.DockerRegistry.String()),
-			"uid":              llx.StringData(""),
-			"satisfiesPzs":    llx.BoolData(false),
+			"dockerRepository":    llx.StringData(f.DockerRepository),
+			"dockerRegistry":      llx.StringData(f.DockerRegistry.String()),
 		})
 		if err != nil {
 			return nil, err
@@ -187,6 +185,18 @@ func (g *mqlGcpProject) cloudFunctions() ([]any, error) {
 		cloudFunctions = append(cloudFunctions, mqlCloudFuncs)
 	}
 	return cloudFunctions, nil
+}
+
+// uid is not available in the Cloud Functions v1 API.
+func (g *mqlGcpProjectCloudFunction) uid() (string, error) {
+	g.Uid.State = plugin.StateIsNull | plugin.StateIsSet
+	return "", nil
+}
+
+// satisfiesPzs is not available in the Cloud Functions v1 API.
+func (g *mqlGcpProjectCloudFunction) satisfiesPzs() (bool, error) {
+	g.SatisfiesPzs.State = plugin.StateIsNull | plugin.StateIsSet
+	return false, nil
 }
 
 func (g *mqlGcpProjectCloudFunction) id() (string, error) {

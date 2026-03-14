@@ -1825,13 +1825,13 @@ private gcp.project.bigqueryService.dataset @defaults("id name") {
   // Default partition expiration time in milliseconds
   defaultPartitionExpirationMs int
   // Default rounding mode for the dataset
-  defaultRoundingMode string
+  defaultRoundingMode() string
   // Whether field names are treated as case insensitive
   isCaseInsensitive bool
   // Whether the dataset satisfies Google's Protected Zone Integration requirements
-  satisfiesPzi bool
+  satisfiesPzi() bool
   // Whether the dataset satisfies Google's Protected Zone Separation requirements
-  satisfiesPzs bool
+  satisfiesPzs() bool
 }
 
 // Google Cloud (GCP) BigQuery dataset access entry
@@ -3046,9 +3046,9 @@ private gcp.project.cloudFunction @defaults("name") {
   // Docker registry to use for this deployment
   dockerRegistry string
   // Unique identifier
-  uid string
+  uid() string
   // Satisfies PZS
-  satisfiesPzs bool
+  satisfiesPzs() bool
 }
 // Google Cloud (GCP) Dataproc resources
 private gcp.project.dataprocService {

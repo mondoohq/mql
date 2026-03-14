@@ -158,8 +158,8 @@ func (g *mqlGcpProjectBackupdrService) backupVaults() ([]any, error) {
 		}
 
 		mqlVault, err := CreateResource(g.MqlRuntime, "gcp.project.backupdrService.backupVault", map[string]*llx.RawData{
-			"name":                                  llx.StringData(vault.Name),
-			"description":                           llx.StringData(vault.GetDescription()),
+			"name":                                   llx.StringData(vault.Name),
+			"description":                            llx.StringData(vault.GetDescription()),
 			"state":                                  llx.StringData(vault.State.String()),
 			"backupMinimumEnforcedRetentionDuration": llx.StringData(vault.BackupMinimumEnforcedRetentionDuration.String()),
 			"deletable":                              llx.BoolData(vault.GetDeletable()),
@@ -229,17 +229,17 @@ func (g *mqlGcpProjectBackupdrServiceBackupVault) dataSources() ([]any, error) {
 		}
 
 		mqlDs, err := CreateResource(g.MqlRuntime, "gcp.project.backupdrService.dataSource", map[string]*llx.RawData{
-			"name":                                  llx.StringData(ds.Name),
-			"state":                                 llx.StringData(ds.State.String()),
-			"labels":                                llx.MapData(convert.MapToInterfaceMap(ds.Labels), types.String),
-			"dataSourceGcpResource":                 llx.DictData(gcpResource),
-			"dataSourceBackupApplianceApplication":  llx.DictData(backupApplianceApp),
-			"totalStoredBytes":                      llx.IntData(ds.GetTotalStoredBytes()),
-			"backupCount":                           llx.IntData(ds.GetBackupCount()),
-			"etag":                                  llx.StringData(ds.GetEtag()),
-			"configState":                           llx.StringData(ds.ConfigState.String()),
-			"createdAt":                             llx.TimeDataPtr(timestampAsTimePtr(ds.CreateTime)),
-			"updatedAt":                             llx.TimeDataPtr(timestampAsTimePtr(ds.UpdateTime)),
+			"name":                                 llx.StringData(ds.Name),
+			"state":                                llx.StringData(ds.State.String()),
+			"labels":                               llx.MapData(convert.MapToInterfaceMap(ds.Labels), types.String),
+			"dataSourceGcpResource":                llx.DictData(gcpResource),
+			"dataSourceBackupApplianceApplication": llx.DictData(backupApplianceApp),
+			"totalStoredBytes":                     llx.IntData(ds.GetTotalStoredBytes()),
+			"backupCount":                          llx.IntData(ds.GetBackupCount()),
+			"etag":                                 llx.StringData(ds.GetEtag()),
+			"configState":                          llx.StringData(ds.ConfigState.String()),
+			"createdAt":                            llx.TimeDataPtr(timestampAsTimePtr(ds.CreateTime)),
+			"updatedAt":                            llx.TimeDataPtr(timestampAsTimePtr(ds.UpdateTime)),
 		})
 		if err != nil {
 			return nil, err
@@ -296,17 +296,17 @@ func (g *mqlGcpProjectBackupdrService) backupPlans() ([]any, error) {
 		}
 
 		mqlPlan, err := CreateResource(g.MqlRuntime, "gcp.project.backupdrService.backupPlan", map[string]*llx.RawData{
-			"name":                    llx.StringData(plan.Name),
-			"description":             llx.StringData(plan.Description),
-			"state":                   llx.StringData(plan.State.String()),
-			"resourceType":            llx.StringData(plan.ResourceType),
-			"backupVault":             llx.StringData(plan.BackupVault),
+			"name":                      llx.StringData(plan.Name),
+			"description":               llx.StringData(plan.Description),
+			"state":                     llx.StringData(plan.State.String()),
+			"resourceType":              llx.StringData(plan.ResourceType),
+			"backupVault":               llx.StringData(plan.BackupVault),
 			"backupVaultServiceAccount": llx.StringData(plan.BackupVaultServiceAccount),
-			"labels":                  llx.MapData(convert.MapToInterfaceMap(plan.Labels), types.String),
-			"backupRules":             llx.ArrayData(backupRules, types.Dict),
-			"etag":                    llx.StringData(plan.Etag),
-			"createdAt":               llx.TimeDataPtr(timestampAsTimePtr(plan.CreateTime)),
-			"updatedAt":               llx.TimeDataPtr(timestampAsTimePtr(plan.UpdateTime)),
+			"labels":                    llx.MapData(convert.MapToInterfaceMap(plan.Labels), types.String),
+			"backupRules":               llx.ArrayData(backupRules, types.Dict),
+			"etag":                      llx.StringData(plan.Etag),
+			"createdAt":                 llx.TimeDataPtr(timestampAsTimePtr(plan.CreateTime)),
+			"updatedAt":                 llx.TimeDataPtr(timestampAsTimePtr(plan.UpdateTime)),
 		})
 		if err != nil {
 			return nil, err

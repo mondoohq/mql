@@ -256,18 +256,18 @@ func (g *mqlGcpProjectVertexaiService) endpoints() ([]any, error) {
 			}
 
 			mqlEndpoint, err := CreateResource(g.MqlRuntime, "gcp.project.vertexaiService.endpoint", map[string]*llx.RawData{
-				"name":                          llx.StringData(ep.Name),
-				"displayName":                   llx.StringData(ep.DisplayName),
-				"description":                   llx.StringData(ep.Description),
-				"deployedModels":                llx.ArrayData(deployedModels, types.Dict),
-				"encryptionSpec":                llx.DictData(encryptionSpec),
-				"network":                       llx.StringData(ep.Network),
-				"enablePrivateServiceConnect":   llx.BoolData(ep.EnablePrivateServiceConnect),
-				"trafficSplit":                  llx.DictData(trafficSplit),
-				"labels":                        llx.MapData(convert.MapToInterfaceMap(ep.Labels), types.String),
-				"etag":                          llx.StringData(ep.Etag),
-				"createdAt":                     llx.TimeDataPtr(timestampAsTimePtr(ep.CreateTime)),
-				"updatedAt":                     llx.TimeDataPtr(timestampAsTimePtr(ep.UpdateTime)),
+				"name":                        llx.StringData(ep.Name),
+				"displayName":                 llx.StringData(ep.DisplayName),
+				"description":                 llx.StringData(ep.Description),
+				"deployedModels":              llx.ArrayData(deployedModels, types.Dict),
+				"encryptionSpec":              llx.DictData(encryptionSpec),
+				"network":                     llx.StringData(ep.Network),
+				"enablePrivateServiceConnect": llx.BoolData(ep.EnablePrivateServiceConnect),
+				"trafficSplit":                llx.DictData(trafficSplit),
+				"labels":                      llx.MapData(convert.MapToInterfaceMap(ep.Labels), types.String),
+				"etag":                        llx.StringData(ep.Etag),
+				"createdAt":                   llx.TimeDataPtr(timestampAsTimePtr(ep.CreateTime)),
+				"updatedAt":                   llx.TimeDataPtr(timestampAsTimePtr(ep.UpdateTime)),
 			})
 			if err != nil {
 				client.Close()
@@ -349,20 +349,20 @@ func (g *mqlGcpProjectVertexaiService) pipelineJobs() ([]any, error) {
 
 			mqlJob, err := CreateResource(g.MqlRuntime, "gcp.project.vertexaiService.pipelineJob", map[string]*llx.RawData{
 				"name":             llx.StringData(job.Name),
-				"displayName":     llx.StringData(job.DisplayName),
-				"state":           llx.StringData(job.State.String()),
-				"pipelineSpec":    llx.DictData(pipelineSpec),
-				"runtimeConfig":   llx.DictData(runtimeConfig),
-				"serviceAccount":  llx.StringData(job.ServiceAccount),
-				"network":         llx.StringData(job.Network),
-				"encryptionSpec":  llx.DictData(encryptionSpec),
-				"templateUri":     llx.StringData(job.TemplateUri),
+				"displayName":      llx.StringData(job.DisplayName),
+				"state":            llx.StringData(job.State.String()),
+				"pipelineSpec":     llx.DictData(pipelineSpec),
+				"runtimeConfig":    llx.DictData(runtimeConfig),
+				"serviceAccount":   llx.StringData(job.ServiceAccount),
+				"network":          llx.StringData(job.Network),
+				"encryptionSpec":   llx.DictData(encryptionSpec),
+				"templateUri":      llx.StringData(job.TemplateUri),
 				"templateMetadata": llx.DictData(templateMetadata),
-				"labels":          llx.MapData(convert.MapToInterfaceMap(job.Labels), types.String),
-				"createdAt":       llx.TimeDataPtr(timestampAsTimePtr(job.CreateTime)),
-				"updatedAt":       llx.TimeDataPtr(timestampAsTimePtr(job.UpdateTime)),
-				"startTime":       llx.TimeDataPtr(timestampAsTimePtr(job.StartTime)),
-				"endTime":         llx.TimeDataPtr(timestampAsTimePtr(job.EndTime)),
+				"labels":           llx.MapData(convert.MapToInterfaceMap(job.Labels), types.String),
+				"createdAt":        llx.TimeDataPtr(timestampAsTimePtr(job.CreateTime)),
+				"updatedAt":        llx.TimeDataPtr(timestampAsTimePtr(job.UpdateTime)),
+				"startTime":        llx.TimeDataPtr(timestampAsTimePtr(job.StartTime)),
+				"endTime":          llx.TimeDataPtr(timestampAsTimePtr(job.EndTime)),
 			})
 			if err != nil {
 				client.Close()
@@ -434,15 +434,15 @@ func (g *mqlGcpProjectVertexaiService) datasets() ([]any, error) {
 
 			mqlDs, err := CreateResource(g.MqlRuntime, "gcp.project.vertexaiService.dataset", map[string]*llx.RawData{
 				"name":              llx.StringData(ds.Name),
-				"displayName":      llx.StringData(ds.DisplayName),
-				"description":      llx.StringData(ds.Description),
+				"displayName":       llx.StringData(ds.DisplayName),
+				"description":       llx.StringData(ds.Description),
 				"metadataSchemaUri": llx.StringData(ds.MetadataSchemaUri),
-				"metadata":         llx.DictData(metadata),
-				"encryptionSpec":   llx.DictData(encryptionSpec),
-				"labels":           llx.MapData(convert.MapToInterfaceMap(ds.Labels), types.String),
-				"etag":             llx.StringData(ds.Etag),
-				"createdAt":        llx.TimeDataPtr(timestampAsTimePtr(ds.CreateTime)),
-				"updatedAt":        llx.TimeDataPtr(timestampAsTimePtr(ds.UpdateTime)),
+				"metadata":          llx.DictData(metadata),
+				"encryptionSpec":    llx.DictData(encryptionSpec),
+				"labels":            llx.MapData(convert.MapToInterfaceMap(ds.Labels), types.String),
+				"etag":              llx.StringData(ds.Etag),
+				"createdAt":         llx.TimeDataPtr(timestampAsTimePtr(ds.CreateTime)),
+				"updatedAt":         llx.TimeDataPtr(timestampAsTimePtr(ds.UpdateTime)),
 			})
 			if err != nil {
 				client.Close()
@@ -523,18 +523,18 @@ func (g *mqlGcpProjectVertexaiService) featureOnlineStores() ([]any, error) {
 			}
 
 			mqlStore, err := CreateResource(g.MqlRuntime, "gcp.project.vertexaiService.featureOnlineStore", map[string]*llx.RawData{
-				"name":                      llx.StringData(store.Name),
-				"state":                     llx.StringData(store.State.String()),
-				"bigtable":                  llx.DictData(bigtable),
-				"optimized":                 llx.DictData(optimized),
-				"dedicatedServingEndpoint":  llx.DictData(dedicatedServingEndpoint),
-				"encryptionSpec":            llx.DictData(encryptionSpec),
-				"labels":                    llx.MapData(convert.MapToInterfaceMap(store.Labels), types.String),
-				"etag":                      llx.StringData(store.Etag),
-				"satisfiesPzs":              llx.BoolData(store.SatisfiesPzs),
-				"satisfiesPzi":              llx.BoolData(store.SatisfiesPzi),
-				"createdAt":                 llx.TimeDataPtr(timestampAsTimePtr(store.CreateTime)),
-				"updatedAt":                 llx.TimeDataPtr(timestampAsTimePtr(store.UpdateTime)),
+				"name":                     llx.StringData(store.Name),
+				"state":                    llx.StringData(store.State.String()),
+				"bigtable":                 llx.DictData(bigtable),
+				"optimized":                llx.DictData(optimized),
+				"dedicatedServingEndpoint": llx.DictData(dedicatedServingEndpoint),
+				"encryptionSpec":           llx.DictData(encryptionSpec),
+				"labels":                   llx.MapData(convert.MapToInterfaceMap(store.Labels), types.String),
+				"etag":                     llx.StringData(store.Etag),
+				"satisfiesPzs":             llx.BoolData(store.SatisfiesPzs),
+				"satisfiesPzi":             llx.BoolData(store.SatisfiesPzi),
+				"createdAt":                llx.TimeDataPtr(timestampAsTimePtr(store.CreateTime)),
+				"updatedAt":                llx.TimeDataPtr(timestampAsTimePtr(store.UpdateTime)),
 			})
 			if err != nil {
 				client.Close()

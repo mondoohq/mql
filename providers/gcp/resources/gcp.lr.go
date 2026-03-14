@@ -25928,7 +25928,9 @@ func (c *mqlGcpProjectBigqueryServiceDataset) GetDefaultPartitionExpirationMs() 
 }
 
 func (c *mqlGcpProjectBigqueryServiceDataset) GetDefaultRoundingMode() *plugin.TValue[string] {
-	return &c.DefaultRoundingMode
+	return plugin.GetOrCompute[string](&c.DefaultRoundingMode, func() (string, error) {
+		return c.defaultRoundingMode()
+	})
 }
 
 func (c *mqlGcpProjectBigqueryServiceDataset) GetIsCaseInsensitive() *plugin.TValue[bool] {
@@ -25936,11 +25938,15 @@ func (c *mqlGcpProjectBigqueryServiceDataset) GetIsCaseInsensitive() *plugin.TVa
 }
 
 func (c *mqlGcpProjectBigqueryServiceDataset) GetSatisfiesPzi() *plugin.TValue[bool] {
-	return &c.SatisfiesPzi
+	return plugin.GetOrCompute[bool](&c.SatisfiesPzi, func() (bool, error) {
+		return c.satisfiesPzi()
+	})
 }
 
 func (c *mqlGcpProjectBigqueryServiceDataset) GetSatisfiesPzs() *plugin.TValue[bool] {
-	return &c.SatisfiesPzs
+	return plugin.GetOrCompute[bool](&c.SatisfiesPzs, func() (bool, error) {
+		return c.satisfiesPzs()
+	})
 }
 
 // mqlGcpProjectBigqueryServiceDatasetAccessEntry for the gcp.project.bigqueryService.dataset.accessEntry resource
@@ -31339,11 +31345,15 @@ func (c *mqlGcpProjectCloudFunction) GetDockerRegistry() *plugin.TValue[string] 
 }
 
 func (c *mqlGcpProjectCloudFunction) GetUid() *plugin.TValue[string] {
-	return &c.Uid
+	return plugin.GetOrCompute[string](&c.Uid, func() (string, error) {
+		return c.uid()
+	})
 }
 
 func (c *mqlGcpProjectCloudFunction) GetSatisfiesPzs() *plugin.TValue[bool] {
-	return &c.SatisfiesPzs
+	return plugin.GetOrCompute[bool](&c.SatisfiesPzs, func() (bool, error) {
+		return c.satisfiesPzs()
+	})
 }
 
 // mqlGcpProjectDataprocService for the gcp.project.dataprocService resource
