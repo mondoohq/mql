@@ -738,6 +738,42 @@ azure.subscription.networkService.virtualNetwork @defaults("id name location") {
   enableDdosProtection bool
   // Whether VM protection is enabled for all the subnets in the virtual network
   enableVmProtection bool
+  // Address space CIDR prefixes for the virtual network
+  addressPrefixes []string
+  // Whether encryption is enabled on the virtual network
+  encryptionEnabled bool
+  // Encryption enforcement policy: AllowUnencrypted, DropUnencrypted
+  encryptionEnforcement string
+  // The provisioning state of the virtual network: Succeeded, Updating, Deleting, Failed, Creating, Canceled
+  provisioningState string
+  // FlowTimeout value in minutes for the virtual network
+  flowTimeoutInMinutes int
+  // List of virtual network peerings
+  peerings() []azure.subscription.networkService.virtualNetwork.peering
+}
+
+// Azure Virtual Network (VNet) peering
+azure.subscription.networkService.virtualNetwork.peering @defaults("id name peeringState") {
+  // Peering resource ID
+  id string
+  // Peering name
+  name string
+  // Whether forwarded traffic from VMs in the local vnet is allowed in the remote vnet
+  allowForwardedTraffic bool
+  // Whether gateway links can be used in remote virtual networking to link to this vnet
+  allowGatewayTransit bool
+  // Whether VMs in the local vnet can access VMs in the remote vnet
+  allowVirtualNetworkAccess bool
+  // Whether remote gateways can be used on this virtual network
+  useRemoteGateways bool
+  // The status of the virtual network peering: Connected, Disconnected, Initiated
+  peeringState string
+  // The peering sync status: FullyInSync, LocalNotInSync, RemoteNotInSync, LocalAndRemoteNotInSync
+  peeringSyncLevel string
+  // The provisioning state: Succeeded, Updating, Deleting, Failed, Creating, Canceled
+  provisioningState string
+  // The remote virtual network reference ID
+  remoteVirtualNetworkId string
 }
 
 // Azure Virtual Network (VNet) DHCP options
