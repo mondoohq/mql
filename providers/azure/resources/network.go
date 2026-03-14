@@ -877,6 +877,47 @@ func (a *mqlAzureSubscriptionNetworkService) virtualNetworks() ([]any, error) {
 	return res, nil
 }
 
+func initAzureSubscriptionNetworkServiceVirtualNetwork(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 1 {
+		return args, nil, nil
+	}
+
+	if len(args) == 0 {
+		if ids := getAssetIdentifier(runtime); ids != nil {
+			args["id"] = llx.StringData(ids.id)
+		}
+	}
+
+	if args["id"] == nil {
+		return nil, nil, errors.New("id required to fetch azure virtual network")
+	}
+
+	conn, ok := runtime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	res, err := NewResource(runtime, "azure.subscription.networkService", map[string]*llx.RawData{
+		"subscriptionId": llx.StringData(conn.SubId()),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	networkSvc := res.(*mqlAzureSubscriptionNetworkService)
+	vnets := networkSvc.GetVirtualNetworks()
+	if vnets.Error != nil {
+		return nil, nil, vnets.Error
+	}
+	id := args["id"].Value.(string)
+	for _, entry := range vnets.Data {
+		vnet := entry.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork)
+		if vnet.Id.Data == id {
+			return args, vnet, nil
+		}
+	}
+
+	return nil, nil, errors.New("azure virtual network does not exist")
+}
+
 func (a *mqlAzureSubscriptionNetworkService) applicationSecurityGroups() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
 	ctx := context.Background()

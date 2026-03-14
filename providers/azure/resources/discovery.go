@@ -45,6 +45,7 @@ const (
 	DiscoveryKeyVaults               = "keyvaults-vaults"
 	DiscoverySecurityGroups          = "security-groups"
 	DiscoveryCosmosDb                = "cosmosdb"
+	DiscoveryVirtualNetworks         = "virtual-networks"
 )
 
 var All = []string{
@@ -74,6 +75,7 @@ var AllAPIResources = []string{
 	DiscoveryKeyVaults,
 	DiscoverySecurityGroups,
 	DiscoveryCosmosDb,
+	DiscoveryVirtualNetworks,
 }
 
 type azureObject struct {
@@ -288,6 +290,14 @@ func Discover(runtime *plugin.Runtime, rootConf *inventory.Config) (*inventory.I
 			return nil, err
 		}
 		assets = append(assets, cosmosDbAccounts...)
+	}
+
+	if stringx.ContainsAnyOf(targets, DiscoveryVirtualNetworks) {
+		vnets, err := discoverVirtualNetworks(runtime, subsWithConfigs)
+		if err != nil {
+			return nil, err
+		}
+		assets = append(assets, vnets...)
 	}
 
 	return &inventory.Inventory{
@@ -850,6 +860,40 @@ func discoverSecurityGroups(runtime *plugin.Runtime, subsWithConfigs []subWithCo
 	return assets, nil
 }
 
+func discoverVirtualNetworks(runtime *plugin.Runtime, subsWithConfigs []subWithConfig) ([]*inventory.Asset, error) {
+	assets := []*inventory.Asset{}
+	for _, subWithConfig := range subsWithConfigs {
+		svc, err := NewResource(runtime, "azure.subscription.networkService", map[string]*llx.RawData{
+			"subscriptionId": llx.StringDataPtr(subWithConfig.sub.SubscriptionID),
+		})
+		if err != nil {
+			return nil, err
+		}
+		networkSvc := svc.(*mqlAzureSubscriptionNetworkService)
+		vnets := networkSvc.GetVirtualNetworks()
+		if vnets.Error != nil {
+			return nil, vnets.Error
+		}
+		for _, vnet := range vnets.Data {
+			v := vnet.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork)
+			asset := mqlObjectToAsset(mqlObject{
+				name:   v.Name.Data,
+				labels: interfaceMapToStr(v.Tags.Data),
+				azureObject: azureObject{
+					id:           v.Id.Data,
+					subscription: *subWithConfig.sub.SubscriptionID,
+					tenant:       subWithConfig.sub.TenantID,
+					location:     v.Location.Data,
+					service:      "network",
+					objectType:   "virtual-network",
+				},
+			}, subWithConfig.conf, true)
+			assets = append(assets, asset)
+		}
+	}
+	return assets, nil
+}
+
 func discoverVaults(runtime *plugin.Runtime, subsWithConfigs []subWithConfig) ([]*inventory.Asset, error) {
 	assets := []*inventory.Asset{}
 	for _, subWithConfig := range subsWithConfigs {
@@ -1047,6 +1091,9 @@ func getTitleFamily(azureObject azureObject) (azureObjectPlatformInfo, error) {
 	case "network":
 		if azureObject.objectType == "security-group" {
 			return azureObjectPlatformInfo{title: "Azure Network Security Group", platform: "azure-network-security-group"}, nil
+		}
+		if azureObject.objectType == "virtual-network" {
+			return azureObjectPlatformInfo{title: "Azure Virtual Network", platform: "azure-virtual-network"}, nil
 		}
 	case "keyvault":
 		if azureObject.objectType == "vault" {

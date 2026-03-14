@@ -296,7 +296,7 @@ func init() {
 			Create: createAzureSubscriptionNetworkServiceSubnet,
 		},
 		"azure.subscription.networkService.virtualNetwork": {
-			// to override args, implement: initAzureSubscriptionNetworkServiceVirtualNetwork(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initAzureSubscriptionNetworkServiceVirtualNetwork,
 			Create: createAzureSubscriptionNetworkServiceVirtualNetwork,
 		},
 		"azure.subscription.networkService.virtualNetwork.dhcpOptions": {

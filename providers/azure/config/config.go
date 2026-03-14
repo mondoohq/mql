@@ -55,6 +55,7 @@ Examples run in the Azure CLI:
 				resources.DiscoveryKeyVaults,
 				resources.DiscoverySecurityGroups,
 				resources.DiscoveryCosmosDb,
+				resources.DiscoveryVirtualNetworks,
 			},
 			Flags: []plugin.Flag{
 				{
@@ -142,8 +143,9 @@ Examples run in the Azure CLI:
 								"network": {
 									Key: "object",
 									Values: map[string]*inventory.AssetUrlBranch{
-										"security-group": nil,
-										"other":          nil,
+										"security-group":  nil,
+										"virtual-network": nil,
+										"other":           nil,
 									},
 								},
 								"keyvault": nil,

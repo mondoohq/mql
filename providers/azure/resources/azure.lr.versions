@@ -395,7 +395,6 @@ azure.subscription.cloudDefenderService.forSqlServersOnMachines 11.6.3
 azure.subscription.cloudDefenderService.forStorageAccounts 11.6.3
 azure.subscription.cloudDefenderService.monitoringAgentAutoProvision 9.0.1
 azure.subscription.cloudDefenderService.securityContact 9.0.1
-azure.subscription.cloudDefenderService.securityContact.alertNotifications 9.0.1
 azure.subscription.cloudDefenderService.securityContact.emails 9.0.1
 azure.subscription.cloudDefenderService.securityContact.id 9.0.1
 azure.subscription.cloudDefenderService.securityContact.isEnabled 11.6.1
