@@ -2567,6 +2567,15 @@ func (g *mqlGcpProjectComputeService) securityPolicies() ([]any, error) {
 					return err
 				}
 
+				userDefinedFields := make([]any, 0, len(policy.UserDefinedFields))
+				for _, udf := range policy.UserDefinedFields {
+					d, err := convert.JsonToDict(udf)
+					if err != nil {
+						return err
+					}
+					userDefinedFields = append(userDefinedFields, d)
+				}
+
 				policyId := strconv.FormatUint(policy.Id, 10)
 				mqlPolicy, err := CreateResource(g.MqlRuntime, "gcp.project.computeService.securityPolicy", map[string]*llx.RawData{
 					"id":                       llx.StringData(policyId),
@@ -2578,6 +2587,8 @@ func (g *mqlGcpProjectComputeService) securityPolicies() ([]any, error) {
 					"advancedOptionsConfig":    llx.DictData(advancedOptionsConfig),
 					"ddosProtectionConfig":     llx.DictData(ddosProtectionConfig),
 					"recaptchaOptionsConfig":   llx.DictData(recaptchaOptionsConfig),
+					"fingerprint":              llx.StringData(policy.Fingerprint),
+					"userDefinedFields":        llx.ArrayData(userDefinedFields, types.Dict),
 					"regionUrl":                llx.StringData(policy.Region),
 					"selfLink":                 llx.StringData(policy.SelfLink),
 					"createdAt":                llx.TimeDataPtr(parseTime(policy.CreationTimestamp)),

@@ -24,6 +24,8 @@ alias gcp.spanner = gcp.project.spannerService
 alias gcp.bigtable = gcp.project.bigtableService
 alias gcp.alloydb = gcp.project.alloydbService
 alias gcp.artifactregistry = gcp.project.artifactRegistryService
+alias gcp.backupdr = gcp.project.backupdrService
+alias gcp.vertexai = gcp.project.vertexaiService
 
 // Google Cloud (GCP) organization
 gcp.organization @defaults("name") {
@@ -482,6 +484,10 @@ gcp.project @defaults("name number") {
   dataflow() gcp.project.dataflowService
   // GCP Artifact Registry resources
   artifactRegistry() gcp.project.artifactRegistryService
+  // GCP Backup and DR resources
+  backupdr() gcp.project.backupdrService
+  // GCP Vertex AI resources
+  vertexai() gcp.project.vertexaiService
 }
 
 // Google Cloud (GCP) service
@@ -4055,6 +4061,10 @@ private gcp.project.computeService.securityPolicy @defaults("name type") {
   ddosProtectionConfig dict
   // reCAPTCHA options configuration
   recaptchaOptionsConfig dict
+  // Fingerprint for optimistic locking
+  fingerprint string
+  // User-defined fields for custom rule tuning
+  userDefinedFields []dict
   // URL of the region (empty for global policies)
   regionUrl string
   // Self-link URL
@@ -5161,4 +5171,302 @@ private gcp.project.artifactRegistryService.repository.upstreamPolicy @defaults(
   repository string
   // Priority (lower value = higher priority)
   priority int
+}
+
+// Google Cloud (GCP) Backup and DR Service
+private gcp.project.backupdrService {
+  // Project ID
+  projectId string
+  // List of management servers
+  managementServers() []gcp.project.backupdrService.managementServer
+  // List of backup vaults
+  backupVaults() []gcp.project.backupdrService.backupVault
+  // List of backup plans
+  backupPlans() []gcp.project.backupdrService.backupPlan
+}
+
+// Google Cloud (GCP) Backup and DR management server
+private gcp.project.backupdrService.managementServer @defaults("name state") {
+  // Full resource name
+  name string
+  // Description
+  description string
+  // Current state (CREATING, READY, UPDATING, DELETING, REPAIRING, ERROR)
+  state string
+  // Type of the management server (BACKUP_RESTORE)
+  type string
+  // Networks for the management server
+  networks []dict
+  // Management URI
+  managementUri dict
+  // OAuth2 client ID
+  oauth2ClientId string
+  // Whether the resource satisfies PZS
+  satisfiesPzs bool
+  // Etag
+  etag string
+  // Labels
+  labels map[string]string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Google Cloud (GCP) Backup and DR backup vault
+private gcp.project.backupdrService.backupVault @defaults("name state") {
+  // Full resource name
+  name string
+  // Description
+  description string
+  // Current state
+  state string
+  // Minimum enforced retention duration
+  backupMinimumEnforcedRetentionDuration string
+  // Whether the vault is deletable
+  deletable bool
+  // Etag
+  etag string
+  // Effective time
+  effectiveTime time
+  // Backup count
+  backupCount int
+  // Service account
+  serviceAccount string
+  // Total stored bytes
+  totalStoredBytes int
+  // Access restriction
+  accessRestriction string
+  // Annotations
+  annotations map[string]string
+  // Labels
+  labels map[string]string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+  // Data sources in this backup vault
+  dataSources() []gcp.project.backupdrService.dataSource
+}
+
+// Google Cloud (GCP) Backup and DR data source
+private gcp.project.backupdrService.dataSource @defaults("name state") {
+  // Full resource name
+  name string
+  // Current state
+  state string
+  // Labels
+  labels map[string]string
+  // Data source GCP resource
+  dataSourceGcpResource dict
+  // Data source Backup Appliance application
+  dataSourceBackupApplianceApplication dict
+  // Total stored bytes
+  totalStoredBytes int
+  // Backup count
+  backupCount int
+  // Etag
+  etag string
+  // Configuration state
+  configState string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Google Cloud (GCP) Backup and DR backup plan
+private gcp.project.backupdrService.backupPlan @defaults("name state") {
+  // Full resource name
+  name string
+  // Description
+  description string
+  // Current state
+  state string
+  // Resource type
+  resourceType string
+  // Backup vault resource name
+  backupVault string
+  // Backup vault service account
+  backupVaultServiceAccount string
+  // Labels
+  labels map[string]string
+  // Backup rules
+  backupRules []dict
+  // Etag
+  etag string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Google Cloud (GCP) Vertex AI Service
+private gcp.project.vertexaiService {
+  // Project ID
+  projectId string
+  // List of models
+  models() []gcp.project.vertexaiService.model
+  // List of endpoints
+  endpoints() []gcp.project.vertexaiService.endpoint
+  // List of pipeline jobs
+  pipelineJobs() []gcp.project.vertexaiService.pipelineJob
+  // List of datasets
+  datasets() []gcp.project.vertexaiService.dataset
+  // List of feature online stores
+  featureOnlineStores() []gcp.project.vertexaiService.featureOnlineStore
+}
+
+// Google Cloud (GCP) Vertex AI model
+private gcp.project.vertexaiService.model @defaults("name displayName") {
+  // Full resource name
+  name string
+  // Display name
+  displayName string
+  // Description
+  description string
+  // Version ID
+  versionId string
+  // Version aliases
+  versionAliases []string
+  // Version description
+  versionDescription string
+  // Model source info
+  modelSourceInfo dict
+  // Container spec for serving
+  containerSpec dict
+  // Supported deployment resources types
+  supportedDeploymentResourcesTypes []string
+  // Supported input storage formats
+  supportedInputStorageFormats []string
+  // Supported output storage formats
+  supportedOutputStorageFormats []string
+  // Training pipeline resource name
+  trainingPipeline string
+  // Artifact URI
+  artifactUri string
+  // Encryption spec (CMEK)
+  encryptionSpec dict
+  // Labels
+  labels map[string]string
+  // Etag
+  etag string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Google Cloud (GCP) Vertex AI endpoint
+private gcp.project.vertexaiService.endpoint @defaults("name displayName") {
+  // Full resource name
+  name string
+  // Display name
+  displayName string
+  // Description
+  description string
+  // Deployed models
+  deployedModels []dict
+  // Encryption spec (CMEK)
+  encryptionSpec dict
+  // Network for private endpoints
+  network string
+  // Whether private service connect is enabled
+  enablePrivateServiceConnect bool
+  // Traffic split (model ID to percentage)
+  trafficSplit dict
+  // Labels
+  labels map[string]string
+  // Etag
+  etag string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Google Cloud (GCP) Vertex AI pipeline job
+private gcp.project.vertexaiService.pipelineJob @defaults("name displayName state") {
+  // Full resource name
+  name string
+  // Display name
+  displayName string
+  // Current state (PIPELINE_STATE_QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLING, CANCELLED, PAUSED)
+  state string
+  // Pipeline spec
+  pipelineSpec dict
+  // Runtime config
+  runtimeConfig dict
+  // Service account
+  serviceAccount string
+  // Network
+  network string
+  // Encryption spec
+  encryptionSpec dict
+  // Template URI
+  templateUri string
+  // Template metadata
+  templateMetadata dict
+  // Labels
+  labels map[string]string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+  // Start time
+  startTime time
+  // End time
+  endTime time
+}
+
+// Google Cloud (GCP) Vertex AI dataset
+private gcp.project.vertexaiService.dataset @defaults("name displayName") {
+  // Full resource name
+  name string
+  // Display name
+  displayName string
+  // Description
+  description string
+  // Metadata schema URI
+  metadataSchemaUri string
+  // Metadata
+  metadata dict
+  // Encryption spec
+  encryptionSpec dict
+  // Labels
+  labels map[string]string
+  // Etag
+  etag string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Google Cloud (GCP) Vertex AI Feature Online Store
+private gcp.project.vertexaiService.featureOnlineStore @defaults("name state") {
+  // Full resource name
+  name string
+  // Current state
+  state string
+  // Bigtable configuration (if Bigtable backend)
+  bigtable dict
+  // Optimized configuration (if optimized backend)
+  optimized dict
+  // Dedicated serving endpoint
+  dedicatedServingEndpoint dict
+  // Encryption spec
+  encryptionSpec dict
+  // Labels
+  labels map[string]string
+  // Etag
+  etag string
+  // Whether the resource satisfies PZS
+  satisfiesPzs bool
+  // Whether the resource satisfies PZI
+  satisfiesPzi bool
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
 }

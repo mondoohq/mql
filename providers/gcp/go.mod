@@ -6,8 +6,10 @@ go 1.25.6
 
 require (
 	cloud.google.com/go/accessapproval v1.8.8
+	cloud.google.com/go/aiplatform v1.120.0
 	cloud.google.com/go/alloydb v1.21.0
 	cloud.google.com/go/artifactregistry v1.20.0
+	cloud.google.com/go/backupdr v1.8.0
 	cloud.google.com/go/bigquery v1.74.0
 	cloud.google.com/go/bigtable v1.42.0
 	cloud.google.com/go/cloudtasks v1.13.7
@@ -41,7 +43,7 @@ require (
 	go.mondoo.com/mql/v13 v13.0.0-rc7
 	go.mondoo.com/ranger-rpc v0.8.0
 	golang.org/x/oauth2 v0.36.0
-	google.golang.org/api v0.269.0
+	google.golang.org/api v0.270.0
 	google.golang.org/genproto v0.0.0-20260226221140-a57be14db171
 	google.golang.org/protobuf v1.36.11
 )

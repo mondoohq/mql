@@ -232,6 +232,17 @@ const (
 	ResourceGcpProjectArtifactRegistryServiceRepositoryFormatConfig                    string = "gcp.project.artifactRegistryService.repository.formatConfig"
 	ResourceGcpProjectArtifactRegistryServiceRepositoryModeConfig                      string = "gcp.project.artifactRegistryService.repository.modeConfig"
 	ResourceGcpProjectArtifactRegistryServiceRepositoryUpstreamPolicy                  string = "gcp.project.artifactRegistryService.repository.upstreamPolicy"
+	ResourceGcpProjectBackupdrService                                                  string = "gcp.project.backupdrService"
+	ResourceGcpProjectBackupdrServiceManagementServer                                  string = "gcp.project.backupdrService.managementServer"
+	ResourceGcpProjectBackupdrServiceBackupVault                                       string = "gcp.project.backupdrService.backupVault"
+	ResourceGcpProjectBackupdrServiceDataSource                                        string = "gcp.project.backupdrService.dataSource"
+	ResourceGcpProjectBackupdrServiceBackupPlan                                        string = "gcp.project.backupdrService.backupPlan"
+	ResourceGcpProjectVertexaiService                                                  string = "gcp.project.vertexaiService"
+	ResourceGcpProjectVertexaiServiceModel                                             string = "gcp.project.vertexaiService.model"
+	ResourceGcpProjectVertexaiServiceEndpoint                                          string = "gcp.project.vertexaiService.endpoint"
+	ResourceGcpProjectVertexaiServicePipelineJob                                       string = "gcp.project.vertexaiService.pipelineJob"
+	ResourceGcpProjectVertexaiServiceDataset                                           string = "gcp.project.vertexaiService.dataset"
+	ResourceGcpProjectVertexaiServiceFeatureOnlineStore                                string = "gcp.project.vertexaiService.featureOnlineStore"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -1098,6 +1109,50 @@ func init() {
 			// to override args, implement: initGcpProjectArtifactRegistryServiceRepositoryUpstreamPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGcpProjectArtifactRegistryServiceRepositoryUpstreamPolicy,
 		},
+		"gcp.project.backupdrService": {
+			Init:   initGcpProjectBackupdrService,
+			Create: createGcpProjectBackupdrService,
+		},
+		"gcp.project.backupdrService.managementServer": {
+			// to override args, implement: initGcpProjectBackupdrServiceManagementServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectBackupdrServiceManagementServer,
+		},
+		"gcp.project.backupdrService.backupVault": {
+			// to override args, implement: initGcpProjectBackupdrServiceBackupVault(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectBackupdrServiceBackupVault,
+		},
+		"gcp.project.backupdrService.dataSource": {
+			// to override args, implement: initGcpProjectBackupdrServiceDataSource(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectBackupdrServiceDataSource,
+		},
+		"gcp.project.backupdrService.backupPlan": {
+			// to override args, implement: initGcpProjectBackupdrServiceBackupPlan(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectBackupdrServiceBackupPlan,
+		},
+		"gcp.project.vertexaiService": {
+			Init:   initGcpProjectVertexaiService,
+			Create: createGcpProjectVertexaiService,
+		},
+		"gcp.project.vertexaiService.model": {
+			// to override args, implement: initGcpProjectVertexaiServiceModel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectVertexaiServiceModel,
+		},
+		"gcp.project.vertexaiService.endpoint": {
+			// to override args, implement: initGcpProjectVertexaiServiceEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectVertexaiServiceEndpoint,
+		},
+		"gcp.project.vertexaiService.pipelineJob": {
+			// to override args, implement: initGcpProjectVertexaiServicePipelineJob(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectVertexaiServicePipelineJob,
+		},
+		"gcp.project.vertexaiService.dataset": {
+			// to override args, implement: initGcpProjectVertexaiServiceDataset(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectVertexaiServiceDataset,
+		},
+		"gcp.project.vertexaiService.featureOnlineStore": {
+			// to override args, implement: initGcpProjectVertexaiServiceFeatureOnlineStore(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectVertexaiServiceFeatureOnlineStore,
+		},
 	}
 }
 
@@ -1768,6 +1823,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.artifactRegistry": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProject).GetArtifactRegistry()).ToDataRes(types.Resource("gcp.project.artifactRegistryService"))
+	},
+	"gcp.project.backupdr": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProject).GetBackupdr()).ToDataRes(types.Resource("gcp.project.backupdrService"))
+	},
+	"gcp.project.vertexai": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProject).GetVertexai()).ToDataRes(types.Resource("gcp.project.vertexaiService"))
 	},
 	"gcp.service.projectId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpService).GetProjectId()).ToDataRes(types.String)
@@ -6191,6 +6252,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.computeService.securityPolicy.recaptchaOptionsConfig": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceSecurityPolicy).GetRecaptchaOptionsConfig()).ToDataRes(types.Dict)
 	},
+	"gcp.project.computeService.securityPolicy.fingerprint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceSecurityPolicy).GetFingerprint()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.securityPolicy.userDefinedFields": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceSecurityPolicy).GetUserDefinedFields()).ToDataRes(types.Array(types.Dict))
+	},
 	"gcp.project.computeService.securityPolicy.regionUrl": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceSecurityPolicy).GetRegionUrl()).ToDataRes(types.String)
 	},
@@ -7550,6 +7617,387 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.artifactRegistryService.repository.upstreamPolicy.priority": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectArtifactRegistryServiceRepositoryUpstreamPolicy).GetPriority()).ToDataRes(types.Int)
 	},
+	"gcp.project.backupdrService.projectId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrService).GetProjectId()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.managementServers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrService).GetManagementServers()).ToDataRes(types.Array(types.Resource("gcp.project.backupdrService.managementServer")))
+	},
+	"gcp.project.backupdrService.backupVaults": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrService).GetBackupVaults()).ToDataRes(types.Array(types.Resource("gcp.project.backupdrService.backupVault")))
+	},
+	"gcp.project.backupdrService.backupPlans": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrService).GetBackupPlans()).ToDataRes(types.Array(types.Resource("gcp.project.backupdrService.backupPlan")))
+	},
+	"gcp.project.backupdrService.managementServer.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceManagementServer).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.managementServer.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceManagementServer).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.managementServer.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceManagementServer).GetState()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.managementServer.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceManagementServer).GetType()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.managementServer.networks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceManagementServer).GetNetworks()).ToDataRes(types.Array(types.Dict))
+	},
+	"gcp.project.backupdrService.managementServer.managementUri": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceManagementServer).GetManagementUri()).ToDataRes(types.Dict)
+	},
+	"gcp.project.backupdrService.managementServer.oauth2ClientId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceManagementServer).GetOauth2ClientId()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.managementServer.satisfiesPzs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceManagementServer).GetSatisfiesPzs()).ToDataRes(types.Bool)
+	},
+	"gcp.project.backupdrService.managementServer.etag": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceManagementServer).GetEtag()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.managementServer.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceManagementServer).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.backupdrService.managementServer.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceManagementServer).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.backupdrService.managementServer.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceManagementServer).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.backupdrService.backupVault.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupVault).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.backupVault.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupVault).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.backupVault.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupVault).GetState()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.backupVault.backupMinimumEnforcedRetentionDuration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupVault).GetBackupMinimumEnforcedRetentionDuration()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.backupVault.deletable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupVault).GetDeletable()).ToDataRes(types.Bool)
+	},
+	"gcp.project.backupdrService.backupVault.etag": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupVault).GetEtag()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.backupVault.effectiveTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupVault).GetEffectiveTime()).ToDataRes(types.Time)
+	},
+	"gcp.project.backupdrService.backupVault.backupCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupVault).GetBackupCount()).ToDataRes(types.Int)
+	},
+	"gcp.project.backupdrService.backupVault.serviceAccount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupVault).GetServiceAccount()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.backupVault.totalStoredBytes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupVault).GetTotalStoredBytes()).ToDataRes(types.Int)
+	},
+	"gcp.project.backupdrService.backupVault.accessRestriction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupVault).GetAccessRestriction()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.backupVault.annotations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupVault).GetAnnotations()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.backupdrService.backupVault.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupVault).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.backupdrService.backupVault.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupVault).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.backupdrService.backupVault.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupVault).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.backupdrService.backupVault.dataSources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupVault).GetDataSources()).ToDataRes(types.Array(types.Resource("gcp.project.backupdrService.dataSource")))
+	},
+	"gcp.project.backupdrService.dataSource.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceDataSource).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.dataSource.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceDataSource).GetState()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.dataSource.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceDataSource).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.backupdrService.dataSource.dataSourceGcpResource": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceDataSource).GetDataSourceGcpResource()).ToDataRes(types.Dict)
+	},
+	"gcp.project.backupdrService.dataSource.dataSourceBackupApplianceApplication": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceDataSource).GetDataSourceBackupApplianceApplication()).ToDataRes(types.Dict)
+	},
+	"gcp.project.backupdrService.dataSource.totalStoredBytes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceDataSource).GetTotalStoredBytes()).ToDataRes(types.Int)
+	},
+	"gcp.project.backupdrService.dataSource.backupCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceDataSource).GetBackupCount()).ToDataRes(types.Int)
+	},
+	"gcp.project.backupdrService.dataSource.etag": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceDataSource).GetEtag()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.dataSource.configState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceDataSource).GetConfigState()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.dataSource.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceDataSource).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.backupdrService.dataSource.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceDataSource).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.backupdrService.backupPlan.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupPlan).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.backupPlan.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupPlan).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.backupPlan.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupPlan).GetState()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.backupPlan.resourceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupPlan).GetResourceType()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.backupPlan.backupVault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupPlan).GetBackupVault()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.backupPlan.backupVaultServiceAccount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupPlan).GetBackupVaultServiceAccount()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.backupPlan.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupPlan).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.backupdrService.backupPlan.backupRules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupPlan).GetBackupRules()).ToDataRes(types.Array(types.Dict))
+	},
+	"gcp.project.backupdrService.backupPlan.etag": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupPlan).GetEtag()).ToDataRes(types.String)
+	},
+	"gcp.project.backupdrService.backupPlan.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupPlan).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.backupdrService.backupPlan.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBackupdrServiceBackupPlan).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.vertexaiService.projectId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiService).GetProjectId()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.models": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiService).GetModels()).ToDataRes(types.Array(types.Resource("gcp.project.vertexaiService.model")))
+	},
+	"gcp.project.vertexaiService.endpoints": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiService).GetEndpoints()).ToDataRes(types.Array(types.Resource("gcp.project.vertexaiService.endpoint")))
+	},
+	"gcp.project.vertexaiService.pipelineJobs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiService).GetPipelineJobs()).ToDataRes(types.Array(types.Resource("gcp.project.vertexaiService.pipelineJob")))
+	},
+	"gcp.project.vertexaiService.datasets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiService).GetDatasets()).ToDataRes(types.Array(types.Resource("gcp.project.vertexaiService.dataset")))
+	},
+	"gcp.project.vertexaiService.featureOnlineStores": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiService).GetFeatureOnlineStores()).ToDataRes(types.Array(types.Resource("gcp.project.vertexaiService.featureOnlineStore")))
+	},
+	"gcp.project.vertexaiService.model.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceModel).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.model.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceModel).GetDisplayName()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.model.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceModel).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.model.versionId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceModel).GetVersionId()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.model.versionAliases": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceModel).GetVersionAliases()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.vertexaiService.model.versionDescription": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceModel).GetVersionDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.model.modelSourceInfo": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceModel).GetModelSourceInfo()).ToDataRes(types.Dict)
+	},
+	"gcp.project.vertexaiService.model.containerSpec": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceModel).GetContainerSpec()).ToDataRes(types.Dict)
+	},
+	"gcp.project.vertexaiService.model.supportedDeploymentResourcesTypes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceModel).GetSupportedDeploymentResourcesTypes()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.vertexaiService.model.supportedInputStorageFormats": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceModel).GetSupportedInputStorageFormats()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.vertexaiService.model.supportedOutputStorageFormats": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceModel).GetSupportedOutputStorageFormats()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.vertexaiService.model.trainingPipeline": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceModel).GetTrainingPipeline()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.model.artifactUri": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceModel).GetArtifactUri()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.model.encryptionSpec": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceModel).GetEncryptionSpec()).ToDataRes(types.Dict)
+	},
+	"gcp.project.vertexaiService.model.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceModel).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.vertexaiService.model.etag": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceModel).GetEtag()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.model.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceModel).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.vertexaiService.model.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceModel).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.vertexaiService.endpoint.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceEndpoint).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.endpoint.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceEndpoint).GetDisplayName()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.endpoint.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceEndpoint).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.endpoint.deployedModels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceEndpoint).GetDeployedModels()).ToDataRes(types.Array(types.Dict))
+	},
+	"gcp.project.vertexaiService.endpoint.encryptionSpec": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceEndpoint).GetEncryptionSpec()).ToDataRes(types.Dict)
+	},
+	"gcp.project.vertexaiService.endpoint.network": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceEndpoint).GetNetwork()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.endpoint.enablePrivateServiceConnect": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceEndpoint).GetEnablePrivateServiceConnect()).ToDataRes(types.Bool)
+	},
+	"gcp.project.vertexaiService.endpoint.trafficSplit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceEndpoint).GetTrafficSplit()).ToDataRes(types.Dict)
+	},
+	"gcp.project.vertexaiService.endpoint.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceEndpoint).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.vertexaiService.endpoint.etag": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceEndpoint).GetEtag()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.endpoint.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceEndpoint).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.vertexaiService.endpoint.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceEndpoint).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.vertexaiService.pipelineJob.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServicePipelineJob).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.pipelineJob.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServicePipelineJob).GetDisplayName()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.pipelineJob.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServicePipelineJob).GetState()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.pipelineJob.pipelineSpec": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServicePipelineJob).GetPipelineSpec()).ToDataRes(types.Dict)
+	},
+	"gcp.project.vertexaiService.pipelineJob.runtimeConfig": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServicePipelineJob).GetRuntimeConfig()).ToDataRes(types.Dict)
+	},
+	"gcp.project.vertexaiService.pipelineJob.serviceAccount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServicePipelineJob).GetServiceAccount()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.pipelineJob.network": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServicePipelineJob).GetNetwork()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.pipelineJob.encryptionSpec": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServicePipelineJob).GetEncryptionSpec()).ToDataRes(types.Dict)
+	},
+	"gcp.project.vertexaiService.pipelineJob.templateUri": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServicePipelineJob).GetTemplateUri()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.pipelineJob.templateMetadata": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServicePipelineJob).GetTemplateMetadata()).ToDataRes(types.Dict)
+	},
+	"gcp.project.vertexaiService.pipelineJob.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServicePipelineJob).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.vertexaiService.pipelineJob.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServicePipelineJob).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.vertexaiService.pipelineJob.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServicePipelineJob).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.vertexaiService.pipelineJob.startTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServicePipelineJob).GetStartTime()).ToDataRes(types.Time)
+	},
+	"gcp.project.vertexaiService.pipelineJob.endTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServicePipelineJob).GetEndTime()).ToDataRes(types.Time)
+	},
+	"gcp.project.vertexaiService.dataset.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceDataset).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.dataset.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceDataset).GetDisplayName()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.dataset.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceDataset).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.dataset.metadataSchemaUri": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceDataset).GetMetadataSchemaUri()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.dataset.metadata": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceDataset).GetMetadata()).ToDataRes(types.Dict)
+	},
+	"gcp.project.vertexaiService.dataset.encryptionSpec": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceDataset).GetEncryptionSpec()).ToDataRes(types.Dict)
+	},
+	"gcp.project.vertexaiService.dataset.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceDataset).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.vertexaiService.dataset.etag": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceDataset).GetEtag()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.dataset.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceDataset).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.vertexaiService.dataset.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceDataset).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).GetState()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.bigtable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).GetBigtable()).ToDataRes(types.Dict)
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.optimized": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).GetOptimized()).ToDataRes(types.Dict)
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.dedicatedServingEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).GetDedicatedServingEndpoint()).ToDataRes(types.Dict)
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.encryptionSpec": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).GetEncryptionSpec()).ToDataRes(types.Dict)
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.etag": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).GetEtag()).ToDataRes(types.String)
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.satisfiesPzs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).GetSatisfiesPzs()).ToDataRes(types.Bool)
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.satisfiesPzi": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).GetSatisfiesPzi()).ToDataRes(types.Bool)
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).GetUpdatedAt()).ToDataRes(types.Time)
+	},
 }
 
 func GetData(resource plugin.Resource, field string, args map[string]*llx.RawData) *plugin.DataRes {
@@ -8412,6 +8860,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.artifactRegistry": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProject).ArtifactRegistry, ok = plugin.RawToTValue[*mqlGcpProjectArtifactRegistryService](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdr": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProject).Backupdr, ok = plugin.RawToTValue[*mqlGcpProjectBackupdrService](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexai": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProject).Vertexai, ok = plugin.RawToTValue[*mqlGcpProjectVertexaiService](v.Value, v.Error)
 		return
 	},
 	"gcp.service.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -14906,6 +15362,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectComputeServiceSecurityPolicy).RecaptchaOptionsConfig, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"gcp.project.computeService.securityPolicy.fingerprint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceSecurityPolicy).Fingerprint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.securityPolicy.userDefinedFields": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceSecurityPolicy).UserDefinedFields, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"gcp.project.computeService.securityPolicy.regionUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceSecurityPolicy).RegionUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -16918,6 +17382,558 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectArtifactRegistryServiceRepositoryUpstreamPolicy).Priority, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
+	"gcp.project.backupdrService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrService).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.backupdrService.projectId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrService).ProjectId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.managementServers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrService).ManagementServers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupVaults": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrService).BackupVaults, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupPlans": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrService).BackupPlans, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.managementServer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceManagementServer).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.backupdrService.managementServer.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceManagementServer).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.managementServer.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceManagementServer).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.managementServer.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceManagementServer).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.managementServer.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceManagementServer).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.managementServer.networks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceManagementServer).Networks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.managementServer.managementUri": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceManagementServer).ManagementUri, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.managementServer.oauth2ClientId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceManagementServer).Oauth2ClientId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.managementServer.satisfiesPzs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceManagementServer).SatisfiesPzs, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.managementServer.etag": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceManagementServer).Etag, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.managementServer.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceManagementServer).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.managementServer.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceManagementServer).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.managementServer.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceManagementServer).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupVault.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupVault).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.backupdrService.backupVault.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupVault).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupVault.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupVault).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupVault.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupVault).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupVault.backupMinimumEnforcedRetentionDuration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupVault).BackupMinimumEnforcedRetentionDuration, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupVault.deletable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupVault).Deletable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupVault.etag": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupVault).Etag, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupVault.effectiveTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupVault).EffectiveTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupVault.backupCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupVault).BackupCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupVault.serviceAccount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupVault).ServiceAccount, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupVault.totalStoredBytes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupVault).TotalStoredBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupVault.accessRestriction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupVault).AccessRestriction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupVault.annotations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupVault).Annotations, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupVault.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupVault).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupVault.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupVault).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupVault.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupVault).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupVault.dataSources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupVault).DataSources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.dataSource.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceDataSource).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.backupdrService.dataSource.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceDataSource).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.dataSource.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceDataSource).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.dataSource.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceDataSource).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.dataSource.dataSourceGcpResource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceDataSource).DataSourceGcpResource, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.dataSource.dataSourceBackupApplianceApplication": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceDataSource).DataSourceBackupApplianceApplication, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.dataSource.totalStoredBytes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceDataSource).TotalStoredBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.dataSource.backupCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceDataSource).BackupCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.dataSource.etag": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceDataSource).Etag, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.dataSource.configState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceDataSource).ConfigState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.dataSource.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceDataSource).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.dataSource.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceDataSource).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupPlan.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupPlan).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.backupdrService.backupPlan.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupPlan).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupPlan.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupPlan).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupPlan.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupPlan).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupPlan.resourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupPlan).ResourceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupPlan.backupVault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupPlan).BackupVault, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupPlan.backupVaultServiceAccount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupPlan).BackupVaultServiceAccount, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupPlan.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupPlan).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupPlan.backupRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupPlan).BackupRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupPlan.etag": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupPlan).Etag, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupPlan.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupPlan).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.backupdrService.backupPlan.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBackupdrServiceBackupPlan).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiService).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.vertexaiService.projectId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiService).ProjectId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.models": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiService).Models, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.endpoints": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiService).Endpoints, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.pipelineJobs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiService).PipelineJobs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.datasets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiService).Datasets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.featureOnlineStores": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiService).FeatureOnlineStores, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.model.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.vertexaiService.model.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.model.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.model.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.model.versionId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).VersionId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.model.versionAliases": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).VersionAliases, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.model.versionDescription": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).VersionDescription, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.model.modelSourceInfo": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).ModelSourceInfo, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.model.containerSpec": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).ContainerSpec, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.model.supportedDeploymentResourcesTypes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).SupportedDeploymentResourcesTypes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.model.supportedInputStorageFormats": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).SupportedInputStorageFormats, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.model.supportedOutputStorageFormats": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).SupportedOutputStorageFormats, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.model.trainingPipeline": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).TrainingPipeline, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.model.artifactUri": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).ArtifactUri, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.model.encryptionSpec": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).EncryptionSpec, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.model.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.model.etag": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).Etag, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.model.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.model.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceModel).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.endpoint.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceEndpoint).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.vertexaiService.endpoint.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceEndpoint).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.endpoint.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceEndpoint).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.endpoint.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceEndpoint).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.endpoint.deployedModels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceEndpoint).DeployedModels, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.endpoint.encryptionSpec": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceEndpoint).EncryptionSpec, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.endpoint.network": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceEndpoint).Network, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.endpoint.enablePrivateServiceConnect": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceEndpoint).EnablePrivateServiceConnect, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.endpoint.trafficSplit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceEndpoint).TrafficSplit, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.endpoint.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceEndpoint).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.endpoint.etag": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceEndpoint).Etag, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.endpoint.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceEndpoint).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.endpoint.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceEndpoint).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.pipelineJob.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServicePipelineJob).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.vertexaiService.pipelineJob.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServicePipelineJob).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.pipelineJob.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServicePipelineJob).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.pipelineJob.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServicePipelineJob).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.pipelineJob.pipelineSpec": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServicePipelineJob).PipelineSpec, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.pipelineJob.runtimeConfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServicePipelineJob).RuntimeConfig, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.pipelineJob.serviceAccount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServicePipelineJob).ServiceAccount, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.pipelineJob.network": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServicePipelineJob).Network, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.pipelineJob.encryptionSpec": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServicePipelineJob).EncryptionSpec, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.pipelineJob.templateUri": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServicePipelineJob).TemplateUri, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.pipelineJob.templateMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServicePipelineJob).TemplateMetadata, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.pipelineJob.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServicePipelineJob).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.pipelineJob.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServicePipelineJob).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.pipelineJob.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServicePipelineJob).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.pipelineJob.startTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServicePipelineJob).StartTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.pipelineJob.endTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServicePipelineJob).EndTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.dataset.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceDataset).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.vertexaiService.dataset.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceDataset).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.dataset.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceDataset).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.dataset.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceDataset).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.dataset.metadataSchemaUri": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceDataset).MetadataSchemaUri, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.dataset.metadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceDataset).Metadata, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.dataset.encryptionSpec": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceDataset).EncryptionSpec, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.dataset.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceDataset).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.dataset.etag": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceDataset).Etag, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.dataset.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceDataset).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.dataset.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceDataset).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.bigtable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).Bigtable, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.optimized": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).Optimized, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.dedicatedServingEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).DedicatedServingEndpoint, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.encryptionSpec": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).EncryptionSpec, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.etag": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).Etag, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.satisfiesPzs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).SatisfiesPzs, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.satisfiesPzi": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).SatisfiesPzi, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.vertexaiService.featureOnlineStore.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectVertexaiServiceFeatureOnlineStore).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
 }
 
 func SetData(resource plugin.Resource, field string, val *llx.RawData) error {
@@ -18592,6 +19608,8 @@ type mqlGcpProject struct {
 	CloudDeploy            plugin.TValue[*mqlGcpProjectCloudDeployService]
 	Dataflow               plugin.TValue[*mqlGcpProjectDataflowService]
 	ArtifactRegistry       plugin.TValue[*mqlGcpProjectArtifactRegistryService]
+	Backupdr               plugin.TValue[*mqlGcpProjectBackupdrService]
+	Vertexai               plugin.TValue[*mqlGcpProjectVertexaiService]
 }
 
 // createGcpProject creates a new instance of this resource
@@ -19272,6 +20290,38 @@ func (c *mqlGcpProject) GetArtifactRegistry() *plugin.TValue[*mqlGcpProjectArtif
 		}
 
 		return c.artifactRegistry()
+	})
+}
+
+func (c *mqlGcpProject) GetBackupdr() *plugin.TValue[*mqlGcpProjectBackupdrService] {
+	return plugin.GetOrCompute[*mqlGcpProjectBackupdrService](&c.Backupdr, func() (*mqlGcpProjectBackupdrService, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project", c.__id, "backupdr")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectBackupdrService), nil
+			}
+		}
+
+		return c.backupdr()
+	})
+}
+
+func (c *mqlGcpProject) GetVertexai() *plugin.TValue[*mqlGcpProjectVertexaiService] {
+	return plugin.GetOrCompute[*mqlGcpProjectVertexaiService](&c.Vertexai, func() (*mqlGcpProjectVertexaiService, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project", c.__id, "vertexai")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectVertexaiService), nil
+			}
+		}
+
+		return c.vertexai()
 	})
 }
 
@@ -34308,6 +35358,8 @@ type mqlGcpProjectComputeServiceSecurityPolicy struct {
 	AdvancedOptionsConfig    plugin.TValue[any]
 	DdosProtectionConfig     plugin.TValue[any]
 	RecaptchaOptionsConfig   plugin.TValue[any]
+	Fingerprint              plugin.TValue[string]
+	UserDefinedFields        plugin.TValue[[]any]
 	RegionUrl                plugin.TValue[string]
 	SelfLink                 plugin.TValue[string]
 	CreatedAt                plugin.TValue[*time.Time]
@@ -34385,6 +35437,14 @@ func (c *mqlGcpProjectComputeServiceSecurityPolicy) GetDdosProtectionConfig() *p
 
 func (c *mqlGcpProjectComputeServiceSecurityPolicy) GetRecaptchaOptionsConfig() *plugin.TValue[any] {
 	return &c.RecaptchaOptionsConfig
+}
+
+func (c *mqlGcpProjectComputeServiceSecurityPolicy) GetFingerprint() *plugin.TValue[string] {
+	return &c.Fingerprint
+}
+
+func (c *mqlGcpProjectComputeServiceSecurityPolicy) GetUserDefinedFields() *plugin.TValue[[]any] {
+	return &c.UserDefinedFields
 }
 
 func (c *mqlGcpProjectComputeServiceSecurityPolicy) GetRegionUrl() *plugin.TValue[string] {
@@ -39122,4 +40182,1231 @@ func (c *mqlGcpProjectArtifactRegistryServiceRepositoryUpstreamPolicy) GetReposi
 
 func (c *mqlGcpProjectArtifactRegistryServiceRepositoryUpstreamPolicy) GetPriority() *plugin.TValue[int64] {
 	return &c.Priority
+}
+
+// mqlGcpProjectBackupdrService for the gcp.project.backupdrService resource
+type mqlGcpProjectBackupdrService struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectBackupdrServiceInternal it will be used here
+	ProjectId         plugin.TValue[string]
+	ManagementServers plugin.TValue[[]any]
+	BackupVaults      plugin.TValue[[]any]
+	BackupPlans       plugin.TValue[[]any]
+}
+
+// createGcpProjectBackupdrService creates a new instance of this resource
+func createGcpProjectBackupdrService(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectBackupdrService{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.backupdrService", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectBackupdrService) MqlName() string {
+	return "gcp.project.backupdrService"
+}
+
+func (c *mqlGcpProjectBackupdrService) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectBackupdrService) GetProjectId() *plugin.TValue[string] {
+	return &c.ProjectId
+}
+
+func (c *mqlGcpProjectBackupdrService) GetManagementServers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ManagementServers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.backupdrService", c.__id, "managementServers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.managementServers()
+	})
+}
+
+func (c *mqlGcpProjectBackupdrService) GetBackupVaults() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.BackupVaults, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.backupdrService", c.__id, "backupVaults")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.backupVaults()
+	})
+}
+
+func (c *mqlGcpProjectBackupdrService) GetBackupPlans() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.BackupPlans, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.backupdrService", c.__id, "backupPlans")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.backupPlans()
+	})
+}
+
+// mqlGcpProjectBackupdrServiceManagementServer for the gcp.project.backupdrService.managementServer resource
+type mqlGcpProjectBackupdrServiceManagementServer struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectBackupdrServiceManagementServerInternal it will be used here
+	Name           plugin.TValue[string]
+	Description    plugin.TValue[string]
+	State          plugin.TValue[string]
+	Type           plugin.TValue[string]
+	Networks       plugin.TValue[[]any]
+	ManagementUri  plugin.TValue[any]
+	Oauth2ClientId plugin.TValue[string]
+	SatisfiesPzs   plugin.TValue[bool]
+	Etag           plugin.TValue[string]
+	Labels         plugin.TValue[map[string]any]
+	CreatedAt      plugin.TValue[*time.Time]
+	UpdatedAt      plugin.TValue[*time.Time]
+}
+
+// createGcpProjectBackupdrServiceManagementServer creates a new instance of this resource
+func createGcpProjectBackupdrServiceManagementServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectBackupdrServiceManagementServer{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.backupdrService.managementServer", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectBackupdrServiceManagementServer) MqlName() string {
+	return "gcp.project.backupdrService.managementServer"
+}
+
+func (c *mqlGcpProjectBackupdrServiceManagementServer) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectBackupdrServiceManagementServer) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectBackupdrServiceManagementServer) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectBackupdrServiceManagementServer) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlGcpProjectBackupdrServiceManagementServer) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlGcpProjectBackupdrServiceManagementServer) GetNetworks() *plugin.TValue[[]any] {
+	return &c.Networks
+}
+
+func (c *mqlGcpProjectBackupdrServiceManagementServer) GetManagementUri() *plugin.TValue[any] {
+	return &c.ManagementUri
+}
+
+func (c *mqlGcpProjectBackupdrServiceManagementServer) GetOauth2ClientId() *plugin.TValue[string] {
+	return &c.Oauth2ClientId
+}
+
+func (c *mqlGcpProjectBackupdrServiceManagementServer) GetSatisfiesPzs() *plugin.TValue[bool] {
+	return &c.SatisfiesPzs
+}
+
+func (c *mqlGcpProjectBackupdrServiceManagementServer) GetEtag() *plugin.TValue[string] {
+	return &c.Etag
+}
+
+func (c *mqlGcpProjectBackupdrServiceManagementServer) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlGcpProjectBackupdrServiceManagementServer) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGcpProjectBackupdrServiceManagementServer) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlGcpProjectBackupdrServiceBackupVault for the gcp.project.backupdrService.backupVault resource
+type mqlGcpProjectBackupdrServiceBackupVault struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectBackupdrServiceBackupVaultInternal it will be used here
+	Name                                   plugin.TValue[string]
+	Description                            plugin.TValue[string]
+	State                                  plugin.TValue[string]
+	BackupMinimumEnforcedRetentionDuration plugin.TValue[string]
+	Deletable                              plugin.TValue[bool]
+	Etag                                   plugin.TValue[string]
+	EffectiveTime                          plugin.TValue[*time.Time]
+	BackupCount                            plugin.TValue[int64]
+	ServiceAccount                         plugin.TValue[string]
+	TotalStoredBytes                       plugin.TValue[int64]
+	AccessRestriction                      plugin.TValue[string]
+	Annotations                            plugin.TValue[map[string]any]
+	Labels                                 plugin.TValue[map[string]any]
+	CreatedAt                              plugin.TValue[*time.Time]
+	UpdatedAt                              plugin.TValue[*time.Time]
+	DataSources                            plugin.TValue[[]any]
+}
+
+// createGcpProjectBackupdrServiceBackupVault creates a new instance of this resource
+func createGcpProjectBackupdrServiceBackupVault(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectBackupdrServiceBackupVault{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.backupdrService.backupVault", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupVault) MqlName() string {
+	return "gcp.project.backupdrService.backupVault"
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupVault) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupVault) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupVault) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupVault) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupVault) GetBackupMinimumEnforcedRetentionDuration() *plugin.TValue[string] {
+	return &c.BackupMinimumEnforcedRetentionDuration
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupVault) GetDeletable() *plugin.TValue[bool] {
+	return &c.Deletable
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupVault) GetEtag() *plugin.TValue[string] {
+	return &c.Etag
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupVault) GetEffectiveTime() *plugin.TValue[*time.Time] {
+	return &c.EffectiveTime
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupVault) GetBackupCount() *plugin.TValue[int64] {
+	return &c.BackupCount
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupVault) GetServiceAccount() *plugin.TValue[string] {
+	return &c.ServiceAccount
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupVault) GetTotalStoredBytes() *plugin.TValue[int64] {
+	return &c.TotalStoredBytes
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupVault) GetAccessRestriction() *plugin.TValue[string] {
+	return &c.AccessRestriction
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupVault) GetAnnotations() *plugin.TValue[map[string]any] {
+	return &c.Annotations
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupVault) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupVault) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupVault) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupVault) GetDataSources() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DataSources, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.backupdrService.backupVault", c.__id, "dataSources")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.dataSources()
+	})
+}
+
+// mqlGcpProjectBackupdrServiceDataSource for the gcp.project.backupdrService.dataSource resource
+type mqlGcpProjectBackupdrServiceDataSource struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectBackupdrServiceDataSourceInternal it will be used here
+	Name                                 plugin.TValue[string]
+	State                                plugin.TValue[string]
+	Labels                               plugin.TValue[map[string]any]
+	DataSourceGcpResource                plugin.TValue[any]
+	DataSourceBackupApplianceApplication plugin.TValue[any]
+	TotalStoredBytes                     plugin.TValue[int64]
+	BackupCount                          plugin.TValue[int64]
+	Etag                                 plugin.TValue[string]
+	ConfigState                          plugin.TValue[string]
+	CreatedAt                            plugin.TValue[*time.Time]
+	UpdatedAt                            plugin.TValue[*time.Time]
+}
+
+// createGcpProjectBackupdrServiceDataSource creates a new instance of this resource
+func createGcpProjectBackupdrServiceDataSource(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectBackupdrServiceDataSource{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.backupdrService.dataSource", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectBackupdrServiceDataSource) MqlName() string {
+	return "gcp.project.backupdrService.dataSource"
+}
+
+func (c *mqlGcpProjectBackupdrServiceDataSource) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectBackupdrServiceDataSource) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectBackupdrServiceDataSource) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlGcpProjectBackupdrServiceDataSource) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlGcpProjectBackupdrServiceDataSource) GetDataSourceGcpResource() *plugin.TValue[any] {
+	return &c.DataSourceGcpResource
+}
+
+func (c *mqlGcpProjectBackupdrServiceDataSource) GetDataSourceBackupApplianceApplication() *plugin.TValue[any] {
+	return &c.DataSourceBackupApplianceApplication
+}
+
+func (c *mqlGcpProjectBackupdrServiceDataSource) GetTotalStoredBytes() *plugin.TValue[int64] {
+	return &c.TotalStoredBytes
+}
+
+func (c *mqlGcpProjectBackupdrServiceDataSource) GetBackupCount() *plugin.TValue[int64] {
+	return &c.BackupCount
+}
+
+func (c *mqlGcpProjectBackupdrServiceDataSource) GetEtag() *plugin.TValue[string] {
+	return &c.Etag
+}
+
+func (c *mqlGcpProjectBackupdrServiceDataSource) GetConfigState() *plugin.TValue[string] {
+	return &c.ConfigState
+}
+
+func (c *mqlGcpProjectBackupdrServiceDataSource) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGcpProjectBackupdrServiceDataSource) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlGcpProjectBackupdrServiceBackupPlan for the gcp.project.backupdrService.backupPlan resource
+type mqlGcpProjectBackupdrServiceBackupPlan struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectBackupdrServiceBackupPlanInternal it will be used here
+	Name                      plugin.TValue[string]
+	Description               plugin.TValue[string]
+	State                     plugin.TValue[string]
+	ResourceType              plugin.TValue[string]
+	BackupVault               plugin.TValue[string]
+	BackupVaultServiceAccount plugin.TValue[string]
+	Labels                    plugin.TValue[map[string]any]
+	BackupRules               plugin.TValue[[]any]
+	Etag                      plugin.TValue[string]
+	CreatedAt                 plugin.TValue[*time.Time]
+	UpdatedAt                 plugin.TValue[*time.Time]
+}
+
+// createGcpProjectBackupdrServiceBackupPlan creates a new instance of this resource
+func createGcpProjectBackupdrServiceBackupPlan(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectBackupdrServiceBackupPlan{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.backupdrService.backupPlan", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupPlan) MqlName() string {
+	return "gcp.project.backupdrService.backupPlan"
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupPlan) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupPlan) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupPlan) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupPlan) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupPlan) GetResourceType() *plugin.TValue[string] {
+	return &c.ResourceType
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupPlan) GetBackupVault() *plugin.TValue[string] {
+	return &c.BackupVault
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupPlan) GetBackupVaultServiceAccount() *plugin.TValue[string] {
+	return &c.BackupVaultServiceAccount
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupPlan) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupPlan) GetBackupRules() *plugin.TValue[[]any] {
+	return &c.BackupRules
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupPlan) GetEtag() *plugin.TValue[string] {
+	return &c.Etag
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupPlan) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGcpProjectBackupdrServiceBackupPlan) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlGcpProjectVertexaiService for the gcp.project.vertexaiService resource
+type mqlGcpProjectVertexaiService struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectVertexaiServiceInternal it will be used here
+	ProjectId           plugin.TValue[string]
+	Models              plugin.TValue[[]any]
+	Endpoints           plugin.TValue[[]any]
+	PipelineJobs        plugin.TValue[[]any]
+	Datasets            plugin.TValue[[]any]
+	FeatureOnlineStores plugin.TValue[[]any]
+}
+
+// createGcpProjectVertexaiService creates a new instance of this resource
+func createGcpProjectVertexaiService(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectVertexaiService{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.vertexaiService", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectVertexaiService) MqlName() string {
+	return "gcp.project.vertexaiService"
+}
+
+func (c *mqlGcpProjectVertexaiService) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectVertexaiService) GetProjectId() *plugin.TValue[string] {
+	return &c.ProjectId
+}
+
+func (c *mqlGcpProjectVertexaiService) GetModels() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Models, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.vertexaiService", c.__id, "models")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.models()
+	})
+}
+
+func (c *mqlGcpProjectVertexaiService) GetEndpoints() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Endpoints, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.vertexaiService", c.__id, "endpoints")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.endpoints()
+	})
+}
+
+func (c *mqlGcpProjectVertexaiService) GetPipelineJobs() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PipelineJobs, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.vertexaiService", c.__id, "pipelineJobs")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.pipelineJobs()
+	})
+}
+
+func (c *mqlGcpProjectVertexaiService) GetDatasets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Datasets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.vertexaiService", c.__id, "datasets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.datasets()
+	})
+}
+
+func (c *mqlGcpProjectVertexaiService) GetFeatureOnlineStores() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.FeatureOnlineStores, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.vertexaiService", c.__id, "featureOnlineStores")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.featureOnlineStores()
+	})
+}
+
+// mqlGcpProjectVertexaiServiceModel for the gcp.project.vertexaiService.model resource
+type mqlGcpProjectVertexaiServiceModel struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectVertexaiServiceModelInternal it will be used here
+	Name                              plugin.TValue[string]
+	DisplayName                       plugin.TValue[string]
+	Description                       plugin.TValue[string]
+	VersionId                         plugin.TValue[string]
+	VersionAliases                    plugin.TValue[[]any]
+	VersionDescription                plugin.TValue[string]
+	ModelSourceInfo                   plugin.TValue[any]
+	ContainerSpec                     plugin.TValue[any]
+	SupportedDeploymentResourcesTypes plugin.TValue[[]any]
+	SupportedInputStorageFormats      plugin.TValue[[]any]
+	SupportedOutputStorageFormats     plugin.TValue[[]any]
+	TrainingPipeline                  plugin.TValue[string]
+	ArtifactUri                       plugin.TValue[string]
+	EncryptionSpec                    plugin.TValue[any]
+	Labels                            plugin.TValue[map[string]any]
+	Etag                              plugin.TValue[string]
+	CreatedAt                         plugin.TValue[*time.Time]
+	UpdatedAt                         plugin.TValue[*time.Time]
+}
+
+// createGcpProjectVertexaiServiceModel creates a new instance of this resource
+func createGcpProjectVertexaiServiceModel(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectVertexaiServiceModel{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.vertexaiService.model", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) MqlName() string {
+	return "gcp.project.vertexaiService.model"
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) GetVersionId() *plugin.TValue[string] {
+	return &c.VersionId
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) GetVersionAliases() *plugin.TValue[[]any] {
+	return &c.VersionAliases
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) GetVersionDescription() *plugin.TValue[string] {
+	return &c.VersionDescription
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) GetModelSourceInfo() *plugin.TValue[any] {
+	return &c.ModelSourceInfo
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) GetContainerSpec() *plugin.TValue[any] {
+	return &c.ContainerSpec
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) GetSupportedDeploymentResourcesTypes() *plugin.TValue[[]any] {
+	return &c.SupportedDeploymentResourcesTypes
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) GetSupportedInputStorageFormats() *plugin.TValue[[]any] {
+	return &c.SupportedInputStorageFormats
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) GetSupportedOutputStorageFormats() *plugin.TValue[[]any] {
+	return &c.SupportedOutputStorageFormats
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) GetTrainingPipeline() *plugin.TValue[string] {
+	return &c.TrainingPipeline
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) GetArtifactUri() *plugin.TValue[string] {
+	return &c.ArtifactUri
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) GetEncryptionSpec() *plugin.TValue[any] {
+	return &c.EncryptionSpec
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) GetEtag() *plugin.TValue[string] {
+	return &c.Etag
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGcpProjectVertexaiServiceModel) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlGcpProjectVertexaiServiceEndpoint for the gcp.project.vertexaiService.endpoint resource
+type mqlGcpProjectVertexaiServiceEndpoint struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectVertexaiServiceEndpointInternal it will be used here
+	Name                        plugin.TValue[string]
+	DisplayName                 plugin.TValue[string]
+	Description                 plugin.TValue[string]
+	DeployedModels              plugin.TValue[[]any]
+	EncryptionSpec              plugin.TValue[any]
+	Network                     plugin.TValue[string]
+	EnablePrivateServiceConnect plugin.TValue[bool]
+	TrafficSplit                plugin.TValue[any]
+	Labels                      plugin.TValue[map[string]any]
+	Etag                        plugin.TValue[string]
+	CreatedAt                   plugin.TValue[*time.Time]
+	UpdatedAt                   plugin.TValue[*time.Time]
+}
+
+// createGcpProjectVertexaiServiceEndpoint creates a new instance of this resource
+func createGcpProjectVertexaiServiceEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectVertexaiServiceEndpoint{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.vertexaiService.endpoint", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectVertexaiServiceEndpoint) MqlName() string {
+	return "gcp.project.vertexaiService.endpoint"
+}
+
+func (c *mqlGcpProjectVertexaiServiceEndpoint) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectVertexaiServiceEndpoint) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectVertexaiServiceEndpoint) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlGcpProjectVertexaiServiceEndpoint) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectVertexaiServiceEndpoint) GetDeployedModels() *plugin.TValue[[]any] {
+	return &c.DeployedModels
+}
+
+func (c *mqlGcpProjectVertexaiServiceEndpoint) GetEncryptionSpec() *plugin.TValue[any] {
+	return &c.EncryptionSpec
+}
+
+func (c *mqlGcpProjectVertexaiServiceEndpoint) GetNetwork() *plugin.TValue[string] {
+	return &c.Network
+}
+
+func (c *mqlGcpProjectVertexaiServiceEndpoint) GetEnablePrivateServiceConnect() *plugin.TValue[bool] {
+	return &c.EnablePrivateServiceConnect
+}
+
+func (c *mqlGcpProjectVertexaiServiceEndpoint) GetTrafficSplit() *plugin.TValue[any] {
+	return &c.TrafficSplit
+}
+
+func (c *mqlGcpProjectVertexaiServiceEndpoint) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlGcpProjectVertexaiServiceEndpoint) GetEtag() *plugin.TValue[string] {
+	return &c.Etag
+}
+
+func (c *mqlGcpProjectVertexaiServiceEndpoint) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGcpProjectVertexaiServiceEndpoint) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlGcpProjectVertexaiServicePipelineJob for the gcp.project.vertexaiService.pipelineJob resource
+type mqlGcpProjectVertexaiServicePipelineJob struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectVertexaiServicePipelineJobInternal it will be used here
+	Name             plugin.TValue[string]
+	DisplayName      plugin.TValue[string]
+	State            plugin.TValue[string]
+	PipelineSpec     plugin.TValue[any]
+	RuntimeConfig    plugin.TValue[any]
+	ServiceAccount   plugin.TValue[string]
+	Network          plugin.TValue[string]
+	EncryptionSpec   plugin.TValue[any]
+	TemplateUri      plugin.TValue[string]
+	TemplateMetadata plugin.TValue[any]
+	Labels           plugin.TValue[map[string]any]
+	CreatedAt        plugin.TValue[*time.Time]
+	UpdatedAt        plugin.TValue[*time.Time]
+	StartTime        plugin.TValue[*time.Time]
+	EndTime          plugin.TValue[*time.Time]
+}
+
+// createGcpProjectVertexaiServicePipelineJob creates a new instance of this resource
+func createGcpProjectVertexaiServicePipelineJob(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectVertexaiServicePipelineJob{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.vertexaiService.pipelineJob", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectVertexaiServicePipelineJob) MqlName() string {
+	return "gcp.project.vertexaiService.pipelineJob"
+}
+
+func (c *mqlGcpProjectVertexaiServicePipelineJob) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectVertexaiServicePipelineJob) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectVertexaiServicePipelineJob) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlGcpProjectVertexaiServicePipelineJob) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlGcpProjectVertexaiServicePipelineJob) GetPipelineSpec() *plugin.TValue[any] {
+	return &c.PipelineSpec
+}
+
+func (c *mqlGcpProjectVertexaiServicePipelineJob) GetRuntimeConfig() *plugin.TValue[any] {
+	return &c.RuntimeConfig
+}
+
+func (c *mqlGcpProjectVertexaiServicePipelineJob) GetServiceAccount() *plugin.TValue[string] {
+	return &c.ServiceAccount
+}
+
+func (c *mqlGcpProjectVertexaiServicePipelineJob) GetNetwork() *plugin.TValue[string] {
+	return &c.Network
+}
+
+func (c *mqlGcpProjectVertexaiServicePipelineJob) GetEncryptionSpec() *plugin.TValue[any] {
+	return &c.EncryptionSpec
+}
+
+func (c *mqlGcpProjectVertexaiServicePipelineJob) GetTemplateUri() *plugin.TValue[string] {
+	return &c.TemplateUri
+}
+
+func (c *mqlGcpProjectVertexaiServicePipelineJob) GetTemplateMetadata() *plugin.TValue[any] {
+	return &c.TemplateMetadata
+}
+
+func (c *mqlGcpProjectVertexaiServicePipelineJob) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlGcpProjectVertexaiServicePipelineJob) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGcpProjectVertexaiServicePipelineJob) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlGcpProjectVertexaiServicePipelineJob) GetStartTime() *plugin.TValue[*time.Time] {
+	return &c.StartTime
+}
+
+func (c *mqlGcpProjectVertexaiServicePipelineJob) GetEndTime() *plugin.TValue[*time.Time] {
+	return &c.EndTime
+}
+
+// mqlGcpProjectVertexaiServiceDataset for the gcp.project.vertexaiService.dataset resource
+type mqlGcpProjectVertexaiServiceDataset struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectVertexaiServiceDatasetInternal it will be used here
+	Name              plugin.TValue[string]
+	DisplayName       plugin.TValue[string]
+	Description       plugin.TValue[string]
+	MetadataSchemaUri plugin.TValue[string]
+	Metadata          plugin.TValue[any]
+	EncryptionSpec    plugin.TValue[any]
+	Labels            plugin.TValue[map[string]any]
+	Etag              plugin.TValue[string]
+	CreatedAt         plugin.TValue[*time.Time]
+	UpdatedAt         plugin.TValue[*time.Time]
+}
+
+// createGcpProjectVertexaiServiceDataset creates a new instance of this resource
+func createGcpProjectVertexaiServiceDataset(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectVertexaiServiceDataset{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.vertexaiService.dataset", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectVertexaiServiceDataset) MqlName() string {
+	return "gcp.project.vertexaiService.dataset"
+}
+
+func (c *mqlGcpProjectVertexaiServiceDataset) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectVertexaiServiceDataset) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectVertexaiServiceDataset) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlGcpProjectVertexaiServiceDataset) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectVertexaiServiceDataset) GetMetadataSchemaUri() *plugin.TValue[string] {
+	return &c.MetadataSchemaUri
+}
+
+func (c *mqlGcpProjectVertexaiServiceDataset) GetMetadata() *plugin.TValue[any] {
+	return &c.Metadata
+}
+
+func (c *mqlGcpProjectVertexaiServiceDataset) GetEncryptionSpec() *plugin.TValue[any] {
+	return &c.EncryptionSpec
+}
+
+func (c *mqlGcpProjectVertexaiServiceDataset) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlGcpProjectVertexaiServiceDataset) GetEtag() *plugin.TValue[string] {
+	return &c.Etag
+}
+
+func (c *mqlGcpProjectVertexaiServiceDataset) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGcpProjectVertexaiServiceDataset) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlGcpProjectVertexaiServiceFeatureOnlineStore for the gcp.project.vertexaiService.featureOnlineStore resource
+type mqlGcpProjectVertexaiServiceFeatureOnlineStore struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectVertexaiServiceFeatureOnlineStoreInternal it will be used here
+	Name                     plugin.TValue[string]
+	State                    plugin.TValue[string]
+	Bigtable                 plugin.TValue[any]
+	Optimized                plugin.TValue[any]
+	DedicatedServingEndpoint plugin.TValue[any]
+	EncryptionSpec           plugin.TValue[any]
+	Labels                   plugin.TValue[map[string]any]
+	Etag                     plugin.TValue[string]
+	SatisfiesPzs             plugin.TValue[bool]
+	SatisfiesPzi             plugin.TValue[bool]
+	CreatedAt                plugin.TValue[*time.Time]
+	UpdatedAt                plugin.TValue[*time.Time]
+}
+
+// createGcpProjectVertexaiServiceFeatureOnlineStore creates a new instance of this resource
+func createGcpProjectVertexaiServiceFeatureOnlineStore(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectVertexaiServiceFeatureOnlineStore{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.vertexaiService.featureOnlineStore", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectVertexaiServiceFeatureOnlineStore) MqlName() string {
+	return "gcp.project.vertexaiService.featureOnlineStore"
+}
+
+func (c *mqlGcpProjectVertexaiServiceFeatureOnlineStore) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectVertexaiServiceFeatureOnlineStore) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectVertexaiServiceFeatureOnlineStore) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlGcpProjectVertexaiServiceFeatureOnlineStore) GetBigtable() *plugin.TValue[any] {
+	return &c.Bigtable
+}
+
+func (c *mqlGcpProjectVertexaiServiceFeatureOnlineStore) GetOptimized() *plugin.TValue[any] {
+	return &c.Optimized
+}
+
+func (c *mqlGcpProjectVertexaiServiceFeatureOnlineStore) GetDedicatedServingEndpoint() *plugin.TValue[any] {
+	return &c.DedicatedServingEndpoint
+}
+
+func (c *mqlGcpProjectVertexaiServiceFeatureOnlineStore) GetEncryptionSpec() *plugin.TValue[any] {
+	return &c.EncryptionSpec
+}
+
+func (c *mqlGcpProjectVertexaiServiceFeatureOnlineStore) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlGcpProjectVertexaiServiceFeatureOnlineStore) GetEtag() *plugin.TValue[string] {
+	return &c.Etag
+}
+
+func (c *mqlGcpProjectVertexaiServiceFeatureOnlineStore) GetSatisfiesPzs() *plugin.TValue[bool] {
+	return &c.SatisfiesPzs
+}
+
+func (c *mqlGcpProjectVertexaiServiceFeatureOnlineStore) GetSatisfiesPzi() *plugin.TValue[bool] {
+	return &c.SatisfiesPzi
+}
+
+func (c *mqlGcpProjectVertexaiServiceFeatureOnlineStore) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlGcpProjectVertexaiServiceFeatureOnlineStore) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
 }
