@@ -12,6 +12,7 @@ import (
 	"go.mondoo.com/mql/v13/types"
 	"go.mondoo.com/ranger-rpc/codes"
 	"go.mondoo.com/ranger-rpc/status"
+	"gopkg.in/yaml.v3"
 )
 
 func initCloudformationTemplate(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -108,6 +109,10 @@ func (r *mqlCloudformationTemplate) conditions() (map[string]any, error) {
 	return r.extractDict(cft.Conditions)
 }
 
+func (r *mqlCloudformationTemplate) rules() (map[string]any, error) {
+	return r.extractDict(cft.Rules)
+}
+
 func (x *mqlCloudformationResource) id() (string, error) {
 	return x.Name.Data, nil
 }
@@ -162,6 +167,19 @@ func (r *mqlCloudformationTemplate) resources() ([]any, error) {
 			}
 		}
 
+		var dependsOn []any
+		_, val, err = gatherMapValue(valueNode, "DependsOn")
+		if err == nil {
+			switch val.Kind {
+			case yaml.ScalarNode:
+				dependsOn = []any{val.Value}
+			case yaml.SequenceNode:
+				for _, item := range val.Content {
+					dependsOn = append(dependsOn, item.Value)
+				}
+			}
+		}
+
 		pkg, err := CreateResource(r.MqlRuntime, "cloudformation.resource", map[string]*llx.RawData{
 			"name":          llx.StringData(keyNode.Value),
 			"type":          llx.StringData(resourceType),
@@ -169,6 +187,7 @@ func (r *mqlCloudformationTemplate) resources() ([]any, error) {
 			"documentation": llx.StringData(resourceDocumentation),
 			"attributes":    llx.MapData(attrs, types.Dict),
 			"properties":    llx.MapData(props, types.Dict),
+			"dependsOn":     llx.ArrayData(dependsOn, types.String),
 		})
 		if err != nil {
 			return nil, err

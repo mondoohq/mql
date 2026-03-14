@@ -22,6 +22,8 @@ cloudformation.template @defaults("description") {
   metadata() map[string]dict
   // Template conditions
   conditions() map[string]dict
+  // Template rules for parameter validation
+  rules() map[string]dict
   // Template resources
   resources() []cloudformation.resource
   // Template outputs
@@ -44,6 +46,8 @@ cloudformation.resource @defaults("name") {
   attributes map[string]dict
   // Resource properties
   properties map[string]dict
+  // Resource dependencies (DependsOn)
+  dependsOn []string
 }
 
 // AWS CloudFormation Output

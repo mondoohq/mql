@@ -141,6 +141,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"cloudformation.template.conditions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudformationTemplate).GetConditions()).ToDataRes(types.Map(types.String, types.Dict))
 	},
+	"cloudformation.template.rules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudformationTemplate).GetRules()).ToDataRes(types.Map(types.String, types.Dict))
+	},
 	"cloudformation.template.resources": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudformationTemplate).GetResources()).ToDataRes(types.Array(types.Resource("cloudformation.resource")))
 	},
@@ -167,6 +170,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"cloudformation.resource.properties": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudformationResource).GetProperties()).ToDataRes(types.Map(types.String, types.Dict))
+	},
+	"cloudformation.resource.dependsOn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudformationResource).GetDependsOn()).ToDataRes(types.Array(types.String))
 	},
 	"cloudformation.output.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudformationOutput).GetName()).ToDataRes(types.String)
@@ -222,6 +228,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlCloudformationTemplate).Conditions, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"cloudformation.template.rules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudformationTemplate).Rules, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 	"cloudformation.template.resources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCloudformationTemplate).Resources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -260,6 +270,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"cloudformation.resource.properties": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCloudformationResource).Properties, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"cloudformation.resource.dependsOn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudformationResource).DependsOn, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"cloudformation.output.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -311,6 +325,7 @@ type mqlCloudformationTemplate struct {
 	Parameters  plugin.TValue[map[string]any]
 	Metadata    plugin.TValue[map[string]any]
 	Conditions  plugin.TValue[map[string]any]
+	Rules       plugin.TValue[map[string]any]
 	Resources   plugin.TValue[[]any]
 	Outputs     plugin.TValue[[]any]
 	Types       plugin.TValue[[]any]
@@ -395,6 +410,12 @@ func (c *mqlCloudformationTemplate) GetConditions() *plugin.TValue[map[string]an
 	})
 }
 
+func (c *mqlCloudformationTemplate) GetRules() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Rules, func() (map[string]any, error) {
+		return c.rules()
+	})
+}
+
 func (c *mqlCloudformationTemplate) GetResources() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Resources, func() ([]any, error) {
 		if c.MqlRuntime.HasRecording {
@@ -444,6 +465,7 @@ type mqlCloudformationResource struct {
 	Documentation plugin.TValue[string]
 	Attributes    plugin.TValue[map[string]any]
 	Properties    plugin.TValue[map[string]any]
+	DependsOn     plugin.TValue[[]any]
 }
 
 // createCloudformationResource creates a new instance of this resource
@@ -505,6 +527,10 @@ func (c *mqlCloudformationResource) GetAttributes() *plugin.TValue[map[string]an
 
 func (c *mqlCloudformationResource) GetProperties() *plugin.TValue[map[string]any] {
 	return &c.Properties
+}
+
+func (c *mqlCloudformationResource) GetDependsOn() *plugin.TValue[[]any] {
+	return &c.DependsOn
 }
 
 // mqlCloudformationOutput for the cloudformation.output resource
