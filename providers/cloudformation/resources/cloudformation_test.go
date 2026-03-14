@@ -198,6 +198,43 @@ func TestCloudformationResources(t *testing.T) {
 		assert.Equal(t, 1, len(res.Data))
 	})
 
+	t.Run("cloudformation dependsOn", func(t *testing.T) {
+		path := "../testdata/dependson.yaml"
+		tpl, err := loadTemplate(path)
+		require.NoError(t, err)
+
+		res := tpl.GetResources()
+		require.NoError(t, res.Error)
+		assert.Equal(t, 4, len(res.Data))
+
+		for i := range res.Data {
+			resource := res.Data[i].(*mqlCloudformationResource)
+			switch resource.Name.Data {
+			case "MySubnet":
+				// single string DependsOn
+				assert.Equal(t, []any{"MyVPC"}, resource.DependsOn.Data)
+			case "MyInstance":
+				// list DependsOn
+				assert.Equal(t, []any{"MyVPC", "MySubnet"}, resource.DependsOn.Data)
+			case "MyVPC", "MyQueue":
+				// no DependsOn
+				assert.Empty(t, resource.DependsOn.Data)
+			}
+		}
+	})
+
+	t.Run("cloudformation rules", func(t *testing.T) {
+		path := "../testdata/rules.yaml"
+		tpl, err := loadTemplate(path)
+		require.NoError(t, err)
+
+		res := tpl.GetRules()
+		require.NoError(t, res.Error)
+		assert.Equal(t, 1, len(res.Data))
+		val := res.Data["ProdInstanceType"]
+		assert.NotNil(t, val)
+	})
+
 	t.Run("cloudformation transform", func(t *testing.T) {
 		path := "../testdata/transform.yaml"
 		tpl, err := loadTemplate(path)

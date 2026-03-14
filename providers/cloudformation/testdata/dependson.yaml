@@ -1,0 +1,21 @@
+Resources:
+  MyVPC:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: "10.0.0.0/16"
+  MySubnet:
+    Type: "AWS::EC2::Subnet"
+    DependsOn: MyVPC
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: "10.0.1.0/24"
+  MyInstance:
+    Type: "AWS::EC2::Instance"
+    DependsOn:
+      - MyVPC
+      - MySubnet
+    Properties:
+      ImageId: "ami-0ff8a91507f77f867"
+  MyQueue:
+    Type: "AWS::SQS::Queue"
+    Properties: {}
