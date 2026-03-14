@@ -449,6 +449,8 @@ func (g *mqlGcpProjectSqlService) instances() ([]any, error) {
 				"primaryDnsName":           llx.StringData(instance.PrimaryDnsName),
 				"writeEndpoint":            llx.StringData(instance.WriteEndpoint),
 				"pscServiceAttachmentLink": llx.StringData(instance.PscServiceAttachmentLink),
+				"currentDiskSize":          llx.IntData(instance.CurrentDiskSize),
+				"etag":                     llx.StringData(instance.Etag),
 			})
 			if err != nil {
 				return err

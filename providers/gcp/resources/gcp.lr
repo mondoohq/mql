@@ -710,6 +710,10 @@ private gcp.project.computeService.forwardingRule {
   pscConnectionStatus string
   // If this load balancer can be used for packet mirroring, the source IP ranges to mirror
   sourceIpRanges []string
+  // Fingerprint for optimistic locking
+  fingerprint string
+  // IP address collection resource
+  ipCollection string
 }
 
 // Google Cloud (GCP) Compute region
@@ -932,6 +936,18 @@ private gcp.project.computeService.disk @defaults("name") {
   provisionedThroughput int
   // Storage pool where the disk resides
   storagePool() gcp.project.computeService.storagePool
+  // Region of the disk (for regional persistent disks)
+  region string
+  // Replica zones for regional persistent disks
+  replicaZones []string
+  // Resource policies applied to this disk
+  resourcePolicies []string
+  // Whether the disk satisfies Google's Protected Zone Integration requirements
+  satisfiesPzi bool
+  // Whether the disk satisfies Google's Protected Zone Separation requirements
+  satisfiesPzs bool
+  // ID of the source disk used to create this disk
+  sourceDiskId string
 }
 
 // Google Cloud (GCP) Compute attached disk
@@ -1012,6 +1028,12 @@ private gcp.project.computeService.snapshot @defaults("name") {
   satisfiesPzs bool
   // URL of the source disk used to create this snapshot
   sourceDisk string
+  // ID of the source disk used to create this snapshot
+  sourceDiskId string
+  // URL of the snapshot schedule policy that created this snapshot
+  sourceSnapshotSchedulePolicy string
+  // ID of the snapshot schedule policy
+  sourceSnapshotSchedulePolicyId string
 }
 
 // Google Cloud (GCP) Compute
@@ -1046,6 +1068,20 @@ private gcp.project.computeService.image @defaults("id name") {
   satisfiesPzi bool
   // Whether the image satisfies Google's Protected Zone Separation requirements
   satisfiesPzs bool
+  // Cloud Storage locations where the image is stored
+  storageLocations []string
+  // URL of the source disk used to create this image
+  sourceDisk string
+  // ID of the source disk used to create this image
+  sourceDiskId string
+  // URL of the source image used to create this image
+  sourceImage string
+  // ID of the source image used to create this image
+  sourceImageId string
+  // URL of the source snapshot used to create this image
+  sourceSnapshot string
+  // ID of the source snapshot used to create this image
+  sourceSnapshotId string
 }
 
 // Google Cloud (GCP) Compute firewall
@@ -1084,6 +1120,8 @@ private gcp.project.computeService.firewall @defaults("name") {
   targetTags []string
   // Whether firewall logging is enabled for this rule
   loggingEnabled bool
+  // URL of the network resource for this firewall rule
+  network string
 }
 
 // Google Cloud (GCP) Compute VPC network resource
@@ -1292,6 +1330,8 @@ private gcp.project.computeService.backendService @defaults("name") {
   serviceLbPolicy string
   // Specifies the IP address selection policy for the backend service (IPV4_ONLY, PREFER_IPV6, IPV6_ONLY)
   ipAddressSelectionPolicy string
+  // Fingerprint for optimistic locking
+  fingerprint string
 }
 
 // Google Cloud (GCP) Compute backend service backend
@@ -1402,6 +1442,10 @@ private gcp.project.storageService.bucket @defaults("id") {
   satisfiesPZS bool
   // Whether object versioning is enabled
   versioningEnabled bool
+  // Public access prevention setting (inherited, enforced, unspecified)
+  publicAccessPrevention string
+  // Metadata generation of the bucket
+  metageneration int
 }
 
 // Google Cloud bucket's lifecycle configuration
@@ -1554,6 +1598,10 @@ private gcp.project.sqlService.instance @defaults("name") {
   writeEndpoint string
   // PSC service attachment link
   pscServiceAttachmentLink string
+  // Current disk usage of the instance in bytes
+  currentDiskSize int
+  // ETag for optimistic locking
+  etag string
 }
 
 // Google Cloud (GCP) SQL instance database
@@ -1768,6 +1816,22 @@ private gcp.project.bigqueryService.dataset @defaults("id name") {
   models() []gcp.project.bigqueryService.model
   // Returns routines in the dataset
   routines() []gcp.project.bigqueryService.routine
+  // Maximum time travel in hours for the dataset (48 to 168)
+  maxTimeTravelHours int
+  // Storage billing model (LOGICAL or PHYSICAL)
+  storageBillingModel string
+  // Default collation for the dataset
+  defaultCollation string
+  // Default partition expiration time in milliseconds
+  defaultPartitionExpirationMs int
+  // Default rounding mode for the dataset
+  defaultRoundingMode string
+  // Whether field names are treated as case insensitive
+  isCaseInsensitive bool
+  // Whether the dataset satisfies Google's Protected Zone Integration requirements
+  satisfiesPzi bool
+  // Whether the dataset satisfies Google's Protected Zone Separation requirements
+  satisfiesPzs bool
 }
 
 // Google Cloud (GCP) BigQuery dataset access entry
@@ -1930,6 +1994,8 @@ private gcp.project.dnsService.managedzone @defaults("name") {
   labels map[string]string
   // Whether Cloud Logging is enabled for queries in this zone
   cloudLoggingEnabled bool
+  // Whether DNSSEC is enabled
+  dnssecEnabled bool
   // Cloud DNS record set in the zone
   recordSets() []gcp.project.dnsService.recordset
 }
@@ -2062,6 +2128,18 @@ private gcp.project.gkeService.cluster @defaults("name description location stat
   securityPostureConfig gcp.project.gkeService.cluster.securityPostureConfig
   // Maintenance policy for the cluster
   maintenancePolicy gcp.project.gkeService.cluster.maintenancePolicy
+  // ETag for optimistic locking
+  etag string
+  // The initial number of nodes for the cluster
+  initialNodeCount int
+  // The IP address range of the Kubernetes services
+  servicesIpv4Cidr string
+  // The size of the address space on each node for hosting pods
+  nodeIpv4CidrSize int
+  // The IP address range of the Cloud TPUs
+  tpuIpv4CidrBlock string
+  // Enabled Kubernetes beta APIs
+  enabledK8sBetaApis []string
 }
 
 // Google Kubernetes Engine (GKE) cluster maintenance policy
@@ -2220,6 +2298,8 @@ private gcp.project.gkeService.cluster.nodepool @defaults("name") {
   podIpv4CidrSize int
   // Upgrade settings for the node pool
   upgradeSettings gcp.project.gkeService.cluster.nodepool.upgradeSettings
+  // ETag for optimistic locking
+  etag string
 }
 
 // Google Kubernetes Engine (GKE) node pool upgrade settings
@@ -2965,6 +3045,10 @@ private gcp.project.cloudFunction @defaults("name") {
   dockerRepository string
   // Docker registry to use for this deployment
   dockerRegistry string
+  // Unique identifier
+  uid string
+  // Satisfies PZS
+  satisfiesPzs bool
 }
 // Google Cloud (GCP) Dataproc resources
 private gcp.project.dataprocService {
@@ -3269,6 +3353,16 @@ private gcp.project.cloudRunService.service @defaults("name") {
   uri string
   // Whether the service is currently being acted upon by the system to bring it into the desired state
   reconciling bool
+  // Custom audiences for authentication
+  customAudiences []string
+  // Whether the default URI is disabled
+  defaultUriDisabled bool
+  // Whether the service satisfies Google's Protected Zone Separation requirements
+  satisfiesPzs bool
+  // Unique identifier
+  uid string
+  // ETag for optimistic locking
+  etag string
 }
 
 // Google Cloud (GCP) Run service revision template
@@ -3414,6 +3508,12 @@ private gcp.project.cloudRunService.job {
   executionCount int
   // Whether the service is currently being acted upon by the system to bring it into the desired state
   reconciling bool
+  // Whether the job satisfies Google's Protected Zone Separation requirements
+  satisfiesPzs bool
+  // Unique identifier
+  uid string
+  // ETag for optimistic locking
+  etag string
 }
 
 // Google Cloud (GCP) Run job execution template

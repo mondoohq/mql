@@ -920,15 +920,13 @@ func (g *mqlGcpProjectComputeService) disks() ([]any, error) {
 						"licenses":               llx.ArrayData(convert.SliceAnyToInterface(disk.Licenses), types.String),
 						"physicalBlockSizeBytes": llx.IntData(disk.PhysicalBlockSizeBytes),
 						"provisionedIops":        llx.IntData(disk.ProvisionedIops),
-						// TODO: link to resources
-						//"region": llx.StringData(disk.Region),
-						//"replicaZones": llx.StringData(convert.SliceAnyToInterface(disk.ReplicaZones)),
-						//"resourcePolicies": llx.StringData(convert.SliceAnyToInterface(disk.ResourcePolicies)),
+						"region":           llx.StringData(disk.Region),
+						"replicaZones":     llx.ArrayData(convert.SliceAnyToInterface(disk.ReplicaZones), types.String),
+						"resourcePolicies": llx.ArrayData(convert.SliceAnyToInterface(disk.ResourcePolicies), types.String),
+						"satisfiesPzi":     llx.BoolData(disk.SatisfiesPzi),
+						"satisfiesPzs":     llx.BoolData(disk.SatisfiesPzs),
+						"sourceDiskId":     llx.StringData(disk.SourceDiskId),
 						"sizeGb": llx.IntData(disk.SizeGb),
-						// TODO: link to resources
-						//"sourceDiskId": llx.StringData(disk.SourceDiskId),
-						//"sourceImageId": llx.StringData(disk.SourceImageId),
-						//"sourceSnapshotId": llx.StringData(disk.SourceSnapshotId),
 						"status":                    llx.StringData(disk.Status),
 						"zone":                      llx.ResourceData(zone, "gcp.project.computeService.zone"),
 						"created":                   llx.TimeDataPtr(parseTime(disk.CreationTimestamp)),
@@ -1090,6 +1088,7 @@ func (g *mqlGcpProjectComputeService) firewalls() ([]any, error) {
 				"denied":                llx.ArrayData(deniedDict, types.Dict),
 				"targetTags":            llx.ArrayData(convert.SliceAnyToInterface(firewall.TargetTags), types.String),
 				"loggingEnabled":        llx.BoolData(firewall.LogConfig != nil && firewall.LogConfig.Enable),
+				"network":               llx.StringData(firewall.Network),
 			})
 			if err != nil {
 				return err
@@ -1168,7 +1167,10 @@ func (g *mqlGcpProjectComputeService) snapshots() ([]any, error) {
 				"enableConfidentialCompute": llx.BoolData(snapshot.EnableConfidentialCompute),
 				"satisfiesPzi":              llx.BoolData(snapshot.SatisfiesPzi),
 				"satisfiesPzs":              llx.BoolData(snapshot.SatisfiesPzs),
-				"sourceDisk":                llx.StringData(snapshot.SourceDisk),
+				"sourceDisk":                       llx.StringData(snapshot.SourceDisk),
+				"sourceDiskId":                     llx.StringData(snapshot.SourceDiskId),
+				"sourceSnapshotSchedulePolicy":     llx.StringData(snapshot.SourceSnapshotSchedulePolicy),
+				"sourceSnapshotSchedulePolicyId":   llx.StringData(snapshot.SourceSnapshotSchedulePolicyId),
 			})
 			if err != nil {
 				return err
@@ -1287,6 +1289,13 @@ func (g *mqlGcpProjectComputeService) images() ([]any, error) {
 				"enableConfidentialCompute": llx.BoolData(image.EnableConfidentialCompute),
 				"satisfiesPzi":              llx.BoolData(image.SatisfiesPzi),
 				"satisfiesPzs":              llx.BoolData(image.SatisfiesPzs),
+				"storageLocations":          llx.ArrayData(convert.SliceAnyToInterface(image.StorageLocations), types.String),
+				"sourceDisk":                llx.StringData(image.SourceDisk),
+				"sourceDiskId":              llx.StringData(image.SourceDiskId),
+				"sourceImage":               llx.StringData(image.SourceImage),
+				"sourceImageId":             llx.StringData(image.SourceImageId),
+				"sourceSnapshot":            llx.StringData(image.SourceSnapshot),
+				"sourceSnapshotId":          llx.StringData(image.SourceSnapshotId),
 			})
 			if err != nil {
 				return err
@@ -2257,6 +2266,7 @@ func (g *mqlGcpProjectComputeService) backendServices() ([]any, error) {
 				"port":                     llx.IntData(b.Port),
 				"serviceLbPolicy":          llx.StringData(b.ServiceLbPolicy),
 				"ipAddressSelectionPolicy": llx.StringData(b.IpAddressSelectionPolicy),
+				"fingerprint":              llx.StringData(b.Fingerprint),
 			})
 			if err != nil {
 				return nil, err
@@ -2454,6 +2464,8 @@ func (g *mqlGcpProjectComputeService) forwardingRules() ([]any, error) {
 				"allowPscGlobalAccess":          llx.BoolData(fwr.GetAllowPscGlobalAccess()),
 				"pscConnectionStatus":           llx.StringData(fwr.GetPscConnectionStatus()),
 				"sourceIpRanges":                llx.ArrayData(convert.SliceAnyToInterface(fwr.GetSourceIpRanges()), types.String),
+				"fingerprint":                   llx.StringData(fwr.GetFingerprint()),
+				"ipCollection":                  llx.StringData(fwr.GetIpCollection()),
 			})
 			if err != nil {
 				return nil, err

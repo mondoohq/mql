@@ -195,6 +195,7 @@ func (g *mqlGcpProjectDnsService) managedZones() ([]any, error) {
 				"created":             llx.TimeDataPtr(parseTime(managedZone.CreationTime)),
 				"labels":              llx.MapData(convert.MapToInterfaceMap(managedZone.Labels), types.String),
 				"cloudLoggingEnabled": llx.BoolData(managedZone.CloudLoggingConfig != nil && managedZone.CloudLoggingConfig.EnableLogging),
+				"dnssecEnabled":       llx.BoolData(managedZone.DnssecConfig != nil && managedZone.DnssecConfig.State == "on"),
 			})
 			if err != nil {
 				return err

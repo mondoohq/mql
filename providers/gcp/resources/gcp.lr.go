@@ -2127,6 +2127,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.computeService.forwardingRule.sourceIpRanges": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceForwardingRule).GetSourceIpRanges()).ToDataRes(types.Array(types.String))
 	},
+	"gcp.project.computeService.forwardingRule.fingerprint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceForwardingRule).GetFingerprint()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.forwardingRule.ipCollection": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceForwardingRule).GetIpCollection()).ToDataRes(types.String)
+	},
 	"gcp.project.computeService.region.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceRegion).GetId()).ToDataRes(types.String)
 	},
@@ -2418,6 +2424,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.computeService.disk.storagePool": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceDisk).GetStoragePool()).ToDataRes(types.Resource("gcp.project.computeService.storagePool"))
 	},
+	"gcp.project.computeService.disk.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceDisk).GetRegion()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.disk.replicaZones": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceDisk).GetReplicaZones()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.computeService.disk.resourcePolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceDisk).GetResourcePolicies()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.computeService.disk.satisfiesPzi": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceDisk).GetSatisfiesPzi()).ToDataRes(types.Bool)
+	},
+	"gcp.project.computeService.disk.satisfiesPzs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceDisk).GetSatisfiesPzs()).ToDataRes(types.Bool)
+	},
+	"gcp.project.computeService.disk.sourceDiskId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceDisk).GetSourceDiskId()).ToDataRes(types.String)
+	},
 	"gcp.project.computeService.attachedDisk.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceAttachedDisk).GetId()).ToDataRes(types.String)
 	},
@@ -2526,6 +2550,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.computeService.snapshot.sourceDisk": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceSnapshot).GetSourceDisk()).ToDataRes(types.String)
 	},
+	"gcp.project.computeService.snapshot.sourceDiskId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceSnapshot).GetSourceDiskId()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.snapshot.sourceSnapshotSchedulePolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceSnapshot).GetSourceSnapshotSchedulePolicy()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.snapshot.sourceSnapshotSchedulePolicyId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceSnapshot).GetSourceSnapshotSchedulePolicyId()).ToDataRes(types.String)
+	},
 	"gcp.project.computeService.image.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceImage).GetId()).ToDataRes(types.String)
 	},
@@ -2570,6 +2603,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.computeService.image.satisfiesPzs": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceImage).GetSatisfiesPzs()).ToDataRes(types.Bool)
+	},
+	"gcp.project.computeService.image.storageLocations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceImage).GetStorageLocations()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.computeService.image.sourceDisk": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceImage).GetSourceDisk()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.image.sourceDiskId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceImage).GetSourceDiskId()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.image.sourceImage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceImage).GetSourceImage()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.image.sourceImageId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceImage).GetSourceImageId()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.image.sourceSnapshot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceImage).GetSourceSnapshot()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.image.sourceSnapshotId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceImage).GetSourceSnapshotId()).ToDataRes(types.String)
 	},
 	"gcp.project.computeService.firewall.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceFirewall).GetId()).ToDataRes(types.String)
@@ -2621,6 +2675,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.computeService.firewall.loggingEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceFirewall).GetLoggingEnabled()).ToDataRes(types.Bool)
+	},
+	"gcp.project.computeService.firewall.network": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceFirewall).GetNetwork()).ToDataRes(types.String)
 	},
 	"gcp.project.computeService.network.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceNetwork).GetId()).ToDataRes(types.String)
@@ -2904,6 +2961,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.computeService.backendService.ipAddressSelectionPolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceBackendService).GetIpAddressSelectionPolicy()).ToDataRes(types.String)
 	},
+	"gcp.project.computeService.backendService.fingerprint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceBackendService).GetFingerprint()).ToDataRes(types.String)
+	},
 	"gcp.project.computeService.backendService.backend.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceBackendServiceBackend).GetId()).ToDataRes(types.String)
 	},
@@ -3044,6 +3104,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.storageService.bucket.versioningEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectStorageServiceBucket).GetVersioningEnabled()).ToDataRes(types.Bool)
+	},
+	"gcp.project.storageService.bucket.publicAccessPrevention": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectStorageServiceBucket).GetPublicAccessPrevention()).ToDataRes(types.String)
+	},
+	"gcp.project.storageService.bucket.metageneration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectStorageServiceBucket).GetMetageneration()).ToDataRes(types.Int)
 	},
 	"gcp.project.storageService.bucket.lifecycleRule.action": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectStorageServiceBucketLifecycleRule).GetAction()).ToDataRes(types.Resource("gcp.project.storageService.bucket.lifecycleRuleAction"))
@@ -3200,6 +3266,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.sqlService.instance.pscServiceAttachmentLink": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectSqlServiceInstance).GetPscServiceAttachmentLink()).ToDataRes(types.String)
+	},
+	"gcp.project.sqlService.instance.currentDiskSize": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectSqlServiceInstance).GetCurrentDiskSize()).ToDataRes(types.Int)
+	},
+	"gcp.project.sqlService.instance.etag": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectSqlServiceInstance).GetEtag()).ToDataRes(types.String)
 	},
 	"gcp.project.sqlService.instance.database.projectId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectSqlServiceInstanceDatabase).GetProjectId()).ToDataRes(types.String)
@@ -3462,6 +3534,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.bigqueryService.dataset.routines": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectBigqueryServiceDataset).GetRoutines()).ToDataRes(types.Array(types.Resource("gcp.project.bigqueryService.routine")))
 	},
+	"gcp.project.bigqueryService.dataset.maxTimeTravelHours": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBigqueryServiceDataset).GetMaxTimeTravelHours()).ToDataRes(types.Int)
+	},
+	"gcp.project.bigqueryService.dataset.storageBillingModel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBigqueryServiceDataset).GetStorageBillingModel()).ToDataRes(types.String)
+	},
+	"gcp.project.bigqueryService.dataset.defaultCollation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBigqueryServiceDataset).GetDefaultCollation()).ToDataRes(types.String)
+	},
+	"gcp.project.bigqueryService.dataset.defaultPartitionExpirationMs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBigqueryServiceDataset).GetDefaultPartitionExpirationMs()).ToDataRes(types.Int)
+	},
+	"gcp.project.bigqueryService.dataset.defaultRoundingMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBigqueryServiceDataset).GetDefaultRoundingMode()).ToDataRes(types.String)
+	},
+	"gcp.project.bigqueryService.dataset.isCaseInsensitive": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBigqueryServiceDataset).GetIsCaseInsensitive()).ToDataRes(types.Bool)
+	},
+	"gcp.project.bigqueryService.dataset.satisfiesPzi": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBigqueryServiceDataset).GetSatisfiesPzi()).ToDataRes(types.Bool)
+	},
+	"gcp.project.bigqueryService.dataset.satisfiesPzs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBigqueryServiceDataset).GetSatisfiesPzs()).ToDataRes(types.Bool)
+	},
 	"gcp.project.bigqueryService.dataset.accessEntry.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectBigqueryServiceDatasetAccessEntry).GetId()).ToDataRes(types.String)
 	},
@@ -3669,6 +3765,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.dnsService.managedzone.cloudLoggingEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectDnsServiceManagedzone).GetCloudLoggingEnabled()).ToDataRes(types.Bool)
 	},
+	"gcp.project.dnsService.managedzone.dnssecEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDnsServiceManagedzone).GetDnssecEnabled()).ToDataRes(types.Bool)
+	},
 	"gcp.project.dnsService.managedzone.recordSets": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectDnsServiceManagedzone).GetRecordSets()).ToDataRes(types.Array(types.Resource("gcp.project.dnsService.recordset")))
 	},
@@ -3842,6 +3941,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.gkeService.cluster.maintenancePolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectGkeServiceCluster).GetMaintenancePolicy()).ToDataRes(types.Resource("gcp.project.gkeService.cluster.maintenancePolicy"))
+	},
+	"gcp.project.gkeService.cluster.etag": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectGkeServiceCluster).GetEtag()).ToDataRes(types.String)
+	},
+	"gcp.project.gkeService.cluster.initialNodeCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectGkeServiceCluster).GetInitialNodeCount()).ToDataRes(types.Int)
+	},
+	"gcp.project.gkeService.cluster.servicesIpv4Cidr": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectGkeServiceCluster).GetServicesIpv4Cidr()).ToDataRes(types.String)
+	},
+	"gcp.project.gkeService.cluster.nodeIpv4CidrSize": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectGkeServiceCluster).GetNodeIpv4CidrSize()).ToDataRes(types.Int)
+	},
+	"gcp.project.gkeService.cluster.tpuIpv4CidrBlock": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectGkeServiceCluster).GetTpuIpv4CidrBlock()).ToDataRes(types.String)
+	},
+	"gcp.project.gkeService.cluster.enabledK8sBetaApis": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectGkeServiceCluster).GetEnabledK8sBetaApis()).ToDataRes(types.Array(types.String))
 	},
 	"gcp.project.gkeService.cluster.maintenancePolicy.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectGkeServiceClusterMaintenancePolicy).GetId()).ToDataRes(types.String)
@@ -4043,6 +4160,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.gkeService.cluster.nodepool.upgradeSettings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectGkeServiceClusterNodepool).GetUpgradeSettings()).ToDataRes(types.Resource("gcp.project.gkeService.cluster.nodepool.upgradeSettings"))
+	},
+	"gcp.project.gkeService.cluster.nodepool.etag": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectGkeServiceClusterNodepool).GetEtag()).ToDataRes(types.String)
 	},
 	"gcp.project.gkeService.cluster.nodepool.upgradeSettings.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectGkeServiceClusterNodepoolUpgradeSettings).GetId()).ToDataRes(types.String)
@@ -4890,6 +5010,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.cloudFunction.dockerRegistry": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectCloudFunction).GetDockerRegistry()).ToDataRes(types.String)
 	},
+	"gcp.project.cloudFunction.uid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudFunction).GetUid()).ToDataRes(types.String)
+	},
+	"gcp.project.cloudFunction.satisfiesPzs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudFunction).GetSatisfiesPzs()).ToDataRes(types.Bool)
+	},
 	"gcp.project.dataprocService.projectId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectDataprocService).GetProjectId()).ToDataRes(types.String)
 	},
@@ -5259,6 +5385,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.cloudRunService.service.reconciling": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectCloudRunServiceService).GetReconciling()).ToDataRes(types.Bool)
 	},
+	"gcp.project.cloudRunService.service.customAudiences": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudRunServiceService).GetCustomAudiences()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.cloudRunService.service.defaultUriDisabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudRunServiceService).GetDefaultUriDisabled()).ToDataRes(types.Bool)
+	},
+	"gcp.project.cloudRunService.service.satisfiesPzs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudRunServiceService).GetSatisfiesPzs()).ToDataRes(types.Bool)
+	},
+	"gcp.project.cloudRunService.service.uid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudRunServiceService).GetUid()).ToDataRes(types.String)
+	},
+	"gcp.project.cloudRunService.service.etag": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudRunServiceService).GetEtag()).ToDataRes(types.String)
+	},
 	"gcp.project.cloudRunService.service.revisionTemplate.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectCloudRunServiceServiceRevisionTemplate).GetId()).ToDataRes(types.String)
 	},
@@ -5444,6 +5585,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.cloudRunService.job.reconciling": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectCloudRunServiceJob).GetReconciling()).ToDataRes(types.Bool)
+	},
+	"gcp.project.cloudRunService.job.satisfiesPzs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudRunServiceJob).GetSatisfiesPzs()).ToDataRes(types.Bool)
+	},
+	"gcp.project.cloudRunService.job.uid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudRunServiceJob).GetUid()).ToDataRes(types.String)
+	},
+	"gcp.project.cloudRunService.job.etag": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudRunServiceJob).GetEtag()).ToDataRes(types.String)
 	},
 	"gcp.project.cloudRunService.job.executionTemplate.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectCloudRunServiceJobExecutionTemplate).GetId()).ToDataRes(types.String)
@@ -9290,6 +9440,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectComputeServiceForwardingRule).SourceIpRanges, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"gcp.project.computeService.forwardingRule.fingerprint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceForwardingRule).Fingerprint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.forwardingRule.ipCollection": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceForwardingRule).IpCollection, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"gcp.project.computeService.region.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceRegion).__id, ok = v.Value.(string)
 		return
@@ -9706,6 +9864,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectComputeServiceDisk).StoragePool, ok = plugin.RawToTValue[*mqlGcpProjectComputeServiceStoragePool](v.Value, v.Error)
 		return
 	},
+	"gcp.project.computeService.disk.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceDisk).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.disk.replicaZones": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceDisk).ReplicaZones, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.disk.resourcePolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceDisk).ResourcePolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.disk.satisfiesPzi": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceDisk).SatisfiesPzi, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.disk.satisfiesPzs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceDisk).SatisfiesPzs, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.disk.sourceDiskId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceDisk).SourceDiskId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"gcp.project.computeService.attachedDisk.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceAttachedDisk).__id, ok = v.Value.(string)
 		return
@@ -9858,6 +10040,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectComputeServiceSnapshot).SourceDisk, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"gcp.project.computeService.snapshot.sourceDiskId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceSnapshot).SourceDiskId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.snapshot.sourceSnapshotSchedulePolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceSnapshot).SourceSnapshotSchedulePolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.snapshot.sourceSnapshotSchedulePolicyId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceSnapshot).SourceSnapshotSchedulePolicyId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"gcp.project.computeService.image.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceImage).__id, ok = v.Value.(string)
 		return
@@ -9920,6 +10114,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.computeService.image.satisfiesPzs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceImage).SatisfiesPzs, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.image.storageLocations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceImage).StorageLocations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.image.sourceDisk": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceImage).SourceDisk, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.image.sourceDiskId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceImage).SourceDiskId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.image.sourceImage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceImage).SourceImage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.image.sourceImageId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceImage).SourceImageId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.image.sourceSnapshot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceImage).SourceSnapshot, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.image.sourceSnapshotId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceImage).SourceSnapshotId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"gcp.project.computeService.firewall.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -9992,6 +10214,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.computeService.firewall.loggingEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceFirewall).LoggingEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.firewall.network": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceFirewall).Network, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"gcp.project.computeService.network.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -10390,6 +10616,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectComputeServiceBackendService).IpAddressSelectionPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"gcp.project.computeService.backendService.fingerprint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceBackendService).Fingerprint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"gcp.project.computeService.backendService.backend.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceBackendServiceBackend).__id, ok = v.Value.(string)
 		return
@@ -10592,6 +10822,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.storageService.bucket.versioningEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectStorageServiceBucket).VersioningEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.storageService.bucket.publicAccessPrevention": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectStorageServiceBucket).PublicAccessPrevention, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.storageService.bucket.metageneration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectStorageServiceBucket).Metageneration, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"gcp.project.storageService.bucket.lifecycleRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -10820,6 +11058,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.sqlService.instance.pscServiceAttachmentLink": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectSqlServiceInstance).PscServiceAttachmentLink, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.sqlService.instance.currentDiskSize": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectSqlServiceInstance).CurrentDiskSize, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.sqlService.instance.etag": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectSqlServiceInstance).Etag, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"gcp.project.sqlService.instance.database.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -11210,6 +11456,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectBigqueryServiceDataset).Routines, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"gcp.project.bigqueryService.dataset.maxTimeTravelHours": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBigqueryServiceDataset).MaxTimeTravelHours, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.bigqueryService.dataset.storageBillingModel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBigqueryServiceDataset).StorageBillingModel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.bigqueryService.dataset.defaultCollation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBigqueryServiceDataset).DefaultCollation, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.bigqueryService.dataset.defaultPartitionExpirationMs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBigqueryServiceDataset).DefaultPartitionExpirationMs, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.bigqueryService.dataset.defaultRoundingMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBigqueryServiceDataset).DefaultRoundingMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.bigqueryService.dataset.isCaseInsensitive": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBigqueryServiceDataset).IsCaseInsensitive, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.bigqueryService.dataset.satisfiesPzi": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBigqueryServiceDataset).SatisfiesPzi, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.bigqueryService.dataset.satisfiesPzs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBigqueryServiceDataset).SatisfiesPzs, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"gcp.project.bigqueryService.dataset.accessEntry.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectBigqueryServiceDatasetAccessEntry).__id, ok = v.Value.(string)
 		return
@@ -11510,6 +11788,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectDnsServiceManagedzone).CloudLoggingEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"gcp.project.dnsService.managedzone.dnssecEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDnsServiceManagedzone).DnssecEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"gcp.project.dnsService.managedzone.recordSets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectDnsServiceManagedzone).RecordSets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -11756,6 +12038,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.gkeService.cluster.maintenancePolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectGkeServiceCluster).MaintenancePolicy, ok = plugin.RawToTValue[*mqlGcpProjectGkeServiceClusterMaintenancePolicy](v.Value, v.Error)
+		return
+	},
+	"gcp.project.gkeService.cluster.etag": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectGkeServiceCluster).Etag, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.gkeService.cluster.initialNodeCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectGkeServiceCluster).InitialNodeCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.gkeService.cluster.servicesIpv4Cidr": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectGkeServiceCluster).ServicesIpv4Cidr, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.gkeService.cluster.nodeIpv4CidrSize": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectGkeServiceCluster).NodeIpv4CidrSize, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.gkeService.cluster.tpuIpv4CidrBlock": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectGkeServiceCluster).TpuIpv4CidrBlock, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.gkeService.cluster.enabledK8sBetaApis": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectGkeServiceCluster).EnabledK8sBetaApis, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"gcp.project.gkeService.cluster.maintenancePolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -12048,6 +12354,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.gkeService.cluster.nodepool.upgradeSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectGkeServiceClusterNodepool).UpgradeSettings, ok = plugin.RawToTValue[*mqlGcpProjectGkeServiceClusterNodepoolUpgradeSettings](v.Value, v.Error)
+		return
+	},
+	"gcp.project.gkeService.cluster.nodepool.etag": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectGkeServiceClusterNodepool).Etag, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"gcp.project.gkeService.cluster.nodepool.upgradeSettings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -13354,6 +13664,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectCloudFunction).DockerRegistry, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"gcp.project.cloudFunction.uid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudFunction).Uid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudFunction.satisfiesPzs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudFunction).SatisfiesPzs, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"gcp.project.dataprocService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectDataprocService).__id, ok = v.Value.(string)
 		return
@@ -13906,6 +14224,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectCloudRunServiceService).Reconciling, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"gcp.project.cloudRunService.service.customAudiences": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudRunServiceService).CustomAudiences, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudRunService.service.defaultUriDisabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudRunServiceService).DefaultUriDisabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudRunService.service.satisfiesPzs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudRunServiceService).SatisfiesPzs, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudRunService.service.uid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudRunServiceService).Uid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudRunService.service.etag": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudRunServiceService).Etag, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"gcp.project.cloudRunService.service.revisionTemplate.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectCloudRunServiceServiceRevisionTemplate).__id, ok = v.Value.(string)
 		return
@@ -14172,6 +14510,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.cloudRunService.job.reconciling": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectCloudRunServiceJob).Reconciling, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudRunService.job.satisfiesPzs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudRunServiceJob).SatisfiesPzs, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudRunService.job.uid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudRunServiceJob).Uid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudRunService.job.etag": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudRunServiceJob).Etag, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"gcp.project.cloudRunService.job.executionTemplate.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -21277,6 +21627,8 @@ type mqlGcpProjectComputeServiceForwardingRule struct {
 	AllowPscGlobalAccess          plugin.TValue[bool]
 	PscConnectionStatus           plugin.TValue[string]
 	SourceIpRanges                plugin.TValue[[]any]
+	Fingerprint                   plugin.TValue[string]
+	IpCollection                  plugin.TValue[string]
 }
 
 // createGcpProjectComputeServiceForwardingRule creates a new instance of this resource
@@ -21458,6 +21810,14 @@ func (c *mqlGcpProjectComputeServiceForwardingRule) GetPscConnectionStatus() *pl
 
 func (c *mqlGcpProjectComputeServiceForwardingRule) GetSourceIpRanges() *plugin.TValue[[]any] {
 	return &c.SourceIpRanges
+}
+
+func (c *mqlGcpProjectComputeServiceForwardingRule) GetFingerprint() *plugin.TValue[string] {
+	return &c.Fingerprint
+}
+
+func (c *mqlGcpProjectComputeServiceForwardingRule) GetIpCollection() *plugin.TValue[string] {
+	return &c.IpCollection
 }
 
 // mqlGcpProjectComputeServiceRegion for the gcp.project.computeService.region resource
@@ -22121,6 +22481,12 @@ type mqlGcpProjectComputeServiceDisk struct {
 	SourceSnapshot            plugin.TValue[*mqlGcpProjectComputeServiceSnapshot]
 	ProvisionedThroughput     plugin.TValue[int64]
 	StoragePool               plugin.TValue[*mqlGcpProjectComputeServiceStoragePool]
+	Region                    plugin.TValue[string]
+	ReplicaZones              plugin.TValue[[]any]
+	ResourcePolicies          plugin.TValue[[]any]
+	SatisfiesPzi              plugin.TValue[bool]
+	SatisfiesPzs              plugin.TValue[bool]
+	SourceDiskId              plugin.TValue[string]
 }
 
 // createGcpProjectComputeServiceDisk creates a new instance of this resource
@@ -22296,6 +22662,30 @@ func (c *mqlGcpProjectComputeServiceDisk) GetStoragePool() *plugin.TValue[*mqlGc
 	})
 }
 
+func (c *mqlGcpProjectComputeServiceDisk) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlGcpProjectComputeServiceDisk) GetReplicaZones() *plugin.TValue[[]any] {
+	return &c.ReplicaZones
+}
+
+func (c *mqlGcpProjectComputeServiceDisk) GetResourcePolicies() *plugin.TValue[[]any] {
+	return &c.ResourcePolicies
+}
+
+func (c *mqlGcpProjectComputeServiceDisk) GetSatisfiesPzi() *plugin.TValue[bool] {
+	return &c.SatisfiesPzi
+}
+
+func (c *mqlGcpProjectComputeServiceDisk) GetSatisfiesPzs() *plugin.TValue[bool] {
+	return &c.SatisfiesPzs
+}
+
+func (c *mqlGcpProjectComputeServiceDisk) GetSourceDiskId() *plugin.TValue[string] {
+	return &c.SourceDiskId
+}
+
 // mqlGcpProjectComputeServiceAttachedDisk for the gcp.project.computeService.attachedDisk resource
 type mqlGcpProjectComputeServiceAttachedDisk struct {
 	MqlRuntime *plugin.Runtime
@@ -22432,27 +22822,30 @@ type mqlGcpProjectComputeServiceSnapshot struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlGcpProjectComputeServiceSnapshotInternal it will be used here
-	Id                        plugin.TValue[string]
-	Name                      plugin.TValue[string]
-	Description               plugin.TValue[string]
-	Architecture              plugin.TValue[string]
-	AutoCreated               plugin.TValue[bool]
-	ChainName                 plugin.TValue[string]
-	CreationSizeBytes         plugin.TValue[int64]
-	DiskSizeGb                plugin.TValue[int64]
-	DownloadBytes             plugin.TValue[int64]
-	StorageBytes              plugin.TValue[int64]
-	StorageBytesStatus        plugin.TValue[string]
-	SnapshotType              plugin.TValue[string]
-	Licenses                  plugin.TValue[[]any]
-	Labels                    plugin.TValue[map[string]any]
-	Created                   plugin.TValue[*time.Time]
-	Status                    plugin.TValue[string]
-	StorageLocations          plugin.TValue[[]any]
-	EnableConfidentialCompute plugin.TValue[bool]
-	SatisfiesPzi              plugin.TValue[bool]
-	SatisfiesPzs              plugin.TValue[bool]
-	SourceDisk                plugin.TValue[string]
+	Id                             plugin.TValue[string]
+	Name                           plugin.TValue[string]
+	Description                    plugin.TValue[string]
+	Architecture                   plugin.TValue[string]
+	AutoCreated                    plugin.TValue[bool]
+	ChainName                      plugin.TValue[string]
+	CreationSizeBytes              plugin.TValue[int64]
+	DiskSizeGb                     plugin.TValue[int64]
+	DownloadBytes                  plugin.TValue[int64]
+	StorageBytes                   plugin.TValue[int64]
+	StorageBytesStatus             plugin.TValue[string]
+	SnapshotType                   plugin.TValue[string]
+	Licenses                       plugin.TValue[[]any]
+	Labels                         plugin.TValue[map[string]any]
+	Created                        plugin.TValue[*time.Time]
+	Status                         plugin.TValue[string]
+	StorageLocations               plugin.TValue[[]any]
+	EnableConfidentialCompute      plugin.TValue[bool]
+	SatisfiesPzi                   plugin.TValue[bool]
+	SatisfiesPzs                   plugin.TValue[bool]
+	SourceDisk                     plugin.TValue[string]
+	SourceDiskId                   plugin.TValue[string]
+	SourceSnapshotSchedulePolicy   plugin.TValue[string]
+	SourceSnapshotSchedulePolicyId plugin.TValue[string]
 }
 
 // createGcpProjectComputeServiceSnapshot creates a new instance of this resource
@@ -22576,6 +22969,18 @@ func (c *mqlGcpProjectComputeServiceSnapshot) GetSourceDisk() *plugin.TValue[str
 	return &c.SourceDisk
 }
 
+func (c *mqlGcpProjectComputeServiceSnapshot) GetSourceDiskId() *plugin.TValue[string] {
+	return &c.SourceDiskId
+}
+
+func (c *mqlGcpProjectComputeServiceSnapshot) GetSourceSnapshotSchedulePolicy() *plugin.TValue[string] {
+	return &c.SourceSnapshotSchedulePolicy
+}
+
+func (c *mqlGcpProjectComputeServiceSnapshot) GetSourceSnapshotSchedulePolicyId() *plugin.TValue[string] {
+	return &c.SourceSnapshotSchedulePolicyId
+}
+
 // mqlGcpProjectComputeServiceImage for the gcp.project.computeService.image resource
 type mqlGcpProjectComputeServiceImage struct {
 	MqlRuntime *plugin.Runtime
@@ -22596,6 +23001,13 @@ type mqlGcpProjectComputeServiceImage struct {
 	EnableConfidentialCompute plugin.TValue[bool]
 	SatisfiesPzi              plugin.TValue[bool]
 	SatisfiesPzs              plugin.TValue[bool]
+	StorageLocations          plugin.TValue[[]any]
+	SourceDisk                plugin.TValue[string]
+	SourceDiskId              plugin.TValue[string]
+	SourceImage               plugin.TValue[string]
+	SourceImageId             plugin.TValue[string]
+	SourceSnapshot            plugin.TValue[string]
+	SourceSnapshotId          plugin.TValue[string]
 }
 
 // createGcpProjectComputeServiceImage creates a new instance of this resource
@@ -22695,6 +23107,34 @@ func (c *mqlGcpProjectComputeServiceImage) GetSatisfiesPzs() *plugin.TValue[bool
 	return &c.SatisfiesPzs
 }
 
+func (c *mqlGcpProjectComputeServiceImage) GetStorageLocations() *plugin.TValue[[]any] {
+	return &c.StorageLocations
+}
+
+func (c *mqlGcpProjectComputeServiceImage) GetSourceDisk() *plugin.TValue[string] {
+	return &c.SourceDisk
+}
+
+func (c *mqlGcpProjectComputeServiceImage) GetSourceDiskId() *plugin.TValue[string] {
+	return &c.SourceDiskId
+}
+
+func (c *mqlGcpProjectComputeServiceImage) GetSourceImage() *plugin.TValue[string] {
+	return &c.SourceImage
+}
+
+func (c *mqlGcpProjectComputeServiceImage) GetSourceImageId() *plugin.TValue[string] {
+	return &c.SourceImageId
+}
+
+func (c *mqlGcpProjectComputeServiceImage) GetSourceSnapshot() *plugin.TValue[string] {
+	return &c.SourceSnapshot
+}
+
+func (c *mqlGcpProjectComputeServiceImage) GetSourceSnapshotId() *plugin.TValue[string] {
+	return &c.SourceSnapshotId
+}
+
 // mqlGcpProjectComputeServiceFirewall for the gcp.project.computeService.firewall resource
 type mqlGcpProjectComputeServiceFirewall struct {
 	MqlRuntime *plugin.Runtime
@@ -22717,6 +23157,7 @@ type mqlGcpProjectComputeServiceFirewall struct {
 	Denied                plugin.TValue[[]any]
 	TargetTags            plugin.TValue[[]any]
 	LoggingEnabled        plugin.TValue[bool]
+	Network               plugin.TValue[string]
 }
 
 // createGcpProjectComputeServiceFirewall creates a new instance of this resource
@@ -22822,6 +23263,10 @@ func (c *mqlGcpProjectComputeServiceFirewall) GetTargetTags() *plugin.TValue[[]a
 
 func (c *mqlGcpProjectComputeServiceFirewall) GetLoggingEnabled() *plugin.TValue[bool] {
 	return &c.LoggingEnabled
+}
+
+func (c *mqlGcpProjectComputeServiceFirewall) GetNetwork() *plugin.TValue[string] {
+	return &c.Network
 }
 
 // mqlGcpProjectComputeServiceNetwork for the gcp.project.computeService.network resource
@@ -23379,6 +23824,7 @@ type mqlGcpProjectComputeServiceBackendService struct {
 	Port                     plugin.TValue[int64]
 	ServiceLbPolicy          plugin.TValue[string]
 	IpAddressSelectionPolicy plugin.TValue[string]
+	Fingerprint              plugin.TValue[string]
 }
 
 // createGcpProjectComputeServiceBackendService creates a new instance of this resource
@@ -23560,6 +24006,10 @@ func (c *mqlGcpProjectComputeServiceBackendService) GetServiceLbPolicy() *plugin
 
 func (c *mqlGcpProjectComputeServiceBackendService) GetIpAddressSelectionPolicy() *plugin.TValue[string] {
 	return &c.IpAddressSelectionPolicy
+}
+
+func (c *mqlGcpProjectComputeServiceBackendService) GetFingerprint() *plugin.TValue[string] {
+	return &c.Fingerprint
 }
 
 // mqlGcpProjectComputeServiceBackendServiceBackend for the gcp.project.computeService.backendService.backend resource
@@ -23851,25 +24301,27 @@ type mqlGcpProjectStorageServiceBucket struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlGcpProjectStorageServiceBucketInternal it will be used here
-	Id                    plugin.TValue[string]
-	ProjectId             plugin.TValue[string]
-	Name                  plugin.TValue[string]
-	Labels                plugin.TValue[map[string]any]
-	Location              plugin.TValue[string]
-	LocationType          plugin.TValue[string]
-	ProjectNumber         plugin.TValue[string]
-	StorageClass          plugin.TValue[string]
-	Created               plugin.TValue[*time.Time]
-	Updated               plugin.TValue[*time.Time]
-	IamPolicy             plugin.TValue[[]any]
-	IamConfiguration      plugin.TValue[any]
-	RetentionPolicy       plugin.TValue[any]
-	Encryption            plugin.TValue[any]
-	Lifecycle             plugin.TValue[[]any]
-	DefaultEventBasedHold plugin.TValue[bool]
-	Rpo                   plugin.TValue[string]
-	SatisfiesPZS          plugin.TValue[bool]
-	VersioningEnabled     plugin.TValue[bool]
+	Id                     plugin.TValue[string]
+	ProjectId              plugin.TValue[string]
+	Name                   plugin.TValue[string]
+	Labels                 plugin.TValue[map[string]any]
+	Location               plugin.TValue[string]
+	LocationType           plugin.TValue[string]
+	ProjectNumber          plugin.TValue[string]
+	StorageClass           plugin.TValue[string]
+	Created                plugin.TValue[*time.Time]
+	Updated                plugin.TValue[*time.Time]
+	IamPolicy              plugin.TValue[[]any]
+	IamConfiguration       plugin.TValue[any]
+	RetentionPolicy        plugin.TValue[any]
+	Encryption             plugin.TValue[any]
+	Lifecycle              plugin.TValue[[]any]
+	DefaultEventBasedHold  plugin.TValue[bool]
+	Rpo                    plugin.TValue[string]
+	SatisfiesPZS           plugin.TValue[bool]
+	VersioningEnabled      plugin.TValue[bool]
+	PublicAccessPrevention plugin.TValue[string]
+	Metageneration         plugin.TValue[int64]
 }
 
 // createGcpProjectStorageServiceBucket creates a new instance of this resource
@@ -23995,6 +24447,14 @@ func (c *mqlGcpProjectStorageServiceBucket) GetSatisfiesPZS() *plugin.TValue[boo
 
 func (c *mqlGcpProjectStorageServiceBucket) GetVersioningEnabled() *plugin.TValue[bool] {
 	return &c.VersioningEnabled
+}
+
+func (c *mqlGcpProjectStorageServiceBucket) GetPublicAccessPrevention() *plugin.TValue[string] {
+	return &c.PublicAccessPrevention
+}
+
+func (c *mqlGcpProjectStorageServiceBucket) GetMetageneration() *plugin.TValue[int64] {
+	return &c.Metageneration
 }
 
 // mqlGcpProjectStorageServiceBucketLifecycleRule for the gcp.project.storageService.bucket.lifecycleRule resource
@@ -24299,6 +24759,8 @@ type mqlGcpProjectSqlServiceInstance struct {
 	PrimaryDnsName                             plugin.TValue[string]
 	WriteEndpoint                              plugin.TValue[string]
 	PscServiceAttachmentLink                   plugin.TValue[string]
+	CurrentDiskSize                            plugin.TValue[int64]
+	Etag                                       plugin.TValue[string]
 }
 
 // createGcpProjectSqlServiceInstance creates a new instance of this resource
@@ -24508,6 +24970,14 @@ func (c *mqlGcpProjectSqlServiceInstance) GetWriteEndpoint() *plugin.TValue[stri
 
 func (c *mqlGcpProjectSqlServiceInstance) GetPscServiceAttachmentLink() *plugin.TValue[string] {
 	return &c.PscServiceAttachmentLink
+}
+
+func (c *mqlGcpProjectSqlServiceInstance) GetCurrentDiskSize() *plugin.TValue[int64] {
+	return &c.CurrentDiskSize
+}
+
+func (c *mqlGcpProjectSqlServiceInstance) GetEtag() *plugin.TValue[string] {
+	return &c.Etag
 }
 
 // mqlGcpProjectSqlServiceInstanceDatabase for the gcp.project.sqlService.instance.database resource
@@ -25283,21 +25753,29 @@ type mqlGcpProjectBigqueryServiceDataset struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlGcpProjectBigqueryServiceDatasetInternal
-	Id                       plugin.TValue[string]
-	ProjectId                plugin.TValue[string]
-	Name                     plugin.TValue[string]
-	Description              plugin.TValue[string]
-	Location                 plugin.TValue[string]
-	Labels                   plugin.TValue[map[string]any]
-	Created                  plugin.TValue[*time.Time]
-	Modified                 plugin.TValue[*time.Time]
-	Tags                     plugin.TValue[map[string]any]
-	KmsName                  plugin.TValue[string]
-	Access                   plugin.TValue[[]any]
-	DefaultTableExpirationMs plugin.TValue[int64]
-	Tables                   plugin.TValue[[]any]
-	Models                   plugin.TValue[[]any]
-	Routines                 plugin.TValue[[]any]
+	Id                           plugin.TValue[string]
+	ProjectId                    plugin.TValue[string]
+	Name                         plugin.TValue[string]
+	Description                  plugin.TValue[string]
+	Location                     plugin.TValue[string]
+	Labels                       plugin.TValue[map[string]any]
+	Created                      plugin.TValue[*time.Time]
+	Modified                     plugin.TValue[*time.Time]
+	Tags                         plugin.TValue[map[string]any]
+	KmsName                      plugin.TValue[string]
+	Access                       plugin.TValue[[]any]
+	DefaultTableExpirationMs     plugin.TValue[int64]
+	Tables                       plugin.TValue[[]any]
+	Models                       plugin.TValue[[]any]
+	Routines                     plugin.TValue[[]any]
+	MaxTimeTravelHours           plugin.TValue[int64]
+	StorageBillingModel          plugin.TValue[string]
+	DefaultCollation             plugin.TValue[string]
+	DefaultPartitionExpirationMs plugin.TValue[int64]
+	DefaultRoundingMode          plugin.TValue[string]
+	IsCaseInsensitive            plugin.TValue[bool]
+	SatisfiesPzi                 plugin.TValue[bool]
+	SatisfiesPzs                 plugin.TValue[bool]
 }
 
 // createGcpProjectBigqueryServiceDataset creates a new instance of this resource
@@ -25431,6 +25909,38 @@ func (c *mqlGcpProjectBigqueryServiceDataset) GetRoutines() *plugin.TValue[[]any
 
 		return c.routines()
 	})
+}
+
+func (c *mqlGcpProjectBigqueryServiceDataset) GetMaxTimeTravelHours() *plugin.TValue[int64] {
+	return &c.MaxTimeTravelHours
+}
+
+func (c *mqlGcpProjectBigqueryServiceDataset) GetStorageBillingModel() *plugin.TValue[string] {
+	return &c.StorageBillingModel
+}
+
+func (c *mqlGcpProjectBigqueryServiceDataset) GetDefaultCollation() *plugin.TValue[string] {
+	return &c.DefaultCollation
+}
+
+func (c *mqlGcpProjectBigqueryServiceDataset) GetDefaultPartitionExpirationMs() *plugin.TValue[int64] {
+	return &c.DefaultPartitionExpirationMs
+}
+
+func (c *mqlGcpProjectBigqueryServiceDataset) GetDefaultRoundingMode() *plugin.TValue[string] {
+	return &c.DefaultRoundingMode
+}
+
+func (c *mqlGcpProjectBigqueryServiceDataset) GetIsCaseInsensitive() *plugin.TValue[bool] {
+	return &c.IsCaseInsensitive
+}
+
+func (c *mqlGcpProjectBigqueryServiceDataset) GetSatisfiesPzi() *plugin.TValue[bool] {
+	return &c.SatisfiesPzi
+}
+
+func (c *mqlGcpProjectBigqueryServiceDataset) GetSatisfiesPzs() *plugin.TValue[bool] {
+	return &c.SatisfiesPzs
 }
 
 // mqlGcpProjectBigqueryServiceDatasetAccessEntry for the gcp.project.bigqueryService.dataset.accessEntry resource
@@ -25979,6 +26489,7 @@ type mqlGcpProjectDnsServiceManagedzone struct {
 	Created             plugin.TValue[*time.Time]
 	Labels              plugin.TValue[map[string]any]
 	CloudLoggingEnabled plugin.TValue[bool]
+	DnssecEnabled       plugin.TValue[bool]
 	RecordSets          plugin.TValue[[]any]
 }
 
@@ -26065,6 +26576,10 @@ func (c *mqlGcpProjectDnsServiceManagedzone) GetLabels() *plugin.TValue[map[stri
 
 func (c *mqlGcpProjectDnsServiceManagedzone) GetCloudLoggingEnabled() *plugin.TValue[bool] {
 	return &c.CloudLoggingEnabled
+}
+
+func (c *mqlGcpProjectDnsServiceManagedzone) GetDnssecEnabled() *plugin.TValue[bool] {
+	return &c.DnssecEnabled
 }
 
 func (c *mqlGcpProjectDnsServiceManagedzone) GetRecordSets() *plugin.TValue[[]any] {
@@ -26365,6 +26880,12 @@ type mqlGcpProjectGkeServiceCluster struct {
 	CurrentNodeCount               plugin.TValue[int64]
 	SecurityPostureConfig          plugin.TValue[*mqlGcpProjectGkeServiceClusterSecurityPostureConfig]
 	MaintenancePolicy              plugin.TValue[*mqlGcpProjectGkeServiceClusterMaintenancePolicy]
+	Etag                           plugin.TValue[string]
+	InitialNodeCount               plugin.TValue[int64]
+	ServicesIpv4Cidr               plugin.TValue[string]
+	NodeIpv4CidrSize               plugin.TValue[int64]
+	TpuIpv4CidrBlock               plugin.TValue[string]
+	EnabledK8sBetaApis             plugin.TValue[[]any]
 }
 
 // createGcpProjectGkeServiceCluster creates a new instance of this resource
@@ -26566,6 +27087,30 @@ func (c *mqlGcpProjectGkeServiceCluster) GetSecurityPostureConfig() *plugin.TVal
 
 func (c *mqlGcpProjectGkeServiceCluster) GetMaintenancePolicy() *plugin.TValue[*mqlGcpProjectGkeServiceClusterMaintenancePolicy] {
 	return &c.MaintenancePolicy
+}
+
+func (c *mqlGcpProjectGkeServiceCluster) GetEtag() *plugin.TValue[string] {
+	return &c.Etag
+}
+
+func (c *mqlGcpProjectGkeServiceCluster) GetInitialNodeCount() *plugin.TValue[int64] {
+	return &c.InitialNodeCount
+}
+
+func (c *mqlGcpProjectGkeServiceCluster) GetServicesIpv4Cidr() *plugin.TValue[string] {
+	return &c.ServicesIpv4Cidr
+}
+
+func (c *mqlGcpProjectGkeServiceCluster) GetNodeIpv4CidrSize() *plugin.TValue[int64] {
+	return &c.NodeIpv4CidrSize
+}
+
+func (c *mqlGcpProjectGkeServiceCluster) GetTpuIpv4CidrBlock() *plugin.TValue[string] {
+	return &c.TpuIpv4CidrBlock
+}
+
+func (c *mqlGcpProjectGkeServiceCluster) GetEnabledK8sBetaApis() *plugin.TValue[[]any] {
+	return &c.EnabledK8sBetaApis
 }
 
 // mqlGcpProjectGkeServiceClusterMaintenancePolicy for the gcp.project.gkeService.cluster.maintenancePolicy resource
@@ -27092,6 +27637,7 @@ type mqlGcpProjectGkeServiceClusterNodepool struct {
 	StatusMessage         plugin.TValue[string]
 	PodIpv4CidrSize       plugin.TValue[int64]
 	UpgradeSettings       plugin.TValue[*mqlGcpProjectGkeServiceClusterNodepoolUpgradeSettings]
+	Etag                  plugin.TValue[string]
 }
 
 // createGcpProjectGkeServiceClusterNodepool creates a new instance of this resource
@@ -27201,6 +27747,10 @@ func (c *mqlGcpProjectGkeServiceClusterNodepool) GetPodIpv4CidrSize() *plugin.TV
 
 func (c *mqlGcpProjectGkeServiceClusterNodepool) GetUpgradeSettings() *plugin.TValue[*mqlGcpProjectGkeServiceClusterNodepoolUpgradeSettings] {
 	return &c.UpgradeSettings
+}
+
+func (c *mqlGcpProjectGkeServiceClusterNodepool) GetEtag() *plugin.TValue[string] {
+	return &c.Etag
 }
 
 // mqlGcpProjectGkeServiceClusterNodepoolUpgradeSettings for the gcp.project.gkeService.cluster.nodepool.upgradeSettings resource
@@ -30611,6 +31161,8 @@ type mqlGcpProjectCloudFunction struct {
 	SecretVolumes       plugin.TValue[[]any]
 	DockerRepository    plugin.TValue[string]
 	DockerRegistry      plugin.TValue[string]
+	Uid                 plugin.TValue[string]
+	SatisfiesPzs        plugin.TValue[bool]
 }
 
 // createGcpProjectCloudFunction creates a new instance of this resource
@@ -30784,6 +31336,14 @@ func (c *mqlGcpProjectCloudFunction) GetDockerRepository() *plugin.TValue[string
 
 func (c *mqlGcpProjectCloudFunction) GetDockerRegistry() *plugin.TValue[string] {
 	return &c.DockerRegistry
+}
+
+func (c *mqlGcpProjectCloudFunction) GetUid() *plugin.TValue[string] {
+	return &c.Uid
+}
+
+func (c *mqlGcpProjectCloudFunction) GetSatisfiesPzs() *plugin.TValue[bool] {
+	return &c.SatisfiesPzs
 }
 
 // mqlGcpProjectDataprocService for the gcp.project.dataprocService resource
@@ -31982,6 +32542,11 @@ type mqlGcpProjectCloudRunServiceService struct {
 	TrafficStatuses       plugin.TValue[[]any]
 	Uri                   plugin.TValue[string]
 	Reconciling           plugin.TValue[bool]
+	CustomAudiences       plugin.TValue[[]any]
+	DefaultUriDisabled    plugin.TValue[bool]
+	SatisfiesPzs          plugin.TValue[bool]
+	Uid                   plugin.TValue[string]
+	Etag                  plugin.TValue[string]
 }
 
 // createGcpProjectCloudRunServiceService creates a new instance of this resource
@@ -32123,6 +32688,26 @@ func (c *mqlGcpProjectCloudRunServiceService) GetUri() *plugin.TValue[string] {
 
 func (c *mqlGcpProjectCloudRunServiceService) GetReconciling() *plugin.TValue[bool] {
 	return &c.Reconciling
+}
+
+func (c *mqlGcpProjectCloudRunServiceService) GetCustomAudiences() *plugin.TValue[[]any] {
+	return &c.CustomAudiences
+}
+
+func (c *mqlGcpProjectCloudRunServiceService) GetDefaultUriDisabled() *plugin.TValue[bool] {
+	return &c.DefaultUriDisabled
+}
+
+func (c *mqlGcpProjectCloudRunServiceService) GetSatisfiesPzs() *plugin.TValue[bool] {
+	return &c.SatisfiesPzs
+}
+
+func (c *mqlGcpProjectCloudRunServiceService) GetUid() *plugin.TValue[string] {
+	return &c.Uid
+}
+
+func (c *mqlGcpProjectCloudRunServiceService) GetEtag() *plugin.TValue[string] {
+	return &c.Etag
 }
 
 // mqlGcpProjectCloudRunServiceServiceRevisionTemplate for the gcp.project.cloudRunService.service.revisionTemplate resource
@@ -32540,6 +33125,9 @@ type mqlGcpProjectCloudRunServiceJob struct {
 	Conditions         plugin.TValue[[]any]
 	ExecutionCount     plugin.TValue[int64]
 	Reconciling        plugin.TValue[bool]
+	SatisfiesPzs       plugin.TValue[bool]
+	Uid                plugin.TValue[string]
+	Etag               plugin.TValue[string]
 }
 
 // createGcpProjectCloudRunServiceJob creates a new instance of this resource
@@ -32665,6 +33253,18 @@ func (c *mqlGcpProjectCloudRunServiceJob) GetExecutionCount() *plugin.TValue[int
 
 func (c *mqlGcpProjectCloudRunServiceJob) GetReconciling() *plugin.TValue[bool] {
 	return &c.Reconciling
+}
+
+func (c *mqlGcpProjectCloudRunServiceJob) GetSatisfiesPzs() *plugin.TValue[bool] {
+	return &c.SatisfiesPzs
+}
+
+func (c *mqlGcpProjectCloudRunServiceJob) GetUid() *plugin.TValue[string] {
+	return &c.Uid
+}
+
+func (c *mqlGcpProjectCloudRunServiceJob) GetEtag() *plugin.TValue[string] {
+	return &c.Etag
 }
 
 // mqlGcpProjectCloudRunServiceJobExecutionTemplate for the gcp.project.cloudRunService.job.executionTemplate resource

@@ -459,8 +459,13 @@ func (g *mqlGcpProjectCloudRunService) services() ([]any, error) {
 					"latestReadyRevision":   llx.StringData(s.LatestReadyRevision),
 					"latestCreatedRevision": llx.StringData(s.LatestCreatedRevision),
 					"trafficStatuses":       llx.ArrayData(mqlTrafficStatuses, types.Dict),
-					"uri":                   llx.StringData(s.Uri),
-					"reconciling":           llx.BoolData(s.Reconciling),
+					"uri":                llx.StringData(s.Uri),
+					"reconciling":        llx.BoolData(s.Reconciling),
+					"customAudiences":    llx.ArrayData(convert.SliceAnyToInterface(s.CustomAudiences), types.String),
+					"defaultUriDisabled": llx.BoolData(s.DefaultUriDisabled),
+					"satisfiesPzs":       llx.BoolData(s.SatisfiesPzs),
+					"uid":                llx.StringData(s.Uid),
+					"etag":               llx.StringData(s.Etag),
 				})
 				if err != nil {
 					log.Error().Err(err).Send()
@@ -646,8 +651,11 @@ func (g *mqlGcpProjectCloudRunService) jobs() ([]any, error) {
 					"observedGeneration": llx.IntData(j.ObservedGeneration),
 					"terminalCondition":  llx.ResourceData(mqlTerminalCondition, "gcp.project.cloudRunService.condition"),
 					"conditions":         llx.ArrayData(mqlConditions, types.Resource("gcp.project.cloudRunService.condition")),
-					"executionCount":     llx.IntData(int64(j.ExecutionCount)),
-					"reconciling":        llx.BoolData(j.Reconciling),
+					"executionCount": llx.IntData(int64(j.ExecutionCount)),
+					"reconciling":    llx.BoolData(j.Reconciling),
+					"satisfiesPzs":  llx.BoolData(j.SatisfiesPzs),
+					"uid":           llx.StringData(j.Uid),
+					"etag":          llx.StringData(j.Etag),
 				})
 				if err != nil {
 					log.Error().Err(err).Send()

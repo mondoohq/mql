@@ -176,8 +176,10 @@ func (g *mqlGcpProject) cloudFunctions() ([]any, error) {
 			"buildName":           llx.StringData(f.BuildName),
 			"secretEnvVars":       llx.MapData(secretEnvVars, types.Dict),
 			"secretVolumes":       llx.ArrayData(secretVolumes, types.Dict),
-			"dockerRepository":    llx.StringData(f.DockerRepository),
-			"dockerRegistry":      llx.StringData(f.DockerRegistry.String()),
+			"dockerRepository": llx.StringData(f.DockerRepository),
+			"dockerRegistry":   llx.StringData(f.DockerRegistry.String()),
+			"uid":              llx.StringData(""),
+			"satisfiesPzs":    llx.BoolData(false),
 		})
 		if err != nil {
 			return nil, err
