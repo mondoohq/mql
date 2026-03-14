@@ -46,6 +46,7 @@ const (
 	ResourceAzureSubscriptionNetworkServiceNatGateway                                            string = "azure.subscription.networkService.natGateway"
 	ResourceAzureSubscriptionNetworkServiceSubnet                                                string = "azure.subscription.networkService.subnet"
 	ResourceAzureSubscriptionNetworkServiceVirtualNetwork                                        string = "azure.subscription.networkService.virtualNetwork"
+	ResourceAzureSubscriptionNetworkServiceVirtualNetworkPeering                                 string = "azure.subscription.networkService.virtualNetwork.peering"
 	ResourceAzureSubscriptionNetworkServiceVirtualNetworkDhcpOptions                             string = "azure.subscription.networkService.virtualNetwork.dhcpOptions"
 	ResourceAzureSubscriptionNetworkServiceLoadBalancer                                          string = "azure.subscription.networkService.loadBalancer"
 	ResourceAzureSubscriptionNetworkServiceProbe                                                 string = "azure.subscription.networkService.probe"
@@ -298,6 +299,10 @@ func init() {
 		"azure.subscription.networkService.virtualNetwork": {
 			Init:   initAzureSubscriptionNetworkServiceVirtualNetwork,
 			Create: createAzureSubscriptionNetworkServiceVirtualNetwork,
+		},
+		"azure.subscription.networkService.virtualNetwork.peering": {
+			// to override args, implement: initAzureSubscriptionNetworkServiceVirtualNetworkPeering(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionNetworkServiceVirtualNetworkPeering,
 		},
 		"azure.subscription.networkService.virtualNetwork.dhcpOptions": {
 			// to override args, implement: initAzureSubscriptionNetworkServiceVirtualNetworkDhcpOptions(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -1832,6 +1837,54 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.networkService.virtualNetwork.enableVmProtection": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork).GetEnableVmProtection()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.networkService.virtualNetwork.addressPrefixes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork).GetAddressPrefixes()).ToDataRes(types.Array(types.String))
+	},
+	"azure.subscription.networkService.virtualNetwork.encryptionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork).GetEncryptionEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.networkService.virtualNetwork.encryptionEnforcement": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork).GetEncryptionEnforcement()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkService.virtualNetwork.provisioningState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork).GetProvisioningState()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkService.virtualNetwork.flowTimeoutInMinutes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork).GetFlowTimeoutInMinutes()).ToDataRes(types.Int)
+	},
+	"azure.subscription.networkService.virtualNetwork.peerings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork).GetPeerings()).ToDataRes(types.Array(types.Resource("azure.subscription.networkService.virtualNetwork.peering")))
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).GetId()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).GetName()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.allowForwardedTraffic": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).GetAllowForwardedTraffic()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.allowGatewayTransit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).GetAllowGatewayTransit()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.allowVirtualNetworkAccess": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).GetAllowVirtualNetworkAccess()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.useRemoteGateways": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).GetUseRemoteGateways()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.peeringState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).GetPeeringState()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.peeringSyncLevel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).GetPeeringSyncLevel()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.provisioningState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).GetProvisioningState()).ToDataRes(types.String)
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.remoteVirtualNetworkId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).GetRemoteVirtualNetworkId()).ToDataRes(types.String)
 	},
 	"azure.subscription.networkService.virtualNetwork.dhcpOptions.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkDhcpOptions).GetId()).ToDataRes(types.String)
@@ -6604,6 +6657,74 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.networkService.virtualNetwork.enableVmProtection": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork).EnableVmProtection, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.virtualNetwork.addressPrefixes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork).AddressPrefixes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.virtualNetwork.encryptionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork).EncryptionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.virtualNetwork.encryptionEnforcement": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork).EncryptionEnforcement, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.virtualNetwork.provisioningState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork).ProvisioningState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.virtualNetwork.flowTimeoutInMinutes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork).FlowTimeoutInMinutes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.virtualNetwork.peerings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetwork).Peerings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.allowForwardedTraffic": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).AllowForwardedTraffic, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.allowGatewayTransit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).AllowGatewayTransit, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.allowVirtualNetworkAccess": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).AllowVirtualNetworkAccess, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.useRemoteGateways": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).UseRemoteGateways, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.peeringState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).PeeringState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.peeringSyncLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).PeeringSyncLevel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.provisioningState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).ProvisioningState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.virtualNetwork.peering.remoteVirtualNetworkId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering).RemoteVirtualNetworkId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.networkService.virtualNetwork.dhcpOptions.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -15111,17 +15232,23 @@ type mqlAzureSubscriptionNetworkServiceVirtualNetwork struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAzureSubscriptionNetworkServiceVirtualNetworkInternal it will be used here
-	Id                   plugin.TValue[string]
-	Name                 plugin.TValue[string]
-	Location             plugin.TValue[string]
-	Tags                 plugin.TValue[map[string]any]
-	Type                 plugin.TValue[string]
-	Etag                 plugin.TValue[string]
-	Properties           plugin.TValue[any]
-	Subnets              plugin.TValue[[]any]
-	DhcpOptions          plugin.TValue[*mqlAzureSubscriptionNetworkServiceVirtualNetworkDhcpOptions]
-	EnableDdosProtection plugin.TValue[bool]
-	EnableVmProtection   plugin.TValue[bool]
+	Id                    plugin.TValue[string]
+	Name                  plugin.TValue[string]
+	Location              plugin.TValue[string]
+	Tags                  plugin.TValue[map[string]any]
+	Type                  plugin.TValue[string]
+	Etag                  plugin.TValue[string]
+	Properties            plugin.TValue[any]
+	Subnets               plugin.TValue[[]any]
+	DhcpOptions           plugin.TValue[*mqlAzureSubscriptionNetworkServiceVirtualNetworkDhcpOptions]
+	EnableDdosProtection  plugin.TValue[bool]
+	EnableVmProtection    plugin.TValue[bool]
+	AddressPrefixes       plugin.TValue[[]any]
+	EncryptionEnabled     plugin.TValue[bool]
+	EncryptionEnforcement plugin.TValue[string]
+	ProvisioningState     plugin.TValue[string]
+	FlowTimeoutInMinutes  plugin.TValue[int64]
+	Peerings              plugin.TValue[[]any]
 }
 
 // createAzureSubscriptionNetworkServiceVirtualNetwork creates a new instance of this resource
@@ -15203,6 +15330,136 @@ func (c *mqlAzureSubscriptionNetworkServiceVirtualNetwork) GetEnableDdosProtecti
 
 func (c *mqlAzureSubscriptionNetworkServiceVirtualNetwork) GetEnableVmProtection() *plugin.TValue[bool] {
 	return &c.EnableVmProtection
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetwork) GetAddressPrefixes() *plugin.TValue[[]any] {
+	return &c.AddressPrefixes
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetwork) GetEncryptionEnabled() *plugin.TValue[bool] {
+	return &c.EncryptionEnabled
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetwork) GetEncryptionEnforcement() *plugin.TValue[string] {
+	return &c.EncryptionEnforcement
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetwork) GetProvisioningState() *plugin.TValue[string] {
+	return &c.ProvisioningState
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetwork) GetFlowTimeoutInMinutes() *plugin.TValue[int64] {
+	return &c.FlowTimeoutInMinutes
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetwork) GetPeerings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Peerings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("azure.subscription.networkService.virtualNetwork", c.__id, "peerings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.peerings()
+	})
+}
+
+// mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering for the azure.subscription.networkService.virtualNetwork.peering resource
+type mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionNetworkServiceVirtualNetworkPeeringInternal it will be used here
+	Id                        plugin.TValue[string]
+	Name                      plugin.TValue[string]
+	AllowForwardedTraffic     plugin.TValue[bool]
+	AllowGatewayTransit       plugin.TValue[bool]
+	AllowVirtualNetworkAccess plugin.TValue[bool]
+	UseRemoteGateways         plugin.TValue[bool]
+	PeeringState              plugin.TValue[string]
+	PeeringSyncLevel          plugin.TValue[string]
+	ProvisioningState         plugin.TValue[string]
+	RemoteVirtualNetworkId    plugin.TValue[string]
+}
+
+// createAzureSubscriptionNetworkServiceVirtualNetworkPeering creates a new instance of this resource
+func createAzureSubscriptionNetworkServiceVirtualNetworkPeering(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.networkService.virtualNetwork.peering", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering) MqlName() string {
+	return "azure.subscription.networkService.virtualNetwork.peering"
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering) GetAllowForwardedTraffic() *plugin.TValue[bool] {
+	return &c.AllowForwardedTraffic
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering) GetAllowGatewayTransit() *plugin.TValue[bool] {
+	return &c.AllowGatewayTransit
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering) GetAllowVirtualNetworkAccess() *plugin.TValue[bool] {
+	return &c.AllowVirtualNetworkAccess
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering) GetUseRemoteGateways() *plugin.TValue[bool] {
+	return &c.UseRemoteGateways
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering) GetPeeringState() *plugin.TValue[string] {
+	return &c.PeeringState
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering) GetPeeringSyncLevel() *plugin.TValue[string] {
+	return &c.PeeringSyncLevel
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering) GetProvisioningState() *plugin.TValue[string] {
+	return &c.ProvisioningState
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering) GetRemoteVirtualNetworkId() *plugin.TValue[string] {
+	return &c.RemoteVirtualNetworkId
 }
 
 // mqlAzureSubscriptionNetworkServiceVirtualNetworkDhcpOptions for the azure.subscription.networkService.virtualNetwork.dhcpOptions resource

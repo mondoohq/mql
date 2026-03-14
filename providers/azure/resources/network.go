@@ -851,6 +851,20 @@ func (a *mqlAzureSubscriptionNetworkService) virtualNetworks() ([]any, error) {
 				"enableDdosProtection": llx.BoolDataPtr(vn.Properties.EnableDdosProtection),
 				"enableVmProtection":   llx.BoolDataPtr(vn.Properties.EnableVMProtection),
 				"subnets":              llx.ArrayData(subnets, types.ResourceLike),
+				"provisioningState":    llx.StringDataPtr((*string)(vn.Properties.ProvisioningState)),
+				"flowTimeoutInMinutes": llx.IntDataPtr(vn.Properties.FlowTimeoutInMinutes),
+			}
+			if vn.Properties.AddressSpace != nil {
+				args["addressPrefixes"] = llx.ArrayData(convert.SliceStrPtrToInterface(vn.Properties.AddressSpace.AddressPrefixes), types.String)
+			} else {
+				args["addressPrefixes"] = llx.ArrayData([]any{}, types.String)
+			}
+			if vn.Properties.Encryption != nil {
+				args["encryptionEnabled"] = llx.BoolDataPtr(vn.Properties.Encryption.Enabled)
+				args["encryptionEnforcement"] = llx.StringDataPtr((*string)(vn.Properties.Encryption.Enforcement))
+			} else {
+				args["encryptionEnabled"] = llx.BoolData(false)
+				args["encryptionEnforcement"] = llx.StringData("")
 			}
 			if vn.Properties.DhcpOptions != nil {
 				id := convert.ToValue(vn.ID) + "/dhcpOptions"
@@ -916,6 +930,77 @@ func initAzureSubscriptionNetworkServiceVirtualNetwork(runtime *plugin.Runtime, 
 	}
 
 	return nil, nil, errors.New("azure virtual network does not exist")
+}
+
+func (a *mqlAzureSubscriptionNetworkServiceVirtualNetwork) peerings() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	ctx := context.Background()
+	token := conn.Token()
+	subId := conn.SubId()
+
+	client, err := network.NewVirtualNetworkPeeringsClient(subId, token, &arm.ClientOptions{
+		ClientOptions: conn.ClientOptions(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract resource group and vnet name from the ID
+	// Format: /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Network/virtualNetworks/{name}
+	id := a.Id.Data
+	parts := strings.Split(id, "/")
+	var rgName, vnetName string
+	for i, p := range parts {
+		if strings.EqualFold(p, "resourceGroups") && i+1 < len(parts) {
+			rgName = parts[i+1]
+		}
+		if strings.EqualFold(p, "virtualNetworks") && i+1 < len(parts) {
+			vnetName = parts[i+1]
+		}
+	}
+	if rgName == "" || vnetName == "" {
+		return nil, fmt.Errorf("could not parse resource group and vnet name from id: %s", id)
+	}
+
+	pager := client.NewListPager(rgName, vnetName, &network.VirtualNetworkPeeringsClientListOptions{})
+	res := []any{}
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range page.Value {
+			if p.Properties == nil {
+				continue
+			}
+			var remoteVnetId string
+			if p.Properties.RemoteVirtualNetwork != nil && p.Properties.RemoteVirtualNetwork.ID != nil {
+				remoteVnetId = *p.Properties.RemoteVirtualNetwork.ID
+			}
+			mqlPeering, err := CreateResource(a.MqlRuntime, "azure.subscription.networkService.virtualNetwork.peering",
+				map[string]*llx.RawData{
+					"id":                        llx.StringDataPtr(p.ID),
+					"name":                      llx.StringDataPtr(p.Name),
+					"allowForwardedTraffic":     llx.BoolDataPtr(p.Properties.AllowForwardedTraffic),
+					"allowGatewayTransit":       llx.BoolDataPtr(p.Properties.AllowGatewayTransit),
+					"allowVirtualNetworkAccess": llx.BoolDataPtr(p.Properties.AllowVirtualNetworkAccess),
+					"useRemoteGateways":         llx.BoolDataPtr(p.Properties.UseRemoteGateways),
+					"peeringState":              llx.StringDataPtr((*string)(p.Properties.PeeringState)),
+					"peeringSyncLevel":          llx.StringDataPtr((*string)(p.Properties.PeeringSyncLevel)),
+					"provisioningState":         llx.StringDataPtr((*string)(p.Properties.ProvisioningState)),
+					"remoteVirtualNetworkId":    llx.StringData(remoteVnetId),
+				})
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlPeering)
+		}
+	}
+	return res, nil
+}
+
+func (a *mqlAzureSubscriptionNetworkServiceVirtualNetworkPeering) id() (string, error) {
+	return a.Id.Data, nil
 }
 
 func (a *mqlAzureSubscriptionNetworkService) applicationSecurityGroups() ([]any, error) {
