@@ -244,6 +244,7 @@ transitgateway
 udid
 uefi
 UNAVAIL
+unifi
 Uocm
 usb
 Utc
