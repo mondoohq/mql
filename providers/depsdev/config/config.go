@@ -15,9 +15,9 @@ var Config = plugin.Provider{
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Connectors: []plugin.Connector{
 		{
-			Name:    "depsdev",
-			Use:     "depsdev [path-to-go.mod]",
-			Short:   "deps.dev dependency analysis",
+			Name:  "depsdev",
+			Use:   "depsdev [path-to-go.mod]",
+			Short: "deps.dev dependency analysis",
 			Long: `Use the depsdev provider to query Go module dependency information from the deps.dev API.
 
 Point it at a go.mod file to check all direct dependencies:
@@ -29,8 +29,8 @@ Or use it without arguments and query individual packages:
   mql shell depsdev
   > depsdev.package("github.com/rs/zerolog") { latestVersion latestPublished }
 `,
-			MinArgs: 0,
-			MaxArgs: 1,
+			MinArgs:   0,
+			MaxArgs:   1,
 			Discovery: []string{},
 			Flags: []plugin.Flag{
 				{

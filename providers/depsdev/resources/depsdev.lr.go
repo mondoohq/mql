@@ -187,6 +187,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"depsdev.project.homepage": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDepsdevProject).GetHomepage()).ToDataRes(types.String)
 	},
+	"depsdev.project.archived": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDepsdevProject).GetArchived()).ToDataRes(types.Bool)
+	},
 	"depsdev.project.scorecard": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDepsdevProject).GetScorecard()).ToDataRes(types.Resource("depsdev.scorecard"))
 	},
@@ -309,6 +312,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"depsdev.project.homepage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDepsdevProject).Homepage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"depsdev.project.archived": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDepsdevProject).Archived, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"depsdev.project.scorecard": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -614,6 +621,7 @@ type mqlDepsdevProject struct {
 	License         plugin.TValue[string]
 	Description     plugin.TValue[string]
 	Homepage        plugin.TValue[string]
+	Archived        plugin.TValue[bool]
 	Scorecard       plugin.TValue[*mqlDepsdevScorecard]
 }
 
@@ -691,6 +699,12 @@ func (c *mqlDepsdevProject) GetDescription() *plugin.TValue[string] {
 func (c *mqlDepsdevProject) GetHomepage() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Homepage, func() (string, error) {
 		return c.homepage()
+	})
+}
+
+func (c *mqlDepsdevProject) GetArchived() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Archived, func() (bool, error) {
+		return c.archived()
 	})
 }
 

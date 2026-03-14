@@ -56,6 +56,8 @@ depsdev.project @defaults("id starsCount forksCount") {
   description() string
   // Project homepage URL
   homepage() string
+  // Whether the project repository is archived
+  archived() bool
   // OpenSSF Scorecard data
   scorecard() depsdev.scorecard
 }

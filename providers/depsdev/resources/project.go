@@ -121,6 +121,19 @@ func (r *mqlDepsdevProject) scorecard() (*mqlDepsdevScorecard, error) {
 	return nil, r.fetchProjectInfo()
 }
 
+func (r *mqlDepsdevProject) archived() (bool, error) {
+	conn := r.MqlRuntime.Connection.(*connection.DepsDevConnection)
+
+	repo, err := fetchGitHubRepo(conn.HttpClient, r.Id.Data)
+	if err != nil {
+		// If it's not a GitHub project, we can't determine archived status
+		r.Archived = plugin.TValue[bool]{Data: false, State: plugin.StateIsSet | plugin.StateIsNull}
+		return false, nil
+	}
+
+	return repo.Archived, nil
+}
+
 // depsdev.scorecard
 
 func (r *mqlDepsdevScorecard) id() (string, error) {

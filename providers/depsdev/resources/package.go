@@ -111,6 +111,7 @@ func (r *mqlDepsdevPackage) project() (*mqlDepsdevProject, error) {
 	}
 
 	if version == "" {
+		r.Project.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
 
@@ -135,6 +136,7 @@ func (r *mqlDepsdevPackage) project() (*mqlDepsdevProject, error) {
 		return res.(*mqlDepsdevProject), nil
 	}
 
+	r.Project.State = plugin.StateIsNull | plugin.StateIsSet
 	return nil, nil
 }
 

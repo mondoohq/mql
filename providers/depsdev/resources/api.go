@@ -9,10 +9,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"strings"
 	"time"
 )
 
 const depsDevBaseURL = "https://api.deps.dev/v3"
+const githubAPIBaseURL = "https://api.github.com"
 
 // API response structs for deps.dev v3
 
@@ -40,14 +43,14 @@ type depsDevVersionResponse struct {
 		Name    string `json:"name"`
 		Version string `json:"version"`
 	} `json:"versionKey"`
-	IsDefault    bool      `json:"isDefault"`
-	PublishedAt  time.Time `json:"publishedAt"`
-	Licenses     []string  `json:"licenses"`
+	IsDefault       bool      `json:"isDefault"`
+	PublishedAt     time.Time `json:"publishedAt"`
+	Licenses        []string  `json:"licenses"`
 	RelatedProjects []struct {
 		ProjectKey struct {
 			ID string `json:"id"`
 		} `json:"projectKey"`
-		RelationType    string `json:"relationType"`
+		RelationType       string `json:"relationType"`
 		RelationProvenance string `json:"relationProvenance"`
 	} `json:"relatedProjects"`
 }
@@ -56,19 +59,19 @@ type depsDevProjectResponse struct {
 	ProjectKey struct {
 		ID string `json:"id"`
 	} `json:"projectKey"`
-	OpenIssuesCount int    `json:"openIssuesCount"`
-	StarsCount      int    `json:"starsCount"`
-	ForksCount      int    `json:"forksCount"`
-	License         string `json:"license"`
-	Description     string `json:"description"`
-	Homepage        string `json:"homepage"`
+	OpenIssuesCount int                       `json:"openIssuesCount"`
+	StarsCount      int                       `json:"starsCount"`
+	ForksCount      int                       `json:"forksCount"`
+	License         string                    `json:"license"`
+	Description     string                    `json:"description"`
+	Homepage        string                    `json:"homepage"`
 	Scorecard       *depsDevScorecardResponse `json:"scorecard"`
 }
 
 type depsDevScorecardResponse struct {
-	Date            time.Time `json:"date"`
-	OverallScore    float64   `json:"overallScore"`
-	Checks          []depsDevScorecardCheck `json:"checks"`
+	Date         time.Time               `json:"date"`
+	OverallScore float64                 `json:"overallScore"`
+	Checks       []depsDevScorecardCheck `json:"checks"`
 }
 
 type depsDevScorecardCheck struct {
@@ -149,6 +152,51 @@ func fetchProject(client *http.Client, projectID string) (*depsDevProjectRespons
 	var result depsDevProjectResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to decode deps.dev response: %w", err)
+	}
+
+	return &result, nil
+}
+
+type githubRepoResponse struct {
+	Archived bool `json:"archived"`
+}
+
+// fetchGitHubRepo retrieves repository info from the GitHub API.
+// The projectID is expected to be in the format "github.com/owner/repo" or
+// "github.com/owner/repo/subpath" (only owner/repo is used).
+func fetchGitHubRepo(client *http.Client, projectID string) (*githubRepoResponse, error) {
+	// Extract owner/repo from "github.com/owner/repo[/...]"
+	parts := strings.Split(projectID, "/")
+	if len(parts) < 3 || parts[0] != "github.com" {
+		return nil, fmt.Errorf("project %q is not a GitHub repository", projectID)
+	}
+	ownerRepo := parts[1] + "/" + parts[2]
+
+	u := fmt.Sprintf("%s/repos/%s", githubAPIBaseURL, ownerRepo)
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GitHub API request: %w", err)
+	}
+
+	// Use GITHUB_TOKEN for authentication if available to avoid rate limiting
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GitHub API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub API returned %d for %s: %s", resp.StatusCode, ownerRepo, string(body))
+	}
+
+	var result githubRepoResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode GitHub API response: %w", err)
 	}
 
 	return &result, nil
