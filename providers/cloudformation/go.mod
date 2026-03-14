@@ -1,11 +1,11 @@
 module go.mondoo.com/mql/v13/providers/cloudformation
 
-go 1.26.0
+go 1.25.6
 
 replace go.mondoo.com/mql/v13 => ../..
 
 require (
-	github.com/aws-cloudformation/rain v1.24.3
+	github.com/aws-cloudformation/rain v1.24.2
 	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
 	go.mondoo.com/mql/v13 v13.0.0-rc7
