@@ -5,13 +5,22 @@ package resources
 
 import (
 	"errors"
+	"sync"
 	"time"
 
 	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/v13/providers/depsdev/connection"
 )
+
+type mqlDepsdevPackageInternal struct {
+	fetched bool
+	lock    sync.Mutex
+}
+
+type mqlDepsdevPackageVersionInternal struct {
+	packageName string
+}
 
 func initDepsdevPackage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if _, ok := args["name"]; !ok {
@@ -33,6 +42,15 @@ func (r *mqlDepsdevPackage) id() (string, error) {
 // fetchPackageInfo fetches all version data from deps.dev and populates
 // versions, latestVersion, and latestPublished in one call.
 func (r *mqlDepsdevPackage) fetchPackageInfo() error {
+	if r.fetched {
+		return nil
+	}
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	if r.fetched {
+		return nil
+	}
+
 	conn := r.MqlRuntime.Connection.(*connection.DepsDevConnection)
 
 	// Set defaults
@@ -62,6 +80,8 @@ func (r *mqlDepsdevPackage) fetchPackageInfo() error {
 		if err != nil {
 			return err
 		}
+		mqlVr := vr.(*mqlDepsdevPackageVersion)
+		mqlVr.packageName = r.Name.Data
 		versionResources = append(versionResources, vr)
 
 		if publishedAt.After(latestTime) {
@@ -77,6 +97,7 @@ func (r *mqlDepsdevPackage) fetchPackageInfo() error {
 		r.LatestPublished = plugin.TValue[*time.Time]{Data: &latestTime, State: plugin.StateIsSet}
 	}
 
+	r.fetched = true
 	return nil
 }
 
@@ -143,11 +164,5 @@ func (r *mqlDepsdevPackage) project() (*mqlDepsdevProject, error) {
 // depsdev.packageVersion
 
 func (r *mqlDepsdevPackageVersion) id() (string, error) {
-	return "depsdev.packageVersion/" + r.Version.Data, nil
-}
-
-// Helpers
-
-func stringsToAny(ss []string) []any {
-	return convert.SliceAnyToInterface(ss)
+	return "depsdev.packageVersion/" + r.packageName + "@" + r.Version.Data, nil
 }

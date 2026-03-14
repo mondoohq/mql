@@ -5,12 +5,27 @@ package resources
 
 import (
 	"errors"
+	"sync"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/v13/providers/depsdev/connection"
 )
+
+type mqlDepsdevProjectInternal struct {
+	fetched bool
+	lock    sync.Mutex
+}
+
+type mqlDepsdevScorecardInternal struct {
+	projectID string
+}
+
+type mqlDepsdevScorecardCheckInternal struct {
+	projectID string
+}
 
 func initDepsdevProject(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if _, ok := args["id"]; !ok {
@@ -26,6 +41,15 @@ func (r *mqlDepsdevProject) id() (string, error) {
 
 // fetchProjectInfo fetches project data from deps.dev and populates all fields.
 func (r *mqlDepsdevProject) fetchProjectInfo() error {
+	if r.fetched {
+		return nil
+	}
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	if r.fetched {
+		return nil
+	}
+
 	conn := r.MqlRuntime.Connection.(*connection.DepsDevConnection)
 
 	// Set defaults
@@ -57,6 +81,7 @@ func (r *mqlDepsdevProject) fetchProjectInfo() error {
 		r.Scorecard = plugin.TValue[*mqlDepsdevScorecard]{Data: sc, State: plugin.StateIsSet}
 	}
 
+	r.fetched = true
 	return nil
 }
 
@@ -77,6 +102,8 @@ func (r *mqlDepsdevProject) buildScorecard(sc *depsDevScorecardResponse) (*mqlDe
 		if err != nil {
 			return nil, err
 		}
+		mqlCheck := check.(*mqlDepsdevScorecardCheck)
+		mqlCheck.projectID = r.Id.Data
 		checks = append(checks, check)
 	}
 
@@ -90,7 +117,10 @@ func (r *mqlDepsdevProject) buildScorecard(sc *depsDevScorecardResponse) (*mqlDe
 		return nil, err
 	}
 
-	return res.(*mqlDepsdevScorecard), nil
+	mqlSc := res.(*mqlDepsdevScorecard)
+	mqlSc.projectID = r.Id.Data
+
+	return mqlSc, nil
 }
 
 func (r *mqlDepsdevProject) openIssuesCount() (int64, error) {
@@ -126,7 +156,7 @@ func (r *mqlDepsdevProject) archived() (bool, error) {
 
 	repo, err := fetchGitHubRepo(conn.HttpClient, r.Id.Data)
 	if err != nil {
-		// If it's not a GitHub project, we can't determine archived status
+		log.Warn().Str("project", r.Id.Data).Msg("cannot determine archived status for non-GitHub project")
 		r.Archived = plugin.TValue[bool]{Data: false, State: plugin.StateIsSet | plugin.StateIsNull}
 		return false, nil
 	}
@@ -137,7 +167,7 @@ func (r *mqlDepsdevProject) archived() (bool, error) {
 // depsdev.scorecard
 
 func (r *mqlDepsdevScorecard) id() (string, error) {
-	return "depsdev.scorecard/" + r.Date.Data.Format(time.RFC3339), nil
+	return "depsdev.scorecard/" + r.projectID + "/" + r.Date.Data.Format(time.RFC3339), nil
 }
 
 func (r *mqlDepsdevScorecard) checks() ([]any, error) {
@@ -148,5 +178,5 @@ func (r *mqlDepsdevScorecard) checks() ([]any, error) {
 // depsdev.scorecardCheck
 
 func (r *mqlDepsdevScorecardCheck) id() (string, error) {
-	return "depsdev.scorecardCheck/" + r.Name.Data, nil
+	return "depsdev.scorecardCheck/" + r.projectID + "/" + r.Name.Data, nil
 }

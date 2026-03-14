@@ -447,7 +447,7 @@ func (c *mqlDepsdev) GetPackages() *plugin.TValue[[]any] {
 type mqlDepsdevPackage struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlDepsdevPackageInternal it will be used here
+	mqlDepsdevPackageInternal
 	Name            plugin.TValue[string]
 	CurrentVersion  plugin.TValue[string]
 	Versions        plugin.TValue[[]any]
@@ -549,7 +549,7 @@ func (c *mqlDepsdevPackage) GetProject() *plugin.TValue[*mqlDepsdevProject] {
 type mqlDepsdevPackageVersion struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlDepsdevPackageVersionInternal it will be used here
+	mqlDepsdevPackageVersionInternal
 	Version     plugin.TValue[string]
 	PublishedAt plugin.TValue[*time.Time]
 	IsDefault   plugin.TValue[bool]
@@ -613,7 +613,7 @@ func (c *mqlDepsdevPackageVersion) GetLicenses() *plugin.TValue[[]any] {
 type mqlDepsdevProject struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlDepsdevProjectInternal it will be used here
+	mqlDepsdevProjectInternal
 	Id              plugin.TValue[string]
 	OpenIssuesCount plugin.TValue[int64]
 	StarsCount      plugin.TValue[int64]
@@ -728,7 +728,7 @@ func (c *mqlDepsdevProject) GetScorecard() *plugin.TValue[*mqlDepsdevScorecard] 
 type mqlDepsdevScorecard struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlDepsdevScorecardInternal it will be used here
+	mqlDepsdevScorecardInternal
 	OverallScore plugin.TValue[float64]
 	Date         plugin.TValue[*time.Time]
 	Checks       plugin.TValue[[]any]
@@ -799,7 +799,7 @@ func (c *mqlDepsdevScorecard) GetChecks() *plugin.TValue[[]any] {
 type mqlDepsdevScorecardCheck struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlDepsdevScorecardCheckInternal it will be used here
+	mqlDepsdevScorecardCheckInternal
 	Name          plugin.TValue[string]
 	Score         plugin.TValue[int64]
 	Reason        plugin.TValue[string]
