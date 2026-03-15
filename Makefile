@@ -184,293 +184,38 @@ providers/mqlr:
 providers/mqlr/install: providers/mqlr
 	cp ./mqlr ${GOPATH}/bin
 
+# Provider list — add new providers here.
+# core is excluded: it has no install target and is always built as a dependency of providers/build.
+PROVIDERS := network os ipmi ipinfo oci slack github gitlab terraform \
+	vsphere opcua okta google-workspace arista equinix vcd gcp k8s azure \
+	ms365 aws atlassian cloudformation shodan ansible snowflake mondoo \
+	cloudflare nmap tailscale
+
 .PHONY: providers/build
-# Note we need \ to escape the target line into multiple lines
 providers/build: \
 	providers/build/mock \
 	providers/build/core \
-	providers/build/network \
-	providers/build/os \
-	providers/build/ipmi \
-	providers/build/ipinfo \
-	providers/build/oci \
-	providers/build/slack \
-	providers/build/github \
-	providers/build/gitlab \
-	providers/build/terraform \
-	providers/build/vsphere \
-	providers/build/opcua \
-	providers/build/okta \
-	providers/build/google-workspace \
-	providers/build/arista \
-	providers/build/equinix \
-	providers/build/vcd \
-	providers/build/gcp \
-	providers/build/k8s \
-	providers/build/azure \
-	providers/build/ms365 \
-	providers/build/aws \
-	providers/build/atlassian \
-	providers/build/cloudformation \
-	providers/build/shodan \
-	providers/build/ansible \
-	providers/build/snowflake \
-	providers/build/mondoo \
-	providers/build/cloudflare \
-	providers/build/nmap \
-	providers/build/tailscale
+	$(addprefix providers/build/,$(PROVIDERS))
 
 .PHONY: providers/install
-# Note we need \ to escape the target line into multiple lines
-providers/install: \
-	providers/install/network \
-	providers/install/os \
-	providers/install/ipmi \
-	providers/install/ipinfo \
-	providers/install/oci \
-	providers/install/slack \
-	providers/install/github \
-	providers/install/gitlab \
-	providers/install/terraform \
-	providers/install/vsphere \
-	providers/install/opcua \
-	providers/install/okta \
-	providers/install/google-workspace \
-	providers/install/arista \
-	providers/install/equinix \
-	providers/install/vcd \
-	providers/install/gcp \
-	providers/install/k8s \
-	providers/install/azure \
-	providers/install/ms365 \
-	providers/install/atlassian \
-	providers/install/aws \
-	providers/install/cloudformation \
-	providers/install/shodan \
-	providers/install/ansible \
-	providers/install/snowflake \
-	providers/install/mondoo \
-	providers/install/cloudflare \
-	providers/install/nmap \
-	providers/install/tailscale
+providers/install: $(addprefix providers/install/,$(PROVIDERS))
 
 providers/build/mock: providers/lr
 	./lr go providers-sdk/v1/testutils/mockprovider/resources/mockprovider.lr
 
-providers/build/core: providers/lr
-	@$(call buildProvider, providers/core)
+providers/build/%: providers/lr
+	@$(call buildProvider, providers/$*)
 
-providers/build/network: providers/lr
-	@$(call buildProvider, providers/network)
-providers/install/network:
-	@$(call installProvider, providers/network)
+providers/install/%:
+	@$(call installProvider, providers/$*)
 
-providers/build/os: providers/lr
-	@$(call buildProvider, providers/os)
-providers/install/os:
-	@$(call installProvider, providers/os)
+providers/dist: $(addprefix providers/dist/,$(PROVIDERS))
+providers/dist/%:
+	@$(call buildProviderDist, providers/$*)
 
-providers/build/ipmi: providers/lr
-	@$(call buildProvider, providers/ipmi)
-providers/install/ipmi:
-	@$(call installProvider, providers/ipmi)
-
-providers/build/oci: providers/lr
-	@$(call buildProvider, providers/oci)
-providers/install/oci:
-	@$(call installProvider, providers/oci)
-
-providers/build/slack: providers/lr
-	@$(call buildProvider, providers/slack)
-providers/install/slack:
-	@$(call installProvider, providers/slack)
-
-providers/build/github: providers/lr
-	@$(call buildProvider, providers/github)
-providers/install/github:
-	@$(call installProvider, providers/github)
-
-providers/build/cloudflare: providers/lr
-	@$(call buildProvider, providers/cloudflare)
-providers/install/cloudflare:
-	@$(call installProvider, providers/cloudflare)
-
-providers/build/gitlab: providers/lr
-	@$(call buildProvider, providers/gitlab)
-providers/install/gitlab:
-	@$(call installProvider, providers/gitlab)
-
-providers/build/terraform: providers/lr
-	@$(call buildProvider, providers/terraform)
-providers/install/terraform:
-	@$(call installProvider, providers/terraform)
-
-providers/build/vsphere: providers/lr
-	@$(call buildProvider, providers/vsphere)
-providers/install/vsphere:
-	@$(call installProvider, providers/vsphere)
-
-providers/build/opcua: providers/lr
-	@$(call buildProvider, providers/opcua)
-providers/install/opcua:
-	@$(call installProvider, providers/opcua)
-
-providers/build/okta: providers/lr
-	@$(call buildProvider, providers/okta)
-providers/install/okta:
-	@$(call installProvider, providers/okta)
-
-providers/build/google-workspace: providers/lr
-	@$(call buildProvider, providers/google-workspace)
-providers/install/google-workspace:
-	@$(call installProvider, providers/google-workspace)
-
-providers/build/arista: providers/lr
-	@$(call buildProvider, providers/arista)
-providers/install/arista:
-	@$(call installProvider, providers/arista)
-
-providers/build/equinix: providers/lr
-	@$(call buildProvider, providers/equinix)
-providers/install/equinix:
-	@$(call installProvider, providers/equinix)
-
-providers/build/vcd: providers/lr
-	@$(call buildProvider, providers/vcd)
-providers/install/vcd:
-	@$(call installProvider, providers/vcd)
-
-providers/build/k8s: providers/lr
-	@$(call buildProvider, providers/k8s)
-providers/install/k8s:
-	@$(call installProvider, providers/k8s)
-
-providers/build/gcp: providers/lr
-	@$(call buildProvider, providers/gcp)
-providers/install/gcp:
-	@$(call installProvider, providers/gcp)
-
-providers/build/azure: providers/lr
-	@$(call buildProvider, providers/azure)
-providers/install/azure:
-	@$(call installProvider, providers/azure)
-
-providers/build/aws: providers/lr
-	@$(call buildProvider, providers/aws)
-providers/install/aws:
-	@$(call installProvider, providers/aws)
-
-providers/build/atlassian: providers/lr
-	@$(call buildProvider, providers/atlassian)
-providers/install/atlassian:
-	@$(call installProvider, providers/atlassian)
-
-providers/build/ms365: providers/lr
-	@$(call buildProvider, providers/ms365)
-providers/install/ms365:
-	@$(call installProvider, providers/ms365)
-
-providers/build/cloudformation: providers/lr
-	@$(call buildProvider, providers/cloudformation)
-providers/install/cloudformation:
-	@$(call installProvider, providers/cloudformation)
-
-providers/build/shodan: providers/lr
-	@$(call buildProvider, providers/shodan)
-providers/install/shodan:
-	@$(call installProvider, providers/shodan)
-
-providers/build/ansible: providers/lr
-	@$(call buildProvider, providers/ansible)
-providers/install/ansible:
-	@$(call installProvider, providers/ansible)
-
-providers/build/snowflake: providers/lr
-	@$(call buildProvider, providers/snowflake)
-providers/install/snowflake:
-	@$(call installProvider, providers/snowflake)
-
-providers/build/mondoo: providers/lr
-	@$(call buildProvider, providers/mondoo)
-providers/install/mondoo:
-	@$(call installProvider, providers/mondoo)
-
-providers/build/nmap: providers/lr
-	@$(call buildProvider, providers/nmap)
-providers/install/nmap:
-	@$(call installProvider, providers/nmap)
-
-providers/build/tailscale: providers/lr
-	@$(call buildProvider, providers/tailscale)
-providers/install/tailscale:
-	@$(call installProvider, providers/tailscale)
-
-providers/build/ipinfo: providers/lr
-	@$(call buildProvider, providers/ipinfo)
-providers/install/ipinfo:
-	@$(call installProvider, providers/ipinfo)
-
-providers/dist:
-	@$(call buildProviderDist, providers/network)
-	@$(call buildProviderDist, providers/os)
-	@$(call buildProviderDist, providers/ipmi)
-	@$(call buildProviderDist, providers/ipinfo)
-	@$(call buildProviderDist, providers/oci)
-	@$(call buildProviderDist, providers/slack)
-	@$(call buildProviderDist, providers/github)
-	@$(call buildProviderDist, providers/gitlab)
-	@$(call buildProviderDist, providers/terraform)
-	@$(call buildProviderDist, providers/vsphere)
-	@$(call buildProviderDist, providers/opcua)
-	@$(call buildProviderDist, providers/okta)
-	@$(call buildProviderDist, providers/google-workspace)
-	@$(call buildProviderDist, providers/arista)
-	@$(call buildProviderDist, providers/equinix)
-	@$(call buildProviderDist, providers/vcd)
-	@$(call buildProviderDist, providers/gcp)
-	@$(call buildProviderDist, providers/k8s)
-	@$(call buildProviderDist, providers/azure)
-	@$(call buildProviderDist, providers/ms365)
-	@$(call buildProviderDist, providers/aws)
-	@$(call buildProviderDist, providers/atlassian)
-	@$(call buildProviderDist, providers/cloudformation)
-	@$(call buildProviderDist, providers/shodan)
-	@$(call buildProviderDist, providers/ansible)
-	@$(call buildProviderDist, providers/snowflake)
-	@$(call buildProviderDist, providers/mondoo)
-	@$(call buildProviderDist, providers/nmap)
-	@$(call buildProviderDist, providers/tailscale)
-
-providers/bundle:
-	@$(call bundleProvider, providers/network)
-	@$(call bundleProvider, providers/os)
-	@$(call bundleProvider, providers/ipmi)
-	@$(call bundleProvider, providers/ipinfo)
-	@$(call bundleProvider, providers/oci)
-	@$(call bundleProvider, providers/slack)
-	@$(call bundleProvider, providers/github)
-	@$(call bundleProvider, providers/gitlab)
-	@$(call bundleProvider, providers/terraform)
-	@$(call bundleProvider, providers/vsphere)
-	@$(call bundleProvider, providers/opcua)
-	@$(call bundleProvider, providers/okta)
-	@$(call bundleProvider, providers/google-workspace)
-	@$(call bundleProvider, providers/arista)
-	@$(call bundleProvider, providers/equinix)
-	@$(call bundleProvider, providers/vcd)
-	@$(call bundleProvider, providers/gcp)
-	@$(call bundleProvider, providers/k8s)
-	@$(call bundleProvider, providers/azure)
-	@$(call bundleProvider, providers/ms365)
-	@$(call bundleProvider, providers/aws)
-	@$(call bundleProvider, providers/atlassian)
-	@$(call bundleProvider, providers/cloudformation)
-	@$(call bundleProvider, providers/shodan)
-	@$(call bundleProvider, providers/ansible)
-	@$(call bundleProvider, providers/snowflake)
-	@$(call bundleProvider, providers/mondoo)
-	@$(call bundleProvider, providers/nmap)
-	@$(call bundleProvider, providers/tailscale)
+providers/bundle: $(addprefix providers/bundle/,$(PROVIDERS))
+providers/bundle/%:
+	@$(call bundleProvider, providers/$*)
 
 providers/test:
 	@$(call testProvider, providers/core)
