@@ -1,0 +1,85 @@
+// Copyright (c) Mondoo, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
+option provider = "go.mondoo.com/mql/v13/providers/depsdev"
+option go_package = "go.mondoo.com/mql/v13/providers/depsdev/resources"
+
+// deps.dev dependency analysis
+depsdev {
+  // List of packages from go.mod direct dependencies
+  packages() []depsdev.package
+}
+
+// deps.dev Go package information
+depsdev.package @defaults("name currentVersion latestVersion latestPublished") {
+  init(name string)
+  // Go module path
+  name string
+  // Version from go.mod
+  currentVersion string
+  // All known versions
+  versions() []depsdev.packageVersion
+  // Latest published version string
+  latestVersion() string
+  // Timestamp of the latest published version
+  latestPublished() time
+  // Related source project (e.g. GitHub repository)
+  project() depsdev.project
+}
+
+// deps.dev package version
+private depsdev.packageVersion @defaults("version publishedAt") {
+  // Version string
+  version string
+  // Publication timestamp
+  publishedAt time
+  // Whether this is the default version
+  isDefault bool
+  // SPDX license identifiers
+  licenses []string
+}
+
+// deps.dev source project (GitHub/GitLab repository)
+depsdev.project @defaults("id starsCount forksCount") {
+  init(id string)
+  // Project identifier (e.g. github.com/rs/zerolog)
+  id string
+  // Number of open issues
+  openIssuesCount() int
+  // Number of stars
+  starsCount() int
+  // Number of forks
+  forksCount() int
+  // SPDX license identifier
+  license() string
+  // Project description
+  description() string
+  // Project homepage URL
+  homepage() string
+  // Whether the project repository is archived
+  archived() bool
+  // OpenSSF Scorecard data
+  scorecard() depsdev.scorecard
+}
+
+// OpenSSF Scorecard data from deps.dev
+private depsdev.scorecard @defaults("overallScore date") {
+  // Overall scorecard score (0-10)
+  overallScore float
+  // Date of the scorecard evaluation
+  date time
+  // Individual scorecard checks
+  checks() []depsdev.scorecardCheck
+}
+
+// OpenSSF Scorecard individual check
+private depsdev.scorecardCheck @defaults("name score reason") {
+  // Check name (e.g. Maintained, Code-Review)
+  name string
+  // Check score (0-10)
+  score int
+  // Reason for the score
+  reason string
+  // Link to check documentation
+  documentation string
+}
