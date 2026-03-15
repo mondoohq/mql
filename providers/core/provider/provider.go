@@ -8,12 +8,11 @@ import (
 	"errors"
 
 	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/v13/providers-sdk/v1/recording"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/upstream"
 	"go.mondoo.com/mql/v13/providers/core/resources"
 	"go.mondoo.com/mql/v13/types"
-	"go.mondoo.com/mql/v13/utils/mapx"
 )
 
 const defaultConnection uint32 = 1
@@ -65,7 +64,7 @@ func (s *Service) Connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 
 	asset := req.Asset
 
-	assetArgs := CreateAssetResourceArgs(asset)
+	assetArgs := recording.CreateAssetResourceArgs(asset)
 	_, err = resources.CreateResource(runtime, "asset", assetArgs)
 	if err != nil {
 		return nil, errors.New("failed to init core, cannot set asset metadata")
@@ -88,32 +87,4 @@ func (s *Service) Connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 
 func (s *Service) MockConnect(req *plugin.ConnectReq, callback plugin.ProviderCallback) (*plugin.ConnectRes, error) {
 	return s.Connect(req, callback)
-}
-
-func CreateAssetResourceArgs(asset *inventory.Asset) map[string]*llx.RawData {
-	// FIXME: remove in v12 (or later) vv
-	// we merge `asset.Labels` and `asset.Platform.Labels` for backwards compatibility
-	assetLabelsMergedV11Compat := mapx.Merge(asset.Platform.Labels, asset.Labels)
-	// ^^
-	args := map[string]*llx.RawData{
-		"ids":              llx.ArrayData(llx.TArr2Raw(asset.PlatformIds), types.String),
-		"platform":         llx.StringData(asset.Platform.Name),
-		"name":             llx.StringData(asset.Name),
-		"kind":             llx.StringData(asset.Platform.Kind),
-		"runtime":          llx.StringData(asset.Platform.Runtime),
-		"version":          llx.StringData(asset.Platform.Version),
-		"arch":             llx.StringData(asset.Platform.Arch),
-		"title":            llx.StringData(asset.Platform.PrettyTitle()),
-		"family":           llx.ArrayData(llx.TArr2Raw(asset.Platform.Family), types.String),
-		"build":            llx.StringData(asset.Platform.Build),
-		"annotations":      llx.MapData(llx.TMap2Raw(asset.Annotations), types.String),
-		"fqdn":             llx.StringData(asset.Fqdn),
-		"platformMetadata": llx.MapData(llx.TMap2Raw(asset.Platform.Metadata), types.String),
-		// FIXME: remove in v12 (or later) vv
-		"labels": llx.MapData(llx.TMap2Raw(assetLabelsMergedV11Compat), types.String),
-		// ^^
-		// Instead, we should only use `asset.Labels` like:
-		// "labels": llx.MapData(llx.TMap2Raw(asset.Labels), types.String),
-	}
-	return args
 }

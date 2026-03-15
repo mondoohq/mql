@@ -12,8 +12,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
-	core "go.mondoo.com/mql/v13/providers/core/provider"
 	"go.mondoo.com/mql/v13/types"
+	"go.mondoo.com/mql/v13/utils/mapx"
 	"go.mondoo.com/mql/v13/utils/multierr"
 	"go.mondoo.com/mql/v13/utils/syncx"
 )
@@ -439,12 +439,40 @@ func (r *recording) resolveResource(lookup llx.AssetRecordingLookup, resource st
 }
 
 func createResourceAsset(asset *inventory.Asset, id string) *Resource {
-	args := core.CreateAssetResourceArgs(asset)
+	args := CreateAssetResourceArgs(asset)
 	return &Resource{
 		Resource: "asset",
 		ID:       id,
 		Fields:   args,
 	}
+}
+
+func CreateAssetResourceArgs(asset *inventory.Asset) map[string]*llx.RawData {
+	// FIXME: remove in v12 (or later) vv
+	// we merge `asset.Labels` and `asset.Platform.Labels` for backwards compatibility
+	assetLabelsMergedV11Compat := mapx.Merge(asset.Platform.Labels, asset.Labels)
+	// ^^
+	args := map[string]*llx.RawData{
+		"ids":              llx.ArrayData(llx.TArr2Raw(asset.PlatformIds), types.String),
+		"platform":         llx.StringData(asset.Platform.Name),
+		"name":             llx.StringData(asset.Name),
+		"kind":             llx.StringData(asset.Platform.Kind),
+		"runtime":          llx.StringData(asset.Platform.Runtime),
+		"version":          llx.StringData(asset.Platform.Version),
+		"arch":             llx.StringData(asset.Platform.Arch),
+		"title":            llx.StringData(asset.Platform.PrettyTitle()),
+		"family":           llx.ArrayData(llx.TArr2Raw(asset.Platform.Family), types.String),
+		"build":            llx.StringData(asset.Platform.Build),
+		"annotations":      llx.MapData(llx.TMap2Raw(asset.Annotations), types.String),
+		"fqdn":             llx.StringData(asset.Fqdn),
+		"platformMetadata": llx.MapData(llx.TMap2Raw(asset.Platform.Metadata), types.String),
+		// FIXME: remove in v12 (or later) vv
+		"labels": llx.MapData(llx.TMap2Raw(assetLabelsMergedV11Compat), types.String),
+		// ^^
+		// Instead, we should only use `asset.Labels` like:
+		// "labels": llx.MapData(llx.TMap2Raw(asset.Labels), types.String),
+	}
+	return args
 }
 
 func (r *recording) GetData(lookup llx.AssetRecordingLookup, resource string, id string, field string) (*llx.RawData, bool) {
@@ -539,5 +567,5 @@ func ensureAssetMetadata(resources map[string]*Resource, asset *inventory.Asset)
 		resources[id] = existing
 	}
 
-	existing.Fields = core.CreateAssetResourceArgs(asset)
+	existing.Fields = CreateAssetResourceArgs(asset)
 }
