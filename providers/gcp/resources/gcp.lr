@@ -1112,8 +1112,8 @@ private gcp.project.computeService.firewall @defaults("name") {
   targetTags []string
   // Whether firewall logging is enabled for this rule
   loggingEnabled bool
-  // URL of the network resource for this firewall rule
-  network string
+  // Network resource for this firewall rule
+  network() gcp.project.computeService.network
 }
 
 // Google Cloud (GCP) Compute VPC network resource

@@ -975,6 +975,18 @@ func (g *mqlGcpProjectComputeService) disks() ([]any, error) {
 	return res, result
 }
 
+type mqlGcpProjectComputeServiceFirewallInternal struct {
+	cacheNetworkUrl string
+}
+
+func (g *mqlGcpProjectComputeServiceFirewall) network() (*mqlGcpProjectComputeServiceNetwork, error) {
+	if g.cacheNetworkUrl == "" {
+		g.Network.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return getNetworkByUrl(g.cacheNetworkUrl, g.MqlRuntime)
+}
+
 func (g *mqlGcpProjectComputeServiceFirewall) id() (string, error) {
 	if g.Id.Error != nil {
 		return "", g.Id.Error
@@ -1098,13 +1110,13 @@ func (g *mqlGcpProjectComputeService) firewalls() ([]any, error) {
 				"denied":                llx.ArrayData(deniedDict, types.Dict),
 				"targetTags":            llx.ArrayData(convert.SliceAnyToInterface(firewall.TargetTags), types.String),
 				"loggingEnabled":        llx.BoolData(firewall.LogConfig != nil && firewall.LogConfig.Enable),
-				"network":               llx.StringData(firewall.Network),
 			})
 			if err != nil {
 				return err
-			} else {
-				res = append(res, mqlFirewall)
 			}
+			mqlFw := mqlFirewall.(*mqlGcpProjectComputeServiceFirewall)
+			mqlFw.cacheNetworkUrl = firewall.Network
+			res = append(res, mqlFirewall)
 		}
 		return nil
 	}); err != nil {

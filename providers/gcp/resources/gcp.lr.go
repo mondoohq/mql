@@ -2665,7 +2665,7 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlGcpProjectComputeServiceFirewall).GetLoggingEnabled()).ToDataRes(types.Bool)
 	},
 	"gcp.project.computeService.firewall.network": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGcpProjectComputeServiceFirewall).GetNetwork()).ToDataRes(types.String)
+		return (r.(*mqlGcpProjectComputeServiceFirewall).GetNetwork()).ToDataRes(types.Resource("gcp.project.computeService.network"))
 	},
 	"gcp.project.computeService.network.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceNetwork).GetId()).ToDataRes(types.String)
@@ -10189,7 +10189,7 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		return
 	},
 	"gcp.project.computeService.firewall.network": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGcpProjectComputeServiceFirewall).Network, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		r.(*mqlGcpProjectComputeServiceFirewall).Network, ok = plugin.RawToTValue[*mqlGcpProjectComputeServiceNetwork](v.Value, v.Error)
 		return
 	},
 	"gcp.project.computeService.network.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -23151,7 +23151,7 @@ func (c *mqlGcpProjectComputeServiceImage) GetSourceSnapshot() *plugin.TValue[*m
 type mqlGcpProjectComputeServiceFirewall struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlGcpProjectComputeServiceFirewallInternal it will be used here
+	mqlGcpProjectComputeServiceFirewallInternal
 	Id                    plugin.TValue[string]
 	ProjectId             plugin.TValue[string]
 	Name                  plugin.TValue[string]
@@ -23169,7 +23169,7 @@ type mqlGcpProjectComputeServiceFirewall struct {
 	Denied                plugin.TValue[[]any]
 	TargetTags            plugin.TValue[[]any]
 	LoggingEnabled        plugin.TValue[bool]
-	Network               plugin.TValue[string]
+	Network               plugin.TValue[*mqlGcpProjectComputeServiceNetwork]
 }
 
 // createGcpProjectComputeServiceFirewall creates a new instance of this resource
@@ -23277,8 +23277,20 @@ func (c *mqlGcpProjectComputeServiceFirewall) GetLoggingEnabled() *plugin.TValue
 	return &c.LoggingEnabled
 }
 
-func (c *mqlGcpProjectComputeServiceFirewall) GetNetwork() *plugin.TValue[string] {
-	return &c.Network
+func (c *mqlGcpProjectComputeServiceFirewall) GetNetwork() *plugin.TValue[*mqlGcpProjectComputeServiceNetwork] {
+	return plugin.GetOrCompute[*mqlGcpProjectComputeServiceNetwork](&c.Network, func() (*mqlGcpProjectComputeServiceNetwork, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.computeService.firewall", c.__id, "network")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectComputeServiceNetwork), nil
+			}
+		}
+
+		return c.network()
+	})
 }
 
 // mqlGcpProjectComputeServiceNetwork for the gcp.project.computeService.network resource
