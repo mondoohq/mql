@@ -1112,9 +1112,32 @@ func (g *mqlGcpProjectComputeServiceSnapshot) id() (string, error) {
 	return "gcloud.compute.snapshot/" + id, nil
 }
 
-func (g *mqlGcpProjectComputeServiceSnapshot) sourceDisk() (any, error) {
-	// TODO: implement
-	return nil, errors.New("not implemented")
+type mqlGcpProjectComputeServiceSnapshotInternal struct {
+	cacheSourceDiskUrl string
+}
+
+func (g *mqlGcpProjectComputeServiceSnapshot) sourceDisk() (*mqlGcpProjectComputeServiceDisk, error) {
+	url := g.cacheSourceDiskUrl
+	if url == "" {
+		g.SourceDisk.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	// URL format: https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}/disks/{disk}
+	const computePrefix = "https://www.googleapis.com/compute/v1/"
+	if !strings.HasPrefix(url, computePrefix) {
+		return nil, errors.New("invalid source disk URL: " + url)
+	}
+	parts := strings.Split(strings.TrimPrefix(url, computePrefix), "/")
+	if len(parts) < 5 {
+		return nil, errors.New("invalid source disk URL: " + url)
+	}
+	res, err := NewResource(g.MqlRuntime, "gcp.project.computeService.disk", map[string]*llx.RawData{
+		"name": llx.StringData(parts[len(parts)-1]),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGcpProjectComputeServiceDisk), nil
 }
 
 func (g *mqlGcpProjectComputeService) snapshots() ([]any, error) {
@@ -1167,7 +1190,6 @@ func (g *mqlGcpProjectComputeService) snapshots() ([]any, error) {
 				"enableConfidentialCompute":      llx.BoolData(snapshot.EnableConfidentialCompute),
 				"satisfiesPzi":                   llx.BoolData(snapshot.SatisfiesPzi),
 				"satisfiesPzs":                   llx.BoolData(snapshot.SatisfiesPzs),
-				"sourceDisk":                     llx.StringData(snapshot.SourceDisk),
 				"sourceDiskId":                   llx.StringData(snapshot.SourceDiskId),
 				"sourceSnapshotSchedulePolicy":   llx.StringData(snapshot.SourceSnapshotSchedulePolicy),
 				"sourceSnapshotSchedulePolicyId": llx.StringData(snapshot.SourceSnapshotSchedulePolicyId),
@@ -1175,6 +1197,8 @@ func (g *mqlGcpProjectComputeService) snapshots() ([]any, error) {
 			if err != nil {
 				return err
 			}
+			mqlS := mqlSnapshpt.(*mqlGcpProjectComputeServiceSnapshot)
+			mqlS.cacheSourceDiskUrl = snapshot.SourceDisk
 
 			res = append(res, mqlSnapshpt)
 		}
@@ -1239,9 +1263,83 @@ func initGcpProjectComputeServiceImage(runtime *plugin.Runtime, args map[string]
 	return nil, nil, errors.New("image not found")
 }
 
-func (g *mqlGcpProjectComputeServiceImage) sourceDisk() (any, error) {
-	// TODO: implement
-	return nil, errors.New("not implemented")
+type mqlGcpProjectComputeServiceImageInternal struct {
+	cacheSourceDiskUrl     string
+	cacheSourceImageUrl    string
+	cacheSourceSnapshotUrl string
+}
+
+func (g *mqlGcpProjectComputeServiceImage) sourceDisk() (*mqlGcpProjectComputeServiceDisk, error) {
+	url := g.cacheSourceDiskUrl
+	if url == "" {
+		g.SourceDisk.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	// URL format: https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}/disks/{disk}
+	const computePrefix = "https://www.googleapis.com/compute/v1/"
+	if !strings.HasPrefix(url, computePrefix) {
+		return nil, errors.New("invalid source disk URL: " + url)
+	}
+	parts := strings.Split(strings.TrimPrefix(url, computePrefix), "/")
+	if len(parts) < 5 {
+		return nil, errors.New("invalid source disk URL: " + url)
+	}
+	res, err := NewResource(g.MqlRuntime, "gcp.project.computeService.disk", map[string]*llx.RawData{
+		"name": llx.StringData(parts[len(parts)-1]),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGcpProjectComputeServiceDisk), nil
+}
+
+func (g *mqlGcpProjectComputeServiceImage) sourceImage() (*mqlGcpProjectComputeServiceImage, error) {
+	url := g.cacheSourceImageUrl
+	if url == "" {
+		g.SourceImage.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	// URL format: https://www.googleapis.com/compute/v1/projects/{project}/global/images/{image}
+	const computePrefix = "https://www.googleapis.com/compute/v1/"
+	if !strings.HasPrefix(url, computePrefix) {
+		return nil, errors.New("invalid source image URL: " + url)
+	}
+	parts := strings.Split(strings.TrimPrefix(url, computePrefix), "/")
+	if len(parts) < 5 {
+		return nil, errors.New("invalid source image URL: " + url)
+	}
+	res, err := NewResource(g.MqlRuntime, "gcp.project.computeService.image", map[string]*llx.RawData{
+		"name":      llx.StringData(parts[4]),
+		"projectId": llx.StringData(parts[1]),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGcpProjectComputeServiceImage), nil
+}
+
+func (g *mqlGcpProjectComputeServiceImage) sourceSnapshot() (*mqlGcpProjectComputeServiceSnapshot, error) {
+	url := g.cacheSourceSnapshotUrl
+	if url == "" {
+		g.SourceSnapshot.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	// URL format: https://www.googleapis.com/compute/v1/projects/{project}/global/snapshots/{snapshot}
+	const computePrefix = "https://www.googleapis.com/compute/v1/"
+	if !strings.HasPrefix(url, computePrefix) {
+		return nil, errors.New("invalid source snapshot URL: " + url)
+	}
+	parts := strings.Split(strings.TrimPrefix(url, computePrefix), "/")
+	if len(parts) < 5 {
+		return nil, errors.New("invalid source snapshot URL: " + url)
+	}
+	res, err := NewResource(g.MqlRuntime, "gcp.project.computeService.snapshot", map[string]*llx.RawData{
+		"name": llx.StringData(parts[4]),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGcpProjectComputeServiceSnapshot), nil
 }
 
 func (g *mqlGcpProjectComputeService) images() ([]any, error) {
@@ -1290,16 +1388,17 @@ func (g *mqlGcpProjectComputeService) images() ([]any, error) {
 				"satisfiesPzi":              llx.BoolData(image.SatisfiesPzi),
 				"satisfiesPzs":              llx.BoolData(image.SatisfiesPzs),
 				"storageLocations":          llx.ArrayData(convert.SliceAnyToInterface(image.StorageLocations), types.String),
-				"sourceDisk":                llx.StringData(image.SourceDisk),
 				"sourceDiskId":              llx.StringData(image.SourceDiskId),
-				"sourceImage":               llx.StringData(image.SourceImage),
 				"sourceImageId":             llx.StringData(image.SourceImageId),
-				"sourceSnapshot":            llx.StringData(image.SourceSnapshot),
 				"sourceSnapshotId":          llx.StringData(image.SourceSnapshotId),
 			})
 			if err != nil {
 				return err
 			}
+			mqlI := mqlImage.(*mqlGcpProjectComputeServiceImage)
+			mqlI.cacheSourceDiskUrl = image.SourceDisk
+			mqlI.cacheSourceImageUrl = image.SourceImage
+			mqlI.cacheSourceSnapshotUrl = image.SourceSnapshot
 			res = append(res, mqlImage)
 		}
 		return nil
