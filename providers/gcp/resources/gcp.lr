@@ -946,8 +946,8 @@ private gcp.project.computeService.disk @defaults("name") {
   satisfiesPzi bool
   // Whether the disk satisfies Google's Protected Zone Separation requirements
   satisfiesPzs bool
-  // ID of the source disk used to create this disk
-  sourceDiskId string
+  // Source disk used to create this disk
+  sourceDisk() gcp.project.computeService.disk
 }
 
 // Google Cloud (GCP) Compute attached disk
@@ -1070,16 +1070,10 @@ private gcp.project.computeService.image @defaults("id name") {
   storageLocations []string
   // Source disk used to create this image
   sourceDisk() gcp.project.computeService.disk
-  // ID of the source disk used to create this image
-  sourceDiskId string
   // Source image used to create this image
   sourceImage() gcp.project.computeService.image
-  // ID of the source image used to create this image
-  sourceImageId string
   // Source snapshot used to create this image
   sourceSnapshot() gcp.project.computeService.snapshot
-  // ID of the source snapshot used to create this image
-  sourceSnapshotId string
 }
 
 // Google Cloud (GCP) Compute firewall

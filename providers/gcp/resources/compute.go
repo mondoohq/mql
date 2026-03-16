@@ -755,9 +755,34 @@ func (g *mqlGcpProjectComputeServiceDisk) id() (string, error) {
 }
 
 type mqlGcpProjectComputeServiceDiskInternal struct {
+	cacheSourceDiskUrl     string
 	cacheSourceImageUrl    string
 	cacheSourceSnapshotUrl string
 	cacheStoragePoolUrl    string
+}
+
+func (g *mqlGcpProjectComputeServiceDisk) sourceDisk() (*mqlGcpProjectComputeServiceDisk, error) {
+	url := g.cacheSourceDiskUrl
+	if url == "" {
+		g.SourceDisk.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	// URL format: https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}/disks/{disk}
+	const computePrefix = "https://www.googleapis.com/compute/v1/"
+	if !strings.HasPrefix(url, computePrefix) {
+		return nil, errors.New("invalid source disk URL: " + url)
+	}
+	parts := strings.Split(strings.TrimPrefix(url, computePrefix), "/")
+	if len(parts) < 5 {
+		return nil, errors.New("invalid source disk URL: " + url)
+	}
+	res, err := NewResource(g.MqlRuntime, "gcp.project.computeService.disk", map[string]*llx.RawData{
+		"name": llx.StringData(parts[len(parts)-1]),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGcpProjectComputeServiceDisk), nil
 }
 
 func (g *mqlGcpProjectComputeServiceDisk) sourceImage() (*mqlGcpProjectComputeServiceImage, error) {
@@ -915,7 +940,6 @@ func (g *mqlGcpProjectComputeService) disks() ([]any, error) {
 						"resourcePolicies":          llx.ArrayData(convert.SliceAnyToInterface(disk.ResourcePolicies), types.String),
 						"satisfiesPzi":              llx.BoolData(disk.SatisfiesPzi),
 						"satisfiesPzs":              llx.BoolData(disk.SatisfiesPzs),
-						"sourceDiskId":              llx.StringData(disk.SourceDiskId),
 						"sizeGb":                    llx.IntData(disk.SizeGb),
 						"status":                    llx.StringData(disk.Status),
 						"zone":                      llx.ResourceData(zone, "gcp.project.computeService.zone"),
@@ -931,6 +955,7 @@ func (g *mqlGcpProjectComputeService) disks() ([]any, error) {
 						return err
 					}
 					mqlD := mqlDisk.(*mqlGcpProjectComputeServiceDisk)
+					mqlD.cacheSourceDiskUrl = disk.SourceDisk
 					mqlD.cacheSourceImageUrl = disk.SourceImage
 					mqlD.cacheSourceSnapshotUrl = disk.SourceSnapshot
 					mqlD.cacheStoragePoolUrl = disk.StoragePool
@@ -1372,9 +1397,6 @@ func (g *mqlGcpProjectComputeService) images() ([]any, error) {
 				"satisfiesPzi":              llx.BoolData(image.SatisfiesPzi),
 				"satisfiesPzs":              llx.BoolData(image.SatisfiesPzs),
 				"storageLocations":          llx.ArrayData(convert.SliceAnyToInterface(image.StorageLocations), types.String),
-				"sourceDiskId":              llx.StringData(image.SourceDiskId),
-				"sourceImageId":             llx.StringData(image.SourceImageId),
-				"sourceSnapshotId":          llx.StringData(image.SourceSnapshotId),
 			})
 			if err != nil {
 				return err

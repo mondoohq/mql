@@ -871,7 +871,7 @@ gcp.project.computeService.disk.resourcePolicies 13.1.2
 gcp.project.computeService.disk.satisfiesPzi 13.1.2
 gcp.project.computeService.disk.satisfiesPzs 13.1.2
 gcp.project.computeService.disk.sizeGb 9.0.0
-gcp.project.computeService.disk.sourceDiskId 13.1.2
+gcp.project.computeService.disk.sourceDisk 13.1.2
 gcp.project.computeService.disk.sourceImage 11.6.6
 gcp.project.computeService.disk.sourceSnapshot 11.6.6
 gcp.project.computeService.disk.status 9.0.0
@@ -998,11 +998,8 @@ gcp.project.computeService.image.projectId 9.0.0
 gcp.project.computeService.image.satisfiesPzi 11.6.6
 gcp.project.computeService.image.satisfiesPzs 11.6.6
 gcp.project.computeService.image.sourceDisk 13.1.2
-gcp.project.computeService.image.sourceDiskId 13.1.2
 gcp.project.computeService.image.sourceImage 13.1.2
-gcp.project.computeService.image.sourceImageId 13.1.2
 gcp.project.computeService.image.sourceSnapshot 13.1.2
-gcp.project.computeService.image.sourceSnapshotId 13.1.2
 gcp.project.computeService.image.status 9.0.0
 gcp.project.computeService.image.storageLocations 13.1.2
 gcp.project.computeService.images 9.0.0
