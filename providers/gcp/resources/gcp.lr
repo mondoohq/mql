@@ -24,6 +24,8 @@ alias gcp.spanner = gcp.project.spannerService
 alias gcp.bigtable = gcp.project.bigtableService
 alias gcp.alloydb = gcp.project.alloydbService
 alias gcp.artifactregistry = gcp.project.artifactRegistryService
+alias gcp.backupdr = gcp.project.backupdrService
+alias gcp.vertexai = gcp.project.vertexaiService
 
 // Google Cloud (GCP) organization
 gcp.organization @defaults("name") {
@@ -482,6 +484,10 @@ gcp.project @defaults("name number") {
   dataflow() gcp.project.dataflowService
   // GCP Artifact Registry resources
   artifactRegistry() gcp.project.artifactRegistryService
+  // GCP Backup and DR resources
+  backupdr() gcp.project.backupdrService
+  // GCP Vertex AI resources
+  vertexai() gcp.project.vertexaiService
 }
 
 // Google Cloud (GCP) service
@@ -704,6 +710,10 @@ private gcp.project.computeService.forwardingRule {
   pscConnectionStatus string
   // If this load balancer can be used for packet mirroring, the source IP ranges to mirror
   sourceIpRanges []string
+  // Fingerprint for optimistic locking
+  fingerprint string
+  // IP address collection resource
+  ipCollection string
 }
 
 // Google Cloud (GCP) Compute region
@@ -926,6 +936,18 @@ private gcp.project.computeService.disk @defaults("name") {
   provisionedThroughput int
   // Storage pool where the disk resides
   storagePool() gcp.project.computeService.storagePool
+  // Region of the disk (for regional persistent disks)
+  region string
+  // Replica zones for regional persistent disks
+  replicaZones []string
+  // Resource policies applied to this disk
+  resourcePolicies []string
+  // Whether the disk satisfies Google's Protected Zone Integration requirements
+  satisfiesPzi bool
+  // Whether the disk satisfies Google's Protected Zone Separation requirements
+  satisfiesPzs bool
+  // Source disk used to create this disk
+  sourceDisk() gcp.project.computeService.disk
 }
 
 // Google Cloud (GCP) Compute attached disk
@@ -1004,8 +1026,12 @@ private gcp.project.computeService.snapshot @defaults("name") {
   satisfiesPzi bool
   // Whether the snapshot satisfies Google's Protected Zone Separation requirements
   satisfiesPzs bool
-  // URL of the source disk used to create this snapshot
-  sourceDisk string
+  // Source disk used to create this snapshot
+  sourceDisk() gcp.project.computeService.disk
+  // URL of the snapshot schedule policy that created this snapshot
+  sourceSnapshotSchedulePolicy string
+  // ID of the snapshot schedule policy
+  sourceSnapshotSchedulePolicyId string
 }
 
 // Google Cloud (GCP) Compute
@@ -1040,6 +1066,14 @@ private gcp.project.computeService.image @defaults("id name") {
   satisfiesPzi bool
   // Whether the image satisfies Google's Protected Zone Separation requirements
   satisfiesPzs bool
+  // Cloud Storage locations where the image is stored
+  storageLocations []string
+  // Source disk used to create this image
+  sourceDisk() gcp.project.computeService.disk
+  // Source image used to create this image
+  sourceImage() gcp.project.computeService.image
+  // Source snapshot used to create this image
+  sourceSnapshot() gcp.project.computeService.snapshot
 }
 
 // Google Cloud (GCP) Compute firewall
@@ -1078,6 +1112,8 @@ private gcp.project.computeService.firewall @defaults("name") {
   targetTags []string
   // Whether firewall logging is enabled for this rule
   loggingEnabled bool
+  // Network resource for this firewall rule
+  network() gcp.project.computeService.network
 }
 
 // Google Cloud (GCP) Compute VPC network resource
@@ -1286,6 +1322,8 @@ private gcp.project.computeService.backendService @defaults("name") {
   serviceLbPolicy string
   // Specifies the IP address selection policy for the backend service (IPV4_ONLY, PREFER_IPV6, IPV6_ONLY)
   ipAddressSelectionPolicy string
+  // Fingerprint for optimistic locking
+  fingerprint string
 }
 
 // Google Cloud (GCP) Compute backend service backend
@@ -1396,6 +1434,10 @@ private gcp.project.storageService.bucket @defaults("id") {
   satisfiesPZS bool
   // Whether object versioning is enabled
   versioningEnabled bool
+  // Public access prevention setting (inherited, enforced, unspecified)
+  publicAccessPrevention string
+  // Metadata generation of the bucket
+  metageneration int
 }
 
 // Google Cloud bucket's lifecycle configuration
@@ -1548,6 +1590,10 @@ private gcp.project.sqlService.instance @defaults("name") {
   writeEndpoint string
   // PSC service attachment link
   pscServiceAttachmentLink string
+  // Current disk usage of the instance in bytes
+  currentDiskSize int
+  // ETag for optimistic locking
+  etag string
 }
 
 // Google Cloud (GCP) SQL instance database
@@ -1762,6 +1808,22 @@ private gcp.project.bigqueryService.dataset @defaults("id name") {
   models() []gcp.project.bigqueryService.model
   // Returns routines in the dataset
   routines() []gcp.project.bigqueryService.routine
+  // Maximum time travel in hours for the dataset (48 to 168)
+  maxTimeTravelHours int
+  // Storage billing model (LOGICAL or PHYSICAL)
+  storageBillingModel string
+  // Default collation for the dataset
+  defaultCollation string
+  // Default partition expiration time in milliseconds
+  defaultPartitionExpirationMs int
+  // Default rounding mode for the dataset
+  defaultRoundingMode() string
+  // Whether field names are treated as case insensitive
+  isCaseInsensitive bool
+  // Whether the dataset satisfies Google's Protected Zone Integration requirements
+  satisfiesPzi() bool
+  // Whether the dataset satisfies Google's Protected Zone Separation requirements
+  satisfiesPzs() bool
 }
 
 // Google Cloud (GCP) BigQuery dataset access entry
@@ -1924,6 +1986,8 @@ private gcp.project.dnsService.managedzone @defaults("name") {
   labels map[string]string
   // Whether Cloud Logging is enabled for queries in this zone
   cloudLoggingEnabled bool
+  // Whether DNSSEC is enabled
+  dnssecEnabled bool
   // Cloud DNS record set in the zone
   recordSets() []gcp.project.dnsService.recordset
 }
@@ -2056,6 +2120,18 @@ private gcp.project.gkeService.cluster @defaults("name description location stat
   securityPostureConfig gcp.project.gkeService.cluster.securityPostureConfig
   // Maintenance policy for the cluster
   maintenancePolicy gcp.project.gkeService.cluster.maintenancePolicy
+  // ETag for optimistic locking
+  etag string
+  // The initial number of nodes for the cluster
+  initialNodeCount int
+  // The IP address range of the Kubernetes services
+  servicesIpv4Cidr string
+  // The size of the address space on each node for hosting pods
+  nodeIpv4CidrSize int
+  // The IP address range of the Cloud TPUs
+  tpuIpv4CidrBlock string
+  // Enabled Kubernetes beta APIs
+  enabledK8sBetaApis []string
 }
 
 // Google Kubernetes Engine (GKE) cluster maintenance policy
@@ -2214,6 +2290,8 @@ private gcp.project.gkeService.cluster.nodepool @defaults("name") {
   podIpv4CidrSize int
   // Upgrade settings for the node pool
   upgradeSettings gcp.project.gkeService.cluster.nodepool.upgradeSettings
+  // ETag for optimistic locking
+  etag string
 }
 
 // Google Kubernetes Engine (GKE) node pool upgrade settings
@@ -2959,6 +3037,10 @@ private gcp.project.cloudFunction @defaults("name") {
   dockerRepository string
   // Docker registry to use for this deployment
   dockerRegistry string
+  // Unique identifier
+  uid() string
+  // Satisfies PZS
+  satisfiesPzs() bool
 }
 // Google Cloud (GCP) Dataproc resources
 private gcp.project.dataprocService {
@@ -3263,6 +3345,16 @@ private gcp.project.cloudRunService.service @defaults("name") {
   uri string
   // Whether the service is currently being acted upon by the system to bring it into the desired state
   reconciling bool
+  // Custom audiences for authentication
+  customAudiences []string
+  // Whether the default URI is disabled
+  defaultUriDisabled bool
+  // Whether the service satisfies Google's Protected Zone Separation requirements
+  satisfiesPzs bool
+  // Unique identifier
+  uid string
+  // ETag for optimistic locking
+  etag string
 }
 
 // Google Cloud (GCP) Run service revision template
@@ -3408,6 +3500,12 @@ private gcp.project.cloudRunService.job {
   executionCount int
   // Whether the service is currently being acted upon by the system to bring it into the desired state
   reconciling bool
+  // Whether the job satisfies Google's Protected Zone Separation requirements
+  satisfiesPzs bool
+  // Unique identifier
+  uid string
+  // ETag for optimistic locking
+  etag string
 }
 
 // Google Cloud (GCP) Run job execution template
@@ -4055,6 +4153,10 @@ private gcp.project.computeService.securityPolicy @defaults("name type") {
   ddosProtectionConfig dict
   // reCAPTCHA options configuration
   recaptchaOptionsConfig dict
+  // Fingerprint for optimistic locking
+  fingerprint string
+  // User-defined fields for custom rule tuning
+  userDefinedFields []dict
   // URL of the region (empty for global policies)
   regionUrl string
   // Self-link URL
@@ -5161,4 +5263,302 @@ private gcp.project.artifactRegistryService.repository.upstreamPolicy @defaults(
   repository string
   // Priority (lower value = higher priority)
   priority int
+}
+
+// Google Cloud (GCP) Backup and DR Service
+private gcp.project.backupdrService {
+  // Project ID
+  projectId string
+  // List of management servers
+  managementServers() []gcp.project.backupdrService.managementServer
+  // List of backup vaults
+  backupVaults() []gcp.project.backupdrService.backupVault
+  // List of backup plans
+  backupPlans() []gcp.project.backupdrService.backupPlan
+}
+
+// Google Cloud (GCP) Backup and DR management server
+private gcp.project.backupdrService.managementServer @defaults("name state") {
+  // Full resource name
+  name string
+  // Description
+  description string
+  // Current state (CREATING, READY, UPDATING, DELETING, REPAIRING, ERROR)
+  state string
+  // Type of the management server (BACKUP_RESTORE)
+  type string
+  // Networks for the management server
+  networks []dict
+  // Management URI
+  managementUri dict
+  // OAuth2 client ID
+  oauth2ClientId string
+  // Whether the resource satisfies PZS
+  satisfiesPzs bool
+  // Etag
+  etag string
+  // Labels
+  labels map[string]string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Google Cloud (GCP) Backup and DR backup vault
+private gcp.project.backupdrService.backupVault @defaults("name state") {
+  // Full resource name
+  name string
+  // Description
+  description string
+  // Current state
+  state string
+  // Minimum enforced retention duration
+  backupMinimumEnforcedRetentionDuration string
+  // Whether the vault is deletable
+  deletable bool
+  // Etag
+  etag string
+  // Effective time
+  effectiveTime time
+  // Backup count
+  backupCount int
+  // Service account
+  serviceAccount string
+  // Total stored bytes
+  totalStoredBytes int
+  // Access restriction
+  accessRestriction string
+  // Annotations
+  annotations map[string]string
+  // Labels
+  labels map[string]string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+  // Data sources in this backup vault
+  dataSources() []gcp.project.backupdrService.dataSource
+}
+
+// Google Cloud (GCP) Backup and DR data source
+private gcp.project.backupdrService.dataSource @defaults("name state") {
+  // Full resource name
+  name string
+  // Current state
+  state string
+  // Labels
+  labels map[string]string
+  // Data source GCP resource
+  dataSourceGcpResource dict
+  // Data source Backup Appliance application
+  dataSourceBackupApplianceApplication dict
+  // Total stored bytes
+  totalStoredBytes int
+  // Backup count
+  backupCount int
+  // Etag
+  etag string
+  // Configuration state
+  configState string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Google Cloud (GCP) Backup and DR backup plan
+private gcp.project.backupdrService.backupPlan @defaults("name state") {
+  // Full resource name
+  name string
+  // Description
+  description string
+  // Current state
+  state string
+  // Resource type
+  resourceType string
+  // Backup vault resource name
+  backupVault string
+  // Backup vault service account
+  backupVaultServiceAccount string
+  // Labels
+  labels map[string]string
+  // Backup rules
+  backupRules []dict
+  // Etag
+  etag string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Google Cloud (GCP) Vertex AI Service
+private gcp.project.vertexaiService {
+  // Project ID
+  projectId string
+  // List of models
+  models() []gcp.project.vertexaiService.model
+  // List of endpoints
+  endpoints() []gcp.project.vertexaiService.endpoint
+  // List of pipeline jobs
+  pipelineJobs() []gcp.project.vertexaiService.pipelineJob
+  // List of datasets
+  datasets() []gcp.project.vertexaiService.dataset
+  // List of feature online stores
+  featureOnlineStores() []gcp.project.vertexaiService.featureOnlineStore
+}
+
+// Google Cloud (GCP) Vertex AI model
+private gcp.project.vertexaiService.model @defaults("name displayName") {
+  // Full resource name
+  name string
+  // Display name
+  displayName string
+  // Description
+  description string
+  // Version ID
+  versionId string
+  // Version aliases
+  versionAliases []string
+  // Version description
+  versionDescription string
+  // Model source info
+  modelSourceInfo dict
+  // Container spec for serving
+  containerSpec dict
+  // Supported deployment resources types
+  supportedDeploymentResourcesTypes []string
+  // Supported input storage formats
+  supportedInputStorageFormats []string
+  // Supported output storage formats
+  supportedOutputStorageFormats []string
+  // Training pipeline resource name
+  trainingPipeline string
+  // Artifact URI
+  artifactUri string
+  // Encryption spec (CMEK)
+  encryptionSpec dict
+  // Labels
+  labels map[string]string
+  // Etag
+  etag string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Google Cloud (GCP) Vertex AI endpoint
+private gcp.project.vertexaiService.endpoint @defaults("name displayName") {
+  // Full resource name
+  name string
+  // Display name
+  displayName string
+  // Description
+  description string
+  // Deployed models
+  deployedModels []dict
+  // Encryption spec (CMEK)
+  encryptionSpec dict
+  // Network for private endpoints
+  network string
+  // Whether private service connect is enabled
+  enablePrivateServiceConnect bool
+  // Traffic split (model ID to percentage)
+  trafficSplit dict
+  // Labels
+  labels map[string]string
+  // Etag
+  etag string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Google Cloud (GCP) Vertex AI pipeline job
+private gcp.project.vertexaiService.pipelineJob @defaults("name displayName state") {
+  // Full resource name
+  name string
+  // Display name
+  displayName string
+  // Current state (PIPELINE_STATE_QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLING, CANCELLED, PAUSED)
+  state string
+  // Pipeline spec
+  pipelineSpec dict
+  // Runtime config
+  runtimeConfig dict
+  // Service account
+  serviceAccount string
+  // Network
+  network string
+  // Encryption spec
+  encryptionSpec dict
+  // Template URI
+  templateUri string
+  // Template metadata
+  templateMetadata dict
+  // Labels
+  labels map[string]string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+  // Start time
+  startTime time
+  // End time
+  endTime time
+}
+
+// Google Cloud (GCP) Vertex AI dataset
+private gcp.project.vertexaiService.dataset @defaults("name displayName") {
+  // Full resource name
+  name string
+  // Display name
+  displayName string
+  // Description
+  description string
+  // Metadata schema URI
+  metadataSchemaUri string
+  // Metadata
+  metadata dict
+  // Encryption spec
+  encryptionSpec dict
+  // Labels
+  labels map[string]string
+  // Etag
+  etag string
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
+}
+
+// Google Cloud (GCP) Vertex AI Feature Online Store
+private gcp.project.vertexaiService.featureOnlineStore @defaults("name state") {
+  // Full resource name
+  name string
+  // Current state
+  state string
+  // Bigtable configuration (if Bigtable backend)
+  bigtable dict
+  // Optimized configuration (if optimized backend)
+  optimized dict
+  // Dedicated serving endpoint
+  dedicatedServingEndpoint dict
+  // Encryption spec
+  encryptionSpec dict
+  // Labels
+  labels map[string]string
+  // Etag
+  etag string
+  // Whether the resource satisfies PZS
+  satisfiesPzs bool
+  // Whether the resource satisfies PZI
+  satisfiesPzi bool
+  // Creation time
+  createdAt time
+  // Last update time
+  updatedAt time
 }

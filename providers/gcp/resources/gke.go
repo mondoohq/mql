@@ -624,6 +624,11 @@ func (g *mqlGcpProjectGkeService) clusters() ([]any, error) {
 			return nil, err
 		}
 
+		var enabledK8sBetaApis []any
+		if c.EnableK8SBetaApis != nil {
+			enabledK8sBetaApis = convert.SliceAnyToInterface(c.EnableK8SBetaApis.EnabledApis)
+		}
+
 		mqlCluster, err := CreateResource(g.MqlRuntime, "gcp.project.gkeService.cluster", map[string]*llx.RawData{
 			"projectId":                      llx.StringData(projectId),
 			"id":                             llx.StringData(c.Id),
@@ -666,6 +671,12 @@ func (g *mqlGcpProjectGkeService) clusters() ([]any, error) {
 			"currentNodeCount":               llx.IntData(int64(c.CurrentNodeCount)),
 			"securityPostureConfig":          llx.ResourceData(secPostureConfig, "gcp.project.gkeService.cluster.securityPostureConfig"),
 			"maintenancePolicy":              llx.ResourceData(maintenancePolicy, "gcp.project.gkeService.cluster.maintenancePolicy"),
+			"etag":                           llx.StringData(c.Etag),
+			"initialNodeCount":               llx.IntData(int64(c.InitialNodeCount)),
+			"servicesIpv4Cidr":               llx.StringData(c.ServicesIpv4Cidr),
+			"nodeIpv4CidrSize":               llx.IntData(int64(c.NodeIpv4CidrSize)),
+			"tpuIpv4CidrBlock":               llx.StringData(c.TpuIpv4CidrBlock),
+			"enabledK8sBetaApis":             llx.ArrayData(enabledK8sBetaApis, types.String),
 		})
 		if err != nil {
 			return nil, err
@@ -770,6 +781,7 @@ func createMqlNodePool(runtime *plugin.Runtime, np *containerpb.NodePool, cluste
 		"statusMessage":     llx.StringData(np.StatusMessage),
 		"podIpv4CidrSize":   llx.IntData(int64(np.PodIpv4CidrSize)),
 		"upgradeSettings":   llx.ResourceData(mqlUpgradeSettings, "gcp.project.gkeService.cluster.nodepool.upgradeSettings"),
+		"etag":              llx.StringData(np.Etag),
 	})
 	if err != nil {
 		return nil, err

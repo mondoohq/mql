@@ -105,6 +105,11 @@ func (g *mqlGcpProjectStorageService) buckets() ([]any, error) {
 			return nil, err
 		}
 
+		publicAccessPrevention := ""
+		if bucket.IamConfiguration != nil {
+			publicAccessPrevention = bucket.IamConfiguration.PublicAccessPrevention
+		}
+
 		mqlInstance, err := CreateResource(g.MqlRuntime, "gcp.project.storageService.bucket", map[string]*llx.RawData{
 			"id":               llx.StringData(bucket.Id),
 			"projectId":        llx.StringData(projectId),
@@ -123,10 +128,12 @@ func (g *mqlGcpProjectStorageService) buckets() ([]any, error) {
 				storageLifecycleRulesToArrayInterface(g.MqlRuntime, bucket.Id, bucket.Lifecycle),
 				types.Resource("gcp.project.storageService.bucket.lifecycleRule"),
 			),
-			"defaultEventBasedHold": llx.BoolData(bucket.DefaultEventBasedHold),
-			"rpo":                   llx.StringData(bucket.Rpo),
-			"satisfiesPZS":          llx.BoolData(bucket.SatisfiesPZS),
-			"versioningEnabled":     llx.BoolData(bucket.Versioning != nil && bucket.Versioning.Enabled),
+			"defaultEventBasedHold":  llx.BoolData(bucket.DefaultEventBasedHold),
+			"rpo":                    llx.StringData(bucket.Rpo),
+			"satisfiesPZS":           llx.BoolData(bucket.SatisfiesPZS),
+			"versioningEnabled":      llx.BoolData(bucket.Versioning != nil && bucket.Versioning.Enabled),
+			"publicAccessPrevention": llx.StringData(publicAccessPrevention),
+			"metageneration":         llx.IntData(bucket.Metageneration),
 		})
 		if err != nil {
 			return nil, err

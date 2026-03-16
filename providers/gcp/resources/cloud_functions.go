@@ -187,6 +187,18 @@ func (g *mqlGcpProject) cloudFunctions() ([]any, error) {
 	return cloudFunctions, nil
 }
 
+// uid is not available in the Cloud Functions v1 API.
+func (g *mqlGcpProjectCloudFunction) uid() (string, error) {
+	g.Uid.State = plugin.StateIsNull | plugin.StateIsSet
+	return "", nil
+}
+
+// satisfiesPzs is not available in the Cloud Functions v1 API.
+func (g *mqlGcpProjectCloudFunction) satisfiesPzs() (bool, error) {
+	g.SatisfiesPzs.State = plugin.StateIsNull | plugin.StateIsSet
+	return false, nil
+}
+
 func (g *mqlGcpProjectCloudFunction) id() (string, error) {
 	if g.ProjectId.Error != nil {
 		return "", g.ProjectId.Error

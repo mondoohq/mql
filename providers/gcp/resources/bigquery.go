@@ -166,18 +166,23 @@ func (g *mqlGcpProjectBigqueryService) datasets() ([]any, error) {
 		}
 
 		mqlInstance, err := CreateResource(g.MqlRuntime, "gcp.project.bigqueryService.dataset", map[string]*llx.RawData{
-			"id":                       llx.StringData(dataset.DatasetID),
-			"projectId":                llx.StringData(dataset.ProjectID),
-			"name":                     llx.StringData(metadata.Name),
-			"description":              llx.StringData(metadata.Description),
-			"location":                 llx.StringData(metadata.Location),
-			"labels":                   llx.MapData(convert.MapToInterfaceMap(metadata.Labels), types.String),
-			"created":                  llx.TimeData(metadata.CreationTime),
-			"modified":                 llx.TimeData(metadata.LastModifiedTime),
-			"tags":                     llx.MapData(convert.MapToInterfaceMap(tags), types.String),
-			"kmsName":                  llx.StringData(kmsName),
-			"access":                   llx.ArrayData(access, types.Resource("gcp.project.bigqueryService.dataset.accessEntry")),
-			"defaultTableExpirationMs": llx.IntData(metadata.DefaultTableExpiration.Milliseconds()),
+			"id":                           llx.StringData(dataset.DatasetID),
+			"projectId":                    llx.StringData(dataset.ProjectID),
+			"name":                         llx.StringData(metadata.Name),
+			"description":                  llx.StringData(metadata.Description),
+			"location":                     llx.StringData(metadata.Location),
+			"labels":                       llx.MapData(convert.MapToInterfaceMap(metadata.Labels), types.String),
+			"created":                      llx.TimeData(metadata.CreationTime),
+			"modified":                     llx.TimeData(metadata.LastModifiedTime),
+			"tags":                         llx.MapData(convert.MapToInterfaceMap(tags), types.String),
+			"kmsName":                      llx.StringData(kmsName),
+			"access":                       llx.ArrayData(access, types.Resource("gcp.project.bigqueryService.dataset.accessEntry")),
+			"defaultTableExpirationMs":     llx.IntData(metadata.DefaultTableExpiration.Milliseconds()),
+			"maxTimeTravelHours":           llx.IntData(int64(metadata.MaxTimeTravel / time.Hour)),
+			"storageBillingModel":          llx.StringData(metadata.StorageBillingModel),
+			"defaultCollation":             llx.StringData(metadata.DefaultCollation),
+			"defaultPartitionExpirationMs": llx.IntData(metadata.DefaultPartitionExpiration.Milliseconds()),
+			"isCaseInsensitive":            llx.BoolData(metadata.IsCaseInsensitive),
 		})
 		if err != nil {
 			return nil, err
@@ -186,6 +191,24 @@ func (g *mqlGcpProjectBigqueryService) datasets() ([]any, error) {
 	}
 
 	return res, nil
+}
+
+// defaultRoundingMode is not yet exposed by the high-level bigquery.DatasetMetadata struct.
+func (g *mqlGcpProjectBigqueryServiceDataset) defaultRoundingMode() (string, error) {
+	g.DefaultRoundingMode.State = plugin.StateIsNull | plugin.StateIsSet
+	return "", nil
+}
+
+// satisfiesPzi is not yet exposed by the high-level bigquery.DatasetMetadata struct.
+func (g *mqlGcpProjectBigqueryServiceDataset) satisfiesPzi() (bool, error) {
+	g.SatisfiesPzi.State = plugin.StateIsNull | plugin.StateIsSet
+	return false, nil
+}
+
+// satisfiesPzs is not yet exposed by the high-level bigquery.DatasetMetadata struct.
+func (g *mqlGcpProjectBigqueryServiceDataset) satisfiesPzs() (bool, error) {
+	g.SatisfiesPzs.State = plugin.StateIsNull | plugin.StateIsSet
+	return false, nil
 }
 
 type mqlGcpProjectBigqueryServiceDatasetInternal struct {
