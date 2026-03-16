@@ -2550,9 +2550,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.computeService.snapshot.sourceDisk": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceSnapshot).GetSourceDisk()).ToDataRes(types.Resource("gcp.project.computeService.disk"))
 	},
-	"gcp.project.computeService.snapshot.sourceDiskId": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGcpProjectComputeServiceSnapshot).GetSourceDiskId()).ToDataRes(types.String)
-	},
 	"gcp.project.computeService.snapshot.sourceSnapshotSchedulePolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceSnapshot).GetSourceSnapshotSchedulePolicy()).ToDataRes(types.String)
 	},
@@ -10038,10 +10035,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.computeService.snapshot.sourceDisk": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceSnapshot).SourceDisk, ok = plugin.RawToTValue[*mqlGcpProjectComputeServiceDisk](v.Value, v.Error)
-		return
-	},
-	"gcp.project.computeService.snapshot.sourceDiskId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGcpProjectComputeServiceSnapshot).SourceDiskId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"gcp.project.computeService.snapshot.sourceSnapshotSchedulePolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -22843,7 +22836,6 @@ type mqlGcpProjectComputeServiceSnapshot struct {
 	SatisfiesPzi                   plugin.TValue[bool]
 	SatisfiesPzs                   plugin.TValue[bool]
 	SourceDisk                     plugin.TValue[*mqlGcpProjectComputeServiceDisk]
-	SourceDiskId                   plugin.TValue[string]
 	SourceSnapshotSchedulePolicy   plugin.TValue[string]
 	SourceSnapshotSchedulePolicyId plugin.TValue[string]
 }
@@ -22979,10 +22971,6 @@ func (c *mqlGcpProjectComputeServiceSnapshot) GetSourceDisk() *plugin.TValue[*mq
 
 		return c.sourceDisk()
 	})
-}
-
-func (c *mqlGcpProjectComputeServiceSnapshot) GetSourceDiskId() *plugin.TValue[string] {
-	return &c.SourceDiskId
 }
 
 func (c *mqlGcpProjectComputeServiceSnapshot) GetSourceSnapshotSchedulePolicy() *plugin.TValue[string] {

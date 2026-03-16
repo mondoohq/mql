@@ -1028,8 +1028,6 @@ private gcp.project.computeService.snapshot @defaults("name") {
   satisfiesPzs bool
   // Source disk used to create this snapshot
   sourceDisk() gcp.project.computeService.disk
-  // ID of the source disk used to create this snapshot
-  sourceDiskId string
   // URL of the snapshot schedule policy that created this snapshot
   sourceSnapshotSchedulePolicy string
   // ID of the snapshot schedule policy

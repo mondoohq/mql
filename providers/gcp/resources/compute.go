@@ -1175,7 +1175,6 @@ func (g *mqlGcpProjectComputeService) snapshots() ([]any, error) {
 				"enableConfidentialCompute":      llx.BoolData(snapshot.EnableConfidentialCompute),
 				"satisfiesPzi":                   llx.BoolData(snapshot.SatisfiesPzi),
 				"satisfiesPzs":                   llx.BoolData(snapshot.SatisfiesPzs),
-				"sourceDiskId":                   llx.StringData(snapshot.SourceDiskId),
 				"sourceSnapshotSchedulePolicy":   llx.StringData(snapshot.SourceSnapshotSchedulePolicy),
 				"sourceSnapshotSchedulePolicyId": llx.StringData(snapshot.SourceSnapshotSchedulePolicyId),
 			})

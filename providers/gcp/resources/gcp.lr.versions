@@ -1225,7 +1225,6 @@ gcp.project.computeService.snapshot.satisfiesPzi 11.6.6
 gcp.project.computeService.snapshot.satisfiesPzs 11.6.6
 gcp.project.computeService.snapshot.snapshotType 9.0.0
 gcp.project.computeService.snapshot.sourceDisk 11.6.6
-gcp.project.computeService.snapshot.sourceDiskId 13.1.2
 gcp.project.computeService.snapshot.sourceSnapshotSchedulePolicy 13.1.2
 gcp.project.computeService.snapshot.sourceSnapshotSchedulePolicyId 13.1.2
 gcp.project.computeService.snapshot.status 9.0.0
