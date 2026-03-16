@@ -156,11 +156,6 @@ func (g *mqlGcpProjectComputeServiceZone) id() (string, error) {
 	return "gcp.project.computeService.zone/" + id, nil
 }
 
-func (g *mqlGcpProjectComputeServiceZone) region() (any, error) {
-	// TODO: implement
-	return nil, errors.New("not implemented")
-}
-
 func (g *mqlGcpProjectComputeService) zones() ([]any, error) {
 	// when the service is not enabled, we return nil
 	if !g.GetEnabled().Data {
@@ -765,11 +760,6 @@ type mqlGcpProjectComputeServiceDiskInternal struct {
 	cacheStoragePoolUrl    string
 }
 
-func (g *mqlGcpProjectComputeServiceDisk) zone() (any, error) {
-	// TODO: implement
-	return nil, errors.New("not implemented")
-}
-
 func (g *mqlGcpProjectComputeServiceDisk) sourceImage() (*mqlGcpProjectComputeServiceImage, error) {
 	url := g.cacheSourceImageUrl
 	if url == "" {
@@ -966,11 +956,6 @@ func (g *mqlGcpProjectComputeServiceFirewall) id() (string, error) {
 	}
 	id := g.Id.Data
 	return "gcloud.compute.firewall/" + id, nil
-}
-
-func (g *mqlGcpProjectComputeServiceFirewall) network() (any, error) {
-	// TODO: implement
-	return nil, errors.New("not implemented")
 }
 
 func initGcpProjectComputeServiceFirewall(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -1818,11 +1803,6 @@ func (g *mqlGcpProjectComputeServiceSubnetwork) region() (*mqlGcpProjectComputeS
 	return nil, errors.New(fmt.Sprintf("region %s not found", regionName))
 }
 
-func (g *mqlGcpProjectComputeServiceSubnetwork) network() ([]any, error) {
-	// TODO: implement
-	return nil, errors.New("not implemented")
-}
-
 func newMqlRegion(runtime *plugin.Runtime, r *compute.Region) (any, error) {
 	deprecated, err := convert.JsonToDict(r.Deprecated)
 	if err != nil {
@@ -1961,11 +1941,6 @@ func (g *mqlGcpProjectComputeServiceRouter) network() (*mqlGcpProjectComputeServ
 		return nil, nil
 	}
 	return getNetworkByUrl(g.cacheNetworkUrl, g.MqlRuntime)
-}
-
-func (g *mqlGcpProjectComputeServiceRouter) region() ([]any, error) {
-	// TODO: implement
-	return nil, errors.New("not implemented")
 }
 
 func newMqlRouter(projectId string, region *mqlGcpProjectComputeServiceRegion, runtime *plugin.Runtime, router *compute.Router) (any, error) {
