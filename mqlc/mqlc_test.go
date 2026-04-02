@@ -318,7 +318,7 @@ func TestCompiler_DeterministicChecksum(t *testing.T) {
 		azureConf := mqlc.NewConfig(azure_schema, features)
 		res, err := mqlc.Compile(mql, mqlc.EmptyPropsHandler, azureConf)
 		require.Nil(t, err)
-		require.Equal(t, res.CodeV2.Id, "h81H/YfoIRI=")
+		require.Equal(t, res.CodeV2.Id, "myGJk5hUrsM=")
 	}
 }
 
@@ -1205,6 +1205,37 @@ func TestCompiler_Empty_All_ANY_Issue5248(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestCompiler_All_Issue919(t *testing.T) {
+	// https://github.com/mondoohq/cnquery/issues/919
+	compileT(t, `files.find(from: ".", type: "file").all( permissions.other_readable == false )`, func(res *llx.CodeBundle) {
+		require.Equal(t, 3, len(res.CodeV2.Blocks))
+		require.Equal(t, 6, len(res.CodeV2.Blocks[2].Chunks))
+		assertPrimitive(t, &llx.Primitive{
+			Type: string(types.Resource("file")),
+		}, res.CodeV2.Blocks[2].Chunks[0])
+		assertFunction(t, "path", &llx.Function{
+			Type:    string(types.String),
+			Binding: (3 << 32) | 1,
+		}, res.CodeV2.Blocks[2].Chunks[1])
+		assertFunction(t, "size", &llx.Function{
+			Type:    string(types.Int),
+			Binding: (3 << 32) | 1,
+		}, res.CodeV2.Blocks[2].Chunks[2])
+		assertFunction(t, "permissions", &llx.Function{
+			Type:    string(types.Resource("file.permissions")),
+			Binding: (3 << 32) | 1,
+		}, res.CodeV2.Blocks[2].Chunks[3])
+		assertFunction(t, "string", &llx.Function{
+			Type:    string(types.String),
+			Binding: (3 << 32) | 4,
+		}, res.CodeV2.Blocks[2].Chunks[4])
+		assertFunction(t, "other_readable", &llx.Function{
+			Type:    string(types.Bool),
+			Binding: (3 << 32) | 4,
+		}, res.CodeV2.Blocks[2].Chunks[5])
+	})
 }
 
 func TestCompiler_All_Issue1316(t *testing.T) {

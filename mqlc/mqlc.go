@@ -1680,7 +1680,7 @@ func (c *compiler) compileExpressions(expressions []*parser.Expression) error {
 
 func (c *compiler) postCompile() {
 	code := c.Result.CodeV2
-	for i := range code.Blocks {
+	for i := len(code.Blocks) - 1; i >= 0; i-- {
 		block := code.Blocks[i]
 		eps := block.Entrypoints
 
@@ -1752,7 +1752,16 @@ func (c *compiler) addValueFieldChunks(ref uint64) {
 		id       string
 		chunk    *llx.Chunk
 		chunkIdx int
-		children map[string]*fieldTreeNode
+		children []*fieldTreeNode
+	}
+
+	fieldTreeNodeChild := func(f *fieldTreeNode, id string) *fieldTreeNode {
+		for _, c := range f.children {
+			if c.id == id {
+				return c
+			}
+		}
+		return nil
 	}
 
 	type fieldTree struct {
@@ -1772,14 +1781,15 @@ func (c *compiler) addValueFieldChunks(ref uint64) {
 				id:       chunk.Id,
 				chunk:    chunk,
 				chunkIdx: i + 1,
-				children: map[string]*fieldTreeNode{},
+				children: []*fieldTreeNode{},
 			}
 
 			if chunk.Function != nil && chunk.Function.Binding != 0 {
 				chunkIdx := llx.ChunkIndex(chunk.Function.Binding)
 				parent := nodes[chunkIdx-1]
 				if parent != nil {
-					nodes[chunkIdx-1].children[chunk.Id] = nodes[i]
+					n := nodes[chunkIdx-1]
+					n.children = append(n.children, nodes[i])
 				}
 			}
 		}
@@ -1789,7 +1799,7 @@ func (c *compiler) addValueFieldChunks(ref uint64) {
 		}
 	}
 
-	addToTree := func(tree *fieldTree, parentPath []string, blockRef uint64, block *llx.Block, chunk *llx.Chunk) bool {
+	addToTree := func(tree *fieldTree, parentPath []string, blockRef uint64, block *llx.Block, chunk *llx.Chunk, remaps map[uint32]uint32) (uint32, bool) {
 		// add a chunk to the tree. If the path already exists, do nothing
 		// return true if the chunk was added, false if it already existed
 		if len(tree.nodes) != len(block.Chunks) {
@@ -1798,37 +1808,57 @@ func (c *compiler) addValueFieldChunks(ref uint64) {
 
 		parent := tree.nodes[0]
 		for _, id := range parentPath[1:] {
-			child := parent.children[id]
+			child := fieldTreeNodeChild(parent, id)
 			parent = child
 		}
 
-		if parent.children[chunk.Id] != nil {
-			return false
+		if c := fieldTreeNodeChild(parent, chunk.Id); c != nil {
+			return 0, false
 		}
 
 		newChunk := chunk
 		if chunk.Function != nil {
+			var args []*llx.Primitive
+			if len(chunk.Function.Args) > 0 {
+				args = make([]*llx.Primitive, len(chunk.Function.Args))
+				copy(args, chunk.Function.Args)
+			}
 			newChunk = &llx.Chunk{
 				Call: chunk.Call,
 				Id:   chunk.Id,
 				Function: &llx.Function{
 					Binding: (blockRef & 0xFFFFFFFF00000000) | uint64(parent.chunkIdx),
 					Type:    chunk.Function.Type,
-					Args:    chunk.Function.Args,
+					Args:    args,
 				},
+			}
+			if chunk.Id == "$whereNot" || chunk.Id == "where" {
+				argRef := chunk.Function.Args[0].RawData().Value.(uint64)
+				if (chunk.Function.Binding & 0xFFFFFFFF00000000) != (argRef & 0xFFFFFFFF00000000) {
+					// If they're in different blocks, we don't try to do anything
+					return 0, false
+				}
+				oldChunkIdx := llx.ChunkIndex(argRef)
+				newChunkIdx, ok := remaps[oldChunkIdx]
+				if !ok {
+					return 0, false
+				}
+				newChunk.Function.Args[0] = llx.RefPrimitiveV2((blockRef & 0xFFFFFFFF00000000) | uint64(newChunkIdx))
 			}
 		}
 
-		parent.children[chunk.Id] = &fieldTreeNode{
+		chunkIdx := len(tree.nodes) + 1
+		n := &fieldTreeNode{
 			id:       chunk.Id,
 			chunk:    newChunk,
-			chunkIdx: len(tree.nodes) + 1,
-			children: map[string]*fieldTreeNode{},
+			chunkIdx: chunkIdx,
+			children: []*fieldTreeNode{},
 		}
-		tree.nodes = append(tree.nodes, parent.children[chunk.Id])
+		parent.children = append(parent.children, n)
+		tree.nodes = append(tree.nodes, n)
 		block.AddChunk(c.Result.CodeV2, blockRef, newChunk)
 
-		return true
+		return uint32(chunkIdx), true
 	}
 
 	var visitTreeNodes func(tree *fieldTree, node *fieldTreeNode, path []string, visit func(tree *fieldTree, node *fieldTreeNode, path []string))
@@ -1837,13 +1867,7 @@ func (c *compiler) addValueFieldChunks(ref uint64) {
 			return
 		}
 		path = append(path, node.id)
-		keys := []string{}
-		for k := range node.children {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			child := node.children[k]
+		for _, child := range node.children {
 			visit(tree, child, path)
 			visitTreeNodes(tree, child, path, visit)
 		}
@@ -1863,8 +1887,11 @@ func (c *compiler) addValueFieldChunks(ref uint64) {
 		}
 	}
 	assessmentBlockTree := blockToFieldTree(assessmentBlock, func(chunkIdx int, chunk *llx.Chunk) bool {
-		if chunk.Id == "$whereNot" || chunk.Id == "where" {
+		if chunk.Id == "$all" || chunk.Id == "$one" || chunk.Id == "$none" || chunk.Id == "$any" {
 			return false
+		} else if chunk.Id == "$whereNot" || chunk.Id == "where" {
+			// There is some bug with list that makes this not work. This check filters those out
+			return chunk.Function.Binding == chunk.Function.Args[0].RawData().Value.(uint64)
 		} else if _, compareable := llx.ComparableLabel(chunk.Id); compareable {
 			return false
 		} else if chunk.Function != nil && len(chunk.Function.Args) > 0 {
@@ -1886,11 +1913,16 @@ func (c *compiler) addValueFieldChunks(ref uint64) {
 		return true
 	})
 
+	remaps := map[uint32]uint32{}
 	visitTreeNodes(&assessmentBlockTree, assessmentBlockTree.nodes[0], make([]string, 0, 16), func(tree *fieldTree, node *fieldTreeNode, path []string) {
 		// add the node to the assessment block tree
-		chunkAdded := addToTree(&defaultFieldsBlockTree, path, defaultFieldsRef, defaultFieldsBlock, node.chunk)
-		if chunkAdded && node.chunk.Function != nil {
-			defaultFieldsBlock.Entrypoints = append(defaultFieldsBlock.Entrypoints, (defaultFieldsRef&0xFFFFFFFF00000000)|uint64(len(defaultFieldsBlock.Chunks)))
+		chunkIdx, chunkAdded := addToTree(&defaultFieldsBlockTree, path, defaultFieldsRef, defaultFieldsBlock, node.chunk, remaps)
+
+		if chunkAdded {
+			remaps[uint32(node.chunkIdx)] = chunkIdx
+			if node.chunk.Function != nil && len(node.children) == 0 {
+				defaultFieldsBlock.Entrypoints = append(defaultFieldsBlock.Entrypoints, (defaultFieldsRef&0xFFFFFFFF00000000)|uint64(len(defaultFieldsBlock.Chunks)))
+			}
 		}
 	})
 }
