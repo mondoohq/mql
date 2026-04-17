@@ -330,6 +330,32 @@ func ProtoArgsToRawDataArgs(pargs map[string]*llx.Result) (map[string]*llx.RawDa
 	return res, err
 }
 
+// ResolveResourceArgs replaces any resource references in args (which come in
+// as *llx.MockResource after Primitive deserialization) with the actual
+// resource instances from the runtime's resource cache. This is needed after
+// ProtoArgsToRawDataArgs when args will be passed to generated setters that
+// expect typed resource pointers (e.g., *mqlFile) rather than MockResource.
+func ResolveResourceArgs(args map[string]*llx.RawData, runtime *Runtime) {
+	if runtime == nil {
+		return
+	}
+	for k, v := range args {
+		if v == nil {
+			continue
+		}
+		if !types.Type(v.Type).IsResource() {
+			continue
+		}
+		mock, ok := v.Value.(*llx.MockResource)
+		if !ok || mock == nil {
+			continue
+		}
+		if res, ok := runtime.Resources.Get(mock.Name + "\x00" + mock.ID); ok {
+			args[k] = llx.ResourceData(res, mock.Name)
+		}
+	}
+}
+
 func NonErrorArgs(pargs map[string]*llx.RawData) map[string]*llx.RawData {
 	if len(pargs) == 0 {
 		return map[string]*llx.RawData{}
