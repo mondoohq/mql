@@ -1,0 +1,203 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+option provider = "go.mondoo.com/mql/providers/rippling"
+option go_package = "go.mondoo.com/mql/v13/providers/rippling/resources"
+
+// Rippling
+//
+// Use this namespace to inspect the company profile, workforce, and org
+// structure of a Rippling-managed company: company information, employees,
+// departments, teams, work locations, and groups. Identity and org-structure
+// fields are exposed; compensation, benefits, and payroll mechanics are
+// intentionally not modeled.
+rippling {
+  // Company associated with the configured API token (single-element list — Rippling tokens are scoped to one company)
+  companies() []rippling.company
+  // Employees of the company
+  employees() []rippling.employee
+  // Departments defined in the company
+  departments() []rippling.department
+  // Teams defined in the company
+  teams() []rippling.team
+  // Work locations defined in the company
+  workLocations() []rippling.workLocation
+  // Groups defined in the company (used for app provisioning and access)
+  groups() []rippling.group
+}
+
+// Rippling company
+//
+// Examine the company profile of the Rippling-managed organization the
+// token has access to: legal name, primary contact information, and the
+// company's filing address. Rippling Platform API tokens are scoped to a
+// single company, so this resource is a singleton.
+rippling.company @defaults("name") {
+  // Unique identifier of the company in Rippling
+  id string
+  // Display name of the company
+  name string
+  // Registered legal name of the company
+  legalName string
+  // Primary work email for the company
+  workEmail string
+  // Primary phone number for the company
+  phone string
+  // Primary contact email for the company
+  primaryEmail string
+  // Tax identification number for the company
+  tin string
+  // Whether the company still needs onboarding in Rippling
+  needsOnboarding bool
+  // Date the company record was created in Rippling
+  createdAt time
+  // Primary address of the company
+  streetLine1 string
+  // Secondary address of the company (suite, unit, etc.)
+  streetLine2 string
+  // City of the company's primary address
+  city string
+  // State or province of the company's primary address
+  state string
+  // Postal code of the company's primary address
+  zip string
+  // Country of the company's primary address
+  country string
+}
+
+// Rippling employee
+//
+// Examine identity, employment status, key dates, manager, department,
+// team, and primary work location for a person employed through Rippling.
+// The `id` field is the selection key. Compensation, benefits, and
+// pay-history fields are intentionally not exposed; this resource is
+// scoped to identity and employment metadata for org-structure and
+// access audits.
+private rippling.employee @defaults("firstName lastName workEmail") {
+  // Unique identifier of the employee in Rippling
+  id string
+  // Sequential employee number assigned by Rippling
+  employeeNumber int
+  // First (given) name of the employee
+  firstName string
+  // Middle name of the employee
+  middleName string
+  // Last (family) name of the employee
+  lastName string
+  // Preferred first name of the employee (if set)
+  preferredFirstName string
+  // Work email address of the employee
+  workEmail string
+  // Personal email address of the employee
+  personalEmail string
+  // Phone number of the employee
+  phoneNumber string
+  // Job title of the employee
+  title string
+  // Employment type (e.g., FULL_TIME, PART_TIME, TEMPORARY, CONTRACTOR, INTERN)
+  employmentType string
+  // Role status of the employee (e.g., ACTIVE, TERMINATED, LEAVE_OF_ABSENCE)
+  roleStatus string
+  // Whether the employee has been terminated
+  terminated bool
+  // Date the employment started
+  startDate time
+  // Date the employment ended (empty if active)
+  endDate time
+  // Date of termination (empty if not terminated)
+  terminationDate time
+  // Type of termination (e.g., VOLUNTARY, INVOLUNTARY)
+  terminationType string
+  // Stated reason for termination
+  terminationReason string
+  // Date the employee record was created in Rippling
+  createdAt time
+  // Date the employee record was last updated in Rippling
+  updatedAt time
+  // Manager of this employee, if assigned
+  manager() rippling.employee
+  // Department this employee belongs to, if assigned
+  department() rippling.department
+  // Team this employee belongs to, if assigned
+  team() rippling.team
+  // Primary work location of this employee, if assigned
+  workLocation() rippling.workLocation
+}
+
+// Rippling department
+//
+// Examine a department defined within a Rippling company — its name,
+// its parent department (if any), and the employees assigned to it. The
+// `id` field is the selection key.
+private rippling.department @defaults("name") {
+  // Unique identifier of the department in Rippling
+  id string
+  // Name of the department
+  name string
+  // Parent department, if this department is nested
+  parent() rippling.department
+  // Employees assigned to this department
+  employees() []rippling.employee
+}
+
+// Rippling team
+//
+// Examine a team defined within a Rippling company — its name, its parent
+// team (if nested), and the employees assigned to it. Teams in Rippling
+// are hierarchical and independent of departments. The `id` field is the
+// selection key.
+private rippling.team @defaults("name") {
+  // Unique identifier of the team in Rippling
+  id string
+  // Name of the team
+  name string
+  // Parent team, if this team is nested
+  parentTeam() rippling.team
+  // Employees assigned to this team
+  employees() []rippling.employee
+}
+
+// Rippling work location
+//
+// Examine a physical work location defined within a Rippling company —
+// the nickname, address, and primary phone number. The `id` field is the
+// selection key.
+private rippling.workLocation @defaults("nickname city state") {
+  // Unique identifier of the work location in Rippling
+  id string
+  // Display name of the work location (e.g., "HQ", "Berlin office")
+  nickname string
+  // Primary phone number of the work location
+  phone string
+  // Primary street address of the location
+  streetLine1 string
+  // Secondary street address of the location (suite, unit, etc.)
+  streetLine2 string
+  // City of the location
+  city string
+  // State or province of the location
+  state string
+  // Postal code of the location
+  zip string
+  // Country of the location
+  country string
+  // Employees whose primary work location is this location
+  employees() []rippling.employee
+}
+
+// Rippling group
+//
+// Examine a group defined within a Rippling company. Groups are used to
+// scope app provisioning and access — for example, granting a SaaS app
+// to every member of a "Sales" group. The `id` field is the selection
+// key.
+private rippling.group @defaults("name") {
+  // Unique identifier of the group in Rippling
+  id string
+  // Name of the group
+  name string
+  // Version of the group definition (Rippling bumps this when membership changes)
+  version string
+  // Members of the group
+  members() []rippling.employee
+}
