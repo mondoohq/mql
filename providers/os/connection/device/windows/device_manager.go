@@ -63,7 +63,7 @@ func (d *WindowsDeviceManager) IdentifyMountTargets(opts map[string]string) ([]*
 		if err != nil {
 			return nil, err
 		}
-		d.diskSetToOnline = true
+		d.diskSetToReadonly = true
 		d.diskIndex = targetDrive.Index
 	}
 	if diskStatus.Offline {
