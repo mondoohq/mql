@@ -26,6 +26,23 @@ func TestWindowsRegistryKeyItemParser(t *testing.T) {
 	assert.Equal(t, "5", items[0].String())
 }
 
+func TestWindowsRegistryKeyQwordParser(t *testing.T) {
+	// kind 11 == REG_QWORD; PowerShell emits the value as a JSON number
+	const data = `[{
+		"key": "LowMemoryThreshold",
+		"value": { "kind": 11, "data": 4294967296 }
+	}]`
+
+	items, err := ParsePowershellRegistryKeyItems(strings.NewReader(data))
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, 11, items[0].Value.Kind)
+	// a QWORD must surface as the integer value, not the float bit-pattern
+	assert.Equal(t, int64(4294967296), items[0].Value.Number)
+	assert.Equal(t, int64(4294967296), items[0].GetRawValue())
+	assert.Equal(t, "4294967296", items[0].String())
+}
+
 func TestWindowsRegistryKeyChildParser(t *testing.T) {
 	r, err := os.Open("./testdata/registrykey-children.json")
 	require.NoError(t, err)
