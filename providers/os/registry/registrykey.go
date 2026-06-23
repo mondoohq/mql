@@ -4,10 +4,8 @@
 package registry
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 
@@ -214,14 +212,15 @@ func (k *RegistryKeyValue) UnmarshalJSON(b []byte) error {
 		log.Warn().Msg("FULL_RESOURCE_DESCRIPTOR for registry key is not supported")
 	case RESOURCE_REQUIREMENTS_LIST:
 		log.Warn().Msg("RESOURCE_REQUIREMENTS_LIST for registry key is not supported")
-	case QWORD: // 8 bytes of binary data
-		f, ok := raw.Data.(float64)
+	case QWORD: // A number that is a valid UInt64
+		data, ok := raw.Data.(float64)
 		if !ok {
 			return fmt.Errorf("registry key value is not a number: %v", raw.Data)
 		}
-		buf := make([]byte, 8)
-		binary.LittleEndian.PutUint64(buf[:], math.Float64bits(f))
-		k.Binary = buf
+		number := int64(data)
+		// string fallback
+		k.Number = number
+		k.String = strconv.FormatInt(number, 10)
 	}
 	return nil
 }
