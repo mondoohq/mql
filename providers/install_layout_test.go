@@ -100,16 +100,17 @@ func TestPruneOldVersions(t *testing.T) {
 		writeVersionDir(t, container, name, v)
 	}
 
-	// Keep 2, protecting the active (13.4.0) and previous (13.3.0). With keep=2
-	// we retain the two newest non-protected as well, but protected are never
-	// removed. Confirm the active + previous always survive.
+	// Keep 2, protecting the active (13.4.0) and previous (13.3.0). Ordering is
+	// by semver, so the result is deterministic: the two newest are kept and
+	// the older two are removed.
 	pruneOldVersions(container, name, 2, "13.4.0", "13.3.0")
 
 	assert.DirExists(t, filepath.Join(container, "13.4.0"), "active must survive")
 	assert.DirExists(t, filepath.Join(container, "13.3.0"), "previous must survive")
+	assert.NoDirExists(t, filepath.Join(container, "13.2.0"), "older version pruned")
+	assert.NoDirExists(t, filepath.Join(container, "13.1.0"), "oldest version pruned")
 
-	remaining := listInstalledVersions(container, name)
-	assert.LessOrEqual(t, len(remaining), 3, "prune should have removed the oldest")
+	assert.Equal(t, []string{"13.4.0", "13.3.0"}, listInstalledVersions(container, name))
 }
 
 func TestPruneNeverRemovesProtected(t *testing.T) {

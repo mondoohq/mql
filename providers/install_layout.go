@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/v13/cli/config"
+	"go.mondoo.com/mql/v13/providers/core/resources/versions/semver"
 )
 
 // Robust provider layout
@@ -166,8 +167,14 @@ func writeCurrentPointerAtomic(containerDir, version string) error {
 }
 
 // listInstalledVersions returns the version directories inside a container
-// (those holding the provider's config JSON), most-recently-modified first.
-// Staging and pointer entries are skipped.
+// (those holding the provider's config JSON), highest version first. Staging
+// and pointer entries are skipped.
+//
+// Ordering is by semantic version, not modification time: install directories
+// created in the same operation can share an mtime (and on fast filesystems
+// often do), which would make an mtime-based order nondeterministic and let
+// prune keep the wrong versions. Provider versions increase over time, so
+// semver-descending is both deterministic and a faithful "newest first".
 func listInstalledVersions(containerDir, name string) []string {
 	entries, err := afero.ReadDir(config.AppFs, containerDir)
 	if err != nil {
@@ -175,11 +182,7 @@ func listInstalledVersions(containerDir, name string) []string {
 	}
 	confName := name + ".json"
 
-	type verDir struct {
-		version string
-		mtime   int64
-	}
-	var dirs []verDir
+	var versions []string
 	for _, e := range entries {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") || strings.HasPrefix(e.Name(), stagingDirPrefix) {
 			continue
@@ -187,15 +190,20 @@ func listInstalledVersions(containerDir, name string) []string {
 		if !config.ProbeFile(filepath.Join(containerDir, e.Name(), confName)) {
 			continue
 		}
-		dirs = append(dirs, verDir{version: e.Name(), mtime: e.ModTime().UnixNano()})
+		versions = append(versions, e.Name())
 	}
 
-	sort.Slice(dirs, func(i, j int) bool { return dirs[i].mtime > dirs[j].mtime })
-	res := make([]string, len(dirs))
-	for i := range dirs {
-		res[i] = dirs[i].version
-	}
-	return res
+	sv := semver.Parser{}
+	sort.Slice(versions, func(i, j int) bool {
+		cmp, err := sv.Compare(versions[i], versions[j])
+		if err != nil {
+			// Unparseable versions fall back to a stable string order so the
+			// result is still deterministic.
+			return versions[i] > versions[j]
+		}
+		return cmp > 0
+	})
+	return versions
 }
 
 // pruneOldVersions removes installed version directories beyond the newest
