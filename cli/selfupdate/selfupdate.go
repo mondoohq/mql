@@ -187,6 +187,15 @@ func CheckAndUpdate(cfg Config) (bool, error) {
 		return false, nil
 	}
 
+	// Never re-download a version we already quarantined as crash-looping.
+	if isVersionQuarantined(binPath, release.Version) {
+		log.Warn().
+			Str("version", release.Version).
+			Msg("self-update: latest version is quarantined (previously failed to run); staying on current binary")
+		updateMarkerFile(binPath, cfg.BinaryName)
+		return false, nil
+	}
+
 	log.Info().
 		Str("current", currentVersion).
 		Str("latest", release.Version).
@@ -211,6 +220,16 @@ func CheckAndUpdate(cfg Config) (bool, error) {
 
 	// Update marker file after successful installation
 	updateMarkerFile(binPath, cfg.BinaryName)
+
+	// Health-check gate: prove the freshly downloaded binary passes its
+	// selftest before we activate it. A binary that fails is quarantined so it
+	// is neither activated now nor re-downloaded next time.
+	if err := healthCheckBinary(binaryPath); err != nil {
+		log.Warn().Err(err).Str("version", release.Version).Msg("self-update: downloaded binary failed selftest; quarantining")
+		quarantineVersion(binPath, release.Version)
+		_ = os.Remove(binaryPath)
+		return false, errors.Wrap(err, "downloaded binary failed selftest")
+	}
 
 	log.Debug().
 		Str("version", release.Version).
@@ -280,6 +299,27 @@ func execLocalIfNewer(binPath, binName, currentVersion string) (bool, error) {
 
 	if cmp <= 0 {
 		// Local binary is not newer
+		return false, nil
+	}
+
+	// Crash-loop guard: before activating the staged binary, make sure it has
+	// not exceeded its activation budget without confirming a healthy run. If
+	// it has, quarantine it and fall back to the current binary.
+	if !recordActivationAttempt(binPath, localVersion) {
+		quarantineStagedBinary(binPath, binName, localVersion)
+		log.Warn().
+			Str("version", localVersion).
+			Msg("auto-update: staged version quarantined after repeated failures; using current binary")
+		return false, nil
+	}
+
+	// Health-check gate: prove the staged binary passes its selftest before we
+	// hand control to it. A binary that fails selftest is quarantined outright
+	// so we neither activate it now nor re-download it later.
+	if err := healthCheckBinary(localBinary); err != nil {
+		log.Warn().Err(err).Str("version", localVersion).Msg("auto-update: staged binary failed selftest; quarantining")
+		quarantineVersion(binPath, localVersion)
+		quarantineStagedBinary(binPath, binName, localVersion)
 		return false, nil
 	}
 
@@ -497,10 +537,20 @@ func downloadAndInstall(ctx context.Context, release *Release, destPath string, 
 	}
 	tmpFile.Close()
 
-	// Verify checksum
+	// Verify checksum against the hash advertised in latest.json (first-line
+	// integrity check).
 	computedHash := hex.EncodeToString(hash.Sum(nil))
 	if file.Hash != "" && computedHash != file.Hash {
 		return "", errors.Newf("checksum mismatch: expected %s, got %s", file.Hash, computedHash)
+	}
+
+	// Verify against the published SHA256SUMS manifest and its detached
+	// signature (integrity + authenticity). Under the default 'auto' policy an
+	// unsigned/absent manifest falls back to the latest.json hash above; under
+	// 'require' the absence of a valid signature fails the update.
+	archiveName := archiveFileName(binaryName, release.Version)
+	if err := verifyDownloadManifest(ctx, downloadURL, archiveName, computedHash); err != nil {
+		return "", errors.Wrap(err, "download verification failed")
 	}
 
 	// Ensure destination directory exists

@@ -30,7 +30,6 @@ import (
 	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/resources"
-	"go.mondoo.com/mql/v13/providers/core/resources/versions/semver"
 	"golang.org/x/exp/slices"
 )
 
@@ -507,6 +506,13 @@ func installVersion(ctx context.Context, name string, version string) (*Provider
 		return nil, errors.Wrap(err, "failed to install "+name+"-"+version+", failed to read body")
 	}
 
+	// Verify integrity (and authenticity, when available) before we unpack a
+	// single byte. A failure here aborts the install and leaves any currently
+	// installed version untouched.
+	if err := verifyProviderDownload(ctx, name, version, tar); err != nil {
+		return nil, errors.Wrap(err, "failed to verify "+name+"-"+version)
+	}
+
 	reader := io.NopCloser(
 		bytes.NewReader(tar),
 	)
@@ -591,6 +597,16 @@ func PrintInstallResults(providers []*Provider) {
 type InstallConf struct {
 	// Dst specify which path to install into.
 	Dst string
+
+	// SkipHealthCheck disables launching the freshly installed provider to
+	// verify it can start before it is activated. Off by default; set only in
+	// tests, or contexts where launching a subprocess is not possible.
+	SkipHealthCheck bool
+
+	// KeepVersions overrides how many installed versions to retain per provider
+	// for rollback (the active version plus previous ones). Zero uses the
+	// default (defaultKeepVersions).
+	KeepVersions int
 }
 
 func InstallFile(path string, conf InstallConf) ([]*Provider, error) {
@@ -709,7 +725,7 @@ func InstallIO(reader io.ReadCloser, conf InstallConf) ([]*Provider, error) {
 		return nil, err
 	}
 
-	log.Debug().Msg("move provider to destination")
+	log.Debug().Msg("install provider versions")
 	providerDirs := []string{}
 	for name := range files {
 		// we only want to identify the binary and then all associated files from it
@@ -730,42 +746,17 @@ func InstallIO(reader io.ReadCloser, conf InstallConf) ([]*Provider, error) {
 			return nil, errors.New("cannot find " + providerName + ".resources.json in the archive")
 		}
 
-		dstPath := filepath.Join(conf.Dst, providerName)
-		if err = os.MkdirAll(dstPath, 0o755); err != nil {
+		// Install into a per-version directory, health-check the new binary,
+		// and only then flip the atomic .current pointer. On any failure the
+		// previously active version is left completely untouched.
+		containerDir, err := commitProviderVersion(tmpdir, conf, name, providerName)
+		if err != nil {
 			return nil, err
 		}
 
-		// move the binary and the associated files
-		srcBin := filepath.Join(tmpdir, name)
-		dstBin := filepath.Join(dstPath, name)
-		log.Debug().Str("src", srcBin).Str("dst", dstBin).Msg("move provider binary")
-		if err = osRetry(func() error {
-			return os.Rename(srcBin, dstBin)
-		}, maxInstallBinaryRetries); err != nil {
-			return nil, err
-		}
-		if err = os.Chmod(dstBin, 0o755); err != nil {
-			return nil, err
-		}
-
-		srcMeta := filepath.Join(tmpdir, providerName)
-		dstMeta := filepath.Join(dstPath, providerName)
-		if err = osRetry(func() error {
-			return os.Rename(srcMeta+".json", dstMeta+".json")
-		}, maxInstallConfRetries); err != nil {
-			return nil, err
-		}
-		if err = osRetry(func() error {
-			return os.Rename(srcMeta+".resources.json", dstMeta+".resources.json")
-		}, maxInstallConfRetries); err != nil {
-			return nil, err
-		}
-
-		// Flush the directory entries so the renames above are durable;
-		// otherwise a crash can leave the provider half-installed.
-		syncDir(dstPath)
-
-		providerDirs = append(providerDirs, dstPath)
+		// Track the container; readProviderDir resolves it through the pointer
+		// we just wrote to the freshly activated version directory.
+		providerDirs = append(providerDirs, containerDir)
 	}
 
 	log.Debug().Msg("loading providers")
@@ -904,13 +895,22 @@ func findProviders(path string) ([]*Provider, error) {
 }
 
 func readProviderDir(pdir string) (*Provider, error) {
+	// pdir is the provider's container directory. Resolve the active payload:
+	// the versioned directory named by the .current pointer, or the container
+	// itself for a legacy flat install.
 	name := filepath.Base(pdir)
-	bin := filepath.Join(pdir, name)
+	resolved, _, ok := resolveActiveDir(pdir, name)
+	if !ok {
+		log.Debug().Str("path", pdir).Msg("ignoring provider, no usable payload found")
+		return nil, nil
+	}
+
+	bin := filepath.Join(resolved, name)
 	if runtime.GOOS == "windows" {
 		bin += ".exe"
 	}
-	conf := filepath.Join(pdir, name+".json")
-	resources := filepath.Join(pdir, name+".resources.json")
+	conf := filepath.Join(resolved, name+".json")
+	resources := filepath.Join(resolved, name+".resources.json")
 
 	if !config.ProbeFile(conf) {
 		log.Debug().Str("path", conf).Msg("ignoring provider, can't access the plugin config")
@@ -931,7 +931,7 @@ func readProviderDir(pdir string) (*Provider, error) {
 		// megabytes in total) up front is wasted work for the providers we
 		// never touch.
 		Schema:    nil,
-		Path:      pdir,
+		Path:      resolved,
 		HasBinary: config.ProbeFile(bin),
 	}, nil
 }
@@ -969,12 +969,12 @@ func TryProviderUpdate(provider *Provider, update UpdateProvidersConfig) (*Provi
 		return provider, nil
 	}
 
-	semver := semver.Parser{}
-	diff, err := semver.Compare(provider.Version, latest)
+	// Apply the pin/floor policy to decide what (if anything) to install.
+	target, doUpdate, err := ResolveUpdateTarget(provider.Name, provider.Version, latest, update)
 	if err != nil {
 		return nil, err
 	}
-	if diff >= 0 {
+	if !doUpdate {
 		// Even if the provider doesn't need updating, we should check for any missing dependencies
 		if providers, err := ListActive(); err == nil {
 			err := installDependencies(provider, providers)
@@ -987,9 +987,10 @@ func TryProviderUpdate(provider *Provider, update UpdateProvidersConfig) (*Provi
 
 	log.Info().
 		Str("installed", provider.Version).
+		Str("target", target).
 		Str("latest", latest).
-		Msg("found a new version for '" + provider.Name + "' provider")
-	provider, err = installVersion(ctx, provider.Name, latest)
+		Msg("installing new version for '" + provider.Name + "' provider")
+	provider, err = installVersion(ctx, provider.Name, target)
 	if err != nil {
 		return nil, err
 	}

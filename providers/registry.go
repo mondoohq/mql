@@ -37,6 +37,23 @@ type ProviderRegistry interface {
 	DownloadProvider(ctx context.Context, name, version, os, arch string) (io.ReadCloser, error)
 }
 
+// VerifiedRegistry is an optional extension of ProviderRegistry that can supply
+// the verification sidecars (checksum manifest and detached signature) for a
+// provider version. When a registry implements it, installVersion verifies
+// downloads before installing them. Registries that do not implement it (e.g.
+// simple test doubles) skip verification.
+type VerifiedRegistry interface {
+	// DownloadChecksums returns the raw SHA256SUMS manifest for a provider
+	// version.
+	DownloadChecksums(ctx context.Context, name, version string) ([]byte, error)
+
+	// DownloadSignature returns the detached minisign signature over the
+	// checksum manifest. ok is false (with a nil error) when no signature has
+	// been published for this version, so callers can distinguish "unsigned"
+	// from "failed to fetch".
+	DownloadSignature(ctx context.Context, name, version string) (data []byte, ok bool, err error)
+}
+
 // MondooProviderRegistry implements ProviderRegistry for Mondoo's provider registry
 type MondooProviderRegistry struct {
 	BaseURL string
@@ -154,4 +171,78 @@ func (r *MondooProviderRegistry) DownloadProvider(ctx context.Context, name, ver
 	// Wrap with idle timeout so slow-but-active downloads succeed while
 	// truly stalled transfers are detected. Callers just read and close.
 	return httpx.NewIdleTimeoutReader(res.Body, httpx.DownloadTimeout()), nil
+}
+
+// checksumFilename builds the name of the SHA256SUMS manifest for a version.
+// The release pipeline names it "<name>_<version>_SHA256SUMS"
+// (provider_bundler.sh).
+func checksumFilename(name, version string) string {
+	return fmt.Sprintf("%s_%s_SHA256SUMS", name, version)
+}
+
+// DownloadChecksums fetches the SHA256SUMS manifest for a provider version.
+func (r *MondooProviderRegistry) DownloadChecksums(ctx context.Context, name, version string) ([]byte, error) {
+	url, err := url.JoinPath(r.BaseURL, name, version, checksumFilename(name, version))
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to construct checksum URL")
+	}
+	data, _, err := r.fetch(ctx, url)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to download checksum manifest for "+name+"-"+version)
+	}
+	if data == nil {
+		return nil, errors.New("checksum manifest not found for " + name + "-" + version)
+	}
+	return data, nil
+}
+
+// DownloadSignature fetches the detached minisign signature over the checksum
+// manifest. A 404 is reported as ok=false with no error, so an as-yet-unsigned
+// release does not fail verification under the 'auto' policy.
+func (r *MondooProviderRegistry) DownloadSignature(ctx context.Context, name, version string) ([]byte, bool, error) {
+	url, err := url.JoinPath(r.BaseURL, name, version, checksumFilename(name, version)+".sig")
+	if err != nil {
+		return nil, false, errors.Wrap(err, "failed to construct signature URL")
+	}
+	data, notFound, err := r.fetch(ctx, url)
+	if err != nil {
+		return nil, false, errors.Wrap(err, "failed to download signature for "+name+"-"+version)
+	}
+	if notFound || data == nil {
+		return nil, false, nil
+	}
+	return data, true, nil
+}
+
+// fetch GETs a small sidecar file. It returns (nil, true, nil) on 404 so
+// callers can treat "not published" distinctly from a transport error.
+func (r *MondooProviderRegistry) fetch(ctx context.Context, url string) (data []byte, notFound bool, err error) {
+	client, err := httpClientWithRetry()
+	if err != nil {
+		return nil, false, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, false, err
+	}
+
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, false, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode == http.StatusNotFound {
+		return nil, true, nil
+	}
+	if res.StatusCode != http.StatusOK {
+		return nil, false, errors.New("received status code " + res.Status + " for " + url)
+	}
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, false, err
+	}
+	return body, false, nil
 }

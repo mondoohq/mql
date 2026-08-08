@@ -80,6 +80,14 @@ type UpdateProvidersConfig struct {
 	Enabled bool
 	// seconds until we try to refresh the providers version again
 	RefreshInterval int
+	// Pin maps a provider name to an exact version to hold at. A pinned
+	// provider is installed/kept at exactly that version and never auto-updated
+	// past it, so a bad "latest" cannot roll a pinned fleet.
+	Pin map[string]string
+	// Floor maps a provider name to a minimum acceptable version. A published
+	// "latest" below the floor is refused (the fleet never moves below a
+	// known-good baseline), without pinning an exact version.
+	Floor map[string]string
 }
 
 type ProviderVersions struct {
