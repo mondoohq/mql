@@ -116,7 +116,11 @@ func parseMinisignSignature(s string) (*minisignSignature, error) {
 		return nil, errors.Newf("invalid minisign signature length: got %d, want %d", len(sigRaw), minisignSigLen)
 	}
 
-	trustedComment := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(lines[2]), "trusted comment:"))
+	commentLine := strings.TrimSpace(lines[2])
+	if !strings.HasPrefix(commentLine, "trusted comment:") {
+		return nil, errors.New("malformed minisign signature: missing trusted comment line")
+	}
+	trustedComment := strings.TrimSpace(strings.TrimPrefix(commentLine, "trusted comment:"))
 
 	globalSig, err := base64.StdEncoding.DecodeString(strings.TrimSpace(lines[3]))
 	if err != nil {

@@ -20,6 +20,7 @@
 package verify
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -135,7 +136,9 @@ func (s *SHA256SUMS) Verify(filename string, r io.Reader) (string, error) {
 
 // VerifyBytes is the in-memory convenience form of Verify.
 func (s *SHA256SUMS) VerifyBytes(filename string, data []byte) (string, error) {
-	return s.Verify(filename, strings.NewReader(string(data)))
+	// bytes.NewReader wraps the existing slice with no copy; using
+	// strings.NewReader(string(data)) would duplicate a large artifact in memory.
+	return s.Verify(filename, bytes.NewReader(data))
 }
 
 // sha256Hex streams r through a SHA256 hasher and returns the lower-case hex

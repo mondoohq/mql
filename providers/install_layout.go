@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
@@ -62,14 +63,15 @@ const (
 // providerKeepVersions is the effective retention count applied when an
 // InstallConf does not specify one. It lets a long-running host (e.g. serve)
 // configure retention globally without threading InstallConf through every
-// call site. Zero means "use defaultKeepVersions".
-var providerKeepVersions = 0
+// call site. Zero means "use defaultKeepVersions". It is atomic so a
+// configure-at-startup goroutine and a concurrent install cannot race.
+var providerKeepVersions atomic.Int32
 
 // SetKeepVersions sets the global provider version retention count used when an
 // install does not specify its own. Values below 1 are ignored.
 func SetKeepVersions(n int) {
 	if n >= 1 {
-		providerKeepVersions = n
+		providerKeepVersions.Store(int32(n))
 	}
 }
 
@@ -184,7 +186,9 @@ func listInstalledVersions(containerDir, name string) []string {
 
 	var versions []string
 	for _, e := range entries {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") || strings.HasPrefix(e.Name(), stagingDirPrefix) {
+		// Dot-prefixed entries (the .current pointer and .staging-* dirs) are
+		// never versions.
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
 		if !config.ProbeFile(filepath.Join(containerDir, e.Name(), confName)) {
@@ -391,7 +395,7 @@ func commitProviderVersion(tmpdir string, conf InstallConf, binName, providerNam
 
 	keep := conf.KeepVersions
 	if keep <= 0 {
-		keep = providerKeepVersions
+		keep = int(providerKeepVersions.Load())
 	}
 	if keep <= 0 {
 		keep = defaultKeepVersions

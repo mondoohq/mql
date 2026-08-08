@@ -70,6 +70,12 @@ const (
 	// quarantined. Three gives systemd's default restart a couple of chances to
 	// be a transient hiccup before we give up on the new binary.
 	maxActivationAttempts = 3
+
+	// maxQuarantinedVersions caps how many bad versions we remember, so the
+	// state file cannot grow without bound over the lifetime of a host. The
+	// most recent entries are kept; older quarantined versions are unlikely to
+	// be offered again as "latest".
+	maxQuarantinedVersions = 20
 )
 
 // updateState is the on-disk guard state, stored next to the staged binary.
@@ -111,7 +117,26 @@ func writeUpdateState(binPath string, st *updateState) error {
 		return err
 	}
 	tmp := updateStatePath(binPath) + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+
+	// Flush the contents before the rename so a crash can't leave the renamed
+	// state file referencing unwritten (zeroed) bytes, matching the atomic
+	// write in writeCurrentPointerAtomic.
+	f, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
 		return err
 	}
 	return os.Rename(tmp, updateStatePath(binPath))
@@ -124,6 +149,18 @@ func (st *updateState) isQuarantined(version string) bool {
 		}
 	}
 	return false
+}
+
+// quarantine records version as bad, keeping the list bounded to the most
+// recent maxQuarantinedVersions entries so the state file cannot grow forever.
+func (st *updateState) quarantine(version string) {
+	if st.isQuarantined(version) {
+		return
+	}
+	st.Quarantined = append(st.Quarantined, version)
+	if n := len(st.Quarantined); n > maxQuarantinedVersions {
+		st.Quarantined = st.Quarantined[n-maxQuarantinedVersions:]
+	}
 }
 
 // isVersionQuarantined reports whether a version has been marked bad and must
@@ -163,7 +200,7 @@ func recordActivationAttempt(binPath, version string) (proceed bool) {
 			Str("version", version).
 			Int("attempts", st.Attempts-1).
 			Msg("self-update: staged version failed to confirm healthy; quarantining and falling back")
-		st.Quarantined = append(st.Quarantined, version)
+		st.quarantine(version)
 		st.StagedVersion = ""
 		st.Activation = ""
 		st.Attempts = 0
@@ -203,7 +240,7 @@ func quarantineVersion(binPath, version string) {
 	if st.isQuarantined(version) {
 		return
 	}
-	st.Quarantined = append(st.Quarantined, version)
+	st.quarantine(version)
 	if st.StagedVersion == version {
 		st.StagedVersion = ""
 		st.Activation = ""
