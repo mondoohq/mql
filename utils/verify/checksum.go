@@ -22,7 +22,6 @@ package verify
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"hash"
 	"io"
 	"strings"
 
@@ -142,7 +141,7 @@ func (s *SHA256SUMS) VerifyBytes(filename string, data []byte) (string, error) {
 // sha256Hex streams r through a SHA256 hasher and returns the lower-case hex
 // digest.
 func sha256Hex(r io.Reader) (string, error) {
-	var h hash.Hash = sha256.New()
+	h := sha256.New()
 	if _, err := io.Copy(h, r); err != nil {
 		return "", err
 	}
