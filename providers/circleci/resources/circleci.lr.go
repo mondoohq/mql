@@ -20,10 +20,14 @@ const (
 	ResourceCircleciUser                       string = "circleci.user"
 	ResourceCircleciOrganization               string = "circleci.organization"
 	ResourceCircleciProject                    string = "circleci.project"
+	ResourceCircleciWebhook                    string = "circleci.webhook"
 	ResourceCircleciProjectEnvironmentVariable string = "circleci.project.environmentVariable"
 	ResourceCircleciCheckoutKey                string = "circleci.checkoutKey"
 	ResourceCircleciContext                    string = "circleci.context"
+	ResourceCircleciContextRestriction         string = "circleci.context.restriction"
 	ResourceCircleciContextEnvironmentVariable string = "circleci.context.environmentVariable"
+	ResourceCircleciRunnerResourceClass        string = "circleci.runner.resourceClass"
+	ResourceCircleciRunnerToken                string = "circleci.runner.token"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -46,6 +50,10 @@ func init() {
 			// to override args, implement: initCircleciProject(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createCircleciProject,
 		},
+		"circleci.webhook": {
+			// to override args, implement: initCircleciWebhook(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCircleciWebhook,
+		},
 		"circleci.project.environmentVariable": {
 			// to override args, implement: initCircleciProjectEnvironmentVariable(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createCircleciProjectEnvironmentVariable,
@@ -58,9 +66,21 @@ func init() {
 			// to override args, implement: initCircleciContext(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createCircleciContext,
 		},
+		"circleci.context.restriction": {
+			// to override args, implement: initCircleciContextRestriction(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCircleciContextRestriction,
+		},
 		"circleci.context.environmentVariable": {
 			// to override args, implement: initCircleciContextEnvironmentVariable(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createCircleciContextEnvironmentVariable,
+		},
+		"circleci.runner.resourceClass": {
+			// to override args, implement: initCircleciRunnerResourceClass(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCircleciRunnerResourceClass,
+		},
+		"circleci.runner.token": {
+			// to override args, implement: initCircleciRunnerToken(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCircleciRunnerToken,
 		},
 	}
 }
@@ -169,6 +189,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"circleci.organization.contexts": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCircleciOrganization).GetContexts()).ToDataRes(types.Array(types.Resource("circleci.context")))
 	},
+	"circleci.organization.runnerResourceClasses": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciOrganization).GetRunnerResourceClasses()).ToDataRes(types.Array(types.Resource("circleci.runner.resourceClass")))
+	},
 	"circleci.project.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCircleciProject).GetId()).ToDataRes(types.String)
 	},
@@ -207,6 +230,36 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"circleci.project.setGithubStatus": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCircleciProject).GetSetGithubStatus()).ToDataRes(types.Bool)
+	},
+	"circleci.project.autoCancelBuilds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciProject).GetAutoCancelBuilds()).ToDataRes(types.Bool)
+	},
+	"circleci.project.prOnlyBranchOverrides": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciProject).GetPrOnlyBranchOverrides()).ToDataRes(types.Array(types.String))
+	},
+	"circleci.project.webhooks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciProject).GetWebhooks()).ToDataRes(types.Array(types.Resource("circleci.webhook")))
+	},
+	"circleci.webhook.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciWebhook).GetId()).ToDataRes(types.String)
+	},
+	"circleci.webhook.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciWebhook).GetName()).ToDataRes(types.String)
+	},
+	"circleci.webhook.project": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciWebhook).GetProject()).ToDataRes(types.Resource("circleci.project"))
+	},
+	"circleci.webhook.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciWebhook).GetUrl()).ToDataRes(types.String)
+	},
+	"circleci.webhook.verifyTls": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciWebhook).GetVerifyTls()).ToDataRes(types.Bool)
+	},
+	"circleci.webhook.signingSecretSet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciWebhook).GetSigningSecretSet()).ToDataRes(types.Bool)
+	},
+	"circleci.webhook.events": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciWebhook).GetEvents()).ToDataRes(types.Array(types.String))
 	},
 	"circleci.project.environmentVariable.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCircleciProjectEnvironmentVariable).GetName()).ToDataRes(types.String)
@@ -250,6 +303,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"circleci.context.environmentVariables": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCircleciContext).GetEnvironmentVariables()).ToDataRes(types.Array(types.Resource("circleci.context.environmentVariable")))
 	},
+	"circleci.context.restrictions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciContext).GetRestrictions()).ToDataRes(types.Array(types.Resource("circleci.context.restriction")))
+	},
+	"circleci.context.restriction.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciContextRestriction).GetId()).ToDataRes(types.String)
+	},
+	"circleci.context.restriction.context": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciContextRestriction).GetContext()).ToDataRes(types.Resource("circleci.context"))
+	},
+	"circleci.context.restriction.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciContextRestriction).GetName()).ToDataRes(types.String)
+	},
+	"circleci.context.restriction.restrictionType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciContextRestriction).GetRestrictionType()).ToDataRes(types.String)
+	},
+	"circleci.context.restriction.restrictionValue": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciContextRestriction).GetRestrictionValue()).ToDataRes(types.String)
+	},
 	"circleci.context.environmentVariable.variable": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCircleciContextEnvironmentVariable).GetVariable()).ToDataRes(types.String)
 	},
@@ -258,6 +329,33 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"circleci.context.environmentVariable.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCircleciContextEnvironmentVariable).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"circleci.runner.resourceClass.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciRunnerResourceClass).GetId()).ToDataRes(types.String)
+	},
+	"circleci.runner.resourceClass.resourceClass": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciRunnerResourceClass).GetResourceClass()).ToDataRes(types.String)
+	},
+	"circleci.runner.resourceClass.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciRunnerResourceClass).GetDescription()).ToDataRes(types.String)
+	},
+	"circleci.runner.resourceClass.organization": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciRunnerResourceClass).GetOrganization()).ToDataRes(types.Resource("circleci.organization"))
+	},
+	"circleci.runner.resourceClass.tokens": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciRunnerResourceClass).GetTokens()).ToDataRes(types.Array(types.Resource("circleci.runner.token")))
+	},
+	"circleci.runner.token.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciRunnerToken).GetId()).ToDataRes(types.String)
+	},
+	"circleci.runner.token.resourceClass": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciRunnerToken).GetResourceClass()).ToDataRes(types.String)
+	},
+	"circleci.runner.token.nickname": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciRunnerToken).GetNickname()).ToDataRes(types.String)
+	},
+	"circleci.runner.token.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciRunnerToken).GetCreatedAt()).ToDataRes(types.Time)
 	},
 }
 
@@ -331,6 +429,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlCircleciOrganization).Contexts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"circleci.organization.runnerResourceClasses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciOrganization).RunnerResourceClasses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"circleci.project.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCircleciProject).__id, ok = v.Value.(string)
 		return
@@ -385,6 +487,50 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"circleci.project.setGithubStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCircleciProject).SetGithubStatus, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"circleci.project.autoCancelBuilds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciProject).AutoCancelBuilds, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"circleci.project.prOnlyBranchOverrides": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciProject).PrOnlyBranchOverrides, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"circleci.project.webhooks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciProject).Webhooks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"circleci.webhook.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciWebhook).__id, ok = v.Value.(string)
+		return
+	},
+	"circleci.webhook.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciWebhook).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"circleci.webhook.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciWebhook).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"circleci.webhook.project": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciWebhook).Project, ok = plugin.RawToTValue[*mqlCircleciProject](v.Value, v.Error)
+		return
+	},
+	"circleci.webhook.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciWebhook).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"circleci.webhook.verifyTls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciWebhook).VerifyTls, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"circleci.webhook.signingSecretSet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciWebhook).SigningSecretSet, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"circleci.webhook.events": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciWebhook).Events, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"circleci.project.environmentVariable.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -455,6 +601,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlCircleciContext).EnvironmentVariables, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"circleci.context.restrictions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciContext).Restrictions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"circleci.context.restriction.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciContextRestriction).__id, ok = v.Value.(string)
+		return
+	},
+	"circleci.context.restriction.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciContextRestriction).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"circleci.context.restriction.context": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciContextRestriction).Context, ok = plugin.RawToTValue[*mqlCircleciContext](v.Value, v.Error)
+		return
+	},
+	"circleci.context.restriction.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciContextRestriction).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"circleci.context.restriction.restrictionType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciContextRestriction).RestrictionType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"circleci.context.restriction.restrictionValue": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciContextRestriction).RestrictionValue, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"circleci.context.environmentVariable.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCircleciContextEnvironmentVariable).__id, ok = v.Value.(string)
 		return
@@ -469,6 +643,50 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"circleci.context.environmentVariable.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCircleciContextEnvironmentVariable).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"circleci.runner.resourceClass.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciRunnerResourceClass).__id, ok = v.Value.(string)
+		return
+	},
+	"circleci.runner.resourceClass.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciRunnerResourceClass).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"circleci.runner.resourceClass.resourceClass": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciRunnerResourceClass).ResourceClass, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"circleci.runner.resourceClass.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciRunnerResourceClass).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"circleci.runner.resourceClass.organization": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciRunnerResourceClass).Organization, ok = plugin.RawToTValue[*mqlCircleciOrganization](v.Value, v.Error)
+		return
+	},
+	"circleci.runner.resourceClass.tokens": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciRunnerResourceClass).Tokens, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"circleci.runner.token.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciRunnerToken).__id, ok = v.Value.(string)
+		return
+	},
+	"circleci.runner.token.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciRunnerToken).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"circleci.runner.token.resourceClass": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciRunnerToken).ResourceClass, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"circleci.runner.token.nickname": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciRunnerToken).Nickname, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"circleci.runner.token.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciRunnerToken).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 }
@@ -666,11 +884,12 @@ type mqlCircleciOrganization struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlCircleciOrganizationInternal it will be used here
-	Id       plugin.TValue[string]
-	Name     plugin.TValue[string]
-	VcsType  plugin.TValue[string]
-	Projects plugin.TValue[[]any]
-	Contexts plugin.TValue[[]any]
+	Id                    plugin.TValue[string]
+	Name                  plugin.TValue[string]
+	VcsType               plugin.TValue[string]
+	Projects              plugin.TValue[[]any]
+	Contexts              plugin.TValue[[]any]
+	RunnerResourceClasses plugin.TValue[[]any]
 }
 
 // createCircleciOrganization creates a new instance of this resource
@@ -749,6 +968,22 @@ func (c *mqlCircleciOrganization) GetContexts() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlCircleciOrganization) GetRunnerResourceClasses() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RunnerResourceClasses, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("circleci.organization", c.__id, "runnerResourceClasses")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.runnerResourceClasses()
+	})
+}
+
 // mqlCircleciProject for the circleci.project resource
 type mqlCircleciProject struct {
 	MqlRuntime *plugin.Runtime
@@ -767,6 +1002,9 @@ type mqlCircleciProject struct {
 	WriteSettingsRequiresAdmin plugin.TValue[bool]
 	DisableSsh                 plugin.TValue[bool]
 	SetGithubStatus            plugin.TValue[bool]
+	AutoCancelBuilds           plugin.TValue[bool]
+	PrOnlyBranchOverrides      plugin.TValue[[]any]
+	Webhooks                   plugin.TValue[[]any]
 }
 
 // createCircleciProject creates a new instance of this resource
@@ -887,6 +1125,116 @@ func (c *mqlCircleciProject) GetDisableSsh() *plugin.TValue[bool] {
 
 func (c *mqlCircleciProject) GetSetGithubStatus() *plugin.TValue[bool] {
 	return &c.SetGithubStatus
+}
+
+func (c *mqlCircleciProject) GetAutoCancelBuilds() *plugin.TValue[bool] {
+	return &c.AutoCancelBuilds
+}
+
+func (c *mqlCircleciProject) GetPrOnlyBranchOverrides() *plugin.TValue[[]any] {
+	return &c.PrOnlyBranchOverrides
+}
+
+func (c *mqlCircleciProject) GetWebhooks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Webhooks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("circleci.project", c.__id, "webhooks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.webhooks()
+	})
+}
+
+// mqlCircleciWebhook for the circleci.webhook resource
+type mqlCircleciWebhook struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlCircleciWebhookInternal
+	Id               plugin.TValue[string]
+	Name             plugin.TValue[string]
+	Project          plugin.TValue[*mqlCircleciProject]
+	Url              plugin.TValue[string]
+	VerifyTls        plugin.TValue[bool]
+	SigningSecretSet plugin.TValue[bool]
+	Events           plugin.TValue[[]any]
+}
+
+// createCircleciWebhook creates a new instance of this resource
+func createCircleciWebhook(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCircleciWebhook{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("circleci.webhook", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCircleciWebhook) MqlName() string {
+	return "circleci.webhook"
+}
+
+func (c *mqlCircleciWebhook) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCircleciWebhook) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCircleciWebhook) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlCircleciWebhook) GetProject() *plugin.TValue[*mqlCircleciProject] {
+	return plugin.GetOrCompute[*mqlCircleciProject](&c.Project, func() (*mqlCircleciProject, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("circleci.webhook", c.__id, "project")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlCircleciProject), nil
+			}
+		}
+
+		return c.project()
+	})
+}
+
+func (c *mqlCircleciWebhook) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlCircleciWebhook) GetVerifyTls() *plugin.TValue[bool] {
+	return &c.VerifyTls
+}
+
+func (c *mqlCircleciWebhook) GetSigningSecretSet() *plugin.TValue[bool] {
+	return &c.SigningSecretSet
+}
+
+func (c *mqlCircleciWebhook) GetEvents() *plugin.TValue[[]any] {
+	return &c.Events
 }
 
 // mqlCircleciProjectEnvironmentVariable for the circleci.project.environmentVariable resource
@@ -1046,6 +1394,7 @@ type mqlCircleciContext struct {
 	Organization         plugin.TValue[*mqlCircleciOrganization]
 	CreatedAt            plugin.TValue[*time.Time]
 	EnvironmentVariables plugin.TValue[[]any]
+	Restrictions         plugin.TValue[[]any]
 }
 
 // createCircleciContext creates a new instance of this resource
@@ -1124,6 +1473,98 @@ func (c *mqlCircleciContext) GetEnvironmentVariables() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlCircleciContext) GetRestrictions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Restrictions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("circleci.context", c.__id, "restrictions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.restrictions()
+	})
+}
+
+// mqlCircleciContextRestriction for the circleci.context.restriction resource
+type mqlCircleciContextRestriction struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlCircleciContextRestrictionInternal
+	Id               plugin.TValue[string]
+	Context          plugin.TValue[*mqlCircleciContext]
+	Name             plugin.TValue[string]
+	RestrictionType  plugin.TValue[string]
+	RestrictionValue plugin.TValue[string]
+}
+
+// createCircleciContextRestriction creates a new instance of this resource
+func createCircleciContextRestriction(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCircleciContextRestriction{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("circleci.context.restriction", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCircleciContextRestriction) MqlName() string {
+	return "circleci.context.restriction"
+}
+
+func (c *mqlCircleciContextRestriction) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCircleciContextRestriction) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCircleciContextRestriction) GetContext() *plugin.TValue[*mqlCircleciContext] {
+	return plugin.GetOrCompute[*mqlCircleciContext](&c.Context, func() (*mqlCircleciContext, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("circleci.context.restriction", c.__id, "context")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlCircleciContext), nil
+			}
+		}
+
+		return c.context()
+	})
+}
+
+func (c *mqlCircleciContextRestriction) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlCircleciContextRestriction) GetRestrictionType() *plugin.TValue[string] {
+	return &c.RestrictionType
+}
+
+func (c *mqlCircleciContextRestriction) GetRestrictionValue() *plugin.TValue[string] {
+	return &c.RestrictionValue
+}
+
 // mqlCircleciContextEnvironmentVariable for the circleci.context.environmentVariable resource
 type mqlCircleciContextEnvironmentVariable struct {
 	MqlRuntime *plugin.Runtime
@@ -1187,5 +1628,152 @@ func (c *mqlCircleciContextEnvironmentVariable) GetContext() *plugin.TValue[*mql
 }
 
 func (c *mqlCircleciContextEnvironmentVariable) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+// mqlCircleciRunnerResourceClass for the circleci.runner.resourceClass resource
+type mqlCircleciRunnerResourceClass struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlCircleciRunnerResourceClassInternal
+	Id            plugin.TValue[string]
+	ResourceClass plugin.TValue[string]
+	Description   plugin.TValue[string]
+	Organization  plugin.TValue[*mqlCircleciOrganization]
+	Tokens        plugin.TValue[[]any]
+}
+
+// createCircleciRunnerResourceClass creates a new instance of this resource
+func createCircleciRunnerResourceClass(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCircleciRunnerResourceClass{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("circleci.runner.resourceClass", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCircleciRunnerResourceClass) MqlName() string {
+	return "circleci.runner.resourceClass"
+}
+
+func (c *mqlCircleciRunnerResourceClass) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCircleciRunnerResourceClass) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCircleciRunnerResourceClass) GetResourceClass() *plugin.TValue[string] {
+	return &c.ResourceClass
+}
+
+func (c *mqlCircleciRunnerResourceClass) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlCircleciRunnerResourceClass) GetOrganization() *plugin.TValue[*mqlCircleciOrganization] {
+	return plugin.GetOrCompute[*mqlCircleciOrganization](&c.Organization, func() (*mqlCircleciOrganization, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("circleci.runner.resourceClass", c.__id, "organization")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlCircleciOrganization), nil
+			}
+		}
+
+		return c.organization()
+	})
+}
+
+func (c *mqlCircleciRunnerResourceClass) GetTokens() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tokens, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("circleci.runner.resourceClass", c.__id, "tokens")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.tokens()
+	})
+}
+
+// mqlCircleciRunnerToken for the circleci.runner.token resource
+type mqlCircleciRunnerToken struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCircleciRunnerTokenInternal it will be used here
+	Id            plugin.TValue[string]
+	ResourceClass plugin.TValue[string]
+	Nickname      plugin.TValue[string]
+	CreatedAt     plugin.TValue[*time.Time]
+}
+
+// createCircleciRunnerToken creates a new instance of this resource
+func createCircleciRunnerToken(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCircleciRunnerToken{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("circleci.runner.token", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCircleciRunnerToken) MqlName() string {
+	return "circleci.runner.token"
+}
+
+func (c *mqlCircleciRunnerToken) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCircleciRunnerToken) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCircleciRunnerToken) GetResourceClass() *plugin.TValue[string] {
+	return &c.ResourceClass
+}
+
+func (c *mqlCircleciRunnerToken) GetNickname() *plugin.TValue[string] {
+	return &c.Nickname
+}
+
+func (c *mqlCircleciRunnerToken) GetCreatedAt() *plugin.TValue[*time.Time] {
 	return &c.CreatedAt
 }

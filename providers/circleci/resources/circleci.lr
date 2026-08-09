@@ -53,6 +53,8 @@ circleci.organization @defaults("name") {
   projects() []circleci.project
   // Contexts owned by the organization
   contexts() []circleci.context
+  // Self-hosted runner resource classes registered under the organization's namespace
+  runnerResourceClasses() []circleci.runner.resourceClass
 }
 
 // CircleCI project
@@ -90,6 +92,43 @@ circleci.project @defaults("name") {
   disableSsh bool
   // Whether the project's status is reported back to the VCS provider (commit statuses / checks)
   setGithubStatus bool
+  // Whether CircleCI automatically cancels redundant, in-progress builds on a branch when a newer build starts
+  autoCancelBuilds bool
+  // Branch overrides to the build-pull-requests-only setting
+  //
+  // Branch names or regular expressions that build on every commit even
+  // while buildPrsOnly is in effect, letting specific branches bypass the
+  // pull-request-only restriction. Empty when no overrides are configured.
+  prOnlyBranchOverrides []string
+  // Outbound webhooks configured on the project
+  webhooks() []circleci.webhook
+}
+
+// CircleCI outbound webhook
+//
+// An outbound webhook configured on a project, identified by its `id`.
+// CircleCI POSTs pipeline events to the webhook `url`. The `verifyTls`
+// field reports whether CircleCI validates the receiver's TLS certificate
+// before delivering, and `signingSecretSet` reports whether a signing
+// secret is configured to authenticate deliveries (the secret value
+// itself is never returned by the API). The `events` field lists which
+// pipeline events trigger delivery, for example "workflow-completed" or
+// "job-completed".
+circleci.webhook @defaults("name url") {
+  // Webhook ID (UUID)
+  id string
+  // Webhook name
+  name string
+  // Project this webhook is configured on
+  project() circleci.project
+  // Destination URL CircleCI POSTs events to
+  url string
+  // Whether CircleCI validates the receiver's TLS certificate before delivering
+  verifyTls bool
+  // Whether a signing secret is configured to authenticate deliveries (the secret value is never returned)
+  signingSecretSet bool
+  // Pipeline events that trigger delivery (for example "workflow-completed", "job-completed")
+  events []string
 }
 
 // CircleCI project environment variable
@@ -159,6 +198,31 @@ circleci.context @defaults("name") {
   createdAt time
   // Environment variables configured in the context (names only, no values)
   environmentVariables() []circleci.context.environmentVariable
+  // Project and group restrictions that scope which projects may use the context
+  restrictions() []circleci.context.restriction
+}
+
+// CircleCI context restriction
+//
+// A single restriction that scopes which projects or groups may use a
+// context, identified by its `id`. A context with no restrictions is
+// usable by every project in the organization, so a context holding
+// long-lived cloud credentials whose `restrictions` list is empty is
+// reachable by any pipeline in the org, which is the central audit this
+// resource enables. The `restrictionType` field is the discriminator (for
+// example "project") and `restrictionValue` holds the identifier the
+// restriction matches (for example a project ID).
+private circleci.context.restriction @defaults("restrictionType restrictionValue") {
+  // Restriction ID (UUID)
+  id string
+  // Context this restriction applies to
+  context() circleci.context
+  // Restriction name as returned by the API
+  name string
+  // Restriction type discriminator (for example "project")
+  restrictionType string
+  // Identifier the restriction matches (for example a project ID)
+  restrictionValue string
 }
 
 // CircleCI context environment variable
@@ -176,6 +240,46 @@ private circleci.context.environmentVariable @defaults("variable") {
   variable string
   // Context this environment variable is configured in
   context() circleci.context
+  // Creation time
+  createdAt time
+}
+
+// CircleCI self-hosted runner resource class
+//
+// A self-hosted runner resource class registered under an organization's
+// namespace, identified by its `id`. A resource class names a pool of
+// self-hosted runner agents (as "<namespace>/<class>") that jobs target
+// with a `resource_class` key. The `tokens` field lists the resource-class
+// tokens runner agents use to register, so an audit can flag stale or
+// excess tokens on a class.
+circleci.runner.resourceClass @defaults("resourceClass description") {
+  // Resource class ID (UUID)
+  id string
+  // Fully qualified resource class name ("<namespace>/<class>")
+  resourceClass string
+  // Description
+  description string
+  // Organization whose namespace the resource class is registered under
+  organization() circleci.organization
+  // Tokens that runner agents use to register with this resource class
+  tokens() []circleci.runner.token
+}
+
+// CircleCI self-hosted runner token
+//
+// A resource-class token a self-hosted runner agent uses to register with
+// CircleCI, identified by its `id`. The secret token value is shown only
+// once at creation and is never returned by the API, so this resource
+// exposes the token's metadata (nickname, creation time) for inventory and
+// rotation audits, not the secret itself. The `resourceClass` field is the
+// fully qualified name of the class the token belongs to.
+private circleci.runner.token @defaults("nickname createdAt") {
+  // Token ID (UUID)
+  id string
+  // Fully qualified resource class name the token belongs to
+  resourceClass string
+  // Human-readable token nickname
+  nickname string
   // Creation time
   createdAt time
 }

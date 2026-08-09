@@ -18,23 +18,31 @@ import (
 // DefaultBaseURL is the CircleCI API v2 base URL.
 const DefaultBaseURL = "https://circleci.com/api/v2"
 
+// DefaultRunnerBaseURL is the CircleCI self-hosted runner API base URL. The
+// runner API is served from a separate host (runner.circleci.com) and is
+// versioned independently of the main API v2. It uses the same Circle-Token
+// header for authentication.
+const DefaultRunnerBaseURL = "https://runner.circleci.com/api/v3"
+
 // Client is a minimal, hand-written net/http client for the CircleCI API v2
 // read endpoints this provider's schema needs. ADR-035's production intent
 // is a client generated from CircleCI's published OpenAPI 3.0 spec; see
 // providers/circleci/README.md for that note. This client covers only the
 // GET endpoints backing circleci.lr, all under the Circle-Token header.
 type Client struct {
-	httpClient *http.Client
-	baseURL    string
-	token      string
+	httpClient    *http.Client
+	baseURL       string
+	runnerBaseURL string
+	token         string
 }
 
 // NewClient creates a CircleCI API v2 client authenticated with token.
 func NewClient(token string) *Client {
 	return &Client{
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		baseURL:    DefaultBaseURL,
-		token:      token,
+		httpClient:    &http.Client{Timeout: 30 * time.Second},
+		baseURL:       DefaultBaseURL,
+		runnerBaseURL: DefaultRunnerBaseURL,
+		token:         token,
 	}
 }
 
@@ -60,7 +68,11 @@ func IsAccessDenied(err error) bool {
 }
 
 func (c *Client) get(ctx context.Context, path string, query url.Values, out any) error {
-	reqURL := c.baseURL + path
+	return c.getFrom(ctx, c.baseURL, path, query, out)
+}
+
+func (c *Client) getFrom(ctx context.Context, baseURL, path string, query url.Values, out any) error {
+	reqURL := baseURL + path
 	if len(query) > 0 {
 		reqURL += "?" + query.Encode()
 	}
@@ -140,12 +152,14 @@ type VCSInfo struct {
 // AdvancedSettings are the project settings CircleCI returns inline on the
 // project detail response.
 type AdvancedSettings struct {
-	BuildForkPrs               bool `json:"build_fork_prs"`
-	ForksReceiveSecretEnvVars  bool `json:"forks_receive_secret_env_vars"`
-	BuildPrsOnly               bool `json:"build_prs_only"`
-	WriteSettingsRequiresAdmin bool `json:"write_settings_requires_admin"`
-	DisableSsh                 bool `json:"disable_ssh"`
-	SetGithubStatus            bool `json:"set_github_status"`
+	BuildForkPrs               bool     `json:"build_fork_prs"`
+	ForksReceiveSecretEnvVars  bool     `json:"forks_receive_secret_env_vars"`
+	BuildPrsOnly               bool     `json:"build_prs_only"`
+	WriteSettingsRequiresAdmin bool     `json:"write_settings_requires_admin"`
+	DisableSsh                 bool     `json:"disable_ssh"`
+	SetGithubStatus            bool     `json:"set_github_status"`
+	AutocancelBuilds           bool     `json:"autocancel_builds"`
+	PrOnlyBranchOverrides      []string `json:"pr_only_branch_overrides"`
 }
 
 // Project is a single CircleCI project, GET /project/{project-slug}.
@@ -319,6 +333,134 @@ func (c *Client) ListCheckoutKeys(ctx context.Context, projectSlug, pageToken st
 	}
 	var out CheckoutKeyListResponse
 	if err := c.get(ctx, "/project/"+projectSlug+"/checkout-key", q, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ContextRestriction is a single restriction scoping which projects or
+// groups may use a context, GET /context/{context-id}/restrictions.
+type ContextRestriction struct {
+	ID               string `json:"id"`
+	ContextID        string `json:"context_id"`
+	Name             string `json:"name"`
+	RestrictionType  string `json:"restriction_type"`
+	RestrictionValue string `json:"restriction_value"`
+}
+
+// ContextRestrictionListResponse is the paginated response from
+// GET /context/{context-id}/restrictions.
+type ContextRestrictionListResponse struct {
+	Items         []ContextRestriction `json:"items"`
+	NextPageToken string               `json:"next_page_token"`
+}
+
+// ListContextRestrictions returns one page of restrictions configured on
+// the given context. Pass an empty pageToken for the first page. A context
+// with no restrictions is usable by every project in the organization.
+func (c *Client) ListContextRestrictions(ctx context.Context, contextId, pageToken string) (*ContextRestrictionListResponse, error) {
+	q := url.Values{}
+	if pageToken != "" {
+		q.Set("page-token", pageToken)
+	}
+	var out ContextRestrictionListResponse
+	if err := c.get(ctx, "/context/"+contextId+"/restrictions", q, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// WebhookScope is the scope a webhook is attached to (e.g. a project).
+type WebhookScope struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+}
+
+// Webhook is a single outbound webhook, GET /webhook. CircleCI never
+// returns the configured signing secret; SigningSecret is empty when no
+// secret is set and a masked placeholder otherwise.
+type Webhook struct {
+	ID            string       `json:"id"`
+	Name          string       `json:"name"`
+	URL           string       `json:"url"`
+	VerifyTLS     bool         `json:"verify-tls"`
+	SigningSecret string       `json:"signing-secret"`
+	Events        []string     `json:"events"`
+	Scope         WebhookScope `json:"scope"`
+}
+
+// WebhookListResponse is the paginated response from GET /webhook.
+type WebhookListResponse struct {
+	Items         []Webhook `json:"items"`
+	NextPageToken string    `json:"next_page_token"`
+}
+
+// ListWebhooks returns one page of outbound webhooks configured on the
+// scope identified by scopeId (a project's UUID) with scopeType "project".
+// Pass an empty pageToken for the first page.
+func (c *Client) ListWebhooks(ctx context.Context, scopeId, scopeType, pageToken string) (*WebhookListResponse, error) {
+	q := url.Values{}
+	q.Set("scope-id", scopeId)
+	q.Set("scope-type", scopeType)
+	if pageToken != "" {
+		q.Set("page-token", pageToken)
+	}
+	var out WebhookListResponse
+	if err := c.get(ctx, "/webhook", q, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// RunnerResourceClass is a single self-hosted runner resource class,
+// GET /runner/resource on the runner API.
+type RunnerResourceClass struct {
+	ID            string `json:"id"`
+	ResourceClass string `json:"resource_class"`
+	Description   string `json:"description"`
+}
+
+// RunnerResourceClassListResponse wraps the runner resource-class list. The
+// runner API returns the full set in one response (no pagination token).
+type RunnerResourceClassListResponse struct {
+	Items []RunnerResourceClass `json:"items"`
+}
+
+// ListRunnerResourceClasses returns the self-hosted runner resource classes
+// registered under the given namespace (an organization's name).
+func (c *Client) ListRunnerResourceClasses(ctx context.Context, namespace string) (*RunnerResourceClassListResponse, error) {
+	q := url.Values{}
+	q.Set("namespace", namespace)
+	var out RunnerResourceClassListResponse
+	if err := c.getFrom(ctx, c.runnerBaseURL, "/runner/resource", q, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// RunnerToken is a single resource-class token, GET /runner/token on the
+// runner API. The secret token value is only shown once at creation and is
+// never returned by this endpoint.
+type RunnerToken struct {
+	ID            string `json:"id"`
+	ResourceClass string `json:"resource_class"`
+	Nickname      string `json:"nickname"`
+	CreatedAt     string `json:"created_at"`
+}
+
+// RunnerTokenListResponse wraps the runner token list. The runner API
+// returns the full set in one response (no pagination token).
+type RunnerTokenListResponse struct {
+	Items []RunnerToken `json:"items"`
+}
+
+// ListRunnerTokens returns the resource-class tokens for the given fully
+// qualified resource class name ("<namespace>/<class>").
+func (c *Client) ListRunnerTokens(ctx context.Context, resourceClass string) (*RunnerTokenListResponse, error) {
+	q := url.Values{}
+	q.Set("resource-class", resourceClass)
+	var out RunnerTokenListResponse
+	if err := c.getFrom(ctx, c.runnerBaseURL, "/runner/token", q, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

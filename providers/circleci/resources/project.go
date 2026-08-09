@@ -8,7 +8,9 @@ import (
 
 	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/v13/providers/circleci/connection"
+	"go.mondoo.com/mql/v13/types"
 )
 
 // mqlCircleciProjectInternal caches values from the project's creation
@@ -39,6 +41,8 @@ func newMqlCircleciProject(runtime *plugin.Runtime, p *connection.Project) (plug
 		"writeSettingsRequiresAdmin": llx.BoolData(p.AdvancedSettings.WriteSettingsRequiresAdmin),
 		"disableSsh":                 llx.BoolData(p.AdvancedSettings.DisableSsh),
 		"setGithubStatus":            llx.BoolData(p.AdvancedSettings.SetGithubStatus),
+		"autoCancelBuilds":           llx.BoolData(p.AdvancedSettings.AutocancelBuilds),
+		"prOnlyBranchOverrides":      llx.ArrayData(convert.SliceAnyToInterface(p.AdvancedSettings.PrOnlyBranchOverrides), types.String),
 	})
 	if err != nil {
 		return nil, err
@@ -113,6 +117,59 @@ func (v *mqlCircleciProjectEnvironmentVariable) project() (*mqlCircleciProject, 
 		return nil, nil
 	}
 	return v.cacheProject, nil
+}
+
+// mqlCircleciWebhookInternal caches the project this webhook belongs to, so
+// the project() typed reference resolves without an extra API call.
+type mqlCircleciWebhookInternal struct {
+	cacheProject *mqlCircleciProject
+}
+
+// project resolves the project this webhook is configured on.
+func (w *mqlCircleciWebhook) project() (*mqlCircleciProject, error) {
+	if w.cacheProject == nil {
+		w.Project.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return w.cacheProject, nil
+}
+
+// webhooks lists the outbound webhooks configured on this project. CircleCI
+// never returns a webhook's signing secret; signingSecretSet reports only
+// whether one is configured.
+func (p *mqlCircleciProject) webhooks() ([]any, error) {
+	conn := p.MqlRuntime.Connection.(*connection.CircleciConnection)
+	client := conn.Client()
+
+	var all []any
+	pageToken := ""
+	for {
+		resp, err := client.ListWebhooks(context.Background(), p.Id.Data, "project", pageToken)
+		if err != nil {
+			return nil, err
+		}
+		for _, w := range resp.Items {
+			res, err := CreateResource(p.MqlRuntime, "circleci.webhook", map[string]*llx.RawData{
+				"__id":             llx.StringData(w.ID),
+				"id":               llx.StringData(w.ID),
+				"name":             llx.StringData(w.Name),
+				"url":              llx.StringData(w.URL),
+				"verifyTls":        llx.BoolData(w.VerifyTLS),
+				"signingSecretSet": llx.BoolData(w.SigningSecret != ""),
+				"events":           llx.ArrayData(convert.SliceAnyToInterface(w.Events), types.String),
+			})
+			if err != nil {
+				return nil, err
+			}
+			res.(*mqlCircleciWebhook).cacheProject = p
+			all = append(all, res)
+		}
+		if resp.NextPageToken == "" {
+			break
+		}
+		pageToken = resp.NextPageToken
+	}
+	return all, nil
 }
 
 // mqlCircleciCheckoutKeyInternal caches the project this checkout key belongs
