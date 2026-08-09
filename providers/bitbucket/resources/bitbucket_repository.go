@@ -24,6 +24,13 @@ type mqlBitbucketRepositoryInternal struct {
 
 // newMqlBitbucketRepository maps a single API repository to its MQL resource.
 func newMqlBitbucketRepository(runtime *plugin.Runtime, r *connection.Repository) (plugin.Resource, error) {
+	// Every downstream method (branchRestrictions, deployKeys, project(),
+	// workspace()) addresses the API by workspace slug. Without a workspace we
+	// would silently pass "" and get 404s or wrong data, so fail loudly here.
+	if r.Workspace == nil {
+		return nil, fmt.Errorf("bitbucket.repository %q has no workspace", r.FullName)
+	}
+
 	var mainBranch string
 	if r.MainBranch != nil {
 		mainBranch = r.MainBranch.Name
@@ -51,9 +58,7 @@ func newMqlBitbucketRepository(runtime *plugin.Runtime, r *connection.Repository
 	}
 
 	mqlRepo := res.(*mqlBitbucketRepository)
-	if r.Workspace != nil {
-		mqlRepo.cacheWorkspaceSlug = r.Workspace.Slug
-	}
+	mqlRepo.cacheWorkspaceSlug = r.Workspace.Slug
 	mqlRepo.cacheRepoSlug = r.Slug
 	if r.Project != nil {
 		mqlRepo.cacheProjectKey = r.Project.Key
@@ -73,7 +78,7 @@ func initBitbucketRepository(runtime *plugin.Runtime, args map[string]*llx.RawDa
 
 	fullNameArg, ok := args["fullName"]
 	if !ok {
-		return args, nil, nil
+		return nil, nil, fmt.Errorf("bitbucket.repository requires a fullName argument")
 	}
 	fullName, ok := fullNameArg.Value.(string)
 	if !ok || fullName == "" {
