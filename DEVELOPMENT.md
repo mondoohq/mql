@@ -272,6 +272,7 @@ use (
    ./mql/providers/netlify
    ./mql/providers/nextdns
    ./mql/providers/nmap
+   ./mql/providers/notion
    ./mql/providers/nutanix
    ./mql/providers/oci
    ./mql/providers/okta

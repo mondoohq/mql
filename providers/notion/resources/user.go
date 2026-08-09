@@ -1,0 +1,135 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+package resources
+
+import (
+	"context"
+
+	"github.com/cockroachdb/errors"
+	"github.com/jomei/notionapi"
+	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/v13/providers/notion/connection"
+)
+
+// id provides a defense-in-depth cache key fallback: mqlNotionUserFromAPI
+// already sets "__id" explicitly on every CreateResource call, but should a
+// future call site create a notion.user without it, this keeps distinct
+// users from collapsing onto a single cache entry instead of silently
+// colliding.
+func (r *mqlNotionUser) id() (string, error) {
+	return "notion.user/" + r.Id.Data, nil
+}
+
+// users lists the workspace members and bots visible to this integration.
+func (r *mqlNotion) users() ([]any, error) {
+	conn := r.conn()
+	list, err := listNotionUsers(conn)
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]any, 0, len(list))
+	for _, u := range list {
+		mqlUser, err := mqlNotionUserFromAPI(r.MqlRuntime, u)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlUser)
+	}
+	return res, nil
+}
+
+// listNotionUsers paginates GET /v1/users to completion.
+func listNotionUsers(conn *connection.NotionConnection) ([]*notionapi.User, error) {
+	client := conn.Client()
+
+	var all []*notionapi.User
+	cursor := notionapi.Cursor("")
+	for {
+		resp, err := client.User.List(context.Background(), &notionapi.Pagination{
+			StartCursor: cursor,
+			PageSize:    100,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for i := range resp.Results {
+			u := resp.Results[i]
+			all = append(all, &u)
+		}
+		if !resp.HasMore || resp.NextCursor == "" {
+			break
+		}
+		cursor = resp.NextCursor
+	}
+	return all, nil
+}
+
+// mqlNotionUserFromAPI maps a single *notionapi.User to its MQL resource.
+// Used both by the users() lister and initNotionUser's lazy lookup.
+func mqlNotionUserFromAPI(runtime *plugin.Runtime, u *notionapi.User) (*mqlNotionUser, error) {
+	var email string
+	if u.Person != nil {
+		email = u.Person.Email
+	}
+
+	var botOwnerType string
+	if u.Bot != nil {
+		botOwnerType = u.Bot.Owner.Type
+	}
+
+	res, err := CreateResource(runtime, "notion.user", map[string]*llx.RawData{
+		"__id":         llx.StringData(string(u.ID)),
+		"id":           llx.StringData(string(u.ID)),
+		"name":         llx.StringData(u.Name),
+		"avatarUrl":    llx.StringData(u.AvatarURL),
+		"type":         llx.StringData(string(u.Type)),
+		"email":        llx.StringData(email),
+		"botOwnerType": llx.StringData(botOwnerType),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlNotionUser), nil
+}
+
+// initNotionUser resolves a workspace member or bot by id on demand.
+func initNotionUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	// fast path: the caller already provided a fully populated resource
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+
+	idRaw, ok := args["id"]
+	if !ok {
+		return nil, nil, errors.New("notion.user requires an id")
+	}
+	id, ok := idRaw.Value.(string)
+	if !ok || id == "" {
+		return nil, nil, errors.New("notion.user requires a valid id")
+	}
+
+	conn := runtime.Connection.(*connection.NotionConnection)
+	u, err := conn.Client().User.Get(context.Background(), notionapi.UserID(id))
+	if err != nil {
+		return nil, nil, errors.Wrapf(err, "notion.user with id %q not found", id)
+	}
+
+	res, err := mqlNotionUserFromAPI(runtime, u)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, res, nil
+}
+
+// botOwner resolves the individual owner of a bot-type user when
+// botOwnerType is 'user'. As with notion.bot.owner, the community SDK's
+// Owner struct does not decode the nested user object Notion returns
+// inline, so the owning user's id is unavailable through this client and
+// the field stays null.
+func (u *mqlNotionUser) botOwner() (*mqlNotionUser, error) {
+	u.BotOwner.State = plugin.StateIsNull | plugin.StateIsSet
+	return nil, nil
+}
