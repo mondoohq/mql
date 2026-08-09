@@ -202,6 +202,21 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"bitbucket": {
+		Provider: &plugin.Provider{
+			Name:            "bitbucket",
+			ID:              "go.mondoo.com/mql/providers/bitbucket",
+			ConnectionTypes: []string{"bitbucket"},
+			Connectors: []plugin.Connector{
+				{
+					Name:  "bitbucket",
+					Use:   "bitbucket --workspace WORKSPACE",
+					Short: "a Bitbucket Cloud workspace",
+				},
+			},
+		},
+	},
+
 	"bitwarden": {
 		Provider: &plugin.Provider{
 			Name:            "bitwarden",

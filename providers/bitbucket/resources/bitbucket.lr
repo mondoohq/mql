@@ -1,0 +1,234 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+option provider = "go.mondoo.com/mql/providers/bitbucket"
+option go_package = "go.mondoo.com/mql/v13/providers/bitbucket/resources"
+
+// Bitbucket
+//
+// Namespace root for Bitbucket Cloud queries, exposing workspaces,
+// projects, repositories, branch restrictions, deploy keys, and the
+// members and groups that hold access across the connected account.
+bitbucket {
+  // Workspace selected by the connection (BITBUCKET_WORKSPACE or --workspace)
+  workspace() bitbucket.workspace
+  // All workspaces the authenticated identity can access
+  workspaces() []bitbucket.workspace
+}
+
+// Bitbucket workspace
+//
+// Top-level container for projects and repositories, keyed by its slug
+// (for example `bitbucket.workspace(slug: "acme-corp")`). Workspace-wide
+// settings are the primary control surface for account hardening: whether
+// two-step verification is enforced for all members, whether an IP
+// allowlist restricts access, and whether the workspace itself is
+// private. Query `projects`, `repositories`, `members`, and `groups` to
+// drill into what the workspace contains and who can reach it.
+bitbucket.workspace @defaults("slug name") {
+  // Workspace UUID
+  id string
+  // Workspace slug (URL-safe identifier)
+  slug string
+  // Workspace display name
+  name string
+  // Whether the workspace is private
+  isPrivate bool
+  // Whether two-step verification (2FA) is required for all workspace members
+  enforceTwoStepVerification bool
+  // Whether access to the workspace is restricted by an IP allowlist
+  ipAllowlistEnabled bool
+  // CIDR ranges permitted to access the workspace when the IP allowlist is enabled
+  ipAllowlist []string
+  // Creation time
+  createdOn time
+  // Projects in the workspace
+  projects() []bitbucket.project
+  // Repositories in the workspace
+  repositories() []bitbucket.repository
+  // Members of the workspace
+  members() []bitbucket.member
+  // Groups defined in the workspace
+  groups() []bitbucket.group
+}
+
+// Bitbucket project
+//
+// Container that groups related repositories within a workspace, keyed
+// by its key (for example `bitbucket.project(key: "ENG")`). Branch
+// restrictions set at the project level are inherited by every
+// repository in it unless a repository overrides them, which makes the
+// project the place to check for organization-wide merge and push
+// policy before looking at individual repositories.
+bitbucket.project @defaults("key name") {
+  // Project UUID
+  id string
+  // Project key
+  key string
+  // Project name
+  name string
+  // Whether the project is private
+  isPrivate bool
+  // Description
+  description string
+  // Workspace that owns this project
+  workspace() bitbucket.workspace
+  // Creation time
+  createdOn time
+  // Update time
+  updatedOn time
+  // Repositories in this project
+  repositories() []bitbucket.repository
+}
+
+// Bitbucket repository
+//
+// Git repository hosted in a workspace, keyed by its full name (for
+// example `bitbucket.repository(fullName: "acme-corp/api-service")`).
+// Covers privacy (`isPrivate`), the default `mainBranch`, `forkPolicy`,
+// and size, plus the security-relevant sub-resources `branchRestrictions`
+// (required approvals, force-push and delete prevention), `deployKeys`,
+// and `defaultReviewers`.
+bitbucket.repository @defaults("fullName isPrivate") {
+  // Repository UUID
+  id string
+  // Repository slug
+  slug string
+  // Full name (workspace/repo-slug)
+  fullName string
+  // Repository name
+  name string
+  // Description
+  description string
+  // Whether the repository is private
+  isPrivate bool
+  // Fork policy
+  //
+  // One of allow_forks (unrestricted forking), no_public_forks (forks
+  // must be private), or no_forks (forking disabled entirely).
+  forkPolicy string
+  // Primary programming language detected by Bitbucket
+  language string
+  // Repository size in bytes
+  size int
+  // Whether the issue tracker is enabled
+  hasIssues bool
+  // Whether the wiki is enabled
+  hasWiki bool
+  // Name of the default (main) branch
+  mainBranch string
+  // Project this repository belongs to
+  project() bitbucket.project
+  // Workspace that owns this repository
+  workspace() bitbucket.workspace
+  // Creation time
+  createdOn time
+  // Update time
+  updatedOn time
+  // Branch restrictions configured on this repository
+  branchRestrictions() []bitbucket.repository.branchRestriction
+  // Deploy keys registered on this repository
+  deployKeys() []bitbucket.deployKey
+  // Default reviewers required on pull requests
+  defaultReviewers() []bitbucket.member
+}
+
+// Bitbucket branch restriction
+//
+// A single merge or push rule applied to branches matching `pattern` on
+// a repository (for example all restrictions where `pattern == "main"`).
+// The `kind` field identifies what the rule restricts: `push` and
+// `force` gate who can push or force-push, `delete` prevents branch
+// deletion, `restrict_merges` limits who can merge, and
+// `require_approvals_to_merge` (together with `minApprovals`) enforces a
+// minimum reviewer count before a pull request can merge.
+private bitbucket.repository.branchRestriction @defaults("kind pattern") {
+  // Restriction ID
+  id int
+  // Repository this restriction applies to
+  repository() bitbucket.repository
+  // Restriction kind
+  //
+  // One of push, force, delete, restrict_merges,
+  // require_tasks_to_be_completed, require_approvals_to_merge,
+  // require_default_reviewer_approvals_to_merge, or
+  // require_no_changes_requested.
+  kind string
+  // Branch name or glob pattern this restriction matches
+  pattern string
+  // Minimum number of approvals required
+  //
+  // Applies to restrictions of kind require_approvals_to_merge and
+  // require_default_reviewer_approvals_to_merge.
+  minApprovals int
+  // Users exempted from this restriction
+  users() []bitbucket.member
+  // Groups exempted from this restriction
+  groups() []bitbucket.group
+}
+
+// Bitbucket deploy key
+//
+// An SSH public key granted read (or read-write) access to clone a
+// single repository without a full user account, commonly used by CI/CD
+// systems and external integrations. A deploy key that is unexpectedly
+// present, or one whose `label` doesn't map to a known integration, is a
+// standing access path worth auditing independently of workspace and
+// repository membership.
+bitbucket.deployKey @defaults("label") {
+  // Deploy key ID
+  id int
+  // Repository this key is registered on
+  repository() bitbucket.repository
+  // Label describing the key's purpose
+  label string
+  // Public key contents
+  key string
+  // Creation time
+  createdOn time
+  // Last time the key was used
+  lastUsed time
+}
+
+// Bitbucket workspace or repository member
+//
+// A user with access to a workspace or repository, keyed by their
+// account UUID (for example `bitbucket.member(id: "{...}")`). Combine
+// with `permission` when read through
+// `bitbucket.workspace.members` or `bitbucket.repository.defaultReviewers`
+// to audit who holds admin or write access and flag accounts that no
+// longer need it.
+bitbucket.member @defaults("displayName") {
+  // Account UUID
+  id string
+  // Username
+  username string
+  // Display name
+  displayName string
+  // Account type (user or team)
+  accountType string
+  // Permission level granted to this member
+  //
+  // One of read, write, or admin.
+  permission string
+}
+
+// Bitbucket group
+//
+// A named collection of workspace members, keyed by its slug (for
+// example `bitbucket.group(slug: "administrators")`). Groups are the
+// unit branch restrictions and repository permissions reference instead
+// of individual users, so auditing group membership surfaces broad
+// grants that a per-user view would miss.
+bitbucket.group @defaults("slug name") {
+  // Group slug
+  slug string
+  // Group name
+  name string
+  // Workspace this group belongs to
+  workspace() bitbucket.workspace
+  // Default permission new repositories grant to this group
+  permission string
+  // Members of this group
+  members() []bitbucket.member
+}
