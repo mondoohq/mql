@@ -10,7 +10,7 @@ option go_package = "go.mondoo.com/mql/v13/providers/jenkins/resources"
 // instance-level metadata (version, operating mode) alongside the
 // security configuration, installed plugins, jobs, agents, and stored
 // credential metadata that make up a Jenkins security audit.
-jenkins {
+jenkins @maturity("experimental") {
   // Base URL the connection targets, for example "https://jenkins.example.com"
   url string
   // Jenkins core version reported by the controller
@@ -19,8 +19,6 @@ jenkins {
   mode string
   // Whether the controller is in the process of shutting down for maintenance
   quietingDown bool
-  // Instance security configuration
-  security() jenkins.security
   // Installed plugins
   plugins() []jenkins.plugin
   // Configured jobs, including folders and pipelines
@@ -37,7 +35,7 @@ jenkins {
 // security realm are active, whether CSRF protection (the crumb issuer)
 // is enabled, and how agents are permitted to connect to the controller.
 // This is a singleton, queried as `jenkins.security` directly.
-jenkins.security @defaults("authorizationStrategy securityRealm") {
+jenkins.security @defaults("authorizationStrategy securityRealm") @maturity("experimental") {
   // Class name of the active authorization strategy, for example "hudson.security.GlobalMatrixAuthorizationStrategy"
   authorizationStrategy string
   // Class name of the active security realm, for example "hudson.security.HudsonPrivateSecurityRealm"
@@ -68,7 +66,7 @@ jenkins.security @defaults("authorizationStrategy securityRealm") {
 // field is the plugin's install identifier, for example "git" or
 // "credentials-binding". `hasUpdate` reflects whether the Jenkins update
 // center has a newer release available for this plugin.
-jenkins.plugin @defaults("shortName version") {
+jenkins.plugin @defaults("shortName version") @maturity("experimental") {
   // Plugin install identifier, for example "git"
   shortName string
   // Human-readable plugin name
@@ -96,7 +94,7 @@ jenkins.plugin @defaults("shortName version") {
 // field distinguishes job types, such as "hudson.model.FreeStyleProject",
 // "org.jenkinsci.plugins.workflow.job.WorkflowJob" (pipeline), or
 // "com.cloudbees.hudson.plugins.folder.Folder".
-jenkins.job @defaults("fullName class") {
+jenkins.job @defaults("fullName class") @maturity("experimental") {
   // Job name
   name string
   // Path-qualified job name, for example "team-a/deploy-service"
@@ -128,7 +126,7 @@ jenkins.job @defaults("fullName class") {
 // by the controller, for example "linux-agent-01"; the built-in node's
 // name is the empty string internally and is surfaced here as
 // "Built-In Node".
-jenkins.node @defaults("name offline") {
+jenkins.node @defaults("name offline") @maturity("experimental") {
   // Node name, "Built-In Node" for the controller itself
   name string
   // Node description
@@ -159,7 +157,7 @@ jenkins.node @defaults("name offline") {
 // and `domain` is the credentials domain it belongs to ("_" for the
 // default global domain). The credential's secret material (passwords,
 // private keys, tokens) is never fetched or exposed by this resource.
-jenkins.credential @defaults("id typeName scope") {
+jenkins.credential @defaults("id typeName scope") @maturity("experimental") {
   // Credential ID, as referenced by jobs and pipelines
   id string
   // Credential implementation class, for example "com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl"

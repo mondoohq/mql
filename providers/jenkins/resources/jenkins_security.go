@@ -8,6 +8,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/v13/providers/jenkins/connection"
 	"go.mondoo.com/mql/v13/types"
 )
@@ -17,11 +18,16 @@ import (
 // rights.
 const unsecuredAuthorizationStrategyClass = "hudson.security.AuthorizationStrategy$Unsecured"
 
-// security assembles the controller-wide security posture singleton from a
-// single deep fetch against the Jenkins root API tree, plus the
-// agent-to-controller access control state.
-func (r *mqlJenkins) security() (*mqlJenkinsSecurity, error) {
-	conn := r.conn()
+// initJenkinsSecurity assembles the controller-wide security posture
+// singleton from a single deep fetch against the Jenkins root API tree, plus
+// the agent-to-controller access control state. It is queried directly as
+// `jenkins.security`.
+func initJenkinsSecurity(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 1 {
+		return args, nil, nil
+	}
+
+	conn := runtime.Connection.(*connection.JenkinsConnection)
 
 	var resp struct {
 		UseSecurity           bool     `json:"useSecurity"`
@@ -44,7 +50,7 @@ func (r *mqlJenkins) security() (*mqlJenkinsSecurity, error) {
 			"authorizationStrategy[_class],securityRealm[_class],markupFormatter[_class]",
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	unsecuredStrategy := resp.AuthorizationStrategy.Class == unsecuredAuthorizationStrategyClass
@@ -65,22 +71,18 @@ func (r *mqlJenkins) security() (*mqlJenkinsSecurity, error) {
 		protocols = append(protocols, p)
 	}
 
-	res, err := CreateResource(r.MqlRuntime, "jenkins.security", map[string]*llx.RawData{
-		"__id":                                  llx.StringData(conn.BaseUrl() + "/security"),
-		"authorizationStrategy":                 llx.StringData(resp.AuthorizationStrategy.Class),
-		"securityRealm":                         llx.StringData(resp.SecurityRealm.Class),
-		"securityEnabled":                       llx.BoolData(resp.UseSecurity),
-		"csrfProtectionEnabled":                 llx.BoolData(resp.UseCrumbs),
-		"allowsAnonymousAdmin":                  llx.BoolData(allowsAnonymousAdmin),
-		"agentToControllerAccessControlEnabled": llx.BoolData(agentControlEnabled),
-		"agentProtocols":                        llx.ArrayData(protocols, types.String),
-		"slaveAgentPort":                        llx.IntData(resp.SlaveAgentPort),
-		"markupFormatter":                       llx.StringData(resp.MarkupFormatter.Class),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlJenkinsSecurity), nil
+	args["__id"] = llx.StringData(conn.BaseUrl() + "/security")
+	args["authorizationStrategy"] = llx.StringData(resp.AuthorizationStrategy.Class)
+	args["securityRealm"] = llx.StringData(resp.SecurityRealm.Class)
+	args["securityEnabled"] = llx.BoolData(resp.UseSecurity)
+	args["csrfProtectionEnabled"] = llx.BoolData(resp.UseCrumbs)
+	args["allowsAnonymousAdmin"] = llx.BoolData(allowsAnonymousAdmin)
+	args["agentToControllerAccessControlEnabled"] = llx.BoolData(agentControlEnabled)
+	args["agentProtocols"] = llx.ArrayData(protocols, types.String)
+	args["slaveAgentPort"] = llx.IntData(resp.SlaveAgentPort)
+	args["markupFormatter"] = llx.StringData(resp.MarkupFormatter.Class)
+
+	return args, nil, nil
 }
 
 // fetchAgentToControllerAccessControl reads the state of the Agent Access

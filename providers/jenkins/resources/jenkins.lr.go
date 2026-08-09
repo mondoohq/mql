@@ -32,7 +32,7 @@ func init() {
 			Create: createJenkins,
 		},
 		"jenkins.security": {
-			// to override args, implement: initJenkinsSecurity(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initJenkinsSecurity,
 			Create: createJenkinsSecurity,
 		},
 		"jenkins.plugin": {
@@ -133,9 +133,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"jenkins.quietingDown": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlJenkins).GetQuietingDown()).ToDataRes(types.Bool)
-	},
-	"jenkins.security": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlJenkins).GetSecurity()).ToDataRes(types.Resource("jenkins.security"))
 	},
 	"jenkins.plugins": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlJenkins).GetPlugins()).ToDataRes(types.Array(types.Resource("jenkins.plugin")))
@@ -305,10 +302,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"jenkins.quietingDown": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlJenkins).QuietingDown, ok = plugin.RawToTValue[bool](v.Value, v.Error)
-		return
-	},
-	"jenkins.security": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlJenkins).Security, ok = plugin.RawToTValue[*mqlJenkinsSecurity](v.Value, v.Error)
 		return
 	},
 	"jenkins.plugins": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -548,7 +541,6 @@ type mqlJenkins struct {
 	Version      plugin.TValue[string]
 	Mode         plugin.TValue[string]
 	QuietingDown plugin.TValue[bool]
-	Security     plugin.TValue[*mqlJenkinsSecurity]
 	Plugins      plugin.TValue[[]any]
 	Jobs         plugin.TValue[[]any]
 	Nodes        plugin.TValue[[]any]
@@ -606,22 +598,6 @@ func (c *mqlJenkins) GetMode() *plugin.TValue[string] {
 
 func (c *mqlJenkins) GetQuietingDown() *plugin.TValue[bool] {
 	return &c.QuietingDown
-}
-
-func (c *mqlJenkins) GetSecurity() *plugin.TValue[*mqlJenkinsSecurity] {
-	return plugin.GetOrCompute[*mqlJenkinsSecurity](&c.Security, func() (*mqlJenkinsSecurity, error) {
-		if c.MqlRuntime.HasRecording {
-			d, err := c.MqlRuntime.FieldResourceFromRecording("jenkins", c.__id, "security")
-			if err != nil {
-				return nil, err
-			}
-			if d != nil {
-				return d.Value.(*mqlJenkinsSecurity), nil
-			}
-		}
-
-		return c.security()
-	})
 }
 
 func (c *mqlJenkins) GetPlugins() *plugin.TValue[[]any] {
