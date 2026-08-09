@@ -33,11 +33,11 @@ func init() {
 			Create: createNotion,
 		},
 		"notion.bot": {
-			// to override args, implement: initNotionBot(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initNotionBot,
 			Create: createNotionBot,
 		},
 		"notion.workspace": {
-			// to override args, implement: initNotionWorkspace(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initNotionWorkspace,
 			Create: createNotionWorkspace,
 		},
 		"notion.user": {
@@ -123,12 +123,6 @@ func CreateResource(runtime *plugin.Runtime, name string, args map[string]*llx.R
 }
 
 var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
-	"notion.bot": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlNotion).GetBot()).ToDataRes(types.Resource("notion.bot"))
-	},
-	"notion.workspace": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlNotion).GetWorkspace()).ToDataRes(types.Resource("notion.workspace"))
-	},
 	"notion.users": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlNotion).GetUsers()).ToDataRes(types.Array(types.Resource("notion.user")))
 	},
@@ -263,14 +257,6 @@ func GetData(resource plugin.Resource, field string, args map[string]*llx.RawDat
 var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	"notion.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlNotion).__id, ok = v.Value.(string)
-		return
-	},
-	"notion.bot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlNotion).Bot, ok = plugin.RawToTValue[*mqlNotionBot](v.Value, v.Error)
-		return
-	},
-	"notion.workspace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlNotion).Workspace, ok = plugin.RawToTValue[*mqlNotionWorkspace](v.Value, v.Error)
 		return
 	},
 	"notion.users": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -482,8 +468,6 @@ type mqlNotion struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlNotionInternal it will be used here
-	Bot       plugin.TValue[*mqlNotionBot]
-	Workspace plugin.TValue[*mqlNotionWorkspace]
 	Users     plugin.TValue[[]any]
 	Databases plugin.TValue[[]any]
 	Pages     plugin.TValue[[]any]
@@ -524,38 +508,6 @@ func (c *mqlNotion) MqlName() string {
 
 func (c *mqlNotion) MqlID() string {
 	return c.__id
-}
-
-func (c *mqlNotion) GetBot() *plugin.TValue[*mqlNotionBot] {
-	return plugin.GetOrCompute[*mqlNotionBot](&c.Bot, func() (*mqlNotionBot, error) {
-		if c.MqlRuntime.HasRecording {
-			d, err := c.MqlRuntime.FieldResourceFromRecording("notion", c.__id, "bot")
-			if err != nil {
-				return nil, err
-			}
-			if d != nil {
-				return d.Value.(*mqlNotionBot), nil
-			}
-		}
-
-		return c.bot()
-	})
-}
-
-func (c *mqlNotion) GetWorkspace() *plugin.TValue[*mqlNotionWorkspace] {
-	return plugin.GetOrCompute[*mqlNotionWorkspace](&c.Workspace, func() (*mqlNotionWorkspace, error) {
-		if c.MqlRuntime.HasRecording {
-			d, err := c.MqlRuntime.FieldResourceFromRecording("notion", c.__id, "workspace")
-			if err != nil {
-				return nil, err
-			}
-			if d != nil {
-				return d.Value.(*mqlNotionWorkspace), nil
-			}
-		}
-
-		return c.workspace()
-	})
 }
 
 func (c *mqlNotion) GetUsers() *plugin.TValue[[]any] {

@@ -14,11 +14,7 @@ option go_package = "go.mondoo.com/mql/v13/providers/notion/resources"
 // explicitly connected to, it does not provide workspace-wide
 // administration data such as SSO enforcement or member provisioning, which
 // requires the separate Enterprise SCIM and Audit Log APIs.
-notion {
-  // The integration's own bot identity and owning workspace
-  bot() notion.bot
-  // Workspace as seen through this integration's connected content
-  workspace() notion.workspace
+notion @maturity("experimental") {
   // Workspace members and bots visible to this integration
   users() []notion.user
   // Databases visible to this integration through Notion's sharing model
@@ -37,7 +33,7 @@ notion {
 // leave. Notion's public API does not report the read, insert, update, or
 // comment capabilities granted to an integration, those are configured on
 // the integration's settings page and must be reviewed there.
-notion.bot @defaults("id name ownerType") {
+notion.bot @defaults("id name ownerType") @maturity("experimental") {
   // Bot user ID
   id string
   // Integration display name
@@ -61,7 +57,7 @@ notion.bot @defaults("id name ownerType") {
 // provisioning, are only available through the separate Enterprise SCIM
 // and Audit Log APIs and are not modeled here, they would land on this
 // resource once that integration exists.
-notion.workspace @defaults("name") {
+notion.workspace @defaults("name") @maturity("experimental") {
   // Workspace name, from the integration's bot identity
   name string
   // Number of workspace members and bots visible to this integration
@@ -85,7 +81,7 @@ notion.workspace @defaults("name") {
 // workspace can contain bots belonging to integrations other than this
 // one. Notion's base API does not report a member/guest role, so this
 // resource cannot distinguish a guest from a full workspace member.
-notion.user @defaults("id name type") {
+notion.user @defaults("id name type") @maturity("experimental") {
   init(id string)
   // User ID
   id string
@@ -113,7 +109,7 @@ notion.user @defaults("id name type") {
 // most security audits need: is this content publicly reachable, and is
 // it actively maintained or abandoned. The parentPage reference resolves
 // the page a database is nested under, when there is one.
-notion.database @defaults("id title") {
+notion.database @defaults("id title") @maturity("experimental") {
   init(id string)
   // Database ID
   id string
@@ -147,7 +143,7 @@ notion.database @defaults("id title") {
 // property values as Notion returns them, since fully modeling every
 // Notion property type (including relation properties that point at other
 // pages) is out of scope for this initial resource set.
-notion.page @defaults("id title") {
+notion.page @defaults("id title") @maturity("experimental") {
   init(id string)
   // Page ID
   id string

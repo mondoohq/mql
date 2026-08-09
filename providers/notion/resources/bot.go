@@ -4,39 +4,37 @@
 package resources
 
 import (
-	"github.com/jomei/notionapi"
 	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/v13/providers/notion/connection"
 )
 
-// bot returns the integration's own bot identity, captured once during the
-// connection's Verify() step so this never needs a second round trip.
-func (r *mqlNotion) bot() (*mqlNotionBot, error) {
-	conn := r.conn()
-	return mqlNotionBotFromAPI(r.MqlRuntime, conn.BotUser())
-}
+// initNotionBot populates the integration's own bot identity, captured once
+// during the connection's Verify() step so this never needs a second round
+// trip. notion.bot is a connection-level singleton, queried directly as
+// notion.bot.
+func initNotionBot(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 1 {
+		return args, nil, nil
+	}
 
-// mqlNotionBotFromAPI maps a *notionapi.User (of type "bot") to its MQL
-// resource.
-func mqlNotionBotFromAPI(runtime *plugin.Runtime, u *notionapi.User) (*mqlNotionBot, error) {
+	conn := runtime.Connection.(*connection.NotionConnection)
+	u := conn.BotUser()
+
 	var ownerType, workspaceName string
 	if u.Bot != nil {
 		ownerType = u.Bot.Owner.Type
 		workspaceName = u.Bot.WorkspaceName
 	}
 
-	res, err := CreateResource(runtime, "notion.bot", map[string]*llx.RawData{
-		"__id":          llx.StringData(string(u.ID)),
-		"id":            llx.StringData(string(u.ID)),
-		"name":          llx.StringData(u.Name),
-		"avatarUrl":     llx.StringData(u.AvatarURL),
-		"ownerType":     llx.StringData(ownerType),
-		"workspaceName": llx.StringData(workspaceName),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlNotionBot), nil
+	args["__id"] = llx.StringData(string(u.ID))
+	args["id"] = llx.StringData(string(u.ID))
+	args["name"] = llx.StringData(u.Name)
+	args["avatarUrl"] = llx.StringData(u.AvatarURL)
+	args["ownerType"] = llx.StringData(ownerType)
+	args["workspaceName"] = llx.StringData(workspaceName)
+
+	return args, nil, nil
 }
 
 // owner resolves the individual owner of the integration when ownerType is
