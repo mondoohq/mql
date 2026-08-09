@@ -6,13 +6,13 @@ circleci.checkoutKey 13.0.0
 circleci.checkoutKey.createdAt 13.0.0
 circleci.checkoutKey.fingerprint 13.0.0
 circleci.checkoutKey.preferred 13.0.0
-circleci.checkoutKey.projectId 13.0.0
+circleci.checkoutKey.project 13.0.0
 circleci.checkoutKey.publicKey 13.0.0
 circleci.checkoutKey.type 13.0.0
 circleci.context 13.0.0
 circleci.context.createdAt 13.0.0
 circleci.context.environmentVariable 13.0.0
-circleci.context.environmentVariable.contextId 13.0.0
+circleci.context.environmentVariable.context 13.0.0
 circleci.context.environmentVariable.createdAt 13.0.0
 circleci.context.environmentVariable.variable 13.0.0
 circleci.context.environmentVariables 13.0.0
@@ -37,7 +37,7 @@ circleci.project.disableSsh 13.0.0
 circleci.project.environmentVariable 13.0.0
 circleci.project.environmentVariable.maskedValue 13.0.0
 circleci.project.environmentVariable.name 13.0.0
-circleci.project.environmentVariable.projectId 13.0.0
+circleci.project.environmentVariable.project 13.0.0
 circleci.project.environmentVariables 13.0.0
 circleci.project.forksReceiveSecretEnvVars 13.0.0
 circleci.project.id 13.0.0

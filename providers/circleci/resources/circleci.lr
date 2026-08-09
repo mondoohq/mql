@@ -104,8 +104,8 @@ circleci.project @defaults("name") {
 private circleci.project.environmentVariable @defaults("name") {
   // Variable name
   name string
-  // Project ID (parent)
-  projectId string
+  // Project this environment variable is defined on
+  project() circleci.project
   // Truncated, non-secret suffix of the value as returned by the API (e.g. "xxxx1234")
   maskedValue string
 }
@@ -122,11 +122,16 @@ private circleci.project.environmentVariable @defaults("name") {
 circleci.checkoutKey @defaults("type fingerprint") {
   // Public key fingerprint (SHA256, colon-delimited)
   fingerprint string
-  // Project ID (parent)
-  projectId string
+  // Project this checkout key is configured on
+  project() circleci.project
   // Key type: deploy-key (repo-scoped) or user-key (inherits the creating user's access)
   type string
   // Public key contents
+  //
+  // The public half of the checkout key pair. This is not secret (CircleCI
+  // exposes it through its API and it is safe to display); the private key
+  // is never returned. Useful for cross-referencing a key by its material
+  // as well as its fingerprint.
   publicKey string
   // Whether CircleCI prefers this key when multiple keys are present
   preferred bool
@@ -169,8 +174,8 @@ circleci.context @defaults("name") {
 private circleci.context.environmentVariable @defaults("variable") {
   // Variable name
   variable string
-  // Context ID (parent)
-  contextId string
+  // Context this environment variable is configured in
+  context() circleci.context
   // Creation time
   createdAt time
 }

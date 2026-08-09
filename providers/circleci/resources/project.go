@@ -83,12 +83,12 @@ func (p *mqlCircleciProject) environmentVariables() ([]any, error) {
 			res, err := CreateResource(p.MqlRuntime, "circleci.project.environmentVariable", map[string]*llx.RawData{
 				"__id":        llx.StringData(p.Id.Data + "/" + v.Name),
 				"name":        llx.StringData(v.Name),
-				"projectId":   llx.StringData(p.Id.Data),
 				"maskedValue": llx.StringData(v.Value),
 			})
 			if err != nil {
 				return nil, err
 			}
+			res.(*mqlCircleciProjectEnvironmentVariable).cacheProject = p
 			all = append(all, res)
 		}
 		if resp.NextPageToken == "" {
@@ -97,6 +97,37 @@ func (p *mqlCircleciProject) environmentVariables() ([]any, error) {
 		pageToken = resp.NextPageToken
 	}
 	return all, nil
+}
+
+// mqlCircleciProjectEnvironmentVariableInternal caches the project this
+// environment variable belongs to, so the project() typed reference resolves
+// without an extra API call.
+type mqlCircleciProjectEnvironmentVariableInternal struct {
+	cacheProject *mqlCircleciProject
+}
+
+// project resolves the project this environment variable is defined on.
+func (v *mqlCircleciProjectEnvironmentVariable) project() (*mqlCircleciProject, error) {
+	if v.cacheProject == nil {
+		v.Project.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return v.cacheProject, nil
+}
+
+// mqlCircleciCheckoutKeyInternal caches the project this checkout key belongs
+// to, so the project() typed reference resolves without an extra API call.
+type mqlCircleciCheckoutKeyInternal struct {
+	cacheProject *mqlCircleciProject
+}
+
+// project resolves the project this checkout key is configured on.
+func (k *mqlCircleciCheckoutKey) project() (*mqlCircleciProject, error) {
+	if k.cacheProject == nil {
+		k.Project.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return k.cacheProject, nil
 }
 
 // checkoutKeys lists the deploy credentials CircleCI uses to check out this
@@ -116,7 +147,6 @@ func (p *mqlCircleciProject) checkoutKeys() ([]any, error) {
 			res, err := CreateResource(p.MqlRuntime, "circleci.checkoutKey", map[string]*llx.RawData{
 				"__id":        llx.StringData(k.Fingerprint),
 				"fingerprint": llx.StringData(k.Fingerprint),
-				"projectId":   llx.StringData(p.Id.Data),
 				"type":        llx.StringData(k.Type),
 				"publicKey":   llx.StringData(k.PublicKey),
 				"preferred":   llx.BoolData(k.Preferred),
@@ -125,6 +155,7 @@ func (p *mqlCircleciProject) checkoutKeys() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
+			res.(*mqlCircleciCheckoutKey).cacheProject = p
 			all = append(all, res)
 		}
 		if resp.NextPageToken == "" {

@@ -68,12 +68,12 @@ func (c *mqlCircleciContext) environmentVariables() ([]any, error) {
 			res, err := CreateResource(c.MqlRuntime, "circleci.context.environmentVariable", map[string]*llx.RawData{
 				"__id":      llx.StringData(c.Id.Data + "/" + v.Variable),
 				"variable":  llx.StringData(v.Variable),
-				"contextId": llx.StringData(c.Id.Data),
 				"createdAt": llx.TimeDataPtr(parseCircleciTime(v.CreatedAt)),
 			})
 			if err != nil {
 				return nil, err
 			}
+			res.(*mqlCircleciContextEnvironmentVariable).cacheContext = c
 			all = append(all, res)
 		}
 		if resp.NextPageToken == "" {
@@ -82,4 +82,20 @@ func (c *mqlCircleciContext) environmentVariables() ([]any, error) {
 		pageToken = resp.NextPageToken
 	}
 	return all, nil
+}
+
+// mqlCircleciContextEnvironmentVariableInternal caches the context this
+// environment variable belongs to, so the context() typed reference resolves
+// without an extra API call.
+type mqlCircleciContextEnvironmentVariableInternal struct {
+	cacheContext *mqlCircleciContext
+}
+
+// context resolves the context this environment variable is configured in.
+func (v *mqlCircleciContextEnvironmentVariable) context() (*mqlCircleciContext, error) {
+	if v.cacheContext == nil {
+		v.Context.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return v.cacheContext, nil
 }

@@ -211,8 +211,8 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"circleci.project.environmentVariable.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCircleciProjectEnvironmentVariable).GetName()).ToDataRes(types.String)
 	},
-	"circleci.project.environmentVariable.projectId": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlCircleciProjectEnvironmentVariable).GetProjectId()).ToDataRes(types.String)
+	"circleci.project.environmentVariable.project": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciProjectEnvironmentVariable).GetProject()).ToDataRes(types.Resource("circleci.project"))
 	},
 	"circleci.project.environmentVariable.maskedValue": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCircleciProjectEnvironmentVariable).GetMaskedValue()).ToDataRes(types.String)
@@ -220,8 +220,8 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"circleci.checkoutKey.fingerprint": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCircleciCheckoutKey).GetFingerprint()).ToDataRes(types.String)
 	},
-	"circleci.checkoutKey.projectId": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlCircleciCheckoutKey).GetProjectId()).ToDataRes(types.String)
+	"circleci.checkoutKey.project": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciCheckoutKey).GetProject()).ToDataRes(types.Resource("circleci.project"))
 	},
 	"circleci.checkoutKey.type": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCircleciCheckoutKey).GetType()).ToDataRes(types.String)
@@ -253,8 +253,8 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"circleci.context.environmentVariable.variable": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCircleciContextEnvironmentVariable).GetVariable()).ToDataRes(types.String)
 	},
-	"circleci.context.environmentVariable.contextId": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlCircleciContextEnvironmentVariable).GetContextId()).ToDataRes(types.String)
+	"circleci.context.environmentVariable.context": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCircleciContextEnvironmentVariable).GetContext()).ToDataRes(types.Resource("circleci.context"))
 	},
 	"circleci.context.environmentVariable.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCircleciContextEnvironmentVariable).GetCreatedAt()).ToDataRes(types.Time)
@@ -395,8 +395,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlCircleciProjectEnvironmentVariable).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"circleci.project.environmentVariable.projectId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlCircleciProjectEnvironmentVariable).ProjectId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"circleci.project.environmentVariable.project": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciProjectEnvironmentVariable).Project, ok = plugin.RawToTValue[*mqlCircleciProject](v.Value, v.Error)
 		return
 	},
 	"circleci.project.environmentVariable.maskedValue": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -411,8 +411,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlCircleciCheckoutKey).Fingerprint, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"circleci.checkoutKey.projectId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlCircleciCheckoutKey).ProjectId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"circleci.checkoutKey.project": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciCheckoutKey).Project, ok = plugin.RawToTValue[*mqlCircleciProject](v.Value, v.Error)
 		return
 	},
 	"circleci.checkoutKey.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -463,8 +463,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlCircleciContextEnvironmentVariable).Variable, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"circleci.context.environmentVariable.contextId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlCircleciContextEnvironmentVariable).ContextId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"circleci.context.environmentVariable.context": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCircleciContextEnvironmentVariable).Context, ok = plugin.RawToTValue[*mqlCircleciContext](v.Value, v.Error)
 		return
 	},
 	"circleci.context.environmentVariable.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -893,9 +893,9 @@ func (c *mqlCircleciProject) GetSetGithubStatus() *plugin.TValue[bool] {
 type mqlCircleciProjectEnvironmentVariable struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlCircleciProjectEnvironmentVariableInternal it will be used here
+	mqlCircleciProjectEnvironmentVariableInternal
 	Name        plugin.TValue[string]
-	ProjectId   plugin.TValue[string]
+	Project     plugin.TValue[*mqlCircleciProject]
 	MaskedValue plugin.TValue[string]
 }
 
@@ -935,8 +935,20 @@ func (c *mqlCircleciProjectEnvironmentVariable) GetName() *plugin.TValue[string]
 	return &c.Name
 }
 
-func (c *mqlCircleciProjectEnvironmentVariable) GetProjectId() *plugin.TValue[string] {
-	return &c.ProjectId
+func (c *mqlCircleciProjectEnvironmentVariable) GetProject() *plugin.TValue[*mqlCircleciProject] {
+	return plugin.GetOrCompute[*mqlCircleciProject](&c.Project, func() (*mqlCircleciProject, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("circleci.project.environmentVariable", c.__id, "project")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlCircleciProject), nil
+			}
+		}
+
+		return c.project()
+	})
 }
 
 func (c *mqlCircleciProjectEnvironmentVariable) GetMaskedValue() *plugin.TValue[string] {
@@ -947,9 +959,9 @@ func (c *mqlCircleciProjectEnvironmentVariable) GetMaskedValue() *plugin.TValue[
 type mqlCircleciCheckoutKey struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlCircleciCheckoutKeyInternal it will be used here
+	mqlCircleciCheckoutKeyInternal
 	Fingerprint plugin.TValue[string]
-	ProjectId   plugin.TValue[string]
+	Project     plugin.TValue[*mqlCircleciProject]
 	Type        plugin.TValue[string]
 	PublicKey   plugin.TValue[string]
 	Preferred   plugin.TValue[bool]
@@ -992,8 +1004,20 @@ func (c *mqlCircleciCheckoutKey) GetFingerprint() *plugin.TValue[string] {
 	return &c.Fingerprint
 }
 
-func (c *mqlCircleciCheckoutKey) GetProjectId() *plugin.TValue[string] {
-	return &c.ProjectId
+func (c *mqlCircleciCheckoutKey) GetProject() *plugin.TValue[*mqlCircleciProject] {
+	return plugin.GetOrCompute[*mqlCircleciProject](&c.Project, func() (*mqlCircleciProject, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("circleci.checkoutKey", c.__id, "project")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlCircleciProject), nil
+			}
+		}
+
+		return c.project()
+	})
 }
 
 func (c *mqlCircleciCheckoutKey) GetType() *plugin.TValue[string] {
@@ -1104,9 +1128,9 @@ func (c *mqlCircleciContext) GetEnvironmentVariables() *plugin.TValue[[]any] {
 type mqlCircleciContextEnvironmentVariable struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlCircleciContextEnvironmentVariableInternal it will be used here
+	mqlCircleciContextEnvironmentVariableInternal
 	Variable  plugin.TValue[string]
-	ContextId plugin.TValue[string]
+	Context   plugin.TValue[*mqlCircleciContext]
 	CreatedAt plugin.TValue[*time.Time]
 }
 
@@ -1146,8 +1170,20 @@ func (c *mqlCircleciContextEnvironmentVariable) GetVariable() *plugin.TValue[str
 	return &c.Variable
 }
 
-func (c *mqlCircleciContextEnvironmentVariable) GetContextId() *plugin.TValue[string] {
-	return &c.ContextId
+func (c *mqlCircleciContextEnvironmentVariable) GetContext() *plugin.TValue[*mqlCircleciContext] {
+	return plugin.GetOrCompute[*mqlCircleciContext](&c.Context, func() (*mqlCircleciContext, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("circleci.context.environmentVariable", c.__id, "context")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlCircleciContext), nil
+			}
+		}
+
+		return c.context()
+	})
 }
 
 func (c *mqlCircleciContextEnvironmentVariable) GetCreatedAt() *plugin.TValue[*time.Time] {
