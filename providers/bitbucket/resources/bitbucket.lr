@@ -9,9 +9,7 @@ option go_package = "go.mondoo.com/mql/v13/providers/bitbucket/resources"
 // Namespace root for Bitbucket Cloud queries, exposing workspaces,
 // projects, repositories, branch restrictions, deploy keys, and the
 // members and groups that hold access across the connected account.
-bitbucket {
-  // Workspace selected by the connection (BITBUCKET_WORKSPACE or --workspace)
-  workspace() bitbucket.workspace
+bitbucket @maturity("experimental") {
   // All workspaces the authenticated identity can access
   workspaces() []bitbucket.workspace
 }
@@ -25,7 +23,7 @@ bitbucket {
 // allowlist restricts access, and whether the workspace itself is
 // private. Query `projects`, `repositories`, `members`, and `groups` to
 // drill into what the workspace contains and who can reach it.
-bitbucket.workspace @defaults("slug name") {
+bitbucket.workspace @defaults("slug name") @maturity("experimental") {
   // Workspace UUID
   id string
   // Workspace slug (URL-safe identifier)
@@ -64,7 +62,7 @@ bitbucket.workspace @defaults("slug name") {
 // repository in it unless a repository overrides them, which makes the
 // project the place to check for organization-wide merge and push
 // policy before looking at individual repositories.
-bitbucket.project @defaults("key name") {
+bitbucket.project @defaults("key name") @maturity("experimental") {
   // Project UUID
   id string
   // Project key
@@ -97,7 +95,7 @@ bitbucket.project @defaults("key name") {
 // and size, plus the security-relevant sub-resources `branchRestrictions`
 // (required approvals, force-push and delete prevention), `deployKeys`,
 // and `defaultReviewers`.
-bitbucket.repository @defaults("fullName isPrivate") {
+bitbucket.repository @defaults("fullName isPrivate") @maturity("experimental") {
   // Repository UUID
   id string
   // Repository slug
@@ -160,7 +158,7 @@ bitbucket.repository @defaults("fullName isPrivate") {
 // deletion, `restrict_merges` limits who can merge, and
 // `require_approvals_to_merge` (together with `minApprovals`) enforces a
 // minimum reviewer count before a pull request can merge.
-private bitbucket.repository.branchRestriction @defaults("kind pattern") {
+private bitbucket.repository.branchRestriction @defaults("kind pattern") @maturity("experimental") {
   // Restriction ID
   id int
   // Repository this restriction applies to
@@ -193,7 +191,7 @@ private bitbucket.repository.branchRestriction @defaults("kind pattern") {
 // present, or one whose `label` doesn't map to a known integration, is a
 // standing access path worth auditing independently of workspace and
 // repository membership.
-bitbucket.deployKey @defaults("label") {
+bitbucket.deployKey @defaults("label") @maturity("experimental") {
   // Deploy key ID
   id int
   // Repository this key is registered on
@@ -216,7 +214,7 @@ bitbucket.deployKey @defaults("label") {
 // `bitbucket.workspace.members` or `bitbucket.repository.defaultReviewers`
 // to audit who holds admin or write access and flag accounts that no
 // longer need it.
-bitbucket.member @defaults("displayName") {
+bitbucket.member @defaults("displayName") @maturity("experimental") {
   // Account UUID
   id string
   // Username
@@ -238,7 +236,7 @@ bitbucket.member @defaults("displayName") {
 // unit branch restrictions and repository permissions reference instead
 // of individual users, so auditing group membership surfaces broad
 // grants that a per-user view would miss.
-bitbucket.group @defaults("slug name") {
+bitbucket.group @defaults("slug name") @maturity("experimental") {
   // Group slug
   slug string
   // Group name
@@ -260,7 +258,7 @@ bitbucket.group @defaults("slug name") {
 // signing secret so receivers can verify payload authenticity, and
 // whether `skipCertVerification` disables TLS certificate checks on the
 // callback. The secret value itself is write-only and never returned.
-bitbucket.repository.webhook @defaults("url active") {
+bitbucket.repository.webhook @defaults("url active") @maturity("experimental") {
   // Webhook UUID
   id string
   // Repository this webhook is registered on
@@ -293,7 +291,7 @@ bitbucket.repository.webhook @defaults("url active") {
 // signing secret, and whether `skipCertVerification` disables TLS
 // certificate checks. The secret value itself is write-only and never
 // returned.
-bitbucket.workspace.webhook @defaults("url active") {
+bitbucket.workspace.webhook @defaults("url active") @maturity("experimental") {
   // Webhook UUID
   id string
   // Workspace this webhook is registered on
@@ -326,7 +324,7 @@ bitbucket.workspace.webhook @defaults("url active") {
 // empty string), so a fleet-wide audit for secrets accidentally stored in
 // the clear can flag any variable whose `key` looks credential-bearing but
 // whose `secured` is false.
-bitbucket.pipelineVariable @defaults("key secured") {
+bitbucket.pipelineVariable @defaults("key secured") @maturity("experimental") {
   // Variable UUID
   id string
   // Variable name
@@ -347,7 +345,7 @@ bitbucket.pipelineVariable @defaults("key secured") {
 // its own set of Pipelines `variables`, so it is the place to check for
 // environment-specific secrets and configuration that differ from the
 // repository-wide variables.
-bitbucket.repository.deployment @defaults("name environmentType") {
+bitbucket.repository.deployment @defaults("name environmentType") @maturity("experimental") {
   // Environment UUID
   id string
   // Repository this environment belongs to

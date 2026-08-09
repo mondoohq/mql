@@ -34,23 +34,33 @@ func newMqlBitbucketWorkspace(runtime *plugin.Runtime, w *connection.Workspace) 
 
 // initBitbucketWorkspace resolves a workspace by its slug on demand, for
 // typed references (project.workspace, repository.workspace, group.workspace)
-// and direct lookups such as bitbucket.workspace(slug: "acme-corp").
+// and direct lookups such as bitbucket.workspace(slug: "acme-corp"). When no
+// slug is given (a bare bitbucket.workspace query), it defaults to the
+// workspace selected by the connection (BITBUCKET_WORKSPACE or --workspace).
 func initBitbucketWorkspace(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	// fast path: the caller already provided a fully populated resource
 	if len(args) > 1 {
 		return args, nil, nil
 	}
 
-	slugArg, ok := args["slug"]
-	if !ok {
-		return args, nil, nil
-	}
-	slug, ok := slugArg.Value.(string)
-	if !ok || slug == "" {
-		return nil, nil, fmt.Errorf("bitbucket.workspace requires a valid slug")
-	}
-
 	conn := runtime.Connection.(*connection.BitbucketConnection)
+
+	// Resolve the slug: prefer an explicit slug argument, otherwise default to
+	// the workspace selected by the connection (BITBUCKET_WORKSPACE or
+	// --workspace) so `bitbucket.workspace` can be queried directly.
+	var slug string
+	if slugArg, ok := args["slug"]; ok {
+		s, ok := slugArg.Value.(string)
+		if !ok || s == "" {
+			return nil, nil, fmt.Errorf("bitbucket.workspace requires a valid slug")
+		}
+		slug = s
+	} else {
+		slug = conn.Workspace()
+		if slug == "" {
+			return nil, nil, fmt.Errorf("bitbucket.workspace requires a slug or a connection-selected workspace")
+		}
+	}
 
 	// Reuse the workspace record Verify() already fetched during Connect,
 	// when it's the same workspace, to avoid a redundant round trip.

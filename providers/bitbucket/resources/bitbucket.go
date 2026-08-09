@@ -6,7 +6,6 @@ package resources
 import (
 	"context"
 
-	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/providers/bitbucket/connection"
 )
 
@@ -17,19 +16,6 @@ func (r *mqlBitbucket) id() (string, error) {
 // conn returns the Bitbucket connection backing this runtime.
 func (r *mqlBitbucket) conn() *connection.BitbucketConnection {
 	return r.MqlRuntime.Connection.(*connection.BitbucketConnection)
-}
-
-// workspace resolves the workspace selected by the connection
-// (BITBUCKET_WORKSPACE or --workspace).
-func (r *mqlBitbucket) workspace() (*mqlBitbucketWorkspace, error) {
-	conn := r.conn()
-	res, err := NewResource(r.MqlRuntime, "bitbucket.workspace", map[string]*llx.RawData{
-		"slug": llx.StringData(conn.Workspace()),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlBitbucketWorkspace), nil
 }
 
 // workspaces lists every workspace the authenticated identity can access.

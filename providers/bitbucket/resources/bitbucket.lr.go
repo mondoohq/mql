@@ -153,9 +153,6 @@ func CreateResource(runtime *plugin.Runtime, name string, args map[string]*llx.R
 }
 
 var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
-	"bitbucket.workspace": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlBitbucket).GetWorkspace()).ToDataRes(types.Resource("bitbucket.workspace"))
-	},
 	"bitbucket.workspaces": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBitbucket).GetWorkspaces()).ToDataRes(types.Array(types.Resource("bitbucket.workspace")))
 	},
@@ -470,10 +467,6 @@ func GetData(resource plugin.Resource, field string, args map[string]*llx.RawDat
 var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	"bitbucket.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlBitbucket).__id, ok = v.Value.(string)
-		return
-	},
-	"bitbucket.workspace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlBitbucket).Workspace, ok = plugin.RawToTValue[*mqlBitbucketWorkspace](v.Value, v.Error)
 		return
 	},
 	"bitbucket.workspaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -949,7 +942,6 @@ type mqlBitbucket struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlBitbucketInternal it will be used here
-	Workspace  plugin.TValue[*mqlBitbucketWorkspace]
 	Workspaces plugin.TValue[[]any]
 }
 
@@ -988,22 +980,6 @@ func (c *mqlBitbucket) MqlName() string {
 
 func (c *mqlBitbucket) MqlID() string {
 	return c.__id
-}
-
-func (c *mqlBitbucket) GetWorkspace() *plugin.TValue[*mqlBitbucketWorkspace] {
-	return plugin.GetOrCompute[*mqlBitbucketWorkspace](&c.Workspace, func() (*mqlBitbucketWorkspace, error) {
-		if c.MqlRuntime.HasRecording {
-			d, err := c.MqlRuntime.FieldResourceFromRecording("bitbucket", c.__id, "workspace")
-			if err != nil {
-				return nil, err
-			}
-			if d != nil {
-				return d.Value.(*mqlBitbucketWorkspace), nil
-			}
-		}
-
-		return c.workspace()
-	})
 }
 
 func (c *mqlBitbucket) GetWorkspaces() *plugin.TValue[[]any] {
