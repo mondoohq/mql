@@ -13,7 +13,7 @@ option go_package = "go.mondoo.com/mql/v13/providers/circleci/resources"
 // project environment variables), source access (checkout keys), and
 // pull-request build settings (forked-PR builds, OIDC) across an
 // organization's CircleCI footprint.
-circleci {
+circleci @maturity("experimental") {
   // Currently authenticated user
   me() circleci.user
   // Organizations the current token can see
@@ -25,7 +25,7 @@ circleci {
 }
 
 // CircleCI user account
-private circleci.user @defaults("login") {
+private circleci.user @defaults("login") @maturity("experimental") {
   // User ID
   id string
   // VCS login (GitHub or Bitbucket username)
@@ -42,7 +42,7 @@ private circleci.user @defaults("login") {
 // configured in CircleCI's org-level UI and are not exposed by API v2, so
 // this resource cannot confirm SSO is enforced; treat that as a manual
 // control until CircleCI exposes it.
-circleci.organization @defaults("name") {
+circleci.organization @defaults("name") @maturity("experimental") {
   // Organization ID (UUID)
   id string
   // Organization name (slug)
@@ -65,7 +65,7 @@ circleci.organization @defaults("name") {
 // uses to clone the repository), its own environment variables, and the
 // advanced settings that control whether forked pull requests can
 // trigger builds and whether those builds receive the project's secrets.
-circleci.project @defaults("name") {
+circleci.project @defaults("name") @maturity("experimental") {
   // Project ID (UUID)
   id string
   // Project name (repository name)
@@ -114,7 +114,7 @@ circleci.project @defaults("name") {
 // itself is never returned by the API). The `events` field lists which
 // pipeline events trigger delivery, for example "workflow-completed" or
 // "job-completed".
-circleci.webhook @defaults("name url") {
+circleci.webhook @defaults("name url") @maturity("experimental") {
   // Webhook ID (UUID)
   id string
   // Webhook name
@@ -140,7 +140,7 @@ circleci.webhook @defaults("name url") {
 // operators recognize which value is configured, not to reveal it. Treat
 // the absence of a `value` field as intentional: it cannot be modeled
 // because the API does not provide it.
-private circleci.project.environmentVariable @defaults("name") {
+private circleci.project.environmentVariable @defaults("name") @maturity("experimental") {
   // Variable name
   name string
   // Project this environment variable is defined on
@@ -158,7 +158,7 @@ private circleci.project.environmentVariable @defaults("name") {
 // CircleCI user who created it, including access to every other
 // repository that user can reach. Prefer deploy keys; a user-key on a
 // project is broader access than the project itself needs.
-circleci.checkoutKey @defaults("type fingerprint") {
+circleci.checkoutKey @defaults("type fingerprint") @maturity("experimental") {
   // Public key fingerprint (SHA256, colon-delimited)
   fingerprint string
   // Project this checkout key is configured on
@@ -187,7 +187,7 @@ circleci.checkoutKey @defaults("type fingerprint") {
 // collaborator can use. The `environmentVariables` field lists the
 // variable names configured in the context; CircleCI's API never returns
 // context environment variable values under any circumstance.
-circleci.context @defaults("name") {
+circleci.context @defaults("name") @maturity("experimental") {
   // Context ID (UUID)
   id string
   // Context name
@@ -212,7 +212,7 @@ circleci.context @defaults("name") {
 // resource enables. The `restrictionType` field is the discriminator (for
 // example "project") and `restrictionValue` holds the identifier the
 // restriction matches (for example a project ID).
-private circleci.context.restriction @defaults("restrictionType restrictionValue") {
+private circleci.context.restriction @defaults("restrictionType restrictionValue") @maturity("experimental") {
   // Restriction ID (UUID)
   id string
   // Context this restriction applies to
@@ -235,7 +235,7 @@ private circleci.context.restriction @defaults("restrictionType restrictionValue
 // contexts should focus on which variables exist and which security
 // groups can access the context, not on inspecting values that are
 // architecturally unavailable.
-private circleci.context.environmentVariable @defaults("variable") {
+private circleci.context.environmentVariable @defaults("variable") @maturity("experimental") {
   // Variable name
   variable string
   // Context this environment variable is configured in
@@ -252,7 +252,7 @@ private circleci.context.environmentVariable @defaults("variable") {
 // with a `resource_class` key. The `tokens` field lists the resource-class
 // tokens runner agents use to register, so an audit can flag stale or
 // excess tokens on a class.
-circleci.runner.resourceClass @defaults("resourceClass description") {
+circleci.runner.resourceClass @defaults("resourceClass description") @maturity("experimental") {
   // Resource class ID (UUID)
   id string
   // Fully qualified resource class name ("<namespace>/<class>")
@@ -273,7 +273,7 @@ circleci.runner.resourceClass @defaults("resourceClass description") {
 // exposes the token's metadata (nickname, creation time) for inventory and
 // rotation audits, not the secret itself. The `resourceClass` field is the
 // fully qualified name of the class the token belongs to.
-private circleci.runner.token @defaults("nickname createdAt") {
+private circleci.runner.token @defaults("nickname createdAt") @maturity("experimental") {
   // Token ID (UUID)
   id string
   // Fully qualified resource class name the token belongs to
