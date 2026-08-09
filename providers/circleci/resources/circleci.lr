@@ -1,0 +1,176 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+option provider = "go.mondoo.com/mql/providers/circleci"
+option go_package = "go.mondoo.com/mql/v13/providers/circleci/resources"
+
+// CircleCI CI/CD platform
+//
+// Root resource for a CircleCI account, reached through the token used to
+// authenticate the connection. Provides the current authenticated user,
+// the organizations the token can see, and the projects and contexts
+// underneath them. Use it to audit pipeline secrets exposure (contexts,
+// project environment variables), source access (checkout keys), and
+// pull-request build settings (forked-PR builds, OIDC) across an
+// organization's CircleCI footprint.
+circleci {
+  // Currently authenticated user
+  me() circleci.user
+  // Organizations the current token can see
+  organizations() []circleci.organization
+  // Projects across all visible organizations
+  projects() []circleci.project
+  // Contexts across all visible organizations
+  contexts() []circleci.context
+}
+
+// CircleCI user account
+private circleci.user @defaults("login") {
+  // User ID
+  id string
+  // VCS login (GitHub or Bitbucket username)
+  login string
+  // Display name
+  name string
+}
+
+// CircleCI organization
+//
+// A CircleCI organization as visible to the authenticated token, keyed by
+// its `id` (a UUID, not the display slug). Organizations own projects and
+// contexts. SSO enforcement and other identity-provider settings are
+// configured in CircleCI's org-level UI and are not exposed by API v2, so
+// this resource cannot confirm SSO is enforced; treat that as a manual
+// control until CircleCI exposes it.
+circleci.organization @defaults("name") {
+  // Organization ID (UUID)
+  id string
+  // Organization name (slug)
+  name string
+  // VCS type backing the organization (github, bitbucket, circleci)
+  vcsType string
+  // Projects owned by the organization
+  projects() []circleci.project
+  // Contexts owned by the organization
+  contexts() []circleci.context
+}
+
+// CircleCI project
+//
+// A CircleCI project, one per repository connected to an organization.
+// The `id` field is the project's UUID. Exposes the project's version
+// control linkage, its checkout keys (the deploy credentials CircleCI
+// uses to clone the repository), its own environment variables, and the
+// advanced settings that control whether forked pull requests can
+// trigger builds and whether those builds receive the project's secrets.
+circleci.project @defaults("name") {
+  // Project ID (UUID)
+  id string
+  // Project name (repository name)
+  name string
+  // Organization that owns the project
+  organization() circleci.organization
+  // VCS provider info (provider, external ID)
+  vcsInfo dict
+  // Default branch
+  defaultBranch string
+  // Environment variables defined directly on the project
+  environmentVariables() []circleci.project.environmentVariable
+  // Checkout keys used to clone the repository
+  checkoutKeys() []circleci.checkoutKey
+  // Whether the project builds pull requests opened from forks
+  buildForkPrs bool
+  // Whether forked pull request builds receive the project's secret environment variables and context values
+  forksReceiveSecretEnvVars bool
+  // Whether only pull request commits trigger builds (as opposed to every push)
+  buildPrsOnly bool
+  // Whether project settings changes require organization admin permissions
+  writeSettingsRequiresAdmin bool
+  // Whether SSH access to build containers is disabled
+  disableSsh bool
+  // Whether the project's status is reported back to the VCS provider (commit statuses / checks)
+  setGithubStatus bool
+}
+
+// CircleCI project environment variable
+//
+// A single environment variable set on a project, identified by its
+// `name`. CircleCI's API never returns environment variable values; the
+// `maskedValue` field holds only the truncated, non-secret suffix
+// CircleCI itself returns (for example `xxxx1234`), which exists to help
+// operators recognize which value is configured, not to reveal it. Treat
+// the absence of a `value` field as intentional: it cannot be modeled
+// because the API does not provide it.
+private circleci.project.environmentVariable @defaults("name") {
+  // Variable name
+  name string
+  // Project ID (parent)
+  projectId string
+  // Truncated, non-secret suffix of the value as returned by the API (e.g. "xxxx1234")
+  maskedValue string
+}
+
+// CircleCI checkout key
+//
+// A deploy credential CircleCI uses to check out a project's source
+// code, identified by its `fingerprint`. The `type` field is the
+// security-relevant one: a `deploy-key` is scoped to the single
+// repository, while a `user-key` inherits the permissions of the
+// CircleCI user who created it, including access to every other
+// repository that user can reach. Prefer deploy keys; a user-key on a
+// project is broader access than the project itself needs.
+circleci.checkoutKey @defaults("type fingerprint") {
+  // Public key fingerprint (SHA256, colon-delimited)
+  fingerprint string
+  // Project ID (parent)
+  projectId string
+  // Key type: deploy-key (repo-scoped) or user-key (inherits the creating user's access)
+  type string
+  // Public key contents
+  publicKey string
+  // Whether CircleCI prefers this key when multiple keys are present
+  preferred bool
+  // Creation time
+  createdAt time
+}
+
+// CircleCI context
+//
+// A named group of environment variables shared across projects, keyed
+// by its `id`. Contexts are the preferred place to store long-lived
+// cloud credentials because access to them can be restricted by security
+// group, unlike project-level environment variables which any project
+// collaborator can use. The `environmentVariables` field lists the
+// variable names configured in the context; CircleCI's API never returns
+// context environment variable values under any circumstance.
+circleci.context @defaults("name") {
+  // Context ID (UUID)
+  id string
+  // Context name
+  name string
+  // Organization that owns the context
+  organization() circleci.organization
+  // Creation time
+  createdAt time
+  // Environment variables configured in the context (names only, no values)
+  environmentVariables() []circleci.context.environmentVariable
+}
+
+// CircleCI context environment variable
+//
+// A single environment variable name configured in a context, identified
+// by `variable`. CircleCI's API does not return context environment
+// variable values in any form, not even masked or truncated: contexts
+// are the platform's mechanism for handing a value to a build without
+// ever making it readable back out through the API. A security audit of
+// contexts should focus on which variables exist and which security
+// groups can access the context, not on inspecting values that are
+// architecturally unavailable.
+private circleci.context.environmentVariable @defaults("variable") {
+  // Variable name
+  variable string
+  // Context ID (parent)
+  contextId string
+  // Creation time
+  createdAt time
+}
