@@ -23,9 +23,10 @@ type mqlNotionPageInternal struct {
 // already sets "__id" explicitly on every CreateResource call, but should a
 // future call site create a notion.page without it, this keeps distinct
 // pages from collapsing onto a single cache entry instead of silently
-// colliding.
+// colliding. It returns the bare page UUID to match the "__id" set by
+// mqlNotionPageFromAPI, so both paths resolve to the same cache entry.
 func (r *mqlNotionPage) id() (string, error) {
-	return "notion.page/" + r.Id.Data, nil
+	return r.Id.Data, nil
 }
 
 // pages lists the pages visible to this integration through Notion's

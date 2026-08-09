@@ -11,8 +11,12 @@ import (
 
 // Discover returns the assets reachable through this Notion connection. The
 // MVP models a single asset per integration (the connected workspace
-// itself), so there are no child assets to enumerate. Per-page or
-// per-database child assets can be added here in a later iteration.
+// itself), which the provider surfaces as the root asset rather than as a
+// discovered child, so this returns no child assets.
+//
+// TODO: when per-page or per-database child assets are added, emit them here
+// and have their lister consult conn.Filters (per CLAUDE.md 3.5) so
+// --filters is honored rather than silently ignored.
 func Discover(runtime *plugin.Runtime, opts map[string]string) (*inventory.Inventory, error) {
 	conn := runtime.Connection.(*connection.NotionConnection)
 	_ = conn

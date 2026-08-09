@@ -21,9 +21,10 @@ type mqlNotionDatabaseInternal struct {
 // already sets "__id" explicitly on every CreateResource call, but should a
 // future call site create a notion.database without it, this keeps distinct
 // databases from collapsing onto a single cache entry instead of silently
-// colliding.
+// colliding. It returns the bare database UUID to match the "__id" set by
+// mqlNotionDatabaseFromAPI, so both paths resolve to the same cache entry.
 func (r *mqlNotionDatabase) id() (string, error) {
-	return "notion.database/" + r.Id.Data, nil
+	return r.Id.Data, nil
 }
 
 // databases lists the databases visible to this integration through

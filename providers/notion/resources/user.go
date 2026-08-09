@@ -17,9 +17,10 @@ import (
 // already sets "__id" explicitly on every CreateResource call, but should a
 // future call site create a notion.user without it, this keeps distinct
 // users from collapsing onto a single cache entry instead of silently
-// colliding.
+// colliding. It returns the bare user UUID to match the "__id" set by
+// mqlNotionUserFromAPI, so both paths resolve to the same cache entry.
 func (r *mqlNotionUser) id() (string, error) {
-	return "notion.user/" + r.Id.Data, nil
+	return r.Id.Data, nil
 }
 
 // users lists the workspace members and bots visible to this integration.

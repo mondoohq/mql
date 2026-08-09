@@ -5,7 +5,6 @@ package resources
 
 import (
 	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/notion/connection"
 )
 
 // workspace returns the workspace-level view of this integration's
@@ -29,34 +28,55 @@ func (r *mqlNotion) workspace() (*mqlNotionWorkspace, error) {
 	return res.(*mqlNotionWorkspace), nil
 }
 
+// notionRoot resolves the singleton notion resource so the count methods can
+// reuse its per-field cached users/databases/pages instead of re-paginating
+// the API. The __id is deterministic ("notion"), so this returns the same
+// instance a `notion { users databases pages }` query populates.
+func (w *mqlNotionWorkspace) notionRoot() (*mqlNotion, error) {
+	res, err := CreateResource(w.MqlRuntime, "notion", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlNotion), nil
+}
+
 // userCount reports the number of workspace members and bots visible to
 // this integration.
 func (w *mqlNotionWorkspace) userCount() (int64, error) {
-	conn := w.MqlRuntime.Connection.(*connection.NotionConnection)
-	list, err := listNotionUsers(conn)
+	notion, err := w.notionRoot()
 	if err != nil {
 		return 0, err
 	}
-	return int64(len(list)), nil
+	users := notion.GetUsers()
+	if users.Error != nil {
+		return 0, users.Error
+	}
+	return int64(len(users.Data)), nil
 }
 
 // databaseCount reports the number of databases visible to this
 // integration.
 func (w *mqlNotionWorkspace) databaseCount() (int64, error) {
-	conn := w.MqlRuntime.Connection.(*connection.NotionConnection)
-	list, err := searchNotionDatabases(conn)
+	notion, err := w.notionRoot()
 	if err != nil {
 		return 0, err
 	}
-	return int64(len(list)), nil
+	databases := notion.GetDatabases()
+	if databases.Error != nil {
+		return 0, databases.Error
+	}
+	return int64(len(databases.Data)), nil
 }
 
 // pageCount reports the number of pages visible to this integration.
 func (w *mqlNotionWorkspace) pageCount() (int64, error) {
-	conn := w.MqlRuntime.Connection.(*connection.NotionConnection)
-	list, err := searchNotionPages(conn)
+	notion, err := w.notionRoot()
 	if err != nil {
 		return 0, err
 	}
-	return int64(len(list)), nil
+	pages := notion.GetPages()
+	if pages.Error != nil {
+		return 0, pages.Error
+	}
+	return int64(len(pages.Data)), nil
 }
