@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/bndr/gojenkins"
 	"github.com/cockroachdb/errors"
@@ -44,6 +45,10 @@ type JenkinsConnection struct {
 	asset   *inventory.Asset
 	baseUrl string
 	client  *gojenkins.Jenkins
+
+	nodesOnce sync.Once
+	nodes     any
+	nodesErr  error
 }
 
 func NewJenkinsConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*JenkinsConnection, error) {
@@ -113,4 +118,15 @@ func (c *JenkinsConnection) BaseUrl() string {
 // Client returns the authenticated gojenkins client.
 func (c *JenkinsConnection) Client() *gojenkins.Jenkins {
 	return c.client
+}
+
+// CachedNodes returns the controller's node list, fetching it at most once per
+// connection via fetch and memoizing the result (including an error). It lets
+// many job.node resolutions share a single /computer read instead of paying
+// one fetch each.
+func (c *JenkinsConnection) CachedNodes(fetch func() (any, error)) (any, error) {
+	c.nodesOnce.Do(func() {
+		c.nodes, c.nodesErr = fetch()
+	})
+	return c.nodes, c.nodesErr
 }

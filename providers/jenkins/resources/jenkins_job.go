@@ -5,10 +5,33 @@ package resources
 
 import (
 	"context"
+	"strings"
 
 	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/v13/providers/jenkins/connection"
 )
+
+// jobRecursionDepth bounds how deeply the job tree is walked into nested
+// folders. Folder nesting this deep is exceptional; the bound keeps the single
+// tree query finite while covering realistic Jenkins layouts.
+const jobRecursionDepth = 10
+
+// jobTreeFields is the set of per-job fields requested for every level of the
+// job tree.
+const jobTreeFields = "name,fullName,url,_class,buildable,disabled,description," +
+	"lastBuild[number,builtOn],lastSuccessfulBuild[number],lastFailedBuild[number]"
+
+// jobsTreeQuery builds a nested `jobs[...]` tree query that descends depth
+// levels of folders, so jobs inside com.cloudbees.hudson.plugins.folder.Folder
+// containers are returned by the same single fetch as top-level jobs.
+func jobsTreeQuery(depth int) string {
+	inner := jobTreeFields
+	for i := 0; i < depth; i++ {
+		inner = jobTreeFields + ",jobs[" + inner + "]"
+	}
+	return "jobs[" + inner + "]"
+}
 
 // mqlJenkinsJobInternal caches the raw node name the job's last build ran on
 // (and whether the job has built at all) so the node accessor can resolve a
@@ -18,9 +41,11 @@ type mqlJenkinsJobInternal struct {
 	cacheBuiltOn      string
 }
 
-// jenkinsJobData is the shape fetched from the Jenkins root job tree, scoped
-// with a tree query to a single deep fetch (Jenkins list endpoints return
-// their full result in one response; there is no pagination to follow).
+// jenkinsJobData is the shape fetched from the Jenkins job tree, scoped with a
+// tree query to a single deep fetch (Jenkins list endpoints return their full
+// result in one response; there is no pagination to follow). The nested Jobs
+// slice holds the children of folder-type jobs, populated by the recursive
+// tree query.
 type jenkinsJobData struct {
 	Name        string `json:"name"`
 	FullName    string `json:"fullName"`
@@ -39,33 +64,88 @@ type jenkinsJobData struct {
 	LastFailedBuild struct {
 		Number int64 `json:"number"`
 	} `json:"lastFailedBuild"`
+	Jobs []jenkinsJobData `json:"jobs"`
 }
 
-// jobs lists every configured job, pipeline, and folder in a single deep
-// fetch against the root job tree.
-func (r *mqlJenkins) jobs() ([]any, error) {
-	conn := r.conn()
-
+// fetchJobTree fetches the whole job tree, descending folders in a single
+// nested tree query.
+func fetchJobTree(conn *connection.JenkinsConnection) ([]jenkinsJobData, error) {
 	var resp struct {
 		Jobs []jenkinsJobData `json:"jobs"`
 	}
 	_, err := conn.Client().Requester.GetJSON(context.Background(), "/", &resp, map[string]string{
-		"tree": "jobs[name,fullName,url,_class,buildable,disabled,description," +
-			"lastBuild[number,builtOn],lastSuccessfulBuild[number],lastFailedBuild[number]]",
+		"tree": jobsTreeQuery(jobRecursionDepth),
 	})
 	if err != nil {
 		return nil, err
 	}
+	return resp.Jobs, nil
+}
 
-	all := make([]any, 0, len(resp.Jobs))
-	for _, j := range resp.Jobs {
-		res, err := newMqlJenkinsJob(r.MqlRuntime, j)
-		if err != nil {
-			return nil, err
+// isFolderClass reports whether a job class is a folder container that can hold
+// nested jobs and its own credential store.
+func isFolderClass(class string) bool {
+	return strings.Contains(class, "hudson.plugins.folder.Folder") ||
+		strings.Contains(class, "OrganizationFolder")
+}
+
+// fetchFolders returns every folder job in the tree, flattened, for callers
+// that enumerate folder-scoped resources (e.g. folder credential stores).
+func fetchFolders(conn *connection.JenkinsConnection) ([]jenkinsJobData, error) {
+	jobs, err := fetchJobTree(conn)
+	if err != nil {
+		return nil, err
+	}
+	var folders []jenkinsJobData
+	var walk func([]jenkinsJobData)
+	walk = func(js []jenkinsJobData) {
+		for _, j := range js {
+			if isFolderClass(j.Class) {
+				folders = append(folders, j)
+			}
+			if len(j.Jobs) > 0 {
+				walk(j.Jobs)
+			}
 		}
-		all = append(all, res)
+	}
+	walk(jobs)
+	return folders, nil
+}
+
+// jobs lists every configured job, pipeline, and folder, including those nested
+// inside folders, in a single deep fetch against the root job tree. Jobs inside
+// folders carry a path-qualified fullName (e.g. "team-a/deploy-service").
+func (r *mqlJenkins) jobs() ([]any, error) {
+	conn := r.conn()
+
+	jobs, err := fetchJobTree(conn)
+	if err != nil {
+		return nil, err
+	}
+
+	all := []any{}
+	if err := r.appendJobs(jobs, &all); err != nil {
+		return nil, err
 	}
 	return all, nil
+}
+
+// appendJobs maps each job to its MQL resource and recurses into folder
+// children so the returned list is a flat view of the whole job tree.
+func (r *mqlJenkins) appendJobs(jobs []jenkinsJobData, all *[]any) error {
+	for _, j := range jobs {
+		res, err := newMqlJenkinsJob(r.MqlRuntime, j)
+		if err != nil {
+			return err
+		}
+		*all = append(*all, res)
+		if len(j.Jobs) > 0 {
+			if err := r.appendJobs(j.Jobs, all); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // newMqlJenkinsJob maps a single job's fetched data to its MQL resource.

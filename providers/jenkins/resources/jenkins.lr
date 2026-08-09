@@ -89,9 +89,10 @@ jenkins.plugin @defaults("shortName version") {
 
 // Jenkins job
 //
-// A configured job, pipeline, or folder. The `fullName` field is the
-// job's path-qualified name, for example "team-a/deploy-service", and is
-// stable across folder reorganizations of the same job. The `class`
+// A configured job, pipeline, or folder, including jobs nested inside
+// folders. The `fullName` field is the job's path-qualified name, for
+// example "team-a/deploy-service", and is stable across folder
+// reorganizations of the same job. The `class`
 // field distinguishes job types, such as "hudson.model.FreeStyleProject",
 // "org.jenkinsci.plugins.workflow.job.WorkflowJob" (pipeline), or
 // "com.cloudbees.hudson.plugins.folder.Folder".
@@ -151,16 +152,19 @@ jenkins.node @defaults("name offline") {
 // Jenkins stored credential
 //
 // Metadata for a credential stored in the Jenkins Credentials plugin,
-// scoped to the system domain. Only identifying metadata is exposed:
-// `id`, `typeName`, `scope`, `description`, and the owning `domain`.
-// The credential's secret material (passwords, private keys, tokens) is
-// never fetched or exposed by this resource.
+// covering the controller's system store (across all of its domains) and
+// every folder-scoped credential store. Only identifying metadata is
+// exposed: `id`, `typeName`, `scope`, `description`, and the owning
+// `domain`. The `scope` field reports the credential's configured scope,
+// and `domain` is the credentials domain it belongs to ("_" for the
+// default global domain). The credential's secret material (passwords,
+// private keys, tokens) is never fetched or exposed by this resource.
 jenkins.credential @defaults("id typeName scope") {
   // Credential ID, as referenced by jobs and pipelines
   id string
   // Credential implementation class, for example "com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl"
   typeName string
-  // Credential scope, either GLOBAL (available to jobs) or SYSTEM (available only to the controller itself)
+  // Credential scope reported by Jenkins, for example GLOBAL, SYSTEM, or USER
   scope string
   // Credential description
   description string

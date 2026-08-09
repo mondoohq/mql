@@ -89,19 +89,30 @@ func (r *mqlJenkins) nodes() ([]any, error) {
 }
 
 // fetchNodes retrieves every node (agents plus the built-in controller node)
-// in a single deep fetch.
+// in a single deep fetch. The result is memoized on the connection so that
+// resolving N job.node references does not trigger N /computer reads.
 func fetchNodes(conn *connection.JenkinsConnection) ([]jenkinsNodeData, error) {
-	var resp struct {
-		Computer []jenkinsNodeData `json:"computer"`
-	}
-	_, err := conn.Client().Requester.GetJSON(context.Background(), "/computer", &resp, map[string]string{
-		"tree": "computer[_class,displayName,description,offline,temporarilyOffline," +
-			"offlineCauseReason,numExecutors,assignedLabels[name],launcher[_class]]",
+	v, err := conn.CachedNodes(func() (any, error) {
+		var resp struct {
+			Computer []jenkinsNodeData `json:"computer"`
+		}
+		_, err := conn.Client().Requester.GetJSON(context.Background(), "/computer", &resp, map[string]string{
+			"tree": "computer[_class,displayName,description,offline,temporarilyOffline," +
+				"offlineCauseReason,numExecutors,assignedLabels[name],launcher[_class]]",
+		})
+		if err != nil {
+			return nil, err
+		}
+		return resp.Computer, nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return resp.Computer, nil
+	nodes, ok := v.([]jenkinsNodeData)
+	if !ok {
+		return nil, nil
+	}
+	return nodes, nil
 }
 
 // newMqlJenkinsNode maps a single node's fetched data to its MQL resource.
