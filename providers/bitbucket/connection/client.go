@@ -360,6 +360,120 @@ func (c *Client) ListGroupsLegacy(ctx context.Context, workspace string) ([]Lega
 	return groups, nil
 }
 
+// Webhook is a Bitbucket Cloud webhook, as returned by
+// GET /2.0/repositories/{workspace}/{repo_slug}/hooks and
+// GET /2.0/workspaces/{workspace}/hooks. SecretSet reports whether a signing
+// secret is configured; the secret itself is write-only and never returned.
+type Webhook struct {
+	UUID                 string     `json:"uuid"`
+	URL                  string     `json:"url"`
+	Description          string     `json:"description"`
+	Active               bool       `json:"active"`
+	Events               []string   `json:"events"`
+	SkipCertVerification bool       `json:"skip_cert_verification"`
+	SecretSet            bool       `json:"secret_set"`
+	CreatedAt            *time.Time `json:"created_at"`
+}
+
+// ListRepositoryWebhooks lists every webhook configured on a repository.
+func (c *Client) ListRepositoryWebhooks(ctx context.Context, workspace, repoSlug string) ([]Webhook, error) {
+	path := "/repositories/" + url.PathEscape(workspace) + "/" + url.PathEscape(repoSlug) + "/hooks"
+	return listAllPages[Webhook](ctx, c, apiURL(path, nil))
+}
+
+// ListWorkspaceWebhooks lists every webhook configured on a workspace.
+func (c *Client) ListWorkspaceWebhooks(ctx context.Context, workspace string) ([]Webhook, error) {
+	path := "/workspaces/" + url.PathEscape(workspace) + "/hooks"
+	return listAllPages[Webhook](ctx, c, apiURL(path, nil))
+}
+
+// PipelineVariable is a Bitbucket Pipelines configuration variable, shared by
+// the repository, workspace, and deployment-environment variable endpoints.
+// Value is populated only for unsecured variables; Bitbucket never returns the
+// value of a secured variable, so it decodes to the empty string.
+type PipelineVariable struct {
+	UUID    string `json:"uuid"`
+	Key     string `json:"key"`
+	Value   string `json:"value"`
+	Secured bool   `json:"secured"`
+}
+
+// ListRepositoryPipelineVariables lists the Pipelines variables defined for a
+// repository, GET /2.0/repositories/{workspace}/{repo_slug}/pipelines_config/variables/.
+func (c *Client) ListRepositoryPipelineVariables(ctx context.Context, workspace, repoSlug string) ([]PipelineVariable, error) {
+	path := "/repositories/" + url.PathEscape(workspace) + "/" + url.PathEscape(repoSlug) + "/pipelines_config/variables/"
+	return listAllPages[PipelineVariable](ctx, c, apiURL(path, nil))
+}
+
+// ListWorkspacePipelineVariables lists the Pipelines variables defined for a
+// workspace, GET /2.0/workspaces/{workspace}/pipelines-config/variables/ (note
+// the endpoint spells the segment with a dash, unlike the repository one).
+func (c *Client) ListWorkspacePipelineVariables(ctx context.Context, workspace string) ([]PipelineVariable, error) {
+	path := "/workspaces/" + url.PathEscape(workspace) + "/pipelines-config/variables/"
+	return listAllPages[PipelineVariable](ctx, c, apiURL(path, nil))
+}
+
+// ListDeploymentVariables lists the variables defined for a single deployment
+// environment, GET /2.0/repositories/{workspace}/{repo_slug}/deployments_config/environments/{env_uuid}/variables/.
+func (c *Client) ListDeploymentVariables(ctx context.Context, workspace, repoSlug, environmentUUID string) ([]PipelineVariable, error) {
+	path := "/repositories/" + url.PathEscape(workspace) + "/" + url.PathEscape(repoSlug) +
+		"/deployments_config/environments/" + url.PathEscape(environmentUUID) + "/variables/"
+	return listAllPages[PipelineVariable](ctx, c, apiURL(path, nil))
+}
+
+// EnvironmentType names a deployment environment's tier (Test, Staging,
+// Production).
+type EnvironmentType struct {
+	Name string `json:"name"`
+}
+
+// Environment is a Bitbucket deployment environment,
+// GET /2.0/repositories/{workspace}/{repo_slug}/environments/.
+type Environment struct {
+	UUID            string           `json:"uuid"`
+	Name            string           `json:"name"`
+	EnvironmentType *EnvironmentType `json:"environment_type"`
+}
+
+// ListEnvironments lists every deployment environment configured on a
+// repository.
+func (c *Client) ListEnvironments(ctx context.Context, workspace, repoSlug string) ([]Environment, error) {
+	path := "/repositories/" + url.PathEscape(workspace) + "/" + url.PathEscape(repoSlug) + "/environments/"
+	return listAllPages[Environment](ctx, c, apiURL(path, nil))
+}
+
+// ListRepositoryUserPermissions lists the explicit per-user permission grants
+// on a repository,
+// GET /2.0/repositories/{workspace}/{repo_slug}/permissions-config/users.
+func (c *Client) ListRepositoryUserPermissions(ctx context.Context, workspace, repoSlug string) ([]WorkspacePermission, error) {
+	path := "/repositories/" + url.PathEscape(workspace) + "/" + url.PathEscape(repoSlug) + "/permissions-config/users"
+	return listAllPages[WorkspacePermission](ctx, c, apiURL(path, nil))
+}
+
+// ListRepositoryGroupPermissions lists the explicit per-group permission
+// grants on a repository,
+// GET /2.0/repositories/{workspace}/{repo_slug}/permissions-config/groups.
+func (c *Client) ListRepositoryGroupPermissions(ctx context.Context, workspace, repoSlug string) ([]GroupPermission, error) {
+	path := "/repositories/" + url.PathEscape(workspace) + "/" + url.PathEscape(repoSlug) + "/permissions-config/groups"
+	return listAllPages[GroupPermission](ctx, c, apiURL(path, nil))
+}
+
+// ListProjectUserPermissions lists the explicit per-user permission grants on
+// a project,
+// GET /2.0/workspaces/{workspace}/projects/{project_key}/permissions-config/users.
+func (c *Client) ListProjectUserPermissions(ctx context.Context, workspace, projectKey string) ([]WorkspacePermission, error) {
+	path := "/workspaces/" + url.PathEscape(workspace) + "/projects/" + url.PathEscape(projectKey) + "/permissions-config/users"
+	return listAllPages[WorkspacePermission](ctx, c, apiURL(path, nil))
+}
+
+// ListProjectGroupPermissions lists the explicit per-group permission grants
+// on a project,
+// GET /2.0/workspaces/{workspace}/projects/{project_key}/permissions-config/groups.
+func (c *Client) ListProjectGroupPermissions(ctx context.Context, workspace, projectKey string) ([]GroupPermission, error) {
+	path := "/workspaces/" + url.PathEscape(workspace) + "/projects/" + url.PathEscape(projectKey) + "/permissions-config/groups"
+	return listAllPages[GroupPermission](ctx, c, apiURL(path, nil))
+}
+
 // bitbucketAuthTransport injects either a bearer Access Token or HTTP Basic
 // App Password credentials into every request made by Client.
 type bitbucketAuthTransport struct {

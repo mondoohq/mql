@@ -147,6 +147,44 @@ func (w *mqlBitbucketWorkspace) groups() ([]any, error) {
 	return all, nil
 }
 
+// webhooks lists every webhook configured at the workspace level.
+func (w *mqlBitbucketWorkspace) webhooks() ([]any, error) {
+	conn := w.MqlRuntime.Connection.(*connection.BitbucketConnection)
+	list, err := conn.Client().ListWorkspaceWebhooks(context.Background(), w.Slug.Data)
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(list))
+	for i := range list {
+		res, err := newMqlBitbucketWorkspaceWebhook(w.MqlRuntime, w.Slug.Data, &list[i])
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, res)
+	}
+	return all, nil
+}
+
+// pipelineVariables lists the Pipelines variables defined for the workspace.
+func (w *mqlBitbucketWorkspace) pipelineVariables() ([]any, error) {
+	conn := w.MqlRuntime.Connection.(*connection.BitbucketConnection)
+	list, err := conn.Client().ListWorkspacePipelineVariables(context.Background(), w.Slug.Data)
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(list))
+	for i := range list {
+		res, err := newMqlBitbucketPipelineVariable(w.MqlRuntime, w.Slug.Data, &list[i])
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, res)
+	}
+	return all, nil
+}
+
 // strList converts a []string (as returned by the SDK) into an MQL string
 // array value, treating a nil slice as an empty list.
 func strList(s []string) []any {

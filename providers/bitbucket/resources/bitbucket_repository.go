@@ -193,3 +193,101 @@ func (r *mqlBitbucketRepository) defaultReviewers() ([]any, error) {
 	}
 	return all, nil
 }
+
+// webhooks lists every webhook configured on this repository.
+func (r *mqlBitbucketRepository) webhooks() ([]any, error) {
+	conn := r.MqlRuntime.Connection.(*connection.BitbucketConnection)
+	list, err := conn.Client().ListRepositoryWebhooks(context.Background(), r.cacheWorkspaceSlug, r.cacheRepoSlug)
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(list))
+	for i := range list {
+		res, err := newMqlBitbucketRepositoryWebhook(r.MqlRuntime, r.FullName.Data, &list[i])
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, res)
+	}
+	return all, nil
+}
+
+// pipelineVariables lists the Pipelines variables defined for this repository.
+func (r *mqlBitbucketRepository) pipelineVariables() ([]any, error) {
+	conn := r.MqlRuntime.Connection.(*connection.BitbucketConnection)
+	list, err := conn.Client().ListRepositoryPipelineVariables(context.Background(), r.cacheWorkspaceSlug, r.cacheRepoSlug)
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(list))
+	for i := range list {
+		res, err := newMqlBitbucketPipelineVariable(r.MqlRuntime, r.FullName.Data, &list[i])
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, res)
+	}
+	return all, nil
+}
+
+// deployments lists every deployment environment configured on this
+// repository.
+func (r *mqlBitbucketRepository) deployments() ([]any, error) {
+	conn := r.MqlRuntime.Connection.(*connection.BitbucketConnection)
+	list, err := conn.Client().ListEnvironments(context.Background(), r.cacheWorkspaceSlug, r.cacheRepoSlug)
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(list))
+	for i := range list {
+		res, err := newMqlBitbucketDeployment(r.MqlRuntime, r.FullName.Data, r.cacheWorkspaceSlug, r.cacheRepoSlug, &list[i])
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, res)
+	}
+	return all, nil
+}
+
+// userPermissions lists the users granted an explicit permission on this
+// repository together with the permission level.
+func (r *mqlBitbucketRepository) userPermissions() ([]any, error) {
+	conn := r.MqlRuntime.Connection.(*connection.BitbucketConnection)
+	list, err := conn.Client().ListRepositoryUserPermissions(context.Background(), r.cacheWorkspaceSlug, r.cacheRepoSlug)
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(list))
+	for _, p := range list {
+		res, err := newMqlBitbucketMember(r.MqlRuntime, p.User, p.Permission)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, res)
+	}
+	return all, nil
+}
+
+// groupPermissions lists the groups granted an explicit permission on this
+// repository together with the permission level.
+func (r *mqlBitbucketRepository) groupPermissions() ([]any, error) {
+	conn := r.MqlRuntime.Connection.(*connection.BitbucketConnection)
+	list, err := conn.Client().ListRepositoryGroupPermissions(context.Background(), r.cacheWorkspaceSlug, r.cacheRepoSlug)
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(list))
+	for _, p := range list {
+		res, err := newMqlBitbucketGroup(r.MqlRuntime, r.cacheWorkspaceSlug, p.Group.Slug, p.Group.Name, p.Permission)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, res)
+	}
+	return all, nil
+}

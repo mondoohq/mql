@@ -24,6 +24,10 @@ const (
 	ResourceBitbucketDeployKey                   string = "bitbucket.deployKey"
 	ResourceBitbucketMember                      string = "bitbucket.member"
 	ResourceBitbucketGroup                       string = "bitbucket.group"
+	ResourceBitbucketRepositoryWebhook           string = "bitbucket.repository.webhook"
+	ResourceBitbucketWorkspaceWebhook            string = "bitbucket.workspace.webhook"
+	ResourceBitbucketPipelineVariable            string = "bitbucket.pipelineVariable"
+	ResourceBitbucketRepositoryDeployment        string = "bitbucket.repository.deployment"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -61,6 +65,22 @@ func init() {
 		"bitbucket.group": {
 			Init:   initBitbucketGroup,
 			Create: createBitbucketGroup,
+		},
+		"bitbucket.repository.webhook": {
+			// to override args, implement: initBitbucketRepositoryWebhook(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createBitbucketRepositoryWebhook,
+		},
+		"bitbucket.workspace.webhook": {
+			// to override args, implement: initBitbucketWorkspaceWebhook(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createBitbucketWorkspaceWebhook,
+		},
+		"bitbucket.pipelineVariable": {
+			// to override args, implement: initBitbucketPipelineVariable(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createBitbucketPipelineVariable,
+		},
+		"bitbucket.repository.deployment": {
+			// to override args, implement: initBitbucketRepositoryDeployment(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createBitbucketRepositoryDeployment,
 		},
 	}
 }
@@ -175,6 +195,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"bitbucket.workspace.groups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBitbucketWorkspace).GetGroups()).ToDataRes(types.Array(types.Resource("bitbucket.group")))
 	},
+	"bitbucket.workspace.webhooks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketWorkspace).GetWebhooks()).ToDataRes(types.Array(types.Resource("bitbucket.workspace.webhook")))
+	},
+	"bitbucket.workspace.pipelineVariables": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketWorkspace).GetPipelineVariables()).ToDataRes(types.Array(types.Resource("bitbucket.pipelineVariable")))
+	},
 	"bitbucket.project.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBitbucketProject).GetId()).ToDataRes(types.String)
 	},
@@ -201,6 +227,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"bitbucket.project.repositories": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBitbucketProject).GetRepositories()).ToDataRes(types.Array(types.Resource("bitbucket.repository")))
+	},
+	"bitbucket.project.userPermissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketProject).GetUserPermissions()).ToDataRes(types.Array(types.Resource("bitbucket.member")))
+	},
+	"bitbucket.project.groupPermissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketProject).GetGroupPermissions()).ToDataRes(types.Array(types.Resource("bitbucket.group")))
 	},
 	"bitbucket.repository.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBitbucketRepository).GetId()).ToDataRes(types.String)
@@ -258,6 +290,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"bitbucket.repository.defaultReviewers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBitbucketRepository).GetDefaultReviewers()).ToDataRes(types.Array(types.Resource("bitbucket.member")))
+	},
+	"bitbucket.repository.webhooks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepository).GetWebhooks()).ToDataRes(types.Array(types.Resource("bitbucket.repository.webhook")))
+	},
+	"bitbucket.repository.pipelineVariables": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepository).GetPipelineVariables()).ToDataRes(types.Array(types.Resource("bitbucket.pipelineVariable")))
+	},
+	"bitbucket.repository.deployments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepository).GetDeployments()).ToDataRes(types.Array(types.Resource("bitbucket.repository.deployment")))
+	},
+	"bitbucket.repository.userPermissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepository).GetUserPermissions()).ToDataRes(types.Array(types.Resource("bitbucket.member")))
+	},
+	"bitbucket.repository.groupPermissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepository).GetGroupPermissions()).ToDataRes(types.Array(types.Resource("bitbucket.group")))
 	},
 	"bitbucket.repository.branchRestriction.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBitbucketRepositoryBranchRestriction).GetId()).ToDataRes(types.Int)
@@ -327,6 +374,87 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"bitbucket.group.members": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBitbucketGroup).GetMembers()).ToDataRes(types.Array(types.Resource("bitbucket.member")))
+	},
+	"bitbucket.repository.webhook.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepositoryWebhook).GetId()).ToDataRes(types.String)
+	},
+	"bitbucket.repository.webhook.repository": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepositoryWebhook).GetRepository()).ToDataRes(types.Resource("bitbucket.repository"))
+	},
+	"bitbucket.repository.webhook.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepositoryWebhook).GetUrl()).ToDataRes(types.String)
+	},
+	"bitbucket.repository.webhook.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepositoryWebhook).GetDescription()).ToDataRes(types.String)
+	},
+	"bitbucket.repository.webhook.active": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepositoryWebhook).GetActive()).ToDataRes(types.Bool)
+	},
+	"bitbucket.repository.webhook.events": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepositoryWebhook).GetEvents()).ToDataRes(types.Array(types.String))
+	},
+	"bitbucket.repository.webhook.skipCertVerification": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepositoryWebhook).GetSkipCertVerification()).ToDataRes(types.Bool)
+	},
+	"bitbucket.repository.webhook.secretSet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepositoryWebhook).GetSecretSet()).ToDataRes(types.Bool)
+	},
+	"bitbucket.repository.webhook.createdOn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepositoryWebhook).GetCreatedOn()).ToDataRes(types.Time)
+	},
+	"bitbucket.workspace.webhook.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketWorkspaceWebhook).GetId()).ToDataRes(types.String)
+	},
+	"bitbucket.workspace.webhook.workspace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketWorkspaceWebhook).GetWorkspace()).ToDataRes(types.Resource("bitbucket.workspace"))
+	},
+	"bitbucket.workspace.webhook.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketWorkspaceWebhook).GetUrl()).ToDataRes(types.String)
+	},
+	"bitbucket.workspace.webhook.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketWorkspaceWebhook).GetDescription()).ToDataRes(types.String)
+	},
+	"bitbucket.workspace.webhook.active": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketWorkspaceWebhook).GetActive()).ToDataRes(types.Bool)
+	},
+	"bitbucket.workspace.webhook.events": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketWorkspaceWebhook).GetEvents()).ToDataRes(types.Array(types.String))
+	},
+	"bitbucket.workspace.webhook.skipCertVerification": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketWorkspaceWebhook).GetSkipCertVerification()).ToDataRes(types.Bool)
+	},
+	"bitbucket.workspace.webhook.secretSet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketWorkspaceWebhook).GetSecretSet()).ToDataRes(types.Bool)
+	},
+	"bitbucket.workspace.webhook.createdOn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketWorkspaceWebhook).GetCreatedOn()).ToDataRes(types.Time)
+	},
+	"bitbucket.pipelineVariable.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketPipelineVariable).GetId()).ToDataRes(types.String)
+	},
+	"bitbucket.pipelineVariable.key": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketPipelineVariable).GetKey()).ToDataRes(types.String)
+	},
+	"bitbucket.pipelineVariable.secured": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketPipelineVariable).GetSecured()).ToDataRes(types.Bool)
+	},
+	"bitbucket.pipelineVariable.value": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketPipelineVariable).GetValue()).ToDataRes(types.String)
+	},
+	"bitbucket.repository.deployment.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepositoryDeployment).GetId()).ToDataRes(types.String)
+	},
+	"bitbucket.repository.deployment.repository": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepositoryDeployment).GetRepository()).ToDataRes(types.Resource("bitbucket.repository"))
+	},
+	"bitbucket.repository.deployment.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepositoryDeployment).GetName()).ToDataRes(types.String)
+	},
+	"bitbucket.repository.deployment.environmentType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepositoryDeployment).GetEnvironmentType()).ToDataRes(types.String)
+	},
+	"bitbucket.repository.deployment.pipelineVariables": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketRepositoryDeployment).GetPipelineVariables()).ToDataRes(types.Array(types.Resource("bitbucket.pipelineVariable")))
 	},
 }
 
@@ -404,6 +532,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlBitbucketWorkspace).Groups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"bitbucket.workspace.webhooks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketWorkspace).Webhooks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"bitbucket.workspace.pipelineVariables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketWorkspace).PipelineVariables, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"bitbucket.project.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlBitbucketProject).__id, ok = v.Value.(string)
 		return
@@ -442,6 +578,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"bitbucket.project.repositories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlBitbucketProject).Repositories, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"bitbucket.project.userPermissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketProject).UserPermissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"bitbucket.project.groupPermissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketProject).GroupPermissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"bitbucket.repository.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -522,6 +666,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"bitbucket.repository.defaultReviewers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlBitbucketRepository).DefaultReviewers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.webhooks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepository).Webhooks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.pipelineVariables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepository).PipelineVariables, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.deployments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepository).Deployments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.userPermissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepository).UserPermissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.groupPermissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepository).GroupPermissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"bitbucket.repository.branchRestriction.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -630,6 +794,130 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"bitbucket.group.members": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlBitbucketGroup).Members, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.webhook.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepositoryWebhook).__id, ok = v.Value.(string)
+		return
+	},
+	"bitbucket.repository.webhook.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepositoryWebhook).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.webhook.repository": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepositoryWebhook).Repository, ok = plugin.RawToTValue[*mqlBitbucketRepository](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.webhook.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepositoryWebhook).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.webhook.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepositoryWebhook).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.webhook.active": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepositoryWebhook).Active, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.webhook.events": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepositoryWebhook).Events, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.webhook.skipCertVerification": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepositoryWebhook).SkipCertVerification, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.webhook.secretSet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepositoryWebhook).SecretSet, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.webhook.createdOn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepositoryWebhook).CreatedOn, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"bitbucket.workspace.webhook.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketWorkspaceWebhook).__id, ok = v.Value.(string)
+		return
+	},
+	"bitbucket.workspace.webhook.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketWorkspaceWebhook).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"bitbucket.workspace.webhook.workspace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketWorkspaceWebhook).Workspace, ok = plugin.RawToTValue[*mqlBitbucketWorkspace](v.Value, v.Error)
+		return
+	},
+	"bitbucket.workspace.webhook.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketWorkspaceWebhook).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"bitbucket.workspace.webhook.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketWorkspaceWebhook).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"bitbucket.workspace.webhook.active": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketWorkspaceWebhook).Active, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"bitbucket.workspace.webhook.events": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketWorkspaceWebhook).Events, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"bitbucket.workspace.webhook.skipCertVerification": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketWorkspaceWebhook).SkipCertVerification, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"bitbucket.workspace.webhook.secretSet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketWorkspaceWebhook).SecretSet, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"bitbucket.workspace.webhook.createdOn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketWorkspaceWebhook).CreatedOn, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"bitbucket.pipelineVariable.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketPipelineVariable).__id, ok = v.Value.(string)
+		return
+	},
+	"bitbucket.pipelineVariable.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketPipelineVariable).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"bitbucket.pipelineVariable.key": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketPipelineVariable).Key, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"bitbucket.pipelineVariable.secured": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketPipelineVariable).Secured, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"bitbucket.pipelineVariable.value": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketPipelineVariable).Value, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.deployment.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepositoryDeployment).__id, ok = v.Value.(string)
+		return
+	},
+	"bitbucket.repository.deployment.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepositoryDeployment).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.deployment.repository": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepositoryDeployment).Repository, ok = plugin.RawToTValue[*mqlBitbucketRepository](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.deployment.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepositoryDeployment).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.deployment.environmentType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepositoryDeployment).EnvironmentType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"bitbucket.repository.deployment.pipelineVariables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketRepositoryDeployment).PipelineVariables, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 }
@@ -751,6 +1039,8 @@ type mqlBitbucketWorkspace struct {
 	Repositories               plugin.TValue[[]any]
 	Members                    plugin.TValue[[]any]
 	Groups                     plugin.TValue[[]any]
+	Webhooks                   plugin.TValue[[]any]
+	PipelineVariables          plugin.TValue[[]any]
 }
 
 // createBitbucketWorkspace creates a new instance of this resource
@@ -881,20 +1171,54 @@ func (c *mqlBitbucketWorkspace) GetGroups() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlBitbucketWorkspace) GetWebhooks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Webhooks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("bitbucket.workspace", c.__id, "webhooks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.webhooks()
+	})
+}
+
+func (c *mqlBitbucketWorkspace) GetPipelineVariables() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PipelineVariables, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("bitbucket.workspace", c.__id, "pipelineVariables")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.pipelineVariables()
+	})
+}
+
 // mqlBitbucketProject for the bitbucket.project resource
 type mqlBitbucketProject struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlBitbucketProjectInternal
-	Id           plugin.TValue[string]
-	Key          plugin.TValue[string]
-	Name         plugin.TValue[string]
-	IsPrivate    plugin.TValue[bool]
-	Description  plugin.TValue[string]
-	Workspace    plugin.TValue[*mqlBitbucketWorkspace]
-	CreatedOn    plugin.TValue[*time.Time]
-	UpdatedOn    plugin.TValue[*time.Time]
-	Repositories plugin.TValue[[]any]
+	Id               plugin.TValue[string]
+	Key              plugin.TValue[string]
+	Name             plugin.TValue[string]
+	IsPrivate        plugin.TValue[bool]
+	Description      plugin.TValue[string]
+	Workspace        plugin.TValue[*mqlBitbucketWorkspace]
+	CreatedOn        plugin.TValue[*time.Time]
+	UpdatedOn        plugin.TValue[*time.Time]
+	Repositories     plugin.TValue[[]any]
+	UserPermissions  plugin.TValue[[]any]
+	GroupPermissions plugin.TValue[[]any]
 }
 
 // createBitbucketProject creates a new instance of this resource
@@ -989,6 +1313,38 @@ func (c *mqlBitbucketProject) GetRepositories() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlBitbucketProject) GetUserPermissions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.UserPermissions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("bitbucket.project", c.__id, "userPermissions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.userPermissions()
+	})
+}
+
+func (c *mqlBitbucketProject) GetGroupPermissions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.GroupPermissions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("bitbucket.project", c.__id, "groupPermissions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.groupPermissions()
+	})
+}
+
 // mqlBitbucketRepository for the bitbucket.repository resource
 type mqlBitbucketRepository struct {
 	MqlRuntime *plugin.Runtime
@@ -1013,6 +1369,11 @@ type mqlBitbucketRepository struct {
 	BranchRestrictions plugin.TValue[[]any]
 	DeployKeys         plugin.TValue[[]any]
 	DefaultReviewers   plugin.TValue[[]any]
+	Webhooks           plugin.TValue[[]any]
+	PipelineVariables  plugin.TValue[[]any]
+	Deployments        plugin.TValue[[]any]
+	UserPermissions    plugin.TValue[[]any]
+	GroupPermissions   plugin.TValue[[]any]
 }
 
 // createBitbucketRepository creates a new instance of this resource
@@ -1180,6 +1541,86 @@ func (c *mqlBitbucketRepository) GetDefaultReviewers() *plugin.TValue[[]any] {
 		}
 
 		return c.defaultReviewers()
+	})
+}
+
+func (c *mqlBitbucketRepository) GetWebhooks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Webhooks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("bitbucket.repository", c.__id, "webhooks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.webhooks()
+	})
+}
+
+func (c *mqlBitbucketRepository) GetPipelineVariables() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PipelineVariables, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("bitbucket.repository", c.__id, "pipelineVariables")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.pipelineVariables()
+	})
+}
+
+func (c *mqlBitbucketRepository) GetDeployments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Deployments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("bitbucket.repository", c.__id, "deployments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.deployments()
+	})
+}
+
+func (c *mqlBitbucketRepository) GetUserPermissions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.UserPermissions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("bitbucket.repository", c.__id, "userPermissions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.userPermissions()
+	})
+}
+
+func (c *mqlBitbucketRepository) GetGroupPermissions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.GroupPermissions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("bitbucket.repository", c.__id, "groupPermissions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.groupPermissions()
 	})
 }
 
@@ -1523,5 +1964,344 @@ func (c *mqlBitbucketGroup) GetMembers() *plugin.TValue[[]any] {
 		}
 
 		return c.members()
+	})
+}
+
+// mqlBitbucketRepositoryWebhook for the bitbucket.repository.webhook resource
+type mqlBitbucketRepositoryWebhook struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlBitbucketRepositoryWebhookInternal
+	Id                   plugin.TValue[string]
+	Repository           plugin.TValue[*mqlBitbucketRepository]
+	Url                  plugin.TValue[string]
+	Description          plugin.TValue[string]
+	Active               plugin.TValue[bool]
+	Events               plugin.TValue[[]any]
+	SkipCertVerification plugin.TValue[bool]
+	SecretSet            plugin.TValue[bool]
+	CreatedOn            plugin.TValue[*time.Time]
+}
+
+// createBitbucketRepositoryWebhook creates a new instance of this resource
+func createBitbucketRepositoryWebhook(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlBitbucketRepositoryWebhook{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("bitbucket.repository.webhook", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlBitbucketRepositoryWebhook) MqlName() string {
+	return "bitbucket.repository.webhook"
+}
+
+func (c *mqlBitbucketRepositoryWebhook) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlBitbucketRepositoryWebhook) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlBitbucketRepositoryWebhook) GetRepository() *plugin.TValue[*mqlBitbucketRepository] {
+	return plugin.GetOrCompute[*mqlBitbucketRepository](&c.Repository, func() (*mqlBitbucketRepository, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("bitbucket.repository.webhook", c.__id, "repository")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlBitbucketRepository), nil
+			}
+		}
+
+		return c.repository()
+	})
+}
+
+func (c *mqlBitbucketRepositoryWebhook) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlBitbucketRepositoryWebhook) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlBitbucketRepositoryWebhook) GetActive() *plugin.TValue[bool] {
+	return &c.Active
+}
+
+func (c *mqlBitbucketRepositoryWebhook) GetEvents() *plugin.TValue[[]any] {
+	return &c.Events
+}
+
+func (c *mqlBitbucketRepositoryWebhook) GetSkipCertVerification() *plugin.TValue[bool] {
+	return &c.SkipCertVerification
+}
+
+func (c *mqlBitbucketRepositoryWebhook) GetSecretSet() *plugin.TValue[bool] {
+	return &c.SecretSet
+}
+
+func (c *mqlBitbucketRepositoryWebhook) GetCreatedOn() *plugin.TValue[*time.Time] {
+	return &c.CreatedOn
+}
+
+// mqlBitbucketWorkspaceWebhook for the bitbucket.workspace.webhook resource
+type mqlBitbucketWorkspaceWebhook struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlBitbucketWorkspaceWebhookInternal
+	Id                   plugin.TValue[string]
+	Workspace            plugin.TValue[*mqlBitbucketWorkspace]
+	Url                  plugin.TValue[string]
+	Description          plugin.TValue[string]
+	Active               plugin.TValue[bool]
+	Events               plugin.TValue[[]any]
+	SkipCertVerification plugin.TValue[bool]
+	SecretSet            plugin.TValue[bool]
+	CreatedOn            plugin.TValue[*time.Time]
+}
+
+// createBitbucketWorkspaceWebhook creates a new instance of this resource
+func createBitbucketWorkspaceWebhook(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlBitbucketWorkspaceWebhook{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("bitbucket.workspace.webhook", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlBitbucketWorkspaceWebhook) MqlName() string {
+	return "bitbucket.workspace.webhook"
+}
+
+func (c *mqlBitbucketWorkspaceWebhook) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlBitbucketWorkspaceWebhook) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlBitbucketWorkspaceWebhook) GetWorkspace() *plugin.TValue[*mqlBitbucketWorkspace] {
+	return plugin.GetOrCompute[*mqlBitbucketWorkspace](&c.Workspace, func() (*mqlBitbucketWorkspace, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("bitbucket.workspace.webhook", c.__id, "workspace")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlBitbucketWorkspace), nil
+			}
+		}
+
+		return c.workspace()
+	})
+}
+
+func (c *mqlBitbucketWorkspaceWebhook) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlBitbucketWorkspaceWebhook) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlBitbucketWorkspaceWebhook) GetActive() *plugin.TValue[bool] {
+	return &c.Active
+}
+
+func (c *mqlBitbucketWorkspaceWebhook) GetEvents() *plugin.TValue[[]any] {
+	return &c.Events
+}
+
+func (c *mqlBitbucketWorkspaceWebhook) GetSkipCertVerification() *plugin.TValue[bool] {
+	return &c.SkipCertVerification
+}
+
+func (c *mqlBitbucketWorkspaceWebhook) GetSecretSet() *plugin.TValue[bool] {
+	return &c.SecretSet
+}
+
+func (c *mqlBitbucketWorkspaceWebhook) GetCreatedOn() *plugin.TValue[*time.Time] {
+	return &c.CreatedOn
+}
+
+// mqlBitbucketPipelineVariable for the bitbucket.pipelineVariable resource
+type mqlBitbucketPipelineVariable struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlBitbucketPipelineVariableInternal it will be used here
+	Id      plugin.TValue[string]
+	Key     plugin.TValue[string]
+	Secured plugin.TValue[bool]
+	Value   plugin.TValue[string]
+}
+
+// createBitbucketPipelineVariable creates a new instance of this resource
+func createBitbucketPipelineVariable(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlBitbucketPipelineVariable{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("bitbucket.pipelineVariable", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlBitbucketPipelineVariable) MqlName() string {
+	return "bitbucket.pipelineVariable"
+}
+
+func (c *mqlBitbucketPipelineVariable) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlBitbucketPipelineVariable) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlBitbucketPipelineVariable) GetKey() *plugin.TValue[string] {
+	return &c.Key
+}
+
+func (c *mqlBitbucketPipelineVariable) GetSecured() *plugin.TValue[bool] {
+	return &c.Secured
+}
+
+func (c *mqlBitbucketPipelineVariable) GetValue() *plugin.TValue[string] {
+	return &c.Value
+}
+
+// mqlBitbucketRepositoryDeployment for the bitbucket.repository.deployment resource
+type mqlBitbucketRepositoryDeployment struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlBitbucketRepositoryDeploymentInternal
+	Id                plugin.TValue[string]
+	Repository        plugin.TValue[*mqlBitbucketRepository]
+	Name              plugin.TValue[string]
+	EnvironmentType   plugin.TValue[string]
+	PipelineVariables plugin.TValue[[]any]
+}
+
+// createBitbucketRepositoryDeployment creates a new instance of this resource
+func createBitbucketRepositoryDeployment(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlBitbucketRepositoryDeployment{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("bitbucket.repository.deployment", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlBitbucketRepositoryDeployment) MqlName() string {
+	return "bitbucket.repository.deployment"
+}
+
+func (c *mqlBitbucketRepositoryDeployment) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlBitbucketRepositoryDeployment) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlBitbucketRepositoryDeployment) GetRepository() *plugin.TValue[*mqlBitbucketRepository] {
+	return plugin.GetOrCompute[*mqlBitbucketRepository](&c.Repository, func() (*mqlBitbucketRepository, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("bitbucket.repository.deployment", c.__id, "repository")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlBitbucketRepository), nil
+			}
+		}
+
+		return c.repository()
+	})
+}
+
+func (c *mqlBitbucketRepositoryDeployment) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlBitbucketRepositoryDeployment) GetEnvironmentType() *plugin.TValue[string] {
+	return &c.EnvironmentType
+}
+
+func (c *mqlBitbucketRepositoryDeployment) GetPipelineVariables() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PipelineVariables, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("bitbucket.repository.deployment", c.__id, "pipelineVariables")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.pipelineVariables()
 	})
 }

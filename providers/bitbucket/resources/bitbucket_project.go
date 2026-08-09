@@ -111,3 +111,43 @@ func (p *mqlBitbucketProject) repositories() ([]any, error) {
 	}
 	return all, nil
 }
+
+// userPermissions lists the users granted an explicit permission on this
+// project together with the permission level.
+func (p *mqlBitbucketProject) userPermissions() ([]any, error) {
+	conn := p.MqlRuntime.Connection.(*connection.BitbucketConnection)
+	list, err := conn.Client().ListProjectUserPermissions(context.Background(), p.cacheWorkspaceSlug, p.Key.Data)
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(list))
+	for _, gp := range list {
+		res, err := newMqlBitbucketMember(p.MqlRuntime, gp.User, gp.Permission)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, res)
+	}
+	return all, nil
+}
+
+// groupPermissions lists the groups granted an explicit permission on this
+// project together with the permission level.
+func (p *mqlBitbucketProject) groupPermissions() ([]any, error) {
+	conn := p.MqlRuntime.Connection.(*connection.BitbucketConnection)
+	list, err := conn.Client().ListProjectGroupPermissions(context.Background(), p.cacheWorkspaceSlug, p.Key.Data)
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(list))
+	for _, gp := range list {
+		res, err := newMqlBitbucketGroup(p.MqlRuntime, p.cacheWorkspaceSlug, gp.Group.Slug, gp.Group.Name, gp.Permission)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, res)
+	}
+	return all, nil
+}

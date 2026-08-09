@@ -50,6 +50,10 @@ bitbucket.workspace @defaults("slug name") {
   members() []bitbucket.member
   // Groups defined in the workspace
   groups() []bitbucket.group
+  // Webhooks configured at the workspace level
+  webhooks() []bitbucket.workspace.webhook
+  // Pipelines variables defined for the workspace
+  pipelineVariables() []bitbucket.pipelineVariable
 }
 
 // Bitbucket project
@@ -79,6 +83,10 @@ bitbucket.project @defaults("key name") {
   updatedOn time
   // Repositories in this project
   repositories() []bitbucket.repository
+  // Users granted an explicit permission on this project
+  userPermissions() []bitbucket.member
+  // Groups granted an explicit permission on this project
+  groupPermissions() []bitbucket.group
 }
 
 // Bitbucket repository
@@ -131,6 +139,16 @@ bitbucket.repository @defaults("fullName isPrivate") {
   deployKeys() []bitbucket.deployKey
   // Default reviewers required on pull requests
   defaultReviewers() []bitbucket.member
+  // Webhooks configured on this repository
+  webhooks() []bitbucket.repository.webhook
+  // Pipelines variables defined for this repository
+  pipelineVariables() []bitbucket.pipelineVariable
+  // Deployment environments configured on this repository
+  deployments() []bitbucket.repository.deployment
+  // Users granted an explicit permission on this repository
+  userPermissions() []bitbucket.member
+  // Groups granted an explicit permission on this repository
+  groupPermissions() []bitbucket.group
 }
 
 // Bitbucket branch restriction
@@ -231,4 +249,115 @@ bitbucket.group @defaults("slug name") {
   permission string
   // Members of this group
   members() []bitbucket.member
+}
+
+// Bitbucket repository webhook
+//
+// HTTP callback registered on a repository that Bitbucket calls when the
+// subscribed `events` occur (for example a push or a pull request). The
+// security-relevant surface is whether the endpoint `url` uses TLS,
+// whether `active` traffic is flowing, whether `secretSet` reports a
+// signing secret so receivers can verify payload authenticity, and
+// whether `skipCertVerification` disables TLS certificate checks on the
+// callback. The secret value itself is write-only and never returned.
+bitbucket.repository.webhook @defaults("url active") {
+  // Webhook UUID
+  id string
+  // Repository this webhook is registered on
+  repository() bitbucket.repository
+  // Destination URL Bitbucket sends event payloads to
+  url string
+  // Human-readable description
+  description string
+  // Whether the webhook is active and receiving events
+  active bool
+  // Event types this webhook subscribes to
+  //
+  // For example repo:push, pullrequest:created, or
+  // pullrequest:fulfilled.
+  events []string
+  // Whether TLS certificate verification is skipped when calling the URL
+  skipCertVerification bool
+  // Whether a signing secret is configured on the webhook
+  secretSet bool
+  // Creation time
+  createdOn time
+}
+
+// Bitbucket workspace webhook
+//
+// HTTP callback registered at the workspace level that Bitbucket calls
+// when the subscribed `events` occur across the workspace. As with
+// repository webhooks, the fields worth auditing are whether the endpoint
+// `url` uses TLS, whether it is `active`, whether `secretSet` reports a
+// signing secret, and whether `skipCertVerification` disables TLS
+// certificate checks. The secret value itself is write-only and never
+// returned.
+bitbucket.workspace.webhook @defaults("url active") {
+  // Webhook UUID
+  id string
+  // Workspace this webhook is registered on
+  workspace() bitbucket.workspace
+  // Destination URL Bitbucket sends event payloads to
+  url string
+  // Human-readable description
+  description string
+  // Whether the webhook is active and receiving events
+  active bool
+  // Event types this webhook subscribes to
+  //
+  // For example repo:push, pullrequest:created, or
+  // pullrequest:fulfilled.
+  events []string
+  // Whether TLS certificate verification is skipped when calling the URL
+  skipCertVerification bool
+  // Whether a signing secret is configured on the webhook
+  secretSet bool
+  // Creation time
+  createdOn time
+}
+
+// Bitbucket Pipelines variable
+//
+// A single key/value variable exposed to Bitbucket Pipelines builds,
+// defined at the repository, workspace, or deployment-environment level.
+// The `secured` flag marks a variable whose value is encrypted at rest and
+// masked in logs. A secured variable never returns its `value` (it is the
+// empty string), so a fleet-wide audit for secrets accidentally stored in
+// the clear can flag any variable whose `key` looks credential-bearing but
+// whose `secured` is false.
+bitbucket.pipelineVariable @defaults("key secured") {
+  // Variable UUID
+  id string
+  // Variable name
+  key string
+  // Whether the variable value is encrypted and masked in build logs
+  secured bool
+  // Variable value
+  //
+  // Populated only for unsecured variables. Secured variables never
+  // return their value, so this is the empty string for them.
+  value string
+}
+
+// Bitbucket deployment environment
+//
+// A deployment target configured on a repository (for example Test,
+// Staging, or Production), selected by its `name`. The environment scopes
+// its own set of Pipelines `variables`, so it is the place to check for
+// environment-specific secrets and configuration that differ from the
+// repository-wide variables.
+bitbucket.repository.deployment @defaults("name environmentType") {
+  // Environment UUID
+  id string
+  // Repository this environment belongs to
+  repository() bitbucket.repository
+  // Environment name
+  name string
+  // Environment tier
+  //
+  // One of Test, Staging, or Production.
+  environmentType string
+  // Pipelines variables scoped to this environment
+  pipelineVariables() []bitbucket.pipelineVariable
 }
