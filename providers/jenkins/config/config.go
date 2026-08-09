@@ -29,7 +29,7 @@ controller.
 Authentication uses a Jenkins username paired with a per-user API token
 over HTTP Basic auth:
 
-  cnspec shell jenkins --url https://jenkins.example.com --user <user> --token <token>
+  mql shell jenkins --url https://jenkins.example.com --user <user> --token <token>
 
 You can also use the default environment variables '%s', '%s',
 and '%s' to provide your connection details.

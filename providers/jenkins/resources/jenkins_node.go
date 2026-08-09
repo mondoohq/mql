@@ -110,7 +110,7 @@ func fetchNodes(conn *connection.JenkinsConnection) ([]jenkinsNodeData, error) {
 	}
 	nodes, ok := v.([]jenkinsNodeData)
 	if !ok {
-		return nil, nil
+		return nil, fmt.Errorf("unexpected cached nodes type %T", v)
 	}
 	return nodes, nil
 }

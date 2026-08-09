@@ -49,6 +49,10 @@ type JenkinsConnection struct {
 	nodesOnce sync.Once
 	nodes     any
 	nodesErr  error
+
+	jobTreeOnce sync.Once
+	jobTree     any
+	jobTreeErr  error
 }
 
 func NewJenkinsConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*JenkinsConnection, error) {
@@ -129,4 +133,15 @@ func (c *JenkinsConnection) CachedNodes(fetch func() (any, error)) (any, error) 
 		c.nodes, c.nodesErr = fetch()
 	})
 	return c.nodes, c.nodesErr
+}
+
+// CachedJobTree returns the controller's job tree, fetching it at most once per
+// connection via fetch and memoizing the result (including an error). It lets
+// the jobs lister and folder-scoped credential enumeration share a single root
+// tree read instead of each issuing its own fetch.
+func (c *JenkinsConnection) CachedJobTree(fetch func() (any, error)) (any, error) {
+	c.jobTreeOnce.Do(func() {
+		c.jobTree, c.jobTreeErr = fetch()
+	})
+	return c.jobTree, c.jobTreeErr
 }

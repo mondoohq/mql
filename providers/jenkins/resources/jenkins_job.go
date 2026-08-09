@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"go.mondoo.com/mql/v13/llx"
@@ -68,18 +69,30 @@ type jenkinsJobData struct {
 }
 
 // fetchJobTree fetches the whole job tree, descending folders in a single
-// nested tree query.
+// nested tree query. The result is memoized on the connection so that querying
+// both jenkins.jobs and jenkins.credentials (which enumerates folders) does not
+// fetch the tree twice.
 func fetchJobTree(conn *connection.JenkinsConnection) ([]jenkinsJobData, error) {
-	var resp struct {
-		Jobs []jenkinsJobData `json:"jobs"`
-	}
-	_, err := conn.Client().Requester.GetJSON(context.Background(), "/", &resp, map[string]string{
-		"tree": jobsTreeQuery(jobRecursionDepth),
+	v, err := conn.CachedJobTree(func() (any, error) {
+		var resp struct {
+			Jobs []jenkinsJobData `json:"jobs"`
+		}
+		_, err := conn.Client().Requester.GetJSON(context.Background(), "/", &resp, map[string]string{
+			"tree": jobsTreeQuery(jobRecursionDepth),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return resp.Jobs, nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return resp.Jobs, nil
+	jobs, ok := v.([]jenkinsJobData)
+	if !ok {
+		return nil, fmt.Errorf("unexpected cached job tree type %T", v)
+	}
+	return jobs, nil
 }
 
 // isFolderClass reports whether a job class is a folder container that can hold
