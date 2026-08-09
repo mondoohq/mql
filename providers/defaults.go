@@ -672,6 +672,21 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"jenkins": {
+		Provider: &plugin.Provider{
+			Name:            "jenkins",
+			ID:              "go.mondoo.com/mql/providers/jenkins",
+			ConnectionTypes: []string{"jenkins"},
+			Connectors: []plugin.Connector{
+				{
+					Name:  "jenkins",
+					Use:   "jenkins --url URL --user USER --token TOKEN",
+					Short: "a Jenkins controller",
+				},
+			},
+		},
+	},
+
 	"jumpcloud": {
 		Provider: &plugin.Provider{
 			Name:            "jumpcloud",

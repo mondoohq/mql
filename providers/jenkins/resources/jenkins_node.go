@@ -1,0 +1,171 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+package resources
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/v13/providers/jenkins/connection"
+	"go.mondoo.com/mql/v13/types"
+)
+
+// builtInNodeName is the internal (often empty or "master"/"(built-in)")
+// node name Jenkins uses for the controller's own executor, depending on
+// core version.
+const builtInNodeName = ""
+
+// builtInNodeDisplayName is the display name surfaced for the controller
+// node regardless of which internal name the connected Jenkins core uses.
+const builtInNodeDisplayName = "Built-In Node"
+
+// jenkinsNodeData is the shape fetched from the Jenkins computer collection,
+// scoped with a tree query to avoid the executor and monitor-data payload
+// the default endpoint returns.
+type jenkinsNodeData struct {
+	Class              string `json:"_class"`
+	DisplayName        string `json:"displayName"`
+	Description        string `json:"description"`
+	Offline            bool   `json:"offline"`
+	TemporarilyOffline bool   `json:"temporarilyOffline"`
+	OfflineCauseReason string `json:"offlineCauseReason"`
+	NumExecutors       int64  `json:"numExecutors"`
+	AssignedLabels     []struct {
+		Name string `json:"name"`
+	} `json:"assignedLabels"`
+	Launcher struct {
+		Class string `json:"_class"`
+	} `json:"launcher"`
+}
+
+// isControllerNode reports whether a fetched node identifies the built-in
+// controller node rather than an agent. The controller's internal name
+// varies by Jenkins core version ("", "master", or "(built-in)"), so this
+// also checks the computer's Java class as a version-independent signal.
+func isControllerNode(class, displayName string) bool {
+	if strings.Contains(class, "MasterComputer") {
+		return true
+	}
+	switch displayName {
+	case builtInNodeName, "master", "(built-in)", builtInNodeDisplayName:
+		return true
+	default:
+		return false
+	}
+}
+
+// nodeDisplayName normalizes a fetched node's display name, always
+// surfacing the controller under the same name regardless of the internal
+// name reported by the connected Jenkins core version.
+func nodeDisplayName(n jenkinsNodeData) string {
+	if isControllerNode(n.Class, n.DisplayName) {
+		return builtInNodeDisplayName
+	}
+	return n.DisplayName
+}
+
+// nodes lists every build agent and the built-in controller node in a single
+// deep fetch against the computer collection.
+func (r *mqlJenkins) nodes() ([]any, error) {
+	conn := r.conn()
+	computers, err := fetchNodes(conn)
+	if err != nil {
+		return nil, err
+	}
+
+	all := make([]any, 0, len(computers))
+	for _, c := range computers {
+		res, err := newMqlJenkinsNode(r.MqlRuntime, c)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, res)
+	}
+	return all, nil
+}
+
+// fetchNodes retrieves every node (agents plus the built-in controller node)
+// in a single deep fetch.
+func fetchNodes(conn *connection.JenkinsConnection) ([]jenkinsNodeData, error) {
+	var resp struct {
+		Computer []jenkinsNodeData `json:"computer"`
+	}
+	_, err := conn.Client().Requester.GetJSON(context.Background(), "/computer", &resp, map[string]string{
+		"tree": "computer[_class,displayName,description,offline,temporarilyOffline," +
+			"offlineCauseReason,numExecutors,assignedLabels[name],launcher[_class]]",
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Computer, nil
+}
+
+// newMqlJenkinsNode maps a single node's fetched data to its MQL resource.
+// The node has no user-meaningful id field of its own (its display name is
+// exposed as `name` directly), so the cache key is passed via `__id`.
+func newMqlJenkinsNode(runtime *plugin.Runtime, c jenkinsNodeData) (plugin.Resource, error) {
+	name := nodeDisplayName(c)
+	isController := isControllerNode(c.Class, c.DisplayName)
+
+	labels := make([]any, 0, len(c.AssignedLabels))
+	for _, l := range c.AssignedLabels {
+		labels = append(labels, l.Name)
+	}
+
+	res, err := CreateResource(runtime, "jenkins.node", map[string]*llx.RawData{
+		"__id":               llx.StringData("jenkins.node/" + name),
+		"name":               llx.StringData(name),
+		"description":        llx.StringData(c.Description),
+		"isController":       llx.BoolData(isController),
+		"offline":            llx.BoolData(c.Offline),
+		"temporarilyOffline": llx.BoolData(c.TemporarilyOffline),
+		"offlineCauseReason": llx.StringData(c.OfflineCauseReason),
+		"launchMethod":       llx.StringData(c.Launcher.Class),
+		"numExecutors":       llx.IntData(c.NumExecutors),
+		"labels":             llx.ArrayData(labels, types.String),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+// initJenkinsNode resolves a single node by name on demand, for the typed
+// jenkins.job.node reference. Accepts either the normalized "Built-In Node"
+// display name or the raw internal name (e.g. "", "master") a build's
+// builtOn field may report.
+func initJenkinsNode(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+
+	nameArg, ok := args["name"]
+	if !ok {
+		return args, nil, nil
+	}
+	name, ok := nameArg.Value.(string)
+	if !ok {
+		return nil, nil, fmt.Errorf("jenkins.node requires a valid name")
+	}
+
+	conn := runtime.Connection.(*connection.JenkinsConnection)
+	computers, err := fetchNodes(conn)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, c := range computers {
+		if c.DisplayName == name || nodeDisplayName(c) == name {
+			res, err := newMqlJenkinsNode(runtime, c)
+			if err != nil {
+				return nil, nil, err
+			}
+			return args, res, nil
+		}
+	}
+
+	return nil, nil, fmt.Errorf("jenkins.node with name %q not found", name)
+}
