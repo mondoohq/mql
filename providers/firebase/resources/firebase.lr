@@ -1,0 +1,83 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+option provider = "go.mondoo.com/mql/v13/providers/firebase"
+option go_package = "go.mondoo.com/mql/v13/providers/firebase/resources"
+
+// Firebase project security configuration
+firebase.project @defaults("projectId domain") {
+  // Firebase project ID
+  projectId string
+  // Firebase web API key (semi-public: required for client-side Firebase SDKs, but restricted by API key restrictions in the Google Cloud console)
+  apiKey string
+  // Firebase auth domain
+  authDomain string
+  // Domain used to discover this project (empty if project ID was provided directly)
+  domain string
+  // Realtime Database security posture
+  realtimeDatabase() firebase.project.realtimeDatabase
+  // Authentication configuration from public Identity Toolkit API
+  authConfig() firebase.project.authConfig
+  // Hosting configuration discovered from well-known paths
+  hosting() firebase.project.hosting
+  // Cloud Storage security posture
+  storage() firebase.project.storage
+  // Cloud Firestore security posture
+  firestore() firebase.project.firestore
+}
+
+// Firebase Realtime Database public access check
+firebase.project.realtimeDatabase @defaults("url publiclyReadable") {
+  // Realtime Database URL tested
+  url string
+  // Whether the database is publicly readable without authentication
+  publiclyReadable bool
+  // Whether the shallow query exposed database structure keys
+  structureExposed bool
+}
+
+// Firebase Authentication configuration from Identity Toolkit
+firebase.project.authConfig @defaults("signInProviders anonymousAuthEnabled") {
+  // Enabled sign-in providers (e.g. password, google.com, anonymous)
+  signInProviders []string
+  // Whether anonymous authentication is enabled
+  anonymousAuthEnabled bool
+  // Authorized domains for OAuth redirects
+  authorizedDomains []string
+  // Whether email enumeration protection is enabled (projects before Sept 2023 default to off)
+  emailEnumerationProtection bool
+}
+
+// Firebase Hosting well-known path configuration
+firebase.project.hosting @defaults("domain sourceMapExposed") {
+  // Domain checked
+  domain string
+  // Apple App Site Association data from /.well-known/apple-app-site-association
+  appleAppSiteAssociation dict
+  // Android Asset Links data from /.well-known/assetlinks.json
+  androidAssetLinks dict
+  // Whether JavaScript source maps are publicly accessible
+  sourceMapExposed bool
+  // URLs of exposed source maps found
+  exposedSourceMaps []string
+}
+
+// Firebase Cloud Storage public access check
+firebase.project.storage @defaults("bucketUrl publiclyListable") {
+  // Storage bucket URL tested
+  bucketUrl string
+  // Whether the default storage bucket is publicly listable
+  publiclyListable bool
+}
+
+// Firebase Cloud Firestore public access check
+firebase.project.firestore @defaults("url publiclyReadable") {
+  // Firestore REST API URL tested
+  url string
+  // Whether the default Firestore database documents are publicly readable
+  publiclyReadable bool
+  // Whether the database structure (collection IDs) is exposed via listCollectionIds
+  structureExposed bool
+  // Top-level collection IDs exposed (from document reads or listCollectionIds)
+  exposedCollections []string
+}

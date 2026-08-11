@@ -219,6 +219,7 @@ PROVIDERS := \
 	digitalocean \
 	elasticsearch \
 	equinix \
+	firebase \
 	gcp \
 	github \
 	gitlab \
