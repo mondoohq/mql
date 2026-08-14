@@ -26,7 +26,15 @@ func initNotionWorkspace(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 		name = bot.Bot.WorkspaceName
 	}
 
-	args["__id"] = llx.StringData("notion.workspace/" + name)
+	// Fall back to a stable constant when the bot identity carries no
+	// workspace name, so the cache key stays "notion.workspace" instead of
+	// an odd-looking trailing-slash "notion.workspace/".
+	id := "notion.workspace"
+	if name != "" {
+		id += "/" + name
+	}
+
+	args["__id"] = llx.StringData(id)
 	args["name"] = llx.StringData(name)
 
 	return args, nil, nil
