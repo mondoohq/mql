@@ -64,7 +64,7 @@ func (r *mqlJenkins) credentials() ([]any, error) {
 	// Folder-scoped credential stores, one per folder job (all their domains).
 	folders, err := fetchFolders(conn)
 	if err != nil {
-		log.Debug().Err(err).Msg("jenkins> unable to enumerate folders for folder-scoped credentials")
+		log.Warn().Err(err).Msg("jenkins> unable to enumerate folders for folder-scoped credentials; credential coverage may be incomplete")
 		return all, nil
 	}
 	for _, f := range folders {

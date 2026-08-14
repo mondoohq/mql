@@ -128,7 +128,7 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 }
 
 func (s *Service) detect(asset *inventory.Asset, conn *connection.JenkinsConnection) error {
-	asset.Id = conn.Conf.Type
+	asset.Id = conn.BaseUrl()
 	asset.Name = conn.BaseUrl()
 
 	asset.Platform = &inventory.Platform{
