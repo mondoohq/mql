@@ -35,7 +35,7 @@ func initCircleciOrganization(runtime *plugin.Runtime, args map[string]*llx.RawD
 
 	idArg, ok := args["id"]
 	if !ok {
-		return args, nil, nil
+		return nil, nil, fmt.Errorf("circleci.organization requires an id argument")
 	}
 	id, ok := idArg.Value.(string)
 	if !ok || id == "" {

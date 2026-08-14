@@ -90,7 +90,9 @@ func (c *Client) getFrom(ctx context.Context, baseURL, path string, query url.Va
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	// cap the response body at 10 MB to guard against an unexpectedly large
+	// response exhausting memory.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 	if err != nil {
 		return errors.Wrap(err, "failed to read circleci response")
 	}

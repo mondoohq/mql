@@ -202,7 +202,7 @@ func (p *mqlCircleciProject) checkoutKeys() ([]any, error) {
 		}
 		for _, k := range resp.Items {
 			res, err := CreateResource(p.MqlRuntime, "circleci.checkoutKey", map[string]*llx.RawData{
-				"__id":        llx.StringData(k.Fingerprint),
+				"__id":        llx.StringData(p.Id.Data + "/" + k.Fingerprint),
 				"fingerprint": llx.StringData(k.Fingerprint),
 				"type":        llx.StringData(k.Type),
 				"publicKey":   llx.StringData(k.PublicKey),
