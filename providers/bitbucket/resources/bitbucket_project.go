@@ -55,7 +55,7 @@ func initBitbucketProject(runtime *plugin.Runtime, args map[string]*llx.RawData)
 
 	keyArg, ok := args["key"]
 	if !ok {
-		return args, nil, nil
+		return nil, nil, fmt.Errorf("bitbucket.project requires a key argument")
 	}
 	key, ok := keyArg.Value.(string)
 	if !ok || key == "" {

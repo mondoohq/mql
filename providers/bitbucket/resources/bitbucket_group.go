@@ -49,7 +49,7 @@ func initBitbucketGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 
 	slugArg, ok := args["slug"]
 	if !ok {
-		return args, nil, nil
+		return nil, nil, fmt.Errorf("bitbucket.group requires a slug argument")
 	}
 	slug, ok := slugArg.Value.(string)
 	if !ok || slug == "" {

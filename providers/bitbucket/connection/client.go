@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -34,6 +35,12 @@ var ErrNotFound = errors.New("bitbucket: resource not found")
 // OpenAPI-generated client per ADR-034).
 type Client struct {
 	httpClient *http.Client
+
+	// legacyGroups memoizes ListGroupsLegacy per workspace so a query that
+	// iterates a workspace's groups reading members hits the 1.0 API at most
+	// once per workspace per scan, instead of once per group.
+	legacyGroupsMu    sync.Mutex
+	legacyGroupsCache map[string][]LegacyGroup
 }
 
 // NewClient wraps an already-authenticated *http.Client (see
@@ -98,7 +105,10 @@ func listAllPages[T any](ctx context.Context, c *Client, firstURL string) ([]T, 
 			return nil, err
 		}
 		all = append(all, pg.Values...)
-		if pg.Next == nil {
+		// Guard against a stuck pagination cursor: if the API returns no
+		// "next" URL, or the same URL we just fetched, stop rather than loop
+		// forever.
+		if pg.Next == nil || *pg.Next == "" || *pg.Next == next {
 			break
 		}
 		next = *pg.Next
@@ -352,11 +362,23 @@ type LegacyGroup struct {
 // way to resolve bitbucket.group.members. Revisit once/if Atlassian ships a
 // 2.0 replacement.
 func (c *Client) ListGroupsLegacy(ctx context.Context, workspace string) ([]LegacyGroup, error) {
+	c.legacyGroupsMu.Lock()
+	defer c.legacyGroupsMu.Unlock()
+
+	if groups, ok := c.legacyGroupsCache[workspace]; ok {
+		return groups, nil
+	}
+
 	var groups []LegacyGroup
 	u := bitbucketLegacyAPIBaseURL + "/groups/" + url.PathEscape(workspace)
 	if err := c.get(ctx, u, &groups); err != nil {
 		return nil, err
 	}
+
+	if c.legacyGroupsCache == nil {
+		c.legacyGroupsCache = map[string][]LegacyGroup{}
+	}
+	c.legacyGroupsCache[workspace] = groups
 	return groups, nil
 }
 
