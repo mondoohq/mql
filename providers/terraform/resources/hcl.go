@@ -606,22 +606,10 @@ func (t *mqlTerraformBlock) evalContext() *hcl.EvalContext {
 	if !ok || conn == nil {
 		return nil
 	}
-	base := conn.VariableEvalContext()
-	if len(t.iterVars) == 0 {
-		return base
-	}
-	// A block generated from `dynamic` needs its iterator in scope on top of
-	// the shared variable context. Bind it in a child so the shared context,
-	// which every other block reads, is left untouched.
-	child := &hcl.EvalContext{Variables: map[string]cty.Value{}}
-	if base != nil {
-		child = base.NewChild()
-		child.Variables = map[string]cty.Value{}
-	}
-	for k, v := range t.iterVars {
-		child.Variables[k] = v
-	}
-	return child
+	// A block generated from `dynamic` needs its iterator in scope on top of the
+	// shared variable context; an ordinary block has nothing to add and reads
+	// the shared context directly.
+	return withIterVars(conn.VariableEvalContext(), t.iterVars)
 }
 
 func (t *mqlTerraformBlock) arguments() (map[string]any, error) {
