@@ -301,7 +301,16 @@ func extractHclCodeSnippet(file *hcl.File, fileRange hcl.Range) string {
 	return sb.String()
 }
 
-func newMqlHclBlock(runtime *plugin.Runtime, block *hcl.Block, file *hcl.File, iterVars map[string]cty.Value) (plugin.Resource, error) {
+// blockID mirrors mqlTerraformBlock.id(): a block is identified by its source
+// position. Generated blocks append a suffix to it so each for_each element
+// gets its own identity.
+func blockID(block *hcl.Block) string {
+	r := block.TypeRange
+	return "terraform.block/" + r.Filename + "/" +
+		strconv.Itoa(r.Start.Line) + "/" + strconv.Itoa(r.Start.Column)
+}
+
+func newMqlHclBlock(runtime *plugin.Runtime, block *hcl.Block, file *hcl.File, iterVars map[string]cty.Value, idSuffix string) (plugin.Resource, error) {
 	start, end, err := newFilePosRange(runtime, block.TypeRange)
 	if err != nil {
 		return nil, err
@@ -317,20 +326,20 @@ func newMqlHclBlock(runtime *plugin.Runtime, block *hcl.Block, file *hcl.File, i
 		"snippet": llx.StringData(snippet),
 	}
 
-	var res plugin.Resource
-	if len(iterVars) > 0 {
-		// A `dynamic` block expands to one block per for_each element, and every
-		// one of them points at the same `content { ... }` source position. The
-		// runtime caches resources by id, and a block's id is its file position,
-		// so routing these through CreateResource would collapse all elements
-		// onto a single shared resource and leave every one showing the last
-		// element's iterator. Build them directly instead: they are distinct
-		// values that deliberately share a position, which is exactly the case
-		// the position-keyed cache cannot represent.
-		res, err = createTerraformBlock(runtime, args)
-	} else {
-		res, err = CreateResource(runtime, "terraform.block", args)
+	// A `dynamic` block expands to one block per for_each element, and every one
+	// of them points at the same `content { ... }` source position. A block's id
+	// is derived from that position, and the runtime both de-duplicates and
+	// looks resources up by id, so identical ids would collapse the expansion
+	// onto one resource showing the last element's iterator. Give each element a
+	// distinct id instead. It still has to go through CreateResource: the
+	// runtime resolves fields by looking the resource up in its registry, and a
+	// block that is built but never registered fails later with
+	// "resource 'terraform.block' (id: ...) doesn't exist".
+	if idSuffix != "" {
+		args["__id"] = llx.StringData(blockID(block) + "/" + idSuffix)
 	}
+
+	res, err := CreateResource(runtime, "terraform.block", args)
 	if err != nil {
 		return nil, err
 	}
@@ -1123,7 +1132,7 @@ func listHclBlocks(runtime *plugin.Runtime, rawBody any, file *hcl.File) ([]any,
 		ctx := runtimeEvalContext(runtime)
 		for i := range body.Blocks {
 			for _, hb := range normalizeHclSyntaxBlock(body.Blocks[i], ctx) {
-				mqlBlock, err := newMqlHclBlock(runtime, hb.block, file, hb.iterVars)
+				mqlBlock, err := newMqlHclBlock(runtime, hb.block, file, hb.iterVars, hb.idSuffix)
 				if err != nil {
 					return nil, err
 				}
@@ -1139,7 +1148,7 @@ func listHclBlocks(runtime *plugin.Runtime, rawBody any, file *hcl.File) ([]any,
 		// so no normalization is applied here.
 		content, _, _ := body.PartialContent(connection.TerraformSchema_1)
 		for i := range content.Blocks {
-			mqlBlock, err := newMqlHclBlock(runtime, content.Blocks[i], file, nil)
+			mqlBlock, err := newMqlHclBlock(runtime, content.Blocks[i], file, nil, "")
 			if err != nil {
 				return nil, err
 			}
@@ -1158,6 +1167,9 @@ func listHclBlocks(runtime *plugin.Runtime, rawBody any, file *hcl.File) ([]any,
 type expandedBlock struct {
 	block    *hcl.Block
 	iterVars map[string]cty.Value
+	// idSuffix disambiguates the elements of one expanded dynamic block, which
+	// all share a source position and would otherwise share an id.
+	idSuffix string
 }
 
 // runtimeEvalContext is the variable-resolution context for a runtime, matching
@@ -1240,9 +1252,13 @@ func normalizeHclSyntaxBlock(block *hclsyntax.Block, ctx *hcl.EvalContext) []exp
 	}
 
 	out := make([]expandedBlock, 0, len(contents)*len(bindings))
-	for _, c := range contents {
-		for _, b := range bindings {
-			out = append(out, expandedBlock{block: c, iterVars: b})
+	for ci, c := range contents {
+		for bi, b := range bindings {
+			out = append(out, expandedBlock{
+				block:    c,
+				iterVars: b,
+				idSuffix: strconv.Itoa(ci) + "-" + strconv.Itoa(bi),
+			})
 		}
 	}
 	return out
