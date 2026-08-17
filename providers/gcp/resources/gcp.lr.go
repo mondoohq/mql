@@ -50,6 +50,7 @@ const (
 	ResourceGcpResourcemanagerBoundary                                                 string = "gcp.resourcemanager.boundary"
 	ResourceGcpOrganizationAssuredWorkload                                             string = "gcp.organization.assuredWorkload"
 	ResourceGcpOrganizationAssuredWorkloadViolation                                    string = "gcp.organization.assuredWorkload.violation"
+	ResourceGcpEffectiveTag                                                            string = "gcp.effectiveTag"
 	ResourceGcpService                                                                 string = "gcp.service"
 	ResourceGcpRecommendation                                                          string = "gcp.recommendation"
 	ResourceGcpInsight                                                                 string = "gcp.insight"
@@ -718,6 +719,10 @@ func init() {
 		"gcp.organization.assuredWorkload.violation": {
 			// to override args, implement: initGcpOrganizationAssuredWorkloadViolation(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGcpOrganizationAssuredWorkloadViolation,
+		},
+		"gcp.effectiveTag": {
+			// to override args, implement: initGcpEffectiveTag(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpEffectiveTag,
 		},
 		"gcp.service": {
 			Init:   initGcpService,
@@ -4332,6 +4337,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.organization.assuredWorkload.violation.updateTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganizationAssuredWorkloadViolation).GetUpdateTime()).ToDataRes(types.Time)
 	},
+	"gcp.effectiveTag.tagKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpEffectiveTag).GetTagKey()).ToDataRes(types.String)
+	},
+	"gcp.effectiveTag.tagValue": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpEffectiveTag).GetTagValue()).ToDataRes(types.String)
+	},
+	"gcp.effectiveTag.namespacedTagKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpEffectiveTag).GetNamespacedTagKey()).ToDataRes(types.String)
+	},
+	"gcp.effectiveTag.namespacedTagValue": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpEffectiveTag).GetNamespacedTagValue()).ToDataRes(types.String)
+	},
+	"gcp.effectiveTag.inherited": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpEffectiveTag).GetInherited()).ToDataRes(types.Bool)
+	},
+	"gcp.effectiveTag.tagKeyParent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpEffectiveTag).GetTagKeyParent()).ToDataRes(types.String)
+	},
 	"gcp.service.projectId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpService).GetProjectId()).ToDataRes(types.String)
 	},
@@ -5037,6 +5060,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.computeService.instance.localSsdEncryptionMode": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceInstance).GetLocalSsdEncryptionMode()).ToDataRes(types.String)
 	},
+	"gcp.project.computeService.instance.effectiveTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceInstance).GetEffectiveTags()).ToDataRes(types.Array(types.Resource("gcp.effectiveTag")))
+	},
 	"gcp.project.computeService.instance.exposure.internetReachable": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceInstanceExposure).GetInternetReachable()).ToDataRes(types.Bool)
 	},
@@ -5369,6 +5395,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.computeService.disk.managedBy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceDisk).GetManagedBy()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.disk.effectiveTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceDisk).GetEffectiveTags()).ToDataRes(types.Array(types.Resource("gcp.effectiveTag")))
 	},
 	"gcp.project.computeService.attachedDisk.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceAttachedDisk).GetId()).ToDataRes(types.String)
@@ -5727,6 +5756,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.computeService.firewall.network": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceFirewall).GetNetwork()).ToDataRes(types.Resource("gcp.project.computeService.network"))
 	},
+	"gcp.project.computeService.firewall.effectiveTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceFirewall).GetEffectiveTags()).ToDataRes(types.Array(types.Resource("gcp.effectiveTag")))
+	},
 	"gcp.project.computeService.network.legacy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceNetwork).GetLegacy()).ToDataRes(types.Bool)
 	},
@@ -5792,6 +5824,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.computeService.network.networkProfile": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceNetwork).GetNetworkProfile()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.network.effectiveTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceNetwork).GetEffectiveTags()).ToDataRes(types.Array(types.Resource("gcp.effectiveTag")))
 	},
 	"gcp.project.computeService.subnetwork.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceSubnetwork).GetId()).ToDataRes(types.String)
@@ -5882,6 +5917,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.computeService.subnetwork.utilizationDetails": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceSubnetwork).GetUtilizationDetails()).ToDataRes(types.Dict)
+	},
+	"gcp.project.computeService.subnetwork.effectiveTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceSubnetwork).GetEffectiveTags()).ToDataRes(types.Array(types.Resource("gcp.effectiveTag")))
 	},
 	"gcp.project.computeService.subnetwork.logConfig.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceSubnetworkLogConfig).GetId()).ToDataRes(types.String)
@@ -6342,6 +6380,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.storageService.bucket.softDeleteTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectStorageServiceBucket).GetSoftDeleteTime()).ToDataRes(types.Time)
 	},
+	"gcp.project.storageService.bucket.effectiveTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectStorageServiceBucket).GetEffectiveTags()).ToDataRes(types.Array(types.Resource("gcp.effectiveTag")))
+	},
 	"gcp.project.storageService.bucket.accessControl.entity": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectStorageServiceBucketAccessControl).GetEntity()).ToDataRes(types.String)
 	},
@@ -6626,6 +6667,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.sqlService.instance.managedBy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectSqlServiceInstance).GetManagedBy()).ToDataRes(types.String)
+	},
+	"gcp.project.sqlService.instance.effectiveTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectSqlServiceInstance).GetEffectiveTags()).ToDataRes(types.Array(types.Resource("gcp.effectiveTag")))
 	},
 	"gcp.project.sqlService.instance.onPremisesConfiguration.hostPort": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectSqlServiceInstanceOnPremisesConfiguration).GetHostPort()).ToDataRes(types.String)
@@ -7149,6 +7193,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.bigqueryService.dataset.externalDatasetReference": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectBigqueryServiceDataset).GetExternalDatasetReference()).ToDataRes(types.Dict)
 	},
+	"gcp.project.bigqueryService.dataset.effectiveTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBigqueryServiceDataset).GetEffectiveTags()).ToDataRes(types.Array(types.Resource("gcp.effectiveTag")))
+	},
 	"gcp.project.bigqueryService.dataset.accessEntry.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectBigqueryServiceDatasetAccessEntry).GetId()).ToDataRes(types.String)
 	},
@@ -7286,6 +7333,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.bigqueryService.table.bigLakeConfiguration": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectBigqueryServiceTable).GetBigLakeConfiguration()).ToDataRes(types.Resource("gcp.project.bigqueryService.table.bigLakeConfig"))
+	},
+	"gcp.project.bigqueryService.table.effectiveTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBigqueryServiceTable).GetEffectiveTags()).ToDataRes(types.Array(types.Resource("gcp.effectiveTag")))
 	},
 	"gcp.project.bigqueryService.table.bigLakeConfig.storageUri": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectBigqueryServiceTableBigLakeConfig).GetStorageUri()).ToDataRes(types.String)
@@ -8003,6 +8053,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.gkeService.cluster.nodeAutoprovisioning": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectGkeServiceCluster).GetNodeAutoprovisioning()).ToDataRes(types.Resource("gcp.project.gkeService.cluster.nodeAutoprovisioningConfig"))
+	},
+	"gcp.project.gkeService.cluster.effectiveTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectGkeServiceCluster).GetEffectiveTags()).ToDataRes(types.Array(types.Resource("gcp.effectiveTag")))
 	},
 	"gcp.project.gkeService.cluster.nodeAutoprovisioningConfig.enabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectGkeServiceClusterNodeAutoprovisioningConfig).GetEnabled()).ToDataRes(types.Bool)
@@ -11037,6 +11090,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.cloudRunService.service.buildConfig": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectCloudRunServiceService).GetBuildConfig()).ToDataRes(types.Resource("gcp.project.cloudRunService.service.buildSettings"))
 	},
+	"gcp.project.cloudRunService.service.effectiveTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudRunServiceService).GetEffectiveTags()).ToDataRes(types.Array(types.Resource("gcp.effectiveTag")))
+	},
 	"gcp.project.cloudRunService.service.buildSettings.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectCloudRunServiceServiceBuildSettings).GetName()).ToDataRes(types.String)
 	},
@@ -11771,6 +11827,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.secretmanagerService.secret.managedBy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectSecretmanagerServiceSecret).GetManagedBy()).ToDataRes(types.String)
+	},
+	"gcp.project.secretmanagerService.secret.effectiveTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectSecretmanagerServiceSecret).GetEffectiveTags()).ToDataRes(types.Array(types.Resource("gcp.effectiveTag")))
 	},
 	"gcp.project.secretmanagerService.secret.version.resourcePath": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectSecretmanagerServiceSecretVersion).GetResourcePath()).ToDataRes(types.String)
@@ -12978,6 +13037,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.computeService.vpnGateway.resourceManagerTags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceVpnGateway).GetResourceManagerTags()).ToDataRes(types.Map(types.String, types.String))
 	},
+	"gcp.project.computeService.vpnGateway.effectiveTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceVpnGateway).GetEffectiveTags()).ToDataRes(types.Array(types.Resource("gcp.effectiveTag")))
+	},
 	"gcp.project.computeService.vpnTunnel.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceVpnTunnel).GetId()).ToDataRes(types.String)
 	},
@@ -13064,6 +13126,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.computeService.vpnTunnel.phase2PfsGroups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceVpnTunnel).GetPhase2PfsGroups()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.computeService.vpnTunnel.effectiveTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceVpnTunnel).GetEffectiveTags()).ToDataRes(types.Array(types.Resource("gcp.effectiveTag")))
 	},
 	"gcp.project.computeService.storagePool.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceStoragePool).GetId()).ToDataRes(types.String)
@@ -23081,6 +23146,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpOrganizationAssuredWorkloadViolation).UpdateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"gcp.effectiveTag.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpEffectiveTag).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.effectiveTag.tagKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpEffectiveTag).TagKey, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.effectiveTag.tagValue": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpEffectiveTag).TagValue, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.effectiveTag.namespacedTagKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpEffectiveTag).NamespacedTagKey, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.effectiveTag.namespacedTagValue": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpEffectiveTag).NamespacedTagValue, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.effectiveTag.inherited": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpEffectiveTag).Inherited, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.effectiveTag.tagKeyParent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpEffectiveTag).TagKeyParent, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"gcp.service.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpService).__id, ok = v.Value.(string)
 		return
@@ -24065,6 +24158,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectComputeServiceInstance).LocalSsdEncryptionMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"gcp.project.computeService.instance.effectiveTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceInstance).EffectiveTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"gcp.project.computeService.instance.exposure.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceInstanceExposure).__id, ok = v.Value.(string)
 		return
@@ -24555,6 +24652,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.computeService.disk.managedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceDisk).ManagedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.disk.effectiveTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceDisk).EffectiveTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"gcp.project.computeService.attachedDisk.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -25053,6 +25154,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectComputeServiceFirewall).Network, ok = plugin.RawToTValue[*mqlGcpProjectComputeServiceNetwork](v.Value, v.Error)
 		return
 	},
+	"gcp.project.computeService.firewall.effectiveTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceFirewall).EffectiveTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"gcp.project.computeService.network.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceNetwork).__id, ok = v.Value.(string)
 		return
@@ -25143,6 +25248,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.computeService.network.networkProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceNetwork).NetworkProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.network.effectiveTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceNetwork).EffectiveTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"gcp.project.computeService.subnetwork.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -25267,6 +25376,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.computeService.subnetwork.utilizationDetails": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceSubnetwork).UtilizationDetails, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.subnetwork.effectiveTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceSubnetwork).EffectiveTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"gcp.project.computeService.subnetwork.logConfig.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -25913,6 +26026,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectStorageServiceBucket).SoftDeleteTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"gcp.project.storageService.bucket.effectiveTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectStorageServiceBucket).EffectiveTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"gcp.project.storageService.bucket.accessControl.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectStorageServiceBucketAccessControl).__id, ok = v.Value.(string)
 		return
@@ -26323,6 +26440,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.sqlService.instance.managedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectSqlServiceInstance).ManagedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.sqlService.instance.effectiveTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectSqlServiceInstance).EffectiveTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"gcp.project.sqlService.instance.onPremisesConfiguration.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -27085,6 +27206,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectBigqueryServiceDataset).ExternalDatasetReference, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"gcp.project.bigqueryService.dataset.effectiveTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBigqueryServiceDataset).EffectiveTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"gcp.project.bigqueryService.dataset.accessEntry.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectBigqueryServiceDatasetAccessEntry).__id, ok = v.Value.(string)
 		return
@@ -27275,6 +27400,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.bigqueryService.table.bigLakeConfiguration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectBigqueryServiceTable).BigLakeConfiguration, ok = plugin.RawToTValue[*mqlGcpProjectBigqueryServiceTableBigLakeConfig](v.Value, v.Error)
+		return
+	},
+	"gcp.project.bigqueryService.table.effectiveTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBigqueryServiceTable).EffectiveTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"gcp.project.bigqueryService.table.bigLakeConfig.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -28295,6 +28424,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.gkeService.cluster.nodeAutoprovisioning": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectGkeServiceCluster).NodeAutoprovisioning, ok = plugin.RawToTValue[*mqlGcpProjectGkeServiceClusterNodeAutoprovisioningConfig](v.Value, v.Error)
+		return
+	},
+	"gcp.project.gkeService.cluster.effectiveTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectGkeServiceCluster).EffectiveTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"gcp.project.gkeService.cluster.nodeAutoprovisioningConfig.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -32809,6 +32942,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectCloudRunServiceService).BuildConfig, ok = plugin.RawToTValue[*mqlGcpProjectCloudRunServiceServiceBuildSettings](v.Value, v.Error)
 		return
 	},
+	"gcp.project.cloudRunService.service.effectiveTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudRunServiceService).EffectiveTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"gcp.project.cloudRunService.service.buildSettings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectCloudRunServiceServiceBuildSettings).__id, ok = v.Value.(string)
 		return
@@ -33887,6 +34024,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.secretmanagerService.secret.managedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectSecretmanagerServiceSecret).ManagedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.secretmanagerService.secret.effectiveTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectSecretmanagerServiceSecret).EffectiveTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"gcp.project.secretmanagerService.secret.version.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -35657,6 +35798,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectComputeServiceVpnGateway).ResourceManagerTags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"gcp.project.computeService.vpnGateway.effectiveTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceVpnGateway).EffectiveTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"gcp.project.computeService.vpnTunnel.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceVpnTunnel).__id, ok = v.Value.(string)
 		return
@@ -35775,6 +35920,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.computeService.vpnTunnel.phase2PfsGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceVpnTunnel).Phase2PfsGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.vpnTunnel.effectiveTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceVpnTunnel).EffectiveTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"gcp.project.computeService.storagePool.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -53389,6 +53538,75 @@ func (c *mqlGcpOrganizationAssuredWorkloadViolation) GetUpdateTime() *plugin.TVa
 	return &c.UpdateTime
 }
 
+// mqlGcpEffectiveTag for the gcp.effectiveTag resource
+type mqlGcpEffectiveTag struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpEffectiveTagInternal it will be used here
+	TagKey             plugin.TValue[string]
+	TagValue           plugin.TValue[string]
+	NamespacedTagKey   plugin.TValue[string]
+	NamespacedTagValue plugin.TValue[string]
+	Inherited          plugin.TValue[bool]
+	TagKeyParent       plugin.TValue[string]
+}
+
+// createGcpEffectiveTag creates a new instance of this resource
+func createGcpEffectiveTag(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpEffectiveTag{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.effectiveTag", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpEffectiveTag) MqlName() string {
+	return "gcp.effectiveTag"
+}
+
+func (c *mqlGcpEffectiveTag) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpEffectiveTag) GetTagKey() *plugin.TValue[string] {
+	return &c.TagKey
+}
+
+func (c *mqlGcpEffectiveTag) GetTagValue() *plugin.TValue[string] {
+	return &c.TagValue
+}
+
+func (c *mqlGcpEffectiveTag) GetNamespacedTagKey() *plugin.TValue[string] {
+	return &c.NamespacedTagKey
+}
+
+func (c *mqlGcpEffectiveTag) GetNamespacedTagValue() *plugin.TValue[string] {
+	return &c.NamespacedTagValue
+}
+
+func (c *mqlGcpEffectiveTag) GetInherited() *plugin.TValue[bool] {
+	return &c.Inherited
+}
+
+func (c *mqlGcpEffectiveTag) GetTagKeyParent() *plugin.TValue[string] {
+	return &c.TagKeyParent
+}
+
 // mqlGcpService for the gcp.service resource
 type mqlGcpService struct {
 	MqlRuntime *plugin.Runtime
@@ -55449,6 +55667,7 @@ type mqlGcpProjectComputeServiceInstance struct {
 	Subnetworks                     plugin.TValue[[]any]
 	ServiceAccountRefs              plugin.TValue[[]any]
 	LocalSsdEncryptionMode          plugin.TValue[string]
+	EffectiveTags                   plugin.TValue[[]any]
 }
 
 // createGcpProjectComputeServiceInstance creates a new instance of this resource
@@ -55844,6 +56063,22 @@ func (c *mqlGcpProjectComputeServiceInstance) GetServiceAccountRefs() *plugin.TV
 
 func (c *mqlGcpProjectComputeServiceInstance) GetLocalSsdEncryptionMode() *plugin.TValue[string] {
 	return &c.LocalSsdEncryptionMode
+}
+
+func (c *mqlGcpProjectComputeServiceInstance) GetEffectiveTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EffectiveTags, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.computeService.instance", c.__id, "effectiveTags")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.effectiveTags()
+	})
 }
 
 // mqlGcpProjectComputeServiceInstanceExposure for the gcp.project.computeService.instance.exposure resource
@@ -56743,6 +56978,7 @@ type mqlGcpProjectComputeServiceDisk struct {
 	SatisfiesPzs                plugin.TValue[bool]
 	SourceDisk                  plugin.TValue[*mqlGcpProjectComputeServiceDisk]
 	ManagedBy                   plugin.TValue[string]
+	EffectiveTags               plugin.TValue[[]any]
 }
 
 // createGcpProjectComputeServiceDisk creates a new instance of this resource
@@ -57013,6 +57249,22 @@ func (c *mqlGcpProjectComputeServiceDisk) GetSourceDisk() *plugin.TValue[*mqlGcp
 func (c *mqlGcpProjectComputeServiceDisk) GetManagedBy() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.ManagedBy, func() (string, error) {
 		return c.managedBy()
+	})
+}
+
+func (c *mqlGcpProjectComputeServiceDisk) GetEffectiveTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EffectiveTags, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.computeService.disk", c.__id, "effectiveTags")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.effectiveTags()
 	})
 }
 
@@ -57840,6 +58092,7 @@ type mqlGcpProjectComputeServiceFirewall struct {
 	LogConfig                plugin.TValue[any]
 	LogConfigMetadata        plugin.TValue[string]
 	Network                  plugin.TValue[*mqlGcpProjectComputeServiceNetwork]
+	EffectiveTags            plugin.TValue[[]any]
 }
 
 // createGcpProjectComputeServiceFirewall creates a new instance of this resource
@@ -58029,6 +58282,22 @@ func (c *mqlGcpProjectComputeServiceFirewall) GetNetwork() *plugin.TValue[*mqlGc
 	})
 }
 
+func (c *mqlGcpProjectComputeServiceFirewall) GetEffectiveTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EffectiveTags, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.computeService.firewall", c.__id, "effectiveTags")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.effectiveTags()
+	})
+}
+
 // mqlGcpProjectComputeServiceNetwork for the gcp.project.computeService.network resource
 type mqlGcpProjectComputeServiceNetwork struct {
 	MqlRuntime *plugin.Runtime
@@ -58056,6 +58325,7 @@ type mqlGcpProjectComputeServiceNetwork struct {
 	FirewallPolicy                        plugin.TValue[string]
 	FirewallPolicyRef                     plugin.TValue[*mqlGcpProjectComputeServiceFirewallPolicy]
 	NetworkProfile                        plugin.TValue[string]
+	EffectiveTags                         plugin.TValue[[]any]
 }
 
 // createGcpProjectComputeServiceNetwork creates a new instance of this resource
@@ -58245,6 +58515,22 @@ func (c *mqlGcpProjectComputeServiceNetwork) GetNetworkProfile() *plugin.TValue[
 	return &c.NetworkProfile
 }
 
+func (c *mqlGcpProjectComputeServiceNetwork) GetEffectiveTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EffectiveTags, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.computeService.network", c.__id, "effectiveTags")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.effectiveTags()
+	})
+}
+
 // mqlGcpProjectComputeServiceSubnetwork for the gcp.project.computeService.subnetwork resource
 type mqlGcpProjectComputeServiceSubnetwork struct {
 	MqlRuntime *plugin.Runtime
@@ -58280,6 +58566,7 @@ type mqlGcpProjectComputeServiceSubnetwork struct {
 	SystemReservedInternalIpv6Ranges plugin.TValue[[]any]
 	SystemReservedExternalIpv6Ranges plugin.TValue[[]any]
 	UtilizationDetails               plugin.TValue[any]
+	EffectiveTags                    plugin.TValue[[]any]
 }
 
 // createGcpProjectComputeServiceSubnetwork creates a new instance of this resource
@@ -58461,6 +58748,22 @@ func (c *mqlGcpProjectComputeServiceSubnetwork) GetSystemReservedExternalIpv6Ran
 
 func (c *mqlGcpProjectComputeServiceSubnetwork) GetUtilizationDetails() *plugin.TValue[any] {
 	return &c.UtilizationDetails
+}
+
+func (c *mqlGcpProjectComputeServiceSubnetwork) GetEffectiveTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EffectiveTags, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.computeService.subnetwork", c.__id, "effectiveTags")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.effectiveTags()
+	})
 }
 
 // mqlGcpProjectComputeServiceSubnetworkLogConfig for the gcp.project.computeService.subnetwork.logConfig resource
@@ -59459,6 +59762,7 @@ type mqlGcpProjectStorageServiceBucket struct {
 	Billing                         plugin.TValue[any]
 	Owner                           plugin.TValue[any]
 	SoftDeleteTime                  plugin.TValue[*time.Time]
+	EffectiveTags                   plugin.TValue[[]any]
 }
 
 // createGcpProjectStorageServiceBucket creates a new instance of this resource
@@ -59804,6 +60108,22 @@ func (c *mqlGcpProjectStorageServiceBucket) GetOwner() *plugin.TValue[any] {
 
 func (c *mqlGcpProjectStorageServiceBucket) GetSoftDeleteTime() *plugin.TValue[*time.Time] {
 	return &c.SoftDeleteTime
+}
+
+func (c *mqlGcpProjectStorageServiceBucket) GetEffectiveTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EffectiveTags, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.storageService.bucket", c.__id, "effectiveTags")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.effectiveTags()
+	})
 }
 
 // mqlGcpProjectStorageServiceBucketAccessControl for the gcp.project.storageService.bucket.accessControl resource
@@ -60336,6 +60656,7 @@ type mqlGcpProjectSqlServiceInstance struct {
 	Nodes                                      plugin.TValue[[]any]
 	OnPremisesConfig                           plugin.TValue[*mqlGcpProjectSqlServiceInstanceOnPremisesConfiguration]
 	ManagedBy                                  plugin.TValue[string]
+	EffectiveTags                              plugin.TValue[[]any]
 }
 
 // createGcpProjectSqlServiceInstance creates a new instance of this resource
@@ -60784,6 +61105,22 @@ func (c *mqlGcpProjectSqlServiceInstance) GetOnPremisesConfig() *plugin.TValue[*
 func (c *mqlGcpProjectSqlServiceInstance) GetManagedBy() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.ManagedBy, func() (string, error) {
 		return c.managedBy()
+	})
+}
+
+func (c *mqlGcpProjectSqlServiceInstance) GetEffectiveTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EffectiveTags, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.sqlService.instance", c.__id, "effectiveTags")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.effectiveTags()
 	})
 }
 
@@ -62294,6 +62631,7 @@ type mqlGcpProjectBigqueryServiceDataset struct {
 	ManagedBy                    plugin.TValue[string]
 	IsCaseInsensitive            plugin.TValue[bool]
 	ExternalDatasetReference     plugin.TValue[any]
+	EffectiveTags                plugin.TValue[[]any]
 }
 
 // createGcpProjectBigqueryServiceDataset creates a new instance of this resource
@@ -62477,6 +62815,22 @@ func (c *mqlGcpProjectBigqueryServiceDataset) GetExternalDatasetReference() *plu
 	return &c.ExternalDatasetReference
 }
 
+func (c *mqlGcpProjectBigqueryServiceDataset) GetEffectiveTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EffectiveTags, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.bigqueryService.dataset", c.__id, "effectiveTags")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.effectiveTags()
+	})
+}
+
 // mqlGcpProjectBigqueryServiceDatasetAccessEntry for the gcp.project.bigqueryService.dataset.accessEntry resource
 type mqlGcpProjectBigqueryServiceDatasetAccessEntry struct {
 	MqlRuntime *plugin.Runtime
@@ -62604,6 +62958,7 @@ type mqlGcpProjectBigqueryServiceTable struct {
 	PrimaryKeyColumns              plugin.TValue[[]any]
 	ForeignKeys                    plugin.TValue[[]any]
 	BigLakeConfiguration           plugin.TValue[*mqlGcpProjectBigqueryServiceTableBigLakeConfig]
+	EffectiveTags                  plugin.TValue[[]any]
 }
 
 // createGcpProjectBigqueryServiceTable creates a new instance of this resource
@@ -62855,6 +63210,22 @@ func (c *mqlGcpProjectBigqueryServiceTable) GetForeignKeys() *plugin.TValue[[]an
 
 func (c *mqlGcpProjectBigqueryServiceTable) GetBigLakeConfiguration() *plugin.TValue[*mqlGcpProjectBigqueryServiceTableBigLakeConfig] {
 	return &c.BigLakeConfiguration
+}
+
+func (c *mqlGcpProjectBigqueryServiceTable) GetEffectiveTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EffectiveTags, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.bigqueryService.table", c.__id, "effectiveTags")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.effectiveTags()
+	})
 }
 
 // mqlGcpProjectBigqueryServiceTableBigLakeConfig for the gcp.project.bigqueryService.table.bigLakeConfig resource
@@ -64497,6 +64868,7 @@ type mqlGcpProjectGkeServiceCluster struct {
 	StatusMessage                            plugin.TValue[string]
 	NodePoolAutoConfig                       plugin.TValue[any]
 	NodeAutoprovisioning                     plugin.TValue[*mqlGcpProjectGkeServiceClusterNodeAutoprovisioningConfig]
+	EffectiveTags                            plugin.TValue[[]any]
 }
 
 // createGcpProjectGkeServiceCluster creates a new instance of this resource
@@ -64964,6 +65336,22 @@ func (c *mqlGcpProjectGkeServiceCluster) GetNodePoolAutoConfig() *plugin.TValue[
 
 func (c *mqlGcpProjectGkeServiceCluster) GetNodeAutoprovisioning() *plugin.TValue[*mqlGcpProjectGkeServiceClusterNodeAutoprovisioningConfig] {
 	return &c.NodeAutoprovisioning
+}
+
+func (c *mqlGcpProjectGkeServiceCluster) GetEffectiveTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EffectiveTags, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.gkeService.cluster", c.__id, "effectiveTags")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.effectiveTags()
+	})
 }
 
 // mqlGcpProjectGkeServiceClusterNodeAutoprovisioningConfig for the gcp.project.gkeService.cluster.nodeAutoprovisioningConfig resource
@@ -76007,6 +76395,7 @@ type mqlGcpProjectCloudRunServiceService struct {
 	ManualInstanceCount                        plugin.TValue[int64]
 	Urls                                       plugin.TValue[[]any]
 	BuildConfig                                plugin.TValue[*mqlGcpProjectCloudRunServiceServiceBuildSettings]
+	EffectiveTags                              plugin.TValue[[]any]
 }
 
 // createGcpProjectCloudRunServiceService creates a new instance of this resource
@@ -76272,6 +76661,22 @@ func (c *mqlGcpProjectCloudRunServiceService) GetUrls() *plugin.TValue[[]any] {
 
 func (c *mqlGcpProjectCloudRunServiceService) GetBuildConfig() *plugin.TValue[*mqlGcpProjectCloudRunServiceServiceBuildSettings] {
 	return &c.BuildConfig
+}
+
+func (c *mqlGcpProjectCloudRunServiceService) GetEffectiveTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EffectiveTags, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.cloudRunService.service", c.__id, "effectiveTags")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.effectiveTags()
+	})
 }
 
 // mqlGcpProjectCloudRunServiceServiceBuildSettings for the gcp.project.cloudRunService.service.buildSettings resource
@@ -78604,6 +79009,7 @@ type mqlGcpProjectSecretmanagerServiceSecret struct {
 	PolicyMemberNamePrincipal        plugin.TValue[string]
 	PolicyMemberUidPrincipal         plugin.TValue[string]
 	ManagedBy                        plugin.TValue[string]
+	EffectiveTags                    plugin.TValue[[]any]
 }
 
 // createGcpProjectSecretmanagerServiceSecret creates a new instance of this resource
@@ -78816,6 +79222,22 @@ func (c *mqlGcpProjectSecretmanagerServiceSecret) GetPolicyMemberUidPrincipal() 
 func (c *mqlGcpProjectSecretmanagerServiceSecret) GetManagedBy() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.ManagedBy, func() (string, error) {
 		return c.managedBy()
+	})
+}
+
+func (c *mqlGcpProjectSecretmanagerServiceSecret) GetEffectiveTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EffectiveTags, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.secretmanagerService.secret", c.__id, "effectiveTags")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.effectiveTags()
 	})
 }
 
@@ -83022,6 +83444,7 @@ type mqlGcpProjectComputeServiceVpnGateway struct {
 	Region              plugin.TValue[*mqlGcpProjectComputeServiceRegion]
 	VpnInterfaces       plugin.TValue[[]any]
 	ResourceManagerTags plugin.TValue[map[string]any]
+	EffectiveTags       plugin.TValue[[]any]
 }
 
 // createGcpProjectComputeServiceVpnGateway creates a new instance of this resource
@@ -83129,6 +83552,22 @@ func (c *mqlGcpProjectComputeServiceVpnGateway) GetResourceManagerTags() *plugin
 	return &c.ResourceManagerTags
 }
 
+func (c *mqlGcpProjectComputeServiceVpnGateway) GetEffectiveTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EffectiveTags, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.computeService.vpnGateway", c.__id, "effectiveTags")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.effectiveTags()
+	})
+}
+
 // mqlGcpProjectComputeServiceVpnTunnel for the gcp.project.computeService.vpnTunnel resource
 type mqlGcpProjectComputeServiceVpnTunnel struct {
 	MqlRuntime *plugin.Runtime
@@ -83163,6 +83602,7 @@ type mqlGcpProjectComputeServiceVpnTunnel struct {
 	Phase2EncryptionAlgorithms   plugin.TValue[[]any]
 	Phase2IntegrityAlgorithms    plugin.TValue[[]any]
 	Phase2PfsGroups              plugin.TValue[[]any]
+	EffectiveTags                plugin.TValue[[]any]
 }
 
 // createGcpProjectComputeServiceVpnTunnel creates a new instance of this resource
@@ -83376,6 +83816,22 @@ func (c *mqlGcpProjectComputeServiceVpnTunnel) GetPhase2IntegrityAlgorithms() *p
 
 func (c *mqlGcpProjectComputeServiceVpnTunnel) GetPhase2PfsGroups() *plugin.TValue[[]any] {
 	return &c.Phase2PfsGroups
+}
+
+func (c *mqlGcpProjectComputeServiceVpnTunnel) GetEffectiveTags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EffectiveTags, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.computeService.vpnTunnel", c.__id, "effectiveTags")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.effectiveTags()
+	})
 }
 
 // mqlGcpProjectComputeServiceStoragePool for the gcp.project.computeService.storagePool resource
