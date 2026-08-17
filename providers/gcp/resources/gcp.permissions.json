@@ -263,6 +263,7 @@
     "redis.backups.list",
     "redis.clusters.list",
     "redis.instances.list",
+    "resourcemanager.effectiveTags.list",
     "resourcemanager.projects.get",
     "resourcemanager.projects.getIamPolicy",
     "resourcemanager.resourceTagBindings.list",
@@ -1939,6 +1940,12 @@
       "service": "redis",
       "action": "ListInstances",
       "source_file": "redis.go"
+    },
+    {
+      "permission": "resourcemanager.effectiveTags.list",
+      "service": "resourcemanager",
+      "action": "EffectiveTags.List",
+      "source_file": "effective_tags.go"
     },
     {
       "permission": "resourcemanager.folders.get",
