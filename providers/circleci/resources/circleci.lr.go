@@ -1104,35 +1104,51 @@ func (c *mqlCircleciProject) GetCheckoutKeys() *plugin.TValue[[]any] {
 }
 
 func (c *mqlCircleciProject) GetBuildForkPrs() *plugin.TValue[bool] {
-	return &c.BuildForkPrs
+	return plugin.GetOrCompute[bool](&c.BuildForkPrs, func() (bool, error) {
+		return c.buildForkPrs()
+	})
 }
 
 func (c *mqlCircleciProject) GetForksReceiveSecretEnvVars() *plugin.TValue[bool] {
-	return &c.ForksReceiveSecretEnvVars
+	return plugin.GetOrCompute[bool](&c.ForksReceiveSecretEnvVars, func() (bool, error) {
+		return c.forksReceiveSecretEnvVars()
+	})
 }
 
 func (c *mqlCircleciProject) GetBuildPrsOnly() *plugin.TValue[bool] {
-	return &c.BuildPrsOnly
+	return plugin.GetOrCompute[bool](&c.BuildPrsOnly, func() (bool, error) {
+		return c.buildPrsOnly()
+	})
 }
 
 func (c *mqlCircleciProject) GetWriteSettingsRequiresAdmin() *plugin.TValue[bool] {
-	return &c.WriteSettingsRequiresAdmin
+	return plugin.GetOrCompute[bool](&c.WriteSettingsRequiresAdmin, func() (bool, error) {
+		return c.writeSettingsRequiresAdmin()
+	})
 }
 
 func (c *mqlCircleciProject) GetDisableSsh() *plugin.TValue[bool] {
-	return &c.DisableSsh
+	return plugin.GetOrCompute[bool](&c.DisableSsh, func() (bool, error) {
+		return c.disableSsh()
+	})
 }
 
 func (c *mqlCircleciProject) GetSetGithubStatus() *plugin.TValue[bool] {
-	return &c.SetGithubStatus
+	return plugin.GetOrCompute[bool](&c.SetGithubStatus, func() (bool, error) {
+		return c.setGithubStatus()
+	})
 }
 
 func (c *mqlCircleciProject) GetAutoCancelBuilds() *plugin.TValue[bool] {
-	return &c.AutoCancelBuilds
+	return plugin.GetOrCompute[bool](&c.AutoCancelBuilds, func() (bool, error) {
+		return c.autoCancelBuilds()
+	})
 }
 
 func (c *mqlCircleciProject) GetPrOnlyBranchOverrides() *plugin.TValue[[]any] {
-	return &c.PrOnlyBranchOverrides
+	return plugin.GetOrCompute[[]any](&c.PrOnlyBranchOverrides, func() ([]any, error) {
+		return c.prOnlyBranchOverrides()
+	})
 }
 
 func (c *mqlCircleciProject) GetWebhooks() *plugin.TValue[[]any] {

@@ -151,8 +151,9 @@ type VCSInfo struct {
 	DefaultBranch string `json:"default_branch"`
 }
 
-// AdvancedSettings are the project settings CircleCI returns inline on the
-// project detail response.
+// AdvancedSettings are the project's advanced settings, returned under the
+// "advanced" key of GET /project/{project-slug}/settings. The project detail
+// response (GET /project/{project-slug}) does not carry these values.
 type AdvancedSettings struct {
 	BuildForkPrs               bool     `json:"build_fork_prs"`
 	ForksReceiveSecretEnvVars  bool     `json:"forks_receive_secret_env_vars"`
@@ -164,16 +165,21 @@ type AdvancedSettings struct {
 	PrOnlyBranchOverrides      []string `json:"pr_only_branch_overrides"`
 }
 
+// ProjectSettings is the response from GET /project/{project-slug}/settings,
+// which wraps the advanced settings under an "advanced" key.
+type ProjectSettings struct {
+	Advanced AdvancedSettings `json:"advanced"`
+}
+
 // Project is a single CircleCI project, GET /project/{project-slug}.
 type Project struct {
-	ID               string           `json:"id"`
-	Slug             string           `json:"slug"`
-	Name             string           `json:"name"`
-	OrganizationName string           `json:"organization_name"`
-	OrganizationSlug string           `json:"organization_slug"`
-	OrganizationID   string           `json:"organization_id"`
-	VCSInfo          VCSInfo          `json:"vcs_info"`
-	AdvancedSettings AdvancedSettings `json:"advanced_settings"`
+	ID               string  `json:"id"`
+	Slug             string  `json:"slug"`
+	Name             string  `json:"name"`
+	OrganizationName string  `json:"organization_name"`
+	OrganizationSlug string  `json:"organization_slug"`
+	OrganizationID   string  `json:"organization_id"`
+	VCSInfo          VCSInfo `json:"vcs_info"`
 }
 
 // GetProject fetches a single project by its slug (e.g. "gh/org/repo").
@@ -185,6 +191,19 @@ func (c *Client) GetProject(ctx context.Context, projectSlug string) (*Project, 
 		return nil, err
 	}
 	return &p, nil
+}
+
+// GetProjectSettings fetches a project's advanced settings by its slug
+// (e.g. "gh/org/repo") from GET /project/{project-slug}/settings and returns
+// the unwrapped "advanced" block.
+func (c *Client) GetProjectSettings(ctx context.Context, projectSlug string) (*AdvancedSettings, error) {
+	var s ProjectSettings
+	// The slug already carries its own "/"-separated segments; it is placed
+	// directly in the path rather than escaped as a single path element.
+	if err := c.get(ctx, "/project/"+projectSlug+"/settings", nil, &s); err != nil {
+		return nil, err
+	}
+	return &s.Advanced, nil
 }
 
 // Pipeline is a single pipeline entry, used only to discover distinct

@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"sync"
 
 	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
@@ -16,10 +17,103 @@ import (
 // mqlCircleciProjectInternal caches values from the project's creation
 // context that are needed later for lazy-loaded typed references and
 // paginated sub-resource lookups, which the CircleCI API addresses by
-// project slug (e.g. "gh/org/repo") rather than by the project's UUID.
+// project slug (e.g. "gh/org/repo") rather than by the project's UUID. It
+// also memoizes the project's advanced settings, which come from a separate
+// GET /project/{slug}/settings call made only when one of those fields is
+// read.
 type mqlCircleciProjectInternal struct {
 	cacheOrgId string
 	cacheSlug  string
+
+	settingsOnce sync.Mutex
+	settingsDone bool
+	settings     *connection.AdvancedSettings
+}
+
+// advancedSettings lazily fetches and memoizes the project's advanced
+// settings from GET /project/{slug}/settings. The call fires only on the
+// first read of one of the advanced-settings fields.
+func (p *mqlCircleciProject) advancedSettings() (*connection.AdvancedSettings, error) {
+	if p.settingsDone {
+		return p.settings, nil
+	}
+	p.settingsOnce.Lock()
+	defer p.settingsOnce.Unlock()
+	if p.settingsDone {
+		return p.settings, nil
+	}
+	conn := p.MqlRuntime.Connection.(*connection.CircleciConnection)
+	settings, err := conn.Client().GetProjectSettings(context.Background(), p.cacheSlug)
+	if err != nil {
+		return nil, err
+	}
+	p.settings = settings
+	p.settingsDone = true
+	return p.settings, nil
+}
+
+func (p *mqlCircleciProject) buildForkPrs() (bool, error) {
+	s, err := p.advancedSettings()
+	if err != nil {
+		return false, err
+	}
+	return s.BuildForkPrs, nil
+}
+
+func (p *mqlCircleciProject) forksReceiveSecretEnvVars() (bool, error) {
+	s, err := p.advancedSettings()
+	if err != nil {
+		return false, err
+	}
+	return s.ForksReceiveSecretEnvVars, nil
+}
+
+func (p *mqlCircleciProject) buildPrsOnly() (bool, error) {
+	s, err := p.advancedSettings()
+	if err != nil {
+		return false, err
+	}
+	return s.BuildPrsOnly, nil
+}
+
+func (p *mqlCircleciProject) writeSettingsRequiresAdmin() (bool, error) {
+	s, err := p.advancedSettings()
+	if err != nil {
+		return false, err
+	}
+	return s.WriteSettingsRequiresAdmin, nil
+}
+
+func (p *mqlCircleciProject) disableSsh() (bool, error) {
+	s, err := p.advancedSettings()
+	if err != nil {
+		return false, err
+	}
+	return s.DisableSsh, nil
+}
+
+func (p *mqlCircleciProject) setGithubStatus() (bool, error) {
+	s, err := p.advancedSettings()
+	if err != nil {
+		return false, err
+	}
+	return s.SetGithubStatus, nil
+}
+
+func (p *mqlCircleciProject) autoCancelBuilds() (bool, error) {
+	s, err := p.advancedSettings()
+	if err != nil {
+		return false, err
+	}
+	return s.AutocancelBuilds, nil
+}
+
+func (p *mqlCircleciProject) prOnlyBranchOverrides() ([]any, error) {
+	s, err := p.advancedSettings()
+	if err != nil {
+		return nil, err
+	}
+	return convert.SliceAnyToInterface(s.PrOnlyBranchOverrides), nil
 }
 
 // newMqlCircleciProject maps a single API project to its MQL resource.
@@ -30,19 +124,11 @@ func newMqlCircleciProject(runtime *plugin.Runtime, p *connection.Project) (plug
 	}
 
 	res, err := CreateResource(runtime, "circleci.project", map[string]*llx.RawData{
-		"__id":                       llx.StringData(p.ID),
-		"id":                         llx.StringData(p.ID),
-		"name":                       llx.StringData(p.Name),
-		"vcsInfo":                    llx.DictData(vcsInfo),
-		"defaultBranch":              llx.StringData(p.VCSInfo.DefaultBranch),
-		"buildForkPrs":               llx.BoolData(p.AdvancedSettings.BuildForkPrs),
-		"forksReceiveSecretEnvVars":  llx.BoolData(p.AdvancedSettings.ForksReceiveSecretEnvVars),
-		"buildPrsOnly":               llx.BoolData(p.AdvancedSettings.BuildPrsOnly),
-		"writeSettingsRequiresAdmin": llx.BoolData(p.AdvancedSettings.WriteSettingsRequiresAdmin),
-		"disableSsh":                 llx.BoolData(p.AdvancedSettings.DisableSsh),
-		"setGithubStatus":            llx.BoolData(p.AdvancedSettings.SetGithubStatus),
-		"autoCancelBuilds":           llx.BoolData(p.AdvancedSettings.AutocancelBuilds),
-		"prOnlyBranchOverrides":      llx.ArrayData(convert.SliceAnyToInterface(p.AdvancedSettings.PrOnlyBranchOverrides), types.String),
+		"__id":          llx.StringData(p.ID),
+		"id":            llx.StringData(p.ID),
+		"name":          llx.StringData(p.Name),
+		"vcsInfo":       llx.DictData(vcsInfo),
+		"defaultBranch": llx.StringData(p.VCSInfo.DefaultBranch),
 	})
 	if err != nil {
 		return nil, err

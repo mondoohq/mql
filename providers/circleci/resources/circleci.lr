@@ -81,25 +81,25 @@ circleci.project @defaults("name") @maturity("experimental") {
   // Checkout keys used to clone the repository
   checkoutKeys() []circleci.checkoutKey
   // Whether the project builds pull requests opened from forks
-  buildForkPrs bool
+  buildForkPrs() bool
   // Whether forked pull request builds receive the project's secret environment variables and context values
-  forksReceiveSecretEnvVars bool
+  forksReceiveSecretEnvVars() bool
   // Whether only pull request commits trigger builds (as opposed to every push)
-  buildPrsOnly bool
+  buildPrsOnly() bool
   // Whether project settings changes require organization admin permissions
-  writeSettingsRequiresAdmin bool
+  writeSettingsRequiresAdmin() bool
   // Whether SSH access to build containers is disabled
-  disableSsh bool
+  disableSsh() bool
   // Whether the project's status is reported back to the VCS provider (commit statuses / checks)
-  setGithubStatus bool
+  setGithubStatus() bool
   // Whether CircleCI automatically cancels redundant, in-progress builds on a branch when a newer build starts
-  autoCancelBuilds bool
+  autoCancelBuilds() bool
   // Branch overrides to the build-pull-requests-only setting
   //
   // Branch names or regular expressions that build on every commit even
   // while buildPrsOnly is in effect, letting specific branches bypass the
   // pull-request-only restriction. Empty when no overrides are configured.
-  prOnlyBranchOverrides []string
+  prOnlyBranchOverrides() []string
   // Outbound webhooks configured on the project
   webhooks() []circleci.webhook
 }
