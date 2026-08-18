@@ -3649,7 +3649,7 @@ private haproxy.config.peersSection @defaults("name") {
 // Pair with `postgresql.hba` and `postgresql.ident` for the auxiliary
 // configuration files. By default the file is located by probing the
 // well-known paths for Debian/Ubuntu and RPM installations; pass an
-// explicit path with `postgresql.conf(path: "/path/to/postgresql.conf")`.
+// explicit path with `postgresql.conf("/path/to/postgresql.conf")`.
 postgresql.conf {
   init(path? string)
   // Primary configuration file
@@ -3810,8 +3810,13 @@ mysql {
 // By default the file is located by probing the well-known paths for
 // Debian/Ubuntu and RPM installations, and returns nothing when the host
 // runs MariaDB rather than MySQL. Pass an explicit path with
-// `mysql.conf(path: "/etc/mysql/my.cnf")` to parse a file regardless of
+// `mysql.conf("/etc/mysql/my.cnf")` to parse a file regardless of
 // which product it belongs to.
+//
+// Values come from the option files. A setting given on the
+// command line, which is how a container usually configures MySQL,
+// is not visible here, and an option no file sets reads null rather
+// than zero.
 mysql.conf {
   init(path? string)
   // Primary option file
@@ -4071,8 +4076,13 @@ mariadb {
 // By default the file is located by probing the well-known paths for
 // Debian/Ubuntu and RPM installations, and returns nothing when the host
 // runs MySQL rather than MariaDB. Pass an explicit path with
-// `mariadb.conf(path: "/etc/mysql/mariadb.cnf")` to parse a file regardless
+// `mariadb.conf("/etc/mysql/mariadb.cnf")` to parse a file regardless
 // of which product it belongs to.
+//
+// Values come from the option files. A setting given on the
+// command line, which is how a container usually configures MariaDB,
+// is not visible here, and an option no file sets reads null rather
+// than zero.
 mariadb.conf {
   init(path? string)
   // Primary option file
@@ -7022,7 +7032,7 @@ secpol {
 // control directives that govern which peers and clients may interact with
 // the daemon, and `fudge` carries reference-clock adjustments. `settings`
 // returns every effective directive line. Select a file with
-// `ntp.conf(path: "...")`.
+// `ntp.conf("...")`.
 ntp.conf {
   init(path string)
   // File of the NTP service configuration
@@ -7052,7 +7062,7 @@ ntp.conf {
 // where the control socket listens; and `keyFile`, `makeStep`, and
 // `rtcSync` cover the authentication key file, clock-stepping policy, and
 // real-time-clock synchronization. Select an alternate file with
-// `chrony.conf(path: "...")`; the default resolves to `/etc/chrony.conf`
+// `chrony.conf("...")`; the default resolves to `/etc/chrony.conf`
 // (RHEL family) or `/etc/chrony/chrony.conf` (Debian family).
 chrony.conf {
   init(path string)

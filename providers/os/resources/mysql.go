@@ -184,7 +184,12 @@ func (s *mqlMysqlConf) skipNameResolve(serverOptions map[string]any) (bool, erro
 }
 
 func (s *mqlMysqlConf) maxConnections(serverOptions map[string]any) (int64, error) {
-	return optionInt(serverOptions, "max_connections", 0), nil
+	v, ok := optionCount(serverOptions, "max_connections")
+	if !ok {
+		s.MaxConnections.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return v, nil
 }
 
 // TLS
@@ -268,7 +273,12 @@ func (s *mqlMysqlConf) validatePasswordPolicy(serverOptions map[string]any) (str
 }
 
 func (s *mqlMysqlConf) validatePasswordLength(serverOptions map[string]any) (int64, error) {
-	return optionInt(serverOptions, "validate_password.length", 0), nil
+	v, ok := optionCount(serverOptions, "validate_password.length")
+	if !ok {
+		s.ValidatePasswordLength.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMysqlConf) validatePasswordCheckUserName(serverOptions map[string]any) (bool, error) {
@@ -276,15 +286,30 @@ func (s *mqlMysqlConf) validatePasswordCheckUserName(serverOptions map[string]an
 }
 
 func (s *mqlMysqlConf) defaultPasswordLifetime(serverOptions map[string]any) (int64, error) {
-	return optionInt(serverOptions, "default_password_lifetime", 0), nil
+	v, ok := optionCount(serverOptions, "default_password_lifetime")
+	if !ok {
+		s.DefaultPasswordLifetime.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMysqlConf) passwordHistory(serverOptions map[string]any) (int64, error) {
-	return optionInt(serverOptions, "password_history", 0), nil
+	v, ok := optionCount(serverOptions, "password_history")
+	if !ok {
+		s.PasswordHistory.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMysqlConf) passwordReuseInterval(serverOptions map[string]any) (int64, error) {
-	return optionInt(serverOptions, "password_reuse_interval", 0), nil
+	v, ok := optionCount(serverOptions, "password_reuse_interval")
+	if !ok {
+		s.PasswordReuseInterval.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMysqlConf) passwordRequireCurrent(serverOptions map[string]any) (bool, error) {
@@ -366,7 +391,12 @@ func (s *mqlMysqlConf) logError(serverOptions map[string]any) (string, error) {
 }
 
 func (s *mqlMysqlConf) logErrorVerbosity(serverOptions map[string]any) (int64, error) {
-	return optionInt(serverOptions, "log_error_verbosity", 0), nil
+	v, ok := optionCount(serverOptions, "log_error_verbosity")
+	if !ok {
+		s.LogErrorVerbosity.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMysqlConf) logOutput(serverOptions map[string]any) ([]any, error) {
@@ -412,7 +442,12 @@ func (s *mqlMysqlConf) binlogFormat(serverOptions map[string]any) (string, error
 }
 
 func (s *mqlMysqlConf) binlogExpireLogsSeconds(serverOptions map[string]any) (int64, error) {
-	return optionInt(serverOptions, "binlog_expire_logs_seconds", 0), nil
+	v, ok := optionCount(serverOptions, "binlog_expire_logs_seconds")
+	if !ok {
+		s.BinlogExpireLogsSeconds.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMysqlConf) binlogEncryption(serverOptions map[string]any) (bool, error) {
@@ -420,7 +455,12 @@ func (s *mqlMysqlConf) binlogEncryption(serverOptions map[string]any) (bool, err
 }
 
 func (s *mqlMysqlConf) serverId(serverOptions map[string]any) (int64, error) {
-	return optionInt(serverOptions, "server_id", 0), nil
+	v, ok := optionCount(serverOptions, "server_id")
+	if !ok {
+		s.ServerId.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMysqlConf) gtidMode(serverOptions map[string]any) (string, error) {

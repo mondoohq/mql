@@ -681,3 +681,49 @@ func TestMariadbConf_SlowQueryLogFileIsEmptyWhenUnset(t *testing.T) {
 	require.NoError(t, path.Error)
 	assert.Empty(t, path.Data)
 }
+
+// An option no file sets reads null, not zero. max_connections=0 is not a
+// configuration a server can run with, so reporting it lets a bounds check pass
+// on a server whose real limit is higher — the direction that matters. port is
+// the exception: 3306 is what the server uses when no file names one.
+func TestMariadbConf_AbsentCountsAreNullNotZero(t *testing.T) {
+	conf := mariadbConf(t, "mysql_almalinux9_mariadb.toml")
+
+	for _, tc := range []struct {
+		name string
+		get  func() *plugin.TValue[int64]
+	}{
+		{"maxConnections", conf.GetMaxConnections},
+		{"serverId", conf.GetServerId},
+		{"logWarnings", conf.GetLogWarnings},
+		{"expireLogsDays", conf.GetExpireLogsDays},
+		{"simplePasswordCheckMinimalLength", conf.GetSimplePasswordCheckMinimalLength},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := tc.get()
+			require.NoError(t, v.Error)
+			assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, v.State,
+				"an option the files do not set has to read null")
+		})
+	}
+
+	port := conf.GetPort()
+	require.NoError(t, port.Error)
+	assert.Equal(t, int64(3306), port.Data, "port keeps the default the server would use")
+}
+
+// A count the files do set still reads as a number.
+func TestMariadbConf_PresentCountsStillRead(t *testing.T) {
+	conf := mariadbConf(t, "mysql_debian13_mariadb.toml")
+
+	// the fixture sets expire_logs_days and leaves max_connections commented
+	set := conf.GetExpireLogsDays()
+	require.NoError(t, set.Error)
+	assert.NotEqual(t, plugin.StateIsSet|plugin.StateIsNull, set.State)
+	assert.Equal(t, int64(10), set.Data)
+
+	unset := conf.GetMaxConnections()
+	require.NoError(t, unset.Error)
+	assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, unset.State,
+		"the same fixture leaves max_connections unset, and that has to stay null")
+}

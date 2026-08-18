@@ -174,7 +174,12 @@ func (s *mqlMariadbConf) skipNameResolve(serverOptions map[string]any) (bool, er
 }
 
 func (s *mqlMariadbConf) maxConnections(serverOptions map[string]any) (int64, error) {
-	return optionInt(serverOptions, "max_connections", 0), nil
+	v, ok := optionCount(serverOptions, "max_connections")
+	if !ok {
+		s.MaxConnections.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return v, nil
 }
 
 // TLS
@@ -234,23 +239,48 @@ func (s *mqlMariadbConf) pluginLoad(serverOptions map[string]any) ([]any, error)
 }
 
 func (s *mqlMariadbConf) simplePasswordCheckMinimalLength(serverOptions map[string]any) (int64, error) {
-	return optionInt(serverOptions, "simple_password_check_minimal_length", 0), nil
+	v, ok := optionCount(serverOptions, "simple_password_check_minimal_length")
+	if !ok {
+		s.SimplePasswordCheckMinimalLength.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMariadbConf) simplePasswordCheckDigits(serverOptions map[string]any) (int64, error) {
-	return optionInt(serverOptions, "simple_password_check_digits", 0), nil
+	v, ok := optionCount(serverOptions, "simple_password_check_digits")
+	if !ok {
+		s.SimplePasswordCheckDigits.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMariadbConf) simplePasswordCheckLetters(serverOptions map[string]any) (int64, error) {
-	return optionInt(serverOptions, "simple_password_check_letters_same_case", 0), nil
+	v, ok := optionCount(serverOptions, "simple_password_check_letters_same_case")
+	if !ok {
+		s.SimplePasswordCheckLetters.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMariadbConf) simplePasswordCheckOtherCharacters(serverOptions map[string]any) (int64, error) {
-	return optionInt(serverOptions, "simple_password_check_other_characters", 0), nil
+	v, ok := optionCount(serverOptions, "simple_password_check_other_characters")
+	if !ok {
+		s.SimplePasswordCheckOtherCharacters.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMariadbConf) passwordReuseCheckInterval(serverOptions map[string]any) (int64, error) {
-	return optionInt(serverOptions, "password_reuse_check_interval", 0), nil
+	v, ok := optionCount(serverOptions, "password_reuse_check_interval")
+	if !ok {
+		s.PasswordReuseCheckInterval.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return v, nil
 }
 
 // filesystem and privileges
@@ -328,7 +358,12 @@ func (s *mqlMariadbConf) logError(serverOptions map[string]any) (string, error) 
 }
 
 func (s *mqlMariadbConf) logWarnings(serverOptions map[string]any) (int64, error) {
-	return optionInt(serverOptions, "log_warnings", 0), nil
+	v, ok := optionCount(serverOptions, "log_warnings")
+	if !ok {
+		s.LogWarnings.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMariadbConf) logOutput(serverOptions map[string]any) ([]any, error) {
@@ -391,11 +426,21 @@ func (s *mqlMariadbConf) binlogFormat(serverOptions map[string]any) (string, err
 }
 
 func (s *mqlMariadbConf) expireLogsDays(serverOptions map[string]any) (int64, error) {
-	return optionInt(serverOptions, "expire_logs_days", 0), nil
+	v, ok := optionCount(serverOptions, "expire_logs_days")
+	if !ok {
+		s.ExpireLogsDays.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMariadbConf) serverId(serverOptions map[string]any) (int64, error) {
-	return optionInt(serverOptions, "server_id", 0), nil
+	v, ok := optionCount(serverOptions, "server_id")
+	if !ok {
+		s.ServerId.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMariadbConf) gtidStrictMode(serverOptions map[string]any) (bool, error) {
