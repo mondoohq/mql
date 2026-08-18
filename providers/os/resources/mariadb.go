@@ -347,6 +347,23 @@ func (s *mqlMariadbConf) slowQueryLog(serverOptions map[string]any) (bool, error
 	return optionBool(serverOptions, "slow_query_log"), nil
 }
 
+// slowQueryLogFile reads the two spellings MariaDB accepts for one setting.
+// log_slow_query_file is the name its own packages write into 50-server.cnf on
+// Debian and Ubuntu; slow_query_log_file is the MySQL-compatible synonym, and
+// the server reports the value under that name whichever one set it. Reading
+// only the MySQL name reports nothing on a packaged server whose administrator
+// uncommented the line the package shipped, which is the configuration this
+// field exists to locate.
+//
+// When a file sets both, MariaDB takes the last one it reads; the merged option
+// map cannot express that order, so the native spelling is preferred here.
+func (s *mqlMariadbConf) slowQueryLogFile(serverOptions map[string]any) (string, error) {
+	if v := optionString(serverOptions, "log_slow_query_file"); v != "" {
+		return v, nil
+	}
+	return optionString(serverOptions, "slow_query_log_file"), nil
+}
+
 func (s *mqlMariadbConf) serverAuditLogging(serverOptions map[string]any) (bool, error) {
 	return optionBool(serverOptions, "server_audit_logging"), nil
 }

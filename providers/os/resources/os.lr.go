@@ -6724,6 +6724,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mariadb.conf.slowQueryLog": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMariadbConf).GetSlowQueryLog()).ToDataRes(types.Bool)
 	},
+	"mariadb.conf.slowQueryLogFile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMariadbConf).GetSlowQueryLogFile()).ToDataRes(types.String)
+	},
 	"mariadb.conf.serverAuditLogging": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMariadbConf).GetServerAuditLogging()).ToDataRes(types.Bool)
 	},
@@ -21180,6 +21183,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mariadb.conf.slowQueryLog": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMariadbConf).SlowQueryLog, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mariadb.conf.slowQueryLogFile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMariadbConf).SlowQueryLogFile, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"mariadb.conf.serverAuditLogging": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -50462,6 +50469,7 @@ type mqlMariadbConf struct {
 	GeneralLog                         plugin.TValue[bool]
 	GeneralLogFile                     plugin.TValue[string]
 	SlowQueryLog                       plugin.TValue[bool]
+	SlowQueryLogFile                   plugin.TValue[string]
 	ServerAuditLogging                 plugin.TValue[bool]
 	ServerAuditEvents                  plugin.TValue[[]any]
 	ServerAuditFilePath                plugin.TValue[string]
@@ -51108,6 +51116,17 @@ func (c *mqlMariadbConf) GetSlowQueryLog() *plugin.TValue[bool] {
 		}
 
 		return c.slowQueryLog(vargServerOptions.Data)
+	})
+}
+
+func (c *mqlMariadbConf) GetSlowQueryLogFile() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SlowQueryLogFile, func() (string, error) {
+		vargServerOptions := c.GetServerOptions()
+		if vargServerOptions.Error != nil {
+			return "", vargServerOptions.Error
+		}
+
+		return c.slowQueryLogFile(vargServerOptions.Data)
 	})
 }
 

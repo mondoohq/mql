@@ -633,3 +633,51 @@ func TestVersion_IsNullWithoutCommandExecution(t *testing.T) {
 	require.NoError(t, mysqlVersion.Error)
 	assert.Empty(t, mysqlVersion.Data)
 }
+
+// MariaDB accepts two names for the slow query log path and treats them as one
+// setting. log_slow_query_file is what its Debian and Ubuntu packages write
+// into 50-server.cnf, so a reader that knows only the MySQL-compatible
+// slow_query_log_file reports nothing on a packaged server whose administrator
+// enabled the line the package shipped — and an operator cannot then check the
+// mode of a file that holds full statement text.
+func TestMariadbConf_SlowQueryLogFileReadsBothSpellings(t *testing.T) {
+	for _, tc := range []struct {
+		fixture  string
+		expected string
+		why      string
+	}{
+		{
+			"mysql_debian13_mariadb.toml",
+			"/var/log/mysql/mariadb-slow.log",
+			"log_slow_query_file is the spelling the Debian package ships",
+		},
+		{
+			"mysql_mariadb114.toml",
+			"/var/log/mysql/compat-name-slow.log",
+			"slow_query_log_file is the MySQL-compatible synonym",
+		},
+	} {
+		t.Run(tc.fixture, func(t *testing.T) {
+			conf := mariadbConf(t, tc.fixture)
+
+			enabled := conf.GetSlowQueryLog()
+			require.NoError(t, enabled.Error)
+			assert.True(t, enabled.Data, "the fixture enables slow query logging")
+
+			path := conf.GetSlowQueryLogFile()
+			require.NoError(t, path.Error)
+			assert.Equal(t, tc.expected, path.Data, tc.why)
+		})
+	}
+}
+
+// A server that sets neither name reports an empty path rather than a guess.
+// MariaDB derives the file from the host name under datadir in that case, which
+// is not something the option file says.
+func TestMariadbConf_SlowQueryLogFileIsEmptyWhenUnset(t *testing.T) {
+	conf := mariadbConf(t, "mysql_almalinux9_mariadb.toml")
+
+	path := conf.GetSlowQueryLogFile()
+	require.NoError(t, path.Error)
+	assert.Empty(t, path.Data)
+}

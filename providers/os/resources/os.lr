@@ -4190,6 +4190,14 @@ mariadb.conf {
   generalLogFile(serverOptions) string
   // slow_query_log option
   slowQueryLog(serverOptions) bool
+  // Path the slow query log is written to
+  //
+  // Read from log_slow_query_file, the spelling the Debian and Ubuntu
+  // packages write, falling back to the MySQL-compatible
+  // slow_query_log_file. MariaDB treats the two as one setting. Empty
+  // when neither is set, in which case the server derives the name from
+  // the host name and writes it under datadir.
+  slowQueryLogFile(serverOptions) string
   // server_audit_logging option, from the server_audit plugin
   serverAuditLogging(serverOptions) bool
   // server_audit_events option split into audited event classes

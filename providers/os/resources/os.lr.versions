@@ -2176,6 +2176,7 @@ mariadb.conf.skipNameResolve 13.39.1
 mariadb.conf.skipNetworking 13.39.1
 mariadb.conf.skipShowDatabase 13.39.1
 mariadb.conf.slowQueryLog 13.39.1
+mariadb.conf.slowQueryLogFile 13.40.9
 mariadb.conf.socket 13.39.1
 mariadb.conf.sqlMode 13.39.1
 mariadb.conf.sslCaFile 13.39.1
