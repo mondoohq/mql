@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -119,12 +120,38 @@ func (a *mqlAwsCloudwatchMetricdimension) id() (string, error) {
 	return name + "/" + val, nil
 }
 
+// metricStatisticsCacheKey identifies one statistics series. A CloudWatch metric
+// is identified by its namespace, name AND dimensions: AWS/EC2 CPUUtilization
+// exists once per instance, distinguished only by the InstanceId dimension. A
+// key without them collapses every instance's series onto one cache entry, so
+// the first one fetched answers for all of them.
+//
+// Dimensions are sorted, because the key has to be the same for the same series
+// no matter what order the API returned them in.
+func metricStatisticsCacheKey(namespace, name, region, label string, dimensions []any) string {
+	key := namespace + "/" + name + "/" + region + "/" + label
+
+	pairs := make([]string, 0, len(dimensions))
+	for _, d := range dimensions {
+		dimension, ok := d.(*mqlAwsCloudwatchMetricdimension)
+		if !ok {
+			continue
+		}
+		pairs = append(pairs, dimension.Name.Data+"="+dimension.Value.Data)
+	}
+	if len(pairs) == 0 {
+		return key
+	}
+	sort.Strings(pairs)
+	return key + "/" + strings.Join(pairs, ",")
+}
+
+// id covers the init path only, which resolves the undimensioned aggregate for
+// a namespace and metric name. The dimensioned series built by
+// aws.cloudwatch.metric.statistics passes its own __id, since this resource has
+// no dimensions field to read them back from.
 func (a *mqlAwsCloudwatchMetricstatistics) id() (string, error) {
-	region := a.Region.Data
-	namespace := a.Namespace.Data
-	name := a.Name.Data
-	label := a.Label.Data
-	return namespace + "/" + name + "/" + region + "/" + label, nil
+	return metricStatisticsCacheKey(a.Namespace.Data, a.Name.Data, a.Region.Data, a.Label.Data, nil), nil
 }
 
 // allow the user to query for a specific namespace metric in a specific region
@@ -301,10 +328,16 @@ func initAwsCloudwatchMetricstatistics(runtime *plugin.Runtime, args map[string]
 	if err != nil {
 		return args, nil, err
 	}
+	// Every datapoint here used to be created with no id of any kind, so all 24
+	// hours of them shared one empty cache key and resolved to the first.
+	statsKey := metricStatisticsCacheKey(namespace, name, region, convert.ToValue(statsResp.Label), nil)
+
 	datapoints := []any{}
 	for _, datapoint := range statsResp.Datapoints {
 		mqlDatapoint, err := CreateResource(runtime, "aws.cloudwatch.metric.datapoint",
 			map[string]*llx.RawData{
+				"__id":      llx.StringData(datapointCacheKey(statsKey, datapoint)),
+				"id":        llx.StringData(formatDatapointId(datapoint)),
 				"timestamp": llx.TimeDataPtr(datapoint.Timestamp),
 				"maximum":   llx.FloatData(convert.ToValue(datapoint.Maximum)),
 				"minimum":   llx.FloatData(convert.ToValue(datapoint.Minimum)),
@@ -361,10 +394,13 @@ func (a *mqlAwsCloudwatchMetric) statistics() (*mqlAwsCloudwatchMetricstatistics
 	if err != nil {
 		return nil, errors.Wrap(err, "could not gather AWS CloudWatch stats")
 	}
+	statsKey := metricStatisticsCacheKey(namespace, metricName, regionVal, convert.ToValue(statsResp.Label), dimensions)
+
 	datapoints := []any{}
 	for _, datapoint := range statsResp.Datapoints {
 		mqlDatapoint, err := CreateResource(a.MqlRuntime, "aws.cloudwatch.metric.datapoint",
 			map[string]*llx.RawData{
+				"__id":      llx.StringData(datapointCacheKey(statsKey, datapoint)),
 				"id":        llx.StringData(formatDatapointId(datapoint)),
 				"timestamp": llx.TimeDataPtr(datapoint.Timestamp),
 				"maximum":   llx.FloatData(convert.ToValue(datapoint.Maximum)),
@@ -380,6 +416,7 @@ func (a *mqlAwsCloudwatchMetric) statistics() (*mqlAwsCloudwatchMetricstatistics
 	}
 	mqlStat, err := CreateResource(a.MqlRuntime, "aws.cloudwatch.metricstatistics",
 		map[string]*llx.RawData{
+			"__id":       llx.StringData(statsKey),
 			"label":      llx.StringDataPtr(statsResp.Label),
 			"datapoints": llx.ArrayData(datapoints, types.Resource("aws.cloudwatch.metric.datapoint")),
 			"name":       llx.StringData(metricName),
@@ -395,6 +432,18 @@ func (a *mqlAwsCloudwatchMetric) statistics() (*mqlAwsCloudwatchMetricstatistics
 
 func (a *mqlAwsCloudwatchMetricDatapoint) id() (string, error) {
 	return a.Id.Data, nil
+}
+
+// datapointCacheKey identifies a datapoint within its series. formatDatapointId
+// hashes the datapoint's own values, which is not enough on its own: two
+// instances idling at the same value in the same hour hash identically, so the
+// series has to be part of the key. The public id field keeps the hash.
+func datapointCacheKey(statisticsKey string, d cloudwatchtypes.Datapoint) string {
+	ts := ""
+	if d.Timestamp != nil {
+		ts = strconv.FormatInt(d.Timestamp.UnixNano(), 10)
+	}
+	return statisticsKey + "/datapoint/" + ts + "/" + formatDatapointId(d)
 }
 
 func formatDatapointId(d cloudwatchtypes.Datapoint) string {
@@ -1153,6 +1202,7 @@ func (a *mqlAwsCloudwatchLoggroup) logStreams() ([]any, error) {
 		for _, ls := range page.LogStreams {
 			mqlLS, err := CreateResource(a.MqlRuntime, "aws.cloudwatch.loggroup.logstream",
 				map[string]*llx.RawData{
+					"__id":                llx.StringData(region + "/" + groupName + "/" + convert.ToValue(ls.LogStreamName)),
 					"arn":                 llx.StringDataPtr(ls.Arn),
 					"name":                llx.StringDataPtr(ls.LogStreamName),
 					"createdAt":           llx.TimeDataPtr(int64MillisToTime(ls.CreationTime)),
@@ -1170,8 +1220,17 @@ func (a *mqlAwsCloudwatchLoggroup) logStreams() ([]any, error) {
 	return res, nil
 }
 
+// id is the fallback identity for a log stream built without an explicit key.
+// It cannot qualify the stream by its log group, because a log stream resource
+// carries no reference to one and a cache field would be assigned only after
+// CreateResource has already computed the key. The lister therefore passes a
+// group-qualified __id directly, which is what actually keys these: Lambda
+// names every stream YYYY/MM/DD/[$LATEST]<hex>, so the same stream name in two
+// function log groups is routine, and region plus name alone merged them into
+// a single row.
 func (a *mqlAwsCloudwatchLoggroupLogstream) id() (string, error) {
-	// Use composite ID instead of ARN since ARN can be nil for some streams
+	// Use a composite ID instead of the ARN, since the ARN can be nil for some
+	// streams.
 	return a.Region.Data + "/" + a.Name.Data, nil
 }
 
