@@ -187386,39 +187386,57 @@ func (c *mqlAwsSsmPatchBaseline) GetIsDefault() *plugin.TValue[bool] {
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetApprovalRules() *plugin.TValue[[]any] {
-	return &c.ApprovalRules
+	return plugin.GetOrCompute[[]any](&c.ApprovalRules, func() ([]any, error) {
+		return c.approvalRules()
+	})
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetApprovedPatches() *plugin.TValue[[]any] {
-	return &c.ApprovedPatches
+	return plugin.GetOrCompute[[]any](&c.ApprovedPatches, func() ([]any, error) {
+		return c.approvedPatches()
+	})
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetApprovedPatchesComplianceLevel() *plugin.TValue[string] {
-	return &c.ApprovedPatchesComplianceLevel
+	return plugin.GetOrCompute[string](&c.ApprovedPatchesComplianceLevel, func() (string, error) {
+		return c.approvedPatchesComplianceLevel()
+	})
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetRejectedPatches() *plugin.TValue[[]any] {
-	return &c.RejectedPatches
+	return plugin.GetOrCompute[[]any](&c.RejectedPatches, func() ([]any, error) {
+		return c.rejectedPatches()
+	})
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetRejectedPatchesAction() *plugin.TValue[string] {
-	return &c.RejectedPatchesAction
+	return plugin.GetOrCompute[string](&c.RejectedPatchesAction, func() (string, error) {
+		return c.rejectedPatchesAction()
+	})
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetGlobalFilters() *plugin.TValue[[]any] {
-	return &c.GlobalFilters
+	return plugin.GetOrCompute[[]any](&c.GlobalFilters, func() ([]any, error) {
+		return c.globalFilters()
+	})
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetSources() *plugin.TValue[[]any] {
-	return &c.Sources
+	return plugin.GetOrCompute[[]any](&c.Sources, func() ([]any, error) {
+		return c.sources()
+	})
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetCreatedAt() *plugin.TValue[*time.Time] {
-	return &c.CreatedAt
+	return plugin.GetOrCompute[*time.Time](&c.CreatedAt, func() (*time.Time, error) {
+		return c.createdAt()
+	})
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetModifiedAt() *plugin.TValue[*time.Time] {
-	return &c.ModifiedAt
+	return plugin.GetOrCompute[*time.Time](&c.ModifiedAt, func() (*time.Time, error) {
+		return c.modifiedAt()
+	})
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetApprovedPatchesEnableNonSecurity() *plugin.TValue[bool] {

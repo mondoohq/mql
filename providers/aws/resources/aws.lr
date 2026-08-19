@@ -27212,31 +27212,31 @@ private aws.ssm.patchBaseline @defaults("id name operatingSystem") {
   // auto-approved), `complianceLevel` (severity assigned to patches the rule approves),
   // `enableNonSecurity` (whether non-security updates are included), and `patchFilters`
   // (a list of `key`/`values` filters selecting the patches the rule applies to).
-  approvalRules []dict
+  approvalRules() []dict
   // List of explicitly approved patches
-  approvedPatches []string
+  approvedPatches() []string
   // Compliance level for approved patches: CRITICAL, HIGH, MEDIUM, LOW, INFORMATIONAL, UNSPECIFIED
-  approvedPatchesComplianceLevel string
+  approvedPatchesComplianceLevel() string
   // List of explicitly rejected patches
-  rejectedPatches []string
+  rejectedPatches() []string
   // Action for rejected patches: ALLOW_AS_DEPENDENCY or BLOCK
-  rejectedPatchesAction string
+  rejectedPatchesAction() string
   // Global filters for the patch baseline
   //
   // Filters applied to every patch before the approval rules run. Each entry has `key`
   // (the filter attribute, for example `PRODUCT`, `CLASSIFICATION`, or `SEVERITY`) and
   // `values` (the matching values).
-  globalFilters []dict
+  globalFilters() []dict
   // Patch sources
   //
   // Alternate patch repositories for non-default operating systems. Each entry has `name`
   // (the source name), `products` (the products it applies to), and `configuration` (the
   // repository configuration, for example a yum or apt source definition).
-  sources []dict
+  sources() []dict
   // Creation date
-  createdAt time
+  createdAt() time
   // Last modified date
-  modifiedAt time
+  modifiedAt() time
   // Whether approved patches include non-security updates (Linux baselines)
   approvedPatchesEnableNonSecurity() bool
   // Compliance status reported when security patches are available but not yet approved
