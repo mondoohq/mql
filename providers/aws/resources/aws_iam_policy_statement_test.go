@@ -192,3 +192,144 @@ func TestStatementsAllowPublicNegatedCondition(t *testing.T) {
 		})
 	}
 }
+
+// setStrings builds a resolved list field, as setString does for scalars.
+func setStrings(v ...string) plugin.TValue[[]any] {
+	data := make([]any, 0, len(v))
+	for _, s := range v {
+		data = append(data, s)
+	}
+	return plugin.TValue[[]any]{Data: data, State: plugin.StateIsSet}
+}
+
+// A NotAction or NotResource inverts the set the statement applies to, so an
+// exclusion list only has to be non-empty to be broader than any wildcard the
+// statement could have written out. hasPublicPrincipal already reads
+// NotPrincipal this way.
+func TestPolicyStatementWildcardsThroughNegatedFields(t *testing.T) {
+	t.Run("action", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			actions    []string
+			notActions []string
+			want       bool
+		}{
+			{"specific actions", []string{"s3:GetObject"}, nil, false},
+			{"global wildcard action", []string{"*"}, nil, true},
+			{"service wildcard action", []string{"s3:*"}, nil, true},
+			{
+				// Every action in AWS except the IAM ones: near-administrator,
+				// and reported as no wildcard while only Action was consulted.
+				name:       "not action",
+				actions:    nil,
+				notActions: []string{"iam:*"},
+				want:       true,
+			},
+			{"not action with a specific exclusion", nil, []string{"s3:DeleteBucket"}, true},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				stmt := &mqlAwsIamPolicyStatement{
+					Actions:    setStrings(tt.actions...),
+					NotActions: setStrings(tt.notActions...),
+				}
+				got, err := stmt.hasWildcardAction()
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, got)
+			})
+		}
+	})
+
+	t.Run("resource", func(t *testing.T) {
+		tests := []struct {
+			name         string
+			resources    []string
+			notResources []string
+			want         bool
+		}{
+			{"specific resources", []string{"arn:aws:s3:::my-bucket"}, nil, false},
+			{"global wildcard resource", []string{"*"}, nil, true},
+			{"service namespace wildcard resource", []string{"arn:aws:s3:::*"}, nil, true},
+			{
+				// Every resource except the one named, which no written-out
+				// wildcard could exceed.
+				name:         "not resource",
+				resources:    nil,
+				notResources: []string{"arn:aws:secretsmanager:us-east-1:000000000000:secret:prod"},
+				want:         true,
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				stmt := &mqlAwsIamPolicyStatement{
+					Resources:    setStrings(tt.resources...),
+					NotResources: setStrings(tt.notResources...),
+				}
+				got, err := stmt.hasWildcardResource()
+				require.NoError(t, err)
+				assert.Equal(t, tt.want, got)
+			})
+		}
+	})
+}
+
+// statementsAllowWildcard is what hasWildcardAllow reports, so the negated
+// fields have to reach it through an Allow and stay out of it through a Deny.
+func TestStatementsAllowWildcardWithNegatedFields(t *testing.T) {
+	tests := []struct {
+		name string
+		stmt *mqlAwsIamPolicyStatement
+		want bool
+	}{
+		{
+			name: "allow with not action",
+			stmt: &mqlAwsIamPolicyStatement{
+				Effect:     setString("Allow"),
+				Actions:    setStrings(),
+				NotActions: setStrings("iam:*"),
+				Resources:  setStrings("arn:aws:s3:::my-bucket"),
+			},
+			want: true,
+		},
+		{
+			// A Deny that excludes a set is a guardrail, not a grant.
+			name: "deny with not action",
+			stmt: &mqlAwsIamPolicyStatement{
+				Effect:     setString("Deny"),
+				Actions:    setStrings(),
+				NotActions: setStrings("iam:*"),
+				Resources:  setStrings("arn:aws:s3:::my-bucket"),
+			},
+			want: false,
+		},
+		{
+			name: "allow with not resource",
+			stmt: &mqlAwsIamPolicyStatement{
+				Effect:       setString("Allow"),
+				Actions:      setStrings("s3:GetObject"),
+				NotActions:   setStrings(),
+				Resources:    setStrings(),
+				NotResources: setStrings("arn:aws:s3:::my-bucket"),
+			},
+			want: true,
+		},
+		{
+			name: "allow with neither",
+			stmt: &mqlAwsIamPolicyStatement{
+				Effect:       setString("Allow"),
+				Actions:      setStrings("s3:GetObject"),
+				NotActions:   setStrings(),
+				Resources:    setStrings("arn:aws:s3:::my-bucket"),
+				NotResources: setStrings(),
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := statementsAllowWildcard([]any{tt.stmt})
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

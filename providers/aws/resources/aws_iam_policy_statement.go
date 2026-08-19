@@ -117,11 +117,21 @@ func (a *mqlAwsIamPolicy) statements() ([]any, error) {
 	return defaultVersion.statements()
 }
 
-// anyWildcardResource reports whether any element is the all-resources
-// wildcard `*`.
+// anyWildcardResource reports whether any element covers a service's whole
+// resource namespace — the global `*`, or an ARN whose resource part is a bare
+// wildcard such as `arn:aws:s3:::*`, which names every bucket in the account.
+// This is the same `:*` test anyWildcardAction applies to actions.
+//
+// A path wildcard under a named resource (`arn:aws:s3:::my-bucket/*`, every
+// object in one bucket) is scoped to that resource and deliberately does not
+// match — it is what a correctly written bucket policy looks like.
 func anyWildcardResource(resources []any) bool {
 	for _, r := range resources {
-		if s, ok := r.(string); ok && s == "*" {
+		s, ok := r.(string)
+		if !ok {
+			continue
+		}
+		if s == "*" || strings.HasSuffix(s, ":*") {
 			return true
 		}
 	}
@@ -143,9 +153,22 @@ func anyWildcardAction(actions []any) bool {
 	return false
 }
 
-// hasWildcardResource reports whether any resource the statement applies to is
-// the all-resources wildcard `*`.
+// hasWildcardResource reports whether the statement applies to every resource:
+// through a wildcard in Resource, or through any NotResource at all.
+//
+// NotResource inverts the set. `{"Effect":"Allow","NotResource":["arn:...:my-secret"]}`
+// applies to every resource except the one named, which is broader than any
+// wildcard the statement could have written out, so the exclusion list only has
+// to be non-empty. hasPublicPrincipal reads NotPrincipal the same way.
 func (a *mqlAwsIamPolicyStatement) hasWildcardResource() (bool, error) {
+	notResources := a.GetNotResources()
+	if notResources.Error != nil {
+		return false, notResources.Error
+	}
+	if len(notResources.Data) > 0 {
+		return true, nil
+	}
+
 	resources := a.GetResources()
 	if resources.Error != nil {
 		return false, resources.Error
@@ -153,9 +176,23 @@ func (a *mqlAwsIamPolicyStatement) hasWildcardResource() (bool, error) {
 	return anyWildcardResource(resources.Data), nil
 }
 
-// hasWildcardAction reports whether any action grants service-wide or global
-// access — the global `*` action or a service-wide wildcard such as `s3:*`.
+// hasWildcardAction reports whether the statement grants service-wide or global
+// access: the global `*` action, a service-wide wildcard such as `s3:*`, or any
+// NotAction at all.
+//
+// NotAction inverts the set the same way NotResource does.
+// `{"Effect":"Allow","NotAction":["iam:*"]}` grants every action in AWS except
+// the IAM ones, which is near-administrator and read as no wildcard at all
+// while only Action was consulted.
 func (a *mqlAwsIamPolicyStatement) hasWildcardAction() (bool, error) {
+	notActions := a.GetNotActions()
+	if notActions.Error != nil {
+		return false, notActions.Error
+	}
+	if len(notActions.Data) > 0 {
+		return true, nil
+	}
+
 	actions := a.GetActions()
 	if actions.Error != nil {
 		return false, actions.Error
