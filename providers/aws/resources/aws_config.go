@@ -669,6 +669,17 @@ func (a *mqlAwsConfigDeliverychannel) snsTopic() (*mqlAwsSnsTopic, error) {
 	return res.(*mqlAwsSnsTopic), nil
 }
 
+// configComplianceDetailID builds the cache key for a compliance detail. Every
+// component of it is optional in the API response, including the recorded time,
+// which is why the time is read through a nil check rather than dereferenced.
+func configComplianceDetailID(ruleArn, resourceType, resourceID string, resultRecordedTime *time.Time) string {
+	var recordedNanos int64
+	if resultRecordedTime != nil {
+		recordedNanos = resultRecordedTime.UnixNano()
+	}
+	return fmt.Sprintf("%s/complianceDetail/%s/%s/%d", ruleArn, resourceType, resourceID, recordedNanos)
+}
+
 func (a *mqlAwsConfigRule) complianceDetails() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	ruleName := a.Name.Data
@@ -703,7 +714,7 @@ func (a *mqlAwsConfigRule) complianceDetails() ([]any, error) {
 
 			mqlDetail, err := CreateResource(a.MqlRuntime, "aws.config.rule.complianceDetail",
 				map[string]*llx.RawData{
-					"__id":               llx.StringData(fmt.Sprintf("%s/complianceDetail/%s/%s/%d", a.Arn.Data, resourceType, resourceId, eval.ResultRecordedTime.UnixNano())),
+					"__id":               llx.StringData(configComplianceDetailID(a.Arn.Data, resourceType, resourceId, eval.ResultRecordedTime)),
 					"resourceType":       llx.StringData(resourceType),
 					"resourceId":         llx.StringData(resourceId),
 					"complianceType":     llx.StringData(string(eval.ComplianceType)),
