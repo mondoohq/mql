@@ -172,13 +172,43 @@ func (a *mqlAwsKms) keys() ([]any, error) {
 			keys = append(keys, output.Keys...)
 		}
 
+		// Pre-fetch tags in parallel when tag-based filters are configured. KMS
+		// has no batch tags endpoint, so this turns a sequential per-key call
+		// into bounded concurrent ones, and it stays entirely unpaid when no tag
+		// filter is set.
+		var tagsByArn map[string]map[string]string
+		if conn.Filters.General.HasTags() {
+			arns := make([]string, 0, len(keys))
+			for i := range keys {
+				arns = append(arns, convert.ToValue(keys[i].KeyArn))
+			}
+			tagsByArn = fetchTagsConcurrently(ctx, arns, func(ctx context.Context, keyArn string) (map[string]string, error) {
+				return kmsKeyTags(ctx, svc, keyArn)
+			})
+		}
+
 		for _, key := range keys {
-			mqlKey, err := CreateResource(a.MqlRuntime, "aws.kms.key",
-				map[string]*llx.RawData{
-					"id":     llx.StringDataPtr(key.KeyId),
-					"arn":    llx.StringDataPtr(key.KeyArn),
-					"region": llx.StringData(region),
-				})
+			keyArn := convert.ToValue(key.KeyArn)
+			tags, fetched := tagsByArn[keyArn]
+			if conn.Filters.General.HasTags() &&
+				conn.Filters.General.IsFilteredOutByTags(tags) {
+				log.Debug().Str("key", keyArn).Msg("excluding kms key due to filters")
+				continue
+			}
+
+			args := map[string]*llx.RawData{
+				"id":     llx.StringDataPtr(key.KeyId),
+				"arn":    llx.StringDataPtr(key.KeyArn),
+				"region": llx.StringData(region),
+			}
+			// Seed the tags we already paid for, but only a set we actually read:
+			// publishing an empty map for a key whose ListResourceTags call failed
+			// would report "no tags" as fact. Leaving it unset keeps the field lazy.
+			if fetched {
+				args["tags"] = llx.MapData(stringMapToAny(tags), mqlTypes.String)
+			}
+
+			mqlKey, err := CreateResource(a.MqlRuntime, "aws.kms.key", args)
 			if err != nil {
 				return nil, err
 			}
@@ -187,6 +217,35 @@ func (a *mqlAwsKms) keys() ([]any, error) {
 
 		return res, nil
 	})
+}
+
+// kmsKeyTags reads one key's tags for filter evaluation.
+//
+// Every error is returned, including AccessDenied. Some AWS-managed keys grant
+// kms:ListResourceTags and answer with an empty tag set, others refuse it, and
+// only the first is "this key has no tags". fetchTagsConcurrently leaves a key
+// whose read failed out of its result, so nothing is seeded onto the resource
+// and the lazy tags accessor still reports the refusal as null via
+// markTagsUnreadable. Returning an empty set here would publish "no tags" as fact
+// for a key whose tags could not be read, and would make the same key report {}
+// under a tag filter and null without one.
+//
+// Filtering is unaffected: an absent entry yields a nil map, and both
+// MatchesIncludeTags and MatchesExcludeTags read a nil map exactly as they read
+// an empty one.
+func kmsKeyTags(ctx context.Context, svc *kms.Client, keyArn string) (map[string]string, error) {
+	tags := map[string]string{}
+	paginator := kms.NewListResourceTagsPaginator(svc, &kms.ListResourceTagsInput{KeyId: &keyArn})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for i := range page.Tags {
+			tags[convert.ToValue(page.Tags[i].TagKey)] = convert.ToValue(page.Tags[i].TagValue)
+		}
+	}
+	return tags, nil
 }
 
 func (a *mqlAwsKms) grants() ([]any, error) {

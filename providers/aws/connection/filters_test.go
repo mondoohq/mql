@@ -94,6 +94,35 @@ func TestMatchesIncludeTags(t *testing.T) {
 	})
 }
 
+// A resource whose tag read failed is left out of the pre-fetched map, so the
+// lister evaluates it against a nil map rather than an empty one. Callers depend
+// on those being indistinguishable here: it is what lets a failed tag fetch stay
+// absent (so the tags field can still report null) without changing which
+// resources the filter selects.
+func TestTagFiltersReadNilLikeAnEmptyMap(t *testing.T) {
+	filters := GeneralDiscoveryFilters{
+		Tags:        map[string]string{"env": "prod"},
+		ExcludeTags: map[string]string{"tier": "scratch"},
+	}
+
+	require.Equal(t,
+		filters.MatchesIncludeTags(map[string]string{}),
+		filters.MatchesIncludeTags(nil),
+		"a nil tag map must include exactly like an empty one")
+	require.Equal(t,
+		filters.MatchesExcludeTags(map[string]string{}),
+		filters.MatchesExcludeTags(nil),
+		"a nil tag map must exclude exactly like an empty one")
+	require.Equal(t,
+		filters.IsFilteredOutByTags(map[string]string{}),
+		filters.IsFilteredOutByTags(nil))
+
+	// and with no filters configured at all, both are kept
+	var none GeneralDiscoveryFilters
+	require.False(t, none.IsFilteredOutByTags(nil))
+	require.False(t, none.IsFilteredOutByTags(map[string]string{}))
+}
+
 func TestMatchesExcludeTags(t *testing.T) {
 	t.Run("no exclude tags does not match", func(t *testing.T) {
 		filters := GeneralDiscoveryFilters{
