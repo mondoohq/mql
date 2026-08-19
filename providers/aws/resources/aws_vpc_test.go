@@ -631,3 +631,60 @@ func TestNatgatewayAddressCacheKey(t *testing.T) {
 	assert.Equal(t, "eni-4e5f6a7b/10.0.0.6", b)
 	assert.NotEqual(t, a, b)
 }
+
+// TestVgwTelemetryKeyIsScopedToItsConnection pins that a VPN connection's
+// telemetry entries are told apart from each other and from other connections'.
+//
+// A telemetry entry carries nothing but its outside IP, and that IP is empty
+// while a tunnel is still provisioning. Keying on it alone meant both tunnels
+// of a new connection shared one row, and so did every connection in that state
+// across the whole account — so a query for tunnel status during a rollout, the
+// moment it matters most, read one entry repeated.
+func TestVgwTelemetryKeyIsScopedToItsConnection(t *testing.T) {
+	newConn := func(id string, outsideIPs ...string) *mqlAwsEc2Vpnconnection {
+		telemetry := make([]ec2types.VgwTelemetry, 0, len(outsideIPs))
+		for _, ip := range outsideIPs {
+			telemetry = append(telemetry, ec2types.VgwTelemetry{
+				OutsideIpAddress: aws.String(ip),
+				Status:           ec2types.TelemetryStatusDown,
+			})
+		}
+		conn, err := newMqlVpnConnection(testRuntime(), "us-east-1", "000000000000",
+			ec2types.VpnConnection{
+				VpnConnectionId: aws.String(id),
+				VgwTelemetry:    telemetry,
+			})
+		require.NoError(t, err)
+		return conn
+	}
+
+	keys := func(conn *mqlAwsEc2Vpnconnection) []string {
+		out := []string{}
+		for _, raw := range conn.VgwTelemetry.Data {
+			out = append(out, raw.(*mqlAwsEc2Vgwtelemetry).MqlID())
+		}
+		return out
+	}
+
+	t.Run("both tunnels of a provisioning connection are distinct", func(t *testing.T) {
+		// Neither tunnel has an outside IP yet, which is the case that collapsed
+		// them onto one row.
+		got := keys(newConn("vpn-0aaaaaaaaaaaaaaaa", "", ""))
+		require.Len(t, got, 2)
+		assert.NotEqual(t, got[0], got[1])
+	})
+
+	t.Run("two provisioning connections do not share entries", func(t *testing.T) {
+		first := keys(newConn("vpn-0aaaaaaaaaaaaaaaa", "", ""))
+		second := keys(newConn("vpn-0bbbbbbbbbbbbbbbb", "", ""))
+		for _, a := range first {
+			assert.NotContains(t, second, a)
+		}
+	})
+
+	t.Run("established tunnels stay distinct too", func(t *testing.T) {
+		got := keys(newConn("vpn-0aaaaaaaaaaaaaaaa", "203.0.113.1", "203.0.113.2"))
+		require.Len(t, got, 2)
+		assert.NotEqual(t, got[0], got[1])
+	})
+}
