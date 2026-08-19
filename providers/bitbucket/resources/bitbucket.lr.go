@@ -168,14 +168,8 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"bitbucket.workspace.isPrivate": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBitbucketWorkspace).GetIsPrivate()).ToDataRes(types.Bool)
 	},
-	"bitbucket.workspace.enforceTwoStepVerification": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlBitbucketWorkspace).GetEnforceTwoStepVerification()).ToDataRes(types.Bool)
-	},
-	"bitbucket.workspace.ipAllowlistEnabled": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlBitbucketWorkspace).GetIpAllowlistEnabled()).ToDataRes(types.Bool)
-	},
-	"bitbucket.workspace.ipAllowlist": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlBitbucketWorkspace).GetIpAllowlist()).ToDataRes(types.Array(types.String))
+	"bitbucket.workspace.isPrivacyEnforced": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlBitbucketWorkspace).GetIsPrivacyEnforced()).ToDataRes(types.Bool)
 	},
 	"bitbucket.workspace.createdOn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBitbucketWorkspace).GetCreatedOn()).ToDataRes(types.Time)
@@ -366,9 +360,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"bitbucket.group.workspace": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBitbucketGroup).GetWorkspace()).ToDataRes(types.Resource("bitbucket.workspace"))
 	},
-	"bitbucket.group.permission": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlBitbucketGroup).GetPermission()).ToDataRes(types.String)
-	},
 	"bitbucket.group.members": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBitbucketGroup).GetMembers()).ToDataRes(types.Array(types.Resource("bitbucket.member")))
 	},
@@ -493,16 +484,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlBitbucketWorkspace).IsPrivate, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"bitbucket.workspace.enforceTwoStepVerification": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlBitbucketWorkspace).EnforceTwoStepVerification, ok = plugin.RawToTValue[bool](v.Value, v.Error)
-		return
-	},
-	"bitbucket.workspace.ipAllowlistEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlBitbucketWorkspace).IpAllowlistEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
-		return
-	},
-	"bitbucket.workspace.ipAllowlist": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlBitbucketWorkspace).IpAllowlist, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+	"bitbucket.workspace.isPrivacyEnforced": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlBitbucketWorkspace).IsPrivacyEnforced, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"bitbucket.workspace.createdOn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -781,10 +764,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlBitbucketGroup).Workspace, ok = plugin.RawToTValue[*mqlBitbucketWorkspace](v.Value, v.Error)
 		return
 	},
-	"bitbucket.group.permission": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlBitbucketGroup).Permission, ok = plugin.RawToTValue[string](v.Value, v.Error)
-		return
-	},
 	"bitbucket.group.members": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlBitbucketGroup).Members, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -1003,20 +982,18 @@ type mqlBitbucketWorkspace struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlBitbucketWorkspaceInternal it will be used here
-	Id                         plugin.TValue[string]
-	Slug                       plugin.TValue[string]
-	Name                       plugin.TValue[string]
-	IsPrivate                  plugin.TValue[bool]
-	EnforceTwoStepVerification plugin.TValue[bool]
-	IpAllowlistEnabled         plugin.TValue[bool]
-	IpAllowlist                plugin.TValue[[]any]
-	CreatedOn                  plugin.TValue[*time.Time]
-	Projects                   plugin.TValue[[]any]
-	Repositories               plugin.TValue[[]any]
-	Members                    plugin.TValue[[]any]
-	Groups                     plugin.TValue[[]any]
-	Webhooks                   plugin.TValue[[]any]
-	PipelineVariables          plugin.TValue[[]any]
+	Id                plugin.TValue[string]
+	Slug              plugin.TValue[string]
+	Name              plugin.TValue[string]
+	IsPrivate         plugin.TValue[bool]
+	IsPrivacyEnforced plugin.TValue[bool]
+	CreatedOn         plugin.TValue[*time.Time]
+	Projects          plugin.TValue[[]any]
+	Repositories      plugin.TValue[[]any]
+	Members           plugin.TValue[[]any]
+	Groups            plugin.TValue[[]any]
+	Webhooks          plugin.TValue[[]any]
+	PipelineVariables plugin.TValue[[]any]
 }
 
 // createBitbucketWorkspace creates a new instance of this resource
@@ -1067,16 +1044,8 @@ func (c *mqlBitbucketWorkspace) GetIsPrivate() *plugin.TValue[bool] {
 	return &c.IsPrivate
 }
 
-func (c *mqlBitbucketWorkspace) GetEnforceTwoStepVerification() *plugin.TValue[bool] {
-	return &c.EnforceTwoStepVerification
-}
-
-func (c *mqlBitbucketWorkspace) GetIpAllowlistEnabled() *plugin.TValue[bool] {
-	return &c.IpAllowlistEnabled
-}
-
-func (c *mqlBitbucketWorkspace) GetIpAllowlist() *plugin.TValue[[]any] {
-	return &c.IpAllowlist
+func (c *mqlBitbucketWorkspace) GetIsPrivacyEnforced() *plugin.TValue[bool] {
+	return &c.IsPrivacyEnforced
 }
 
 func (c *mqlBitbucketWorkspace) GetCreatedOn() *plugin.TValue[*time.Time] {
@@ -1860,11 +1829,10 @@ type mqlBitbucketGroup struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlBitbucketGroupInternal
-	Slug       plugin.TValue[string]
-	Name       plugin.TValue[string]
-	Workspace  plugin.TValue[*mqlBitbucketWorkspace]
-	Permission plugin.TValue[string]
-	Members    plugin.TValue[[]any]
+	Slug      plugin.TValue[string]
+	Name      plugin.TValue[string]
+	Workspace plugin.TValue[*mqlBitbucketWorkspace]
+	Members   plugin.TValue[[]any]
 }
 
 // createBitbucketGroup creates a new instance of this resource
@@ -1921,10 +1889,6 @@ func (c *mqlBitbucketGroup) GetWorkspace() *plugin.TValue[*mqlBitbucketWorkspace
 
 		return c.workspace()
 	})
-}
-
-func (c *mqlBitbucketGroup) GetPermission() *plugin.TValue[string] {
-	return &c.Permission
 }
 
 func (c *mqlBitbucketGroup) GetMembers() *plugin.TValue[[]any] {

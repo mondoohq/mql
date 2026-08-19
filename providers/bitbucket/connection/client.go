@@ -138,25 +138,13 @@ type WorkspaceRef struct {
 }
 
 // Workspace is a Bitbucket Cloud workspace, GET /2.0/workspaces/{workspace}.
-//
-// EnforceTwoStepVerification, IPAllowlistEnabled, and IPAllowlist are read
-// directly from this same payload using field names that are NOT part of
-// Bitbucket's public REST API 2.0 documentation as of this writing (Atlassian
-// documents no 2FA-enforcement or IP-allowlist field on this endpoint, and
-// this pragmatic hand-written client has no way to verify the real shape
-// without live-testing against a tenant that has these workspace security
-// settings configured). Until verified, expect these three fields to decode
-// to their Go zero value (false / empty) on every workspace rather than a
-// fabricated result. See providers/bitbucket/README.md.
 type Workspace struct {
-	UUID                       string     `json:"uuid"`
-	Slug                       string     `json:"slug"`
-	Name                       string     `json:"name"`
-	IsPrivate                  bool       `json:"is_private"`
-	CreatedOn                  *time.Time `json:"created_on"`
-	EnforceTwoStepVerification bool       `json:"enforce_two_step_verification"`
-	IPAllowlistEnabled         bool       `json:"ip_allowlist_enabled"`
-	IPAllowlist                []string   `json:"ip_allowlist"`
+	UUID              string     `json:"uuid"`
+	Slug              string     `json:"slug"`
+	Name              string     `json:"name"`
+	IsPrivate         bool       `json:"is_private"`
+	IsPrivacyEnforced bool       `json:"is_privacy_enforced"`
+	CreatedOn         *time.Time `json:"created_on"`
 }
 
 // GetWorkspace reads a single workspace by its slug.
@@ -272,7 +260,7 @@ type User struct {
 }
 
 // GroupRef is the abbreviated group reference embedded in branch-restriction
-// and workspace-group-permission payloads.
+// and group-permission payloads.
 type GroupRef struct {
 	Slug string `json:"slug"`
 	Name string `json:"name"`
@@ -333,18 +321,13 @@ func (c *Client) ListWorkspaceMembers(ctx context.Context, workspace string) ([]
 	return listAllPages[WorkspacePermission](ctx, c, apiURL(path, nil))
 }
 
-// GroupPermission is a single group's default permission on a workspace,
-// GET /2.0/workspaces/{workspace}/permissions/groups.
+// GroupPermission is a single group's explicit permission grant on a
+// repository or project, as returned by the permissions-config/groups
+// endpoints. Bitbucket exposes no equivalent group-permission surface at the
+// workspace level.
 type GroupPermission struct {
 	Permission string   `json:"permission"`
 	Group      GroupRef `json:"group"`
-}
-
-// ListGroupPermissions lists every group defined in a workspace together
-// with the default permission it grants.
-func (c *Client) ListGroupPermissions(ctx context.Context, workspace string) ([]GroupPermission, error) {
-	path := "/workspaces/" + url.PathEscape(workspace) + "/permissions/groups"
-	return listAllPages[GroupPermission](ctx, c, apiURL(path, nil))
 }
 
 // LegacyGroup is a workspace group as returned by Bitbucket's older 1.0 API.

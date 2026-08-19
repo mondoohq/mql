@@ -16,13 +16,11 @@ Swagger/OpenAPI 2.0 spec (`https://api.bitbucket.org/swagger.json`) via
 and should replace the hand-written client before this provider is
 considered production-hardened.
 
-Two fields on `bitbucket.workspace` (`enforceTwoStepVerification`, plus
-`ipAllowlistEnabled`/`ipAllowlist`) are read from the same
-`GET /workspaces/{workspace}` response using field names that are not part
-of Bitbucket's public REST API 2.0 documentation as of this writing; they
-have not been verified against a live tenant with these workspace security
-settings configured, so expect them to read as `false`/empty until that
-verification happens.
+`bitbucket.workspace` exposes only the security-relevant fields that are
+part of the documented `GET /workspaces/{workspace}` response: `isPrivate`
+and `isPrivacyEnforced`. Two-step-verification enforcement and IP allowlists
+are Atlassian Guard features that Bitbucket's public REST API 2.0 does not
+surface on this endpoint, so they are not modeled here.
 
 ## Prerequisites
 

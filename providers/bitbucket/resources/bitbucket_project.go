@@ -133,7 +133,7 @@ func (p *mqlBitbucketProject) userPermissions() ([]any, error) {
 }
 
 // groupPermissions lists the groups granted an explicit permission on this
-// project together with the permission level.
+// project.
 func (p *mqlBitbucketProject) groupPermissions() ([]any, error) {
 	conn := p.MqlRuntime.Connection.(*connection.BitbucketConnection)
 	list, err := conn.Client().ListProjectGroupPermissions(context.Background(), p.cacheWorkspaceSlug, p.Key.Data)
@@ -143,7 +143,7 @@ func (p *mqlBitbucketProject) groupPermissions() ([]any, error) {
 
 	all := make([]any, 0, len(list))
 	for _, gp := range list {
-		res, err := newMqlBitbucketGroup(p.MqlRuntime, p.cacheWorkspaceSlug, gp.Group.Slug, gp.Group.Name, gp.Permission)
+		res, err := newMqlBitbucketGroup(p.MqlRuntime, p.cacheWorkspaceSlug, gp.Group.Slug, gp.Group.Name)
 		if err != nil {
 			return nil, err
 		}

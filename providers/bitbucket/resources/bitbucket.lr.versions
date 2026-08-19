@@ -12,7 +12,6 @@ bitbucket.deployKey.repository 13.0.0
 bitbucket.group 13.0.0
 bitbucket.group.members 13.0.0
 bitbucket.group.name 13.0.0
-bitbucket.group.permission 13.0.0
 bitbucket.group.slug 13.0.0
 bitbucket.group.workspace 13.0.0
 bitbucket.member 13.0.0
@@ -89,11 +88,9 @@ bitbucket.repository.webhooks 13.0.0
 bitbucket.repository.workspace 13.0.0
 bitbucket.workspace 13.0.0
 bitbucket.workspace.createdOn 13.0.0
-bitbucket.workspace.enforceTwoStepVerification 13.0.0
 bitbucket.workspace.groups 13.0.0
 bitbucket.workspace.id 13.0.0
-bitbucket.workspace.ipAllowlist 13.0.0
-bitbucket.workspace.ipAllowlistEnabled 13.0.0
+bitbucket.workspace.isPrivacyEnforced 13.0.0
 bitbucket.workspace.isPrivate 13.0.0
 bitbucket.workspace.members 13.0.0
 bitbucket.workspace.name 13.0.0

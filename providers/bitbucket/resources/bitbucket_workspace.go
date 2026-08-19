@@ -10,21 +10,18 @@ import (
 	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/v13/providers/bitbucket/connection"
-	"go.mondoo.com/mql/v13/types"
 )
 
 // newMqlBitbucketWorkspace maps a single API workspace to its MQL resource.
 func newMqlBitbucketWorkspace(runtime *plugin.Runtime, w *connection.Workspace) (plugin.Resource, error) {
 	res, err := CreateResource(runtime, "bitbucket.workspace", map[string]*llx.RawData{
-		"__id":                       llx.StringData(w.Slug),
-		"id":                         llx.StringData(w.UUID),
-		"slug":                       llx.StringData(w.Slug),
-		"name":                       llx.StringData(w.Name),
-		"isPrivate":                  llx.BoolData(w.IsPrivate),
-		"enforceTwoStepVerification": llx.BoolData(w.EnforceTwoStepVerification),
-		"ipAllowlistEnabled":         llx.BoolData(w.IPAllowlistEnabled),
-		"ipAllowlist":                llx.ArrayData(strList(w.IPAllowlist), types.String),
-		"createdOn":                  llx.TimeDataPtr(w.CreatedOn),
+		"__id":              llx.StringData(w.Slug),
+		"id":                llx.StringData(w.UUID),
+		"slug":              llx.StringData(w.Slug),
+		"name":              llx.StringData(w.Name),
+		"isPrivate":         llx.BoolData(w.IsPrivate),
+		"isPrivacyEnforced": llx.BoolData(w.IsPrivacyEnforced),
+		"createdOn":         llx.TimeDataPtr(w.CreatedOn),
 	})
 	if err != nil {
 		return nil, err
@@ -138,17 +135,19 @@ func (w *mqlBitbucketWorkspace) members() ([]any, error) {
 	return all, nil
 }
 
-// groups lists every group defined in the workspace.
+// groups lists every group defined in the workspace, via Bitbucket's 1.0 API
+// (see Client.ListGroupsLegacy); the 2.0 API exposes no workspace-level group
+// listing.
 func (w *mqlBitbucketWorkspace) groups() ([]any, error) {
 	conn := w.MqlRuntime.Connection.(*connection.BitbucketConnection)
-	list, err := conn.Client().ListGroupPermissions(context.Background(), w.Slug.Data)
+	list, err := conn.Client().ListGroupsLegacy(context.Background(), w.Slug.Data)
 	if err != nil {
 		return nil, err
 	}
 
 	all := make([]any, 0, len(list))
-	for _, p := range list {
-		res, err := newMqlBitbucketGroup(w.MqlRuntime, w.Slug.Data, p.Group.Slug, p.Group.Name, p.Permission)
+	for _, g := range list {
+		res, err := newMqlBitbucketGroup(w.MqlRuntime, w.Slug.Data, g.Slug, g.Name)
 		if err != nil {
 			return nil, err
 		}

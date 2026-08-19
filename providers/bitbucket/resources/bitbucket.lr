@@ -17,12 +17,11 @@ bitbucket @maturity("experimental") {
 // Bitbucket workspace
 //
 // Top-level container for projects and repositories, keyed by its slug
-// (for example `bitbucket.workspace(slug: "acme-corp")`). Workspace-wide
-// settings are the primary control surface for account hardening: whether
-// two-step verification is enforced for all members, whether an IP
-// allowlist restricts access, and whether the workspace itself is
-// private. Query `projects`, `repositories`, `members`, and `groups` to
-// drill into what the workspace contains and who can reach it.
+// (for example `bitbucket.workspace(slug: "acme-corp")`). Whether the
+// workspace is private and whether privacy is enforced across its
+// repositories are the account-hardening signals exposed here. Query
+// `projects`, `repositories`, `members`, and `groups` to drill into what
+// the workspace contains and who can reach it.
 bitbucket.workspace @defaults("slug name") @maturity("experimental") {
   // Workspace UUID
   id string
@@ -32,12 +31,8 @@ bitbucket.workspace @defaults("slug name") @maturity("experimental") {
   name string
   // Whether the workspace is private
   isPrivate bool
-  // Whether two-step verification (2FA) is required for all workspace members
-  enforceTwoStepVerification bool
-  // Whether access to the workspace is restricted by an IP allowlist
-  ipAllowlistEnabled bool
-  // CIDR ranges permitted to access the workspace when the IP allowlist is enabled
-  ipAllowlist []string
+  // Whether privacy is enforced for all repositories in the workspace
+  isPrivacyEnforced bool
   // Creation time
   createdOn time
   // Projects in the workspace
@@ -243,8 +238,6 @@ bitbucket.group @defaults("slug name") @maturity("experimental") {
   name string
   // Workspace this group belongs to
   workspace() bitbucket.workspace
-  // Default permission new repositories grant to this group
-  permission string
   // Members of this group
   members() []bitbucket.member
 }

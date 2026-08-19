@@ -18,15 +18,14 @@ type mqlBitbucketGroupInternal struct {
 	cacheWorkspaceSlug string
 }
 
-// newMqlBitbucketGroup maps a single API group (slug, name, and the default
-// permission it grants) to its MQL resource. Group slugs are unique within a
-// workspace, not globally, so the cache key composes it with the workspace.
-func newMqlBitbucketGroup(runtime *plugin.Runtime, workspaceSlug, slug, name, permission string) (plugin.Resource, error) {
+// newMqlBitbucketGroup maps a single API group (slug and name) to its MQL
+// resource. Group slugs are unique within a workspace, not globally, so the
+// cache key composes it with the workspace.
+func newMqlBitbucketGroup(runtime *plugin.Runtime, workspaceSlug, slug, name string) (plugin.Resource, error) {
 	res, err := CreateResource(runtime, "bitbucket.group", map[string]*llx.RawData{
-		"__id":       llx.StringData(workspaceSlug + "/" + slug),
-		"slug":       llx.StringData(slug),
-		"name":       llx.StringData(name),
-		"permission": llx.StringData(permission),
+		"__id": llx.StringData(workspaceSlug + "/" + slug),
+		"slug": llx.StringData(slug),
+		"name": llx.StringData(name),
 	})
 	if err != nil {
 		return nil, err
@@ -64,15 +63,15 @@ func initBitbucketGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 		}
 	}
 
-	perms, err := conn.Client().ListGroupPermissions(context.Background(), workspace)
+	groups, err := conn.Client().ListGroupsLegacy(context.Background(), workspace)
 	if err != nil {
 		return nil, nil, fmt.Errorf("bitbucket.group with workspace %q and slug %q not found: %w", workspace, slug, err)
 	}
-	for _, p := range perms {
-		if p.Group.Slug != slug {
+	for _, g := range groups {
+		if g.Slug != slug {
 			continue
 		}
-		res, err := newMqlBitbucketGroup(runtime, workspace, p.Group.Slug, p.Group.Name, p.Permission)
+		res, err := newMqlBitbucketGroup(runtime, workspace, g.Slug, g.Name)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -95,8 +94,7 @@ func (g *mqlBitbucketGroup) workspace() (*mqlBitbucketWorkspace, error) {
 
 // members lists the members of this group, via Bitbucket's 1.0 API; see
 // Client.ListGroupsLegacy for why. Bitbucket does not attach an individual
-// permission level to group membership (only the group's own default
-// permission, already on this resource), so each member's permission is
+// permission level to group membership, so each member's permission is
 // left empty.
 func (g *mqlBitbucketGroup) members() ([]any, error) {
 	conn := g.MqlRuntime.Connection.(*connection.BitbucketConnection)
