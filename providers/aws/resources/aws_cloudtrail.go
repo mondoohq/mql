@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
 
+	"github.com/aws/smithy-go"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/v13/llx"
@@ -212,6 +213,36 @@ func (a *mqlAwsCloudtrail) getTrails(conn *connection.AwsConnection) []*jobpool.
 	return tasks
 }
 
+// referencedResourceUnavailable reports an error that a retry will not change:
+// the referenced resource is gone, or this caller may not read it.
+//
+// A trail keeps naming a role, topic, bucket, log group or key after that target
+// is deleted, and a scan may legitimately lack permission to read it. Both are
+// permanent for this scan, so the reference is reported as null rather than
+// failing the field - which, because a field error renders as the value of the
+// enclosing collection, would cost the caller every trail.
+//
+// A throttle, a 5xx or a network failure is deliberately excluded. There the
+// target may well exist and simply could not be resolved right now, so reporting
+// null would assert an absence that was never established.
+func referencedResourceUnavailable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if Is400AccessDeniedError(err) {
+		return true
+	}
+	var apiErr smithy.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	switch apiErr.ErrorCode() {
+	case "NoSuchEntity", "NotFound", "NotFoundException", "ResourceNotFoundException":
+		return true
+	}
+	return false
+}
+
 func (a *mqlAwsCloudtrailTrail) snsTopic() (*mqlAwsSnsTopic, error) {
 	if a.trailCache.SnsTopicARN == nil || *a.trailCache.SnsTopicARN == "" {
 		a.SnsTopic.State = plugin.StateIsSet | plugin.StateIsNull
@@ -221,7 +252,13 @@ func (a *mqlAwsCloudtrailTrail) snsTopic() (*mqlAwsSnsTopic, error) {
 		map[string]*llx.RawData{"arn": llx.StringDataPtr(a.trailCache.SnsTopicARN)},
 	)
 	if err != nil {
-		return nil, err
+		if !referencedResourceUnavailable(err) {
+			return nil, err
+		}
+		log.Warn().Err(err).Str("topic", convert.ToValue(a.trailCache.SnsTopicARN)).
+			Msg("cannot resolve the trail's sns topic")
+		a.SnsTopic.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	return mqlTopic.(*mqlAwsSnsTopic), nil
 }
@@ -235,7 +272,13 @@ func (a *mqlAwsCloudtrailTrail) cloudWatchLogsRole() (*mqlAwsIamRole, error) {
 		map[string]*llx.RawData{"arn": llx.StringDataPtr(a.trailCache.CloudWatchLogsRoleArn)},
 	)
 	if err != nil {
-		return nil, err
+		if !referencedResourceUnavailable(err) {
+			return nil, err
+		}
+		log.Warn().Err(err).Str("role", convert.ToValue(a.trailCache.CloudWatchLogsRoleArn)).
+			Msg("cannot resolve the trail's cloudwatch logs role")
+		a.CloudWatchLogsRole.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	return mqlRole.(*mqlAwsIamRole), nil
 }
@@ -247,9 +290,12 @@ func (a *mqlAwsCloudtrailTrail) s3bucket() (*mqlAwsS3Bucket, error) {
 		)
 		if err == nil {
 			return mqlBucket.(*mqlAwsS3Bucket), nil
-		} else {
-			log.Error().Err(err).Msg("cannot get s3 bucket")
 		}
+		if !referencedResourceUnavailable(err) {
+			return nil, err
+		}
+		log.Warn().Err(err).Str("bucket", convert.ToValue(a.trailCache.S3BucketName)).
+			Msg("cannot resolve the trail's s3 bucket")
 	}
 	a.S3bucket.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
@@ -262,9 +308,12 @@ func (a *mqlAwsCloudtrailTrail) logGroup() (*mqlAwsCloudwatchLoggroup, error) {
 		)
 		if err == nil {
 			return mqlLoggroup.(*mqlAwsCloudwatchLoggroup), nil
-		} else {
-			log.Error().Err(err).Msg("cannot get log group")
 		}
+		if !referencedResourceUnavailable(err) {
+			return nil, err
+		}
+		log.Warn().Err(err).Str("logGroup", convert.ToValue(a.trailCache.CloudWatchLogsLogGroupArn)).
+			Msg("cannot resolve the trail's log group")
 	}
 	a.LogGroup.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
@@ -278,9 +327,12 @@ func (a *mqlAwsCloudtrailTrail) kmsKey() (*mqlAwsKmsKey, error) {
 		)
 		if err == nil {
 			return mqlKeyResource.(*mqlAwsKmsKey), nil
-		} else {
-			log.Error().Err(err).Msg("could not create KMS key resource")
 		}
+		if !referencedResourceUnavailable(err) {
+			return nil, err
+		}
+		log.Warn().Err(err).Str("key", convert.ToValue(a.trailCache.KmsKeyId)).
+			Msg("cannot resolve the trail's kms key")
 	}
 	a.KmsKey.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
@@ -997,7 +1049,13 @@ func (a *mqlAwsCloudtrailEventDataStore) federationRole() (*mqlAwsIamRole, error
 			"arn": llx.StringDataPtr(detail.FederationRoleArn),
 		})
 	if err != nil {
-		return nil, err
+		if !referencedResourceUnavailable(err) {
+			return nil, err
+		}
+		log.Warn().Err(err).Str("role", convert.ToValue(detail.FederationRoleArn)).
+			Msg("cannot resolve the event data store's federation role")
+		a.FederationRole.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	return mqlRole.(*mqlAwsIamRole), nil
 }
