@@ -1,7 +1,7 @@
 {
   "provider": "aws",
-  "version": "13.53.1",
-  "generated_at": "2026-08-16T17:48:34+02:00",
+  "version": "13.53.3",
+  "generated_at": "2026-08-19T11:52:57-07:00",
   "permissions": [
     "access-analyzer:GetFindingV2",
     "access-analyzer:ListAnalyzers",
@@ -2631,6 +2631,12 @@
       "service": "ds",
       "action": "DescribeDirectories",
       "source_file": "aws_directoryservice.go"
+    },
+    {
+      "permission": "ds:DescribeDirectories",
+      "service": "ds",
+      "action": "DescribeDirectories",
+      "source_file": "aws_workdocs.go"
     },
     {
       "permission": "ds:ListTagsForResource",
