@@ -498,15 +498,82 @@ func (a *mqlAwsCloudtrailTrail) getEventSelectorsData() (*cloudtrail.GetEventSel
 	return resp, nil
 }
 
-// capturesAllManagementEvents reports whether any event selector logs
-// management events for both read and write events (readWriteType "All").
+// Advanced event selector field names, and the event category that carries
+// management events. CloudTrail documents these as case-sensitive, but they are
+// compared case-insensitively here so a hand-written trail definition that
+// differs in case is not read as selecting nothing.
+const (
+	advancedSelectorFieldEventCategory = "eventCategory"
+	advancedSelectorFieldReadOnly      = "readOnly"
+	eventCategoryManagement            = "Management"
+)
+
+// containsFold reports whether values holds s, ignoring case.
+func containsFold(values []string, s string) bool {
+	for _, v := range values {
+		if strings.EqualFold(v, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// advancedSelectorsCaptureAllManagementEvents reports whether a set of advanced
+// event selectors logs management events for both reads and writes.
+//
+// An advanced selector says what it captures through its field selectors rather
+// than through a readWriteType enum: it selects management events with
+// `eventCategory Equals ["Management"]`, and it captures both directions unless
+// it also constrains `readOnly`, which narrows it to one of them. A selector
+// that constrains readOnly in any way - Equals, NotEquals or a prefix match -
+// therefore does not capture all management events on its own.
+func advancedSelectorsCaptureAllManagementEvents(selectors []types.AdvancedEventSelector) bool {
+	for _, sel := range selectors {
+		selectsManagement := false
+		restrictsReadOnly := false
+
+		for _, fs := range sel.FieldSelectors {
+			field := convert.ToValue(fs.Field)
+			switch {
+			case strings.EqualFold(field, advancedSelectorFieldEventCategory):
+				if containsFold(fs.Equals, eventCategoryManagement) {
+					selectsManagement = true
+				}
+			case strings.EqualFold(field, advancedSelectorFieldReadOnly):
+				restrictsReadOnly = restrictsReadOnly ||
+					len(fs.Equals) > 0 || len(fs.NotEquals) > 0 ||
+					len(fs.StartsWith) > 0 || len(fs.NotStartsWith) > 0 ||
+					len(fs.EndsWith) > 0 || len(fs.NotEndsWith) > 0
+			}
+		}
+
+		if selectsManagement && !restrictsReadOnly {
+			return true
+		}
+	}
+	return false
+}
+
+// capturesAllManagementEvents reports whether the trail logs management events
+// for both reads and writes.
+//
+// A trail configures that through one of two mutually exclusive mechanisms, and
+// GetEventSelectors returns whichever one the trail uses. Classic event
+// selectors say it with includeManagementEvents plus readWriteType "All";
+// advanced event selectors say it with field selectors, and are what
+// CloudFormation and Terraform produce. Reading only the classic ones reported
+// false for every trail configured the modern way, which is a false positive on
+// a compliant trail.
 func (a *mqlAwsCloudtrailTrail) capturesAllManagementEvents() (bool, error) {
 	entries := a.GetEventSelectorEntries()
 	if entries.Error != nil {
 		return false, entries.Error
 	}
 	for _, e := range entries.Data {
-		sel := e.(*mqlAwsCloudtrailTrailEventSelector)
+		sel, ok := e.(*mqlAwsCloudtrailTrailEventSelector)
+		if !ok {
+			continue
+		}
 		mgmt := sel.GetIncludeManagementEvents()
 		if mgmt.Error != nil {
 			return false, mgmt.Error
@@ -519,7 +586,12 @@ func (a *mqlAwsCloudtrailTrail) capturesAllManagementEvents() (bool, error) {
 			return true, nil
 		}
 	}
-	return false, nil
+
+	resp, err := a.getEventSelectorsData()
+	if err != nil {
+		return false, err
+	}
+	return advancedSelectorsCaptureAllManagementEvents(resp.AdvancedEventSelectors), nil
 }
 
 func (a *mqlAwsCloudtrailTrail) eventSelectorEntries() ([]any, error) {
