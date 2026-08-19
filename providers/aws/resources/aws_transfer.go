@@ -403,6 +403,9 @@ func (a *mqlAwsTransferConnector) fetchDetail() (*transfer.DescribeConnectorOutp
 	if err != nil {
 		return nil, err
 	}
+	if resp == nil || resp.Connector == nil {
+		return nil, errors.New("DescribeConnector returned no connector for " + connectorId)
+	}
 	a.fetched = true
 	a.descResp = resp
 	return resp, nil

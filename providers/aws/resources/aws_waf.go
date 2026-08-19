@@ -132,6 +132,9 @@ func (a *mqlAwsWafAcl) fetchACLDetails() error {
 	if err != nil {
 		return err
 	}
+	if resp.WebACL == nil {
+		return errors.New("GetWebACL returned no web acl for " + a.Name.Data)
+	}
 	a.cachedManagedByFwManager = resp.WebACL.ManagedByFirewallManager
 	a.cachedRules = resp.WebACL.Rules
 	a.cachedACL = resp.WebACL
@@ -306,6 +309,9 @@ func (a *mqlAwsWafIpset) fetchIPSet() error {
 	})
 	if err != nil {
 		return err
+	}
+	if resp.IPSet == nil {
+		return errors.New("GetIPSet returned no ip set for " + a.Name.Data)
 	}
 	a.cachedAddrType = string(resp.IPSet.IPAddressVersion)
 	a.cachedAddresses = convert.SliceAnyToInterface(resp.IPSet.Addresses)
@@ -506,7 +512,14 @@ func (a *mqlAwsWafRulegroup) rules() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if ruleGroupDetails.RuleGroup == nil {
+		return nil, errors.New("GetRuleGroup returned no rule group for " + a.Name.Data)
+	}
 	for _, rule := range ruleGroupDetails.RuleGroup.Rules {
+		if rule.Name == nil {
+			log.Debug().Str("rulegroup", a.Arn.Data).Msg("skipping a rule group rule with no name")
+			continue
+		}
 		ruleID := a.Arn.Data + "/" + *rule.Name
 		mqlStatement, err := createStatementResource(a.MqlRuntime, rule.Statement, rule.Name, ruleID)
 		if err != nil {
@@ -1225,6 +1238,29 @@ func (a *mqlAwsWafAclLoggingConfiguration) id() (string, error) {
 	return a.Arn.Data, nil
 }
 
+// newEmptyWafLoggingConfiguration reports a web ACL that logs nowhere. Reading
+// that as a resource with no destinations rather than as a null keeps the
+// negative answer assertable: a null logDestinationConfigs would make a check
+// for "this ACL logs somewhere" pass without having established anything.
+func newEmptyWafLoggingConfiguration(runtime *plugin.Runtime, aclArn string) (*mqlAwsWafAclLoggingConfiguration, error) {
+	res, err := CreateResource(runtime, "aws.waf.acl.loggingConfiguration",
+		map[string]*llx.RawData{
+			"__id":                     llx.StringData(aclArn),
+			"arn":                      llx.StringData(aclArn),
+			"logDestinationConfigs":    llx.ArrayData([]any{}, types.String),
+			"managedByFirewallManager": llx.BoolData(false),
+			"redactedFields":           llx.ArrayData([]any{}, types.String),
+			"loggingFilter":            llx.DictData(nil),
+			"logScope":                 llx.StringData(""),
+			"logType":                  llx.StringData(""),
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsWafAclLoggingConfiguration), nil
+}
+
 func (a *mqlAwsWafAcl) loggingConfiguration() (*mqlAwsWafAclLoggingConfiguration, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
@@ -1240,26 +1276,16 @@ func (a *mqlAwsWafAcl) loggingConfiguration() (*mqlAwsWafAclLoggingConfiguration
 		if !errors.As(err, &notFound) {
 			return nil, err
 		}
-		// No logging configuration exists — return resource with empty destinations
 		log.Debug().Str("acl", arnVal).Msg("no logging configuration found for web ACL")
-		res, createErr := CreateResource(a.MqlRuntime, "aws.waf.acl.loggingConfiguration",
-			map[string]*llx.RawData{
-				"__id":                     llx.StringData(arnVal),
-				"arn":                      llx.StringData(arnVal),
-				"logDestinationConfigs":    llx.ArrayData([]any{}, types.String),
-				"managedByFirewallManager": llx.BoolData(false),
-				"redactedFields":           llx.ArrayData([]any{}, types.String),
-				"loggingFilter":            llx.DictData(nil),
-				"logScope":                 llx.StringData(""),
-				"logType":                  llx.StringData(""),
-			},
-		)
-		if createErr != nil {
-			return nil, createErr
-		}
-		return res.(*mqlAwsWafAclLoggingConfiguration), nil
+		return newEmptyWafLoggingConfiguration(a.MqlRuntime, arnVal)
 	}
 
+	if resp.LoggingConfiguration == nil {
+		// A 200 with no configuration in it means the same thing as the
+		// exception above, and WAF is not consistent about which one it sends.
+		log.Debug().Str("acl", arnVal).Msg("empty logging configuration returned for web ACL")
+		return newEmptyWafLoggingConfiguration(a.MqlRuntime, arnVal)
+	}
 	logConfig := resp.LoggingConfiguration
 	destinations := convert.SliceAnyToInterface(logConfig.LogDestinationConfigs)
 
