@@ -876,7 +876,11 @@ aws.waf {
   ipSets() []aws.waf.ipset
   // List of WAF regex pattern sets
   regexPatternSets() []aws.waf.regexPatternSet
-  // Scope either REGIONAL or CLOUDFRONT
+  // Scope the resources are listed for
+  //
+  // Either REGIONAL or CLOUDFRONT. Empty when no scope was given, which lists
+  // both: CloudFront web ACLs live only in us-east-1, while regional ones are
+  // per-region, so neither scope on its own describes an account's WAF estate.
   scope string
 }
 
@@ -920,6 +924,13 @@ private aws.waf.acl @defaults("name") {
   rules() []aws.waf.rule
   // Scope either REGIONAL or CLOUDFRONT
   scope string
+  // Region the resource lives in
+  //
+  // us-east-1 for a CLOUDFRONT-scoped resource, which is where WAF keeps
+  // them regardless of where the distribution serves from. The resource's
+  // own region for a REGIONAL one, and the region every detail call about
+  // it has to be made in.
+  region string
   // Logging configuration for the ACL
   loggingConfiguration() aws.waf.acl.loggingConfiguration
   // ARNs of resources associated with this web ACL
@@ -953,6 +964,13 @@ private aws.waf.rulegroup @defaults("name") {
   rules() []aws.waf.rule
   // Scope either REGIONAL or CLOUDFRONT
   scope string
+  // Region the resource lives in
+  //
+  // us-east-1 for a CLOUDFRONT-scoped resource, which is where WAF keeps
+  // them regardless of where the distribution serves from. The resource's
+  // own region for a REGIONAL one, and the region every detail call about
+  // it has to be made in.
+  region string
   // Tags on the rule group
   tags() map[string]string
 }
@@ -1376,6 +1394,13 @@ private aws.waf.ipset @defaults("name") {
   id string
   // Scope: REGIONAL or CLOUDFRONT
   scope string
+  // Region the resource lives in
+  //
+  // us-east-1 for a CLOUDFRONT-scoped resource, which is where WAF keeps
+  // them regardless of where the distribution serves from. The resource's
+  // own region for a REGIONAL one, and the region every detail call about
+  // it has to be made in.
+  region string
   // Name of the IP set
   name string
   // Description of the IP set
@@ -1400,6 +1425,13 @@ private aws.waf.regexPatternSet @defaults("name") {
   id string
   // Scope: REGIONAL or CLOUDFRONT
   scope string
+  // Region the resource lives in
+  //
+  // us-east-1 for a CLOUDFRONT-scoped resource, which is where WAF keeps
+  // them regardless of where the distribution serves from. The resource's
+  // own region for a REGIONAL one, and the region every detail call about
+  // it has to be made in.
+  region string
   // Name of the regex pattern set
   name string
   // Description of the regex pattern set
