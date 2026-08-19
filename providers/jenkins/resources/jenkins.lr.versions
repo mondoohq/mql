@@ -6,7 +6,6 @@ jenkins.credential 13.0.0
 jenkins.credential.description 13.0.0
 jenkins.credential.domain 13.0.0
 jenkins.credential.id 13.0.0
-jenkins.credential.scope 13.0.0
 jenkins.credential.typeName 13.0.0
 jenkins.credentials 13.0.0
 jenkins.job 13.0.0
@@ -27,7 +26,6 @@ jenkins.node 13.0.0
 jenkins.node.description 13.0.0
 jenkins.node.isController 13.0.0
 jenkins.node.labels 13.0.0
-jenkins.node.launchMethod 13.0.0
 jenkins.node.name 13.0.0
 jenkins.node.numExecutors 13.0.0
 jenkins.node.offline 13.0.0
@@ -46,14 +44,9 @@ jenkins.plugin.version 13.0.0
 jenkins.plugins 13.0.0
 jenkins.quietingDown 13.0.0
 jenkins.security 13.0.0
-jenkins.security.agentProtocols 13.0.0
-jenkins.security.agentToControllerAccessControlEnabled 13.0.0
 jenkins.security.allowsAnonymousAdmin 13.0.0
-jenkins.security.authorizationStrategy 13.0.0
 jenkins.security.csrfProtectionEnabled 13.0.0
-jenkins.security.markupFormatter 13.0.0
 jenkins.security.securityEnabled 13.0.0
-jenkins.security.securityRealm 13.0.0
 jenkins.security.slaveAgentPort 13.0.0
 jenkins.url 13.0.0
 jenkins.version 13.0.0

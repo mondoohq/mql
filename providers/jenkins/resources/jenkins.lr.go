@@ -146,12 +146,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"jenkins.credentials": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlJenkins).GetCredentials()).ToDataRes(types.Array(types.Resource("jenkins.credential")))
 	},
-	"jenkins.security.authorizationStrategy": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlJenkinsSecurity).GetAuthorizationStrategy()).ToDataRes(types.String)
-	},
-	"jenkins.security.securityRealm": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlJenkinsSecurity).GetSecurityRealm()).ToDataRes(types.String)
-	},
 	"jenkins.security.securityEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlJenkinsSecurity).GetSecurityEnabled()).ToDataRes(types.Bool)
 	},
@@ -161,17 +155,8 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"jenkins.security.allowsAnonymousAdmin": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlJenkinsSecurity).GetAllowsAnonymousAdmin()).ToDataRes(types.Bool)
 	},
-	"jenkins.security.agentToControllerAccessControlEnabled": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlJenkinsSecurity).GetAgentToControllerAccessControlEnabled()).ToDataRes(types.Bool)
-	},
-	"jenkins.security.agentProtocols": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlJenkinsSecurity).GetAgentProtocols()).ToDataRes(types.Array(types.String))
-	},
 	"jenkins.security.slaveAgentPort": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlJenkinsSecurity).GetSlaveAgentPort()).ToDataRes(types.Int)
-	},
-	"jenkins.security.markupFormatter": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlJenkinsSecurity).GetMarkupFormatter()).ToDataRes(types.String)
 	},
 	"jenkins.plugin.shortName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlJenkinsPlugin).GetShortName()).ToDataRes(types.String)
@@ -248,9 +233,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"jenkins.node.offlineCauseReason": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlJenkinsNode).GetOfflineCauseReason()).ToDataRes(types.String)
 	},
-	"jenkins.node.launchMethod": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlJenkinsNode).GetLaunchMethod()).ToDataRes(types.String)
-	},
 	"jenkins.node.numExecutors": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlJenkinsNode).GetNumExecutors()).ToDataRes(types.Int)
 	},
@@ -262,9 +244,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"jenkins.credential.typeName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlJenkinsCredential).GetTypeName()).ToDataRes(types.String)
-	},
-	"jenkins.credential.scope": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlJenkinsCredential).GetScope()).ToDataRes(types.String)
 	},
 	"jenkins.credential.description": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlJenkinsCredential).GetDescription()).ToDataRes(types.String)
@@ -324,14 +303,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlJenkinsSecurity).__id, ok = v.Value.(string)
 		return
 	},
-	"jenkins.security.authorizationStrategy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlJenkinsSecurity).AuthorizationStrategy, ok = plugin.RawToTValue[string](v.Value, v.Error)
-		return
-	},
-	"jenkins.security.securityRealm": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlJenkinsSecurity).SecurityRealm, ok = plugin.RawToTValue[string](v.Value, v.Error)
-		return
-	},
 	"jenkins.security.securityEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlJenkinsSecurity).SecurityEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -344,20 +315,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlJenkinsSecurity).AllowsAnonymousAdmin, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"jenkins.security.agentToControllerAccessControlEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlJenkinsSecurity).AgentToControllerAccessControlEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
-		return
-	},
-	"jenkins.security.agentProtocols": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlJenkinsSecurity).AgentProtocols, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
-		return
-	},
 	"jenkins.security.slaveAgentPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlJenkinsSecurity).SlaveAgentPort, ok = plugin.RawToTValue[int64](v.Value, v.Error)
-		return
-	},
-	"jenkins.security.markupFormatter": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlJenkinsSecurity).MarkupFormatter, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"jenkins.plugin.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -472,10 +431,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlJenkinsNode).OfflineCauseReason, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"jenkins.node.launchMethod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlJenkinsNode).LaunchMethod, ok = plugin.RawToTValue[string](v.Value, v.Error)
-		return
-	},
 	"jenkins.node.numExecutors": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlJenkinsNode).NumExecutors, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
@@ -494,10 +449,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"jenkins.credential.typeName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlJenkinsCredential).TypeName, ok = plugin.RawToTValue[string](v.Value, v.Error)
-		return
-	},
-	"jenkins.credential.scope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlJenkinsCredential).Scope, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"jenkins.credential.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -669,15 +620,10 @@ type mqlJenkinsSecurity struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlJenkinsSecurityInternal it will be used here
-	AuthorizationStrategy                 plugin.TValue[string]
-	SecurityRealm                         plugin.TValue[string]
-	SecurityEnabled                       plugin.TValue[bool]
-	CsrfProtectionEnabled                 plugin.TValue[bool]
-	AllowsAnonymousAdmin                  plugin.TValue[bool]
-	AgentToControllerAccessControlEnabled plugin.TValue[bool]
-	AgentProtocols                        plugin.TValue[[]any]
-	SlaveAgentPort                        plugin.TValue[int64]
-	MarkupFormatter                       plugin.TValue[string]
+	SecurityEnabled       plugin.TValue[bool]
+	CsrfProtectionEnabled plugin.TValue[bool]
+	AllowsAnonymousAdmin  plugin.TValue[bool]
+	SlaveAgentPort        plugin.TValue[int64]
 }
 
 // createJenkinsSecurity creates a new instance of this resource
@@ -712,14 +658,6 @@ func (c *mqlJenkinsSecurity) MqlID() string {
 	return c.__id
 }
 
-func (c *mqlJenkinsSecurity) GetAuthorizationStrategy() *plugin.TValue[string] {
-	return &c.AuthorizationStrategy
-}
-
-func (c *mqlJenkinsSecurity) GetSecurityRealm() *plugin.TValue[string] {
-	return &c.SecurityRealm
-}
-
 func (c *mqlJenkinsSecurity) GetSecurityEnabled() *plugin.TValue[bool] {
 	return &c.SecurityEnabled
 }
@@ -732,20 +670,8 @@ func (c *mqlJenkinsSecurity) GetAllowsAnonymousAdmin() *plugin.TValue[bool] {
 	return &c.AllowsAnonymousAdmin
 }
 
-func (c *mqlJenkinsSecurity) GetAgentToControllerAccessControlEnabled() *plugin.TValue[bool] {
-	return &c.AgentToControllerAccessControlEnabled
-}
-
-func (c *mqlJenkinsSecurity) GetAgentProtocols() *plugin.TValue[[]any] {
-	return &c.AgentProtocols
-}
-
 func (c *mqlJenkinsSecurity) GetSlaveAgentPort() *plugin.TValue[int64] {
 	return &c.SlaveAgentPort
-}
-
-func (c *mqlJenkinsSecurity) GetMarkupFormatter() *plugin.TValue[string] {
-	return &c.MarkupFormatter
 }
 
 // mqlJenkinsPlugin for the jenkins.plugin resource
@@ -944,7 +870,6 @@ type mqlJenkinsNode struct {
 	Offline            plugin.TValue[bool]
 	TemporarilyOffline plugin.TValue[bool]
 	OfflineCauseReason plugin.TValue[string]
-	LaunchMethod       plugin.TValue[string]
 	NumExecutors       plugin.TValue[int64]
 	Labels             plugin.TValue[[]any]
 }
@@ -1005,10 +930,6 @@ func (c *mqlJenkinsNode) GetOfflineCauseReason() *plugin.TValue[string] {
 	return &c.OfflineCauseReason
 }
 
-func (c *mqlJenkinsNode) GetLaunchMethod() *plugin.TValue[string] {
-	return &c.LaunchMethod
-}
-
 func (c *mqlJenkinsNode) GetNumExecutors() *plugin.TValue[int64] {
 	return &c.NumExecutors
 }
@@ -1024,7 +945,6 @@ type mqlJenkinsCredential struct {
 	// optional: if you define mqlJenkinsCredentialInternal it will be used here
 	Id          plugin.TValue[string]
 	TypeName    plugin.TValue[string]
-	Scope       plugin.TValue[string]
 	Description plugin.TValue[string]
 	Domain      plugin.TValue[string]
 }
@@ -1067,10 +987,6 @@ func (c *mqlJenkinsCredential) GetId() *plugin.TValue[string] {
 
 func (c *mqlJenkinsCredential) GetTypeName() *plugin.TValue[string] {
 	return &c.TypeName
-}
-
-func (c *mqlJenkinsCredential) GetScope() *plugin.TValue[string] {
-	return &c.Scope
 }
 
 func (c *mqlJenkinsCredential) GetDescription() *plugin.TValue[string] {

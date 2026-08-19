@@ -37,9 +37,6 @@ type jenkinsNodeData struct {
 	AssignedLabels     []struct {
 		Name string `json:"name"`
 	} `json:"assignedLabels"`
-	Launcher struct {
-		Class string `json:"_class"`
-	} `json:"launcher"`
 }
 
 // isControllerNode reports whether a fetched node identifies the built-in
@@ -98,7 +95,7 @@ func fetchNodes(conn *connection.JenkinsConnection) ([]jenkinsNodeData, error) {
 		}
 		_, err := conn.Client().Requester.GetJSON(context.Background(), "/computer", &resp, map[string]string{
 			"tree": "computer[_class,displayName,description,offline,temporarilyOffline," +
-				"offlineCauseReason,numExecutors,assignedLabels[name],launcher[_class]]",
+				"offlineCauseReason,numExecutors,assignedLabels[name]]",
 		})
 		if err != nil {
 			return nil, err
@@ -135,7 +132,6 @@ func newMqlJenkinsNode(runtime *plugin.Runtime, c jenkinsNodeData) (plugin.Resou
 		"offline":            llx.BoolData(c.Offline),
 		"temporarilyOffline": llx.BoolData(c.TemporarilyOffline),
 		"offlineCauseReason": llx.StringData(c.OfflineCauseReason),
-		"launchMethod":       llx.StringData(c.Launcher.Class),
 		"numExecutors":       llx.IntData(c.NumExecutors),
 		"labels":             llx.ArrayData(labels, types.String),
 	})

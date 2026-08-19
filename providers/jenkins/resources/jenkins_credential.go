@@ -25,12 +25,11 @@ type jenkinsCredentialData struct {
 	Id          string `json:"id"`
 	TypeName    string `json:"typeName"`
 	Description string `json:"description"`
-	Scope       string `json:"scope"`
 }
 
 // credentials lists stored credential metadata across the controller's system
 // store (all of its domains) and every folder-scoped credential store. Only
-// identifying fields (id, typeName, description, scope) are requested; secret
+// identifying fields (id, typeName, description) are requested; secret
 // material is never fetched by this provider.
 func (r *mqlJenkins) credentials() ([]any, error) {
 	conn := r.conn()
@@ -113,7 +112,7 @@ func (r *mqlJenkins) credentialsFromStoreDomain(conn *connection.JenkinsConnecti
 		Credentials []jenkinsCredentialData `json:"credentials"`
 	}
 	_, err := conn.Client().Requester.GetJSON(context.Background(), storeBase+"/domain/"+domain, &resp, map[string]string{
-		"tree": "credentials[id,typeName,description,scope]",
+		"tree": "credentials[id,typeName,description]",
 	})
 	if err != nil {
 		return nil, err
@@ -125,7 +124,6 @@ func (r *mqlJenkins) credentialsFromStoreDomain(conn *connection.JenkinsConnecti
 			"__id":        llx.StringData(idBase + "/" + domain + "/" + c.Id),
 			"id":          llx.StringData(c.Id),
 			"typeName":    llx.StringData(c.TypeName),
-			"scope":       llx.StringData(c.Scope),
 			"description": llx.StringData(c.Description),
 			"domain":      llx.StringData(domain),
 		})
