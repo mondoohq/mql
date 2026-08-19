@@ -47,7 +47,18 @@ aws.account @defaults("id aliases.first organization.id") {
   // Account aliases
   aliases() []string
   // Information about the associated organization, if any
+  //
+  // Null when the account belongs to no organization, so this is usable as
+  // the scope for a check that only applies to multi-account environments
+  // rather than erroring on the accounts it means to exclude. Reaching
+  // aws.organization directly reports an error in that case instead, since a
+  // resource addressed by name has to resolve to something.
   organization() aws.organization
+  // Whether the account belongs to an AWS organization
+  //
+  // The same fact as a non-null organization, as a plain bool. Filters are
+  // where this gets used, and a boolean keeps the predicate unambiguous.
+  isOrganizationMember() bool
   // Tags on the account
   //
   // Note: This operation can only be called from the organization's management
@@ -84,33 +95,38 @@ aws.account @defaults("id aliases.first organization.id") {
 
   // Friendly name of the account, as shown in AWS Organizations
   //
-  // Available only when the calling identity is the organization's management
-  // account or a delegated administrator. Otherwise empty.
+  // Null when there is no description to read: the account belongs to no
+  // organization, or the calling identity is neither the organization's
+  // management account nor a delegated administrator.
   name() string
 
   // Root user email address associated with the account, as shown in AWS Organizations
   //
-  // Available only when the calling identity is the organization's management
-  // account or a delegated administrator. Otherwise empty.
+  // Null when there is no description to read: the account belongs to no
+  // organization, or the calling identity is neither the organization's
+  // management account nor a delegated administrator.
   email() string
 
   // Lifecycle state of the account in the organization
   //
   // One of PENDING_ACTIVATION, ACTIVE, SUSPENDED, PENDING_CLOSURE, or CLOSED.
-  // Available only when the calling identity is the organization's management
-  // account or a delegated administrator. Otherwise empty.
+  // Null when there is no description to read: the account belongs to no
+  // organization, or the calling identity is neither the organization's
+  // management account nor a delegated administrator.
   state() string
 
   // How the account joined the organization
   //
-  // One of INVITED or CREATED. Available only when the calling identity is the
-  // organization's management account or a delegated administrator. Otherwise empty.
+  // One of INVITED or CREATED. Null when there is no description to read: the
+  // account belongs to no organization, or the calling identity is neither the
+  // organization's management account nor a delegated administrator.
   joinedMethod() string
 
   // Timestamp at which the account joined the organization
   //
-  // Available only when the calling identity is the organization's management
-  // account or a delegated administrator.
+  // Null when there is no description to read: the account belongs to no
+  // organization, or the calling identity is neither the organization's
+  // management account nor a delegated administrator.
   joinedTimestamp() time
 
   // Organization policies attached directly to the account, across every policy type

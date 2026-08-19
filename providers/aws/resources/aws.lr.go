@@ -4988,6 +4988,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.account.organization": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsAccount).GetOrganization()).ToDataRes(types.Resource("aws.organization"))
 	},
+	"aws.account.isOrganizationMember": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsAccount).GetIsOrganizationMember()).ToDataRes(types.Bool)
+	},
 	"aws.account.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsAccount).GetTags()).ToDataRes(types.Map(types.String, types.String))
 	},
@@ -37039,6 +37042,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.account.organization": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsAccount).Organization, ok = plugin.RawToTValue[*mqlAwsOrganization](v.Value, v.Error)
+		return
+	},
+	"aws.account.isOrganizationMember": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsAccount).IsOrganizationMember, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"aws.account.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -83713,24 +83720,25 @@ type mqlAwsAccount struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsAccountInternal
-	Id                 plugin.TValue[string]
-	Aliases            plugin.TValue[[]any]
-	Organization       plugin.TValue[*mqlAwsOrganization]
-	Tags               plugin.TValue[map[string]any]
-	ContactInformation plugin.TValue[any]
-	AlternateContacts  plugin.TValue[[]any]
-	SecurityContact    plugin.TValue[*mqlAwsAccountAlternateContact]
-	BillingContact     plugin.TValue[*mqlAwsAccountAlternateContact]
-	OperationsContact  plugin.TValue[*mqlAwsAccountAlternateContact]
-	Paths              plugin.TValue[[]any]
-	RegionOptInStatus  plugin.TValue[map[string]any]
-	Name               plugin.TValue[string]
-	Email              plugin.TValue[string]
-	State              plugin.TValue[string]
-	JoinedMethod       plugin.TValue[string]
-	JoinedTimestamp    plugin.TValue[*time.Time]
-	Policies           plugin.TValue[[]any]
-	EffectivePolicies  plugin.TValue[[]any]
+	Id                   plugin.TValue[string]
+	Aliases              plugin.TValue[[]any]
+	Organization         plugin.TValue[*mqlAwsOrganization]
+	IsOrganizationMember plugin.TValue[bool]
+	Tags                 plugin.TValue[map[string]any]
+	ContactInformation   plugin.TValue[any]
+	AlternateContacts    plugin.TValue[[]any]
+	SecurityContact      plugin.TValue[*mqlAwsAccountAlternateContact]
+	BillingContact       plugin.TValue[*mqlAwsAccountAlternateContact]
+	OperationsContact    plugin.TValue[*mqlAwsAccountAlternateContact]
+	Paths                plugin.TValue[[]any]
+	RegionOptInStatus    plugin.TValue[map[string]any]
+	Name                 plugin.TValue[string]
+	Email                plugin.TValue[string]
+	State                plugin.TValue[string]
+	JoinedMethod         plugin.TValue[string]
+	JoinedTimestamp      plugin.TValue[*time.Time]
+	Policies             plugin.TValue[[]any]
+	EffectivePolicies    plugin.TValue[[]any]
 }
 
 // createAwsAccount creates a new instance of this resource
@@ -83793,6 +83801,12 @@ func (c *mqlAwsAccount) GetOrganization() *plugin.TValue[*mqlAwsOrganization] {
 		}
 
 		return c.organization()
+	})
+}
+
+func (c *mqlAwsAccount) GetIsOrganizationMember() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IsOrganizationMember, func() (bool, error) {
+		return c.isOrganizationMember()
 	})
 }
 

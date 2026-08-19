@@ -18,6 +18,7 @@ aws.account.contactInformation 11.15.2
 aws.account.effectivePolicies 13.52.2
 aws.account.email 13.21.4
 aws.account.id 11.15.2
+aws.account.isOrganizationMember 13.53.4
 aws.account.joinedMethod 13.21.4
 aws.account.joinedTimestamp 13.21.4
 aws.account.name 13.21.4
