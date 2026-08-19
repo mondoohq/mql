@@ -11040,7 +11040,19 @@ private aws.cloudwatch.loggroup @defaults("arn") {
   // When the log group was created
   createdAt time
   // Number of days to retain the log events in the specified log group
+  //
+  // Null when the log group never expires its events, which is what CloudWatch
+  // reports by returning no retention at all, and null again when the group
+  // lives in another account and its retention could not be read. A retention
+  // audit should treat null as "no expiry set" rather than compare it as a
+  // number: `retentionInDays >= 365` excludes exactly the groups that keep
+  // their logs forever.
   retentionInDays int
+  // Whether the log group keeps its events forever
+  //
+  // True when CloudWatch reports no retention on the group. Null when the
+  // retention could not be read, so an unread group is not reported as either.
+  neverExpires bool
   // Tags for the log group
   tags() map[string]string
   // CloudFormation stack that manages this log group, if any

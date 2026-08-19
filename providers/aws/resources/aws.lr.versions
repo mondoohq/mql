@@ -2140,6 +2140,7 @@ aws.cloudwatch.loggroup.metricsfilter.metrics 11.15.2
 aws.cloudwatch.loggroup.metricsfilter.monitoredEventNames 13.33.2
 aws.cloudwatch.loggroup.metricsfilter.monitoredEventSources 13.33.2
 aws.cloudwatch.loggroup.name 11.15.2
+aws.cloudwatch.loggroup.neverExpires 13.53.4
 aws.cloudwatch.loggroup.region 11.15.2
 aws.cloudwatch.loggroup.resourcePolicy 13.26.3
 aws.cloudwatch.loggroup.retentionInDays 11.15.2
