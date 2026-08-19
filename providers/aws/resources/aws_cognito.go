@@ -80,7 +80,7 @@ func (a *mqlAwsCognito) getUserPools(conn *connection.AwsConnection) []*jobpool.
 				}
 
 				for _, pool := range resp.UserPools {
-					poolArn := "arn:aws:cognito-idp:" + region + ":" + conn.AccountId() + ":userpool/" + convert.ToValue(pool.Id)
+					poolArn := cognitoUserPoolArn(region, conn.AccountId(), convert.ToValue(pool.Id))
 
 					mqlPool, err := CreateResource(a.MqlRuntime, "aws.cognito.userPool",
 						map[string]*llx.RawData{
@@ -109,6 +109,13 @@ func (a *mqlAwsCognito) getUserPools(conn *connection.AwsConnection) []*jobpool.
 		tasks = append(tasks, jobpool.NewJob(f))
 	}
 	return tasks
+}
+
+// cognitoUserPoolArn builds a user pool's ARN, which is also its __id. The
+// listing path and the reference resolver share it so both agree on the cache
+// key.
+func cognitoUserPoolArn(region, accountID, userPoolId string) string {
+	return "arn:aws:cognito-idp:" + region + ":" + accountID + ":userpool/" + userPoolId
 }
 
 func initAwsCognitoUserPool(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -743,18 +750,19 @@ func (a *mqlAwsCognitoUserPoolClient) id() (string, error) {
 	return a.UserPoolId.Data + "/" + a.ClientId.Data, nil
 }
 
-// resolveCognitoUserPool returns the lazy user-pool reference for a
-// sub-resource keyed by region+userPoolId. The user pool list creates
-// each pool with `__id = ARN`, so the NewResource call must pass the
-// same ARN — without it the lookup misses the cache and there's no init
-// to backfill the rest of the user-pool fields.
+// resolveCognitoUserPool returns the user-pool reference for a sub-resource
+// keyed by region+userPoolId.
+//
+// It passes the ARN and nothing else. That is the one argument
+// initAwsCognitoUserPool accepts, and the ARN is also the pool's __id, so a
+// pool the listing path already built is served from the cache and one reached
+// on its own is fetched and fully populated by the init.
 func resolveCognitoUserPool(runtime *plugin.Runtime, region, userPoolId string) (*mqlAwsCognitoUserPool, error) {
 	conn := runtime.Connection.(*connection.AwsConnection)
-	poolArn := "arn:aws:cognito-idp:" + region + ":" + conn.AccountId() + ":userpool/" + userPoolId
+	poolArn := cognitoUserPoolArn(region, conn.AccountId(), userPoolId)
 	mqlPool, err := NewResource(runtime, "aws.cognito.userPool",
 		map[string]*llx.RawData{
-			"__id": llx.StringData(poolArn),
-			"id":   llx.StringData(userPoolId),
+			"arn": llx.StringData(poolArn),
 		})
 	if err != nil {
 		return nil, err
