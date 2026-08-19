@@ -852,21 +852,44 @@ func (a *mqlAwsRdsDbinstance) dbCluster() (*mqlAwsRdsDbcluster, error) {
 	return res.(*mqlAwsRdsDbcluster), nil
 }
 
-func (a *mqlAwsRdsDbinstance) subnets() ([]any, error) {
-	if a.cacheSubnets != nil {
-		res := []any{}
-		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-		for i := range a.cacheSubnets.Subnets {
-			subnet := a.cacheSubnets.Subnets[i]
-			sub, err := NewResource(a.MqlRuntime, ResourceAwsVpcSubnet, map[string]*llx.RawData{"arn": llx.StringData(fmt.Sprintf(subnetArnPattern, a.region, conn.AccountId(), convert.ToValue(subnet.SubnetIdentifier)))})
-			if err != nil {
-				return nil, err
-			}
-			res = append(res, sub)
+// resolveSubnetRefs turns subnet ids into aws.vpc.subnet references, skipping any
+// that cannot be resolved.
+//
+// A DB subnet group keeps listing a subnet after that subnet is deleted, so a
+// dangling reference is ordinary account state rather than a failure. Returning
+// an error on the first one threw away every reference that did resolve, and
+// because a field error renders as the value of the enclosing collection, a query
+// written as `aws.rds { instances { ... } }` lost every other field on every
+// instance as well.
+func resolveSubnetRefs(runtime *plugin.Runtime, region, accountID string, subnetIDs []string) []any {
+	res := []any{}
+	for _, id := range subnetIDs {
+		if id == "" {
+			continue
 		}
-		return res, nil
+		arn := fmt.Sprintf(subnetArnPattern, region, accountID, id)
+		sub, err := NewResource(runtime, ResourceAwsVpcSubnet,
+			map[string]*llx.RawData{"arn": llx.StringData(arn)})
+		if err != nil {
+			log.Warn().Err(err).Str("subnet", id).Str("region", region).
+				Msg("cannot resolve subnet reference, skipping it")
+			continue
+		}
+		res = append(res, sub)
 	}
-	return []any{}, nil
+	return res
+}
+
+func (a *mqlAwsRdsDbinstance) subnets() ([]any, error) {
+	if a.cacheSubnets == nil {
+		return []any{}, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	ids := make([]string, 0, len(a.cacheSubnets.Subnets))
+	for i := range a.cacheSubnets.Subnets {
+		ids = append(ids, convert.ToValue(a.cacheSubnets.Subnets[i].SubnetIdentifier))
+	}
+	return resolveSubnetRefs(a.MqlRuntime, a.region, conn.AccountId(), ids), nil
 }
 
 func (a *mqlAwsRdsDbinstance) kmsKey() (*mqlAwsKmsKey, error) {
@@ -1238,12 +1261,19 @@ func (a *mqlAwsRdsDbcluster) id() (string, error) {
 func newMqlAwsRdsCluster(runtime *plugin.Runtime, region string, accountID string, cluster rds_types.DBCluster) (*mqlAwsRdsDbcluster, error) {
 	mqlRdsDbInstances := []any{}
 	for _, instance := range cluster.DBClusterMembers {
+		memberID := convert.ToValue(instance.DBInstanceIdentifier)
 		mqlInstance, err := NewResource(runtime, ResourceAwsRdsDbinstance,
 			map[string]*llx.RawData{
-				"arn": llx.StringData(fmt.Sprintf(rdsInstanceArnPattern, region, accountID, convert.ToValue(instance.DBInstanceIdentifier))),
+				"arn": llx.StringData(fmt.Sprintf(rdsInstanceArnPattern, region, accountID, memberID)),
 			})
 		if err != nil {
-			return nil, err
+			// DescribeDBClusters reports members that DescribeDBInstances may not
+			// return - one still being created or deleted, or one filtered out
+			// because instance tags differ from the cluster's. Losing the cluster
+			// entirely over one member is far worse than losing the member.
+			log.Warn().Err(err).Str("member", memberID).Str("region", region).
+				Msg("cannot resolve rds cluster member, skipping it")
+			continue
 		}
 		mqlRdsDbInstances = append(mqlRdsDbInstances, mqlInstance)
 	}
@@ -1855,17 +1885,7 @@ func (a *mqlAwsRdsProxy) securityGroups() ([]any, error) {
 
 func (a *mqlAwsRdsProxy) subnets() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	res := []any{}
-	for _, subnetId := range a.cacheSubnetIds {
-		mqlSubnet, err := NewResource(a.MqlRuntime, "aws.vpc.subnet",
-			map[string]*llx.RawData{
-				"arn": llx.StringData(fmt.Sprintf(subnetArnPattern, a.region, conn.AccountId(), subnetId)),
-			})
-		if err != nil {
-			return nil, err
-		}
-		res = append(res, mqlSubnet)
-	}
+	res := resolveSubnetRefs(a.MqlRuntime, a.region, conn.AccountId(), a.cacheSubnetIds)
 	return res, nil
 }
 
