@@ -5,6 +5,8 @@ package resources
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -548,6 +550,17 @@ func (a *mqlAwsMacieClassificationJob) buckets() ([]any, error) {
 // aws.macie.bucket — DescribeBuckets coverage
 // ============================================================================
 
+// errMacieBucketNotCovered reports a bucket that Macie does not hold in its
+// inventory, either because Macie is not enabled in the region or because the
+// bucket is outside the monitored set. macieCoverage turns it into a null field,
+// which is what the schema promises; any other error is a real failure.
+//
+// The init has to answer with an error rather than no resource: returning
+// (args, nil, nil) makes the runtime build the resource from the partial args,
+// leaving every field unset rather than null, and every such husk shares one
+// cache key because its arn is never set.
+var errMacieBucketNotCovered = errors.New("bucket is not in Macie's inventory")
+
 func initAwsMacieBucket(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if args["name"] == nil && args["arn"] == nil {
 		return args, nil, nil
@@ -561,7 +574,7 @@ func initAwsMacieBucket(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 		arnVal := args["arn"].Value.(string)
 		parts := strings.SplitN(arnVal, ":::", 2)
 		if len(parts) != 2 {
-			return args, nil, nil
+			return nil, nil, fmt.Errorf("%q is not an s3 bucket arn", arnVal)
 		}
 		bucketName = parts[1]
 	}
@@ -588,12 +601,15 @@ func initAwsMacieBucket(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 				return args, res, nil
 			}
 		}
-		return args, nil, nil
+		return args, nil, errMacieBucketNotCovered
 	}
 
 	res, err := describeMacieBucket(runtime, conn, region, bucketName)
 	if err != nil {
 		return args, nil, err
+	}
+	if res == nil {
+		return args, nil, errMacieBucketNotCovered
 	}
 	return args, res, nil
 }
@@ -787,6 +803,10 @@ func (a *mqlAwsS3Bucket) macieCoverage() (*mqlAwsMacieBucket, error) {
 		"region": llx.StringData(region),
 	})
 	if err != nil {
+		if errors.Is(err, errMacieBucketNotCovered) {
+			a.MacieCoverage.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
 		return nil, err
 	}
 	return mqlBucket.(*mqlAwsMacieBucket), nil
