@@ -23093,6 +23093,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.ec2.applicationStatusCheck.lastUpdatedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2ApplicationStatusCheck).GetLastUpdatedAt()).ToDataRes(types.Time)
 	},
+	"aws.ec2.applicationStatusCheck.deletedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2ApplicationStatusCheck).GetDeletedAt()).ToDataRes(types.Time)
+	},
+	"aws.ec2.applicationStatusCheck.deleted": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2ApplicationStatusCheck).GetDeleted()).ToDataRes(types.Bool)
+	},
 	"aws.ec2.applicationStatusCheck.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2ApplicationStatusCheck).GetTags()).ToDataRes(types.Map(types.String, types.String))
 	},
@@ -63394,6 +63400,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.ec2.applicationStatusCheck.lastUpdatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEc2ApplicationStatusCheck).LastUpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.applicationStatusCheck.deletedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ApplicationStatusCheck).DeletedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.applicationStatusCheck.deleted": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ApplicationStatusCheck).Deleted, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"aws.ec2.applicationStatusCheck.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -152365,6 +152379,8 @@ type mqlAwsEc2ApplicationStatusCheck struct {
 	TargetTags                       plugin.TValue[map[string]any]
 	CreatedAt                        plugin.TValue[*time.Time]
 	LastUpdatedAt                    plugin.TValue[*time.Time]
+	DeletedAt                        plugin.TValue[*time.Time]
+	Deleted                          plugin.TValue[bool]
 	Tags                             plugin.TValue[map[string]any]
 	Statuses                         plugin.TValue[[]any]
 }
@@ -152480,6 +152496,14 @@ func (c *mqlAwsEc2ApplicationStatusCheck) GetCreatedAt() *plugin.TValue[*time.Ti
 
 func (c *mqlAwsEc2ApplicationStatusCheck) GetLastUpdatedAt() *plugin.TValue[*time.Time] {
 	return &c.LastUpdatedAt
+}
+
+func (c *mqlAwsEc2ApplicationStatusCheck) GetDeletedAt() *plugin.TValue[*time.Time] {
+	return &c.DeletedAt
+}
+
+func (c *mqlAwsEc2ApplicationStatusCheck) GetDeleted() *plugin.TValue[bool] {
+	return &c.Deleted
 }
 
 func (c *mqlAwsEc2ApplicationStatusCheck) GetTags() *plugin.TValue[map[string]any] {

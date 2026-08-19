@@ -55,8 +55,10 @@ func (a *mqlAwsEc2) getApplicationStatusChecks(conn *connection.AwsConnection) [
 			res := []any{}
 
 			// The service ships no paginator for this operation, so the token
-			// loop is manual. IncludeAll returns checks that are not currently
-			// associated with any instance, which would otherwise be invisible.
+			// loop is manual. IncludeAll adds the checks that have been deleted
+			// and are still inside their post-deletion grace period; they are
+			// reported with deleted set, so a caller can tell them from the
+			// checks currently guarding an application.
 			var nextToken *string
 			for {
 				resp, err := svc.DescribeApplicationStatusChecks(ctx, &ec2.DescribeApplicationStatusChecksInput{
@@ -136,6 +138,8 @@ func newMqlAwsEc2ApplicationStatusCheck(runtime *plugin.Runtime, region string, 
 			"targetTags":                       llx.MapData(targetTags, mqltypes.String),
 			"createdAt":                        llx.TimeDataPtr(check.CreationTime),
 			"lastUpdatedAt":                    llx.TimeDataPtr(check.LastUpdatedAt),
+			"deletedAt":                        llx.TimeDataPtr(check.DeletionTime),
+			"deleted":                          llx.BoolData(check.DeletionTime != nil),
 			"tags":                             llx.MapData(toInterfaceMap(ec2TagsToMap(check.Tags)), mqltypes.String),
 		})
 	if err != nil {

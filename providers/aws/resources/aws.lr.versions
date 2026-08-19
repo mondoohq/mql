@@ -3330,6 +3330,8 @@ aws.ec2.allowedImagesState 13.52.2
 aws.ec2.applicationStatusCheck 13.52.2
 aws.ec2.applicationStatusCheck.aggregation 13.52.2
 aws.ec2.applicationStatusCheck.createdAt 13.52.2
+aws.ec2.applicationStatusCheck.deleted 13.53.4
+aws.ec2.applicationStatusCheck.deletedAt 13.53.4
 aws.ec2.applicationStatusCheck.deviceIndex 13.52.2
 aws.ec2.applicationStatusCheck.failureThreshold 13.52.2
 aws.ec2.applicationStatusCheck.healthCheckPaths 13.52.2

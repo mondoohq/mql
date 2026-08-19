@@ -17988,6 +17988,14 @@ private aws.ec2.applicationStatusCheck @defaults("id protocol port aggregation")
   createdAt time
   // Time the check was last modified
   lastUpdatedAt time
+  // Time the check was deleted
+  //
+  // Null for a live check. A deleted check stays visible for a grace period
+  // after deletion, so a query that wants only the checks currently guarding an
+  // application should filter on `deletedAt == null`.
+  deletedAt time
+  // Whether the check is deleted and only visible during its grace period
+  deleted bool
   // Resource tags
   tags map[string]string
   // Current per-instance results for this check
