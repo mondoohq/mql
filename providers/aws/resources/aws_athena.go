@@ -13,6 +13,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/athena"
 	athena_types "github.com/aws/aws-sdk-go-v2/service/athena/types"
+	"github.com/aws/smithy-go"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
@@ -497,8 +498,12 @@ func newMqlAwsAthenaDataCatalog(runtime *plugin.Runtime, region string, catalog 
 type mqlAwsAthenaDataCatalogInternal struct {
 	fetchedDetail bool
 	cachedDesc    string
-	cachedParams  map[string]any
-	lock          sync.Mutex
+	// detailUnavailable records that GetDataCatalog has nothing to describe for
+	// this catalog, so the detail fields report null rather than a fabricated
+	// empty value.
+	detailUnavailable bool
+	cachedParams      map[string]any
+	lock              sync.Mutex
 }
 
 const athenaDataCatalogArnPattern = "arn:aws:athena:%s:%s:datacatalog/%s"
@@ -506,6 +511,28 @@ const athenaDataCatalogArnPattern = "arn:aws:athena:%s:%s:datacatalog/%s"
 func (a *mqlAwsAthenaDataCatalog) arn() (string, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	return fmt.Sprintf(athenaDataCatalogArnPattern, a.Region.Data, conn.AccountId(), a.Name.Data), nil
+}
+
+// athenaCatalogHasNoDetail reports the catalogs that ListDataCatalogs returns but
+// GetDataCatalog refuses to describe.
+//
+// AwsDataCatalog is the built-in Glue-backed catalog present in every account and
+// every region. Athena lists it and then answers GetDataCatalog for it with
+// InvalidRequestException "DataCatalog AwsDataCatalog was not found", so the
+// detail fields simply do not exist for it. Treating that as an error made
+// description, parameters and lambdaFunction fail on a catalog every account has.
+//
+// The match is narrow on purpose: an InvalidRequestException that does not say
+// the catalog was not found is a real error and still propagates.
+func athenaCatalogHasNoDetail(err error) bool {
+	var apiErr smithy.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	if apiErr.ErrorCode() != "InvalidRequestException" {
+		return false
+	}
+	return strings.Contains(apiErr.ErrorMessage(), "was not found")
 }
 
 func (a *mqlAwsAthenaDataCatalog) fetchDetail() error {
@@ -526,6 +553,13 @@ func (a *mqlAwsAthenaDataCatalog) fetchDetail() error {
 		Name: &name,
 	})
 	if err != nil {
+		if athenaCatalogHasNoDetail(err) {
+			// There is nothing to describe, which is not a failure. Leave the
+			// detail fields null and stop retrying.
+			a.detailUnavailable = true
+			a.fetchedDetail = true
+			return nil
+		}
 		return err
 	}
 	if resp.DataCatalog != nil {
@@ -546,12 +580,20 @@ func (a *mqlAwsAthenaDataCatalog) description() (string, error) {
 	if err := a.fetchDetail(); err != nil {
 		return "", err
 	}
+	if a.detailUnavailable {
+		a.Description.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
 	return a.cachedDesc, nil
 }
 
 func (a *mqlAwsAthenaDataCatalog) parameters() (map[string]any, error) {
 	if err := a.fetchDetail(); err != nil {
 		return nil, err
+	}
+	if a.detailUnavailable {
+		a.Parameters.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	return a.cachedParams, nil
 }
