@@ -2547,6 +2547,9 @@ private aws.iam.usercredentialreportentry @defaults("arn") {
   passwordNextRotation() time
 
   // IAM user
+  //
+  // Null for the root account entry, which always appears in the report but has
+  // no IAM user behind it. Use isRoot to select that entry.
   user() aws.iam.user
   // Time when user was created
   createdAt() time

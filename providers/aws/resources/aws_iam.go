@@ -1043,9 +1043,14 @@ func (a *mqlAwsIamUsercredentialreportentry) user() (*mqlAwsIamUser, error) {
 		log.Info().Msgf("could not retrieve key")
 		return nil, errors.New("could not read the credentials report")
 	}
-	// handle special case for the root account since that user does not exist
+	// The root account always appears in the credential report but has no IAM
+	// user behind it, so there is nothing to resolve. That is a null, not a
+	// failure: reporting an error here made the whole credentialReport
+	// collection error out, because a field error renders as the value of the
+	// enclosing collection. Use isRoot to select the entry.
 	if props["user"] == "<root_account>" {
-		return nil, errors.New("root user does not exist")
+		a.User.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 
 	userName, ok := props["user"].(string)
