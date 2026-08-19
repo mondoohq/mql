@@ -508,14 +508,35 @@ const (
 	eventCategoryManagement            = "Management"
 )
 
-// containsFold reports whether values holds s, ignoring case.
-func containsFold(values []string, s string) bool {
+// containsFold reports whether values holds s, ignoring case. The elements are
+// the runtime's []any form of a string list.
+func containsFold(values []any, s string) bool {
 	for _, v := range values {
-		if strings.EqualFold(v, s) {
+		if str, ok := v.(string); ok && strings.EqualFold(str, s) {
 			return true
 		}
 	}
 	return false
+}
+
+// fieldSelectorConstrains reports whether a field selector places any condition
+// on its field. Every match kind counts: a NotEquals or a prefix match narrows
+// the selector just as an Equals does.
+func fieldSelectorConstrains(fs *mqlAwsCloudtrailTrailAdvancedEventSelectorFieldSelector) (bool, error) {
+	for _, get := range []func() *plugin.TValue[[]any]{
+		fs.GetEquals, fs.GetNotEquals,
+		fs.GetStartsWith, fs.GetNotStartsWith,
+		fs.GetEndsWith, fs.GetNotEndsWith,
+	} {
+		values := get()
+		if values.Error != nil {
+			return false, values.Error
+		}
+		if len(values.Data) > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // advancedSelectorsCaptureAllManagementEvents reports whether a set of advanced
@@ -524,34 +545,55 @@ func containsFold(values []string, s string) bool {
 // An advanced selector says what it captures through its field selectors rather
 // than through a readWriteType enum: it selects management events with
 // `eventCategory Equals ["Management"]`, and it captures both directions unless
-// it also constrains `readOnly`, which narrows it to one of them. A selector
-// that constrains readOnly in any way - Equals, NotEquals or a prefix match -
-// therefore does not capture all management events on its own.
-func advancedSelectorsCaptureAllManagementEvents(selectors []types.AdvancedEventSelector) bool {
-	for _, sel := range selectors {
+// it also constrains `readOnly`, which narrows it to one of them.
+func advancedSelectorsCaptureAllManagementEvents(selectors []any) (bool, error) {
+	for _, raw := range selectors {
+		sel, ok := raw.(*mqlAwsCloudtrailTrailAdvancedEventSelector)
+		if !ok {
+			continue
+		}
+
+		fieldSelectors := sel.GetFieldSelectors()
+		if fieldSelectors.Error != nil {
+			return false, fieldSelectors.Error
+		}
+
 		selectsManagement := false
 		restrictsReadOnly := false
 
-		for _, fs := range sel.FieldSelectors {
-			field := convert.ToValue(fs.Field)
+		for _, rawFs := range fieldSelectors.Data {
+			fs, ok := rawFs.(*mqlAwsCloudtrailTrailAdvancedEventSelectorFieldSelector)
+			if !ok {
+				continue
+			}
+			field := fs.GetField()
+			if field.Error != nil {
+				return false, field.Error
+			}
+
 			switch {
-			case strings.EqualFold(field, advancedSelectorFieldEventCategory):
-				if containsFold(fs.Equals, eventCategoryManagement) {
+			case strings.EqualFold(field.Data, advancedSelectorFieldEventCategory):
+				equals := fs.GetEquals()
+				if equals.Error != nil {
+					return false, equals.Error
+				}
+				if containsFold(equals.Data, eventCategoryManagement) {
 					selectsManagement = true
 				}
-			case strings.EqualFold(field, advancedSelectorFieldReadOnly):
-				restrictsReadOnly = restrictsReadOnly ||
-					len(fs.Equals) > 0 || len(fs.NotEquals) > 0 ||
-					len(fs.StartsWith) > 0 || len(fs.NotStartsWith) > 0 ||
-					len(fs.EndsWith) > 0 || len(fs.NotEndsWith) > 0
+			case strings.EqualFold(field.Data, advancedSelectorFieldReadOnly):
+				constrains, err := fieldSelectorConstrains(fs)
+				if err != nil {
+					return false, err
+				}
+				restrictsReadOnly = restrictsReadOnly || constrains
 			}
 		}
 
 		if selectsManagement && !restrictsReadOnly {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 // capturesAllManagementEvents reports whether the trail logs management events
@@ -587,11 +629,11 @@ func (a *mqlAwsCloudtrailTrail) capturesAllManagementEvents() (bool, error) {
 		}
 	}
 
-	resp, err := a.getEventSelectorsData()
-	if err != nil {
-		return false, err
+	advanced := a.GetAdvancedEventSelectors()
+	if advanced.Error != nil {
+		return false, advanced.Error
 	}
-	return advancedSelectorsCaptureAllManagementEvents(resp.AdvancedEventSelectors), nil
+	return advancedSelectorsCaptureAllManagementEvents(advanced.Data)
 }
 
 func (a *mqlAwsCloudtrailTrail) eventSelectorEntries() ([]any, error) {

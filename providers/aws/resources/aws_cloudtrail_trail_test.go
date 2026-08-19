@@ -18,6 +18,9 @@ func TestCapturesAllManagementEvents(t *testing.T) {
 		sel.ReadWriteType = plugin.TValue[string]{Data: readWriteType, State: plugin.StateIsSet}
 		return sel
 	}
+	// A trail uses classic or advanced selectors, never both, so these trails
+	// carry an empty advanced set. capturesAllManagementEvents consults both,
+	// and leaving the field unset would send it to the API for the answer.
 	trail := func(sels ...*mqlAwsCloudtrailTrailEventSelector) *mqlAwsCloudtrailTrail {
 		entries := make([]any, len(sels))
 		for i, s := range sels {
@@ -25,6 +28,7 @@ func TestCapturesAllManagementEvents(t *testing.T) {
 		}
 		tr := &mqlAwsCloudtrailTrail{}
 		tr.EventSelectorEntries = plugin.TValue[[]any]{Data: entries, State: plugin.StateIsSet}
+		tr.AdvancedEventSelectors = plugin.TValue[[]any]{Data: []any{}, State: plugin.StateIsSet}
 		return tr
 	}
 
@@ -46,4 +50,19 @@ func TestCapturesAllManagementEvents(t *testing.T) {
 			assert.Equal(t, tc.want, got)
 		})
 	}
+
+	// A trail configured through CloudFormation or Terraform has no classic
+	// selectors at all, and the answer has to come from the advanced ones.
+	t.Run("advanced selectors with no classic selectors", func(t *testing.T) {
+		tr := &mqlAwsCloudtrailTrail{}
+		tr.EventSelectorEntries = plugin.TValue[[]any]{Data: []any{}, State: plugin.StateIsSet}
+		tr.AdvancedEventSelectors = plugin.TValue[[]any]{
+			Data:  advancedSelectors(advancedSelector(equalsSelector("eventCategory", "Management"))),
+			State: plugin.StateIsSet,
+		}
+
+		got, err := tr.capturesAllManagementEvents()
+		require.NoError(t, err)
+		assert.True(t, got)
+	})
 }
