@@ -14,12 +14,19 @@ func viewerPolicyEnforcesHttps(policy string) bool {
 
 // listenerProtocolIsPlaintext reports whether a load balancer listener protocol
 // carries traffic without transport encryption.
+//
+// The encrypted protocols are the closed set, so they are what gets listed:
+// HTTPS and TLS on ALB and NLB, SSL on a classic load balancer. Everything else
+// is plaintext, which is the safe direction for a value this predicate has not
+// seen before. Listing the plaintext names instead would have reported GENEVE -
+// the unencrypted Gateway Load Balancer tunnel - as encrypted, along with any
+// protocol AWS adds later and any value the description did not parse.
 func listenerProtocolIsPlaintext(protocol string) bool {
 	switch strings.ToUpper(protocol) {
-	case "HTTP", "TCP", "UDP", "TCP_UDP":
-		return true
-	default:
+	case "HTTPS", "TLS", "SSL":
 		return false
+	default:
+		return true
 	}
 }
 

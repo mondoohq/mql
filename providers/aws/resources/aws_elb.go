@@ -1519,7 +1519,9 @@ func (a *mqlAwsElbTargetgroup) ipTargets() ([]any, error) {
 }
 
 // enforcesTls reports whether every listener terminates an encrypted protocol —
-// i.e. no plaintext HTTP, TCP, or UDP listener accepts traffic. It reads
+// HTTPS or TLS on an ALB/NLB, SSL on a classic load balancer. Any other
+// protocol counts as plaintext, including GENEVE and a listener whose protocol
+// could not be read, so an unrecognized listener never reads as secure. It reads
 // listenerDescriptions, which covers both classic ELBs (where the protocol is
 // nested under "Listener") and ALB/NLB load balancers (top-level "Protocol"), so
 // a classic HTTP load balancer is not missed. A load balancer with no listeners
