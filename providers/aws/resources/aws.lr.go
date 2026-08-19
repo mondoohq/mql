@@ -28901,6 +28901,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.workspaces.workspace.userVolumeEncryptionEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsWorkspacesWorkspace).GetUserVolumeEncryptionEnabled()).ToDataRes(types.Bool)
 	},
+	"aws.workspaces.workspace.nestedVirtualizationEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsWorkspacesWorkspace).GetNestedVirtualizationEnabled()).ToDataRes(types.Bool)
+	},
 	"aws.workspaces.workspace.volumeEncryptionKey": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsWorkspacesWorkspace).GetVolumeEncryptionKey()).ToDataRes(types.String)
 	},
@@ -71804,6 +71807,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.workspaces.workspace.userVolumeEncryptionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsWorkspacesWorkspace).UserVolumeEncryptionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.workspaces.workspace.nestedVirtualizationEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsWorkspacesWorkspace).NestedVirtualizationEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"aws.workspaces.workspace.volumeEncryptionKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -173195,6 +173202,7 @@ type mqlAwsWorkspacesWorkspace struct {
 	State                            plugin.TValue[string]
 	RootVolumeEncryptionEnabled      plugin.TValue[bool]
 	UserVolumeEncryptionEnabled      plugin.TValue[bool]
+	NestedVirtualizationEnabled      plugin.TValue[bool]
 	VolumeEncryptionKey              plugin.TValue[string]
 	ErrorCode                        plugin.TValue[string]
 	ErrorMessage                     plugin.TValue[string]
@@ -173319,6 +173327,10 @@ func (c *mqlAwsWorkspacesWorkspace) GetRootVolumeEncryptionEnabled() *plugin.TVa
 
 func (c *mqlAwsWorkspacesWorkspace) GetUserVolumeEncryptionEnabled() *plugin.TValue[bool] {
 	return &c.UserVolumeEncryptionEnabled
+}
+
+func (c *mqlAwsWorkspacesWorkspace) GetNestedVirtualizationEnabled() *plugin.TValue[bool] {
+	return &c.NestedVirtualizationEnabled
 }
 
 func (c *mqlAwsWorkspacesWorkspace) GetVolumeEncryptionKey() *plugin.TValue[string] {

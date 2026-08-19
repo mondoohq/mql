@@ -11455,6 +11455,7 @@ aws.workspaces.workspace.errorCode 11.16.1
 aws.workspaces.workspace.errorMessage 11.16.1
 aws.workspaces.workspace.ipAddress 11.16.1
 aws.workspaces.workspace.lastKnownUserConnectionTimestamp 11.16.1
+aws.workspaces.workspace.nestedVirtualizationEnabled 13.53.4
 aws.workspaces.workspace.region 11.16.1
 aws.workspaces.workspace.rootVolumeEncryptionEnabled 11.16.1
 aws.workspaces.workspace.securityGroups 11.16.1

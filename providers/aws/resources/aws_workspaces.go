@@ -304,6 +304,15 @@ func newMqlAwsWorkspacesWorkspace(runtime *plugin.Runtime, region string, ws wor
 		workspaceId = *ws.WorkspaceId
 	}
 
+	// WorkspaceProperties is absent on some responses, and nested
+	// virtualization is only reported for the WorkSpace types that support
+	// it. Leaving the pointer nil keeps the field null in both cases: a
+	// false would claim we looked and the feature was switched off.
+	var nestedVirtualizationEnabled *bool
+	if ws.WorkspaceProperties != nil {
+		nestedVirtualizationEnabled = ws.WorkspaceProperties.NestedVirtualizationEnabled
+	}
+
 	resource, err := CreateResource(runtime, "aws.workspaces.workspace",
 		map[string]*llx.RawData{
 			"__id":                        llx.StringData("aws.workspaces.workspace/" + region + "/" + workspaceId),
@@ -317,6 +326,7 @@ func newMqlAwsWorkspacesWorkspace(runtime *plugin.Runtime, region string, ws wor
 			"state":                       llx.StringData(string(ws.State)),
 			"rootVolumeEncryptionEnabled": llx.BoolDataPtr(ws.RootVolumeEncryptionEnabled),
 			"userVolumeEncryptionEnabled": llx.BoolDataPtr(ws.UserVolumeEncryptionEnabled),
+			"nestedVirtualizationEnabled": llx.BoolDataPtr(nestedVirtualizationEnabled),
 			"volumeEncryptionKey":         llx.StringDataPtr(ws.VolumeEncryptionKey),
 			"errorCode":                   llx.StringDataPtr(ws.ErrorCode),
 			"errorMessage":                llx.StringDataPtr(ws.ErrorMessage),

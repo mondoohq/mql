@@ -23625,6 +23625,12 @@ private aws.workspaces.workspace @defaults("workspaceId userName state region") 
   rootVolumeEncryptionEnabled bool
   // Whether the user volume is encrypted
   userVolumeEncryptionEnabled bool
+  // Whether nested virtualization is enabled
+  //
+  // Null when the WorkSpace type does not report the setting. Nested
+  // virtualization lets a user run a hypervisor inside the desktop,
+  // which widens the guest isolation boundary.
+  nestedVirtualizationEnabled bool
   // KMS key ARN for volume encryption
   volumeEncryptionKey string
   // Error code if in error state
