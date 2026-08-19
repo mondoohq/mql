@@ -4,13 +4,83 @@
 package connection
 
 import (
+	"bytes"
 	"strconv"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 )
+
+// withCapturedLog swaps the global logger for a buffer so tests can assert on
+// deprecation warnings.
+func withCapturedLog(t *testing.T, f func()) string {
+	t.Helper()
+	var buf bytes.Buffer
+	orig := log.Logger
+	log.Logger = zerolog.New(&buf)
+	defer func() { log.Logger = orig }()
+	f()
+	return buf.String()
+}
+
+func TestDeprecatedEc2TagOpts(t *testing.T) {
+	t.Run("ec2:tag: still applies and warns", func(t *testing.T) {
+		var d DiscoveryFilters
+		out := withCapturedLog(t, func() {
+			d = DiscoveryFiltersFromOpts(map[string]string{"ec2:tag:env": "prod"})
+		})
+		require.Equal(t, map[string]string{"env": "prod"}, d.General.Tags)
+		require.Contains(t, out, "deprecated AWS discovery filter")
+		require.Contains(t, out, `"option":"ec2:tag:"`)
+		require.Contains(t, out, `"use":"tag:"`)
+	})
+
+	t.Run("ec2:exclude:tag: still applies and warns", func(t *testing.T) {
+		var d DiscoveryFilters
+		out := withCapturedLog(t, func() {
+			d = DiscoveryFiltersFromOpts(map[string]string{"ec2:exclude:tag:env": "dev"})
+		})
+		require.Equal(t, map[string]string{"env": "dev"}, d.General.ExcludeTags)
+		require.Contains(t, out, `"option":"ec2:exclude:tag:"`)
+		require.Contains(t, out, `"use":"exclude:tag:"`)
+	})
+
+	t.Run("a key set by both keeps the replacement and warns about the dropped value", func(t *testing.T) {
+		var d DiscoveryFilters
+		out := withCapturedLog(t, func() {
+			d = DiscoveryFiltersFromOpts(map[string]string{
+				"tag:env":     "prod",
+				"ec2:tag:env": "staging",
+			})
+		})
+		require.Equal(t, map[string]string{"env": "prod"}, d.General.Tags)
+		require.Contains(t, out, "the deprecated value is ignored")
+		require.Contains(t, out, `"ignored":"staging"`)
+		require.Contains(t, out, `"using":"prod"`)
+	})
+
+	t.Run("a key set by both with the same value does not warn about a dropped value", func(t *testing.T) {
+		out := withCapturedLog(t, func() {
+			DiscoveryFiltersFromOpts(map[string]string{
+				"tag:env":     "prod",
+				"ec2:tag:env": "prod",
+			})
+		})
+		require.Contains(t, out, "deprecated AWS discovery filter")
+		require.NotContains(t, out, "the deprecated value is ignored")
+	})
+
+	t.Run("no deprecated opts means no warning", func(t *testing.T) {
+		out := withCapturedLog(t, func() {
+			DiscoveryFiltersFromOpts(map[string]string{"tag:env": "prod"})
+		})
+		require.Empty(t, out)
+	})
+}
 
 func TestToServerSideEc2Filters(t *testing.T) {
 	t.Run("correctly converts include and exclude tags to AWS SDK filters", func(t *testing.T) {
