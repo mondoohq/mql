@@ -68,6 +68,30 @@ func NormalizeKmsKeyRef(s, region, accountId string) (arn.ARN, error) {
 	}, nil
 }
 
+// kmsKeyRefArgs builds the NewResource arguments for a reference to a KMS key.
+//
+// Services report their key in several shapes: a full key ARN, a full alias ARN,
+// a bare key id, or a bare alias such as "alias/aws/sqs" - which is what SQS and
+// SSM Parameter Store return for a resource encrypted with the service's default
+// key. initAwsKmsKey normalizes all of them, so a reference already in one of
+// those forms is passed through untouched.
+//
+// Only a bare key id is wrapped in kmsKeyArnPattern, because neither the region
+// nor the account is recoverable from the id alone. Wrapping unconditionally
+// produced "arn:aws:kms:<region>:<account>:key/alias/aws/sqs", which is not a KMS
+// ARN, and DescribeKey rejected it with "Invalid keyId alias/aws/sqs" - so the
+// key reference errored for every default-encrypted queue and parameter.
+func kmsKeyRefArgs(region, accountID, keyRef string) map[string]*llx.RawData {
+	ref := keyRef
+	if !strings.HasPrefix(ref, "arn:") && !strings.HasPrefix(ref, kmsAliasResourcePrefix) {
+		ref = fmt.Sprintf(kmsKeyArnPattern, region, accountID, ref)
+	}
+	return map[string]*llx.RawData{
+		"arn":    llx.StringData(ref),
+		"region": llx.StringData(region),
+	}
+}
+
 func isKmsKeyID(s string) bool {
 	return isUUIDKeyID(s) || isMultiRegionKeyID(s)
 }

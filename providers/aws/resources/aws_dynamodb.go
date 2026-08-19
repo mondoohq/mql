@@ -233,9 +233,7 @@ func (a *mqlAwsDynamodbExport) kmsKey() (*mqlAwsKmsKey, error) {
 	}
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	mqlKey, err := NewResource(a.MqlRuntime, "aws.kms.key",
-		map[string]*llx.RawData{
-			"arn": llx.StringData(fmt.Sprintf(kmsKeyArnPattern, a.region, conn.AccountId(), convert.ToValue(exp.S3SseKmsKeyId))),
-		})
+		kmsKeyRefArgs(a.region, conn.AccountId(), convert.ToValue(exp.S3SseKmsKeyId)))
 	if err != nil {
 		return nil, err
 	}

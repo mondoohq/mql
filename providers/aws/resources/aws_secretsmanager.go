@@ -6,7 +6,6 @@ package resources
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -439,14 +438,9 @@ func (a *mqlAwsSecretsmanagerSecretVersion) kmsKeys() ([]any, error) {
 		if keyID == "DefaultEncryptionKey" {
 			continue
 		}
-		// KmsKeyIds may already be full ARNs or bare key ids; build an ARN from
-		// the version's region + account only when it isn't one already.
-		arnStr := keyID
-		if !strings.HasPrefix(keyID, "arn:") {
-			arnStr = fmt.Sprintf(kmsKeyArnPattern, a.region, a.accountID, keyID)
-		}
+		// KmsKeyIds may be full ARNs, bare key ids, or aliases.
 		mqlKey, err := NewResource(a.MqlRuntime, ResourceAwsKmsKey,
-			map[string]*llx.RawData{"arn": llx.StringData(arnStr)})
+			kmsKeyRefArgs(a.region, a.accountID, keyID))
 		if err != nil {
 			return nil, err
 		}

@@ -269,9 +269,7 @@ func (a *mqlAwsSqsQueue) kmsKey() (*mqlAwsKmsKey, error) {
 	id := atts["KmsMasterKeyId"]
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	mqlKey, err := NewResource(a.MqlRuntime, "aws.kms.key",
-		map[string]*llx.RawData{
-			"arn": llx.StringData(fmt.Sprintf(kmsKeyArnPattern, a.Region.Data, conn.AccountId(), id)),
-		})
+		kmsKeyRefArgs(a.Region.Data, conn.AccountId(), id))
 	if err != nil {
 		return nil, err
 	}
