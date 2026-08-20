@@ -5,9 +5,11 @@ package resources
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/cockroachdb/errors"
 	"github.com/jomei/notionapi"
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/notion/connection"
@@ -23,11 +25,35 @@ func (r *mqlNotionUser) id() (string, error) {
 	return r.Id.Data, nil
 }
 
+// isRestrictedResource reports whether Notion refused the call because this
+// token type may not reach the endpoint at all, rather than because the call
+// failed. A personal (user-owned) integration token cannot list users: the
+// API answers 403 restricted_resource, and no amount of retrying changes
+// that.
+func isRestrictedResource(err error) bool {
+	var apiErr *notionapi.Error
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.Status == http.StatusForbidden && apiErr.Code == "restricted_resource"
+}
+
 // users lists the workspace members and bots visible to this integration.
+//
+// A token that may not list users reports null rather than failing. The
+// distinction matters: an error here propagates out of every query that
+// merely mentions users, including notion.workspace, so a token that cannot
+// read one collection would take the readable ones down with it.
 func (r *mqlNotion) users() ([]any, error) {
 	conn := r.conn()
 	list, err := listNotionUsers(conn)
 	if err != nil {
+		if isRestrictedResource(err) {
+			log.Warn().Err(err).
+				Msg("notion> this token may not list users, reporting null")
+			r.Users.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
 		return nil, err
 	}
 

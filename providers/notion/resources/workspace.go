@@ -54,6 +54,11 @@ func (w *mqlNotionWorkspace) notionRoot() (*mqlNotion, error) {
 
 // userCount reports the number of workspace members and bots visible to
 // this integration.
+//
+// When the token may not list users at all, users is null rather than
+// empty, and the count is null too. Reporting 0 there would state as fact
+// that the workspace has no members, which is a different claim from "this
+// token cannot see them".
 func (w *mqlNotionWorkspace) userCount() (int64, error) {
 	notion, err := w.notionRoot()
 	if err != nil {
@@ -62,6 +67,10 @@ func (w *mqlNotionWorkspace) userCount() (int64, error) {
 	users := notion.GetUsers()
 	if users.Error != nil {
 		return 0, users.Error
+	}
+	if users.State&plugin.StateIsNull != 0 {
+		w.UserCount.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
 	}
 	return int64(len(users.Data)), nil
 }
