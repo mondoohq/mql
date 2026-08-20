@@ -441,6 +441,14 @@ type mqlAwsDynamodbTableInternal struct {
 }
 
 func (a *mqlAwsDynamodbTable) sseKmsKey() (*mqlAwsKmsKey, error) {
+	// cacheSseKmsKeyArn is assigned by fetchDetail, so reading it without
+	// fetching first reports null for every table - including one encrypted
+	// with a customer-managed key, which is the case this field exists to
+	// answer. sourceTable, the sibling built on the same cache, already
+	// fetches first.
+	if err := a.fetchDetail(); err != nil {
+		return nil, err
+	}
 	if a.cacheSseKmsKeyArn == nil || *a.cacheSseKmsKeyArn == "" {
 		a.SseKmsKey.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil

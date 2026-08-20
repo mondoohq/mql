@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/service/sagemaker"
+	sagemakertypes "github.com/aws/aws-sdk-go-v2/service/sagemaker/types"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
@@ -1823,7 +1824,13 @@ func (a *mqlAwsSagemakerAutoMLJob) fetchDetails() error {
 	svc := conn.Sagemaker(a.Region.Data)
 	ctx := context.Background()
 	name := a.Name.Data
-	resp, err := svc.DescribeAutoMLJob(ctx, &sagemaker.DescribeAutoMLJobInput{AutoMLJobName: &name})
+	// DescribeAutoMLJobV2, not DescribeAutoMLJob. A job created through
+	// CreateAutoMLJobV2 cannot be described by the V1 operation at all - it
+	// answers ValidationException - and V2 is the API AWS points callers at, so
+	// every job created by the current API failed every field on this resource.
+	// V2 describes jobs created by either operation, so the V1 path has nothing
+	// left to cover.
+	resp, err := svc.DescribeAutoMLJobV2(ctx, &sagemaker.DescribeAutoMLJobV2Input{AutoMLJobName: &name})
 	if err != nil {
 		return err
 	}
@@ -1831,9 +1838,11 @@ func (a *mqlAwsSagemakerAutoMLJob) fetchDetails() error {
 	a.cacheRoleArn = resp.RoleArn
 	a.cacheFailureReason = convert.ToValue(resp.FailureReason)
 
+	targetAttributeName := autoMLTargetAttributeName(resp.AutoMLProblemTypeConfig)
+
 	// Input channels
-	channels := make([]any, 0, len(resp.InputDataConfig))
-	for i, ch := range resp.InputDataConfig {
+	channels := make([]any, 0, len(resp.AutoMLJobInputDataConfig))
+	for i, ch := range resp.AutoMLJobInputDataConfig {
 		var s3Uri, s3DataType string
 		if ch.DataSource != nil && ch.DataSource.S3DataSource != nil {
 			s3Uri = convert.ToValue(ch.DataSource.S3DataSource.S3Uri)
@@ -1846,7 +1855,7 @@ func (a *mqlAwsSagemakerAutoMLJob) fetchDetails() error {
 				// of a job, so keying on it merged the training and validation
 				// channels into one and hid the validation dataset's S3 URI.
 				"__id":                llx.StringData(autoMLInputChannelCacheKey(a.Arn.Data, i)),
-				"targetAttributeName": llx.StringDataPtr(ch.TargetAttributeName),
+				"targetAttributeName": llx.StringDataPtr(targetAttributeName),
 				"contentType":         llx.StringDataPtr(ch.ContentType),
 				"compressionType":     llx.StringData(string(ch.CompressionType)),
 				"s3Uri":               llx.StringData(s3Uri),
@@ -1963,6 +1972,21 @@ func (a *mqlAwsSagemakerAutoMLJob) failureReason() (string, error) {
 type mqlAwsSagemakerAutoMLJobInputChannelInternal struct {
 	cacheParentArn string
 	cacheIndex     int
+}
+
+// autoMLTargetAttributeName reads the column an AutoML job predicts.
+//
+// V1 reported it on every input channel. V2 moved it onto the problem-type
+// config, which is the truer place for it: it is a property of the job, not of
+// a dataset. Only a tabular job has one - image, text and time-series jobs have
+// no target column - so anything else reads null rather than empty, which would
+// claim the job named no target.
+func autoMLTargetAttributeName(cfg sagemakertypes.AutoMLProblemTypeConfig) *string {
+	tabular, ok := cfg.(*sagemakertypes.AutoMLProblemTypeConfigMemberTabularJobConfig)
+	if !ok {
+		return nil
+	}
+	return tabular.Value.TargetAttributeName
 }
 
 // autoMLInputChannelCacheKey identifies one input channel of an AutoML job by

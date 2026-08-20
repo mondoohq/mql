@@ -1,7 +1,7 @@
 {
   "provider": "aws",
   "version": "13.53.3",
-  "generated_at": "2026-08-19T11:52:57-07:00",
+  "generated_at": "2026-08-19T15:36:50-07:00",
   "permissions": [
     "access-analyzer:GetFindingV2",
     "access-analyzer:ListAnalyzers",
@@ -797,7 +797,7 @@
     "sagemaker:DescribeApp",
     "sagemaker:DescribeAppImageConfig",
     "sagemaker:DescribeArtifact",
-    "sagemaker:DescribeAutoMLJob",
+    "sagemaker:DescribeAutoMLJobV2",
     "sagemaker:DescribeCluster",
     "sagemaker:DescribeClusterNode",
     "sagemaker:DescribeCodeRepository",
@@ -6005,9 +6005,9 @@
       "source_file": "aws_sagemaker_lineage.go"
     },
     {
-      "permission": "sagemaker:DescribeAutoMLJob",
+      "permission": "sagemaker:DescribeAutoMLJobV2",
       "service": "sagemaker",
-      "action": "DescribeAutoMLJob",
+      "action": "DescribeAutoMLJobV2",
       "source_file": "aws_sagemaker_mlops.go"
     },
     {
