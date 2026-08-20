@@ -148,10 +148,15 @@ func (d *mqlNotionDatabase) parentPage() (*mqlNotionPage, error) {
 		d.ParentPage.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
-	res, err := NewResource(d.MqlRuntime, "notion.page",
-		map[string]*llx.RawData{"id": llx.StringData(d.cacheParentPageId)})
+	parent, err := pageByID(d.MqlRuntime, d.cacheParentPageId)
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlNotionPage), nil
+	if parent == nil {
+		// Not among the pages shared with this integration; see
+		// notion.page's parentDatabase for why this is null, not an error.
+		d.ParentPage.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return parent, nil
 }

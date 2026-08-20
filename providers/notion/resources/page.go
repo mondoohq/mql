@@ -172,17 +172,58 @@ func (p *mqlNotionPage) isPubliclyShared() (bool, error) {
 
 // parentDatabase resolves the database this page is a row of, when it is
 // one.
+//
+// Resolved by scanning the already-fetched notion.databases collection
+// rather than through NewResource. NewResource runs the target's init
+// before the runtime cache is consulted, so a per-page lookup costs one
+// databases.retrieve call per page: on a workspace of ~12k pages that is
+// ~12k sequential calls against an API that allows roughly three a second.
+// The collection is one search walk, fetched once and shared by every page.
 func (p *mqlNotionPage) parentDatabase() (*mqlNotionDatabase, error) {
 	if p.cacheParentDatabaseId == "" {
 		p.ParentDatabase.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
-	res, err := NewResource(p.MqlRuntime, "notion.database",
-		map[string]*llx.RawData{"id": llx.StringData(p.cacheParentDatabaseId)})
+
+	db, err := databaseByID(p.MqlRuntime, p.cacheParentDatabaseId)
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlNotionDatabase), nil
+	if db == nil {
+		// The parent is not among the databases shared with this
+		// integration, so it cannot be described. Null says that; an error
+		// would fail the whole page list over a parent we were never given
+		// access to.
+		p.ParentDatabase.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return db, nil
+}
+
+// databaseByID finds one database in the notion.databases collection. The
+// collection is resolved through the notion singleton, so the search walk
+// that builds it happens once per scan no matter how many pages ask.
+func databaseByID(runtime *plugin.Runtime, id string) (*mqlNotionDatabase, error) {
+	res, err := CreateResource(runtime, "notion", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+
+	databases := res.(*mqlNotion).GetDatabases()
+	if databases.Error != nil {
+		return nil, databases.Error
+	}
+
+	for _, entry := range databases.Data {
+		db, ok := entry.(*mqlNotionDatabase)
+		if !ok {
+			continue
+		}
+		if db.Id.Data == id {
+			return db, nil
+		}
+	}
+	return nil, nil
 }
 
 // parentPage resolves the page this page is nested under, when it is
@@ -193,10 +234,41 @@ func (p *mqlNotionPage) parentPage() (*mqlNotionPage, error) {
 		p.ParentPage.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
-	res, err := NewResource(p.MqlRuntime, "notion.page",
-		map[string]*llx.RawData{"id": llx.StringData(p.cacheParentPageId)})
+	parent, err := pageByID(p.MqlRuntime, p.cacheParentPageId)
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlNotionPage), nil
+	if parent == nil {
+		// Not among the pages shared with this integration; see
+		// parentDatabase for why this is null rather than an error.
+		p.ParentPage.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return parent, nil
+}
+
+// pageByID finds one page in the notion.pages collection, for the same
+// reason databaseByID scans notion.databases instead of issuing a retrieve
+// per page.
+func pageByID(runtime *plugin.Runtime, id string) (*mqlNotionPage, error) {
+	res, err := CreateResource(runtime, "notion", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+
+	pages := res.(*mqlNotion).GetPages()
+	if pages.Error != nil {
+		return nil, pages.Error
+	}
+
+	for _, entry := range pages.Data {
+		page, ok := entry.(*mqlNotionPage)
+		if !ok {
+			continue
+		}
+		if page.Id.Data == id {
+			return page, nil
+		}
+	}
+	return nil, nil
 }
