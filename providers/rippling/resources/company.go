@@ -4,9 +4,9 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/rippling/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/rippling/connection"
 )
 
 func (c *mqlRipplingCompany) id() (string, error) {
