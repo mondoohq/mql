@@ -24,10 +24,11 @@ provider plus a client generated from the vendor's OpenAPI v3 spec, and only
 (3) failing both, a hand-written or community client, stated with
 justification. Notion lands on rung 3:
 
-1. **No official vendor Go SDK.** Notion publishes and maintains official SDKs
-   for [JavaScript](https://github.com/makenotion/notion-sdk-js) and
-   [Python](https://github.com/makenotion/notion-sdk-py) only. There is no
-   `github.com/makenotion/...` Go module, official or otherwise.
+1. **No official vendor Go SDK.** Notion publishes and maintains exactly one
+   official SDK, for
+   [JavaScript](https://github.com/makenotion/notion-sdk-js). Clients for
+   every other language, Python and Go included, are community projects.
+   There is no `github.com/makenotion/...` Go module, official or otherwise.
 2. **No OpenAPI v3 spec, and no official Terraform provider to harmonize
    with.** Notion does not publish a formal OpenAPI v3 (or v2) specification
    for the public API, so a generated client is not an option. Terraform
@@ -658,7 +659,7 @@ fields added after a version has actually shipped.
 - [Notion API Authentication](https://developers.notion.com/reference/authentication)
 - [Notion API Pagination](https://developers.notion.com/reference/intro#pagination)
 - [jomei/notionapi Go SDK](https://github.com/jomei/notionapi) (rung-3 community client, see Context: Client selection)
-- [notion-sdk-js](https://github.com/makenotion/notion-sdk-js) / [notion-sdk-py](https://github.com/makenotion/notion-sdk-py) (official vendor SDKs, JS/Python only; no official Go SDK exists, rung 1 does not apply)
+- [notion-sdk-js](https://github.com/makenotion/notion-sdk-js) (the only official vendor SDK; no official Go SDK exists, so rung 1 does not apply)
 - Community Terraform providers checked for rung 2 (none official, so not used to harmonize this schema): [ketion-so/notion](https://registry.terraform.io/providers/ketion-so/notion/latest), [theostanton/notion](https://registry.terraform.io/providers/theostanton/notion/latest), [delize/notion](https://registry.terraform.io/providers/delize/notion/latest)
-- [Notion Enterprise SCIM API](https://developers.notion.com/reference/scim-overview) (future work, not used by this provider)
+- [Notion SCIM user provisioning](https://www.notion.com/help/provision-users-and-groups-with-scim) (Enterprise only, future work, not used by this provider)
 - Reference providers: `providers/tailscale/`, `providers/digitalocean/`
