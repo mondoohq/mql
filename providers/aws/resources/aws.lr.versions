@@ -11025,6 +11025,7 @@ aws.vpc.subnet.region 11.15.2
 aws.vpc.subnet.routeTable 11.15.2
 aws.vpc.subnet.state 11.15.2
 aws.vpc.subnet.tags 11.15.2
+aws.vpc.subnet.vpc 13.53.4
 aws.vpc.subnets 11.15.2
 aws.vpc.tags 11.15.2
 aws.vpc.vpnGateway 11.15.2

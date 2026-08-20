@@ -5564,6 +5564,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.vpc.subnet.instances": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsVpcSubnet).GetInstances()).ToDataRes(types.Array(types.Resource("aws.ec2.instance")))
 	},
+	"aws.vpc.subnet.vpc": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsVpcSubnet).GetVpc()).ToDataRes(types.Resource("aws.vpc"))
+	},
 	"aws.vpc.endpoint.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsVpcEndpoint).GetId()).ToDataRes(types.String)
 	},
@@ -37874,6 +37877,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.vpc.subnet.instances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsVpcSubnet).Instances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.vpc.subnet.vpc": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsVpcSubnet).Vpc, ok = plugin.RawToTValue[*mqlAwsVpc](v.Value, v.Error)
 		return
 	},
 	"aws.vpc.endpoint.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -85899,6 +85906,7 @@ type mqlAwsVpcSubnet struct {
 	Ipv6CidrBlock               plugin.TValue[string]
 	NetworkInterfaces           plugin.TValue[[]any]
 	Instances                   plugin.TValue[[]any]
+	Vpc                         plugin.TValue[*mqlAwsVpc]
 }
 
 // createAwsVpcSubnet creates a new instance of this resource
@@ -86097,6 +86105,22 @@ func (c *mqlAwsVpcSubnet) GetInstances() *plugin.TValue[[]any] {
 		}
 
 		return c.instances()
+	})
+}
+
+func (c *mqlAwsVpcSubnet) GetVpc() *plugin.TValue[*mqlAwsVpc] {
+	return plugin.GetOrCompute[*mqlAwsVpc](&c.Vpc, func() (*mqlAwsVpc, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.vpc.subnet", c.__id, "vpc")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsVpc), nil
+			}
+		}
+
+		return c.vpc()
 	})
 }
 

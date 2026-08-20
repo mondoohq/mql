@@ -745,6 +745,14 @@ private aws.vpc.subnet @defaults("id cidrs region availabilityZone defaultForAva
   networkInterfaces() []aws.ec2.networkinterface
   // EC2 instances running in this subnet, resolved through their network interfaces
   instances() []aws.ec2.instance
+  // VPC that contains this subnet
+  //
+  // The containing VPC, for reaching VPC-level context from a subnet handed
+  // out by another resource. Without it a check starting from, say,
+  // `aws.workspaces.directory.subnets` has to scan every VPC in the account to
+  // find the one its subnets belong to. Null when the subnet was created
+  // without a known VPC id.
+  vpc() aws.vpc
 }
 
 // Amazon Virtual Private Cloud (VPC) endpoint
