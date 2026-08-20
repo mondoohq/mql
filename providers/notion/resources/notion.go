@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/jomei/notionapi"
-	"go.mondoo.com/mql/v13/providers/notion/connection"
+	"go.mondoo.com/mql/providers/notion/connection"
 )
 
 func (r *mqlNotion) id() (string, error) {

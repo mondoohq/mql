@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 option provider = "go.mondoo.com/mql/providers/notion"
-option go_package = "go.mondoo.com/mql/v13/providers/notion/resources"
+option go_package = "go.mondoo.com/mql/providers/notion/resources"
 
 // Notion workspace integration
 //
