@@ -134,59 +134,66 @@ func (a *mqlAwsRedshift) getClusters(conn *connection.AwsConnection) []*jobpool.
 						}
 					}
 
+					sysTables := redshiftSystemTables(cluster)
+
 					mqlDBInstance, err := CreateResource(a.MqlRuntime, ResourceAwsRedshiftCluster,
 						map[string]*llx.RawData{
-							"restoredFromSnapshot":               llx.BoolData(cluster.RestoreStatus != nil),
-							"restoreStatus":                      llx.StringData(restoreStatus),
-							"restoreProgressPercent":             llx.FloatData(redshiftRestoreProgressPercent(cluster.RestoreStatus)),
-							"clusterNamespaceArn":                llx.StringDataPtr(cluster.ClusterNamespaceArn),
-							"crossRegionSnapshotCopyEnabled":     llx.BoolData(cluster.ClusterSnapshotCopyStatus != nil),
-							"snapshotCopyDestinationRegion":      llx.StringData(snapshotCopyDestinationRegion),
-							"snapshotCopyRetentionPeriod":        llx.IntDataDefault(snapshotCopyRetentionPeriod, 0),
-							"snapshotCopyManualRetentionPeriod":  llx.IntDataDefault(snapshotCopyManualRetentionPeriod, 0),
-							"snapshotCopyGrantName":              llx.StringData(snapshotCopyGrantName),
-							"expectedNextSnapshotScheduleAt":     llx.TimeDataPtr(cluster.ExpectedNextSnapshotScheduleTime),
-							"expectedNextSnapshotScheduleStatus": llx.StringDataPtr(cluster.ExpectedNextSnapshotScheduleTimeStatus),
-							"snapshotScheduleState":              llx.StringData(string(cluster.SnapshotScheduleState)),
-							"customDomainName":                   llx.StringDataPtr(cluster.CustomDomainName),
-							"customDomainCertificateExpiresAt":   llx.TimeDataPtr(cluster.CustomDomainCertificateExpiryDate),
-							"availabilityZoneRelocationStatus":   llx.StringDataPtr(cluster.AvailabilityZoneRelocationStatus),
-							"elasticIp":                          llx.StringData(elasticIp),
-							"allowVersionUpgrade":                llx.BoolDataPtr(cluster.AllowVersionUpgrade),
-							"arn":                                llx.StringData(fmt.Sprintf(redshiftClusterArnPattern, region, conn.AccountId(), convert.ToValue(cluster.ClusterIdentifier))),
-							"automatedSnapshotRetentionPeriod":   llx.IntDataDefault(cluster.AutomatedSnapshotRetentionPeriod, 0),
-							"availabilityZone":                   llx.StringDataPtr(cluster.AvailabilityZone),
-							"clusterParameterGroupNames":         llx.ArrayData(names, types.String),
-							"clusterRevisionNumber":              llx.StringDataPtr(cluster.ClusterRevisionNumber),
-							"clusterStatus":                      llx.StringDataPtr(cluster.ClusterStatus),
-							"clusterSubnetGroupName":             llx.StringDataPtr(cluster.ClusterSubnetGroupName),
-							"clusterVersion":                     llx.StringDataPtr(cluster.ClusterVersion),
-							"createdAt":                          llx.TimeDataPtr(cluster.ClusterCreateTime),
-							"dbName":                             llx.StringDataPtr(cluster.DBName),
-							"encrypted":                          llx.BoolDataPtr(cluster.Encrypted),
-							"enhancedVpcRouting":                 llx.BoolDataPtr(cluster.EnhancedVpcRouting),
-							"masterUsername":                     llx.StringDataPtr(cluster.MasterUsername),
-							"name":                               llx.StringDataPtr(cluster.ClusterIdentifier),
-							"nextMaintenanceWindowStartTime":     llx.TimeDataPtr(cluster.NextMaintenanceWindowStartTime),
-							"nodeType":                           llx.StringDataPtr(cluster.NodeType),
-							"numberOfNodes":                      llx.IntDataDefault(cluster.NumberOfNodes, 0),
-							"preferredMaintenanceWindow":         llx.StringDataPtr(cluster.PreferredMaintenanceWindow),
-							"publiclyAccessible":                 llx.BoolDataPtr(cluster.PubliclyAccessible),
-							"endpointAddress":                    llx.StringData(endpointAddress),
-							"endpointPort":                       llx.IntData(endpointPort),
-							"endpointVpcEndpoints":               llx.ArrayData(endpointVpcEndpoints, types.Dict),
-							"region":                             llx.StringData(region),
-							"tags":                               llx.MapData(redshiftTagsToMap(cluster.Tags), types.String),
-							"vpcId":                              llx.StringDataPtr(cluster.VpcId),
-							"clusterAvailabilityStatus":          llx.StringDataPtr(cluster.ClusterAvailabilityStatus),
-							"totalStorageCapacityInMegaBytes":    llx.IntDataDefault(cluster.TotalStorageCapacityInMegaBytes, 0),
-							"multiAZ":                            llx.BoolData(strings.EqualFold(convert.ToValue(cluster.MultiAZ), "enabled")),
-							"manualSnapshotRetentionPeriod":      llx.IntDataDefault(cluster.ManualSnapshotRetentionPeriod, 0),
-							"ipAddressType":                      llx.StringDataPtr(cluster.IpAddressType),
-							"maintenanceTrackName":               llx.StringDataPtr(cluster.MaintenanceTrackName),
-							"hsmStatus":                          llx.DictData(redshiftHsmStatusToDict(cluster.HsmStatus)),
-							"modifyStatus":                       llx.StringDataPtr(cluster.ModifyStatus),
-							"snapshotScheduleIdentifier":         llx.StringDataPtr(cluster.SnapshotScheduleIdentifier),
+							"restoredFromSnapshot":                    llx.BoolData(cluster.RestoreStatus != nil),
+							"restoreStatus":                           llx.StringData(restoreStatus),
+							"restoreProgressPercent":                  llx.FloatData(redshiftRestoreProgressPercent(cluster.RestoreStatus)),
+							"clusterNamespaceArn":                     llx.StringDataPtr(cluster.ClusterNamespaceArn),
+							"crossRegionSnapshotCopyEnabled":          llx.BoolData(cluster.ClusterSnapshotCopyStatus != nil),
+							"snapshotCopyDestinationRegion":           llx.StringData(snapshotCopyDestinationRegion),
+							"snapshotCopyRetentionPeriod":             llx.IntDataDefault(snapshotCopyRetentionPeriod, 0),
+							"snapshotCopyManualRetentionPeriod":       llx.IntDataDefault(snapshotCopyManualRetentionPeriod, 0),
+							"snapshotCopyGrantName":                   llx.StringData(snapshotCopyGrantName),
+							"expectedNextSnapshotScheduleAt":          llx.TimeDataPtr(cluster.ExpectedNextSnapshotScheduleTime),
+							"expectedNextSnapshotScheduleStatus":      llx.StringDataPtr(cluster.ExpectedNextSnapshotScheduleTimeStatus),
+							"snapshotScheduleState":                   llx.StringData(string(cluster.SnapshotScheduleState)),
+							"customDomainName":                        llx.StringDataPtr(cluster.CustomDomainName),
+							"customDomainCertificateExpiresAt":        llx.TimeDataPtr(cluster.CustomDomainCertificateExpiryDate),
+							"availabilityZoneRelocationStatus":        llx.StringDataPtr(cluster.AvailabilityZoneRelocationStatus),
+							"elasticIp":                               llx.StringData(elasticIp),
+							"allowVersionUpgrade":                     llx.BoolDataPtr(cluster.AllowVersionUpgrade),
+							"arn":                                     llx.StringData(fmt.Sprintf(redshiftClusterArnPattern, region, conn.AccountId(), convert.ToValue(cluster.ClusterIdentifier))),
+							"automatedSnapshotRetentionPeriod":        llx.IntDataDefault(cluster.AutomatedSnapshotRetentionPeriod, 0),
+							"availabilityZone":                        llx.StringDataPtr(cluster.AvailabilityZone),
+							"clusterParameterGroupNames":              llx.ArrayData(names, types.String),
+							"clusterRevisionNumber":                   llx.StringDataPtr(cluster.ClusterRevisionNumber),
+							"clusterStatus":                           llx.StringDataPtr(cluster.ClusterStatus),
+							"clusterSubnetGroupName":                  llx.StringDataPtr(cluster.ClusterSubnetGroupName),
+							"clusterVersion":                          llx.StringDataPtr(cluster.ClusterVersion),
+							"createdAt":                               llx.TimeDataPtr(cluster.ClusterCreateTime),
+							"dbName":                                  llx.StringDataPtr(cluster.DBName),
+							"encrypted":                               llx.BoolDataPtr(cluster.Encrypted),
+							"enhancedVpcRouting":                      llx.BoolDataPtr(cluster.EnhancedVpcRouting),
+							"masterUsername":                          llx.StringDataPtr(cluster.MasterUsername),
+							"name":                                    llx.StringDataPtr(cluster.ClusterIdentifier),
+							"nextMaintenanceWindowStartTime":          llx.TimeDataPtr(cluster.NextMaintenanceWindowStartTime),
+							"nodeType":                                llx.StringDataPtr(cluster.NodeType),
+							"numberOfNodes":                           llx.IntDataDefault(cluster.NumberOfNodes, 0),
+							"preferredMaintenanceWindow":              llx.StringDataPtr(cluster.PreferredMaintenanceWindow),
+							"publiclyAccessible":                      llx.BoolDataPtr(cluster.PubliclyAccessible),
+							"endpointAddress":                         llx.StringData(endpointAddress),
+							"endpointPort":                            llx.IntData(endpointPort),
+							"endpointVpcEndpoints":                    llx.ArrayData(endpointVpcEndpoints, types.Dict),
+							"vpcId":                                   llx.StringDataPtr(cluster.VpcId),
+							"region":                                  llx.StringData(region),
+							"tags":                                    llx.MapData(redshiftTagsToMap(cluster.Tags), types.String),
+							"clusterAvailabilityStatus":               llx.StringDataPtr(cluster.ClusterAvailabilityStatus),
+							"totalStorageCapacityInMegaBytes":         llx.IntDataDefault(cluster.TotalStorageCapacityInMegaBytes, 0),
+							"multiAZ":                                 llx.BoolData(strings.EqualFold(convert.ToValue(cluster.MultiAZ), "enabled")),
+							"manualSnapshotRetentionPeriod":           llx.IntDataDefault(cluster.ManualSnapshotRetentionPeriod, 0),
+							"ipAddressType":                           llx.StringDataPtr(cluster.IpAddressType),
+							"maintenanceTrackName":                    llx.StringDataPtr(cluster.MaintenanceTrackName),
+							"hsmStatus":                               llx.DictData(redshiftHsmStatusToDict(cluster.HsmStatus)),
+							"modifyStatus":                            llx.StringDataPtr(cluster.ModifyStatus),
+							"snapshotScheduleIdentifier":              llx.StringDataPtr(cluster.SnapshotScheduleIdentifier),
+							"systemTablePublishingEnabledAll":         llx.BoolDataPtr(sysTables.enabledAll),
+							"systemTablePublishingGranularity":        llx.StringDataPtr(sysTables.granularity),
+							"systemTablePublishingNamespace":          llx.StringDataPtr(sysTables.namespace),
+							"systemTablePublishingTables":             llx.ArrayData(sysTables.tables, types.String),
+							"systemTablePublishingLastIngestionTimes": llx.MapData(sysTables.lastIngestion, types.String),
 						})
 					if err != nil {
 						return nil, err
@@ -917,4 +924,44 @@ func (a *mqlAwsRedshift) getSnapshotSchedules(conn *connection.AwsConnection) []
 
 func (a *mqlAwsRedshiftSnapshotSchedule) id() (string, error) {
 	return a.__id, nil
+}
+
+type mqlAwsRedshiftEventSubscriptionInternal struct {
+	cacheSnsTopicArn string
+}
+
+// redshiftSystemTablePublishing is the flattened view of a cluster's system
+// table publishing status.
+//
+// DescribeClusters omits LoggingPublishStatus entirely when publishing is not
+// configured, so each scalar stays a pointer: nil reports null, which keeps
+// "not configured" distinguishable from "configured and switched off".
+type redshiftSystemTablePublishing struct {
+	enabledAll    *bool
+	granularity   *string
+	namespace     *string
+	tables        []any
+	lastIngestion map[string]any
+}
+
+func redshiftSystemTables(cluster redshifttypes.Cluster) redshiftSystemTablePublishing {
+	out := redshiftSystemTablePublishing{
+		tables:        []any{},
+		lastIngestion: map[string]any{},
+	}
+	if cluster.LoggingPublishStatus == nil || cluster.LoggingPublishStatus.S3Tables == nil {
+		return out
+	}
+
+	st := cluster.LoggingPublishStatus.S3Tables
+	out.enabledAll = st.EnabledAll
+	out.granularity = st.S3TableGranularity
+	out.namespace = st.S3TableNamespace
+	for _, t := range st.S3Tables {
+		out.tables = append(out.tables, t)
+	}
+	for k, v := range st.LastIngestionTimes {
+		out.lastIngestion[k] = v
+	}
+	return out
 }

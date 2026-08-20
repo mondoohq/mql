@@ -973,7 +973,9 @@ aws.batch.computeEnvironment 13.1.1
 aws.batch.computeEnvironment.allocationStrategy 13.1.1
 aws.batch.computeEnvironment.arn 13.1.1
 aws.batch.computeEnvironment.bidPercentage 13.14.1
+aws.batch.computeEnvironment.capacityTags 13.53.4
 aws.batch.computeEnvironment.computeResourceType 13.1.1
+aws.batch.computeEnvironment.containerInsights 13.53.4
 aws.batch.computeEnvironment.containerOrchestrationType 13.1.1
 aws.batch.computeEnvironment.desiredVcpus 13.1.1
 aws.batch.computeEnvironment.ec2Configurations 13.14.1
@@ -1356,6 +1358,11 @@ aws.bedrock.agentCore.memory 13.31.2
 aws.bedrock.agentCore.memory.arn 13.31.2
 aws.bedrock.agentCore.memory.createdAt 13.31.2
 aws.bedrock.agentCore.memory.id 13.31.2
+aws.bedrock.agentCore.memory.namespaceKey 13.53.4
+aws.bedrock.agentCore.memory.namespaceKey.allowedValues 13.53.4
+aws.bedrock.agentCore.memory.namespaceKey.key 13.53.4
+aws.bedrock.agentCore.memory.namespaceKey.regexPattern 13.53.4
+aws.bedrock.agentCore.memory.namespaceKeys 13.53.4
 aws.bedrock.agentCore.memory.region 13.31.2
 aws.bedrock.agentCore.memory.status 13.31.2
 aws.bedrock.agentCore.memory.updatedAt 13.31.2
@@ -2719,6 +2726,10 @@ aws.directconnect.connection.name 13.52.2
 aws.directconnect.connection.ownerAccount 13.52.2
 aws.directconnect.connection.partnerName 13.52.2
 aws.directconnect.connection.portEncryptionStatus 13.52.2
+aws.directconnect.connection.prefixPoolSizeIpv4 13.53.4
+aws.directconnect.connection.prefixPoolSizeIpv6 13.53.4
+aws.directconnect.connection.prefixPoolUnallocatedCountIpv4 13.53.4
+aws.directconnect.connection.prefixPoolUnallocatedCountIpv6 13.53.4
 aws.directconnect.connection.providerName 13.52.2
 aws.directconnect.connection.region 13.52.2
 aws.directconnect.connection.state 13.52.2
@@ -2733,6 +2744,7 @@ aws.directconnect.gateway.name 13.52.2
 aws.directconnect.gateway.ownerAccount 13.52.2
 aws.directconnect.gateway.state 13.52.2
 aws.directconnect.gateway.stateChangeError 13.52.2
+aws.directconnect.gateway.totalPrefixPoolAllocations 13.53.4
 aws.directconnect.gateways 13.52.2
 aws.directconnect.virtualInterface 13.52.2
 aws.directconnect.virtualInterface.addressFamily 13.52.2
@@ -2748,6 +2760,8 @@ aws.directconnect.virtualInterface.jumboFrameCapable 13.52.2
 aws.directconnect.virtualInterface.mtu 13.52.2
 aws.directconnect.virtualInterface.name 13.52.2
 aws.directconnect.virtualInterface.ownerAccount 13.52.2
+aws.directconnect.virtualInterface.prefixPoolAllocatedCountIpv4 13.53.4
+aws.directconnect.virtualInterface.prefixPoolAllocatedCountIpv6 13.53.4
 aws.directconnect.virtualInterface.region 13.52.2
 aws.directconnect.virtualInterface.routeFilterPrefixes 13.52.2
 aws.directconnect.virtualInterface.siteLinkEnabled 13.52.2
@@ -4570,6 +4584,8 @@ aws.eks.addonVersion.requiresConfiguration 13.12.1
 aws.eks.addonVersion.requiresIamPermissions 13.12.1
 aws.eks.cluster 11.15.2
 aws.eks.cluster.accessEntries 13.6.3
+aws.eks.cluster.activeCertificateAuthorityActivatedBy 13.53.4
+aws.eks.cluster.activeCertificateAuthorityId 13.53.4
 aws.eks.cluster.addons 11.15.2
 aws.eks.cluster.arn 11.15.2
 aws.eks.cluster.authenticationMode 11.15.2
@@ -8496,6 +8512,11 @@ aws.redshift.cluster.snapshotCopyRetentionPeriod 13.39.2
 aws.redshift.cluster.snapshotScheduleIdentifier 13.38.2
 aws.redshift.cluster.snapshotScheduleState 13.39.2
 aws.redshift.cluster.snapshots 11.15.2
+aws.redshift.cluster.systemTablePublishingEnabledAll 13.53.4
+aws.redshift.cluster.systemTablePublishingGranularity 13.53.4
+aws.redshift.cluster.systemTablePublishingLastIngestionTimes 13.53.4
+aws.redshift.cluster.systemTablePublishingNamespace 13.53.4
+aws.redshift.cluster.systemTablePublishingTables 13.53.4
 aws.redshift.cluster.tags 11.15.2
 aws.redshift.cluster.totalStorageCapacityInMegaBytes 11.15.2
 aws.redshift.cluster.vpc 11.16.1

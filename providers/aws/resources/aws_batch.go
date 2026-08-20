@@ -100,6 +100,7 @@ func (a *mqlAwsBatch) getComputeEnvironments(conn *connection.AwsConnection) []*
 					}
 					mqlCeRes := mqlCe.(*mqlAwsBatchComputeEnvironment)
 					mqlCeRes.cacheComputeResources = ce.ComputeResources
+					mqlCeRes.cacheEcsSettings = ce.EcsSettings
 					mqlCeRes.cacheServiceRoleArn = ce.ServiceRole
 					mqlCeRes.cacheEcsClusterArn = ce.EcsClusterArn
 					mqlCeRes.cacheEks = ce.EksConfiguration
@@ -123,6 +124,7 @@ func (a *mqlAwsBatch) getComputeEnvironments(conn *connection.AwsConnection) []*
 
 type mqlAwsBatchComputeEnvironmentInternal struct {
 	cacheComputeResources *batch_types.ComputeResource
+	cacheEcsSettings      *batch_types.EcsSettings
 	cacheServiceRoleArn   *string
 	cacheEcsClusterArn    *string
 	cacheEks              *batch_types.EksConfiguration
@@ -150,6 +152,29 @@ func (a *mqlAwsBatchComputeEnvironment) desiredVcpus() (int64, error) {
 		return 0, nil
 	}
 	return int64(*a.cacheComputeResources.DesiredvCpus), nil
+}
+
+// containerInsights reports the CloudWatch Container Insights mode for the
+// environment. A compute environment that is not ECS-backed reports no ECS
+// settings at all, which is null rather than DISABLED: the service has not
+// said Container Insights is off, it has said the setting does not apply.
+func (a *mqlAwsBatchComputeEnvironment) containerInsights() (string, error) {
+	if a.cacheEcsSettings == nil {
+		a.ContainerInsights.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return string(a.cacheEcsSettings.ContainerInsights), nil
+}
+
+func (a *mqlAwsBatchComputeEnvironment) capacityTags() (map[string]any, error) {
+	if a.cacheComputeResources == nil {
+		return map[string]any{}, nil
+	}
+	tags := make(map[string]any, len(a.cacheComputeResources.CapacityTags))
+	for k, v := range a.cacheComputeResources.CapacityTags {
+		tags[k] = v
+	}
+	return tags, nil
 }
 
 func (a *mqlAwsBatchComputeEnvironment) computeResourceType() (string, error) {

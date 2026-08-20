@@ -268,6 +268,25 @@ func (a *mqlAwsEksCluster) populateFromDescribe(cluster *ekstypes.Cluster) error
 	}
 	a.CertificateAuthority = plugin.TValue[string]{Data: certAuth, State: plugin.StateIsSet}
 
+	// EKS reports a distinct active certificate authority only once a cluster
+	// has been through a rotation. Leaving these null rather than empty keeps
+	// "never rotated" distinguishable from "rotated to an authority with a
+	// blank id".
+	if cluster.CertificateAuthority != nil && cluster.CertificateAuthority.Active != nil {
+		active := cluster.CertificateAuthority.Active
+		activeID := ""
+		if active.Id != nil {
+			activeID = *active.Id
+		}
+		a.ActiveCertificateAuthorityId = plugin.TValue[string]{Data: activeID, State: plugin.StateIsSet}
+		a.ActiveCertificateAuthorityActivatedBy = plugin.TValue[string]{
+			Data: string(active.ActivatedBy), State: plugin.StateIsSet,
+		}
+	} else {
+		a.ActiveCertificateAuthorityId = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
+		a.ActiveCertificateAuthorityActivatedBy = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
+	}
+
 	// Typed encryption config fields
 	var encryptionResources []any
 	if len(cluster.EncryptionConfig) > 0 && cluster.EncryptionConfig[0].Provider != nil && cluster.EncryptionConfig[0].Provider.KeyArn != nil {
@@ -476,6 +495,14 @@ func (a *mqlAwsEksCluster) health() (map[string]any, error) {
 }
 
 func (a *mqlAwsEksCluster) certificateAuthority() (string, error) {
+	return "", a.fetchDetail()
+}
+
+func (a *mqlAwsEksCluster) activeCertificateAuthorityId() (string, error) {
+	return "", a.fetchDetail()
+}
+
+func (a *mqlAwsEksCluster) activeCertificateAuthorityActivatedBy() (string, error) {
 	return "", a.fetchDetail()
 }
 

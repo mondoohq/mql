@@ -1082,6 +1082,7 @@ func (a *mqlAwsBedrockAgentCore) memories() ([]any, error) {
 				if err != nil {
 					return nil, err
 				}
+				mqlMem.(*mqlAwsBedrockAgentCoreMemory).cacheRegion = region
 				res = append(res, mqlMem)
 			}
 		}
@@ -1089,8 +1090,87 @@ func (a *mqlAwsBedrockAgentCore) memories() ([]any, error) {
 	}))
 }
 
+type mqlAwsBedrockAgentCoreMemoryInternal struct {
+	cacheRegion string
+	fetchLock   sync.Mutex
+	fetched     atomic.Bool
+	detail      *bedrockagentcorecontrol.GetMemoryOutput
+}
+
 func (a *mqlAwsBedrockAgentCoreMemory) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+// fetchDetail reads the full memory store. ListMemories returns a summary that
+// omits the namespace keys, so they need a per-store call.
+func (a *mqlAwsBedrockAgentCoreMemory) fetchDetail() (*bedrockagentcorecontrol.GetMemoryOutput, error) {
+	if a.fetched.Load() {
+		return a.detail, nil
+	}
+	a.fetchLock.Lock()
+	defer a.fetchLock.Unlock()
+	if a.fetched.Load() {
+		return a.detail, nil
+	}
+	if a.Id.Error != nil {
+		return nil, a.Id.Error
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.BedrockAgentCoreControl(a.cacheRegion)
+	memoryId := a.Id.Data
+	detail, err := svc.GetMemory(context.Background(), &bedrockagentcorecontrol.GetMemoryInput{
+		MemoryId: &memoryId,
+	})
+	if err != nil {
+		return nil, err
+	}
+	a.detail = detail
+	a.fetched.Store(true)
+	return a.detail, nil
+}
+
+func (a *mqlAwsBedrockAgentCoreMemory) namespaceKeys() ([]any, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	if detail == nil || detail.Memory == nil {
+		return []any{}, nil
+	}
+
+	res := make([]any, 0, len(detail.Memory.NamespaceKeys))
+	for _, entry := range detail.Memory.NamespaceKeys {
+		if entry.Key == nil {
+			continue
+		}
+
+		// A key with no validation accepts any value. Reporting an empty
+		// allowed-value list and an empty pattern is the honest rendering of
+		// that: neither constraint is in force.
+		allowed := []any{}
+		regexPattern := ""
+		if entry.Validation != nil {
+			for _, v := range entry.Validation.AllowedValues {
+				allowed = append(allowed, v)
+			}
+			if entry.Validation.RegexPattern != nil {
+				regexPattern = *entry.Validation.RegexPattern
+			}
+		}
+
+		mqlKey, err := CreateResource(a.MqlRuntime, "aws.bedrock.agentCore.memory.namespaceKey",
+			map[string]*llx.RawData{
+				"__id":          llx.StringData(a.Arn.Data + "/namespaceKey/" + *entry.Key),
+				"key":           llx.StringDataPtr(entry.Key),
+				"allowedValues": llx.ArrayData(allowed, types.String),
+				"regexPattern":  llx.StringData(regexPattern),
+			})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlKey)
+	}
+	return res, nil
 }
 
 // --- Browsers ---

@@ -11665,7 +11665,7 @@ private aws.cloudfront.originAccessControl @defaults("name originAccessControlOr
   description string
   // Signing protocol used to authenticate origin requests
   //
-  // The only valid value is `sigv4`.
+  // One of `sigv4` or `sigv4a`.
   signingProtocol string
   // When CloudFront signs requests sent to the origin
   //
@@ -15158,7 +15158,8 @@ private aws.redshift.cluster @defaults("dbName clusterVersion clusterStatus regi
   //
   // Dict with the keys `LoggingEnabled` (bool, true when audit logging is
   // on), `BucketName` and `S3KeyPrefix` (the S3 destination for delivered
-  // logs), `LogDestinationType` (`s3` or `cloudwatch`), `LogExports` (the
+  // logs), `LogDestinationType` (`s3`, `cloudwatch`, or `s3table`),
+  // `LogExports` (the
   // exported log types: `connectionlog`, `useractivitylog`, `userlog`), and
   // the delivery timestamps `LastSuccessfulDeliveryTime`, `LastFailureTime`,
   // and `LastFailureMessage`.
@@ -15234,6 +15235,29 @@ private aws.redshift.cluster @defaults("dbName clusterVersion clusterStatus regi
   masterPasswordSecretKmsKey() aws.kms.key
   // Identifier of the snapshot schedule associated with the cluster, if any
   snapshotScheduleIdentifier string
+  // Whether the cluster publishes every current and future system table
+  //
+  // True when the cluster is enrolled in all system tables rather than an
+  // explicit subset. Null when system table publishing is not configured.
+  systemTablePublishingEnabledAll bool
+  // Scope of system table publishing in effect
+  //
+  // Either `cluster` or `account`. Null when system table publishing is not
+  // configured.
+  systemTablePublishingGranularity string
+  // Namespace in the S3 table bucket holding the published system tables
+  //
+  // Null when system table publishing is not configured.
+  systemTablePublishingNamespace string
+  // System tables currently being published
+  //
+  // Empty when the cluster publishes none.
+  systemTablePublishingTables []string
+  // Time each published system table last received data
+  //
+  // Keyed by system table name. Use it to judge whether publishing is still
+  // delivering, rather than merely switched on.
+  systemTablePublishingLastIngestionTimes map[string]string
   // Snapshots for this cluster
   snapshots() []aws.redshift.snapshot
   // Whether the cluster was created by restoring from a snapshot
@@ -20689,6 +20713,15 @@ aws.eks.cluster @defaults("arn version status") {
   health() dict
   // Base64-encoded certificate authority data for the cluster
   certificateAuthority() string
+  // Identifier of the certificate authority currently signing for the cluster
+  //
+  // Null on a cluster that has not been through a certificate authority
+  // rotation, where EKS reports no distinct active authority.
+  activeCertificateAuthorityId() string
+  // What activated the certificate authority currently in use
+  //
+  // One of `EKS` or `CUSTOMER`. Null when no active authority is reported.
+  activeCertificateAuthorityActivatedBy() string
   // List of EKS cluster insights (upgrade readiness, best practices)
   insights() []aws.eks.insight
   // Available add-on versions compatible with this cluster's Kubernetes version
@@ -26220,8 +26253,22 @@ private aws.batch.computeEnvironment @defaults("arn name state status") {
   minVcpus() int
   // Desired vCPUs for compute resources
   desiredVcpus() int
-  // Compute resource type: EC2, SPOT, FARGATE, or FARGATE_SPOT
+  // Compute resource type
+  //
+  // One of EC2, SPOT, FARGATE, FARGATE_SPOT, or ECS_MANAGED_INSTANCES.
   computeResourceType() string
+  // CloudWatch Container Insights mode for the compute environment
+  //
+  // One of `ENABLED` (standard CPU, memory, disk, and network metrics),
+  // `ENHANCED` (the standard metrics plus per-task observability), or
+  // `DISABLED`. Null when the compute environment reports no ECS settings,
+  // which is the case for environments that are not ECS-backed.
+  containerInsights() string
+  // Tags Batch applies to the capacity it launches for this environment
+  //
+  // Distinct from the environment's own `tags`: these propagate to the
+  // underlying compute. Empty when none are configured.
+  capacityTags() map[string]string
   // Instance types used by the compute environment
   instanceTypes() []string
   // Allocation strategy: BEST_FIT, BEST_FIT_PROGRESSIVE, SPOT_CAPACITY_OPTIMIZED, SPOT_PRICE_CAPACITY_OPTIMIZED
@@ -26331,7 +26378,9 @@ private aws.batch.jobDefinition @defaults("arn name type status") {
   type string
   // Status: ACTIVE or INACTIVE
   status string
-  // Platform capabilities (EC2 or FARGATE)
+  // Platform capabilities
+  //
+  // Each entry is one of EC2, FARGATE, or MANAGED_INSTANCES.
   platformCapabilities() []string
   // Whether to propagate definition tags to the ECS task
   propagateTags() bool
@@ -29864,10 +29913,36 @@ private aws.bedrock.agentCore.memory @defaults("id status") {
   region string
   // Current status of the memory store
   status string
+  // Namespace variable keys defined for the memory store
+  //
+  // Each key names a variable an agent may set when it writes an event, and
+  // carries the validation constraining what values are accepted. A key with
+  // no validation accepts any value. Empty when the store defines none.
+  namespaceKeys() []aws.bedrock.agentCore.memory.namespaceKey
   // Time the memory store was created
   createdAt time
   // Time the memory store was last updated
   updatedAt time
+}
+
+// Amazon Bedrock AgentCore memory namespace key
+//
+// A namespace variable an agent may set when writing an event to a memory
+// store, together with the rules constraining its value. `allowedValues`
+// limits the value to a fixed set and `regexPattern` constrains its shape;
+// when both are present the service requires both to hold. A key with
+// neither accepts any value.
+private aws.bedrock.agentCore.memory.namespaceKey @defaults("key") {
+  // Name of the namespace variable key
+  key string
+  // Values the key accepts
+  //
+  // Empty when the key is not restricted to a fixed set of values.
+  allowedValues []string
+  // Regular expression the key's value must match
+  //
+  // Empty when the key has no pattern constraint.
+  regexPattern string
 }
 
 // Amazon Bedrock AgentCore browser
@@ -31795,6 +31870,22 @@ private aws.directconnect.connection @defaults("id name state bandwidth region")
   lagId string
   // AWS device the connection terminates on
   awsDevice string
+  // Size of the IPv4 prefix pool allocated to the connection
+  //
+  // Null on a connection that has no IPv4 prefix pool.
+  prefixPoolSizeIpv4 int
+  // Size of the IPv6 prefix pool allocated to the connection
+  //
+  // Null on a connection that has no IPv6 prefix pool.
+  prefixPoolSizeIpv6 int
+  // IPv4 prefix pool addresses not yet allocated to a virtual interface
+  //
+  // Null on a connection that has no IPv4 prefix pool.
+  prefixPoolUnallocatedCountIpv4 int
+  // IPv6 prefix pool addresses not yet allocated to a virtual interface
+  //
+  // Null on a connection that has no IPv6 prefix pool.
+  prefixPoolUnallocatedCountIpv6 int
   // Tags on the connection
   tags map[string]string
   // Virtual interfaces carried over this connection
@@ -31858,6 +31949,14 @@ private aws.directconnect.virtualInterface @defaults("id name type state vlan") 
   jumboFrameCapable bool
   // Whether SiteLink is enabled, allowing traffic between Direct Connect locations without traversing a Region
   siteLinkEnabled bool
+  // IPv4 prefix pool addresses allocated to the virtual interface
+  //
+  // Null on a virtual interface with no IPv4 prefix pool allocation.
+  prefixPoolAllocatedCountIpv4 int
+  // IPv6 prefix pool addresses allocated to the virtual interface
+  //
+  // Null on a virtual interface with no IPv6 prefix pool allocation.
+  prefixPoolAllocatedCountIpv6 int
   // Tags on the virtual interface
   tags map[string]string
 }
@@ -31881,4 +31980,8 @@ private aws.directconnect.gateway @defaults("id name state") {
   ownerAccount string
   // Reason the gateway changed state, empty when it has not
   stateChangeError string
+  // Prefix pool addresses allocated across every virtual interface on the gateway
+  //
+  // Null on a gateway that has no prefix pool allocations.
+  totalPrefixPoolAllocations int
 }
