@@ -1,28 +1,41 @@
 # Notion Provider
 
-<!-- TODO: one to three sentences describing what this provider inventories and why
-     someone would query it (the security posture or assets it exposes). -->
-The `notion` provider connects to Notion and inventories it through
-read-only queries.
+The `notion` provider inventories a Notion workspace through read-only API
+queries: the workspace members and bots, the databases and pages an
+integration has been given access to, and the integration's own identity. Its
+primary security signal is exposure, `publicUrl` and `isPubliclyShared` report
+which pages and databases have been published to the web and are readable
+without a Notion account.
 
 ## Prerequisites
 
-<!-- TODO (optional): required tooling, versions, network access, or account permissions.
-     Delete this section if there are none. -->
+- A Notion **internal integration** in the workspace you want to query, with
+  these capabilities:
+  - **Read content**, for `notion.pages` and `notion.databases`
+  - **Read user information including email addresses**, if you want
+    `notion.user.email` populated. Without it the field is empty for
+    person-type users.
+- **Content shared with the integration.** A new integration can see nothing.
+  Notion has no "list everything" endpoint, so the provider enumerates through
+  the search API, which only returns objects explicitly connected to the
+  integration. Share a page or database with it (**⋯** menu, then
+  **Connections**) and child content is inherited.
 
 ## Authentication
 
-<!-- TODO: how to authenticate. List the connection flags/arguments, and give one runnable
-     example per auth method. Use blockquote tips for how to obtain credentials. Keep it to a
-     few lines for a simple token/env-var provider. -->
+Provide an internal integration token with the `--token` flag or the
+`NOTION_TOKEN` environment variable.
 
-Arguments:
-
-- `--user` - the user to authenticate as.
-- `--ask-pass` - prompt for the password (or `--password`).
+> Create a token at <https://www.notion.so/profile/integrations>. Internal
+> integration secrets begin with `ntn_` (or `secret_` in older workspaces).
 
 ```shell
-mql shell notion --user USER --ask-pass
+# via flag
+mql shell notion --token ntn_...
+
+# via environment variable
+export NOTION_TOKEN=ntn_...
+mql shell notion
 ```
 
 ## Usage
@@ -33,36 +46,107 @@ Open an interactive shell:
 mql shell notion
 ```
 
+Or run a single query:
+
+```shell
+mql run notion -c "notion.pages.where(isPubliclyShared)"
+```
+
 ## Discovery
 
-<!-- TODO (optional): only for providers that emit child assets. Describe the asset model and
-     the `--discover` targets, with a scan example. Delete this section if the provider emits a
-     single asset. -->
+The provider emits a single asset, the connected workspace, as the root asset.
+It does not discover child assets, so `--discover` has nothing extra to return.
 
 ## Examples
 
-<!-- TODO: several labeled example queries. Each should have a short prose lead-in, a runnable
-     `mql>` query, and its real output. These are what new developers rely on most, so make them
-     copy-pasteable and representative of the provider's key resources. -->
-
-**Example query**
-
-Describe what this query returns.
+**Confirm the token and see which workspace it reaches**
 
 ```shell
-mql> notion.<resource>
+mql> notion.bot { id name ownerType workspaceName }
+```
+
+**Find content published to the web**
+
+The exposure query this provider exists for. Anything returned here is readable
+by anyone with the link, with no Notion account required.
+
+```shell
+mql> notion.pages.where(isPubliclyShared) { title publicUrl lastEditedTime }
+mql> notion.databases.where(isPubliclyShared) { title publicUrl }
+```
+
+**Review who is in the workspace**
+
+```shell
+mql> notion.users { name type email }
+```
+
+Bots are users too. `botOwnerType` distinguishes a workspace-owned integration
+from one scoped to a single user:
+
+```shell
+mql> notion.users.where(type == "bot") { name botOwnerType }
+```
+
+**Summarize what the integration can see**
+
+```shell
+mql> notion.workspace { name userCount databaseCount pageCount }
+```
+
+**Find stale or archived content**
+
+```shell
+mql> notion.pages.where(archived) { title lastEditedTime }
 ```
 
 ## Resources
 
-<!-- TODO (optional): a short pointer to the resources this provider exposes. Do NOT hand-list
-     every field; the resource reference is generated from the `.lr` schema comments. -->
+The provider exposes `notion`, `notion.bot`, `notion.workspace`, `notion.user`,
+`notion.database`, and `notion.page`. Field-level documentation is generated
+from the schema comments in `resources/notion.lr`.
+
+All resources are marked `@maturity("experimental")`, their shape may still
+change.
 
 ## Verification
 
-<!-- TODO (optional): one or two quick queries that confirm the connection and permissions work,
-     plus what an empty result implies (e.g. missing read permission). -->
+This query confirms the token is valid and shows which workspace it reaches:
+
+```shell
+mql run notion -c "notion.bot { name workspaceName }"
+```
+
+If that succeeds but the content queries come back empty:
+
+```shell
+mql run notion -c "notion.workspace { userCount databaseCount pageCount }"
+```
+
+then the token is fine and nothing has been shared with the integration yet.
+An empty `pages`/`databases` list is a permission result, not an error.
 
 ## Troubleshooting
 
-<!-- TODO (optional): common errors and their fixes. Delete if not needed. -->
+**`invalid Notion integration token, verify the token and try again`**
+
+The API rejected the token with a 401. Confirm you copied the internal
+integration secret rather than an OAuth client secret, and that the integration
+still exists in the workspace.
+
+**`notion.pages` and `notion.databases` are empty**
+
+The integration has no content connected to it. See
+[Prerequisites](#prerequisites). This is the most common surprise, the token is
+valid and the queries are correct, but search only returns shared objects.
+
+**`notion.user.email` is empty for real people**
+
+The integration lacks the *read user information including email addresses*
+capability. Update it in the integration's settings and re-run.
+
+**Admin and governance data is missing**
+
+The base Notion API is scoped to content integrations. SSO, SCIM, and audit-log
+data require Notion's Enterprise APIs and are not modeled here. See
+`docs/adr/038-notion-provider.md`.
