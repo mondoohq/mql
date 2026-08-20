@@ -6,6 +6,7 @@ package awsec2ebsconn
 import (
 	"context"
 	"math/rand"
+	"slices"
 	"strings"
 	"time"
 
@@ -148,20 +149,64 @@ func (c *AwsEbsConnection) GetVolumeInfoForInstance(ctx context.Context, instanc
 	return awsec2ebstypes.VolumeInfo{}, errors.New("no volume id found for instance")
 }
 
+// conventionalRootDeviceNames are the device names AWS gives a root volume on
+// the standard AMIs. They are only consulted when the instance does not report
+// a RootDeviceName of its own, which should not happen for an EBS-backed
+// instance.
+var conventionalRootDeviceNames = []string{"/dev/xvda", "/dev/sda1"}
+
+// GetVolumeInfoForInstance returns the EBS volume backing an instance's root
+// device, or nil when it cannot be identified.
+//
+// The instance says which device is the root one, in RootDeviceName, so match
+// on that. The device name was previously guessed with a substring test for
+// "xvda" or "sda1", which was wrong in both directions: an AMI whose root
+// device is neither found nothing, and because "xvda" is a substring of
+// "xvda1" a *data* volume at /dev/xvda1 could be picked ahead of the real root
+// at /dev/xvda. That second case is the dangerous one - the scan reports the
+// wrong filesystem's operating system and packages, and nothing errors.
+//
+// Returning nil is better than guessing: the caller turns it into "no volume
+// id found for instance", which names the problem, where a wrong volume does
+// not.
 func GetVolumeInfoForInstance(instanceinfo *types.Instance) *string {
-	if len(instanceinfo.BlockDeviceMappings) == 1 {
-		return instanceinfo.BlockDeviceMappings[0].Ebs.VolumeId
+	if instanceinfo == nil {
+		return nil
 	}
-	if len(instanceinfo.BlockDeviceMappings) > 1 {
-		for bi := range instanceinfo.BlockDeviceMappings {
-			log.Info().Interface("device", *instanceinfo.BlockDeviceMappings[bi].DeviceName).Msg("found instance block devices")
-			// todo: revisit this. this works for the standard ec2 instance setup, but no guarantees outside of that..
-			if strings.Contains(*instanceinfo.BlockDeviceMappings[bi].DeviceName, "xvda") { // xvda is the root volume
-				return instanceinfo.BlockDeviceMappings[bi].Ebs.VolumeId
+
+	// An instance-store mapping carries no EBS volume, so it is not a
+	// candidate and dereferencing it would panic.
+	ebsMappings := make([]types.InstanceBlockDeviceMapping, 0, len(instanceinfo.BlockDeviceMappings))
+	for i := range instanceinfo.BlockDeviceMappings {
+		mapping := instanceinfo.BlockDeviceMappings[i]
+		if mapping.Ebs == nil || mapping.Ebs.VolumeId == nil {
+			continue
+		}
+		log.Debug().Str("device", aws.ToString(mapping.DeviceName)).Msg("found instance block device")
+		ebsMappings = append(ebsMappings, mapping)
+	}
+	if len(ebsMappings) == 0 {
+		return nil
+	}
+
+	if rootDeviceName := aws.ToString(instanceinfo.RootDeviceName); rootDeviceName != "" {
+		for i := range ebsMappings {
+			if aws.ToString(ebsMappings[i].DeviceName) == rootDeviceName {
+				return ebsMappings[i].Ebs.VolumeId
 			}
-			if strings.Contains(*instanceinfo.BlockDeviceMappings[bi].DeviceName, "sda1") {
-				return instanceinfo.BlockDeviceMappings[bi].Ebs.VolumeId
-			}
+		}
+	}
+
+	// Either the instance reported no RootDeviceName, or it named a device
+	// that carries no EBS volume. A single EBS volume is unambiguous in
+	// both cases.
+	if len(ebsMappings) == 1 {
+		return ebsMappings[0].Ebs.VolumeId
+	}
+
+	for i := range ebsMappings {
+		if slices.Contains(conventionalRootDeviceNames, aws.ToString(ebsMappings[i].DeviceName)) {
+			return ebsMappings[i].Ebs.VolumeId
 		}
 	}
 	return nil
