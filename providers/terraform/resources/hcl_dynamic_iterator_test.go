@@ -9,8 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	mql "go.mondoo.com/mql/v13"
-	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/llx"
 )
 
 // The dynamic-block normalization in #9077 retypes `dynamic "X"` to a type-X
@@ -39,7 +38,7 @@ resource "aws_security_group" "ex" {
   }
 }
 `), 0o600))
-	rt := newRuntimeForDir(t, dir, []byte{byte(mql.TerraformResolveVars)})
+	rt := newRuntimeForDir(t, dir)
 
 	args, _, err := initTerraformResources(rt, map[string]*llx.RawData{})
 	require.NoError(t, err)
@@ -70,7 +69,7 @@ resource "aws_security_group" "ex" {
   }
 }
 `), 0o600))
-	rt := newRuntimeForDir(t, dir, []byte{byte(mql.TerraformResolveVars)})
+	rt := newRuntimeForDir(t, dir)
 
 	args, _, err := initTerraformResources(rt, map[string]*llx.RawData{})
 	require.NoError(t, err)
@@ -104,7 +103,7 @@ resource "aws_security_group" "ex" {
   }
 }
 `), 0o600))
-	rt := newRuntimeForDir(t, dir, []byte{byte(mql.TerraformResolveVars)})
+	rt := newRuntimeForDir(t, dir)
 
 	args, _, err := initTerraformResources(rt, map[string]*llx.RawData{})
 	require.NoError(t, err)
@@ -139,7 +138,7 @@ resource "oci_core_security_list" "ex" {
   }
 }
 `), 0o600))
-	rt := newRuntimeForDir(t, dir, []byte{byte(mql.TerraformResolveVars)})
+	rt := newRuntimeForDir(t, dir)
 
 	args, _, err := initTerraformResources(rt, map[string]*llx.RawData{})
 	require.NoError(t, err)
@@ -170,7 +169,7 @@ resource "aws_security_group" "ex" {
   }
 }
 `), 0o600))
-	rt := newRuntimeForDir(t, dir, []byte{byte(mql.TerraformResolveVars)})
+	rt := newRuntimeForDir(t, dir)
 
 	args, _, err := initTerraformResources(rt, map[string]*llx.RawData{})
 	require.NoError(t, err)
