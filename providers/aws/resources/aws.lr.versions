@@ -7880,6 +7880,7 @@ aws.organization.effectivePolicy 13.52.2
 aws.organization.effectivePolicy.content 13.52.2
 aws.organization.effectivePolicy.lastUpdatedAt 13.52.2
 aws.organization.effectivePolicy.type 13.52.2
+aws.organization.enabledRootFeatures 13.53.4
 aws.organization.featureSet 11.15.2
 aws.organization.id 11.15.2
 aws.organization.masterAccountArn 13.38.2
@@ -7917,6 +7918,7 @@ aws.organization.serviceControlPolicy.description 13.32.2
 aws.organization.serviceControlPolicy.id 13.32.2
 aws.organization.serviceControlPolicy.name 13.32.2
 aws.organization.serviceControlPolicy.statements 13.32.2
+aws.organization.trustedAccessServicePrincipals 13.53.4
 aws.personalize 13.48.2
 aws.personalize.campaign 13.48.2
 aws.personalize.campaign.arn 13.48.2

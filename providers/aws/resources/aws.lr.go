@@ -5158,6 +5158,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.organization.policies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsOrganization).GetPolicies()).ToDataRes(types.Array(types.Resource("aws.organization.policy")))
 	},
+	"aws.organization.enabledRootFeatures": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOrganization).GetEnabledRootFeatures()).ToDataRes(types.Array(types.String))
+	},
+	"aws.organization.trustedAccessServicePrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOrganization).GetTrustedAccessServicePrincipals()).ToDataRes(types.Array(types.String))
+	},
 	"aws.organization.resourcePolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsOrganization).GetResourcePolicy()).ToDataRes(types.Resource("aws.organization.resourcePolicy"))
 	},
@@ -37301,6 +37307,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.organization.policies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsOrganization).Policies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.organization.enabledRootFeatures": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOrganization).EnabledRootFeatures, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.organization.trustedAccessServicePrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOrganization).TrustedAccessServicePrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.organization.resourcePolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -84316,18 +84330,20 @@ type mqlAwsOrganization struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAwsOrganizationInternal it will be used here
-	Arn                     plugin.TValue[string]
-	FeatureSet              plugin.TValue[string]
-	MasterAccountId         plugin.TValue[string]
-	MasterAccountArn        plugin.TValue[string]
-	MasterAccountEmail      plugin.TValue[string]
-	Accounts                plugin.TValue[[]any]
-	Id                      plugin.TValue[string]
-	DelegatedAdministrators plugin.TValue[[]any]
-	OrganizationalUnits     plugin.TValue[[]any]
-	ServiceControlPolicies  plugin.TValue[[]any]
-	Policies                plugin.TValue[[]any]
-	ResourcePolicy          plugin.TValue[*mqlAwsOrganizationResourcePolicy]
+	Arn                            plugin.TValue[string]
+	FeatureSet                     plugin.TValue[string]
+	MasterAccountId                plugin.TValue[string]
+	MasterAccountArn               plugin.TValue[string]
+	MasterAccountEmail             plugin.TValue[string]
+	Accounts                       plugin.TValue[[]any]
+	Id                             plugin.TValue[string]
+	DelegatedAdministrators        plugin.TValue[[]any]
+	OrganizationalUnits            plugin.TValue[[]any]
+	ServiceControlPolicies         plugin.TValue[[]any]
+	Policies                       plugin.TValue[[]any]
+	EnabledRootFeatures            plugin.TValue[[]any]
+	TrustedAccessServicePrincipals plugin.TValue[[]any]
+	ResourcePolicy                 plugin.TValue[*mqlAwsOrganizationResourcePolicy]
 }
 
 // createAwsOrganization creates a new instance of this resource
@@ -84463,6 +84479,18 @@ func (c *mqlAwsOrganization) GetPolicies() *plugin.TValue[[]any] {
 		}
 
 		return c.policies()
+	})
+}
+
+func (c *mqlAwsOrganization) GetEnabledRootFeatures() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EnabledRootFeatures, func() ([]any, error) {
+		return c.enabledRootFeatures()
+	})
+}
+
+func (c *mqlAwsOrganization) GetTrustedAccessServicePrincipals() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TrustedAccessServicePrincipals, func() ([]any, error) {
+		return c.trustedAccessServicePrincipals()
 	})
 }
 

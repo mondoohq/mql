@@ -285,6 +285,24 @@ aws.organization @defaults("id masterAccountEmail") {
   // `policies.where(type == "RESOURCE_CONTROL_POLICY")`. A policy type that is
   // not enabled for the organization contributes nothing.
   policies() []aws.organization.policy
+  // Centralized root access features enabled for the organization
+  //
+  // One of RootCredentialsManagement, which lets the management account
+  // delete root credentials in member accounts so no long-lived root
+  // password or access key has to exist in each one, and RootSessions,
+  // which lets it take short-lived, scoped root actions in a member
+  // account without those credentials. Empty when centralized root access
+  // has not been turned on. Requires IAM trusted access, so read it
+  // together with `trustedAccessServicePrincipals`.
+  enabledRootFeatures() []string
+  // Service principals with trusted access enabled in the organization
+  //
+  // Services allowed to perform actions across the organization's accounts,
+  // for example `iam.amazonaws.com`, `cloudtrail.amazonaws.com` or
+  // `guardduty.amazonaws.com`. Trusted access is the prerequisite for a
+  // service to be administered organization-wide, so this is what to test
+  // before asking whether a given service is centrally managed.
+  trustedAccessServicePrincipals() []string
   // Resource-based policy that delegates administration of the organization
   //
   // Grants member accounts permission to perform AWS Organizations actions -
