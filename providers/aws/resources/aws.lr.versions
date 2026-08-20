@@ -7903,6 +7903,11 @@ aws.organization.policy.id 13.52.2
 aws.organization.policy.name 13.52.2
 aws.organization.policy.statements 13.52.2
 aws.organization.policy.type 13.52.2
+aws.organization.resourcePolicy 13.53.4
+aws.organization.resourcePolicy.arn 13.53.4
+aws.organization.resourcePolicy.content 13.53.4
+aws.organization.resourcePolicy.id 13.53.4
+aws.organization.resourcePolicy.statements 13.53.4
 aws.organization.serviceControlPolicies 13.32.2
 aws.organization.serviceControlPolicy 13.32.2
 aws.organization.serviceControlPolicy.arn 13.32.2

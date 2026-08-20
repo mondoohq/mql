@@ -285,6 +285,38 @@ aws.organization @defaults("id masterAccountEmail") {
   // `policies.where(type == "RESOURCE_CONTROL_POLICY")`. A policy type that is
   // not enabled for the organization contributes nothing.
   policies() []aws.organization.policy
+  // Resource-based policy that delegates administration of the organization
+  //
+  // Grants member accounts permission to perform AWS Organizations actions -
+  // creating, attaching and updating service control, resource control, tag,
+  // backup and AI-services opt-out policies - so that policy administration
+  // does not have to happen in the management account. This is a different
+  // mechanism from `delegatedAdministrators`, which registers admins for
+  // *integrated services* such as GuardDuty or CloudTrail. Null when no
+  // delegation policy is configured, which is the ordinary state for an
+  // organization administered entirely from its management account.
+  resourcePolicy() aws.organization.resourcePolicy
+}
+
+// AWS Organizations resource-based delegation policy
+//
+// Policy attached to the organization itself, naming the member accounts that
+// may administer AWS Organizations on its behalf and the actions each may
+// take. Audit it to answer whether organization policy administration is
+// delegated away from the management account, and to whom. There is at most
+// one such policy per organization.
+private aws.organization.resourcePolicy @defaults("id") {
+  // Unique identifier of the resource policy
+  id string
+  // ARN of the resource policy
+  arn string
+  // Raw policy content document (JSON)
+  content string
+  // Parsed statements from the policy content
+  //
+  // Written in the IAM policy grammar, so the principals, actions and
+  // conditions that bound the delegation are resolved here.
+  statements() []aws.iam.policyStatement
 }
 
 // AWS Organizations service control policy

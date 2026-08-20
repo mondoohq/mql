@@ -22,6 +22,7 @@ const (
 	ResourceAwsBilling                                                          string = "aws.billing"
 	ResourceAwsBillingBudget                                                    string = "aws.billing.budget"
 	ResourceAwsOrganization                                                     string = "aws.organization"
+	ResourceAwsOrganizationResourcePolicy                                       string = "aws.organization.resourcePolicy"
 	ResourceAwsOrganizationServiceControlPolicy                                 string = "aws.organization.serviceControlPolicy"
 	ResourceAwsOrganizationPolicy                                               string = "aws.organization.policy"
 	ResourceAwsOrganizationEffectivePolicy                                      string = "aws.organization.effectivePolicy"
@@ -1021,6 +1022,10 @@ func init() {
 		"aws.organization": {
 			Init:   initAwsOrganization,
 			Create: createAwsOrganization,
+		},
+		"aws.organization.resourcePolicy": {
+			// to override args, implement: initAwsOrganizationResourcePolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsOrganizationResourcePolicy,
 		},
 		"aws.organization.serviceControlPolicy": {
 			// to override args, implement: initAwsOrganizationServiceControlPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -5152,6 +5157,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.organization.policies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsOrganization).GetPolicies()).ToDataRes(types.Array(types.Resource("aws.organization.policy")))
+	},
+	"aws.organization.resourcePolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOrganization).GetResourcePolicy()).ToDataRes(types.Resource("aws.organization.resourcePolicy"))
+	},
+	"aws.organization.resourcePolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOrganizationResourcePolicy).GetId()).ToDataRes(types.String)
+	},
+	"aws.organization.resourcePolicy.arn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOrganizationResourcePolicy).GetArn()).ToDataRes(types.String)
+	},
+	"aws.organization.resourcePolicy.content": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOrganizationResourcePolicy).GetContent()).ToDataRes(types.String)
+	},
+	"aws.organization.resourcePolicy.statements": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOrganizationResourcePolicy).GetStatements()).ToDataRes(types.Array(types.Resource("aws.iam.policyStatement")))
 	},
 	"aws.organization.serviceControlPolicy.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsOrganizationServiceControlPolicy).GetId()).ToDataRes(types.String)
@@ -37281,6 +37301,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.organization.policies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsOrganization).Policies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.organization.resourcePolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOrganization).ResourcePolicy, ok = plugin.RawToTValue[*mqlAwsOrganizationResourcePolicy](v.Value, v.Error)
+		return
+	},
+	"aws.organization.resourcePolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOrganizationResourcePolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.organization.resourcePolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOrganizationResourcePolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.organization.resourcePolicy.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOrganizationResourcePolicy).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.organization.resourcePolicy.content": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOrganizationResourcePolicy).Content, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.organization.resourcePolicy.statements": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOrganizationResourcePolicy).Statements, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.organization.serviceControlPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -84283,6 +84327,7 @@ type mqlAwsOrganization struct {
 	OrganizationalUnits     plugin.TValue[[]any]
 	ServiceControlPolicies  plugin.TValue[[]any]
 	Policies                plugin.TValue[[]any]
+	ResourcePolicy          plugin.TValue[*mqlAwsOrganizationResourcePolicy]
 }
 
 // createAwsOrganization creates a new instance of this resource
@@ -84418,6 +84463,93 @@ func (c *mqlAwsOrganization) GetPolicies() *plugin.TValue[[]any] {
 		}
 
 		return c.policies()
+	})
+}
+
+func (c *mqlAwsOrganization) GetResourcePolicy() *plugin.TValue[*mqlAwsOrganizationResourcePolicy] {
+	return plugin.GetOrCompute[*mqlAwsOrganizationResourcePolicy](&c.ResourcePolicy, func() (*mqlAwsOrganizationResourcePolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.organization", c.__id, "resourcePolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsOrganizationResourcePolicy), nil
+			}
+		}
+
+		return c.resourcePolicy()
+	})
+}
+
+// mqlAwsOrganizationResourcePolicy for the aws.organization.resourcePolicy resource
+type mqlAwsOrganizationResourcePolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAwsOrganizationResourcePolicyInternal it will be used here
+	Id         plugin.TValue[string]
+	Arn        plugin.TValue[string]
+	Content    plugin.TValue[string]
+	Statements plugin.TValue[[]any]
+}
+
+// createAwsOrganizationResourcePolicy creates a new instance of this resource
+func createAwsOrganizationResourcePolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsOrganizationResourcePolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.organization.resourcePolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsOrganizationResourcePolicy) MqlName() string {
+	return "aws.organization.resourcePolicy"
+}
+
+func (c *mqlAwsOrganizationResourcePolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsOrganizationResourcePolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAwsOrganizationResourcePolicy) GetArn() *plugin.TValue[string] {
+	return &c.Arn
+}
+
+func (c *mqlAwsOrganizationResourcePolicy) GetContent() *plugin.TValue[string] {
+	return &c.Content
+}
+
+func (c *mqlAwsOrganizationResourcePolicy) GetStatements() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Statements, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.organization.resourcePolicy", c.__id, "statements")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.statements()
 	})
 }
 
