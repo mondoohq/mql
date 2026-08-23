@@ -4,6 +4,7 @@
 package packages
 
 import (
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -25,11 +26,16 @@ const (
 )
 
 type Package struct {
-	Name        string `json:"name"`
-	Version     string `json:"version"`
-	Epoch       string `json:"epoch,omitempty"`
-	Arch        string `json:"arch"`
-	Status      string `json:"status,omitempty"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Epoch   string `json:"epoch,omitempty"`
+	Arch    string `json:"arch"`
+	Status  string `json:"status,omitempty"`
+
+	// Pinned reports that the package manager is configured to hold this
+	// package at its current version: a dpkg or opkg hold, a dnf or yum
+	// versionlock, or a zypper lock.
+	Pinned      bool   `json:"pinned,omitempty"`
 	Description string `json:"description"`
 
 	// this may be the source package or an origin
@@ -205,4 +211,28 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 	}
 
 	return pms, nil
+}
+
+// isHeldStatus reports whether a dpkg-style status triple holds the package at
+// its current version.
+//
+// The triple is "<want> <flag> <state>". dpkg records a hold in the want field,
+// which is what `apt-mark hold` writes:
+//
+//	Status: hold ok installed
+//
+// opkg records it in the flag field, where dpkg carried it historically:
+//
+//	Status: install hold installed
+//
+// Only those two positions are considered. Matching "hold" anywhere in the
+// string would also fire on a package whose name or state merely contains it.
+func isHeldStatus(status string) bool {
+	fields := strings.Fields(status)
+	for i := 0; i < len(fields) && i < 2; i++ {
+		if fields[i] == "hold" {
+			return true
+		}
+	}
+	return false
 }

@@ -2827,6 +2827,7 @@ package.license 13.16.10
 package.name 9.0.0
 package.origin 9.0.0
 package.outdated 9.0.0
+package.pinned 13.40.10
 package.purl 9.1.6
 package.status 9.0.0
 package.vendor 11.2.18

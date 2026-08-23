@@ -300,11 +300,47 @@ func (rpm *RpmPkgManager) isStaticAnalysis() bool {
 }
 
 func (rpm *RpmPkgManager) List() ([]Package, error) {
+	var pkgs []Package
+	var err error
 	if rpm.isStaticAnalysis() {
-		return rpm.staticList()
+		pkgs, err = rpm.staticList()
 	} else {
-		return rpm.runtimeList()
+		pkgs, err = rpm.runtimeList()
 	}
+	if err != nil {
+		return nil, err
+	}
+	return markPinned(pkgs, rpm.lockedPackages()), nil
+}
+
+// lockedPackages reads the versionlock store. Overridden by SusePkgManager,
+// which locks through zypper instead.
+func (rpm *RpmPkgManager) lockedPackages() lockedNames {
+	return readVersionlock(rpm.conn.FileSystem())
+}
+
+// lockedPackages reads zypper's lock store. SUSE has no versionlock plugin, so
+// reading the dnf paths there would always come back empty.
+func (spm *SusePkgManager) lockedPackages() lockedNames {
+	return readZypperLocks(spm.conn.FileSystem())
+}
+
+// List reads the rpm database and marks the packages zypper holds. The
+// embedded RpmPkgManager.List cannot be reused for this: it calls
+// lockedPackages on the embedded value, which resolves to the versionlock
+// reader rather than this override.
+func (spm *SusePkgManager) List() ([]Package, error) {
+	var pkgs []Package
+	var err error
+	if spm.isStaticAnalysis() {
+		pkgs, err = spm.staticList()
+	} else {
+		pkgs, err = spm.runtimeList()
+	}
+	if err != nil {
+		return nil, err
+	}
+	return markPinned(pkgs, spm.lockedPackages()), nil
 }
 
 func (rpm *RpmPkgManager) Available() (map[string]PackageUpdate, error) {

@@ -75,6 +75,9 @@ func ParseDpkgPackages(pf *inventory.Platform, input io.Reader) ([]Package, erro
 	add := func(pkg Package) {
 		// do sanitization checks to ensure we have minimal information
 		if pkg.Name != "" && pkg.Version != "" {
+			// A hold lives in the status triple that was just parsed, so it
+			// costs no extra read and is answered the same way on an image.
+			pkg.Pinned = isHeldStatus(pkg.Status)
 			pkg.PUrl = purl.NewPackageURL(pf, purl.TypeDebian, pkg.Name, pkg.Version,
 				purl.WithArch(pkg.Arch),
 				purl.WithEpoch(pkg.Epoch),

@@ -966,6 +966,20 @@ package @defaults("name version") {
   format string
   // Status of this package (e.g., if it is needed)
   status() string
+  // Whether the package is held at its current version
+  //
+  // True when the package manager is configured not to upgrade it: a
+  // dpkg or opkg hold, a dnf or yum versionlock, or a zypper lock. An
+  // outdated package that is pinned is a deliberate state rather than a
+  // missed patch, and it will not receive a security update until the
+  // pin is released.
+  //
+  // Read from the package manager's own files, so it answers the same
+  // way on a running host, a container image and a mounted filesystem.
+  // Debian's apt preferences are priorities rather than holds and do
+  // not set this. False on package managers with no lock mechanism,
+  // where it means there is no such thing rather than not checked.
+  pinned bool
 
   // Package URL (purl) identifier for this package
   purl string

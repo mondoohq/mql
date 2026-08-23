@@ -3712,6 +3712,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"package.status": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPackage).GetStatus()).ToDataRes(types.String)
 	},
+	"package.pinned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackage).GetPinned()).ToDataRes(types.Bool)
+	},
 	"package.purl": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPackage).GetPurl()).ToDataRes(types.String)
 	},
@@ -16727,6 +16730,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"package.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPackage).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"package.pinned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackage).Pinned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"package.purl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -38689,6 +38696,7 @@ type mqlPackage struct {
 	Epoch       plugin.TValue[string]
 	Format      plugin.TValue[string]
 	Status      plugin.TValue[string]
+	Pinned      plugin.TValue[bool]
 	Purl        plugin.TValue[string]
 	Cpes        plugin.TValue[[]any]
 	Origin      plugin.TValue[string]
@@ -38766,6 +38774,10 @@ func (c *mqlPackage) GetStatus() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Status, func() (string, error) {
 		return c.status()
 	})
+}
+
+func (c *mqlPackage) GetPinned() *plugin.TValue[bool] {
+	return &c.Pinned
 }
 
 func (c *mqlPackage) GetPurl() *plugin.TValue[string] {

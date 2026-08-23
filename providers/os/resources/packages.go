@@ -66,6 +66,10 @@ func initPackage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[str
 	res.Name = plugin.TValue[string]{Data: name, State: plugin.StateIsSet}
 	res.Installed = plugin.TValue[bool]{Data: false, State: plugin.StateIsSet}
 	res.Outdated = plugin.TValue[bool]{Data: false, State: plugin.StateIsSet}
+	// A package that is not installed is not held at a version either. Like
+	// installed and outdated above, this is a concrete false rather than null:
+	// there is nothing unknown about it.
+	res.Pinned = plugin.TValue[bool]{Data: false, State: plugin.StateIsSet}
 	res.Version.State = plugin.StateIsSet | plugin.StateIsNull
 	res.Epoch.State = plugin.StateIsSet | plugin.StateIsNull
 	res.Available.State = plugin.StateIsSet | plugin.StateIsNull
@@ -174,6 +178,7 @@ func fillPackageArgs(args map[string]*llx.RawData, osPkg *packages.Package, avai
 	args["available"] = llx.StringData(available)
 	args["arch"] = llx.StringData(osPkg.Arch)
 	args["status"] = llx.StringData(osPkg.Status)
+	args["pinned"] = llx.BoolData(osPkg.Pinned)
 	args["description"] = llx.StringData(osPkg.Description)
 	args["format"] = llx.StringData(osPkg.Format)
 	args["installed"] = llx.BoolData(true)
