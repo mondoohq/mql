@@ -11281,6 +11281,8 @@ aws.waf.rule.statement.orstatement.statementID 11.15.2
 aws.waf.rule.statement.orstatement.statements 11.15.2
 aws.waf.rule.statement.rateBasedStatement 11.15.2
 aws.waf.rule.statement.ratebasedstatement 11.15.2
+aws.waf.rule.statement.ratebasedstatement.ruleName 13.53.4
+aws.waf.rule.statement.ratebasedstatement.statementID 13.53.4
 aws.waf.rule.statement.regexMatchStatement 11.15.2
 aws.waf.rule.statement.regexPatternSetReferenceStatement 11.15.2
 aws.waf.rule.statement.regexmatchstatement 11.15.2

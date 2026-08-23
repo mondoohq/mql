@@ -5972,6 +5972,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.waf.rule.statement.orstatement.statements": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsWafRuleStatementOrstatement).GetStatements()).ToDataRes(types.Array(types.Resource("aws.waf.rule.statement")))
 	},
+	"aws.waf.rule.statement.ratebasedstatement.ruleName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsWafRuleStatementRatebasedstatement).GetRuleName()).ToDataRes(types.String)
+	},
+	"aws.waf.rule.statement.ratebasedstatement.statementID": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsWafRuleStatementRatebasedstatement).GetStatementID()).ToDataRes(types.String)
+	},
 	"aws.waf.rule.statement.regexpatternsetreferencestatement.ruleName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsWafRuleStatementRegexpatternsetreferencestatement).GetRuleName()).ToDataRes(types.String)
 	},
@@ -38472,6 +38478,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.waf.rule.statement.ratebasedstatement.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsWafRuleStatementRatebasedstatement).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.waf.rule.statement.ratebasedstatement.ruleName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsWafRuleStatementRatebasedstatement).RuleName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.waf.rule.statement.ratebasedstatement.statementID": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsWafRuleStatementRatebasedstatement).StatementID, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.waf.rule.statement.regexpatternsetreferencestatement.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -87702,6 +87716,8 @@ type mqlAwsWafRuleStatementRatebasedstatement struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAwsWafRuleStatementRatebasedstatementInternal it will be used here
+	RuleName    plugin.TValue[string]
+	StatementID plugin.TValue[string]
 }
 
 // createAwsWafRuleStatementRatebasedstatement creates a new instance of this resource
@@ -87739,6 +87755,14 @@ func (c *mqlAwsWafRuleStatementRatebasedstatement) MqlName() string {
 
 func (c *mqlAwsWafRuleStatementRatebasedstatement) MqlID() string {
 	return c.__id
+}
+
+func (c *mqlAwsWafRuleStatementRatebasedstatement) GetRuleName() *plugin.TValue[string] {
+	return &c.RuleName
+}
+
+func (c *mqlAwsWafRuleStatementRatebasedstatement) GetStatementID() *plugin.TValue[string] {
+	return &c.StatementID
 }
 
 // mqlAwsWafRuleStatementRegexpatternsetreferencestatement for the aws.waf.rule.statement.regexpatternsetreferencestatement resource

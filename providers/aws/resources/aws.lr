@@ -1143,7 +1143,12 @@ private aws.waf.rule.statement.orstatement {
 }
 
 // Rule statement that matches at a certain rate of requests (rate limiting)
-private aws.waf.rule.statement.ratebasedstatement {}
+private aws.waf.rule.statement.ratebasedstatement {
+  // Name of the rule this statement belongs to
+  ruleName string
+  // ID of the statement
+  statementID string
+}
 
 // Rule statement that checks for a regex pattern defined in a regex pattern set
 private aws.waf.rule.statement.regexpatternsetreferencestatement {
