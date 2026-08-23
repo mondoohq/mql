@@ -15,6 +15,10 @@ import (
 	"go.mondoo.com/mql/types"
 )
 
+// userObjectFilter matches every object the activedirectory.user resource
+// represents: ordinary user accounts and Group Managed Service Accounts.
+const userObjectFilter = "(|(&(objectCategory=person)(objectClass=user))(objectClass=msDS-GroupManagedServiceAccount))"
+
 // extractOU returns the OU path from a DN by removing the object's own RDN.
 func extractOU(dn string) string {
 	idx := strings.Index(dn, ",")
@@ -32,7 +36,7 @@ func (a *mqlActivedirectory) users() ([]interface{}, error) {
 	conn := a.MqlRuntime.Connection.(*connection.ActiveDirectoryConnection)
 	baseDN := conn.BaseDN()
 
-	filter := "(|(&(objectCategory=person)(objectClass=user))(objectClass=msDS-GroupManagedServiceAccount))"
+	filter := userObjectFilter
 	attrs := []string{
 		"sAMAccountName",
 		"userPrincipalName",
@@ -48,6 +52,7 @@ func (a *mqlActivedirectory) users() ([]interface{}, error) {
 		"description",
 		"mail",
 		"memberOf",
+		"primaryGroupID",
 		"sIDHistory",
 		"msDS-AllowedToDelegateTo",
 		"objectClass",
@@ -122,6 +127,10 @@ func (a *mqlActivedirectory) users() ([]interface{}, error) {
 			memberOfIface[i] = m
 		}
 
+		// Primary group membership never appears in memberOf, so expose the
+		// RID directly for rules that assert on it.
+		primaryGroupID := parseInt64Attr(entry.GetAttributeValue("primaryGroupID"))
+
 		email := entry.GetAttributeValue("mail")
 		description := entry.GetAttributeValue("description")
 		ouPath := extractOU(dn)
@@ -181,6 +190,7 @@ func (a *mqlActivedirectory) users() ([]interface{}, error) {
 				"daysSinceLastLogon":            llx.IntData(daysSinceLastLogon),
 				"isStale":                       llx.BoolData(isStale),
 				"memberOf":                      llx.ArrayData(memberOfIface, types.String),
+				"primaryGroupId":                llx.IntData(primaryGroupID),
 				"description":                   llx.StringData(description),
 				"email":                         llx.StringData(email),
 				"ouPath":                        llx.StringData(ouPath),

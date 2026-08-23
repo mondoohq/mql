@@ -237,6 +237,7 @@ activedirectory.user.ouPath 13.0.1
 activedirectory.user.passwordAgeDays 13.0.1
 activedirectory.user.passwordNeverExpires 13.0.1
 activedirectory.user.passwordNotRequired 13.0.1
+activedirectory.user.primaryGroupId 13.1.14
 activedirectory.user.protectedUser 13.0.1
 activedirectory.user.pwdLastSet 13.0.1
 activedirectory.user.reversibleEncryption 13.0.1

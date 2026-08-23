@@ -258,6 +258,15 @@ activedirectory.user @defaults("sAMAccountName displayName enabled") {
   isStale bool
   // Group memberships (direct)
   memberOf []string
+  // Primary group RID
+  //
+  // Relative identifier of the account's primary group, for example 513 for
+  // Domain Users, 512 for Domain Admins, 519 for Enterprise Admins, or 518
+  // for Schema Admins. Primary group membership is a full membership but it
+  // never appears in memberOf and the account never appears in the group's
+  // member list, so a privileged value here is a group membership that a
+  // memberOf review will not show.
+  primaryGroupId int
   // Whether user is member of Domain Admins
   isDomainAdmin() bool
   // Whether user is member of Enterprise Admins

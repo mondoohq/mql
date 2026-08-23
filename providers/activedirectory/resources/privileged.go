@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-ldap/ldap/v3"
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers/activedirectory/connection"
 )
 
@@ -213,6 +214,226 @@ var ridToField = map[string]string{
 	"525": "ProtectedUsers",
 }
 
+// markPrivileged records a distinguished name in the union set and, when the
+// group has a dedicated set, in that set as well.
+func markPrivileged(pm *privilegedMemberships, field, dn string) {
+	pm.AllPrivileged[dn] = true
+
+	switch field {
+	case "DomainAdmins":
+		pm.DomainAdmins[dn] = true
+	case "EnterpriseAdmins":
+		pm.EnterpriseAdmins[dn] = true
+	case "SchemaAdmins":
+		pm.SchemaAdmins[dn] = true
+	case "ProtectedUsers":
+		pm.ProtectedUsers[dn] = true
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Primary group membership
+// ---------------------------------------------------------------------------
+//
+// An account's primary group is stored as the primaryGroupID attribute (a RID
+// relative to the account's own domain) and is a full membership: the account
+// is a member of that group even though the group never appears in memberOf
+// and the account never appears in the group's member attribute. The
+// LDAP_MATCHING_RULE_IN_CHAIN queries above therefore cannot see it, so it is
+// resolved separately here.
+
+// primaryGroupRecord is one account's primary group assignment, as read from
+// LDAP.
+type primaryGroupRecord struct {
+	dn             string
+	objectSID      string
+	primaryGroupID int64
+}
+
+// domainSIDFromObjectSID strips the trailing RID from an object SID, yielding
+// the SID of the domain that issued it. It returns "" for SIDs that no domain
+// issued, such as the well-known S-1-5-11 (Authenticated Users) or a BUILTIN
+// SID like S-1-5-32-544, neither of which can prefix a primaryGroupID.
+func domainSIDFromObjectSID(objectSID string) string {
+	// A domain account SID is S-1-5-21-<a>-<b>-<c>-<rid>: eight dash-separated
+	// parts. Anything shorter has no domain prefix to extract.
+	parts := strings.Split(objectSID, "-")
+	if len(parts) < 8 {
+		return ""
+	}
+	return strings.Join(parts[:len(parts)-1], "-")
+}
+
+// primaryGroupSIDForAccount resolves an account's primaryGroupID to the SID of
+// the group it names. The RID is relative to the domain that issued the
+// account's own SID, which keeps this correct in a multi-domain forest.
+func primaryGroupSIDForAccount(objectSID string, primaryGroupID int64) string {
+	if primaryGroupID <= 0 {
+		return ""
+	}
+	domainSID := domainSIDFromObjectSID(objectSID)
+	if domainSID == "" {
+		return ""
+	}
+	return domainSID + "-" + strconv.FormatInt(primaryGroupID, 10)
+}
+
+// primaryGroupCandidateRIDs returns the privileged RIDs that can appear as an
+// account's primaryGroupID. BUILTIN groups (S-1-5-32-*) are domain-local
+// groups on the machine and can never be a primary group, so they are skipped.
+func primaryGroupCandidateRIDs() []string {
+	rids := make([]string, 0, len(privilegedGroups))
+	seen := make(map[string]bool, len(privilegedGroups))
+	for _, pg := range privilegedGroups {
+		if pg.Base == "builtin" || seen[pg.RID] {
+			continue
+		}
+		seen[pg.RID] = true
+		rids = append(rids, pg.RID)
+	}
+	return rids
+}
+
+// primaryGroupSearchFilter builds the LDAP filter that selects every account
+// whose primaryGroupID is one of the given privileged RIDs. It returns "" when
+// there is nothing to search for.
+func primaryGroupSearchFilter(rids []string) string {
+	if len(rids) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(rids))
+	for _, rid := range rids {
+		parts = append(parts, fmt.Sprintf("(primaryGroupID=%s)", ldap.EscapeFilter(rid)))
+	}
+	return fmt.Sprintf("(&%s(|%s))", userObjectFilter, strings.Join(parts, ""))
+}
+
+// privilegedGroupSIDIndex maps the SID of every privileged group that can be a
+// primary group to the privilegedMemberships field it feeds. Groups that only
+// contribute to AllPrivileged map to "".
+func privilegedGroupSIDIndex(conn *connection.ActiveDirectoryConnection) (map[string]string, error) {
+	index := make(map[string]string, len(privilegedGroups))
+	for _, pg := range privilegedGroups {
+		if pg.Base == "builtin" {
+			continue
+		}
+		sidStr, err := privilegedGroupSID(conn, pg)
+		if err != nil {
+			return nil, err
+		}
+		// A group SID with no domain prefix means the domain SID was never
+		// discovered; skip it rather than indexing a bare "-512".
+		if strings.HasPrefix(sidStr, "-") {
+			continue
+		}
+		index[sidStr] = ridToField[pg.RID]
+	}
+	return index, nil
+}
+
+// fetchPrimaryGroupRecords reads every account whose primaryGroupID names a
+// privileged group, across all domain naming contexts the connection knows.
+func fetchPrimaryGroupRecords(conn *connection.ActiveDirectoryConnection) ([]primaryGroupRecord, error) {
+	filter := primaryGroupSearchFilter(primaryGroupCandidateRIDs())
+	if filter == "" {
+		return nil, nil
+	}
+
+	searchBases := conn.DomainNamingContexts()
+	if len(searchBases) == 0 {
+		searchBases = []string{conn.BaseDN()}
+	}
+
+	seen := make(map[string]bool)
+	var records []primaryGroupRecord
+
+	for _, searchBase := range searchBases {
+		if searchBase == "" {
+			continue
+		}
+
+		entries, err := connection.PagedSearch(conn.LDAPConn(), ldap.NewSearchRequest(
+			searchBase,
+			ldap.ScopeWholeSubtree,
+			ldap.NeverDerefAliases, 0, 0, false,
+			filter,
+			[]string{"distinguishedName", "objectSid", "primaryGroupID"},
+			nil,
+		))
+		if err != nil {
+			// Non-fatal: a naming context may not be searchable with these
+			// credentials. Keep whatever the other contexts returned.
+			log.Warn().Err(err).Str("searchBase", searchBase).Msg("primary group search failed")
+			continue
+		}
+
+		for _, entry := range entries {
+			dn := entry.DN
+			if dn == "" || seen[dn] {
+				continue
+			}
+			seen[dn] = true
+
+			sidStr, err := connection.DecodeSID(connection.GetBinaryAttr(entry, "objectSid"))
+			if err != nil {
+				log.Warn().Err(err).Str("dn", dn).Msg("failed to decode SID for primary group lookup")
+				continue
+			}
+
+			records = append(records, primaryGroupRecord{
+				dn:             dn,
+				objectSID:      sidStr,
+				primaryGroupID: parseInt64Attr(entry.GetAttributeValue("primaryGroupID")),
+			})
+		}
+	}
+
+	return records, nil
+}
+
+// applyPrimaryGroupMemberships folds primary group membership into the
+// privileged sets. sidToField maps a privileged group SID to the
+// privilegedMemberships field it feeds.
+func applyPrimaryGroupMemberships(pm *privilegedMemberships, sidToField map[string]string, records []primaryGroupRecord) {
+	for _, rec := range records {
+		if rec.dn == "" {
+			continue
+		}
+
+		groupSID := primaryGroupSIDForAccount(rec.objectSID, rec.primaryGroupID)
+		if groupSID == "" {
+			continue
+		}
+
+		field, ok := sidToField[groupSID]
+		if !ok {
+			continue
+		}
+
+		markPrivileged(pm, field, rec.dn)
+	}
+}
+
+// addPrimaryGroupMemberships resolves and folds primary group membership into
+// the already-populated privileged sets.
+func addPrimaryGroupMemberships(conn *connection.ActiveDirectoryConnection, pm *privilegedMemberships) error {
+	index, err := privilegedGroupSIDIndex(conn)
+	if err != nil {
+		return err
+	}
+	if len(index) == 0 {
+		return nil
+	}
+
+	records, err := fetchPrimaryGroupRecords(conn)
+	if err != nil {
+		return err
+	}
+
+	applyPrimaryGroupMemberships(pm, index, records)
+	return nil
+}
+
 // buildPrivilegedMembershipSets resolves all well-known privileged group
 // memberships via recursive LDAP queries and returns populated sets.
 // Results are cached on the connection for the lifetime of the scan.
@@ -269,21 +490,16 @@ func buildPrivilegedMembershipSets(conn *connection.ActiveDirectoryConnection) (
 				}
 
 				for _, entry := range entries {
-					dn := entry.DN
-					pm.AllPrivileged[dn] = true
-
-					switch field {
-					case "DomainAdmins":
-						pm.DomainAdmins[dn] = true
-					case "EnterpriseAdmins":
-						pm.EnterpriseAdmins[dn] = true
-					case "SchemaAdmins":
-						pm.SchemaAdmins[dn] = true
-					case "ProtectedUsers":
-						pm.ProtectedUsers[dn] = true
-					}
+					markPrivileged(pm, field, entry.DN)
 				}
 			}
+		}
+
+		// Primary group membership is invisible to the memberOf chain above,
+		// so fold it in separately. A failure here must not drop the
+		// memberOf-derived results, so it is logged rather than returned.
+		if err := addPrimaryGroupMemberships(conn, pm); err != nil {
+			log.Warn().Err(err).Msg("failed to resolve primary group memberships")
 		}
 
 		return pm, nil

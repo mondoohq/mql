@@ -439,6 +439,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"activedirectory.user.memberOf": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlActivedirectoryUser).GetMemberOf()).ToDataRes(types.Array(types.String))
 	},
+	"activedirectory.user.primaryGroupId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlActivedirectoryUser).GetPrimaryGroupId()).ToDataRes(types.Int)
+	},
 	"activedirectory.user.isDomainAdmin": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlActivedirectoryUser).GetIsDomainAdmin()).ToDataRes(types.Bool)
 	},
@@ -1252,6 +1255,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"activedirectory.user.memberOf": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlActivedirectoryUser).MemberOf, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"activedirectory.user.primaryGroupId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlActivedirectoryUser).PrimaryGroupId, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"activedirectory.user.isDomainAdmin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2620,6 +2627,7 @@ type mqlActivedirectoryUser struct {
 	DaysSinceLastLogon            plugin.TValue[int64]
 	IsStale                       plugin.TValue[bool]
 	MemberOf                      plugin.TValue[[]any]
+	PrimaryGroupId                plugin.TValue[int64]
 	IsDomainAdmin                 plugin.TValue[bool]
 	IsEnterpriseAdmin             plugin.TValue[bool]
 	IsSchemaAdmin                 plugin.TValue[bool]
@@ -2765,6 +2773,10 @@ func (c *mqlActivedirectoryUser) GetIsStale() *plugin.TValue[bool] {
 
 func (c *mqlActivedirectoryUser) GetMemberOf() *plugin.TValue[[]any] {
 	return &c.MemberOf
+}
+
+func (c *mqlActivedirectoryUser) GetPrimaryGroupId() *plugin.TValue[int64] {
+	return &c.PrimaryGroupId
 }
 
 func (c *mqlActivedirectoryUser) GetIsDomainAdmin() *plugin.TValue[bool] {
