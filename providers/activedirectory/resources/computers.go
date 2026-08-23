@@ -128,8 +128,16 @@ func (a *mqlActivedirectory) computers() ([]interface{}, error) {
 			delegateTargetsRaw[i] = v
 		}
 
-		// Resource-Based Constrained Delegation (RBCD)
-		rbcd := len(entry.GetRawAttributeValue("msDS-AllowedToActOnBehalfOfOtherIdentity")) > 0
+		// Resource-Based Constrained Delegation (RBCD). The attribute is a
+		// security descriptor; the principals named in its DACL are the
+		// accounts that can impersonate onto this host.
+		rbcdRaw := entry.GetRawAttributeValue("msDS-AllowedToActOnBehalfOfOtherIdentity")
+		rbcd := len(rbcdRaw) > 0
+		rbcdPrincipals := rbcdPrincipalSIDs(rbcdRaw)
+		rbcdPrincipalsRaw := make([]interface{}, len(rbcdPrincipals))
+		for i, v := range rbcdPrincipals {
+			rbcdPrincipalsRaw[i] = v
+		}
 
 		// Service principal names
 		spns := connection.GetStringSliceAttr(entry, "servicePrincipalName")
@@ -174,6 +182,7 @@ func (a *mqlActivedirectory) computers() ([]interface{}, error) {
 				"constrainedDelegation":        llx.BoolData(constrainedDelegation),
 				"constrainedDelegationTargets": llx.ArrayData(delegateTargetsRaw, types.String),
 				"rbcd":                         llx.BoolData(rbcd),
+				"rbcdPrincipals":               llx.ArrayData(rbcdPrincipalsRaw, types.String),
 				"servicePrincipalNames":        llx.ArrayData(spnsRaw, types.String),
 				"lapsEnabled":                  llx.BoolData(lapsEnabled),
 				"lapsExpirationTime":           llx.TimeData(lapsExpirationTime),

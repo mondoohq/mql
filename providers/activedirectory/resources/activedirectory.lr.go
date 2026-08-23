@@ -580,6 +580,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"activedirectory.computer.rbcd": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlActivedirectoryComputer).GetRbcd()).ToDataRes(types.Bool)
 	},
+	"activedirectory.computer.rbcdPrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlActivedirectoryComputer).GetRbcdPrincipals()).ToDataRes(types.Array(types.String))
+	},
 	"activedirectory.computer.servicePrincipalNames": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlActivedirectoryComputer).GetServicePrincipalNames()).ToDataRes(types.Array(types.String))
 	},
@@ -1455,6 +1458,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"activedirectory.computer.rbcd": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlActivedirectoryComputer).Rbcd, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"activedirectory.computer.rbcdPrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlActivedirectoryComputer).RbcdPrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"activedirectory.computer.servicePrincipalNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -3038,6 +3045,7 @@ type mqlActivedirectoryComputer struct {
 	ConstrainedDelegation        plugin.TValue[bool]
 	ConstrainedDelegationTargets plugin.TValue[[]any]
 	Rbcd                         plugin.TValue[bool]
+	RbcdPrincipals               plugin.TValue[[]any]
 	ServicePrincipalNames        plugin.TValue[[]any]
 	LapsEnabled                  plugin.TValue[bool]
 	LapsExpirationTime           plugin.TValue[*time.Time]
@@ -3158,6 +3166,10 @@ func (c *mqlActivedirectoryComputer) GetConstrainedDelegationTargets() *plugin.T
 
 func (c *mqlActivedirectoryComputer) GetRbcd() *plugin.TValue[bool] {
 	return &c.Rbcd
+}
+
+func (c *mqlActivedirectoryComputer) GetRbcdPrincipals() *plugin.TValue[[]any] {
+	return &c.RbcdPrincipals
 }
 
 func (c *mqlActivedirectoryComputer) GetServicePrincipalNames() *plugin.TValue[[]any] {

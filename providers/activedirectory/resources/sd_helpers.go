@@ -233,6 +233,36 @@ func parseObjectACE(sd []byte, offset int) (aceEntry, bool) {
 	return aceEntry{aceType: 0x05, mask: mask, sid: sid, objectGUID: objectGUID}, true
 }
 
+// rbcdPrincipalSIDs extracts the trustee SIDs from a raw
+// msDS-AllowedToActOnBehalfOfOtherIdentity value. The attribute holds a
+// self-relative SECURITY_DESCRIPTOR whose DACL names every principal allowed
+// to impersonate onto the host, so the SIDs in that DACL are the whole content
+// of a resource-based constrained delegation finding.
+//
+// The result preserves DACL order and is deduplicated. An empty, short, or
+// unparseable descriptor yields an empty list.
+func rbcdPrincipalSIDs(raw []byte) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	parsed := parseSecurityDescriptor(raw)
+
+	seen := make(map[string]bool, len(parsed.aces))
+	sids := make([]string, 0, len(parsed.aces))
+	for _, ace := range parsed.aces {
+		// parseDACL only collects allow ACEs (types 0x00 and 0x05), but guard
+		// explicitly so a deny entry can never be reported as a trustee.
+		if ace.aceType == 0x01 || ace.sid == "" || seen[ace.sid] {
+			continue
+		}
+		seen[ace.sid] = true
+		sids = append(sids, ace.sid)
+	}
+
+	return sids
+}
+
 // decodeGUID converts a 16-byte binary GUID (mixed-endian as used by AD)
 // to its lowercase string form: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.
 func decodeGUID(b []byte) string {

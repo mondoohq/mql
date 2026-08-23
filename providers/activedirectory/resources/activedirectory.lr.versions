@@ -67,6 +67,7 @@ activedirectory.computer.passwordAgeDays 13.0.1
 activedirectory.computer.protocolTransition 13.0.1
 activedirectory.computer.pwdLastSet 13.0.1
 activedirectory.computer.rbcd 13.0.1
+activedirectory.computer.rbcdPrincipals 13.1.14
 activedirectory.computer.sAMAccountName 13.0.1
 activedirectory.computer.servicePrincipalNames 13.0.1
 activedirectory.computer.sid 13.0.1

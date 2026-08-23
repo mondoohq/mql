@@ -401,6 +401,14 @@ activedirectory.computer @defaults("name operatingSystem enabled") {
   constrainedDelegationTargets []string
   // Resource-based constrained delegation configured
   rbcd bool
+  // Resource-based constrained delegation trustees
+  //
+  // Security identifiers of the principals granted rights in the
+  // msDS-AllowedToActOnBehalfOfOtherIdentity security descriptor. These are
+  // the accounts that can request Kerberos service tickets to this host on
+  // behalf of any user, which is what makes a resource-based constrained
+  // delegation entry a finding. Empty when rbcd is false.
+  rbcdPrincipals []string
   // Service Principal Names
   servicePrincipalNames []string
   // Whether LAPS is deployed on this computer
