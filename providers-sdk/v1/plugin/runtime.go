@@ -6,6 +6,7 @@ package plugin
 import (
 	"errors"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/upstream"
 	"go.mondoo.com/mql/types"
@@ -350,9 +351,21 @@ func ResolveResourceArgs(args map[string]*llx.RawData, runtime *Runtime) {
 		if !ok || mock == nil {
 			continue
 		}
-		if res, ok := runtime.Resources.Get(mock.Name + "\x00" + mock.ID); ok {
-			args[k] = llx.ResourceData(res, mock.Name)
+		res, ok := runtime.Resources.Get(mock.Name + "\x00" + mock.ID)
+		if !ok {
+			// The MockResource stays in place, and the generated setter for a
+			// resource-typed field rejects it, so this surfaces downstream as a
+			// SetData type mismatch naming the field's owner rather than the
+			// reference that could not be resolved. Log the reference itself so
+			// the two can be connected.
+			log.Debug().
+				Str("field", k).
+				Str("resource", mock.Name).
+				Str("id", mock.ID).
+				Msg("plugin> resource reference is not in the runtime cache, leaving it unresolved")
+			continue
 		}
+		args[k] = llx.ResourceData(res, mock.Name)
 	}
 }
 
