@@ -12,6 +12,29 @@ import (
 	"golang.org/x/text/encoding/unicode"
 )
 
+const (
+	// MaxCommandLength is the largest command line Windows will accept. A
+	// longer one is rejected before PowerShell ever runs, and the failure
+	// arrives as a generic non-zero exit — which reads like the queried
+	// feature not being installed rather than like a bug in the script.
+	MaxCommandLength = 8191
+
+	// MaxScriptLength is the largest script that Encode can still fit inside
+	// MaxCommandLength. Encoding widens the script to UTF-16 (x2) and base64
+	// encodes it (x4/3), and Encode additionally prepends a $ProgressPreference
+	// assignment to the script and an interpreter invocation to the command
+	// line. The measured ceiling is 3016 characters; this leaves a small margin
+	// under it. Keep embedded scripts below this and assert it in a test —
+	// see TestScheduledTasksScriptFitsCommandLine for the pattern.
+	MaxScriptLength = 3000
+)
+
+// FitsCommandLine reports whether script still fits on a Windows command line
+// once Encode has widened and base64 encoded it.
+func FitsCommandLine(script string) bool {
+	return len(Encode(script)) <= MaxCommandLength
+}
+
 // interpreters holds the executable names that Encode/EncodeUnix/Wrap emit as
 // the leading token of a self-contained PowerShell invocation.
 var interpreters = map[string]bool{

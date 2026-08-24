@@ -10,7 +10,33 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/v13/providers/os/resources/powershell"
 )
+
+// A script that no longer fits on the command line does not fail loudly. The
+// target rejects the command before PowerShell runs, and the non-zero exit
+// reads like the Task Scheduler being unavailable rather than like a script
+// that outgrew the cap — which is how SCHEDULED_TASKS shipped at 3555
+// characters (9626 encoded) against an 8191 cap without anyone noticing.
+func TestScheduledTasksScriptFitsCommandLine(t *testing.T) {
+	scripts := map[string]string{
+		"SCHEDULED_TASKS": SCHEDULED_TASKS,
+		// Built per task, so measure it with a long real-world path and name.
+		"ScheduledTaskInfoScript": ScheduledTaskInfoScript(
+			`\Microsoft\Windows\UpdateOrchestrator\`, "Schedule Scan Static Task"),
+	}
+	for name, script := range scripts {
+		t.Run(name, func(t *testing.T) {
+			assert.LessOrEqual(t, len(script), powershell.MaxScriptLength,
+				"script is too long to be encoded onto a Windows command line; "+
+					"split it into two round trips rather than raising the cap")
+			// The source-length budget is a proxy. Assert the real constraint too.
+			assert.True(t, powershell.FitsCommandLine(script),
+				"encoded length %d exceeds the %d character command-line cap",
+				len(powershell.Encode(script)), powershell.MaxCommandLength)
+		})
+	}
+}
 
 func TestWindowsScheduledTasks(t *testing.T) {
 	r, err := os.Open("./testdata/scheduled-tasks.json")
