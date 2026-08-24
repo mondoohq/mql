@@ -4,7 +4,7 @@
 package resources
 
 import (
-	"go.mondoo.com/mql/v13/providers/jenkins/connection"
+	"go.mondoo.com/mql/providers/jenkins/connection"
 )
 
 // id returns the connection's base URL, the stable identifier for a Jenkins

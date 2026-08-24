@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers/jenkins/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/jenkins/connection"
 )
 
 // systemCredentialsDomain is the default (global) credentials domain, present

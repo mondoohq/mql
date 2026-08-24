@@ -6,7 +6,7 @@ package resources
 import (
 	"context"
 
-	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/llx"
 )
 
 // plugins lists every plugin installed on the Jenkins controller in a single
