@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -25,31 +26,32 @@ type mqlCircleciProjectInternal struct {
 	cacheOrgId string
 	cacheSlug  string
 
-	settingsOnce sync.Mutex
-	settingsDone bool
+	settingsLock sync.Mutex
+	settingsDone atomic.Bool
 	settings     *connection.AdvancedSettings
+	settingsErr  error
 }
 
 // advancedSettings lazily fetches and memoizes the project's advanced
 // settings from GET /project/{slug}/settings. The call fires only on the
 // first read of one of the advanced-settings fields.
+// advancedSettings fetches the project's advanced settings once and shares
+// the result across every accessor that reads from them. The outcome is
+// memoized either way: without caching the error, a project whose settings
+// are unreadable costs one failing request per accessor.
 func (p *mqlCircleciProject) advancedSettings() (*connection.AdvancedSettings, error) {
-	if p.settingsDone {
-		return p.settings, nil
+	if p.settingsDone.Load() {
+		return p.settings, p.settingsErr
 	}
-	p.settingsOnce.Lock()
-	defer p.settingsOnce.Unlock()
-	if p.settingsDone {
-		return p.settings, nil
+	p.settingsLock.Lock()
+	defer p.settingsLock.Unlock()
+	if p.settingsDone.Load() {
+		return p.settings, p.settingsErr
 	}
 	conn := p.MqlRuntime.Connection.(*connection.CircleciConnection)
-	settings, err := conn.Client().GetProjectSettings(context.Background(), p.cacheSlug)
-	if err != nil {
-		return nil, err
-	}
-	p.settings = settings
-	p.settingsDone = true
-	return p.settings, nil
+	p.settings, p.settingsErr = conn.Client().GetProjectSettings(context.Background(), p.cacheSlug)
+	p.settingsDone.Store(true)
+	return p.settings, p.settingsErr
 }
 
 func (p *mqlCircleciProject) buildForkPrs() (bool, error) {
@@ -57,7 +59,11 @@ func (p *mqlCircleciProject) buildForkPrs() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return s.BuildForkPrs, nil
+	if s.BuildForkPrs == nil {
+		p.BuildForkPrs.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *s.BuildForkPrs, nil
 }
 
 func (p *mqlCircleciProject) forksReceiveSecretEnvVars() (bool, error) {
@@ -65,7 +71,11 @@ func (p *mqlCircleciProject) forksReceiveSecretEnvVars() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return s.ForksReceiveSecretEnvVars, nil
+	if s.ForksReceiveSecretEnvVars == nil {
+		p.ForksReceiveSecretEnvVars.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *s.ForksReceiveSecretEnvVars, nil
 }
 
 func (p *mqlCircleciProject) buildPrsOnly() (bool, error) {
@@ -73,7 +83,11 @@ func (p *mqlCircleciProject) buildPrsOnly() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return s.BuildPrsOnly, nil
+	if s.BuildPrsOnly == nil {
+		p.BuildPrsOnly.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *s.BuildPrsOnly, nil
 }
 
 func (p *mqlCircleciProject) writeSettingsRequiresAdmin() (bool, error) {
@@ -81,7 +95,11 @@ func (p *mqlCircleciProject) writeSettingsRequiresAdmin() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return s.WriteSettingsRequiresAdmin, nil
+	if s.WriteSettingsRequiresAdmin == nil {
+		p.WriteSettingsRequiresAdmin.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *s.WriteSettingsRequiresAdmin, nil
 }
 
 func (p *mqlCircleciProject) disableSsh() (bool, error) {
@@ -89,7 +107,11 @@ func (p *mqlCircleciProject) disableSsh() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return s.DisableSsh, nil
+	if s.DisableSsh == nil {
+		p.DisableSsh.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *s.DisableSsh, nil
 }
 
 func (p *mqlCircleciProject) setGithubStatus() (bool, error) {
@@ -97,7 +119,11 @@ func (p *mqlCircleciProject) setGithubStatus() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return s.SetGithubStatus, nil
+	if s.SetGithubStatus == nil {
+		p.SetGithubStatus.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *s.SetGithubStatus, nil
 }
 
 func (p *mqlCircleciProject) autoCancelBuilds() (bool, error) {
@@ -105,7 +131,11 @@ func (p *mqlCircleciProject) autoCancelBuilds() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return s.AutocancelBuilds, nil
+	if s.AutocancelBuilds == nil {
+		p.AutoCancelBuilds.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *s.AutocancelBuilds, nil
 }
 
 func (p *mqlCircleciProject) prOnlyBranchOverrides() ([]any, error) {
@@ -164,6 +194,7 @@ func (p *mqlCircleciProject) environmentVariables() ([]any, error) {
 
 	var all []any
 	pageToken := ""
+	var walker pageWalker
 	for {
 		resp, err := client.ListProjectEnvVars(context.Background(), p.cacheSlug, pageToken)
 		if err != nil {
@@ -171,9 +202,8 @@ func (p *mqlCircleciProject) environmentVariables() ([]any, error) {
 		}
 		for _, v := range resp.Items {
 			res, err := CreateResource(p.MqlRuntime, "circleci.project.environmentVariable", map[string]*llx.RawData{
-				"__id":        llx.StringData(p.Id.Data + "/" + v.Name),
-				"name":        llx.StringData(v.Name),
-				"maskedValue": llx.StringData(v.Value),
+				"__id": llx.StringData(p.Id.Data + "/" + v.Name),
+				"name": llx.StringData(v.Name),
 			})
 			if err != nil {
 				return nil, err
@@ -181,10 +211,14 @@ func (p *mqlCircleciProject) environmentVariables() ([]any, error) {
 			res.(*mqlCircleciProjectEnvironmentVariable).cacheProject = p
 			all = append(all, res)
 		}
-		if resp.NextPageToken == "" {
+		next, done, err := walker.next(resp.NextPageToken)
+		if err != nil {
+			return nil, err
+		}
+		if done {
 			break
 		}
-		pageToken = resp.NextPageToken
+		pageToken = next
 	}
 	return all, nil
 }
@@ -229,6 +263,7 @@ func (p *mqlCircleciProject) webhooks() ([]any, error) {
 
 	var all []any
 	pageToken := ""
+	var walker pageWalker
 	for {
 		resp, err := client.ListWebhooks(context.Background(), p.Id.Data, "project", pageToken)
 		if err != nil {
@@ -240,7 +275,7 @@ func (p *mqlCircleciProject) webhooks() ([]any, error) {
 				"id":               llx.StringData(w.ID),
 				"name":             llx.StringData(w.Name),
 				"url":              llx.StringData(w.URL),
-				"verifyTls":        llx.BoolData(w.VerifyTLS),
+				"verifyTls":        llx.BoolDataPtr(w.VerifyTLS),
 				"signingSecretSet": llx.BoolData(w.SigningSecret != ""),
 				"events":           llx.ArrayData(convert.SliceAnyToInterface(w.Events), types.String),
 			})
@@ -250,10 +285,14 @@ func (p *mqlCircleciProject) webhooks() ([]any, error) {
 			res.(*mqlCircleciWebhook).cacheProject = p
 			all = append(all, res)
 		}
-		if resp.NextPageToken == "" {
+		next, done, err := walker.next(resp.NextPageToken)
+		if err != nil {
+			return nil, err
+		}
+		if done {
 			break
 		}
-		pageToken = resp.NextPageToken
+		pageToken = next
 	}
 	return all, nil
 }
@@ -281,6 +320,7 @@ func (p *mqlCircleciProject) checkoutKeys() ([]any, error) {
 
 	var all []any
 	pageToken := ""
+	var walker pageWalker
 	for {
 		resp, err := client.ListCheckoutKeys(context.Background(), p.cacheSlug, pageToken)
 		if err != nil {
@@ -292,7 +332,7 @@ func (p *mqlCircleciProject) checkoutKeys() ([]any, error) {
 				"fingerprint": llx.StringData(k.Fingerprint),
 				"type":        llx.StringData(k.Type),
 				"publicKey":   llx.StringData(k.PublicKey),
-				"preferred":   llx.BoolData(k.Preferred),
+				"preferred":   llx.BoolDataPtr(k.Preferred),
 				"createdAt":   llx.TimeDataPtr(parseCircleciTime(k.CreatedAt)),
 			})
 			if err != nil {
@@ -301,10 +341,14 @@ func (p *mqlCircleciProject) checkoutKeys() ([]any, error) {
 			res.(*mqlCircleciCheckoutKey).cacheProject = p
 			all = append(all, res)
 		}
-		if resp.NextPageToken == "" {
+		next, done, err := walker.next(resp.NextPageToken)
+		if err != nil {
+			return nil, err
+		}
+		if done {
 			break
 		}
-		pageToken = resp.NextPageToken
+		pageToken = next
 	}
 	return all, nil
 }

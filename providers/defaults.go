@@ -257,8 +257,8 @@ var DefaultProviders Providers = map[string]*Provider{
 			Connectors: []plugin.Connector{
 				{
 					Name:  "circleci",
-					Use:   "circleci --token TOKEN",
-					Short: "a CircleCI organization",
+					Use:   "circleci",
+					Short: "a CircleCI account",
 				},
 			},
 		},

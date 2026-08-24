@@ -73,6 +73,7 @@ func (o *mqlCircleciOrganization) projects() ([]any, error) {
 	seen := map[string]struct{}{}
 	var slugs []string
 	pageToken := ""
+	var walker pageWalker
 	for {
 		resp, err := client.ListPipelines(context.Background(), orgSlug, pageToken)
 		if err != nil {
@@ -88,10 +89,14 @@ func (o *mqlCircleciOrganization) projects() ([]any, error) {
 			seen[p.ProjectSlug] = struct{}{}
 			slugs = append(slugs, p.ProjectSlug)
 		}
-		if resp.NextPageToken == "" {
+		next, done, err := walker.next(resp.NextPageToken)
+		if err != nil {
+			return nil, err
+		}
+		if done {
 			break
 		}
-		pageToken = resp.NextPageToken
+		pageToken = next
 	}
 
 	all := make([]any, 0, len(slugs))
@@ -116,6 +121,7 @@ func (o *mqlCircleciOrganization) contexts() ([]any, error) {
 
 	var all []any
 	pageToken := ""
+	var walker pageWalker
 	for {
 		resp, err := client.ListContexts(context.Background(), o.Id.Data, pageToken)
 		if err != nil {
@@ -128,10 +134,14 @@ func (o *mqlCircleciOrganization) contexts() ([]any, error) {
 			}
 			all = append(all, res)
 		}
-		if resp.NextPageToken == "" {
+		next, done, err := walker.next(resp.NextPageToken)
+		if err != nil {
+			return nil, err
+		}
+		if done {
 			break
 		}
-		pageToken = resp.NextPageToken
+		pageToken = next
 	}
 	return all, nil
 }

@@ -267,9 +267,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"circleci.project.environmentVariable.project": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCircleciProjectEnvironmentVariable).GetProject()).ToDataRes(types.Resource("circleci.project"))
 	},
-	"circleci.project.environmentVariable.maskedValue": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlCircleciProjectEnvironmentVariable).GetMaskedValue()).ToDataRes(types.String)
-	},
 	"circleci.checkoutKey.fingerprint": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCircleciCheckoutKey).GetFingerprint()).ToDataRes(types.String)
 	},
@@ -543,10 +540,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"circleci.project.environmentVariable.project": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCircleciProjectEnvironmentVariable).Project, ok = plugin.RawToTValue[*mqlCircleciProject](v.Value, v.Error)
-		return
-	},
-	"circleci.project.environmentVariable.maskedValue": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlCircleciProjectEnvironmentVariable).MaskedValue, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"circleci.checkoutKey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1258,9 +1251,8 @@ type mqlCircleciProjectEnvironmentVariable struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlCircleciProjectEnvironmentVariableInternal
-	Name        plugin.TValue[string]
-	Project     plugin.TValue[*mqlCircleciProject]
-	MaskedValue plugin.TValue[string]
+	Name    plugin.TValue[string]
+	Project plugin.TValue[*mqlCircleciProject]
 }
 
 // createCircleciProjectEnvironmentVariable creates a new instance of this resource
@@ -1313,10 +1305,6 @@ func (c *mqlCircleciProjectEnvironmentVariable) GetProject() *plugin.TValue[*mql
 
 		return c.project()
 	})
-}
-
-func (c *mqlCircleciProjectEnvironmentVariable) GetMaskedValue() *plugin.TValue[string] {
-	return &c.MaskedValue
 }
 
 // mqlCircleciCheckoutKey for the circleci.checkoutKey resource

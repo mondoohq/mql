@@ -5,8 +5,10 @@ package resources
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/circleci/connection"
@@ -104,15 +106,45 @@ func newMqlCircleciUser(runtime *plugin.Runtime, u *connection.User) (plugin.Res
 	})
 }
 
-// parseCircleciTime parses a CircleCI RFC3339 timestamp string, returning
-// nil when the value is empty or cannot be parsed.
+// parseCircleciTime parses a CircleCI RFC3339 timestamp string. An empty
+// value means the API reported no timestamp, so the field stays null. A
+// value that is present but unparseable is a data-quality problem rather
+// than an absent timestamp, so it is logged before falling back to null.
 func parseCircleciTime(s string) *time.Time {
 	if s == "" {
 		return nil
 	}
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
+		log.Warn().Err(err).Str("value", s).Msg("circleci> unable to parse timestamp")
 		return nil
 	}
 	return &t
+}
+
+// pageWalker guards a CircleCI cursor walk against an endpoint that keeps
+// handing back a page token it has already issued. CircleCI paginates with an
+// opaque next_page_token, and a proxy or a server-side fault that repeats one
+// makes a naive loop append the same page forever: the slice grows until the
+// scan runs out of memory rather than finishing with a wrong answer. Tracking
+// the tokens already seen turns that into an error.
+type pageWalker struct {
+	seen map[string]struct{}
+}
+
+// next reports the token to request for the following page. done is true once
+// the collection is exhausted. An error means the cursor stopped advancing,
+// which is a fault rather than the end of the collection.
+func (w *pageWalker) next(token string) (next string, done bool, err error) {
+	if token == "" {
+		return "", true, nil
+	}
+	if _, dup := w.seen[token]; dup {
+		return "", false, fmt.Errorf("circleci> pagination did not advance: page token %q was issued twice", token)
+	}
+	if w.seen == nil {
+		w.seen = map[string]struct{}{}
+	}
+	w.seen[token] = struct{}{}
+	return token, false, nil
 }

@@ -44,7 +44,6 @@ circleci.project.checkoutKeys 13.0.0
 circleci.project.defaultBranch 13.0.0
 circleci.project.disableSsh 13.0.0
 circleci.project.environmentVariable 13.0.0
-circleci.project.environmentVariable.maskedValue 13.0.0
 circleci.project.environmentVariable.name 13.0.0
 circleci.project.environmentVariable.project 13.0.0
 circleci.project.environmentVariables 13.0.0

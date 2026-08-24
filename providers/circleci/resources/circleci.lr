@@ -37,11 +37,9 @@ private circleci.user @defaults("login") @maturity("experimental") {
 // CircleCI organization
 //
 // A CircleCI organization as visible to the authenticated token, keyed by
-// its `id` (a UUID, not the display slug). Organizations own projects and
-// contexts. SSO enforcement and other identity-provider settings are
-// configured in CircleCI's org-level UI and are not exposed by API v2, so
-// this resource cannot confirm SSO is enforced; treat that as a manual
-// control until CircleCI exposes it.
+// its `id` (a UUID, not the display slug). Organizations own the
+// `projects` that run pipelines and the `contexts` that hold shared
+// credentials.
 circleci.organization @defaults("name") @maturity("experimental") {
   // Organization ID (UUID)
   id string
@@ -134,19 +132,14 @@ circleci.webhook @defaults("name url") @maturity("experimental") {
 // CircleCI project environment variable
 //
 // A single environment variable set on a project, identified by its
-// `name`. CircleCI's API never returns environment variable values; the
-// `maskedValue` field holds only the truncated, non-secret suffix
-// CircleCI itself returns (for example `xxxx1234`), which exists to help
-// operators recognize which value is configured, not to reveal it. Treat
-// the absence of a `value` field as intentional: it cannot be modeled
-// because the API does not provide it.
+// `name`. Only the name is exposed: an environment variable set directly
+// on a project is the usual home for a build credential, so an audit
+// works off the name and the fact that the variable exists.
 private circleci.project.environmentVariable @defaults("name") @maturity("experimental") {
   // Variable name
   name string
   // Project this environment variable is defined on
   project() circleci.project
-  // Truncated, non-secret suffix of the value as returned by the API (e.g. "xxxx1234")
-  maskedValue string
 }
 
 // CircleCI checkout key
@@ -228,13 +221,9 @@ private circleci.context.restriction @defaults("restrictionType restrictionValue
 // CircleCI context environment variable
 //
 // A single environment variable name configured in a context, identified
-// by `variable`. CircleCI's API does not return context environment
-// variable values in any form, not even masked or truncated: contexts
-// are the platform's mechanism for handing a value to a build without
-// ever making it readable back out through the API. A security audit of
-// contexts should focus on which variables exist and which security
-// groups can access the context, not on inspecting values that are
-// architecturally unavailable.
+// by `variable`. Values are never exposed: a context hands a value to a
+// build without making it readable back out. An audit turns on which
+// variables exist and which security groups can reach the context.
 private circleci.context.environmentVariable @defaults("variable") @maturity("experimental") {
   // Variable name
   variable string

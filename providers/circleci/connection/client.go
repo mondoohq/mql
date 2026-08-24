@@ -154,14 +154,17 @@ type VCSInfo struct {
 // AdvancedSettings are the project's advanced settings, returned under the
 // "advanced" key of GET /project/{project-slug}/settings. The project detail
 // response (GET /project/{project-slug}) does not carry these values.
+// Each flag is a pointer so that a key the API omits stays null rather
+// than reading as a confident false, which would let a policy pass on a
+// setting that was never returned.
 type AdvancedSettings struct {
-	BuildForkPrs               bool     `json:"build_fork_prs"`
-	ForksReceiveSecretEnvVars  bool     `json:"forks_receive_secret_env_vars"`
-	BuildPrsOnly               bool     `json:"build_prs_only"`
-	WriteSettingsRequiresAdmin bool     `json:"write_settings_requires_admin"`
-	DisableSsh                 bool     `json:"disable_ssh"`
-	SetGithubStatus            bool     `json:"set_github_status"`
-	AutocancelBuilds           bool     `json:"autocancel_builds"`
+	BuildForkPrs               *bool    `json:"build_fork_prs"`
+	ForksReceiveSecretEnvVars  *bool    `json:"forks_receive_secret_env_vars"`
+	BuildPrsOnly               *bool    `json:"build_prs_only"`
+	WriteSettingsRequiresAdmin *bool    `json:"write_settings_requires_admin"`
+	DisableSsh                 *bool    `json:"disable_ssh"`
+	SetGithubStatus            *bool    `json:"set_github_status"`
+	AutocancelBuilds           *bool    `json:"autocancel_builds"`
 	PrOnlyBranchOverrides      []string `json:"pr_only_branch_overrides"`
 }
 
@@ -299,11 +302,11 @@ func (c *Client) ListContextEnvVars(ctx context.Context, contextId, pageToken st
 }
 
 // ProjectEnvVar is a single environment variable set directly on a
-// project. Value is already truncated by CircleCI to a non-secret suffix
-// (e.g. "xxxx1234").
+// project. Only the name is decoded: the API also returns a truncated
+// suffix of the value, which is real secret material and is deliberately
+// not read.
 type ProjectEnvVar struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
+	Name string `json:"name"`
 }
 
 // ProjectEnvVarListResponse is the paginated response from
@@ -334,7 +337,7 @@ type CheckoutKey struct {
 	PublicKey   string `json:"public-key"`
 	Type        string `json:"type"`
 	Fingerprint string `json:"fingerprint"`
-	Preferred   bool   `json:"preferred"`
+	Preferred   *bool  `json:"preferred"`
 	CreatedAt   string `json:"created-at"`
 }
 
@@ -404,7 +407,7 @@ type Webhook struct {
 	ID            string       `json:"id"`
 	Name          string       `json:"name"`
 	URL           string       `json:"url"`
-	VerifyTLS     bool         `json:"verify-tls"`
+	VerifyTLS     *bool        `json:"verify-tls"`
 	SigningSecret string       `json:"signing-secret"`
 	Events        []string     `json:"events"`
 	Scope         WebhookScope `json:"scope"`

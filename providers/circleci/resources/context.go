@@ -59,6 +59,7 @@ func (c *mqlCircleciContext) environmentVariables() ([]any, error) {
 
 	var all []any
 	pageToken := ""
+	var walker pageWalker
 	for {
 		resp, err := client.ListContextEnvVars(context.Background(), c.Id.Data, pageToken)
 		if err != nil {
@@ -76,10 +77,14 @@ func (c *mqlCircleciContext) environmentVariables() ([]any, error) {
 			res.(*mqlCircleciContextEnvironmentVariable).cacheContext = c
 			all = append(all, res)
 		}
-		if resp.NextPageToken == "" {
+		next, done, err := walker.next(resp.NextPageToken)
+		if err != nil {
+			return nil, err
+		}
+		if done {
 			break
 		}
-		pageToken = resp.NextPageToken
+		pageToken = next
 	}
 	return all, nil
 }
@@ -93,6 +98,7 @@ func (c *mqlCircleciContext) restrictions() ([]any, error) {
 
 	var all []any
 	pageToken := ""
+	var walker pageWalker
 	for {
 		resp, err := client.ListContextRestrictions(context.Background(), c.Id.Data, pageToken)
 		if err != nil {
@@ -112,10 +118,14 @@ func (c *mqlCircleciContext) restrictions() ([]any, error) {
 			res.(*mqlCircleciContextRestriction).cacheContext = c
 			all = append(all, res)
 		}
-		if resp.NextPageToken == "" {
+		next, done, err := walker.next(resp.NextPageToken)
+		if err != nil {
+			return nil, err
+		}
+		if done {
 			break
 		}
-		pageToken = resp.NextPageToken
+		pageToken = next
 	}
 	return all, nil
 }

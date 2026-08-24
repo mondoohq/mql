@@ -6,6 +6,8 @@ package provider
 import (
 	"context"
 	"errors"
+	"slices"
+	"strings"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -147,6 +149,12 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.CircleciConnec
 		return err
 	}
 	if len(orgs) > 0 {
+		// GetCollaborations does not promise a stable order, so sort before
+		// picking one. Without this a multi-org token yields a different
+		// platform id per scan and upstream sees a new asset every time.
+		slices.SortFunc(orgs, func(a, b connection.Collaboration) int {
+			return strings.Compare(a.ID, b.ID)
+		})
 		asset.Name = orgs[0].Name
 		asset.PlatformIds = []string{PlatformIDPrefix + "org/" + orgs[0].ID}
 		return nil
