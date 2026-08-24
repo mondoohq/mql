@@ -63,7 +63,10 @@ func newMqlRipplingGroup(runtime *plugin.Runtime, g *connection.Group) (*mqlRipp
 		return nil, err
 	}
 	group := r.(*mqlRipplingGroup)
-	group.memberIDs = append(group.memberIDs, g.Users...)
+	// Assign rather than append: CreateResource returns the cached instance
+	// when this group was already built during the scan, and appending there
+	// would list every member twice.
+	group.memberIDs = g.Users
 	return group, nil
 }
 

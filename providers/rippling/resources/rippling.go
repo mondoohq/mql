@@ -113,10 +113,10 @@ func (r *mqlRippling) groups() ([]any, error) {
 	return out, nil
 }
 
-// resolveEmployee returns the cached MQL employee resource for the given
-// id, fetching the full list once and reusing it for subsequent lookups
-// during a single connection. Used by every typed cross-ref into
-// rippling.employee.
+// resolveEmployee returns the MQL employee resource for the given id. The
+// underlying employee list is fetched once per connection and reused, so
+// repeated lookups cost no extra API calls. Used by every typed cross-ref
+// into rippling.employee.
 func resolveEmployee(runtime *plugin.Runtime, id string) (*mqlRipplingEmployee, error) {
 	r, err := NewResource(runtime, "rippling.employee", map[string]*llx.RawData{
 		"id": llx.StringData(id),

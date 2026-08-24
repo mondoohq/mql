@@ -164,9 +164,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"rippling.company.primaryEmail": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRipplingCompany).GetPrimaryEmail()).ToDataRes(types.String)
 	},
-	"rippling.company.tin": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlRipplingCompany).GetTin()).ToDataRes(types.String)
-	},
 	"rippling.company.needsOnboarding": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRipplingCompany).GetNeedsOnboarding()).ToDataRes(types.Bool)
 	},
@@ -211,9 +208,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"rippling.employee.workEmail": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRipplingEmployee).GetWorkEmail()).ToDataRes(types.String)
-	},
-	"rippling.employee.personalEmail": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlRipplingEmployee).GetPersonalEmail()).ToDataRes(types.String)
 	},
 	"rippling.employee.phoneNumber": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRipplingEmployee).GetPhoneNumber()).ToDataRes(types.String)
@@ -397,10 +391,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlRipplingCompany).PrimaryEmail, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"rippling.company.tin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlRipplingCompany).Tin, ok = plugin.RawToTValue[string](v.Value, v.Error)
-		return
-	},
 	"rippling.company.needsOnboarding": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlRipplingCompany).NeedsOnboarding, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -463,10 +453,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"rippling.employee.workEmail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlRipplingEmployee).WorkEmail, ok = plugin.RawToTValue[string](v.Value, v.Error)
-		return
-	},
-	"rippling.employee.personalEmail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlRipplingEmployee).PersonalEmail, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"rippling.employee.phoneNumber": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -818,7 +804,6 @@ type mqlRipplingCompany struct {
 	WorkEmail       plugin.TValue[string]
 	Phone           plugin.TValue[string]
 	PrimaryEmail    plugin.TValue[string]
-	Tin             plugin.TValue[string]
 	NeedsOnboarding plugin.TValue[bool]
 	CreatedAt       plugin.TValue[*time.Time]
 	StreetLine1     plugin.TValue[string]
@@ -890,10 +875,6 @@ func (c *mqlRipplingCompany) GetPrimaryEmail() *plugin.TValue[string] {
 	return &c.PrimaryEmail
 }
 
-func (c *mqlRipplingCompany) GetTin() *plugin.TValue[string] {
-	return &c.Tin
-}
-
 func (c *mqlRipplingCompany) GetNeedsOnboarding() *plugin.TValue[bool] {
 	return &c.NeedsOnboarding
 }
@@ -938,7 +919,6 @@ type mqlRipplingEmployee struct {
 	LastName           plugin.TValue[string]
 	PreferredFirstName plugin.TValue[string]
 	WorkEmail          plugin.TValue[string]
-	PersonalEmail      plugin.TValue[string]
 	PhoneNumber        plugin.TValue[string]
 	Title              plugin.TValue[string]
 	EmploymentType     plugin.TValue[string]
@@ -1020,10 +1000,6 @@ func (c *mqlRipplingEmployee) GetPreferredFirstName() *plugin.TValue[string] {
 
 func (c *mqlRipplingEmployee) GetWorkEmail() *plugin.TValue[string] {
 	return &c.WorkEmail
-}
-
-func (c *mqlRipplingEmployee) GetPersonalEmail() *plugin.TValue[string] {
-	return &c.PersonalEmail
 }
 
 func (c *mqlRipplingEmployee) GetPhoneNumber() *plugin.TValue[string] {

@@ -30,6 +30,15 @@ type RipplingConnection struct {
 
 	apiBase    string
 	httpClient *http.Client
+
+	// List walks are memoized per connection. Cross-references between
+	// resources all resolve by scanning these lists, so fetching them once
+	// keeps a nested query at one walk per endpoint instead of one per row.
+	employees     memo[Employee]
+	departments   memo[Department]
+	teams         memo[Team]
+	workLocations memo[WorkLocation]
+	groups        memo[Group]
 }
 
 func NewRipplingConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*RipplingConnection, error) {
