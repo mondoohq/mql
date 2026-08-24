@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go.mondoo.com/mql/v13/utils/dnssec"
 )
 
 // DNSSECKey is one key pair written by dnssec-keygen.
@@ -105,10 +107,13 @@ func ParseDNSSECKeyFile(name, content string) *DNSSECKey {
 			if err != nil {
 				continue
 			}
-			// Bit 0 of the flags field is the Secure Entry Point: set for a
-			// key signing key, clear for a zone signing key. Comparing against
-			// 257 exactly would miss a key with the revoke bit also set.
-			key.KeySigningKey = flags&1 == 1
+			// The Secure Entry Point bit is set for a key signing key and
+			// clear for a zone signing key. Comparing against 257 exactly
+			// would miss a key with the revoke bit also set. The same flags
+			// field arrives in a DNSKEY record read off the wire, so the bit
+			// test lives in utils/dnssec and is shared with that reader
+			// rather than written out twice.
+			key.KeySigningKey = dnssec.IsKeySigningKey(flags)
 		}
 	}
 

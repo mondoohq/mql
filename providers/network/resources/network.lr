@@ -601,6 +601,20 @@ dns @defaults("fqdn") {
   dkim(params) []dns.dkimRecord
   // DNSSEC signing state for the domain
   dnssec(params) dns.dnssecConfig
+  // Outcome of a DNSSEC-validating resolution of the domain
+  //
+  // What a validating query actually got back, as opposed to what the zone
+  // publishes. Issues an EDNS0 query with the DNSSEC OK bit set, reports
+  // whether the resolver returned the Authenticated Data flag, whether the
+  // answer carried RRSIG records, whether those signatures verify against the
+  // zone's published keys, and whether the chain of trust links to the root.
+  // Use `dnssec` to audit how a zone is signed; use this to audit whether
+  // resolving it validates.
+  //
+  // Depends on fqdn rather than params, so it issues its own targeted queries
+  // instead of a full record-type sweep, which keeps it affordable to
+  // instantiate per element of a list.
+  dnssecValidation(fqdn) dns.dnssecValidationResult
   // Parsed SPF (Sender Policy Framework) records
   spf(params) []dns.spfRecord
   // Parsed DMARC record published at the domain's _dmarc subdomain
@@ -664,12 +678,14 @@ dns.mxRecord @defaults("domainName") {
 
 // DNSSEC configuration for a domain
 //
-// DNSSEC signing state for a domain. Reports whether
-// the domain publishes DNSKEY records, the parsed signing keys, and the
-// distinct algorithm numbers in use, so audits can require DNSSEC and flag
-// weak or deprecated algorithms without parsing raw DNSKEY rdata. `enabled`
-// reflects the presence of published DNSKEY records and does not, on its own,
-// validate the DS chain of trust at the parent zone.
+// How a domain's zone is signed: whether it publishes DNSKEY records, the
+// parsed signing keys and their algorithms and lengths, the delegation the
+// parent zone publishes, and the way the zone proves a name does not exist.
+// This is the zone's configuration, which is stable between re-signings.
+// What a resolution of the domain actually returned is a separate question,
+// answered by `dnssecValidation` on the parent dns resource. `enabled`
+// reflects published DNSKEY records and does not, on its own, mean the chain
+// of trust resolves.
 dns.dnssecConfig @defaults("enabled") {
   // Whether the domain publishes DNSKEY records
   enabled bool
@@ -681,14 +697,66 @@ dns.dnssecConfig @defaults("enabled") {
   // 13 (ECDSAP256SHA256). Use it to flag deprecated algorithms such as
   // 5/7 (RSASHA1) or 3 (DSA).
   algorithms []int
+  // Whether the parent zone publishes a DS record for this zone
+  //
+  // A zone can be signed and still be an insecure delegation: without a DS
+  // record in the parent, a validating resolver has no way to reach the
+  // zone's keys and treats the whole zone as unsigned. Signing without
+  // delegating is the most common way a DNSSEC deployment silently does
+  // nothing, so this is a different question from `enabled`.
+  delegationSigned bool
+  // DS records the parent zone publishes for this zone
+  dsRecords []dns.dsRecord
+  // Whether every published DS record matches a published DNSKEY
+  //
+  // False when the parent still publishes a DS for a key the zone has rolled
+  // away from, or when the child publishes keys the parent has never been
+  // told about. Either breaks validation for part of the internet while the
+  // zone continues to look correctly signed from the inside. True when there
+  // is at least one DS record and every one of them matches a key.
+  dsDigestsMatchKeys bool
+  // How the zone proves that a name does not exist
+  //
+  // `NSEC3` when the zone publishes an NSEC3PARAM record, `NSEC` when the
+  // zone is signed and publishes none, and empty when the zone is not
+  // signed. NSEC lets anyone walk the zone and enumerate every name in it;
+  // NSEC3 publishes hashes instead.
+  denialOfExistence string
+  // NSEC3 hash iteration count, or 0 when the zone does not use NSEC3
+  //
+  // Additional iterations beyond the first. RFC 9276 recommends 0: the extra
+  // rounds cost the server and every validating resolver far more than they
+  // cost an attacker, and resolvers increasingly treat high counts as
+  // insecure rather than doing the work.
+  nsec3Iterations int
+  // NSEC3 salt length in bytes, or 0 when there is no salt
+  //
+  // A zone with no salt publishes `-`, which is zero bytes rather than a
+  // one-character salt. RFC 9276 recommends an empty salt, because the salt
+  // only helps against precomputation that a zone re-signing already defeats.
+  nsec3SaltLength int
+  // Whether NSEC3 opt-out is enabled, allowing unsigned delegations to go unproven
+  nsec3OptOut bool
+  // NSEC3 hash algorithm number, or 0 when the zone does not use NSEC3
+  //
+  // Only 1 (SHA-1) is assigned.
+  nsec3HashAlgorithm int
 }
 
 // DNSKEY record (RFC 4034)
 //
-// Single published DNSSEC key: its flags, protocol, algorithm
-// number, and base64-encoded public key. `keySigningKey` is true for a
-// key-signing key — the one whose SEP flag is set (flags value 257) — as
-// opposed to a zone-signing key (flags value 256).
+// Single published DNSSEC key: its flags, protocol, algorithm number and
+// length, and the base64-encoded public key. `keySigningKey` is true for a
+// key-signing key, the one whose Secure Entry Point bit is set, as opposed to
+// a zone-signing key. The flags are read bit by bit rather than compared
+// against 256 and 257, so a revoked key-signing key (flags 385) is still
+// reported as one.
+//
+// The key tag and the signature bytes are deliberately not exposed. They
+// change every time the zone is re-signed, so a check built on either reports
+// a different answer on a schedule the operator did not choose. Algorithm,
+// key length and the flag bits survive re-signing and are what an audit
+// should assert on.
 private dns.dnssecKey @defaults("algorithm keySigningKey") {
   // DNSKEY flags field, e.g. 256 for a zone-signing key or 257 for a key-signing key
   flags int
@@ -696,10 +764,202 @@ private dns.dnssecKey @defaults("algorithm keySigningKey") {
   protocol int
   // DNSSEC algorithm number (RFC 8624), e.g. 8 (RSASHA256) or 13 (ECDSAP256SHA256)
   algorithm int
+  // IANA mnemonic for the algorithm number, e.g. RSASHA256 or ECDSAP256SHA256
+  //
+  // Empty when the algorithm number is unassigned, so an unknown algorithm
+  // reads as unknown instead of being reported under someone else's name.
+  algorithmName string
+  // Key length in bits
+  //
+  // Derived from the published key material rather than assumed from the
+  // algorithm, so a malformed key does not report a confident wrong size.
+  // 0 means the length could not be determined, not that the key is empty.
+  keyLength int
   // Base64-encoded public key
   publicKey string
-  // Whether this is a key-signing key (the SEP flag is set)
+  // Whether this is a key-signing key (the Secure Entry Point bit is set)
   keySigningKey bool
+  // Whether the key may be used to sign zone data (the Zone Key bit is set)
+  //
+  // A DNSKEY without this bit is published in the zone but must not validate
+  // any record in it.
+  zoneKey bool
+  // Whether the key carries the RFC 5011 revoke bit
+  revoked bool
+}
+
+// DS record (RFC 4034)
+//
+// One delegation signer record published by the parent zone, which is what
+// ties a child zone's key into the chain of trust. Carries the algorithm and
+// digest type, the digest itself, and whether that digest matches a key the
+// child zone currently publishes.
+//
+// The key tag is deliberately not exposed: it changes on every key rollover.
+// Assert on `matchesPublishedKey`, the algorithm, and the digest type, which
+// do not.
+private dns.dsRecord @defaults("algorithm digestType matchesPublishedKey") {
+  // DNSSEC algorithm number of the key this record delegates to
+  algorithm int
+  // IANA mnemonic for the algorithm number, empty when unassigned
+  algorithmName string
+  // Digest type number: 1 (SHA-1), 2 (SHA-256), or 4 (SHA-384)
+  digestType int
+  // IANA mnemonic for the digest type, empty when unassigned
+  digestTypeName string
+  // Hex-encoded digest of the delegated key
+  //
+  // Changes whenever the key it covers is rolled, so audit
+  // `matchesPublishedKey` rather than comparing this against a pinned value.
+  digest string
+  // Whether this digest matches a DNSKEY the zone currently publishes
+  //
+  // False for a DS the parent has kept past a key rollover, which is a chain
+  // of trust that fails for resolvers while the zone still looks signed.
+  matchesPublishedKey bool
+}
+
+// RRSIG record (RFC 4034)
+//
+// One signature covering a resolved record set: the record type it covers,
+// the algorithm that produced it, the zone that signed it, and the validity
+// window it is usable in. Reachable through `dnssecValidation` on a dns
+// resource, which collects the signatures a validating query returned.
+//
+// The key tag and the signature bytes are deliberately not exposed, because
+// both change every time the zone is re-signed. The validity window does not
+// change in the same way: a zone re-signed weekly with a fourteen day window
+// reports roughly the same remaining validity whenever it is looked at, which
+// is what makes `expiresIn` something an audit can assert on.
+private dns.rrsigRecord @defaults("typeCovered algorithm signerName") {
+  // Name the signed record set belongs to
+  name string
+  // Record type this signature covers, e.g. A, DNSKEY, or CNAME
+  typeCovered string
+  // DNSSEC algorithm number that produced the signature
+  algorithm int
+  // IANA mnemonic for the algorithm number, empty when unassigned
+  algorithmName string
+  // Number of labels in the original signed name
+  labels int
+  // Original TTL of the signed record set, as it appears in the zone
+  originalTtl int
+  // When the signature became valid
+  inception time
+  // When the signature stops being valid
+  expiration time
+  // How long the signature has left before it expires
+  //
+  // Negative once the signature has already expired. Assert a floor on this
+  // to catch a zone whose re-signing has stopped, which takes the zone down
+  // for validating resolvers at the moment the last signature lapses, with no
+  // warning from anything else.
+  expiresIn time
+  // Whether the signature's validity has already ended
+  expired bool
+  // Whether the signature's validity has not yet begun
+  //
+  // A resolver rejects a signature from the future exactly as harshly as an
+  // expired one, so a clock skewed forward on the signing server breaks the
+  // zone the same way a lapsed signature does.
+  notYetValid bool
+  // Zone that produced the signature
+  signerName string
+}
+
+// DNSSEC validation result for a domain
+//
+// What a DNSSEC-validating resolution of a domain actually returned, as
+// distinct from what the zone publishes. Reports whether the resolver honored
+// the DNSSEC OK bit, whether it set the Authenticated Data flag, whether the
+// answer carried signatures, whether those signatures verify against the
+// zone's published keys, and whether the chain of trust links all the way to
+// the root trust anchor. Reachable as
+// `dns(fqdn: "example.com").dnssecValidation`.
+//
+// Nothing here raises an error when validation does not succeed. An unsigned
+// zone, an unreachable resolver, and a genuinely broken chain of trust all
+// report their state in these fields with `error` explaining which one
+// happened, so a scan of a fleet that includes unsigned domains still
+// completes.
+dns.dnssecValidationResult @defaults("chainOfTrustValidated authenticatedData") {
+  // Name that was queried
+  name string
+  // Record type that was queried
+  recordType string
+  // Response code of the validating query, e.g. NOERROR, SERVFAIL, or NXDOMAIN
+  //
+  // A validating resolver answers SERVFAIL, not NOERROR, when a zone's
+  // signatures do not verify, so a bogus zone and a broken server look alike
+  // from the response code alone. Read `error` to tell them apart.
+  responseCode string
+  // Whether the resolver returned DNSSEC records for a query that asked for them
+  //
+  // False when the path to the resolver strips EDNS0 or the resolver does not
+  // support DNSSEC, in which case none of the other fields can be trusted to
+  // say anything about the zone.
+  dnssecOk bool
+  // Whether the resolver set the Authenticated Data flag on the response
+  //
+  // This is the resolver's own verdict: it validated the answer and vouches
+  // for it. It says nothing when the resolver does not validate, which is why
+  // `chainOfTrustValidated` is computed here rather than taken on trust.
+  authenticatedData bool
+  // Whether the answer carried at least one RRSIG record
+  signed bool
+  // Signatures covering the answer
+  signatures []dns.rrsigRecord
+  // Whether every signature over the answer verified against a published DNSKEY
+  //
+  // The cryptographic check of the answer itself, independent of anything the
+  // resolver claims. False when no signature could be verified, including
+  // when the answer carried none.
+  signaturesVerified bool
+  // Whether the chain of trust validated from this answer up to the root
+  //
+  // Verified here rather than delegated to the resolver: each zone's DNSKEY
+  // set is checked against the DS record its parent publishes, up to the IANA
+  // root trust anchor. False for an unsigned zone, an insecure delegation, a
+  // DS that no longer matches a published key, and any zone the walk could not
+  // reach.
+  chainOfTrustValidated bool
+  // Zones the chain of trust walk traversed, from the signed answer up to the root
+  chain []string
+  // Zone the chain of trust broke at, empty when it validated
+  //
+  // Names the first zone walking upward whose link to its parent could not be
+  // established, which is the zone whose operator has something to fix.
+  brokenAtZone string
+  // Distinct zones that signed the answer
+  signerNames []string
+  // Distinct DNSSEC algorithm numbers across the answer's signatures
+  //
+  // The algorithm that actually signed the answer, which is not necessarily
+  // every algorithm the zone publishes a key for. A zone mid-migration
+  // publishes keys for both and signs with one.
+  signatureAlgorithms []int
+  // When the earliest-expiring signature over the answer expires
+  //
+  // Null when the answer carried no signatures.
+  earliestSignatureExpiry time
+  // How long the earliest-expiring signature over the answer has left
+  //
+  // Negative once that signature has expired. Null when the answer carried no
+  // signatures.
+  signatureExpiresIn time
+  // Whether every signature over the answer is inside its validity window now
+  //
+  // False when any signature has expired or has not yet become valid, and
+  // false when the answer carried no signatures at all, so it cannot pass
+  // vacuously on an unsigned zone.
+  signaturesCurrentlyValid bool
+  // Why validation did not complete, empty when the chain of trust validated
+  //
+  // Distinguishes the cases that all otherwise read as an unvalidated
+  // resolution: a zone that is not signed, a resolver that could not be
+  // reached, a signature that did not verify, and a delegation with no DS
+  // record at the parent.
+  error string
 }
 
 // SPF policy record (RFC 7208)

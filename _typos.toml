@@ -24,6 +24,9 @@ extend-exclude = [
 # baselined here and left for a separate, deliberate cleanup.
 [default.extend-words]
 # Technical terms, abbreviations, command names, and short identifier fragments.
+# GOST is the Russian cryptographic standard family, and the IANA mnemonic for
+# DNSSEC algorithms 12/23 and DS digest types 3/5. Not a misspelling of "ghost".
+gost = "gost"
 # MikroTik RouterOS (and the go-routeros SDK package name).
 routeros = "routeros"
 aks = "aks"

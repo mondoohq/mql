@@ -7,9 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"net"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -410,85 +408,6 @@ func (d *mqlDnsDkimRecord) valid() (bool, error) {
 
 	ok, _, _ := d.dkim.Valid()
 	return ok, nil
-}
-
-func (d *mqlDns) dnssec(params any) (*mqlDnsDnssecConfig, error) {
-	keys := []any{}
-	algoSet := map[int64]struct{}{}
-
-	if paramsM, ok := params.(map[string]any); ok {
-		if record, ok := paramsM["DNSKEY"].(map[string]any); ok && record["rCode"] == dns.RcodeToString[dns.RcodeSuccess] {
-			var name, class string
-			var ttl int64
-			var rdata []any
-			if record["name"] != nil {
-				name = record["name"].(string)
-			}
-			if record["class"] != nil {
-				class = record["class"].(string)
-			}
-			if v, ok := dictTTL(record); ok {
-				ttl = v
-			}
-			if record["rData"] != nil {
-				rdata = record["rData"].([]any)
-			}
-
-			for j := range rdata {
-				entry, ok := rdata[j].(string)
-				if !ok {
-					continue
-				}
-
-				// reuse the dns package to parse the DNSKEY rdata into its fields
-				s := name + "\t" + strconv.FormatInt(ttl, 10) + "\t" + class + "\tDNSKEY\t" + entry
-				rr, err := dns.NewRR(s)
-				if err != nil {
-					return nil, err
-				}
-				key, ok := rr.(*dns.DNSKEY)
-				if !ok {
-					continue
-				}
-
-				// the SEP flag (least-significant bit of the flags field)
-				// marks a key-signing key; flags 257 is a KSK, 256 a ZSK
-				keySigningKey := key.Flags&1 == 1
-				keyResource, err := CreateResource(d.MqlRuntime, "dns.dnssecKey", map[string]*llx.RawData{
-					"__id":          llx.StringData(fmt.Sprintf("dns.dnssecKey/%d/%d/%s", key.Algorithm, key.Flags, key.PublicKey)),
-					"flags":         llx.IntData(int64(key.Flags)),
-					"protocol":      llx.IntData(int64(key.Protocol)),
-					"algorithm":     llx.IntData(int64(key.Algorithm)),
-					"publicKey":     llx.StringData(key.PublicKey),
-					"keySigningKey": llx.BoolData(keySigningKey),
-				})
-				if err != nil {
-					return nil, err
-				}
-				keys = append(keys, keyResource)
-				algoSet[int64(key.Algorithm)] = struct{}{}
-			}
-		}
-	}
-
-	algorithms := make([]any, 0, len(algoSet))
-	for a := range algoSet {
-		algorithms = append(algorithms, a)
-	}
-	slices.SortFunc(algorithms, func(a, b any) int {
-		return int(a.(int64) - b.(int64))
-	})
-
-	res, err := CreateResource(d.MqlRuntime, "dns.dnssecConfig", map[string]*llx.RawData{
-		"__id":       llx.StringData("dns.dnssecConfig/" + d.Fqdn.Data),
-		"enabled":    llx.BoolData(len(keys) > 0),
-		"keys":       llx.ArrayData(keys, types.Resource("dns.dnssecKey")),
-		"algorithms": llx.ArrayData(algorithms, types.Int),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlDnsDnssecConfig), nil
 }
 
 // parseSPF extracts the version, ordered mechanisms, and the qualifier of the

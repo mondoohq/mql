@@ -16,36 +16,39 @@ import (
 
 // The MQL type names exposed as public consts for ease of reference.
 const (
-	ResourceSocket                  string = "socket"
-	ResourceHttp                    string = "http"
-	ResourceHttpGet                 string = "http.get"
-	ResourceHttpHeader              string = "http.header"
-	ResourceHttpHeaderSts           string = "http.header.sts"
-	ResourceHttpHeaderXssProtection string = "http.header.xssProtection"
-	ResourceHttpHeaderContentType   string = "http.header.contentType"
-	ResourceHttpHeaderSetCookie     string = "http.header.setCookie"
-	ResourceUrl                     string = "url"
-	ResourceTls                     string = "tls"
-	ResourceTlsCipher               string = "tls.cipher"
-	ResourceCertificates            string = "certificates"
-	ResourceCertificate             string = "certificate"
-	ResourcePkixName                string = "pkix.name"
-	ResourcePkixExtension           string = "pkix.extension"
-	ResourcePkixSanExtension        string = "pkix.sanExtension"
-	ResourceOpenpgpEntities         string = "openpgp.entities"
-	ResourceOpenpgpEntity           string = "openpgp.entity"
-	ResourceOpenpgpPublicKey        string = "openpgp.publicKey"
-	ResourceOpenpgpIdentity         string = "openpgp.identity"
-	ResourceOpenpgpSignature        string = "openpgp.signature"
-	ResourceDomainName              string = "domainName"
-	ResourceDns                     string = "dns"
-	ResourceDnsRecord               string = "dns.record"
-	ResourceDnsMxRecord             string = "dns.mxRecord"
-	ResourceDnsDnssecConfig         string = "dns.dnssecConfig"
-	ResourceDnsDnssecKey            string = "dns.dnssecKey"
-	ResourceDnsSpfRecord            string = "dns.spfRecord"
-	ResourceDnsDmarcRecord          string = "dns.dmarcRecord"
-	ResourceDnsDkimRecord           string = "dns.dkimRecord"
+	ResourceSocket                    string = "socket"
+	ResourceHttp                      string = "http"
+	ResourceHttpGet                   string = "http.get"
+	ResourceHttpHeader                string = "http.header"
+	ResourceHttpHeaderSts             string = "http.header.sts"
+	ResourceHttpHeaderXssProtection   string = "http.header.xssProtection"
+	ResourceHttpHeaderContentType     string = "http.header.contentType"
+	ResourceHttpHeaderSetCookie       string = "http.header.setCookie"
+	ResourceUrl                       string = "url"
+	ResourceTls                       string = "tls"
+	ResourceTlsCipher                 string = "tls.cipher"
+	ResourceCertificates              string = "certificates"
+	ResourceCertificate               string = "certificate"
+	ResourcePkixName                  string = "pkix.name"
+	ResourcePkixExtension             string = "pkix.extension"
+	ResourcePkixSanExtension          string = "pkix.sanExtension"
+	ResourceOpenpgpEntities           string = "openpgp.entities"
+	ResourceOpenpgpEntity             string = "openpgp.entity"
+	ResourceOpenpgpPublicKey          string = "openpgp.publicKey"
+	ResourceOpenpgpIdentity           string = "openpgp.identity"
+	ResourceOpenpgpSignature          string = "openpgp.signature"
+	ResourceDomainName                string = "domainName"
+	ResourceDns                       string = "dns"
+	ResourceDnsRecord                 string = "dns.record"
+	ResourceDnsMxRecord               string = "dns.mxRecord"
+	ResourceDnsDnssecConfig           string = "dns.dnssecConfig"
+	ResourceDnsDnssecKey              string = "dns.dnssecKey"
+	ResourceDnsDsRecord               string = "dns.dsRecord"
+	ResourceDnsRrsigRecord            string = "dns.rrsigRecord"
+	ResourceDnsDnssecValidationResult string = "dns.dnssecValidationResult"
+	ResourceDnsSpfRecord              string = "dns.spfRecord"
+	ResourceDnsDmarcRecord            string = "dns.dmarcRecord"
+	ResourceDnsDkimRecord             string = "dns.dkimRecord"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -159,6 +162,18 @@ func init() {
 		"dns.dnssecKey": {
 			// to override args, implement: initDnsDnssecKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createDnsDnssecKey,
+		},
+		"dns.dsRecord": {
+			// to override args, implement: initDnsDsRecord(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDnsDsRecord,
+		},
+		"dns.rrsigRecord": {
+			// to override args, implement: initDnsRrsigRecord(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDnsRrsigRecord,
+		},
+		"dns.dnssecValidationResult": {
+			// to override args, implement: initDnsDnssecValidationResult(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDnsDnssecValidationResult,
 		},
 		"dns.spfRecord": {
 			// to override args, implement: initDnsSpfRecord(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -720,6 +735,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"dns.dnssec": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDns).GetDnssec()).ToDataRes(types.Resource("dns.dnssecConfig"))
 	},
+	"dns.dnssecValidation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDns).GetDnssecValidation()).ToDataRes(types.Resource("dns.dnssecValidationResult"))
+	},
 	"dns.spf": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDns).GetSpf()).ToDataRes(types.Array(types.Resource("dns.spfRecord")))
 	},
@@ -765,6 +783,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"dns.dnssecConfig.algorithms": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDnsDnssecConfig).GetAlgorithms()).ToDataRes(types.Array(types.Int))
 	},
+	"dns.dnssecConfig.delegationSigned": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecConfig).GetDelegationSigned()).ToDataRes(types.Bool)
+	},
+	"dns.dnssecConfig.dsRecords": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecConfig).GetDsRecords()).ToDataRes(types.Array(types.Resource("dns.dsRecord")))
+	},
+	"dns.dnssecConfig.dsDigestsMatchKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecConfig).GetDsDigestsMatchKeys()).ToDataRes(types.Bool)
+	},
+	"dns.dnssecConfig.denialOfExistence": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecConfig).GetDenialOfExistence()).ToDataRes(types.String)
+	},
+	"dns.dnssecConfig.nsec3Iterations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecConfig).GetNsec3Iterations()).ToDataRes(types.Int)
+	},
+	"dns.dnssecConfig.nsec3SaltLength": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecConfig).GetNsec3SaltLength()).ToDataRes(types.Int)
+	},
+	"dns.dnssecConfig.nsec3OptOut": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecConfig).GetNsec3OptOut()).ToDataRes(types.Bool)
+	},
+	"dns.dnssecConfig.nsec3HashAlgorithm": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecConfig).GetNsec3HashAlgorithm()).ToDataRes(types.Int)
+	},
 	"dns.dnssecKey.flags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDnsDnssecKey).GetFlags()).ToDataRes(types.Int)
 	},
@@ -774,11 +816,128 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"dns.dnssecKey.algorithm": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDnsDnssecKey).GetAlgorithm()).ToDataRes(types.Int)
 	},
+	"dns.dnssecKey.algorithmName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecKey).GetAlgorithmName()).ToDataRes(types.String)
+	},
+	"dns.dnssecKey.keyLength": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecKey).GetKeyLength()).ToDataRes(types.Int)
+	},
 	"dns.dnssecKey.publicKey": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDnsDnssecKey).GetPublicKey()).ToDataRes(types.String)
 	},
 	"dns.dnssecKey.keySigningKey": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDnsDnssecKey).GetKeySigningKey()).ToDataRes(types.Bool)
+	},
+	"dns.dnssecKey.zoneKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecKey).GetZoneKey()).ToDataRes(types.Bool)
+	},
+	"dns.dnssecKey.revoked": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecKey).GetRevoked()).ToDataRes(types.Bool)
+	},
+	"dns.dsRecord.algorithm": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDsRecord).GetAlgorithm()).ToDataRes(types.Int)
+	},
+	"dns.dsRecord.algorithmName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDsRecord).GetAlgorithmName()).ToDataRes(types.String)
+	},
+	"dns.dsRecord.digestType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDsRecord).GetDigestType()).ToDataRes(types.Int)
+	},
+	"dns.dsRecord.digestTypeName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDsRecord).GetDigestTypeName()).ToDataRes(types.String)
+	},
+	"dns.dsRecord.digest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDsRecord).GetDigest()).ToDataRes(types.String)
+	},
+	"dns.dsRecord.matchesPublishedKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDsRecord).GetMatchesPublishedKey()).ToDataRes(types.Bool)
+	},
+	"dns.rrsigRecord.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsRrsigRecord).GetName()).ToDataRes(types.String)
+	},
+	"dns.rrsigRecord.typeCovered": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsRrsigRecord).GetTypeCovered()).ToDataRes(types.String)
+	},
+	"dns.rrsigRecord.algorithm": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsRrsigRecord).GetAlgorithm()).ToDataRes(types.Int)
+	},
+	"dns.rrsigRecord.algorithmName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsRrsigRecord).GetAlgorithmName()).ToDataRes(types.String)
+	},
+	"dns.rrsigRecord.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsRrsigRecord).GetLabels()).ToDataRes(types.Int)
+	},
+	"dns.rrsigRecord.originalTtl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsRrsigRecord).GetOriginalTtl()).ToDataRes(types.Int)
+	},
+	"dns.rrsigRecord.inception": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsRrsigRecord).GetInception()).ToDataRes(types.Time)
+	},
+	"dns.rrsigRecord.expiration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsRrsigRecord).GetExpiration()).ToDataRes(types.Time)
+	},
+	"dns.rrsigRecord.expiresIn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsRrsigRecord).GetExpiresIn()).ToDataRes(types.Time)
+	},
+	"dns.rrsigRecord.expired": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsRrsigRecord).GetExpired()).ToDataRes(types.Bool)
+	},
+	"dns.rrsigRecord.notYetValid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsRrsigRecord).GetNotYetValid()).ToDataRes(types.Bool)
+	},
+	"dns.rrsigRecord.signerName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsRrsigRecord).GetSignerName()).ToDataRes(types.String)
+	},
+	"dns.dnssecValidationResult.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecValidationResult).GetName()).ToDataRes(types.String)
+	},
+	"dns.dnssecValidationResult.recordType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecValidationResult).GetRecordType()).ToDataRes(types.String)
+	},
+	"dns.dnssecValidationResult.responseCode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecValidationResult).GetResponseCode()).ToDataRes(types.String)
+	},
+	"dns.dnssecValidationResult.dnssecOk": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecValidationResult).GetDnssecOk()).ToDataRes(types.Bool)
+	},
+	"dns.dnssecValidationResult.authenticatedData": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecValidationResult).GetAuthenticatedData()).ToDataRes(types.Bool)
+	},
+	"dns.dnssecValidationResult.signed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecValidationResult).GetSigned()).ToDataRes(types.Bool)
+	},
+	"dns.dnssecValidationResult.signatures": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecValidationResult).GetSignatures()).ToDataRes(types.Array(types.Resource("dns.rrsigRecord")))
+	},
+	"dns.dnssecValidationResult.signaturesVerified": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecValidationResult).GetSignaturesVerified()).ToDataRes(types.Bool)
+	},
+	"dns.dnssecValidationResult.chainOfTrustValidated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecValidationResult).GetChainOfTrustValidated()).ToDataRes(types.Bool)
+	},
+	"dns.dnssecValidationResult.chain": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecValidationResult).GetChain()).ToDataRes(types.Array(types.String))
+	},
+	"dns.dnssecValidationResult.brokenAtZone": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecValidationResult).GetBrokenAtZone()).ToDataRes(types.String)
+	},
+	"dns.dnssecValidationResult.signerNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecValidationResult).GetSignerNames()).ToDataRes(types.Array(types.String))
+	},
+	"dns.dnssecValidationResult.signatureAlgorithms": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecValidationResult).GetSignatureAlgorithms()).ToDataRes(types.Array(types.Int))
+	},
+	"dns.dnssecValidationResult.earliestSignatureExpiry": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecValidationResult).GetEarliestSignatureExpiry()).ToDataRes(types.Time)
+	},
+	"dns.dnssecValidationResult.signatureExpiresIn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecValidationResult).GetSignatureExpiresIn()).ToDataRes(types.Time)
+	},
+	"dns.dnssecValidationResult.signaturesCurrentlyValid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecValidationResult).GetSignaturesCurrentlyValid()).ToDataRes(types.Bool)
+	},
+	"dns.dnssecValidationResult.error": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDnsDnssecValidationResult).GetError()).ToDataRes(types.String)
 	},
 	"dns.spfRecord.dnsTxt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDnsSpfRecord).GetDnsTxt()).ToDataRes(types.String)
@@ -1589,6 +1748,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDns).Dnssec, ok = plugin.RawToTValue[*mqlDnsDnssecConfig](v.Value, v.Error)
 		return
 	},
+	"dns.dnssecValidation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDns).DnssecValidation, ok = plugin.RawToTValue[*mqlDnsDnssecValidationResult](v.Value, v.Error)
+		return
+	},
 	"dns.spf": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDns).Spf, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -1661,6 +1824,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDnsDnssecConfig).Algorithms, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"dns.dnssecConfig.delegationSigned": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecConfig).DelegationSigned, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecConfig.dsRecords": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecConfig).DsRecords, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecConfig.dsDigestsMatchKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecConfig).DsDigestsMatchKeys, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecConfig.denialOfExistence": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecConfig).DenialOfExistence, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecConfig.nsec3Iterations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecConfig).Nsec3Iterations, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecConfig.nsec3SaltLength": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecConfig).Nsec3SaltLength, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecConfig.nsec3OptOut": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecConfig).Nsec3OptOut, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecConfig.nsec3HashAlgorithm": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecConfig).Nsec3HashAlgorithm, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"dns.dnssecKey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDnsDnssecKey).__id, ok = v.Value.(string)
 		return
@@ -1677,12 +1872,180 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDnsDnssecKey).Algorithm, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
+	"dns.dnssecKey.algorithmName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecKey).AlgorithmName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecKey.keyLength": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecKey).KeyLength, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"dns.dnssecKey.publicKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDnsDnssecKey).PublicKey, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"dns.dnssecKey.keySigningKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDnsDnssecKey).KeySigningKey, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecKey.zoneKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecKey).ZoneKey, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecKey.revoked": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecKey).Revoked, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"dns.dsRecord.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDsRecord).__id, ok = v.Value.(string)
+		return
+	},
+	"dns.dsRecord.algorithm": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDsRecord).Algorithm, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"dns.dsRecord.algorithmName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDsRecord).AlgorithmName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"dns.dsRecord.digestType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDsRecord).DigestType, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"dns.dsRecord.digestTypeName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDsRecord).DigestTypeName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"dns.dsRecord.digest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDsRecord).Digest, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"dns.dsRecord.matchesPublishedKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDsRecord).MatchesPublishedKey, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"dns.rrsigRecord.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsRrsigRecord).__id, ok = v.Value.(string)
+		return
+	},
+	"dns.rrsigRecord.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsRrsigRecord).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"dns.rrsigRecord.typeCovered": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsRrsigRecord).TypeCovered, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"dns.rrsigRecord.algorithm": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsRrsigRecord).Algorithm, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"dns.rrsigRecord.algorithmName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsRrsigRecord).AlgorithmName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"dns.rrsigRecord.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsRrsigRecord).Labels, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"dns.rrsigRecord.originalTtl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsRrsigRecord).OriginalTtl, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"dns.rrsigRecord.inception": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsRrsigRecord).Inception, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"dns.rrsigRecord.expiration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsRrsigRecord).Expiration, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"dns.rrsigRecord.expiresIn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsRrsigRecord).ExpiresIn, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"dns.rrsigRecord.expired": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsRrsigRecord).Expired, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"dns.rrsigRecord.notYetValid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsRrsigRecord).NotYetValid, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"dns.rrsigRecord.signerName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsRrsigRecord).SignerName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecValidationResult.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecValidationResult).__id, ok = v.Value.(string)
+		return
+	},
+	"dns.dnssecValidationResult.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecValidationResult).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecValidationResult.recordType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecValidationResult).RecordType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecValidationResult.responseCode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecValidationResult).ResponseCode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecValidationResult.dnssecOk": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecValidationResult).DnssecOk, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecValidationResult.authenticatedData": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecValidationResult).AuthenticatedData, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecValidationResult.signed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecValidationResult).Signed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecValidationResult.signatures": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecValidationResult).Signatures, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecValidationResult.signaturesVerified": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecValidationResult).SignaturesVerified, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecValidationResult.chainOfTrustValidated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecValidationResult).ChainOfTrustValidated, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecValidationResult.chain": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecValidationResult).Chain, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecValidationResult.brokenAtZone": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecValidationResult).BrokenAtZone, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecValidationResult.signerNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecValidationResult).SignerNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecValidationResult.signatureAlgorithms": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecValidationResult).SignatureAlgorithms, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecValidationResult.earliestSignatureExpiry": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecValidationResult).EarliestSignatureExpiry, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecValidationResult.signatureExpiresIn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecValidationResult).SignatureExpiresIn, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecValidationResult.signaturesCurrentlyValid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecValidationResult).SignaturesCurrentlyValid, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"dns.dnssecValidationResult.error": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDnsDnssecValidationResult).Error, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"dns.spfRecord.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -3891,6 +4254,7 @@ type mqlDns struct {
 	Mx                   plugin.TValue[[]any]
 	Dkim                 plugin.TValue[[]any]
 	Dnssec               plugin.TValue[*mqlDnsDnssecConfig]
+	DnssecValidation     plugin.TValue[*mqlDnsDnssecValidationResult]
 	Spf                  plugin.TValue[[]any]
 	Dmarc                plugin.TValue[*mqlDnsDmarcRecord]
 	Reverse              plugin.TValue[[]any]
@@ -4083,6 +4447,27 @@ func (c *mqlDns) GetDnssec() *plugin.TValue[*mqlDnsDnssecConfig] {
 		}
 
 		return c.dnssec(vargParams.Data)
+	})
+}
+
+func (c *mqlDns) GetDnssecValidation() *plugin.TValue[*mqlDnsDnssecValidationResult] {
+	return plugin.GetOrCompute[*mqlDnsDnssecValidationResult](&c.DnssecValidation, func() (*mqlDnsDnssecValidationResult, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("dns", c.__id, "dnssecValidation")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDnsDnssecValidationResult), nil
+			}
+		}
+
+		vargFqdn := c.GetFqdn()
+		if vargFqdn.Error != nil {
+			return nil, vargFqdn.Error
+		}
+
+		return c.dnssecValidation(vargFqdn.Data)
 	})
 }
 
@@ -4298,9 +4683,17 @@ type mqlDnsDnssecConfig struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlDnsDnssecConfigInternal it will be used here
-	Enabled    plugin.TValue[bool]
-	Keys       plugin.TValue[[]any]
-	Algorithms plugin.TValue[[]any]
+	Enabled            plugin.TValue[bool]
+	Keys               plugin.TValue[[]any]
+	Algorithms         plugin.TValue[[]any]
+	DelegationSigned   plugin.TValue[bool]
+	DsRecords          plugin.TValue[[]any]
+	DsDigestsMatchKeys plugin.TValue[bool]
+	DenialOfExistence  plugin.TValue[string]
+	Nsec3Iterations    plugin.TValue[int64]
+	Nsec3SaltLength    plugin.TValue[int64]
+	Nsec3OptOut        plugin.TValue[bool]
+	Nsec3HashAlgorithm plugin.TValue[int64]
 }
 
 // createDnsDnssecConfig creates a new instance of this resource
@@ -4347,6 +4740,38 @@ func (c *mqlDnsDnssecConfig) GetAlgorithms() *plugin.TValue[[]any] {
 	return &c.Algorithms
 }
 
+func (c *mqlDnsDnssecConfig) GetDelegationSigned() *plugin.TValue[bool] {
+	return &c.DelegationSigned
+}
+
+func (c *mqlDnsDnssecConfig) GetDsRecords() *plugin.TValue[[]any] {
+	return &c.DsRecords
+}
+
+func (c *mqlDnsDnssecConfig) GetDsDigestsMatchKeys() *plugin.TValue[bool] {
+	return &c.DsDigestsMatchKeys
+}
+
+func (c *mqlDnsDnssecConfig) GetDenialOfExistence() *plugin.TValue[string] {
+	return &c.DenialOfExistence
+}
+
+func (c *mqlDnsDnssecConfig) GetNsec3Iterations() *plugin.TValue[int64] {
+	return &c.Nsec3Iterations
+}
+
+func (c *mqlDnsDnssecConfig) GetNsec3SaltLength() *plugin.TValue[int64] {
+	return &c.Nsec3SaltLength
+}
+
+func (c *mqlDnsDnssecConfig) GetNsec3OptOut() *plugin.TValue[bool] {
+	return &c.Nsec3OptOut
+}
+
+func (c *mqlDnsDnssecConfig) GetNsec3HashAlgorithm() *plugin.TValue[int64] {
+	return &c.Nsec3HashAlgorithm
+}
+
 // mqlDnsDnssecKey for the dns.dnssecKey resource
 type mqlDnsDnssecKey struct {
 	MqlRuntime *plugin.Runtime
@@ -4355,8 +4780,12 @@ type mqlDnsDnssecKey struct {
 	Flags         plugin.TValue[int64]
 	Protocol      plugin.TValue[int64]
 	Algorithm     plugin.TValue[int64]
+	AlgorithmName plugin.TValue[string]
+	KeyLength     plugin.TValue[int64]
 	PublicKey     plugin.TValue[string]
 	KeySigningKey plugin.TValue[bool]
+	ZoneKey       plugin.TValue[bool]
+	Revoked       plugin.TValue[bool]
 }
 
 // createDnsDnssecKey creates a new instance of this resource
@@ -4403,12 +4832,320 @@ func (c *mqlDnsDnssecKey) GetAlgorithm() *plugin.TValue[int64] {
 	return &c.Algorithm
 }
 
+func (c *mqlDnsDnssecKey) GetAlgorithmName() *plugin.TValue[string] {
+	return &c.AlgorithmName
+}
+
+func (c *mqlDnsDnssecKey) GetKeyLength() *plugin.TValue[int64] {
+	return &c.KeyLength
+}
+
 func (c *mqlDnsDnssecKey) GetPublicKey() *plugin.TValue[string] {
 	return &c.PublicKey
 }
 
 func (c *mqlDnsDnssecKey) GetKeySigningKey() *plugin.TValue[bool] {
 	return &c.KeySigningKey
+}
+
+func (c *mqlDnsDnssecKey) GetZoneKey() *plugin.TValue[bool] {
+	return &c.ZoneKey
+}
+
+func (c *mqlDnsDnssecKey) GetRevoked() *plugin.TValue[bool] {
+	return &c.Revoked
+}
+
+// mqlDnsDsRecord for the dns.dsRecord resource
+type mqlDnsDsRecord struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDnsDsRecordInternal it will be used here
+	Algorithm           plugin.TValue[int64]
+	AlgorithmName       plugin.TValue[string]
+	DigestType          plugin.TValue[int64]
+	DigestTypeName      plugin.TValue[string]
+	Digest              plugin.TValue[string]
+	MatchesPublishedKey plugin.TValue[bool]
+}
+
+// createDnsDsRecord creates a new instance of this resource
+func createDnsDsRecord(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDnsDsRecord{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("dns.dsRecord", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDnsDsRecord) MqlName() string {
+	return "dns.dsRecord"
+}
+
+func (c *mqlDnsDsRecord) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDnsDsRecord) GetAlgorithm() *plugin.TValue[int64] {
+	return &c.Algorithm
+}
+
+func (c *mqlDnsDsRecord) GetAlgorithmName() *plugin.TValue[string] {
+	return &c.AlgorithmName
+}
+
+func (c *mqlDnsDsRecord) GetDigestType() *plugin.TValue[int64] {
+	return &c.DigestType
+}
+
+func (c *mqlDnsDsRecord) GetDigestTypeName() *plugin.TValue[string] {
+	return &c.DigestTypeName
+}
+
+func (c *mqlDnsDsRecord) GetDigest() *plugin.TValue[string] {
+	return &c.Digest
+}
+
+func (c *mqlDnsDsRecord) GetMatchesPublishedKey() *plugin.TValue[bool] {
+	return &c.MatchesPublishedKey
+}
+
+// mqlDnsRrsigRecord for the dns.rrsigRecord resource
+type mqlDnsRrsigRecord struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDnsRrsigRecordInternal it will be used here
+	Name          plugin.TValue[string]
+	TypeCovered   plugin.TValue[string]
+	Algorithm     plugin.TValue[int64]
+	AlgorithmName plugin.TValue[string]
+	Labels        plugin.TValue[int64]
+	OriginalTtl   plugin.TValue[int64]
+	Inception     plugin.TValue[*time.Time]
+	Expiration    plugin.TValue[*time.Time]
+	ExpiresIn     plugin.TValue[*time.Time]
+	Expired       plugin.TValue[bool]
+	NotYetValid   plugin.TValue[bool]
+	SignerName    plugin.TValue[string]
+}
+
+// createDnsRrsigRecord creates a new instance of this resource
+func createDnsRrsigRecord(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDnsRrsigRecord{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("dns.rrsigRecord", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDnsRrsigRecord) MqlName() string {
+	return "dns.rrsigRecord"
+}
+
+func (c *mqlDnsRrsigRecord) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDnsRrsigRecord) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDnsRrsigRecord) GetTypeCovered() *plugin.TValue[string] {
+	return &c.TypeCovered
+}
+
+func (c *mqlDnsRrsigRecord) GetAlgorithm() *plugin.TValue[int64] {
+	return &c.Algorithm
+}
+
+func (c *mqlDnsRrsigRecord) GetAlgorithmName() *plugin.TValue[string] {
+	return &c.AlgorithmName
+}
+
+func (c *mqlDnsRrsigRecord) GetLabels() *plugin.TValue[int64] {
+	return &c.Labels
+}
+
+func (c *mqlDnsRrsigRecord) GetOriginalTtl() *plugin.TValue[int64] {
+	return &c.OriginalTtl
+}
+
+func (c *mqlDnsRrsigRecord) GetInception() *plugin.TValue[*time.Time] {
+	return &c.Inception
+}
+
+func (c *mqlDnsRrsigRecord) GetExpiration() *plugin.TValue[*time.Time] {
+	return &c.Expiration
+}
+
+func (c *mqlDnsRrsigRecord) GetExpiresIn() *plugin.TValue[*time.Time] {
+	return &c.ExpiresIn
+}
+
+func (c *mqlDnsRrsigRecord) GetExpired() *plugin.TValue[bool] {
+	return &c.Expired
+}
+
+func (c *mqlDnsRrsigRecord) GetNotYetValid() *plugin.TValue[bool] {
+	return &c.NotYetValid
+}
+
+func (c *mqlDnsRrsigRecord) GetSignerName() *plugin.TValue[string] {
+	return &c.SignerName
+}
+
+// mqlDnsDnssecValidationResult for the dns.dnssecValidationResult resource
+type mqlDnsDnssecValidationResult struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDnsDnssecValidationResultInternal it will be used here
+	Name                     plugin.TValue[string]
+	RecordType               plugin.TValue[string]
+	ResponseCode             plugin.TValue[string]
+	DnssecOk                 plugin.TValue[bool]
+	AuthenticatedData        plugin.TValue[bool]
+	Signed                   plugin.TValue[bool]
+	Signatures               plugin.TValue[[]any]
+	SignaturesVerified       plugin.TValue[bool]
+	ChainOfTrustValidated    plugin.TValue[bool]
+	Chain                    plugin.TValue[[]any]
+	BrokenAtZone             plugin.TValue[string]
+	SignerNames              plugin.TValue[[]any]
+	SignatureAlgorithms      plugin.TValue[[]any]
+	EarliestSignatureExpiry  plugin.TValue[*time.Time]
+	SignatureExpiresIn       plugin.TValue[*time.Time]
+	SignaturesCurrentlyValid plugin.TValue[bool]
+	Error                    plugin.TValue[string]
+}
+
+// createDnsDnssecValidationResult creates a new instance of this resource
+func createDnsDnssecValidationResult(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDnsDnssecValidationResult{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("dns.dnssecValidationResult", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDnsDnssecValidationResult) MqlName() string {
+	return "dns.dnssecValidationResult"
+}
+
+func (c *mqlDnsDnssecValidationResult) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDnsDnssecValidationResult) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDnsDnssecValidationResult) GetRecordType() *plugin.TValue[string] {
+	return &c.RecordType
+}
+
+func (c *mqlDnsDnssecValidationResult) GetResponseCode() *plugin.TValue[string] {
+	return &c.ResponseCode
+}
+
+func (c *mqlDnsDnssecValidationResult) GetDnssecOk() *plugin.TValue[bool] {
+	return &c.DnssecOk
+}
+
+func (c *mqlDnsDnssecValidationResult) GetAuthenticatedData() *plugin.TValue[bool] {
+	return &c.AuthenticatedData
+}
+
+func (c *mqlDnsDnssecValidationResult) GetSigned() *plugin.TValue[bool] {
+	return &c.Signed
+}
+
+func (c *mqlDnsDnssecValidationResult) GetSignatures() *plugin.TValue[[]any] {
+	return &c.Signatures
+}
+
+func (c *mqlDnsDnssecValidationResult) GetSignaturesVerified() *plugin.TValue[bool] {
+	return &c.SignaturesVerified
+}
+
+func (c *mqlDnsDnssecValidationResult) GetChainOfTrustValidated() *plugin.TValue[bool] {
+	return &c.ChainOfTrustValidated
+}
+
+func (c *mqlDnsDnssecValidationResult) GetChain() *plugin.TValue[[]any] {
+	return &c.Chain
+}
+
+func (c *mqlDnsDnssecValidationResult) GetBrokenAtZone() *plugin.TValue[string] {
+	return &c.BrokenAtZone
+}
+
+func (c *mqlDnsDnssecValidationResult) GetSignerNames() *plugin.TValue[[]any] {
+	return &c.SignerNames
+}
+
+func (c *mqlDnsDnssecValidationResult) GetSignatureAlgorithms() *plugin.TValue[[]any] {
+	return &c.SignatureAlgorithms
+}
+
+func (c *mqlDnsDnssecValidationResult) GetEarliestSignatureExpiry() *plugin.TValue[*time.Time] {
+	return &c.EarliestSignatureExpiry
+}
+
+func (c *mqlDnsDnssecValidationResult) GetSignatureExpiresIn() *plugin.TValue[*time.Time] {
+	return &c.SignatureExpiresIn
+}
+
+func (c *mqlDnsDnssecValidationResult) GetSignaturesCurrentlyValid() *plugin.TValue[bool] {
+	return &c.SignaturesCurrentlyValid
+}
+
+func (c *mqlDnsDnssecValidationResult) GetError() *plugin.TValue[string] {
+	return &c.Error
 }
 
 // mqlDnsSpfRecord for the dns.spfRecord resource
