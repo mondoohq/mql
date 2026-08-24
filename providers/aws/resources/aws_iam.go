@@ -1374,6 +1374,105 @@ func (a *mqlAwsIamUser) accessKeyDetails() ([]any, error) {
 	return res, nil
 }
 
+// serviceSpecificCredentials returns the static per-service credentials issued
+// to the user. These are long-lived passwords that the IAM credential report
+// does not cover, so they are invisible to an access-key review.
+func (a *mqlAwsIamUser) serviceSpecificCredentials() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Iam("")
+	ctx := context.Background()
+	username := a.Name.Data
+
+	res := []any{}
+	var marker *string
+	for {
+		resp, err := svc.ListServiceSpecificCredentials(ctx, &iam.ListServiceSpecificCredentialsInput{
+			UserName: &username,
+			Marker:   marker,
+		})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				log.Warn().Str("user", username).Msg("no permission to list service-specific credentials")
+				return res, nil
+			}
+			return nil, err
+		}
+
+		for _, cred := range resp.ServiceSpecificCredentials {
+			mqlCred, err := CreateResource(a.MqlRuntime, "aws.iam.user.serviceSpecificCredential",
+				map[string]*llx.RawData{
+					"__id":                   llx.StringDataPtr(cred.ServiceSpecificCredentialId),
+					"id":                     llx.StringDataPtr(cred.ServiceSpecificCredentialId),
+					"username":               llx.StringDataPtr(cred.UserName),
+					"serviceName":            llx.StringDataPtr(cred.ServiceName),
+					"serviceUsername":        llx.StringDataPtr(cred.ServiceUserName),
+					"serviceCredentialAlias": llx.StringDataPtr(cred.ServiceCredentialAlias),
+					"status":                 llx.StringData(string(cred.Status)),
+					"createdAt":              llx.TimeDataPtr(cred.CreateDate),
+					"expiresAt":              llx.TimeDataPtr(cred.ExpirationDate),
+				})
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlCred)
+		}
+
+		if !resp.IsTruncated || resp.Marker == nil {
+			break
+		}
+		marker = resp.Marker
+	}
+	return res, nil
+}
+
+// sshPublicKeys returns the SSH public keys uploaded for the user. The keys
+// carry no expiry, so an Active key is a working credential until it is
+// removed.
+func (a *mqlAwsIamUser) sshPublicKeys() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Iam("")
+	ctx := context.Background()
+	username := a.Name.Data
+
+	res := []any{}
+	paginator := iam.NewListSSHPublicKeysPaginator(svc, &iam.ListSSHPublicKeysInput{
+		UserName: &username,
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				log.Warn().Str("user", username).Msg("no permission to list ssh public keys")
+				return res, nil
+			}
+			return nil, err
+		}
+		for _, key := range page.SSHPublicKeys {
+			mqlKey, err := CreateResource(a.MqlRuntime, "aws.iam.user.sshPublicKey",
+				map[string]*llx.RawData{
+					"__id":       llx.StringDataPtr(key.SSHPublicKeyId),
+					"id":         llx.StringDataPtr(key.SSHPublicKeyId),
+					"username":   llx.StringDataPtr(key.UserName),
+					"status":     llx.StringData(string(key.Status)),
+					"uploadedAt": llx.TimeDataPtr(key.UploadDate),
+				})
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlKey)
+		}
+	}
+	return res, nil
+}
+
+func (a *mqlAwsIamUserServiceSpecificCredential) id() (string, error) {
+	return a.Id.Data, nil
+}
+
+func (a *mqlAwsIamUserSshPublicKey) id() (string, error) {
+	return a.Id.Data, nil
+}
+
 func (a *mqlAwsIamUser) policies() ([]any, error) {
 	if a.policiesFetched.Load() {
 		return a.policiesCache, nil

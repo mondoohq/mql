@@ -416,9 +416,10 @@ func buildElbV2LoadBalancerResource(runtime *plugin.Runtime, region, accountID s
 		"state":             llx.StringData(state),
 		"elbType":           llx.StringData(string(lb.Type)),
 		"ipAddressType":     llx.StringData(string(lb.IpAddressType)),
-		"region":            llx.StringData(region),
-		"vpc":               llx.NilData, // set vpc to nil as default, if vpc is not set
-		"healthCheck":       llx.NilData, // classic ELB only; ALB/NLB have no LB-level health check
+		"enforceSecurityGroupInboundRulesOnPrivateLinkTraffic": llx.StringData(convert.ToValue(lb.EnforceSecurityGroupInboundRulesOnPrivateLinkTraffic)),
+		"region":      llx.StringData(region),
+		"vpc":         llx.NilData, // set vpc to nil as default, if vpc is not set
+		"healthCheck": llx.NilData, // classic ELB only; ALB/NLB have no LB-level health check
 	}
 
 	if lb.VpcId != nil {
@@ -702,6 +703,79 @@ type mqlAwsElbListenerInternal struct {
 	lazyTags
 	defaultActionsCache     []elbtypes.Action
 	mutualAuthTrustStoreArn string
+}
+
+// sniCertificates returns every certificate installed on the listener.
+// DescribeListeners reports only the default certificate, so the certificates
+// served for the other SNI host names need a separate call.
+func (a *mqlAwsElbListener) sniCertificates() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	listenerArn := a.Arn.Data
+
+	region, err := GetRegionFromArn(listenerArn)
+	if err != nil {
+		return nil, err
+	}
+	svc := conn.Elbv2(region)
+	ctx := context.Background()
+
+	res := []any{}
+	paginator := elasticloadbalancingv2.NewDescribeListenerCertificatesPaginator(svc,
+		&elasticloadbalancingv2.DescribeListenerCertificatesInput{ListenerArn: &listenerArn})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				return res, nil
+			}
+			// A listener that terminates no TLS has no certificate list at all.
+			var notFound *elbtypes.ListenerNotFoundException
+			if errors.As(err, &notFound) {
+				return res, nil
+			}
+			return nil, err
+		}
+		for _, cert := range page.Certificates {
+			certArn := convert.ToValue(cert.CertificateArn)
+			if certArn == "" {
+				continue
+			}
+			mqlCert, err := CreateResource(a.MqlRuntime, "aws.elb.listener.certificate",
+				map[string]*llx.RawData{
+					// The same certificate can be installed on many listeners,
+					// so the key has to name the listener as well.
+					"__id":      llx.StringData(listenerArn + "/certificate/" + certArn),
+					"arn":       llx.StringData(certArn),
+					"isDefault": llx.BoolData(convert.ToValue(cert.IsDefault)),
+				})
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlCert)
+		}
+	}
+	return res, nil
+}
+
+func (a *mqlAwsElbListenerCertificate) id() (string, error) {
+	return a.__id, nil
+}
+
+// acmCertificate resolves the listener certificate to its ACM record. A
+// listener can also present an IAM server certificate, which ACM does not know
+// about, so those resolve to null rather than to a blank certificate.
+func (a *mqlAwsElbListenerCertificate) acmCertificate() (*mqlAwsAcmCertificate, error) {
+	certArn := a.Arn.Data
+	if !strings.Contains(certArn, ":acm:") {
+		a.AcmCertificate.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.acm.certificate",
+		map[string]*llx.RawData{"arn": llx.StringData(certArn)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsAcmCertificate), nil
 }
 
 // mqlAwsElbListenerRuleInternal and mqlAwsElbTruststoreInternal exist only to

@@ -1445,6 +1445,57 @@ func (a *mqlAwsS3Bucket) staticWebsiteHosting() (map[string]any, error) {
 	}, nil
 }
 
+// defaultObjectLockRetention returns the bucket's default Object Lock
+// retention rule, or nil when Object Lock is configured without one. A bucket
+// can have ObjectLockEnabled without a default rule, in which case objects are
+// only protected when the writer sets retention on each PUT.
+func (a *mqlAwsS3Bucket) defaultObjectLockRetention() (*s3types.DefaultRetention, error) {
+	config, err := a.fetchObjectLockConfig()
+	if err != nil {
+		return nil, err
+	}
+	if config == nil || config.Rule == nil {
+		return nil, nil
+	}
+	return config.Rule.DefaultRetention, nil
+}
+
+func (a *mqlAwsS3Bucket) objectLockRetentionMode() (string, error) {
+	retention, err := a.defaultObjectLockRetention()
+	if err != nil {
+		return "", err
+	}
+	if retention == nil {
+		a.ObjectLockRetentionMode.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return string(retention.Mode), nil
+}
+
+func (a *mqlAwsS3Bucket) objectLockRetentionDays() (int64, error) {
+	retention, err := a.defaultObjectLockRetention()
+	if err != nil {
+		return 0, err
+	}
+	if retention == nil || retention.Days == nil {
+		a.ObjectLockRetentionDays.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return int64(*retention.Days), nil
+}
+
+func (a *mqlAwsS3Bucket) objectLockRetentionYears() (int64, error) {
+	retention, err := a.defaultObjectLockRetention()
+	if err != nil {
+		return 0, err
+	}
+	if retention == nil || retention.Years == nil {
+		a.ObjectLockRetentionYears.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return int64(*retention.Years), nil
+}
+
 func (a *mqlAwsS3Bucket) website() (*mqlAwsS3BucketWebsiteConfiguration, error) {
 	// Placeholder buckets (e.g., cross-account references) can't be queried
 	region, ok, err := a.bucketRegion()

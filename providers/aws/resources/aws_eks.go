@@ -223,10 +223,13 @@ func (a *mqlAwsEksCluster) populateFromDescribe(cluster *ekstypes.Cluster) error
 	a.SupportType = plugin.TValue[string]{Data: supportType, State: plugin.StateIsSet}
 
 	authMode := ""
+	var bootstrapClusterCreatorAdmin bool
 	if cluster.AccessConfig != nil {
 		authMode = string(cluster.AccessConfig.AuthenticationMode)
+		bootstrapClusterCreatorAdmin = convert.ToValue(cluster.AccessConfig.BootstrapClusterCreatorAdminPermissions)
 	}
 	a.AuthenticationMode = plugin.TValue[string]{Data: authMode, State: plugin.StateIsSet}
+	a.BootstrapClusterCreatorAdminPermissions = plugin.TValue[bool]{Data: bootstrapClusterCreatorAdmin, State: plugin.StateIsSet}
 
 	var deletionProtection bool
 	if cluster.DeletionProtection != nil {
@@ -412,6 +415,10 @@ func (a *mqlAwsEksCluster) supportType() (string, error) {
 
 func (a *mqlAwsEksCluster) authenticationMode() (string, error) {
 	return "", a.fetchDetail()
+}
+
+func (a *mqlAwsEksCluster) bootstrapClusterCreatorAdminPermissions() (bool, error) {
+	return false, a.fetchDetail()
 }
 
 func (a *mqlAwsEksCluster) deletionProtection() (bool, error) {

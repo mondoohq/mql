@@ -1296,3 +1296,159 @@ func (a *mqlAwsMacieClassificationExportConfiguration) kmsKey() (*mqlAwsKmsKey, 
 	}
 	return mqlKey.(*mqlAwsKmsKey), nil
 }
+
+// ============================================================================
+// aws.macie.revealConfiguration
+// ============================================================================
+
+func (a *mqlAwsMacie) revealConfigurations() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+
+	return perRegion(conn, "macie2", func(ctx context.Context, region string) ([]any, error) {
+		svc := conn.Macie2(region)
+		res := []any{}
+		resp, err := svc.GetRevealConfiguration(ctx, &macie2.GetRevealConfigurationInput{})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				log.Warn().Str("region", region).Msg("no permission to read macie reveal configuration")
+				return res, nil
+			}
+			return nil, err
+		}
+		if resp.Configuration == nil {
+			return res, nil
+		}
+
+		var retrievalMode, roleName string
+		if rc := resp.RetrievalConfiguration; rc != nil {
+			retrievalMode = string(rc.RetrievalMode)
+			roleName = convert.ToValue(rc.RoleName)
+		}
+
+		mqlConfig, err := CreateResource(a.MqlRuntime, "aws.macie.revealConfiguration",
+			map[string]*llx.RawData{
+				"__id":          llx.StringData(generateMacieRevealConfigurationArn(conn.AccountId(), region)),
+				"region":        llx.StringData(region),
+				"status":        llx.StringData(string(resp.Configuration.Status)),
+				"retrievalMode": llx.StringData(retrievalMode),
+				"roleName":      llx.StringData(roleName),
+				"kmsKeyArn":     llx.StringData(convert.ToValue(resp.Configuration.KmsKeyId)),
+			})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlConfig)
+		return res, nil
+	})
+}
+
+func generateMacieRevealConfigurationArn(accountId, region string) string {
+	return "arn:aws:macie2:" + region + ":" + accountId + ":reveal-configuration"
+}
+
+func (a *mqlAwsMacieRevealConfiguration) id() (string, error) {
+	return a.__id, nil
+}
+
+// retrievalIamRole resolves the role Macie assumes to retrieve sensitive data
+// samples. The API reports a role name rather than an ARN, and only for the
+// ASSUME_ROLE retrieval mode; CALLER_CREDENTIALS uses the viewer's own
+// credentials and names no role.
+func (a *mqlAwsMacieRevealConfiguration) retrievalIamRole() (*mqlAwsIamRole, error) {
+	roleName := a.RoleName.Data
+	if roleName == "" {
+		a.RetrievalIamRole.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	roleArn := "arn:aws:iam::" + conn.AccountId() + ":role/" + roleName
+	mqlRole, err := NewResource(a.MqlRuntime, ResourceAwsIamRole,
+		map[string]*llx.RawData{"arn": llx.StringData(roleArn)})
+	if err != nil {
+		return nil, err
+	}
+	return mqlRole.(*mqlAwsIamRole), nil
+}
+
+func (a *mqlAwsMacieRevealConfiguration) kmsKey() (*mqlAwsKmsKey, error) {
+	keyArn := a.KmsKeyArn.Data
+	if keyArn == "" {
+		a.KmsKey.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	mqlKey, err := NewResource(a.MqlRuntime, ResourceAwsKmsKey,
+		map[string]*llx.RawData{"arn": llx.StringData(keyArn)})
+	if err != nil {
+		return nil, err
+	}
+	return mqlKey.(*mqlAwsKmsKey), nil
+}
+
+// ============================================================================
+// Macie findings publication
+// ============================================================================
+
+type mqlAwsMacieSessionInternal struct {
+	publicationFetched                 bool
+	publicationLock                    sync.Mutex
+	cachePublishClassificationFindings bool
+	cachePublishPolicyFindings         bool
+	publicationClassificationIsKnown   bool
+}
+
+// fetchFindingsPublication reads whether Macie forwards its findings to
+// Security Hub. Both flags come from one call, so the two fields share it.
+func (a *mqlAwsMacieSession) fetchFindingsPublication() error {
+	if a.publicationFetched {
+		return nil
+	}
+	a.publicationLock.Lock()
+	defer a.publicationLock.Unlock()
+	if a.publicationFetched {
+		return nil
+	}
+
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Macie2(a.Region.Data)
+	resp, err := svc.GetFindingsPublicationConfiguration(context.Background(),
+		&macie2.GetFindingsPublicationConfigurationInput{})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			log.Warn().Str("region", a.Region.Data).
+				Msg("no permission to read macie findings publication configuration")
+			a.publicationFetched = true
+			return nil
+		}
+		return err
+	}
+
+	if shc := resp.SecurityHubConfiguration; shc != nil {
+		a.cachePublishClassificationFindings = convert.ToValue(shc.PublishClassificationFindings)
+		a.cachePublishPolicyFindings = convert.ToValue(shc.PublishPolicyFindings)
+		a.publicationClassificationIsKnown = true
+	}
+	a.publicationFetched = true
+	return nil
+}
+
+func (a *mqlAwsMacieSession) publishClassificationFindings() (bool, error) {
+	if err := a.fetchFindingsPublication(); err != nil {
+		return false, err
+	}
+	if !a.publicationClassificationIsKnown {
+		a.PublishClassificationFindings.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return a.cachePublishClassificationFindings, nil
+}
+
+func (a *mqlAwsMacieSession) publishPolicyFindings() (bool, error) {
+	if err := a.fetchFindingsPublication(); err != nil {
+		return false, err
+	}
+	if !a.publicationClassificationIsKnown {
+		a.PublishPolicyFindings.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return a.cachePublishPolicyFindings, nil
+}

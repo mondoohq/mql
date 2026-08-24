@@ -1184,6 +1184,28 @@ private aws.waf.rule.statement.managedrulegroupstatement @defaults("name") {
   name string
   // Vendor that publishes the managed rule group (e.g., AWS)
   vendorName string
+  // Version of the managed rule group in use
+  //
+  // Empty when the rule group tracks the vendor's default version, which
+  // updates as the vendor publishes new rules. A pinned version stops taking
+  // updates, so a rule group pinned long ago is missing every signature added
+  // since.
+  version string
+  // Per-rule action overrides applied to rules inside the managed rule group
+  //
+  // Keyed by the name of the rule inside the group, with the action that
+  // replaces the group's own: one of allow, block, count, captcha, or
+  // challenge. An override to count leaves the rule evaluating and logging
+  // while blocking nothing, so the rule group still reads as enabled while the
+  // overridden rules let traffic through.
+  ruleActionOverrides map[string]string
+  // Names of rules excluded from the managed rule group
+  //
+  // The older form of an override to count: an excluded rule still evaluates
+  // and logs but takes no action. AWS now expresses the same thing through
+  // ruleActionOverrides, so this is populated only for configurations written
+  // before that change.
+  excludedRules []string
 }
 
 // Rule statement that matches if all of the rule statements inside it match
@@ -1217,11 +1239,44 @@ private aws.waf.rule.statement.orstatement {
 }
 
 // Rule statement that matches at a certain rate of requests (rate limiting)
-private aws.waf.rule.statement.ratebasedstatement {
+private aws.waf.rule.statement.ratebasedstatement @defaults("limit aggregateKeyType evaluationWindowSec") {
   // Name of the rule this statement belongs to
   ruleName string
   // ID of the statement
   statementID string
+  // Requests allowed from one aggregation key before the rule action applies
+  //
+  // Counted over the evaluation window. A limit set far above real traffic
+  // never trips, which leaves the rule present but inert against credential
+  // stuffing and scraping.
+  limit int
+  // Length of the rate-limit window in seconds
+  //
+  // One of 60, 120, 300, or 600. A longer window lets a burst spread out
+  // below the limit; a limit of 2000 over 600 seconds tolerates roughly three
+  // requests a second indefinitely.
+  evaluationWindowSec int
+  // What requests are counted against the limit together
+  //
+  // One of IP, FORWARDED_IP, CUSTOM_KEYS, or CONSTANT. IP counts per source
+  // address, FORWARDED_IP reads the client address from a header (which the
+  // client controls unless a trusted proxy rewrites it), CUSTOM_KEYS counts
+  // per combination of the attributes in customKeys, and CONSTANT counts every
+  // matching request together rather than per client.
+  aggregateKeyType string
+  // Request attributes the CUSTOM_KEYS aggregation counts by
+  //
+  // One dict per key, each carrying exactly one of ASN, Cookie, ForwardedIP,
+  // HTTPMethod, Header, IP, JA3Fingerprint, JA4Fingerprint, LabelNamespace,
+  // QueryArgument, QueryString, or UriPath. Empty for the other aggregation
+  // key types.
+  customKeys []dict
+  // Statement that narrows which requests are counted
+  //
+  // Only requests matching this statement are counted against the limit and
+  // subject to the rule action. Null when the limit applies to every request
+  // reaching the web ACL.
+  scopeDownStatement aws.waf.rule.statement
 }
 
 // Rule statement that checks for a regex pattern defined in a regex pattern set
@@ -2678,6 +2733,20 @@ private aws.iam.user @defaults("arn name createdAt") {
   accessKeys() @maturity("deprecated") []dict
   // Access keys associated with the user, including last-used data
   accessKeyDetails() []aws.iam.user.accessKey
+  // Service-specific credentials issued to the user
+  //
+  // Static user name and password pairs IAM issues for a single service, used
+  // to authenticate to CodeCommit over HTTPS, to Amazon Keyspaces, and to
+  // Bedrock API keys. They are long-lived credentials the IAM credential
+  // report does not cover, so an account that looks clean of access keys can
+  // still carry them.
+  serviceSpecificCredentials() []aws.iam.user.serviceSpecificCredential
+  // SSH public keys uploaded for the user
+  //
+  // Keys that authenticate the user to CodeCommit over SSH. They never expire
+  // and are not covered by the IAM credential report, so a key uploaded for a
+  // departed engineer keeps working until it is deleted.
+  sshPublicKeys() []aws.iam.user.sshPublicKey
   // Login profile for the user
   loginProfile() aws.iam.loginProfile
   // Path to the user
@@ -2697,6 +2766,61 @@ private aws.iam.user @defaults("arn name createdAt") {
   // query to the users under review. Records with a null lastAuthenticatedAt
   // are the services the user can reach but has never used.
   lastAccessedServices() []aws.iam.serviceLastAccessed
+}
+
+// IAM service-specific credential
+//
+// Static credential IAM issues to one user for one service, with a user name
+// and a password generated at creation and shown only once. Reports the
+// service it authenticates to, whether it is active, and its expiration date
+// where the service sets one. A credential that is Active and has no
+// expiration is a permanent password sitting outside the IAM credential
+// report.
+private aws.iam.user.serviceSpecificCredential @defaults("serviceName status createdAt") {
+  // ID of the service-specific credential
+  id string
+  // Name of the user the credential belongs to
+  username string
+  // Service the credential authenticates to
+  //
+  // The service endpoint, for example codecommit.amazonaws.com,
+  // cassandra.amazonaws.com, or bedrock.amazonaws.com.
+  serviceName string
+  // User name the credential authenticates as
+  //
+  // Generated by IAM from the IAM user name and the credential id. This is the
+  // half of the credential that is retrievable; the password half is shown only
+  // at creation.
+  serviceUsername string
+  // Friendly name given to the credential (empty when none was set)
+  serviceCredentialAlias string
+  // Status of the credential: Active or Inactive
+  status string
+  // Time when the credential was created
+  createdAt time
+  // Time when the credential expires
+  //
+  // Null when the credential does not expire, which is the case for every
+  // service other than the ones that issue time-bounded credentials. A
+  // non-expiring Active credential stays valid until it is deleted by hand.
+  expiresAt time
+}
+
+// IAM user SSH public key
+//
+// SSH public key uploaded for an IAM user to authenticate to CodeCommit over
+// SSH. Reports the key id, whether it is active, and when it was uploaded. The
+// keys carry no expiry, so an Active key remains a working credential
+// indefinitely.
+private aws.iam.user.sshPublicKey @defaults("id status uploadedAt") {
+  // ID of the SSH public key
+  id string
+  // Name of the user the key belongs to
+  username string
+  // Status of the key: Active or Inactive
+  status string
+  // Time when the key was uploaded
+  uploadedAt time
 }
 
 // IAM user access key
@@ -3122,6 +3246,43 @@ private aws.iam.accessAnalyzer.analyzer @defaults("name type region status") {
   lastResourceAnalyzedAt time
   // Creation timestamp
   createdAt time
+  // Archive rules that auto-suppress findings on this analyzer
+  //
+  // Rules that move a matching finding straight to the archived state when it
+  // is created, so it never appears among the active findings. An analyzer
+  // reporting no external access proves nothing while a broad archive rule is
+  // in place, which is what separates "nothing is shared externally" from
+  // "external sharing is being hidden". Empty for analyzer types that do not
+  // support archive rules, such as the unused-access analyzers.
+  archiveRules() []aws.iam.accessAnalyzer.archiveRule
+}
+
+// IAM Access Analyzer archive rule
+//
+// Rule that archives matching findings as they are created, keeping them out
+// of the analyzer's active findings. The `filter` field carries the criteria a
+// finding must match, keyed by the finding property being tested (for example
+// `resource`, `principal.AWS`, or `isPublic`), with each value naming the
+// comparison applied to it.
+private aws.iam.accessAnalyzer.archiveRule @defaults("name") {
+  // Name of the archive rule
+  name string
+  // ARN of the analyzer the rule belongs to
+  analyzerArn string
+  // Region where the analyzer exists
+  region string
+  // Criteria a finding must match to be archived
+  //
+  // Keyed by the finding property being tested. Each value is a dict with the
+  // comparison applied to that property: `Eq` and `Neq` for exact matches,
+  // `Contains` for substring matches, and `Exists` for presence. A rule whose
+  // only criterion is a broad `Exists` archives nearly everything the analyzer
+  // finds.
+  filter map[string]dict
+  // When the rule was created
+  createdAt time
+  // When the rule was last updated
+  updatedAt time
 }
 
 // AWS IAM Access Analyzer finding
@@ -6303,6 +6464,22 @@ private aws.opensearch.domain @defaults("name engineVersion") {
   // Policy-Min-TLS-1-0-2019-07, Policy-Min-TLS-1-2-2019-07, or
   // Policy-Min-TLS-1-2-PFS-2023-10.
   tlsSecurityPolicy string
+  // Domain access policy as a JSON-formatted string
+  //
+  // The resource-based policy that decides which principals may call the
+  // domain endpoint, with the standard Version, Id, and Statement keys.
+  // Empty when the domain carries no access policy. See `policyStatements`
+  // for the individual statements and `isPublic` for whether any of them
+  // grants public access.
+  accessPolicies string
+  // Parsed statements from the domain access policy
+  policyStatements() []aws.iam.policyStatement
+  // Whether the domain is reachable from the internet
+  //
+  // True when the domain is not deployed inside a VPC (its endpoint is publicly
+  // resolvable) and its access policy grants a wildcard principal access that is
+  // not scoped by a source-restricting condition.
+  isPublic() bool
   // Whether a custom endpoint is enabled for the domain
   customEndpointEnabled bool
   // Custom endpoint fully qualified domain name (empty if not configured)
@@ -6840,6 +7017,15 @@ private aws.elb.loadbalancer @defaults("name region elbType scheme dnsName") {
   elbType string
   // IP address type for the load balancer (ipv4, dualstack, dualstack-without-public-ipv4)
   ipAddressType string
+  // Whether security group inbound rules apply to PrivateLink traffic
+  //
+  // On a Network Load Balancer fronted by a PrivateLink endpoint service,
+  // "off" lets traffic arriving through PrivateLink reach the targets without
+  // being evaluated against the load balancer's inbound security group rules,
+  // so the security groups do not constrain consumers of the endpoint service.
+  // One of "on" or "off". Empty for load balancer types that do not carry the
+  // setting (Application, Gateway, and Classic load balancers).
+  enforceSecurityGroupInboundRulesOnPrivateLinkTraffic string
   // VPC where the load balancer is located
   vpc aws.vpc
   // Tags on the load balancer
@@ -6989,9 +7175,37 @@ private aws.elb.listener @defaults("arn port protocol") {
   trustStore() aws.elb.truststore
   // Rules that route requests reaching the listener
   rules() []aws.elb.listener.rule
+  // Every certificate installed on the listener, including the SNI list
+  //
+  // The full certificate list, which the listener description does not carry:
+  // describing a listener reports only the default certificate, so a
+  // certificate that is served for one SNI host name and is expiring, wildcard,
+  // or issued by an unexpected authority is invisible without this. Empty for
+  // listeners that terminate no TLS.
+  sniCertificates() []aws.elb.listener.certificate
 
   // Tags for the listener
   tags() map[string]string
+}
+
+// Certificate installed on an ELB listener
+//
+// One entry of an HTTPS or TLS listener's certificate list, reporting whether
+// it is the default certificate served when no SNI host name matches, and
+// resolving the certificate itself when it is managed by ACM.
+private aws.elb.listener.certificate @defaults("arn isDefault") {
+  // ARN of the certificate
+  //
+  // Either an ACM certificate or an IAM server certificate. Only ACM
+  // certificates resolve through the acmCertificate field.
+  arn string
+  // Whether the certificate is served when no SNI host name matches
+  isDefault bool
+  // The ACM certificate, resolved to its issuer, subject, and validity window
+  //
+  // Null when the listener presents an IAM server certificate, which is
+  // uploaded rather than issued by ACM and carries no ACM record.
+  acmCertificate() aws.acm.certificate
 }
 
 // AWS ELB listener rule
@@ -7791,6 +8005,42 @@ aws.macie {
   automatedDiscoveryConfigurations() []aws.macie.automatedDiscoveryConfiguration
   // Classification result export configuration per region (S3 destination + KMS key)
   classificationExportConfigurations() []aws.macie.classificationExportConfiguration
+  // Sensitive data reveal configuration per region
+  revealConfigurations() []aws.macie.revealConfiguration
+}
+
+// Amazon Macie sensitive data reveal configuration
+//
+// Controls whether an analyst opening a sensitive data finding can retrieve
+// the matched values themselves out of the affected S3 object, rather than
+// only the finding's summary. When the status is ENABLED and the retrieval
+// mode is CALLER_CREDENTIALS, the retrieval runs with the credentials of
+// whoever opened the finding, so anyone who can read a Macie finding can also
+// pull the raw personal data behind it. ASSUME_ROLE routes the retrieval
+// through a named role instead, which puts the read behind that role's own
+// permissions and leaves an audit trail attributable to it.
+private aws.macie.revealConfiguration @defaults("region status retrievalMode") {
+  // Region this configuration applies to
+  region string
+  // Whether retrieving sensitive data samples is allowed: ENABLED or DISABLED
+  status string
+  // Credentials used to retrieve the sensitive data samples
+  //
+  // CALLER_CREDENTIALS retrieves with the credentials of the principal viewing
+  // the finding. ASSUME_ROLE retrieves through the IAM role named by roleName.
+  // Empty when reveal has never been configured.
+  retrievalMode string
+  // Name of the IAM role used when the retrieval mode is ASSUME_ROLE (empty otherwise)
+  roleName string
+  // IAM role Macie assumes to retrieve sensitive data samples
+  //
+  // Null when the retrieval mode is CALLER_CREDENTIALS, in which case no role
+  // stands between the viewer and the data.
+  retrievalIamRole() aws.iam.role
+  // ARN of the customer-managed KMS key used to encrypt the retrieved samples (empty when none is set)
+  kmsKeyArn string
+  // KMS key used to encrypt the retrieved sensitive data samples
+  kmsKey() aws.kms.key
 }
 
 // Amazon Macie session
@@ -7819,6 +8069,19 @@ private aws.macie.session @defaults("arn region status") {
   serviceRoleIamRole() aws.iam.role
   // Number of S3 buckets monitored by Macie
   s3BucketCount() int
+  // Whether sensitive data findings are published to Security Hub
+  //
+  // False by default, so Macie can be fully enabled and classifying data while
+  // no sensitive data finding ever reaches Security Hub or anything downstream
+  // of it. Sensitive data findings are also published to EventBridge
+  // regardless of this setting.
+  publishClassificationFindings() bool
+  // Whether policy findings are published to Security Hub
+  //
+  // Policy findings report a change that reduces the security of an S3 bucket,
+  // such as a bucket policy or encryption setting being weakened. True by
+  // default.
+  publishPolicyFindings() bool
 }
 
 // Amazon Macie classification job
@@ -8383,9 +8646,95 @@ private aws.securityhub.hub @defaults("arn region") {
   members() []aws.securityhub.member
   // Products enabled for finding import
   enabledProducts() []aws.securityhub.enabledProduct
+  // Whether new controls added to enabled standards are turned on automatically
+  //
+  // When false, a control released after a standard was enabled stays off
+  // until someone turns it on by hand, so the standard reports as enabled
+  // while its newest checks never run.
+  autoEnableControls bool
+  // How findings are generated for a control that belongs to several standards
+  //
+  // SECURITY_CONTROL emits one consolidated finding per control check.
+  // STANDARD_CONTROL emits a separate finding per standard the control
+  // belongs to, which multiplies the same underlying issue across standards.
+  // Empty when the account predates consolidated control findings.
+  controlFindingGenerator string
+  // Organization-wide Security Hub configuration
+  //
+  // Null when the account is not a Security Hub delegated administrator, or
+  // when the caller lacks permission to read the organization configuration.
+  organizationConfiguration() aws.securityhub.organizationConfiguration
+  // Cross-region finding aggregator for this hub
+  //
+  // Null when no aggregator is configured, in which case findings stay in the
+  // region that produced them and no single region holds the whole picture.
+  findingAggregator() aws.securityhub.findingAggregator
 
   // Tags for the hub
   tags() map[string]string
+}
+
+// Security Hub organization configuration
+//
+// Organization-wide defaults a Security Hub delegated administrator applies to
+// member accounts: whether Security Hub is turned on in accounts that newly
+// join the organization, whether the default standards come with it, and
+// whether the organization is driven by local per-account settings or by
+// central configuration policies. An organization that does not auto-enable
+// leaves every account added after the rollout unmonitored until someone
+// enables it by hand.
+private aws.securityhub.organizationConfiguration @defaults("configurationType autoEnable autoEnableStandards") {
+  // Region the configuration was read from
+  region string
+  // Whether Security Hub is enabled automatically in accounts that join the organization
+  autoEnable bool
+  // Whether default standards are enabled automatically in accounts that join the organization
+  //
+  // DEFAULT enables the default standards with Security Hub. NONE enables
+  // Security Hub without any standard, so the account reports as covered while
+  // running no checks. Empty when the setting is unreported.
+  autoEnableStandards string
+  // How the organization is configured
+  //
+  // LOCAL means each account and region carries its own settings. CENTRAL
+  // means the delegated administrator drives accounts through configuration
+  // policies, in which case autoEnable and autoEnableStandards are pinned and
+  // the policies decide what is actually enabled. Empty when unreported.
+  configurationType string
+  // Whether central configuration is available to the organization
+  //
+  // ENABLED, PENDING, or FAILED. Always ENABLED while the configuration type
+  // is LOCAL. Empty when unreported.
+  status string
+  // Explanation of a FAILED central configuration status (empty otherwise)
+  statusMessage string
+  // Whether the administrator account has reached the member account limit
+  //
+  // When true, no further account can be associated with the administrator, so
+  // new organization accounts stay outside Security Hub entirely.
+  memberAccountLimitReached bool
+}
+
+// Security Hub cross-region finding aggregator
+//
+// Aggregator that replicates findings from linked regions into one home
+// region, so a single query covers the whole account rather than one region at
+// a time. Reports the home region and which regions feed it.
+private aws.securityhub.findingAggregator @defaults("findingAggregationRegion regionLinkingMode") {
+  // ARN of the finding aggregator
+  arn string
+  // Home region that receives findings replicated from the linked regions
+  findingAggregationRegion string
+  // Which regions are linked to the home region
+  //
+  // ALL_REGIONS links every region including ones added later,
+  // ALL_REGIONS_EXCEPT_SPECIFIED links every region except those in `regions`,
+  // and SPECIFIED_REGIONS links only the regions in `regions`. Anything other
+  // than ALL_REGIONS leaves findings from an unlinked region out of the home
+  // region entirely.
+  regionLinkingMode string
+  // Regions included or excluded by the linking mode (empty for ALL_REGIONS)
+  regions []string
 }
 
 // AWS Security Hub enabled standard subscription
@@ -11574,6 +11923,20 @@ private aws.cloudfront.distribution.origin @defaults("id originPath") {
   originPath string
   // Account ID where the origin exists
   account string
+  // Protocol CloudFront uses to reach a custom origin
+  //
+  // One of http-only, https-only, or match-viewer. With http-only the fetch
+  // from the origin travels in plaintext no matter how the viewer connected,
+  // and match-viewer downgrades to plaintext whenever the viewer used HTTP.
+  // Empty for S3 origins served through the S3 origin config, which do not
+  // carry a protocol policy.
+  originProtocolPolicy string
+  // SSL and TLS versions CloudFront accepts from a custom origin
+  //
+  // Any of SSLv3, TLSv1, TLSv1.1, or TLSv1.2. Anything below TLSv1.2 leaves
+  // the origin leg negotiable down to a deprecated protocol version. Empty
+  // for S3 origins, and for custom origins reached over http-only.
+  originSslProtocols []string
   // ACM certificate that CloudFront uses for mutual TLS to the origin (null when origin mTLS is disabled)
   originMtlsClientCertificate() aws.acm.certificate
   // Origin Access Control ID for the origin (empty when OAC is not configured)
@@ -12397,6 +12760,25 @@ private aws.s3.bucket @defaults("name location public") {
   restrictPublicBuckets() bool
   // Whether Object Lock is enabled on the bucket (prevents deletion/overwrite for ransomware protection)
   objectLockEnabled() bool
+  // Default Object Lock retention mode
+  //
+  // Retention mode applied to every object written to the bucket when the
+  // request does not set one of its own. GOVERNANCE retention can be lifted
+  // by any principal holding s3:BypassGovernanceRetention, so only COMPLIANCE
+  // makes an object undeletable for the whole retention period. Null when the
+  // bucket has no default retention rule, which leaves Object Lock enabled but
+  // applied to nothing unless every writer sets retention itself.
+  objectLockRetentionMode() string
+  // Default Object Lock retention period in days
+  //
+  // Null when the default retention rule expresses its period in years, or
+  // when the bucket has no default retention rule at all.
+  objectLockRetentionDays() int
+  // Default Object Lock retention period in years
+  //
+  // Null when the default retention rule expresses its period in days, or
+  // when the bucket has no default retention rule at all.
+  objectLockRetentionYears() int
   // Bucket metrics configurations for request metrics
   metricsConfigurations() []aws.s3.bucket.metricsConfiguration
   // Whether the bucket still exists (stale reference)
@@ -20675,6 +21057,14 @@ aws.eks.cluster @defaults("arn version status") {
   // One of API, API_AND_CONFIG_MAP, or CONFIG_MAP, controlling whether access
   // is granted through EKS access entries, the aws-auth ConfigMap, or both.
   authenticationMode() string
+  // Whether the cluster creator was granted permanent cluster-admin at creation
+  //
+  // When true, the IAM principal that created the cluster holds
+  // system:masters through an implicit grant that carries no access entry, so
+  // it is invisible to a review of `accessEntries` and cannot be revoked
+  // without recreating the cluster. Always false when the authentication mode
+  // is CONFIG_MAP, which has no access-entry bootstrap.
+  bootstrapClusterCreatorAdminPermissions() bool
   // Whether deletion protection is enabled or not
   deletionProtection() bool
   // Whether the Kubernetes API server endpoint is publicly accessible

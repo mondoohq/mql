@@ -767,6 +767,44 @@ func createActionResource(runtime *plugin.Runtime, ruleAction *waftypes.RuleActi
 	return mqlAction, err
 }
 
+// wafRuleActionOverridesToMap flattens the per-rule action overrides of a
+// managed rule group into a rule-name to action map. The action names match
+// those of aws.waf.rule.action, so a rule flipped to "count" reads the same on
+// both.
+func wafRuleActionOverridesToMap(overrides []waftypes.RuleActionOverride) map[string]any {
+	res := make(map[string]any, len(overrides))
+	for _, override := range overrides {
+		name := convert.ToValue(override.Name)
+		if name == "" {
+			continue
+		}
+		res[name] = wafRuleActionString(override.ActionToUse)
+	}
+	return res
+}
+
+// wafRuleActionString names the single action set on a RuleAction union.
+// It returns "" when no action is set, so an unset override never reads as an
+// allow.
+func wafRuleActionString(action *waftypes.RuleAction) string {
+	if action == nil {
+		return ""
+	}
+	switch {
+	case action.Allow != nil:
+		return "allow"
+	case action.Block != nil:
+		return "block"
+	case action.Count != nil:
+		return "count"
+	case action.Captcha != nil:
+		return "captcha"
+	case action.Challenge != nil:
+		return "challenge"
+	}
+	return ""
+}
+
 func createStatementResource(runtime *plugin.Runtime, statement *waftypes.Statement, ruleName *string, ruleID string) (plugin.Resource, error) {
 	var err error
 	var sqlimatchstatement plugin.Resource
@@ -915,11 +953,18 @@ func createStatementResource(runtime *plugin.Runtime, statement *waftypes.Statem
 		}
 		if statement.ManagedRuleGroupStatement != nil {
 			kind = "ManagedRuleGroupStatement"
+			excludedRules := make([]any, 0, len(statement.ManagedRuleGroupStatement.ExcludedRules))
+			for _, excluded := range statement.ManagedRuleGroupStatement.ExcludedRules {
+				excludedRules = append(excludedRules, convert.ToValue(excluded.Name))
+			}
 			managedrulegroupstatement, err = CreateResource(runtime, "aws.waf.rule.statement.managedrulegroupstatement", map[string]*llx.RawData{
-				"statementID": llx.StringData(mqlStatementID),
-				"ruleName":    llx.StringDataPtr(ruleName),
-				"name":        llx.StringDataPtr(statement.ManagedRuleGroupStatement.Name),
-				"vendorName":  llx.StringDataPtr(statement.ManagedRuleGroupStatement.VendorName),
+				"statementID":         llx.StringData(mqlStatementID),
+				"ruleName":            llx.StringDataPtr(ruleName),
+				"name":                llx.StringDataPtr(statement.ManagedRuleGroupStatement.Name),
+				"vendorName":          llx.StringDataPtr(statement.ManagedRuleGroupStatement.VendorName),
+				"version":             llx.StringDataPtr(statement.ManagedRuleGroupStatement.Version),
+				"ruleActionOverrides": llx.MapData(wafRuleActionOverridesToMap(statement.ManagedRuleGroupStatement.RuleActionOverrides), types.String),
+				"excludedRules":       llx.ArrayData(excludedRules, types.String),
 			})
 			if err != nil {
 				return nil, err
@@ -981,9 +1026,30 @@ func createStatementResource(runtime *plugin.Runtime, statement *waftypes.Statem
 		}
 		if statement.RateBasedStatement != nil {
 			kind = "RateBasedStatement"
+			rbs := statement.RateBasedStatement
+			customKeys, err := convert.JsonToDictSlice(rbs.CustomKeys)
+			if err != nil {
+				return nil, err
+			}
+			// A rate limit that only counts a subset of requests carries a
+			// scope-down statement; without one the limit applies to everything
+			// the web ACL sees.
+			scopeDown := llx.NilData
+			if rbs.ScopeDownStatement != nil {
+				mqlScopeDown, err := createStatementResource(runtime, rbs.ScopeDownStatement, ruleName, ruleID)
+				if err != nil {
+					return nil, err
+				}
+				scopeDown = llx.ResourceData(mqlScopeDown, "aws.waf.rule.statement")
+			}
 			ratebasedstatement, err = CreateResource(runtime, "aws.waf.rule.statement.ratebasedstatement", map[string]*llx.RawData{
-				"statementID": llx.StringData(mqlStatementID),
-				"ruleName":    llx.StringDataPtr(ruleName),
+				"statementID":         llx.StringData(mqlStatementID),
+				"ruleName":            llx.StringDataPtr(ruleName),
+				"limit":               llx.IntDataDefault(rbs.Limit, 0),
+				"evaluationWindowSec": llx.IntData(rbs.EvaluationWindowSec),
+				"aggregateKeyType":    llx.StringData(string(rbs.AggregateKeyType)),
+				"customKeys":          llx.ArrayData(customKeys, types.Dict),
+				"scopeDownStatement":  scopeDown,
 			})
 			if err != nil {
 				return nil, err

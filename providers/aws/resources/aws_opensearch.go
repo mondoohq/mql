@@ -407,6 +407,7 @@ func newMqlAwsOpensearchDomain(runtime *plugin.Runtime, region string, accountID
 			"vpcEgressEnabled":                   llx.BoolData(vpcEgressEnabled),
 			"enforceHTTPS":                       llx.BoolData(enforceHTTPS),
 			"tlsSecurityPolicy":                  llx.StringData(tlsSecurityPolicy),
+			"accessPolicies":                     llx.StringDataPtr(domain.AccessPolicies),
 			"customEndpointEnabled":              llx.BoolData(customEndpointEnabled),
 			"customEndpoint":                     llx.StringData(customEndpoint),
 			"samlEnabled":                        llx.BoolData(samlEnabled),
@@ -449,6 +450,29 @@ func newMqlAwsOpensearchDomain(runtime *plugin.Runtime, region string, accountID
 	mqlDomain.cacheCustomEndpointCertificate = customEndpointCertArn
 	mqlDomain.setSecurityGroupArns(sgArns)
 	return mqlDomain, nil
+}
+
+func (a *mqlAwsOpensearchDomain) policyStatements() ([]any, error) {
+	arn := a.GetArn()
+	if arn.Error != nil {
+		return nil, arn.Error
+	}
+	return policyStatementsFromString(a.MqlRuntime, arn.Data, a.GetAccessPolicies())
+}
+
+// isPublic reports whether the OpenSearch domain is reachable from the
+// internet: it has a public endpoint (it is not deployed inside a VPC) and its
+// access policy grants a wildcard principal access that is not scoped by a
+// source-restricting condition.
+func (a *mqlAwsOpensearchDomain) isPublic() (bool, error) {
+	if a.cacheVpcId != "" {
+		return esDomainIsPublic(true, false), nil
+	}
+	policyAllowsPublic, err := resourceIsPublic(a.GetPolicyStatements())
+	if err != nil {
+		return false, err
+	}
+	return esDomainIsPublic(false, policyAllowsPublic), nil
 }
 
 func (a *mqlAwsOpensearchDomain) customEndpointCertificate() (*mqlAwsAcmCertificate, error) {
