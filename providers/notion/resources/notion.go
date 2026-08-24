@@ -86,6 +86,41 @@ func (r *mqlNotion) conn() *connection.NotionConnection {
 	return r.MqlRuntime.Connection.(*connection.NotionConnection)
 }
 
+// maxCursorPages bounds a paginated walk. Notion pages at 100 records a
+// request, so 200 pages is 20,000 records of headroom on collections that
+// are already the whole workspace.
+const maxCursorPages = 200
+
+// walkCursor collects every record from one of Notion's cursor-paginated
+// endpoints. fetch is called once per page with the cursor to send, and
+// returns that page's records, the cursor Notion reports for the next page,
+// and whether Notion says more remain.
+//
+// Two guards, because "has_more with a cursor" is the only thing the caller
+// can see and a broken endpoint can report that forever: the walk stops if
+// the cursor handed back is the one just sent (a caching proxy, or an
+// endpoint ignoring start_cursor, otherwise re-appends the same page), and
+// it is bounded by maxCursorPages regardless. Without them a stationary
+// cursor grows the slice by a page per iteration until the process dies.
+func walkCursor[T any](fetch func(cursor notionapi.Cursor) ([]T, notionapi.Cursor, bool, error)) ([]T, error) {
+	var all []T
+	cursor := notionapi.Cursor("")
+
+	for page := 0; page < maxCursorPages; page++ {
+		records, next, hasMore, err := fetch(cursor)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, records...)
+
+		if !hasMore || next == "" || next == cursor {
+			return all, nil
+		}
+		cursor = next
+	}
+	return all, nil
+}
+
 // richTextToString concatenates the plain-text content of a rich-text array,
 // as returned for a title or rich_text property.
 func richTextToString(rt []notionapi.RichText) string {

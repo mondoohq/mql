@@ -56,30 +56,25 @@ func (r *mqlNotion) pages() ([]any, error) {
 func searchNotionPages(conn *connection.NotionConnection) ([]*notionapi.Page, error) {
 	client := conn.Client()
 
-	var all []*notionapi.Page
-	cursor := notionapi.Cursor("")
-	for {
+	return walkCursor(func(cursor notionapi.Cursor) ([]*notionapi.Page, notionapi.Cursor, bool, error) {
 		resp, err := client.Search.Do(context.Background(), &notionapi.SearchRequest{
 			Filter:      notionapi.SearchFilter{Property: "object", Value: "page"},
 			StartCursor: cursor,
 			PageSize:    100,
 		})
 		if err != nil {
-			return nil, err
+			return nil, "", false, err
 		}
+		page := make([]*notionapi.Page, 0, len(resp.Results))
 		for _, result := range resp.Results {
 			p, ok := result.(*notionapi.Page)
 			if !ok {
 				continue
 			}
-			all = append(all, p)
+			page = append(page, p)
 		}
-		if !resp.HasMore || resp.NextCursor == "" {
-			break
-		}
-		cursor = resp.NextCursor
-	}
-	return all, nil
+		return page, resp.NextCursor, resp.HasMore, nil
+	})
 }
 
 // mqlNotionPageFromAPI maps a single *notionapi.Page to its MQL resource.

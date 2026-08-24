@@ -54,30 +54,25 @@ func (r *mqlNotion) databases() ([]any, error) {
 func searchNotionDatabases(conn *connection.NotionConnection) ([]*notionapi.Database, error) {
 	client := conn.Client()
 
-	var all []*notionapi.Database
-	cursor := notionapi.Cursor("")
-	for {
+	return walkCursor(func(cursor notionapi.Cursor) ([]*notionapi.Database, notionapi.Cursor, bool, error) {
 		resp, err := client.Search.Do(context.Background(), &notionapi.SearchRequest{
 			Filter:      notionapi.SearchFilter{Property: "object", Value: "database"},
 			StartCursor: cursor,
 			PageSize:    100,
 		})
 		if err != nil {
-			return nil, err
+			return nil, "", false, err
 		}
+		page := make([]*notionapi.Database, 0, len(resp.Results))
 		for _, result := range resp.Results {
 			db, ok := result.(*notionapi.Database)
 			if !ok {
 				continue
 			}
-			all = append(all, db)
+			page = append(page, db)
 		}
-		if !resp.HasMore || resp.NextCursor == "" {
-			break
-		}
-		cursor = resp.NextCursor
-	}
-	return all, nil
+		return page, resp.NextCursor, resp.HasMore, nil
+	})
 }
 
 // mqlNotionDatabaseFromAPI maps a single *notionapi.Database to its MQL

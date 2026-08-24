@@ -40,11 +40,11 @@ notion.bot @defaults("id name ownerType") @maturity("experimental") {
   name string
   // Avatar image URL
   avatarUrl string
-  // Owner type of the integration, either 'workspace' or 'user'
+  // Owner type of the integration, either 'workspace' or 'user', null when Notion does not report it
   ownerType string
   // Individual owner of the integration, set only when ownerType is 'user'
   owner() notion.user
-  // Name of the workspace this integration is installed in
+  // Name of the workspace this integration is installed in, null when Notion does not report it
   workspaceName string
 }
 
@@ -54,9 +54,9 @@ notion.bot @defaults("id name ownerType") @maturity("experimental") {
 // REST API has no dedicated workspace endpoint: the name comes from the
 // integration's own bot identity. Settings that require full workspace
 // administration, such as enforced SSO, allowed email domains, or member
-// provisioning, are only available through the separate Enterprise SCIM
-// and Audit Log APIs and are not modeled here, they would land on this
-// resource once that integration exists.
+// provisioning, are reported only by the separate Enterprise SCIM and
+// Audit Log APIs, so they are not readable through an internal
+// integration token.
 notion.workspace @defaults("name") @maturity("experimental") {
   // Workspace name, from the integration's bot identity
   name string
@@ -140,9 +140,8 @@ notion.database @defaults("id title") @maturity("experimental") {
 // parentDatabase and parentPage references resolve the page's container,
 // when the API reports one, a page can otherwise sit directly under the
 // workspace or a block. The properties field carries the page's raw
-// property values as Notion returns them, since fully modeling every
-// Notion property type (including relation properties that point at other
-// pages) is out of scope for this initial resource set.
+// property values as Notion returns them, keyed by property name, so a
+// property with no field of its own is still reachable there.
 notion.page @defaults("id title") @maturity("experimental") {
   init(id string)
   // Page ID

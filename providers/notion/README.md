@@ -13,8 +13,7 @@ without a Notion account.
   these capabilities:
   - **Read content**, for `notion.pages` and `notion.databases`
   - **Read user information including email addresses**, if you want
-    `notion.user.email` populated. Without it the field is empty for
-    person-type users.
+    `notion.user.email` populated. Without it the field is null.
 - **Content shared with the integration.** A new integration can see nothing.
   Notion has no "list everything" endpoint, so the provider enumerates through
   the search API, which only returns objects explicitly connected to the

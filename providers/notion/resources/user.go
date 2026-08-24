@@ -72,26 +72,20 @@ func (r *mqlNotion) users() ([]any, error) {
 func listNotionUsers(conn *connection.NotionConnection) ([]*notionapi.User, error) {
 	client := conn.Client()
 
-	var all []*notionapi.User
-	cursor := notionapi.Cursor("")
-	for {
+	return walkCursor(func(cursor notionapi.Cursor) ([]*notionapi.User, notionapi.Cursor, bool, error) {
 		resp, err := client.User.List(context.Background(), &notionapi.Pagination{
 			StartCursor: cursor,
 			PageSize:    100,
 		})
 		if err != nil {
-			return nil, err
+			return nil, "", false, err
 		}
+		page := make([]*notionapi.User, 0, len(resp.Results))
 		for i := range resp.Results {
-			u := resp.Results[i]
-			all = append(all, &u)
+			page = append(page, &resp.Results[i])
 		}
-		if !resp.HasMore || resp.NextCursor == "" {
-			break
-		}
-		cursor = resp.NextCursor
-	}
-	return all, nil
+		return page, resp.NextCursor, resp.HasMore, nil
+	})
 }
 
 // mqlNotionUserFromAPI maps a single *notionapi.User to its MQL resource.

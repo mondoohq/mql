@@ -4,6 +4,11 @@
 package resources
 
 import (
+	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
+	"strconv"
 	"testing"
 
 	"github.com/jomei/notionapi"
@@ -230,4 +235,208 @@ func nestedPlainText(t *testing.T, dict map[string]any, prop, arrayKey string) s
 		t.Fatalf("property %q key %q [0].plain_text = %T, want string", prop, arrayKey, first["plain_text"])
 	}
 	return text
+}
+
+// walkCursor's whole job is to terminate. Notion reports "more pages" as
+// has_more plus a cursor, and a caller cannot tell a real next page from an
+// endpoint that ignores start_cursor, so the guards are the only thing
+// between a broken cursor and a slice that grows a page per iteration until
+// the process dies. Pin every exit.
+func TestWalkCursor(t *testing.T) {
+	t.Run("walks every page and concatenates in order", func(t *testing.T) {
+		pages := [][]string{{"a", "b"}, {"c"}, {"d", "e"}}
+		var sent []notionapi.Cursor
+
+		got, err := walkCursor(func(cursor notionapi.Cursor) ([]string, notionapi.Cursor, bool, error) {
+			sent = append(sent, cursor)
+			i := len(sent) - 1
+			next := notionapi.Cursor("")
+			if i+1 < len(pages) {
+				next = notionapi.Cursor(pages[i+1][0])
+			}
+			return pages[i], next, next != "", nil
+		})
+		if err != nil {
+			t.Fatalf("walkCursor returned error: %v", err)
+		}
+		if want := []string{"a", "b", "c", "d", "e"}; !equalStrings(got, want) {
+			t.Errorf("records = %v, want %v", got, want)
+		}
+		// The first request must go out with no cursor, and each later one
+		// with the cursor the previous page reported.
+		if want := []notionapi.Cursor{"", "c", "d"}; !equalCursors(sent, want) {
+			t.Errorf("cursors sent = %v, want %v", sent, want)
+		}
+	})
+
+	t.Run("stops when the cursor sent comes straight back", func(t *testing.T) {
+		calls := 0
+		got, err := walkCursor(func(cursor notionapi.Cursor) ([]string, notionapi.Cursor, bool, error) {
+			calls++
+			if calls > maxCursorPages {
+				t.Fatal("walkCursor did not stop on a stationary cursor")
+			}
+			// Always answers "more pages" and always hands back "stuck": an
+			// endpoint that ignores start_cursor looks exactly like this.
+			return []string{"dup"}, "stuck", true, nil
+		})
+		if err != nil {
+			t.Fatalf("walkCursor returned error: %v", err)
+		}
+		// One page accepted, then the repeat is recognised and dropped.
+		if want := []string{"dup", "dup"}; !equalStrings(got, want) {
+			t.Errorf("records = %v, want %v", got, want)
+		}
+		if calls != 2 {
+			t.Errorf("fetch called %d times, want 2", calls)
+		}
+	})
+
+	t.Run("is bounded even when every cursor is new", func(t *testing.T) {
+		calls := 0
+		got, err := walkCursor(func(cursor notionapi.Cursor) ([]string, notionapi.Cursor, bool, error) {
+			calls++
+			if calls > maxCursorPages+1 {
+				t.Fatal("walkCursor exceeded its page cap")
+			}
+			// A fresh cursor every time defeats the stationary-cursor check,
+			// so the page cap is the only remaining exit.
+			return []string{"x"}, notionapi.Cursor(strconv.Itoa(calls)), true, nil
+		})
+		if err != nil {
+			t.Fatalf("walkCursor returned error: %v", err)
+		}
+		if calls != maxCursorPages {
+			t.Errorf("fetch called %d times, want the %d page cap", calls, maxCursorPages)
+		}
+		if len(got) != maxCursorPages {
+			t.Errorf("records = %d, want %d", len(got), maxCursorPages)
+		}
+	})
+
+	t.Run("stops on has_more false even with a cursor present", func(t *testing.T) {
+		calls := 0
+		got, err := walkCursor(func(cursor notionapi.Cursor) ([]string, notionapi.Cursor, bool, error) {
+			calls++
+			return []string{"only"}, "leftover", false, nil
+		})
+		if err != nil {
+			t.Fatalf("walkCursor returned error: %v", err)
+		}
+		if calls != 1 || len(got) != 1 {
+			t.Errorf("calls = %d, records = %d, want 1 and 1", calls, len(got))
+		}
+	})
+
+	t.Run("propagates a mid-walk error and discards the partial read", func(t *testing.T) {
+		boom := errors.New("boom")
+		calls := 0
+		got, err := walkCursor(func(cursor notionapi.Cursor) ([]string, notionapi.Cursor, bool, error) {
+			calls++
+			if calls == 2 {
+				return nil, "", false, boom
+			}
+			return []string{"first"}, "next", true, nil
+		})
+		if !errors.Is(err, boom) {
+			t.Fatalf("err = %v, want %v", err, boom)
+		}
+		// A partial collection returned as a success would read as "these are
+		// all the records", so the error path must yield nothing.
+		if got != nil {
+			t.Errorf("records = %v, want nil on error", got)
+		}
+	})
+}
+
+// isRestrictedResource decides whether a failure degrades to null or fails
+// the scan. It must match Notion's 403 restricted_resource exactly and must
+// NOT match a transport error, or a network blip would silently report "no
+// users" and an audit would pass on data that was never read.
+func TestIsRestrictedResource(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "notion 403 restricted_resource",
+			err:  &notionapi.Error{Status: http.StatusForbidden, Code: "restricted_resource"},
+			want: true,
+		},
+		{
+			name: "wrapped notion 403 restricted_resource",
+			err:  fmt.Errorf("listing users: %w", &notionapi.Error{Status: http.StatusForbidden, Code: "restricted_resource"}),
+			want: true,
+		},
+		{
+			name: "403 with a different code is a real refusal",
+			err:  &notionapi.Error{Status: http.StatusForbidden, Code: "unauthorized"},
+			want: false,
+		},
+		{
+			name: "restricted_resource on another status",
+			err:  &notionapi.Error{Status: http.StatusBadRequest, Code: "restricted_resource"},
+			want: false,
+		},
+		{
+			name: "rate limit must not degrade to null",
+			err:  &notionapi.Error{Status: http.StatusTooManyRequests, Code: "rate_limited"},
+			want: false,
+		},
+		{
+			name: "server error must not degrade to null",
+			err:  &notionapi.Error{Status: http.StatusInternalServerError, Code: "internal_server_error"},
+			want: false,
+		},
+		{
+			// The shape a dial or TLS failure actually arrives in: the SDK
+			// returns the *url.Error from httpClient.Do untouched.
+			name: "transport error must not degrade to null",
+			err:  &url.Error{Op: "Post", URL: "https://api.notion.com/v1/users", Err: errors.New("dial tcp: i/o timeout")},
+			want: false,
+		},
+		{
+			name: "plain error",
+			err:  errors.New("something else"),
+			want: false,
+		},
+		{
+			name: "nil",
+			err:  nil,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isRestrictedResource(tt.err); got != tt.want {
+				t.Errorf("isRestrictedResource(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalCursors(a, b []notionapi.Cursor) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
