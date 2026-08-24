@@ -191,8 +191,8 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gusto.employee.uuid": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGustoEmployee).GetUuid()).ToDataRes(types.String)
 	},
-	"gusto.employee.companyUuid": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGustoEmployee).GetCompanyUuid()).ToDataRes(types.String)
+	"gusto.employee.company": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGustoEmployee).GetCompany()).ToDataRes(types.Resource("gusto.company"))
 	},
 	"gusto.employee.firstName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGustoEmployee).GetFirstName()).ToDataRes(types.String)
@@ -215,8 +215,8 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gusto.employee.phone": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGustoEmployee).GetPhone()).ToDataRes(types.String)
 	},
-	"gusto.employee.currentEmployment": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGustoEmployee).GetCurrentEmployment()).ToDataRes(types.Bool)
+	"gusto.employee.currentEmploymentStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGustoEmployee).GetCurrentEmploymentStatus()).ToDataRes(types.String)
 	},
 	"gusto.employee.onboarded": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGustoEmployee).GetOnboarded()).ToDataRes(types.Bool)
@@ -227,11 +227,8 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gusto.employee.terminated": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGustoEmployee).GetTerminated()).ToDataRes(types.Bool)
 	},
-	"gusto.employee.twoFactorAuthenticationEnabled": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGustoEmployee).GetTwoFactorAuthenticationEnabled()).ToDataRes(types.Bool)
-	},
-	"gusto.employee.createdAt": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGustoEmployee).GetCreatedAt()).ToDataRes(types.Time)
+	"gusto.employee.hiredAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGustoEmployee).GetHiredAt()).ToDataRes(types.Time)
 	},
 	"gusto.employee.manager": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGustoEmployee).GetManager()).ToDataRes(types.Resource("gusto.employee"))
@@ -239,14 +236,11 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gusto.employee.department": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGustoEmployee).GetDepartment()).ToDataRes(types.Resource("gusto.department"))
 	},
-	"gusto.employee.workLocation": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGustoEmployee).GetWorkLocation()).ToDataRes(types.Resource("gusto.location"))
-	},
 	"gusto.contractor.uuid": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGustoContractor).GetUuid()).ToDataRes(types.String)
 	},
-	"gusto.contractor.companyUuid": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGustoContractor).GetCompanyUuid()).ToDataRes(types.String)
+	"gusto.contractor.company": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGustoContractor).GetCompany()).ToDataRes(types.Resource("gusto.company"))
 	},
 	"gusto.contractor.type": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGustoContractor).GetType()).ToDataRes(types.String)
@@ -272,8 +266,8 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gusto.contractor.startDate": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGustoContractor).GetStartDate()).ToDataRes(types.Time)
 	},
-	"gusto.contractor.selfOnboarding": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGustoContractor).GetSelfOnboarding()).ToDataRes(types.Bool)
+	"gusto.contractor.onboarded": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGustoContractor).GetOnboarded()).ToDataRes(types.Bool)
 	},
 	"gusto.contractor.onboardingStatus": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGustoContractor).GetOnboardingStatus()).ToDataRes(types.String)
@@ -281,8 +275,8 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gusto.department.uuid": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGustoDepartment).GetUuid()).ToDataRes(types.String)
 	},
-	"gusto.department.companyUuid": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGustoDepartment).GetCompanyUuid()).ToDataRes(types.String)
+	"gusto.department.company": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGustoDepartment).GetCompany()).ToDataRes(types.Resource("gusto.company"))
 	},
 	"gusto.department.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGustoDepartment).GetName()).ToDataRes(types.String)
@@ -296,8 +290,8 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gusto.location.uuid": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGustoLocation).GetUuid()).ToDataRes(types.String)
 	},
-	"gusto.location.companyUuid": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGustoLocation).GetCompanyUuid()).ToDataRes(types.String)
+	"gusto.location.company": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGustoLocation).GetCompany()).ToDataRes(types.Resource("gusto.company"))
 	},
 	"gusto.location.street1": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGustoLocation).GetStreet1()).ToDataRes(types.String)
@@ -329,8 +323,8 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gusto.admin.uuid": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGustoAdmin).GetUuid()).ToDataRes(types.String)
 	},
-	"gusto.admin.companyUuid": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGustoAdmin).GetCompanyUuid()).ToDataRes(types.String)
+	"gusto.admin.company": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGustoAdmin).GetCompany()).ToDataRes(types.Resource("gusto.company"))
 	},
 	"gusto.admin.firstName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGustoAdmin).GetFirstName()).ToDataRes(types.String)
@@ -449,8 +443,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGustoEmployee).Uuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"gusto.employee.companyUuid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGustoEmployee).CompanyUuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"gusto.employee.company": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGustoEmployee).Company, ok = plugin.RawToTValue[*mqlGustoCompany](v.Value, v.Error)
 		return
 	},
 	"gusto.employee.firstName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -481,8 +475,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGustoEmployee).Phone, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"gusto.employee.currentEmployment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGustoEmployee).CurrentEmployment, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+	"gusto.employee.currentEmploymentStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGustoEmployee).CurrentEmploymentStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"gusto.employee.onboarded": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -497,12 +491,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGustoEmployee).Terminated, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"gusto.employee.twoFactorAuthenticationEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGustoEmployee).TwoFactorAuthenticationEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
-		return
-	},
-	"gusto.employee.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGustoEmployee).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+	"gusto.employee.hiredAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGustoEmployee).HiredAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"gusto.employee.manager": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -513,10 +503,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGustoEmployee).Department, ok = plugin.RawToTValue[*mqlGustoDepartment](v.Value, v.Error)
 		return
 	},
-	"gusto.employee.workLocation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGustoEmployee).WorkLocation, ok = plugin.RawToTValue[*mqlGustoLocation](v.Value, v.Error)
-		return
-	},
 	"gusto.contractor.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGustoContractor).__id, ok = v.Value.(string)
 		return
@@ -525,8 +511,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGustoContractor).Uuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"gusto.contractor.companyUuid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGustoContractor).CompanyUuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"gusto.contractor.company": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGustoContractor).Company, ok = plugin.RawToTValue[*mqlGustoCompany](v.Value, v.Error)
 		return
 	},
 	"gusto.contractor.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -561,8 +547,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGustoContractor).StartDate, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
-	"gusto.contractor.selfOnboarding": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGustoContractor).SelfOnboarding, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+	"gusto.contractor.onboarded": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGustoContractor).Onboarded, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"gusto.contractor.onboardingStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -577,8 +563,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGustoDepartment).Uuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"gusto.department.companyUuid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGustoDepartment).CompanyUuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"gusto.department.company": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGustoDepartment).Company, ok = plugin.RawToTValue[*mqlGustoCompany](v.Value, v.Error)
 		return
 	},
 	"gusto.department.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -601,8 +587,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGustoLocation).Uuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"gusto.location.companyUuid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGustoLocation).CompanyUuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"gusto.location.company": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGustoLocation).Company, ok = plugin.RawToTValue[*mqlGustoCompany](v.Value, v.Error)
 		return
 	},
 	"gusto.location.street1": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -649,8 +635,8 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGustoAdmin).Uuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"gusto.admin.companyUuid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGustoAdmin).CompanyUuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"gusto.admin.company": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGustoAdmin).Company, ok = plugin.RawToTValue[*mqlGustoCompany](v.Value, v.Error)
 		return
 	},
 	"gusto.admin.firstName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1014,24 +1000,22 @@ type mqlGustoEmployee struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlGustoEmployeeInternal
-	Uuid                           plugin.TValue[string]
-	CompanyUuid                    plugin.TValue[string]
-	FirstName                      plugin.TValue[string]
-	MiddleInitial                  plugin.TValue[string]
-	LastName                       plugin.TValue[string]
-	PreferredFirstName             plugin.TValue[string]
-	WorkEmail                      plugin.TValue[string]
-	PersonalEmail                  plugin.TValue[string]
-	Phone                          plugin.TValue[string]
-	CurrentEmployment              plugin.TValue[bool]
-	Onboarded                      plugin.TValue[bool]
-	OnboardingStatus               plugin.TValue[string]
-	Terminated                     plugin.TValue[bool]
-	TwoFactorAuthenticationEnabled plugin.TValue[bool]
-	CreatedAt                      plugin.TValue[*time.Time]
-	Manager                        plugin.TValue[*mqlGustoEmployee]
-	Department                     plugin.TValue[*mqlGustoDepartment]
-	WorkLocation                   plugin.TValue[*mqlGustoLocation]
+	Uuid                    plugin.TValue[string]
+	Company                 plugin.TValue[*mqlGustoCompany]
+	FirstName               plugin.TValue[string]
+	MiddleInitial           plugin.TValue[string]
+	LastName                plugin.TValue[string]
+	PreferredFirstName      plugin.TValue[string]
+	WorkEmail               plugin.TValue[string]
+	PersonalEmail           plugin.TValue[string]
+	Phone                   plugin.TValue[string]
+	CurrentEmploymentStatus plugin.TValue[string]
+	Onboarded               plugin.TValue[bool]
+	OnboardingStatus        plugin.TValue[string]
+	Terminated              plugin.TValue[bool]
+	HiredAt                 plugin.TValue[*time.Time]
+	Manager                 plugin.TValue[*mqlGustoEmployee]
+	Department              plugin.TValue[*mqlGustoDepartment]
 }
 
 // createGustoEmployee creates a new instance of this resource
@@ -1075,8 +1059,20 @@ func (c *mqlGustoEmployee) GetUuid() *plugin.TValue[string] {
 	return &c.Uuid
 }
 
-func (c *mqlGustoEmployee) GetCompanyUuid() *plugin.TValue[string] {
-	return &c.CompanyUuid
+func (c *mqlGustoEmployee) GetCompany() *plugin.TValue[*mqlGustoCompany] {
+	return plugin.GetOrCompute[*mqlGustoCompany](&c.Company, func() (*mqlGustoCompany, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gusto.employee", c.__id, "company")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGustoCompany), nil
+			}
+		}
+
+		return c.company()
+	})
 }
 
 func (c *mqlGustoEmployee) GetFirstName() *plugin.TValue[string] {
@@ -1107,8 +1103,8 @@ func (c *mqlGustoEmployee) GetPhone() *plugin.TValue[string] {
 	return &c.Phone
 }
 
-func (c *mqlGustoEmployee) GetCurrentEmployment() *plugin.TValue[bool] {
-	return &c.CurrentEmployment
+func (c *mqlGustoEmployee) GetCurrentEmploymentStatus() *plugin.TValue[string] {
+	return &c.CurrentEmploymentStatus
 }
 
 func (c *mqlGustoEmployee) GetOnboarded() *plugin.TValue[bool] {
@@ -1123,12 +1119,8 @@ func (c *mqlGustoEmployee) GetTerminated() *plugin.TValue[bool] {
 	return &c.Terminated
 }
 
-func (c *mqlGustoEmployee) GetTwoFactorAuthenticationEnabled() *plugin.TValue[bool] {
-	return &c.TwoFactorAuthenticationEnabled
-}
-
-func (c *mqlGustoEmployee) GetCreatedAt() *plugin.TValue[*time.Time] {
-	return &c.CreatedAt
+func (c *mqlGustoEmployee) GetHiredAt() *plugin.TValue[*time.Time] {
+	return &c.HiredAt
 }
 
 func (c *mqlGustoEmployee) GetManager() *plugin.TValue[*mqlGustoEmployee] {
@@ -1163,29 +1155,13 @@ func (c *mqlGustoEmployee) GetDepartment() *plugin.TValue[*mqlGustoDepartment] {
 	})
 }
 
-func (c *mqlGustoEmployee) GetWorkLocation() *plugin.TValue[*mqlGustoLocation] {
-	return plugin.GetOrCompute[*mqlGustoLocation](&c.WorkLocation, func() (*mqlGustoLocation, error) {
-		if c.MqlRuntime.HasRecording {
-			d, err := c.MqlRuntime.FieldResourceFromRecording("gusto.employee", c.__id, "workLocation")
-			if err != nil {
-				return nil, err
-			}
-			if d != nil {
-				return d.Value.(*mqlGustoLocation), nil
-			}
-		}
-
-		return c.workLocation()
-	})
-}
-
 // mqlGustoContractor for the gusto.contractor resource
 type mqlGustoContractor struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlGustoContractorInternal it will be used here
+	mqlGustoContractorInternal
 	Uuid             plugin.TValue[string]
-	CompanyUuid      plugin.TValue[string]
+	Company          plugin.TValue[*mqlGustoCompany]
 	Type             plugin.TValue[string]
 	IsActive         plugin.TValue[bool]
 	FirstName        plugin.TValue[string]
@@ -1194,7 +1170,7 @@ type mqlGustoContractor struct {
 	BusinessName     plugin.TValue[string]
 	Email            plugin.TValue[string]
 	StartDate        plugin.TValue[*time.Time]
-	SelfOnboarding   plugin.TValue[bool]
+	Onboarded        plugin.TValue[bool]
 	OnboardingStatus plugin.TValue[string]
 }
 
@@ -1239,8 +1215,20 @@ func (c *mqlGustoContractor) GetUuid() *plugin.TValue[string] {
 	return &c.Uuid
 }
 
-func (c *mqlGustoContractor) GetCompanyUuid() *plugin.TValue[string] {
-	return &c.CompanyUuid
+func (c *mqlGustoContractor) GetCompany() *plugin.TValue[*mqlGustoCompany] {
+	return plugin.GetOrCompute[*mqlGustoCompany](&c.Company, func() (*mqlGustoCompany, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gusto.contractor", c.__id, "company")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGustoCompany), nil
+			}
+		}
+
+		return c.company()
+	})
 }
 
 func (c *mqlGustoContractor) GetType() *plugin.TValue[string] {
@@ -1275,8 +1263,8 @@ func (c *mqlGustoContractor) GetStartDate() *plugin.TValue[*time.Time] {
 	return &c.StartDate
 }
 
-func (c *mqlGustoContractor) GetSelfOnboarding() *plugin.TValue[bool] {
-	return &c.SelfOnboarding
+func (c *mqlGustoContractor) GetOnboarded() *plugin.TValue[bool] {
+	return &c.Onboarded
 }
 
 func (c *mqlGustoContractor) GetOnboardingStatus() *plugin.TValue[string] {
@@ -1289,7 +1277,7 @@ type mqlGustoDepartment struct {
 	__id       string
 	mqlGustoDepartmentInternal
 	Uuid        plugin.TValue[string]
-	CompanyUuid plugin.TValue[string]
+	Company     plugin.TValue[*mqlGustoCompany]
 	Name        plugin.TValue[string]
 	Employees   plugin.TValue[[]any]
 	Contractors plugin.TValue[[]any]
@@ -1336,8 +1324,20 @@ func (c *mqlGustoDepartment) GetUuid() *plugin.TValue[string] {
 	return &c.Uuid
 }
 
-func (c *mqlGustoDepartment) GetCompanyUuid() *plugin.TValue[string] {
-	return &c.CompanyUuid
+func (c *mqlGustoDepartment) GetCompany() *plugin.TValue[*mqlGustoCompany] {
+	return plugin.GetOrCompute[*mqlGustoCompany](&c.Company, func() (*mqlGustoCompany, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gusto.department", c.__id, "company")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGustoCompany), nil
+			}
+		}
+
+		return c.company()
+	})
 }
 
 func (c *mqlGustoDepartment) GetName() *plugin.TValue[string] {
@@ -1380,9 +1380,9 @@ func (c *mqlGustoDepartment) GetContractors() *plugin.TValue[[]any] {
 type mqlGustoLocation struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlGustoLocationInternal it will be used here
+	mqlGustoLocationInternal
 	Uuid           plugin.TValue[string]
-	CompanyUuid    plugin.TValue[string]
+	Company        plugin.TValue[*mqlGustoCompany]
 	Street1        plugin.TValue[string]
 	Street2        plugin.TValue[string]
 	City           plugin.TValue[string]
@@ -1435,8 +1435,20 @@ func (c *mqlGustoLocation) GetUuid() *plugin.TValue[string] {
 	return &c.Uuid
 }
 
-func (c *mqlGustoLocation) GetCompanyUuid() *plugin.TValue[string] {
-	return &c.CompanyUuid
+func (c *mqlGustoLocation) GetCompany() *plugin.TValue[*mqlGustoCompany] {
+	return plugin.GetOrCompute[*mqlGustoCompany](&c.Company, func() (*mqlGustoCompany, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gusto.location", c.__id, "company")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGustoCompany), nil
+			}
+		}
+
+		return c.company()
+	})
 }
 
 func (c *mqlGustoLocation) GetStreet1() *plugin.TValue[string] {
@@ -1479,12 +1491,12 @@ func (c *mqlGustoLocation) GetActive() *plugin.TValue[bool] {
 type mqlGustoAdmin struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlGustoAdminInternal it will be used here
-	Uuid        plugin.TValue[string]
-	CompanyUuid plugin.TValue[string]
-	FirstName   plugin.TValue[string]
-	LastName    plugin.TValue[string]
-	Email       plugin.TValue[string]
+	mqlGustoAdminInternal
+	Uuid      plugin.TValue[string]
+	Company   plugin.TValue[*mqlGustoCompany]
+	FirstName plugin.TValue[string]
+	LastName  plugin.TValue[string]
+	Email     plugin.TValue[string]
 }
 
 // createGustoAdmin creates a new instance of this resource
@@ -1528,8 +1540,20 @@ func (c *mqlGustoAdmin) GetUuid() *plugin.TValue[string] {
 	return &c.Uuid
 }
 
-func (c *mqlGustoAdmin) GetCompanyUuid() *plugin.TValue[string] {
-	return &c.CompanyUuid
+func (c *mqlGustoAdmin) GetCompany() *plugin.TValue[*mqlGustoCompany] {
+	return plugin.GetOrCompute[*mqlGustoCompany](&c.Company, func() (*mqlGustoCompany, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gusto.admin", c.__id, "company")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGustoCompany), nil
+			}
+		}
+
+		return c.company()
+	})
 }
 
 func (c *mqlGustoAdmin) GetFirstName() *plugin.TValue[string] {

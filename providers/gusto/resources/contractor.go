@@ -12,6 +12,10 @@ import (
 	"go.mondoo.com/mql/providers/gusto/connection"
 )
 
+type mqlGustoContractorInternal struct {
+	cacheCompanyUUID string
+}
+
 func (c *mqlGustoContractor) id() (string, error) {
 	return "gusto.contractor/" + c.Uuid.Data, c.Uuid.Error
 }
@@ -20,13 +24,9 @@ func initGustoContractor(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 	if len(args) > 1 {
 		return args, nil, nil
 	}
-	uuidArg, ok := args["uuid"]
-	if !ok || uuidArg == nil || uuidArg.Value == nil {
-		return args, nil, nil
-	}
-	uuid, ok := uuidArg.Value.(string)
-	if !ok || uuid == "" {
-		return args, nil, nil
+	uuid, err := uuidArg(args, "gusto.contractor")
+	if err != nil {
+		return nil, nil, err
 	}
 
 	conn := runtime.Connection.(*connection.GustoConnection)
@@ -56,7 +56,6 @@ func initGustoContractor(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 func newMqlGustoContractor(runtime *plugin.Runtime, c *connection.Contractor) (*mqlGustoContractor, error) {
 	r, err := CreateResource(runtime, "gusto.contractor", map[string]*llx.RawData{
 		"uuid":             llx.StringData(c.UUID),
-		"companyUuid":      llx.StringData(c.CompanyUUID),
 		"type":             llx.StringData(c.Type),
 		"isActive":         llx.BoolData(c.IsActive),
 		"firstName":        llx.StringData(c.FirstName),
@@ -64,12 +63,18 @@ func newMqlGustoContractor(runtime *plugin.Runtime, c *connection.Contractor) (*
 		"lastName":         llx.StringData(c.LastName),
 		"businessName":     llx.StringData(c.BusinessName),
 		"email":            llx.StringData(c.Email),
-		"startDate":        llx.TimeData(c.StartDate.Time),
-		"selfOnboarding":   llx.BoolData(c.SelfOnboarding),
+		"startDate":        llx.TimeDataPtr(c.StartDate.Ptr()),
+		"onboarded":        llx.BoolData(c.Onboarded),
 		"onboardingStatus": llx.StringData(c.OnboardingStatus),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return r.(*mqlGustoContractor), nil
+	contractor := r.(*mqlGustoContractor)
+	contractor.cacheCompanyUUID = c.CompanyUUID
+	return contractor, nil
+}
+
+func (c *mqlGustoContractor) company() (*mqlGustoCompany, error) {
+	return resolveCompany(c.MqlRuntime, c.cacheCompanyUUID, &c.Company)
 }

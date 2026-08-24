@@ -12,6 +12,10 @@ import (
 	"go.mondoo.com/mql/providers/gusto/connection"
 )
 
+type mqlGustoAdminInternal struct {
+	cacheCompanyUUID string
+}
+
 func (a *mqlGustoAdmin) id() (string, error) {
 	return "gusto.admin/" + a.Uuid.Data, a.Uuid.Error
 }
@@ -20,13 +24,9 @@ func initGustoAdmin(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 	if len(args) > 1 {
 		return args, nil, nil
 	}
-	uuidArg, ok := args["uuid"]
-	if !ok || uuidArg == nil || uuidArg.Value == nil {
-		return args, nil, nil
-	}
-	uuid, ok := uuidArg.Value.(string)
-	if !ok || uuid == "" {
-		return args, nil, nil
+	uuid, err := uuidArg(args, "gusto.admin")
+	if err != nil {
+		return nil, nil, err
 	}
 
 	conn := runtime.Connection.(*connection.GustoConnection)
@@ -55,14 +55,19 @@ func initGustoAdmin(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 
 func newMqlGustoAdmin(runtime *plugin.Runtime, a *connection.Admin) (*mqlGustoAdmin, error) {
 	r, err := CreateResource(runtime, "gusto.admin", map[string]*llx.RawData{
-		"uuid":        llx.StringData(a.UUID),
-		"companyUuid": llx.StringData(a.CompanyUUID),
-		"firstName":   llx.StringData(a.FirstName),
-		"lastName":    llx.StringData(a.LastName),
-		"email":       llx.StringData(a.Email),
+		"uuid":      llx.StringData(a.UUID),
+		"firstName": llx.StringData(a.FirstName),
+		"lastName":  llx.StringData(a.LastName),
+		"email":     llx.StringData(a.Email),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return r.(*mqlGustoAdmin), nil
+	admin := r.(*mqlGustoAdmin)
+	admin.cacheCompanyUUID = a.CompanyUUID
+	return admin, nil
+}
+
+func (a *mqlGustoAdmin) company() (*mqlGustoCompany, error) {
+	return resolveCompany(a.MqlRuntime, a.cacheCompanyUUID, &a.Company)
 }

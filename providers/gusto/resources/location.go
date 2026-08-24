@@ -12,6 +12,10 @@ import (
 	"go.mondoo.com/mql/providers/gusto/connection"
 )
 
+type mqlGustoLocationInternal struct {
+	cacheCompanyUUID string
+}
+
 func (l *mqlGustoLocation) id() (string, error) {
 	return "gusto.location/" + l.Uuid.Data, l.Uuid.Error
 }
@@ -20,13 +24,9 @@ func initGustoLocation(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 	if len(args) > 1 {
 		return args, nil, nil
 	}
-	uuidArg, ok := args["uuid"]
-	if !ok || uuidArg == nil || uuidArg.Value == nil {
-		return args, nil, nil
-	}
-	uuid, ok := uuidArg.Value.(string)
-	if !ok || uuid == "" {
-		return args, nil, nil
+	uuid, err := uuidArg(args, "gusto.location")
+	if err != nil {
+		return nil, nil, err
 	}
 
 	conn := runtime.Connection.(*connection.GustoConnection)
@@ -43,8 +43,11 @@ func initGustoLocation(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 			if locations[i].UUID != uuid {
 				continue
 			}
-			populateLocationArgs(args, &locations[i])
-			return args, nil, nil
+			loc, err := newMqlGustoLocation(runtime, &locations[i])
+			if err != nil {
+				return nil, nil, err
+			}
+			return args, loc, nil
 		}
 	}
 	return nil, nil, errors.New("gusto.location with uuid " + uuid + " not accessible with the configured token")
@@ -52,7 +55,6 @@ func initGustoLocation(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 
 func populateLocationArgs(args map[string]*llx.RawData, l *connection.Location) {
 	args["uuid"] = llx.StringData(l.UUID)
-	args["companyUuid"] = llx.StringData(l.CompanyUUID)
 	args["street1"] = llx.StringData(l.Street1)
 	args["street2"] = llx.StringData(l.Street2)
 	args["city"] = llx.StringData(l.City)
@@ -71,5 +73,11 @@ func newMqlGustoLocation(runtime *plugin.Runtime, l *connection.Location) (*mqlG
 	if err != nil {
 		return nil, err
 	}
-	return r.(*mqlGustoLocation), nil
+	loc := r.(*mqlGustoLocation)
+	loc.cacheCompanyUUID = l.CompanyUUID
+	return loc, nil
+}
+
+func (l *mqlGustoLocation) company() (*mqlGustoCompany, error) {
+	return resolveCompany(l.MqlRuntime, l.cacheCompanyUUID, &l.Company)
 }

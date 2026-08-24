@@ -5,6 +5,8 @@ package resources
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -41,9 +43,46 @@ func (g *mqlGusto) getCompanies() ([]*mqlGustoCompany, error) {
 	}
 	out := make([]*mqlGustoCompany, 0, len(tv.Data))
 	for _, c := range tv.Data {
-		out = append(out, c.(*mqlGustoCompany))
+		company, ok := c.(*mqlGustoCompany)
+		if !ok {
+			return nil, fmt.Errorf("unexpected type %T in gusto.companies", c)
+		}
+		out = append(out, company)
 	}
 	return out, nil
+}
+
+// uuidArg pulls the uuid selection key out of an init's args. A lookup with
+// no usable uuid returns an error rather than falling through, which would
+// leave the runtime to build a resource whose every other field is unset.
+func uuidArg(args map[string]*llx.RawData, resource string) (string, error) {
+	arg, ok := args["uuid"]
+	if !ok || arg == nil || arg.Value == nil {
+		return "", errors.New(resource + " requires a uuid to look up, e.g. " + resource + `(uuid: "...")`)
+	}
+	uuid, ok := arg.Value.(string)
+	if !ok || uuid == "" {
+		return "", errors.New(resource + " requires a non-empty uuid string")
+	}
+	return uuid, nil
+}
+
+// resolveCompany turns a cached company uuid into the gusto.company resource.
+// The company list is memoized on the connection, so every caller shares one
+// fetch. An empty uuid marks the field null instead of returning a blank
+// resource.
+func resolveCompany(runtime *plugin.Runtime, uuid string, field *plugin.TValue[*mqlGustoCompany]) (*mqlGustoCompany, error) {
+	if uuid == "" {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	r, err := NewResource(runtime, "gusto.company", map[string]*llx.RawData{
+		"uuid": llx.StringData(uuid),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return r.(*mqlGustoCompany), nil
 }
 
 func (g *mqlGusto) employees() ([]any, error) {
@@ -136,7 +175,7 @@ func newMqlGustoCompany(runtime *plugin.Runtime, c *connection.Company) (*mqlGus
 		"isSuspended":   llx.BoolData(c.IsSuspended),
 		"companyStatus": llx.StringData(c.CompanyStatus),
 		"slug":          llx.StringData(c.Slug),
-		"joinDate":      llx.TimeData(c.JoinDate.Time),
+		"joinDate":      llx.TimeDataPtr(c.JoinDate.Ptr()),
 	})
 	if err != nil {
 		return nil, err

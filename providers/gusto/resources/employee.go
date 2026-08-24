@@ -13,9 +13,9 @@ import (
 )
 
 type mqlGustoEmployeeInternal struct {
-	managerUUID      string
-	departmentUUID   string
-	workLocationUUID string
+	cacheCompanyUUID    string
+	cacheManagerUUID    string
+	cacheDepartmentUUID string
 }
 
 func (e *mqlGustoEmployee) id() (string, error) {
@@ -27,14 +27,11 @@ func initGustoEmployee(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 		return args, nil, nil
 	}
 	// Without a company scope the only way to resolve an employee by uuid is
-	// to walk every accessible company. We do that lazily here.
-	uuidArg, ok := args["uuid"]
-	if !ok || uuidArg == nil || uuidArg.Value == nil {
-		return args, nil, nil
-	}
-	uuid, ok := uuidArg.Value.(string)
-	if !ok || uuid == "" {
-		return args, nil, nil
+	// to walk every accessible company. The lists are memoized on the
+	// connection, so repeated lookups cost one fetch per company.
+	uuid, err := uuidArg(args, "gusto.employee")
+	if err != nil {
+		return nil, nil, err
 	}
 
 	conn := runtime.Connection.(*connection.GustoConnection)
@@ -51,9 +48,9 @@ func initGustoEmployee(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 			if employees[i].UUID != uuid {
 				continue
 			}
-			// Build the resource directly so the Internal struct's
-			// manager/department/work-location UUIDs are populated —
-			// otherwise those typed references would resolve to null.
+			// Build the resource directly so the Internal struct's cached
+			// company, manager, and department UUIDs are populated. Otherwise
+			// those references would resolve to null.
 			emp, err := newMqlGustoEmployee(runtime, &employees[i])
 			if err != nil {
 				return nil, nil, err
@@ -64,49 +61,48 @@ func initGustoEmployee(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 	return nil, nil, errors.New("gusto.employee with uuid " + uuid + " not accessible with the configured token")
 }
 
-func populateEmployeeArgs(args map[string]*llx.RawData, e *connection.Employee) {
-	args["uuid"] = llx.StringData(e.UUID)
-	args["companyUuid"] = llx.StringData(e.CompanyUUID)
-	args["firstName"] = llx.StringData(e.FirstName)
-	args["middleInitial"] = llx.StringData(e.MiddleInitial)
-	args["lastName"] = llx.StringData(e.LastName)
-	args["preferredFirstName"] = llx.StringData(e.PreferredFirstName)
-	args["workEmail"] = llx.StringData(e.WorkEmail)
+func newMqlGustoEmployee(runtime *plugin.Runtime, e *connection.Employee) (*mqlGustoEmployee, error) {
 	personalEmail := e.Email
 	if e.WorkEmail != "" && personalEmail == e.WorkEmail {
 		personalEmail = ""
 	}
-	args["personalEmail"] = llx.StringData(personalEmail)
-	args["phone"] = llx.StringData(e.Phone)
-	args["currentEmployment"] = llx.BoolData(e.CurrentEmployment)
-	args["onboarded"] = llx.BoolData(e.Onboarded)
-	args["onboardingStatus"] = llx.StringData(e.OnboardingStatus)
-	args["terminated"] = llx.BoolData(e.Terminated)
-	args["twoFactorAuthenticationEnabled"] = llx.BoolData(e.TwoFactorAuthenticationEnabled)
-	args["createdAt"] = llx.TimeData(e.CreatedAt)
-}
 
-func newMqlGustoEmployee(runtime *plugin.Runtime, e *connection.Employee) (*mqlGustoEmployee, error) {
-	args := map[string]*llx.RawData{}
-	populateEmployeeArgs(args, e)
-	r, err := CreateResource(runtime, "gusto.employee", args)
+	r, err := CreateResource(runtime, "gusto.employee", map[string]*llx.RawData{
+		"uuid":                    llx.StringData(e.UUID),
+		"firstName":               llx.StringData(e.FirstName),
+		"middleInitial":           llx.StringData(e.MiddleInitial),
+		"lastName":                llx.StringData(e.LastName),
+		"preferredFirstName":      llx.StringData(e.PreferredFirstName),
+		"workEmail":               llx.StringData(e.WorkEmail),
+		"personalEmail":           llx.StringData(personalEmail),
+		"phone":                   llx.StringData(e.Phone),
+		"currentEmploymentStatus": llx.StringData(e.CurrentEmploymentStatus),
+		"onboarded":               llx.BoolData(e.Onboarded),
+		"onboardingStatus":        llx.StringData(e.OnboardingStatus),
+		"terminated":              llx.BoolData(e.Terminated),
+		"hiredAt":                 llx.TimeDataPtr(e.HiredAt.Ptr()),
+	})
 	if err != nil {
 		return nil, err
 	}
 	emp := r.(*mqlGustoEmployee)
-	emp.managerUUID = e.ManagerUUID
-	emp.departmentUUID = e.DepartmentUUID
-	emp.workLocationUUID = e.WorkLocationUUID
+	emp.cacheCompanyUUID = e.CompanyUUID
+	emp.cacheManagerUUID = e.ManagerUUID
+	emp.cacheDepartmentUUID = e.DepartmentUUID
 	return emp, nil
 }
 
+func (e *mqlGustoEmployee) company() (*mqlGustoCompany, error) {
+	return resolveCompany(e.MqlRuntime, e.cacheCompanyUUID, &e.Company)
+}
+
 func (e *mqlGustoEmployee) manager() (*mqlGustoEmployee, error) {
-	if e.managerUUID == "" {
+	if e.cacheManagerUUID == "" {
 		e.Manager.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	r, err := NewResource(e.MqlRuntime, "gusto.employee", map[string]*llx.RawData{
-		"uuid": llx.StringData(e.managerUUID),
+		"uuid": llx.StringData(e.cacheManagerUUID),
 	})
 	if err != nil {
 		return nil, err
@@ -115,29 +111,15 @@ func (e *mqlGustoEmployee) manager() (*mqlGustoEmployee, error) {
 }
 
 func (e *mqlGustoEmployee) department() (*mqlGustoDepartment, error) {
-	if e.departmentUUID == "" {
+	if e.cacheDepartmentUUID == "" {
 		e.Department.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	r, err := NewResource(e.MqlRuntime, "gusto.department", map[string]*llx.RawData{
-		"uuid": llx.StringData(e.departmentUUID),
+		"uuid": llx.StringData(e.cacheDepartmentUUID),
 	})
 	if err != nil {
 		return nil, err
 	}
 	return r.(*mqlGustoDepartment), nil
-}
-
-func (e *mqlGustoEmployee) workLocation() (*mqlGustoLocation, error) {
-	if e.workLocationUUID == "" {
-		e.WorkLocation.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
-	}
-	r, err := NewResource(e.MqlRuntime, "gusto.location", map[string]*llx.RawData{
-		"uuid": llx.StringData(e.workLocationUUID),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return r.(*mqlGustoLocation), nil
 }
