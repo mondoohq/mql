@@ -26,8 +26,8 @@ Authentication is via a Gusto API token. Pass --token or set the
 GUSTO_API_TOKEN environment variable.
 
 Examples:
-  cnspec shell gusto --token <api-token>
-  cnspec scan gusto --token <api-token>
+  mql shell gusto --token <api-token>
+  mql run gusto --token <api-token>
 `,
 			Discovery: []string{},
 			Flags: []plugin.Flag{

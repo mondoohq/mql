@@ -136,7 +136,7 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.GustoConnectio
 	if err != nil {
 		return err
 	}
-	asset.Id = "gusto"
+	asset.Id = conn.Conf.Type
 	asset.Name = "Gusto company " + id
 	asset.Platform = &inventory.Platform{
 		Name:                  "gusto",
