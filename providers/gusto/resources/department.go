@@ -13,8 +13,9 @@ import (
 )
 
 type mqlGustoDepartmentInternal struct {
-	employeeUUIDs   []string
-	contractorUUIDs []string
+	cacheCompanyUUID string
+	employeeUUIDs    []string
+	contractorUUIDs  []string
 }
 
 func (d *mqlGustoDepartment) id() (string, error) {
@@ -25,13 +26,9 @@ func initGustoDepartment(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 	if len(args) > 1 {
 		return args, nil, nil
 	}
-	uuidArg, ok := args["uuid"]
-	if !ok || uuidArg == nil || uuidArg.Value == nil {
-		return args, nil, nil
-	}
-	uuid, ok := uuidArg.Value.(string)
-	if !ok || uuid == "" {
-		return args, nil, nil
+	uuid, err := uuidArg(args, "gusto.department")
+	if err != nil {
+		return nil, nil, err
 	}
 
 	conn := runtime.Connection.(*connection.GustoConnection)
@@ -63,14 +60,14 @@ func initGustoDepartment(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 
 func newMqlGustoDepartment(runtime *plugin.Runtime, d *connection.Department) (*mqlGustoDepartment, error) {
 	r, err := CreateResource(runtime, "gusto.department", map[string]*llx.RawData{
-		"uuid":        llx.StringData(d.UUID),
-		"companyUuid": llx.StringData(d.CompanyUUID),
-		"name":        llx.StringData(d.Title),
+		"uuid": llx.StringData(d.UUID),
+		"name": llx.StringData(d.Title),
 	})
 	if err != nil {
 		return nil, err
 	}
 	dept := r.(*mqlGustoDepartment)
+	dept.cacheCompanyUUID = d.CompanyUUID
 	dept.employeeUUIDs = make([]string, 0, len(d.EmployeeRefs))
 	for _, ref := range d.EmployeeRefs {
 		dept.employeeUUIDs = append(dept.employeeUUIDs, ref.UUID)
@@ -82,20 +79,18 @@ func newMqlGustoDepartment(runtime *plugin.Runtime, d *connection.Department) (*
 	return dept, nil
 }
 
+func (d *mqlGustoDepartment) company() (*mqlGustoCompany, error) {
+	return resolveCompany(d.MqlRuntime, d.cacheCompanyUUID, &d.Company)
+}
+
 func (d *mqlGustoDepartment) employees() ([]any, error) {
-	// List the company's employees once (cached on the connection) and build
-	// each resource directly. Resolving employee UUIDs via NewResource would
-	// trigger gusto.employee's init, which walks every accessible company per
-	// employee — an O(companies) cost we avoid here.
-	conn := d.MqlRuntime.Connection.(*connection.GustoConnection)
-	employees, err := conn.ListEmployees(context.Background(), d.CompanyUuid.Data)
+	employees, err := d.companyEmployees()
 	if err != nil {
 		return nil, err
 	}
 
-	// If the parent department list populated employee UUIDs, resolve exactly
-	// that set. Otherwise fall back to filtering by department_uuid — needed
-	// when the department is selected directly via `gusto.department(uuid: ...)`.
+	// The department payload lists the uuids assigned to it. Resolve exactly
+	// that set from the company roster, which is memoized on the connection.
 	if len(d.employeeUUIDs) > 0 {
 		byUUID := make(map[string]*connection.Employee, len(employees))
 		for i := range employees {
@@ -116,6 +111,8 @@ func (d *mqlGustoDepartment) employees() ([]any, error) {
 		return out, nil
 	}
 
+	// No uuid list to work from, so fall back to the department_uuid carried
+	// by each employee record.
 	out := []any{}
 	for i := range employees {
 		if employees[i].DepartmentUUID != d.Uuid.Data {
@@ -131,39 +128,72 @@ func (d *mqlGustoDepartment) employees() ([]any, error) {
 }
 
 func (d *mqlGustoDepartment) contractors() ([]any, error) {
-	uuids := d.contractorUUIDs
+	uuids, err := d.contractorRefs()
+	if err != nil {
+		return nil, err
+	}
+	if len(uuids) == 0 {
+		return []any{}, nil
+	}
 
-	// If the Internal struct has no contractor UUIDs yet (e.g. the resource
-	// was created by a path other than newMqlGustoDepartment), re-fetch the
-	// department from the API to obtain the contractor refs. The list is
-	// cached on the connection, so this is at most one HTTP request.
-	if len(uuids) == 0 && d.CompanyUuid.Data != "" && d.Uuid.Data != "" {
-		conn := d.MqlRuntime.Connection.(*connection.GustoConnection)
-		departments, err := conn.ListDepartments(context.Background(), d.CompanyUuid.Data)
-		if err != nil {
-			return nil, err
-		}
-		for i := range departments {
-			if departments[i].UUID != d.Uuid.Data {
-				continue
-			}
-			uuids = make([]string, 0, len(departments[i].ContractorRef))
-			for _, ref := range departments[i].ContractorRef {
-				uuids = append(uuids, ref.UUID)
-			}
-			break
-		}
+	// Resolve against the company's contractor list rather than one
+	// NewResource per uuid: gusto.contractor's init walks every accessible
+	// company, so a per-uuid lookup would cost O(contractors x companies).
+	contractors, err := d.companyContractors()
+	if err != nil {
+		return nil, err
+	}
+	byUUID := make(map[string]*connection.Contractor, len(contractors))
+	for i := range contractors {
+		byUUID[contractors[i].UUID] = &contractors[i]
 	}
 
 	out := make([]any, 0, len(uuids))
 	for _, uuid := range uuids {
-		r, err := NewResource(d.MqlRuntime, "gusto.contractor", map[string]*llx.RawData{
-			"uuid": llx.StringData(uuid),
-		})
+		c, ok := byUUID[uuid]
+		if !ok {
+			continue
+		}
+		r, err := newMqlGustoContractor(d.MqlRuntime, c)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, r)
 	}
 	return out, nil
+}
+
+// contractorRefs returns the contractor uuids assigned to the department,
+// re-reading the department list when the resource was built by a path that
+// did not populate them. The list is memoized on the connection.
+func (d *mqlGustoDepartment) contractorRefs() ([]string, error) {
+	if len(d.contractorUUIDs) > 0 || d.cacheCompanyUUID == "" || d.Uuid.Data == "" {
+		return d.contractorUUIDs, nil
+	}
+	conn := d.MqlRuntime.Connection.(*connection.GustoConnection)
+	departments, err := conn.ListDepartments(context.Background(), d.cacheCompanyUUID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range departments {
+		if departments[i].UUID != d.Uuid.Data {
+			continue
+		}
+		uuids := make([]string, 0, len(departments[i].ContractorRef))
+		for _, ref := range departments[i].ContractorRef {
+			uuids = append(uuids, ref.UUID)
+		}
+		return uuids, nil
+	}
+	return nil, nil
+}
+
+func (d *mqlGustoDepartment) companyEmployees() ([]connection.Employee, error) {
+	conn := d.MqlRuntime.Connection.(*connection.GustoConnection)
+	return conn.ListEmployees(context.Background(), d.cacheCompanyUUID)
+}
+
+func (d *mqlGustoDepartment) companyContractors() ([]connection.Contractor, error) {
+	conn := d.MqlRuntime.Connection.(*connection.GustoConnection)
+	return conn.ListContractors(context.Background(), d.cacheCompanyUUID)
 }

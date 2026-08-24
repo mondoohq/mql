@@ -20,13 +20,9 @@ func initGustoCompany(runtime *plugin.Runtime, args map[string]*llx.RawData) (ma
 	if len(args) > 1 {
 		return args, nil, nil
 	}
-	uuidArg, ok := args["uuid"]
-	if !ok || uuidArg == nil || uuidArg.Value == nil {
-		return args, nil, nil
-	}
-	uuid, ok := uuidArg.Value.(string)
-	if !ok || uuid == "" {
-		return args, nil, nil
+	uuid, err := uuidArg(args, "gusto.company")
+	if err != nil {
+		return nil, nil, err
 	}
 
 	conn := runtime.Connection.(*connection.GustoConnection)
@@ -47,7 +43,7 @@ func initGustoCompany(runtime *plugin.Runtime, args map[string]*llx.RawData) (ma
 		args["isSuspended"] = llx.BoolData(c.IsSuspended)
 		args["companyStatus"] = llx.StringData(c.CompanyStatus)
 		args["slug"] = llx.StringData(c.Slug)
-		args["joinDate"] = llx.TimeData(c.JoinDate.Time)
+		args["joinDate"] = llx.TimeDataPtr(c.JoinDate.Ptr())
 		return args, nil, nil
 	}
 	return nil, nil, errors.New("gusto.company with uuid " + uuid + " not accessible with the configured token")

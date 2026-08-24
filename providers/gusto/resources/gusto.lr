@@ -6,10 +6,10 @@ option go_package = "go.mondoo.com/mql/providers/gusto/resources"
 
 // Gusto
 //
-// Use this namespace to inspect the company, workforce, and access-control
-// posture of a Gusto-managed organization: company profile, employees,
-// contractors, departments, work locations, and the administrators with
-// privileged access to the Gusto account.
+// Companies, workforce, and access-control posture of a Gusto-managed
+// organization: company profile, employees, contractors, departments, work
+// locations, and the administrators with privileged access to the Gusto
+// account.
 gusto {
   // Companies the connecting token has access to
   companies() []gusto.company
@@ -27,9 +27,9 @@ gusto {
 
 // Gusto company
 //
-// Examine the company profile, tier, trade name, and entity type, and
-// traverse into its workforce and org structure. The `uuid` field is the
-// selection key — for example
+// Company profile, tier, trade name, and entity type, together with the
+// workforce and org structure below it. The `uuid` field is the selection
+// key, for example
 // `gusto.company(uuid: "abc-123") { employees { workEmail } }`.
 gusto.company @defaults("name") {
   // Unique identifier of the company
@@ -42,13 +42,13 @@ gusto.company @defaults("name") {
   entityType string
   // Subscription tier (e.g., simple, plus, premium, concierge)
   tier string
-  // Whether company is suspended
+  // Whether the company account is suspended
   isSuspended bool
   // Onboarding/account status of the company in Gusto (e.g., approved, needs_attention, suspended)
   companyStatus string
   // Slug used in Gusto URLs
   slug string
-  // ISO 8601 date the company joined Gusto
+  // Date the company joined Gusto
   joinDate time
   // Employees of this company
   employees() []gusto.employee
@@ -64,16 +64,16 @@ gusto.company @defaults("name") {
 
 // Gusto employee
 //
-// Examine identity, employment status, key dates, manager, department, and
-// primary work location for a person employed through Gusto. The `uuid`
-// field is the selection key. Compensation and pay-history fields are
-// intentionally not exposed; this resource is scoped to identity and
-// employment metadata for org-structure and access audits.
+// Identity, employment status, key dates, manager, and department for a
+// person employed through Gusto. The `uuid` field is the selection key.
+// Compensation and pay-history fields are not exposed; this resource is
+// scoped to identity and employment metadata for org-structure and access
+// audits.
 private gusto.employee @defaults("firstName lastName workEmail") {
   // Unique identifier of the employee
   uuid string
-  // UUID of the company that employs this person
-  companyUuid string
+  // Company that employs this person
+  company() gusto.company
   // First name of the employee
   firstName string
   // Middle initial of the employee
@@ -84,44 +84,45 @@ private gusto.employee @defaults("firstName lastName workEmail") {
   preferredFirstName string
   // Work email address
   workEmail string
-  // Personal email address
+  // Personal email address, blank when it matches workEmail
   //
-  // Blanked when it matches `workEmail`, because Gusto exposes a single `email` field
-  // that mirrors the work address when no distinct personal email is on file.
+  // Gusto exposes a single `email` field that mirrors the work address when
+  // no distinct personal email is on file, so an email equal to workEmail is
+  // reported blank rather than duplicated.
   personalEmail string
   // Phone number
   phone string
-  // Whether the employee currently has any active employment
-  currentEmployment bool
+  // Employment status reported by Gusto
+  //
+  // One of full_time, part_time_under_twenty_hours,
+  // part_time_twenty_plus_hours, variable, or seasonal. Null when Gusto has
+  // not classified the employee.
+  currentEmploymentStatus string
   // Whether the employee record has been onboarded
   onboarded bool
   // Onboarding status reported by Gusto (e.g., onboarding_completed_by_admin)
   onboardingStatus string
   // Whether the employee has been terminated
   terminated bool
-  // Whether two-factor authentication is enabled on the employee's Gusto account
-  twoFactorAuthenticationEnabled bool
-  // ISO 8601 date the employee record was created
-  createdAt time
+  // Date the employee was hired
+  hiredAt time
   // Manager of this employee, if assigned
   manager() gusto.employee
   // Department this employee belongs to, if assigned
   department() gusto.department
-  // Primary work location of this employee, if assigned
-  workLocation() gusto.location
 }
 
 // Gusto contractor
 //
-// Examine identity, type (individual vs. business), status, and key dates
-// for a contractor paid through Gusto. The `uuid` field is the selection
-// key. Compensation fields are intentionally not exposed; this resource is
-// scoped to identity and engagement metadata.
-private gusto.contractor @defaults("firstName lastName businessName") {
+// Identity, type (individual vs. business), status, and key dates for a
+// contractor paid through Gusto. The `uuid` field is the selection key.
+// Compensation fields are not exposed; this resource is scoped to identity
+// and engagement metadata.
+private gusto.contractor @defaults("businessName firstName lastName") {
   // Unique identifier of the contractor
   uuid string
-  // UUID of the company that engages this contractor
-  companyUuid string
+  // Company that engages this contractor
+  company() gusto.company
   // Type of contractor: "Individual" or "Business"
   type string
   // Whether the contractor record is active
@@ -136,23 +137,27 @@ private gusto.contractor @defaults("firstName lastName businessName") {
   businessName string
   // Email address
   email string
-  // ISO 8601 date the contractor started
+  // Date the contractor started
   startDate time
-  // Whether the contractor self-onboards via Gusto
-  selfOnboarding bool
+  // Whether the contractor record has been onboarded
+  onboarded bool
   // Onboarding status reported by Gusto
+  //
+  // One of admin_onboarding_incomplete, self_onboarding_not_invited,
+  // self_onboarding_invited, self_onboarding_started,
+  // self_onboarding_completed_by_contractor, or onboarding_completed.
   onboardingStatus string
 }
 
 // Gusto department
 //
-// Examine a department defined within a Gusto company — its name and the
-// employees assigned to it. The `uuid` field is the selection key.
+// Department defined within a Gusto company: its name and the employees and
+// contractors assigned to it. The `uuid` field is the selection key.
 private gusto.department @defaults("name") {
   // Unique identifier of the department
   uuid string
-  // UUID of the company this department belongs to
-  companyUuid string
+  // Company this department belongs to
+  company() gusto.company
   // Name of the department (mapped from the Gusto API `title` property)
   name string
   // Employees assigned to this department
@@ -163,14 +168,14 @@ private gusto.department @defaults("name") {
 
 // Gusto work location
 //
-// Examine a physical work location defined within a Gusto company — the
-// address, whether it is the company's filing/mailing address, and whether
-// it is active. The `uuid` field is the selection key.
+// Physical work location defined within a Gusto company: the address,
+// whether it is the company's filing or mailing address, and whether it is
+// active. The `uuid` field is the selection key.
 private gusto.location @defaults("street1 city state") {
   // Unique identifier of the location
   uuid string
-  // UUID of the company this location belongs to
-  companyUuid string
+  // Company this location belongs to
+  company() gusto.company
   // Primary street address
   street1 string
   // Secondary street address (suite, unit, etc.)
@@ -193,14 +198,15 @@ private gusto.location @defaults("street1 city state") {
 
 // Gusto administrator
 //
-// Examine an administrator with privileged access to a Gusto company — the
-// person's identity and the company they administer. Use this resource to
-// audit who can change payroll, taxes, benefits, or company settings.
+// Administrator with privileged access to a Gusto company, covering the
+// person's identity and the company they administer. Administrators can
+// change payroll, taxes, benefits, and company settings, so this resource
+// carries the provider's privileged-access audit surface.
 private gusto.admin @defaults("email firstName lastName") {
   // Unique identifier of the administrator
   uuid string
-  // UUID of the company this admin has access to
-  companyUuid string
+  // Company this admin has access to
+  company() gusto.company
   // First name of the administrator
   firstName string
   // Last name of the administrator
