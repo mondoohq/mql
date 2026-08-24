@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 option provider = "go.mondoo.com/mql/providers/circleci"
-option go_package = "go.mondoo.com/mql/v13/providers/circleci/resources"
+option go_package = "go.mondoo.com/mql/providers/circleci/resources"
 
 // CircleCI CI/CD platform
 //

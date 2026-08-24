@@ -6,9 +6,9 @@ package resources
 import (
 	"context"
 
-	"go.mondoo.com/mql/v13/llx"
-	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/v13/providers/circleci/connection"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/circleci/connection"
 )
 
 // runnerResourceClasses lists the self-hosted runner resource classes
