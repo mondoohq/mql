@@ -21,10 +21,13 @@ func initJenkinsSecurity(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 
 	conn := runtime.Connection.(*connection.JenkinsConnection)
 
+	// Pointers so that a field the controller does not export stays null: a
+	// Jenkins tree query drops what it cannot answer instead of failing, and
+	// a value type would report that silence as a real setting.
 	var resp struct {
-		UseSecurity    bool  `json:"useSecurity"`
-		UseCrumbs      bool  `json:"useCrumbs"`
-		SlaveAgentPort int64 `json:"slaveAgentPort"`
+		UseSecurity    *bool  `json:"useSecurity"`
+		UseCrumbs      *bool  `json:"useCrumbs"`
+		SlaveAgentPort *int64 `json:"slaveAgentPort"`
 	}
 
 	_, err := conn.Client().Requester.GetJSON(context.Background(), "/", &resp, map[string]string{
@@ -34,15 +37,10 @@ func initJenkinsSecurity(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 		return nil, nil, err
 	}
 
-	// Access control being off is the only remotely observable signal that
-	// unauthenticated administration is possible.
-	allowsAnonymousAdmin := !resp.UseSecurity
-
 	args["__id"] = llx.StringData(conn.BaseUrl() + "/security")
-	args["securityEnabled"] = llx.BoolData(resp.UseSecurity)
-	args["csrfProtectionEnabled"] = llx.BoolData(resp.UseCrumbs)
-	args["allowsAnonymousAdmin"] = llx.BoolData(allowsAnonymousAdmin)
-	args["slaveAgentPort"] = llx.IntData(resp.SlaveAgentPort)
+	args["securityEnabled"] = llx.BoolDataPtr(resp.UseSecurity)
+	args["csrfProtectionEnabled"] = llx.BoolDataPtr(resp.UseCrumbs)
+	args["slaveAgentPort"] = llx.IntDataPtr(resp.SlaveAgentPort)
 
 	return args, nil, nil
 }

@@ -39,7 +39,7 @@ func jobsTreeQuery(depth int) string {
 // typed jenkins.node reference without an extra API call.
 type mqlJenkinsJobInternal struct {
 	cacheHasLastBuild bool
-	cacheBuiltOn      string
+	cacheBuiltOn      *string
 }
 
 // jenkinsJobData is the shape fetched from the Jenkins job tree, scoped with a
@@ -52,12 +52,16 @@ type jenkinsJobData struct {
 	FullName    string `json:"fullName"`
 	URL         string `json:"url"`
 	Class       string `json:"_class"`
-	Buildable   bool   `json:"buildable"`
-	Disabled    bool   `json:"disabled"`
+	Buildable   *bool  `json:"buildable"`
+	Disabled    *bool  `json:"disabled"`
 	Description string `json:"description"`
 	LastBuild   struct {
-		Number  int64  `json:"number"`
-		BuiltOn string `json:"builtOn"`
+		Number int64 `json:"number"`
+		// BuiltOn is a pointer because the two cases are otherwise
+		// indistinguishable: a freestyle build that ran on the controller
+		// reports it as the empty string, while a pipeline build does not
+		// export the field at all.
+		BuiltOn *string `json:"builtOn"`
 	} `json:"lastBuild"`
 	LastSuccessfulBuild struct {
 		Number int64 `json:"number"`
@@ -169,8 +173,8 @@ func newMqlJenkinsJob(runtime *plugin.Runtime, j jenkinsJobData) (plugin.Resourc
 		"fullName":                  llx.StringData(j.FullName),
 		"url":                       llx.StringData(j.URL),
 		"class":                     llx.StringData(j.Class),
-		"buildable":                 llx.BoolData(j.Buildable),
-		"disabled":                  llx.BoolData(j.Disabled),
+		"buildable":                 llx.BoolDataPtr(j.Buildable),
+		"disabled":                  llx.BoolDataPtr(j.Disabled),
 		"lastBuildNumber":           llx.IntData(j.LastBuild.Number),
 		"lastSuccessfulBuildNumber": llx.IntData(j.LastSuccessfulBuild.Number),
 		"lastFailedBuildNumber":     llx.IntData(j.LastFailedBuild.Number),
@@ -194,9 +198,17 @@ func (j *mqlJenkinsJob) node() (*mqlJenkinsNode, error) {
 		return nil, nil
 	}
 
+	// A pipeline build does not export builtOn at all, so the node it ran on
+	// is genuinely unknown rather than the controller.
+	if j.cacheBuiltOn == nil {
+		j.Node.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+
+	// Present but empty means the build really did run on the controller.
 	name := builtInNodeDisplayName
-	if j.cacheBuiltOn != "" {
-		name = j.cacheBuiltOn
+	if *j.cacheBuiltOn != "" {
+		name = *j.cacheBuiltOn
 	}
 
 	r, err := NewResource(j.MqlRuntime, "jenkins.node", map[string]*llx.RawData{"name": llx.StringData(name)})

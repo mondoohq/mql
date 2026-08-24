@@ -13,10 +13,10 @@ import (
 	"go.mondoo.com/mql/providers/jenkins/connection"
 )
 
-// systemCredentialsDomain is the default (global) credentials domain, present
-// in every credentials store (the controller's system store and each folder
-// store) under the reserved name "_".
-const systemCredentialsDomain = "_"
+// globalDomainName is the reserved name Jenkins gives the default (global)
+// domain, which is present in every credentials store: the controller's
+// system store and each folder store.
+const globalDomainName = "_"
 
 // jenkinsCredentialData is the identifying metadata fetched for a stored
 // credential. Secret material (passwords, private keys, tokens) is never part
@@ -41,7 +41,7 @@ func (r *mqlJenkins) credentials() ([]any, error) {
 	// Default global domain of the controller's system store. A failure here is
 	// surfaced (it typically signals an auth or connectivity problem) rather
 	// than swallowed.
-	sysDefault, err := r.credentialsFromStoreDomain(conn, systemStore, systemCredentialsDomain, systemIDBase)
+	sysDefault, err := r.credentialsFromStoreDomain(conn, systemStore, globalDomainName, systemIDBase)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +49,7 @@ func (r *mqlJenkins) credentials() ([]any, error) {
 
 	// Additional, non-default domains configured in the system store.
 	for _, domain := range fetchCredentialDomains(conn, systemStore) {
-		if domain == systemCredentialsDomain {
+		if domain == globalDomainName {
 			continue
 		}
 		creds, err := r.credentialsFromStoreDomain(conn, systemStore, domain, systemIDBase)

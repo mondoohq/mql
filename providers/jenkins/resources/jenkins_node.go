@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -30,22 +31,25 @@ type jenkinsNodeData struct {
 	Class              string `json:"_class"`
 	DisplayName        string `json:"displayName"`
 	Description        string `json:"description"`
-	Offline            bool   `json:"offline"`
-	TemporarilyOffline bool   `json:"temporarilyOffline"`
+	Offline            *bool  `json:"offline"`
+	TemporarilyOffline *bool  `json:"temporarilyOffline"`
 	OfflineCauseReason string `json:"offlineCauseReason"`
-	NumExecutors       int64  `json:"numExecutors"`
+	NumExecutors       *int64 `json:"numExecutors"`
 	AssignedLabels     []struct {
 		Name string `json:"name"`
 	} `json:"assignedLabels"`
 }
 
 // isControllerNode reports whether a fetched node identifies the built-in
-// controller node rather than an agent. The controller's internal name
-// varies by Jenkins core version ("", "master", or "(built-in)"), so this
-// also checks the computer's Java class as a version-independent signal.
+// controller node rather than an agent. The computer's Java class is the
+// version-independent signal and is authoritative when present. The name
+// list is only a fallback for a response that carries no class, because an
+// agent is free to be named "master": treating such an agent as the
+// controller would also collide with the controller's cache key and drop
+// the agent's real data from the node list.
 func isControllerNode(class, displayName string) bool {
-	if strings.Contains(class, "MasterComputer") {
-		return true
+	if class != "" {
+		return strings.Contains(class, "MasterComputer")
 	}
 	switch displayName {
 	case builtInNodeName, "master", "(built-in)", builtInNodeDisplayName:
@@ -129,10 +133,10 @@ func newMqlJenkinsNode(runtime *plugin.Runtime, c jenkinsNodeData) (plugin.Resou
 		"name":               llx.StringData(name),
 		"description":        llx.StringData(c.Description),
 		"isController":       llx.BoolData(isController),
-		"offline":            llx.BoolData(c.Offline),
-		"temporarilyOffline": llx.BoolData(c.TemporarilyOffline),
+		"offline":            llx.BoolDataPtr(c.Offline),
+		"temporarilyOffline": llx.BoolDataPtr(c.TemporarilyOffline),
 		"offlineCauseReason": llx.StringData(c.OfflineCauseReason),
-		"numExecutors":       llx.IntData(c.NumExecutors),
+		"numExecutors":       llx.IntDataPtr(c.NumExecutors),
 		"labels":             llx.ArrayData(labels, types.String),
 	})
 	if err != nil {
@@ -152,7 +156,7 @@ func initJenkinsNode(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 
 	nameArg, ok := args["name"]
 	if !ok {
-		return args, nil, nil
+		return nil, nil, errors.New("jenkins.node requires a name")
 	}
 	name, ok := nameArg.Value.(string)
 	if !ok {

@@ -13,6 +13,11 @@ import (
 // deep fetch against the plugin manager. hasUpdate is returned pre-computed
 // by Jenkins against the configured update center, no per-plugin fetch
 // needed.
+//
+// The booleans are pointers because a Jenkins tree query omits a field it
+// cannot export rather than failing, so a value type would turn "the
+// controller did not report this" into a confident false. For hasUpdate
+// that false is the direction that makes a patch-currency audit pass.
 func (r *mqlJenkins) plugins() ([]any, error) {
 	conn := r.conn()
 
@@ -21,9 +26,9 @@ func (r *mqlJenkins) plugins() ([]any, error) {
 			ShortName           string `json:"shortName"`
 			LongName            string `json:"longName"`
 			Version             string `json:"version"`
-			Enabled             bool   `json:"enabled"`
-			Active              bool   `json:"active"`
-			HasUpdate           bool   `json:"hasUpdate"`
+			Enabled             *bool  `json:"enabled"`
+			Active              *bool  `json:"active"`
+			HasUpdate           *bool  `json:"hasUpdate"`
 			URL                 string `json:"url"`
 			RequiredCoreVersion string `json:"requiredCoreVersion"`
 		} `json:"plugins"`
@@ -43,9 +48,9 @@ func (r *mqlJenkins) plugins() ([]any, error) {
 			"shortName":           llx.StringData(p.ShortName),
 			"longName":            llx.StringData(p.LongName),
 			"version":             llx.StringData(p.Version),
-			"enabled":             llx.BoolData(p.Enabled),
-			"active":              llx.BoolData(p.Active),
-			"hasUpdate":           llx.BoolData(p.HasUpdate),
+			"enabled":             llx.BoolDataPtr(p.Enabled),
+			"active":              llx.BoolDataPtr(p.Active),
+			"hasUpdate":           llx.BoolDataPtr(p.HasUpdate),
 			"url":                 llx.StringData(p.URL),
 			"requiredCoreVersion": llx.StringData(p.RequiredCoreVersion),
 		})

@@ -680,7 +680,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			Connectors: []plugin.Connector{
 				{
 					Name:  "jenkins",
-					Use:   "jenkins --url URL --user USER --token TOKEN",
+					Use:   "jenkins",
 					Short: "a Jenkins controller",
 				},
 			},

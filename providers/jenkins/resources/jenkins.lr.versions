@@ -44,7 +44,6 @@ jenkins.plugin.version 13.0.0
 jenkins.plugins 13.0.0
 jenkins.quietingDown 13.0.0
 jenkins.security 13.0.0
-jenkins.security.allowsAnonymousAdmin 13.0.0
 jenkins.security.csrfProtectionEnabled 13.0.0
 jenkins.security.securityEnabled 13.0.0
 jenkins.security.slaveAgentPort 13.0.0

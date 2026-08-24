@@ -8,8 +8,9 @@ option go_package = "go.mondoo.com/mql/providers/jenkins/resources"
 //
 // The Jenkins controller reachable at the configured base URL. Exposes
 // instance-level metadata (version, operating mode) alongside the
-// security configuration, installed plugins, jobs, agents, and stored
-// credential metadata that make up a Jenkins security audit.
+// installed `plugins`, configured `jobs`, build `nodes`, and stored
+// `credentials` metadata that make up a Jenkins audit. The controller's
+// access-control posture is a separate resource, `jenkins.security`.
 jenkins @maturity("experimental") {
   // Base URL the connection targets, for example "https://jenkins.example.com"
   url string
@@ -32,18 +33,13 @@ jenkins @maturity("experimental") {
 // Jenkins instance security configuration
 //
 // The controller-wide security posture: whether access control is enabled,
-// whether CSRF protection (the crumb issuer) is enabled, and how agents are
-// permitted to connect to the controller. This is a singleton, queried as
-// `jenkins.security` directly.
+// whether CSRF protection (the crumb issuer) is enabled, and which TCP port
+// accepts inbound agent connections.
 jenkins.security @defaults("securityEnabled csrfProtectionEnabled") @maturity("experimental") {
   // Whether access control (authentication and authorization) is enabled at all
   securityEnabled bool
   // Whether CSRF protection (the crumb issuer) is enabled
   csrfProtectionEnabled bool
-  // Whether the instance allows unauthenticated administration
-  //
-  // True when access control is disabled (security is off).
-  allowsAnonymousAdmin bool
   // TCP port accepting inbound agent connections, -1 when disabled and 0 when a random port is used
   slaveAgentPort int
 }
@@ -77,9 +73,9 @@ jenkins.plugin @defaults("shortName version") @maturity("experimental") {
 //
 // A configured job, pipeline, or folder, including jobs nested inside
 // folders. The `fullName` field is the job's path-qualified name, for
-// example "team-a/deploy-service", and is stable across folder
-// reorganizations of the same job. The `class`
-// field distinguishes job types, such as "hudson.model.FreeStyleProject",
+// example "team-a/deploy-service", so it changes when a job moves between
+// folders. The `class` field distinguishes job types, such as
+// "hudson.model.FreeStyleProject",
 // "org.jenkinsci.plugins.workflow.job.WorkflowJob" (pipeline), or
 // "com.cloudbees.hudson.plugins.folder.Folder".
 jenkins.job @defaults("fullName class") @maturity("experimental") {
@@ -113,10 +109,10 @@ jenkins.job @defaults("fullName class") @maturity("experimental") {
 // Jenkins node
 //
 // A build agent, or the built-in controller node itself (`isController`
-// distinguishes the two). Agents are keyed by their `name` as reported
-// by the controller, for example "linux-agent-01"; the built-in node's
-// name is the empty string internally and is surfaced here as
-// "Built-In Node".
+// distinguishes the two). Agents are keyed by their `name` as reported by
+// the controller, for example "linux-agent-01". The controller names its
+// own node inconsistently across core versions, so it is always surfaced
+// here as "Built-In Node".
 jenkins.node @defaults("name offline") @maturity("experimental") {
   // Node name, "Built-In Node" for the controller itself
   name string
@@ -148,7 +144,12 @@ jenkins.node @defaults("name offline") @maturity("experimental") {
 jenkins.credential @defaults("id typeName") @maturity("experimental") {
   // Credential ID, as referenced by jobs and pipelines
   id string
-  // Credential implementation class, for example "com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl"
+  // Credential type
+  //
+  // The display name of the credential type as Jenkins reports it, for
+  // example "Username with password", "SSH Username with private key", or
+  // "Secret text". This is a localized label, not the implementation
+  // class name.
   typeName string
   // Credential description
   description string

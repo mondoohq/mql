@@ -152,9 +152,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"jenkins.security.csrfProtectionEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlJenkinsSecurity).GetCsrfProtectionEnabled()).ToDataRes(types.Bool)
 	},
-	"jenkins.security.allowsAnonymousAdmin": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlJenkinsSecurity).GetAllowsAnonymousAdmin()).ToDataRes(types.Bool)
-	},
 	"jenkins.security.slaveAgentPort": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlJenkinsSecurity).GetSlaveAgentPort()).ToDataRes(types.Int)
 	},
@@ -309,10 +306,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"jenkins.security.csrfProtectionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlJenkinsSecurity).CsrfProtectionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
-		return
-	},
-	"jenkins.security.allowsAnonymousAdmin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlJenkinsSecurity).AllowsAnonymousAdmin, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"jenkins.security.slaveAgentPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -622,7 +615,6 @@ type mqlJenkinsSecurity struct {
 	// optional: if you define mqlJenkinsSecurityInternal it will be used here
 	SecurityEnabled       plugin.TValue[bool]
 	CsrfProtectionEnabled plugin.TValue[bool]
-	AllowsAnonymousAdmin  plugin.TValue[bool]
 	SlaveAgentPort        plugin.TValue[int64]
 }
 
@@ -664,10 +656,6 @@ func (c *mqlJenkinsSecurity) GetSecurityEnabled() *plugin.TValue[bool] {
 
 func (c *mqlJenkinsSecurity) GetCsrfProtectionEnabled() *plugin.TValue[bool] {
 	return &c.CsrfProtectionEnabled
-}
-
-func (c *mqlJenkinsSecurity) GetAllowsAnonymousAdmin() *plugin.TValue[bool] {
-	return &c.AllowsAnonymousAdmin
 }
 
 func (c *mqlJenkinsSecurity) GetSlaveAgentPort() *plugin.TValue[int64] {
