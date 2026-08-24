@@ -29,7 +29,7 @@ func newMqlBitbucketProject(runtime *plugin.Runtime, workspaceSlug string, p *co
 		"id":          llx.StringData(p.UUID),
 		"key":         llx.StringData(p.Key),
 		"name":        llx.StringData(p.Name),
-		"isPrivate":   llx.BoolData(p.IsPrivate),
+		"isPrivate":   llx.BoolDataPtr(p.IsPrivate),
 		"description": llx.StringData(p.Description),
 		"createdOn":   llx.TimeDataPtr(p.CreatedOn),
 		"updatedOn":   llx.TimeDataPtr(p.UpdatedOn),

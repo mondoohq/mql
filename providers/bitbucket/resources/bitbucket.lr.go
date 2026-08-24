@@ -426,9 +426,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"bitbucket.pipelineVariable.secured": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBitbucketPipelineVariable).GetSecured()).ToDataRes(types.Bool)
 	},
-	"bitbucket.pipelineVariable.value": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlBitbucketPipelineVariable).GetValue()).ToDataRes(types.String)
-	},
 	"bitbucket.repository.deployment.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlBitbucketRepositoryDeployment).GetId()).ToDataRes(types.String)
 	},
@@ -862,10 +859,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"bitbucket.pipelineVariable.secured": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlBitbucketPipelineVariable).Secured, ok = plugin.RawToTValue[bool](v.Value, v.Error)
-		return
-	},
-	"bitbucket.pipelineVariable.value": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlBitbucketPipelineVariable).Value, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"bitbucket.repository.deployment.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -2107,7 +2100,6 @@ type mqlBitbucketPipelineVariable struct {
 	Id      plugin.TValue[string]
 	Key     plugin.TValue[string]
 	Secured plugin.TValue[bool]
-	Value   plugin.TValue[string]
 }
 
 // createBitbucketPipelineVariable creates a new instance of this resource
@@ -2152,10 +2144,6 @@ func (c *mqlBitbucketPipelineVariable) GetKey() *plugin.TValue[string] {
 
 func (c *mqlBitbucketPipelineVariable) GetSecured() *plugin.TValue[bool] {
 	return &c.Secured
-}
-
-func (c *mqlBitbucketPipelineVariable) GetValue() *plugin.TValue[string] {
-	return &c.Value
 }
 
 // mqlBitbucketRepositoryDeployment for the bitbucket.repository.deployment resource

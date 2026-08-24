@@ -26,10 +26,10 @@ func newMqlBitbucketRepositoryWebhook(runtime *plugin.Runtime, repoFullName stri
 		"id":                   llx.StringData(h.UUID),
 		"url":                  llx.StringData(h.URL),
 		"description":          llx.StringData(h.Description),
-		"active":               llx.BoolData(h.Active),
+		"active":               llx.BoolDataPtr(h.Active),
 		"events":               llx.ArrayData(strList(h.Events), types.String),
-		"skipCertVerification": llx.BoolData(h.SkipCertVerification),
-		"secretSet":            llx.BoolData(h.SecretSet),
+		"skipCertVerification": llx.BoolDataPtr(h.SkipCertVerification),
+		"secretSet":            llx.BoolDataPtr(h.SecretSet),
 		"createdOn":            llx.TimeDataPtr(h.CreatedAt),
 	})
 	if err != nil {
@@ -67,10 +67,10 @@ func newMqlBitbucketWorkspaceWebhook(runtime *plugin.Runtime, workspaceSlug stri
 		"id":                   llx.StringData(h.UUID),
 		"url":                  llx.StringData(h.URL),
 		"description":          llx.StringData(h.Description),
-		"active":               llx.BoolData(h.Active),
+		"active":               llx.BoolDataPtr(h.Active),
 		"events":               llx.ArrayData(strList(h.Events), types.String),
-		"skipCertVerification": llx.BoolData(h.SkipCertVerification),
-		"secretSet":            llx.BoolData(h.SecretSet),
+		"skipCertVerification": llx.BoolDataPtr(h.SkipCertVerification),
+		"secretSet":            llx.BoolDataPtr(h.SecretSet),
 		"createdOn":            llx.TimeDataPtr(h.CreatedAt),
 	})
 	if err != nil {

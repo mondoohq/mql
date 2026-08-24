@@ -24,7 +24,6 @@ bitbucket.pipelineVariable 13.0.0
 bitbucket.pipelineVariable.id 13.0.0
 bitbucket.pipelineVariable.key 13.0.0
 bitbucket.pipelineVariable.secured 13.0.0
-bitbucket.pipelineVariable.value 13.0.0
 bitbucket.project 13.0.0
 bitbucket.project.createdOn 13.0.0
 bitbucket.project.description 13.0.0

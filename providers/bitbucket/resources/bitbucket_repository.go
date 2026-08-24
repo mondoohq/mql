@@ -31,9 +31,11 @@ func newMqlBitbucketRepository(runtime *plugin.Runtime, r *connection.Repository
 		return nil, fmt.Errorf("bitbucket.repository %q has no workspace", r.FullName)
 	}
 
-	var mainBranch string
+	// A repository that has never been pushed to has no default branch, so
+	// mainBranch stays null rather than reporting an empty branch name.
+	var mainBranch *string
 	if r.MainBranch != nil {
-		mainBranch = r.MainBranch.Name
+		mainBranch = &r.MainBranch.Name
 	}
 
 	res, err := CreateResource(runtime, "bitbucket.repository", map[string]*llx.RawData{
@@ -43,13 +45,13 @@ func newMqlBitbucketRepository(runtime *plugin.Runtime, r *connection.Repository
 		"fullName":    llx.StringData(r.FullName),
 		"name":        llx.StringData(r.Name),
 		"description": llx.StringData(r.Description),
-		"isPrivate":   llx.BoolData(r.IsPrivate),
+		"isPrivate":   llx.BoolDataPtr(r.IsPrivate),
 		"forkPolicy":  llx.StringData(r.ForkPolicy),
 		"language":    llx.StringData(r.Language),
 		"size":        llx.IntData(r.Size),
-		"hasIssues":   llx.BoolData(r.HasIssues),
-		"hasWiki":     llx.BoolData(r.HasWiki),
-		"mainBranch":  llx.StringData(mainBranch),
+		"hasIssues":   llx.BoolDataPtr(r.HasIssues),
+		"hasWiki":     llx.BoolDataPtr(r.HasWiki),
+		"mainBranch":  llx.StringDataPtr(mainBranch),
 		"createdOn":   llx.TimeDataPtr(r.CreatedOn),
 		"updatedOn":   llx.TimeDataPtr(r.UpdatedOn),
 	})

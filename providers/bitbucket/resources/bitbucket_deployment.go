@@ -25,16 +25,18 @@ type mqlBitbucketRepositoryDeploymentInternal struct {
 // MQL resource. Environment UUIDs are unique within a repository, so the cache
 // key composes the UUID with the owning repository's full name.
 func newMqlBitbucketDeployment(runtime *plugin.Runtime, repoFullName, workspaceSlug, repoSlug string, e *connection.Environment) (plugin.Resource, error) {
-	var envType string
+	// An environment whose tier the API does not report stays null rather
+	// than claiming a tier outside the documented set.
+	var envType *string
 	if e.EnvironmentType != nil {
-		envType = e.EnvironmentType.Name
+		envType = &e.EnvironmentType.Name
 	}
 
 	res, err := CreateResource(runtime, "bitbucket.repository.deployment", map[string]*llx.RawData{
 		"__id":            llx.StringData(repoFullName + "/environments/" + e.UUID),
 		"id":              llx.StringData(e.UUID),
 		"name":            llx.StringData(e.Name),
-		"environmentType": llx.StringData(envType),
+		"environmentType": llx.StringDataPtr(envType),
 	})
 	if err != nil {
 		return nil, err

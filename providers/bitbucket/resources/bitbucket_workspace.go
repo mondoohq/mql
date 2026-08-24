@@ -19,8 +19,8 @@ func newMqlBitbucketWorkspace(runtime *plugin.Runtime, w *connection.Workspace) 
 		"id":                llx.StringData(w.UUID),
 		"slug":              llx.StringData(w.Slug),
 		"name":              llx.StringData(w.Name),
-		"isPrivate":         llx.BoolData(w.IsPrivate),
-		"isPrivacyEnforced": llx.BoolData(w.IsPrivacyEnforced),
+		"isPrivate":         llx.BoolDataPtr(w.IsPrivate),
+		"isPrivacyEnforced": llx.BoolDataPtr(w.IsPrivacyEnforced),
 		"createdOn":         llx.TimeDataPtr(w.CreatedOn),
 	})
 	if err != nil {

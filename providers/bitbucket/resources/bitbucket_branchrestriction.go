@@ -27,17 +27,12 @@ type mqlBitbucketRepositoryBranchRestrictionInternal struct {
 // single repository, not globally, so the cache key composes it with the
 // owning repository's full name.
 func newMqlBitbucketBranchRestriction(runtime *plugin.Runtime, repoFullName, workspaceSlug string, br *connection.BranchRestriction) (plugin.Resource, error) {
-	var minApprovals int64
-	if br.Value != nil {
-		minApprovals = *br.Value
-	}
-
 	res, err := CreateResource(runtime, "bitbucket.repository.branchRestriction", map[string]*llx.RawData{
 		"__id":         llx.StringData(fmt.Sprintf("%s/branch-restrictions/%d", repoFullName, br.ID)),
 		"id":           llx.IntData(br.ID),
 		"kind":         llx.StringData(br.Kind),
 		"pattern":      llx.StringData(br.Pattern),
-		"minApprovals": llx.IntData(minApprovals),
+		"minApprovals": llx.IntDataPtr(br.Value),
 	})
 	if err != nil {
 		return nil, err

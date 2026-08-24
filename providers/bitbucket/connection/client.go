@@ -142,8 +142,8 @@ type Workspace struct {
 	UUID              string     `json:"uuid"`
 	Slug              string     `json:"slug"`
 	Name              string     `json:"name"`
-	IsPrivate         bool       `json:"is_private"`
-	IsPrivacyEnforced bool       `json:"is_privacy_enforced"`
+	IsPrivate         *bool      `json:"is_private"`
+	IsPrivacyEnforced *bool      `json:"is_privacy_enforced"`
 	CreatedOn         *time.Time `json:"created_on"`
 }
 
@@ -176,7 +176,7 @@ type Project struct {
 	Key         string        `json:"key"`
 	Name        string        `json:"name"`
 	Description string        `json:"description"`
-	IsPrivate   bool          `json:"is_private"`
+	IsPrivate   *bool         `json:"is_private"`
 	CreatedOn   *time.Time    `json:"created_on"`
 	UpdatedOn   *time.Time    `json:"updated_on"`
 	Workspace   *WorkspaceRef `json:"workspace"`
@@ -211,12 +211,12 @@ type Repository struct {
 	FullName    string        `json:"full_name"`
 	Name        string        `json:"name"`
 	Description string        `json:"description"`
-	IsPrivate   bool          `json:"is_private"`
+	IsPrivate   *bool         `json:"is_private"`
 	ForkPolicy  string        `json:"fork_policy"`
 	Language    string        `json:"language"`
 	Size        int64         `json:"size"`
-	HasIssues   bool          `json:"has_issues"`
-	HasWiki     bool          `json:"has_wiki"`
+	HasIssues   *bool         `json:"has_issues"`
+	HasWiki     *bool         `json:"has_wiki"`
 	MainBranch  *MainBranch   `json:"mainbranch"`
 	Project     *ProjectRef   `json:"project"`
 	Workspace   *WorkspaceRef `json:"workspace"`
@@ -289,7 +289,7 @@ type DeployKey struct {
 	ID        int64      `json:"id"`
 	Label     string     `json:"label"`
 	Key       string     `json:"key"`
-	CreatedOn *time.Time `json:"created_on"`
+	CreatedOn *time.Time `json:"added_on"`
 	LastUsed  *time.Time `json:"last_used"`
 }
 
@@ -373,10 +373,10 @@ type Webhook struct {
 	UUID                 string     `json:"uuid"`
 	URL                  string     `json:"url"`
 	Description          string     `json:"description"`
-	Active               bool       `json:"active"`
+	Active               *bool      `json:"active"`
 	Events               []string   `json:"events"`
-	SkipCertVerification bool       `json:"skip_cert_verification"`
-	SecretSet            bool       `json:"secret_set"`
+	SkipCertVerification *bool      `json:"skip_cert_verification"`
+	SecretSet            *bool      `json:"secret_set"`
 	CreatedAt            *time.Time `json:"created_at"`
 }
 
@@ -394,13 +394,13 @@ func (c *Client) ListWorkspaceWebhooks(ctx context.Context, workspace string) ([
 
 // PipelineVariable is a Bitbucket Pipelines configuration variable, shared by
 // the repository, workspace, and deployment-environment variable endpoints.
-// Value is populated only for unsecured variables; Bitbucket never returns the
-// value of a secured variable, so it decodes to the empty string.
+// The value is deliberately not decoded: Bitbucket returns it in the clear
+// for an unsecured variable, which is exactly where an accidentally
+// plaintext credential lives.
 type PipelineVariable struct {
 	UUID    string `json:"uuid"`
 	Key     string `json:"key"`
-	Value   string `json:"value"`
-	Secured bool   `json:"secured"`
+	Secured *bool  `json:"secured"`
 }
 
 // ListRepositoryPipelineVariables lists the Pipelines variables defined for a

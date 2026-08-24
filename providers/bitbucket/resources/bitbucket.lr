@@ -170,7 +170,8 @@ private bitbucket.repository.branchRestriction @defaults("kind pattern") @maturi
   // Minimum number of approvals required
   //
   // Applies to restrictions of kind require_approvals_to_merge and
-  // require_default_reviewer_approvals_to_merge.
+  // require_default_reviewer_approvals_to_merge. Null for every other
+  // kind, which carries no approval count.
   minApprovals int
   // Users exempted from this restriction
   users() []bitbucket.member
@@ -313,10 +314,9 @@ bitbucket.workspace.webhook @defaults("url active") @maturity("experimental") {
 // A single key/value variable exposed to Bitbucket Pipelines builds,
 // defined at the repository, workspace, or deployment-environment level.
 // The `secured` flag marks a variable whose value is encrypted at rest and
-// masked in logs. A secured variable never returns its `value` (it is the
-// empty string), so a fleet-wide audit for secrets accidentally stored in
-// the clear can flag any variable whose `key` looks credential-bearing but
-// whose `secured` is false.
+// masked in build logs. Variable values are never exposed, so a fleet-wide
+// audit for secrets stored in the clear works off the name: flag any
+// variable whose `key` looks credential-bearing while `secured` is false.
 bitbucket.pipelineVariable @defaults("key secured") @maturity("experimental") {
   // Variable UUID
   id string
@@ -324,18 +324,13 @@ bitbucket.pipelineVariable @defaults("key secured") @maturity("experimental") {
   key string
   // Whether the variable value is encrypted and masked in build logs
   secured bool
-  // Variable value
-  //
-  // Populated only for unsecured variables. Secured variables never
-  // return their value, so this is the empty string for them.
-  value string
 }
 
 // Bitbucket deployment environment
 //
 // A deployment target configured on a repository (for example Test,
 // Staging, or Production), selected by its `name`. The environment scopes
-// its own set of Pipelines `variables`, so it is the place to check for
+// its own set of `pipelineVariables`, so it is the place to check for
 // environment-specific secrets and configuration that differ from the
 // repository-wide variables.
 bitbucket.repository.deployment @defaults("name environmentType") @maturity("experimental") {
