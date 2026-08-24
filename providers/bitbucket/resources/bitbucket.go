@@ -6,7 +6,7 @@ package resources
 import (
 	"context"
 
-	"go.mondoo.com/mql/v13/providers/bitbucket/connection"
+	"go.mondoo.com/mql/providers/bitbucket/connection"
 )
 
 func (r *mqlBitbucket) id() (string, error) {

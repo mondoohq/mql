@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 option provider = "go.mondoo.com/mql/providers/bitbucket"
-option go_package = "go.mondoo.com/mql/v13/providers/bitbucket/resources"
+option go_package = "go.mondoo.com/mql/providers/bitbucket/resources"
 
 // Bitbucket
 //
