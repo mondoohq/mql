@@ -74,9 +74,9 @@ notion.workspace @defaults("name") @maturity("experimental") {
 // selected by id, for example notion.user(id: "a1b2c3d4..."). Covers both
 // human workspace members (type == "person") and bot users representing
 // other integrations installed in the same workspace (type == "bot"). The
-// email field is populated only for person-type users, and only when the
+// email field is set only for person-type users, and only when the
 // integration was granted the "read user information with email"
-// capability, otherwise it is empty. Bot-type users additionally expose
+// capability, otherwise it is null. Bot-type users additionally expose
 // botOwnerType and botOwner, mirroring the fields on notion.bot, since a
 // workspace can contain bots belonging to integrations other than this
 // one. Notion's base API does not report a member/guest role, so this
@@ -91,9 +91,9 @@ notion.user @defaults("id name type") @maturity("experimental") {
   avatarUrl string
   // User type, either 'person' or 'bot'
   type string
-  // Email address, populated only for person-type users when the integration can read it
+  // Email address, set only for person-type users when the integration can read it, otherwise null
   email string
-  // Owner type of a bot-type user, either 'workspace' or 'user', empty for person-type users
+  // Owner type of a bot-type user, either 'workspace' or 'user', null when the user is not a bot or Notion omits the owner
   botOwnerType string
   // Individual owner of a bot-type user, set only when botOwnerType is 'user'
   botOwner() notion.user

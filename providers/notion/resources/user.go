@@ -97,14 +97,19 @@ func listNotionUsers(conn *connection.NotionConnection) ([]*notionapi.User, erro
 // mqlNotionUserFromAPI maps a single *notionapi.User to its MQL resource.
 // Used both by the users() lister and initNotionUser's lazy lookup.
 func mqlNotionUserFromAPI(runtime *plugin.Runtime, u *notionapi.User) (*mqlNotionUser, error) {
-	var email string
-	if u.Person != nil {
-		email = u.Person.Email
+	// Null rather than empty when there is nothing to report. An empty
+	// string would say "this user has no email" / "this bot has no owner
+	// type", which is a different claim from "Notion did not tell us": a
+	// person-type user carries no bot owner at all, and the email is
+	// withheld unless the integration holds the capability to read it.
+	var email *string
+	if u.Person != nil && u.Person.Email != "" {
+		email = &u.Person.Email
 	}
 
-	var botOwnerType string
-	if u.Bot != nil {
-		botOwnerType = u.Bot.Owner.Type
+	var botOwnerType *string
+	if u.Bot != nil && u.Bot.Owner.Type != "" {
+		botOwnerType = &u.Bot.Owner.Type
 	}
 
 	res, err := CreateResource(runtime, "notion.user", map[string]*llx.RawData{
@@ -113,8 +118,8 @@ func mqlNotionUserFromAPI(runtime *plugin.Runtime, u *notionapi.User) (*mqlNotio
 		"name":         llx.StringData(u.Name),
 		"avatarUrl":    llx.StringData(u.AvatarURL),
 		"type":         llx.StringData(string(u.Type)),
-		"email":        llx.StringData(email),
-		"botOwnerType": llx.StringData(botOwnerType),
+		"email":        llx.StringDataPtr(email),
+		"botOwnerType": llx.StringDataPtr(botOwnerType),
 	})
 	if err != nil {
 		return nil, err

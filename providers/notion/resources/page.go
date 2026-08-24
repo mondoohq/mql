@@ -202,28 +202,21 @@ func (p *mqlNotionPage) parentDatabase() (*mqlNotionDatabase, error) {
 
 // databaseByID finds one database in the notion.databases collection. The
 // collection is resolved through the notion singleton, so the search walk
-// that builds it happens once per scan no matter how many pages ask.
+// that builds it happens once per scan no matter how many pages ask, and
+// the id lookup goes through a map built once for the same reason.
 func databaseByID(runtime *plugin.Runtime, id string) (*mqlNotionDatabase, error) {
 	res, err := CreateResource(runtime, "notion", map[string]*llx.RawData{})
 	if err != nil {
 		return nil, err
 	}
 
-	databases := res.(*mqlNotion).GetDatabases()
-	if databases.Error != nil {
-		return nil, databases.Error
+	idx, err := res.(*mqlNotion).databaseIndex()
+	if err != nil {
+		return nil, err
 	}
-
-	for _, entry := range databases.Data {
-		db, ok := entry.(*mqlNotionDatabase)
-		if !ok {
-			continue
-		}
-		if db.Id.Data == id {
-			return db, nil
-		}
-	}
-	return nil, nil
+	// A miss yields the nil map value, which is the "not shared with this
+	// integration" case the callers already handle.
+	return idx[id], nil
 }
 
 // parentPage resolves the page this page is nested under, when it is
@@ -248,7 +241,7 @@ func (p *mqlNotionPage) parentPage() (*mqlNotionPage, error) {
 }
 
 // pageByID finds one page in the notion.pages collection, for the same
-// reason databaseByID scans notion.databases instead of issuing a retrieve
+// reason databaseByID reads notion.databases instead of issuing a retrieve
 // per page.
 func pageByID(runtime *plugin.Runtime, id string) (*mqlNotionPage, error) {
 	res, err := CreateResource(runtime, "notion", map[string]*llx.RawData{})
@@ -256,19 +249,9 @@ func pageByID(runtime *plugin.Runtime, id string) (*mqlNotionPage, error) {
 		return nil, err
 	}
 
-	pages := res.(*mqlNotion).GetPages()
-	if pages.Error != nil {
-		return nil, pages.Error
+	idx, err := res.(*mqlNotion).pageIndex()
+	if err != nil {
+		return nil, err
 	}
-
-	for _, entry := range pages.Data {
-		page, ok := entry.(*mqlNotionPage)
-		if !ok {
-			continue
-		}
-		if page.Id.Data == id {
-			return page, nil
-		}
-	}
-	return nil, nil
+	return idx[id], nil
 }

@@ -165,6 +165,26 @@ func TestPropertiesJsonToDictRoundTrip(t *testing.T) {
 		}
 	}
 
+	// Keys surviving is not the same as values surviving: a property type
+	// whose marshaler dropped its payload would still leave the key behind,
+	// and the field would read as an empty object rather than as an error.
+	// So reach into each one for the value that actually matters.
+	if got := nestedPlainText(t, dict, "Name", "title"); got != "Example" {
+		t.Errorf("title property plain_text = %q, want %q", got, "Example")
+	}
+	if got := nestedPlainText(t, dict, "Notes", "rich_text"); got != "a note" {
+		t.Errorf("rich_text property plain_text = %q, want %q", got, "a note")
+	}
+
+	count, ok := dict["Count"].(map[string]any)
+	if !ok {
+		t.Fatalf("Count property = %T, want map[string]any", dict["Count"])
+	}
+	// JSON has one number type, so an int arrives as a float64.
+	if n, ok := count["number"].(float64); !ok || n != 42 {
+		t.Errorf("number property = %v (%T), want 42", count["number"], count["number"])
+	}
+
 	// An empty property map must round-trip to an empty (non-nil) dict, not
 	// an error.
 	empty, err := convert.JsonToDict(notionapi.Properties{})
@@ -182,4 +202,32 @@ func keysOf(m map[string]any) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// nestedPlainText pulls prop[arrayKey][0]["plain_text"] out of a
+// round-tripped rich-text-shaped property, failing the test if the shape is
+// not what Notion documents.
+func nestedPlainText(t *testing.T, dict map[string]any, prop, arrayKey string) string {
+	t.Helper()
+
+	obj, ok := dict[prop].(map[string]any)
+	if !ok {
+		t.Fatalf("property %q = %T, want map[string]any", prop, dict[prop])
+	}
+	arr, ok := obj[arrayKey].([]any)
+	if !ok {
+		t.Fatalf("property %q key %q = %T, want []any", prop, arrayKey, obj[arrayKey])
+	}
+	if len(arr) == 0 {
+		t.Fatalf("property %q key %q round-tripped to an empty array", prop, arrayKey)
+	}
+	first, ok := arr[0].(map[string]any)
+	if !ok {
+		t.Fatalf("property %q key %q [0] = %T, want map[string]any", prop, arrayKey, arr[0])
+	}
+	text, ok := first["plain_text"].(string)
+	if !ok {
+		t.Fatalf("property %q key %q [0].plain_text = %T, want string", prop, arrayKey, first["plain_text"])
+	}
+	return text
 }

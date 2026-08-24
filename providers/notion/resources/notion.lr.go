@@ -467,7 +467,7 @@ func SetAllData(resource plugin.Resource, args map[string]*llx.RawData) error {
 type mqlNotion struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlNotionInternal it will be used here
+	mqlNotionInternal
 	Users     plugin.TValue[[]any]
 	Databases plugin.TValue[[]any]
 	Pages     plugin.TValue[[]any]
