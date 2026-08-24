@@ -16,7 +16,6 @@ rippling.company.primaryEmail 13.0.0
 rippling.company.state 13.0.0
 rippling.company.streetLine1 13.0.0
 rippling.company.streetLine2 13.0.0
-rippling.company.tin 13.0.0
 rippling.company.workEmail 13.0.0
 rippling.company.zip 13.0.0
 rippling.department 13.0.0
@@ -36,7 +35,6 @@ rippling.employee.id 13.0.0
 rippling.employee.lastName 13.0.0
 rippling.employee.manager 13.0.0
 rippling.employee.middleName 13.0.0
-rippling.employee.personalEmail 13.0.0
 rippling.employee.phoneNumber 13.0.0
 rippling.employee.preferredFirstName 13.0.0
 rippling.employee.roleStatus 13.0.0

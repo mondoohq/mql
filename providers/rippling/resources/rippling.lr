@@ -6,13 +6,16 @@ option go_package = "go.mondoo.com/mql/providers/rippling/resources"
 
 // Rippling
 //
-// Use this namespace to inspect the company profile, workforce, and org
-// structure of a Rippling-managed company: company information, employees,
-// departments, teams, work locations, and groups. Identity and org-structure
-// fields are exposed; compensation, benefits, and payroll mechanics are
-// intentionally not modeled.
+// Company profile, workforce, and org structure of a Rippling-managed
+// company: company information, employees, departments, teams, work
+// locations, and groups. Identity and org-structure fields are exposed;
+// compensation, benefits, payroll mechanics, and personal contact details
+// are intentionally not modeled.
 rippling {
-  // Company associated with the configured API token (single-element list — Rippling tokens are scoped to one company)
+  // Company reachable with the configured credentials
+  //
+  // Rippling OAuth credentials are scoped to a single company, so this is
+  // always a one-element list.
   companies() []rippling.company
   // Employees of the company
   employees() []rippling.employee
@@ -28,10 +31,10 @@ rippling {
 
 // Rippling company
 //
-// Examine the company profile of the Rippling-managed organization the
-// token has access to: legal name, primary contact information, and the
-// company's filing address. Rippling Platform API tokens are scoped to a
-// single company, so this resource is a singleton.
+// Company profile of the Rippling-managed organization the credentials
+// reach: legal name, primary contact information, and the company's filing
+// address. Rippling Platform API credentials are scoped to a single
+// company, so this resource is a singleton.
 rippling.company @defaults("name") {
   // Unique identifier of the company in Rippling
   id string
@@ -45,8 +48,6 @@ rippling.company @defaults("name") {
   phone string
   // Primary contact email for the company
   primaryEmail string
-  // Tax identification number for the company
-  tin string
   // Whether the company still needs onboarding in Rippling
   needsOnboarding bool
   // Date the company record was created in Rippling
@@ -67,12 +68,12 @@ rippling.company @defaults("name") {
 
 // Rippling employee
 //
-// Examine identity, employment status, key dates, manager, department,
-// team, and primary work location for a person employed through Rippling.
-// The `id` field is the selection key. Compensation, benefits, and
-// pay-history fields are intentionally not exposed; this resource is
-// scoped to identity and employment metadata for org-structure and
-// access audits.
+// Identity, employment status, key dates, manager, department, team, and
+// primary work location for a person employed through Rippling. The `id`
+// field is the selection key. Compensation, benefits, pay history, and
+// personal contact details are intentionally not exposed; this resource is
+// scoped to the identity and employment metadata that org-structure and
+// access audits need.
 private rippling.employee @defaults("firstName lastName workEmail") {
   // Unique identifier of the employee in Rippling
   id string
@@ -88,9 +89,7 @@ private rippling.employee @defaults("firstName lastName workEmail") {
   preferredFirstName string
   // Work email address of the employee
   workEmail string
-  // Personal email address of the employee
-  personalEmail string
-  // Phone number of the employee
+  // Work phone number of the employee
   phoneNumber string
   // Job title of the employee
   title string
@@ -126,9 +125,9 @@ private rippling.employee @defaults("firstName lastName workEmail") {
 
 // Rippling department
 //
-// Examine a department defined within a Rippling company — its name,
-// its parent department (if any), and the employees assigned to it. The
-// `id` field is the selection key.
+// Department defined within a Rippling company: its name, its parent
+// department (if any), and the employees assigned to it. The `id` field is
+// the selection key.
 private rippling.department @defaults("name") {
   // Unique identifier of the department in Rippling
   id string
@@ -142,9 +141,9 @@ private rippling.department @defaults("name") {
 
 // Rippling team
 //
-// Examine a team defined within a Rippling company — its name, its parent
-// team (if nested), and the employees assigned to it. Teams in Rippling
-// are hierarchical and independent of departments. The `id` field is the
+// Team defined within a Rippling company: its name, its parent team (if
+// nested), and the employees assigned to it. Teams in Rippling are
+// hierarchical and independent of departments. The `id` field is the
 // selection key.
 private rippling.team @defaults("name") {
   // Unique identifier of the team in Rippling
@@ -159,9 +158,8 @@ private rippling.team @defaults("name") {
 
 // Rippling work location
 //
-// Examine a physical work location defined within a Rippling company —
-// the nickname, address, and primary phone number. The `id` field is the
-// selection key.
+// Physical work location defined within a Rippling company: the nickname,
+// address, and primary phone number. The `id` field is the selection key.
 private rippling.workLocation @defaults("nickname city state") {
   // Unique identifier of the work location in Rippling
   id string
@@ -187,10 +185,11 @@ private rippling.workLocation @defaults("nickname city state") {
 
 // Rippling group
 //
-// Examine a group defined within a Rippling company. Groups are used to
-// scope app provisioning and access — for example, granting a SaaS app
-// to every member of a "Sales" group. The `id` field is the selection
-// key.
+// Group defined within a Rippling company. Groups scope app provisioning
+// and access, for example granting a SaaS app to every member of a "Sales"
+// group. Membership is exposed through `members`, which makes a group the
+// place to audit who holds a privileged role. The `id` field is the
+// selection key.
 private rippling.group @defaults("name") {
   // Unique identifier of the group in Rippling
   id string

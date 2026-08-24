@@ -25,7 +25,6 @@ func newMqlRipplingCompany(runtime *plugin.Runtime, c *connection.Company) (*mql
 		"workEmail":       llx.StringData(c.WorkEmail),
 		"phone":           llx.StringData(c.Phone),
 		"primaryEmail":    llx.StringData(c.PrimaryEmail),
-		"tin":             llx.StringData(c.Tin),
 		"needsOnboarding": llx.BoolData(c.NeedsOnboard),
 		"createdAt":       llx.TimeData(c.CreatedAt.Time),
 		"streetLine1":     llx.StringData(addr.StreetLine1),
