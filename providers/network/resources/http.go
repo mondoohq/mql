@@ -464,19 +464,36 @@ func (x *mqlHttpHeaderContentType) id() (string, error) {
 // this cookie's attribute map.
 func parseSetCookieDirectives(raw any) (name *llx.RawData, value *llx.RawData, params *llx.RawData) {
 	name, value, params = llx.NilData, llx.NilData, llx.NilData
-	parseHeaderFields([]any{raw}, func(key string, val string) {
-		// RFC 6265 section 5.2: attribute names are case-insensitive,
-		// while cookie names and values keep their casing
-		if name.Value == nil && val != "" {
-			name = llx.StringData(key)
-			value = llx.StringData(val)
-			return
+
+	header, ok := raw.(string)
+	if !ok {
+		return name, value, params
+	}
+
+	for i, field := range strings.Split(header, ";") {
+		key, val, hasValue := strings.Cut(strings.TrimSpace(field), "=")
+
+		// RFC 6265 section 5.2: the first field is the cookie's name and value,
+		// and every field after it is an attribute. Position is what decides
+		// this, not whether a value is present - a cookie cleared by setting it
+		// to the empty string is still that cookie, and reading it as an
+		// attribute shifts every following attribute onto the wrong key.
+		if i == 0 {
+			// No "=" at all is not a name-value pair, so the header sets no
+			// cookie; a browser discards the whole thing.
+			if hasValue {
+				name, value = llx.StringData(key), llx.StringData(val)
+			}
+			continue
 		}
+
+		// Attribute names are case-insensitive; their values keep their casing.
 		if params.Value == nil {
 			params = llx.MapData(map[string]any{}, types.String)
 		}
 		params.Value.(map[string]any)[strings.ToLower(key)] = val
-	})
+	}
+
 	return name, value, params
 }
 
