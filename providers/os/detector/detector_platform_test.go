@@ -273,6 +273,28 @@ func TestRhcosUsrLibOsReleaseDetector(t *testing.T) {
 	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
 }
 
+func TestCloudLinux9OSDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-cloudlinux-9.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "cloudlinux", di.Name, "os name should be identified")
+	assert.Equal(t, "CloudLinux 9.6 (Vladimir Lyakhov)", di.Title, "os title should be identified")
+	assert.Equal(t, "9.6", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
+}
+
+// A host with no /etc/os-release still reaches the resolver with the title the
+// redhat family parsed out of /etc/redhat-release ("CloudLinux release 9.6
+// (Vladimir Lyakhov)" yields the title "CloudLinux").
+func TestCloudLinuxDetectFromReleaseTitle(t *testing.T) {
+	pf := &inventory.Platform{Title: "CloudLinux"}
+	detected, err := cloudlinux.Detect(cloudlinux, pf, nil)
+	assert.NoError(t, err)
+	assert.True(t, detected, "cloudlinux should be detected from the release title")
+	assert.Equal(t, "cloudlinux", pf.Name, "os name should be set")
+}
+
 func TestUbuntu1204Detector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-ubuntu1204.toml")
 	assert.Nil(t, err, "was able to create the provider")

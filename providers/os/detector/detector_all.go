@@ -557,6 +557,28 @@ var eurolinux = &PlatformResolver{
 	},
 }
 
+// CloudLinux OS is a RHEL rebuild (os-release carries ID=cloudlinux,
+// ID_LIKE="rhel fedora centos"). Without a resolver here no child of the redhat
+// family claims it, the family gate is abandoned, and everything keyed on
+// IsFamily("redhat") goes dead: packages, updates, yum and services among them.
+var cloudlinux = &PlatformResolver{
+	Name:     "cloudlinux",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		if pf.Name == "cloudlinux" {
+			return true, nil
+		}
+
+		// fallback for images that ship no os-release, only /etc/redhat-release
+		if strings.Contains(pf.Title, "CloudLinux") {
+			pf.Name = "cloudlinux"
+			return true, nil
+		}
+
+		return false, nil
+	},
+}
+
 // The centos platform resolver finds CentOS and CentOS-like platforms like alma and rocky
 var centos = &PlatformResolver{
 	Name:     "centos",
@@ -1270,7 +1292,9 @@ var redhatFamily = &PlatformResolver{
 	// want to check that platform before redhat. rhcos has the same problem: its
 	// /etc/redhat-release is stock RHEL and its PRETTY_NAME starts with "Red Hat",
 	// so it also has to be resolved before redhat.
-	Children: []*PlatformResolver{oracle, rhcos, rhel, centos, fedora, scientific, eurolinux, nobara, qubes},
+	// NOTE: cloudlinux runs before centos, whose last resort is the mere existence of
+	// /etc/centos-release, which a rebuild may ship for compatibility
+	Children: []*PlatformResolver{oracle, rhcos, rhel, cloudlinux, centos, fedora, scientific, eurolinux, nobara, qubes},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		f, err := conn.FileSystem().Open("/etc/redhat-release")
 		if err != nil {
