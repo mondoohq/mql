@@ -1080,7 +1080,13 @@ private pam.conf.serviceEntry @defaults("service module") {
   // The `/etc/pam.d/<service>` file path the line came from, or the service
   // name in the first column when read from the single-file `/etc/pam.conf`.
   service string
-  // Line number in service file (used for ID)
+  // Line number the entry was read from
+  //
+  // Zero-based: the first line of the file is 0. Every other lineNumber in
+  // this provider counts from 1, including limits.entry, logrotate.entry,
+  // crontab.entry, sudoers and modprobe, so subtract nothing here and add
+  // nothing there when comparing against a text editor. The value forms part
+  // of the entry's identity, so it is kept as it is rather than renumbered.
   lineNumber int
   // PAM entry type (e.g., auth, account, password, session)
   pamType string
