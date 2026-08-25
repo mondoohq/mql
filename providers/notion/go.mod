@@ -8,6 +8,7 @@ require (
 	github.com/cockroachdb/errors v1.14.0
 	github.com/jomei/notionapi v1.13.3
 	github.com/rs/zerolog v1.35.1
+	github.com/stretchr/testify v1.12.1
 	go.mondoo.com/mql v0.0.0-00010101000000-000000000000
 )
 
@@ -85,6 +86,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.45.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/mod v0.40.0 // indirect
 	golang.org/x/net v0.58.0 // indirect

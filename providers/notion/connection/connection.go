@@ -5,6 +5,7 @@ package connection
 
 import (
 	"context"
+	"net/http"
 	"os"
 
 	"github.com/cockroachdb/errors"
@@ -91,13 +92,25 @@ func (c *NotionConnection) BotUser() *notionapi.User {
 	return c.botUser
 }
 
+// isUnauthorized reports whether err is Notion's 401. It unwraps rather than
+// asserting on the concrete type directly, so a wrapped error still resolves
+// to the actionable "check your token" message instead of falling through to
+// the generic one. This mirrors isRestrictedResource in the resources package.
+func isUnauthorized(err error) bool {
+	var apiErr *notionapi.Error
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.Status == http.StatusUnauthorized
+}
+
 // Verify calls users/me, the cheapest authenticated endpoint Notion offers,
 // to confirm the token is valid and to capture the integration's own bot
 // identity up front.
 func (c *NotionConnection) Verify() error {
 	me, err := c.client.User.Me(context.Background())
 	if err != nil {
-		if apiErr, ok := err.(*notionapi.Error); ok && apiErr.Status == 401 {
+		if isUnauthorized(err) {
 			return errors.New("invalid Notion integration token, verify the token and try again")
 		}
 		return errors.Wrap(err, "failed to verify Notion credentials")
