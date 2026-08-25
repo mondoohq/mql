@@ -11376,6 +11376,102 @@ macos.systemsetup {
   disableKeyboardWhenEnclosureLockIsEngaged() string
 }
 
+// macOS TCC privacy permissions
+//
+// Transparency, Consent, and Control grants recording which applications hold
+// access to protected resources: Full Disk Access, Screen Recording,
+// Accessibility, Input Monitoring, Camera, Microphone, Photos, Contacts, and
+// the protected user folders. The grants come from the system store under
+// /Library/Application Support/com.apple.TCC and from a per-user store under
+// each user's Library/Application Support/com.apple.TCC, and entries carries
+// both sets, with scope naming the store an entry came from.
+//
+// Both stores are protected by System Integrity Protection, so a live scan
+// reads them only when the scanning process itself holds Full Disk Access. A
+// store that cannot be read reports an error naming the path rather than an
+// empty list. Filesystem, image, and device scans are not subject to System
+// Integrity Protection and read both stores unconditionally.
+macos.tcc {
+  // Access grants from the system store and from every user store
+  entries() []macos.tcc.entry
+}
+
+// TCC access grant
+//
+// A single application's authorization for a single protected service. The
+// service field carries the raw kTCCService identifier and serviceName its
+// readable form. The client field identifies the application, either as a
+// bundle identifier or as an absolute path to an executable, as reported by
+// clientType. The authReason field records where the decision came from,
+// which separates a grant pushed by an MDM policy from one a user consented
+// to in a dialog.
+private macos.tcc.entry @defaults("service client authorization") {
+  // Store the grant was read from
+  //
+  // Either `system` for the machine-wide store or `user` for a per-user store.
+  scope string
+  // User whose store holds this grant, null for system scope
+  user() user
+  // Raw TCC service identifier
+  //
+  // For example `kTCCServiceSystemPolicyAllFiles`, `kTCCServiceScreenCapture`,
+  // `kTCCServiceAccessibility`, `kTCCServiceListenEvent`, or
+  // `kTCCServiceMicrophone`. New macOS releases add identifiers, so this is
+  // not a closed set.
+  service string
+  // Readable name of the protected service
+  //
+  // For example `Full Disk Access`, `Screen Recording`, `Accessibility`, or
+  // `Input Monitoring`. A service identifier this release does not recognize
+  // reports its raw value here unchanged.
+  serviceName string
+  // Application holding the grant
+  //
+  // A bundle identifier such as `com.apple.Terminal`, or an absolute path to
+  // an executable, depending on clientType.
+  client string
+  // How client identifies the application
+  //
+  // Either `bundleId` or `path`.
+  clientType string
+  // Authorization state of the grant
+  //
+  // One of `denied`, `unknown`, `allowed`, or `limited`. A state this release
+  // does not recognize reports `unknown` here and its raw code in
+  // authorizationValue.
+  authorization string
+  // Raw authorization code as stored by TCC
+  //
+  // 0 denied, 1 unknown, 2 allowed, 3 limited. macOS uses further codes that
+  // this release does not decode, and they are reported here unchanged.
+  authorizationValue int
+  // Whether the application is permitted to use the service
+  //
+  // True when authorization is `allowed` or `limited`. An authorization code
+  // this release does not decode reports false here, so audits that must
+  // account for undecoded codes should read authorizationValue.
+  granted bool
+  // Origin of the authorization decision
+  //
+  // One of `error`, `userConsent`, `userSet`, `systemSet`, `servicePolicy`,
+  // `mdmPolicy`, `overridePolicy`, `missingUsageString`, `promptTimeout`,
+  // `preflightUnknown`, `entitled`, or `appTypePolicy`. A reason this release
+  // does not recognize reports `unknown` here and its raw code in
+  // authReasonValue.
+  authReason string
+  // Raw authorization reason code as stored by TCC
+  authReasonValue int
+  // Target the grant applies to, for services that control another application
+  //
+  // Set for services such as `kTCCServiceAppleEvents`, where the grant lets
+  // client drive a second application named here. TCC stores the literal
+  // `UNUSED` when a service takes no target, which is reported as an empty
+  // string.
+  indirectObjectIdentifier string
+  // When the grant was last changed
+  lastModified time
+}
+
 // OpenBSM audit_control configuration (macOS and BSD)
 //
 // OpenBSM audit subsystem configuration parsed from the
