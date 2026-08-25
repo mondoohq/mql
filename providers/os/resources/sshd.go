@@ -65,8 +65,13 @@ func (s *mqlSshdConfig) id() (string, error) {
 }
 
 func (s *mqlSshdConfig) file() (*mqlFile, error) {
+	path := defaultSshdConfig
+	if conn, ok := s.MqlRuntime.Connection.(shared.Connection); ok {
+		path = resolveVendorConfigPath(conn.FileSystem(), defaultSshdConfig)
+	}
+
 	f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
-		"path": llx.StringData(defaultSshdConfig),
+		"path": llx.StringData(path),
 	})
 	if err != nil {
 		return nil, err

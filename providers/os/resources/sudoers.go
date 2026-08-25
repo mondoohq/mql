@@ -20,6 +20,8 @@ import (
 // sudoersPaths lists the sudoers file paths to check per platform.
 // Most systems use /etc/sudoers. BSD variants and AIX install sudo via
 // package managers to non-default prefixes, so /etc/sudoers does not exist.
+const defaultSudoersFile = "/etc/sudoers"
+
 var sudoersPaths = map[string][]string{
 	"freebsd":      {"/usr/local/etc/sudoers"},
 	"dragonflybsd": {"/usr/local/etc/sudoers"},
@@ -95,7 +97,7 @@ func sudoersPathsForPlatform(conn shared.Connection) []string {
 			return paths
 		}
 	}
-	return []string{"/etc/sudoers"}
+	return []string{resolveVendorConfigPath(conn.FileSystem(), defaultSudoersFile)}
 }
 
 // files returns the list of sudoers configuration files

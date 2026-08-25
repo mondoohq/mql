@@ -9,8 +9,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/spf13/afero"
 	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/v13/providers/os/connection/shared"
 	"go.mondoo.com/mql/v13/providers/os/resources/limits"
 )
 
@@ -41,9 +43,15 @@ func (le *mqlLimitsEntry) id() (string, error) {
 func (l *mqlLimits) files() ([]any, error) {
 	var allFiles []any
 
-	// Add main limits file
+	var fs afero.Fs
+	if conn, ok := l.MqlRuntime.Connection.(shared.Connection); ok {
+		fs = conn.FileSystem()
+	}
+
+	// Add main limits file. On distributions that ship packaged defaults under
+	// /usr/etc (openSUSE Leap 16, SLE 16) this is where the file actually is.
 	mainFile, err := CreateResource(l.MqlRuntime, "file", map[string]*llx.RawData{
-		"path": llx.StringData(defaultLimitsFile),
+		"path": llx.StringData(resolveVendorConfigPath(fs, defaultLimitsFile)),
 	})
 	if err != nil {
 		return nil, err
@@ -58,23 +66,11 @@ func (l *mqlLimits) files() ([]any, error) {
 		allFiles = append(allFiles, f)
 	}
 
-	// Check if limits.d directory exists
-	dirFile, err := CreateResource(l.MqlRuntime, "file", map[string]*llx.RawData{
-		"path": llx.StringData(defaultLimitsDir),
-	})
-	if err != nil {
-		return nil, err
-	}
-	dir := dirFile.(*mqlFile)
-	dirExists := dir.GetExists()
-	if dirExists.Error != nil {
-		return nil, dirExists.Error
-	}
-
-	if dirExists.Data {
-		// Get all files from limits.d directory
+	// Drop-ins merge across both trees, with /etc shadowing a same-named file
+	// in /usr/etc.
+	for _, dir := range vendorConfigDirs(fs, defaultLimitsDir) {
 		files, err := CreateResource(l.MqlRuntime, "files.find", map[string]*llx.RawData{
-			"from": llx.StringData(defaultLimitsDir),
+			"from": llx.StringData(dir),
 			"type": llx.StringData("file"),
 		})
 		if err != nil {
@@ -96,9 +92,13 @@ func (l *mqlLimits) files() ([]any, error) {
 			}
 
 			// Only include .conf files
-			if strings.HasSuffix(basename.Data, ".conf") {
-				allFiles = append(allFiles, file)
+			if !strings.HasSuffix(basename.Data, ".conf") {
+				continue
 			}
+			if vendorConfigShadowed(fs, file.Path.Data) {
+				continue
+			}
+			allFiles = append(allFiles, file)
 		}
 	}
 
