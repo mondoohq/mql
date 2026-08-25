@@ -1496,3 +1496,19 @@ func TestSles16Detector(t *testing.T) {
 	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
 	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
 }
+
+// Fedora ELN's /etc/redhat-release reads "Fedora ELN 11", with no "release"
+// keyword. The redhat family resolver treats an unparseable release file as
+// "not a redhat host", so before this was handled ELN skipped the whole redhat
+// subtree and landed in defaultLinux as name "eln" with no redhat family,
+// which killed every resource gated on IsFamily("redhat").
+func TestFedoraELNDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-fedora-eln.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "fedora", di.Name, "os name should be identified")
+	assert.Equal(t, "Fedora ELN 11", di.Title, "os title should be identified")
+	assert.Equal(t, "11", di.Version, "os version should be identified")
+	assert.Equal(t, "aarch64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
+}
