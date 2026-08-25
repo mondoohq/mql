@@ -113,6 +113,61 @@ func suseKernelMatchesRunning(pkgVersion, pkgName, runningKernelVersion string) 
 	return strings.HasPrefix(stripRPMEpoch(pkgVersion), versionPrefix)
 }
 
+// suseKernelName reports the flavor a SUSE kernel package carries, and whether
+// the package holds a bootable kernel at all.
+//
+// SUSE names its bootable kernels "kernel-<flavor>" (kernel-default,
+// kernel-azure, kernel-rt, kernel-kvmsmall), plus the stripped
+// "kernel-<flavor>-base" variant that MicroOS boots. Everything else shipped
+// under the kernel- prefix is a subpackage that contains no kernel:
+// kernel-firmware-*, kernel-devel, kernel-macros, kernel-source, kernel-syms,
+// kernel-docs, kernel-install-tools, kernel-obs-build, kernel-livepatch-*, and
+// the per-flavor -devel/-extra/-optional/-vdso builds.
+//
+// Listing those invents installed kernels that are not on disk, and their
+// versions are unrelated to any kernel release: a stock host with
+// kernel-firmware-network and kernel-macros installed reported three
+// "installed kernels", one of them at a higher version than the running one,
+// which reads as a pending kernel upgrade that does not exist.
+//
+// A bootable name is therefore one flavor segment, optionally followed by
+// "-base", and the flavor is not one of the subpackage words. A flavor SUSE
+// adds later still resolves; a subpackage never does.
+func suseKernelName(pkgName string) (string, bool) {
+	flavor, ok := strings.CutPrefix(pkgName, "kernel-")
+	if !ok || flavor == "" {
+		return "", false
+	}
+
+	// kernel-default-base is bootable; kernel-default-devel and
+	// kernel-firmware-network are not.
+	flavor = strings.TrimSuffix(flavor, "-base")
+	if strings.Contains(flavor, "-") {
+		return "", false
+	}
+
+	if suseKernelSubpackages[flavor] {
+		return "", false
+	}
+
+	return pkgName, true
+}
+
+// suseKernelSubpackages are the single-segment kernel-* packages that are not
+// kernels. Multi-segment subpackages (kernel-firmware-network,
+// kernel-obs-build, kernel-default-devel) are already excluded by shape.
+// "base" only appears as a suffix on a real flavor (kernel-default-base); on
+// its own it is not a kernel.
+var suseKernelSubpackages = map[string]bool{
+	"base":     true,
+	"devel":    true,
+	"docs":     true,
+	"firmware": true,
+	"macros":   true,
+	"source":   true,
+	"syms":     true,
+}
+
 // debianImageKernelName reports the kernel release a linux-image package
 // carries, and whether the package holds a kernel at all.
 //
@@ -141,149 +196,372 @@ func debianImageKernelName(pkgName string) (string, bool) {
 	return name, true
 }
 
-func (k *mqlKernel) installed() ([]any, error) {
-	res := []KernelVersion{}
+// dpkgStatusIsInstalled reports whether a dpkg status triple describes a
+// package whose files are actually on disk.
+//
+// The triple is "<want> <flag> <state>" and only the state answers this. A
+// package that was removed but not purged keeps its entry in
+// /var/lib/dpkg/status as
+//
+//	Status: deinstall ok config-files
+//
+// with its files already gone. The kernel such an entry names cannot be
+// booted, so counting it inflates the installed set with a phantom and can
+// fail a "the running kernel is the newest installed" assertion against a
+// kernel that is not there. The want field is deliberately ignored: a held
+// package ("hold ok installed") is still installed, and isHeldStatus in the
+// packages package is what reads that position.
+//
+// An entry carrying no status at all is not evidence of removal. Google
+// distroless images keep their dpkg metadata in /var/lib/dpkg/status.d
+// stanzas that omit the Status field entirely, so an absent or unparseable
+// triple is treated as unknown and kept rather than silently dropped.
+func dpkgStatusIsInstalled(status string) bool {
+	fields := strings.Fields(status)
+	if len(fields) < 3 {
+		return true
+	}
+	return fields[2] == "installed"
+}
 
+// archKernelPackages is the set of Arch Linux packages that carry a kernel.
+//
+// It is an explicit allowlist rather than a "linux" prefix match because
+// Arch pairs every kernel with a headers package and ships other linux-
+// prefixed packages that hold no kernel at all: linux-headers,
+// linux-lts-headers, linux-api-headers and linux-firmware would all pass a
+// prefix test and none of them is bootable.
+var archKernelPackages = map[string]bool{
+	"linux":          true, // mainline
+	"linux-lts":      true, // long-term support
+	"linux-zen":      true, // desktop-tuned
+	"linux-hardened": true, // security-hardened
+}
+
+// foldArchVersionSeparators rewrites the separators in an Arch kernel
+// version to one canonical form, so the pacman spelling and the uname
+// spelling of the same kernel compare equal. See archKernelMatchesRunning.
+func foldArchVersionSeparators(version string) string {
+	return strings.ReplaceAll(version, ".", "-")
+}
+
+// archKernelMatchesRunning reports whether the given pacman kernel package
+// describes the currently running kernel.
+//
+// pacman and uname disagree on one separator. The package version joins the
+// upstream version to the Arch patch level with a dot, while the release
+// uname reports joins them with a dash:
+//
+//	pacman: linux 7.1.9.arch1-2
+//	uname:  7.1.9-arch1-2
+//
+// so a direct string comparison never matches and every entry in the list
+// would report running:false. Folding both separators into one form removes
+// the disagreement without having to know which of the two a given flavor
+// spells it with.
+//
+// The flavor lives in the package name suffix and is appended to the
+// release uname reports: linux-lts 6.6.67-1 runs as "6.6.67-1-lts".
+// Trimming that suffix from the running version first (the shape
+// suseKernelMatchesRunning uses) leaves the two version strings directly
+// comparable. The bare "linux" package has an empty suffix, for which the
+// trim is a no-op.
+func archKernelMatchesRunning(pkgVersion, pkgName, runningKernelVersion string) bool {
+	if runningKernelVersion == "" {
+		return false
+	}
+
+	flavor := strings.TrimPrefix(pkgName, "linux")
+	if !strings.HasSuffix(runningKernelVersion, flavor) {
+		return false
+	}
+	running := strings.TrimSuffix(runningKernelVersion, flavor)
+
+	return foldArchVersionSeparators(pkgVersion) == foldArchVersionSeparators(running)
+}
+
+// kernelPackage is the subset of an installed package the per-family kernel
+// filters read. Lifting it out of *mqlPackage keeps every filter a pure
+// function of values, which is what makes them testable without a runtime.
+type kernelPackage struct {
+	Name    string
+	Version string
+	Arch    string
+	Status  string
+}
+
+// kernelFilter maps one installed package to the kernel it carries. The
+// second return is false when the package is not a kernel (a -headers
+// package, a Debian metapackage, anything unrelated) or when it names a
+// kernel the host cannot boot (a dpkg entry removed but not purged).
+type kernelFilter func(pkg kernelPackage, runningKernelVersion string) (KernelVersion, bool)
+
+// debianKernelVersion reads a dpkg linux-image package.
+//
+// kernel version is "4.19.0-13-cloud-amd64", carried by packages named
+// "linux-image-*":
+//
+//	[{
+//		name: "linux-image-4.19.0-12-cloud-amd64"
+//		version: "4.19.152-1"
+//	}, {
+//		name: "linux-image-4.19.0-13-cloud-amd64"
+//		version: "4.19.160-2"
+//	}, {
+//		name: "linux-image-cloud-amd64"
+//		version: "4.19+105+deb10u8"
+//	}]
+func debianKernelVersion(pkg kernelPackage, runningKernelVersion string) (KernelVersion, bool) {
+	kernelName, ok := debianImageKernelName(pkg.Name)
+	if !ok {
+		return KernelVersion{}, false
+	}
+
+	// A removed-but-not-purged image package still has a linux-image-<release>
+	// name in the dpkg database long after its files are gone.
+	if !dpkgStatusIsInstalled(pkg.Status) {
+		return KernelVersion{}, false
+	}
+
+	return KernelVersion{
+		Name:    kernelName,
+		Version: pkg.Version,
+		Running: kernelName == runningKernelVersion,
+	}, true
+}
+
+// oracleKernelVersion reads an Oracle Linux kernel package. Oracle is rpm
+// based but might be running the UEK kernel, so both "kernel" and
+// "kernel-uek" count. Kernel version is "6.12.0-105.51.5.el9uek.x86_64".
+func oracleKernelVersion(pkg kernelPackage, runningKernelVersion string) (KernelVersion, bool) {
+	if pkg.Name != "kernel" && pkg.Name != "kernel-uek" {
+		return KernelVersion{}, false
+	}
+
+	return KernelVersion{
+		Name:    pkg.Name,
+		Version: pkg.Version,
+		Running: rpmKernelMatchesRunning(pkg.Version, pkg.Arch, runningKernelVersion),
+	}, true
+}
+
+// redhatKernelVersion reads an rpm kernel package.
+//
+// kernel version is "3.10.0-1160.11.1.el7.x86_64", carried by packages
+// named "kernel":
+//
+//	[{
+//		name: "kernel"
+//		version: "3.10.0-1127.el7"
+//	}, {
+//		name: "kernel"
+//		version: "3.10.0-1160.11.1.el7"
+//	}, {
+//		name: "kernel"
+//		version: "3.10.0-1127.19.1.el7"
+//	}]
+func redhatKernelVersion(pkg kernelPackage, runningKernelVersion string) (KernelVersion, bool) {
+	if pkg.Name != "kernel" {
+		return KernelVersion{}, false
+	}
+
+	return KernelVersion{
+		Name:    pkg.Name,
+		Version: pkg.Version,
+		Running: rpmKernelMatchesRunning(pkg.Version, pkg.Arch, runningKernelVersion),
+	}, true
+}
+
+// photonKernelVersion reads a Photon kernel package, whose flavor lives in
+// the package name suffix ("linux" bare, "linux-esx" for VMware).
+func photonKernelVersion(pkg kernelPackage, runningKernelVersion string) (KernelVersion, bool) {
+	if !strings.HasPrefix(pkg.Name, "linux") {
+		return KernelVersion{}, false
+	}
+
+	return KernelVersion{
+		Name:    pkg.Name,
+		Version: pkg.Version + strings.TrimPrefix(pkg.Name, "linux"),
+		Running: photonKernelMatchesRunning(pkg.Version, pkg.Name, runningKernelVersion),
+	}, true
+}
+
+// suseKernelVersion reads a SUSE kernel package.
+//
+//	kernel.info[version] == "4.12.14-122.23-default"
+//	rpm -qa | grep -i kernel
+//	kernel-default-4.12.14-122.23.1.x86_64
+//	kernel-firmware-20190618-5.14.1.noarch
+//	kernel-default-4.12.14-122.60.1.x86_64
+//	cat /proc/version
+//	Linux version 4.12.14-122.23-default (geeko@buildhost)
+func suseKernelVersion(pkg kernelPackage, runningKernelVersion string) (KernelVersion, bool) {
+	name, ok := suseKernelName(pkg.Name)
+	if !ok {
+		return KernelVersion{}, false
+	}
+
+	return KernelVersion{
+		Name:    name,
+		Version: pkg.Version + strings.TrimPrefix(name, "kernel"),
+		Running: suseKernelMatchesRunning(pkg.Version, name, runningKernelVersion),
+	}, true
+}
+
+// archKernelVersion reads a pacman kernel package. The installed version
+// reads "7.1.9.arch1-2" while uname reports "7.1.8-arch1-3", so the running
+// comparison has to normalise the separator (archKernelMatchesRunning).
+func archKernelVersion(pkg kernelPackage, runningKernelVersion string) (KernelVersion, bool) {
+	if !archKernelPackages[pkg.Name] {
+		return KernelVersion{}, false
+	}
+
+	return KernelVersion{
+		Name:    pkg.Name,
+		Version: pkg.Version,
+		Running: archKernelMatchesRunning(pkg.Version, pkg.Name, runningKernelVersion),
+	}, true
+}
+
+// kernelFilterForPlatform picks the filter that knows how this platform's
+// package manager names and versions kernel packages. The second return is
+// false when no filter covers the platform; kernelInstalledFilter decides
+// what that means.
+//
+// The order matters and matches the order these families were originally
+// dispatched in: Oracle Linux is checked before the redhat family it
+// belongs to, because it may be running the UEK kernel.
+func kernelFilterForPlatform(platform *inventory.Platform) (kernelFilter, bool) {
+	switch {
+	case platform == nil || !platform.IsFamily(inventory.FAMILY_LINUX):
+		return nil, false
+	case platform.IsFamily("debian"):
+		return debianKernelVersion, true
+	case platform.Name == "oraclelinux":
+		return oracleKernelVersion, true
+	case platform.IsFamily("redhat") || platform.Name == "amazonlinux":
+		return redhatKernelVersion, true
+	case platform.Name == "photon":
+		return photonKernelVersion, true
+	case platform.IsFamily("suse"):
+		return suseKernelVersion, true
+	case platform.IsFamily("arch"):
+		return archKernelVersion, true
+	default:
+		return nil, false
+	}
+}
+
+// kernelInstalledFilter resolves the filter for a platform and decides how
+// installed() must answer when there is none. The three outcomes are
+// deliberately distinct:
+//
+//   - a filter, no error: enumerate the kernel packages.
+//   - no filter, an error: a Linux host whose package manager has no case
+//     here. A Linux host is running a kernel and got it from a package
+//     manager, so "no kernels installed" is never the truth. Answering with
+//     an empty list would be indistinguishable from a verified-empty result,
+//     and a policy asserting "the running kernel is the newest installed"
+//     would evaluate over the empty set and pass without checking anything.
+//     The error names the platform so the missing case can be added.
+//   - no filter, no error: not Linux at all. darwin, bsd and aix reach
+//     installed() because initKernel admits them for kernel.info, modules
+//     and parameters, but a package-managed kernel image is not a thing that
+//     exists there. That answer stays the empty list it has always been:
+//     whether it should be null instead is a separate question about a
+//     platform where the concept barely applies, and not one this dispatch
+//     should decide.
+func kernelInstalledFilter(platform *inventory.Platform) (kernelFilter, error) {
+	if filter, ok := kernelFilterForPlatform(platform); ok {
+		return filter, nil
+	}
+
+	if platform.IsFamily(inventory.FAMILY_LINUX) {
+		return nil, errors.New("kernel.installed is not supported on platform " + platformLabel(platform))
+	}
+
+	return nil, nil
+}
+
+func (k *mqlKernel) installed() ([]any, error) {
 	conn := k.MqlRuntime.Connection.(shared.Connection)
 	platform := conn.Asset().Platform
 
-	if platform.IsFamily(inventory.FAMILY_LINUX) {
-
-		// 1. gather running kernel information
-		info := k.GetInfo()
-		if info.Error != nil {
-			return nil, errors.New("could not determine kernel version")
-		}
-
-		kernelInfo, ok := info.Data.(map[string]any)
-		if !ok {
-			return nil, errors.New("no structured kernel information found")
-		}
-
-		runningKernelVersion := kernelInfo["version"].(string)
-
-		// 2. get all packages
-		raw, err := CreateResource(k.MqlRuntime, "packages", map[string]*llx.RawData{})
-		if err != nil {
-			return nil, err
-		}
-		packages := raw.(*mqlPackages)
-
-		tlist := packages.GetList()
-		if tlist.Error != nil {
-			return nil, tlist.Error
-		}
-		mqlPkgs := tlist.Data
-
-		filterKernel := func(pkg *mqlPackage) {}
-
-		if platform.IsFamily("debian") {
-			// debian based systems
-			// kernel version is  "4.19.0-13-cloud-amd64"
-			// filter by packages named "linux-image-*"
-			//[{
-			//	name: "linux-image-4.19.0-12-cloud-amd64"
-			//	version: "4.19.152-1"
-			//}, {
-			//	name: "linux-image-4.19.0-13-cloud-amd64"
-			//	version: "4.19.160-2"
-			//}, {
-			//	name: "linux-image-cloud-amd64"
-			//	version: "4.19+105+deb10u8"
-			//}]
-			filterKernel = func(pkg *mqlPackage) {
-				kernelName, ok := debianImageKernelName(pkg.Name.Data)
-				if !ok {
-					return
-				}
-
-				res = append(res, KernelVersion{
-					Name:    kernelName,
-					Version: pkg.Version.Data,
-					Running: kernelName == runningKernelVersion,
-				})
-			}
-		} else if platform.Name == "oraclelinux" {
-			// ORacleLinux is an rpm based systems, but might be running the UEK kernel
-			// kernel version is  "6.12.0-105.51.5.el9uek.x86_64"
-			// filter by packages named "kernel" OR "kernel-uek"
-			filterKernel = func(pkg *mqlPackage) {
-				if pkg.Name.Data == "kernel" || pkg.Name.Data == "kernel-uek" {
-					version := pkg.Version.Data
-					res = append(res, KernelVersion{
-						Name:    pkg.Name.Data,
-						Version: version,
-						Running: rpmKernelMatchesRunning(version, pkg.Arch.Data, runningKernelVersion),
-					})
-				}
-			}
-		} else if platform.IsFamily("redhat") || platform.Name == "amazonlinux" {
-			// rpm based systems
-			// kernel version is  "3.10.0-1160.11.1.el7.x86_64"
-			// filter by packages named "kernel"
-			//[{
-			//	name: "kernel"
-			//	version: "3.10.0-1127.el7"
-			//}, {
-			//	name: "kernel"
-			//	version: "3.10.0-1160.11.1.el7"
-			//}, {
-			//	name: "kernel"
-			//	version: "3.10.0-1127.19.1.el7"
-			//}]
-			filterKernel = func(pkg *mqlPackage) {
-				if pkg.Name.Data == "kernel" {
-					version := pkg.Version.Data
-					res = append(res, KernelVersion{
-						Name:    pkg.Name.Data,
-						Version: version,
-						Running: rpmKernelMatchesRunning(version, pkg.Arch.Data, runningKernelVersion),
-					})
-				}
-			}
-		} else if platform.Name == "photon" {
-			filterKernel = func(pkg *mqlPackage) {
-				name := pkg.Name.Data
-				if strings.HasPrefix(name, "linux") {
-					version := pkg.Version.Data
-
-					res = append(res, KernelVersion{
-						Name:    name,
-						Version: version + strings.TrimPrefix(name, "linux"),
-						Running: photonKernelMatchesRunning(version, name, runningKernelVersion),
-					})
-				}
-			}
-		} else if platform.IsFamily("suse") {
-			// kernel.info[version] == "4.12.14-122.23-default"
-			// rpm -qa | grep -i kernel
-			// kernel-default-4.12.14-122.23.1.x86_64
-			// kernel-firmware-20190618-5.14.1.noarch
-			// kernel-default-4.12.14-122.60.1.x86_64
-			// cat /proc/version
-			// Linux version 4.12.14-122.23-default (geeko@buildhost)
-			filterKernel = func(pkg *mqlPackage) {
-				name := pkg.Name.Data
-				if strings.HasPrefix(name, "kernel-") {
-					version := pkg.Version.Data
-					res = append(res, KernelVersion{
-						Name:    name,
-						Version: version + strings.TrimPrefix(name, "kernel"),
-						Running: suseKernelMatchesRunning(version, name, runningKernelVersion),
-					})
-				}
-			}
-		}
-
-		for i := range mqlPkgs {
-			mqlPkg := mqlPkgs[i]
-			pkg := mqlPkg.(*mqlPackage)
-			filterKernel(pkg)
-		}
+	filterKernel, err := kernelInstalledFilter(platform)
+	if err != nil {
+		return nil, err
+	}
+	if filterKernel == nil {
+		// Not Linux: unchanged, and deliberately so. See kernelInstalledFilter.
+		return convert.JsonToDictSlice([]KernelVersion{})
 	}
 
-	// empty when there is no kernel information found
+	// 1. gather running kernel information
+	info := k.GetInfo()
+	if info.Error != nil {
+		return nil, errors.New("could not determine kernel version")
+	}
+
+	kernelInfo, ok := info.Data.(map[string]any)
+	if !ok {
+		return nil, errors.New("no structured kernel information found")
+	}
+
+	runningKernelVersion, ok := kernelInfo["version"].(string)
+	if !ok {
+		return nil, errors.New("no running kernel version found")
+	}
+
+	// 2. get all packages
+	raw, err := CreateResource(k.MqlRuntime, "packages", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	packages := raw.(*mqlPackages)
+
+	tlist := packages.GetList()
+	if tlist.Error != nil {
+		return nil, tlist.Error
+	}
+	mqlPkgs := tlist.Data
+
+	res := []KernelVersion{}
+	for i := range mqlPkgs {
+		pkg, ok := mqlPkgs[i].(*mqlPackage)
+		if !ok {
+			continue
+		}
+
+		kernelVersion, ok := filterKernel(kernelPackage{
+			Name:    pkg.Name.Data,
+			Version: pkg.Version.Data,
+			Arch:    pkg.Arch.Data,
+			Status:  pkg.Status.Data,
+		}, runningKernelVersion)
+		if !ok {
+			continue
+		}
+
+		res = append(res, kernelVersion)
+	}
+
 	return convert.JsonToDictSlice(res)
+}
+
+// platformLabel names a platform for an error message, falling back to the
+// family when the name is empty so the message never trails off into
+// nothing.
+func platformLabel(platform *inventory.Platform) string {
+	if platform == nil {
+		return "unknown"
+	}
+	if platform.Name != "" {
+		return platform.Name
+	}
+	if len(platform.Family) > 0 {
+		return strings.Join(platform.Family, "/")
+	}
+	return "unknown"
 }
 
 func (k *mqlKernel) info() (any, error) {

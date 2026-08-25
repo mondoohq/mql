@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 )
 
 // TestParseModprobeConfig locks down the modprobe.d parser used by the
@@ -532,6 +534,548 @@ func TestParseModulesBuiltin(t *testing.T) {
 			}
 			for _, name := range tc.absent {
 				assert.False(t, got[name], "expected %q NOT to be builtin", name)
+			}
+		})
+	}
+}
+
+// TestArchKernelMatchesRunning is the unit-level reproducer for the Arch
+// half of the silent-empty bug. Read off a live Arch host: pacman reports
+// `linux 7.1.9.arch1-2` while uname reports `7.1.8-arch1-3`. The two
+// spellings disagree on the separator in front of the arch patch level, so
+// a naive string equality reports running:false for every kernel including
+// the one that is actually booted.
+func TestArchKernelMatchesRunning(t *testing.T) {
+	cases := []struct {
+		name           string
+		pkgVersion     string
+		pkgName        string
+		runningKernel  string
+		expectedResult bool
+	}{
+		{
+			name:           "live Arch host: newer kernel installed, older still running",
+			pkgVersion:     "7.1.9.arch1-2",
+			pkgName:        "linux",
+			runningKernel:  "7.1.8-arch1-3",
+			expectedResult: false,
+		},
+		{
+			name:           "booted kernel matches across the dot/dash separator",
+			pkgVersion:     "7.1.8.arch1-3",
+			pkgName:        "linux",
+			runningKernel:  "7.1.8-arch1-3",
+			expectedResult: true,
+		},
+		{
+			name:           "linux-lts carries its flavor as a release suffix",
+			pkgVersion:     "6.6.67-1",
+			pkgName:        "linux-lts",
+			runningKernel:  "6.6.67-1-lts",
+			expectedResult: true,
+		},
+		{
+			name:           "linux-zen matches with both a patch marker and a flavor suffix",
+			pkgVersion:     "6.12.4.zen1-1",
+			pkgName:        "linux-zen",
+			runningKernel:  "6.12.4-zen1-1-zen",
+			expectedResult: true,
+		},
+		{
+			name:           "linux-hardened matches with both a patch marker and a flavor suffix",
+			pkgVersion:     "6.12.4.hardened1-1",
+			pkgName:        "linux-hardened",
+			runningKernel:  "6.12.4-hardened1-1-hardened",
+			expectedResult: true,
+		},
+		{
+			name:           "mainline linux does not claim a running lts kernel",
+			pkgVersion:     "6.6.67-1",
+			pkgName:        "linux",
+			runningKernel:  "6.6.67-1-lts",
+			expectedResult: false,
+		},
+		{
+			name:           "lts does not claim a running mainline kernel",
+			pkgVersion:     "7.1.8.arch1-3",
+			pkgName:        "linux-lts",
+			runningKernel:  "7.1.8-arch1-3",
+			expectedResult: false,
+		},
+		{
+			name:           "older lts build does not match the running one",
+			pkgVersion:     "6.6.60-1",
+			pkgName:        "linux-lts",
+			runningKernel:  "6.6.67-1-lts",
+			expectedResult: false,
+		},
+		{
+			name:           "running-kernel string is empty (kernel.info unavailable)",
+			pkgVersion:     "7.1.9.arch1-2",
+			pkgName:        "linux",
+			runningKernel:  "",
+			expectedResult: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := archKernelMatchesRunning(tc.pkgVersion, tc.pkgName, tc.runningKernel)
+			assert.Equal(t, tc.expectedResult, got)
+		})
+	}
+}
+
+// TestDpkgStatusIsInstalled locks down the dpkg status gate behind the
+// debian branch of kernel.installed. The case that motivated it was found
+// on Linux Mint: a kernel removed but not purged keeps its
+// linux-image-<release> entry in /var/lib/dpkg/status with the state
+// "config-files" and no files on disk, and was being reported as installed.
+func TestDpkgStatusIsInstalled(t *testing.T) {
+	cases := []struct {
+		status    string
+		installed bool
+		why       string
+	}{
+		{"install ok installed", true, "the ordinary installed package"},
+		{"deinstall ok config-files", false, "removed but not purged: the files are gone"},
+		{"purge ok config-files", false, "queued for purge, files already gone"},
+		{"hold ok installed", true, "a held package is still installed"},
+		{"install ok half-installed", false, "an interrupted install is not bootable"},
+		{"install ok unpacked", false, "unpacked but never configured"},
+		{"deinstall ok not-installed", false, "explicitly not installed"},
+		{"", true, "no status at all: distroless status.d stanzas omit the field, so unknown rather than removed"},
+		{"install ok", true, "not a full triple: unknown rather than removed"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.status, func(t *testing.T) {
+			assert.Equal(t, tc.installed, dpkgStatusIsInstalled(tc.status), tc.why)
+		})
+	}
+}
+
+// TestKernelFilters covers each per-family filter end to end: which
+// packages it accepts as kernels, what it names them, and whether it marks
+// the running one. The redhat / oraclelinux / photon / suse / debian rows
+// are regression coverage that the extraction of these closures into pure
+// functions did not change what they report.
+func TestKernelFilters(t *testing.T) {
+	cases := []struct {
+		name          string
+		filter        kernelFilter
+		pkg           kernelPackage
+		runningKernel string
+		wantOK        bool
+		want          KernelVersion
+	}{
+		// --- arch (new) ---
+		{
+			name:          "arch: installed mainline kernel, older one running",
+			filter:        archKernelVersion,
+			pkg:           kernelPackage{Name: "linux", Version: "7.1.9.arch1-2"},
+			runningKernel: "7.1.8-arch1-3",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux", Version: "7.1.9.arch1-2", Running: false},
+		},
+		{
+			name:          "arch: the booted kernel is marked running",
+			filter:        archKernelVersion,
+			pkg:           kernelPackage{Name: "linux", Version: "7.1.8.arch1-3"},
+			runningKernel: "7.1.8-arch1-3",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux", Version: "7.1.8.arch1-3", Running: true},
+		},
+		{
+			name:          "arch: linux-headers is not a kernel",
+			filter:        archKernelVersion,
+			pkg:           kernelPackage{Name: "linux-headers", Version: "7.1.9.arch1-2"},
+			runningKernel: "7.1.8-arch1-3",
+			wantOK:        false,
+		},
+		{
+			name:          "arch: linux-lts-headers is not a kernel",
+			filter:        archKernelVersion,
+			pkg:           kernelPackage{Name: "linux-lts-headers", Version: "6.6.67-1"},
+			runningKernel: "6.6.67-1-lts",
+			wantOK:        false,
+		},
+		{
+			name:          "arch: linux-api-headers is not a kernel",
+			filter:        archKernelVersion,
+			pkg:           kernelPackage{Name: "linux-api-headers", Version: "6.10-1"},
+			runningKernel: "7.1.8-arch1-3",
+			wantOK:        false,
+		},
+		{
+			name:          "arch: linux-firmware is not a kernel",
+			filter:        archKernelVersion,
+			pkg:           kernelPackage{Name: "linux-firmware", Version: "20241210.20e46d0f-1"},
+			runningKernel: "7.1.8-arch1-3",
+			wantOK:        false,
+		},
+		{
+			name:          "arch: an unrelated package is not a kernel",
+			filter:        archKernelVersion,
+			pkg:           kernelPackage{Name: "bash", Version: "5.2.037-1"},
+			runningKernel: "7.1.8-arch1-3",
+			wantOK:        false,
+		},
+		{
+			name:          "arch: linux-lts is a kernel and is marked running",
+			filter:        archKernelVersion,
+			pkg:           kernelPackage{Name: "linux-lts", Version: "6.6.67-1"},
+			runningKernel: "6.6.67-1-lts",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux-lts", Version: "6.6.67-1", Running: true},
+		},
+
+		// --- debian (status gate is new, naming is regression) ---
+		{
+			name:          "debian: install ok installed is accepted and marked running",
+			filter:        debianKernelVersion,
+			pkg:           kernelPackage{Name: "linux-image-4.19.0-13-cloud-amd64", Version: "4.19.160-2", Status: "install ok installed"},
+			runningKernel: "4.19.0-13-cloud-amd64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "4.19.0-13-cloud-amd64", Version: "4.19.160-2", Running: true},
+		},
+		{
+			name:          "debian: an older installed image is accepted but not running",
+			filter:        debianKernelVersion,
+			pkg:           kernelPackage{Name: "linux-image-4.19.0-12-cloud-amd64", Version: "4.19.152-1", Status: "install ok installed"},
+			runningKernel: "4.19.0-13-cloud-amd64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "4.19.0-12-cloud-amd64", Version: "4.19.152-1", Running: false},
+		},
+		{
+			name:          "debian: deinstall ok config-files is rejected",
+			filter:        debianKernelVersion,
+			pkg:           kernelPackage{Name: "linux-image-5.15.0-91-generic", Version: "5.15.0-91.101", Status: "deinstall ok config-files"},
+			runningKernel: "5.15.0-94-generic",
+			wantOK:        false,
+		},
+		{
+			name:          "debian: a removed image is rejected even when it names the running kernel",
+			filter:        debianKernelVersion,
+			pkg:           kernelPackage{Name: "linux-image-5.15.0-94-generic", Version: "5.15.0-94.104", Status: "purge ok config-files"},
+			runningKernel: "5.15.0-94-generic",
+			wantOK:        false,
+		},
+		{
+			name:          "debian: a held image is still installed",
+			filter:        debianKernelVersion,
+			pkg:           kernelPackage{Name: "linux-image-5.15.0-94-generic", Version: "5.15.0-94.104", Status: "hold ok installed"},
+			runningKernel: "5.15.0-94-generic",
+			wantOK:        true,
+			want:          KernelVersion{Name: "5.15.0-94-generic", Version: "5.15.0-94.104", Running: true},
+		},
+		{
+			name:          "debian: an image with no status is kept (distroless status.d omits it)",
+			filter:        debianKernelVersion,
+			pkg:           kernelPackage{Name: "linux-image-4.19.0-13-cloud-amd64", Version: "4.19.160-2", Status: ""},
+			runningKernel: "4.19.0-13-cloud-amd64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "4.19.0-13-cloud-amd64", Version: "4.19.160-2", Running: true},
+		},
+		{
+			name:          "debian: the metapackage carries no kernel",
+			filter:        debianKernelVersion,
+			pkg:           kernelPackage{Name: "linux-image-cloud-amd64", Version: "4.19+105+deb10u8", Status: "install ok installed"},
+			runningKernel: "4.19.0-13-cloud-amd64",
+			wantOK:        false,
+		},
+		{
+			name:          "debian: an unrelated package is not a kernel",
+			filter:        debianKernelVersion,
+			pkg:           kernelPackage{Name: "linux-headers-4.19.0-13-cloud-amd64", Version: "4.19.160-2", Status: "install ok installed"},
+			runningKernel: "4.19.0-13-cloud-amd64",
+			wantOK:        false,
+		},
+
+		// --- redhat (regression) ---
+		{
+			name:          "redhat: kernel package matches running via arch suffix",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel", Version: "3.10.0-1160.11.1.el7", Arch: "x86_64"},
+			runningKernel: "3.10.0-1160.11.1.el7.x86_64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel", Version: "3.10.0-1160.11.1.el7", Running: true},
+		},
+		{
+			name:          "redhat: an older kernel is listed but not running",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel", Version: "3.10.0-1127.el7", Arch: "x86_64"},
+			runningKernel: "3.10.0-1160.11.1.el7.x86_64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel", Version: "3.10.0-1127.el7", Running: false},
+		},
+		{
+			name:          "redhat: kernel-devel is not a kernel",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-devel", Version: "3.10.0-1160.11.1.el7", Arch: "x86_64"},
+			runningKernel: "3.10.0-1160.11.1.el7.x86_64",
+			wantOK:        false,
+		},
+		{
+			name:          "redhat: amazonlinux epoch is stripped before matching",
+			filter:        redhatKernelVersion,
+			pkg:           kernelPackage{Name: "kernel", Version: "1:6.1.170-210.320.amzn2023", Arch: "x86_64"},
+			runningKernel: "6.1.170-210.320.amzn2023.x86_64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel", Version: "1:6.1.170-210.320.amzn2023", Running: true},
+		},
+
+		// --- oraclelinux (regression) ---
+		{
+			name:          "oraclelinux: the UEK kernel is recognised",
+			filter:        oracleKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-uek", Version: "1:6.12.0-105.51.5.el9uek", Arch: "x86_64"},
+			runningKernel: "6.12.0-105.51.5.el9uek.x86_64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel-uek", Version: "1:6.12.0-105.51.5.el9uek", Running: true},
+		},
+		{
+			name:          "oraclelinux: the stock kernel is listed but not running under UEK",
+			filter:        oracleKernelVersion,
+			pkg:           kernelPackage{Name: "kernel", Version: "5.14.0-427.el9", Arch: "x86_64"},
+			runningKernel: "6.12.0-105.51.5.el9uek.x86_64",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel", Version: "5.14.0-427.el9", Running: false},
+		},
+		{
+			name:          "oraclelinux: kernel-uek-devel is not a kernel",
+			filter:        oracleKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-uek-devel", Version: "1:6.12.0-105.51.5.el9uek", Arch: "x86_64"},
+			runningKernel: "6.12.0-105.51.5.el9uek.x86_64",
+			wantOK:        false,
+		},
+
+		// --- photon (regression) ---
+		{
+			name:          "photon: the esx flavor is recognised and marked running",
+			filter:        photonKernelVersion,
+			pkg:           kernelPackage{Name: "linux-esx", Version: "4.19.97-1.ph3"},
+			runningKernel: "4.19.97-1.ph3-esx",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux-esx", Version: "4.19.97-1.ph3-esx", Running: true},
+		},
+		{
+			name:          "photon: the bare linux package is recognised",
+			filter:        photonKernelVersion,
+			pkg:           kernelPackage{Name: "linux", Version: "4.19.97-1.ph3"},
+			runningKernel: "4.19.97-1.ph3",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux", Version: "4.19.97-1.ph3", Running: true},
+		},
+		{
+			name:          "photon: a non-linux package is skipped",
+			filter:        photonKernelVersion,
+			pkg:           kernelPackage{Name: "bash", Version: "5.0-1.ph3"},
+			runningKernel: "4.19.97-1.ph3",
+			wantOK:        false,
+		},
+
+		// --- suse (regression) ---
+		{
+			name:          "suse: kernel-default is recognised and marked running",
+			filter:        suseKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-default", Version: "4.12.14-122.23.1"},
+			runningKernel: "4.12.14-122.23-default",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel-default", Version: "4.12.14-122.23.1-default", Running: true},
+		},
+		{
+			name:          "suse: an older kernel-default is listed but not running",
+			filter:        suseKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-default", Version: "4.12.14-122.20.1"},
+			runningKernel: "4.12.14-122.23-default",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel-default", Version: "4.12.14-122.20.1-default", Running: false},
+		},
+		{
+			name:          "suse: the bare kernel name without a dash is skipped",
+			filter:        suseKernelVersion,
+			pkg:           kernelPackage{Name: "kernel", Version: "4.12.14-122.23.1"},
+			runningKernel: "4.12.14-122.23-default",
+			wantOK:        false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := tc.filter(tc.pkg, tc.runningKernel)
+			assert.Equal(t, tc.wantOK, ok)
+			if tc.wantOK {
+				assert.Equal(t, tc.want, got)
+			}
+		})
+	}
+}
+
+// TestKernelFilterForPlatform locks down the dispatch. The rows that matter
+// are the ones returning false: before this changed, a platform with no
+// filter fell through a no-op closure and kernel.installed answered with an
+// empty list and no error, which reads as "no kernels installed" on a host
+// that is demonstrably running one.
+func TestKernelFilterForPlatform(t *testing.T) {
+	cases := []struct {
+		name      string
+		platform  *inventory.Platform
+		supported bool
+	}{
+		{
+			name:      "arch linux is now supported",
+			platform:  &inventory.Platform{Name: "arch", Family: []string{"arch", "linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "manjaro rides the arch family",
+			platform:  &inventory.Platform{Name: "manjaro", Family: []string{"arch", "linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "debian",
+			platform:  &inventory.Platform{Name: "debian", Family: []string{"debian", "linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "ubuntu rides the debian family",
+			platform:  &inventory.Platform{Name: "ubuntu", Family: []string{"ubuntu", "debian", "linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "oraclelinux",
+			platform:  &inventory.Platform{Name: "oraclelinux", Family: []string{"redhat", "linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "redhat",
+			platform:  &inventory.Platform{Name: "redhat", Family: []string{"redhat", "linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "amazonlinux",
+			platform:  &inventory.Platform{Name: "amazonlinux", Family: []string{"linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "photon",
+			platform:  &inventory.Platform{Name: "photon", Family: []string{"linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "suse",
+			platform:  &inventory.Platform{Name: "sles", Family: []string{"suse", "linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "alpine has no kernel-package filter and must not answer with an empty list",
+			platform:  &inventory.Platform{Name: "alpine", Family: []string{"linux", "unix", "os"}},
+			supported: false,
+		},
+		{
+			name:      "gentoo has no kernel-package filter and must not answer with an empty list",
+			platform:  &inventory.Platform{Name: "gentoo", Family: []string{"linux", "unix", "os"}},
+			supported: false,
+		},
+		{
+			name:      "macos is not linux",
+			platform:  &inventory.Platform{Name: "macos", Family: []string{"darwin", "bsd", "unix", "os"}},
+			supported: false,
+		},
+		{
+			name:      "a nil platform is not supported and does not panic",
+			platform:  nil,
+			supported: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			filter, ok := kernelFilterForPlatform(tc.platform)
+			assert.Equal(t, tc.supported, ok)
+			if tc.supported {
+				assert.NotNil(t, filter)
+			} else {
+				assert.Nil(t, filter)
+			}
+		})
+	}
+}
+
+// TestPlatformLabel confirms the unsupported-platform error always names
+// something: the platform name when there is one, the family when the name
+// is empty, so the message never trails off.
+func TestPlatformLabel(t *testing.T) {
+	assert.Equal(t, "arch", platformLabel(&inventory.Platform{Name: "arch", Family: []string{"arch", "linux"}}))
+	assert.Equal(t, "linux/unix", platformLabel(&inventory.Platform{Family: []string{"linux", "unix"}}))
+	assert.Equal(t, "unknown", platformLabel(&inventory.Platform{}))
+	assert.Equal(t, "unknown", platformLabel(nil))
+}
+
+// kernelFilterForPlatform returns false for two very different situations, and
+// kernelInstalledFilter is what tells them apart. Pin the distinction so the
+// non-Linux contract cannot be widened into an error by accident: an SBOM run
+// on macOS has always recorded an empty list here, and changing that is a
+// separate decision about a platform where a package-managed kernel image is
+// not a thing that exists.
+func TestKernelInstalledFilterSeparatesUnsupportedFromNotLinux(t *testing.T) {
+	cases := []struct {
+		name     string
+		platform *inventory.Platform
+		// exactly one of these holds
+		wantFilter bool
+		wantErr    bool
+	}{
+		{
+			name:       "a supported linux gets a filter",
+			platform:   &inventory.Platform{Name: "debian", Family: []string{"debian", "linux", "unix", "os"}},
+			wantFilter: true,
+		},
+		{
+			name:     "a linux with no filter is an error, not an empty answer",
+			platform: &inventory.Platform{Name: "alpine", Family: []string{"linux", "unix", "os"}},
+			wantErr:  true,
+		},
+		{
+			name:     "gentoo likewise",
+			platform: &inventory.Platform{Name: "gentoo", Family: []string{"linux", "unix", "os"}},
+			wantErr:  true,
+		},
+		{
+			name:     "macos keeps answering with an empty list",
+			platform: &inventory.Platform{Name: "macos", Family: []string{"darwin", "bsd", "unix", "os"}},
+		},
+		{
+			name:     "freebsd likewise",
+			platform: &inventory.Platform{Name: "freebsd", Family: []string{"bsd", "unix", "os"}},
+		},
+		{
+			name:     "aix likewise",
+			platform: &inventory.Platform{Name: "aix", Family: []string{"unix", "os"}},
+		},
+		{
+			name:     "a nil platform does not panic and is not an error",
+			platform: nil,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			filter, err := kernelInstalledFilter(tc.platform)
+
+			if tc.wantErr {
+				require.Error(t, err, "a linux host is running a kernel it got from a package manager")
+				assert.Contains(t, err.Error(), tc.platform.Name, "the error must name the platform")
+				assert.Nil(t, filter)
+				return
+			}
+
+			require.NoError(t, err)
+			if tc.wantFilter {
+				assert.NotNil(t, filter)
+			} else {
+				assert.Nil(t, filter, "a nil filter with a nil error is how installed() knows to answer []")
 			}
 		})
 	}
