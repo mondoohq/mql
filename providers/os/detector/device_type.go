@@ -77,13 +77,14 @@ var desktopPlatformNames = map[string]bool{
 // are containers or servers. Desktop Alpine users will be detected via the
 // systemd target or session directory fallbacks.
 var serverPlatformNames = map[string]bool{
-	"alpine":       true,
-	"bottlerocket": true,
-	"cos":          true,
-	"flatcar":      true,
-	"gardenlinux":  true,
-	"photon":       true,
-	"suse-microos": true,
+	"alpine":           true,
+	"bottlerocket":     true,
+	"cos":              true,
+	"flatcar":          true,
+	"gardenlinux":      true,
+	"opensuse-microos": true,
+	"photon":           true,
+	"suse-microos":     true,
 }
 
 // systemdDefaultTargetPaths lists the paths where systemd stores the default

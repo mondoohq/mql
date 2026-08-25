@@ -832,11 +832,17 @@ var sles = &PlatformResolver{
 	},
 }
 
+// suseMicroOs claims both transactional SUSE systems: SUSE Linux Enterprise
+// Micro, which sets ID=suse-microos, and openSUSE MicroOS, which sets
+// ID=opensuse-microos. They share a read-only root, transactional-update and
+// zypper, so every consumer in the provider treats them alike, and the
+// services manager already dispatches on both names.
 var suseMicroOs = &PlatformResolver{
 	Name:     "suse-microos",
 	IsFamily: false,
+	Emits:    []string{"suse-microos", "opensuse-microos"},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
-		if pf.Name == "suse-microos" {
+		if pf.Name == "suse-microos" || pf.Name == "opensuse-microos" {
 			return true, nil
 		}
 		return false, nil

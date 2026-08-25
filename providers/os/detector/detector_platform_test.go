@@ -599,6 +599,38 @@ func TestSuse5MicroDetector(t *testing.T) {
 	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
 }
 
+// openSUSE MicroOS sets ID=opensuse-microos, which no resolver claimed: the
+// suse family's only micro leaf matched SLE Micro's ID=suse-microos. Detection
+// fell through to the generic resolver, so the platform carried no suse family
+// and a container image or running container was renamed to "scratch", which
+// routes to ScratchPkgManager and reports an empty package list with no error.
+func TestOpenSuseMicroOsIsClaimedByTheMicroOsResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-opensuse-microos.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.Equal(t, suseMicroOs, leaf, "openSUSE MicroOS must be claimed by the micro resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
+func TestOpenSuseMicroOsDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-opensuse-microos.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "opensuse-microos", di.Name, "os name should be identified")
+	assert.Equal(t, "openSUSE MicroOS", di.Title, "os title should be identified")
+	assert.Equal(t, "20260822", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	// the suse family is what routes it to zypper/rpm packages, the suse
+	// kernel filter and the suse update manager
+	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
+	assert.Equal(t, map[string]string{"distro-id": "opensuse-microos"}, di.Labels)
+}
+
 func TestAmazon1LinuxDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-amazonlinux-2017.09.toml")
 	assert.Nil(t, err, "was able to create the provider")

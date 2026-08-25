@@ -410,6 +410,10 @@ func TestDetectDeviceType_ServerDistros(t *testing.T) {
 		{"photon os", "photon", "VMware Photon OS/Linux", []string{"linux", "unix", "os"}},
 		// detect-suse-micro-5.toml
 		{"suse microos", "suse-microos", "SUSE Linux Enterprise Micro 5.1", []string{"suse", "linux", "unix", "os"}},
+		// detect-opensuse-microos.toml. The title carries no "server" keyword
+		// and the desktop spins built on it ship their own ids (aeon,
+		// kalpa-desktop), so the name is what has to answer this.
+		{"opensuse microos", "opensuse-microos", "openSUSE MicroOS", []string{"suse", "linux", "unix", "os"}},
 		// detect-gardenlinux.toml (no container variant-id on this one)
 		{"gardenlinux", "gardenlinux", "Garden Linux 934.0", []string{"debian", "linux", "unix", "os"}},
 	}
