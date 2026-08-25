@@ -6,6 +6,7 @@ package sshd
 import (
 	"strings"
 
+	shellquote "github.com/kballard/go-shellquote"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/utils/sortx"
@@ -266,6 +267,32 @@ func ParseBlocksWithGlob(rootPath string, fileContent fileContentFunc, globExpan
 }
 
 // ParseBlocksWithGlobRecursive parses a single file and recursively handles Include directives.
+// splitIncludeArgs splits an Include directive's arguments into paths.
+//
+// sshd_config permits a path to be quoted, which is how a path containing
+// spaces is written, and some distributions quote unconditionally. Flatcar
+// ships exactly one effective line:
+//
+//	Include "/etc/ssh/sshd_config.d/*.conf"
+//
+// Splitting on spaces alone left the quote characters inside the pattern, so
+// the glob matched nothing, the miss was swallowed by a log.Warn, and the
+// entire included configuration was dropped without any error reaching the
+// caller. sshd.config.ciphers then returned an empty list, which makes a
+// "no weak ciphers" denylist pass vacuously.
+//
+// Quote-aware splitting also fixes the case quoting exists for: a path that
+// contains a space is now one argument rather than two broken ones.
+func splitIncludeArgs(args string) []string {
+	if fields, err := shellquote.Split(args); err == nil {
+		return fields
+	}
+
+	// Unbalanced quoting is malformed sshd_config. Fall back to the plain
+	// split rather than dropping the directive entirely.
+	return strings.Split(args, " ")
+}
+
 func ParseBlocksWithGlobRecursive(filePath string, content string, fileContent fileContentFunc, globExpand globExpandFunc) (MatchBlocks, error) {
 	curBlock := &MatchBlock{
 		Criteria: "",
@@ -298,8 +325,7 @@ func ParseBlocksWithGlobRecursive(filePath string, content string, fileContent f
 		}
 
 		if key == "Include" {
-			// FIXME: parse multi-keys properly
-			includePaths := strings.Split(l.args, " ")
+			includePaths := splitIncludeArgs(l.args)
 
 			for _, includePath := range includePaths {
 				// Expand glob pattern if present
