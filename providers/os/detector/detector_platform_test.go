@@ -657,6 +657,35 @@ func TestBottlerocketEBSDetector(t *testing.T) {
 	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
 }
 
+// Newer Bottlerocket ships no /etc/bottlerocket-release, and a root-partition
+// scan sees no /etc/os-release either. Detection gated the claim on opening the
+// release file, so the generic resolver took those systems and a container
+// image was reported as "scratch". Name, title and version still looked right,
+// because the family detection had already read /usr/lib/os-release.
+func TestBottlerocketEBSIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-bottlerocket-ebs.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.Equal(t, bottlerocket, leaf, "bottlerocket must claim its own root partition")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
+// The release file still wins where it exists: it carries BUILD_ID, which
+// /usr/lib/os-release on that variant does not.
+func TestBottlerocketReleaseFileStillEnriches(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-bottlerocket.toml"))
+	require.NoError(t, err)
+
+	_, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	assert.Equal(t, bottlerocket, leaf)
+}
+
 func TestScientificLinuxDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-scientific.toml")
 	assert.Nil(t, err, "was able to create the provider")

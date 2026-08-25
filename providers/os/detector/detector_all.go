@@ -726,43 +726,58 @@ var amazonlinux = &PlatformResolver{
 	},
 }
 
+// Bottlerocket carries /etc/bottlerocket-release on older versions, but newer
+// ones dropped it, and on a raw root-partition scan (an EBS volume snapshot)
+// /etc is an overlay whose upper layer lives on the data partition, so neither
+// that file nor /etc/os-release is present. The canonical /usr/lib/os-release
+// always is, and the linux family detection already reads it, so the release
+// file is only an enrichment source here and the claim falls back to the name
+// os-release yielded. Gating the claim on opening the file left those systems
+// to the generic linux fallback, and a container or container image claimed by
+// that fallback is reported as "scratch".
 var bottlerocket = &PlatformResolver{
 	Name:     "bottlerocket",
 	IsFamily: false,
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
-		f, err := conn.FileSystem().Open("/etc/bottlerocket-release")
-		if err != nil {
-			return false, nil
-		}
-		defer f.Close()
-
-		c, err := io.ReadAll(f)
-		if err != nil || len(c) == 0 {
-			log.Debug().Err(err)
-			return false, nil
-		}
-
-		osr, err := ParseOsRelease(strings.TrimSpace(string(c)))
-		if err == nil {
-			if len(osr["ID"]) > 0 {
-				pf.Name = osr["ID"]
-			}
-			if len(osr["PRETTY_NAME"]) > 0 {
-				pf.Title = osr["PRETTY_NAME"]
-			}
-			if len(osr["VERSION_ID"]) > 0 {
-				pf.Version = osr["VERSION_ID"]
-			}
-			if len(osr["BUILD_ID"]) > 0 {
-				pf.Build = osr["BUILD_ID"]
-			}
-		}
-
-		if pf.Name == "bottlerocket" {
-			return true, nil
-		}
-		return false, nil
+		enrichFromBottlerocketRelease(pf, conn)
+		return pf.Name == "bottlerocket", nil
 	},
+}
+
+// enrichFromBottlerocketRelease overlays /etc/bottlerocket-release onto pf when
+// that file is present. Every field it sets is best-effort: a missing or
+// unreadable file leaves pf as the os-release detection left it.
+func enrichFromBottlerocketRelease(pf *inventory.Platform, conn shared.Connection) {
+	f, err := conn.FileSystem().Open("/etc/bottlerocket-release")
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	c, err := io.ReadAll(f)
+	if err != nil || len(c) == 0 {
+		log.Debug().Err(err).Msg("platform> cannot read /etc/bottlerocket-release")
+		return
+	}
+
+	osr, err := ParseOsRelease(strings.TrimSpace(string(c)))
+	if err != nil {
+		log.Debug().Err(err).Msg("platform> cannot parse /etc/bottlerocket-release")
+		return
+	}
+
+	if len(osr["ID"]) > 0 {
+		pf.Name = osr["ID"]
+	}
+	if len(osr["PRETTY_NAME"]) > 0 {
+		pf.Title = osr["PRETTY_NAME"]
+	}
+	if len(osr["VERSION_ID"]) > 0 {
+		pf.Version = osr["VERSION_ID"]
+	}
+	if len(osr["BUILD_ID"]) > 0 {
+		pf.Build = osr["BUILD_ID"]
+	}
 }
 
 var windriver = &PlatformResolver{
