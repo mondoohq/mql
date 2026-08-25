@@ -137,5 +137,10 @@ func ParseFstab(file io.Reader) ([]FstabEntry, error) {
 }
 
 func (e *mqlFstabEntry) id() (string, error) {
-	return e.Device.Data, nil
+	// The device alone is not unique: "tmpfs /tmp" and "tmpfs /dev/shm" are both
+	// ordinary fstab rows, as are two swap devices that both mount at "none".
+	// Sharing an __id makes the runtime serve the first entry for every
+	// collision, so the later rows vanish from the list entirely. A mount point
+	// appears at most once, so device plus mount point is unique.
+	return e.Device.Data + " " + e.Mountpoint.Data, nil
 }
