@@ -458,9 +458,13 @@ func (x *mqlHttpHeaderContentType) id() (string, error) {
 	return id.String(), nil
 }
 
-func parseSetCookieDirectives(raw []any) (name *llx.RawData, value *llx.RawData, params *llx.RawData) {
+// parseSetCookieDirectives parses a single Set-Cookie header value. Each header
+// carries exactly one cookie, so this takes one value rather than the whole
+// list: parsing several at once folds the later cookies' name=value pairs into
+// this cookie's attribute map.
+func parseSetCookieDirectives(raw any) (name *llx.RawData, value *llx.RawData, params *llx.RawData) {
 	name, value, params = llx.NilData, llx.NilData, llx.NilData
-	parseHeaderFields(raw, func(key string, val string) {
+	parseHeaderFields([]any{raw}, func(key string, val string) {
 		// RFC 6265 section 5.2: attribute names are case-insensitive,
 		// while cookie names and values keep their casing
 		if name.Value == nil && val != "" {
@@ -476,14 +480,22 @@ func parseSetCookieDirectives(raw []any) (name *llx.RawData, value *llx.RawData,
 	return name, value, params
 }
 
-func (x *mqlHttpHeader) setCookie() (*mqlHttpHeaderSetCookie, error) {
+// setCookieValues returns the raw Set-Cookie header values, one per cookie.
+func (x *mqlHttpHeader) setCookieValues() ([]any, bool) {
 	raw, ok := x.Params.Data["Set-Cookie"]
 	if !ok {
-		x.SetCookie.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
+		return nil, false
 	}
+	values, ok := raw.([]any)
+	if !ok || len(values) == 0 {
+		return nil, false
+	}
+	return values, true
+}
 
-	cname, cval, params := parseSetCookieDirectives(raw.([]any))
+// newSetCookie builds the resource for one Set-Cookie header value.
+func (x *mqlHttpHeader) newSetCookie(raw any) (*mqlHttpHeaderSetCookie, error) {
+	cname, cval, params := parseSetCookieDirectives(raw)
 
 	o, err := CreateResource(x.MqlRuntime, "http.header.setCookie", map[string]*llx.RawData{
 		"name":   cname,
@@ -494,6 +506,36 @@ func (x *mqlHttpHeader) setCookie() (*mqlHttpHeaderSetCookie, error) {
 		return nil, err
 	}
 	return o.(*mqlHttpHeaderSetCookie), nil
+}
+
+// Deprecated: use setCookies, which reports every cookie the response sets.
+func (x *mqlHttpHeader) setCookie() (*mqlHttpHeaderSetCookie, error) {
+	values, ok := x.setCookieValues()
+	if !ok {
+		x.SetCookie.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	return x.newSetCookie(values[0])
+}
+
+func (x *mqlHttpHeader) setCookies() ([]any, error) {
+	values, ok := x.setCookieValues()
+	if !ok {
+		x.SetCookies.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	res := make([]any, 0, len(values))
+	for i := range values {
+		cookie, err := x.newSetCookie(values[i])
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, cookie)
+	}
+
+	return res, nil
 }
 
 func parseCspDirectives(raw []any) map[string]any {

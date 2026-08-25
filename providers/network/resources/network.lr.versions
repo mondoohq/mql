@@ -172,6 +172,7 @@ http.header.setCookie 9.0.5
 http.header.setCookie.name 9.0.5
 http.header.setCookie.params 9.0.5
 http.header.setCookie.value 9.0.5
+http.header.setCookies 13.3.3
 http.header.sts 9.0.5
 http.header.sts.includeSubDomains 9.0.5
 http.header.sts.maxAge 9.0.5
