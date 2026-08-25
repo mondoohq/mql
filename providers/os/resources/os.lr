@@ -6862,7 +6862,14 @@ grub.config @defaults("defaultsPath grubPath") {
   params() map[string]string
   // Menu entries defined in grub.cfg
   entries() []grub.config.entry
-  // Whether GRUB password protection is enabled (superusers + password_pbkdf2)
+  // Whether GRUB password protection is enabled
+  //
+  // True when grub.cfg names a superuser and carries a matching password or
+  // password_pbkdf2 credential, including a credential kept in the user.cfg
+  // file beside grub.cfg. A credential that is still an unexpanded shell
+  // variable, such as the templated block many distributions emit
+  // unconditionally, does not count. Null when no grub.cfg exists, since a
+  // host that does not use GRUB is neither protected nor unprotected.
   passwordProtected() bool
 }
 
