@@ -462,6 +462,56 @@ var elxr = &PlatformResolver{
 	},
 }
 
+// rhcos is Red Hat Enterprise Linux CoreOS, the immutable rpm-ostree based RHEL
+// variant that OpenShift runs its nodes on. Its os-release carries ID="rhcos"
+// with ID_LIKE="rhel fedora", and /etc/redhat-release reads like stock RHEL
+// ("Red Hat Enterprise Linux release 9.6 (Plow)"), so os-release ID is the only
+// thing that tells the two apart. It has to be resolved before rhel: the RHCOS
+// PRETTY_NAME starts with "Red Hat", which is enough for the rhel resolver to
+// claim the host and report it as plain redhat.
+var rhcos = &PlatformResolver{
+	Name:     "rhcos",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		if pf.Name != "rhcos" {
+			return false, nil
+		}
+
+		osrd := NewOSReleaseDetector(conn)
+		osr, err := osrd.osrelease()
+		if err != nil {
+			log.Debug().Err(err).Msg("platform> cannot parse os-release on this rhcos system")
+			return true, nil
+		}
+
+		if len(osr["NAME"]) > 0 {
+			// PRETTY_NAME carries the build string too, e.g.
+			// "Red Hat Enterprise Linux CoreOS 9.6.20250523-0"
+			pf.Title = osr["NAME"]
+		}
+
+		// VERSION_ID is the RHCOS image build, not the RHEL release the packages
+		// are cut from. RHEL_VERSION is what package versions and advisories line
+		// up with, so it wins where the image ships it. Without it we keep what
+		// the family already read out of /etc/redhat-release, which is the same
+		// RHEL release.
+		if len(osr["RHEL_VERSION"]) > 0 {
+			pf.Version = osr["RHEL_VERSION"]
+		}
+
+		// the image build is still worth keeping, RHCOS does not ship BUILD_ID
+		if len(osr["OSTREE_VERSION"]) > 0 {
+			pf.Build = osr["OSTREE_VERSION"]
+		}
+
+		if len(osr["OPENSHIFT_VERSION"]) > 0 {
+			pf.Metadata["openshift/version"] = osr["OPENSHIFT_VERSION"]
+		}
+
+		return true, nil
+	},
+}
+
 // rhel PlatformResolver only detects redhat and no derivatives
 var rhel = &PlatformResolver{
 	Name:     "redhat",
@@ -1217,8 +1267,10 @@ var redhatFamily = &PlatformResolver{
 	Name:     "redhat",
 	IsFamily: true,
 	// NOTE: oracle pretends to be redhat with /etc/redhat-release and Red Hat Linux, therefore we
-	// want to check that platform before redhat
-	Children: []*PlatformResolver{oracle, rhel, centos, fedora, scientific, eurolinux, nobara, qubes},
+	// want to check that platform before redhat. rhcos has the same problem: its
+	// /etc/redhat-release is stock RHEL and its PRETTY_NAME starts with "Red Hat",
+	// so it also has to be resolved before redhat.
+	Children: []*PlatformResolver{oracle, rhcos, rhel, centos, fedora, scientific, eurolinux, nobara, qubes},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		f, err := conn.FileSystem().Open("/etc/redhat-release")
 		if err != nil {

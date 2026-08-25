@@ -247,6 +247,32 @@ func TestEuroLinux9OSDetector(t *testing.T) {
 	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
 }
 
+func TestRhcosDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-rhcos.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "rhcos", di.Name, "os name should be identified")
+	assert.Equal(t, "Red Hat Enterprise Linux CoreOS", di.Title, "os title should be identified")
+	assert.Equal(t, "9.6", di.Version, "os version should be the rhel release, not the image build")
+	assert.Equal(t, "9.6.20250523-0", di.Build, "image build should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
+	assert.Equal(t, "4.19", di.Metadata["openshift/version"], "openshift version should be identified")
+}
+
+// rpm-ostree systems ship the real file at /usr/lib/os-release and symlink
+// /etc/os-release at it. Scanning the raw root partition can leave the symlink
+// unresolved, so detection has to work off the /usr/lib copy alone.
+func TestRhcosUsrLibOsReleaseDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-rhcos-usrlib.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "rhcos", di.Name, "os name should be identified")
+	assert.Equal(t, "Red Hat Enterprise Linux CoreOS", di.Title, "os title should be identified")
+	assert.Equal(t, "9.6", di.Version, "os version should be the rhel release, not the image build")
+	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
+}
+
 func TestUbuntu1204Detector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-ubuntu1204.toml")
 	assert.Nil(t, err, "was able to create the provider")
