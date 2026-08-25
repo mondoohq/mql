@@ -4,6 +4,7 @@
 package tar_test
 
 import (
+	"debug/elf"
 	"io"
 	"regexp"
 	"sort"
@@ -171,5 +172,52 @@ func TestTarFileAlpine(t *testing.T) {
 		assert.Equal(t, 5, len(names))
 		sort.Strings(names)
 		assert.Equal(t, []string{"arch", "keys", "protected_paths.d", "repositories", "world"}, names)
+	})
+}
+
+// Platform detection falls back to reading the ELF header of a binary on the
+// target when there is no command capability to ask `uname -m`, which is every
+// container image scan. elf.NewFile needs io.ReaderAt, so the tar filesystem
+// has to provide one.
+func TestTarFileReadAt(t *testing.T) {
+	err := cacheAlpine()
+	require.NoError(t, err, "should create tar without error")
+
+	c, err := tar.NewConnection(0, &inventory.Config{
+		Type: "tar",
+		Options: map[string]string{
+			tar.OPTION_FILE: alpineContainerPath,
+		},
+	}, &inventory.Asset{})
+	require.NoError(t, err)
+
+	t.Run("reads the bytes at an offset", func(t *testing.T) {
+		f, err := c.FileSystem().Open("/etc/alpine-release")
+		require.NoError(t, err)
+		full, err := io.ReadAll(f)
+		require.NoError(t, err)
+		require.Greater(t, len(full), 6)
+
+		f2, err := c.FileSystem().Open("/etc/alpine-release")
+		require.NoError(t, err)
+		ra, ok := f2.(io.ReaderAt)
+		require.True(t, ok, "tar file must implement io.ReaderAt")
+
+		buf := make([]byte, 4)
+		n, err := ra.ReadAt(buf, 2)
+		require.NoError(t, err)
+		assert.Equal(t, 4, n)
+		assert.Equal(t, full[2:6], buf)
+	})
+
+	t.Run("an ELF binary parses over the tar filesystem", func(t *testing.T) {
+		f, err := c.FileSystem().Open("/bin/busybox")
+		require.NoError(t, err)
+		ra, ok := f.(io.ReaderAt)
+		require.True(t, ok, "tar file must implement io.ReaderAt")
+
+		ef, err := elf.NewFile(ra)
+		require.NoError(t, err, "elf.NewFile must work over the tar filesystem")
+		assert.NotEqual(t, elf.EM_NONE, ef.Machine, "ELF machine type must be readable")
 	})
 }
