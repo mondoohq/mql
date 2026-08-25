@@ -880,14 +880,12 @@ func TestAltLinuxIsClaimedByItsOwnResolver(t *testing.T) {
 		"a container image claimed only by the generic resolver is reported as scratch")
 }
 
-// Manjaro ARM sets ID=manjaro-arm, not manjaro. The arch family matched on
-// /etc/arch-release but no child claimed it, so the generic fallback took it and
-// container images were reported as "scratch".
+// Manjaro ARM sets ID=manjaro-arm and reports as manjaro.
 func TestManjaroArmDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-manjaro-arm.toml")
 	assert.Nil(t, err, "was able to create the provider")
 
-	assert.Equal(t, "manjaro-arm", di.Name, "os name should be identified")
+	assert.Equal(t, "manjaro", di.Name, "Manjaro ARM is manjaro, not a platform of its own")
 	assert.Equal(t, "24.03", di.Version, "os version should come from lsb")
 	assert.Equal(t, []string{"arch", "linux", "unix", "os"}, di.Family,
 		"Manjaro ARM belongs to the arch family")

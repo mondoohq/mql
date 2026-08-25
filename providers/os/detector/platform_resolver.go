@@ -18,6 +18,22 @@ type PlatformResolver struct {
 	IsFamily bool
 	Children []*PlatformResolver
 	Detect   detect
+
+	// Emits lists every platform name this resolver can set, and defaults to
+	// the resolver's own Name when it is nil. A resolver does not always emit
+	// the name it is registered under: "oracle" only ever emits "oraclelinux",
+	// and "centos" also claims Rocky and AlmaLinux.
+	//
+	// Every name detection can produce has to reach osTree, or the platform has
+	// no family chain and the provider catalog does not list it, which degrades
+	// it to "unknown" in plugin.PlatformInfo.Apply. Listing the names instead of
+	// assuming Name also keeps the reverse out: a registered name that nothing
+	// can emit would sit in the tree and the catalog as a platform that never
+	// appears on any asset.
+	//
+	// A resolver that names nothing, such as the unknown-os fallback, declares
+	// an empty, non-nil list.
+	Emits []string
 }
 
 // isUnidentifiedPlatform reports whether detection could not pin down which

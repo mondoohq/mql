@@ -4,10 +4,14 @@
 package detector
 
 import (
+	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 )
 
 func TestCatalogPlatforms(t *testing.T) {
@@ -40,4 +44,38 @@ func TestCatalogPlatforms(t *testing.T) {
 	}
 	require.NotNil(t, ubuntu, "ubuntu should be a catalogued platform")
 	assert.Equal(t, []string{"debian", "linux", "unix", "os"}, ubuntu.fam)
+}
+
+// Every name detection can actually emit has to be in the tree, or the platform
+// carries no family chain and plugin.PlatformInfo.Apply cannot find it in the
+// catalog, which degrades the asset to "unknown". The catalog test above only
+// compares the catalog against the tree; nothing compared the tree against what
+// resolvers really set, and a resolver does not always emit the name it is
+// registered under.
+//
+// Leaves claimed by defaultLinux are excluded: that resolver can emit any ID an
+// unknown system happens to carry, so it cannot be enumerated. A system landing
+// there is its own known problem, reported as "scratch" for container images,
+// and the fix is to give it a resolver.
+func TestEveryEmittedPlatformNameIsInTheTree(t *testing.T) {
+	fixtures, err := filepath.Glob("./testdata/*.toml")
+	require.NoError(t, err)
+	require.NotEmpty(t, fixtures)
+	sort.Strings(fixtures)
+
+	for _, fixture := range fixtures {
+		conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath(fixture))
+		if err != nil {
+			continue // not a platform-detection fixture
+		}
+
+		pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, conn)
+		if !resolved || leaf == nil || leaf == defaultLinux || pf.Name == "" {
+			continue
+		}
+
+		_, ok := osTree[pf.Name]
+		assert.True(t, ok, "%s: resolver %q emits platform %q, which is not in the tree",
+			filepath.Base(fixture), leaf.Name, pf.Name)
+	}
 }
