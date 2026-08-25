@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/v13/providers/os/connection/mock"
 )
@@ -40,13 +41,12 @@ func TestAlpineApkdbParser(t *testing.T) {
 
 	p := Package{
 		Name:        "musl",
-		Version:     "1510953106:1.1.18-r2",
-		Epoch:       "1510953106",
+		Version:     "1.1.18-r2",
 		Arch:        "x86_64",
 		Description: "the musl c library (libc) implementation",
 		License:     "MIT",
 		Origin:      "musl",
-		PUrl:        "pkg:apk/alpine/musl@1510953106:1.1.18-r2?arch=x86_64&distro=alpine-3.7.0&epoch=1510953106",
+		PUrl:        "pkg:apk/alpine/musl@1.1.18-r2?arch=x86_64&distro=alpine-3.7.0",
 		CPEs: []string{
 			"cpe:2.3:a:*:musl:1.1.18-r2:*:*:*:*:*:x86_64:*",
 		},
@@ -63,12 +63,11 @@ func TestAlpineApkdbParser(t *testing.T) {
 	p = Package{
 		Name:        "libressl2.6-libcrypto",
 		License:     "custom",
-		Version:     "1510257703:2.6.3-r0",
-		Epoch:       "1510257703",
+		Version:     "2.6.3-r0",
 		Arch:        "x86_64",
 		Description: "libressl libcrypto library",
 		Origin:      "libressl",
-		PUrl:        "pkg:apk/alpine/libressl2.6-libcrypto@1510257703:2.6.3-r0?arch=x86_64&distro=alpine-3.7.0&epoch=1510257703",
+		PUrl:        "pkg:apk/alpine/libressl2.6-libcrypto@2.6.3-r0?arch=x86_64&distro=alpine-3.7.0",
 		CPEs: []string{
 			"cpe:2.3:a:*:libressl2.6-libcrypto:2.6.3-r0:*:*:*:*:*:x86_64:*",
 		},
@@ -85,12 +84,11 @@ func TestAlpineApkdbParser(t *testing.T) {
 	p = Package{
 		Name:        "libressl2.6-libssl",
 		License:     "custom",
-		Version:     "1510257703:2.6.3-r0",
-		Epoch:       "1510257703",
+		Version:     "2.6.3-r0",
 		Arch:        "x86_64",
 		Description: "libressl libssl library",
 		Origin:      "libressl",
-		PUrl:        "pkg:apk/alpine/libressl2.6-libssl@1510257703:2.6.3-r0?arch=x86_64&distro=alpine-3.7.0&epoch=1510257703",
+		PUrl:        "pkg:apk/alpine/libressl2.6-libssl@2.6.3-r0?arch=x86_64&distro=alpine-3.7.0",
 		CPEs: []string{
 			"cpe:2.3:a:*:libressl2.6-libssl:2.6.3-r0:*:*:*:*:*:x86_64:*",
 		},
@@ -107,12 +105,11 @@ func TestAlpineApkdbParser(t *testing.T) {
 	p = Package{
 		Name:        "apk-tools",
 		License:     "GPL2",
-		Version:     "1515485577:2.8.2-r0",
-		Epoch:       "1515485577",
+		Version:     "2.8.2-r0",
 		Arch:        "x86_64",
 		Description: "Alpine Package Keeper - package manager for alpine",
 		Origin:      "apk-tools",
-		PUrl:        "pkg:apk/alpine/apk-tools@1515485577:2.8.2-r0?arch=x86_64&distro=alpine-3.7.0&epoch=1515485577",
+		PUrl:        "pkg:apk/alpine/apk-tools@2.8.2-r0?arch=x86_64&distro=alpine-3.7.0",
 		CPEs: []string{
 			"cpe:2.3:a:*:apk-tools:2.8.2-r0:*:*:*:*:*:x86_64:*",
 		},
@@ -129,12 +126,11 @@ func TestAlpineApkdbParser(t *testing.T) {
 	p = Package{
 		Name:        "busybox",
 		License:     "GPL2",
-		Version:     "1513075346:1.27.2-r7",
-		Epoch:       "1513075346",
+		Version:     "1.27.2-r7",
 		Arch:        "x86_64",
 		Description: "Size optimized toolbox of many common UNIX utilities",
 		Origin:      "busybox",
-		PUrl:        "pkg:apk/alpine/busybox@1513075346:1.27.2-r7?arch=x86_64&distro=alpine-3.7.0&epoch=1513075346",
+		PUrl:        "pkg:apk/alpine/busybox@1.27.2-r7?arch=x86_64&distro=alpine-3.7.0",
 		CPEs: []string{
 			"cpe:2.3:a:*:busybox:1.27.2-r7:*:*:*:*:*:x86_64:*",
 		},
@@ -151,12 +147,11 @@ func TestAlpineApkdbParser(t *testing.T) {
 	p = Package{
 		Name:        "alpine-baselayout",
 		License:     "GPL2",
-		Version:     "1510075862:3.0.5-r2",
-		Epoch:       "1510075862",
+		Version:     "3.0.5-r2",
 		Arch:        "x86_64",
 		Description: "Alpine base dir structure and init scripts",
 		Origin:      "alpine-baselayout",
-		PUrl:        "pkg:apk/alpine/alpine-baselayout@1510075862:3.0.5-r2?arch=x86_64&distro=alpine-3.7.0&epoch=1510075862",
+		PUrl:        "pkg:apk/alpine/alpine-baselayout@3.0.5-r2?arch=x86_64&distro=alpine-3.7.0",
 		CPEs: []string{
 			"cpe:2.3:a:*:alpine-baselayout:3.0.5-r2:*:*:*:*:*:x86_64:*",
 		},
@@ -167,6 +162,70 @@ func TestAlpineApkdbParser(t *testing.T) {
 		},
 	}
 	assert.Equal(t, p, findPkg(m, p.Name), p.Name)
+}
+
+// TestApkBuildTimestampIsNotAnEpoch pins the lowercase `t:` field of the apk
+// database as the package build timestamp rather than an epoch. apk has no
+// epoch concept, so `t:` must never reach the version, the epoch or the package
+// URL. The records below are taken from an Alpine 3.23.5 host, where every one
+// of the 235 installed packages reported a timestamp-prefixed version.
+func TestApkBuildTimestampIsNotAnEpoch(t *testing.T) {
+	pf := &inventory.Platform{
+		Name:    "alpine",
+		Version: "3.23.5",
+		Arch:    "x86_64",
+		Family:  []string{"linux", "unix", "os"},
+		Labels: map[string]string{
+			"distro-id": "alpine",
+		},
+	}
+
+	tests := []struct {
+		name      string
+		version   string
+		timestamp string
+	}{
+		{"busybox", "1.37.0-r30", "1765894768"},
+		{"musl", "1.2.5-r23", "1775835052"},
+		{"apk-tools", "3.0.6-r0", "1776175586"},
+		{"nginx", "1.28.3-r7", "1784813488"},
+	}
+
+	var db bytes.Buffer
+	for _, test := range tests {
+		db.WriteString("P:" + test.name + "\n")
+		db.WriteString("V:" + test.version + "\n")
+		db.WriteString("A:x86_64\n")
+		db.WriteString("o:" + test.name + "\n")
+		db.WriteString("t:" + test.timestamp + "\n")
+		db.WriteString("\n")
+	}
+
+	pkgs := ParseApkDbPackages(pf, bytes.NewReader(db.Bytes()))
+	require.Len(t, pkgs, len(tests))
+
+	for i, test := range tests {
+		pkg := pkgs[i]
+		require.Equal(t, test.name, pkg.Name)
+
+		// the version is the `V:` field verbatim, with no timestamp prefix
+		assert.Equal(t, test.version, pkg.Version, "version of %s", test.name)
+
+		// apk has no epoch, so nothing may be reported as one
+		assert.Empty(t, pkg.Epoch, "epoch of %s", test.name)
+
+		// and neither the timestamp nor an epoch qualifier reaches the purl
+		assert.Equal(t,
+			"pkg:apk/alpine/"+test.name+"@"+test.version+"?arch=x86_64&distro=alpine-3.23.5",
+			pkg.PUrl, "purl of %s", test.name)
+		assert.NotContains(t, pkg.PUrl, test.timestamp, "purl of %s carries the build timestamp", test.name)
+		assert.NotContains(t, pkg.PUrl, "epoch=", "purl of %s carries an epoch qualifier", test.name)
+
+		// the cpe is built from the same version
+		assert.Equal(t,
+			[]string{"cpe:2.3:a:*:" + test.name + ":" + test.version + ":*:*:*:*:*:x86_64:*"},
+			pkg.CPEs, "cpes of %s", test.name)
+	}
 }
 
 func TestApkUpdateParser(t *testing.T) {

@@ -52,21 +52,14 @@ func ParseApkDbPackages(pf *inventory.Platform, input io.Reader) []Package {
 	pkgs := []Package{}
 
 	var pkgVersion string
-	var pkgEpoch string
 
 	add := func(pkg Package) {
-		// merge version and epoch
-		if pkgEpoch == "0" || pkgEpoch == "" {
-			pkg.Version = pkgVersion
-		} else {
-			pkg.Version = pkgEpoch + ":" + pkgVersion
-			pkg.Epoch = pkgEpoch
-		}
+		// apk has no epoch, so the version is the `V:` field verbatim.
+		pkg.Version = pkgVersion
 
 		pkg.Format = AlpinePkgFormat
 		pkg.PUrl = purl.NewPackageURL(pf, purl.TypeApk, pkg.Name, pkg.Version,
 			purl.WithArch(pkg.Arch),
-			purl.WithEpoch(pkg.Epoch),
 		).String()
 
 		cpes, _ := cpe2.NewPackage2Cpe(pkg.Vendor, pkg.Name, pkg.Version, "", pf.Arch)
@@ -101,7 +94,6 @@ func ParseApkDbPackages(pf *inventory.Platform, input io.Reader) []Package {
 		if len(line) == 0 {
 			add(pkg)
 			// reset values
-			pkgEpoch = ""
 			pkgVersion = ""
 			pkg = Package{}
 		}
@@ -112,7 +104,9 @@ func ParseApkDbPackages(pf *inventory.Platform, input io.Reader) []Package {
 			continue
 		}
 
-		// Parse the package name or version.
+		// Parse the package name or version. The lowercase `t:` field is the
+		// build timestamp of the package, not an epoch, and apk has no epoch
+		// concept at all, so we do not read it.
 		switch key {
 		case 'P':
 			pkg.Name = string(value) // package name
@@ -120,8 +114,6 @@ func ParseApkDbPackages(pf *inventory.Platform, input io.Reader) []Package {
 			pkgVersion = string(value) // package version
 		case 'A':
 			pkg.Arch = string(value) // architecture
-		case 't':
-			pkgEpoch = string(value) // epoch
 		case 'o':
 			pkg.Origin = string(value) // origin
 		case 'T':
