@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"fmt"
 	"runtime"
 	"strings"
 
@@ -222,7 +223,11 @@ func (k *mqlRegistrykey) powershellItems(path string) ([]registry.RegistryKeyIte
 		return nil, stdout.Error
 	}
 
-	return registry.ParsePowershellRegistryKeyItems(strings.NewReader(stdout.Data))
+	items, err := registry.ParsePowershellRegistryKeyItems(strings.NewReader(stdout.Data))
+	if err != nil {
+		return nil, fmt.Errorf("could not read the values of registry key %s: %w", path, err)
+	}
+	return items, nil
 }
 
 // Deprecated: properties returns the properties of a registry key
