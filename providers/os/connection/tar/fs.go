@@ -5,8 +5,8 @@ package tar
 
 import (
 	"archive/tar"
-	"bufio"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -147,7 +147,7 @@ func (fs *FS) resolveSymlink(header *tar.Header) string {
 	return path
 }
 
-func (fs *FS) open(header *tar.Header) (*bufio.Reader, error) {
+func (fs *FS) open(header *tar.Header) (io.Reader, error) {
 	log.Debug().Str("file", header.Name).Msg("tar> load file content")
 
 	// open tar file
