@@ -171,3 +171,30 @@ func TestManagerAIX(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "7300-03-00-2446", info.Version)
 }
+
+// Container-Optimized OS ships lsmod as /bin/lsmod and has an empty /sbin, so
+// the hard-coded /sbin/lsmod exits 127 with no output. Nothing checked the exit
+// status, so the empty parse was reported as "no modules loaded" and a policy
+// asserting a module is absent passed without the list ever being read.
+func TestManagerCOSFallsBackToProcModules(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:    "cos",
+			Version: "121",
+			Family:  []string{"linux", "unix", "os"},
+		},
+	}, mock.WithPath("./testdata/cos.toml"))
+	require.NoError(t, err)
+
+	mm, err := ResolveManager(mockConn)
+	require.NoError(t, err)
+
+	modules, err := mm.Modules()
+	require.NoError(t, err)
+	require.Len(t, modules, 13, "modules must come from /proc/modules when lsmod is absent")
+
+	assert.Equal(t, "nft_chain_nat", modules[0].Name)
+	assert.Equal(t, "12288", modules[0].Size)
+	assert.Equal(t, "3", modules[0].UsedBy)
+	assert.Equal(t, "fuse", modules[12].Name)
+}
