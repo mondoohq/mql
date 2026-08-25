@@ -134,19 +134,52 @@ func (p *mqlOs) env() (map[string]any, error) {
 }
 
 func (p *mqlOs) path(env map[string]any) ([]any, error) {
+	conn, ok := p.MqlRuntime.Connection.(shared.Connection)
+	if !ok {
+		return nil, errors.New("cannot determine platform for path lookup")
+	}
+	isWindows := conn.Asset().Platform.IsFamily("windows")
+
 	rawPath, ok := env["PATH"]
+	if !ok && isWindows {
+		// Windows environment variable names are case-insensitive and the
+		// variable comes back from Get-ChildItem Env: as "Path", so the exact
+		// "PATH" lookup missed and os.path was empty on every Windows system.
+		for k, v := range env {
+			if strings.EqualFold(k, "PATH") {
+				rawPath, ok = v, true
+				break
+			}
+		}
+	}
 	if !ok {
 		return []any{}, nil
 	}
 
-	path := rawPath.(string)
-	parts := strings.Split(path, ":")
+	path, ok := rawPath.(string)
+	if !ok {
+		return nil, fmt.Errorf("PATH is %T, expected a string", rawPath)
+	}
+
+	return splitPathList(path, isWindows), nil
+}
+
+// splitPathList splits a PATH value into its entries. Windows separates them
+// with ';'; splitting those on ':' cut every entry apart at its drive letter.
+// Empty entries are kept: on unix an empty element means the working directory,
+// which is worth being able to audit for.
+func splitPathList(path string, isWindows bool) []any {
+	separator := ":"
+	if isWindows {
+		separator = ";"
+	}
+
+	parts := strings.Split(path, separator)
 	res := make([]any, len(parts))
 	for i := range parts {
 		res[i] = parts[i]
 	}
-
-	return res, nil
+	return res
 }
 
 func MqlTime(t time.Time) *time.Time {
