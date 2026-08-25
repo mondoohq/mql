@@ -878,6 +878,32 @@ func TestManjaroArmIsClaimedByItsOwnResolver(t *testing.T) {
 	assert.False(t, isUnidentifiedPlatform(pf, leaf))
 }
 
+// Void Linux ships only /etc/os-release, with ID=void and no version of any
+// kind (it is a rolling release). Nothing claimed it, so the generic resolver
+// did, and container images were reported as "scratch" even though the image
+// says exactly what it is.
+func TestVoidLinuxDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-void.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "void", di.Name, "os name should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+func TestVoidLinuxIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-void.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.NotEqual(t, defaultLinux, leaf, "Void must not be left to the generic linux resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
 func TestBusyboxLinuxDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-busybox.toml")
 	assert.Nil(t, err, "was able to create the provider")

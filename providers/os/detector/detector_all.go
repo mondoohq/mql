@@ -929,6 +929,20 @@ var altlinux = &PlatformResolver{
 	},
 }
 
+// Void Linux ships only /etc/os-release, carrying ID=void and no version of any
+// kind because it is a rolling release. Without a resolver of its own the
+// generic linux fallback claimed it, and a container image claimed by that
+// fallback is reported as "scratch" — discarding the identity the image states
+// outright. Note the os provider has no xbps support, so packages are not
+// available on this platform; detection only.
+var voidlinux = &PlatformResolver{
+	Name:     "void",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		return pf.Name == "void", nil
+	},
+}
+
 var mageia = &PlatformResolver{
 	Name:     "mageia",
 	IsFamily: false,
@@ -1424,7 +1438,7 @@ var linuxFamily = &PlatformResolver{
 	IsFamily: true,
 	// NOTE: altlinux runs before the redhat family, whose members probe
 	// /etc/redhat-release and /etc/fedora-release, both of which ALT ships.
-	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, wizos, alpine, wolfi, nixos, gentoo, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, flatcar, cirros, defaultLinux},
+	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, wizos, alpine, wolfi, nixos, gentoo, voidlinux, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, flatcar, cirros, defaultLinux},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		detected := false
 		osrd := NewOSReleaseDetector(conn)
