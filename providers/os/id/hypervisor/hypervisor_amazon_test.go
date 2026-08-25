@@ -61,3 +61,102 @@ func TestMapHypervisorUnchanged(t *testing.T) {
 	_, ok := mapHypervisor("Some Unknown Vendor")
 	assert.False(t, ok)
 }
+
+// systemd-detect-virt emits its own identifiers, which are not the product
+// names. Without a mapping the guest is detected and then fails to map, so
+// os.hypervisor reads null. Tokens taken from systemd src/basic/virt.c.
+func TestMapHypervisorSystemdTokens(t *testing.T) {
+	for token, want := range map[string]string{
+		"amazon":    "AWS Nitro System",
+		"microsoft": "Hyper-V",
+		"google":    "Google Compute Engine",
+		"apple":     "Apple Virtualization",
+		"oracle":    "VirtualBox",
+		// already mapped before this change, kept here so the whole systemd
+		// vocabulary is covered in one place
+		"kvm":       "KVM",
+		"qemu":      "QEMU",
+		"xen":       "Xen",
+		"vmware":    "VMware",
+		"parallels": "Parallels",
+		"bhyve":     "bhyve",
+		"powervm":   "IBM PowerVM",
+	} {
+		t.Run(token, func(t *testing.T) {
+			v, ok := mapHypervisor(token)
+			assert.True(t, ok, "systemd emits %q; it must map", token)
+			assert.Equal(t, want, v)
+		})
+	}
+}
+
+// The DMI vendor strings for the same platforms must land on the same answer.
+func TestMapHypervisorDMIVendors(t *testing.T) {
+	for vendor, want := range map[string]string{
+		"Amazon EC2":            "AWS Nitro System",
+		"Microsoft Corporation": "Hyper-V",
+		"Google":                "Google Compute Engine",
+		"Google Compute Engine": "Google Compute Engine",
+		"Apple Inc.":            "Apple Virtualization",
+		"VMware, Inc.":          "VMware",
+		"Xen":                   "Xen",
+		"QEMU":                  "QEMU",
+	} {
+		t.Run(vendor, func(t *testing.T) {
+			v, ok := mapHypervisor(vendor)
+			assert.True(t, ok, vendor)
+			assert.Equal(t, want, v)
+		})
+	}
+}
+
+// Several vendor strings contain more than one key. Go randomises map
+// iteration, so before ordering by key length the answer differed between
+// runs. The most specific match must win, every time.
+//
+// "Red Hat RHEV Hypervisor" is the case that actually proves it: it contains
+// both "red hat" (7) and "rhev" (4), and the two map to DIFFERENT products, so
+// iteration order was observable in the result.
+func TestMapHypervisorLongestMatchWinsDeterministically(t *testing.T) {
+	for i := 0; i < 50; i++ {
+		v, ok := mapHypervisor("Red Hat RHEV Hypervisor")
+		assert.True(t, ok)
+		assert.Equal(t, "OpenShift Virtualization", v,
+			"the longer key must win on every iteration, not whichever came first")
+	}
+}
+
+// "oracle" is systemd's token for VirtualBox, but as a substring it is far too
+// broad. It is matched exactly, so a vendor string that merely contains the
+// word is not mislabelled.
+func TestMapHypervisorOracleIsExactMatchOnly(t *testing.T) {
+	// systemd emits the bare token
+	v, ok := mapHypervisor("oracle")
+	assert.True(t, ok)
+	assert.Equal(t, "VirtualBox", v)
+
+	// trailing whitespace from a command must not defeat the exact match
+	v, ok = mapHypervisor(" Oracle\n")
+	assert.True(t, ok)
+	assert.Equal(t, "VirtualBox", v)
+
+	// a vendor string that merely contains the word must NOT become VirtualBox
+	for _, vendor := range []string{
+		"Oracle Corporation",
+		"Oracle Cloud Compute",
+		"Oracle Cloud Infrastructure",
+	} {
+		v, ok := mapHypervisor(vendor)
+		assert.False(t, ok, "%q must not be mistaken for VirtualBox", vendor)
+		assert.Equal(t, "", v)
+	}
+
+	// VirtualBox is still identified by DMI, via its product_name
+	v, ok = mapHypervisor("VirtualBox")
+	assert.True(t, ok)
+	assert.Equal(t, "VirtualBox", v)
+
+	v, ok = mapHypervisor("Oracle VM VirtualBox")
+	assert.True(t, ok)
+	assert.Equal(t, "VirtualBox", v)
+}
