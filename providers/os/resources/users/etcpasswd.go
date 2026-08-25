@@ -32,11 +32,15 @@ func ParseEtcPasswd(input io.Reader) ([]*User, error) {
 			// parse uid
 			uid, err := strconv.ParseInt(m[2], 10, 0)
 			if err != nil {
-				log.Error().Err(err).Str("user", m[0]).Msg("could not parse uid")
+				// Skip the entry rather than fall through with uid 0: a
+				// malformed line must not surface as a phantom root account.
+				log.Error().Err(err).Str("user", m[0]).Msg("could not parse uid, skipping user")
+				continue
 			}
 			gid, err := strconv.ParseInt(m[3], 10, 0)
 			if err != nil {
-				log.Error().Err(err).Str("user", m[0]).Msg("could not parse gid")
+				log.Error().Err(err).Str("user", m[0]).Msg("could not parse gid, skipping user")
+				continue
 			}
 
 			// bin:x:1:1:bin:/bin:/sbin/nologin
