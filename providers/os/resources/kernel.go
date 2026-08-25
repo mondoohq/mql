@@ -113,6 +113,34 @@ func suseKernelMatchesRunning(pkgVersion, pkgName, runningKernelVersion string) 
 	return strings.HasPrefix(stripRPMEpoch(pkgVersion), versionPrefix)
 }
 
+// debianImageKernelName reports the kernel release a linux-image package
+// carries, and whether the package holds a kernel at all.
+//
+// Debian and Ubuntu ship a metapackage alongside the versioned images:
+// linux-image-cloud-amd64 on Debian, linux-image-aws on Ubuntu. Its only job
+// is to depend on the newest kernel, so it contains no kernel of its own and
+// listing it invents an installed kernel named after the flavour ("aws",
+// "cloud-amd64") that is not on disk.
+//
+// A real image package always names a release, and a release always starts
+// with a digit. A flavour never does.
+func debianImageKernelName(pkgName string) (string, bool) {
+	name, ok := strings.CutPrefix(pkgName, "linux-image-")
+	if !ok {
+		return "", false
+	}
+
+	// Ubuntu ships the unsigned build as linux-image-unsigned-<release>, so the
+	// release is not in front. Debian appends -unsigned instead, which leaves it
+	// where we expect.
+	name = strings.TrimPrefix(name, "unsigned-")
+
+	if name == "" || name[0] < '0' || name[0] > '9' {
+		return "", false
+	}
+	return name, true
+}
+
 func (k *mqlKernel) installed() ([]any, error) {
 	res := []KernelVersion{}
 
@@ -164,19 +192,16 @@ func (k *mqlKernel) installed() ([]any, error) {
 			//	version: "4.19+105+deb10u8"
 			//}]
 			filterKernel = func(pkg *mqlPackage) {
-				if strings.HasPrefix(pkg.Name.Data, "linux-image") {
-					kernelName := strings.TrimPrefix(pkg.Name.Data, "linux-image-")
-					running := false
-					if kernelName == runningKernelVersion {
-						running = true
-					}
-
-					res = append(res, KernelVersion{
-						Name:    kernelName,
-						Version: pkg.Version.Data,
-						Running: running,
-					})
+				kernelName, ok := debianImageKernelName(pkg.Name.Data)
+				if !ok {
+					return
 				}
+
+				res = append(res, KernelVersion{
+					Name:    kernelName,
+					Version: pkg.Version.Data,
+					Running: kernelName == runningKernelVersion,
+				})
 			}
 		} else if platform.Name == "oraclelinux" {
 			// ORacleLinux is an rpm based systems, but might be running the UEK kernel
