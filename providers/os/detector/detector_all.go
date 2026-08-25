@@ -139,7 +139,13 @@ var manjaro = &PlatformResolver{
 	Name:     "manjaro",
 	IsFamily: false,
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
-		if pf.Name == "manjaro" {
+		// Manjaro ARM ships ID=manjaro-arm with ID_LIKE="manjaro arch". It is the
+		// same distribution built for ARM and belongs to the arch family just as
+		// manjaro does. Without it the arch family matched on /etc/arch-release
+		// but no child claimed the platform, so the generic fallback took it and
+		// container images were reported as "scratch". The name is left as the
+		// distribution reports it rather than folded into "manjaro".
+		if pf.Name == "manjaro" || pf.Name == "manjaro-arm" {
 			return true, nil
 		}
 		return false, nil

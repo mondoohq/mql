@@ -851,6 +851,33 @@ func TestAltLinuxIsClaimedByItsOwnResolver(t *testing.T) {
 		"a container image claimed only by the generic resolver is reported as scratch")
 }
 
+// Manjaro ARM sets ID=manjaro-arm, not manjaro. The arch family matched on
+// /etc/arch-release but no child claimed it, so the generic fallback took it and
+// container images were reported as "scratch".
+func TestManjaroArmDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-manjaro-arm.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "manjaro-arm", di.Name, "os name should be identified")
+	assert.Equal(t, "24.03", di.Version, "os version should come from lsb")
+	assert.Equal(t, []string{"arch", "linux", "unix", "os"}, di.Family,
+		"Manjaro ARM belongs to the arch family")
+}
+
+// A container image whose platform is only claimed by the generic resolver is
+// reported as "scratch", which is how Manjaro ARM images were coming back.
+func TestManjaroArmIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-manjaro-arm.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.NotEqual(t, defaultLinux, leaf, "Manjaro ARM must not be left to the generic linux resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf))
+}
+
 func TestBusyboxLinuxDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-busybox.toml")
 	assert.Nil(t, err, "was able to create the provider")
