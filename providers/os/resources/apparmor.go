@@ -133,8 +133,9 @@ func (a *mqlApparmor) fetchStatusFromKernel() (*apparmorStatus, error) {
 		return nil, err
 	}
 
+	profiles, profilesErr := readApparmorProfilesFromFS(conn.FileSystem())
 	status := &apparmorStatus{
-		Profiles:  readApparmorProfilesFromFS(conn.FileSystem()),
+		Profiles:  profiles,
 		Processes: readApparmorProcessesFromFS(conn.FileSystem(), procs),
 	}
 
@@ -145,14 +146,25 @@ func (a *mqlApparmor) fetchStatusFromKernel() (*apparmorStatus, error) {
 	if !profilesAvailable && len(status.Processes) == 0 {
 		return nil, errors.New("AppArmor kernel interfaces unavailable")
 	}
+	// The list exists but we could not read it. securityfs enforces
+	// CAP_MAC_ADMIN regardless of the mode bits, so an unprivileged scan gets
+	// EACCES on a world-readable path. Reporting zero profiles there states as
+	// fact something that was never read, and an audit for unconfined or
+	// complain-mode profiles would pass on it.
+	if profilesAvailable && profilesErr != nil {
+		return nil, fmt.Errorf("apparmor profiles at %s could not be read: %w", apparmorProfilesPath, profilesErr)
+	}
 
 	return status, nil
 }
 
-func readApparmorProfilesFromFS(fs afero.Fs) map[string]string {
+// readApparmorProfilesFromFS reads the kernel's loaded-profile list. The error
+// is returned rather than swallowed: on a host where the path exists but cannot
+// be opened, an empty map is not the same answer as "no profiles are loaded".
+func readApparmorProfilesFromFS(fs afero.Fs) (map[string]string, error) {
 	f, err := fs.Open(apparmorProfilesPath)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	defer f.Close()
 
@@ -164,7 +176,7 @@ func readApparmorProfilesFromFS(fs afero.Fs) map[string]string {
 			profiles[name] = mode
 		}
 	}
-	return profiles
+	return profiles, nil
 }
 
 func readApparmorProcessesFromFS(fs afero.Fs, procs []*processmgr.OSProcess) map[string][]apparmorProcInfo {
