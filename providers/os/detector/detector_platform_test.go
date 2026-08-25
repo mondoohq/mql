@@ -1278,6 +1278,26 @@ func TestGoogleCOSDetector(t *testing.T) {
 	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
 }
 
+// Asserting the name would pass either way: the generic fallback leaves
+// whatever os-release said. Container images are what break.
+func TestGoogleCOSIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-google-cos.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.NotEqual(t, defaultLinux, leaf, "cos must not be left to the generic linux resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
+func TestGoogleCOSIsInPlatformCatalog(t *testing.T) {
+	assert.Equal(t, []string{"os", "unix", "linux"}, osTree["cos"],
+		"cos must carry a family chain for policy filters to match on")
+}
+
 func TestElementaryOSDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-elementary.toml")
 	assert.Nil(t, err, "was able to create the provider")

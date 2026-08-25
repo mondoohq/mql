@@ -169,6 +169,16 @@ var azurelinux = &PlatformResolver{
 	},
 }
 
+// Container-Optimized OS ships only /etc/os-release, with ID=cos. It has no
+// package manager, so this is detection only.
+var cos = &PlatformResolver{
+	Name:     "cos",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		return pf.Name == "cos", nil
+	},
+}
+
 var flatcar = &PlatformResolver{
 	Name:     "flatcar",
 	IsFamily: false,
@@ -1466,7 +1476,7 @@ var linuxFamily = &PlatformResolver{
 	IsFamily: true,
 	// NOTE: altlinux runs before the redhat family, whose members probe
 	// /etc/redhat-release and /etc/fedora-release, both of which ALT ships.
-	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, wizos, alpine, wolfi, nixos, gentoo, voidlinux, clearlinux, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, flatcar, cirros, defaultLinux},
+	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, wizos, alpine, wolfi, nixos, gentoo, voidlinux, clearlinux, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, cos, flatcar, cirros, defaultLinux},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		detected := false
 		osrd := NewOSReleaseDetector(conn)
