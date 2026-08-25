@@ -904,6 +904,32 @@ func TestVoidLinuxIsClaimedByItsOwnResolver(t *testing.T) {
 		"a container image claimed only by the generic resolver is reported as scratch")
 }
 
+// Clear Linux OS ships only /etc/os-release (a symlink to /usr/lib/os-release),
+// carrying ID=clear-linux-os. Nothing claimed it, so the generic resolver did
+// and container images were reported as "scratch".
+func TestClearLinuxDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-clearlinux.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "clear-linux-os", di.Name, "os name should be identified")
+	assert.Equal(t, "43630", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+func TestClearLinuxIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-clearlinux.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.NotEqual(t, defaultLinux, leaf, "Clear Linux must not be left to the generic linux resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
 func TestBusyboxLinuxDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-busybox.toml")
 	assert.Nil(t, err, "was able to create the provider")

@@ -935,6 +935,19 @@ var altlinux = &PlatformResolver{
 // fallback is reported as "scratch" — discarding the identity the image states
 // outright. Note the os provider has no xbps support, so packages are not
 // available on this platform; detection only.
+// Clear Linux OS ships only /etc/os-release, as a symlink to the copy in
+// /usr/lib, carrying ID=clear-linux-os. Without a resolver of its own the
+// generic linux fallback claimed it, and a container image claimed by that
+// fallback is reported as "scratch". Detection only: the os provider has no
+// swupd support, so packages are not available on this platform.
+var clearlinux = &PlatformResolver{
+	Name:     "clear-linux-os",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		return pf.Name == "clear-linux-os", nil
+	},
+}
+
 var voidlinux = &PlatformResolver{
 	Name:     "void",
 	IsFamily: false,
@@ -1438,7 +1451,7 @@ var linuxFamily = &PlatformResolver{
 	IsFamily: true,
 	// NOTE: altlinux runs before the redhat family, whose members probe
 	// /etc/redhat-release and /etc/fedora-release, both of which ALT ships.
-	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, wizos, alpine, wolfi, nixos, gentoo, voidlinux, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, flatcar, cirros, defaultLinux},
+	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, wizos, alpine, wolfi, nixos, gentoo, voidlinux, clearlinux, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, flatcar, cirros, defaultLinux},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		detected := false
 		osrd := NewOSReleaseDetector(conn)
