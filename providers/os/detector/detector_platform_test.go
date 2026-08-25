@@ -818,6 +818,39 @@ func TestWizOSLinuxDetector(t *testing.T) {
 	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
 }
 
+// ALT Linux (BaseALT) ships /etc/redhat-release, /etc/fedora-release and
+// /etc/system-release for compatibility, all carrying just "ALT Container" with
+// no version and no distro name. Nothing claimed it, so it fell through to the
+// generic resolver and container images were reported as "scratch".
+func TestAltLinuxDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-altlinux-p10.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "altlinux", di.Name, "os name should be identified")
+	assert.Equal(t, "ALT Container", di.Title, "os title should be identified")
+	assert.Equal(t, "10", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+// The name above is right even without a resolver of its own, because the
+// generic fallback leaves a name that os-release already supplied. What it does
+// not survive is a container image scan: an image whose platform was only
+// claimed by the generic resolver is reported as "scratch", which is how ALT
+// images were coming back.
+func TestAltLinuxIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-altlinux-p10.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.NotEqual(t, defaultLinux, leaf, "ALT must not be left to the generic linux resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
 func TestBusyboxLinuxDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-busybox.toml")
 	assert.Nil(t, err, "was able to create the provider")

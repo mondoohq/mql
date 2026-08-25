@@ -909,6 +909,20 @@ var photon = &PlatformResolver{
 	},
 }
 
+// ALT Linux (BaseALT) sets ID=altlinux in os-release. It also ships
+// /etc/redhat-release, /etc/fedora-release and /etc/system-release for
+// compatibility, each carrying only "ALT Container" with no distro name and no
+// version, so nothing in the redhat family can identify it from those. Without
+// a resolver of its own the generic linux fallback claimed it, and a container
+// image claimed by that fallback is reported as "scratch".
+var altlinux = &PlatformResolver{
+	Name:     "altlinux",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		return pf.Name == "altlinux", nil
+	},
+}
+
 var mageia = &PlatformResolver{
 	Name:     "mageia",
 	IsFamily: false,
@@ -1402,7 +1416,9 @@ var eulerFamily = &PlatformResolver{
 var linuxFamily = &PlatformResolver{
 	Name:     inventory.FAMILY_LINUX,
 	IsFamily: true,
-	Children: []*PlatformResolver{archFamily, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, wizos, alpine, wolfi, nixos, gentoo, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, flatcar, cirros, defaultLinux},
+	// NOTE: altlinux runs before the redhat family, whose members probe
+	// /etc/redhat-release and /etc/fedora-release, both of which ALT ships.
+	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, wizos, alpine, wolfi, nixos, gentoo, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, flatcar, cirros, defaultLinux},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		detected := false
 		osrd := NewOSReleaseDetector(conn)
