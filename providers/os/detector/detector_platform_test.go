@@ -492,6 +492,21 @@ func TestOpenSuseLeap15Detector(t *testing.T) {
 	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
 }
 
+// Leap 16 is a full rebase onto the SLE 16 codebase: it drops YaST, moves
+// packaged configuration to /usr/etc, and ships an /etc/os-release whose
+// ID_LIKE now also names SLE. It still has to resolve as opensuse-leap and
+// not fall through to the sles resolver or read as a Leap 15 point release.
+func TestOpenSuseLeap16Detector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-opensuse-leap-16.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "opensuse-leap", di.Name, "os name should be identified")
+	assert.Equal(t, "openSUSE Leap 16.0", di.Title, "os title should be identified")
+	assert.Equal(t, "16.0", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"suse", "linux", "unix", "os"}, di.Family)
+}
+
 func TestOpenSuseTumbleweedDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-opensuse-tumbleweed.toml")
 	assert.Nil(t, err, "was able to create the provider")
