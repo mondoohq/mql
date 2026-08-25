@@ -11883,10 +11883,13 @@ windows.smb {
   serverConfiguration() windows.smb.serverConfiguration
   // SMB client (LanmanWorkstation) registry configuration
   clientConfiguration() windows.smb.clientConfiguration
-  // Whether the SMBv1 client driver (mrxsmb10) is enabled (Start != 4)
+  // Whether the SMBv1 client driver (mrxsmb10) is enabled
   //
-  // True when the mrxsmb10 service Start value is anything other than 4
-  // (disabled). SMBv1 is deprecated and should be disabled.
+  // True when the mrxsmb10 service Start value is present and is anything
+  // other than 4 (disabled). False when the service key is absent, which is
+  // how a host that has had the SMB1Protocol optional feature removed looks:
+  // the feature removal deletes the key outright. Server 2019 and later ship
+  // without it. SMBv1 is deprecated and should be disabled.
   smbv1Enabled() bool
 }
 

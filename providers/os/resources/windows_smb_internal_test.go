@@ -218,6 +218,19 @@ func TestComputeSmbV1Enabled(t *testing.T) {
 	// manual start (3) -> enabled
 	assert.True(t, computeSmbV1Enabled(regMap(d("start", 3))))
 
-	// absent -> treated as enabled (default-installed driver present)
-	assert.True(t, computeSmbV1Enabled(map[string]registry.RegistryKeyItem{}))
+	// boot start (0) and system start (1) -> enabled
+	assert.True(t, computeSmbV1Enabled(regMap(d("start", 0))))
+	assert.True(t, computeSmbV1Enabled(regMap(d("start", 1))))
+
+	// An absent service key means the SMB1Protocol optional feature was
+	// removed, which deletes the mrxsmb10 key outright. That is not-installed,
+	// so not enabled. Server 2019, 2022 and 2025 are all in this state on a
+	// stock install; reading it as enabled meant the field could not return
+	// false on any of them.
+	assert.False(t, computeSmbV1Enabled(map[string]registry.RegistryKeyItem{}))
+	assert.False(t, computeSmbV1Enabled(nil))
+
+	// A key present but carrying no Start value cannot say the driver will
+	// load, so it is not reported as enabled either.
+	assert.False(t, computeSmbV1Enabled(regMap(d("type", 2))))
 }
