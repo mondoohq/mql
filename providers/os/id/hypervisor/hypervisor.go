@@ -33,6 +33,13 @@ var knownHypervisors = map[string]string{
 	"nutanix":                  "Nutanix Acropolis",
 	"openshift virtualization": "OpenShift Virtualization",
 	"red hat":                  "OpenShift Virtualization",
+
+	// AWS Nitro. systemd-detect-virt reports exactly "amazon" for Nitro and
+	// "xen" for the older Xen-based instance families, so the two are already
+	// distinguishable; the DMI vendor fields read "Amazon EC2" on Nitro and
+	// "Xen" on Xen, which keeps them disjoint on that path too. One substring
+	// therefore covers both Nitro detection routes without shadowing "xen".
+	"amazon": "AWS Nitro System",
 }
 
 // hyper is a helper struct to avoid passing the connection and platform
