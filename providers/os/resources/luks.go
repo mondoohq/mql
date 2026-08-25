@@ -34,10 +34,9 @@ func (l *mqlLuks) id() (string, error) {
 var validDevicePath = regexp.MustCompile(`^/dev/[A-Za-z0-9._/=:+@-]+$`)
 
 func (l *mqlLuks) volumes() ([]any, error) {
-	// Walk the lsblk tree ourselves instead of reusing the `lsblk`
-	// resource: `lsblk.list` only enumerates direct children of each
-	// top-level disk, so whole-disk LUKS volumes (LUKS formatted
-	// directly on `/dev/sdb`, not on `/dev/sdb1`) would be missed.
+	// Run lsblk ourselves instead of reusing the `lsblk` resource:
+	// `cryptsetup luksDump` needs a device path, and only `--paths`
+	// yields the canonical `/dev/...` form.
 	o, err := CreateResource(l.MqlRuntime, "command", map[string]*llx.RawData{
 		"command": llx.StringData("lsblk --json --fs --paths"),
 	})
@@ -166,10 +165,9 @@ func (v *mqlLuksVolume) id() (string, error) {
 }
 
 func (v *mqlLuksVolume) blockDevice() (*mqlLsblkEntry, error) {
-	// Best-effort lookup against the `lsblk` resource — works for the
-	// common LUKS-on-partition layout. For LUKS volumes that don't
-	// appear in lsblk's flattened list (whole-disk LUKS, some mapper
-	// targets), we report a null reference rather than fabricating one.
+	// Best-effort lookup against the `lsblk` resource. For LUKS volumes
+	// that don't appear in its list, we report a null reference rather
+	// than fabricating one.
 	lsblkRes, err := CreateResource(v.MqlRuntime, "lsblk", map[string]*llx.RawData{})
 	if err != nil {
 		return nil, err
