@@ -102,14 +102,21 @@ func (p *mqlProcess) gatherProcessInfo() error {
 	conn := p.MqlRuntime.Connection.(shared.Connection)
 	opm, err := processes.ResolveManager(conn)
 	if err != nil {
-		p.processInfoError = err
-		return errors.New("cannot find process manager")
+		p.processInfoError = fmt.Errorf("cannot find process manager: %w", err)
+		return p.processInfoError
 	}
 
 	process, err := opm.Process(p.Pid.Data)
 	if err != nil {
-		p.processInfoError = err
-		return errors.New("cannot gather process details")
+		p.processInfoError = fmt.Errorf("cannot gather process details: %w", err)
+		return p.processInfoError
+	}
+	// A manager may report a pid it cannot find without an error. Guard the
+	// dereference so an unresolvable process surfaces as an error rather than
+	// taking down the provider.
+	if process == nil {
+		p.processInfoError = fmt.Errorf("cannot gather process details: process %d does not exist", p.Pid.Data)
+		return p.processInfoError
 	}
 
 	p.State = plugin.TValue[string]{Data: process.State, State: plugin.StateIsSet}

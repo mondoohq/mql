@@ -80,7 +80,7 @@ func TestUnixProcessManagerCachesPsOutput(t *testing.T) {
 	assert.Equal(t, "[Timer]", proc.Command)
 
 	missing, err := upm.Process(9999999)
-	require.NoError(t, err)
+	require.Error(t, err, "an unresolvable pid must be reported as an error, not (nil, nil)")
 	assert.Nil(t, missing)
 
 	// Despite 6 lookups, `ps` must have run exactly once.
