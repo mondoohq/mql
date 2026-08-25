@@ -261,7 +261,7 @@ func readTccStore(afs *afero.Afero, storePath string) ([]tccRow, error) {
 	}
 	defer db.Close()
 
-	columns, err := tccTableColumns(db, "access")
+	columns, err := tccAccessColumns(db)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the schema of TCC store %s: %w", storePath, err)
 	}
@@ -292,9 +292,12 @@ func readTccStore(afs *afero.Afero, storePath string) ([]tccRow, error) {
 	return out, nil
 }
 
-// tccTableColumns returns the column names of a table.
-func tccTableColumns(db *sql.DB, table string) (map[string]struct{}, error) {
-	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+// tccAccessColumns returns the column names of the access table. PRAGMA takes
+// no bind parameters, so the table name is fixed in the statement rather than
+// passed in: there is one table to inspect and no caller that should be able to
+// choose another.
+func tccAccessColumns(db *sql.DB) (map[string]struct{}, error) {
+	rows, err := db.Query("PRAGMA table_info(access)")
 	if err != nil {
 		return nil, err
 	}
