@@ -11731,6 +11731,9 @@ windows.auditPolicy.subcategory @defaults("name success failure") {
   // GUID that identifies the subcategory across Windows versions and languages
   guid string
   // Audit category the subcategory belongs to (e.g. `Logon/Logoff`)
+  //
+  // Null when the subcategory GUID is not one this provider knows, which is
+  // also the state of a subcategory that is not present on the system at all.
   category string
   // Subcategory name as reported by the system in its display language
   localizedName string
