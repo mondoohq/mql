@@ -212,7 +212,25 @@ func (s *mqlPostgresqlConf) params(file *mqlFile) (map[string]any, error) {
 // Convenience views into specific directives. They all derive from `params`
 // so they share the same parse cycle (single file read, single tokenisation).
 
+// confAbsent reports that no postgresql.conf was found anywhere on the host.
+//
+// The convenience accessors below fall back to PostgreSQL's documented
+// defaults when a directive is missing from the file, which is correct when
+// the file exists and simply omits it. With no file at all there is nothing to
+// default from: reporting port 5432, listenAddresses ["localhost"] or
+// sslEnabled false describes a posture nobody ever configured. Worse, it reads
+// as a real finding, and a check asserting "does not listen on *" passes
+// against a host where PostgreSQL was never set up.
+func (s *mqlPostgresqlConf) confAbsent() bool {
+	return s.File.State&plugin.StateIsNull != 0
+}
+
 func (s *mqlPostgresqlConf) listenAddresses(params map[string]any) ([]any, error) {
+	if s.confAbsent() {
+		s.ListenAddresses.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
 	v := paramString(params, "listen_addresses")
 	if v == "" {
 		// Default per PostgreSQL: 'localhost' if unset.
@@ -227,6 +245,11 @@ func (s *mqlPostgresqlConf) listenAddresses(params map[string]any) ([]any, error
 }
 
 func (s *mqlPostgresqlConf) port(params map[string]any) (int64, error) {
+	if s.confAbsent() {
+		s.Port.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+
 	v := paramString(params, "port")
 	if v == "" {
 		return 5432, nil
@@ -239,66 +262,146 @@ func (s *mqlPostgresqlConf) port(params map[string]any) (int64, error) {
 }
 
 func (s *mqlPostgresqlConf) sslEnabled(params map[string]any) (bool, error) {
+	if s.confAbsent() {
+		s.SslEnabled.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+
 	return postgresql.IsTruthy(paramString(params, "ssl")), nil
 }
 
 func (s *mqlPostgresqlConf) sslCertFile(params map[string]any) (string, error) {
+	if s.confAbsent() {
+		s.SslCertFile.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+
 	return paramString(params, "ssl_cert_file"), nil
 }
 
 func (s *mqlPostgresqlConf) sslKeyFile(params map[string]any) (string, error) {
+	if s.confAbsent() {
+		s.SslKeyFile.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+
 	return paramString(params, "ssl_key_file"), nil
 }
 
 func (s *mqlPostgresqlConf) sslCaFile(params map[string]any) (string, error) {
+	if s.confAbsent() {
+		s.SslCaFile.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+
 	return paramString(params, "ssl_ca_file"), nil
 }
 
 func (s *mqlPostgresqlConf) sslMinProtocolVersion(params map[string]any) (string, error) {
+	if s.confAbsent() {
+		s.SslMinProtocolVersion.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+
 	return paramString(params, "ssl_min_protocol_version"), nil
 }
 
 func (s *mqlPostgresqlConf) sslCiphers(params map[string]any) (string, error) {
+	if s.confAbsent() {
+		s.SslCiphers.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+
 	return paramString(params, "ssl_ciphers"), nil
 }
 
 func (s *mqlPostgresqlConf) passwordEncryption(params map[string]any) (string, error) {
+	if s.confAbsent() {
+		s.PasswordEncryption.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+
 	return paramString(params, "password_encryption"), nil
 }
 
 func (s *mqlPostgresqlConf) dataDirectory(params map[string]any) (string, error) {
+	if s.confAbsent() {
+		s.DataDirectory.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+
 	return paramString(params, "data_directory"), nil
 }
 
 func (s *mqlPostgresqlConf) hbaFile(params map[string]any) (string, error) {
+	if s.confAbsent() {
+		s.HbaFile.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+
 	return paramString(params, "hba_file"), nil
 }
 
 func (s *mqlPostgresqlConf) identFile(params map[string]any) (string, error) {
+	if s.confAbsent() {
+		s.IdentFile.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+
 	return paramString(params, "ident_file"), nil
 }
 
 func (s *mqlPostgresqlConf) logDestination(params map[string]any) (string, error) {
+	if s.confAbsent() {
+		s.LogDestination.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+
 	return paramString(params, "log_destination"), nil
 }
 
 func (s *mqlPostgresqlConf) loggingCollector(params map[string]any) (bool, error) {
+	if s.confAbsent() {
+		s.LoggingCollector.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+
 	return postgresql.IsTruthy(paramString(params, "logging_collector")), nil
 }
 
 func (s *mqlPostgresqlConf) logConnections(params map[string]any) (bool, error) {
+	if s.confAbsent() {
+		s.LogConnections.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+
 	return postgresql.IsTruthy(paramString(params, "log_connections")), nil
 }
 
 func (s *mqlPostgresqlConf) logDisconnections(params map[string]any) (bool, error) {
+	if s.confAbsent() {
+		s.LogDisconnections.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+
 	return postgresql.IsTruthy(paramString(params, "log_disconnections")), nil
 }
 
 func (s *mqlPostgresqlConf) logStatement(params map[string]any) (string, error) {
+	if s.confAbsent() {
+		s.LogStatement.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+
 	return paramString(params, "log_statement"), nil
 }
 
 func (s *mqlPostgresqlConf) sharedPreloadLibraries(params map[string]any) ([]any, error) {
+	if s.confAbsent() {
+		s.SharedPreloadLibraries.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
 	parts := postgresql.SplitListParam(paramString(params, "shared_preload_libraries"))
 	out := make([]any, len(parts))
 	for i, p := range parts {
