@@ -1429,6 +1429,38 @@ func TestDetectorFlatcar(t *testing.T) {
 	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
 }
 
+func TestDetectorTalos(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-talos.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "talos", di.Name, "os name should be identified")
+	assert.Equal(t, "Talos (v1.13.9)", di.Title, "os title should be identified")
+	// VERSION_ID is v1.13.9 on this target; the vendor's "v" prefix is stripped
+	// so version comparisons do not have to special-case Talos. The prefixed
+	// string survives in Title, which is PRETTY_NAME verbatim.
+	assert.Equal(t, "1.13.9", di.Version, "os version should have the v prefix stripped")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+	assert.Equal(t, map[string]string{"distro-id": "talos"}, di.Labels)
+}
+
+// Talos ships no shell, no package database and no sshd, so it is only ever
+// reached as an image, a disk or a mounted filesystem. Nothing claimed
+// ID=talos, so it fell to the generic resolver, and platform_resolver.go
+// renames any container claimed only by that resolver to "scratch", which
+// reports an empty package list with no error.
+func TestTalosIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-talos.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.Equal(t, talos, leaf, "Talos must be claimed by its own resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
 func TestEndeavourOSContainerDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-endeavouros.toml")
 	assert.Nil(t, err, "was able to create the provider")

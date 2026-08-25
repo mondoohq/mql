@@ -85,6 +85,7 @@ var serverPlatformNames = map[string]bool{
 	"opensuse-microos": true,
 	"photon":           true,
 	"suse-microos":     true,
+	"talos":            true,
 }
 
 // systemdDefaultTargetPaths lists the paths where systemd stores the default

@@ -414,6 +414,8 @@ func TestDetectDeviceType_ServerDistros(t *testing.T) {
 		// and the desktop spins built on it ship their own ids (aeon,
 		// kalpa-desktop), so the name is what has to answer this.
 		{"opensuse microos", "opensuse-microos", "openSUSE MicroOS", []string{"suse", "linux", "unix", "os"}},
+		// detect-talos.toml. An API-managed Kubernetes host, never a desktop.
+		{"talos", "talos", "Talos (v1.13.9)", []string{"linux", "unix", "os"}},
 		// detect-gardenlinux.toml (no container variant-id on this one)
 		{"gardenlinux", "gardenlinux", "Garden Linux 934.0", []string{"debian", "linux", "unix", "os"}},
 	}
