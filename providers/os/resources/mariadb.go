@@ -308,7 +308,7 @@ func (s *mqlMariadbConf) basedir(serverOptions map[string]any) (string, error) {
 }
 
 func (s *mqlMariadbConf) tmpdir(serverOptions map[string]any) ([]any, error) {
-	return optionList(serverOptions, "tmpdir"), nil
+	return optionPathList(serverOptions, "tmpdir"), nil
 }
 
 func (s *mqlMariadbConf) secureFilePriv(serverOptions map[string]any) (string, error) {

@@ -474,6 +474,12 @@ func optionList(options map[string]any, key string) []any {
 	return toAnySlice(mycnf.SplitList(optionString(options, key)))
 }
 
+// optionPathList resolves an option whose value is a list of directories.
+// These use ":" (Unix) or ";" (Windows) rather than the comma/space form.
+func optionPathList(options map[string]any, key string) []any {
+	return toAnySlice(mycnf.SplitPathList(optionString(options, key)))
+}
+
 // bindAddressList resolves bind_address. The server listens on every
 // interface when the option is unset, which "*" denotes, so an empty result
 // would misreport an unrestricted listener as no listener at all.

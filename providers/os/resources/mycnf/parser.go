@@ -539,9 +539,73 @@ func IsTruthy(value string, bare bool) bool {
 	return false
 }
 
+// SplitPathList splits an option value holding a list of directories, which
+// MySQL and MariaDB separate differently from their comma lists: with ":" on
+// Unix and ";" on Windows. tmpdir is the option that uses this form.
+//
+// A Windows drive letter carries its own colon ("C:\\tmp"), so a colon in the
+// second character position followed by a path separator is part of the path,
+// not a delimiter.
+func SplitPathList(value string) []string {
+	v := strings.TrimSpace(value)
+	if v == "" {
+		return nil
+	}
+
+	// A semicolon anywhere means the value uses the Windows separator, where a
+	// bare colon is always part of a drive letter.
+	if strings.ContainsRune(v, ';') {
+		return cleanPathElems(strings.Split(v, ";"))
+	}
+
+	var elems []string
+	start := 0
+	for i := 0; i < len(v); i++ {
+		if v[i] != ':' {
+			continue
+		}
+		if isDriveColon(v, i) {
+			continue
+		}
+		elems = append(elems, v[start:i])
+		start = i + 1
+	}
+	elems = append(elems, v[start:])
+	return cleanPathElems(elems)
+}
+
+// isDriveColon reports whether the colon at i separates a Windows drive letter
+// from its path, as in "C:\\tmp", rather than delimiting two directories.
+func isDriveColon(v string, i int) bool {
+	if i != 1 {
+		return false
+	}
+	c := v[0]
+	if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') {
+		return false
+	}
+	return i+1 < len(v) && (v[i+1] == '\\' || v[i+1] == '/')
+}
+
+func cleanPathElems(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, e := range in {
+		e = strings.Trim(strings.TrimSpace(e), `"'`)
+		if e != "" {
+			out = append(out, e)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // SplitList splits an option value holding a comma- or space-separated list
-// (tls_version, tmpdir, sql_mode, ...). Elements are trimmed of whitespace
-// and surrounding quotes; empty elements are dropped.
+// (tls_version, sql_mode, ...). Elements are trimmed of whitespace and
+// surrounding quotes; empty elements are dropped.
+//
+// Path lists are not this shape: use SplitPathList for those.
 func SplitList(value string) []string {
 	if strings.TrimSpace(value) == "" {
 		return nil

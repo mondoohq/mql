@@ -341,7 +341,7 @@ func (s *mqlMysqlConf) basedir(serverOptions map[string]any) (string, error) {
 }
 
 func (s *mqlMysqlConf) tmpdir(serverOptions map[string]any) ([]any, error) {
-	return optionList(serverOptions, "tmpdir"), nil
+	return optionPathList(serverOptions, "tmpdir"), nil
 }
 
 func (s *mqlMysqlConf) secureFilePriv(serverOptions map[string]any) (string, error) {
