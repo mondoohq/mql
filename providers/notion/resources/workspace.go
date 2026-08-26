@@ -76,7 +76,9 @@ func (w *mqlNotionWorkspace) userCount() (int64, error) {
 }
 
 // databaseCount reports the number of databases visible to this
-// integration.
+// integration. Null propagates for the same reason it does on userCount:
+// a 0 states the workspace holds no databases, which is a different claim
+// from the search never having been readable.
 func (w *mqlNotionWorkspace) databaseCount() (int64, error) {
 	notion, err := w.notionRoot()
 	if err != nil {
@@ -86,10 +88,15 @@ func (w *mqlNotionWorkspace) databaseCount() (int64, error) {
 	if databases.Error != nil {
 		return 0, databases.Error
 	}
+	if databases.State&plugin.StateIsNull != 0 {
+		w.DatabaseCount.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
 	return int64(len(databases.Data)), nil
 }
 
 // pageCount reports the number of pages visible to this integration.
+// Null propagates as it does on userCount and databaseCount.
 func (w *mqlNotionWorkspace) pageCount() (int64, error) {
 	notion, err := w.notionRoot()
 	if err != nil {
@@ -98,6 +105,10 @@ func (w *mqlNotionWorkspace) pageCount() (int64, error) {
 	pages := notion.GetPages()
 	if pages.Error != nil {
 		return 0, pages.Error
+	}
+	if pages.State&plugin.StateIsNull != 0 {
+		w.PageCount.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
 	}
 	return int64(len(pages.Data)), nil
 }
