@@ -58,7 +58,15 @@ func NewConnection(id uint32, asset *inventory.Asset, discoveryCache *resources.
 		}
 	}
 
-	config, err := buildConfigFromFlags("", kubeconfigPath, "")
+	// The requested context selects which cluster in the kubeconfig to talk to.
+	// Without it every scan targets whatever current-context happens to be, while
+	// still being reported under the requested name.
+	contextName := ""
+	if len(asset.Connections) > 0 {
+		contextName = asset.Connections[0].Options[shared.OPTION_CONTEXT]
+	}
+
+	config, err := buildConfigFromFlags("", kubeconfigPath, contextName)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +109,11 @@ func NewConnection(id uint32, asset *inventory.Asset, discoveryCache *resources.
 	}
 
 	currentClusterName := ""
-	if ctx, ok := kubeConfig.Contexts[kubeConfig.CurrentContext]; ok {
+	selectedContext := kubeConfig.CurrentContext
+	if contextName != "" {
+		selectedContext = contextName
+	}
+	if ctx, ok := kubeConfig.Contexts[selectedContext]; ok {
 		currentClusterName = ctx.Cluster
 	} else {
 		// right now we use the name of the first node to identify the cluster
@@ -131,7 +143,10 @@ func NewConnection(id uint32, asset *inventory.Asset, discoveryCache *resources.
 // buildConfigFromFlags we rebuild clientcmd.BuildConfigFromFlags to make sure we do not log warnings for every
 // scan.
 func buildConfigFromFlags(masterUrl, kubeconfigPath string, context string) (*rest.Config, error) {
-	if kubeconfigPath == "" && masterUrl == "" {
+	// An in-cluster config has no contexts to choose from, so falling back to it
+	// would quietly ignore the requested one. Let the kubeconfig loader run and
+	// report that the context is missing instead.
+	if kubeconfigPath == "" && masterUrl == "" && context == "" {
 		kubeconfig, err := rest.InClusterConfig()
 		if err == nil {
 			return kubeconfig, nil
