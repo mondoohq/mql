@@ -148,6 +148,8 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 		pms = append(pms, &SusePkgManager{RpmPkgManager{conn: conn, platform: asset.Platform}})
 	case asset.Platform.Name == "alpine" || asset.Platform.Name == "wolfi" || asset.Platform.Name == "wizos": // alpine, wolfi & wizos share apk
 		pms = append(pms, &AlpinePkgManager{conn: conn, platform: asset.Platform})
+	case asset.Platform.Name == "void": // Void Linux uses xbps
+		pms = append(pms, &XbpsPkgManager{conn: conn, platform: asset.Platform})
 	case asset.Platform.Name == "macos": // macos family
 		pms = append(pms, &MacOSPkgManager{conn: conn, platform: asset.Platform})
 	case asset.Platform.Name == "windows":

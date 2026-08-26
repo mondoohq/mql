@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>dirs</key>
+	<array>
+		<dict>
+			<key>file</key>
+			<string>/usr</string>
+		</dict>
+		<dict>
+			<key>file</key>
+			<string>/usr/lib</string>
+		</dict>
+	</array>
+	<key>files</key>
+	<array>
+		<dict>
+			<key>file</key>
+			<string>/usr/lib/libacl.so.1.1.2301</string>
+			<key>mtime</key>
+			<integer>1618112068</integer>
+			<key>sha256</key>
+			<string>58a87acba28bb6ad56743d2740b49b92f2610442844a2b3512b4cb7da60de66b</string>
+			<key>size</key>
+			<integer>38904</integer>
+		</dict>
+	</array>
+	<key>links</key>
+	<array>
+		<dict>
+			<key>file</key>
+			<string>/usr/lib/libacl.so.1</string>
+			<key>mtime</key>
+			<integer>1618112068</integer>
+			<key>target</key>
+			<string>/usr/lib/libacl.so.1.1.2301</string>
+		</dict>
+	</array>
+</dict>
+</plist>
