@@ -176,6 +176,20 @@ var cos = &PlatformResolver{
 	},
 }
 
+// OpenCloudOS is the Tencent-backed CentOS successor. It is rpm based, but it
+// ships /etc/system-release ("OpenCloudOS release 9.0") and no
+// /etc/redhat-release, so the redhat family declines it before any of that
+// family's children get a look. It resolves here instead, the way amazonlinux
+// and azurelinux do, and packages.go names it alongside them so it still gets
+// the rpm package manager.
+var opencloudos = &PlatformResolver{
+	Name:     "opencloudos",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		return pf.Name == "opencloudos", nil
+	},
+}
+
 // Talos is an API-managed Kubernetes host: it ships no shell, no /bin or
 // /sbin, and no package database, so nothing here can be derived from a
 // command. /etc/os-release is the whole of what detection can read.
@@ -482,6 +496,30 @@ var kdeneon = &PlatformResolver{
 	},
 }
 
+// deepin ships dpkg/apt and /etc/debian_version, but its os-release carries
+// ID=deepin and no ID_LIKE, so the debian resolver, which requires ID=debian,
+// never claims it. It resolves inside the debian family for the package
+// manager and the debian-specific resources to be selected.
+var deepin = &PlatformResolver{
+	Name:     "deepin",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		return pf.Name == "deepin", nil
+	},
+}
+
+// openKylin ships dpkg/apt but no /etc/debian_version at all, so it cannot be
+// reached through the debian resolver, which opens that file first. The
+// debian family itself claims every linux host, so matching on the name here
+// is what puts it in the family and selects dpkg.
+var openkylin = &PlatformResolver{
+	Name:     "openkylin",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		return pf.Name == "openkylin", nil
+	},
+}
+
 // elxr is a Debian derivative (os-release carries ID=elxr, ID_LIKE=debian).
 // It ships dpkg/apt, so it has to resolve inside the debian family for the
 // package manager and the debian-specific resources to be selected.
@@ -656,6 +694,19 @@ var centos = &PlatformResolver{
 		}
 
 		return true, nil
+	},
+}
+
+// Anolis OS is the Alibaba-backed CentOS successor. It ships
+// /etc/redhat-release ("Anolis OS release 8.8") and an rpm database, so it
+// resolves inside the redhat family and picks up the rpm package manager.
+// It declares ID_LIKE="rhel fedora centos", so it is resolved before centos,
+// whose last resort is the mere existence of /etc/centos-release.
+var anolis = &PlatformResolver{
+	Name:     "anolis",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		return pf.Name == "anolis", nil
 	},
 }
 
@@ -1394,7 +1445,7 @@ var redhatFamily = &PlatformResolver{
 	// so it also has to be resolved before redhat.
 	// NOTE: cloudlinux runs before centos, whose last resort is the mere existence of
 	// /etc/centos-release, which a rebuild may ship for compatibility
-	Children: []*PlatformResolver{oracle, rhcos, rhel, cloudlinux, centos, fedora, scientific, eurolinux, nobara, qubes},
+	Children: []*PlatformResolver{oracle, rhcos, rhel, cloudlinux, anolis, centos, fedora, scientific, eurolinux, nobara, qubes},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		f, err := conn.FileSystem().Open("/etc/redhat-release")
 		if err != nil {
@@ -1442,7 +1493,7 @@ var redhatFamily = &PlatformResolver{
 var debianFamily = &PlatformResolver{
 	Name:     "debian",
 	IsFamily: true,
-	Children: []*PlatformResolver{mxlinux, debian, ubuntu, raspbian, kali, linuxmint, popos, elementary, zorin, parrot, cumulus, gardenlinux, tails, kdeneon, elxr},
+	Children: []*PlatformResolver{mxlinux, debian, ubuntu, raspbian, kali, linuxmint, popos, elementary, zorin, parrot, cumulus, gardenlinux, tails, kdeneon, elxr, deepin, openkylin},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		return true, nil
 	},
@@ -1504,7 +1555,7 @@ var linuxFamily = &PlatformResolver{
 	IsFamily: true,
 	// NOTE: altlinux runs before the redhat family, whose members probe
 	// /etc/redhat-release and /etc/fedora-release, both of which ALT ships.
-	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, wizos, alpine, wolfi, nixos, gentoo, voidlinux, clearlinux, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, cos, flatcar, talos, cirros, defaultLinux},
+	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, wizos, alpine, wolfi, nixos, gentoo, voidlinux, clearlinux, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, cos, flatcar, talos, opencloudos, cirros, defaultLinux},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		detected := false
 		osrd := NewOSReleaseDetector(conn)

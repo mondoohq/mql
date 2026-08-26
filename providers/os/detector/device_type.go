@@ -63,9 +63,11 @@ var containerVariantIDPrefixes = []string{
 // desktopPlatformNames lists platform names (from os-release ID) that are
 // inherently desktop-oriented distributions.
 var desktopPlatformNames = map[string]bool{
+	"deepin":     true,
 	"elementary": true,
 	"linuxmint":  true,
 	"nobara":     true,
+	"openkylin":  true,
 	"pop":        true,
 	"steamos":    true,
 	"zorin":      true,

@@ -1461,6 +1461,57 @@ func TestTalosIsClaimedByItsOwnResolver(t *testing.T) {
 		"a container image claimed only by the generic resolver is reported as scratch")
 }
 
+// Anolis OS, OpenCloudOS, deepin and openKylin all set an ID no resolver
+// claimed, so detection fell to the generic resolver and every one of their
+// container images was reported as "scratch": no family, and so no package
+// manager and no findings.
+//
+// Each lands in a different place, and the family is the point: it is what
+// selects rpm or dpkg further down.
+
+func TestAnolisDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-anolis-8.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "anolis", di.Name, "os name should be identified")
+	assert.Equal(t, "Anolis OS 8.8", di.Title, "os title should be identified")
+	assert.Equal(t, "8.8", di.Version, "os version should be identified")
+	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
+}
+
+// OpenCloudOS ships no /etc/redhat-release, so the redhat family declines it
+// before its children are consulted. It resolves as a platform of its own and
+// packages.go names it to get the rpm package manager back.
+func TestOpenCloudOSDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-opencloudos-9.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "opencloudos", di.Name, "os name should be identified")
+	assert.Equal(t, "OpenCloudOS 9.0", di.Title, "os title should be identified")
+	assert.Equal(t, "9.0", di.Version, "os version should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+func TestDeepinDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-deepin-25.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "deepin", di.Name, "os name should be identified")
+	assert.Equal(t, "Deepin 25", di.Title, "os title should be identified")
+	assert.Equal(t, "25", di.Version, "os version should be identified")
+	assert.Equal(t, []string{"debian", "linux", "unix", "os"}, di.Family)
+}
+
+func TestOpenKylinDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-openkylin-3.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "openkylin", di.Name, "os name should be identified")
+	assert.Equal(t, "openKylin 3.0", di.Title, "os title should be identified")
+	assert.Equal(t, "3.0", di.Version, "os version should be identified")
+	assert.Equal(t, []string{"debian", "linux", "unix", "os"}, di.Family)
+}
+
 func TestEndeavourOSContainerDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-endeavouros.toml")
 	assert.Nil(t, err, "was able to create the provider")
