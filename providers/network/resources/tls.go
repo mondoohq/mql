@@ -431,9 +431,16 @@ func dialTLSWithoutSNI(dialer *net.Dialer, proto, addr string) (*tls.Conn, error
 		return nil, err
 	}
 
-	conn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
+	// Certificate verification is deliberately off, and here it is not even
+	// well defined: with no server name there is nothing to verify the
+	// certificate against. This resource reports validity rather than requiring
+	// it, through isVerified and certificateMatchesDomain, so a chain that does
+	// not verify is the finding rather than a reason to refuse the connection.
+	// Verifying at the transport would make the resource fail on exactly the
+	// endpoints it exists to describe.
+	conn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true}) // #nosec G402
 	if err := conn.Handshake(); err != nil {
-		raw.Close()
+		conn.Close()
 		return nil, err
 	}
 
