@@ -438,7 +438,7 @@ func dialTLSWithoutSNI(dialer *net.Dialer, proto, addr string) (*tls.Conn, error
 	// not verify is the finding rather than a reason to refuse the connection.
 	// Verifying at the transport would make the resource fail on exactly the
 	// endpoints it exists to describe.
-	conn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true}) // #nosec G402
+	conn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
 	if err := conn.Handshake(); err != nil {
 		conn.Close()
 		return nil, err
