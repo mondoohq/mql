@@ -139,3 +139,61 @@ func TestTerraformResources_UnfilteredStableID(t *testing.T) {
 	require.NotEqual(t, selID, sel2["__id"].Value.(string),
 		"distinct terraform.resources(\"type\") selectors must have distinct __ids")
 }
+
+// TestNewMqlHclBlock_ConcurrentStamping is a regression test for a data race in
+// newMqlHclBlock. It wrote r.block and r.cachedFile unconditionally after
+// CreateResource — but CreateResource returns the ALREADY CACHED instance when
+// the __id matches. Two goroutines reaching the same block through
+// terraform.blocks and terraform.file(path).blocks therefore wrote the same
+// struct fields at the same time.
+//
+// Run with -race; the fix must also leave the internals correctly populated.
+func TestNewMqlHclBlock_ConcurrentStamping(t *testing.T) {
+	const iterations = 50
+
+	for i := 0; i < iterations; i++ {
+		rt := newHclRaceRuntime(t)
+
+		tfraw, err := CreateResource(rt, "terraform", map[string]*llx.RawData{})
+		require.NoError(t, err)
+		tf := tfraw.(*mqlTerraform)
+
+		filesRaw, err := tf.files()
+		require.NoError(t, err)
+		require.NotEmpty(t, filesRaw)
+
+		var wg sync.WaitGroup
+		// One goroutine walks every block through the terraform singleton...
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			tf.GetBlocks()
+		}()
+		// ... while others re-list the same blocks per file, which hits the
+		// same cached terraform.block instances.
+		for f := range filesRaw {
+			file := filesRaw[f].(*mqlTerraformFile)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				blocks, err := file.blocks()
+				if err != nil {
+					return
+				}
+				for b := range blocks {
+					// Read the internals the other goroutines are stamping.
+					_ = blocks[b].(*mqlTerraformBlock).block.Data
+				}
+			}()
+		}
+		wg.Wait()
+
+		blocks, err := tf.blocks()
+		require.NoError(t, err)
+		for b := range blocks {
+			block := blocks[b].(*mqlTerraformBlock)
+			require.NotNil(t, block.block.Data, "block internals must still be populated")
+			require.NotNil(t, block.cachedFile.Data, "file internals must still be populated")
+		}
+	}
+}
