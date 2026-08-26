@@ -2403,7 +2403,7 @@ func (c *mqlTerraformPlanResourceChange) GetActionReason() *plugin.TValue[string
 type mqlTerraformPlanProposedChange struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlTerraformPlanProposedChangeInternal it will be used here
+	mqlTerraformPlanProposedChangeInternal
 	Address         plugin.TValue[string]
 	Actions         plugin.TValue[[]any]
 	Before          plugin.TValue[any]
