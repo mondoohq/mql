@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
@@ -38,13 +39,90 @@ func ParseTerraformModuleManifest(manifestPath string) (*ModuleManifest, error) 
 	return &manifest, nil
 }
 
-// e.g. mondoo-operator/.github/terraform/aws/.terraform/modules/vpc/examples/secondary-cidr-blocks/main.tf/1/1
-var MODULE_EXAMPLES = regexp.MustCompile(`^.*/modules/.+/examples/.+`)
+// dotTerraformDir is the vendored module cache Terraform writes next to a
+// configuration. Its contents are copies of upstream modules, not the code
+// under review.
+const dotTerraformDir = ".terraform"
+
+// hasPathSegment reports whether rel — a slash-separated path relative to the
+// scan root — contains segment as a whole path element.
+//
+// Matching a whole segment rather than a substring matters: a substring test
+// for ".terraform" also swallows a scan root named `.terraform-configs/`, a
+// repository directory called `.terraform-modules/`, and a configuration file
+// named `main.terraform.tf`. Those are the user's own code, and skipping them
+// reported an empty configuration with no error — every policy over it then
+// passed vacuously.
+func hasPathSegment(rel, segment string) bool {
+	for _, part := range strings.Split(rel, "/") {
+		if part == segment {
+			return true
+		}
+	}
+	return false
+}
+
+// MODULE_EXAMPLES matches the `examples/` trees shipped inside modules that
+// Terraform vendored into `.terraform/modules/`. Those are upstream sample
+// configurations, not deployed code.
+//
+// The pattern is anchored on the `.terraform/` cache deliberately. Without that
+// anchor it also matched `modules/<name>/examples/<case>/`, which is the
+// canonical layout of a first-party Terraform module repository — so a
+// repository's own examples, including any misconfiguration in them, were
+// silently dropped from the scan.
+var MODULE_EXAMPLES = regexp.MustCompile(`(^|/)\.terraform/modules/.+/examples/.+`)
 
 func NewHclConnection(id uint32, asset *inventory.Asset) (*Connection, error) {
+	if len(asset.Connections) == 0 {
+		return nil, errors.New("no connection options for asset")
+	}
 	cc := asset.Connections[0]
 	path := cc.Options["path"]
 	return newHclConnection(id, path, asset)
+}
+
+// tfvarsCandidate is a variable-definitions file found during the walk,
+// together with the precedence rank it is applied at.
+type tfvarsCandidate struct {
+	path string
+	rank int
+}
+
+// Terraform's variable-definition precedence, lowest first. Files later in this
+// order override earlier ones.
+//
+//	rankExplicit  — `prod.tfvars` and friends. Terraform only loads these when
+//	                named with `-var-file`, never automatically. We keep loading
+//	                them so a scan of a directory that only carries such files
+//	                still sees values, but they must not outrank the files
+//	                Terraform does auto-load.
+//	rankDefault   — `terraform.tfvars`
+//	rankDefaultJSON — `terraform.tfvars.json`
+//	rankAuto      — `*.auto.tfvars` / `*.auto.tfvars.json`, applied in lexical order
+const (
+	rankExplicit = iota
+	rankDefault
+	rankDefaultJSON
+	rankAuto
+)
+
+func tfvarsRank(name string) int {
+	switch {
+	case name == "terraform.tfvars", name == "terraform.tofuvars":
+		return rankDefault
+	case name == "terraform.tfvars.json", name == "terraform.tofuvars.json":
+		return rankDefaultJSON
+	case strings.HasSuffix(name, ".auto.tfvars"), strings.HasSuffix(name, ".auto.tfvars.json"),
+		strings.HasSuffix(name, ".auto.tofuvars"), strings.HasSuffix(name, ".auto.tofuvars.json"):
+		return rankAuto
+	default:
+		return rankExplicit
+	}
+}
+
+func isTfVarsFile(name string) bool {
+	return strings.HasSuffix(name, ".tfvars") || strings.HasSuffix(name, ".tfvars.json")
 }
 
 func newHclConnection(id uint32, path string, asset *inventory.Asset) (*Connection, error) {
@@ -71,7 +149,8 @@ func newHclConnection(id uint32, path string, asset *inventory.Asset) (*Connecti
 	// hcl files
 	loader := NewHCLFileLoader()
 	tfVars := make(map[string]*hcl.Attribute)
-	var modulesManifest *ModuleManifest
+	var manifestRecords []Record
+	seenModuleKeys := map[string]struct{}{}
 
 	assetType = configurationfiles
 	// FIXME: cannot handle relative paths
@@ -96,44 +175,80 @@ func newHclConnection(id uint32, path string, asset *inventory.Asset) (*Connecti
 		// NOTE: the return value of WalkDir is deliberately captured. It used to
 		// be discarded, which silently swallowed every HCL parse error raised
 		// below and turned a malformed configuration into an empty one.
-		walkErr := filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
+		walkErr := filepath.WalkDir(path, func(entryPath string, d fs.DirEntry, err error) error {
 			if err != nil {
-				return err
-			}
-
-			// skip terraform module examples
-			foundExamples := MODULE_EXAMPLES.FindString(path)
-			if foundExamples != "" {
-				log.Debug().Str("path", path).Msg("ignoring terraform module example")
-				return nil
-			}
-
-			// if user asked to ignore .terraform, we skip all files in .terraform
-			if strings.Contains(path, ".terraform") && !includeDotTerraform {
-				return nil
-			}
-
-			if !d.IsDir() {
-				if strings.HasSuffix(path, ".terraform/modules/modules.json") {
-					modulesManifest, err = ParseTerraformModuleManifest(path)
-					if errors.Is(err, os.ErrNotExist) {
-						log.Debug().Str("path", path).Msg("no terraform module manifest found")
-					} else {
-						return errors.Wrap(err, fmt.Sprintf("could not parse terraform module manifest %s", path))
-					}
+				// A subdirectory we cannot read must not abort discovery of
+				// everything else in the tree.
+				log.Warn().Err(err).Str("path", entryPath).Msg("skipping unreadable path during terraform discovery")
+				if d != nil && d.IsDir() {
+					return fs.SkipDir
 				}
+				return nil
+			}
 
-				// we do not want to parse hcl files from terraform modules .terraform files
-				if strings.Contains(path, ".terraform") {
+			rel, relErr := filepath.Rel(path, entryPath)
+			if relErr != nil {
+				rel = entryPath
+			}
+			rel = filepath.ToSlash(rel)
+
+			// Skip the vendored module cache. `modules.json` inside it is read
+			// first, below, because it is the manifest describing what was
+			// vendored.
+			if hasPathSegment(rel, dotTerraformDir) {
+				if d.IsDir() {
+					// The manifest lives at .terraform/modules/modules.json, so
+					// the cache still has to be walked unless the user opted
+					// out; only its *.tf files are skipped.
+					if !includeDotTerraform {
+						return fs.SkipDir
+					}
 					return nil
 				}
 
-				candidates = append(candidates, path)
+				if includeDotTerraform && strings.HasSuffix(rel, ".terraform/modules/modules.json") {
+					manifest, mErr := ParseTerraformModuleManifest(entryPath)
+					switch {
+					case errors.Is(mErr, os.ErrNotExist):
+						log.Debug().Str("path", entryPath).Msg("no terraform module manifest found")
+					case mErr != nil:
+						log.Warn().Err(mErr).Str("path", entryPath).Msg("could not parse terraform module manifest")
+					default:
+						// A monorepo has one module cache per stack. Merging
+						// their records keeps every stack's modules visible;
+						// overwriting reported only the last one walked.
+						for _, record := range manifest.Records {
+							if _, seen := seenModuleKeys[record.Key]; seen {
+								continue
+							}
+							seenModuleKeys[record.Key] = struct{}{}
+							manifestRecords = append(manifestRecords, record)
+						}
+					}
+				}
+
+				// Never parse configuration out of the vendored cache.
+				return nil
 			}
+
+			// Skip example configurations vendored inside cached modules.
+			if MODULE_EXAMPLES.MatchString(rel) {
+				log.Debug().Str("path", entryPath).Msg("ignoring terraform module example")
+				return nil
+			}
+
+			if d.IsDir() {
+				return nil
+			}
+
+			// Collected rather than parsed here: OpenTofu's precedence is decided
+			// per directory and file name, so whether this file should be read is
+			// not known until the walk has seen what sits next to it.
+			candidates = append(candidates, entryPath)
 			return nil
 		})
 		if walkErr != nil {
-			return nil, walkErr
+			return nil, errors.Wrap(walkErr, "could not walk terraform configuration")
 		}
 	} else {
 		candidates = append(candidates, path)
@@ -164,15 +279,50 @@ func newHclConnection(id uint32, path string, asset *inventory.Asset) (*Connecti
 			path, len(resolved.Ignored), resolved.Ignored[0], plugin.ErrNoMatch)
 	}
 
+	// A single unparseable file must not truncate the scan: the walk used to
+	// abort at the broken file and discard the error, so every file ordered
+	// after it vanished from a scan that reported success. Parse everything and
+	// keep the failures.
+	var parseErr error
+	parsed := 0
 	for _, cfg := range resolved.Configs {
+		log.Debug().Str("path", cfg).Msg("parsing hcl file")
 		if err := loader.ParseHclFile(cfg); err != nil {
-			return nil, errors.Wrap(err, "could not parse hcl file")
+			log.Warn().Err(err).Str("path", cfg).Msg("could not parse hcl file; skipping")
+			if parseErr == nil {
+				parseErr = err
+			}
+			continue
 		}
+		parsed++
 	}
 
+	// Nothing parsed, so there is no configuration to report on. Connecting
+	// anyway would pass every policy over a project that was never read.
+	if parsed == 0 && parseErr != nil {
+		return nil, errors.Wrap(parseErr, "could not parse hcl file")
+	}
+
+	// resolveConfigFiles sorts the variable files by path. Applying them in that
+	// order let `terraform.tfvars` override an `*.auto.tfvars` that Terraform
+	// itself ranks higher, silently inverting a variable's effective value.
+	varFiles := make([]tfvarsCandidate, 0, len(resolved.Vars))
 	for _, varFile := range resolved.Vars {
-		if err := ReadTfVarsFromFile(varFile, tfVars); err != nil {
-			return nil, errors.Wrap(err, "could not parse tfvars file")
+		varFiles = append(varFiles, tfvarsCandidate{
+			path: varFile,
+			rank: tfvarsRank(filepath.Base(varFile)),
+		})
+	}
+	sort.SliceStable(varFiles, func(i, j int) bool {
+		if varFiles[i].rank != varFiles[j].rank {
+			return varFiles[i].rank < varFiles[j].rank
+		}
+		return varFiles[i].path < varFiles[j].path
+	})
+
+	for _, varFile := range varFiles {
+		if err := ReadTfVarsFromFile(varFile.path, tfVars); err != nil {
+			log.Warn().Err(err).Str("path", varFile.path).Msg("could not parse tfvars file; skipping")
 		}
 	}
 
@@ -182,6 +332,11 @@ func newHclConnection(id uint32, path string, asset *inventory.Asset) (*Connecti
 	// not here.
 	if len(resolved.Configs) == 0 {
 		return nil, fmt.Errorf("no Terraform or OpenTofu configuration files found at %s: %w", path, plugin.ErrNoMatch)
+	}
+
+	var modulesManifest *ModuleManifest
+	if len(manifestRecords) > 0 {
+		modulesManifest = &ModuleManifest{Records: manifestRecords}
 	}
 
 	return &Connection{
@@ -203,6 +358,9 @@ func NewHclGitConnection(id uint32, asset *inventory.Asset) (*Connection, error)
 	}
 	conn, err := newHclConnection(id, path, asset)
 	if err != nil {
+		// The clone succeeded but the connection did not; without this the
+		// whole checkout stays behind in the temp dir on every failed scan.
+		closer()
 		return nil, err
 	}
 	conn.closer = closer
