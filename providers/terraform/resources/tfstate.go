@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync/atomic"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -69,7 +70,7 @@ func (t *mqlTerraformState) outputs() ([]any, error) {
 			return nil, err
 		}
 		so := r.(*mqlTerraformStateOutput)
-		so.output = output
+		so.output.Store(output)
 		list = append(list, r)
 	}
 
@@ -174,7 +175,17 @@ func (t *mqlTerraformState) resources() ([]any, error) {
 }
 
 type mqlTerraformStateOutputInternal struct {
-	output *connection.Output
+	// output is stamped after CreateResource, which hands back the ALREADY
+	// CACHED instance when the __id matches. plugin.GetOrCompute is
+	// unsynchronized, so two goroutines resolving terraform.state.outputs both
+	// miss its IsSet check, both run the accessor and both reach this write
+	// while value() and compute_type() read it.
+	//
+	// An atomic rather than a sync.Once around the write: the runtime caches
+	// the instance BEFORE the stamp runs, so a reader that picks it up from
+	// that cache has no happens-before edge to the stamp and a write-side
+	// guard alone would leave it racing.
+	output atomic.Pointer[connection.Output]
 }
 
 func initTerraformStateOutput(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -231,24 +242,26 @@ func (t *mqlTerraformStateOutput) id() (string, error) {
 }
 
 func (t *mqlTerraformStateOutput) value() (any, error) {
-	if t.output == nil {
+	output := t.output.Load()
+	if output == nil {
 		return nil, nil
 	}
 
 	var value any
-	if err := json.Unmarshal(t.output.Value, &value); err != nil {
+	if err := json.Unmarshal(output.Value, &value); err != nil {
 		return nil, err
 	}
 	return value, nil
 }
 
-func (t mqlTerraformStateOutput) compute_type() (any, error) {
-	if t.output == nil {
+func (t *mqlTerraformStateOutput) compute_type() (any, error) {
+	output := t.output.Load()
+	if output == nil {
 		return nil, nil
 	}
 
 	var typ any
-	if err := json.Unmarshal([]byte(t.output.Type), &typ); err != nil {
+	if err := json.Unmarshal([]byte(output.Type), &typ); err != nil {
 		return nil, err
 	}
 	return typ, nil
@@ -316,17 +329,28 @@ func initTerraformStateModule(runtime *plugin.Runtime, args map[string]*llx.RawD
 }
 
 type mqlTerraformStateModuleInternal struct {
-	module *connection.Module
+	// module is stamped after CreateResource, which hands back the ALREADY
+	// CACHED instance when the __id matches. The same module is reachable
+	// three ways -- terraform.state.modules walks the whole tree,
+	// terraform.state.rootModule takes the root and rootModule.childModules
+	// takes each child -- and each is a separate field resolution that runs in
+	// its own goroutine, so both this write and the reads below cross
+	// goroutines.
+	//
+	// An atomic rather than a sync.Once around the write, for the reason given
+	// on mqlTerraformStateOutputInternal.output.
+	module atomic.Pointer[connection.Module]
 }
 
 func (t *mqlTerraformStateModule) resources() ([]any, error) {
-	if t.module == nil {
+	module := t.module.Load()
+	if module == nil {
 		return nil, nil
 	}
 
 	var list []any
-	for i := range t.module.Resources {
-		resource := t.module.Resources[i]
+	for i := range module.Resources {
+		resource := module.Resources[i]
 		r, err := newMqlResource(t.MqlRuntime, resource)
 		if err != nil {
 			return nil, err
@@ -346,7 +370,7 @@ func newMqlModule(runtime *plugin.Runtime, module *connection.Module) (*mqlTerra
 	}
 
 	tmr := r.(*mqlTerraformStateModule)
-	tmr.module = module
+	tmr.module.Store(module)
 
 	return tmr, nil
 }
@@ -371,13 +395,14 @@ func newMqlResource(runtime *plugin.Runtime, resource *connection.Resource) (plu
 }
 
 func (t *mqlTerraformStateModule) childModules() ([]any, error) {
-	if t.module == nil {
+	module := t.module.Load()
+	if module == nil {
 		return nil, nil
 	}
 
 	var list []any
-	for i := range t.module.ChildModules {
-		r, err := newMqlModule(t.MqlRuntime, t.module.ChildModules[i])
+	for i := range module.ChildModules {
+		r, err := newMqlModule(t.MqlRuntime, module.ChildModules[i])
 		if err != nil {
 			return nil, err
 		}
