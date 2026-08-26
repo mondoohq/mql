@@ -20,7 +20,7 @@ socket @defaults("protocol port address") {
 
 // HTTP endpoint
 //
-// Entry point for HTTP probing. Use `http.get(rawUrl: "https://...")`
+// Entry point for HTTP probing. Use `http.get("https://...")`
 // to perform a GET against a URL and inspect the response status,
 // headers (parsed into sub-resources for HSTS, CSP, cookies, and other
 // security headers), and body.
@@ -29,11 +29,12 @@ http {}
 // HTTP GET request
 //
 // Result of an HTTP GET against a URL, for probing how a web endpoint
-// responds. Initialize with `http.get(rawUrl: "https://example.com",
-// followRedirects: true)`. The `header` sub-resource parses the
-// response's security headers (HSTS, CSP, X-Frame-Options,
-// X-XSS-Protection, X-Content-Type-Options, Referrer-Policy,
-// Content-Type, and Set-Cookie) into individually queryable values.
+// responds. Initialize with `http.get("https://example.com", true)`,
+// where the second argument decides whether redirects are followed. The
+// `header` sub-resource parses the response's security headers (HSTS,
+// CSP, X-Frame-Options, X-XSS-Protection, X-Content-Type-Options,
+// Referrer-Policy, Content-Type, and Set-Cookie) into individually
+// queryable values.
 http.get @defaults("url statusCode") {
   init(rawUrl string, followRedirects bool)
   // URL for this request
@@ -162,7 +163,7 @@ private http.header.setCookie @defaults("name value") {
 //
 // URL broken into its components, generally represented as
 // `[scheme:][//[user[:password]@]host[:port]][/]path[?query][#fragment]`.
-// Initialize with `url(raw: "https://user:pass@host:443/p?q=1#f")` and
+// Initialize with `url("https://user:pass@host:443/p?q=1#f")` and
 // inspect any of the parsed components individually: scheme, user /
 // password user-info pair, host, port, path, parsed query map, raw
 // query string, and fragment.
@@ -193,7 +194,7 @@ url @defaults("string") {
 // TLS/SSL connection inspection
 //
 // TLS posture of a network endpoint. Initialize with
-// `tls(target: "host:port")` (an optional `domainName` enables SNI
+// `tls("host:port")` (an optional `domainName` enables SNI
 // testing). Surfaces every TLS / SSL version the endpoint accepts,
 // the cipher suites and extensions advertised, the version, cipher,
 // and key-exchange group a modern client actually negotiates, and the
