@@ -5,7 +5,7 @@ package resources
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -135,16 +135,16 @@ type pageWalker struct {
 // next reports the token to request for the following page. done is true once
 // the collection is exhausted. An error means the cursor stopped advancing,
 // which is a fault rather than the end of the collection.
-func (w *pageWalker) next(token string) (next string, done bool, err error) {
-	if token == "" {
+func (w *pageWalker) next(cursor string) (next string, done bool, err error) {
+	if cursor == "" {
 		return "", true, nil
 	}
-	if _, dup := w.seen[token]; dup {
-		return "", false, fmt.Errorf("circleci> pagination did not advance: page token %q was issued twice", token)
+	if _, dup := w.seen[cursor]; dup {
+		return "", false, errors.New("circleci> pagination did not advance: the same page cursor was issued twice")
 	}
 	if w.seen == nil {
 		w.seen = map[string]struct{}{}
 	}
-	w.seen[token] = struct{}{}
-	return token, false, nil
+	w.seen[cursor] = struct{}{}
+	return cursor, false, nil
 }
