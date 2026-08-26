@@ -48,7 +48,7 @@ type RegistryKeyItem struct {
 func (k RegistryKeyItem) Kind() string {
 	switch k.Value.Kind {
 	case NONE:
-		return "bone"
+		return "none"
 	case SZ:
 		return "string"
 	case EXPAND_SZ:
@@ -265,7 +265,16 @@ func (k *RegistryKeyValue) UnmarshalJSON(b []byte) error {
 			if len(value) > 0 {
 				var multiString []string
 				for _, v := range value {
-					multiString = append(multiString, v.(string))
+					// The array comes from JSON, so an element is only a string
+					// if PowerShell emitted one. A null or a number decodes to
+					// something else, and a bare assertion here would panic and
+					// take the whole scan with it. The QWORD and BINARY branches
+					// below already guard theirs.
+					str, ok := v.(string)
+					if !ok {
+						return fmt.Errorf("registry MULTI_SZ entry is not a string: %v", v)
+					}
+					multiString = append(multiString, str)
 				}
 				multiString = normalizeMultiSz(multiString)
 				if len(multiString) > 0 {
