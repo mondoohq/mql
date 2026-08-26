@@ -311,8 +311,9 @@ func (c *Connection) resources(kind string, name string, namespace string) (*sha
 
 	// A multi-namespace or glob filter cannot be pushed into the list request,
 	// so it is applied here. Cluster-scoped kinds have no namespace to match and
-	// stay in scope.
-	if resType.Resource.Namespaced && !c.nsFilter.IsEmpty() {
+	// stay in scope, and a filter naming exactly one namespace was already
+	// pushed down to the API server, so re-checking it would be redundant.
+	if resType.Resource.Namespaced && !c.nsFilter.IsEmpty() && c.namespace == "" {
 		filtered := make([]runtime.Object, 0, len(objs))
 		for i := range objs {
 			obj, err := meta.Accessor(objs[i])
