@@ -4,6 +4,7 @@
 package connection
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/hashicorp/hcl/v2"
@@ -39,4 +40,18 @@ func TestLoadTfvars(t *testing.T) {
 	err := ReadTfVarsFromFile(path, variables)
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(variables))
+}
+
+// Terraform parses *.tfvars.json as JSON. Parsing it with the native HCL
+// syntax parser yields zero attributes, so the override never applies and every
+// var.* reference silently falls back to the variable block's default.
+func TestReadTfVarsFromJSONFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "terraform.tfvars.json")
+	writeFile(t, path, `{"image_id":"ami-json","acl":"public-read"}`)
+
+	vars := map[string]*hcl.Attribute{}
+	require.NoError(t, ReadTfVarsFromFile(path, vars))
+	require.Len(t, vars, 2, "*.tfvars.json must be parsed as JSON")
+	assert.Contains(t, vars, "image_id")
+	assert.Contains(t, vars, "acl")
 }
