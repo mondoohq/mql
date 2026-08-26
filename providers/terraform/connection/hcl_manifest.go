@@ -42,7 +42,12 @@ func ParseTerraformModuleManifest(manifestPath string) (*ModuleManifest, error) 
 // dotTerraformDir is the vendored module cache Terraform writes next to a
 // configuration. Its contents are copies of upstream modules, not the code
 // under review.
-const dotTerraformDir = ".terraform"
+const (
+	dotTerraformDir = ".terraform"
+	// modulesDir is the only directory under .terraform the walk descends into,
+	// because it holds the vendored module manifest.
+	modulesDir = "modules"
+)
 
 // hasPathSegment reports whether rel — a slash-separated path relative to the
 // scan root — contains segment as a whole path element.
@@ -60,6 +65,19 @@ func hasPathSegment(rel, segment string) bool {
 		}
 	}
 	return false
+}
+
+// dotTerraformSubdir returns rel's path relative to the .terraform directory it
+// sits under, and whether it sits under one at all. An empty subdir means rel is
+// the .terraform directory itself.
+func dotTerraformSubdir(rel string) (string, bool) {
+	parts := strings.Split(rel, "/")
+	for i, part := range parts {
+		if part == dotTerraformDir {
+			return strings.Join(parts[i+1:], "/"), true
+		}
+	}
+	return "", false
 }
 
 // MODULE_EXAMPLES matches the `examples/` trees shipped inside modules that
@@ -203,6 +221,14 @@ func newHclConnection(id uint32, path string, asset *inventory.Asset) (*Connecti
 					if !includeDotTerraform {
 						return fs.SkipDir
 					}
+					// That manifest is the only thing under the cache worth
+					// reading, so descend just far enough to reach it. Walking
+					// the rest means walking .terraform/providers, which holds
+					// the vendored provider binaries and is routinely hundreds
+					// of megabytes.
+					if sub, _ := dotTerraformSubdir(rel); sub != "" && sub != modulesDir {
+						return fs.SkipDir
+					}
 					return nil
 				}
 
@@ -288,7 +314,15 @@ func newHclConnection(id uint32, path string, asset *inventory.Asset) (*Connecti
 	for _, cfg := range resolved.Configs {
 		log.Debug().Str("path", cfg).Msg("parsing hcl file")
 		if err := loader.ParseHclFile(cfg); err != nil {
-			log.Warn().Err(err).Str("path", cfg).Msg("could not parse hcl file; skipping")
+			// An unreadable file (a dangling symlink, a permission problem) is
+			// not a syntax problem, and saying "could not parse" about one
+			// sends the reader looking at the wrong thing.
+			var pathErr *os.PathError
+			if errors.As(err, &pathErr) {
+				log.Warn().Err(err).Str("path", cfg).Msg("could not read hcl file; skipping")
+			} else {
+				log.Warn().Err(err).Str("path", cfg).Msg("could not parse hcl file; skipping")
+			}
 			if parseErr == nil {
 				parseErr = err
 			}
