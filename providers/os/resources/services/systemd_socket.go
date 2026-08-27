@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/v13/providers/os/connection/shared"
 )
 
@@ -31,11 +32,31 @@ func NewSystemdSocketManager(conn shared.Connection) *SystemdSocketManager {
 	return &SystemdSocketManager{conn: conn}
 }
 
+// fsFallback reads the socket unit files off disk, for the same reason
+// SystemdTimerManager.fsFallback does.
+func (m *SystemdSocketManager) fsFallback() *SystemdFSSocketManager {
+	return &SystemdFSSocketManager{Fs: m.conn.FileSystem()}
+}
+
 func (m *SystemdSocketManager) List() ([]*SystemdSocket, error) {
+	sockets, err := m.listViaSystemctl()
+	if err == nil {
+		return sockets, nil
+	}
+
+	log.Debug().Err(err).
+		Msg("mql[systemd]> could not list sockets through systemctl, reading unit files instead")
+	return m.fsFallback().List()
+}
+
+func (m *SystemdSocketManager) listViaSystemctl() ([]*SystemdSocket, error) {
 	// Step 1: Get all socket unit files (provides Enabled/Masked/Static/Installed)
 	cmdList, err := m.conn.RunCommand("systemctl list-unit-files --type socket --all")
 	if err != nil {
 		return nil, err
+	}
+	if cmdList.ExitStatus != 0 {
+		return nil, systemctlError("systemctl list-unit-files --type socket", cmdList)
 	}
 
 	sockets, err := ParseSystemdSocketUnitFiles(cmdList.Stdout)
@@ -47,6 +68,9 @@ func (m *SystemdSocketManager) List() ([]*SystemdSocket, error) {
 	cmdUnits, err := m.conn.RunCommand("systemctl list-units --type socket --all")
 	if err != nil {
 		return nil, err
+	}
+	if cmdUnits.ExitStatus != 0 {
+		return nil, systemctlError("systemctl list-units --type socket", cmdUnits)
 	}
 
 	unitStates, err := ParseSystemdSocketListUnits(cmdUnits.Stdout)
@@ -75,6 +99,13 @@ func (m *SystemdSocketManager) Get(name string) (*SystemdSocket, error) {
 	cmd, err := m.conn.RunCommand(buildSystemdShowCommand([]string{unit}))
 	if err != nil {
 		return nil, err
+	}
+	if cmd.ExitStatus != 0 {
+		// same reason as List: a systemctl that cannot answer must not read as
+		// "there is no such socket"
+		log.Debug().Err(systemctlError("systemctl show", cmd)).Str("unit", unit).
+			Msg("mql[systemd]> could not read socket through systemctl, reading the unit file instead")
+		return m.fsFallback().Get(name)
 	}
 
 	props, err := parseShowProperties(cmd.Stdout)
@@ -105,6 +136,11 @@ func (m *SystemdSocketManager) ShowSocketProperties(name string) (map[string]str
 	cmd, err := m.conn.RunCommand(buildShowPropertyCommand("Triggers,Accept,Listen", unit))
 	if err != nil {
 		return nil, err
+	}
+	if cmd.ExitStatus != 0 {
+		log.Debug().Err(systemctlError("systemctl show", cmd)).Str("unit", unit).
+			Msg("mql[systemd]> could not read socket properties through systemctl, reading the unit file instead")
+		return m.fsFallback().ShowSocketProperties(name)
 	}
 
 	return parseShowProperties(cmd.Stdout)
