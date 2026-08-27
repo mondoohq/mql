@@ -305,6 +305,113 @@ func newMqlAwsParameterGroup(runtime *plugin.Runtime, region string, parameterGr
 	return mqlParameterGroup, nil
 }
 
+// rdsGetParent returns the aws.rds resource the parameter-group lists hang off.
+func rdsGetParent(runtime *plugin.Runtime) (*mqlAwsRds, error) {
+	obj, err := CreateResource(runtime, "aws.rds", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	return obj.(*mqlAwsRds), nil
+}
+
+// rdsParameterGroupMatches reports whether a parameter group reached by name or
+// arn is the one the caller asked for. Callers pass whichever of the two the
+// query supplied; an empty wanted value never matches, so a query carrying only
+// a name cannot be satisfied by a group whose arn happens to be empty.
+func rdsParameterGroupMatches(gotArn, gotName, wantArn, wantName string) bool {
+	if wantArn != "" {
+		return gotArn == wantArn
+	}
+	return wantName != "" && gotName == wantName
+}
+
+// initAwsRdsParameterGroup resolves a DB parameter group by name or arn.
+//
+// Without an init, NewResource fell straight through to the generated
+// constructor, which builds the resource from the two args the query supplied
+// and leaves arn, family, description and region unset -- surfacing as
+// "primitive with no type information". Worse, the resource has no id()
+// method, so every such husk keyed on the empty string and the second lookup
+// in a session returned the first group's data: asking for
+// default.postgres16 answered with default.mysql8.0, with no error.
+func initAwsRdsParameterGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	wantArn, wantName := rdsParameterGroupArgs(args)
+	if wantArn == "" && wantName == "" {
+		return nil, nil, errors.New("name or arn required to fetch rds parameter group")
+	}
+	r, err := rdsGetParent(runtime)
+	if err != nil {
+		return nil, nil, err
+	}
+	groups := r.GetParameterGroups()
+	if groups.Error != nil {
+		return nil, nil, groups.Error
+	}
+	for _, raw := range groups.Data {
+		pg, ok := raw.(*mqlAwsRdsParameterGroup)
+		if !ok {
+			continue
+		}
+		if rdsParameterGroupMatches(pg.Arn.Data, pg.Name.Data, wantArn, wantName) {
+			return args, pg, nil
+		}
+	}
+	return nil, nil, fmt.Errorf("aws.rds.parameterGroup with %s not found", rdsParameterGroupWanted(wantArn, wantName))
+}
+
+// initAwsRdsClusterParameterGroup is initAwsRdsParameterGroup for cluster
+// parameter groups; see that function for why the fall-through was wrong.
+func initAwsRdsClusterParameterGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+	wantArn, wantName := rdsParameterGroupArgs(args)
+	if wantArn == "" && wantName == "" {
+		return nil, nil, errors.New("name or arn required to fetch rds cluster parameter group")
+	}
+	r, err := rdsGetParent(runtime)
+	if err != nil {
+		return nil, nil, err
+	}
+	groups := r.GetClusterParameterGroups()
+	if groups.Error != nil {
+		return nil, nil, groups.Error
+	}
+	for _, raw := range groups.Data {
+		pg, ok := raw.(*mqlAwsRdsClusterParameterGroup)
+		if !ok {
+			continue
+		}
+		if rdsParameterGroupMatches(pg.Arn.Data, pg.Name.Data, wantArn, wantName) {
+			return args, pg, nil
+		}
+	}
+	return nil, nil, fmt.Errorf("aws.rds.clusterParameterGroup with %s not found", rdsParameterGroupWanted(wantArn, wantName))
+}
+
+// rdsParameterGroupArgs reads the arn and name a parameter-group lookup
+// supplied, tolerating either being absent or of an unexpected type.
+func rdsParameterGroupArgs(args map[string]*llx.RawData) (arn string, name string) {
+	if raw, ok := args["arn"]; ok && raw != nil {
+		arn, _ = raw.Value.(string)
+	}
+	if raw, ok := args["name"]; ok && raw != nil {
+		name, _ = raw.Value.(string)
+	}
+	return arn, name
+}
+
+// rdsParameterGroupWanted renders the lookup key for a not-found error.
+func rdsParameterGroupWanted(arn, name string) string {
+	if arn != "" {
+		return fmt.Sprintf("arn %q", arn)
+	}
+	return fmt.Sprintf("name %q", name)
+}
+
 func (a *mqlAwsRdsClusterParameterGroup) parameters() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	res := []any{}

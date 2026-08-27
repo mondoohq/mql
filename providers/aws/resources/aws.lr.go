@@ -2883,11 +2883,11 @@ func init() {
 			Create: createAwsRdsRecommendationAction,
 		},
 		"aws.rds.clusterParameterGroup": {
-			// to override args, implement: initAwsRdsClusterParameterGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initAwsRdsClusterParameterGroup,
 			Create: createAwsRdsClusterParameterGroup,
 		},
 		"aws.rds.parameterGroup": {
-			// to override args, implement: initAwsRdsParameterGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initAwsRdsParameterGroup,
 			Create: createAwsRdsParameterGroup,
 		},
 		"aws.rds.parameterGroup.parameter": {

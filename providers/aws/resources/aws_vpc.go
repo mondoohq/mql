@@ -906,6 +906,7 @@ func (a *mqlAwsVpc) flowLogs() ([]any, error) {
 		for _, flowLog := range flowLogsRes.FlowLogs {
 			mqlFlowLog, err := CreateResource(a.MqlRuntime, ResourceAwsVpcFlowlog,
 				map[string]*llx.RawData{
+					"__id":                   llx.StringData(vpcFlowLogCacheKey(a.Region.Data, convert.ToValue(flowLog.FlowLogId))),
 					"createdAt":              llx.TimeDataPtr(flowLog.CreationTime),
 					"destination":            llx.StringDataPtr(flowLog.LogDestination),
 					"destinationType":        llx.StringData(string(flowLog.LogDestinationType)),
@@ -2154,6 +2155,20 @@ type mqlAwsVpcFlowlogInternal struct {
 	region                        string
 }
 
+// vpcFlowLogCacheKey builds the cache key for an aws.vpc.flowlog.
+//
+// The resource has no id() method, so without an explicit "__id" every flow
+// log in the account keys on the empty string and CreateResource hands back
+// whichever one was built first. A VPC logging ALL traffic and a VPC logging
+// REJECT then report identical rows, and a check asking whether rejected
+// traffic is captured reads an unrelated flow log's trafficType.
+//
+// Flow log ids are unique per account; the region keeps the key aligned with
+// the rest of the provider and with the ARN the arn() accessor builds.
+func vpcFlowLogCacheKey(region, flowLogID string) string {
+	return region + "/" + flowLogID
+}
+
 func (a *mqlAwsVpcFlowlog) arn() (string, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	return fmt.Sprintf(vpcFlowLogArnPattern, a.Region.Data, conn.AccountId(), a.Id.Data), nil
@@ -2291,6 +2306,7 @@ func (a *mqlAwsVpcSubnet) flowLogs() ([]any, error) {
 		for _, flowLog := range resp.FlowLogs {
 			mqlFlowLog, err := CreateResource(a.MqlRuntime, ResourceAwsVpcFlowlog,
 				map[string]*llx.RawData{
+					"__id":                   llx.StringData(vpcFlowLogCacheKey(a.Region.Data, convert.ToValue(flowLog.FlowLogId))),
 					"createdAt":              llx.TimeDataPtr(flowLog.CreationTime),
 					"destination":            llx.StringDataPtr(flowLog.LogDestination),
 					"destinationType":        llx.StringData(string(flowLog.LogDestinationType)),
