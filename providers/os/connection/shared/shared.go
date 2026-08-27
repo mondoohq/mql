@@ -266,26 +266,133 @@ func ShellEscape(s string) string {
 	return s
 }
 
-func BuildSudoCommand(sudo *inventory.Sudo, cmd string) string {
-	var sb strings.Builder
+// shellReservedWords are the words a shell treats as syntax when they open a
+// command line. sudo would take one as the name of a program to run.
+var shellReservedWords = map[string]bool{
+	"if": true, "then": true, "elif": true, "else": true, "fi": true,
+	"for": true, "while": true, "until": true, "do": true, "done": true,
+	"case": true, "esac": true, "function": true, "select": true,
+	"time": true, "{": true, "!": true,
+}
 
+// needsShellForSudo reports whether cmd is something other than a plain argv,
+// and so has to be handed to a shell rather than straight to sudo.
+//
+// sudo takes a command, not a shell command line: it binds to the first word
+// and passes the rest as that command's arguments. That is right for the great
+// majority of what the provider runs (`uname -s`, `rpm -qa ...`), and those
+// keep their existing shape so recorded command lines still match. It is wrong
+// whenever the shell would have done something with the line first.
+func needsShellForSudo(cmd string) bool {
+	var single, double bool
+	firstWordEnd := -1
+
+	for i := 0; i < len(cmd); i++ {
+		c := cmd[i]
+		switch {
+		case single:
+			if c == '\'' {
+				single = false
+			}
+			continue
+		case double:
+			if c == '\\' {
+				i++
+			} else if c == '"' {
+				double = false
+			}
+			continue
+		}
+
+		switch c {
+		case '\'':
+			single = true
+		case '"':
+			double = true
+		case '\\':
+			i++
+		case ' ', '\t':
+			if firstWordEnd < 0 {
+				firstWordEnd = i
+			}
+		case '|', '&', ';', '<', '>', '(', ')', '\n', '`':
+			// a control operator, redirect, subshell or substitution: the
+			// shell owns it, and sudo would only ever have covered the part
+			// before it
+			return true
+		}
+	}
+
+	if single || double {
+		// unbalanced quoting is not an argv we can reason about; let the shell
+		// deal with it rather than handing sudo half a word
+		return true
+	}
+
+	first := cmd
+	if firstWordEnd >= 0 {
+		first = cmd[:firstWordEnd]
+	}
+	first = strings.TrimSpace(first)
+	if first == "" {
+		return false
+	}
+	if shellReservedWords[first] {
+		return true
+	}
+	// a leading VAR=value is an assignment the shell applies to the
+	// environment, not a program sudo can run
+	if eq := strings.IndexByte(first, '='); eq > 0 && !strings.ContainsAny(first[:eq], "/.") {
+		return true
+	}
+
+	return false
+}
+
+// BuildSudoCommand elevates a command line with sudo.
+//
+// sudo takes a command, not a shell command line: it binds to the first word.
+// Prefixing the string is therefore wrong for anything that is not a plain
+// argv --
+//
+//	if [ -r x ]; then ...  ->  sudo if [ -r x ]; then ...   (syntax error)
+//	a | b                  ->  sudo a | b                   (only a is root)
+//	a > /root/f            ->  sudo a > /root/f             (redirect is not)
+//
+// -- and the caller cannot tell, because the shell reports the syntax error on
+// stderr with a non-zero exit that reads like "the command is not available".
+// The cgroups probe hit exactly that: `cgroups` reported version 0 and no
+// controllers on every host scanned with --sudo, while the same host answered
+// correctly without it.
+//
+// Such a line is run through a shell that is itself under sudo, quoted so the
+// shell sees it as one word. A plain argv keeps the bare `sudo <cmd>` form, so
+// the command lines the provider already issues -- and the recordings keyed on
+// them -- are unchanged.
+func BuildSudoCommand(sudo *inventory.Sudo, cmd string) string {
 	if sudo == nil || !sudo.Active {
 		return cmd
 	}
 
+	var sb strings.Builder
 	sb.WriteString(sudo.Executable)
 
 	if len(sudo.User) > 0 {
 		sb.WriteString(" -u " + sudo.User)
 	}
 
-	if len(sudo.Shell) > 0 {
-		sb.WriteString(" " + sudo.Shell + " -c " + cmd)
-	} else {
-		sb.WriteString(" ")
-		sb.WriteString(cmd)
+	if shell := sudo.Shell; shell != "" {
+		sb.WriteString(" " + shell + " -c " + ShellEscape(cmd))
+		return sb.String()
 	}
 
+	if needsShellForSudo(cmd) {
+		sb.WriteString(" sh -c " + ShellEscape(cmd))
+		return sb.String()
+	}
+
+	sb.WriteString(" ")
+	sb.WriteString(cmd)
 	return sb.String()
 }
 
