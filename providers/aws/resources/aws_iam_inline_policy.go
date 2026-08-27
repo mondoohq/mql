@@ -31,18 +31,30 @@ func decodeIamPolicyDocument(document *string) map[string]any {
 	if document == nil {
 		return nil
 	}
-	raw := *document
-	var parsed map[string]any
-	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
-		decoded, decodeErr := url.QueryUnescape(raw)
-		if decodeErr != nil {
-			return nil
-		}
-		if err := json.Unmarshal([]byte(decoded), &parsed); err != nil {
-			return nil
-		}
+	parsed, err := parseIamPolicyDocument(*document)
+	if err != nil {
+		return nil
 	}
 	return parsed
+}
+
+// parseIamPolicyDocument decodes an IAM policy or trust document to its parsed
+// JSON form, reporting why a document could not be read. Callers that treat an
+// unreadable document the way the API treats a missing one use
+// decodeIamPolicyDocument instead.
+func parseIamPolicyDocument(raw string) (map[string]any, error) {
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
+		return parsed, nil
+	}
+	decoded, err := url.QueryUnescape(raw)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal([]byte(decoded), &parsed); err != nil {
+		return nil, err
+	}
+	return parsed, nil
 }
 
 // newInlinePolicyResource builds an aws.iam.inlinePolicy for one embedded

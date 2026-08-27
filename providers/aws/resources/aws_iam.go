@@ -6,9 +6,7 @@ package resources
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,7 +24,6 @@ import (
 	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/v13/providers/aws/connection"
 	"go.mondoo.com/mql/v13/providers/aws/resources/awsiam"
-	"go.mondoo.com/mql/v13/providers/aws/resources/awspolicy"
 	"go.mondoo.com/mql/v13/types"
 )
 
@@ -1830,22 +1827,19 @@ func (a *mqlAwsIamPolicyversion) rawDocument() (string, error) {
 func (a *mqlAwsIamPolicyversion) document() (any, error) {
 	rawDoc, err := a.rawDocument()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	decodedValue, err := url.QueryUnescape(rawDoc)
+	// Decode to the document's own JSON rather than round-tripping through
+	// awspolicy.IamPolicyDocument. That struct has no Condition field, so
+	// re-marshalling it dropped every condition block, and its statementSection
+	// flattens a principal map to a list of quoted values, turning
+	// {"AWS": "*"} into ["\"*\""]. The schema calls this field the raw policy
+	// JSON, so hand back what IAM actually returned.
+	doc, err := parseIamPolicyDocument(rawDoc)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	policyDoc := awspolicy.IamPolicyDocument{}
-	err = json.Unmarshal([]byte(decodedValue), &policyDoc)
-	if err != nil {
-		return "", err
-	}
-	dict, err := convert.JsonToDict(policyDoc)
-	if err != nil {
-		return "", err
-	}
-	return dict, nil
+	return doc, nil
 }
 
 // isServiceLinkedRolePath reports whether an IAM role path marks the role as
