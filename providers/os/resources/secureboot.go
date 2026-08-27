@@ -5,7 +5,11 @@ package resources
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	iofs "io/fs"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/spf13/afero"
@@ -16,6 +20,9 @@ import (
 
 // EFI variable GUID for global Secure Boot variables.
 const efiGlobalVariable = "8be4df61-93ca-11d2-aa0d-00e098032b8c"
+
+// Directory the kernel exposes the EFI variables under.
+const efiVarsDir = "/sys/firmware/efi/efivars"
 
 type mqlMachineSecurebootInternal struct {
 	once           sync.Once
@@ -51,8 +58,11 @@ func (s *mqlMachineSecureboot) fetchStatus() error {
 		}
 		s.cacheEfi = true
 
-		s.cacheEnabled = readEfiVarBool(fs, "SecureBoot-"+efiGlobalVariable)
-		s.cacheSetupMode = readEfiVarBool(fs, "SetupMode-"+efiGlobalVariable)
+		s.cacheEnabled, s.fetchErr = readEfiVarBool(conn, fs, "SecureBoot-"+efiGlobalVariable)
+		if s.fetchErr != nil {
+			return
+		}
+		s.cacheSetupMode, s.fetchErr = readEfiVarBool(conn, fs, "SetupMode-"+efiGlobalVariable)
 	})
 	return s.fetchErr
 }
@@ -84,18 +94,74 @@ func (s *mqlMachineSecureboot) fetchWindowsStatus(conn shared.Connection) error 
 // readEfiVarBool reads an EFI variable from /sys/firmware/efi/efivars/ and
 // returns true if its data byte is 1. EFI variable files contain a 4-byte
 // attribute header followed by the variable data.
-func readEfiVarBool(fs afero.Fs, name string) bool {
-	data, err := afero.ReadFile(fs, "/sys/firmware/efi/efivars/"+name)
-	if err != nil {
-		return false
+//
+// A variable that is simply absent reads as false: firmware only exposes the
+// Secure Boot variables once it has them. Any other read failure is returned,
+// never flattened into false -- reporting "Secure Boot is off" because the
+// bytes could not be read turns an unknown into a security finding, or hides
+// one.
+func readEfiVarBool(conn shared.Connection, fs afero.Fs, name string) (bool, error) {
+	path := efiVarsDir + "/" + name
+
+	data, err := afero.ReadFile(fs, path)
+	if err == nil {
+		return efiVarIsOn(data)
 	}
-	// Must have at least 4 bytes of attributes + 1 byte of data.
+	if errors.Is(err, iofs.ErrNotExist) {
+		return false, nil
+	}
+
+	// efivarfs rejects the positional reads sftp issues, so over SSH every
+	// variable fails with SSH_FX_FAILURE even though the file is readable.
+	// Read the bytes through a command when the connection has one.
+	if conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return readEfiVarBoolCmd(conn, path)
+	}
+
+	return false, err
+}
+
+// efiVarIsOn reads the variable's data byte. The data portion starts after the
+// 4-byte EFI variable attributes header; for SecureBoot/SetupMode it is a
+// single uint8, 1 = on, 0 = off.
+func efiVarIsOn(data []byte) (bool, error) {
 	if len(data) < 5 {
-		return false
+		return false, fmt.Errorf("EFI variable is %d bytes, expected at least 5", len(data))
 	}
-	// The data portion starts after the 4-byte EFI variable attributes header.
-	// For SecureBoot/SetupMode the data is a single uint8: 1 = on, 0 = off.
-	return data[4] == 1
+	return data[4] == 1, nil
+}
+
+// readEfiVarBoolCmd reads an EFI variable with od(1), which prints the bytes as
+// decimal so they survive the command channel intact.
+func readEfiVarBoolCmd(conn shared.Connection, path string) (bool, error) {
+	cmd, err := conn.RunCommand("od -An -tu1 -- " + shared.ShellEscape(path))
+	if err != nil {
+		return false, err
+	}
+	if cmd.ExitStatus != 0 {
+		stderr, _ := io.ReadAll(cmd.Stderr)
+		return false, fmt.Errorf("cannot read %s: %s", path, strings.TrimSpace(string(stderr)))
+	}
+
+	stdout, err := io.ReadAll(cmd.Stdout)
+	if err != nil {
+		return false, err
+	}
+	return parseEfiVarOd(string(stdout))
+}
+
+// parseEfiVarOd turns "od -An -tu1" output into the variable's data byte.
+func parseEfiVarOd(out string) (bool, error) {
+	fields := strings.Fields(out)
+	data := make([]byte, 0, len(fields))
+	for _, f := range fields {
+		b, err := strconv.ParseUint(f, 10, 8)
+		if err != nil {
+			return false, fmt.Errorf("unexpected od output %q", f)
+		}
+		data = append(data, byte(b))
+	}
+	return efiVarIsOn(data)
 }
 
 func (s *mqlMachineSecureboot) efi() (bool, error) {
