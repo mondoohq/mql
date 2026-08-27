@@ -3322,6 +3322,7 @@ aws.dynamodb.table.status 11.15.2
 aws.dynamodb.table.streamEnabled 11.16.1
 aws.dynamodb.table.streamViewType 11.16.1
 aws.dynamodb.table.tableClass 11.16.1
+aws.dynamodb.table.tableId 13.53.4
 aws.dynamodb.table.tags 11.15.2
 aws.dynamodb.table.ttlDescription 13.6.3
 aws.dynamodb.tables 11.15.2

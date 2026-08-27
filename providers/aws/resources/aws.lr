@@ -13580,8 +13580,18 @@ private aws.dynamodb.table @defaults("name region") {
   name string
   // Region where the table exists
   region string
-  // Table ID
-  id string
+  // Table identifier
+  //
+  // Deprecated in favor of tableId. ListTables reports only table names, so
+  // this field was never populated from the listing and always read as empty.
+  id @maturity("deprecated") string
+  // Table identifier
+  //
+  // Unique identifier AWS assigns the table, for example
+  // 6c4ca0b9-bdde-43b7-b0fd-7c271c538b72. A table recreated under the same
+  // name gets a new identifier, so this distinguishes the current table from
+  // an earlier one that shared its name.
+  tableId() string
   // On-demand and system backups of the table
   //
   // Each entry carries BackupArn, BackupName, BackupCreationDateTime,

@@ -18545,6 +18545,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.dynamodb.table.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDynamodbTable).GetId()).ToDataRes(types.String)
 	},
+	"aws.dynamodb.table.tableId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDynamodbTable).GetTableId()).ToDataRes(types.String)
+	},
 	"aws.dynamodb.table.backups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDynamodbTable).GetBackups()).ToDataRes(types.Array(types.Dict))
 	},
@@ -56930,6 +56933,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.dynamodb.table.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsDynamodbTable).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.dynamodb.table.tableId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDynamodbTable).TableId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.dynamodb.table.backups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -137040,6 +137047,7 @@ type mqlAwsDynamodbTable struct {
 	Name                       plugin.TValue[string]
 	Region                     plugin.TValue[string]
 	Id                         plugin.TValue[string]
+	TableId                    plugin.TValue[string]
 	Backups                    plugin.TValue[[]any]
 	SseDescription             plugin.TValue[any]
 	SseType                    plugin.TValue[string]
@@ -137128,6 +137136,12 @@ func (c *mqlAwsDynamodbTable) GetRegion() *plugin.TValue[string] {
 
 func (c *mqlAwsDynamodbTable) GetId() *plugin.TValue[string] {
 	return &c.Id
+}
+
+func (c *mqlAwsDynamodbTable) GetTableId() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.TableId, func() (string, error) {
+		return c.tableId()
+	})
 }
 
 func (c *mqlAwsDynamodbTable) GetBackups() *plugin.TValue[[]any] {
