@@ -290,7 +290,7 @@ func initParseXml(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[st
 
 func (s *mqlParseXml) id() (string, error) {
 	if s.File.Data == nil {
-		return "", errors.New("no file provided for parse.json")
+		return "", errors.New("no file provided for parse.xml")
 	}
 
 	file := s.File.Data
@@ -428,7 +428,7 @@ func initParseCertificates(runtime *plugin.Runtime, args map[string]*llx.RawData
 		args["file"] = llx.ResourceData(f, "file")
 		args["path"] = llx.StringData(virtualPath)
 	} else {
-		return nil, nil, errors.New("missing 'path' or 'content' for parse.json initialization")
+		return nil, nil, errors.New("missing 'path' or 'content' for parse.certificates initialization")
 	}
 
 	return args, nil, nil
@@ -503,7 +503,7 @@ func initParseOpenpgp(runtime *plugin.Runtime, args map[string]*llx.RawData) (ma
 		args["file"] = llx.ResourceData(f, "file")
 
 	} else {
-		return nil, nil, errors.New("missing 'path' or 'content' for parse.json initialization")
+		return nil, nil, errors.New("missing 'path' or 'content' for parse.openpgp initialization")
 	}
 
 	return args, nil, nil
@@ -512,6 +512,9 @@ func initParseOpenpgp(runtime *plugin.Runtime, args map[string]*llx.RawData) (ma
 func (a *mqlParseOpenpgp) id() (string, error) {
 	if a.File.Error != nil {
 		return "", a.File.Error
+	}
+	if a.File.Data == nil {
+		return "", errors.New("no file provided for parse.openpgp")
 	}
 
 	return a.File.Data.Path.Data, nil
