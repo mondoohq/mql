@@ -84,10 +84,15 @@ func (a *mqlApt) sourceFiles() ([]*mqlFile, error) {
 		out = append(out, mainFile)
 	}
 
+	// No name filter here. files.find's `name` becomes `find -name`, an fnmatch
+	// glob, so the regex this used to pass matched nothing and every fragment
+	// under sources.list.d was silently dropped. `regex` would reach
+	// `find -regex`, but that matches the whole path and its dialect differs
+	// between GNU and BSD find, so the extension check is done here instead
+	// where it behaves the same everywhere.
 	o, err := CreateResource(a.MqlRuntime, "files.find", map[string]*llx.RawData{
 		"from":  llx.StringData(aptSourcesListD),
 		"type":  llx.StringData("file"),
-		"name":  llx.StringData(`\.(list|sources)$`),
 		"depth": llx.IntData(1),
 	})
 	if err != nil {
@@ -96,13 +101,26 @@ func (a *mqlApt) sourceFiles() ([]*mqlFile, error) {
 	list := o.(*mqlFilesFind).GetList()
 	if list.Error == nil {
 		for _, item := range list.Data {
-			if mf, ok := item.(*mqlFile); ok {
-				out = append(out, mf)
+			mf, ok := item.(*mqlFile)
+			if !ok {
+				continue
 			}
+			if !isAptSourceFile(mf.Path.Data) {
+				continue
+			}
+			out = append(out, mf)
 		}
 	}
 
 	return out, nil
+}
+
+// isAptSourceFile reports whether a path under sources.list.d is one apt would
+// read. apt honours exactly two extensions: .list for the one-line format and
+// .sources for deb822. Everything else in the directory, notably the .save and
+// .distUpgrade backups apt itself leaves behind, is ignored.
+func isAptSourceFile(path string) bool {
+	return strings.HasSuffix(path, ".list") || strings.HasSuffix(path, ".sources")
 }
 
 func (a *mqlApt) newRepo(file *mqlFile, repo aptRepo) (*mqlAptRepo, error) {
