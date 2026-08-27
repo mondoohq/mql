@@ -302,9 +302,10 @@ func needsShellForSudo(cmd string) bool {
 			continue
 		}
 		if double {
-			if c == '\\' {
+			switch c {
+			case '\\':
 				i++
-			} else if c == '"' {
+			case '"':
 				double = false
 			}
 			continue
