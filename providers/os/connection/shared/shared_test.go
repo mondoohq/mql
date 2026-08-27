@@ -121,7 +121,7 @@ func TestBuildSudoCommand(t *testing.T) {
 		{
 			name: "sudo with shell",
 			sudo: &inventory.Sudo{Active: true, Executable: "sudo", Shell: "sh"},
-			cmd:  "'id -u'",
+			cmd:  "id -u",
 			want: "sudo sh -c 'id -u'",
 		},
 		{
@@ -145,7 +145,7 @@ func TestBuildSudoCommand(t *testing.T) {
 		{
 			name: "doas with shell",
 			sudo: &inventory.Sudo{Active: true, Executable: "doas", Shell: "sh"},
-			cmd:  "'id -u'",
+			cmd:  "id -u",
 			want: "doas sh -c 'id -u'",
 		},
 		{
@@ -329,4 +329,28 @@ func TestBuildSudoCommand_WrapWithUserAndDoas(t *testing.T) {
 	d := &inventory.Sudo{Active: true, Executable: "doas"}
 	assert.Equal(t, `doas sh -c 'a && b'`, BuildSudoCommand(d, "a && b"))
 	assert.Equal(t, `doas sh -c 'FOO=1 a | b'`, BuildSudoCommand(d, "FOO=1 a | b"))
+}
+
+// An explicit shell always wraps, and the command is quoted: it was
+// concatenated bare before, so `-c` took only the first word.
+func TestBuildSudoCommand_ExplicitShellQuotes(t *testing.T) {
+	s := sudoOn()
+	s.Shell = "bash"
+	assert.Equal(t, `sudo bash -c 'if [ -r /x ]; then echo y; fi'`,
+		BuildSudoCommand(s, "if [ -r /x ]; then echo y; fi"))
+	assert.Equal(t, `sudo bash -c 'uname -s'`, BuildSudoCommand(s, "uname -s"))
+}
+
+// Leading blanks are the shell's, not part of the first word. A leading
+// newline is a command separator, not padding, so it still forces the wrap,
+// and leading blanks on a plain argv leave it bare.
+func TestBuildSudoCommand_LeadingWhitespace(t *testing.T) {
+	for _, cmd := range []string{
+		"\tif [ -r /x ]; then echo y; fi",
+		" \t  for f in a; do echo $f; done",
+		"\necho hi",
+	} {
+		assert.Equal(t, "sudo sh -c "+ShellEscape(cmd), BuildSudoCommand(sudoOn(), cmd), "cmd %q", cmd)
+	}
+	assert.Equal(t, "sudo   uname -s", BuildSudoCommand(sudoOn(), "  uname -s"))
 }
