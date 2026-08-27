@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
@@ -70,4 +71,35 @@ func TestFstabEntryIDIsStable(t *testing.T) {
 	assert.Equal(t, first, second, "__id must be stable across calls")
 	assert.Contains(t, first, "tmpfs")
 	assert.Contains(t, first, "/dev/shm")
+}
+
+// The fstab resource is selected by path, so its __id has to carry that path.
+// Without an id() every fstab shares the empty cache key and the second
+// fstab(...) in a query resolves to the first one's file.
+func TestFstabIDIsPerFile(t *testing.T) {
+	mk := func(path string) *mqlFstab {
+		return &mqlFstab{Path: plugin.TValue[string]{Data: path, State: plugin.StateIsSet}}
+	}
+
+	etc, err := mk("/etc/fstab").id()
+	assert.NoError(t, err)
+	alt, err := mk("/tmp/fstab.alt").id()
+	assert.NoError(t, err)
+
+	assert.NotEqual(t, etc, alt,
+		"two fstab files must not share an __id, or one silently serves the other")
+	assert.Contains(t, etc, "/etc/fstab")
+
+	again, err := mk("/etc/fstab").id()
+	assert.NoError(t, err)
+	assert.Equal(t, etc, again, "__id must be stable across calls")
+}
+
+// initFstab is what supplies the default path. os.linux.fstab has to go
+// through it (NewResource), not around it (CreateResource).
+func TestInitFstabDefaultsToEtcFstab(t *testing.T) {
+	args, res, err := initFstab(nil, map[string]*llx.RawData{})
+	assert.NoError(t, err)
+	assert.Nil(t, res)
+	assert.Equal(t, "/etc/fstab", args["path"].Value)
 }

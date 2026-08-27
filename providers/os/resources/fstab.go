@@ -35,6 +35,13 @@ func initFstab(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[strin
 	return args, nil, nil
 }
 
+// id keys the resource on the file it reads. Without it every fstab shares
+// the empty cache key, so `fstab("/a")` and `fstab("/b")` resolve to whichever
+// one was built first.
+func (f *mqlFstab) id() (string, error) {
+	return "fstab:" + f.Path.Data, nil
+}
+
 func (f *mqlFstab) entries() ([]any, error) {
 	conn, ok := f.MqlRuntime.Connection.(shared.Connection)
 	if !ok {
