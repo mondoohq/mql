@@ -388,11 +388,19 @@ type SystemdFSServiceManager struct {
 // systemdUnitSearchPath is the order in which systemd looks up unit files
 // We ignore anything in /run as fs scans should not represent a running system
 // https://www.freedesktop.org/software/systemd/man/systemd.unit.html#Unit%20File%20Load%20Path
+//
+// /lib/systemd/system is the last entry because it is the same directory as
+// /usr/lib/systemd/system wherever /lib is a symlink into /usr, which is every
+// distro that has completed the /usr merge. On the ones that have not --
+// Debian 11 and older, Ubuntu 18.04 and older -- /lib is a real directory and
+// is where every unit file actually lives, with /usr/lib/systemd/system empty
+// or absent. Leaving it out reported those hosts as running no units at all.
 var systemdUnitSearchPath = []string{
 	"/etc/systemd/system.control",
 	"/etc/systemd/system",
 	"/usr/local/lib/systemd/system",
 	"/usr/lib/systemd/system",
+	"/lib/systemd/system",
 }
 
 type unitInfo struct {
