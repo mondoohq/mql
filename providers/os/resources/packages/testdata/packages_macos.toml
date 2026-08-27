@@ -159,7 +159,7 @@ stdout = """<?xml version="1.0" encoding="UTF-8"?>
 				<key>lastModified</key>
 				<date>2026-05-21T08:57:02Z</date>
 				<key>obtained_from</key>
-				<string>mac_app_store</string>
+				<string>ios_app_store</string>
 				<key>path</key>
 				<string>/Applications/Victory.app</string>
 				<key>version</key>

@@ -993,6 +993,20 @@ package @defaults("name version") {
   // (see the `package` accessor on tool resources): the installing source
   // could not be identified. A known origin means the package is
   // manager-tracked and listed in `packages`.
+  //
+  // The exact meaning is per-backend, so compare it against values you know
+  // the backend emits rather than across platforms:
+  //
+  //   flatpak       the remote it was installed from, e.g. "flathub"
+  //   freebsd       the ports origin path, e.g. "security/sudo"
+  //   netbsd        PKGPATH
+  //   macOS         how the bundle was obtained, as classified by Gatekeeper:
+  //                 "apple", "mac_app_store", "ios_app_store",
+  //                 "identified_developer", or "unknown"
+  //
+  // On macOS this distinguishes App Store installs from everything else, which
+  // matters when choosing an update path: an App Store app cannot be upgraded
+  // with `brew upgrade`.
   origin() string
 
   // Latest version the package manager reports as available

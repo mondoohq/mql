@@ -26,6 +26,13 @@ type sysProfilerItem struct {
 	Name    string `plist:"_name"`
 	Version string `plist:"version"`
 	Path    string `plist:"path"`
+	// Where the bundle came from, as classified by Gatekeeper:
+	// "apple" (shipped with the OS), "mac_app_store", "ios_app_store"
+	// (an iPhone/iPad app running on Apple Silicon),
+	// "identified_developer" (signed with a Developer ID), or "unknown".
+	// Surfaced as the package origin — see the assignment in
+	// ParseMacOSPackages for why.
+	ObtainedFrom string `plist:"obtained_from"`
 }
 
 type sysProfiler struct {
@@ -107,8 +114,20 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 		purlQualifiers := getPurlQualifiers(conn, entry)
 
 		pkg := Package{
-			Name:           entry.Name,
-			Version:        version,
+			Name:    entry.Name,
+			Version: version,
+			// system_profiler is the only macOS source that says where a
+			// bundle came from, and Origin is where the other backends already
+			// put that: flatpak stores the remote it was installed from
+			// ("flathub"), freebsd and netbsd store the ports origin path.
+			// macOS left Origin empty until now, so this is purely additive.
+			//
+			// The value matters for remediation, not just inventory. An App
+			// Store app cannot be upgraded by `brew upgrade` — the generated
+			// script bails with "Package <name> is not installed by brew" — so
+			// a consumer needs to be able to tell those installs apart before
+			// choosing an update path.
+			Origin:         entry.ObtainedFrom,
 			Format:         MacosPkgFormat,
 			FilesAvailable: PkgFilesIncluded,
 			Arch:           platform.Arch,
