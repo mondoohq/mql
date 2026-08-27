@@ -233,6 +233,9 @@ func (e *mqlCrontabEntry) id() (string, error) {
 	if file.Error != nil {
 		return "", file.Error
 	}
+	if file.Data == nil {
+		return "", errors.New("cannot determine crontab entry ID (missing file)")
+	}
 
 	path := file.Data.GetPath()
 	if path.Error != nil {

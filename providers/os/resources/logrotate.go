@@ -32,6 +32,10 @@ func (l *mqlLogrotate) id() (string, error) {
 
 func (le *mqlLogrotateEntry) id() (string, error) {
 	file := le.File.Data
+	if file == nil {
+		return "", errors.New("cannot determine logrotate entry ID (missing file)")
+	}
+
 	lineNum := strconv.FormatInt(le.LineNumber.Data, 10)
 
 	return file.Path.Data + ":" + lineNum + ":" + le.Path.Data, nil

@@ -31,6 +31,10 @@ func (l *mqlLimits) id() (string, error) {
 
 func (le *mqlLimitsEntry) id() (string, error) {
 	file := le.File.Data
+	if file == nil {
+		return "", errors.New("cannot determine limits entry ID (missing file)")
+	}
+
 	lineNum := strconv.FormatInt(le.LineNumber.Data, 10)
 
 	// Create unique ID from file path and line number
