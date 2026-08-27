@@ -65,6 +65,29 @@ func TestBuildSudoCommand_ShellSyntaxIsWrapped(t *testing.T) {
 	}
 }
 
+// Leading blanks are the shell's, not part of the first word. Without trimming
+// them the first word ends at index 0, the command reads as having no name at
+// all, and a leading reserved word slips through unwrapped.
+func TestBuildSudoCommand_LeadingWhitespace(t *testing.T) {
+	for _, cmd := range []string{
+		"  if [ -r /x ]; then echo y; fi",
+		"\tif [ -r /x ]; then echo y; fi",
+		" \t  for f in a; do echo $f; done",
+		"  DEBIAN_FRONTEND=noninteractive apt-get update",
+	} {
+		got := BuildSudoCommand(sudoOn(), cmd)
+		assert.Equal(t, "sudo sh -c "+ShellEscape(cmd), got, "cmd %q", cmd)
+	}
+
+	// a leading newline is a command separator, not padding, so it still has
+	// to force the wrap
+	nl := "\necho hi"
+	assert.Equal(t, "sudo sh -c "+ShellEscape(nl), BuildSudoCommand(sudoOn(), nl))
+
+	// and leading blanks on a plain argv still leave it bare
+	assert.Equal(t, "sudo   uname -s", BuildSudoCommand(sudoOn(), "  uname -s"))
+}
+
 // A control character inside quotes belongs to the command, not the shell, so
 // it must not trigger the wrap -- the file stat helper already hand-wraps
 // itself and its recorded command line has to stay byte-identical.
