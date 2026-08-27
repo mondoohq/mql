@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/v13/providers/os/connection/shared"
 )
@@ -22,16 +23,30 @@ func (s *LinuxSmbiosManager) Name() string {
 }
 
 func (s *LinuxSmbiosManager) Info() (*SmBiosInfo, error) {
-	smInfo := SmBiosInfo{}
+	return readLinuxSmbios(s.provider.FileSystem())
+}
 
-	fs := s.provider.FileSystem()
+// dmiRoot is the sysfs directory the kernel exports the SMBIOS tables through.
+const dmiRoot = "/sys/class/dmi/id/"
+
+func readLinuxSmbios(fs afero.Fs) (*SmBiosInfo, error) {
+	smInfo := &SmBiosInfo{}
 	afs := &afero.Afero{Fs: fs}
-	root := "/sys/class/dmi/id/"
+	root := dmiRoot
 
 	wErr := afs.Walk(root, func(path string, info os.FileInfo, fErr error) error {
 		if fErr != nil {
-			// we skip files that we cannot access
-			return filepath.SkipDir
+			// The directory itself may not exist at all, on a platform with no
+			// DMI tables or a scan that cannot reach sysfs. That is not an
+			// error: it just means there is nothing to report.
+			if path == root {
+				return filepath.SkipDir
+			}
+			// A single entry we cannot even stat is skipped on its own. Walk
+			// reads SkipDir from a file as "skip the rest of this directory",
+			// which would drop every attribute alphabetically after it.
+			log.Debug().Err(fErr).Str("path", path).Msg("skipping unreadable dmi entry")
+			return nil
 		}
 
 		if info.IsDir() && path != root {
@@ -83,16 +98,15 @@ func (s *LinuxSmbiosManager) Info() (*SmBiosInfo, error) {
 		}
 
 		if dst != nil {
-			f, err := fs.Open(path)
-			if err != nil {
-				return err
+			// product_serial, board_serial, chassis_serial and product_uuid are
+			// mode 0400 root-only on every Linux host, so a scan that is not
+			// root cannot read them. Losing one of those must not cost us the
+			// world-readable attributes next to it -- bios vendor and version,
+			// the product name, the chassis type -- which is what firmware
+			// audits actually ask for.
+			if err := readDmiAttribute(fs, path, dst); err != nil {
+				log.Debug().Err(err).Str("path", path).Msg("could not read dmi attribute")
 			}
-			defer f.Close()
-			data, err := io.ReadAll(f)
-			if err != nil {
-				return err
-			}
-			*dst = strings.TrimSpace(string(data))
 		}
 
 		return nil
@@ -103,5 +117,23 @@ func (s *LinuxSmbiosManager) Info() (*SmBiosInfo, error) {
 		return nil, wErr
 	}
 
-	return &smInfo, nil
+	return smInfo, nil
+}
+
+// readDmiAttribute reads one sysfs DMI attribute into dst, leaving dst
+// untouched when the file cannot be read.
+func readDmiAttribute(fs afero.Fs, path string, dst *string) error {
+	f, err := fs.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return err
+	}
+
+	*dst = strings.TrimSpace(string(data))
+	return nil
 }
