@@ -284,18 +284,24 @@ var shellReservedWords = map[string]bool{
 // keep their existing shape so recorded command lines still match. It is wrong
 // whenever the shell would have done something with the line first.
 func needsShellForSudo(cmd string) bool {
+	// Leading blanks are the shell's, not part of the first word. Trimming
+	// them keeps "  if foo" from ending its first word at index 0 and so
+	// reading as a command with no name at all. Only spaces and tabs: a
+	// leading newline is a command separator and has to reach the scan below.
+	cmd = strings.TrimLeft(cmd, " \t")
+
 	var single, double bool
 	firstWordEnd := -1
 
 	for i := 0; i < len(cmd); i++ {
 		c := cmd[i]
-		switch {
-		case single:
+		if single {
 			if c == '\'' {
 				single = false
 			}
 			continue
-		case double:
+		}
+		if double {
 			if c == '\\' {
 				i++
 			} else if c == '"' {
