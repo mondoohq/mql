@@ -318,6 +318,10 @@ func (c *Connection) resources(kind string, name string, namespace string) (*sha
 		for i := range objs {
 			obj, err := meta.Accessor(objs[i])
 			if err != nil {
+				// dropping it silently would look identical to the filter
+				// simply not matching, which is the bug this block fixes
+				log.Warn().Err(err).Str("kind", kind).
+					Msg("skipping object: cannot read metadata to match the namespace filter")
 				continue
 			}
 			if c.nsFilter.Matches(obj.GetNamespace()) {
