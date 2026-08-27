@@ -55,13 +55,9 @@ func (fs *FS) Open(path string) (afero.File, error) {
 		return nil, os.ErrNotExist
 	}
 
-	if h.Typeflag == tar.TypeSymlink {
-		resolvedPath := fs.resolveSymlink(h)
-		log.Debug().Str("path", path).Str("resolved", Abs(resolvedPath)).Msg("file is a symlink, resolved it")
-		h, ok = fs.FileMap[Abs(resolvedPath)]
-		if !ok {
-			return nil, os.ErrNotExist
-		}
+	h, ok = fs.resolveHeader(h)
+	if !ok {
+		return nil, os.ErrNotExist
 	}
 
 	reader, err := fs.open(h)
@@ -114,23 +110,82 @@ func (fs *FS) Chown(name string, uid, gid int) error {
 }
 
 func (fs *FS) stat(header *tar.Header) (os.FileInfo, error) {
-	statHeader := header
-	if header.Typeflag == tar.TypeSymlink {
-		path := fs.resolveSymlink(header)
-		h, ok := fs.FileMap[Abs(path)]
-		if !ok {
-			return nil, errors.New("could not find " + path)
-		}
-		statHeader = h
+	statHeader, ok := fs.resolveHeader(header)
+	if !ok {
+		return nil, errors.New("could not resolve " + header.Name + " -> " + header.Linkname)
 	}
 	return statHeader.FileInfo(), nil
 }
 
-// resolve symlink file
-func (fs *FS) resolveSymlink(header *tar.Header) string {
-	dest := header.Name
-	link := header.Linkname
+// maxLinkHops bounds link resolution. A tar can carry a symlink cycle, and
+// following one forever would hang the scan on a malformed or hostile image.
+const maxLinkHops = 32
 
+// resolveHeader follows link entries to the one that actually holds the bytes,
+// and reports whether it found it.
+//
+// The two link kinds resolve differently. A symlink's target is interpreted
+// relative to the directory the link sits in, the way it would be on a real
+// filesystem. A hardlink's Linkname is a path inside the archive itself,
+// always relative to the archive root.
+//
+// Following hardlinks is what makes OSTree and bootc images readable. They
+// keep the bytes in the ostree object store and expose every real path as a
+// hardlink to it:
+//
+//	sysroot/ostree/repo/objects/a2/69745d...file   the content
+//	usr/lib/os-release                             hardlink to it
+//	etc/os-release                                 symlink to ../usr/lib/os-release
+//
+// A hardlink entry carries Size 0 and no payload of its own, so reading it
+// without following the link yields an empty file rather than an error. That
+// left /etc/os-release empty on Fedora CoreOS, Fedora bootc and the uBlue
+// images, so detection named no platform and every one of them was reported
+// as "scratch": a container image with no packages and no findings.
+//
+// The chain is followed rather than resolved once, because the path detection
+// opens is a symlink whose target is itself a hardlink.
+func (fs *FS) resolveHeader(header *tar.Header) (*tar.Header, bool) {
+	h := header
+
+	// The path the entry is being reached through. A hardlink is another name
+	// for the same inode rather than a pointer to a path, so a relative
+	// symlink reached through one resolves against the directory of the name
+	// we came in on, not the directory of the entry that stores it. On an
+	// OSTree image /etc/redhat-release is a hardlink to an object that is
+	// itself a symlink to "fedora-release": that has to land on
+	// /etc/fedora-release, not on a sibling of the object in the store.
+	accessPath := header.Name
+
+	for range maxLinkHops {
+		var target string
+		switch h.Typeflag {
+		case tar.TypeSymlink:
+			target = Abs(fs.resolveSymlinkFrom(accessPath, h.Linkname))
+			accessPath = target
+			log.Debug().Str("path", h.Name).Str("resolved", target).Msg("file is a symlink, resolved it")
+		case tar.TypeLink:
+			target = Abs(h.Linkname)
+			log.Debug().Str("path", h.Name).Str("resolved", target).Msg("file is a hardlink, resolved it")
+		default:
+			return h, true
+		}
+
+		next, ok := fs.FileMap[target]
+		if !ok || next == h {
+			return nil, false
+		}
+		h = next
+	}
+
+	log.Warn().Str("file", header.Name).Msg("tar> giving up on a link chain that does not end")
+	return nil, false
+}
+
+// resolveSymlinkFrom resolves a symlink target against the path the link is
+// being accessed through. That path is usually the entry's own name, but not
+// when the link was reached through a hardlink: see resolveHeader.
+func (fs *FS) resolveSymlinkFrom(dest string, link string) string {
 	var path string
 	if filepath.IsAbs(link) {
 		var err error
@@ -147,6 +202,9 @@ func (fs *FS) resolveSymlink(header *tar.Header) string {
 	return path
 }
 
+// open reads the bytes of header out of the archive. header must already be
+// resolved by resolveHeader: a link entry carries no payload of its own, so
+// reading one directly would yield an empty file.
 func (fs *FS) open(header *tar.Header) (io.Reader, error) {
 	log.Debug().Str("file", header.Name).Msg("tar> load file content")
 
@@ -157,13 +215,8 @@ func (fs *FS) open(header *tar.Header) (io.Reader, error) {
 	}
 	defer f.Close()
 
-	path := header.Name
-	if header.Typeflag == tar.TypeSymlink {
-		path = fs.resolveSymlink(header)
-	}
-
 	// extract file from tar stream
-	reader, err := fsutil.ExtractFileFromTarStream(path, f)
+	reader, err := fsutil.ExtractFileFromTarStream(header.Name, f)
 	if err != nil {
 		return nil, err
 	}
