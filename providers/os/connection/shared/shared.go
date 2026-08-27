@@ -445,8 +445,10 @@ func BuildSudoCommand(sudo *inventory.Sudo, cmd string) string {
 	}
 
 	if len(sudo.Shell) > 0 {
-		// The shell parses leading VAR=value words itself, so doas needs no env here.
-		sb.WriteString(" " + sudo.Shell + " -c " + cmd)
+		// The shell parses leading VAR=value words itself, so doas needs no env
+		// here. The command is quoted so the shell gets the whole line: bare,
+		// `-c` took only its first word.
+		sb.WriteString(" " + sudo.Shell + " -c " + ShellEscape(cmd))
 	} else if needsShellForSudo(cmd) {
 		// sudo elevates only the first command of a shell command line, so
 		// hand the whole line to a shell that runs under sudo. The shell
