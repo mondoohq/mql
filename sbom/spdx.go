@@ -286,15 +286,24 @@ func (s *Spdx) convertToSbom(doc *spdx.Document) *Sbom {
 						}
 						name = distroVal
 						pf.Title = distroVal
-						vals := strings.Split(distroVal, "-")
-						if len(vals) > 0 {
-							pf.Name = vals[0]
-							pf.Version = vals[1]
+						// The qualifier is the platform name and version
+						// joined with a dash (purl.NewPlatformPurl), and it is
+						// the *name* that commonly carries dashes of its own:
+						// opensuse-leap, opensuse-tumbleweed, opensuse-microos.
+						// Splitting on the first dash reports
+						// "opensuse-leap-15.6" as name "opensuse" version
+						// "leap", so split on the last one. A qualifier with no
+						// dash carries no version, e.g. "arch" rather than
+						// "arch-rolling".
+						pf.Name = distroVal
+						if i := strings.LastIndex(distroVal, "-"); i > 0 {
+							pf.Name = distroVal[:i]
+							pf.Version = distroVal[i+1:]
 						}
 						pf.Family = familyMap[pf.Name]
 					}
 					arch, ok := m["arch"]
-					if ok {
+					if ok && pf != nil {
 						pf.Arch = arch
 					}
 				}
