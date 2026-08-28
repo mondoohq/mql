@@ -1,0 +1,43 @@
+name: Auto-approve bot workflow runs
+
+on:
+  # workflow_run runs in the default-branch context, so it is not itself
+  # subject to the approval gate.
+  workflow_run:
+    types: [requested]
+
+permissions:
+  actions: write
+
+jobs:
+  approve:
+    runs-on: ubuntu-latest
+    # GitHub's approval gate checks the *commit* author, not the workflow
+    # actor.  When a bot-authored PR is merged by a human the run's actor
+    # is the human, but head_commit.author.name is still the bot.
+    # The head_repository check prevents fork PRs with spoofed author names.
+    if: >-
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      contains(fromJSON('["github-actions[bot]","dependabot[bot]"]'),
+        github.event.workflow_run.head_commit.author.name)
+    steps:
+      - name: Approve workflow run if pending
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          AUTHOR: ${{ github.event.workflow_run.head_commit.author.name }}
+          REPO: ${{ github.repository }}
+        run: |
+          # The 'requested' event fires before the status settles.
+          # Poll briefly for GitHub to move the run into action_required.
+          for i in 1 2 3 4 5; do
+            STATUS=$(gh run view "$RUN_ID" --repo "$REPO" --json status --jq '.status')
+            if [ "$STATUS" = "action_required" ]; then
+              echo "Approving run $RUN_ID (commit authored by $AUTHOR)"
+              gh run approve "$RUN_ID" --repo "$REPO"
+              exit 0
+            fi
+            echo "Run status is '$STATUS', waiting…"
+            sleep 10
+          done
+          echo "::warning::Run $RUN_ID never entered action_required state after 50s — skipping"
