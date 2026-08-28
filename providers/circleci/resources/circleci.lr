@@ -1,0 +1,274 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+option provider = "go.mondoo.com/mql/providers/circleci"
+option go_package = "go.mondoo.com/mql/providers/circleci/resources"
+
+// CircleCI CI/CD platform
+//
+// Root resource for a CircleCI account, reached through the token used to
+// authenticate the connection. Provides the current authenticated user,
+// the organizations the token can see, and the projects and contexts
+// underneath them. Use it to audit pipeline secrets exposure (contexts,
+// project environment variables), source access (checkout keys), and
+// pull-request build settings (forked-PR builds, OIDC) across an
+// organization's CircleCI footprint.
+circleci @maturity("experimental") {
+  // Currently authenticated user
+  me() circleci.user
+  // Organizations the current token can see
+  organizations() []circleci.organization
+  // Projects across all visible organizations
+  projects() []circleci.project
+  // Contexts across all visible organizations
+  contexts() []circleci.context
+}
+
+// CircleCI user account
+private circleci.user @defaults("login") @maturity("experimental") {
+  // User ID
+  id string
+  // VCS login (GitHub or Bitbucket username)
+  login string
+  // Display name
+  name string
+}
+
+// CircleCI organization
+//
+// A CircleCI organization as visible to the authenticated token, keyed by
+// its `id` (a UUID, not the display slug). Organizations own the
+// `projects` that run pipelines and the `contexts` that hold shared
+// credentials.
+circleci.organization @defaults("name") @maturity("experimental") {
+  // Organization ID (UUID)
+  id string
+  // Organization name (slug)
+  name string
+  // VCS type backing the organization (github, bitbucket, circleci)
+  vcsType string
+  // Projects owned by the organization
+  projects() []circleci.project
+  // Contexts owned by the organization
+  contexts() []circleci.context
+  // Self-hosted runner resource classes registered under the organization's namespace
+  runnerResourceClasses() []circleci.runner.resourceClass
+}
+
+// CircleCI project
+//
+// A CircleCI project, one per repository connected to an organization.
+// The `id` field is the project's UUID. Exposes the project's version
+// control linkage, its checkout keys (the deploy credentials CircleCI
+// uses to clone the repository), its own environment variables, and the
+// advanced settings that control whether forked pull requests can
+// trigger builds and whether those builds receive the project's secrets.
+circleci.project @defaults("name") @maturity("experimental") {
+  // Project ID (UUID)
+  id string
+  // Project name (repository name)
+  name string
+  // Organization that owns the project
+  organization() circleci.organization
+  // VCS provider info (provider, external ID)
+  vcsInfo dict
+  // Default branch
+  defaultBranch string
+  // Environment variables defined directly on the project
+  environmentVariables() []circleci.project.environmentVariable
+  // Checkout keys used to clone the repository
+  checkoutKeys() []circleci.checkoutKey
+  // Whether the project builds pull requests opened from forks
+  buildForkPrs() bool
+  // Whether forked pull request builds receive the project's secret environment variables and context values
+  forksReceiveSecretEnvVars() bool
+  // Whether only pull request commits trigger builds (as opposed to every push)
+  buildPrsOnly() bool
+  // Whether project settings changes require organization admin permissions
+  writeSettingsRequiresAdmin() bool
+  // Whether SSH access to build containers is disabled
+  disableSsh() bool
+  // Whether the project's status is reported back to the VCS provider (commit statuses / checks)
+  setGithubStatus() bool
+  // Whether CircleCI automatically cancels redundant, in-progress builds on a branch when a newer build starts
+  autoCancelBuilds() bool
+  // Branch overrides to the build-pull-requests-only setting
+  //
+  // Branch names or regular expressions that build on every commit even
+  // while buildPrsOnly is in effect, letting specific branches bypass the
+  // pull-request-only restriction. Empty when no overrides are configured.
+  prOnlyBranchOverrides() []string
+  // Outbound webhooks configured on the project
+  webhooks() []circleci.webhook
+}
+
+// CircleCI outbound webhook
+//
+// An outbound webhook configured on a project, identified by its `id`.
+// CircleCI POSTs pipeline events to the webhook `url`. The `verifyTls`
+// field reports whether CircleCI validates the receiver's TLS certificate
+// before delivering, and `signingSecretSet` reports whether a signing
+// secret is configured to authenticate deliveries (the secret value
+// itself is never returned by the API). The `events` field lists which
+// pipeline events trigger delivery, for example "workflow-completed" or
+// "job-completed".
+circleci.webhook @defaults("name url") @maturity("experimental") {
+  // Webhook ID (UUID)
+  id string
+  // Webhook name
+  name string
+  // Project this webhook is configured on
+  project() circleci.project
+  // Destination URL CircleCI POSTs events to
+  url string
+  // Whether CircleCI validates the receiver's TLS certificate before delivering
+  verifyTls bool
+  // Whether a signing secret is configured to authenticate deliveries (the secret value is never returned)
+  signingSecretSet bool
+  // Pipeline events that trigger delivery (for example "workflow-completed", "job-completed")
+  events []string
+}
+
+// CircleCI project environment variable
+//
+// A single environment variable set on a project, identified by its
+// `name`. Only the name is exposed: an environment variable set directly
+// on a project is the usual home for a build credential, so an audit
+// works off the name and the fact that the variable exists.
+private circleci.project.environmentVariable @defaults("name") @maturity("experimental") {
+  // Variable name
+  name string
+  // Project this environment variable is defined on
+  project() circleci.project
+}
+
+// CircleCI checkout key
+//
+// A deploy credential CircleCI uses to check out a project's source
+// code, identified by its `fingerprint`. The `type` field is the
+// security-relevant one: a `deploy-key` is scoped to the single
+// repository, while a `user-key` inherits the permissions of the
+// CircleCI user who created it, including access to every other
+// repository that user can reach. Prefer deploy keys; a user-key on a
+// project is broader access than the project itself needs.
+circleci.checkoutKey @defaults("type fingerprint") @maturity("experimental") {
+  // Public key fingerprint (SHA256, colon-delimited)
+  fingerprint string
+  // Project this checkout key is configured on
+  project() circleci.project
+  // Key type: deploy-key (repo-scoped) or user-key (inherits the creating user's access)
+  type string
+  // Public key contents
+  //
+  // The public half of the checkout key pair. This is not secret (CircleCI
+  // exposes it through its API and it is safe to display); the private key
+  // is never returned. Useful for cross-referencing a key by its material
+  // as well as its fingerprint.
+  publicKey string
+  // Whether CircleCI prefers this key when multiple keys are present
+  preferred bool
+  // Creation time
+  createdAt time
+}
+
+// CircleCI context
+//
+// A named group of environment variables shared across projects, keyed
+// by its `id`. Contexts are the preferred place to store long-lived
+// cloud credentials because access to them can be restricted by security
+// group, unlike project-level environment variables which any project
+// collaborator can use. The `environmentVariables` field lists the
+// variable names configured in the context; CircleCI's API never returns
+// context environment variable values under any circumstance.
+circleci.context @defaults("name") @maturity("experimental") {
+  // Context ID (UUID)
+  id string
+  // Context name
+  name string
+  // Organization that owns the context
+  organization() circleci.organization
+  // Creation time
+  createdAt time
+  // Environment variables configured in the context (names only, no values)
+  environmentVariables() []circleci.context.environmentVariable
+  // Project and group restrictions that scope which projects may use the context
+  restrictions() []circleci.context.restriction
+}
+
+// CircleCI context restriction
+//
+// A single restriction that scopes which projects or groups may use a
+// context, identified by its `id`. A context with no restrictions is
+// usable by every project in the organization, so a context holding
+// long-lived cloud credentials whose `restrictions` list is empty is
+// reachable by any pipeline in the org, which is the central audit this
+// resource enables. The `restrictionType` field is the discriminator (for
+// example "project") and `restrictionValue` holds the identifier the
+// restriction matches (for example a project ID).
+private circleci.context.restriction @defaults("restrictionType restrictionValue") @maturity("experimental") {
+  // Restriction ID (UUID)
+  id string
+  // Context this restriction applies to
+  context() circleci.context
+  // Restriction name as returned by the API
+  name string
+  // Restriction type discriminator (for example "project")
+  restrictionType string
+  // Identifier the restriction matches (for example a project ID)
+  restrictionValue string
+}
+
+// CircleCI context environment variable
+//
+// A single environment variable name configured in a context, identified
+// by `variable`. Values are never exposed: a context hands a value to a
+// build without making it readable back out. An audit turns on which
+// variables exist and which security groups can reach the context.
+private circleci.context.environmentVariable @defaults("variable") @maturity("experimental") {
+  // Variable name
+  variable string
+  // Context this environment variable is configured in
+  context() circleci.context
+  // Creation time
+  createdAt time
+}
+
+// CircleCI self-hosted runner resource class
+//
+// A self-hosted runner resource class registered under an organization's
+// namespace, identified by its `id`. A resource class names a pool of
+// self-hosted runner agents (as "<namespace>/<class>") that jobs target
+// with a `resource_class` key. The `tokens` field lists the resource-class
+// tokens runner agents use to register, so an audit can flag stale or
+// excess tokens on a class.
+circleci.runner.resourceClass @defaults("resourceClass description") @maturity("experimental") {
+  // Resource class ID (UUID)
+  id string
+  // Fully qualified resource class name ("<namespace>/<class>")
+  resourceClass string
+  // Description
+  description string
+  // Organization whose namespace the resource class is registered under
+  organization() circleci.organization
+  // Tokens that runner agents use to register with this resource class
+  tokens() []circleci.runner.token
+}
+
+// CircleCI self-hosted runner token
+//
+// A resource-class token a self-hosted runner agent uses to register with
+// CircleCI, identified by its `id`. The secret token value is shown only
+// once at creation and is never returned by the API, so this resource
+// exposes the token's metadata (nickname, creation time) for inventory and
+// rotation audits, not the secret itself. The `resourceClass` field is the
+// fully qualified name of the class the token belongs to.
+private circleci.runner.token @defaults("nickname createdAt") @maturity("experimental") {
+  // Token ID (UUID)
+  id string
+  // Fully qualified resource class name the token belongs to
+  resourceClass string
+  // Human-readable token nickname
+  nickname string
+  // Creation time
+  createdAt time
+}

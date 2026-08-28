@@ -249,6 +249,21 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"circleci": {
+		Provider: &plugin.Provider{
+			Name:            "circleci",
+			ID:              "go.mondoo.com/mql/providers/circleci",
+			ConnectionTypes: []string{"circleci"},
+			Connectors: []plugin.Connector{
+				{
+					Name:  "circleci",
+					Use:   "circleci",
+					Short: "a CircleCI account",
+				},
+			},
+		},
+	},
+
 	"claude": {
 		Provider: &plugin.Provider{
 			Name:            "claude",

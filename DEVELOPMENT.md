@@ -236,6 +236,7 @@ use (
    ./mql/providers/azure
    ./mql/providers/bitwarden
    ./mql/providers/cassandra
+   ./mql/providers/circleci
    ./mql/providers/claude
    ./mql/providers/clickhousecloud
    ./mql/providers/clickhousedb
