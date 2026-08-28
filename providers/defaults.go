@@ -994,6 +994,21 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"notion": {
+		Provider: &plugin.Provider{
+			Name:            "notion",
+			ID:              "go.mondoo.com/mql/providers/notion",
+			ConnectionTypes: []string{"notion"},
+			Connectors: []plugin.Connector{
+				{
+					Name:  "notion",
+					Use:   "notion",
+					Short: "a Notion workspace",
+				},
+			},
+		},
+	},
+
 	"nutanix": {
 		Provider: &plugin.Provider{
 			Name:            "nutanix",

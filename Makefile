@@ -251,6 +251,7 @@ PROVIDERS := \
 	network \
 	nextdns \
 	nmap \
+	notion \
 	nutanix \
 	oci \
 	okta \

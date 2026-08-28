@@ -1,0 +1,169 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+option provider = "go.mondoo.com/mql/providers/notion"
+option go_package = "go.mondoo.com/mql/providers/notion/resources"
+
+// Notion workspace integration
+//
+// Root of a Notion integration connected through an internal integration
+// token. Exposes the bot identity of the integration itself, the workspace
+// members and bots visible to it, and the pages and databases the
+// integration has been given access to through Notion's per-page sharing
+// model. The Notion REST API is scoped to content an integration has been
+// explicitly connected to, it does not provide workspace-wide
+// administration data such as SSO enforcement or member provisioning, which
+// requires the separate Enterprise SCIM and Audit Log APIs.
+notion @maturity("experimental") {
+  // Workspace members and bots visible to this integration
+  users() []notion.user
+  // Databases visible to this integration through Notion's sharing model
+  databases() []notion.database
+  // Pages visible to this integration through Notion's sharing model
+  pages() []notion.page
+}
+
+// Notion integration's bot identity
+//
+// The bot user that represents this integration's internal integration
+// token, returned by Notion's users/me endpoint. The ownerType field is the
+// resource's key security signal: an integration owned by workspace
+// survives the departure of whoever created it, while one owned by user is
+// tied to that person's account and typically loses access when they
+// leave. Notion's public API does not report the read, insert, update, or
+// comment capabilities granted to an integration, those are configured on
+// the integration's settings page and must be reviewed there.
+notion.bot @defaults("id name ownerType") @maturity("experimental") {
+  // Bot user ID
+  id string
+  // Integration display name
+  name string
+  // Avatar image URL
+  avatarUrl string
+  // Owner type of the integration, either 'workspace' or 'user', null when Notion does not report it
+  ownerType string
+  // Individual owner of the integration, set only when ownerType is 'user'
+  owner() notion.user
+  // Name of the workspace this integration is installed in, null when Notion does not report it
+  workspaceName string
+}
+
+// Notion workspace as seen through a connected integration
+//
+// Workspace-level information visible to an internal integration. Notion's
+// REST API has no dedicated workspace endpoint: the name comes from the
+// integration's own bot identity. Settings that require full workspace
+// administration, such as enforced SSO, allowed email domains, or member
+// provisioning, are reported only by the separate Enterprise SCIM and
+// Audit Log APIs, so they are not readable through an internal
+// integration token.
+notion.workspace @defaults("name") @maturity("experimental") {
+  // Workspace name, from the integration's bot identity
+  name string
+  // Number of workspace members and bots visible to this integration
+  userCount() int
+  // Number of databases visible to this integration
+  databaseCount() int
+  // Number of pages visible to this integration
+  pageCount() int
+}
+
+// Notion workspace member or bot
+//
+// A user visible to the integration through Notion's users endpoint,
+// selected by id, for example notion.user(id: "a1b2c3d4..."). Covers both
+// human workspace members (type == "person") and bot users representing
+// other integrations installed in the same workspace (type == "bot"). The
+// email field is set only for person-type users, and only when the
+// integration was granted the "read user information with email"
+// capability, otherwise it is null. Bot-type users additionally expose
+// botOwnerType and botOwner, mirroring the fields on notion.bot, since a
+// workspace can contain bots belonging to integrations other than this
+// one. Notion's base API does not report a member/guest role, so this
+// resource cannot distinguish a guest from a full workspace member.
+notion.user @defaults("id name type") @maturity("experimental") {
+  init(id string)
+  // User ID
+  id string
+  // Display name
+  name string
+  // Avatar image URL
+  avatarUrl string
+  // User type, either 'person' or 'bot'
+  type string
+  // Email address, set only for person-type users when the integration can read it, otherwise null
+  email string
+  // Owner type of a bot-type user, either 'workspace' or 'user', null when the user is not a bot or Notion omits the owner
+  botOwnerType string
+  // Individual owner of a bot-type user, set only when botOwnerType is 'user'
+  botOwner() notion.user
+}
+
+// Notion database
+//
+// A database visible to the integration, discovered through Notion's
+// search endpoint and selected by id, for example
+// notion.database(id: "a1b2c3d4..."). Exposes sharing exposure through
+// publicUrl (set only when the database has been published to the web via
+// Notion Sites) and edit recency through lastEditedTime, the two signals
+// most security audits need: is this content publicly reachable, and is
+// it actively maintained or abandoned. The parentPage reference resolves
+// the page a database is nested under, when there is one.
+notion.database @defaults("id title") @maturity("experimental") {
+  init(id string)
+  // Database ID
+  id string
+  // Database title
+  title string
+  // Notion URL for viewing the database in the app
+  url string
+  // Public URL if the database has been published to the web, empty otherwise
+  publicUrl string
+  // Whether the database has been published to the web and is reachable without a Notion account
+  isPubliclyShared() bool
+  // Creation time
+  createdTime time
+  // Last edit time
+  lastEditedTime time
+  // Whether the database is archived
+  archived bool
+  // Parent page, set only when the database is nested under a page rather than the workspace or a block
+  parentPage() notion.page
+}
+
+// Notion page
+//
+// A page visible to the integration, discovered through Notion's search
+// endpoint and selected by id, for example notion.page(id: "a1b2c3d4...").
+// Like notion.database, its publicUrl and lastEditedTime are the primary
+// security signals: public sharing exposure and content staleness. The
+// parentDatabase and parentPage references resolve the page's container,
+// when the API reports one, a page can otherwise sit directly under the
+// workspace or a block. The properties field carries the page's raw
+// property values as Notion returns them, keyed by property name, so a
+// property with no field of its own is still reachable there.
+notion.page @defaults("id title") @maturity("experimental") {
+  init(id string)
+  // Page ID
+  id string
+  // Page title, extracted from the title-type property
+  title string
+  // Notion URL for viewing the page in the app
+  url string
+  // Public URL if the page has been published to the web, empty otherwise
+  publicUrl string
+  // Whether the page has been published to the web and is reachable without a Notion account
+  isPubliclyShared() bool
+  // Creation time
+  createdTime time
+  // Last edit time
+  lastEditedTime time
+  // Whether the page is archived
+  archived bool
+  // Parent database, set only when the page is a row of a database
+  parentDatabase() notion.database
+  // Parent page, set only when the page is nested under another page
+  parentPage() notion.page
+  // Raw page properties as returned by the API, keyed by property name
+  properties dict
+}
