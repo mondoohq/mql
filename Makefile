@@ -208,6 +208,7 @@ PROVIDERS := \
 	aws \
 	azure \
 	bicep \
+	bitbucket \
 	bitwarden \
 	cassandra \
 	claude \
