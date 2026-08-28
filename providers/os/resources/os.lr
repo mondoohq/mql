@@ -361,6 +361,63 @@ os {
   uptime() time
   // List of available OS updates
   updates() []os.update
+  // Time the most recent operating system update was installed
+  //
+  // Newest completed update the platform's own update mechanism recorded
+  // for software the operating system vendor ships: a vendor package
+  // upgrade in dnf's transaction log, a completed apt upgrade run
+  // (timestamped by its End-Date), a macOS update in the install history,
+  // or a Windows Update Agent entry for a Windows product. Software that
+  // is not the operating system does not count, so a .NET or Office update
+  // on Windows, a third-party rpm such as Docker or Grafana, and an
+  // operator running `apt install` are all excluded, and so is definition
+  // data (XProtect on macOS, Defender signatures on Windows) that lands
+  // daily or weekly. Installing a package is not updating the operating
+  // system, so a first-time install never advances this timestamp, on any
+  // platform.
+  //
+  // Null on containers and container images, which are rebuilt rather than
+  // patched, so the newest install inside one dates the image build rather
+  // than any patching of the workload. Null too wherever the asset keeps
+  // no record of a completed update that can be attributed to the vendor:
+  // an rpm host whose package manager writes no transaction log (SUSE,
+  // yum-era RHEL, Photon), image-based systems that update by swapping the
+  // OS image (Bottlerocket, CoreOS), a Debian host whose apt history has
+  // rotated away or whose newest history log cannot be read, a Windows
+  // host whose update agent history cannot be read, apk and pacman. A
+  // timestamp materially in the future (a skewed clock, a misread
+  // timezone) also reads null rather than reporting the asset as freshly
+  // patched. An inferred, incomplete or ambiguous answer would report a
+  // different fact than the one asked for, so the field reads null instead
+  // of answering loosely.
+  //
+  // Null is not false, so guard on it rather than comparing straight
+  // through: `os.lastUpdate != null && (time.now - os.lastUpdate).days < 30`.
+  lastUpdate() time
+  // Time since the most recent operating system update was installed
+  //
+  // A duration, like `uptime`, so `os.lastUpdateAge.days` reads the patch
+  // age directly. Measured once, when the field is first read, and held for
+  // the rest of the scan rather than tracking the clock, the same way
+  // `uptime` behaves. For an age relative to a specific moment, subtract
+  // instead: `time.now - os.lastUpdate`. Null whenever `lastUpdate` is
+  // null.
+  lastUpdateAge() time
+  // Record the last-update timestamp was read from
+  //
+  // One of "dnf-rpm-log", "apt-security", "apt-history",
+  // "macos-install-history", or "windows-update-agent". Every one of them
+  // names an exact, completed install event, so this reports provenance
+  // rather than precision, and how tightly the vendor attribution holds is
+  // what separates them. "apt-security" is a completed unattended-upgrades
+  // run, whose default origin is the distribution's security pocket, which
+  // makes it the closest an asset comes to recording a vendor security
+  // advisory without an external advisory database; "apt-history" is an
+  // operator-run full upgrade, which vendor packages dominate but which
+  // can also carry a third-party repository. A policy that demands the
+  // vendor security channel can require "apt-security", where a looser one
+  // takes any non-null answer. Null whenever `lastUpdate` is null.
+  lastUpdateSource() string
   // Whether a reboot is pending
   rebootpending() bool
   // Hostname for this OS
@@ -426,6 +483,12 @@ os.base {
   uptime() time
   // List of available OS updates
   updates() []os.update
+  // Time the most recent operating system update was installed, null on containers
+  lastUpdate() time
+  // Time since the most recent operating system update was installed, as a duration
+  lastUpdateAge() time
+  // Record the last-update timestamp was read from (e.g., "dnf-rpm-log", "apt-security")
+  lastUpdateSource() string
   // Whether a reboot is pending
   rebootpending() bool
   // Hostname for this OS
@@ -1033,11 +1096,17 @@ package @defaults("name version") {
 
   // Package install date
   //
-  // Time the package was installed on this asset. Populated from
-  // %{INSTALLTIME} (rpm) and the InstallDate column of the Windows
-  // Uninstall registry. Returns the zero time on backends that have
-  // no install-time source (dpkg without log parsing, apk, pacman,
-  // macOS).
+  // Time the installed version of the package was placed on this asset.
+  // Populated from %{INSTALLTIME} (rpm), the install-date field of the
+  // xbps database, the InstallDate column of the Windows Uninstall
+  // registry, and the install, upgrade and `status installed` lines of
+  // the dpkg logs.
+  //
+  // On dpkg the answer is bounded by what logrotate kept, which
+  // distributions ship as twelve monthly copies of /var/log/dpkg.log: a
+  // package untouched for longer than that window carries no date. Null
+  // on backends with no install-time source at all (apk, pacman, macOS)
+  // and on any package whose install was not recorded.
   installDate time
 }
 

@@ -2730,6 +2730,9 @@ os.base 9.0.0
 os.base.env 9.0.0
 os.base.groups 9.0.0
 os.base.hostname 9.0.0
+os.base.lastUpdate 13.40.10
+os.base.lastUpdateAge 13.40.10
+os.base.lastUpdateSource 13.40.10
 os.base.machine 9.0.0
 os.base.name 9.0.0
 os.base.path 9.0.0
@@ -2743,6 +2746,9 @@ os.date.timezone 13.2.6
 os.env 9.0.0
 os.hostname 9.0.0
 os.hypervisor 11.3.35
+os.lastUpdate 13.40.10
+os.lastUpdateAge 13.40.10
+os.lastUpdateSource 13.40.10
 os.linux 9.0.0
 os.linux.apparmor 13.2.4
 os.linux.firewalld 13.2.9

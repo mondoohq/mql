@@ -397,3 +397,22 @@ func parseTimezone(r io.Reader) (string, error) {
 	}
 	return s, nil
 }
+
+// LocationFromFS resolves the asset's own timezone from its filesystem, so a
+// timestamp a tool wrote without an offset can be read in the zone the asset
+// keeps rather than the scanner's. It is filesystem-only, which means it also
+// answers on a container image or a mounted snapshot.
+//
+// Returns nil when the filesystem carries no usable zone, leaving the caller to
+// decide what to fall back to.
+func LocationFromFS(fs afero.Fs) *time.Location {
+	tz, err := timezoneFromFS(fs)
+	if err != nil {
+		return nil
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return nil
+	}
+	return loc
+}

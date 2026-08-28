@@ -117,3 +117,129 @@ func TestOperationName(t *testing.T) {
 	assert.Equal(t, "Uninstallation", OperationName(UpdateOperationUninstallation))
 	assert.Equal(t, "", OperationName(0))
 }
+
+// IsOperatingSystemUpdate is what makes os.lastUpdate mean patch state on
+// Windows. A .NET or Office entry counted as an operating system update reports
+// a host years behind on Windows as patched, and an operating system update
+// rejected reports a patched host as unknown.
+func TestIsOperatingSystemUpdate(t *testing.T) {
+	tests := []struct {
+		name       string
+		title      string
+		categories []string
+		want       bool
+	}{
+		{
+			name:  "cumulative update",
+			title: "2026-08 Cumulative Update for Windows 11 Version 24H2 for x64-based Systems (KB5063878)",
+			want:  true,
+		},
+		{
+			name:  "security update for the OS",
+			title: "2024-01 Security Update for Windows Server 2022 for x64-based Systems (KB5034439)",
+			want:  true,
+		},
+		{
+			name:  "servicing stack update",
+			title: "2024-01 Servicing Stack Update for Windows Server 2022 for x64-based Systems (KB5034865)",
+			want:  true,
+		},
+		{
+			name:  "feature update names no product clause",
+			title: "Feature update to Windows 11, version 24H2",
+			want:  true,
+		},
+		{
+			// The title names the Windows release it targets, which is why a
+			// plain search for "Windows" in the title is the wrong test.
+			name:  "dotnet framework names Windows but patches dotnet",
+			title: "Security Update for Microsoft .NET Framework 4.8 for Windows Server 2019 (KB5034619)",
+			want:  false,
+		},
+		{
+			name:  "dotnet core",
+			title: "Microsoft .NET Core 3.1.32 Update for x64 Client (KB5013624)",
+			want:  false,
+		},
+		{
+			name:  "office",
+			title: "Update for Microsoft Office 2019 (KB4484552)",
+			want:  false,
+		},
+		{
+			// Not the signature stream the classification drops: this is the
+			// engine, and its title would otherwise pass the Windows test.
+			name:  "defender platform update",
+			title: "Update for Windows Defender Antivirus antimalware platform - KB4052623",
+			want:  false,
+		},
+		{
+			name:  "malicious software removal tool",
+			title: "Windows Malicious Software Removal Tool x64 - v5.121 (KB890830)",
+			want:  false,
+		},
+		{
+			name:       "definition update by category",
+			title:      "Security Intelligence Update for Microsoft Defender Antivirus - KB2267602",
+			categories: []string{"Definition Updates"},
+			want:       false,
+		},
+		{
+			name:       "driver",
+			title:      "Intel - System - 10.1.1.38",
+			categories: []string{"Drivers"},
+			want:       false,
+		},
+		{
+			name:  "edge",
+			title: "Microsoft Edge-Stable Channel Version 120 Update",
+			want:  false,
+		},
+		{
+			// The product category rejects it even when the title alone would
+			// have passed.
+			name:       "product category overrides a passing title",
+			title:      "2024-01 Security Update for Windows Server 2022 for x64-based Systems (KB5034439)",
+			categories: []string{"Security Updates", "Microsoft .NET Framework"},
+			want:       false,
+		},
+		{
+			name:       "os product category alongside a classification",
+			title:      "2026-08 Cumulative Update for Windows 11 Version 24H2 for x64-based Systems (KB5063878)",
+			categories: []string{"Security Updates", "Windows 11"},
+			want:       true,
+		},
+		{
+			name:  "title naming no product",
+			title: "Some vendor tool 1.2.3",
+			want:  false,
+		},
+		{
+			name:  "empty title",
+			title: "",
+			want:  false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, IsOperatingSystemUpdate(test.categories, test.title))
+		})
+	}
+}
+
+func TestTitleProduct(t *testing.T) {
+	tests := []struct{ title, want string }{
+		{"2026-08 Cumulative Update for Windows 11 Version 24H2 for x64-based Systems (KB5063878)", "Windows 11 Version 24H2"},
+		{"Security Update for Microsoft .NET Framework 4.8 for Windows Server 2019 (KB5034619)", "Microsoft .NET Framework 4.8"},
+		{"Update for Microsoft Office 2019 (KB4484552)", "Microsoft Office 2019"},
+		{"Feature update to Windows 11, version 24H2", ""},
+		{"", ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.title, func(t *testing.T) {
+			assert.Equal(t, test.want, titleProduct(test.title))
+		})
+	}
+}

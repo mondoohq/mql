@@ -3271,6 +3271,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"os.updates": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOs).GetUpdates()).ToDataRes(types.Array(types.Resource("os.update")))
 	},
+	"os.lastUpdate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOs).GetLastUpdate()).ToDataRes(types.Time)
+	},
+	"os.lastUpdateAge": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOs).GetLastUpdateAge()).ToDataRes(types.Time)
+	},
+	"os.lastUpdateSource": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOs).GetLastUpdateSource()).ToDataRes(types.String)
+	},
 	"os.rebootpending": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOs).GetRebootpending()).ToDataRes(types.Bool)
 	},
@@ -3324,6 +3333,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"os.base.updates": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOsBase).GetUpdates()).ToDataRes(types.Array(types.Resource("os.update")))
+	},
+	"os.base.lastUpdate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOsBase).GetLastUpdate()).ToDataRes(types.Time)
+	},
+	"os.base.lastUpdateAge": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOsBase).GetLastUpdateAge()).ToDataRes(types.Time)
+	},
+	"os.base.lastUpdateSource": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOsBase).GetLastUpdateSource()).ToDataRes(types.String)
 	},
 	"os.base.rebootpending": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOsBase).GetRebootpending()).ToDataRes(types.Bool)
@@ -16032,6 +16050,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOs).Updates, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"os.lastUpdate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOs).LastUpdate, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"os.lastUpdateAge": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOs).LastUpdateAge, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"os.lastUpdateSource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOs).LastUpdateSource, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"os.rebootpending": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOs).Rebootpending, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -16114,6 +16144,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"os.base.updates": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOsBase).Updates, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"os.base.lastUpdate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOsBase).LastUpdate, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"os.base.lastUpdateAge": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOsBase).LastUpdateAge, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"os.base.lastUpdateSource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOsBase).LastUpdateSource, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"os.base.rebootpending": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -36086,17 +36128,20 @@ func (c *mqlMachineSecureboot) GetSetupMode() *plugin.TValue[bool] {
 type mqlOs struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlOsInternal it will be used here
-	Name          plugin.TValue[string]
-	Env           plugin.TValue[map[string]any]
-	Path          plugin.TValue[[]any]
-	Uptime        plugin.TValue[*time.Time]
-	Updates       plugin.TValue[[]any]
-	Rebootpending plugin.TValue[bool]
-	Hostname      plugin.TValue[string]
-	Hypervisor    plugin.TValue[string]
-	Machineid     plugin.TValue[string]
-	Date          plugin.TValue[*mqlOsDate]
+	mqlOsInternal
+	Name             plugin.TValue[string]
+	Env              plugin.TValue[map[string]any]
+	Path             plugin.TValue[[]any]
+	Uptime           plugin.TValue[*time.Time]
+	Updates          plugin.TValue[[]any]
+	LastUpdate       plugin.TValue[*time.Time]
+	LastUpdateAge    plugin.TValue[*time.Time]
+	LastUpdateSource plugin.TValue[string]
+	Rebootpending    plugin.TValue[bool]
+	Hostname         plugin.TValue[string]
+	Hypervisor       plugin.TValue[string]
+	Machineid        plugin.TValue[string]
+	Date             plugin.TValue[*mqlOsDate]
 }
 
 // createOs creates a new instance of this resource
@@ -36173,6 +36218,24 @@ func (c *mqlOs) GetUpdates() *plugin.TValue[[]any] {
 		}
 
 		return c.updates()
+	})
+}
+
+func (c *mqlOs) GetLastUpdate() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastUpdate, func() (*time.Time, error) {
+		return c.lastUpdate()
+	})
+}
+
+func (c *mqlOs) GetLastUpdateAge() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastUpdateAge, func() (*time.Time, error) {
+		return c.lastUpdateAge()
+	})
+}
+
+func (c *mqlOs) GetLastUpdateSource() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.LastUpdateSource, func() (string, error) {
+		return c.lastUpdateSource()
 	})
 }
 
@@ -36347,17 +36410,20 @@ func (c *mqlOsUpdate) GetFormat() *plugin.TValue[string] {
 type mqlOsBase struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlOsBaseInternal it will be used here
-	Machine       plugin.TValue[*mqlMachine]
-	Name          plugin.TValue[string]
-	Env           plugin.TValue[map[string]any]
-	Path          plugin.TValue[[]any]
-	Uptime        plugin.TValue[*time.Time]
-	Updates       plugin.TValue[[]any]
-	Rebootpending plugin.TValue[bool]
-	Hostname      plugin.TValue[string]
-	Groups        plugin.TValue[*mqlGroups]
-	Users         plugin.TValue[*mqlUsers]
+	mqlOsBaseInternal
+	Machine          plugin.TValue[*mqlMachine]
+	Name             plugin.TValue[string]
+	Env              plugin.TValue[map[string]any]
+	Path             plugin.TValue[[]any]
+	Uptime           plugin.TValue[*time.Time]
+	Updates          plugin.TValue[[]any]
+	LastUpdate       plugin.TValue[*time.Time]
+	LastUpdateAge    plugin.TValue[*time.Time]
+	LastUpdateSource plugin.TValue[string]
+	Rebootpending    plugin.TValue[bool]
+	Hostname         plugin.TValue[string]
+	Groups           plugin.TValue[*mqlGroups]
+	Users            plugin.TValue[*mqlUsers]
 }
 
 // createOsBase creates a new instance of this resource
@@ -36455,6 +36521,24 @@ func (c *mqlOsBase) GetUpdates() *plugin.TValue[[]any] {
 		}
 
 		return c.updates()
+	})
+}
+
+func (c *mqlOsBase) GetLastUpdate() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastUpdate, func() (*time.Time, error) {
+		return c.lastUpdate()
+	})
+}
+
+func (c *mqlOsBase) GetLastUpdateAge() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.LastUpdateAge, func() (*time.Time, error) {
+		return c.lastUpdateAge()
+	})
+}
+
+func (c *mqlOsBase) GetLastUpdateSource() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.LastUpdateSource, func() (string, error) {
+		return c.lastUpdateSource()
 	})
 }
 
