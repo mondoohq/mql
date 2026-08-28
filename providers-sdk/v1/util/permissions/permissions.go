@@ -1621,9 +1621,50 @@ func gcpRESTToPermission(service, resource, method string) (string, bool) {
 // Azure Permission Extraction
 // =============================================================================
 
+// extractAzurePermissions statically detects the Azure ARM read calls a provider
+// makes and maps each to the IAM permission it requires. It relies only on the
+// AST (no type checking), so it recognizes a fixed set of call shapes. Every
+// shape resolves to a client whose ARM provider + resource type produce a
+// "<Provider>/<resource>/read" permission attributed to the file with the call.
+//
+// Recognized shapes:
+//
+//	// (1) Local variable — client built and used in the same function:
+//	client, _ := armcompute.NewVirtualMachinesClient(subID, cred, nil)
+//	client.NewListAllPager(nil)            // -> Microsoft.Compute/virtualMachines/read
+//
+//	// (2) Client factory — the ARM provider comes from the factory var:
+//	factory, _ := armsecurity.NewClientFactory(subID, cred, nil)
+//	factory.NewPricingsClient().Get(ctx, name, nil) // -> Microsoft.Security/pricings/read
+//
+//	// (3) Struct-field client (added here) — built by a constructor, then used
+//	//     across methods via the receiver:
+//	type SubscriptionsClient struct {
+//	    client *armsubscriptions.Client
+//	}
+//	func NewSubscriptionsClient(cred azcore.TokenCredential) (*SubscriptionsClient, error) {
+//	    c, err := armsubscriptions.NewClient(cred, nil)
+//	    if err != nil { return nil, err }
+//	    return &SubscriptionsClient{client: c}, nil // field <- client
+//	}
+//	func (s *SubscriptionsClient) Tags(ctx context.Context, id string) error {
+//	    _, err := s.client.Get(ctx, id, nil)        // s.client.Get -> Microsoft.Resources/subscriptions/read
+//	    return err
+//	}
+//
+// Before struct-field tracking, shape (3)'s read (`s.client.Get`) was invisible:
+// the client is constructed in one function and used in another, and the read's
+// receiver is a field selector rather than a tracked local var — so the read
+// went unattributed. buildAzureFieldClients records struct-field clients and the
+// read pass resolves `s.client` through the method receiver's type.
 func extractAzurePermissions(root string) []PermissionDetail {
 	var details []PermissionDetail
 	files := listGoFiles(root)
+
+	// Pre-pass: resolve ARM clients cached in struct fields (structType -> field
+	// -> client info) so reads via a method receiver (e.g. c.client.Get(...)) can
+	// be attributed even though the client is constructed in another function.
+	fieldClients := buildAzureFieldClients(files)
 
 	for _, filePath := range files {
 		fileName := filepath.Base(filePath)
@@ -1649,93 +1690,12 @@ func extractAzurePermissions(root string) []PermissionDetail {
 				return true
 			}
 
-			// Track client variables: varName -> (ARM provider, resource type)
-			clientVars := map[string]*azureClientInfo{}
-			// Track client-factory variables: varName -> ARM provider. Many azure
-			// SDKs (e.g. armsecurity) create clients via
-			// `f := pkg.NewClientFactory(...)` then `f.NewXxxClient()` rather than
-			// a package-qualified `pkg.NewXxxClient(...)`, so we resolve the ARM
-			// provider through the factory var.
-			factoryVars := map[string]string{}
-
-			ast.Inspect(fn.Body, func(n ast.Node) bool {
-				assignStmt, ok := n.(*ast.AssignStmt)
-				if !ok {
-					return true
-				}
-
-				for i, rhs := range assignStmt.Rhs {
-					call, ok := rhs.(*ast.CallExpr)
-					if !ok {
-						continue
-					}
-					sel, ok := call.Fun.(*ast.SelectorExpr)
-					if !ok {
-						continue
-					}
-					methodName := sel.Sel.Name
-
-					pkgIdent, isIdentReceiver := sel.X.(*ast.Ident)
-
-					// Pattern: f := pkg.NewClientFactory(...) — remember the
-					// factory var so its clients resolve to this ARM provider.
-					if methodName == "NewClientFactory" {
-						if isIdentReceiver {
-							if imp, isAzureImport := azureImports[pkgIdent.Name]; isAzureImport && i < len(assignStmt.Lhs) {
-								if ident, ok := assignStmt.Lhs[i].(*ast.Ident); ok {
-									factoryVars[ident.Name] = imp.armProvider
-								}
-							}
-						}
-						continue
-					}
-
-					// Pattern: pkg.NewXxxClient(...) or factoryVar.NewXxxClient(...)
-					if !strings.HasPrefix(methodName, "New") || !strings.HasSuffix(methodName, "Client") {
-						continue
-					}
-					if !isIdentReceiver {
-						continue
-					}
-
-					// Resolve the ARM provider: either the receiver is a tracked
-					// azure package import, or a tracked client-factory var.
-					imp, isAzureImport := azureImports[pkgIdent.Name]
-					armProvider := ""
-					if isAzureImport {
-						armProvider = imp.armProvider
-					} else if prov, isFactory := factoryVars[pkgIdent.Name]; isFactory {
-						armProvider = prov
-					} else {
-						continue
-					}
-
-					// Extract resource type from constructor name
-					// e.g., NewVirtualMachinesClient -> VirtualMachines
-					// NewClient -> "" (generic client, map via package)
-					resourceType := strings.TrimPrefix(methodName, "New")
-					resourceType = strings.TrimSuffix(resourceType, "Client")
-
-					// A generic NewClient carries no resource type; only a
-					// package import can map it via its package name.
-					if resourceType == "" {
-						if !isAzureImport {
-							continue
-						}
-						resourceType = azureResourceFromPackage(imp.pkgName)
-					}
-
-					if i < len(assignStmt.Lhs) {
-						if ident, ok := assignStmt.Lhs[i].(*ast.Ident); ok {
-							clientVars[ident.Name] = &azureClientInfo{
-								armProvider:  armProvider,
-								resourceType: resourceType,
-							}
-						}
-					}
-				}
-				return true
-			})
+			// Track ARM clients and client factories declared as local vars in
+			// this function.
+			clientVars, factoryVars := trackAzureClientVars(fn.Body, azureImports)
+			// Receiver of this function (if it's a method), used to resolve reads
+			// on struct-field clients accessed via the receiver: c.client.Get(...).
+			recvName, recvType := funcReceiver(fn)
 
 			emitReadPerm := func(armProvider, resourceType, methodName string) {
 				perm := azurePermission(armProvider, resourceType)
@@ -1799,6 +1759,20 @@ func extractAzurePermissions(root string) []PermissionDetail {
 					if resourceType != "" {
 						emitReadPerm(prov, resourceType, methodName)
 					}
+				case *ast.SelectorExpr:
+					// Read on a struct-field client accessed via the method
+					// receiver: c.client.Get(...). Resolve the field through the
+					// receiver's type so a client cached in a struct (built by a
+					// constructor in another function) is still attributed.
+					baseIdent, ok := recv.X.(*ast.Ident)
+					if !ok || recvName == "" || baseIdent.Name != recvName {
+						return true
+					}
+					if fields, ok := fieldClients[recvType]; ok {
+						if info, ok := fields[recv.Sel.Name]; ok {
+							emitReadPerm(info.armProvider, info.resourceType, methodName)
+						}
+					}
 				}
 
 				return true
@@ -1820,6 +1794,234 @@ type azureImportInfo struct {
 type azureClientInfo struct {
 	armProvider  string // e.g., "Microsoft.Compute"
 	resourceType string // e.g., "VirtualMachines"
+}
+
+// trackAzureClientVars walks a function body and records ARM clients and client
+// factories assigned to local variables:
+//   - clientVars: varName -> client info, from `x := pkg.NewXxxClient(...)` (or
+//     `x := factoryVar.NewXxxClient(...)`).
+//   - factoryVars: varName -> ARM provider, from `f := pkg.NewClientFactory(...)`.
+func trackAzureClientVars(body *ast.BlockStmt, azureImports map[string]*azureImportInfo) (map[string]*azureClientInfo, map[string]string) {
+	clientVars := map[string]*azureClientInfo{}
+	factoryVars := map[string]string{}
+
+	ast.Inspect(body, func(n ast.Node) bool {
+		assignStmt, ok := n.(*ast.AssignStmt)
+		if !ok {
+			return true
+		}
+
+		for i, rhs := range assignStmt.Rhs {
+			call, ok := rhs.(*ast.CallExpr)
+			if !ok {
+				continue
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				continue
+			}
+
+			// Pattern: f := pkg.NewClientFactory(...) — remember the factory var
+			// so its clients resolve to this ARM provider.
+			if sel.Sel.Name == "NewClientFactory" {
+				pkgIdent, ok := sel.X.(*ast.Ident)
+				if !ok {
+					continue
+				}
+				if imp, isAzureImport := azureImports[pkgIdent.Name]; isAzureImport && i < len(assignStmt.Lhs) {
+					if ident, ok := assignStmt.Lhs[i].(*ast.Ident); ok {
+						factoryVars[ident.Name] = imp.armProvider
+					}
+				}
+				continue
+			}
+
+			// Pattern: pkg.NewXxxClient(...) or factoryVar.NewXxxClient(...)
+			info := resolveAzureConstructorCall(call, azureImports, factoryVars)
+			if info == nil {
+				continue
+			}
+			if i < len(assignStmt.Lhs) {
+				if ident, ok := assignStmt.Lhs[i].(*ast.Ident); ok {
+					clientVars[ident.Name] = info
+				}
+			}
+		}
+		return true
+	})
+
+	return clientVars, factoryVars
+}
+
+// resolveAzureConstructorCall resolves a `pkg.NewXxxClient(...)` or
+// `factoryVar.NewXxxClient(...)` call to the ARM client it creates, or nil if
+// the call is not an Azure client constructor.
+func resolveAzureConstructorCall(call *ast.CallExpr, azureImports map[string]*azureImportInfo, factoryVars map[string]string) *azureClientInfo {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return nil
+	}
+	methodName := sel.Sel.Name
+	if !strings.HasPrefix(methodName, "New") || !strings.HasSuffix(methodName, "Client") {
+		return nil
+	}
+	pkgIdent, ok := sel.X.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+
+	// Resolve the ARM provider: either the receiver is a tracked azure package
+	// import, or a tracked client-factory var.
+	imp, isAzureImport := azureImports[pkgIdent.Name]
+	armProvider := ""
+	if isAzureImport {
+		armProvider = imp.armProvider
+	} else if prov, isFactory := factoryVars[pkgIdent.Name]; isFactory {
+		armProvider = prov
+	} else {
+		return nil
+	}
+
+	// Extract resource type from constructor name, e.g.
+	// NewVirtualMachinesClient -> VirtualMachines. A generic NewClient carries
+	// no resource type; only a package import can map it via its package name.
+	resourceType := strings.TrimSuffix(strings.TrimPrefix(methodName, "New"), "Client")
+	if resourceType == "" {
+		if !isAzureImport {
+			return nil
+		}
+		resourceType = azureResourceFromPackage(imp.pkgName)
+	}
+	return &azureClientInfo{armProvider: armProvider, resourceType: resourceType}
+}
+
+// resolveAzureClientExpr resolves an expression that may hold an ARM client —
+// either a reference to a tracked local client var, or an inline constructor
+// call — to its client info, or nil.
+func resolveAzureClientExpr(expr ast.Expr, clientVars map[string]*azureClientInfo, factoryVars map[string]string, azureImports map[string]*azureImportInfo) *azureClientInfo {
+	switch e := expr.(type) {
+	case *ast.Ident:
+		if info, ok := clientVars[e.Name]; ok {
+			return info
+		}
+	case *ast.CallExpr:
+		return resolveAzureConstructorCall(e, azureImports, factoryVars)
+	}
+	return nil
+}
+
+// buildAzureFieldClients scans every file for ARM clients assigned to struct
+// fields and returns structType -> fieldName -> client info. It recognizes two
+// constructor shapes: composite literals `&T{field: <client>}` and receiver
+// assignments `r.field = <client>` inside a method of T. This lets reads on
+// c.field elsewhere be attributed via the receiver's type.
+func buildAzureFieldClients(files []string) map[string]map[string]*azureClientInfo {
+	fieldClients := map[string]map[string]*azureClientInfo{}
+	record := func(structType, field string, info *azureClientInfo) {
+		if structType == "" || field == "" || info == nil {
+			return
+		}
+		if fieldClients[structType] == nil {
+			fieldClients[structType] = map[string]*azureClientInfo{}
+		}
+		fieldClients[structType][field] = info
+	}
+
+	for _, filePath := range files {
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, filePath, nil, 0)
+		if err != nil {
+			continue
+		}
+		azureImports := extractAzureImports(f)
+		if len(azureImports) == 0 {
+			continue
+		}
+
+		ast.Inspect(f, func(n ast.Node) bool {
+			fn, ok := n.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				return true
+			}
+			clientVars, factoryVars := trackAzureClientVars(fn.Body, azureImports)
+			recvName, recvType := funcReceiver(fn)
+
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				switch node := n.(type) {
+				case *ast.CompositeLit:
+					// &T{field: <client>} or T{field: <client>}
+					structType := typeIdentName(node.Type)
+					if structType == "" {
+						return true
+					}
+					for _, elt := range node.Elts {
+						kv, ok := elt.(*ast.KeyValueExpr)
+						if !ok {
+							continue
+						}
+						key, ok := kv.Key.(*ast.Ident)
+						if !ok {
+							continue
+						}
+						if info := resolveAzureClientExpr(kv.Value, clientVars, factoryVars, azureImports); info != nil {
+							record(structType, key.Name, info)
+						}
+					}
+				case *ast.AssignStmt:
+					// r.field = <client> inside a method of the receiver's type.
+					if recvName == "" || recvType == "" {
+						return true
+					}
+					for i, lhs := range node.Lhs {
+						sel, ok := lhs.(*ast.SelectorExpr)
+						if !ok {
+							continue
+						}
+						baseIdent, ok := sel.X.(*ast.Ident)
+						if !ok || baseIdent.Name != recvName {
+							continue
+						}
+						if i < len(node.Rhs) {
+							if info := resolveAzureClientExpr(node.Rhs[i], clientVars, factoryVars, azureImports); info != nil {
+								record(recvType, sel.Sel.Name, info)
+							}
+						}
+					}
+				}
+				return true
+			})
+			return true
+		})
+	}
+
+	return fieldClients
+}
+
+// funcReceiver returns the receiver variable name and type name of a method
+// declaration (unwrapping a pointer receiver), or empty strings for a plain
+// function.
+func funcReceiver(fn *ast.FuncDecl) (name string, typeName string) {
+	if fn.Recv == nil || len(fn.Recv.List) != 1 {
+		return "", ""
+	}
+	field := fn.Recv.List[0]
+	if len(field.Names) == 1 {
+		name = field.Names[0].Name
+	}
+	return name, typeIdentName(field.Type)
+}
+
+// typeIdentName returns the identifier name of a type expression, unwrapping a
+// leading pointer (*T -> "T"). Returns "" for non-identifier types (e.g. a
+// qualified pkg.T, which is not a locally-declared struct).
+func typeIdentName(expr ast.Expr) string {
+	if star, ok := expr.(*ast.StarExpr); ok {
+		expr = star.X
+	}
+	if ident, ok := expr.(*ast.Ident); ok {
+		return ident.Name
+	}
+	return ""
 }
 
 func extractAzureImports(f *ast.File) map[string]*azureImportInfo {
