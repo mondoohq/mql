@@ -144,6 +144,7 @@ To learn about Mondoo Platform, read the [Mondoo Platform docs](https://mondoo.c
 | IP address information        | `ipinfo`                   | `mql shell ipinfo`                                                                                                                              |
 | IPMI-enabled devices          | `ipmi`                     | `mql shell ipmi user@HOST`                                                                                                                      |
 | Iru (formerly Kandji) tenants | `iru`                      | `mql shell iru --subdomain SUBDOMAIN --token API_TOKEN`                                                                                         |
+| Jenkins controllers           | `jenkins`                  | `mql shell jenkins --url URL --user USER --token TOKEN`                                                                                         |
 | Jira projects                 | `atlassian`                | `mql shell atlassian --host YOUR_HOST_URL --admin-token YOUR_TOKEN`                                                                             |
 | JumpCloud organizations       | `jumpcloud`                | `mql shell jumpcloud --api-key API_KEY`                                                                                                         |
 | Juniper Junos devices         | `junos`                    | `mql shell junos --hostname DEVICE_IP --username admin --password PASSWORD`                                                                     |

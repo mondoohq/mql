@@ -1,0 +1,158 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+option provider = "go.mondoo.com/mql/providers/jenkins"
+option go_package = "go.mondoo.com/mql/providers/jenkins/resources"
+
+// Jenkins automation server
+//
+// The Jenkins controller reachable at the configured base URL. Exposes
+// instance-level metadata (version, operating mode) alongside the
+// installed `plugins`, configured `jobs`, build `nodes`, and stored
+// `credentials` metadata that make up a Jenkins audit. The controller's
+// access-control posture is a separate resource, `jenkins.security`.
+jenkins @maturity("experimental") {
+  // Base URL the connection targets, for example "https://jenkins.example.com"
+  url string
+  // Jenkins core version reported by the controller
+  version string
+  // Operating mode, either NORMAL (builds run anywhere) or EXCLUSIVE (builds only run on labeled agents)
+  mode string
+  // Whether the controller is in the process of shutting down for maintenance
+  quietingDown bool
+  // Installed plugins
+  plugins() []jenkins.plugin
+  // Configured jobs, including folders and pipelines
+  jobs() []jenkins.job
+  // Build agents and the built-in controller node
+  nodes() []jenkins.node
+  // Stored credential metadata, never the secret material itself
+  credentials() []jenkins.credential
+}
+
+// Jenkins instance security configuration
+//
+// The controller-wide security posture: whether access control is enabled,
+// whether CSRF protection (the crumb issuer) is enabled, and which TCP port
+// accepts inbound agent connections.
+jenkins.security @defaults("securityEnabled csrfProtectionEnabled") @maturity("experimental") {
+  // Whether access control (authentication and authorization) is enabled at all
+  securityEnabled bool
+  // Whether CSRF protection (the crumb issuer) is enabled
+  csrfProtectionEnabled bool
+  // TCP port accepting inbound agent connections, -1 when disabled and 0 when a random port is used
+  slaveAgentPort int
+}
+
+// Plugin installed on the Jenkins controller
+//
+// One entry per plugin returned by the plugin manager. The `shortName`
+// field is the plugin's install identifier, for example "git" or
+// "credentials-binding". `hasUpdate` reflects whether the Jenkins update
+// center has a newer release available for this plugin.
+jenkins.plugin @defaults("shortName version") @maturity("experimental") {
+  // Plugin install identifier, for example "git"
+  shortName string
+  // Human-readable plugin name
+  longName string
+  // Installed plugin version
+  version string
+  // Whether the plugin is enabled
+  enabled bool
+  // Whether the plugin is active (enabled and all its dependencies are active)
+  active bool
+  // Whether a newer version is available from the configured update center
+  hasUpdate bool
+  // Plugin homepage URL
+  url string
+  // Minimum Jenkins core version this plugin requires
+  requiredCoreVersion string
+}
+
+// Jenkins job
+//
+// A configured job, pipeline, or folder, including jobs nested inside
+// folders. The `fullName` field is the job's path-qualified name, for
+// example "team-a/deploy-service", so it changes when a job moves between
+// folders. The `class` field distinguishes job types, such as
+// "hudson.model.FreeStyleProject",
+// "org.jenkinsci.plugins.workflow.job.WorkflowJob" (pipeline), or
+// "com.cloudbees.hudson.plugins.folder.Folder".
+jenkins.job @defaults("fullName class") @maturity("experimental") {
+  // Job name
+  name string
+  // Path-qualified job name, for example "team-a/deploy-service"
+  fullName string
+  // Job URL
+  url string
+  // Job class, identifying the job or folder type
+  class string
+  // Whether the job can currently be built
+  buildable bool
+  // Whether the job is disabled
+  disabled bool
+  // Last build number, 0 when the job has never built
+  lastBuildNumber int
+  // Last successful build number, 0 when the job has never succeeded
+  lastSuccessfulBuildNumber int
+  // Last failed build number, 0 when the job has never failed
+  lastFailedBuildNumber int
+  // Job description
+  description string
+  // Node the last build ran on
+  //
+  // Resolves only for freestyle jobs, whose last build reports the node it
+  // ran on. Pipeline jobs do not report this, so it is null for them.
+  node() jenkins.node
+}
+
+// Jenkins node
+//
+// A build agent, or the built-in controller node itself (`isController`
+// distinguishes the two). Agents are keyed by their `name` as reported by
+// the controller, for example "linux-agent-01". The controller names its
+// own node inconsistently across core versions, so it is always surfaced
+// here as "Built-In Node".
+jenkins.node @defaults("name offline") @maturity("experimental") {
+  // Node name, "Built-In Node" for the controller itself
+  name string
+  // Node description
+  description string
+  // Whether this is the built-in controller node rather than an agent
+  isController bool
+  // Whether the node is currently offline
+  offline bool
+  // Whether the node was taken offline manually rather than due to a failure
+  temporarilyOffline bool
+  // Reason given for the node being offline
+  offlineCauseReason string
+  // Number of concurrent build executors configured on this node
+  numExecutors int
+  // Labels assigned to this node
+  labels []string
+}
+
+// Jenkins stored credential
+//
+// Metadata for a credential stored in the Jenkins Credentials plugin,
+// covering the controller's system store (across all of its domains) and
+// every folder-scoped credential store. Only identifying metadata is
+// exposed: `id`, `typeName`, `description`, and the owning `domain`, which
+// is the credentials domain it belongs to ("_" for the default global
+// domain). The credential's secret material (passwords, private keys,
+// tokens) is never fetched or exposed by this resource.
+jenkins.credential @defaults("id typeName") @maturity("experimental") {
+  // Credential ID, as referenced by jobs and pipelines
+  id string
+  // Credential type
+  //
+  // The display name of the credential type as Jenkins reports it, for
+  // example "Username with password", "SSH Username with private key", or
+  // "Secret text". This is a localized label, not the implementation
+  // class name.
+  typeName string
+  // Credential description
+  description string
+  // Credentials domain the credential belongs to, "_" for the global domain
+  domain string
+}
