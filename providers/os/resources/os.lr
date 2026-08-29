@@ -13749,6 +13749,247 @@ private ai.model @defaults("name source") @maturity("preview") {
   description string
 }
 
+// Ollama server configuration on the host
+//
+// Configuration the Ollama server on this host runs with. Ollama keeps no
+// configuration file: every setting is an environment variable read when the
+// daemon starts, so the settings are reconstructed from the systemd unit that
+// starts the server, the drop-ins and environment files that override it, and
+// server.json in the server account's Ollama directory. Each field reports the
+// value the server would actually use, so a setting nothing declares reads as
+// Ollama's own default rather than as empty. That matters most where the
+// default is the safe one: an undeclared bind address is the loopback
+// interface, not nothing.
+//
+// bindAddress, listensOnAllInterfaces, origins, and authEnabled describe who
+// can reach the API. Ollama requires no authentication and serves plain HTTP
+// out of the box, so a server that binds a routable address is readable and
+// writable by anyone who can reach the port. cloudEnabled, remotes, and the
+// proxy settings describe where prompts may travel; debugLogRequests and
+// historyEnabled describe what is written to disk.
+//
+// integrations lists the coding tools on the host that were pointed at this
+// server, and models the model store it serves. The settings resolved from the
+// environment are null when Ollama is not installed, so a check that reads
+// them fails on a host without a server rather than passing against a default.
+ollama.config @defaults("host listensOnAllInterfaces authEnabled") @maturity("preview") {
+  // Whether an Ollama server is installed on this host
+  //
+  // True when the server binary or a unit that starts it was found. Every
+  // setting resolved from the environment is null when this is false.
+  installed() bool
+  // Path to the server binary, empty when it was not found
+  binaryPath() string
+  // Service that runs the server
+  //
+  // Reports whether the server is enabled and running. Null on a host with no
+  // unit for it, including one where the server is started by hand.
+  service() service
+  // Package that installed the server
+  //
+  // Resolves to the system-package-manager entry that installed the server
+  // when one can be identified; otherwise an abstract package (origin
+  // "unknown", empty format, absent from `packages`) that records the
+  // server's presence and, where determinable, an inferred version.
+  package() package
+  // Version of the installed server
+  //
+  // Matches the host against published Ollama advisories. Empty when no
+  // version can be determined without running the binary.
+  version() string
+  // Account the server runs as
+  //
+  // From the unit's User= setting. Empty when the unit names none, in which
+  // case a system service runs as root.
+  user() string
+  // Files the configuration was read from, in the order they were applied
+  //
+  // The unit, then its drop-ins, then the environment files they name. Empty
+  // when nothing on the host declares the server's environment, in which case
+  // every setting reported is Ollama's default.
+  files() []string
+  // Ollama settings as declared, before defaults are applied
+  //
+  // A variable absent here is one nothing gave the daemon. Read this to tell a
+  // setting that was chosen from one that merely matches the default. Only the
+  // variables Ollama reads are reported: a unit's environment is a common place
+  // to keep credentials for unrelated purposes, so anything outside Ollama's
+  // own settings is left out, and so is anything whose name is
+  // credential-shaped.
+  variables() map[string]string
+  // File each declared variable was read from
+  //
+  // Keyed the same as variables, so a setting can be traced to the unit, a
+  // drop-in, or an environment file.
+  variableSources() map[string]string
+
+  // Address the API is served on
+  //
+  // The resolved OLLAMA_HOST, for example "http://127.0.0.1:11434".
+  host() string
+  // Address the API binds to
+  bindAddress() string
+  // Port the API binds to
+  port() int
+  // Whether the API is bound to every interface
+  //
+  // True when the bind address is unspecified (0.0.0.0 or ::), which puts the
+  // API on every network the host is attached to. Ollama binds the loopback
+  // interface by default, so this is always a deliberate change, and it is the
+  // one that turns the other exposure settings into a reachable surface.
+  listensOnAllInterfaces() bool
+  // Whether the API is addressed over TLS
+  //
+  // False when the server is served over plain HTTP, in which case prompts,
+  // completions, and any API token sent to it travel in the clear.
+  tls() bool
+  // Browser origins the API accepts cross-origin requests from
+  //
+  // The entries of OLLAMA_ORIGINS, empty when it is unset. Ollama always
+  // additionally accepts localhost, 127.0.0.1 and 0.0.0.0 on any port, and the
+  // app, file, tauri, vscode-webview and vscode-file schemes, whatever this is
+  // set to. Those additions are not listed here, which reports only what the
+  // host was configured with.
+  origins() []string
+  // Whether any browser origin is accepted
+  //
+  // True when origins contains a bare wildcard. Ollama matches it as a
+  // wildcard rather than literally, so any page in any browser that can reach
+  // the port can drive the API.
+  allowsAnyOrigin() bool
+  // Whether the server requires authentication
+  //
+  // Reports OLLAMA_AUTH. False is the default, meaning any client that can
+  // reach the port can list models, run inference, and pull or delete models.
+  authEnabled() bool
+
+  // Whether the server may reach Ollama Cloud
+  //
+  // False when cloud inference and web search are turned off. While true,
+  // prompts for cloud-hosted models leave the host and are processed by
+  // Ollama Cloud.
+  cloudEnabled() bool
+  // What turned the cloud features off
+  //
+  // One of "none", "env", "config", or "both", naming whether the decision
+  // came from OLLAMA_NO_CLOUD, from server.json, or from both. "none" means
+  // the features are on.
+  cloudDisabledSource() string
+  // Hosts remote models may be served from
+  //
+  // The entries of OLLAMA_REMOTES, defaulting to ollama.com. A model served
+  // from one of these hosts runs there, so prompts for it leave this machine.
+  remotes() []string
+
+  // Directory the model store is kept in
+  //
+  // The resolved OLLAMA_MODELS, defaulting to the Ollama directory under the
+  // server account's home. Packaged installations routinely move this, so it
+  // is rarely the default on a server.
+  modelsPath() string
+  // Models cached in the store this server serves
+  models() []ai.model
+  // Coding tools on the host pointed at this server
+  integrations() []ollama.config.integration
+
+  // Whether inference request bodies are written to disk
+  //
+  // Reports OLLAMA_DEBUG_LOG_REQUESTS, which writes the body of every
+  // inference request, prompts included, to a temporary directory along with
+  // a command to replay it. Intended for debugging and false by default.
+  debugLogRequests() bool
+  // Whether the interactive prompt history is kept
+  //
+  // False when OLLAMA_NOHISTORY suppresses it. While true, prompts typed at
+  // the interactive client are written to the user's Ollama directory.
+  historyEnabled() bool
+  // Log verbosity
+  //
+  // One of "info", "debug", or "trace", resolved from OLLAMA_DEBUG.
+  logLevel() string
+  // Whether unused model blobs are kept rather than pruned at startup
+  noPrune() bool
+
+  // Seconds a model stays loaded in memory after its last request
+  //
+  // -1 keeps models resident indefinitely; 0 unloads each one as soon as its
+  // request finishes. Defaults to 300.
+  keepAliveSeconds() int
+  // Seconds a model load may stall before it is abandoned
+  //
+  // -1 means no limit. Defaults to 300.
+  loadTimeoutSeconds() int
+  // Default context window in tokens
+  //
+  // 0 means Ollama picks a length from the available VRAM rather than being
+  // told one.
+  contextLength() int
+  // Maximum number of requests served in parallel
+  numParallel() int
+  // Maximum number of models held in memory at once
+  //
+  // 0 means Ollama derives the limit from the available VRAM.
+  maxLoadedModels() int
+  // Maximum number of requests queued before further ones are rejected
+  maxQueue() int
+  // Bytes of VRAM reserved per GPU and kept away from models
+  gpuOverhead() int
+  // Whether flash attention is enabled
+  flashAttention() bool
+  // Whether a model is spread across every GPU rather than fitted onto one
+  schedSpread() bool
+  // Quantization type of the key/value cache, empty when unset
+  kvCacheType() string
+  // Inference library the server was pinned to, empty when it autodetects
+  llmLibrary() string
+
+  // HTTP proxy the server sends requests through, empty when unset
+  httpProxy() string
+  // HTTPS proxy the server sends requests through, empty when unset
+  //
+  // Model pulls and cloud inference go through this host, which therefore sees
+  // and can intercept them.
+  httpsProxy() string
+  // Hosts excluded from the configured proxies, empty when unset
+  noProxy() string
+}
+
+// Coding tool wired to the host's Ollama server
+//
+// One entry of a user's Ollama integration configuration, recording that a
+// coding tool was pointed at the local server and which models it was given.
+// The `name` field is the key Ollama files the tool under, for example
+// "claude", "codex", "opencode", "cline", "copilot", or "qwen". Reading these
+// answers which assistants on the host send their prompts to a local model
+// rather than to a vendor API, and, through `models`, whether the model each
+// one asks for is actually present in the store.
+private ollama.config.integration @defaults("name user modelNames") @maturity("preview") {
+  // Name Ollama files the tool under
+  name string
+  // User whose configuration wired the tool up
+  //
+  // The integrations are per-user, so the same tool can be configured
+  // differently by two accounts on one host.
+  user string
+  // Model names the tool was configured with
+  //
+  // What the tool asks for, which is not necessarily what the host has. A name
+  // here with no counterpart in models is a tool pointed at a model that is
+  // not installed.
+  modelNames []string
+  // Models from the store that the configured names resolve to
+  //
+  // Only the names the store actually holds appear here, so a shorter list
+  // than modelNames means the tool asks for a model this host cannot serve.
+  models() []ai.model
+  // Tool-side model names mapped to Ollama model names
+  //
+  // Empty when the tool uses the Ollama names directly.
+  aliases map[string]string
+  // Whether the tool completed Ollama's setup flow
+  onboarded bool
+}
+
 // Claude Code (Anthropic CLI agent) instance
 //
 // Claude Code installation on the host, exposing the account it is signed

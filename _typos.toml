@@ -145,3 +145,8 @@ splitted = "splitted"
 # OCI Go SDK field identitydomains.KmsiSetting.TouPromptDisabled, where "Tou"
 # is Terms Of Use. The SDK's own spelling, so reads of it cannot be renamed.
 TouPromptDisabled = "TouPromptDisabled"
+# AMD ROCm environment variable HSA_OVERRIDE_GFX_VERSION, where HSA is
+# Heterogeneous System Architecture. Ollama reads it to pick a GPU target, so
+# the name must stay verbatim to match the variable the daemon actually looks
+# up.
+HSA_OVERRIDE_GFX_VERSION = "HSA_OVERRIDE_GFX_VERSION"

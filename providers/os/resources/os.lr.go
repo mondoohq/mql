@@ -519,6 +519,8 @@ const (
 	ResourceZfsDataset                                    string = "zfs.dataset"
 	ResourceAi                                            string = "ai"
 	ResourceAiModel                                       string = "ai.model"
+	ResourceOllamaConfig                                  string = "ollama.config"
+	ResourceOllamaConfigIntegration                       string = "ollama.config.integration"
 	ResourceClaudeCode                                    string = "claude.code"
 	ResourceClaudeCodePlugin                              string = "claude.code.plugin"
 	ResourceClaudeCodeSkill                               string = "claude.code.skill"
@@ -2617,6 +2619,14 @@ func init() {
 		"ai.model": {
 			// to override args, implement: initAiModel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAiModel,
+		},
+		"ollama.config": {
+			// to override args, implement: initOllamaConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createOllamaConfig,
+		},
+		"ollama.config.integration": {
+			// to override args, implement: initOllamaConfigIntegration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createOllamaConfigIntegration,
 		},
 		"claude.code": {
 			Init:   initClaudeCode,
@@ -14037,6 +14047,147 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ai.model.description": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAiModel).GetDescription()).ToDataRes(types.String)
+	},
+	"ollama.config.installed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetInstalled()).ToDataRes(types.Bool)
+	},
+	"ollama.config.binaryPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetBinaryPath()).ToDataRes(types.String)
+	},
+	"ollama.config.service": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetService()).ToDataRes(types.Resource("service"))
+	},
+	"ollama.config.package": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetPackage()).ToDataRes(types.Resource("package"))
+	},
+	"ollama.config.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetVersion()).ToDataRes(types.String)
+	},
+	"ollama.config.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetUser()).ToDataRes(types.String)
+	},
+	"ollama.config.files": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetFiles()).ToDataRes(types.Array(types.String))
+	},
+	"ollama.config.variables": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetVariables()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"ollama.config.variableSources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetVariableSources()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"ollama.config.host": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetHost()).ToDataRes(types.String)
+	},
+	"ollama.config.bindAddress": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetBindAddress()).ToDataRes(types.String)
+	},
+	"ollama.config.port": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetPort()).ToDataRes(types.Int)
+	},
+	"ollama.config.listensOnAllInterfaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetListensOnAllInterfaces()).ToDataRes(types.Bool)
+	},
+	"ollama.config.tls": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetTls()).ToDataRes(types.Bool)
+	},
+	"ollama.config.origins": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetOrigins()).ToDataRes(types.Array(types.String))
+	},
+	"ollama.config.allowsAnyOrigin": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetAllowsAnyOrigin()).ToDataRes(types.Bool)
+	},
+	"ollama.config.authEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetAuthEnabled()).ToDataRes(types.Bool)
+	},
+	"ollama.config.cloudEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetCloudEnabled()).ToDataRes(types.Bool)
+	},
+	"ollama.config.cloudDisabledSource": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetCloudDisabledSource()).ToDataRes(types.String)
+	},
+	"ollama.config.remotes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetRemotes()).ToDataRes(types.Array(types.String))
+	},
+	"ollama.config.modelsPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetModelsPath()).ToDataRes(types.String)
+	},
+	"ollama.config.models": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetModels()).ToDataRes(types.Array(types.Resource("ai.model")))
+	},
+	"ollama.config.integrations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetIntegrations()).ToDataRes(types.Array(types.Resource("ollama.config.integration")))
+	},
+	"ollama.config.debugLogRequests": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetDebugLogRequests()).ToDataRes(types.Bool)
+	},
+	"ollama.config.historyEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetHistoryEnabled()).ToDataRes(types.Bool)
+	},
+	"ollama.config.logLevel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetLogLevel()).ToDataRes(types.String)
+	},
+	"ollama.config.noPrune": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetNoPrune()).ToDataRes(types.Bool)
+	},
+	"ollama.config.keepAliveSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetKeepAliveSeconds()).ToDataRes(types.Int)
+	},
+	"ollama.config.loadTimeoutSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetLoadTimeoutSeconds()).ToDataRes(types.Int)
+	},
+	"ollama.config.contextLength": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetContextLength()).ToDataRes(types.Int)
+	},
+	"ollama.config.numParallel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetNumParallel()).ToDataRes(types.Int)
+	},
+	"ollama.config.maxLoadedModels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetMaxLoadedModels()).ToDataRes(types.Int)
+	},
+	"ollama.config.maxQueue": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetMaxQueue()).ToDataRes(types.Int)
+	},
+	"ollama.config.gpuOverhead": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetGpuOverhead()).ToDataRes(types.Int)
+	},
+	"ollama.config.flashAttention": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetFlashAttention()).ToDataRes(types.Bool)
+	},
+	"ollama.config.schedSpread": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetSchedSpread()).ToDataRes(types.Bool)
+	},
+	"ollama.config.kvCacheType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetKvCacheType()).ToDataRes(types.String)
+	},
+	"ollama.config.llmLibrary": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetLlmLibrary()).ToDataRes(types.String)
+	},
+	"ollama.config.httpProxy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetHttpProxy()).ToDataRes(types.String)
+	},
+	"ollama.config.httpsProxy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetHttpsProxy()).ToDataRes(types.String)
+	},
+	"ollama.config.noProxy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfig).GetNoProxy()).ToDataRes(types.String)
+	},
+	"ollama.config.integration.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfigIntegration).GetName()).ToDataRes(types.String)
+	},
+	"ollama.config.integration.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfigIntegration).GetUser()).ToDataRes(types.String)
+	},
+	"ollama.config.integration.modelNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfigIntegration).GetModelNames()).ToDataRes(types.Array(types.String))
+	},
+	"ollama.config.integration.models": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfigIntegration).GetModels()).ToDataRes(types.Array(types.Resource("ai.model")))
+	},
+	"ollama.config.integration.aliases": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfigIntegration).GetAliases()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"ollama.config.integration.onboarded": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllamaConfigIntegration).GetOnboarded()).ToDataRes(types.Bool)
 	},
 	"claude.code.configPath": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeCode).GetConfigPath()).ToDataRes(types.String)
@@ -32332,6 +32483,202 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ai.model.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAiModel).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ollama.config.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).__id, ok = v.Value.(string)
+		return
+	},
+	"ollama.config.installed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).Installed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ollama.config.binaryPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).BinaryPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ollama.config.service": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).Service, ok = plugin.RawToTValue[*mqlService](v.Value, v.Error)
+		return
+	},
+	"ollama.config.package": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).Package, ok = plugin.RawToTValue[*mqlPackage](v.Value, v.Error)
+		return
+	},
+	"ollama.config.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ollama.config.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).User, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ollama.config.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ollama.config.variables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).Variables, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"ollama.config.variableSources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).VariableSources, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"ollama.config.host": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).Host, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ollama.config.bindAddress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).BindAddress, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ollama.config.port": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).Port, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ollama.config.listensOnAllInterfaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).ListensOnAllInterfaces, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ollama.config.tls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).Tls, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ollama.config.origins": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).Origins, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ollama.config.allowsAnyOrigin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).AllowsAnyOrigin, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ollama.config.authEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).AuthEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ollama.config.cloudEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).CloudEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ollama.config.cloudDisabledSource": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).CloudDisabledSource, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ollama.config.remotes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).Remotes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ollama.config.modelsPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).ModelsPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ollama.config.models": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).Models, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ollama.config.integrations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).Integrations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ollama.config.debugLogRequests": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).DebugLogRequests, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ollama.config.historyEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).HistoryEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ollama.config.logLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).LogLevel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ollama.config.noPrune": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).NoPrune, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ollama.config.keepAliveSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).KeepAliveSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ollama.config.loadTimeoutSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).LoadTimeoutSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ollama.config.contextLength": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).ContextLength, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ollama.config.numParallel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).NumParallel, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ollama.config.maxLoadedModels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).MaxLoadedModels, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ollama.config.maxQueue": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).MaxQueue, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ollama.config.gpuOverhead": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).GpuOverhead, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"ollama.config.flashAttention": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).FlashAttention, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ollama.config.schedSpread": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).SchedSpread, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ollama.config.kvCacheType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).KvCacheType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ollama.config.llmLibrary": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).LlmLibrary, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ollama.config.httpProxy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).HttpProxy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ollama.config.httpsProxy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).HttpsProxy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ollama.config.noProxy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfig).NoProxy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ollama.config.integration.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfigIntegration).__id, ok = v.Value.(string)
+		return
+	},
+	"ollama.config.integration.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfigIntegration).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ollama.config.integration.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfigIntegration).User, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"ollama.config.integration.modelNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfigIntegration).ModelNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ollama.config.integration.models": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfigIntegration).Models, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"ollama.config.integration.aliases": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfigIntegration).Aliases, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"ollama.config.integration.onboarded": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllamaConfigIntegration).Onboarded, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"claude.code.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -84365,6 +84712,463 @@ func (c *mqlAiModel) GetTags() *plugin.TValue[[]any] {
 
 func (c *mqlAiModel) GetDescription() *plugin.TValue[string] {
 	return &c.Description
+}
+
+// mqlOllamaConfig for the ollama.config resource
+type mqlOllamaConfig struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlOllamaConfigInternal
+	Installed              plugin.TValue[bool]
+	BinaryPath             plugin.TValue[string]
+	Service                plugin.TValue[*mqlService]
+	Package                plugin.TValue[*mqlPackage]
+	Version                plugin.TValue[string]
+	User                   plugin.TValue[string]
+	Files                  plugin.TValue[[]any]
+	Variables              plugin.TValue[map[string]any]
+	VariableSources        plugin.TValue[map[string]any]
+	Host                   plugin.TValue[string]
+	BindAddress            plugin.TValue[string]
+	Port                   plugin.TValue[int64]
+	ListensOnAllInterfaces plugin.TValue[bool]
+	Tls                    plugin.TValue[bool]
+	Origins                plugin.TValue[[]any]
+	AllowsAnyOrigin        plugin.TValue[bool]
+	AuthEnabled            plugin.TValue[bool]
+	CloudEnabled           plugin.TValue[bool]
+	CloudDisabledSource    plugin.TValue[string]
+	Remotes                plugin.TValue[[]any]
+	ModelsPath             plugin.TValue[string]
+	Models                 plugin.TValue[[]any]
+	Integrations           plugin.TValue[[]any]
+	DebugLogRequests       plugin.TValue[bool]
+	HistoryEnabled         plugin.TValue[bool]
+	LogLevel               plugin.TValue[string]
+	NoPrune                plugin.TValue[bool]
+	KeepAliveSeconds       plugin.TValue[int64]
+	LoadTimeoutSeconds     plugin.TValue[int64]
+	ContextLength          plugin.TValue[int64]
+	NumParallel            plugin.TValue[int64]
+	MaxLoadedModels        plugin.TValue[int64]
+	MaxQueue               plugin.TValue[int64]
+	GpuOverhead            plugin.TValue[int64]
+	FlashAttention         plugin.TValue[bool]
+	SchedSpread            plugin.TValue[bool]
+	KvCacheType            plugin.TValue[string]
+	LlmLibrary             plugin.TValue[string]
+	HttpProxy              plugin.TValue[string]
+	HttpsProxy             plugin.TValue[string]
+	NoProxy                plugin.TValue[string]
+}
+
+// createOllamaConfig creates a new instance of this resource
+func createOllamaConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlOllamaConfig{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ollama.config", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlOllamaConfig) MqlName() string {
+	return "ollama.config"
+}
+
+func (c *mqlOllamaConfig) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlOllamaConfig) GetInstalled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Installed, func() (bool, error) {
+		return c.installed()
+	})
+}
+
+func (c *mqlOllamaConfig) GetBinaryPath() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.BinaryPath, func() (string, error) {
+		return c.binaryPath()
+	})
+}
+
+func (c *mqlOllamaConfig) GetService() *plugin.TValue[*mqlService] {
+	return plugin.GetOrCompute[*mqlService](&c.Service, func() (*mqlService, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ollama.config", c.__id, "service")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlService), nil
+			}
+		}
+
+		return c.service()
+	})
+}
+
+func (c *mqlOllamaConfig) GetPackage() *plugin.TValue[*mqlPackage] {
+	return plugin.GetOrCompute[*mqlPackage](&c.Package, func() (*mqlPackage, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ollama.config", c.__id, "package")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPackage), nil
+			}
+		}
+
+		return c.compute_package()
+	})
+}
+
+func (c *mqlOllamaConfig) GetVersion() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Version, func() (string, error) {
+		return c.version()
+	})
+}
+
+func (c *mqlOllamaConfig) GetUser() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.User, func() (string, error) {
+		return c.user()
+	})
+}
+
+func (c *mqlOllamaConfig) GetFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Files, func() ([]any, error) {
+		return c.files()
+	})
+}
+
+func (c *mqlOllamaConfig) GetVariables() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Variables, func() (map[string]any, error) {
+		return c.variables()
+	})
+}
+
+func (c *mqlOllamaConfig) GetVariableSources() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.VariableSources, func() (map[string]any, error) {
+		return c.variableSources()
+	})
+}
+
+func (c *mqlOllamaConfig) GetHost() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Host, func() (string, error) {
+		return c.host()
+	})
+}
+
+func (c *mqlOllamaConfig) GetBindAddress() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.BindAddress, func() (string, error) {
+		return c.bindAddress()
+	})
+}
+
+func (c *mqlOllamaConfig) GetPort() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Port, func() (int64, error) {
+		return c.port()
+	})
+}
+
+func (c *mqlOllamaConfig) GetListensOnAllInterfaces() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ListensOnAllInterfaces, func() (bool, error) {
+		return c.listensOnAllInterfaces()
+	})
+}
+
+func (c *mqlOllamaConfig) GetTls() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Tls, func() (bool, error) {
+		return c.tls()
+	})
+}
+
+func (c *mqlOllamaConfig) GetOrigins() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Origins, func() ([]any, error) {
+		return c.origins()
+	})
+}
+
+func (c *mqlOllamaConfig) GetAllowsAnyOrigin() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AllowsAnyOrigin, func() (bool, error) {
+		return c.allowsAnyOrigin()
+	})
+}
+
+func (c *mqlOllamaConfig) GetAuthEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AuthEnabled, func() (bool, error) {
+		return c.authEnabled()
+	})
+}
+
+func (c *mqlOllamaConfig) GetCloudEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.CloudEnabled, func() (bool, error) {
+		return c.cloudEnabled()
+	})
+}
+
+func (c *mqlOllamaConfig) GetCloudDisabledSource() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.CloudDisabledSource, func() (string, error) {
+		return c.cloudDisabledSource()
+	})
+}
+
+func (c *mqlOllamaConfig) GetRemotes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Remotes, func() ([]any, error) {
+		return c.remotes()
+	})
+}
+
+func (c *mqlOllamaConfig) GetModelsPath() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ModelsPath, func() (string, error) {
+		return c.modelsPath()
+	})
+}
+
+func (c *mqlOllamaConfig) GetModels() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Models, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ollama.config", c.__id, "models")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.models()
+	})
+}
+
+func (c *mqlOllamaConfig) GetIntegrations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Integrations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ollama.config", c.__id, "integrations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.integrations()
+	})
+}
+
+func (c *mqlOllamaConfig) GetDebugLogRequests() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.DebugLogRequests, func() (bool, error) {
+		return c.debugLogRequests()
+	})
+}
+
+func (c *mqlOllamaConfig) GetHistoryEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HistoryEnabled, func() (bool, error) {
+		return c.historyEnabled()
+	})
+}
+
+func (c *mqlOllamaConfig) GetLogLevel() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.LogLevel, func() (string, error) {
+		return c.logLevel()
+	})
+}
+
+func (c *mqlOllamaConfig) GetNoPrune() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.NoPrune, func() (bool, error) {
+		return c.noPrune()
+	})
+}
+
+func (c *mqlOllamaConfig) GetKeepAliveSeconds() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.KeepAliveSeconds, func() (int64, error) {
+		return c.keepAliveSeconds()
+	})
+}
+
+func (c *mqlOllamaConfig) GetLoadTimeoutSeconds() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.LoadTimeoutSeconds, func() (int64, error) {
+		return c.loadTimeoutSeconds()
+	})
+}
+
+func (c *mqlOllamaConfig) GetContextLength() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ContextLength, func() (int64, error) {
+		return c.contextLength()
+	})
+}
+
+func (c *mqlOllamaConfig) GetNumParallel() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.NumParallel, func() (int64, error) {
+		return c.numParallel()
+	})
+}
+
+func (c *mqlOllamaConfig) GetMaxLoadedModels() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MaxLoadedModels, func() (int64, error) {
+		return c.maxLoadedModels()
+	})
+}
+
+func (c *mqlOllamaConfig) GetMaxQueue() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MaxQueue, func() (int64, error) {
+		return c.maxQueue()
+	})
+}
+
+func (c *mqlOllamaConfig) GetGpuOverhead() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.GpuOverhead, func() (int64, error) {
+		return c.gpuOverhead()
+	})
+}
+
+func (c *mqlOllamaConfig) GetFlashAttention() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.FlashAttention, func() (bool, error) {
+		return c.flashAttention()
+	})
+}
+
+func (c *mqlOllamaConfig) GetSchedSpread() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SchedSpread, func() (bool, error) {
+		return c.schedSpread()
+	})
+}
+
+func (c *mqlOllamaConfig) GetKvCacheType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.KvCacheType, func() (string, error) {
+		return c.kvCacheType()
+	})
+}
+
+func (c *mqlOllamaConfig) GetLlmLibrary() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.LlmLibrary, func() (string, error) {
+		return c.llmLibrary()
+	})
+}
+
+func (c *mqlOllamaConfig) GetHttpProxy() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.HttpProxy, func() (string, error) {
+		return c.httpProxy()
+	})
+}
+
+func (c *mqlOllamaConfig) GetHttpsProxy() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.HttpsProxy, func() (string, error) {
+		return c.httpsProxy()
+	})
+}
+
+func (c *mqlOllamaConfig) GetNoProxy() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.NoProxy, func() (string, error) {
+		return c.noProxy()
+	})
+}
+
+// mqlOllamaConfigIntegration for the ollama.config.integration resource
+type mqlOllamaConfigIntegration struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlOllamaConfigIntegrationInternal it will be used here
+	Name       plugin.TValue[string]
+	User       plugin.TValue[string]
+	ModelNames plugin.TValue[[]any]
+	Models     plugin.TValue[[]any]
+	Aliases    plugin.TValue[map[string]any]
+	Onboarded  plugin.TValue[bool]
+}
+
+// createOllamaConfigIntegration creates a new instance of this resource
+func createOllamaConfigIntegration(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlOllamaConfigIntegration{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("ollama.config.integration", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlOllamaConfigIntegration) MqlName() string {
+	return "ollama.config.integration"
+}
+
+func (c *mqlOllamaConfigIntegration) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlOllamaConfigIntegration) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlOllamaConfigIntegration) GetUser() *plugin.TValue[string] {
+	return &c.User
+}
+
+func (c *mqlOllamaConfigIntegration) GetModelNames() *plugin.TValue[[]any] {
+	return &c.ModelNames
+}
+
+func (c *mqlOllamaConfigIntegration) GetModels() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Models, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("ollama.config.integration", c.__id, "models")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.models()
+	})
+}
+
+func (c *mqlOllamaConfigIntegration) GetAliases() *plugin.TValue[map[string]any] {
+	return &c.Aliases
+}
+
+func (c *mqlOllamaConfigIntegration) GetOnboarded() *plugin.TValue[bool] {
+	return &c.Onboarded
 }
 
 // mqlClaudeCode for the claude.code resource
