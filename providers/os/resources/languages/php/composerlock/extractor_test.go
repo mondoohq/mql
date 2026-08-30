@@ -47,3 +47,32 @@ func TestComposerLockExtractor(t *testing.T) {
 	assert.Equal(t, languages.PackageScopeDev, transitive.Find("phpunit/phpunit").Scope)
 	assert.Equal(t, languages.PackageScopeDev, transitive.Find("mockery/mockery").Scope)
 }
+
+// TestComposerLockExtractorLicense pins that the license composer.lock states
+// reaches the package.
+//
+// The parser has always read the field; makePackage dropped it, so every PHP
+// dependency reached an SBOM with an empty License and a policy evaluating them
+// could only report "unknown". Consumers worked around it by re-reading the
+// lockfile themselves.
+func TestComposerLockExtractorLicense(t *testing.T) {
+	f, err := os.Open("./testdata/simple.composer.lock")
+	require.NoError(t, err)
+	defer f.Close()
+
+	info, err := (&Extractor{}).Parse(f, "path/to/composer.lock")
+	require.NoError(t, err)
+
+	transitive := info.Transitive()
+	for name, want := range map[string]string{
+		"monolog/monolog": "MIT",
+		"symfony/console": "MIT",
+		"psr/log":         "MIT",
+		"phpunit/phpunit": "BSD-3-Clause", // a dev package still states one
+		"mockery/mockery": "BSD-3-Clause",
+	} {
+		p := transitive.Find(name)
+		require.NotNil(t, p, name)
+		assert.Equal(t, want, p.License, name)
+	}
+}

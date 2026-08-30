@@ -80,8 +80,12 @@ func (p *packageLock) Direct() languages.Packages {
 		}
 
 		filteredList = append(filteredList, &languages.Package{
-			Name:         name,
-			Version:      pkg.Version,
+			Name:    name,
+			Version: pkg.Version,
+			// npm's lockfile writes `license` as either a string or an array;
+			// the parser normalizes both to a slice, and an array means a
+			// choice among them.
+			License:      languages.LicenseExpression(pkg.License),
 			Purl:         idx[path],
 			Cpes:         javascript.NewCpes(name, pkg.Version),
 			EvidenceList: javascript.NewEvidenceList(p.evidence),
@@ -107,8 +111,12 @@ func (p *packageLock) Transitive() languages.Packages {
 			}
 
 			transitive = append(transitive, &languages.Package{
-				Name:         name,
-				Version:      v.Version,
+				Name:    name,
+				Version: v.Version,
+				// Only lockfileVersion 2+ (the `packages` map) records a
+				// per-package license; the legacy v1 `dependencies` tree below
+				// carries none, so there is nothing to read there.
+				License:      languages.LicenseExpression(v.License),
 				Purl:         idx[k],
 				Cpes:         javascript.NewCpes(name, v.Version),
 				EvidenceList: javascript.NewEvidenceList(p.evidence),

@@ -150,3 +150,46 @@ func TestPackageJsonLockExtractorWithDependencies(t *testing.T) {
 		Hashes:       []languages.PackageHash{{Alg: "SHA-512", Value: "c0b1fa47360f400af2aec25a91cf48de4d1a15613f709c96a140fc750cb5f3a8f1c2d2e0790755734f8d7a037269becc20f8bb1ecbfd037871ea5335acf1fde0"}},
 	}, p)
 }
+
+// TestPackageLockLicense pins that the license an npm lockfile states reaches
+// the package, on both Direct and Transitive.
+//
+// The parser has always read `license` — it even carries a custom unmarshaler
+// for npm's string-or-array shape — but the extractor dropped it, so every npm
+// dependency reached an SBOM with an empty License.
+func TestPackageLockLicense(t *testing.T) {
+	f, err := os.Open("./testdata/lockfile-v3-dep-licenses.json")
+	require.NoError(t, err)
+	defer f.Close()
+
+	info, err := (&Extractor{}).Parse(f, "path/to/package-lock.json")
+	require.NoError(t, err)
+
+	want := map[string]string{
+		"lodash": "MIT",
+		// npm writes an array when a package is offered under either license;
+		// that is a choice, so it renders as an SPDX OR.
+		"dual-licensed": "(MIT OR Apache-2.0)",
+		// A package that states none must report none rather than an empty
+		// expression that would read as a declaration.
+		"no-license": "",
+		// A dev-only package still states a license.
+		"mocha": "MIT",
+	}
+
+	transitive := info.Transitive()
+	for name, license := range want {
+		p := transitive.Find(name)
+		require.NotNil(t, p, name)
+		assert.Equal(t, license, p.License, "transitive %s", name)
+	}
+
+	// Direct builds its packages separately from Transitive, so it needs its own
+	// assertion: the two representations of a package must not disagree.
+	direct := info.Direct()
+	for _, name := range []string{"lodash", "dual-licensed", "no-license"} {
+		p := direct.Find(name)
+		require.NotNil(t, p, name)
+		assert.Equal(t, want[name], p.License, "direct %s", name)
+	}
+}
