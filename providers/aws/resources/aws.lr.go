@@ -1051,7 +1051,7 @@ func init() {
 			Create: createAwsVpc,
 		},
 		"aws.vpc.encryptionControl": {
-			// to override args, implement: initAwsVpcEncryptionControl(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initAwsVpcEncryptionControl,
 			Create: createAwsVpcEncryptionControl,
 		},
 		"aws.vpc.routetable": {
@@ -2259,7 +2259,7 @@ func init() {
 			Create: createAwsEmrSecurityConfiguration,
 		},
 		"aws.emr.cluster.encryptionConfiguration": {
-			// to override args, implement: initAwsEmrClusterEncryptionConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initAwsEmrClusterEncryptionConfiguration,
 			Create: createAwsEmrClusterEncryptionConfiguration,
 		},
 		"aws.emr.cluster.step": {

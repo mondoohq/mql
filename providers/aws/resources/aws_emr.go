@@ -678,6 +678,47 @@ func (a *mqlAwsEmrCluster) logEncryptionKmsKey() (*mqlAwsKmsKey, error) {
 	return mqlKey.(*mqlAwsKmsKey), nil
 }
 
+// initAwsEmrClusterEncryptionConfiguration resolves the encryption
+// configuration through the scanned EMR cluster asset. Without this init, the
+// static path `aws.emr.cluster.encryptionConfiguration` used by policy checks
+// instantiates the sub-resource standalone (empty id, no fields set), so
+// per-asset encryption checks scored fail even on correctly configured
+// clusters.
+func initAwsEmrClusterEncryptionConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	// Fully-built resources (from the accessor) always carry an __id.
+	if args["__id"] != nil {
+		return args, nil, nil
+	}
+	if len(args) > 0 {
+		return nil, nil, errors.New("aws.emr.cluster.encryptionConfiguration cannot be initialized from partial arguments; query it without arguments or through aws.emr.cluster")
+	}
+	clusterRes, err := NewResource(runtime, "aws.emr.cluster", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, nil, err
+	}
+	cluster := clusterRes.(*mqlAwsEmrCluster)
+	cfg := cluster.GetEncryptionConfiguration()
+	if cfg.Error != nil {
+		return nil, nil, cfg.Error
+	}
+	if cfg.Data != nil {
+		return args, cfg.Data, nil
+	}
+	// The cluster has no security configuration: encryption is off.
+	res, err := CreateResource(runtime, "aws.emr.cluster.encryptionConfiguration",
+		map[string]*llx.RawData{
+			"__id":                   llx.StringData(cluster.Arn.Data + "/encryptionConfiguration"),
+			"atRestEnabled":          llx.BoolData(false),
+			"inTransitEnabled":       llx.BoolData(false),
+			"atRestConfiguration":    llx.NilData,
+			"inTransitConfiguration": llx.NilData,
+		})
+	if err != nil {
+		return nil, nil, err
+	}
+	return args, res, nil
+}
+
 func (a *mqlAwsEmrCluster) encryptionConfiguration() (*mqlAwsEmrClusterEncryptionConfiguration, error) {
 	if err := a.fetchClusterDetails(); err != nil {
 		return nil, err
