@@ -3749,6 +3749,392 @@ private squid.conf.accessLog @defaults("target format") {
   raw string
 }
 
+// FRRouting
+//
+// FRR routing daemon version and configuration. FRR runs either directly
+// on the host or inside a Host Based Networking (HBN) container. Both
+// shapes are covered by the same resources, because the connection
+// decides which filesystem the config is read from.
+frr {
+  // FRR version string (e.g., "8.5.4")
+  version() string
+}
+
+// FRR configuration
+//
+// Parsed frr.conf. The default path is /etc/frr/frr.conf, which is also
+// the path inside an HBN container. When that file is absent, the
+// resource falls back to the host-side paths an HBN or CRA deployment
+// uses (/var/lib/hbn/etc/frr/frr.conf, /etc/cra/frr.conf). Pass
+// `init(path: "...")` to read a different file.
+//
+// The resource models the parts of the config that carry security
+// meaning: BGP routers and their neighbors, the filters applied per
+// neighbor, VRF definitions with their route targets, EVPN settings and
+// interfaces. Everything else stays reachable through `blocks` and
+// `directives`.
+frr.config {
+  init(path? string)
+  // Configuration file (defaults to the first frr.conf found on the asset)
+  file() file
+  // `hostname` value
+  hostname(file) string
+  // Version from the `frr version <x>` line FRR writes into a saved config
+  version(file) string
+  // Profile from `frr defaults <traditional|datacenter>`
+  defaults(file) string
+  // `service integrated-vtysh-config` is set, so vtysh writes one merged file
+  integratedVtyshConfig(file) bool
+  // BGP instances, one per `router bgp <asn> [vrf <name>]` block
+  bgp(file) []frr.config.router
+  // VRF definitions, linked to the BGP instance that serves them
+  vrfs(file) []frr.config.vrf
+  // Interface blocks
+  interfaces(file) []frr.config.interface
+  // Prefix lists, grouped by address family and name
+  prefixLists(file) []frr.config.prefixList
+  // Route maps, grouped by name
+  routeMaps(file) []frr.config.routeMap
+  // Every top-level block in source order, including bfd, pbr-map and other types without a dedicated resource
+  blocks(file) []frr.config.block
+  // Every top-level line outside a block, such as community lists and static routes (entries: {name, args, negated, line, file, raw})
+  directives(file) []dict
+}
+
+// FRR configuration block (raw view)
+//
+// Arbitrary block addressed by type and name. Use it for blocks that have
+// no dedicated resource, and for audits that need every line in source
+// order.
+private frr.config.block @defaults("type name") {
+  // Block keyword (router bgp, vrf, interface, route-map, bfd, pbr-map, ...)
+  type string
+  // Primary identifier of the block (ASN, VRF name, interface name, map name)
+  name string
+  // Every token after the block keyword
+  args []string
+  // Source file path
+  file string
+  // 1-based source line of the block header
+  startLine int
+  // 1-based source line of the last line in the block
+  endLine int
+  // Lines directly inside the block (entries: {name, args, negated, line, file, raw})
+  directives []dict
+  // Nested blocks
+  blocks []frr.config.block
+  // Raw text of the block including its header line
+  raw string
+}
+
+// FRR BGP instance
+//
+// One `router bgp <asn> [vrf <name>]` block. A fabric node runs one
+// instance for the underlay plus one per VRF, so `vrf` tells tenant
+// instances apart from the underlay.
+private frr.config.router @defaults("asn vrf routerId") {
+  // Local autonomous system number
+  asn int
+  // VRF this instance serves (empty for the default VRF / underlay)
+  vrf string
+  // `bgp router-id` value
+  routerId string
+  // `bgp cluster-id` value (set on route reflectors)
+  clusterId string
+  // eBGP sessions require an inbound and outbound policy, false only with `no bgp ebgp-requires-policy`
+  ebgpRequiresPolicy bool
+  // Neighbors activate IPv4 unicast automatically, false only with `no bgp default ipv4-unicast`
+  defaultIpv4Unicast bool
+  // Peers and peer groups of this instance
+  neighbors []frr.config.router.neighbor
+  // Address families of this instance
+  addressFamilies []frr.config.router.addressFamily
+  // Flat directive map of the router block (name -> value)
+  params map[string]string
+  // Source file path
+  file string
+  // 1-based source line of the router block header
+  startLine int
+  // Raw text of the router block
+  raw string
+}
+
+// FRR BGP neighbor
+//
+// One peer or peer group, merged from every `neighbor <name> ...` line in
+// the router block and in its address families. The rolled-up filter
+// lists answer whether a session accepts routes without a filter.
+private frr.config.router.neighbor @defaults("name remoteAs") {
+  // Peer address, interface name for an unnumbered peer, or peer group name
+  name string
+  // Peer is unnumbered, configured with `neighbor <if> interface remote-as`
+  isInterface bool
+  // Name declares a peer group rather than a single peer
+  isPeerGroup bool
+  // Peer group this neighbor joins
+  peerGroup string
+  // Raw `remote-as` value, which is a number or `internal` or `external`
+  remoteAs string
+  // Remote AS as a number, 0 when remote-as is internal or external
+  remoteAsn int
+  // `local-as` value
+  localAsn int
+  // `description` text
+  description string
+  // `update-source` value
+  updateSource string
+  // Prefix of `bgp listen range <prefix> peer-group <name>` for a dynamic group
+  listenRange string
+  // `bfd` is enabled for this neighbor
+  bfd bool
+  // Neighbor is administratively shut down
+  shutdown bool
+  // An MD5 password is configured (the password itself is not exposed)
+  passwordSet bool
+  // `ttl-security hops` value
+  ttlSecurityHops int
+  // Keepalive seconds from `neighbor <n> timers <keepalive> <hold>`
+  keepaliveTime int
+  // Hold time seconds from `neighbor <n> timers <keepalive> <hold>`
+  holdTime int
+  // Per address family settings
+  addressFamilies []frr.config.router.neighbor.addressFamily
+  // Address families the neighbor is explicitly activated in (e.g. "ipv4 unicast")
+  activatedAddressFamilies []string
+  // Inbound route maps across every address family
+  routeMapsIn []string
+  // Outbound route maps across every address family
+  routeMapsOut []string
+  // Inbound prefix lists across every address family
+  prefixListsIn []string
+  // Outbound prefix lists across every address family
+  prefixListsOut []string
+  // Inbound AS path filter lists across every address family
+  filterListsIn []string
+  // Outbound AS path filter lists across every address family
+  filterListsOut []string
+  // Every `neighbor <name> ...` setting (setting -> value)
+  params map[string]string
+  // Source file path
+  file string
+  // 1-based source line where the neighbor first appears
+  line int
+}
+
+// FRR BGP neighbor address family settings
+//
+// What one neighbor does inside one address family. The filters here
+// decide which routes the session accepts and announces.
+private frr.config.router.neighbor.addressFamily @defaults("afi safi activate") {
+  // Address family identifier (ipv4, ipv6, l2vpn)
+  afi string
+  // Subsequent address family identifier (unicast, multicast, evpn, vpn)
+  safi string
+  // Neighbor is explicitly activated in this family, which does not cover the implicit activation of `bgp default ipv4-unicast`
+  activate bool
+  // Inbound route map
+  routeMapIn string
+  // Outbound route map
+  routeMapOut string
+  // Inbound prefix list
+  prefixListIn string
+  // Outbound prefix list
+  prefixListOut string
+  // Inbound AS path filter list
+  filterListIn string
+  // Outbound AS path filter list
+  filterListOut string
+  // `maximum-prefix` limit, 0 when unset
+  maximumPrefix int
+  // Neighbor is a route reflector client
+  routeReflectorClient bool
+  // `allowas-in` is set, so the peer may send back the local AS
+  allowasIn bool
+  // `next-hop-self` is set
+  nextHopSelf bool
+  // `soft-reconfiguration` is set
+  softReconfiguration bool
+  // `default-originate` is set, so a default route is announced
+  defaultOriginate bool
+  // `remove-private-AS` is set
+  removePrivateAs bool
+}
+
+// FRR BGP address family
+//
+// One `address-family <afi> <safi>` block of a router. The EVPN family
+// carries the route targets and the VRF imports that decide which VRF
+// sees which routes.
+private frr.config.router.addressFamily @defaults("afi safi") {
+  // Address family identifier (ipv4, ipv6, l2vpn)
+  afi string
+  // Subsequent address family identifier (unicast, multicast, evpn, vpn)
+  safi string
+  // Prefixes advertised with `network <prefix>`
+  networks []string
+  // `redistribute <source>` entries
+  redistribute []string
+  // Source VRFs of every `import vrf <name>` line
+  importVrfs []string
+  // Route map of `import vrf route-map <name>`, which filters leaked routes
+  importVrfRouteMap string
+  // EVPN route targets imported into this family
+  routeTargetsImport []string
+  // EVPN route targets exported from this family
+  routeTargetsExport []string
+  // `advertise <afi> <safi> [route-map <name>]` entries
+  advertise []string
+  // `advertise-all-vni` is set
+  advertiseAllVni bool
+  // `vni <id>` blocks with their own route targets
+  vnis []dict
+  // Flat directive map of the address family (name -> value)
+  params map[string]string
+  // Source file path
+  file string
+  // 1-based source line of the address family header
+  startLine int
+  // Raw text of the address family block
+  raw string
+}
+
+// FRR VRF
+//
+// One `vrf <name>` block. The route targets, imported VRFs and ASN come
+// from the `router bgp <asn> vrf <name>` instance that serves the VRF, so
+// tenant separation can be checked on a single resource.
+private frr.config.vrf @defaults("name vni") {
+  // VRF name
+  name string
+  // Layer 3 VNI bound to the VRF, 0 when the VRF is local only
+  vni int
+  // Static routes defined inside the VRF block
+  staticRoutes []string
+  // ASN of the BGP instance serving this VRF, 0 when there is none
+  routerAsn int
+  // EVPN route targets the VRF imports, across every address family
+  routeTargetsImport []string
+  // EVPN route targets the VRF exports, across every address family
+  routeTargetsExport []string
+  // Other VRFs pulled in with `import vrf <name>`
+  importedVrfs []string
+  // Flat directive map of the vrf block (name -> value)
+  params map[string]string
+  // Source file path
+  file string
+  // 1-based source line of the vrf block header
+  startLine int
+  // Raw text of the vrf block
+  raw string
+}
+
+// FRR interface
+//
+// One `interface <name> [vrf <name>]` block.
+private frr.config.interface @defaults("name vrf") {
+  // Interface name
+  name string
+  // VRF the interface is bound to
+  vrf string
+  // `description` text
+  description string
+  // IPv4 addresses configured with `ip address`
+  ipAddresses []string
+  // IPv6 addresses configured with `ipv6 address`
+  ipv6Addresses []string
+  // Interface is administratively shut down
+  shutdown bool
+  // `pbr-policy` map applied to the interface
+  pbrPolicy string
+  // Flat directive map of the interface block (name -> value)
+  params map[string]string
+  // Source file path
+  file string
+  // 1-based source line of the interface block header
+  startLine int
+  // Raw text of the interface block
+  raw string
+}
+
+// FRR prefix list
+//
+// Every `ip prefix-list <name> ...` or `ipv6 prefix-list <name> ...` line
+// of one name, in source order.
+private frr.config.prefixList @defaults("name afi") {
+  // Prefix list name
+  name string
+  // Address family of the list (ip or ipv6)
+  afi string
+  // Entries in source order (entries: {seq, action, prefix, le, ge, line, raw})
+  entries []dict
+  // Source file path
+  file string
+  // 1-based source line of the first entry
+  line int
+}
+
+// FRR route map
+//
+// Every `route-map <name> <permit|deny> <seq>` block of one name.
+private frr.config.routeMap @defaults("name") {
+  // Route map name
+  name string
+  // Clauses in source order
+  entries []frr.config.routeMap.entry
+  // Source file path
+  file string
+  // 1-based source line of the first clause
+  line int
+}
+
+// FRR route map clause
+//
+// One `route-map <name> <permit|deny> <seq>` block with its match and set
+// statements.
+private frr.config.routeMap.entry @defaults("name action sequence") {
+  // Route map name
+  name string
+  // Clause action (permit or deny)
+  action string
+  // Clause sequence number
+  sequence int
+  // `match` statements without the leading keyword
+  match []string
+  // `set` statements without the leading keyword
+  set []string
+  // `call <name>` target, which runs another route map
+  call string
+  // `on-match` statement without the leading keyword
+  onMatch string
+  // Source file path
+  file string
+  // 1-based source line of the clause header
+  startLine int
+  // Raw text of the clause
+  raw string
+}
+
+// FRR vtysh configuration
+//
+// Parsed vtysh.conf (default /etc/frr/vtysh.conf). It holds the shell
+// settings of FRR, including whether vtysh writes one integrated config
+// file and which local users may reach the shell.
+frr.vtysh.config {
+  init(path? string)
+  // Configuration file (defaults to /etc/frr/vtysh.conf)
+  file() file
+  // `hostname` value
+  hostname(file) string
+  // `service integrated-vtysh-config` is set
+  integratedConfig(file) bool
+  // `username <name> ...` lines (entries: {name, nopassword, privilege})
+  users(file) []dict
+  // Every configuration line (entries: {name, args, negated, line, file, raw})
+  directives(file) []dict
+  // Flat directive map (name -> value)
+  params(file) map[string]string
+}
+
 // HAProxy load balancer
 //
 // HAProxy daemon version and configuration. The configuration covers
