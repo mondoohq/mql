@@ -4,7 +4,6 @@
 package processes
 
 import (
-	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -75,53 +74,58 @@ func TestProcessEntryToOSProcess(t *testing.T) {
 	}
 }
 
-// Deriving the executable must not allocate a slice of every path segment, so
-// the memory ToOSProcess uses must not grow with how deep the path is. Two
-// commands of identical length that differ only in separator count isolate
-// that: splitting allocates a slice proportional to the segment count, taking
-// the last segment allocates nothing at all.
+// Deriving the executable must not allocate a slice of every path segment.
+// Taking the last segment shares the memory of the argument and allocates
+// nothing, while splitting allocates one slice per call whatever the depth.
 //
-// This measures bytes rather than allocation counts on purpose -- strings.Split
-// allocates one slice whatever the depth, so a count-based check cannot tell
-// the two implementations apart.
-func TestToOSProcessDoesNotScaleWithPathDepth(t *testing.T) {
-	shallow := ProcessEntry{Pid: 1, Command: "/usrxlibxsystemdxbinxlibxexecxoptxvarxrunxsystemd --system"}
-	deep := ProcessEntry{Pid: 1, Command: "/usr/lib/systemd/bin/lib/exec/opt/var/run/systemd --system"}
-
-	// same byte length, so any difference comes from the separators alone
-	assert.Equal(t, len(shallow.Command), len(deep.Command), "test inputs must be the same length")
-
-	shallowBytes := allocatedBytes(1000, func() { processSink = shallow.ToOSProcess() })
-	deepBytes := allocatedBytes(1000, func() { processSink = deep.ToOSProcess() })
-
-	// Compared with a tolerance, not for equality. TotalAlloc is a process-wide
-	// counter, so anything else allocating between the two reads moves it --
-	// which made this fail intermittently, in both directions, by 16 bytes over
-	// 1000 calls.
-	//
-	// The tolerance is far below what a regression costs. Measured on the same
-	// inputs: taking the last segment allocates 0 bytes either way, while
-	// splitting allocates 32,000 for the shallow path and 176,000 for the deep
-	// one -- a difference of 144,000. Anything between the 16 bytes of noise and
-	// those 144,000 works; 8 KiB is ~500x the noise and ~1/17th of the signal.
-	const tolerance = 8 << 10
-
-	assert.InDelta(t, shallowBytes, deepBytes, tolerance,
-		"memory scaled with path depth (%d bytes shallow vs %d deep over 1000 calls), "+
-			"so the path is being split into a slice again", shallowBytes, deepBytes)
-}
-
-// processSink keeps the results reachable so the allocations are not optimized
-// away while measuring.
-var processSink *OSProcess
-
-func allocatedBytes(n int, f func()) uint64 {
-	var before, after runtime.MemStats
-	runtime.GC()
-	runtime.ReadMemStats(&before)
-	for i := 0; i < n; i++ {
-		f()
+// The assertion is a bound on allocations per call rather than a comparison
+// of process-wide bytes. runtime.MemStats counts the whole process, so an
+// allocation by any other goroutine during the measurement lands in it. That
+// noise is a few objects, which is why the earlier byte comparison of a
+// shallow against a deep path failed on a loaded runner while the code was
+// correct. One allocation per call separates the two implementations by
+// construction: this one makes none, splitting makes one.
+func TestExecutableFromPathDoesNotAllocate(t *testing.T) {
+	paths := []struct {
+		name string
+		path string
+	}{
+		{"shallow", "/usrxlibxsystemdxbinxlibxexecxoptxvarxrunxsystemd"},
+		{"deep", "/usr/lib/systemd/bin/lib/exec/opt/var/run/systemd"},
+		{"no separator", "sshd"},
 	}
-	runtime.ReadMemStats(&after)
-	return after.TotalAlloc - before.TotalAlloc
+
+	for _, p := range paths {
+		t.Run(p.name, func(t *testing.T) {
+			allocs := testing.AllocsPerRun(1000, func() {
+				stringSink = executableFromPath(p.path)
+			})
+			assert.Less(t, allocs, 1.0,
+				"executableFromPath allocated %v objects per call, so the path is being split", allocs)
+		})
+	}
 }
+
+// TestExecutableFromPathMatchesToOSProcess keeps the helper and its caller in
+// step, so the allocation guard above covers what the resource really runs.
+// A command without arguments is the whole path, which is what lets the two
+// be compared without repeating the shell splitting here.
+func TestExecutableFromPathMatchesToOSProcess(t *testing.T) {
+	paths := []string{
+		"/usr/lib/systemd/systemd",
+		"sshd",
+		"./bin/agent",
+		"/usr/bin/",
+		"/",
+		"",
+	}
+
+	for _, path := range paths {
+		got := ProcessEntry{Pid: 1, Command: path}.ToOSProcess()
+		assert.Equal(t, executableFromPath(path), got.Executable, path)
+	}
+}
+
+// stringSink keeps the result reachable so the allocations are not optimized
+// away while measuring.
+var stringSink string
