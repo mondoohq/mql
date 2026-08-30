@@ -6,6 +6,7 @@ package config
 import (
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/k8s/connection/shared"
 	"go.mondoo.com/mql/providers/k8s/provider"
 	"go.mondoo.com/mql/providers/k8s/resources"
 )
@@ -47,6 +48,7 @@ Examples:
 				resources.DiscoveryDeployments,
 				resources.DiscoveryIngresses,
 				resources.DiscoveryJobs,
+				resources.DiscoveryKyverno,
 				resources.DiscoveryNamespaces,
 				resources.DiscoveryPods,
 				resources.DiscoveryReplicaSets,
@@ -107,6 +109,96 @@ Examples:
 					Type:    plugin.FlagType_Bool,
 					Default: "false",
 					Desc:    "Authenticate against a remote Azure AD enabled Kubernetes cluster using an Azure identity.",
+				},
+				{
+					Long:    shared.OPTION_KYVERNO_DEFAULT_MAPPINGS,
+					Type:    plugin.FlagType_Bool,
+					Default: "true",
+					Desc:    "Enable built-in Kyverno to Mondoo policy mappings.",
+				},
+				{
+					Long:    shared.OPTION_KYVERNO_MAPPING_ANNOTATION_CHECK_UIDS,
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Comma-separated Kyverno policy annotation keys that define mapped Mondoo check UIDs.",
+				},
+				{
+					Long:    shared.OPTION_KYVERNO_MAPPING_ANNOTATION_CHECK_MRNS,
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Comma-separated Kyverno policy annotation keys that define mapped Mondoo check MRNs.",
+				},
+				{
+					Long:    shared.OPTION_KYVERNO_MAPPING_ANNOTATION_POLICY_UIDS,
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Comma-separated Kyverno policy annotation keys that define mapped Mondoo policy UIDs.",
+				},
+				{
+					Long:    shared.OPTION_KYVERNO_MAPPING_ANNOTATION_REASONS,
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Comma-separated Kyverno policy annotation keys that define mapping reasons.",
+				},
+				{
+					Long:    shared.OPTION_KYVERNO_EXCEPTION_ANNOTATION_VALID_UNTIL,
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Comma-separated Kyverno PolicyException annotation keys that define valid-until timestamps.",
+				},
+				{
+					Long:    shared.OPTION_KYVERNO_EXCEPTION_ANNOTATION_JUSTIFICATIONS,
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Comma-separated Kyverno PolicyException annotation keys that define justifications.",
+				},
+				{
+					Long:    shared.OPTION_KYVERNO_EXCEPTION_ANNOTATION_OWNERS,
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Comma-separated Kyverno PolicyException annotation keys that define owners.",
+				},
+				{
+					Long:    shared.OPTION_KYVERNO_EXCEPTION_ANNOTATION_TICKETS,
+					Type:    plugin.FlagType_String,
+					Default: "",
+					Desc:    "Comma-separated Kyverno PolicyException annotation keys that define ticket references.",
+				},
+				{
+					Long:    shared.OPTION_KYVERNO_MIRROR_POLICY_EXCEPTIONS,
+					Type:    plugin.FlagType_Bool,
+					Default: "false",
+					Desc:    "Enable mirroring Kyverno PolicyExceptions into Mondoo external exceptions when platform support is available.",
+				},
+				{
+					Long:    shared.OPTION_KYVERNO_MIRRORED_EXCEPTION_APPROVAL,
+					Type:    plugin.FlagType_String,
+					Default: "externally-approved",
+					Desc:    "Approval mode for mirrored Kyverno PolicyExceptions: externally-approved or requires-approval.",
+				},
+				{
+					Long:    shared.OPTION_KYVERNO_MIRRORED_EXCEPTION_ACTION,
+					Type:    plugin.FlagType_String,
+					Default: "RISK_ACCEPTED",
+					Desc:    "Mondoo exception action for mirrored Kyverno PolicyExceptions.",
+				},
+				{
+					Long:    shared.OPTION_KYVERNO_FAIL_EXPIRED_POLICY_EXCEPTIONS,
+					Type:    plugin.FlagType_Bool,
+					Default: "true",
+					Desc:    "Fail Kyverno hygiene checks when collected PolicyExceptions are expired.",
+				},
+				{
+					Long:    shared.OPTION_KYVERNO_REPORT_UNMAPPED_POLICY_EXCEPTIONS,
+					Type:    plugin.FlagType_Bool,
+					Default: "true",
+					Desc:    "Report unmapped Kyverno PolicyExceptions in Kyverno findings and inventory.",
+				},
+				{
+					Long:    shared.OPTION_KYVERNO_REPORT_UNMAPPED_POLICY_RESULTS,
+					Type:    plugin.FlagType_Bool,
+					Default: "true",
+					Desc:    "Report unmapped Kyverno PolicyReport failures in Kyverno findings.",
 				},
 			},
 		},

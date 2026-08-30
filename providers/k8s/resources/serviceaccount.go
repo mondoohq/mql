@@ -10,6 +10,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/types"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -68,8 +69,8 @@ func (k *mqlK8s) serviceaccounts() ([]any, error) {
 			"namespace":                    llx.StringData(obj.GetNamespace()),
 			"kind":                         llx.StringData(objT.GetKind()),
 			"created":                      llx.TimeData(ts.Time),
-			"secrets":                      llx.DictData(secrets),
-			"imagePullSecrets":             llx.DictData(imagePullSecrets),
+			"secrets":                      llx.ArrayData(secrets, types.Dict),
+			"imagePullSecrets":             llx.ArrayData(imagePullSecrets, types.Dict),
 			"automountServiceAccountToken": llx.BoolData(automountServiceAccountToken),
 		})
 		if err != nil {

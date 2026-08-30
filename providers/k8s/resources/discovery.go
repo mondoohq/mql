@@ -41,6 +41,7 @@ const (
 	DiscoveryIngresses        = "ingresses"
 	DiscoveryNamespaces       = "namespaces"
 	DiscoveryServices         = "services"
+	DiscoveryKyverno          = "kyverno"
 )
 
 type FilterOpts struct {
@@ -117,7 +118,8 @@ func Discover(runtime *plugin.Runtime, features mql.Features) (*inventory.Invent
 	if _, ok := invConfig.Options[plugin.OptionStagedDiscovery]; ok {
 		// If a namespace is already set, we're in stage 2 (workload discovery
 		// for that namespace). Otherwise it's stage 1 (cluster + namespaces).
-		if nsName, ok := namespaceStageName(invConfig); ok {
+		discoverKyverno := invConfig.Discover != nil && stringx.ContainsAnyOf(invConfig.Discover.Targets, DiscoveryKyverno)
+		if nsName, ok := namespaceStageName(invConfig); ok && !discoverKyverno {
 			return discoverNamespaceStage(runtime, conn, invConfig, features, nsName)
 		}
 		return discoverClusterStage(runtime, conn, invConfig, features)
@@ -170,6 +172,7 @@ func discoverLegacy(runtime *plugin.Runtime, conn shared.Connection, invConfig *
 	// platform IDs for the assets based on it. If we cannot discover the cluster, we
 	// discover the individual namespaces according to the ns filter and then build
 	// the platform IDs for the assets based on the namespace.
+	discoverKyverno := stringx.ContainsAnyOf(invConfig.Discover.Targets, DiscoveryKyverno)
 	if len(nsFilter.include) == 0 && len(nsFilter.exclude) == 0 && labelFilters.IsEmpty() {
 		assetId, err := conn.AssetId()
 		if err == nil {
@@ -179,7 +182,8 @@ func discoverLegacy(runtime *plugin.Runtime, conn shared.Connection, invConfig *
 				Platform:    conn.Platform(),
 				Connections: []*inventory.Config{invConfig.Clone(inventory.WithoutDiscovery())}, // pass-in the parent connection config
 			}
-			if stringx.ContainsAnyOf(invConfig.Discover.Targets, DiscoveryAuto, DiscoveryAll, DiscoveryClusters) && resFilters.IsEmpty() {
+			discoverCluster := stringx.ContainsAnyOf(invConfig.Discover.Targets, DiscoveryAuto, DiscoveryAll, DiscoveryClusters) && resFilters.IsEmpty()
+			if discoverCluster || discoverKyverno {
 				in.Spec.Assets = append(in.Spec.Assets, root)
 			}
 		} else {
@@ -191,8 +195,19 @@ func discoverLegacy(runtime *plugin.Runtime, conn shared.Connection, invConfig *
 		return nil, err
 	}
 
-	if resFilters.IsEmpty() && stringx.ContainsAnyOf(invConfig.Discover.Targets, DiscoveryNamespaces, DiscoveryAuto, DiscoveryAll) {
-		in.Spec.Assets = append(in.Spec.Assets, nss...)
+	kyvernoNamespaceDiscovery := stringx.ContainsAnyOf(invConfig.Discover.Targets, DiscoveryKyverno) && (len(nsFilter.include) > 0 || len(nsFilter.exclude) > 0)
+	if resFilters.IsEmpty() {
+		if kyvernoNamespaceDiscovery {
+			for _, ns := range nss {
+				nsConfig := invConfig.Clone(inventory.WithoutDiscovery(), inventory.WithParentConnectionId(invConfig.Id))
+				nsConfig.Options[shared.OPTION_NAMESPACE] = ns.Name
+				ns.Connections = []*inventory.Config{nsConfig}
+			}
+		}
+
+		if stringx.ContainsAnyOf(invConfig.Discover.Targets, DiscoveryNamespaces, DiscoveryAuto, DiscoveryAll) || kyvernoNamespaceDiscovery {
+			in.Spec.Assets = append(in.Spec.Assets, nss...)
+		}
 	}
 
 	// Discover the assets for each namespace and use the namespace platform ID as root
@@ -249,6 +264,7 @@ func discoverClusterStage(runtime *plugin.Runtime, conn shared.Connection, invCo
 	// platform IDs for the assets based on it. If we cannot discover the cluster, we
 	// discover the individual namespaces according to the ns filter and then build
 	// the platform IDs for the assets based on the namespace.
+	discoverKyverno := stringx.ContainsAnyOf(invConfig.Discover.Targets, DiscoveryKyverno)
 	if len(nsFilter.include) == 0 && len(nsFilter.exclude) == 0 && labelFilters.IsEmpty() {
 		assetId, err := conn.AssetId()
 		if err == nil {
@@ -258,12 +274,18 @@ func discoverClusterStage(runtime *plugin.Runtime, conn shared.Connection, invCo
 				Platform:    conn.Platform(),
 				Connections: []*inventory.Config{invConfig.Clone(inventory.WithoutDiscovery())}, // pass-in the parent connection config
 			}
-			if stringx.ContainsAnyOf(invConfig.Discover.Targets, DiscoveryAuto, DiscoveryAll, DiscoveryClusters) && resFilters.IsEmpty() {
+			discoverCluster := stringx.ContainsAnyOf(invConfig.Discover.Targets, DiscoveryAuto, DiscoveryAll, DiscoveryClusters) && resFilters.IsEmpty()
+			if discoverCluster || discoverKyverno {
 				in.Spec.Assets = append(in.Spec.Assets, root)
 			}
 		} else {
 			log.Warn().Err(err).Msg("failed to discover cluster asset")
 		}
+	}
+
+	namespaceTargets := discoveryTargetsWithout(invConfig.Discover.Targets, DiscoveryKyverno)
+	if discoverKyverno && len(namespaceTargets) == 0 && len(nsFilter.include) == 0 && len(nsFilter.exclude) == 0 && labelFilters.IsEmpty() {
+		return in, nil
 	}
 
 	// Discover namespaces and emit them as scannable assets with platform IDs
@@ -279,8 +301,9 @@ func discoverClusterStage(runtime *plugin.Runtime, conn shared.Connection, invCo
 	// IDs → skip" logic in AssetExplorer/scanner prevents them from being
 	// scanned or added to the progress bar. They are still emitted so that
 	// AssetExplorer connects to them (triggering stage 2 workload discovery).
+	kyvernoNamespaceDiscovery := stringx.ContainsAnyOf(invConfig.Discover.Targets, DiscoveryKyverno) && (len(nsFilter.include) > 0 || len(nsFilter.exclude) > 0)
 	nsIsScannable := stringx.ContainsAnyOf(invConfig.Discover.Targets,
-		DiscoveryNamespaces, DiscoveryAuto, DiscoveryAll)
+		DiscoveryNamespaces, DiscoveryAuto, DiscoveryAll) || kyvernoNamespaceDiscovery
 
 	for _, ns := range nss {
 		// Clone without WithParentConnectionId so each namespace gets its own
@@ -289,6 +312,9 @@ func discoverClusterStage(runtime *plugin.Runtime, conn shared.Connection, invCo
 		// by all other namespaces, returning stale data.
 		nsConfig := invConfig.Clone() // Clone() copies Options, propagating OPTION_STAGED_DISCOVERY
 		nsConfig.Options[shared.OPTION_NAMESPACE] = ns.Name
+		if discoverKyverno {
+			nsConfig.Discover.Targets = namespaceTargets
+		}
 
 		if !nsIsScannable {
 			ns.PlatformIds = nil
@@ -1637,13 +1663,23 @@ func newFilterOpts(include, exclude []string) (FilterOpts, error) {
 
 // namespaceStageName returns a namespace only when the config targets exactly
 // one namespace, which indicates staged discovery should run the namespace stage.
-// Empty or multi-namespace filters fall through to cluster-stage discovery.
+// Empty, multi-namespace, or wildcard filters fall through to cluster-stage discovery.
 func namespaceStageName(cfg *inventory.Config) (string, bool) {
 	namespaces := splitFilterValues(cfg.Options[shared.OPTION_NAMESPACE])
-	if len(namespaces) != 1 {
+	if len(namespaces) != 1 || strings.ContainsAny(namespaces[0], `*?[]{}\`) {
 		return "", false
 	}
 	return namespaces[0], true
+}
+
+func discoveryTargetsWithout(targets []string, excluded string) []string {
+	res := make([]string, 0, len(targets))
+	for _, target := range targets {
+		if target != excluded {
+			res = append(res, target)
+		}
+	}
+	return res
 }
 
 func splitFilterValues(value string) []string {

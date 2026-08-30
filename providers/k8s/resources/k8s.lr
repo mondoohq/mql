@@ -81,6 +81,11 @@ k8s {
   networkPolicyCoverages() []k8s.networkPolicyCoverage
   // Kubernetes custom resources
   customresources() []k8s.customresource
+  // Kyverno policy engine inventory
+  //
+  // Exposes Kyverno policies, policy reports, flattened results, mappings, and
+  // PolicyExceptions collected from Kyverno APIs and report APIs.
+  kyverno() k8s.kyverno
   // Kubernetes admission webhook configurations
   validatingWebhookConfigurations() []k8s.admission.validatingwebhookconfiguration
   // Kubernetes applications
@@ -1997,13 +2002,13 @@ private k8s.container @defaults("name") {
   // One entry per variable, with keys `name`, `value` (a literal value), and
   // `valueFrom` for values sourced from elsewhere (`configMapKeyRef`,
   // `secretKeyRef`, `fieldRef`, or `resourceFieldRef`).
-  env dict
+  env []dict
   // Sources to populate environment variables in bulk
   //
   // One entry per source, with keys `configMapRef` or `secretRef` naming the
   // ConfigMap or Secret whose keys become environment variables, and an
   // optional `prefix` prepended to each variable name.
-  envFrom dict
+  envFrom []dict
   // Network ports exposed by the container (containerPort, protocol, hostPort, hostIP, name)
   ports []dict
   // Lifecycle hooks (postStart, preStop)
@@ -2203,12 +2208,12 @@ private k8s.initContainer @defaults("name") {
   // source (`fieldRef`, `resourceFieldRef`, `configMapKeyRef`, or
   // `secretKeyRef`). Values pulled from a ConfigMap or Secret can expose
   // sensitive data to the container.
-  env dict
+  env []dict
   // Sources that populate environment variables in bulk
   //
   // Each entry references a `configMapRef` or `secretRef` whose keys become
   // environment variables, with an optional `prefix` applied to every name.
-  envFrom dict
+  envFrom []dict
   // Network ports exposed by the container (containerPort, protocol, hostPort, hostIP, name)
   ports []dict
   // Lifecycle hooks (postStart, preStop)
@@ -2349,13 +2354,13 @@ private k8s.ephemeralContainer @defaults("name") {
   // One entry per variable, each with `name` and either an inline `value`
   // or a `valueFrom` source (`fieldRef`, `resourceFieldRef`,
   // `configMapKeyRef`, or `secretKeyRef`).
-  env dict
+  env []dict
   // Sources that populate environment variables in bulk
   //
   // One entry per source, each with an optional `prefix` and either a
   // `configMapRef` or `secretRef` naming the ConfigMap or Secret whose keys
   // become environment variables.
-  envFrom dict
+  envFrom []dict
   // Network ports exposed by the container (typically empty for ephemeral containers)
   //
   // One entry per port, each with `containerPort`, an optional `name`,
@@ -3373,6 +3378,288 @@ private k8s.customresource @defaults("name namespace created") @context("k8s.con
   created time
   // Full resource manifest
   manifest() dict
+}
+
+// Kyverno policy engine resources
+//
+// Exposes Kyverno policies, policy reports, PolicyExceptions, policy-to-Mondoo
+// mappings, and result enrichment that links failing report results to mapped
+// Mondoo checks and matching PolicyExceptions.
+private k8s.kyverno @defaults("installed policyCount exceptionCount resultCount") {
+  // Whether Kyverno APIs or report APIs are available in the connected cluster or manifest set
+  installed() bool
+  // Number of discovered Kyverno policies
+  policyCount() int
+  // Number of discovered Kyverno PolicyExceptions
+  exceptionCount() int
+  // Number of discovered Kyverno report results
+  resultCount() int
+  // Whether Kyverno PolicyExceptions should be mirrored to Mondoo external exceptions when platform support is available
+  mirrorPolicyExceptions() bool
+  // Approval mode for mirrored Kyverno PolicyExceptions: externally-approved or requires-approval
+  mirroredExceptionApproval() string
+  // Mondoo exception action to use for mirrored Kyverno PolicyExceptions
+  mirroredExceptionAction() string
+  // Whether expired Kyverno PolicyExceptions should fail Kyverno hygiene checks
+  failExpiredPolicyExceptions() bool
+  // Whether unmapped Kyverno PolicyExceptions should be reported in Kyverno findings and inventory
+  reportUnmappedPolicyExceptions() bool
+  // Whether unmapped Kyverno PolicyReport failures should be reported in Kyverno findings
+  reportUnmappedPolicyResults() bool
+  // Kyverno policies from classic kyverno.io APIs and newer policies.kyverno.io APIs
+  policies() []k8s.kyverno.policy
+  // Policy rules extracted from discovered Kyverno policies
+  rules() []k8s.kyverno.rule
+  // Policy reports from wgpolicyk8s.io and openreports.io APIs
+  policyReports() []k8s.kyverno.policyreport
+  // Flattened Kyverno policy results from discovered reports
+  results() []k8s.kyverno.result
+  // PolicyExceptions from old kyverno.io APIs and newer policies.kyverno.io APIs
+  policyExceptions() []k8s.kyverno.policyexception
+  // Built-in and annotation-induced mappings between Kyverno rules and Mondoo checks
+  mappings() []k8s.kyverno.mapping
+}
+
+// Kyverno policy
+private k8s.kyverno.policy @defaults("name namespace kind ruleCount") {
+  // Stable Mondoo ID for the policy object
+  id string
+  // Kubernetes object UID
+  uid string
+  // Kubernetes API version
+  apiVersion string
+  // Kubernetes object kind
+  kind string
+  // Kubernetes object namespace
+  namespace string
+  // Kubernetes object name
+  name string
+  // Kubernetes object creation timestamp
+  created time
+  // Kubernetes labels
+  labels() map[string]string
+  // Kubernetes annotations
+  annotations() map[string]string
+  // Full resource manifest
+  manifest() dict
+  // Human-readable policy title from Kyverno annotations when available
+  title string
+  // Kyverno policy category from annotations when available
+  category string
+  // Kyverno policy severity from annotations when available
+  severity string
+  // Kyverno policy subject from annotations when available
+  subject string
+  // Kyverno policy description from annotations when available
+  description string
+  // Whether classic Kyverno background processing is enabled
+  background bool
+  // Classic Kyverno validationFailureAction or CEL validationActions joined as a string
+  validationFailureAction string
+  // Number of policy rules or validations extracted from the policy
+  ruleCount int
+  // Policy rules extracted from this policy
+  rules() []k8s.kyverno.rule
+  // Mondoo mappings for this policy
+  mappedMondooChecks() []k8s.kyverno.mapping
+}
+
+// Kyverno policy rule
+private k8s.kyverno.rule @defaults("policyName name type") {
+  // Stable Mondoo ID for the rule object
+  id string
+  // Stable Mondoo ID for the parent policy object
+  policyId string
+  // Kubernetes API version of the parent policy
+  policyApiVersion string
+  // Kubernetes kind of the parent policy
+  policyKind string
+  // Kubernetes namespace of the parent policy
+  policyNamespace string
+  // Kubernetes name of the parent policy
+  policyName string
+  // Rule or validation name
+  name string
+  // Rule type such as validate, mutate, generate, verifyImages, validation, or mutation
+  type string
+  // Kinds matched by the rule when they can be inferred
+  matchKinds() []string
+  // Raw match or matchConstraints data
+  match() dict
+  // Raw exclude data
+  exclude() dict
+  // Raw preconditions or CEL matchConditions
+  conditions() []dict
+  // Raw rule or validation manifest
+  manifest() dict
+  // Mondoo mappings for this rule
+  mappedMondooChecks() []k8s.kyverno.mapping
+}
+
+// Kyverno policy report
+private k8s.kyverno.policyreport @defaults("name namespace kind resultCount") {
+  // Stable Mondoo ID for the report object
+  id string
+  // Kubernetes object UID
+  uid string
+  // Kubernetes API version
+  apiVersion string
+  // Kubernetes object kind
+  kind string
+  // Kubernetes object namespace
+  namespace string
+  // Kubernetes object name
+  name string
+  // Kubernetes object creation timestamp
+  created time
+  // Scope kind of the resource described by the report
+  scopeKind string
+  // Scope namespace of the resource described by the report
+  scopeNamespace string
+  // Scope name of the resource described by the report
+  scopeName string
+  // Scope UID of the resource described by the report
+  scopeUid string
+  // Number of results in this report
+  resultCount int
+  // Full resource manifest
+  manifest() dict
+  // Results in this report
+  results() []k8s.kyverno.result
+}
+
+// Kyverno policy result
+private k8s.kyverno.result @defaults("policy rule result scopeKind scopeName") {
+  // Stable Mondoo ID for the result
+  id string
+  // Stable ID of the parent report
+  reportId string
+  // Kubernetes API version of the parent report
+  reportApiVersion string
+  // Kubernetes kind of the parent report
+  reportKind string
+  // Kubernetes namespace of the parent report
+  reportNamespace string
+  // Kubernetes name of the parent report
+  reportName string
+  // Scope kind of the resource described by the result
+  scopeKind string
+  // Scope namespace of the resource described by the result
+  scopeNamespace string
+  // Scope name of the resource described by the result
+  scopeName string
+  // Scope UID of the resource described by the result
+  scopeUid string
+  // Kyverno policy name
+  policy string
+  // Kyverno rule name
+  rule string
+  // Kyverno report category
+  category string
+  // Kyverno report severity
+  severity string
+  // Result source, usually kyverno
+  source string
+  // Result state such as pass, fail, warn, error, or skip
+  result string
+  // Whether the result is scored
+  scored bool
+  // Human-readable result message
+  message string
+  // Result timestamp if reported
+  timestamp time
+  // Raw result properties
+  properties() map[string]string
+  // Mapped Mondoo check UIDs when known
+  mappedMondooCheckUids() []string
+  // Mapped Mondoo check MRNs when known
+  mappedMondooCheckMrns() []string
+  // PolicyException IDs that match this result
+  mappedPolicyExceptionIds() []string
+  // Raw result manifest
+  manifest() dict
+}
+
+// Kyverno PolicyException
+private k8s.kyverno.policyexception @defaults("name namespace computedStatus") {
+  // Stable Mondoo ID for the PolicyException
+  id string
+  // Kubernetes object UID
+  uid string
+  // Kubernetes API version
+  apiVersion string
+  // Kubernetes object kind
+  kind string
+  // Kubernetes object namespace
+  namespace string
+  // Kubernetes object name
+  name string
+  // Kubernetes object creation timestamp
+  created time
+  // Kubernetes labels
+  labels() map[string]string
+  // Kubernetes annotations
+  annotations() map[string]string
+  // Full resource manifest
+  manifest() dict
+  // Referenced policy names or policyRefs
+  policyRefs() []string
+  // Referenced rule names
+  ruleNames() []string
+  // Matched resource kinds
+  matchKinds() []string
+  // Matched resource namespaces
+  matchNamespaces() []string
+  // Matched resource names
+  matchNames() []string
+  // Raw match or matchConditions data
+  match() dict
+  // Valid-until timestamp string
+  //
+  // Parsed from supported annotations, if present. Use validUntilTime for MQL time comparisons.
+  validUntil string
+  // Valid-until timestamp parsed as time, or null when absent or unparseable
+  validUntilTime time
+  // Justification parsed from supported annotations, if present
+  justification string
+  // Owner parsed from supported annotations, if present
+  owner string
+  // Ticket parsed from supported annotations, if present
+  ticket string
+  // Computed status: active, applied, notObserved, broad, unmapped, orphaned, expired, or invalid
+  computedStatus string
+  // Reasons that explain the computed status
+  statusReasons() []string
+  // Mapped Mondoo check UIDs
+  mappedMondooCheckUids() []string
+  // Mapped Mondoo exception IDs, when mirrored by the platform
+  mappedMondooExceptionIds() []string
+}
+
+// Kyverno to Mondoo mapping
+private k8s.kyverno.mapping @defaults("kyvernoPolicy kyvernoRule mondooCheckUid confidence") {
+  // Stable mapping ID
+  id string
+  // Kyverno policy API kind
+  kyvernoKind string
+  // Kyverno policy namespace
+  kyvernoNamespace string
+  // Kyverno policy name
+  kyvernoPolicy string
+  // Kyverno rule name
+  kyvernoRule string
+  // Mondoo policy UID
+  mondooPolicyUid string
+  // Mondoo check UID
+  mondooCheckUid string
+  // Mondoo check MRN when known
+  mondooCheckMrn string
+  // Mapping source: builtin, annotation, or generated
+  source string
+  // Mapping confidence: high, medium, or low
+  confidence string
+  // Human-readable mapping reason
+  reason string
 }
 
 // Kubernetes PersistentVolume

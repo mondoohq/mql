@@ -136,12 +136,22 @@ func (k *mqlK8sIngress) ingressClass() (*mqlK8sIngressclass, error) {
 	if err != nil {
 		return nil, err
 	}
-	if ing.Spec.IngressClassName == nil || *ing.Spec.IngressClassName == "" {
-		k.IngressClass.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
+	className := ""
+	if ing.Spec.IngressClassName != nil {
+		className = *ing.Spec.IngressClassName
 	}
+	if className == "" {
+		className = ing.GetAnnotations()["kubernetes.io/ingress.class"]
+	}
+	if className == "" {
+		return k.defaultIngressClass()
+	}
+	return k.ingressClassByName(className)
+}
+
+func (k *mqlK8sIngress) ingressClassByName(name string) (*mqlK8sIngressclass, error) {
 	ic, err := NewResource(k.MqlRuntime, "k8s.ingressclass", map[string]*llx.RawData{
-		"name": llx.StringData(*ing.Spec.IngressClassName),
+		"name": llx.StringData(name),
 	})
 	if err != nil {
 		// IngressClass is cluster-scoped, so it isn't loaded when queried
@@ -154,6 +164,37 @@ func (k *mqlK8sIngress) ingressClass() (*mqlK8sIngressclass, error) {
 		return nil, err
 	}
 	return ic.(*mqlK8sIngressclass), nil
+}
+
+func (k *mqlK8sIngress) defaultIngressClass() (*mqlK8sIngressclass, error) {
+	obj, err := CreateResource(k.MqlRuntime, "k8s", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	classes := obj.(*mqlK8s).GetIngressClasses()
+	if classes.Error != nil {
+		return nil, classes.Error
+	}
+	var defaultClass *mqlK8sIngressclass
+	for _, item := range classes.Data {
+		ic, ok := item.(*mqlK8sIngressclass)
+		if !ok {
+			continue
+		}
+		if ic.GetAnnotations().Data["ingressclass.kubernetes.io/is-default-class"] != "true" {
+			continue
+		}
+		if defaultClass != nil {
+			k.IngressClass.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		defaultClass = ic
+	}
+	if defaultClass == nil {
+		k.IngressClass.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return defaultClass, nil
 }
 
 func (k *mqlK8sIngress) loadBalancerIngress() ([]any, error) {

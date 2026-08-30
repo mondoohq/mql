@@ -23,6 +23,24 @@ import (
 
 const ConnectionType = "k8s"
 
+var kyvernoCLIOptions = []string{
+	shared.OPTION_KYVERNO_DEFAULT_MAPPINGS,
+	shared.OPTION_KYVERNO_MAPPING_ANNOTATION_CHECK_UIDS,
+	shared.OPTION_KYVERNO_MAPPING_ANNOTATION_CHECK_MRNS,
+	shared.OPTION_KYVERNO_MAPPING_ANNOTATION_POLICY_UIDS,
+	shared.OPTION_KYVERNO_MAPPING_ANNOTATION_REASONS,
+	shared.OPTION_KYVERNO_EXCEPTION_ANNOTATION_VALID_UNTIL,
+	shared.OPTION_KYVERNO_EXCEPTION_ANNOTATION_JUSTIFICATIONS,
+	shared.OPTION_KYVERNO_EXCEPTION_ANNOTATION_OWNERS,
+	shared.OPTION_KYVERNO_EXCEPTION_ANNOTATION_TICKETS,
+	shared.OPTION_KYVERNO_MIRROR_POLICY_EXCEPTIONS,
+	shared.OPTION_KYVERNO_MIRRORED_EXCEPTION_APPROVAL,
+	shared.OPTION_KYVERNO_MIRRORED_EXCEPTION_ACTION,
+	shared.OPTION_KYVERNO_FAIL_EXPIRED_POLICY_EXCEPTIONS,
+	shared.OPTION_KYVERNO_REPORT_UNMAPPED_POLICY_EXCEPTIONS,
+	shared.OPTION_KYVERNO_REPORT_UNMAPPED_POLICY_RESULTS,
+}
+
 type Service struct {
 	*plugin.Service
 
@@ -104,6 +122,11 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 			conf.Options["container-proxy"] = proxyVal
 		}
 	}
+	for _, key := range kyvernoCLIOptions {
+		if flag, ok := flags[key]; ok && flag != nil {
+			conf.Options[key] = primitiveStringValue(flag)
+		}
+	}
 
 	asset := &inventory.Asset{
 		Connections: []*inventory.Config{conf},
@@ -122,6 +145,13 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 	}
 
 	return &res, nil
+}
+
+func primitiveStringValue(flag *llx.Primitive) string {
+	if flag == nil {
+		return ""
+	}
+	return string(flag.Value)
 }
 
 func (s *Service) MockConnect(_ *plugin.ConnectReq, _ plugin.ProviderCallback) (*plugin.ConnectRes, error) {
