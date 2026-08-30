@@ -53,7 +53,25 @@ var urlPattern = regexp.MustCompile(`^([a-zA-Z][a-zA-Z0-9+.\-]*://|[a-zA-Z0-9\-]
 // The value is returned as the manifest wrote it. Normalizing a name to a
 // canonical SPDX identifier is a consumer's decision, not a parser's.
 func (m *manifest) license() string {
-	raw := strings.TrimSpace(m.Headers[headerBundleLicense])
+	return ParseBundleLicense(m.Headers[headerBundleLicense])
+}
+
+// ParseBundleLicense returns the license an OSGi Bundle-License header states,
+// or "" when it states none this can name.
+//
+// Exported because a MANIFEST.MF is read by more than the inventory path. A
+// scanner that has already opened a jar's manifest for its own reasons needs
+// the same answer this gives, and the alternative — a second reader of the
+// same header somewhere else — is a reader that will not know about the
+// external marker, or schemeless URLs, or a comma inside a quoted attribute,
+// and will report a different license for the same jar than mql does.
+//
+// The header value is the whole input, so nothing else about the manifest has
+// to be shared. Unfolding continuation lines and looking the header up
+// case-insensitively stay with the caller's manifest reader; this names only
+// the value.
+func ParseBundleLicense(header string) string {
+	raw := strings.TrimSpace(header)
 	if raw == "" {
 		return ""
 	}

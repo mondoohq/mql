@@ -305,3 +305,38 @@ func TestBundleLicenseTellsAListFromANameWithAComma(t *testing.T) {
 		})
 	}
 }
+
+// TestParseBundleLicenseIsTheSameAnswerAsTheManifestPath pins what exporting
+// the function is for: one implementation, so a caller that reads the header
+// itself cannot report a different license for a jar than the inventory does.
+//
+// The first five cases are the shapes a second reader of this header gets
+// wrong: the external marker, a schemeless URL, quoting, a comma list read as
+// a single name, and a comma inside a quoted attribute. The sixth is the
+// control that keeps the list rule from swallowing a name that genuinely
+// contains a comma. The test fails if either side is ever reimplemented rather
+// than shared, which is the drift this export exists to prevent.
+func TestParseBundleLicenseIsTheSameAnswerAsTheManifestPath(t *testing.T) {
+	for _, c := range []struct{ header, want string }{
+		{"<<EXTERNAL>>", ""},
+		{"www.apache.org/licenses/LICENSE-2.0", ""},
+		{`'Apache-2.0';link="http://x"`, "Apache-2.0"},
+		{"GPL-3.0-only,Apache-2.0", "(GPL-3.0-only OR Apache-2.0)"},
+		{`Apache-2.0;description="The Apache License, Version 2.0"`, "Apache-2.0"},
+		{"The Apache License, Version 2.0", "The Apache License, Version 2.0"},
+	} {
+		t.Run(c.header, func(t *testing.T) {
+			assert.Equal(t, c.want, ParseBundleLicense(c.header))
+
+			// The same header through a whole manifest must agree, which is the
+			// property that makes the export safe to depend on.
+			mf := "Manifest-Version: 1.0\nBundle-SymbolicName: com.example\n" +
+				"Bundle-License: " + c.header + "\n"
+			info, err := (&Extractor{}).Parse(strings.NewReader(mf), "META-INF/MANIFEST.MF")
+			require.NoError(t, err)
+			root := info.Root()
+			require.NotNil(t, root)
+			assert.Equal(t, c.want, root.License, "manifest path disagrees with ParseBundleLicense")
+		})
+	}
+}
