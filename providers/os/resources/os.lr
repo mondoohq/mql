@@ -6701,6 +6701,10 @@ docker.container @defaults("names.first status"){
 containerd {
   // All containers across every containerd namespace
   containers() []containerd.container
+  // Runtime delegate for the local containerd endpoint
+  delegate() container.runtimeDelegate
+  // Container images observed in containerd and referenced by containers
+  images() []container.runtimeImage
 }
 
 // Single containerd container
@@ -9189,6 +9193,106 @@ container.repository {
   fullName string
   // Container registry host
   registry string
+}
+
+// Local container runtime delegate
+//
+// Examine a configured local runtime endpoint that can provide container image
+// metadata and, when supported by the scanner, image content from the node-local
+// runtime cache without pulling from a registry.
+container.runtimeDelegate @defaults("id status") {
+  // Stable delegate identifier
+  id string
+  // Runtime kind: cri, containerd, crio, docker, or podman
+  kind string
+  // Sanitized runtime endpoint
+  endpoint string
+  // Delegate priority; lower values are tried first
+  priority int
+  // Kubernetes node name where this delegate is valid
+  nodeName string
+  // Runtime namespaces inspected through this delegate
+  namespaces []string
+  // Snapshotters observed through this delegate
+  snapshotters []string
+  // Whether the delegate is used in read-only mode
+  readonly bool
+  // Whether registry pulls are allowed through this delegate
+  allowPull bool
+  // Delegate status: ready, unavailable, permissionDenied, or unsupported
+  status string
+  // Short non-secret diagnostic status message
+  statusMessage string
+  // Last time the delegate was checked
+  lastChecked time
+}
+
+// Local runtime image
+//
+// Examine an image observed in a node-local container runtime cache. Runtime
+// images are keyed by immutable digest where available and can be linked back to
+// Kubernetes workloads or runtime containers that reference them.
+container.runtimeImage @defaults("resolvedDigest imageId repoTags") {
+  // Stable runtime image identifier
+  id string
+  // Kubernetes node name where this image was observed
+  nodeName string
+  // Runtime delegate that reported this image
+  delegateId string
+  // Runtime kind that reported this image
+  runtimeKind string
+  // Runtime image ID
+  imageId string
+  // Repo tags reported by the runtime
+  repoTags []string
+  // Repo digests reported by the runtime
+  repoDigests []string
+  // Preferred immutable digest used for scan deduplication
+  resolvedDigest string
+  // Runtime layer chain ID
+  chainId string
+  // OCI manifest or index digest used for content access
+  targetDigest string
+  // OCI or Docker media type
+  mediaType string
+  // Image platform in os/architecture form
+  platform string
+  // Runtime-reported image size in bytes
+  sizeBytes int
+  // Image creation timestamp
+  created time
+  // Runtime labels
+  labels map[string]string
+  // Runtime namespaces that reference this image
+  namespaces []string
+  // Whether a running or recently observed container references this image
+  inUse bool
+  // Runtime or Kubernetes container identifiers that reference this image
+  containers []string
+  // Scan status: pending, scanned, notPresent, unsupported, permissionDenied, or failed
+  scanStatus string
+  // Short non-secret diagnostic scan message
+  scanStatusMessage string
+  // Image layer metadata
+  layers []container.runtimeImageLayer
+}
+
+// Local runtime image layer
+//
+// Examine layer metadata for an image observed in a node-local runtime cache.
+container.runtimeImageLayer @defaults("digest") {
+  // Compressed layer digest
+  digest string
+  // Uncompressed layer digest
+  diffId string
+  // Layer size in bytes
+  sizeBytes int
+  // OCI or Docker media type
+  mediaType string
+  // OCI annotations
+  annotations map[string]string
+  // Whether the layer content is present in the local cache
+  cachePresent bool
 }
 
 // Kubernetes kubelet on this node

@@ -5,9 +5,11 @@ package resources
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
@@ -115,8 +117,30 @@ func (k *mqlK8sPod) containerStatuses() ([]any, error) {
 		return nil, err
 	}
 
+	return containerStatusResources(k.MqlRuntime, pod, pod.Status.ContainerStatuses, "containerstatus")
+}
+
+func (k *mqlK8sPod) initContainerStatuses() ([]any, error) {
+	pod, err := k.getPod()
+	if err != nil {
+		return nil, err
+	}
+
+	return containerStatusResources(k.MqlRuntime, pod, pod.Status.InitContainerStatuses, "initcontainerstatus")
+}
+
+func (k *mqlK8sPod) ephemeralContainerStatuses() ([]any, error) {
+	pod, err := k.getPod()
+	if err != nil {
+		return nil, err
+	}
+
+	return containerStatusResources(k.MqlRuntime, pod, pod.Status.EphemeralContainerStatuses, "ephemeralcontainerstatus")
+}
+
+func containerStatusResources(runtime *plugin.Runtime, pod *corev1.Pod, statuses []corev1.ContainerStatus, idPart string) ([]any, error) {
 	resp := []any{}
-	for _, c := range pod.Status.ContainerStatuses {
+	for _, c := range statuses {
 		state, err := convert.JsonToDict(c.State)
 		if err != nil {
 			return nil, err
@@ -135,7 +159,7 @@ func (k *mqlK8sPod) containerStatuses() ([]any, error) {
 		}
 
 		args := map[string]*llx.RawData{
-			"__id":         llx.StringData(string(pod.GetUID()) + "-containerstatus-" + c.Name),
+			"__id":         llx.StringData(string(pod.GetUID()) + "-" + idPart + "-" + c.Name),
 			"name":         llx.StringData(c.Name),
 			"ready":        llx.BoolData(c.Ready),
 			"started":      llx.BoolData(started),
@@ -147,13 +171,426 @@ func (k *mqlK8sPod) containerStatuses() ([]any, error) {
 			"lastState":    llx.DictData(lastState),
 			"resources":    llx.DictData(statusResources),
 		}
-		mqlContainer, err := CreateResource(k.MqlRuntime, ResourceK8sContainerStatus, args)
+		mqlContainer, err := CreateResource(runtime, ResourceK8sContainerStatus, args)
 		if err != nil {
 			return nil, err
 		}
 		resp = append(resp, mqlContainer)
 	}
 	return resp, nil
+}
+
+func (k *mqlK8sContainerStatus) runtimeImage() (plugin.Resource, error) {
+	status, matches, err := k.runtimeImageStatusAndMatches()
+	if err != nil {
+		return nil, err
+	}
+	if status != "matched" {
+		k.RuntimeImage.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return matches[0], nil
+}
+
+func (k *mqlK8sContainerStatus) runtimeImageStatus() (string, error) {
+	status, _, err := k.runtimeImageStatusAndMatches()
+	return status, err
+}
+
+func (k *mqlK8sContainerStatus) runtimeImageStatusAndMatches() (string, []plugin.Resource, error) {
+	if k.ImageId.Data == "" && k.Image.Data == "" {
+		return "notPresent", nil, nil
+	}
+	matches, runtimeAvailable, err := k.runtimeImageMatches()
+	if err != nil {
+		return "", nil, err
+	}
+	if !runtimeAvailable {
+		return "runtimeUnavailable", nil, nil
+	}
+	switch len(matches) {
+	case 0:
+		return "notPresent", nil, nil
+	case 1:
+		return "matched", matches, nil
+	default:
+		return "ambiguous", matches, nil
+	}
+}
+
+func (k *mqlK8sContainerStatus) runtimeImageMatches() ([]plugin.Resource, bool, error) {
+	podUID := containerStatusPodUID(k.__id)
+	if podUID == "" {
+		return nil, false, nil
+	}
+	k8sRaw, err := CreateResource(k.MqlRuntime, "k8s", nil)
+	if err != nil {
+		return nil, false, err
+	}
+	k8s := k8sRaw.(*mqlK8s)
+	lookup, err := k8s.getRuntimeImageClusterLookup()
+	if err != nil {
+		return nil, false, err
+	}
+	nodeName, podFound := lookup.podNodeNames[podUID]
+	if !podFound || nodeName == "" {
+		return nil, true, nil
+	}
+
+	node, ok := lookup.nodes[nodeName]
+	if !ok {
+		return nil, false, nil
+	}
+	delegates := node.GetRuntimeDelegates()
+	if delegates.Error != nil {
+		return nil, false, delegates.Error
+	}
+	if !runtimeDelegateAvailable(k.MqlRuntime, delegates.Data, runtimeKindFromContainerID(k.ContainerId.Data)) {
+		return nil, false, nil
+	}
+
+	images := node.GetRuntimeImages()
+	if images.Error != nil {
+		return nil, true, images.Error
+	}
+	digestKeys := runtimeImageDigestMatchKeys(k.ImageId.Data)
+	var keys map[string]struct{}
+	if len(digestKeys) == 0 {
+		keys = runtimeImageMatchKeys(k.Image.Data, k.ImageId.Data)
+	}
+	matches := []plugin.Resource{}
+	for _, item := range images.Data {
+		image, ok := item.(plugin.Resource)
+		if !ok {
+			continue
+		}
+		imageKeys := runtimeImageResourceMatchKeys(k.MqlRuntime, image)
+		if len(digestKeys) > 0 {
+			if runtimeImageKeysIntersect(digestKeys, imageKeys) {
+				matches = append(matches, image)
+			}
+			continue
+		}
+		if runtimeImageKeysIntersect(keys, imageKeys) {
+			matches = append(matches, image)
+		}
+	}
+	return matches, true, nil
+}
+
+type runtimeImageClusterLookup struct {
+	podNodeNames map[string]string
+	nodes        map[string]*mqlK8sNode
+}
+
+func (k *mqlK8s) getRuntimeImageClusterLookup() (*runtimeImageClusterLookup, error) {
+	k.runtimeImageLookupLock.Lock()
+	defer k.runtimeImageLookupLock.Unlock()
+	if k.runtimeImageLookup != nil {
+		return k.runtimeImageLookup, nil
+	}
+
+	pods := k.GetPods()
+	if pods.Error != nil {
+		return nil, pods.Error
+	}
+	nodes := k.GetNodes()
+	if nodes.Error != nil {
+		return nil, nodes.Error
+	}
+	lookup, err := newRuntimeImageClusterLookup(pods.Data, nodes.Data)
+	if err != nil {
+		return nil, err
+	}
+	k.runtimeImageLookup = lookup
+	return lookup, nil
+}
+
+func newRuntimeImageClusterLookup(pods, nodes []any) (*runtimeImageClusterLookup, error) {
+	lookup := &runtimeImageClusterLookup{
+		podNodeNames: make(map[string]string, len(pods)),
+		nodes:        make(map[string]*mqlK8sNode, len(nodes)),
+	}
+	for _, item := range pods {
+		pod, ok := item.(*mqlK8sPod)
+		if !ok || pod.Uid.Data == "" {
+			continue
+		}
+		nodeName := pod.GetNodeName()
+		if nodeName.Error != nil {
+			return nil, nodeName.Error
+		}
+		lookup.podNodeNames[pod.Uid.Data] = nodeName.Data
+	}
+	for _, item := range nodes {
+		node, ok := item.(*mqlK8sNode)
+		if !ok || node.Name.Data == "" {
+			continue
+		}
+		lookup.nodes[node.Name.Data] = node
+	}
+	return lookup, nil
+}
+
+func containerStatusPodUID(id string) string {
+	for _, marker := range []string{"-containerstatus-", "-initcontainerstatus-", "-ephemeralcontainerstatus-"} {
+		if podUID, _, ok := strings.Cut(id, marker); ok && podUID != "" {
+			return podUID
+		}
+	}
+	return ""
+}
+
+func runtimeDelegateAvailable(runtime *plugin.Runtime, delegates []any, runtimeKind string) bool {
+	for _, item := range delegates {
+		delegate, ok := item.(plugin.Resource)
+		if !ok {
+			continue
+		}
+		if runtimeDelegateMatchesKind(runtime, delegate, runtimeKind) && runtimeDelegateConfiguredForScan(runtime, delegate) {
+			return true
+		}
+	}
+	return false
+}
+
+func runtimeDelegateMatchesKind(runtime *plugin.Runtime, delegate plugin.Resource, runtimeKind string) bool {
+	if runtimeKind == "" || delegate.MqlID() == runtimeKind {
+		return true
+	}
+	if identity, ok := delegate.(runtimeDelegateIdentityResource); ok && identity.GetKind().Data == runtimeKind {
+		return true
+	}
+	if kind, ok := sharedRuntimeStringField(runtime, delegate, "kind"); ok && kind == runtimeKind {
+		return true
+	}
+	return false
+}
+
+func runtimeDelegateConfiguredForScan(runtime *plugin.Runtime, delegate plugin.Resource) bool {
+	endpoint := ""
+	if v, ok := delegate.(runtimeDelegateEndpointResource); ok {
+		endpoint = v.GetEndpoint().Data
+	} else if v, ok := sharedRuntimeStringField(runtime, delegate, "endpoint"); ok {
+		endpoint = v
+	}
+	if strings.TrimSpace(endpoint) == "" {
+		return false
+	}
+	if readonly, ok := runtimeDelegateReadonly(runtime, delegate); ok && !readonly {
+		return false
+	}
+	if allowPull, ok := runtimeDelegateAllowPull(runtime, delegate); ok && allowPull {
+		return false
+	}
+	statusValue := ""
+	if status, ok := delegate.(runtimeDelegateStatusResource); ok {
+		statusValue = status.GetStatus().Data
+	} else if status, ok := sharedRuntimeStringField(runtime, delegate, "status"); ok {
+		statusValue = status
+	}
+	switch strings.ToLower(strings.TrimSpace(statusValue)) {
+	case "", "ready":
+		return true
+	default:
+		return false
+	}
+}
+
+func runtimeDelegateReadonly(runtime *plugin.Runtime, delegate plugin.Resource) (bool, bool) {
+	if readonly, ok := delegate.(runtimeDelegateReadonlyResource); ok {
+		return readonly.GetReadonly().Data, true
+	}
+	return sharedRuntimeBoolField(runtime, delegate, "readonly")
+}
+
+func runtimeDelegateAllowPull(runtime *plugin.Runtime, delegate plugin.Resource) (bool, bool) {
+	if allowPull, ok := delegate.(runtimeDelegateAllowPullResource); ok {
+		return allowPull.GetAllowPull().Data, true
+	}
+	return sharedRuntimeBoolField(runtime, delegate, "allowPull")
+}
+
+type runtimeDelegateIdentityResource interface {
+	plugin.Resource
+	GetKind() *plugin.TValue[string]
+}
+
+type runtimeDelegateEndpointResource interface {
+	plugin.Resource
+	GetEndpoint() *plugin.TValue[string]
+}
+
+type runtimeDelegateReadonlyResource interface {
+	plugin.Resource
+	GetReadonly() *plugin.TValue[bool]
+}
+
+type runtimeDelegateAllowPullResource interface {
+	plugin.Resource
+	GetAllowPull() *plugin.TValue[bool]
+}
+
+type runtimeDelegateStatusResource interface {
+	plugin.Resource
+	GetStatus() *plugin.TValue[string]
+}
+
+type runtimeImageIdentityResource interface {
+	plugin.Resource
+	GetImageId() *plugin.TValue[string]
+	GetRepoTags() *plugin.TValue[[]any]
+	GetRepoDigests() *plugin.TValue[[]any]
+	GetResolvedDigest() *plugin.TValue[string]
+	GetTargetDigest() *plugin.TValue[string]
+}
+
+func runtimeImageMatchKeys(image, imageID string) map[string]struct{} {
+	keys := map[string]struct{}{}
+	for _, candidate := range []string{imageID, image} {
+		addRuntimeImageMatchKey(keys, candidate)
+	}
+	return keys
+}
+
+func runtimeImageDigestMatchKeys(imageID string) map[string]struct{} {
+	keys := map[string]struct{}{}
+	normalized := normalizeRuntimeImageID(imageID)
+	if !strings.HasPrefix(normalized, "sha256:") {
+		return keys
+	}
+	addRuntimeImageMatchKey(keys, imageID)
+	addRuntimeImageMatchKey(keys, normalized)
+	return keys
+}
+
+func runtimeImageResourceMatchKeys(runtime *plugin.Runtime, image plugin.Resource) map[string]struct{} {
+	keys := runtimeImageMatchKeys("", image.MqlID())
+	if identity, ok := image.(runtimeImageIdentityResource); ok {
+		for _, candidate := range []string{
+			identity.GetImageId().Data,
+			identity.GetResolvedDigest().Data,
+			identity.GetTargetDigest().Data,
+		} {
+			addRuntimeImageMatchKey(keys, candidate)
+		}
+		for _, candidate := range identity.GetRepoTags().Data {
+			addRuntimeImageMatchKey(keys, runtimeImageStringFromAny(candidate))
+		}
+		for _, candidate := range identity.GetRepoDigests().Data {
+			addRuntimeImageMatchKey(keys, runtimeImageStringFromAny(candidate))
+		}
+	}
+	for _, field := range []string{"imageId", "resolvedDigest", "targetDigest"} {
+		if candidate, ok := sharedRuntimeStringField(runtime, image, field); ok {
+			addRuntimeImageMatchKey(keys, candidate)
+		}
+	}
+	for _, field := range []string{"repoTags", "repoDigests"} {
+		for _, candidate := range sharedRuntimeStringArrayField(runtime, image, field) {
+			addRuntimeImageMatchKey(keys, candidate)
+		}
+	}
+	return keys
+}
+
+func sharedRuntimeStringField(runtime *plugin.Runtime, resource plugin.Resource, field string) (string, bool) {
+	raw, ok := sharedRuntimeField(runtime, resource, field)
+	if !ok {
+		return "", false
+	}
+	value, ok := raw.Value.(string)
+	return value, ok
+}
+
+func sharedRuntimeBoolField(runtime *plugin.Runtime, resource plugin.Resource, field string) (bool, bool) {
+	raw, ok := sharedRuntimeField(runtime, resource, field)
+	if !ok {
+		return false, false
+	}
+	value, ok := raw.Value.(bool)
+	return value, ok
+}
+
+func sharedRuntimeStringArrayField(runtime *plugin.Runtime, resource plugin.Resource, field string) []string {
+	raw, ok := sharedRuntimeField(runtime, resource, field)
+	if !ok {
+		return nil
+	}
+	switch values := raw.Value.(type) {
+	case []any:
+		out := make([]string, 0, len(values))
+		for _, value := range values {
+			if s := runtimeImageStringFromAny(value); s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	case []string:
+		return values
+	default:
+		return nil
+	}
+}
+
+func sharedRuntimeField(runtime *plugin.Runtime, resource plugin.Resource, field string) (*llx.RawData, bool) {
+	if runtime == nil || resource == nil || strings.TrimSpace(resource.MqlName()) == "" || strings.TrimSpace(resource.MqlID()) == "" {
+		return nil, false
+	}
+	raw, err := runtime.GetSharedData(resource.MqlName(), resource.MqlID(), field)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Str("resource", resource.MqlName()).
+			Str("resource-id", resource.MqlID()).
+			Str("field", field).
+			Msg("could not read shared runtime field")
+		return nil, false
+	}
+	if raw == nil {
+		return nil, false
+	}
+	if raw.Error != nil {
+		log.Warn().
+			Err(raw.Error).
+			Str("resource", resource.MqlName()).
+			Str("resource-id", resource.MqlID()).
+			Str("field", field).
+			Msg("shared runtime field contains an error")
+		return nil, false
+	}
+	return raw, true
+}
+
+func addRuntimeImageMatchKey(keys map[string]struct{}, candidate string) {
+	candidate = strings.TrimSpace(candidate)
+	if candidate == "" {
+		return
+	}
+	keys[candidate] = struct{}{}
+	normalized := normalizeRuntimeImageID(candidate)
+	if normalized != "" {
+		keys[normalized] = struct{}{}
+	}
+}
+
+func runtimeImageKeysIntersect(left, right map[string]struct{}) bool {
+	if len(left) > len(right) {
+		left, right = right, left
+	}
+	for key := range left {
+		if _, ok := right[key]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func runtimeImageStringFromAny(value any) string {
+	if s, ok := value.(string); ok {
+		return s
+	}
+	return ""
 }
 
 func (k *mqlK8sPod) annotations() (map[string]any, error) {

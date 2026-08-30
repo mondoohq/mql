@@ -334,6 +334,9 @@ const (
 	ResourceRegistrykeyProperty                           string = "registrykey.property"
 	ResourceContainerImage                                string = "container.image"
 	ResourceContainerRepository                           string = "container.repository"
+	ResourceContainerRuntimeDelegate                      string = "container.runtimeDelegate"
+	ResourceContainerRuntimeImage                         string = "container.runtimeImage"
+	ResourceContainerRuntimeImageLayer                    string = "container.runtimeImageLayer"
 	ResourceKubelet                                       string = "kubelet"
 	ResourcePython                                        string = "python"
 	ResourcePythonPackage                                 string = "python.package"
@@ -1906,6 +1909,18 @@ func init() {
 		"container.repository": {
 			// to override args, implement: initContainerRepository(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createContainerRepository,
+		},
+		"container.runtimeDelegate": {
+			// to override args, implement: initContainerRuntimeDelegate(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainerRuntimeDelegate,
+		},
+		"container.runtimeImage": {
+			// to override args, implement: initContainerRuntimeImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainerRuntimeImage,
+		},
+		"container.runtimeImageLayer": {
+			// to override args, implement: initContainerRuntimeImageLayer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createContainerRuntimeImageLayer,
 		},
 		"kubelet": {
 			Init:   initKubelet,
@@ -8666,6 +8681,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"containerd.containers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlContainerd).GetContainers()).ToDataRes(types.Array(types.Resource("containerd.container")))
 	},
+	"containerd.delegate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetDelegate()).ToDataRes(types.Resource("container.runtimeDelegate"))
+	},
+	"containerd.images": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerd).GetImages()).ToDataRes(types.Array(types.Resource("container.runtimeImage")))
+	},
 	"containerd.container.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlContainerdContainer).GetId()).ToDataRes(types.String)
 	},
@@ -10519,6 +10540,123 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"container.repository.registry": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlContainerRepository).GetRegistry()).ToDataRes(types.String)
+	},
+	"container.runtimeDelegate.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeDelegate).GetId()).ToDataRes(types.String)
+	},
+	"container.runtimeDelegate.kind": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeDelegate).GetKind()).ToDataRes(types.String)
+	},
+	"container.runtimeDelegate.endpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeDelegate).GetEndpoint()).ToDataRes(types.String)
+	},
+	"container.runtimeDelegate.priority": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeDelegate).GetPriority()).ToDataRes(types.Int)
+	},
+	"container.runtimeDelegate.nodeName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeDelegate).GetNodeName()).ToDataRes(types.String)
+	},
+	"container.runtimeDelegate.namespaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeDelegate).GetNamespaces()).ToDataRes(types.Array(types.String))
+	},
+	"container.runtimeDelegate.snapshotters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeDelegate).GetSnapshotters()).ToDataRes(types.Array(types.String))
+	},
+	"container.runtimeDelegate.readonly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeDelegate).GetReadonly()).ToDataRes(types.Bool)
+	},
+	"container.runtimeDelegate.allowPull": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeDelegate).GetAllowPull()).ToDataRes(types.Bool)
+	},
+	"container.runtimeDelegate.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeDelegate).GetStatus()).ToDataRes(types.String)
+	},
+	"container.runtimeDelegate.statusMessage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeDelegate).GetStatusMessage()).ToDataRes(types.String)
+	},
+	"container.runtimeDelegate.lastChecked": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeDelegate).GetLastChecked()).ToDataRes(types.Time)
+	},
+	"container.runtimeImage.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetId()).ToDataRes(types.String)
+	},
+	"container.runtimeImage.nodeName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetNodeName()).ToDataRes(types.String)
+	},
+	"container.runtimeImage.delegateId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetDelegateId()).ToDataRes(types.String)
+	},
+	"container.runtimeImage.runtimeKind": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetRuntimeKind()).ToDataRes(types.String)
+	},
+	"container.runtimeImage.imageId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetImageId()).ToDataRes(types.String)
+	},
+	"container.runtimeImage.repoTags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetRepoTags()).ToDataRes(types.Array(types.String))
+	},
+	"container.runtimeImage.repoDigests": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetRepoDigests()).ToDataRes(types.Array(types.String))
+	},
+	"container.runtimeImage.resolvedDigest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetResolvedDigest()).ToDataRes(types.String)
+	},
+	"container.runtimeImage.chainId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetChainId()).ToDataRes(types.String)
+	},
+	"container.runtimeImage.targetDigest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetTargetDigest()).ToDataRes(types.String)
+	},
+	"container.runtimeImage.mediaType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetMediaType()).ToDataRes(types.String)
+	},
+	"container.runtimeImage.platform": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetPlatform()).ToDataRes(types.String)
+	},
+	"container.runtimeImage.sizeBytes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetSizeBytes()).ToDataRes(types.Int)
+	},
+	"container.runtimeImage.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetCreated()).ToDataRes(types.Time)
+	},
+	"container.runtimeImage.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"container.runtimeImage.namespaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetNamespaces()).ToDataRes(types.Array(types.String))
+	},
+	"container.runtimeImage.inUse": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetInUse()).ToDataRes(types.Bool)
+	},
+	"container.runtimeImage.containers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetContainers()).ToDataRes(types.Array(types.String))
+	},
+	"container.runtimeImage.scanStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetScanStatus()).ToDataRes(types.String)
+	},
+	"container.runtimeImage.scanStatusMessage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetScanStatusMessage()).ToDataRes(types.String)
+	},
+	"container.runtimeImage.layers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImage).GetLayers()).ToDataRes(types.Array(types.Resource("container.runtimeImageLayer")))
+	},
+	"container.runtimeImageLayer.digest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImageLayer).GetDigest()).ToDataRes(types.String)
+	},
+	"container.runtimeImageLayer.diffId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImageLayer).GetDiffId()).ToDataRes(types.String)
+	},
+	"container.runtimeImageLayer.sizeBytes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImageLayer).GetSizeBytes()).ToDataRes(types.Int)
+	},
+	"container.runtimeImageLayer.mediaType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImageLayer).GetMediaType()).ToDataRes(types.String)
+	},
+	"container.runtimeImageLayer.annotations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImageLayer).GetAnnotations()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"container.runtimeImageLayer.cachePresent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlContainerRuntimeImageLayer).GetCachePresent()).ToDataRes(types.Bool)
 	},
 	"kubelet.configFile": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlKubelet).GetConfigFile()).ToDataRes(types.Resource("file"))
@@ -25272,6 +25410,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlContainerd).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"containerd.delegate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).Delegate, ok = plugin.RawToTValue[*mqlContainerRuntimeDelegate](v.Value, v.Error)
+		return
+	},
+	"containerd.images": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerd).Images, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"containerd.container.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlContainerdContainer).__id, ok = v.Value.(string)
 		return
@@ -28134,6 +28280,174 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"container.repository.registry": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlContainerRepository).Registry, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeDelegate.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeDelegate).__id, ok = v.Value.(string)
+		return
+	},
+	"container.runtimeDelegate.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeDelegate).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeDelegate.kind": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeDelegate).Kind, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeDelegate.endpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeDelegate).Endpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeDelegate.priority": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeDelegate).Priority, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"container.runtimeDelegate.nodeName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeDelegate).NodeName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeDelegate.namespaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeDelegate).Namespaces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"container.runtimeDelegate.snapshotters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeDelegate).Snapshotters, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"container.runtimeDelegate.readonly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeDelegate).Readonly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"container.runtimeDelegate.allowPull": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeDelegate).AllowPull, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"container.runtimeDelegate.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeDelegate).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeDelegate.statusMessage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeDelegate).StatusMessage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeDelegate.lastChecked": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeDelegate).LastChecked, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).__id, ok = v.Value.(string)
+		return
+	},
+	"container.runtimeImage.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.nodeName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).NodeName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.delegateId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).DelegateId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.runtimeKind": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).RuntimeKind, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.imageId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).ImageId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.repoTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).RepoTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.repoDigests": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).RepoDigests, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.resolvedDigest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).ResolvedDigest, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.chainId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).ChainId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.targetDigest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).TargetDigest, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.mediaType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).MediaType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.platform": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).Platform, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.sizeBytes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).SizeBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.namespaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).Namespaces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.inUse": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).InUse, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.containers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).Containers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.scanStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).ScanStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.scanStatusMessage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).ScanStatusMessage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImage.layers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImage).Layers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImageLayer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImageLayer).__id, ok = v.Value.(string)
+		return
+	},
+	"container.runtimeImageLayer.digest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImageLayer).Digest, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImageLayer.diffId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImageLayer).DiffId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImageLayer.sizeBytes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImageLayer).SizeBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImageLayer.mediaType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImageLayer).MediaType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImageLayer.annotations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImageLayer).Annotations, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"container.runtimeImageLayer.cachePresent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlContainerRuntimeImageLayer).CachePresent, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"kubelet.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -61752,6 +62066,8 @@ type mqlContainerd struct {
 	__id       string
 	// optional: if you define mqlContainerdInternal it will be used here
 	Containers plugin.TValue[[]any]
+	Delegate   plugin.TValue[*mqlContainerRuntimeDelegate]
+	Images     plugin.TValue[[]any]
 }
 
 // createContainerd creates a new instance of this resource
@@ -61799,6 +62115,38 @@ func (c *mqlContainerd) GetContainers() *plugin.TValue[[]any] {
 		}
 
 		return c.containers()
+	})
+}
+
+func (c *mqlContainerd) GetDelegate() *plugin.TValue[*mqlContainerRuntimeDelegate] {
+	return plugin.GetOrCompute[*mqlContainerRuntimeDelegate](&c.Delegate, func() (*mqlContainerRuntimeDelegate, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containerd", c.__id, "delegate")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlContainerRuntimeDelegate), nil
+			}
+		}
+
+		return c.delegate()
+	})
+}
+
+func (c *mqlContainerd) GetImages() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Images, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("containerd", c.__id, "images")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.images()
 	})
 }
 
@@ -70747,6 +71095,333 @@ func (c *mqlContainerRepository) GetFullName() *plugin.TValue[string] {
 
 func (c *mqlContainerRepository) GetRegistry() *plugin.TValue[string] {
 	return &c.Registry
+}
+
+// mqlContainerRuntimeDelegate for the container.runtimeDelegate resource
+type mqlContainerRuntimeDelegate struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlContainerRuntimeDelegateInternal it will be used here
+	Id            plugin.TValue[string]
+	Kind          plugin.TValue[string]
+	Endpoint      plugin.TValue[string]
+	Priority      plugin.TValue[int64]
+	NodeName      plugin.TValue[string]
+	Namespaces    plugin.TValue[[]any]
+	Snapshotters  plugin.TValue[[]any]
+	Readonly      plugin.TValue[bool]
+	AllowPull     plugin.TValue[bool]
+	Status        plugin.TValue[string]
+	StatusMessage plugin.TValue[string]
+	LastChecked   plugin.TValue[*time.Time]
+}
+
+// createContainerRuntimeDelegate creates a new instance of this resource
+func createContainerRuntimeDelegate(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainerRuntimeDelegate{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("container.runtimeDelegate", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainerRuntimeDelegate) MqlName() string {
+	return "container.runtimeDelegate"
+}
+
+func (c *mqlContainerRuntimeDelegate) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainerRuntimeDelegate) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlContainerRuntimeDelegate) GetKind() *plugin.TValue[string] {
+	return &c.Kind
+}
+
+func (c *mqlContainerRuntimeDelegate) GetEndpoint() *plugin.TValue[string] {
+	return &c.Endpoint
+}
+
+func (c *mqlContainerRuntimeDelegate) GetPriority() *plugin.TValue[int64] {
+	return &c.Priority
+}
+
+func (c *mqlContainerRuntimeDelegate) GetNodeName() *plugin.TValue[string] {
+	return &c.NodeName
+}
+
+func (c *mqlContainerRuntimeDelegate) GetNamespaces() *plugin.TValue[[]any] {
+	return &c.Namespaces
+}
+
+func (c *mqlContainerRuntimeDelegate) GetSnapshotters() *plugin.TValue[[]any] {
+	return &c.Snapshotters
+}
+
+func (c *mqlContainerRuntimeDelegate) GetReadonly() *plugin.TValue[bool] {
+	return &c.Readonly
+}
+
+func (c *mqlContainerRuntimeDelegate) GetAllowPull() *plugin.TValue[bool] {
+	return &c.AllowPull
+}
+
+func (c *mqlContainerRuntimeDelegate) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlContainerRuntimeDelegate) GetStatusMessage() *plugin.TValue[string] {
+	return &c.StatusMessage
+}
+
+func (c *mqlContainerRuntimeDelegate) GetLastChecked() *plugin.TValue[*time.Time] {
+	return &c.LastChecked
+}
+
+// mqlContainerRuntimeImage for the container.runtimeImage resource
+type mqlContainerRuntimeImage struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlContainerRuntimeImageInternal it will be used here
+	Id                plugin.TValue[string]
+	NodeName          plugin.TValue[string]
+	DelegateId        plugin.TValue[string]
+	RuntimeKind       plugin.TValue[string]
+	ImageId           plugin.TValue[string]
+	RepoTags          plugin.TValue[[]any]
+	RepoDigests       plugin.TValue[[]any]
+	ResolvedDigest    plugin.TValue[string]
+	ChainId           plugin.TValue[string]
+	TargetDigest      plugin.TValue[string]
+	MediaType         plugin.TValue[string]
+	Platform          plugin.TValue[string]
+	SizeBytes         plugin.TValue[int64]
+	Created           plugin.TValue[*time.Time]
+	Labels            plugin.TValue[map[string]any]
+	Namespaces        plugin.TValue[[]any]
+	InUse             plugin.TValue[bool]
+	Containers        plugin.TValue[[]any]
+	ScanStatus        plugin.TValue[string]
+	ScanStatusMessage plugin.TValue[string]
+	Layers            plugin.TValue[[]any]
+}
+
+// createContainerRuntimeImage creates a new instance of this resource
+func createContainerRuntimeImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainerRuntimeImage{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("container.runtimeImage", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainerRuntimeImage) MqlName() string {
+	return "container.runtimeImage"
+}
+
+func (c *mqlContainerRuntimeImage) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainerRuntimeImage) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlContainerRuntimeImage) GetNodeName() *plugin.TValue[string] {
+	return &c.NodeName
+}
+
+func (c *mqlContainerRuntimeImage) GetDelegateId() *plugin.TValue[string] {
+	return &c.DelegateId
+}
+
+func (c *mqlContainerRuntimeImage) GetRuntimeKind() *plugin.TValue[string] {
+	return &c.RuntimeKind
+}
+
+func (c *mqlContainerRuntimeImage) GetImageId() *plugin.TValue[string] {
+	return &c.ImageId
+}
+
+func (c *mqlContainerRuntimeImage) GetRepoTags() *plugin.TValue[[]any] {
+	return &c.RepoTags
+}
+
+func (c *mqlContainerRuntimeImage) GetRepoDigests() *plugin.TValue[[]any] {
+	return &c.RepoDigests
+}
+
+func (c *mqlContainerRuntimeImage) GetResolvedDigest() *plugin.TValue[string] {
+	return &c.ResolvedDigest
+}
+
+func (c *mqlContainerRuntimeImage) GetChainId() *plugin.TValue[string] {
+	return &c.ChainId
+}
+
+func (c *mqlContainerRuntimeImage) GetTargetDigest() *plugin.TValue[string] {
+	return &c.TargetDigest
+}
+
+func (c *mqlContainerRuntimeImage) GetMediaType() *plugin.TValue[string] {
+	return &c.MediaType
+}
+
+func (c *mqlContainerRuntimeImage) GetPlatform() *plugin.TValue[string] {
+	return &c.Platform
+}
+
+func (c *mqlContainerRuntimeImage) GetSizeBytes() *plugin.TValue[int64] {
+	return &c.SizeBytes
+}
+
+func (c *mqlContainerRuntimeImage) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlContainerRuntimeImage) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlContainerRuntimeImage) GetNamespaces() *plugin.TValue[[]any] {
+	return &c.Namespaces
+}
+
+func (c *mqlContainerRuntimeImage) GetInUse() *plugin.TValue[bool] {
+	return &c.InUse
+}
+
+func (c *mqlContainerRuntimeImage) GetContainers() *plugin.TValue[[]any] {
+	return &c.Containers
+}
+
+func (c *mqlContainerRuntimeImage) GetScanStatus() *plugin.TValue[string] {
+	return &c.ScanStatus
+}
+
+func (c *mqlContainerRuntimeImage) GetScanStatusMessage() *plugin.TValue[string] {
+	return &c.ScanStatusMessage
+}
+
+func (c *mqlContainerRuntimeImage) GetLayers() *plugin.TValue[[]any] {
+	return &c.Layers
+}
+
+// mqlContainerRuntimeImageLayer for the container.runtimeImageLayer resource
+type mqlContainerRuntimeImageLayer struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlContainerRuntimeImageLayerInternal it will be used here
+	Digest       plugin.TValue[string]
+	DiffId       plugin.TValue[string]
+	SizeBytes    plugin.TValue[int64]
+	MediaType    plugin.TValue[string]
+	Annotations  plugin.TValue[map[string]any]
+	CachePresent plugin.TValue[bool]
+}
+
+// createContainerRuntimeImageLayer creates a new instance of this resource
+func createContainerRuntimeImageLayer(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlContainerRuntimeImageLayer{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("container.runtimeImageLayer", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlContainerRuntimeImageLayer) MqlName() string {
+	return "container.runtimeImageLayer"
+}
+
+func (c *mqlContainerRuntimeImageLayer) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlContainerRuntimeImageLayer) GetDigest() *plugin.TValue[string] {
+	return &c.Digest
+}
+
+func (c *mqlContainerRuntimeImageLayer) GetDiffId() *plugin.TValue[string] {
+	return &c.DiffId
+}
+
+func (c *mqlContainerRuntimeImageLayer) GetSizeBytes() *plugin.TValue[int64] {
+	return &c.SizeBytes
+}
+
+func (c *mqlContainerRuntimeImageLayer) GetMediaType() *plugin.TValue[string] {
+	return &c.MediaType
+}
+
+func (c *mqlContainerRuntimeImageLayer) GetAnnotations() *plugin.TValue[map[string]any] {
+	return &c.Annotations
+}
+
+func (c *mqlContainerRuntimeImageLayer) GetCachePresent() *plugin.TValue[bool] {
+	return &c.CachePresent
 }
 
 // mqlKubelet for the kubelet resource

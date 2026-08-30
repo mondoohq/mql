@@ -374,8 +374,12 @@ private k8s.node @defaults("name labels['kubernetes.io/arch'] labels['kubernetes
   kubeletVersion() string
   // Container runtime version (e.g., containerd://1.7.20)
   containerRuntimeVersion() string
+  // Runtime delegates inferred for this node
+  runtimeDelegates() []os.container.runtimeDelegate
   // Container images present on the node (names + sizeBytes)
   images() []dict
+  // Normalized runtime-cache images present on the node
+  runtimeImages() []os.container.runtimeImage
   // Volumes currently attached to the node
   //
   // Each entry has name (the attached volume's unique name) and devicePath
@@ -577,6 +581,10 @@ private k8s.pod @defaults("namespace name created") @context("k8s.context") {
   containers() []k8s.container
   // Container statuses
   containerStatuses() []k8s.containerStatus
+  // Init container statuses
+  initContainerStatuses() []k8s.containerStatus
+  // Ephemeral container statuses
+  ephemeralContainerStatuses() []k8s.containerStatus
   // Running image digests
   //
   // Unique sha256 digests actually running in this pod, as resolved by the
@@ -2059,6 +2067,10 @@ private k8s.containerStatus @defaults("name ready restartCount") {
   // as `cpu` or `memory`) to quantity, plus `claims`, a list of
   // resource claim references by name.
   resources dict
+  // Runtime image matched from this container status
+  runtimeImage() os.container.runtimeImage
+  // Runtime image match status: matched, notPresent, ambiguous, or runtimeUnavailable
+  runtimeImageStatus() string
 }
 
 // Kubernetes init container

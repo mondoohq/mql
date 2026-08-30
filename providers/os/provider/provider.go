@@ -23,6 +23,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/upstream"
 	"go.mondoo.com/mql/providers-sdk/v1/vault"
 	"go.mondoo.com/mql/providers/os/connection/container"
+	containerruntime "go.mondoo.com/mql/providers/os/connection/container/runtime"
 	"go.mondoo.com/mql/providers/os/connection/device"
 	"go.mondoo.com/mql/providers/os/connection/docker"
 	"go.mondoo.com/mql/providers/os/connection/fs"
@@ -501,6 +502,9 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 
 		case shared.Type_RegistryImage.String():
 			conn, err = container.NewRegistryImage(connId, conf, asset)
+
+		case shared.Type_RuntimeImage.String():
+			conn, err = containerruntime.NewRuntimeImage(connId, conf, asset)
 
 		case shared.Type_FileSystem.String():
 			conn, err = fs.NewConnection(connId, conf, asset)

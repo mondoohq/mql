@@ -28,6 +28,7 @@ var Config = plugin.Provider{
 		shared.Type_DockerRegistry.String(),
 		shared.Type_ContainerRegistry.String(),
 		shared.Type_RegistryImage.String(),
+		shared.Type_RuntimeImage.String(),
 		shared.Type_FileSystem.String(),
 		shared.Type_Winrm.String(),
 		shared.Type_Device.String(),

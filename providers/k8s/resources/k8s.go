@@ -10,9 +10,11 @@ import (
 )
 
 type mqlK8sInternal struct {
-	lock                  sync.Mutex
-	nodesByName           map[string]*mqlK8sNode
-	serviceAccountsByName map[string]*mqlK8sServiceaccount
+	lock                   sync.Mutex
+	nodesByName            map[string]*mqlK8sNode
+	serviceAccountsByName  map[string]*mqlK8sServiceaccount
+	runtimeImageLookupLock sync.Mutex
+	runtimeImageLookup     *runtimeImageClusterLookup
 }
 
 func (k *mqlK8s) serverVersion() (any, error) {

@@ -230,8 +230,56 @@ func (k *mqlK8sNode) containerRuntimeVersion() (string, error) {
 	return k.obj.Status.NodeInfo.ContainerRuntimeVersion, nil
 }
 
+func (k *mqlK8sNode) runtimeDelegates() ([]any, error) {
+	runtimeKind := runtimeKindFromVersion(k.obj.Status.NodeInfo.ContainerRuntimeVersion)
+	if runtimeKind == "" {
+		return []any{}, nil
+	}
+	if settings, err := runtimeCacheSettingsFromRuntime(k.MqlRuntime); err != nil {
+		return nil, err
+	} else if settings != nil {
+		delegatesByKind := runtimeCacheDelegatesByKind(settings.Delegates)
+		delegates := delegatesByKind[runtimeKind]
+		out := make([]any, 0, len(delegates))
+		for _, delegate := range delegates {
+			r, err := createSharedRuntimeResource(k.MqlRuntime, "container.runtimeDelegate", runtimeDelegateArgsFromRuntimeCacheDelegate(k.obj.GetName(), settings, delegate))
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, r)
+		}
+		return out, nil
+	}
+	delegate, err := createSharedRuntimeResource(k.MqlRuntime, "container.runtimeDelegate", runtimeDelegateArgsFromK8sNode(k.obj.GetName(), runtimeKind))
+	if err != nil {
+		return nil, err
+	}
+	return []any{delegate}, nil
+}
+
 func (k *mqlK8sNode) images() ([]any, error) {
 	return convert.JsonToDictSlice(k.obj.Status.Images)
+}
+
+func (k *mqlK8sNode) runtimeImages() ([]any, error) {
+	out := make([]any, 0, len(k.obj.Status.Images))
+	runtimeKind := runtimeKindFromVersion(k.obj.Status.NodeInfo.ContainerRuntimeVersion)
+	for _, image := range k.obj.Status.Images {
+		args := runtimeImageArgsFromK8sNames(k.obj.GetName(), runtimeKind, image.Names, image.SizeBytes, nil, "pending")
+		img, err := createSharedRuntimeResource(k.MqlRuntime, "container.runtimeImage", args)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, img)
+	}
+	return out, nil
+}
+
+func createSharedRuntimeResource(runtime *plugin.Runtime, name string, args map[string]*llx.RawData) (plugin.Resource, error) {
+	if runtime == nil || runtime.Callback == nil {
+		return nil, errors.New("shared container runtime resources require provider callback")
+	}
+	return runtime.CreateSharedResource(name, args)
 }
 
 func (k *mqlK8sNode) volumesAttached() ([]any, error) {

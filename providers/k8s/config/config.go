@@ -42,6 +42,7 @@ Examples:
 				resources.DiscoveryAdmissionReviews,
 				resources.DiscoveryClusters,
 				resources.DiscoveryContainerImages,
+				resources.DiscoveryRuntimeCache,
 				resources.DiscoveryCronJobs,
 				resources.DiscoveryDaemonSets,
 				resources.DiscoveryDeployments,

@@ -897,8 +897,14 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"k8s.node.containerRuntimeVersion": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sNode).GetContainerRuntimeVersion()).ToDataRes(types.String)
 	},
+	"k8s.node.runtimeDelegates": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sNode).GetRuntimeDelegates()).ToDataRes(types.Array(types.Resource("container.runtimeDelegate")))
+	},
 	"k8s.node.images": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sNode).GetImages()).ToDataRes(types.Array(types.Dict))
+	},
+	"k8s.node.runtimeImages": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sNode).GetRuntimeImages()).ToDataRes(types.Array(types.Resource("container.runtimeImage")))
 	},
 	"k8s.node.volumesAttached": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sNode).GetVolumesAttached()).ToDataRes(types.Array(types.Dict))
@@ -1100,6 +1106,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"k8s.pod.containerStatuses": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sPod).GetContainerStatuses()).ToDataRes(types.Array(types.Resource("k8s.containerStatus")))
+	},
+	"k8s.pod.initContainerStatuses": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sPod).GetInitContainerStatuses()).ToDataRes(types.Array(types.Resource("k8s.containerStatus")))
+	},
+	"k8s.pod.ephemeralContainerStatuses": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sPod).GetEphemeralContainerStatuses()).ToDataRes(types.Array(types.Resource("k8s.containerStatus")))
 	},
 	"k8s.pod.runningImageDigests": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sPod).GetRunningImageDigests()).ToDataRes(types.Array(types.String))
@@ -2663,6 +2675,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"k8s.containerStatus.resources": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sContainerStatus).GetResources()).ToDataRes(types.Dict)
+	},
+	"k8s.containerStatus.runtimeImage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sContainerStatus).GetRuntimeImage()).ToDataRes(types.Resource("container.runtimeImage"))
+	},
+	"k8s.containerStatus.runtimeImageStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sContainerStatus).GetRuntimeImageStatus()).ToDataRes(types.String)
 	},
 	"k8s.initContainer.uid": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sInitContainer).GetUid()).ToDataRes(types.String)
@@ -6308,8 +6326,16 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlK8sNode).ContainerRuntimeVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"k8s.node.runtimeDelegates": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sNode).RuntimeDelegates, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"k8s.node.images": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlK8sNode).Images, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.node.runtimeImages": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sNode).RuntimeImages, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"k8s.node.volumesAttached": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -6594,6 +6620,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"k8s.pod.containerStatuses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlK8sPod).ContainerStatuses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.pod.initContainerStatuses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sPod).InitContainerStatuses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.pod.ephemeralContainerStatuses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sPod).EphemeralContainerStatuses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"k8s.pod.runningImageDigests": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -8710,6 +8744,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"k8s.containerStatus.resources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlK8sContainerStatus).Resources, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"k8s.containerStatus.runtimeImage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sContainerStatus).RuntimeImage, ok = plugin.RawToTValue[plugin.Resource](v.Value, v.Error)
+		return
+	},
+	"k8s.containerStatus.runtimeImageStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sContainerStatus).RuntimeImageStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"k8s.initContainer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -14803,7 +14845,9 @@ type mqlK8sNode struct {
 	KernelVersion                    plugin.TValue[string]
 	KubeletVersion                   plugin.TValue[string]
 	ContainerRuntimeVersion          plugin.TValue[string]
+	RuntimeDelegates                 plugin.TValue[[]any]
 	Images                           plugin.TValue[[]any]
+	RuntimeImages                    plugin.TValue[[]any]
 	VolumesAttached                  plugin.TValue[[]any]
 	VolumesInUse                     plugin.TValue[[]any]
 	RuntimeHandlers                  plugin.TValue[[]any]
@@ -15047,9 +15091,41 @@ func (c *mqlK8sNode) GetContainerRuntimeVersion() *plugin.TValue[string] {
 	})
 }
 
+func (c *mqlK8sNode) GetRuntimeDelegates() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RuntimeDelegates, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("k8s.node", c.__id, "runtimeDelegates")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.runtimeDelegates()
+	})
+}
+
 func (c *mqlK8sNode) GetImages() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Images, func() ([]any, error) {
 		return c.images()
+	})
+}
+
+func (c *mqlK8sNode) GetRuntimeImages() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RuntimeImages, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("k8s.node", c.__id, "runtimeImages")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.runtimeImages()
 	})
 }
 
@@ -15330,6 +15406,8 @@ type mqlK8sPod struct {
 	InitContainers                plugin.TValue[[]any]
 	Containers                    plugin.TValue[[]any]
 	ContainerStatuses             plugin.TValue[[]any]
+	InitContainerStatuses         plugin.TValue[[]any]
+	EphemeralContainerStatuses    plugin.TValue[[]any]
 	RunningImageDigests           plugin.TValue[[]any]
 	HasImageDigestDrift           plugin.TValue[bool]
 	Services                      plugin.TValue[[]any]
@@ -15769,6 +15847,38 @@ func (c *mqlK8sPod) GetContainerStatuses() *plugin.TValue[[]any] {
 		}
 
 		return c.containerStatuses()
+	})
+}
+
+func (c *mqlK8sPod) GetInitContainerStatuses() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.InitContainerStatuses, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("k8s.pod", c.__id, "initContainerStatuses")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.initContainerStatuses()
+	})
+}
+
+func (c *mqlK8sPod) GetEphemeralContainerStatuses() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EphemeralContainerStatuses, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("k8s.pod", c.__id, "ephemeralContainerStatuses")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.ephemeralContainerStatuses()
 	})
 }
 
@@ -20047,16 +20157,18 @@ type mqlK8sContainerStatus struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlK8sContainerStatusInternal it will be used here
-	Name         plugin.TValue[string]
-	Ready        plugin.TValue[bool]
-	Started      plugin.TValue[bool]
-	RestartCount plugin.TValue[int64]
-	Image        plugin.TValue[string]
-	ImageId      plugin.TValue[string]
-	ContainerId  plugin.TValue[string]
-	State        plugin.TValue[any]
-	LastState    plugin.TValue[any]
-	Resources    plugin.TValue[any]
+	Name               plugin.TValue[string]
+	Ready              plugin.TValue[bool]
+	Started            plugin.TValue[bool]
+	RestartCount       plugin.TValue[int64]
+	Image              plugin.TValue[string]
+	ImageId            plugin.TValue[string]
+	ContainerId        plugin.TValue[string]
+	State              plugin.TValue[any]
+	LastState          plugin.TValue[any]
+	Resources          plugin.TValue[any]
+	RuntimeImage       plugin.TValue[plugin.Resource]
+	RuntimeImageStatus plugin.TValue[string]
 }
 
 // createK8sContainerStatus creates a new instance of this resource
@@ -20129,6 +20241,28 @@ func (c *mqlK8sContainerStatus) GetLastState() *plugin.TValue[any] {
 
 func (c *mqlK8sContainerStatus) GetResources() *plugin.TValue[any] {
 	return &c.Resources
+}
+
+func (c *mqlK8sContainerStatus) GetRuntimeImage() *plugin.TValue[plugin.Resource] {
+	return plugin.GetOrCompute[plugin.Resource](&c.RuntimeImage, func() (plugin.Resource, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("k8s.containerStatus", c.__id, "runtimeImage")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(plugin.Resource), nil
+			}
+		}
+
+		return c.runtimeImage()
+	})
+}
+
+func (c *mqlK8sContainerStatus) GetRuntimeImageStatus() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.RuntimeImageStatus, func() (string, error) {
+		return c.runtimeImageStatus()
+	})
 }
 
 // mqlK8sInitContainer for the k8s.initContainer resource
