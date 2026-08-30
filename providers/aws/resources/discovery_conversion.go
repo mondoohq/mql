@@ -126,6 +126,9 @@ func getPlatformName(awsObject awsObject) string {
 		if awsObject.objectType == "dbcluster" {
 			return "aws-rds-dbcluster"
 		}
+		if awsObject.objectType == "snapshot" {
+			return "aws-rds-snapshot"
+		}
 	case "dynamodb":
 		switch awsObject.objectType {
 		case "table":

@@ -271,7 +271,9 @@ func (a *mqlAwsRedshiftCluster) vpc() (*mqlAwsVpc, error) {
 }
 
 func (a *mqlAwsRedshiftCluster) kmsKey() (*mqlAwsKmsKey, error) {
-	if a.cacheKmsKeyId == nil || *a.cacheKmsKeyId == "" {
+	// Clusters without a customer-referenceable key report the sentinel
+	// "AWS_OWNED_KMS_KEY" instead of a key ARN; resolving it as a key errors.
+	if a.cacheKmsKeyId == nil || *a.cacheKmsKeyId == "" || *a.cacheKmsKeyId == "AWS_OWNED_KMS_KEY" {
 		a.KmsKey.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}

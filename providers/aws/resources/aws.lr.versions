@@ -8423,6 +8423,7 @@ aws.rds.snapshot.storageEncryptionType 13.3.1
 aws.rds.snapshot.tags 11.15.2
 aws.rds.snapshot.timezone 13.14.2
 aws.rds.snapshot.type 11.15.2
+aws.rds.snapshots 13.53.4
 aws.redshift 11.15.2
 aws.redshift.cluster 11.15.2
 aws.redshift.cluster.allowVersionUpgrade 11.15.2

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/service/mq"
@@ -178,12 +179,16 @@ func newMqlAwsMqBroker(runtime *plugin.Runtime, region string, accountID string,
 
 	resource, err := CreateResource(runtime, "aws.mq.broker",
 		map[string]*llx.RawData{
-			"__id":             llx.StringDataPtr(broker.BrokerArn),
-			"arn":              llx.StringDataPtr(broker.BrokerArn),
-			"brokerId":         llx.StringDataPtr(broker.BrokerId),
-			"name":             llx.StringDataPtr(broker.BrokerName),
-			"state":            llx.StringData(string(broker.BrokerState)),
-			"engineType":       llx.StringData(string(broker.EngineType)),
+			"__id":     llx.StringDataPtr(broker.BrokerArn),
+			"arn":      llx.StringDataPtr(broker.BrokerArn),
+			"brokerId": llx.StringDataPtr(broker.BrokerId),
+			"name":     llx.StringDataPtr(broker.BrokerName),
+			"state":    llx.StringData(string(broker.BrokerState)),
+			// The SDK's EngineType constants are "ACTIVEMQ"/"RABBITMQ", but the
+			// live API returns mixed case ("ActiveMQ", verified via
+			// `aws mq list-brokers`). Normalize to the schema-documented
+			// uppercase form so consumers can rely on it.
+			"engineType":       llx.StringData(strings.ToUpper(string(broker.EngineType))),
 			"deploymentMode":   llx.StringData(string(broker.DeploymentMode)),
 			"hostInstanceType": llx.StringDataPtr(broker.HostInstanceType),
 			"region":           llx.StringData(region),
@@ -238,12 +243,13 @@ func newMqlAwsMqConfiguration(runtime *plugin.Runtime, region string, cfg mq_typ
 
 	resource, err := CreateResource(runtime, "aws.mq.configuration",
 		map[string]*llx.RawData{
-			"__id":                      llx.StringDataPtr(cfg.Arn),
-			"arn":                       llx.StringDataPtr(cfg.Arn),
-			"id":                        llx.StringDataPtr(cfg.Id),
-			"name":                      llx.StringDataPtr(cfg.Name),
-			"description":               llx.StringDataPtr(cfg.Description),
-			"engineType":                llx.StringData(string(cfg.EngineType)),
+			"__id":        llx.StringDataPtr(cfg.Arn),
+			"arn":         llx.StringDataPtr(cfg.Arn),
+			"id":          llx.StringDataPtr(cfg.Id),
+			"name":        llx.StringDataPtr(cfg.Name),
+			"description": llx.StringDataPtr(cfg.Description),
+			// see broker engineType: live API values are mixed case
+			"engineType":                llx.StringData(strings.ToUpper(string(cfg.EngineType))),
 			"engineVersion":             llx.StringDataPtr(cfg.EngineVersion),
 			"authenticationStrategy":    llx.StringData(string(cfg.AuthenticationStrategy)),
 			"created":                   created,

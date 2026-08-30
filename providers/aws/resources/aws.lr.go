@@ -2859,7 +2859,7 @@ func init() {
 			Create: createAwsRdsDbcluster,
 		},
 		"aws.rds.snapshot": {
-			// to override args, implement: initAwsRdsSnapshot(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initAwsRdsSnapshot,
 			Create: createAwsRdsSnapshot,
 		},
 		"aws.rds.dbinstance": {
@@ -18730,6 +18730,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.rds.clusters": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRds).GetClusters()).ToDataRes(types.Array(types.Resource("aws.rds.dbcluster")))
+	},
+	"aws.rds.snapshots": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRds).GetSnapshots()).ToDataRes(types.Array(types.Resource("aws.rds.snapshot")))
 	},
 	"aws.rds.allPendingMaintenanceActions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRds).GetAllPendingMaintenanceActions()).ToDataRes(types.Array(types.Resource("aws.rds.pendingMaintenanceAction")))
@@ -57193,6 +57196,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.rds.clusters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsRds).Clusters, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.rds.snapshots": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRds).Snapshots, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.rds.allPendingMaintenanceActions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -137683,6 +137690,7 @@ type mqlAwsRds struct {
 	// optional: if you define mqlAwsRdsInternal it will be used here
 	Instances                    plugin.TValue[[]any]
 	Clusters                     plugin.TValue[[]any]
+	Snapshots                    plugin.TValue[[]any]
 	AllPendingMaintenanceActions plugin.TValue[[]any]
 	ParameterGroups              plugin.TValue[[]any]
 	ClusterParameterGroups       plugin.TValue[[]any]
@@ -137758,6 +137766,22 @@ func (c *mqlAwsRds) GetClusters() *plugin.TValue[[]any] {
 		}
 
 		return c.clusters()
+	})
+}
+
+func (c *mqlAwsRds) GetSnapshots() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Snapshots, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.rds", c.__id, "snapshots")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.snapshots()
 	})
 }
 

@@ -21,6 +21,7 @@ const (
 	PlatformCloudtrailTrail           = "aws-cloudtrail-trail"
 	PlatformRdsDbinstance             = "aws-rds-dbinstance"
 	PlatformRdsDbcluster              = "aws-rds-dbcluster"
+	PlatformRdsSnapshot               = "aws-rds-snapshot"
 	PlatformDynamodbTable             = "aws-dynamodb-table"
 	PlatformDynamodbGlobaltable       = "aws-dynamodb-globaltable"
 	PlatformRedshiftCluster           = "aws-redshift-cluster"
@@ -80,6 +81,7 @@ var Platforms = []*plugin.PlatformInfo{
 	{Name: PlatformCloudtrailTrail, Title: "AWS CloudTrail Trail", Kind: []string{"aws-object"}, Runtime: []string{"aws"}},
 	{Name: PlatformRdsDbinstance, Title: "AWS RDS DB Instance", Kind: []string{"aws-object"}, Runtime: []string{"aws"}},
 	{Name: PlatformRdsDbcluster, Title: "AWS RDS DB Cluster", Kind: []string{"aws-object"}, Runtime: []string{"aws"}},
+	{Name: PlatformRdsSnapshot, Title: "AWS RDS Snapshot", Kind: []string{"aws-object"}, Runtime: []string{"aws"}},
 	{Name: PlatformDynamodbTable, Title: "AWS DynamoDB Table", Kind: []string{"aws-object"}, Runtime: []string{"aws"}},
 	{Name: PlatformDynamodbGlobaltable, Title: "AWS DynamoDB Global Table", Kind: []string{"aws-object"}, Runtime: []string{"aws"}},
 	{Name: PlatformRedshiftCluster, Title: "AWS Redshift Cluster", Kind: []string{"aws-object"}, Runtime: []string{"aws"}},

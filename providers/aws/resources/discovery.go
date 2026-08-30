@@ -6,6 +6,7 @@ package resources
 import (
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/rs/zerolog/log"
@@ -39,6 +40,7 @@ const (
 	DiscoveryCloudtrailTrails            = "cloudtrail-trails"
 	DiscoveryRdsDbInstances              = "rds-dbinstances"
 	DiscoveryRdsDbClusters               = "rds-dbclusters"
+	DiscoveryRdsSnapshots                = "rds-snapshots"
 	DiscoveryVPCs                        = "vpcs"
 	DiscoverySecurityGroups              = "security-groups"
 	DiscoveryIAMUsers                    = "iam-users"
@@ -105,6 +107,7 @@ var AllAPIResources = []string{
 	DiscoveryDynamoDBTables,
 	DiscoveryDynamoDBGlobalTables,
 	DiscoveryRedshiftClusters,
+	DiscoveryRdsSnapshots,
 	DiscoveryVolumes,
 	DiscoverySnapshots,
 	DiscoveryEFSFilesystems,
@@ -923,6 +926,36 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 			}
 			assetList = append(assetList, MqlObjectToAsset(accountId, m, conn))
 		}
+	case DiscoveryRdsSnapshots:
+		res, err := NewResource(runtime, "aws.rds", map[string]*llx.RawData{})
+		if err != nil {
+			return nil, err
+		}
+
+		r := res.(*mqlAwsRds)
+
+		ras := r.GetSnapshots()
+		if ras == nil {
+			return assetList, nil
+		}
+
+		for i := range ras.Data {
+			f := ras.Data[i].(*mqlAwsRdsSnapshot)
+
+			var tags map[string]string
+			tagsResult := f.GetTags()
+			if tagsResult != nil && tagsResult.Data != nil {
+				tags = mapStringInterfaceToStringString(tagsResult.Data)
+			}
+			m := mqlObject{
+				name: f.Id.Data, labels: tags,
+				awsObject: awsObject{
+					account: accountId, region: f.Region.Data, arn: f.Arn.Data,
+					id: f.Id.Data, service: "rds", objectType: "snapshot",
+				},
+			}
+			assetList = append(assetList, MqlObjectToAsset(accountId, m, conn))
+		}
 	case DiscoveryELBLoadBalancers:
 		res, err := NewResource(runtime, "aws.elb", map[string]*llx.RawData{})
 		if err != nil {
@@ -981,6 +1014,14 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 		for i := range ras.Data {
 			f := ras.Data[i].(*mqlAwsEsDomain)
 
+			// The legacy ES ListDomainNames API returns domains of BOTH engine
+			// types. Domains running the OpenSearch engine belong to
+			// DiscoveryOpenSearchDomains (platform aws-opensearch-domain);
+			// claiming them here would shadow that platform for every domain.
+			if strings.HasPrefix(f.ElasticsearchVersion.Data, "OpenSearch") {
+				continue
+			}
+
 			tags := mapStringInterfaceToStringString(f.Tags.Data)
 			m := mqlObject{
 				name: f.Name.Data, labels: tags,
@@ -1006,6 +1047,13 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 
 		for i := range ras.Data {
 			f := ras.Data[i].(*mqlAwsOpensearchDomain)
+
+			// The OpenSearch ListDomainNames API also returns legacy
+			// Elasticsearch-engine domains; those are DiscoveryESDomains'
+			// assets (platform aws-es-domain).
+			if strings.HasPrefix(f.EngineVersion.Data, "Elasticsearch") {
+				continue
+			}
 
 			var tags map[string]string
 			tagsResult := f.GetTags()

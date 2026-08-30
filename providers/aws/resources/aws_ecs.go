@@ -1074,19 +1074,10 @@ func createContainerDefinitionResource(runtime *plugin.Runtime, taskDefArn strin
 			return nil, err
 		}
 		logConfig = mqlLogConfig
-	} else {
-		// Create empty log configuration
-		mqlLogConfig, err := CreateResource(runtime, ResourceAwsEcsTaskDefinitionContainerDefinitionLogConfiguration,
-			map[string]*llx.RawData{
-				"__id":      llx.StringData(taskDefArn + "/container/" + name + "/logConfiguration"),
-				"logDriver": llx.StringData(""),
-				"options":   llx.MapData(map[string]any{}, types.String),
-			})
-		if err != nil {
-			return nil, err
-		}
-		logConfig = mqlLogConfig
 	}
+	// When the API returns no log configuration, the field stays null. Creating
+	// an empty sub-resource here made `logConfiguration != empty` true for
+	// EVERY container, so logging checks could never fail.
 
 	// Create port mappings
 	portMappings := []any{}
@@ -1161,10 +1152,10 @@ func createContainerDefinitionResource(runtime *plugin.Runtime, taskDefArn strin
 		repositoryCredentialsParameter = convert.ToValue(cd.RepositoryCredentials.CredentialsParameter)
 	}
 
-	// Type assert logConfig to Resource
-	logConfigResource, ok := logConfig.(plugin.Resource)
-	if !ok {
-		return nil, errors.New("failed to convert logConfig to Resource")
+	// Null when the container has no log configuration.
+	logConfigData := llx.NilData
+	if logConfigResource, ok := logConfig.(plugin.Resource); ok {
+		logConfigData = llx.ResourceData(logConfigResource, "aws.ecs.taskDefinition.containerDefinition.logConfiguration")
 	}
 
 	return CreateResource(runtime, ResourceAwsEcsTaskDefinitionContainerDefinition,
@@ -1177,7 +1168,7 @@ func createContainerDefinitionResource(runtime *plugin.Runtime, taskDefArn strin
 			"user":                           llx.StringData(user),
 			"environment":                    llx.ArrayData(envVars, types.Resource("aws.ecs.taskDefinition.containerDefinition.environmentVariable")),
 			"secrets":                        llx.ArrayData(secrets, types.Resource("aws.ecs.taskDefinition.containerDefinition.secret")),
-			"logConfiguration":               llx.ResourceData(logConfigResource, "aws.ecs.taskDefinition.containerDefinition.logConfiguration"),
+			"logConfiguration":               logConfigData,
 			"memory":                         llx.IntData(memory),
 			"cpu":                            llx.IntData(cpu),
 			"portMappings":                   llx.ArrayData(portMappings, types.Resource("aws.ecs.taskDefinition.containerDefinition.portMapping")),

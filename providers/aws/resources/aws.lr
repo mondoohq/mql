@@ -13801,6 +13801,11 @@ aws.rds {
   instances() []aws.rds.dbinstance
   // List of RDS database clusters
   clusters() []aws.rds.dbcluster
+  // List of all DB instance and DB cluster snapshots in the account
+  //
+  // Includes manual and automated snapshots, and snapshots whose source
+  // instance or cluster has since been deleted.
+  snapshots() []aws.rds.snapshot
   // List of all pending maintenance actions for the database instance
   allPendingMaintenanceActions() []aws.rds.pendingMaintenanceAction
   // List of all parameter groups

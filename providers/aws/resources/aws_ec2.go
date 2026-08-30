@@ -2690,7 +2690,7 @@ func buildVolumeResource(runtime *plugin.Runtime, region, accountID string, vol 
 			"tags":               llx.MapData(toInterfaceMap(ec2TagsToMap(vol.Tags)), types.String),
 			"throughput":         llx.IntDataDefault(vol.Throughput, 0),
 			"volumeType":         llx.StringData(string(vol.VolumeType)),
-			"sseType":            llx.StringData(string(vol.SseType)),
+			"sseType":            llx.StringData(deriveVolumeSseType(vol)),
 			"fastRestored":       llx.BoolDataPtr(vol.FastRestored),
 			"snapshotId":         llx.StringDataPtr(vol.SnapshotId),
 		})
@@ -4922,4 +4922,19 @@ func (a *mqlAwsEc2Snapshot) sharedExternally() (bool, error) {
 		return false, accounts.Error
 	}
 	return len(accounts.Data) > 0, nil
+}
+
+// deriveVolumeSseType returns the volume's SSE type, deriving it for
+// regions/accounts where DescribeVolumes omits SseType: an encrypted volume
+// always has a KMS key (sse-kms), an unencrypted one has no SSE at all.
+// Without this, encryption-type checks can never pass where the field is
+// missing from the API response.
+func deriveVolumeSseType(vol ec2types.Volume) string {
+	if sse := string(vol.SseType); sse != "" {
+		return sse
+	}
+	if convert.ToValue(vol.Encrypted) {
+		return "sse-kms"
+	}
+	return "none"
 }

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	rds_types "github.com/aws/aws-sdk-go-v2/service/rds/types"
 	"github.com/aws/smithy-go/transport/http"
@@ -959,6 +960,11 @@ func (a *mqlAwsRdsDbinstance) snapshots() ([]any, error) {
 			return nil, err
 		}
 		for _, snapshot := range snapshots.DBSnapshots {
+			// defensive: the parent instance list is already engine-filtered,
+			// but keep the account-wide listing and this one consistent
+			if snapshot.Engine != nil && slices.Contains(nonRdsEngines, *snapshot.Engine) {
+				continue
+			}
 			mqlDbSnapshot, err := newMqlAwsRdsDbSnapshot(a.MqlRuntime, region, snapshot)
 			if err != nil {
 				return nil, err
@@ -967,6 +973,122 @@ func (a *mqlAwsRdsDbinstance) snapshots() ([]any, error) {
 		}
 	}
 	return res, nil
+}
+
+// snapshots lists every DB instance and DB cluster snapshot in the account,
+// including snapshots whose source instance or cluster no longer exists --
+// exactly the orphans a security review cares about most.
+func (a *mqlAwsRds) snapshots() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+
+	return perRegion(conn, "rds", func(ctx context.Context, region string) ([]any, error) {
+		res := []any{}
+		svc := conn.Rds(region)
+
+		paginator := rds.NewDescribeDBSnapshotsPaginator(svc, &rds.DescribeDBSnapshotsInput{})
+		for paginator.HasMorePages() {
+			snapshots, err := paginator.NextPage(ctx)
+			if err != nil {
+				return nil, err
+			}
+			for _, snapshot := range snapshots.DBSnapshots {
+				// the shared RDS API also returns snapshots of non-RDS engines
+				if snapshot.Engine != nil && slices.Contains(nonRdsEngines, *snapshot.Engine) {
+					continue
+				}
+				if conn.Filters.General.IsFilteredOutByTags(mapStringInterfaceToStringString(rdsTagsToMap(snapshot.TagList))) {
+					continue
+				}
+				mqlSnapshot, err := newMqlAwsRdsDbSnapshot(a.MqlRuntime, region, snapshot)
+				if err != nil {
+					return nil, err
+				}
+				res = append(res, mqlSnapshot)
+			}
+		}
+
+		clusterPaginator := rds.NewDescribeDBClusterSnapshotsPaginator(svc, &rds.DescribeDBClusterSnapshotsInput{})
+		for clusterPaginator.HasMorePages() {
+			snapshots, err := clusterPaginator.NextPage(ctx)
+			if err != nil {
+				return nil, err
+			}
+			for _, snapshot := range snapshots.DBClusterSnapshots {
+				// DocumentDB and Neptune cluster snapshots come through the same
+				// API; they are not RDS assets
+				if snapshot.Engine != nil && slices.Contains(nonRdsEngines, *snapshot.Engine) {
+					continue
+				}
+				if conn.Filters.General.IsFilteredOutByTags(mapStringInterfaceToStringString(rdsTagsToMap(snapshot.TagList))) {
+					continue
+				}
+				mqlSnapshot, err := newMqlAwsRdsClusterSnapshot(a.MqlRuntime, region, snapshot)
+				if err != nil {
+					return nil, err
+				}
+				res = append(res, mqlSnapshot)
+			}
+		}
+		return res, nil
+	})
+}
+
+// initAwsRdsSnapshot resolves a single snapshot from its ARN, so aws.rds.snapshot
+// works in per-asset scans of aws-rds-snapshot assets.
+func initAwsRdsSnapshot(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if len(args) > 2 {
+		return args, nil, nil
+	}
+
+	if len(args) == 0 {
+		if assetArn := getAssetIdentifier(runtime, connection.PlatformRdsSnapshot); assetArn != "" {
+			args["arn"] = llx.StringData(assetArn)
+		}
+	}
+
+	if args["arn"] == nil {
+		return nil, nil, errors.New("arn required to fetch rds snapshot")
+	}
+	arnVal := args["arn"].Value.(string)
+
+	parsed, err := arn.Parse(arnVal)
+	if err != nil {
+		return nil, nil, errors.New("invalid arn for rds snapshot: " + arnVal)
+	}
+
+	conn := runtime.Connection.(*connection.AwsConnection)
+	svc := conn.Rds(parsed.Region)
+	ctx := context.Background()
+
+	switch {
+	case strings.HasPrefix(parsed.Resource, "cluster-snapshot:"):
+		id := strings.TrimPrefix(parsed.Resource, "cluster-snapshot:")
+		resp, err := svc.DescribeDBClusterSnapshots(ctx, &rds.DescribeDBClusterSnapshotsInput{DBClusterSnapshotIdentifier: &id})
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(resp.DBClusterSnapshots) > 0 {
+			snapshot, err := newMqlAwsRdsClusterSnapshot(runtime, parsed.Region, resp.DBClusterSnapshots[0])
+			if err != nil {
+				return nil, nil, err
+			}
+			return args, snapshot, nil
+		}
+	case strings.HasPrefix(parsed.Resource, "snapshot:"):
+		id := strings.TrimPrefix(parsed.Resource, "snapshot:")
+		resp, err := svc.DescribeDBSnapshots(ctx, &rds.DescribeDBSnapshotsInput{DBSnapshotIdentifier: &id})
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(resp.DBSnapshots) > 0 {
+			snapshot, err := newMqlAwsRdsDbSnapshot(runtime, parsed.Region, resp.DBSnapshots[0])
+			if err != nil {
+				return nil, nil, err
+			}
+			return args, snapshot, nil
+		}
+	}
+	return nil, nil, errors.New("rds snapshot does not exist")
 }
 
 // pendingMaintenanceActions returns all pending maintenance actions for the RDS instance
@@ -1451,6 +1573,11 @@ func (a *mqlAwsRdsDbcluster) snapshots() ([]any, error) {
 			return nil, err
 		}
 		for _, snapshot := range snapshots.DBClusterSnapshots {
+			// defensive: the parent cluster list is already engine-filtered,
+			// but keep the account-wide listing and this one consistent
+			if snapshot.Engine != nil && slices.Contains(nonRdsEngines, *snapshot.Engine) {
+				continue
+			}
 			mqlDbSnapshot, err := newMqlAwsRdsClusterSnapshot(a.MqlRuntime, region, snapshot)
 			if err != nil {
 				return nil, err
