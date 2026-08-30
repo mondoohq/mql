@@ -90,12 +90,24 @@ func (m *manifest) license() string {
 	// The grammar makes ',' a separator between licenses, but real manifests
 	// also write an identifier that contains one: "The Apache License, Version
 	// 2.0;link=..." is a single license, and it is what Eclipse/Tycho bundles
-	// emit. Nothing distinguishes that from a genuine two-license header, so
-	// the members are rejoined into one value rather than OR-joined. Rejoining
-	// reproduces what the manifest said; OR-joining would report a bundle as
-	// dual-licensed under "The Apache License" or "Version 2.0", inventing a
-	// choice the bundle never offered.
+	// emit. The two shapes are told apart by what the pieces look like. A
+	// header whose every piece is identifier-shaped is a genuine list, and
+	// OR-joining it says what OSGi means by a list: the bundle is offered under
+	// any of them. A header with a piece that is not, like "Version 2.0", is
+	// one name that happens to contain a comma, and its pieces are rejoined.
 	//
+	// The conservative direction is deliberate. Rejoining a genuine list
+	// reproduces what the manifest said and loses only the OR; OR-joining a
+	// split name would report a bundle as dual-licensed under "The Apache
+	// License" or "Version 2.0", a choice it never offered. So anything not
+	// clearly a list is rejoined, which also leaves an operand like
+	// "GPL-2.0-only WITH Classpath-exception-2.0" alone rather than guessing.
+	if len(names) > 1 && allIdentifierShaped(names) {
+		// LicenseExpression applies the shared bounds and the parenthesisation
+		// that keeps the result valid inside a larger expression.
+		return languages.LicenseExpression(names)
+	}
+
 	// The rejoined value carries the same total bound as an OR-joined one: past
 	// it the header is not a license statement, and the whole value is dropped
 	// rather than part of it kept, which would report a bundle as licensed
@@ -105,6 +117,37 @@ func (m *manifest) license() string {
 		return ""
 	}
 	return joined
+}
+
+// allIdentifierShaped reports whether every value could be a bare license
+// identifier: one token of the characters identifiers actually use.
+//
+// It deliberately does not check against the SPDX list. This package reports
+// what a manifest stated rather than what it recognises, and an unlisted
+// identifier is still an identifier; the question here is only whether the
+// comma separated two names or split one.
+func allIdentifierShaped(names []string) bool {
+	for _, n := range names {
+		if !identifierShaped(n) {
+			return false
+		}
+	}
+	return true
+}
+
+func identifierShaped(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '-' || r == '.' || r == '+' || r == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // licenseIdentifier returns the license-identifier of one entry: everything

@@ -65,11 +65,12 @@ func TestManifestLicense(t *testing.T) {
 			want:   "Apache-2.0",
 		},
 		{
-			// Two licenses, both stated as identifiers. Rejoined rather than
-			// OR-joined, because a comma here is not reliably a separator.
+			// Two licenses, both stated as identifiers. Every piece is
+			// identifier-shaped, so the comma really is the separator the
+			// grammar says it is and the bundle is offering a choice.
 			name:   "two identifiers",
 			header: `Bundle-License: MIT;link="https://opensource.org/licenses/MIT",Apache-2.0;link="https://www.apache.org/licenses/LICENSE-2.0"`,
-			want:   "MIT, Apache-2.0",
+			want:   "(MIT OR Apache-2.0)",
 		},
 		{
 			// The most common real header by a wide margin, and the reason
@@ -244,5 +245,63 @@ func TestBundleLicenseDropsSchemelessURLs(t *testing.T) {
 	} {
 		m := &manifest{Headers: map[string]string{headerBundleLicense: tc.header}}
 		assert.Equal(t, tc.want, m.license(), "Bundle-License: %s", tc.header)
+	}
+}
+
+// OSGi's grammar makes ',' a separator between licenses, but manifests also
+// write a name that contains one. Which it is, is decided by what the pieces
+// look like: all identifier-shaped means the comma separated two licenses, and
+// the bundle is offering a choice, which is SPDX's OR. Anything else is treated
+// as one name that happens to contain a comma.
+//
+// The asymmetry is deliberate. Rejoining a genuine list loses only the OR;
+// OR-joining a split name would report a bundle as dual-licensed under terms it
+// never offered, so anything not clearly a list is rejoined.
+func TestBundleLicenseTellsAListFromANameWithAComma(t *testing.T) {
+	for _, tc := range []struct{ name, header, want string }{
+		{
+			"a list of identifiers is a choice",
+			"MIT,Apache-2.0",
+			"(MIT OR Apache-2.0)",
+		},
+		{
+			"three of them",
+			"MIT, Apache-2.0, BSD-3-Clause",
+			"(MIT OR Apache-2.0 OR BSD-3-Clause)",
+		},
+		{
+			// The Eclipse/Tycho shape: one license whose name carries a comma.
+			"a name containing a comma is one license",
+			"The Apache License, Version 2.0",
+			"The Apache License, Version 2.0",
+		},
+		{
+			// Not clearly a list, so left alone rather than guessed at.
+			"a piece that is not an identifier keeps the whole thing joined",
+			"MIT, GPL-2.0-only WITH Classpath-exception-2.0",
+			"MIT, GPL-2.0-only WITH Classpath-exception-2.0",
+		},
+		{
+			"a single identifier is unchanged",
+			"Apache-2.0",
+			"Apache-2.0",
+		},
+		{
+			"a single name is unchanged",
+			"Eclipse Public License v2.0",
+			"Eclipse Public License v2.0",
+		},
+		{
+			// A link beside a name leaves one entry, so there is no list to
+			// join and no parentheses to add.
+			"a dropped link leaves a single license alone",
+			"Apache-2.0, www.apache.org/licenses/LICENSE-2.0",
+			"Apache-2.0",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := &manifest{Headers: map[string]string{headerBundleLicense: tc.header}}
+			assert.Equal(t, tc.want, m.license())
+		})
 	}
 }
