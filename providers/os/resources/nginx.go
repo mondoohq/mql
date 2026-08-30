@@ -950,15 +950,18 @@ func nginxLocations2Resources(locations []nginxLocation, runtime *plugin.Runtime
 	res := make([]any, len(locations))
 	for i, loc := range locations {
 		obj, err := CreateResource(runtime, "nginx.conf.location", map[string]*llx.RawData{
-			"__id":        llx.StringData(fmt.Sprintf("%s/location/%d-%s", ownerID, i, loc.Path)),
-			"path":        llx.StringData(loc.Path),
-			"modifier":    llx.StringData(loc.Modifier),
-			"proxyPass":   llx.StringData(loc.ProxyPass),
-			"root":        llx.StringData(loc.Root),
-			"tryFiles":    llx.StringData(loc.TryFiles),
-			"return":      llx.StringData(loc.Return),
-			"fastcgiPass": llx.StringData(loc.FastcgiPass),
-			"params":      llx.MapData(loc.Params, types.String),
+			"__id":      llx.StringData(fmt.Sprintf("%s/location/%d-%s", ownerID, i, loc.Path)),
+			"path":      llx.StringData(loc.Path),
+			"modifier":  llx.StringData(loc.Modifier),
+			"proxyPass": llx.StringData(loc.ProxyPass),
+			"root":      llx.StringData(loc.Root),
+			"tryFiles":  llx.StringData(loc.TryFiles),
+			"return":    llx.StringData(loc.Return),
+			// returnDirective duplicates return: the field name `return` is an
+			// MQL keyword and gets eaten by the parser inside a block.
+			"returnDirective": llx.StringData(loc.Return),
+			"fastcgiPass":     llx.StringData(loc.FastcgiPass),
+			"params":          llx.MapData(loc.Params, types.String),
 		})
 		if err != nil {
 			return nil, err

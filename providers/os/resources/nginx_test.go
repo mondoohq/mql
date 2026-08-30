@@ -10,7 +10,9 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/v13/providers/os/resources/nginx"
+	"go.mondoo.com/mql/v13/utils/syncx"
 )
 
 func TestParseNginxServerBlock(t *testing.T) {
@@ -593,4 +595,33 @@ func TestParseNginxLocationDetail(t *testing.T) {
 	assert.Equal(t, "$uri $uri/ =404", loc.TryFiles)
 	assert.Equal(t, "301 https://example.com$request_uri", loc.Return)
 	assert.Equal(t, "unix:/var/run/php-fpm.sock", loc.FastcgiPass)
+}
+
+// The `return` field cannot be read from inside an MQL block: the compiler
+// treats a bare `return` identifier as a return statement, so
+// `nginx.conf.servers { locations { return } }` compiles and silently reads
+// nothing. returnDirective carries the same value under a name the parser
+// does not claim, so it has to be populated wherever `return` is.
+func TestNginxLocationReturnDirective(t *testing.T) {
+	loc := parseNginxLocationBlock("/old", []nginx.Directive{
+		{Name: "return", Args: []string{"301", "https://example.com$request_uri"}},
+	})
+	empty := parseNginxLocationBlock("/plain", []nginx.Directive{
+		{Name: "root", Args: []string{"/var/www/html"}},
+	})
+
+	runtime := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+	res, err := nginxLocations2Resources([]nginxLocation{loc, empty}, runtime, "nginx.conf/etc/nginx/nginx.conf")
+	require.NoError(t, err)
+	require.Len(t, res, 2)
+
+	redirect := res[0].(*mqlNginxConfLocation)
+	assert.Equal(t, "301 https://example.com$request_uri", redirect.ReturnDirective.Data)
+	assert.Equal(t, redirect.Return.Data, redirect.ReturnDirective.Data)
+
+	// a location without a return directive reads as the empty string on both
+	// fields, never as a stale value from the previous location
+	plain := res[1].(*mqlNginxConfLocation)
+	assert.Equal(t, "", plain.ReturnDirective.Data)
+	assert.Equal(t, plain.Return.Data, plain.ReturnDirective.Data)
 }

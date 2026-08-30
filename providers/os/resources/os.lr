@@ -2032,8 +2032,21 @@ private nginx.conf.location @defaults("path") {
   root string
   // try_files directive value
   tryFiles string
-  // return directive value (status + URI/text)
-  return string
+  // return directive value
+  //
+  // Deprecated in favor of returnDirective, which carries the same value.
+  // The name return collides with an MQL keyword, so this field cannot be
+  // read from inside a block: a query such as
+  // `nginx.conf.servers { locations { return } }` compiles but never reads
+  // it. Only dotted access still works.
+  return @maturity("deprecated") string
+  // return directive value
+  //
+  // Status code plus the redirect URI or response text, as written in the
+  // location block. For example "301 https://example.com$request_uri" for a
+  // permanent redirect, or "444" for a connection that is closed without a
+  // response. Empty when the location block has no return directive.
+  returnDirective string
   // fastcgi_pass directive value
   fastcgiPass string
   // All directives within this location block

@@ -4472,6 +4472,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"nginx.conf.location.return": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlNginxConfLocation).GetReturn()).ToDataRes(types.String)
 	},
+	"nginx.conf.location.returnDirective": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlNginxConfLocation).GetReturnDirective()).ToDataRes(types.String)
+	},
 	"nginx.conf.location.fastcgiPass": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlNginxConfLocation).GetFastcgiPass()).ToDataRes(types.String)
 	},
@@ -18051,6 +18054,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"nginx.conf.location.return": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlNginxConfLocation).Return, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"nginx.conf.location.returnDirective": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlNginxConfLocation).ReturnDirective, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"nginx.conf.location.fastcgiPass": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -42917,14 +42924,15 @@ type mqlNginxConfLocation struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlNginxConfLocationInternal it will be used here
-	Path        plugin.TValue[string]
-	Modifier    plugin.TValue[string]
-	ProxyPass   plugin.TValue[string]
-	Root        plugin.TValue[string]
-	TryFiles    plugin.TValue[string]
-	Return      plugin.TValue[string]
-	FastcgiPass plugin.TValue[string]
-	Params      plugin.TValue[map[string]any]
+	Path            plugin.TValue[string]
+	Modifier        plugin.TValue[string]
+	ProxyPass       plugin.TValue[string]
+	Root            plugin.TValue[string]
+	TryFiles        plugin.TValue[string]
+	Return          plugin.TValue[string]
+	ReturnDirective plugin.TValue[string]
+	FastcgiPass     plugin.TValue[string]
+	Params          plugin.TValue[map[string]any]
 }
 
 // createNginxConfLocation creates a new instance of this resource
@@ -42981,6 +42989,10 @@ func (c *mqlNginxConfLocation) GetTryFiles() *plugin.TValue[string] {
 
 func (c *mqlNginxConfLocation) GetReturn() *plugin.TValue[string] {
 	return &c.Return
+}
+
+func (c *mqlNginxConfLocation) GetReturnDirective() *plugin.TValue[string] {
+	return &c.ReturnDirective
 }
 
 func (c *mqlNginxConfLocation) GetFastcgiPass() *plugin.TValue[string] {

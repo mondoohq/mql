@@ -2546,6 +2546,7 @@ nginx.conf.location.params 13.14.1
 nginx.conf.location.path 13.14.1
 nginx.conf.location.proxyPass 13.14.1
 nginx.conf.location.return 13.16.10
+nginx.conf.location.returnDirective 13.40.10
 nginx.conf.location.root 13.14.1
 nginx.conf.location.tryFiles 13.16.10
 nginx.conf.params 13.14.1
