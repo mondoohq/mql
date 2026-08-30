@@ -30,39 +30,48 @@ import (
 // never read — and reports no license at all, from a file already opened and
 // parsed.
 
-// licenseValueMaxBytes bounds a single license header's value.
+// The two headers are bounded, for the same reason and by different numbers.
 //
 // The `License` field was historically free text with no length limit, and
 // distributions routinely paste an entire license *text* into it, continuation
 // line by continuation line — one of the concrete problems PEP 639 exists to
 // solve. That is a license text, not a license name: carried into
 // Package.License it reaches every SBOM this produces as though it were an
-// identifier, and no consumer can match it against one.
+// identifier, and no consumer can match it against one. It is a name, so it
+// gets the name bound.
 //
-// Past this length the field is discarded rather than reported, which also lets
-// the trove classifiers below it answer instead. Every identifier and
-// expression that occurs in practice is far under this.
-const licenseValueMaxBytes = 256
+// `License-Expression` needs the *expression* bound instead. Being well-formed
+// supplies no limit of its own — `MIT OR MIT OR ...` is valid SPDX at any
+// length — but a genuine choice is legitimately longer than any single name,
+// and every other extractor renders one through LicenseExpression and allows it
+// that room. Holding this field to the name bound would drop an
+// `Apache-2.0 OR BSD-3-Clause OR MIT OR ...` that those extractors accept, for
+// no reason but which ecosystem stated it.
+//
+// Both bounds come from the shared pair rather than being written out here, so
+// this file and the renderer cannot drift apart. Past the limit the field is
+// discarded rather than reported, which also lets the trove classifiers below
+// it answer instead.
 
 // metadataLicense picks the license out of a parsed METADATA/PKG-INFO header,
 // in the precedence described above. It returns "" when nothing states a
 // license — the honest answer, and distinct from a package whose license this
 // could not render.
 func metadataLicense(h textproto.MIMEHeader) string {
-	if v := licenseValue(h.Get("License-Expression")); v != "" {
+	if v := licenseValue(h.Get("License-Expression"), languages.LicenseExpressionMaxBytes); v != "" {
 		return v
 	}
-	if v := licenseValue(h.Get("License")); v != "" {
+	if v := licenseValue(h.Get("License"), languages.LicenseMaxBytes); v != "" {
 		return v
 	}
 	return classifierExpression(h.Values("Classifier"))
 }
 
-// licenseValue trims a header value and drops it when it is too long to be a
-// license name. See licenseValueMaxBytes.
-func licenseValue(v string) string {
+// licenseValue trims a header value and drops it when it is longer than a value
+// of its kind can legitimately be.
+func licenseValue(v string, maxBytes int) string {
 	v = strings.TrimSpace(v)
-	if len(v) > licenseValueMaxBytes {
+	if len(v) > maxBytes {
 		return ""
 	}
 	return v

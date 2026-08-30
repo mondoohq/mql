@@ -113,7 +113,7 @@ type packageLock struct {
 	Packages map[string]packageLockPackage `json:"packages"`
 	// Dependencies contains legacy data for supporting versions of npm that use lockfileVersion: 1 or lower.
 	// We can ignore that for lockfileVersion: 2+
-	Dependencies map[string]packageLockDependency `jsonn:"dependencies"`
+	Dependencies map[string]packageLockDependency `json:"dependencies"`
 
 	// evidence is a list of file paths where the package-lock was found
 	evidence []string `json:"-"`

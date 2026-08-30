@@ -125,6 +125,10 @@ func (m *manifest) Root() *languages.Package {
 		pkg.Vendor = v
 	}
 
+	if l := m.license(); l != "" {
+		pkg.License = l
+	}
+
 	return pkg
 }
 

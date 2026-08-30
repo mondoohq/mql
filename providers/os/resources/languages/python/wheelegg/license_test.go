@@ -4,6 +4,7 @@
 package wheelegg
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -140,7 +141,7 @@ Summary: says nothing about licensing
 // match.
 func TestPastedLicenseTextIsNotReportedAsAName(t *testing.T) {
 	body := strings.Repeat("Redistribution and use in source and binary forms are permitted. ", 20)
-	require.Greater(t, len(body), licenseValueMaxBytes)
+	require.Greater(t, len(body), 256, "must exceed the name bound")
 
 	assert.Equal(t, "", license(t, `Metadata-Version: 2.1
 Name: verbose
@@ -153,7 +154,7 @@ License: `+body+`
 // the case the length bound exists to reach.
 func TestPastedTextFallsThroughToTheClassifier(t *testing.T) {
 	body := strings.Repeat("BSD-3-Clause, full text follows. ", 20)
-	require.Greater(t, len(body), licenseValueMaxBytes)
+	require.Greater(t, len(body), 256, "must exceed the name bound")
 
 	assert.Equal(t, "BSD License", license(t, `Metadata-Version: 2.1
 Name: verbose
@@ -168,8 +169,8 @@ Classifier: License :: OSI Approved :: BSD License
 // size, and metadata arrives from a package index rather than from the
 // repository being scanned.
 func TestOversizedExpressionIsDropped(t *testing.T) {
-	huge := "MIT" + strings.Repeat(" OR MIT", 100)
-	require.Greater(t, len(huge), licenseValueMaxBytes)
+	huge := "MIT" + strings.Repeat(" OR MIT", 200)
+	require.Greater(t, len(huge), 1024, "must exceed the expression bound, not merely the name bound")
 
 	assert.Equal(t, "", license(t, `Metadata-Version: 2.4
 Name: huge
@@ -189,4 +190,50 @@ Version: 1.0
 License: GPL-3.0-only
 Classifier: License :: OSI Approved :: MIT License
 `))
+}
+
+// The two headers get different bounds, and the difference is the point: a
+// genuine PEP 639 choice is legitimately longer than any single license name,
+// and every other extractor renders one through LicenseExpression with that
+// room. Holding this field to the name bound dropped an expression those
+// extractors accept, for no reason but which ecosystem stated it.
+//
+// The caps are literals here rather than reads of the constants the
+// implementation reads, so both sides cannot move together and pin nothing.
+func TestExpressionGetsTheExpressionBoundNotTheNameBound(t *testing.T) {
+	expr := "Apache-2.0 OR BSD-3-Clause OR MIT OR GPL-3.0-or-later OR MPL-2.0"
+	for len(expr) <= 256 {
+		expr += " OR ISC"
+	}
+	require.Greater(t, len(expr), 256, "must exceed the name bound to be a regression test")
+	require.LessOrEqual(t, len(expr), 1024, "must stay within the expression bound")
+
+	assert.Equal(t, expr, license(t, `Metadata-Version: 2.4
+Name: wide
+Version: 1.0
+License-Expression: `+expr+`
+`), "an expression under the expression bound must survive")
+
+	// The free-text field keeps the name bound: a 300-byte value there is prose
+	// or a pasted text, not an identifier.
+	assert.Equal(t, "", license(t, `Metadata-Version: 2.1
+Name: wordy
+Version: 1.0
+License: `+strings.Repeat("a", 300)+`
+`), "a 300-byte free-text License is still dropped")
+}
+
+// The classifier path renders through LicenseExpression, so it is bounded by
+// the same rule rather than being the one place that joins without limit.
+// METADATA is text from a package index; nothing stops a crafted distribution
+// carrying thousands of `License ::` lines.
+func TestManyClassifiersAreBounded(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("Metadata-Version: 2.1\nName: many\nVersion: 1.0\n")
+	// Distinct names, so dedup cannot collapse them.
+	for i := 0; i < 400; i++ {
+		fmt.Fprintf(&b, "Classifier: License :: OSI Approved :: Fake-%d License\n", i)
+	}
+	assert.Equal(t, "", license(t, b.String()),
+		"hundreds of classifiers must not render an unbounded expression")
 }
