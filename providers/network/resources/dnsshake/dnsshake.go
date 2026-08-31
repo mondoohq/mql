@@ -458,7 +458,31 @@ func (d *DnsClient) queryDnsTypeAt(server string, recursion bool, fqdn string, t
 	m.SetQuestion(dns.Fqdn(fqdn), dnsType)
 	m.RecursionDesired = recursion
 
-	r, _, err := c.Exchange(m, net.JoinHostPort(server, d.config.Port))
+	address := net.JoinHostPort(server, d.config.Port)
+	r, _, err := c.Exchange(m, address)
+
+	// An answer too large for a datagram comes back with the truncation bit set
+	// and, depending on how far over the limit it is, either an empty answer
+	// section or an unpack error. Either way the records are only reachable over
+	// TCP, so retry there before deciding what the name publishes.
+	//
+	// Without this a name with a few kilobytes of TXT reports no TXT record at
+	// all, which is indistinguishable from a name that publishes none: the type
+	// never makes it into the result map, so records, spf and dkim all report
+	// the name as having nothing rather than reporting that the lookup failed.
+	//
+	// The unpack error is a separate trigger rather than a consequence of the
+	// truncation bit. A response whose header counts more records than the body
+	// carries fails to unpack with the bit clear, and the partially parsed
+	// message still comes back alongside the error, so testing the bit alone
+	// would leave that case on the floor.
+	if r != nil && (r.Truncated || err != nil) {
+		tcp := &dns.Client{Net: "tcp"}
+		if retried, _, tcpErr := tcp.Exchange(m, address); tcpErr == nil {
+			r, err = retried, nil
+		}
+	}
+
 	if err != nil {
 		res[dnsTypText] = DnsRecord{
 			Type:  dnsTypText,
