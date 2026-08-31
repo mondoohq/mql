@@ -322,13 +322,11 @@ func opFloatCmpString(left any, right any) bool {
 }
 
 func opStringCmpRegex(left any, right any) bool {
-	r := regexp.MustCompile(right.(string))
-	return r.Match([]byte(left.(string)))
+	return compiledRegex(right.(string)).MatchString(left.(string))
 }
 
 func opRegexCmpString(left any, right any) bool {
-	r := regexp.MustCompile(left.(string))
-	return r.Match([]byte(right.(string)))
+	return compiledRegex(left.(string)).MatchString(right.(string))
 }
 
 func opRegexCmpInt(left any, right any) bool {
