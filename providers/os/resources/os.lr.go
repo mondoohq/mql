@@ -1367,7 +1367,7 @@ func init() {
 			Create: createJournaldConfig,
 		},
 		"journald.config.section": {
-			// to override args, implement: initJournaldConfigSection(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initJournaldConfigSection,
 			Create: createJournaldConfigSection,
 		},
 		"journald.config.section.param": {
@@ -1591,15 +1591,15 @@ func init() {
 			Create: createIp6tables,
 		},
 		"iptables.table": {
-			// to override args, implement: initIptablesTable(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initIptablesTable,
 			Create: createIptablesTable,
 		},
 		"iptables.chain": {
-			// to override args, implement: initIptablesChain(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initIptablesChain,
 			Create: createIptablesChain,
 		},
 		"iptables.entry": {
-			// to override args, implement: initIptablesEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initIptablesEntry,
 			Create: createIptablesEntry,
 		},
 		"nftables": {
@@ -1607,19 +1607,19 @@ func init() {
 			Create: createNftables,
 		},
 		"nftables.table": {
-			// to override args, implement: initNftablesTable(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initNftablesTable,
 			Create: createNftablesTable,
 		},
 		"nftables.chain": {
-			// to override args, implement: initNftablesChain(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initNftablesChain,
 			Create: createNftablesChain,
 		},
 		"nftables.rule": {
-			// to override args, implement: initNftablesRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initNftablesRule,
 			Create: createNftablesRule,
 		},
 		"nftables.set": {
-			// to override args, implement: initNftablesSet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initNftablesSet,
 			Create: createNftablesSet,
 		},
 		"ufw": {
@@ -1795,7 +1795,7 @@ func init() {
 			Create: createLsblk,
 		},
 		"lsblk.entry": {
-			// to override args, implement: initLsblkEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initLsblkEntry,
 			Create: createLsblkEntry,
 		},
 		"luks": {
@@ -1867,27 +1867,27 @@ func init() {
 			Create: createModprobe,
 		},
 		"modprobe.install": {
-			// to override args, implement: initModprobeInstall(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initModprobeInstall,
 			Create: createModprobeInstall,
 		},
 		"modprobe.remove": {
-			// to override args, implement: initModprobeRemove(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initModprobeRemove,
 			Create: createModprobeRemove,
 		},
 		"modprobe.blacklist": {
-			// to override args, implement: initModprobeBlacklist(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initModprobeBlacklist,
 			Create: createModprobeBlacklist,
 		},
 		"modprobe.option": {
-			// to override args, implement: initModprobeOption(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initModprobeOption,
 			Create: createModprobeOption,
 		},
 		"modprobe.alias": {
-			// to override args, implement: initModprobeAlias(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initModprobeAlias,
 			Create: createModprobeAlias,
 		},
 		"modprobe.softdep": {
-			// to override args, implement: initModprobeSoftdep(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initModprobeSoftdep,
 			Create: createModprobeSoftdep,
 		},
 		"mount": {
