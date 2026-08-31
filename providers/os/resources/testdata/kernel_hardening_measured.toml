@@ -1,0 +1,18 @@
+# A running Linux kernel that answered all three reads: ASLR at full
+# randomization, lockdown engaged in integrity mode, and a taint word with bit
+# 12 (out-of-tree module) set.
+
+[files."/proc/sys/kernel/randomize_va_space"]
+path = "/proc/sys/kernel/randomize_va_space"
+content = """2
+"""
+
+[files."/sys/kernel/security/lockdown"]
+path = "/sys/kernel/security/lockdown"
+content = """none [integrity] confidentiality
+"""
+
+[files."/proc/sys/kernel/tainted"]
+path = "/proc/sys/kernel/tainted"
+content = """4096
+"""
