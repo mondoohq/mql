@@ -297,8 +297,21 @@ jobs:
       # At this point we know the docker container is published.
       # We can now trigger the mql bump in cnspec, which will also trigger the release of cnspec.
       # The docker container is a pre-requisite for cnspec release.
+      # Fires for every tag, pre-release included. Which channel a tag belongs
+      # to is derived from its semver pre-release segment, and that decides what
+      # gets promoted -- not whether cnspec is bumped. cnspec's bump workflow
+      # handles a pre-release version and the unversioned mql module path on its
+      # side (cnspec#3603).
+      #
+      # Deliberately NOT gated on steps.skip-publish. That step answers two
+      # different questions at once -- "is the channel non-stable?" and "did the
+      # operator ask us not to publish?" -- and only the first should stop the
+      # bump. The operator opt-outs are therefore spelled out here, so dropping
+      # the channel block cannot silently drop them too: `skip-publish` means
+      # mql never reaches the bucket, and a cnspec release pinned to an mql
+      # version that was never published is not something to kick off.
       - name: Trigger mql bump in cnspec
-        if: ${{ steps.skip-publish.outputs.skip-publish != 'true' && (github.event_name == 'push' || (inputs.skip-cnspec-bump != true && inputs.make-latest != false)) }}
+        if: ${{ github.event_name == 'push' || (inputs.skip-cnspec-bump != true && inputs.skip-publish != true && inputs.make-latest != false) }}
         uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
         with:
           token: ${{ secrets.RELEASR_ACTION_TOKEN }}
