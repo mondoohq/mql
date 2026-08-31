@@ -1,0 +1,106 @@
+{
+  "ipv4Unicast": {
+    "routerId": "192.0.2.30",
+    "as": 65100,
+    "vrfId": 0,
+    "vrfName": "default",
+    "tableVersion": 12,
+    "ribCount": 7,
+    "ribMemory": 1288,
+    "peerCount": 2,
+    "peerMemory": 39424,
+    "peers": {
+      "swp1": {
+        "hostname": "leaf1",
+        "remoteAs": 65000,
+        "localAs": 65100,
+        "version": 4,
+        "msgRcvd": 1042,
+        "msgSent": 1044,
+        "tableVersion": 0,
+        "outq": 0,
+        "inq": 0,
+        "peerUptime": "01:12:45",
+        "peerUptimeMsec": 4365000,
+        "pfxRcd": 5,
+        "pfxSnt": 3,
+        "state": "Established",
+        "peerState": "OK",
+        "connectionsEstablished": 1,
+        "connectionsDropped": 0,
+        "idType": "interface"
+      },
+      "swp2": {
+        "hostname": "leaf2",
+        "remoteAs": 65000,
+        "localAs": 65100,
+        "version": 4,
+        "msgRcvd": 12,
+        "msgSent": 14,
+        "tableVersion": 0,
+        "outq": 0,
+        "inq": 0,
+        "peerUptime": "never",
+        "peerUptimeMsec": 0,
+        "pfxRcd": 0,
+        "pfxSnt": 0,
+        "state": "Idle",
+        "peerState": "Connect",
+        "connectionsEstablished": 0,
+        "connectionsDropped": 3,
+        "idType": "interface"
+      }
+    },
+    "failedPeers": 1,
+    "displayedPeers": 2,
+    "totalPeers": 2,
+    "dynamicPeers": 0,
+    "bestPath": {
+      "multiPathRelax": "true"
+    }
+  },
+  "l2VpnEvpn": {
+    "routerId": "192.0.2.30",
+    "as": 65100,
+    "vrfId": 0,
+    "vrfName": "default",
+    "peerCount": 2,
+    "peers": {
+      "swp1": {
+        "hostname": "leaf1",
+        "remoteAs": 65000,
+        "localAs": 65100,
+        "version": 4,
+        "msgRcvd": 1042,
+        "msgSent": 1044,
+        "peerUptimeMsec": 4365000,
+        "pfxRcd": 24,
+        "pfxSnt": 9,
+        "state": "Established",
+        "peerState": "OK",
+        "connectionsEstablished": 1,
+        "connectionsDropped": 0,
+        "idType": "interface"
+      },
+      "swp2": {
+        "hostname": "leaf2",
+        "remoteAs": 65000,
+        "localAs": 65100,
+        "version": 4,
+        "msgRcvd": 12,
+        "msgSent": 14,
+        "peerUptimeMsec": 0,
+        "pfxRcd": 0,
+        "pfxSnt": 0,
+        "state": "Idle",
+        "peerState": "Connect",
+        "connectionsEstablished": 0,
+        "connectionsDropped": 3,
+        "idType": "interface"
+      }
+    },
+    "failedPeers": 1,
+    "totalPeers": 2,
+    "dynamicPeers": 0
+  }
+}
