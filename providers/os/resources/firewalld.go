@@ -104,9 +104,13 @@ func (f *mqlFirewalld) fetchStatus() error {
 		return nil
 	}
 	cmd := o.(*mqlCommand)
-	exitcode := cmd.GetExitcode().Data
-	state := strings.TrimSpace(cmd.GetStdout().Data)
-	if exitcode != 0 {
+	run, err := commandResult(cmd)
+	if err != nil {
+		// A command that never ran is not evidence that firewalld is absent.
+		return fmt.Errorf("cannot determine firewalld state: %w", err)
+	}
+	state := strings.TrimSpace(run.stdout)
+	if run.exitcode != 0 {
 		// A refused question is not an answer. firewall-cmd exits non-zero both
 		// when the firewall is genuinely stopped and when polkit declines to
 		// answer an unprivileged caller. Recording the second as "not running"
@@ -114,18 +118,18 @@ func (f *mqlFirewalld) fetchStatus() error {
 		// returns nothing whenever the status is not "running", so every zone
 		// and every rule silently disappears from the scan and an exposure
 		// check finds nothing to object to.
-		if stderr := strings.TrimSpace(cmd.GetStderr().Data); isFirewalldAuthzError(stderr) {
+		if stderr := strings.TrimSpace(run.stderr); isFirewalldAuthzError(stderr) {
 			return fmt.Errorf("cannot determine firewalld state: %s", stderr)
 		}
 		// FAILED (exit 251) is a daemon that is up but could not apply its
 		// ruleset. It still answers queries, so its default zone and zones
 		// are read as for a running firewall.
-		f.cacheFailed = isFirewalldFailedState(cmd.GetStderr().Data)
+		f.cacheFailed = isFirewalldFailedState(run.stderr)
 		// firewalld 0.4 has no FAILED state: a daemon that could not apply
 		// its ruleset stays in INIT, and --state says "not running" (exit
 		// 252) although the daemon is up, answers queries and has loaded
 		// part of its rules. Ask the daemon itself before believing it.
-		if !f.cacheFailed && exitcode == firewalldNotRunningExit {
+		if !f.cacheFailed && run.exitcode == firewalldNotRunningExit {
 			answers, err := f.daemonAnswers()
 			if err != nil {
 				return err
@@ -151,10 +155,11 @@ func (f *mqlFirewalld) fetchStatus() error {
 		return err
 	}
 	cmd = o.(*mqlCommand)
-	if cmd.GetExitcode().Data != 0 {
-		return fmt.Errorf("firewall-cmd --get-default-zone failed: %s", cmd.Stderr.Data)
+	defaultZone, err := commandOutput(cmd, "firewall-cmd --get-default-zone")
+	if err != nil {
+		return err
 	}
-	f.cacheDefault = strings.TrimSpace(cmd.Stdout.Data)
+	f.cacheDefault = strings.TrimSpace(defaultZone)
 
 	f.fetched = true
 	return nil
@@ -262,11 +267,12 @@ func (f *mqlFirewalld) zones() ([]any, error) {
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if cmd.GetExitcode().Data != 0 {
-		return nil, fmt.Errorf("firewall-cmd --list-all-zones failed: %s", cmd.Stderr.Data)
+	stdout, err := commandOutput(cmd, "firewall-cmd --list-all-zones")
+	if err != nil {
+		return nil, err
 	}
 
-	zones := parseFirewalldZones(cmd.Stdout.Data)
+	zones := parseFirewalldZones(stdout)
 
 	var res []any
 	for _, z := range zones {

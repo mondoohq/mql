@@ -49,11 +49,12 @@ func (y *mqlYum) repos() ([]any, error) {
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("could not retrieve yum repo list")
+	stdout, err := commandOutput(cmd, "yum -v repolist all")
+	if err != nil {
+		return nil, err
 	}
 
-	repos, err := parse(strings.NewReader(cmd.Stdout.Data))
+	repos, err := parse(strings.NewReader(stdout))
 	if err != nil {
 		return nil, err
 	}

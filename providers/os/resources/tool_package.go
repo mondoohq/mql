@@ -507,11 +507,11 @@ func commandSemver(runtime *plugin.Runtime, cmdline string) string {
 	if err != nil {
 		return ""
 	}
-	cmd := o.(*mqlCommand)
-	if cmd.GetExitcode().Data != 0 {
+	run, err := commandResult(o.(*mqlCommand))
+	if err != nil || run.exitcode != 0 {
 		return ""
 	}
-	return firstSemverToken(cmd.GetStdout().Data)
+	return firstSemverToken(run.stdout)
 }
 
 // firstSemverToken returns the first whitespace-separated token of out that
@@ -661,10 +661,11 @@ func inferClaudeVersion(runtime *plugin.Runtime, configPath string) (string, err
 		return "", nil
 	}
 	cmd := o.(*mqlCommand)
-	if cmd.GetExitcode().Data != 0 {
+	run, err := commandResult(cmd)
+	if err != nil || run.exitcode != 0 {
 		return "", nil
 	}
-	fields := strings.Fields(cmd.GetStdout().Data)
+	fields := strings.Fields(run.stdout)
 	if len(fields) == 0 {
 		return "", nil
 	}
@@ -688,11 +689,11 @@ func inferAnthropicCLIVersion(runtime *plugin.Runtime, configPath string) (strin
 	if err != nil {
 		return "", nil
 	}
-	cmd := o.(*mqlCommand)
-	if cmd.GetExitcode().Data != 0 {
+	run, err := commandResult(o.(*mqlCommand))
+	if err != nil || run.exitcode != 0 {
 		return "", nil
 	}
-	return parseAnthropicCLIVersion(cmd.GetStdout().Data), nil
+	return parseAnthropicCLIVersion(run.stdout), nil
 }
 
 // parseAnthropicCLIVersion returns the version from "ant version X.Y.Z", or ""
