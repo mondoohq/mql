@@ -236,7 +236,7 @@ func (p *mqlPorts) processesBySocket() (map[int64]*mqlProcess, error) {
 	}
 	processes := obj.(*mqlProcesses)
 
-	err = processes.refreshCache(nil)
+	err = processes.refreshCacheForSocketLookup(nil)
 	if err != nil {
 		p.processes2ports = plugin.TValue[map[int64]*mqlProcess]{
 			State: plugin.StateIsSet,

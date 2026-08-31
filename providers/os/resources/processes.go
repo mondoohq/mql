@@ -148,12 +148,6 @@ func (p *mqlProcesses) list() ([]any, error) {
 	}
 	log.Debug().Int("processes", len(procs)).Msg("mql[processes]> running processes")
 
-	processesInodesByPid, err := opm.ListSocketInodesByProcess()
-	if err != nil {
-		log.Warn().Err(err).Msg("mql[processes]> could not retrieve processes socket inodes")
-		return nil, fmt.Errorf("could not retrieve processes socket inodes")
-	}
-
 	result := make([]any, len(procs))
 
 	for i := range procs {
@@ -169,21 +163,10 @@ func (p *mqlProcesses) list() ([]any, error) {
 			return nil, err
 		}
 
-		socketInodes := []int64{}
-		var socketInodesErr error
-		if _, ok := processesInodesByPid[proc.Pid]; ok {
-			socketInodes = processesInodesByPid[proc.Pid].Data
-			socketInodesErr = processesInodesByPid[proc.Pid].Error
-		} else {
-			if len(proc.SocketInodes) > 0 {
-				socketInodes = proc.SocketInodes
-				socketInodesErr = proc.SocketInodesError
-			}
-		}
 		process := o.(*mqlProcess)
 		process.SocketInodes = plugin.TValue[[]int64]{
-			Data:  socketInodes,
-			Error: socketInodesErr,
+			Data:  proc.SocketInodes,
+			Error: proc.SocketInodesError,
 			State: plugin.StateIsSet,
 		}
 
@@ -215,5 +198,59 @@ func (p *mqlProcesses) refreshCache(all []any) error {
 
 	p.ByPID = processesMap
 	p.BySocketID = socketsMap
+	return nil
+}
+
+func (p *mqlProcesses) refreshCacheForSocketLookup(all []any) error {
+	if all == nil {
+		raw := p.GetList()
+		if raw.Error != nil {
+			return raw.Error
+		}
+		all = raw.Data
+	}
+
+	if err := p.collectSocketInodes(all); err != nil {
+		return err
+	}
+
+	return p.refreshCache(all)
+}
+
+func (p *mqlProcesses) collectSocketInodes(all []any) error {
+	conn := p.MqlRuntime.Connection.(shared.Connection)
+	opm, err := processes.ResolveManager(conn)
+	if opm == nil || err != nil {
+		log.Debug().Err(err).Msg("mql[processes]> could not retrieve process resolver")
+		return errors.New("cannot find process manager")
+	}
+
+	processesInodesByPid, err := opm.ListSocketInodesByProcess()
+	if err != nil {
+		log.Warn().Err(err).Msg("mql[processes]> could not retrieve processes socket inodes")
+		return fmt.Errorf("could not retrieve processes socket inodes")
+	}
+
+	for i := range all {
+		process := all[i].(*mqlProcess)
+
+		socketInodes := process.SocketInodes.Data
+		socketInodesErr := process.SocketInodes.Error
+		if socketInodes == nil {
+			socketInodes = []int64{}
+		}
+
+		if inodeInfo, ok := processesInodesByPid[process.Pid.Data]; ok {
+			socketInodes = inodeInfo.Data
+			socketInodesErr = inodeInfo.Error
+		}
+
+		process.SocketInodes = plugin.TValue[[]int64]{
+			Data:  socketInodes,
+			Error: socketInodesErr,
+			State: plugin.StateIsSet,
+		}
+	}
+
 	return nil
 }
