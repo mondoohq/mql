@@ -142,6 +142,17 @@ func isAccessor(s string) bool {
 // Unicode normalization and filtering, see http://blog.golang.org/normalization and
 // http://godoc.org/golang.org/x/text/unicode/norm for more details.
 func stripCtlAndExtFromUnicode(str string) string {
+	// Almost every label is printable ASCII. NFKD leaves printable ASCII
+	// unchanged, because no ASCII rune has a compatibility decomposition, and
+	// the filter below removes nothing from it. So the transform is the
+	// identity here and the string can be returned as it is.
+	//
+	// The transform chain itself costs about 4.6 kB and 5 allocations per call,
+	// which dominates label creation on a large scan.
+	if isPrintableASCII(str) {
+		return str
+	}
+
 	isOk := func(r rune) bool {
 		return r < 32 || r >= 127
 	}
@@ -149,6 +160,18 @@ func stripCtlAndExtFromUnicode(str string) string {
 	t := transform.Chain(norm.NFKD, runes.Remove(runes.Predicate(isOk)))
 	str, _, _ = transform.String(t, str)
 	return str
+}
+
+// isPrintableASCII reports whether every byte of str is a printable ASCII
+// character, that is in the range [32, 127). A multi byte rune always has bytes
+// above 127, so a byte scan is enough and no decoding is needed.
+func isPrintableASCII(str string) bool {
+	for i := 0; i < len(str); i++ {
+		if str[i] < 32 || str[i] >= 127 {
+			return false
+		}
+	}
+	return true
 }
 
 // UpdateLabels for the given code under the schema
