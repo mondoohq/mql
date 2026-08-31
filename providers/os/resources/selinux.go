@@ -65,14 +65,18 @@ func (s *mqlSelinux) fetchGetenforce() (available bool, mode string, err error) 
 		return false, "", err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
+	run, cmdErr := commandResult(cmd)
+	if cmdErr != nil || run.exitcode != 0 {
+		// Either getenforce is absent or the command never ran. Both mean we
+		// have no runtime mode to report, so fall through to the
+		// /etc/selinux/config read rather than claiming one we never measured.
 		s.getenforced = true
 		s.getenforceAvail = false
 		return false, "", nil
 	}
 
 	s.getenforceAvail = true
-	s.getenforceMode = strings.ToLower(strings.TrimSpace(cmd.Stdout.Data))
+	s.getenforceMode = strings.ToLower(strings.TrimSpace(run.stdout))
 	s.getenforced = true
 	return s.getenforceAvail, s.getenforceMode, nil
 }
@@ -247,8 +251,11 @@ func (s *mqlSelinux) booleans() ([]any, error) {
 		})
 		if err == nil {
 			cmd := o.(*mqlCommand)
-			if exit := cmd.GetExitcode(); exit.Data == 0 {
-				parsed = ParseGetsebool(cmd.Stdout.Data)
+			// exitcode reads as 0 on a command that never ran, so an errored
+			// result must not be parsed as an empty boolean list -- that would
+			// also skip the /sys/fs/selinux fallback below.
+			if run, cmdErr := commandResult(cmd); cmdErr == nil && run.exitcode == 0 {
+				parsed = ParseGetsebool(run.stdout)
 			}
 		}
 	}
@@ -370,11 +377,15 @@ func (s *mqlSelinux) modules() ([]any, error) {
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
+	run, err := commandResult(cmd)
+	if err != nil {
+		return nil, err
+	}
+	if run.exitcode != 0 {
 		return nil, nil
 	}
 
-	parsed := ParseSemodule(cmd.Stdout.Data)
+	parsed := ParseSemodule(run.stdout)
 	res := make([]any, 0, len(parsed))
 	for _, m := range parsed {
 		r, err := CreateResource(s.MqlRuntime, "selinux.module", map[string]*llx.RawData{

@@ -251,10 +251,14 @@ func runSystemctl(runtime *plugin.Runtime, cmdline string) (string, bool, error)
 		return "", false, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
+	run, err := commandResult(cmd)
+	if err != nil {
+		return "", false, err
+	}
+	if run.exitcode != 0 {
 		return "", false, nil
 	}
-	return cmd.Stdout.Data, true, nil
+	return run.stdout, true, nil
 }
 
 // shellQuoteUnit single-quotes a unit name for safe inclusion in a shell

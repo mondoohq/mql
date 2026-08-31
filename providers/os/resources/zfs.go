@@ -32,10 +32,11 @@ func (z *mqlZfs) version() (string, error) {
 		return "", err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return "", errors.New("could not retrieve zfs version: " + cmd.Stderr.Data)
+	stdout, err := commandOutput(cmd, "zfs version")
+	if err != nil {
+		return "", err
 	}
-	version := strings.TrimSpace(cmd.Stdout.Data)
+	version := strings.TrimSpace(stdout)
 	if i := strings.IndexByte(version, '\n'); i != -1 {
 		version = version[:i]
 	}
@@ -50,11 +51,12 @@ func (z *mqlZfs) pools() ([]any, error) {
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("could not retrieve zfs pools: " + cmd.Stderr.Data)
+	stdout, err := commandOutput(cmd, "zpool get")
+	if err != nil {
+		return nil, err
 	}
 
-	pools, err := zfs.ParsePools(cmd.Stdout.Data)
+	pools, err := zfs.ParsePools(stdout)
 	if err != nil {
 		return nil, err
 	}
@@ -92,11 +94,12 @@ func (z *mqlZfs) datasets() ([]any, error) {
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("could not retrieve zfs datasets: " + cmd.Stderr.Data)
+	stdout, err := commandOutput(cmd, "zfs get")
+	if err != nil {
+		return nil, err
 	}
 
-	datasets, err := zfs.ParseDatasets(cmd.Stdout.Data)
+	datasets, err := zfs.ParseDatasets(stdout)
 	if err != nil {
 		return nil, err
 	}
@@ -180,11 +183,12 @@ func (p *mqlZfsPool) vdevs() ([]any, error) {
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("could not retrieve zfs pool vdevs: " + cmd.Stderr.Data)
+	stdout, err := commandOutput(cmd, "zpool status")
+	if err != nil {
+		return nil, err
 	}
 
-	vdevs, err := zfs.ParseVdevs(cmd.Stdout.Data)
+	vdevs, err := zfs.ParseVdevs(stdout)
 	if err != nil {
 		return nil, err
 	}
@@ -243,11 +247,12 @@ func (p *mqlZfsPool) properties() (map[string]any, error) {
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("could not retrieve zfs pool properties: " + cmd.Stderr.Data)
+	stdout, err := commandOutput(cmd, "zpool get")
+	if err != nil {
+		return nil, err
 	}
 
-	props, err := zfs.ParseProperties(cmd.Stdout.Data)
+	props, err := zfs.ParseProperties(stdout)
 	if err != nil {
 		return nil, err
 	}
@@ -311,11 +316,12 @@ func (d *mqlZfsDataset) properties() (map[string]any, error) {
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("could not retrieve zfs dataset properties: " + cmd.Stderr.Data)
+	stdout, err := commandOutput(cmd, "zfs get")
+	if err != nil {
+		return nil, err
 	}
 
-	props, err := zfs.ParseProperties(cmd.Stdout.Data)
+	props, err := zfs.ParseProperties(stdout)
 	if err != nil {
 		return nil, err
 	}

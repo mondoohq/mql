@@ -227,12 +227,16 @@ func loggedInUsers(runtime *plugin.Runtime, conn shared.Connection) (map[string]
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
+	run, err := commandResult(cmd)
+	if err != nil {
+		return nil, err
+	}
+	if run.exitcode != 0 {
 		return map[string]bool{}, nil
 	}
 
 	users := map[string]bool{}
-	for i, line := range strings.Split(cmd.Stdout.Data, "\n") {
+	for i, line := range strings.Split(run.stdout, "\n") {
 		// Skip header row from "query user" on Windows
 		if isWindows && i == 0 {
 			continue

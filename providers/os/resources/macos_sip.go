@@ -4,7 +4,6 @@
 package resources
 
 import (
-	"errors"
 	"strings"
 	"sync"
 
@@ -34,15 +33,16 @@ func (m *mqlMacosSip) fetchStatus() (string, error) {
 		return "", err
 	}
 	cmd := res.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return "", errors.New("csrutil status failed: " + cmd.GetStderr().Data)
+	stdout, err := commandOutput(cmd, "csrutil status")
+	if err != nil {
+		return "", err
 	}
 
 	// csrutil status outputs:
 	// "System Integrity Protection status: enabled."
 	// "System Integrity Protection status: disabled."
 	// May also include individual configuration flags on separate lines
-	output := strings.TrimSpace(cmd.GetStdout().Data)
+	output := strings.TrimSpace(stdout)
 	lines := strings.SplitN(output, "\n", 2)
 
 	m.output = strings.TrimSpace(lines[0])

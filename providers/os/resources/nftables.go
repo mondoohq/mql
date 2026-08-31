@@ -318,11 +318,15 @@ func (n *mqlNftables) fetchRuleset() (*nftRuleset, error) {
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, fmt.Errorf("nft command failed (exit %d): %s", exit.Data, cmd.Stderr.Data)
+	run, err := commandResult(cmd)
+	if err != nil {
+		return nil, err
+	}
+	if run.exitcode != 0 {
+		return nil, fmt.Errorf("nft command failed (exit %d): %s", run.exitcode, run.stderr)
 	}
 
-	ruleset, err := parseNftRuleset([]byte(cmd.Stdout.Data))
+	ruleset, err := parseNftRuleset([]byte(run.stdout))
 	if err != nil {
 		return nil, err
 	}
