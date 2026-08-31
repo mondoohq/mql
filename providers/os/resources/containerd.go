@@ -164,16 +164,15 @@ func (p *mqlContainerd) listContainerdNamespaces() ([]string, []string, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		cmd := o.(*mqlCommand)
-		exit := cmd.GetExitcode()
-		if exit.Error != nil {
-			return nil, nil, exit.Error
+		run, err := commandResult(o.(*mqlCommand))
+		if err != nil {
+			return nil, nil, err
 		}
-		if exit.Data == 0 {
-			return cli, parseNamespaceList(cmd.Stdout.Data), nil
+		if run.exitcode == 0 {
+			return cli, parseNamespaceList(run.stdout), nil
 		}
-		listErr := errors.New("failed to list namespaces: " + cmd.Stderr.Data)
-		if !isCtrNotInstalled(cli[0], exit.Data, cmd.Stderr.Data) {
+		listErr := errors.New("failed to list namespaces: " + run.stderr)
+		if !isCtrNotInstalled(cli[0], run.exitcode, run.stderr) {
 			return nil, nil, listErr
 		}
 		if firstErr == nil {
@@ -216,12 +215,16 @@ func (p *mqlContainerd) containers() ([]any, error) {
 			continue
 		}
 		cmd := o.(*mqlCommand)
-		if exit := cmd.GetExitcode(); exit.Data != 0 {
-			log.Debug().Str("namespace", ns).Str("stderr", cmd.Stderr.Data).Msg("skipping namespace, failed to list containers")
+		nsRun, err := commandResult(cmd)
+		if err != nil {
+			return nil, err
+		}
+		if nsRun.exitcode != 0 {
+			log.Debug().Str("namespace", ns).Str("stderr", nsRun.stderr).Msg("skipping namespace, failed to list containers")
 			continue
 		}
 
-		containerIDs := parseContainerIDList(cmd.Stdout.Data)
+		containerIDs := parseContainerIDList(nsRun.stdout)
 
 		// Get tasks info for this namespace to map PIDs and status
 		var taskInfo map[string]taskData
@@ -231,8 +234,10 @@ func (p *mqlContainerd) containers() ([]any, error) {
 		})
 		if err == nil {
 			cmd := o.(*mqlCommand)
-			if exit := cmd.GetExitcode(); exit.Data == 0 {
-				taskInfo = parseTaskList(cmd.Stdout.Data)
+			// exitcode reads as 0 on a command that never ran; parsing that
+			// would report every container as taskless.
+			if taskRun, taskErr := commandResult(cmd); taskErr == nil && taskRun.exitcode == 0 {
+				taskInfo = parseTaskList(taskRun.stdout)
 			}
 		}
 
@@ -250,13 +255,17 @@ func (p *mqlContainerd) containers() ([]any, error) {
 				continue
 			}
 			cmd := o.(*mqlCommand)
-			if exit := cmd.GetExitcode(); exit.Data != 0 {
-				log.Debug().Str("namespace", ns).Str("container", containerID).Str("stderr", cmd.Stderr.Data).Msg("skipping container, failed to get info")
+			infoRun, err := commandResult(cmd)
+			if err != nil {
+				return nil, err
+			}
+			if infoRun.exitcode != 0 {
+				log.Debug().Str("namespace", ns).Str("container", containerID).Str("stderr", infoRun.stderr).Msg("skipping container, failed to get info")
 				continue
 			}
 
 			// Parse JSON output from ctr
-			info, err := parseContainerInfo([]byte(cmd.Stdout.Data))
+			info, err := parseContainerInfo([]byte(infoRun.stdout))
 			if err != nil {
 				log.Debug().Str("namespace", ns).Str("container", containerID).Err(err).Msg("skipping container, failed to parse info")
 				continue

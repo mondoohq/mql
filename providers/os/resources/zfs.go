@@ -102,10 +102,12 @@ func (z *mqlZfs) version() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if exit := cmd.GetExitcode(); exit.Error != nil {
-		return "", exit.Error
-	} else if exit.Data != 0 {
-		if strings.Contains(cmd.Stderr.Data, "unrecognized command 'version'") {
+	run, err := commandResult(cmd)
+	if err != nil {
+		return "", err
+	}
+	if run.exitcode != 0 {
+		if strings.Contains(run.stderr, "unrecognized command 'version'") {
 			// ZFS on Linux before 0.8 has no `zfs version`. The loaded
 			// kernel module reports its release.
 			if v, err := zfsKmodVersion(z.MqlRuntime); err != nil {
@@ -123,9 +125,9 @@ func (z *mqlZfs) version() (string, error) {
 				return v, nil
 			}
 		}
-		return "", errors.New("could not retrieve zfs version: " + cmd.Stderr.Data)
+		return "", errors.New("could not retrieve zfs version: " + run.stderr)
 	}
-	version := strings.TrimSpace(cmd.Stdout.Data)
+	version := strings.TrimSpace(run.stdout)
 	if i := strings.IndexByte(version, '\n'); i != -1 {
 		version = version[:i]
 	}
