@@ -149,11 +149,18 @@ var manjaro = &PlatformResolver{
 	},
 }
 
+// Azure Linux, and CBL-Mariner before it. Microsoft renamed the distribution
+// from CBL-Mariner to Azure Linux with the 3.0 release, so 2.x systems still
+// ship ID=mariner in /etc/os-release while 3.0 and later ship ID=azurelinux.
+// Both IDs resolve here and keep their own platform name: mariner stays
+// mariner so existing filters on it keep working. Emits registers both names
+// in the platform tree, which is what the platform catalog is derived from.
 var azurelinux = &PlatformResolver{
 	Name:     "azurelinux",
 	IsFamily: false,
+	Emits:    []string{"azurelinux", "mariner"},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
-		if pf.Name == "azurelinux" {
+		if pf.Name == "azurelinux" || pf.Name == "mariner" {
 			osrd := NewOSReleaseDetector(conn)
 			osr, err := osrd.osrelease()
 			if err == nil {

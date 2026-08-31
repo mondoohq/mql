@@ -44,6 +44,12 @@ func TestCatalogPlatforms(t *testing.T) {
 	}
 	require.NotNil(t, ubuntu, "ubuntu should be a catalogued platform")
 	assert.Equal(t, []string{"debian", "linux", "unix", "os"}, ubuntu.fam)
+
+	// a resolver that emits more names than the one it is registered under has
+	// to catalogue every one of them: the azurelinux resolver also handles
+	// CBL-Mariner, which reports ID=mariner
+	assert.True(t, byName["azurelinux"], "azurelinux should be a catalogued platform")
+	assert.True(t, byName["mariner"], "mariner should be a catalogued platform")
 }
 
 // Every name detection can actually emit has to be in the tree, or the platform

@@ -125,8 +125,10 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 	case asset.Platform.Name == "altlinux":
 		fallthrough
 	// opencloudos is rpm based but ships no /etc/redhat-release, so the redhat
-	// family declines it and it resolves as a platform of its own
-	case asset.Platform.Name == "amazonlinux" || asset.Platform.Name == "photon" || asset.Platform.Name == "wrlinux" || asset.Platform.Name == "bottlerocket" || asset.Platform.Name == "azurelinux" || asset.Platform.Name == "opencloudos":
+	// family declines it and it resolves as a platform of its own. mariner is
+	// CBL-Mariner 2.x, the name Azure Linux carried before the 3.0 rename; it
+	// is rpm based and resolves as its own platform for the same reason.
+	case asset.Platform.Name == "amazonlinux" || asset.Platform.Name == "photon" || asset.Platform.Name == "wrlinux" || asset.Platform.Name == "bottlerocket" || asset.Platform.Name == "azurelinux" || asset.Platform.Name == "mariner" || asset.Platform.Name == "opencloudos":
 		fallthrough
 	case asset.Platform.IsFamily("redhat") ||
 		asset.Platform.IsFamily("euler") ||

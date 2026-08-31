@@ -1417,6 +1417,23 @@ func TestAzureLinuxDetector(t *testing.T) {
 	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
 }
 
+// CBL-Mariner is Azure Linux under its pre-3.0 name and ships ID=mariner. It
+// keeps reporting as "mariner" rather than being folded into "azurelinux",
+// which would break anyone filtering on the name. Before it was wired into the
+// azurelinux resolver it fell through to defaultLinux, which reads neither
+// NAME nor VERSION, so title was the generic PRETTY_NAME and build was empty.
+func TestMarinerDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-mariner.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "mariner", di.Name, "os name should be identified")
+	assert.Equal(t, "Common Base Linux Mariner", di.Title, "os title should be identified")
+	assert.Equal(t, "2.0", di.Version, "os version should be identified")
+	assert.Equal(t, "2.0.20260304", di.Build, "os build should be identified")
+	assert.Equal(t, "aarch64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
 func TestDetectorFlatcar(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-flatcar.toml")
 	assert.Nil(t, err, "was able to create the provider")
