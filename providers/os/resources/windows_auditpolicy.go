@@ -29,7 +29,11 @@ func fetchAuditpolEntries(runtime *plugin.Runtime) ([]windows.AuditpolEntry, err
 	if out.Error != nil {
 		return nil, fmt.Errorf("could not run auditpol: %w", out.Error)
 	}
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
+	exit := cmd.GetExitcode()
+	if exit.Error != nil {
+		return nil, fmt.Errorf("could not run auditpol: %w", exit.Error)
+	}
+	if exit.Data != 0 {
 		return nil, fmt.Errorf("could not run auditpol: %s", strings.TrimSpace(cmd.Stderr.Data))
 	}
 

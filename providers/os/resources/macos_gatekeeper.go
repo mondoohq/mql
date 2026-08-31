@@ -4,7 +4,6 @@
 package resources
 
 import (
-	"errors"
 	"strings"
 	"sync"
 
@@ -34,11 +33,12 @@ func (m *mqlMacosGatekeeper) fetchStatus() (string, error) {
 		return "", err
 	}
 	cmd := res.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return "", errors.New("spctl --status failed: " + cmd.GetStderr().Data)
+	stdout, err := commandOutput(cmd, "spctl --status")
+	if err != nil {
+		return "", err
 	}
 
-	m.output = parseSpctlStatus(cmd.GetStdout().Data)
+	m.output = parseSpctlStatus(stdout)
 	m.fetched = true
 	return m.output, nil
 }
