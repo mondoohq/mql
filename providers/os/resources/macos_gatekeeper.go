@@ -39,7 +39,11 @@ func (m *mqlMacosGatekeeper) fetchStatus() (string, error) {
 		return "", err
 	}
 	cmd := res.(*mqlCommand)
-	status, err := spctlStatus(cmd.GetStdout().Data, cmd.GetStderr().Data, cmd.GetExitcode().Data)
+	run, err := commandResult(cmd)
+	if err != nil {
+		return "", err
+	}
+	status, err := spctlStatus(run.stdout, run.stderr, run.exitcode)
 	if err != nil {
 		return "", err
 	}
