@@ -3749,6 +3749,1418 @@ private squid.conf.accessLog @defaults("target format") {
   raw string
 }
 
+// FRRouting
+//
+// FRR routing daemon version, configuration and runtime state. FRR runs
+// either directly on the host or inside a Host Based Networking (HBN)
+// container. Both shapes are covered by the same resources, because the
+// connection decides which filesystem and which shell the scan uses.
+//
+// The configuration is read from frr.conf and is durable. The runtime
+// fields below run vtysh and `ip` on the asset, so they need a connection
+// that can execute commands, and they describe the moment of the scan.
+frr {
+  // FRR version string (e.g., "8.5.4")
+  version() string
+  // VRFs known to FRR and to the kernel at scan time
+  vrfs() []frr.vrf
+  // BGP sessions of the default VRF at scan time. Use `frr.vrfs` for the sessions of a VRF.
+  bgpNeighbors() []frr.bgp.neighbor
+  // EVPN VNIs the local VTEP knows at scan time
+  evpnVnis() []frr.evpn.vni
+  // EVPN routing table of the local BGP instance at scan time. Use `frr.evpn.routeTable(vni: <id>)` for one VNI.
+  evpnRoutes() frr.evpn.routeTable
+  // Policy routing rules of the kernel at scan time
+  routingRules() []frr.routingRule
+  // OSPF and OSPFv3 adjacencies at scan time
+  ospfNeighbors() []frr.ospf.neighbor
+  // IS-IS adjacencies at scan time
+  isisNeighbors() []frr.isis.neighbor
+  // BFD sessions at scan time
+  bfdSessions() []frr.bfd.session
+  // Interfaces the routing daemon knows at scan time
+  interfaces() []frr.interface
+}
+
+// FRR configuration
+//
+// Parsed frr.conf. The default path is /etc/frr/frr.conf, which is also
+// the path inside an HBN container. When that file is absent, the
+// resource falls back to the host-side paths an HBN or CRA deployment
+// uses (/var/lib/hbn/etc/frr/frr.conf, /etc/cra/frr.conf). Pass
+// `init(path: "...")` to read a different file.
+//
+// The resource models the parts of the config that carry security
+// meaning: BGP routers and their neighbors, the filters applied per
+// neighbor, VRF definitions with their route targets, EVPN settings and
+// interfaces. Everything else stays reachable through `blocks` and
+// `directives`.
+frr.config {
+  init(path? string)
+  // Configuration file (defaults to the first frr.conf found on the asset)
+  file() file
+  // `hostname` value
+  hostname(file) string
+  // Version from the `frr version <x>` line FRR writes into a saved config
+  version(file) string
+  // Profile from `frr defaults <traditional|datacenter>`
+  defaults(file) string
+  // `service integrated-vtysh-config` is set, so vtysh writes one merged file
+  integratedVtyshConfig(file) bool
+  // BGP instances, one per `router bgp <asn> [vrf <name>]` block
+  bgp(file) []frr.config.router
+  // VRF definitions, linked to the BGP instance that serves them
+  vrfs(file) []frr.config.vrf
+  // Interface blocks
+  interfaces(file) []frr.config.interface
+  // Prefix lists, grouped by address family and name
+  prefixLists(file) []frr.config.prefixList
+  // Route maps, grouped by name
+  routeMaps(file) []frr.config.routeMap
+  // Static routes, from the top level and from inside the VRF blocks
+  staticRoutes(file) []frr.config.staticRoute
+  // Community lists, grouped by kind and name
+  communityLists(file) []frr.config.communityList
+  // Access lists, grouped by address family and name
+  accessLists(file) []frr.config.accessList
+  // AS path access lists, grouped by name
+  asPathAccessLists(file) []frr.config.asPathAccessList
+  // OSPF and OSPFv3 instances
+  ospf(file) []frr.config.ospfInstance
+  // IS-IS instances
+  isis(file) []frr.config.isisInstance
+  // BFD peers and profiles
+  bfdPeers(file) []frr.config.bfdPeer
+  // Policy based routing maps, grouped by name
+  pbrMaps(file) []frr.config.pbrMap
+  // Segment routing block of the node
+  segmentRouting(file) frr.config.segmentRoutingSettings
+  // Settings of the daemon itself: logging, shell passwords and SNMP
+  service(file) frr.config.serviceSettings
+  // Key chains that the routing protocols authenticate with
+  keyChains(file) []frr.config.keyChain
+  // vty lines, which carry the shell of the router
+  vtyLines(file) []frr.config.vtyLine
+  // RPKI block, which decides whether BGP validates what it hears
+  rpki(file) frr.config.rpkiSettings
+  // Every top-level block in source order, including bfd, pbr-map and other types without a dedicated resource
+  blocks(file) []frr.config.block
+  // Every top-level line outside a block, such as community lists and static routes (entries: {name, args, negated, line, file, raw})
+  directives(file) []dict
+}
+
+// FRR configuration block (raw view)
+//
+// Arbitrary block addressed by type and name. Use it for blocks that have
+// no dedicated resource, and for audits that need every line in source
+// order.
+private frr.config.block @defaults("type name") {
+  // Block keyword (router bgp, vrf, interface, route-map, bfd, pbr-map, ...)
+  type string
+  // Primary identifier of the block (ASN, VRF name, interface name, map name)
+  name string
+  // Every token after the block keyword
+  args []string
+  // Source file path
+  file string
+  // 1-based source line of the block header
+  startLine int
+  // 1-based source line of the last line in the block
+  endLine int
+  // Lines directly inside the block (entries: {name, args, negated, line, file, raw})
+  directives []dict
+  // Nested blocks
+  blocks []frr.config.block
+  // Raw text of the block including its header line
+  raw string
+}
+
+// FRR BGP instance
+//
+// One `router bgp <asn> [vrf <name>]` block. A fabric node runs one
+// instance for the underlay plus one per VRF, so `vrf` tells tenant
+// instances apart from the underlay.
+private frr.config.router @defaults("asn vrf routerId") {
+  // Local autonomous system number
+  asn int
+  // VRF this instance serves (empty for the default VRF / underlay)
+  vrf string
+  // `bgp router-id` value
+  routerId string
+  // `bgp cluster-id` value (set on route reflectors)
+  clusterId string
+  // eBGP sessions require an inbound and outbound policy, false only with `no bgp ebgp-requires-policy`
+  ebgpRequiresPolicy bool
+  // Neighbors activate IPv4 unicast automatically, false only with `no bgp default ipv4-unicast`
+  defaultIpv4Unicast bool
+  // Peers and peer groups of this instance
+  neighbors []frr.config.router.neighbor
+  // Address families of this instance
+  addressFamilies []frr.config.router.addressFamily
+  // Flat directive map of the router block (name -> value)
+  params map[string]string
+  // Source file path
+  file string
+  // 1-based source line of the router block header
+  startLine int
+  // Raw text of the router block
+  raw string
+}
+
+// FRR BGP neighbor
+//
+// One peer or peer group, merged from every `neighbor <name> ...` line in
+// the router block and in its address families. The rolled-up filter
+// lists answer whether a session accepts routes without a filter.
+private frr.config.router.neighbor @defaults("name remoteAs") {
+  // Peer address, interface name for an unnumbered peer, or peer group name
+  name string
+  // Peer is unnumbered, configured with `neighbor <if> interface remote-as`
+  isInterface bool
+  // Name declares a peer group rather than a single peer
+  isPeerGroup bool
+  // Peer group this neighbor joins
+  peerGroup string
+  // Raw `remote-as` value, which is a number or `internal` or `external`
+  remoteAs string
+  // Remote AS as a number, 0 when remote-as is internal or external
+  remoteAsn int
+  // `local-as` value
+  localAsn int
+  // `description` text
+  description string
+  // `update-source` value
+  updateSource string
+  // Prefix of `bgp listen range <prefix> peer-group <name>` for a dynamic group
+  listenRange string
+  // `bfd` is enabled for this neighbor
+  bfd bool
+  // Neighbor is administratively shut down
+  shutdown bool
+  // An MD5 password is configured (the password itself is not exposed)
+  passwordSet bool
+  // `ttl-security hops` value
+  ttlSecurityHops int
+  // Keepalive seconds from `neighbor <n> timers <keepalive> <hold>`
+  keepaliveTime int
+  // Hold time seconds from `neighbor <n> timers <keepalive> <hold>`
+  holdTime int
+  // Per address family settings
+  addressFamilies []frr.config.router.neighbor.addressFamily
+  // Address families the neighbor is explicitly activated in (e.g. "ipv4 unicast")
+  activatedAddressFamilies []string
+  // Inbound route maps across every address family
+  routeMapsIn []string
+  // Outbound route maps across every address family
+  routeMapsOut []string
+  // Inbound prefix lists across every address family
+  prefixListsIn []string
+  // Outbound prefix lists across every address family
+  prefixListsOut []string
+  // Inbound AS path filter lists across every address family
+  filterListsIn []string
+  // Outbound AS path filter lists across every address family
+  filterListsOut []string
+  // Every `neighbor <name> ...` setting (setting -> value)
+  params map[string]string
+  // Source file path
+  file string
+  // 1-based source line where the neighbor first appears
+  line int
+}
+
+// FRR BGP neighbor address family settings
+//
+// What one neighbor does inside one address family. The filters here
+// decide which routes the session accepts and announces.
+private frr.config.router.neighbor.addressFamily @defaults("afi safi activate") {
+  // Address family identifier (ipv4, ipv6, l2vpn)
+  afi string
+  // Subsequent address family identifier (unicast, multicast, evpn, vpn)
+  safi string
+  // Neighbor is explicitly activated in this family, which does not cover the implicit activation of `bgp default ipv4-unicast`
+  activate bool
+  // Inbound route map
+  routeMapIn string
+  // Outbound route map
+  routeMapOut string
+  // Inbound prefix list
+  prefixListIn string
+  // Outbound prefix list
+  prefixListOut string
+  // Inbound AS path filter list
+  filterListIn string
+  // Outbound AS path filter list
+  filterListOut string
+  // `maximum-prefix` limit, 0 when unset
+  maximumPrefix int
+  // Neighbor is a route reflector client
+  routeReflectorClient bool
+  // `allowas-in` is set, so the peer may send back the local AS
+  allowasIn bool
+  // `next-hop-self` is set
+  nextHopSelf bool
+  // `soft-reconfiguration` is set
+  softReconfiguration bool
+  // `default-originate` is set, so a default route is announced
+  defaultOriginate bool
+  // `remove-private-AS` is set
+  removePrivateAs bool
+}
+
+// FRR BGP address family
+//
+// One `address-family <afi> <safi>` block of a router. The EVPN family
+// carries the route targets and the VRF imports that decide which VRF
+// sees which routes.
+private frr.config.router.addressFamily @defaults("afi safi") {
+  // Address family identifier (ipv4, ipv6, l2vpn)
+  afi string
+  // Subsequent address family identifier (unicast, multicast, evpn, vpn)
+  safi string
+  // Prefixes advertised with `network <prefix>`
+  networks []string
+  // `redistribute <source>` entries
+  redistribute []string
+  // Source VRFs of every `import vrf <name>` line
+  importVrfs []string
+  // Route map of `import vrf route-map <name>`, which filters leaked routes
+  importVrfRouteMap string
+  // EVPN route targets imported into this family
+  routeTargetsImport []string
+  // EVPN route targets exported from this family
+  routeTargetsExport []string
+  // `advertise <afi> <safi> [route-map <name>]` entries
+  advertise []string
+  // `advertise-all-vni` is set
+  advertiseAllVni bool
+  // `vni <id>` blocks with their own route targets
+  vnis []dict
+  // Flat directive map of the address family (name -> value)
+  params map[string]string
+  // Source file path
+  file string
+  // 1-based source line of the address family header
+  startLine int
+  // Raw text of the address family block
+  raw string
+}
+
+// FRR VRF
+//
+// One `vrf <name>` block. The route targets, imported VRFs and ASN come
+// from the `router bgp <asn> vrf <name>` instance that serves the VRF, so
+// tenant separation can be checked on a single resource.
+private frr.config.vrf @defaults("name vni") {
+  // VRF name
+  name string
+  // Layer 3 VNI bound to the VRF, 0 when the VRF is local only
+  vni int
+  // Static routes defined inside the VRF block
+  staticRoutes []string
+  // ASN of the BGP instance serving this VRF, 0 when there is none
+  routerAsn int
+  // EVPN route targets the VRF imports, across every address family
+  routeTargetsImport []string
+  // EVPN route targets the VRF exports, across every address family
+  routeTargetsExport []string
+  // Other VRFs pulled in with `import vrf <name>`
+  importedVrfs []string
+  // Flat directive map of the vrf block (name -> value)
+  params map[string]string
+  // Source file path
+  file string
+  // 1-based source line of the vrf block header
+  startLine int
+  // Raw text of the vrf block
+  raw string
+}
+
+// FRR interface
+//
+// One `interface <name> [vrf <name>]` block.
+private frr.config.interface @defaults("name vrf") {
+  // Interface name
+  name string
+  // VRF the interface is bound to
+  vrf string
+  // `description` text
+  description string
+  // IPv4 addresses configured with `ip address`
+  ipAddresses []string
+  // IPv6 addresses configured with `ipv6 address`
+  ipv6Addresses []string
+  // Interface is administratively shut down
+  shutdown bool
+  // `pbr-policy` map applied to the interface
+  pbrPolicy string
+  // OSPF area of the interface
+  ospfArea string
+  // OSPF authentication mode of the interface, empty when the link takes none
+  ospfAuthentication string
+  // An OSPF authentication key is set. The value stays out of the resource.
+  ospfAuthenticationKeySet bool
+  // An OSPF message digest key is set. The value stays out of the resource.
+  ospfMessageDigestKeySet bool
+  // OSPF cost of the interface, -1 when the link leaves it at the default
+  ospfCost int
+  // OSPF priority of the interface, -1 when the link leaves it at the default
+  ospfPriority int
+  // OSPF hello interval in seconds, -1 when the link leaves it at the default
+  ospfHelloInterval int
+  // OSPF dead interval in seconds, -1 when the link leaves it at the default
+  ospfDeadInterval int
+  // OSPF network type of the interface (e.g. point-to-point)
+  ospfNetworkType string
+  // Interface is passive in OSPF, so it announces the link without speaking on it
+  ospfPassive bool
+  // IS-IS instance tag of the interface
+  isisTag string
+  // An IS-IS link password is set. The value stays out of the resource.
+  isisPasswordSet bool
+  // IS-IS authentication mode of the interface
+  isisAuthenticationMode string
+  // IS-IS network type of the interface
+  isisNetworkType string
+  // IS-IS circuit type of the interface (level-1, level-2-only, level-1-2)
+  isisCircuitType string
+  // PIM is enabled on the interface
+  pimEnabled bool
+  // IGMP is enabled on the interface
+  igmpEnabled bool
+  // A BFD session runs on the interface
+  bfdEnabled bool
+  // Flat directive map of the interface block (name -> value)
+  params map[string]string
+  // Source file path
+  file string
+  // 1-based source line of the interface block header
+  startLine int
+  // Raw text of the interface block
+  raw string
+}
+
+// FRR prefix list
+//
+// Every `ip prefix-list <name> ...` or `ipv6 prefix-list <name> ...` line
+// of one name, in source order.
+private frr.config.prefixList @defaults("name afi") {
+  // Prefix list name
+  name string
+  // Address family of the list (ip or ipv6)
+  afi string
+  // Entries in source order (entries: {seq, action, prefix, le, ge, line, raw})
+  entries []dict
+  // Source file path
+  file string
+  // 1-based source line of the first entry
+  line int
+}
+
+// FRR route map
+//
+// Every `route-map <name> <permit|deny> <seq>` block of one name.
+private frr.config.routeMap @defaults("name") {
+  // Route map name
+  name string
+  // Clauses in source order
+  entries []frr.config.routeMap.entry
+  // Source file path
+  file string
+  // 1-based source line of the first clause
+  line int
+}
+
+// FRR route map clause
+//
+// One `route-map <name> <permit|deny> <seq>` block with its match and set
+// statements.
+private frr.config.routeMap.entry @defaults("name action sequence") {
+  // Route map name
+  name string
+  // Clause action (permit or deny)
+  action string
+  // Clause sequence number
+  sequence int
+  // `match` statements without the leading keyword
+  match []string
+  // `set` statements without the leading keyword
+  set []string
+  // Prefix lists named by a `match ip|ipv6 address prefix-list` statement
+  matchPrefixLists []string
+  // Access lists named by a `match ip|ipv6 address` statement
+  matchAccessLists []string
+  // Community lists named by a `match community` statement
+  matchCommunityLists []string
+  // Large community lists named by a `match large-community` statement
+  matchLargeCommunities []string
+  // Extended community lists named by a `match extcommunity` statement
+  matchExtCommunities []string
+  // AS path access lists named by a `match as-path` statement
+  matchAsPathLists []string
+  // `match source-vrf` value, which is what makes a clause act on leaked routes
+  matchSourceVrf string
+  // `match interface` value
+  matchInterface string
+  // `match peer` value
+  matchPeer string
+  // `match evpn route-type` value
+  matchEvpnRouteType string
+  // `match evpn vni` value, -1 when the clause does not set it
+  matchEvpnVni int
+  // `match tag` value, -1 when the clause does not set it
+  matchTag int
+  // `match metric` value, -1 when the clause does not set it
+  matchMetric int
+  // `match local-preference` value, -1 when the clause does not set it
+  matchLocalPreference int
+  // Community values of a `set community` statement
+  setCommunities []string
+  // `set community` carries `additive`, so it keeps the communities of the route
+  setCommunityAdditive bool
+  // `set community none` strips every community from the route
+  setCommunityNone bool
+  // Values of a `set large-community` statement
+  setLargeCommunities []string
+  // Values of a `set extcommunity` statement, including route targets
+  setExtCommunities []string
+  // Community list of a `set comm-list <name> delete` statement
+  setCommunityDelete string
+  // `set local-preference` value, -1 when the clause does not set it
+  setLocalPreference int
+  // `set metric` value, which can be relative (e.g. "+10")
+  setMetric string
+  // `set weight` value, -1 when the clause does not set it
+  setWeight int
+  // `set origin` value
+  setOrigin string
+  // AS numbers of a `set as-path prepend` statement
+  setAsPathPrepend []string
+  // AS numbers of a `set as-path exclude` statement
+  setAsPathExclude []string
+  // Next hop of a `set ip|ipv6|ipv4 next-hop` statement
+  setNextHop string
+  // `set src` value
+  setSourceAddress string
+  // `set tag` value, -1 when the clause does not set it
+  setTag int
+  // `set table` value, -1 when the clause does not set it
+  setTable int
+  // `set distance` value, -1 when the clause does not set it
+  setDistance int
+  // `set atomic-aggregate` is present
+  setAtomicAggregate bool
+  // `call <name>` target, which runs another route map
+  call string
+  // `on-match` statement without the leading keyword
+  onMatch string
+  // Source file path
+  file string
+  // 1-based source line of the clause header
+  startLine int
+  // Raw text of the clause
+  raw string
+}
+
+// FRR static route
+//
+// One `ip route` or `ipv6 route` line, from the top level or from inside a
+// VRF block. A route with `nexthopVrf` set resolves its next hop in another
+// VRF, which is how traffic crosses a tenant boundary on purpose.
+private frr.config.staticRoute @defaults("prefix vrf nexthop") {
+  // Address family of the route (ipv4 or ipv6)
+  afi string
+  // Destination prefix
+  prefix string
+  // Next hop address, empty for an interface route or a discard route
+  nexthop string
+  // Outgoing interface, empty when the route has a next hop address
+  interface string
+  // VRF the route belongs to, empty for the default VRF
+  vrf string
+  // VRF the next hop is resolved in, which leaks the route between VRFs
+  nexthopVrf string
+  // Route discards the traffic silently
+  blackhole bool
+  // Route rejects the traffic with an ICMP answer
+  reject bool
+  // Administrative distance, 0 when the line omits it
+  distance int
+  // Routing table of the route, 0 when the line omits it
+  table int
+  // Route tag, 0 when the line omits it
+  tag int
+  // MPLS label of the route
+  label string
+  // Source file path
+  file string
+  // 1-based source line
+  line int
+  // Raw text of the line
+  raw string
+}
+
+// FRR community list
+//
+// Every line of one community list. FRR keeps standard and large
+// communities plus extended communities, and a route map matches on the
+// name of one of these lists, so the values decide which routes a policy
+// acts on.
+private frr.config.communityList @defaults("name kind type") {
+  // List name
+  name string
+  // Kind of community the list holds (community, large-community, extcommunity)
+  kind string
+  // List type: standard holds values, expanded holds a regular expression
+  type string
+  // Entries in source order (entries: {seq, action, value, line, raw})
+  entries []dict
+  // Source file path
+  file string
+  // 1-based source line of the first entry
+  line int
+}
+
+// FRR access list
+//
+// Every line of one access list. A route map can match on an access list
+// instead of a prefix list, so both have to be readable.
+private frr.config.accessList @defaults("name afi") {
+  // List name
+  name string
+  // Address family of the list (ipv4 or ipv6)
+  afi string
+  // Entries in source order (entries: {seq, action, value, line, raw})
+  entries []dict
+  // Source file path
+  file string
+  // 1-based source line of the first entry
+  line int
+}
+
+// FRR AS path access list
+//
+// Every line of one AS path access list. The entries hold regular
+// expressions over the AS path, which is how a policy keeps a transit path
+// out of a tenant VRF.
+private frr.config.asPathAccessList @defaults("name") {
+  // List name
+  name string
+  // Entries in source order (entries: {seq, action, value, line, raw})
+  entries []dict
+  // Source file path
+  file string
+  // 1-based source line of the first entry
+  line int
+}
+
+// FRR OSPF instance
+//
+// One `router ospf` or `router ospf6` block. An interior gateway protocol
+// installs routes from whatever it forms an adjacency with, so the area
+// authentication and the passive interface default decide how much the
+// underlay trusts its links.
+private frr.config.ospfInstance @defaults("version vrf routerId") {
+  // Protocol version: 2 for `router ospf`, 3 for `router ospf6`
+  version int
+  // VRF the instance serves, empty for the default VRF
+  vrf string
+  // Router id of the instance
+  routerId string
+  // Areas named by the instance (entries: {id, authentication, type, noSummary, ranges, filterLists, virtualLinks})
+  areas []dict
+  // `network <prefix> area <id>` statements (entries: {prefix, area})
+  networks []dict
+  // `passive-interface default` is set, so an interface has to opt in to speak
+  passiveInterfaceDefault bool
+  // Interfaces named by a `passive-interface` statement
+  passiveInterfaces []string
+  // Interfaces exempted with `no passive-interface`, which matters when the default is passive
+  noPassiveInterfaces []string
+  // `redistribute <source>` statements
+  redistribute []string
+  // The instance originates a default route into the protocol
+  defaultInformationOriginate bool
+  // Adjacency changes are logged, which is what makes a flapping neighbor visible
+  logAdjacencyChanges bool
+  // `max-metric router-lsa` value, which keeps traffic off a starting router
+  maxMetricRouterLsa string
+  // Flat directive map of the block (name -> value)
+  params map[string]string
+  // Source file path
+  file string
+  // 1-based source line of the block header
+  startLine int
+  // Raw text of the block
+  raw string
+}
+
+// FRR IS-IS instance
+//
+// One `router isis <tag>` block. The passwords protect the adjacency and
+// the link state database, so their presence and their mode are reported
+// while the values stay out of the resource.
+private frr.config.isisInstance @defaults("tag vrf isType") {
+  // Instance tag, which the interfaces refer to
+  tag string
+  // VRF the instance serves, empty for the default VRF
+  vrf string
+  // Network entity title of the instance
+  net string
+  // Level of the instance (level-1, level-2-only, level-1-2)
+  isType string
+  // Metric style (narrow, wide, transition)
+  metricStyle string
+  // An area password is set
+  areaPasswordSet bool
+  // How the area password is sent (clear or md5)
+  areaPasswordMode string
+  // A domain password is set
+  domainPasswordSet bool
+  // How the domain password is sent (clear or md5)
+  domainPasswordMode string
+  // `isis authentication` mode of the instance
+  authenticationMode string
+  // `redistribute <source>` statements
+  redistribute []string
+  // Adjacency changes are logged
+  logAdjacencyChanges bool
+  // Flat directive map of the block (name -> value)
+  params map[string]string
+  // Source file path
+  file string
+  // 1-based source line of the block header
+  startLine int
+  // Raw text of the block
+  raw string
+}
+
+// FRR BFD peer or profile
+//
+// One `peer` or `profile` block of the `bfd` block. BFD decides how fast
+// the fabric drops a dead neighbor, so the timers set the reconvergence
+// time of the whole underlay.
+private frr.config.bfdPeer @defaults("kind name detectMultiplier") {
+  // Block kind: peer or profile
+  kind string
+  // Peer address, or the profile name
+  name string
+  // Interface the session runs on
+  interface string
+  // Local address of the session
+  localAddress string
+  // VRF of the session
+  vrf string
+  // Session crosses more than one hop
+  multiHop bool
+  // Profile the peer inherits from
+  profile string
+  // Detect multiplier, -1 when the block leaves it at the default
+  detectMultiplier int
+  // Receive interval in milliseconds, -1 when the block leaves it at the default
+  receiveInterval int
+  // Transmit interval in milliseconds, -1 when the block leaves it at the default
+  transmitInterval int
+  // Echo mode is on
+  echoMode bool
+  // Echo interval in milliseconds, -1 when the block leaves it at the default
+  echoInterval int
+  // Session waits for the peer to start it
+  passiveMode bool
+  // Session is administratively down
+  shutdown bool
+  // Minimum TTL the session accepts, -1 when the block leaves it at the default
+  minimumTtl int
+  // Flat directive map of the block (name -> value)
+  params map[string]string
+  // Source file path
+  file string
+  // 1-based source line of the block header
+  startLine int
+  // Raw text of the block
+  raw string
+}
+
+// FRR policy based routing map
+//
+// Every sequence of one `pbr-map` block. Policy routing sends selected
+// traffic to another table or VRF, so it moves traffic across a tenant
+// boundary without a route.
+private frr.config.pbrMap @defaults("name") {
+  // Map name
+  name string
+  // Rules in source order
+  //
+  // Entries: {sequence, matches, sourcePrefix, destPrefix, sourcePort,
+  // destPort, protocol, dscp, nexthop, nexthopVrf, table, vrfUnchanged,
+  // startLine, raw}
+  rules []dict
+  // Source file path
+  file string
+  // 1-based source line of the first sequence
+  line int
+}
+
+// FRR segment routing
+//
+// The `segment-routing` block, with the SRv6 locators of the node. It is
+// reported as not configured when the file has no such block.
+private frr.config.segmentRoutingSettings @defaults("configured mplsEnabled") {
+  // The configuration has a segment-routing block
+  configured bool
+  // The block enables the MPLS data plane
+  mplsEnabled bool
+  // SRv6 locators of the node (entries: {name, prefix, params})
+  srv6Locators []dict
+  // Flat directive map of the block (name -> value)
+  params map[string]string
+  // Source file path
+  file string
+  // 1-based source line of the block header
+  startLine int
+  // Raw text of the block
+  raw string
+}
+
+// FRR daemon services
+//
+// The settings of the daemon itself rather than of a protocol: where it
+// logs, whether a shell password is set, and whether it answers SNMP. A
+// router with `advanced-vty` drops the enable mode barrier, and one with
+// AgentX exposes its routing state to an SNMP master.
+private frr.config.serviceSettings @defaults("passwordSet enablePasswordSet agentxEnabled") {
+  // Log destinations (entries: {target, destination, level, raw})
+  logTargets []dict
+  // A shell password is set. The value stays out of the resource.
+  passwordSet bool
+  // An enable password is set. The value stays out of the resource.
+  enablePasswordSet bool
+  // The SNMP AgentX socket is enabled
+  agentxEnabled bool
+  // `service integrated-vtysh-config` is set, so vtysh writes one merged file
+  integratedVtyshConfig bool
+  // `service advanced-vty` is set, which drops the enable mode barrier
+  advancedVty bool
+  // `log commands` is set, so the router records what an operator typed
+  logCommands bool
+  // Local shell users (entries: {name, nopassword, privilege})
+  users []dict
+}
+
+// FRR key chain
+//
+// One `key chain` block. A key chain holds the keys the interior gateway
+// protocols and BFD authenticate with, so an interface that names a chain
+// is only as protected as the chain is. A key without a lifetime never
+// rotates, and one without an algorithm falls back to plain text.
+private frr.config.keyChain @defaults("name") {
+  // Chain name, which an interface or a protocol refers to
+  name string
+  // Keys of the chain (entries: {id, keyStringSet, algorithm, sendLifetime, acceptLifetime, line})
+  keys []dict
+  // Source file path
+  file string
+  // 1-based source line of the block header
+  startLine int
+  // Raw text of the block
+  raw string
+}
+
+// FRR vty line
+//
+// One `line vty` block, which carries the shell of the router. The access
+// class decides who may open a session, and the idle timeout closes a
+// forgotten one.
+private frr.config.vtyLine @defaults("accessClass execTimeout") {
+  // IPv4 access list applied to the line, empty when the line accepts every source
+  accessClass string
+  // IPv6 access list applied to the line
+  accessClassIpv6 string
+  // Idle timeout as the line spells it (e.g. "10 0"). An explicit "0 0" never times out.
+  execTimeout string
+  // The line prompts for a password. It is false when the line carries `no login`.
+  loginEnabled bool
+  // A line password is set. The value stays out of the resource.
+  passwordSet bool
+  // Flat directive map of the block (name -> value)
+  params map[string]string
+  // Source file path
+  file string
+  // 1-based source line of the block header
+  startLine int
+  // Raw text of the block
+  raw string
+}
+
+// FRR RPKI
+//
+// The `rpki` block. RPKI tells BGP which announcements are signed by the
+// holder of the prefix, so a router without a reachable cache validates
+// nothing. It is reported as not configured when the file has no block,
+// which is itself the answer to whether the router validates.
+private frr.config.rpkiSettings @defaults("configured") {
+  // The configuration has an rpki block
+  configured bool
+  // Polling period in seconds, -1 when the block leaves it at the default
+  pollingPeriod int
+  // Expire interval in seconds, -1 when the block leaves it at the default
+  expireInterval int
+  // Retry interval in seconds, -1 when the block leaves it at the default
+  retryInterval int
+  // Validation caches (entries: {address, port, transport, sshUser, preference, raw})
+  caches []dict
+  // Flat directive map of the block (name -> value)
+  params map[string]string
+  // Source file path
+  file string
+  // 1-based source line of the block header
+  startLine int
+  // Raw text of the block
+  raw string
+}
+
+// FRR vtysh configuration
+//
+// Parsed vtysh.conf (default /etc/frr/vtysh.conf). It holds the shell
+// settings of FRR, including whether vtysh writes one integrated config
+// file and which local users may reach the shell.
+frr.vtysh.config {
+  init(path? string)
+  // Configuration file (defaults to /etc/frr/vtysh.conf)
+  file() file
+  // `hostname` value
+  hostname(file) string
+  // `service integrated-vtysh-config` is set
+  integratedConfig(file) bool
+  // `username <name> ...` lines (entries: {name, nopassword, privilege})
+  users(file) []dict
+  // Every configuration line (entries: {name, args, negated, line, file, raw})
+  directives(file) []dict
+  // Flat directive map (name -> value)
+  params(file) map[string]string
+}
+
+// FRR VRF
+//
+// One VRF as it exists at scan time. The view merges what zebra reports
+// with the VRF device on the asset, so a VRF that only one side knows is
+// still listed. `inFrr` and `inKernel` say which side saw it.
+//
+// This is runtime state. It describes the moment of the scan.
+private frr.vrf @defaults("name tableId up") {
+  // VRF name
+  name string
+  // VRF id assigned by zebra, 0 when zebra does not know the VRF
+  id int
+  // Routing table the VRF uses
+  tableId int
+  // Name of that routing table from /etc/iproute2/rt_tables, empty when unnamed
+  tableName string
+  // Interface index of the VRF device, 0 when the device is absent
+  ifindex int
+  // MTU of the VRF device
+  mtu int
+  // Operational state of the VRF device (e.g. UP, DOWN)
+  operState string
+  // VRF device is up
+  up bool
+  // zebra reported the VRF
+  inFrr bool
+  // The VRF device exists on the asset
+  inKernel bool
+  // IPv4 routes of this VRF. Use `frr.routeTable(<name>, "ipv6")` for IPv6.
+  routes() frr.routeTable
+  // BGP sessions of this VRF, across every address family
+  bgpNeighbors() []frr.bgp.neighbor
+  // Policy routing rules that select the routing table of this VRF
+  rules() []frr.routingRule
+}
+
+// FRR routing table
+//
+// The routes of one VRF and one address family, read with
+// `show ip route [vrf <name>] json` or its IPv6 form. The VRF and the
+// address family are part of the command, so FRR filters before it prints.
+//
+// The result is bounded. `limit` caps how many routes become resources,
+// `total` counts every prefix the command reported, and `truncated` says
+// whether the cap was reached. A node that holds a full table has far more
+// prefixes than any policy needs to read.
+//
+// This is runtime state. It describes the moment of the scan.
+frr.routeTable @defaults("vrf afi total truncated") {
+  init(vrf? string, afi? string, limit? int)
+  // VRF the routes belong to, empty for the default VRF
+  vrf string
+  // Address family, ipv4 (default) or ipv6
+  afi string
+  // Maximum number of routes turned into resources
+  limit int
+  // Number of prefixes the command reported, including the ones past the limit
+  total() int
+  // The command reported more prefixes than the limit
+  truncated() bool
+  // Routes, at most `limit` entries
+  entries() []frr.route
+}
+
+// FRR route
+//
+// One route of the FRR routing information base, with the next hops it
+// resolves to. `selected` marks the route FRR chose for the prefix, and
+// `installed` marks the route the kernel holds.
+//
+// This is runtime state. It describes the moment of the scan.
+private frr.route @defaults("prefix protocol vrf selected") {
+  // Destination prefix in CIDR notation
+  prefix string
+  // Prefix length
+  prefixLength int
+  // Routing protocol that owns the route (e.g. bgp, static, connected, kernel)
+  protocol string
+  // VRF the route belongs to
+  vrf string
+  // Numeric routing table of the route
+  table int
+  // FRR chose this route for the prefix
+  selected bool
+  // The route is installed in the kernel
+  installed bool
+  // Administrative distance
+  distance int
+  // Route metric
+  metric int
+  // How long the route has been present, as reported by FRR (e.g. "01:12:40")
+  uptime string
+  // Next hops (entries: {ip, interface, vrf, active, fib, directlyConnected})
+  nexthops []dict
+}
+
+// FRR BGP session
+//
+// One BGP peer of one VRF, merged from `show bgp [vrf <name>] summary json`
+// and `show bgp [vrf <name>] neighbors json`. The session state and the
+// prefix counters live in the address families.
+//
+// This is runtime state. A peer that is Established now can be down at the
+// next scan, so a policy over these fields tests the moment, not the
+// configuration.
+private frr.bgp.neighbor @defaults("vrf name state remoteAsn") {
+  // Peer address, or the interface name of an unnumbered peer
+  name string
+  // VRF the session belongs to, empty for the default VRF
+  vrf string
+  // Remote autonomous system number
+  remoteAsn int
+  // Local autonomous system number
+  localAsn int
+  // Hostname the peer announced, empty when capability hostname is off
+  hostname string
+  // Session state (e.g. Established, Idle, Active, Connect)
+  state string
+  // Session is Established
+  established bool
+  // How long the session has held its state, in milliseconds
+  uptimeMsec int
+  // BGP messages received on the session
+  messagesReceived int
+  // BGP messages sent on the session
+  messagesSent int
+  // How often the session reached Established
+  connectionsEstablished int
+  // How often the session dropped
+  connectionsDropped int
+  // How the peer is addressed (ipv4, ipv6 or interface)
+  idType string
+  // Per address family state of this session
+  addressFamilies []frr.bgp.neighbor.addressFamily
+}
+
+// FRR BGP session address family
+//
+// What one session carries in one address family, including the prefix
+// counters and the policy FRR is running for it. The running policy can
+// differ from the saved configuration, so comparing it against
+// `frr.config` finds a router that was changed without a commit.
+//
+// This is runtime state. It describes the moment of the scan.
+private frr.bgp.neighbor.addressFamily @defaults("afi safi prefixesReceived prefixesSent") {
+  // Address family identifier (ipv4, ipv6, l2vpn)
+  afi string
+  // Subsequent address family identifier (unicast, multicast, evpn, vpn)
+  safi string
+  // Prefixes FRR kept from the peer (`pfxRcd`), so after the inbound policy
+  prefixesReceived int
+  // Prefixes FRR sent to the peer (`pfxSnt`)
+  prefixesSent int
+  // Accepted prefix counter of the neighbor detail, falls back to prefixesReceived
+  prefixesAccepted int
+  // Prefixes the inbound policy dropped, 0 when `prefixesFilteredKnown` is false
+  prefixesFiltered int
+  // The FRR version reported enough counters to fill `prefixesFiltered`
+  prefixesFilteredKnown bool
+  // Inbound route map FRR is running for this family
+  routeMapIn string
+  // Outbound route map FRR is running for this family
+  routeMapOut string
+  // Inbound prefix list FRR is running for this family
+  prefixListIn string
+  // Outbound prefix list FRR is running for this family
+  prefixListOut string
+  // Raw address family object of `show bgp neighbors json`, which keeps the fields a given FRR version adds
+  details dict
+}
+
+// FRR EVPN VNI
+//
+// One VNI the local VTEP knows, from `show evpn vni json`. An L2 VNI
+// carries a bridge domain and its remote VTEPs. An L3 VNI carries a tenant
+// VRF, so `vrf` plus `state` shows whether a tenant can route at all.
+//
+// This is runtime state. It describes the moment of the scan.
+private frr.evpn.vni @defaults("vni type vrf state") {
+  // VXLAN network identifier
+  vni int
+  // VNI type (L2 or L3)
+  type string
+  // Tenant VRF of an L3 VNI, or the VRF an L2 VNI belongs to
+  vrf string
+  // VXLAN interface of the VNI
+  vxlanInterface string
+  // SVI of an L3 VNI
+  sviInterface string
+  // Router MAC of an L3 VNI
+  routerMac string
+  // State of the VNI (e.g. Up, Down)
+  state string
+  // MAC entries learned in this VNI
+  macCount int
+  // ARP and ND entries learned in this VNI
+  arpNdCount int
+  // Number of remote VTEPs seen for this VNI
+  remoteVtepCount int
+  // Addresses of the remote VTEPs
+  remoteVteps []string
+  // Raw VNI object, which keeps the fields a given FRR version adds
+  details dict
+}
+
+// Policy routing rule
+//
+// One entry of the kernel policy routing database, from `ip -j rule show`.
+// The rules decide which routing table a packet uses, so a rule that sends
+// one tenant's traffic to another tenant's table breaks VRF separation.
+//
+// This is runtime state. It describes the moment of the scan.
+private frr.routingRule @defaults("priority source table") {
+  // Rule priority, evaluated from low to high
+  priority int
+  // Source selector of the rule ("all" matches every source)
+  source string
+  // Destination selector of the rule
+  dest string
+  // Routing table the rule selects, by name when /etc/iproute2/rt_tables names it
+  table string
+  // Numeric id of that routing table, 0 when the rule selects no table
+  tableId int
+  // Input interface selector
+  inputInterface string
+  // Output interface selector
+  outputInterface string
+  // Rule resolves the table from the VRF device of the packet (l3mdev)
+  l3mdev bool
+  // Action of a rule that does not select a table (e.g. unreachable, blackhole)
+  action string
+  // Protocol that installed the rule (e.g. kernel, static)
+  protocol string
+  // Firewall mark the rule matches
+  fwmark string
+  // Rule matches everything but its selectors
+  invert bool
+  // `suppress_prefixlength` value, -1 when the rule does not set it
+  suppressPrefixLength int
+}
+
+// FRR EVPN routing table
+//
+// The EVPN table of the local BGP instance, read with
+// `show bgp l2vpn evpn json` or, when a VNI is given, with
+// `show bgp l2vpn evpn route vni <id> json`. The VNI is part of the
+// command, so FRR filters before it prints.
+//
+// The table holds one entry per MAC, per MAC and IP pair, and per tenant
+// prefix of the whole fabric, so it is bounded the same way as the
+// routing table. `limit` caps how many prefixes become resources, `total`
+// counts every prefix the command reported, and `truncated` says whether
+// the cap was reached.
+//
+// This is runtime state. It describes the moment of the scan.
+frr.evpn.routeTable @defaults("vni total truncated") {
+  init(vni? int, limit? int)
+  // VNI the query was narrowed to, 0 for the whole table
+  vni int
+  // Maximum number of prefixes turned into resources
+  limit int
+  // Number of prefixes the command reported, including the ones past the limit
+  total() int
+  // The command reported more prefixes than the limit
+  truncated() bool
+  // Prefixes, at most `limit` entries
+  entries() []frr.evpn.route
+}
+
+// FRR EVPN route
+//
+// One prefix of the EVPN table with the paths that carry it. The bracketed
+// prefix form of FRR is read apart, so the MAC address and the IP of a
+// tenant workload are addressable, and the route targets of the paths are
+// collected, because they decide which VRF imports the route.
+//
+// This is runtime state. It describes the moment of the scan.
+private frr.evpn.route @defaults("prefix routeTypeName rd") {
+  // Route distinguisher section the prefix was printed under, empty in a per VNI query
+  rd string
+  // NLRI in the bracketed form FRR prints
+  prefix string
+  // EVPN route type (1 to 5)
+  routeType int
+  // Name of the route type (e.g. mac-ip, inclusive-multicast, ip-prefix)
+  routeTypeName string
+  // Ethernet tag of the route
+  ethernetTag int
+  // MAC address the route advertises, empty when the type carries none
+  macAddress string
+  // IP address or prefix the route advertises, empty when the type carries none
+  ip string
+  // Route targets across every path of this prefix
+  routeTargets []string
+  // Paths that carry the prefix
+  paths []frr.bgp.route
+}
+
+// FRR BGP routes of one session
+//
+// The routes one session advertises or receives, read with
+// `show bgp [vrf <name>] neighbor <peer> advertised-routes json` or its
+// received-routes form. The peer, the VRF and the address family are part
+// of the command, so FRR filters before it prints.
+//
+// Received routes need `soft-reconfiguration inbound` on the session.
+// Without it FRR refuses the query, and `available` is false rather than
+// the resource reporting an empty table.
+//
+// This is runtime state. It describes the moment of the scan.
+frr.bgp.peerRoutes @defaults("peer direction total truncated") {
+  init(peer string, direction? string, vrf? string, afi? string, limit? int)
+  // Peer address, or the interface name of an unnumbered peer
+  peer string
+  // Direction of the query, advertised (default) or received
+  direction string
+  // VRF of the session, empty for the default VRF
+  vrf string
+  // Address family, ipv4 (default), ipv6 or l2vpn
+  afi string
+  // Maximum number of prefixes turned into resources
+  limit int
+  // FRR answered the query. It is false when received routes are asked for without inbound soft reconfiguration.
+  available() bool
+  // Number of prefixes the command reported, including the ones past the limit
+  total() int
+  // The command reported more prefixes than the limit
+  truncated() bool
+  // Prefixes the policy of this direction dropped, -1 when FRR does not report it
+  filteredCount() int
+  // Routes, at most `limit` entries
+  entries() []frr.bgp.route
+}
+
+// FRR BGP route
+//
+// One path of one prefix. The communities carry the tags a policy matches
+// on, and the route targets among the extended communities decide which
+// VRF imports the route.
+//
+// This is runtime state. It describes the moment of the scan.
+private frr.bgp.route @defaults("prefix nexthop asPath bestPath") {
+  // NLRI of the path
+  prefix string
+  // Prefix length, 0 when the command does not report it
+  prefixLength int
+  // First next hop of the path
+  nexthop string
+  // Router the path was learned from, empty for a local path
+  peer string
+  // AS path of the route, empty when the path is local
+  asPath string
+  // Origin of the route (e.g. IGP, EGP, Incomplete)
+  origin string
+  // Multi exit discriminator of the path
+  metric int
+  // Local preference of the path
+  localPreference int
+  // Weight of the path
+  weight int
+  // Path is valid
+  valid bool
+  // Path is the best path for the prefix
+  bestPath bool
+  // Standard communities of the path
+  communities []string
+  // Large communities of the path
+  largeCommunities []string
+  // Extended communities of the path, which include the route targets
+  extendedCommunities []string
+  // Route targets of the path, taken from the extended communities
+  routeTargets []string
+}
+
+// FRR OSPF adjacency
+//
+// One adjacency of OSPF or OSPFv3 at scan time. Only an adjacency in Full
+// carries traffic, so a neighbor stuck in ExStart or Init is a link that
+// looks connected and routes nothing.
+//
+// This is runtime state. It describes the moment of the scan.
+private frr.ospf.neighbor @defaults("neighborId state interface") {
+  // Protocol version: 2 for OSPF, 3 for OSPFv3
+  version int
+  // Router id of the neighbor
+  neighborId string
+  // Adjacency state (e.g. Full, ExStart, Init)
+  state string
+  // Adjacency reached Full and carries traffic
+  full bool
+  // Designated router role (e.g. DR, BDR, DROther)
+  role string
+  // Election priority of the neighbor
+  priority int
+  // Address of the neighbor
+  address string
+  // Address of the local side
+  localAddress string
+  // Interface the adjacency runs on
+  interface string
+  // How long the adjacency has held its state, in milliseconds
+  uptimeMsec int
+  // Time left before the neighbor is declared down, in milliseconds
+  deadTimeMsec int
+  // Length of the retransmit queue, which grows when a link drops packets
+  retransmitCount int
+  // Raw neighbor object, which keeps the fields a given FRR version adds
+  details dict
+}
+
+// FRR IS-IS adjacency
+//
+// One adjacency of IS-IS at scan time.
+//
+// This is runtime state. It describes the moment of the scan.
+private frr.isis.neighbor @defaults("systemId state interface") {
+  // Instance tag the adjacency belongs to
+  area string
+  // System id or hostname of the neighbor
+  systemId string
+  // Circuit the adjacency runs on
+  interface string
+  // IS-IS level of the adjacency (1, 2 or 1-2)
+  level string
+  // Adjacency state (e.g. Up, Init)
+  state string
+  // Adjacency is up
+  up bool
+  // Hold time left, as FRR prints it
+  expiresIn string
+  // Subnetwork point of attachment, which is the MAC address on Ethernet
+  snpa string
+  // Raw circuit object, which keeps the fields a given FRR version adds
+  details dict
+}
+
+// FRR BFD session
+//
+// One session of `show bfd peers json` at scan time. BFD drops a dead
+// neighbor faster than any protocol timer, so a session that is down, or
+// one whose timers were negotiated slower than intended, sets how long the
+// fabric keeps sending traffic into a black hole.
+//
+// This is runtime state. It describes the moment of the scan.
+private frr.bfd.session @defaults("peer status interface") {
+  // Peer address
+  peer string
+  // Local address of the session
+  local string
+  // VRF of the session
+  vrf string
+  // Interface the session runs on
+  interface string
+  // Session crosses more than one hop
+  multiHop bool
+  // Session status (up or down)
+  status string
+  // Session is up
+  up bool
+  // How long the session has been up, in seconds
+  uptimeSec int
+  // Local diagnostic of the last state change
+  diagnostic string
+  // Diagnostic the peer reported
+  remoteDiagnostic string
+  // Local detect multiplier
+  detectMultiplier int
+  // Local receive interval in milliseconds
+  receiveInterval int
+  // Local transmit interval in milliseconds
+  transmitInterval int
+  // Local echo interval in milliseconds
+  echoInterval int
+  // Detect multiplier the peer asked for
+  remoteDetectMultiplier int
+  // Receive interval the peer asked for, in milliseconds
+  remoteReceiveInterval int
+  // Transmit interval the peer asked for, in milliseconds
+  remoteTransmitInterval int
+  // Raw session object, which keeps the fields a given FRR version adds
+  details dict
+}
+
+// FRR interface
+//
+// One interface as the routing daemon sees it, from `show interface json`.
+// It differs from `networkInterface`, which is the kernel view: this one
+// carries the VRF binding and the protocol state that zebra tracks.
+//
+// This is runtime state. It describes the moment of the scan.
+private frr.interface @defaults("name vrf operUp") {
+  // Interface name
+  name string
+  // Interface is administratively up
+  adminUp bool
+  // Interface is operationally up
+  operUp bool
+  // VRF the interface belongs to
+  vrf string
+  // Interface index
+  ifindex int
+  // Maximum transmission unit
+  mtu int
+  // Link speed in megabits per second, 0 when the driver reports none
+  speed int
+  // Interface type as zebra reports it
+  type string
+  // Hardware address of the interface
+  hardwareAddress string
+  // Addresses zebra knows for the interface
+  addresses []string
+  // How often the link went down, which is how a flapping link shows up
+  linkDowns int
+  // How often the link came up
+  linkUps int
+  // A protocol has taken the interface down, which is not an operator shutdown
+  protocolDown bool
+  // Raw interface object, which keeps the fields a given FRR version adds
+  details dict
+}
+
 // HAProxy load balancer
 //
 // HAProxy daemon version and configuration. The configuration covers
@@ -14890,6 +16302,24 @@ private networkRoute @defaults("destination flags"){
   flags []string
   // Network interface this route applies to
   iface() networkInterface
+  // Routing table holding the route, as a name or a numeric id (e.g. main, local, 1005); empty when the source does not report it
+  table string
+  // What installed the route (e.g. kernel, boot, static, bgp); empty when the source does not report it
+  protocol string
+  // Scope of the route (e.g. global, link, host); empty when the source does not report it
+  scope string
+  // Route priority, where a lower value wins; 0 when the source does not report it
+  metric int
+  // Preferred source address of the route; empty when the source does not report it
+  source string
+  // Route type (e.g. unicast, blackhole, unreachable); empty when the source does not report it
+  type string
+  // Name of the network interface this route applies to
+  //
+  // `iface` returns the same interface as a resource. This field is the
+  // plain name, so a query that only filters or groups by interface does
+  // not build a networkInterface resource per route.
+  device string
 }
 
 // Chromium-family browsers (Chrome, Brave, Edge variants)

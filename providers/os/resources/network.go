@@ -288,12 +288,26 @@ func (c *mqlNetwork) routes() (*mqlNetworkRoutes, error) {
 			}
 		}
 
+		// The table belongs in the id. A host with VRFs holds the same
+		// prefix in several tables, and those routes are not the same route.
+		id := route.Destination + "/" + route.Gateway + "/" + route.Interface
+		if route.Table != "" {
+			id += "/" + route.Table
+		}
+
 		routeRes, err := NewResource(c.MqlRuntime, "networkRoute", map[string]*llx.RawData{
-			"__id":        llx.StringData(route.Destination + "/" + route.Gateway + "/" + route.Interface),
+			"__id":        llx.StringData(id),
 			"destination": llx.StringData(route.Destination),
 			"gateway":     llx.StringData(route.Gateway),
 			"flags":       llx.ArrayData(convert.SliceAnyToInterface(route.Flags), types.String),
 			"iface":       llx.ResourceData(ifaceResource, "networkInterface"),
+			"table":       llx.StringData(route.Table),
+			"protocol":    llx.StringData(route.Protocol),
+			"scope":       llx.StringData(route.Scope),
+			"metric":      llx.IntData(route.Metric),
+			"source":      llx.StringData(route.Source),
+			"type":        llx.StringData(route.Type),
+			"device":      llx.StringData(route.Interface),
 		})
 		if err != nil {
 			log.Debug().Err(err).Msg("unable to create networkRoute resource")
