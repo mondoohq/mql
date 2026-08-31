@@ -1,0 +1,14 @@
+{
+  "neighbors": [
+    {
+      "neighborId": "192.0.2.31",
+      "priority": 1,
+      "state": "Full",
+      "duration": "01:12:45",
+      "durationMsec": 4365000,
+      "interfaceName": "swp1",
+      "interfaceState": "PointToPoint",
+      "deadTimeMsec": 40000
+    }
+  ]
+}

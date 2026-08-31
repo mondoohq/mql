@@ -22,6 +22,25 @@ type Route struct {
 	Flags       []string
 	Interface   string
 	Platform    *inventory.Platform // Platform-specific flag handling
+
+	// The fields below describe where a route lives and who installed it.
+	// They come from `ip -json route show table all` on Linux and stay empty
+	// on the sources that do not report them. A host that uses VRFs needs
+	// Table to tell two routes for the same prefix apart.
+
+	// Table is the routing table of the route, as a name or a numeric id
+	// (e.g. main, local, 1005).
+	Table string
+	// Protocol is what installed the route (e.g. kernel, boot, static, bgp).
+	Protocol string
+	// Scope is the scope of the route (e.g. global, link, host).
+	Scope string
+	// Metric is the route priority. A lower value wins.
+	Metric int64
+	// Source is the preferred source address of the route (prefsrc).
+	Source string
+	// Type is the route type (e.g. unicast, blackhole, unreachable).
+	Type string
 }
 
 // operatingSystemRouteDetector is an interface for platform-specific route detection
