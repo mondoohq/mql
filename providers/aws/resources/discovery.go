@@ -280,6 +280,9 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 
 		for i := range ins.Data {
 			instance := ins.Data[i].(*mqlAwsEc2Instance)
+			if !ec2InstanceIsDiscoverable(instance.State.Data) {
+				continue
+			}
 			assetList = append(assetList, addConnectionInfoToEc2Asset(instance, accountId, conn))
 		}
 	case DiscoverySSMInstances:
