@@ -37,12 +37,16 @@ func (m *mqlMdadm) arrays() ([]any, error) {
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
+	run, err := commandResult(cmd)
+	if err != nil {
+		return nil, err
+	}
+	if run.exitcode != 0 {
 		// mdadm not installed or no arrays
 		return []any{}, nil
 	}
 
-	arrayNames := parseMdadmScan(cmd.Stdout.Data)
+	arrayNames := parseMdadmScan(run.stdout)
 	if len(arrayNames) == 0 {
 		return []any{}, nil
 	}
@@ -59,11 +63,15 @@ func (m *mqlMdadm) arrays() ([]any, error) {
 			return nil, err
 		}
 		detail := o.(*mqlCommand)
-		if detail.GetExitcode().Data != 0 {
+		detailRun, err := commandResult(detail)
+		if err != nil {
+			return nil, err
+		}
+		if detailRun.exitcode != 0 {
 			continue
 		}
 
-		arr := parseMdadmDetail(detail.Stdout.Data)
+		arr := parseMdadmDetail(detailRun.stdout)
 
 		mqlArray, err := CreateResource(m.MqlRuntime, "mdadm.array", map[string]*llx.RawData{
 			"name":           llx.StringData(name),
