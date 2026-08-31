@@ -11,6 +11,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
+	"github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/transport/http"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/v13/llx"
@@ -192,6 +193,18 @@ func (a *mqlAwsSnsTopic) fetchTopicAttributes() (map[string]string, error) {
 	return a.topicAtts, nil
 }
 
+// cachedFifoTopic reports whether the topic is FIFO, but only when the topic
+// attributes have already been read. known is false when nothing has been
+// fetched yet, so callers can decide whether the answer is worth an API call.
+func (a *mqlAwsSnsTopic) cachedFifoTopic() (isFifo bool, known bool) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	if !a.fetched {
+		return false, false
+	}
+	return a.topicAtts["FifoTopic"] == "true", true
+}
+
 func (a *mqlAwsSnsTopic) attributes() (any, error) {
 	atts, err := a.fetchTopicAttributes()
 	if err != nil {
@@ -200,12 +213,35 @@ func (a *mqlAwsSnsTopic) attributes() (any, error) {
 	return convert.JsonToDict(atts)
 }
 
+// SNS omits SignatureVersion and TracingConfig from GetTopicAttributes unless
+// the topic was explicitly configured with them, and the value in force on such
+// a topic is the documented service default: signature version 1, and
+// PassThrough tracing. Reporting the default rather than "" is a deliberate
+// departure from reporting only what was read: these are settings the service
+// applies to the topic right now, not evidence we failed to gather. Reporting
+// "" would put every never-configured topic outside the enum the field
+// documents, so `signatureVersion == "1"` would miss the majority of SigV1
+// topics.
+const (
+	snsDefaultSignatureVersion = "1"
+	snsDefaultTracingConfig    = "PassThrough"
+)
+
+// snsAttributeOrDefault returns the attribute SNS reported, or the service
+// default in force when SNS omitted it.
+func snsAttributeOrDefault(atts map[string]string, name string, def string) string {
+	if v := atts[name]; v != "" {
+		return v
+	}
+	return def
+}
+
 func (a *mqlAwsSnsTopic) signatureVersion() (string, error) {
 	atts, err := a.fetchTopicAttributes()
 	if err != nil {
 		return "", err
 	}
-	return atts["SignatureVersion"], nil
+	return snsAttributeOrDefault(atts, "SignatureVersion", snsDefaultSignatureVersion), nil
 }
 
 func (a *mqlAwsSnsTopic) owner() (string, error) {
@@ -333,8 +369,12 @@ func (a *mqlAwsSnsTopic) subscriptions() ([]any, error) {
 type mqlAwsSnsSubscriptionInternal struct {
 	cacheTopicArn *string
 	fetched       bool
-	attrs         map[string]string
-	lock          sync.Mutex
+	// unconfirmed marks a subscription whose ARN is the literal
+	// "PendingConfirmation" placeholder. SNS has no attributes to give for
+	// one, so attrs stays nil and every attribute-backed field reads null.
+	unconfirmed bool
+	attrs       map[string]string
+	lock        sync.Mutex
 }
 
 func (a *mqlAwsSnsSubscription) topic() (*mqlAwsSnsTopic, error) {
@@ -365,12 +405,16 @@ func (a *mqlAwsSnsSubscription) fetchAttributes() (map[string]string, error) {
 	arnVal := a.Arn.Data
 
 	// Unconfirmed subscriptions have ARN set to "PendingConfirmation" which is
-	// not a valid ARN. GetSubscriptionAttributes will reject it, so return
-	// a minimal attribute map with the pending status instead.
+	// not a valid ARN. GetSubscriptionAttributes will reject it, so no
+	// attribute was ever read for this subscription. Return no attributes
+	// rather than a synthesized map: fabricating one would report
+	// confirmationWasAuthenticated as a measured false ("not authenticated")
+	// when the truth is that the subscription is not yet confirmed.
 	if !arn.IsARN(arnVal) {
 		a.fetched = true
-		a.attrs = map[string]string{"PendingConfirmation": "true"}
-		return a.attrs, nil
+		a.unconfirmed = true
+		a.attrs = nil
+		return nil, nil
 	}
 
 	regionVal := a.Region.Data
@@ -391,10 +435,23 @@ func (a *mqlAwsSnsSubscription) fetchAttributes() (map[string]string, error) {
 	return a.attrs, nil
 }
 
+// isUnconfirmed reports whether the subscription is still awaiting
+// confirmation, in which case SNS holds no attributes for it and every
+// attribute-backed field must read null rather than a zero value.
+func (a *mqlAwsSnsSubscription) isUnconfirmed() bool {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	return a.unconfirmed
+}
+
 func (a *mqlAwsSnsSubscription) attributes() (any, error) {
 	attrs, err := a.fetchAttributes()
 	if err != nil {
 		return nil, err
+	}
+	if a.isUnconfirmed() {
+		a.Attributes.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	return convert.JsonToDict(attrs)
 }
@@ -403,6 +460,10 @@ func (a *mqlAwsSnsSubscription) rawMessageDelivery() (bool, error) {
 	attrs, err := a.fetchAttributes()
 	if err != nil {
 		return false, err
+	}
+	if a.isUnconfirmed() {
+		a.RawMessageDelivery.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
 	}
 	return attrs["RawMessageDelivery"] == "true", nil
 }
@@ -428,6 +489,10 @@ func (a *mqlAwsSnsSubscription) filterPolicyScope() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if a.isUnconfirmed() {
+		a.FilterPolicyScope.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
 	return attrs["FilterPolicyScope"], nil
 }
 
@@ -451,6 +516,12 @@ func (a *mqlAwsSnsSubscription) confirmationWasAuthenticated() (bool, error) {
 	attrs, err := a.fetchAttributes()
 	if err != nil {
 		return false, err
+	}
+	if a.isUnconfirmed() {
+		// Not "the confirmation was unauthenticated": there has been no
+		// confirmation to authenticate yet.
+		a.ConfirmationWasAuthenticated.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
 	}
 	return attrs["ConfirmationWasAuthenticated"] == "true", nil
 }
@@ -476,6 +547,11 @@ func (a *mqlAwsSnsSubscription) pendingConfirmation() (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	// A "PendingConfirmation" placeholder ARN is itself the answer: the
+	// subscription exists and is unconfirmed. This one stays a measured true.
+	if a.isUnconfirmed() {
+		return true, nil
+	}
 	return attrs["PendingConfirmation"] == "true", nil
 }
 
@@ -500,7 +576,7 @@ func (a *mqlAwsSnsTopic) tracingConfig() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return atts["TracingConfig"], nil
+	return snsAttributeOrDefault(atts, "TracingConfig", snsDefaultTracingConfig), nil
 }
 
 func (a *mqlAwsSnsTopic) displayName() (string, error) {
@@ -527,7 +603,32 @@ func (a *mqlAwsSnsTopic) deliveryPolicy() (any, error) {
 	return convert.JsonToDict(result)
 }
 
+// isSnsOperationUnsupported reports whether SNS answered that the operation
+// does not apply to this topic. SNS rejects GetDataProtectionPolicy on a FIFO
+// topic with a 400 InvalidAction ("Operation (GetDataProtectionPolicy) is not
+// supported on FIFO topics"), which says the field does not exist for that
+// topic rather than that the read failed.
+//
+// Deliberately narrow: it matches the InvalidAction code alone and never a
+// denial or a throttle, so an AccessDenied still surfaces as an error instead
+// of becoming a silent null.
+func isSnsOperationUnsupported(err error) bool {
+	var apiErr smithy.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.ErrorCode() == "InvalidAction"
+}
+
 func (a *mqlAwsSnsTopic) dataProtectionPolicy() (any, error) {
+	// FIFO topics have no data protection policy, and SNS rejects the call
+	// rather than answering it. When the topic attributes are already in hand
+	// the FIFO answer is free, so skip a call that can only fail.
+	if isFifo, known := a.cachedFifoTopic(); known && isFifo {
+		a.DataProtectionPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	svc := conn.Sns(a.Region.Data)
 	ctx := context.Background()
@@ -538,15 +639,22 @@ func (a *mqlAwsSnsTopic) dataProtectionPolicy() (any, error) {
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
+			a.DataProtectionPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		if isSnsOperationUnsupported(err) {
+			a.DataProtectionPolicy.State = plugin.StateIsSet | plugin.StateIsNull
 			return nil, nil
 		}
 		var respErr *http.ResponseError
 		if errors.As(err, &respErr) && respErr.HTTPStatusCode() == 404 {
+			a.DataProtectionPolicy.State = plugin.StateIsSet | plugin.StateIsNull
 			return nil, nil
 		}
 		return nil, err
 	}
 	if resp.DataProtectionPolicy == nil || *resp.DataProtectionPolicy == "" {
+		a.DataProtectionPolicy.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 	var policy map[string]any

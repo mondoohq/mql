@@ -5792,7 +5792,12 @@ private aws.sns.topic @defaults("arn") {
   attributes() dict
   // Tags for the topic
   tags() map[string]string
-  // Signature version used for Amazon SNS message signing (1 or 2)
+  // Signature version used for Amazon SNS message signing
+  //
+  // Either 1 (SHA1 signatures) or 2 (SHA256 signatures). SNS omits the
+  // attribute on a topic that was never given an explicit signature
+  // version, and the service default of 1 is in force on such a topic, so
+  // that is what this field reports.
   signatureVersion() string
   // AWS account ID of the topic owner
   owner() string
@@ -5821,13 +5826,16 @@ private aws.sns.topic @defaults("arn") {
   // messages published to the topic, parsed from JSON. Top-level keys are
   // Name, Description, Version, and Statement, where each statement carries
   // DataDirection, DataIdentifier, and an Operation such as Audit,
-  // Deidentify, or Deny.
+  // Deidentify, or Deny. Null when the topic has no data protection policy
+  // and on FIFO topics, which do not support the feature at all.
   dataProtectionPolicy() dict
   // Active tracing configuration for X-Ray
   //
   // Either PassThrough (only messages that already carry a trace header
   // are traced) or Active (SNS generates a trace header for every
-  // published message).
+  // published message). SNS omits the attribute on a topic that was never
+  // given an explicit tracing mode, and the service default of PassThrough
+  // is in force on such a topic, so that is what this field reports.
   tracingConfig() string
   // Topic-level delivery policy
   //
@@ -5869,8 +5877,13 @@ private aws.sns.subscription @defaults("arn") {
   // ConfirmationWasAuthenticated, PendingConfirmation, RawMessageDelivery,
   // FilterPolicy, FilterPolicyScope, RedrivePolicy, and DeliveryPolicy.
   // Most values are also surfaced as dedicated fields on this resource.
+  // Null for a subscription still awaiting confirmation, which has no ARN
+  // for SNS to answer an attribute request on.
   attributes() dict
   // Whether raw message delivery is enabled (no SNS metadata wrapper)
+  //
+  // Null for a subscription still awaiting confirmation, whose attributes
+  // SNS does not publish.
   rawMessageDelivery() bool
   // Message filter policy
   //
@@ -5880,7 +5893,11 @@ private aws.sns.subscription @defaults("arn") {
   // matching operators such as prefix, anything-but, or numeric ranges.
   // Empty when the subscription receives every message.
   filterPolicy() dict
-  // Scope of the filter policy: MessageAttributes or MessageBody
+  // Scope of the filter policy
+  //
+  // Either MessageAttributes or MessageBody, naming what `filterPolicy`
+  // matches against. Null for a subscription still awaiting confirmation,
+  // whose attributes SNS does not publish.
   filterPolicyScope() string
   // Dead-letter queue redrive policy
   //
@@ -5889,6 +5906,10 @@ private aws.sns.subscription @defaults("arn") {
   // the target queue. Empty when no dead-letter queue is configured.
   redrivePolicy() dict
   // Whether the subscription confirmation was authenticated
+  //
+  // Null for a subscription still awaiting confirmation: there has been no
+  // confirmation to authenticate, which is not the same as a confirmation
+  // that went unauthenticated.
   confirmationWasAuthenticated() bool
   // Subscription delivery policy
   //
@@ -5898,7 +5919,10 @@ private aws.sns.subscription @defaults("arn") {
   // sicklyRetryPolicy, throttlePolicy (maxReceivesPerSecond), and
   // guaranteed.
   deliveryPolicy() dict
-  // Whether the subscription is confirmed
+  // Whether the subscription is still awaiting confirmation
+  //
+  // True while the endpoint owner has not yet confirmed the subscription,
+  // in which case SNS holds no other attributes for it.
   pendingConfirmation() bool
 }
 
@@ -13739,7 +13763,12 @@ private aws.sqs.queue {
   kmsKey() aws.kms.key
   // Time when the queue was last modified
   lastModified() time
-  // Maximum amount of messages that can be received by the queue
+  // Receive attempts allowed before a message goes to the dead-letter queue
+  //
+  // The maxReceiveCount of the queue redrive policy: how many times a
+  // single message may be received without being deleted before SQS moves
+  // it to the dead-letter queue named by deadLetterQueue. Null when the
+  // queue has no redrive policy, because no such limit is configured on it.
   maxReceiveCount() int
   // Maximum message size for the queue
   maximumMessageSize() int
@@ -13749,7 +13778,11 @@ private aws.sqs.queue {
   receiveMessageWaitTimeSeconds() int
   // Region for the queue
   region string
-  // Whether SSE is enabled for the queue
+  // Whether SQS-managed server-side encryption (SSE-SQS) is enabled
+  //
+  // Covers SQS-managed encryption keys only. A queue encrypted with a
+  // customer-managed KMS key reports false here and names its key through
+  // kmsKey, so an encryption-at-rest audit has to read both fields.
   sqsManagedSseEnabled() bool
   // Type of queue: fifo or standard
   queueType() string

@@ -357,7 +357,37 @@ func (a *mqlAwsSqsQueue) lastModified() (*time.Time, error) {
 
 type redrivePolicy struct {
 	DeadLetterTargetArn string `json:"deadLetterTargetArn,omitempty"`
-	MaxReceiveCount     int    `json:"maxReceiveCount,omitempty"`
+	// Kept raw so an absent key stays absent. A queue with no redrive policy
+	// has no maxReceiveCount at all, which is not the same as a count of 0.
+	// The raw form also absorbs the quoted-number spelling the console has
+	// historically written.
+	MaxReceiveCount json.RawMessage `json:"maxReceiveCount,omitempty"`
+}
+
+// parseRedriveMaxReceiveCount returns the per-message receive-attempt count a
+// queue's RedrivePolicy attribute sets before a message is moved to the
+// dead-letter queue.
+//
+// ok is false when the queue carries no redrive policy, or carries one without
+// a maxReceiveCount: that queue has no receive-attempt limit, so a count of 0
+// would report a limit that was never configured.
+func parseRedriveMaxReceiveCount(redrivePolicyAttr string) (int64, bool, error) {
+	if redrivePolicyAttr == "" {
+		return 0, false, nil
+	}
+	var r redrivePolicy
+	if err := json.Unmarshal([]byte(redrivePolicyAttr), &r); err != nil {
+		return 0, false, err
+	}
+	raw := strings.TrimSpace(string(r.MaxReceiveCount))
+	if raw == "" || raw == "null" {
+		return 0, false, nil
+	}
+	count, err := strconv.ParseInt(strings.Trim(raw, `"`), 10, 64)
+	if err != nil {
+		return 0, false, fmt.Errorf("invalid maxReceiveCount %s in sqs redrive policy: %w", raw, err)
+	}
+	return count, true, nil
 }
 
 func (a *mqlAwsSqsQueue) maxReceiveCount() (int64, error) {
@@ -365,16 +395,15 @@ func (a *mqlAwsSqsQueue) maxReceiveCount() (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	c := atts["RedrivePolicy"]
-	if c == "" {
-		return 0, nil
-	}
-	var r redrivePolicy
-	err = json.Unmarshal([]byte(c), &r)
+	count, ok, err := parseRedriveMaxReceiveCount(atts["RedrivePolicy"])
 	if err != nil {
 		return 0, err
 	}
-	return int64(r.MaxReceiveCount), nil
+	if !ok {
+		a.MaxReceiveCount.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return count, nil
 }
 
 func (a *mqlAwsSqsQueue) maximumMessageSize() (int64, error) {
@@ -413,6 +442,10 @@ func (a *mqlAwsSqsQueue) receiveMessageWaitTimeSeconds() (int64, error) {
 	return int64(c), nil
 }
 
+// sqsManagedSseEnabled reports the SqsManagedSseEnabled attribute, which
+// covers SQS-managed server-side encryption (SSE-SQS) only. A queue encrypted
+// with a customer-managed KMS key reports false here and names its key through
+// kmsKey, so this is not an "is the queue encrypted" answer on its own.
 func (a *mqlAwsSqsQueue) sqsManagedSseEnabled() (bool, error) {
 	atts, err := a.fetchAttributes()
 	if err != nil {
