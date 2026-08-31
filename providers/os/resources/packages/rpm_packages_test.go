@@ -492,68 +492,55 @@ func TestRedHatModularParser(t *testing.T) {
 	assert.Equal(t, p.PUrl, fPkg.PUrl)
 }
 
+// TestModularitySupportedByPlatform pins the version window in which the
+// %{MODULARITYLABEL} queryformat tag may be requested: modularity arrived in
+// RHEL 8 and was removed again in RHEL 10, so only 8.x and 9.x qualify.
+//
+// The version-7 rows guard a regression that silently emptied the package
+// inventory. The guard used to carry only the upper bound, so RHEL, CentOS and
+// Oracle Linux 7 were handed the tag. Their rpm is 4.11, which does not know
+// it: rpm printed "error: incorrect format: unknown tag" per package, wrote
+// nothing at all to stdout, and still exited 0 - so `packages` came back as an
+// empty list, with no error, on a host with a fully populated rpm database.
 func TestModularitySupportedByPlatform(t *testing.T) {
-	tests := []struct {
-		name     string
-		platform *inventory.Platform
-		want     bool
+	// every distro name the modularity switch knows about
+	modularDistros := []string{"oraclelinux", "almalinux", "redhat", "centos", "rocky"}
+
+	versions := []struct {
+		version string
+		want    bool
 	}{
-		{
-			name:     "AlmaLinux",
-			platform: &inventory.Platform{Name: "almalinux", Version: "8.10", Arch: "x86_64"},
-			want:     true,
-		},
-		{
-			name:     "OracleLinux",
-			platform: &inventory.Platform{Name: "oraclelinux", Version: "9", Arch: "x86_64"},
-			want:     true,
-		},
-		{
-			name:     "AlmaLinux",
-			platform: &inventory.Platform{Name: "almalinux", Version: "10", Arch: "x86_64"},
-			want:     false,
-		},
-		{
-			name:     "OracleLinux",
-			platform: &inventory.Platform{Name: "oraclelinux", Version: "10.1", Arch: "x86_64"},
-			want:     false,
-		},
-		{
-			name:     "RHEL 8",
-			platform: &inventory.Platform{Name: "redhat", Version: "8.10", Arch: "x86_64"},
-			want:     true,
-		},
-		{
-			name:     "RHEL 9",
-			platform: &inventory.Platform{Name: "redhat", Version: "9.4", Arch: "x86_64"},
-			want:     true,
-		},
-		{
-			name:     "RHEL 10",
-			platform: &inventory.Platform{Name: "redhat", Version: "10", Arch: "x86_64"},
-			want:     false,
-		},
-		{
-			name:     "CentOS 8",
-			platform: &inventory.Platform{Name: "centos", Version: "8", Arch: "x86_64"},
-			want:     true,
-		},
-		{
-			name:     "Rocky 9",
-			platform: &inventory.Platform{Name: "rocky", Version: "9.3", Arch: "x86_64"},
-			want:     true,
-		},
-		{
-			name:     "AmazonLinux",
-			platform: &inventory.Platform{Name: "amazonlinux", Version: "2", Arch: "x86_64"},
-			want:     false,
-		},
+		{"7", false}, // rpm 4.11 has no %{MODULARITYLABEL}
+		{"7.9", false},
+		{"8", true},
+		{"8.10", true},
+		{"9", true},
+		{"9.4", true},
+		{"10", false}, // modularity removed in RHEL 10
+		{"10.1", false},
+		{"", false}, // unparseable version must not enable the tag
+		{"unknown", false},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, modularitySupportedByPlatform(tt.platform))
-		})
+	for _, distro := range modularDistros {
+		for _, v := range versions {
+			t.Run(fmt.Sprintf("%s/%q", distro, v.version), func(t *testing.T) {
+				pf := &inventory.Platform{Name: distro, Version: v.version, Arch: "x86_64"}
+				require.Equal(t, v.want, modularitySupportedByPlatform(pf))
+			})
+		}
+	}
+
+	// Names outside the switch never get the tag, at any version. Amazon Linux 2
+	// also ships rpm 4.11 and reported its packages correctly throughout,
+	// precisely because it is not listed here.
+	for _, distro := range []string{"amazonlinux", "fedora", "sles", "opensuse", "photon"} {
+		for _, version := range []string{"2", "7", "8", "9", "10", ""} {
+			t.Run(fmt.Sprintf("unlisted/%s/%q", distro, version), func(t *testing.T) {
+				pf := &inventory.Platform{Name: distro, Version: version, Arch: "x86_64"}
+				require.False(t, modularitySupportedByPlatform(pf))
+			})
+		}
 	}
 }
 
