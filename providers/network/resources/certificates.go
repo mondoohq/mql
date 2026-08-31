@@ -118,13 +118,58 @@ func (r *mqlCertificates) id() (string, error) {
 	return checksums.New.Add(r.Pem.Data).String(), nil
 }
 
+type mqlCertificatesInternal struct {
+	lock    sync.Mutex
+	parsed  bool
+	certs   []*x509.Certificate
+	skipped int
+	err     error
+}
+
+// parsePem decodes the bundle once and shares the result between list and
+// unparseable. Blocks that x509 rejects are skipped rather than failing the
+// whole bundle: trust stores in the wild carry roots Go will not parse, and
+// losing every root because of one of them leaves audits with nothing to read.
+func (r *mqlCertificates) parsePem() ([]*x509.Certificate, int, error) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	if !r.parsed {
+		r.parsed = true
+
+		pem := r.GetPem()
+		if pem.Error != nil {
+			r.err = errors.New("certificates are missing pem data: " + pem.Error.Error())
+		} else {
+			r.certs, r.skipped, r.err = certificates.ParseCertsFromPEMPartial(strings.NewReader(pem.Data))
+			if r.err != nil {
+				r.err = errors.New("certificate has invalid pem data: " + r.err.Error())
+			} else if r.skipped > 0 {
+				log.Warn().Int("skipped", r.skipped).Int("parsed", len(r.certs)).
+					Msg("skipped certificates that could not be parsed")
+			}
+		}
+	}
+
+	return r.certs, r.skipped, r.err
+}
+
 func (r *mqlCertificates) list() ([]any, error) {
-	certs, err := certificates.ParseCertsFromPEM(strings.NewReader(r.Pem.Data))
+	certs, _, err := r.parsePem()
 	if err != nil {
-		return nil, errors.New("certificate has invalid pem data: " + err.Error())
+		return nil, err
 	}
 
 	return CertificatesToMqlCertificates(r.MqlRuntime, certs)
+}
+
+func (r *mqlCertificates) unparseable() (int64, error) {
+	_, skipped, err := r.parsePem()
+	if err != nil {
+		return 0, err
+	}
+
+	return int64(skipped), nil
 }
 
 // CertificatesToMqlCertificates takes a collection of x509 certs

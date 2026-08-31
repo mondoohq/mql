@@ -456,6 +456,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"certificates.pem": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCertificates).GetPem()).ToDataRes(types.String)
 	},
+	"certificates.unparseable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCertificates).GetUnparseable()).ToDataRes(types.Int)
+	},
 	"certificates.list": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCertificates).GetList()).ToDataRes(types.Array(types.Resource("certificate")))
 	},
@@ -1333,6 +1336,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"certificates.pem": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCertificates).Pem, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"certificates.unparseable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCertificates).Unparseable, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"certificates.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -3208,9 +3215,10 @@ func (c *mqlTlsCipher) GetCbc() *plugin.TValue[bool] {
 type mqlCertificates struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlCertificatesInternal it will be used here
-	Pem  plugin.TValue[string]
-	List plugin.TValue[[]any]
+	mqlCertificatesInternal
+	Pem         plugin.TValue[string]
+	Unparseable plugin.TValue[int64]
+	List        plugin.TValue[[]any]
 }
 
 // createCertificates creates a new instance of this resource
@@ -3252,6 +3260,12 @@ func (c *mqlCertificates) MqlID() string {
 
 func (c *mqlCertificates) GetPem() *plugin.TValue[string] {
 	return &c.Pem
+}
+
+func (c *mqlCertificates) GetUnparseable() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Unparseable, func() (int64, error) {
+		return c.unparseable()
+	})
 }
 
 func (c *mqlCertificates) GetList() *plugin.TValue[[]any] {

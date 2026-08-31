@@ -2816,6 +2816,7 @@ os.rootCertificates 9.0.1
 os.rootCertificates.content 9.0.1
 os.rootCertificates.files 9.0.1
 os.rootCertificates.list 9.0.1
+os.rootCertificates.unparseable 13.45.1
 os.unix 9.0.0
 os.unix.base 9.0.0
 os.update 9.0.0

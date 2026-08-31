@@ -551,6 +551,14 @@ os.rootCertificates {
   // List of files that define these certificates
   files []file
   content(files) []string
+  // Number of certificates in the trust-store files that could not be parsed
+  //
+  // Counts the certificate blocks skipped while decoding the trust-store
+  // files, for example a certificate carrying a negative serial number,
+  // which older bundles still ship. Those blocks are left out of the list
+  // rather than failing the whole store, so any value above zero means the
+  // list is an incomplete view of what the platform trusts.
+  unparseable(content) int
 }
 
 // Result of running a shell command on the system

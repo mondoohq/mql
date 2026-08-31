@@ -289,11 +289,21 @@ private tls.cipher @defaults("name") {
 // leaf, its intermediates, and a root. The list supports per-certificate
 // checks across the chain (validity window, key usage, signing
 // algorithm, revocation, and expiration), and the raw `pem` field
-// returns the original source.
+// returns the original source. Blocks that cannot be decoded are left
+// out of the list and counted in unparseable, so a bundle holding one
+// malformed certificate still yields the rest.
 certificates {
   []certificate
   // PEM content
   pem string
+  // Number of certificate blocks in pem that could not be parsed
+  //
+  // Counts the blocks skipped while decoding pem, for example a
+  // certificate carrying a negative serial number, which older trust
+  // stores still ship. Any value above zero means the list is an
+  // incomplete view of pem, so assert on it before treating the list
+  // as the full contents of the bundle.
+  unparseable() int
 }
 
 // X.509 certificate
