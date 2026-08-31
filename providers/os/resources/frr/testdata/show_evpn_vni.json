@@ -1,0 +1,30 @@
+{
+  "4001": {
+    "vni": 4001,
+    "type": "L2",
+    "vxlanIf": "vni4001",
+    "numMacs": 12,
+    "numArpNd": 8,
+    "numRemoteVteps": 2,
+    "remoteVteps": ["192.0.2.31", "192.0.2.32"],
+    "tenantVrf": "cluster"
+  },
+  "5000": {
+    "vni": 5000,
+    "type": "L3",
+    "vxlanIntf": "vni5000",
+    "sviIntf": "vlan5000",
+    "state": "Up",
+    "routerMac": "aa:bb:cc:00:00:30",
+    "vrf": "cluster"
+  },
+  "5010": {
+    "vni": 5010,
+    "type": "L3",
+    "vxlanIntf": "vni5010",
+    "sviIntf": "vlan5010",
+    "state": "Down",
+    "routerMac": "aa:bb:cc:00:00:31",
+    "vrf": "t-blue"
+  }
+}
