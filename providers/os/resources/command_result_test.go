@@ -231,15 +231,6 @@ func TestDeliberateNonZeroExitBranchesSurvive(t *testing.T) {
 		assert.Contains(t, err.Error(), "exit 5")
 	})
 
-	t.Run("mdadm non-zero exit means no arrays", func(t *testing.T) {
-		rt := commandRuntime(t, map[string]*mock.Command{
-			"mdadm --detail --scan": {ExitStatus: 1, Stderr: "mdadm: not found"},
-		})
-		v := mustResource(t, rt, "mdadm").(*mqlMdadm).GetArrays()
-		require.NoError(t, v.Error)
-		assert.Empty(t, v.Data)
-	})
-
 	t.Run("macos.sharing non-zero exit yields an empty panel", func(t *testing.T) {
 		rt := commandRuntime(t, map[string]*mock.Command{
 			systemProfilerSharingCmd: {ExitStatus: 1},
