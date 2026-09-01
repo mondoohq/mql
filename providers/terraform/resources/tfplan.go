@@ -192,6 +192,11 @@ func (t *mqlTerraformPlanProposedChange) id() (string, error) {
 type mqlTerraformPlanProposedChangeInternal struct {
 	// stampOnce guards the write below: CreateResource returns the cached
 	// instance when the __id matches, so this runs on a possibly-shared struct.
+	// Sharing is only safe because proposedChangeID encodes the deposed key, so
+	// two entries that collide on the cache key necessarily carry the same
+	// value. stampOnce is therefore a data-race guard, not a tiebreaker: drop
+	// the deposed key from the id and the first writer would win over a
+	// genuinely different one.
 	stampOnce sync.Once
 	deposed   string
 }
