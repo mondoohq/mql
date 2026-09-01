@@ -1,0 +1,8 @@
+[
+  {"priority": 0, "src": "all", "table": "local"},
+  {"priority": 1000, "src": "all", "l3mdev": true, "protocol": "unspec"},
+  {"priority": 32000, "src": "10.100.0.0", "srclen": 16, "table": "1006", "protocol": "static"},
+  {"priority": 32100, "src": "all", "iif": "hbn", "table": "1005", "protocol": "static"},
+  {"priority": 32765, "src": "all", "table": "254"},
+  {"priority": 32766, "src": "all", "action": "unreachable"}
+]
