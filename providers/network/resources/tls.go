@@ -6,12 +6,12 @@ package resources
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"maps"
 	"net"
 	"regexp"
 	"sort"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
@@ -132,6 +132,62 @@ func (s *mqlTls) id() (string, error) {
 	return "tls+" + s.Socket.Data.__id, nil
 }
 
+// withChainRevocations returns known plus a determination for every certificate
+// in chain that it does not already cover.
+//
+// The result is a copy: known belongs to the handshake tester and is read by
+// other fields, so it must not be written through.
+//
+// Only certificates with an issuer below them in the chain are checked. The last
+// one is a trust anchor, and its revocation is not a question its own chain can
+// answer.
+func withChainRevocations(known map[string]*tlsshake.Revocation, chain []*x509.Certificate) map[string]*tlsshake.Revocation {
+	res := make(map[string]*tlsshake.Revocation, len(known)+len(chain))
+	maps.Copy(res, known)
+
+	for i := 0; i+1 < len(chain); i++ {
+		key := string(chain[i].Signature)
+		if _, ok := res[key]; ok {
+			continue
+		}
+
+		determined, revocation, err := tlsshake.CheckRevocation(chain[i], chain[i+1])
+		if !determined {
+			log.Debug().
+				Str("subject", chain[i].Subject.CommonName).
+				Err(err).
+				Msg("network.tls> revocation status could not be determined")
+			continue
+		}
+		res[key] = revocation
+	}
+
+	return res
+}
+
+// revocationFields maps a revocation lookup onto the three fields that report
+// it.
+//
+// There are three states, not two. An entry in the map means the check ran: nil
+// says the certificate is good, non-nil says it is revoked. No entry means
+// nothing was determined - the certificate names no OCSP responder and no CRL,
+// or none of them could be reached - and that must not be reported as "not
+// revoked". Leaving isRevoked at its zero value is what made an unchecked
+// certificate, and a genuinely revoked one whose issuer has retired OCSP, both
+// read as good.
+func revocationFields(revocations map[string]*tlsshake.Revocation, cert *x509.Certificate) (
+	isRevoked *llx.RawData, revokedAt *llx.RawData, revocationChecked *llx.RawData,
+) {
+	revocation, ok := revocations[string(cert.Signature)]
+	if !ok {
+		return llx.NilData, llx.NilData, llx.BoolFalse
+	}
+	if revocation == nil {
+		return llx.BoolFalse, llx.NilData, llx.BoolTrue
+	}
+	return llx.BoolTrue, llx.TimeData(revocation.At), llx.BoolTrue
+}
+
 func parseCertificates(runtime *plugin.Runtime, domainName string, certificateList []*x509.Certificate, revocations map[string]*tlsshake.Revocation) ([]any, []string, error) {
 	res := make([]any, len(certificateList))
 	errors := []string{}
@@ -159,18 +215,7 @@ func parseCertificates(runtime *plugin.Runtime, domainName string, certificateLi
 	for i := range certificateList {
 		cert := certificateList[i]
 
-		var isRevoked bool
-		var revokedAt time.Time
-		revocation, ok := revocations[string(cert.Signature)]
-		if ok {
-			if revocation == nil {
-				isRevoked = false
-				revokedAt = llx.NeverFutureTime
-			} else {
-				isRevoked = true
-				revokedAt = revocation.At
-			}
-		}
+		isRevoked, revokedAt, revocationChecked := revocationFields(revocations, cert)
 
 		pem, err := certificates.EncodeCertAsPEM(cert)
 
@@ -182,10 +227,11 @@ func parseCertificates(runtime *plugin.Runtime, domainName string, certificateLi
 			"pem": llx.StringData(string(pem)),
 			// NOTE: if we do not set the hash here, it will generate the cache content before we can store it
 			// we are using the hashes for the id, therefore it is required during creation
-			"fingerprints": llx.MapData(certificates.Fingerprints(cert), types.String),
-			"isRevoked":    llx.BoolData(isRevoked),
-			"revokedAt":    llx.TimeData(revokedAt),
-			"isVerified":   llx.BoolData(verified),
+			"fingerprints":      llx.MapData(certificates.Fingerprints(cert), types.String),
+			"isRevoked":         isRevoked,
+			"revokedAt":         revokedAt,
+			"revocationChecked": revocationChecked,
+			"isVerified":        llx.BoolData(verified),
 		})
 		if err != nil {
 			return nil, nil, err
@@ -505,14 +551,22 @@ func (s *mqlTls) populateCertificates(socket *mqlSocket, domainName string) erro
 		return err
 	}
 
-	// The handshake tester performs OCSP and records revocations keyed by
-	// string(cert.Signature); reuse that map so certificate.isRevoked/revokedAt
-	// reflect real revocation status instead of a hardcoded "not revoked".
-	// Default to an empty (non-nil) map so parseCertificates never receives nil.
+	// The handshake tester checks revocation and records the outcome keyed by
+	// string(cert.Signature); reuse that so certificate.isRevoked/revokedAt
+	// reflect a real check instead of a hardcoded "not revoked".
+	//
+	// Its findings describe the chain its own probes negotiated, which is not
+	// always this one. A host that serves both an RSA and an ECDSA certificate
+	// hands the tester's TLS 1.2 probe one leaf and this TLS 1.3 connection
+	// another, and the tester's answer is then about a certificate nobody is
+	// reporting on. Fill in whatever is missing against the chain actually being
+	// reported. Default to an empty (non-nil) map so parseCertificates never
+	// receives nil.
 	revocations := map[string]*tlsshake.Revocation{}
 	if s.tester != nil && s.tester.Findings.Revocations != nil {
 		revocations = s.tester.Findings.Revocations
 	}
+	revocations = withChainRevocations(revocations, certs)
 
 	mqlCerts, _, err := parseCertificates(s.MqlRuntime, domainName, certs, revocations)
 	if err != nil {

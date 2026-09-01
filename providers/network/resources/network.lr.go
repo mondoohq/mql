@@ -531,6 +531,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"certificate.revokedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCertificate).GetRevokedAt()).ToDataRes(types.Time)
 	},
+	"certificate.revocationChecked": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCertificate).GetRevocationChecked()).ToDataRes(types.Bool)
+	},
 	"certificate.isVerified": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCertificate).GetIsVerified()).ToDataRes(types.Bool)
 	},
@@ -1440,6 +1443,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"certificate.revokedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCertificate).RevokedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"certificate.revocationChecked": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCertificate).RevocationChecked, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"certificate.isVerified": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -3312,6 +3319,7 @@ type mqlCertificate struct {
 	IssuingCertificateUrl plugin.TValue[[]any]
 	IsRevoked             plugin.TValue[bool]
 	RevokedAt             plugin.TValue[*time.Time]
+	RevocationChecked     plugin.TValue[bool]
 	IsVerified            plugin.TValue[bool]
 	SanExtension          plugin.TValue[*mqlPkixSanExtension]
 	PublicKeyAlgorithm    plugin.TValue[string]
@@ -3521,6 +3529,12 @@ func (c *mqlCertificate) GetIsRevoked() *plugin.TValue[bool] {
 func (c *mqlCertificate) GetRevokedAt() *plugin.TValue[*time.Time] {
 	return plugin.GetOrCompute[*time.Time](&c.RevokedAt, func() (*time.Time, error) {
 		return c.revokedAt()
+	})
+}
+
+func (c *mqlCertificate) GetRevocationChecked() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RevocationChecked, func() (bool, error) {
+		return c.revocationChecked()
 	})
 }
 

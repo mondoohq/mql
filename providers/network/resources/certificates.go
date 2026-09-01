@@ -546,12 +546,22 @@ func (s *mqlCertificate) issuingCertificateUrl() ([]any, error) {
 	return nil, s.getGoCert()
 }
 
+// A certificate parsed from PEM rather than served over a connection has no
+// revocation check behind it, so all three fields report that nothing was
+// determined. The tls resource populates them directly when it builds a
+// certificate from a chain it checked.
 func (s *mqlCertificate) isRevoked() (bool, error) {
-	return false, errors.New("unknown revocation status")
+	s.IsRevoked.State = plugin.StateIsSet | plugin.StateIsNull
+	return false, nil
 }
 
 func (s *mqlCertificate) revokedAt() (*time.Time, error) {
+	s.RevokedAt.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
+}
+
+func (s *mqlCertificate) revocationChecked() (bool, error) {
+	return false, nil
 }
 
 func (s *mqlCertificate) isVerified() (bool, error) {

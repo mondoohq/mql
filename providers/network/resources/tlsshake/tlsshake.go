@@ -530,7 +530,7 @@ func (s *Tester) parseCertificate(data []byte, conf *ScanConfig) error {
 	s.sync.Unlock()
 
 	for i := 0; i+1 < len(certs); i++ {
-		err := s.ocspRequest(certs[i], certs[i+1])
+		err := s.checkRevocation(certs[i], certs[i+1])
 		if err != nil {
 			s.addError(err.Error())
 		}
@@ -864,50 +864,111 @@ func (s *Tester) helloTLSMsg(conf *ScanConfig) ([]byte, int, error) {
 // https://datatracker.ietf.org/doc/html/rfc6960
 // https://datatracker.ietf.org/doc/html/rfc2560
 
-func (s *Tester) ocspRequest(cert *x509.Certificate, issuer *x509.Certificate) error {
+// checkRevocation determines whether a certificate has been revoked and records
+// the outcome in Findings.Revocations.
+//
+// OCSP is asked first. When the certificate names no responder, or the
+// responder cannot be reached, the CRL it points at answers instead - which is
+// now the common case, since the CA/Browser Forum made OCSP optional and
+// several large issuers have retired their responders entirely.
+//
+// The map only gains an entry when a determination was actually reached:
+// absent means unknown, a nil value means not revoked, and a non-nil value
+// means revoked. Callers must keep that three-way distinction, because
+// reporting an unchecked certificate as "not revoked" is indistinguishable
+// from having checked.
+func (s *Tester) checkRevocation(cert *x509.Certificate, issuer *x509.Certificate) error {
+	determined, revocation, err := CheckRevocation(cert, issuer)
+	if !determined {
+		return err
+	}
+
+	s.recordRevocation(cert, revocation)
+	return nil
+}
+
+// CheckRevocation determines whether a certificate has been revoked.
+//
+// The first return says whether a determination was reached at all. When it is
+// false the certificate's status is unknown and the caller must report it as
+// such: a certificate that could not be checked is not a certificate that is
+// good. A nil Revocation with a true first return means the certificate was
+// checked and is not revoked.
+//
+// Callers outside the handshake tester need this because the tester's findings
+// describe the chain its own probes negotiated, which is not always the chain
+// the caller is reporting on.
+func CheckRevocation(cert *x509.Certificate, issuer *x509.Certificate) (bool, *Revocation, error) {
+	var errs multierr.Errors
+
+	determined, revocation, err := ocspRevocation(cert, issuer)
+	if determined {
+		return true, revocation, nil
+	}
+	errs.Add(err)
+
+	determined, revocation, err = crlRevocation(cert, issuer)
+	if determined {
+		return true, revocation, nil
+	}
+	errs.Add(err)
+
+	return false, nil, errs.Deduplicate()
+}
+
+// recordRevocation stores a reached determination. A nil revocation means the
+// certificate was checked and is not revoked.
+func (s *Tester) recordRevocation(cert *x509.Certificate, revocation *Revocation) {
+	s.sync.Lock()
+	s.Findings.Revocations[string(cert.Signature)] = revocation
+	s.sync.Unlock()
+}
+
+// ocspRevocation asks the certificate's OCSP responder for its status.
+//
+// The first return says whether the responder answered at all. Everything that
+// stops it from answering - no responder named, an unreachable one, a response
+// that will not parse - leaves the status unknown rather than good.
+func ocspRevocation(cert *x509.Certificate, issuer *x509.Certificate) (bool, *Revocation, error) {
 	if len(cert.OCSPServer) == 0 {
-		return errors.New("no OCSP server specified for revocation check, skipping it")
+		return false, nil, errors.New("no OCSP server specified for revocation check, skipping it")
 	}
 
 	server := cert.OCSPServer[0]
 
 	req, err := ocsp.CreateRequest(cert, issuer, &ocsp.RequestOptions{})
 	if err != nil {
-		return multierr.Wrap(err, "failed to create OCSP request")
+		return false, nil, multierr.Wrap(err, "failed to create OCSP request")
 	}
 
 	reqBody := bytes.NewBuffer(req)
 	client := &http.Client{Timeout: 10 * time.Second}
 	res, err := client.Post(server, "application/ocsp-request", reqBody)
 	if err != nil {
-		return multierr.Wrap(err, "failed to post OCSP request")
+		return false, nil, multierr.Wrap(err, "failed to post OCSP request")
 	}
+	defer res.Body.Close()
 
 	if res.StatusCode != 200 {
-		return errors.New("OCSP request returned " + res.Status)
+		return false, nil, errors.New("OCSP request returned " + res.Status)
 	}
 	resp, err := io.ReadAll(res.Body)
 	if err != nil {
-		return multierr.Wrap(err, "failed to read OCSP response")
+		return false, nil, multierr.Wrap(err, "failed to read OCSP response")
 	}
 	ocspRes, err := ocsp.ParseResponseForCert(resp, cert, issuer)
 	if err != nil {
-		return multierr.Wrap(err, "failed to parse OCSP response")
+		return false, nil, multierr.Wrap(err, "failed to parse OCSP response")
 	}
 
-	s.sync.Lock()
 	if ocspRes.RevokedAt.IsZero() {
-		s.Findings.Revocations[string(cert.Signature)] = nil
-	} else {
-		s.Findings.Revocations[string(cert.Signature)] = &Revocation{
-			At:     ocspRes.RevokedAt,
-			Via:    server,
-			Reason: ocspRes.RevocationReason,
-		}
+		return true, nil, nil
 	}
-	s.sync.Unlock()
-
-	return nil
+	return true, &Revocation{
+		At:     ocspRes.RevokedAt,
+		Via:    server,
+		Reason: ocspRes.RevocationReason,
+	}, nil
 }
 
 func int1byte(i int) []byte {

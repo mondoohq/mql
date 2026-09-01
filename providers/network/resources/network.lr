@@ -362,9 +362,30 @@ certificate @defaults("serial subject.commonName subject.dn") {
   // Issuing certificate URL
   issuingCertificateUrl() []string
   // Whether this certificate has been revoked
+  //
+  // Determined from OCSP, or from the certificate's CRL when it names no OCSP
+  // responder or the responder cannot be reached. Null when neither could
+  // answer, so an unchecked certificate never reports itself as good. Read
+  // `revocationChecked` first, or assert on it alongside this, because a null
+  // does not fail a check written as `isRevoked == false`.
   isRevoked() bool
   // The time at which this certificate was revoked
+  //
+  // Null when the certificate is not revoked, and null when revocation could
+  // not be determined.
   revokedAt() time
+  // Whether the certificate's revocation status could be determined
+  //
+  // False when the certificate names no OCSP responder and no CRL, and when
+  // every responder and distribution point it does name could not be reached
+  // or returned something unusable. `isRevoked` is null in that case rather
+  // than false, so a policy that must not pass on an unchecked certificate
+  // should require this.
+  //
+  // Certificates that are the last in a served chain are not checked: there is
+  // no issuer below them to check against, and a trust anchor's revocation is
+  // not a question its own chain can answer.
+  revocationChecked() bool
   // Whether the certificate is valid (based on its chain)
   isVerified() bool
   // SAN extension value params

@@ -24,6 +24,7 @@ certificate.pem 9.0.0
 certificate.policyIdentifier 9.0.0
 certificate.publicKeyAlgorithm 13.0.1
 certificate.publicKeyBits 13.0.1
+certificate.revocationChecked 13.3.3
 certificate.revokedAt 9.0.0
 certificate.sanExtension 9.1.2
 certificate.serial 9.0.0
