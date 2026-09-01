@@ -528,6 +528,29 @@ func (g *mqlGcpProjectComputeServiceAddress) network() (*mqlGcpProjectComputeSer
 
 ```
 
+## Profiling a provider
+
+A provider runs as its own process. Its memory and CPU do not show up in a profile
+of `mql` itself, so a provider needs its own pprof endpoint. Set
+`MONDOO_PROVIDER_PROF` to expose one:
+
+```bash
+MONDOO_PROVIDER_PROF='enable,listen=localhost:0' mql run docker image ubuntu:24.04 -c "packages.length"
+```
+
+The provider logs the address it bound, for example
+`profiler listening address=http://127.0.0.1:41234/debug/pprof/`. Port `0` picks a
+free port, so several processes can profile at once. Then collect a profile while
+the run is in flight:
+
+```bash
+curl -o heap.pprof http://127.0.0.1:41234/debug/pprof/heap
+go tool pprof -inuse_space -top providers/os/dist/os heap.pprof
+```
+
+The value takes the same keys as `MONDOO_PROF`, which does the same for `mql`:
+`enable`, `listen` and `memprofilerate`. Both are off when unset.
+
 ## Metrics (Prometheus + Grafana)
 
 When debugging `mql`, you can monitor and profile memory and CPU usage using [Prometheus](https://prometheus.io/) and [Grafana](https://grafana.com/). The setup provides visibility into application performance metrics and allows us to diagnose bottlenecks, memory leaks, and high CPU usage.

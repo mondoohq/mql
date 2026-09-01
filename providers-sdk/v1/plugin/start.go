@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/pflag"
+	"go.mondoo.com/mql/cli/prof"
 	"go.mondoo.com/mql/logger"
 	inventory "go.mondoo.com/mql/providers-sdk/v1/inventory"
 )
@@ -75,6 +76,17 @@ type Connector struct {
 
 func Start(args []string, impl ProviderPlugin) {
 	logger.CliCompactLogger(logger.LogOutputWriter)
+
+	// A provider runs as its own process, so its memory is invisible to a heap
+	// profile of the parent. MONDOO_PROVIDER_PROF exposes the pprof endpoints of
+	// this process, which is the only way to attribute provider memory to
+	// allocation sites. Example:
+	//
+	//   MONDOO_PROVIDER_PROF='enable,listen=localhost:0' mql run docker image <ref> -c "packages.length"
+	//
+	// The provider logs the address it picked. It stays off when the variable is
+	// unset.
+	prof.InitProfilerFor("MONDOO_PROVIDER_PROF")
 
 	var logLevel string
 	pflag.StringVar(&logLevel, "log-level", "warn", "Log level")
