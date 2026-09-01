@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNextPageURL(t *testing.T) {
@@ -205,8 +206,8 @@ func TestDepartmentDecode(t *testing.T) {
 	if len(d.EmployeeRefs) != 2 || d.EmployeeRefs[0].UUID != "emp-1" {
 		t.Errorf("EmployeeRefs = %+v", d.EmployeeRefs)
 	}
-	if len(d.ContractorRef) != 1 || d.ContractorRef[0].UUID != "con-1" {
-		t.Errorf("ContractorRef = %+v", d.ContractorRef)
+	if len(d.ContractorRefs) != 1 || d.ContractorRefs[0].UUID != "con-1" {
+		t.Errorf("ContractorRefs = %+v", d.ContractorRefs)
 	}
 }
 
@@ -360,5 +361,162 @@ func TestCachedListMemoizes(t *testing.T) {
 	}
 	if hits != 1 {
 		t.Fatalf("made %d requests, want 1", hits)
+	}
+}
+
+// TestGetPaginatedRetriesRateLimit pins that a 429 is retried rather than
+// aborting the list. Before the retry existed, a single rate-limit response
+// on any one page failed the whole scan.
+func TestGetPaginatedRetriesRateLimit(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if hits == 1 {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusTooManyRequests)
+			fmt.Fprint(w, `{"error":"rate limited"}`)
+			return
+		}
+		fmt.Fprint(w, `[{"uuid":"co-1"}]`)
+	}))
+	defer srv.Close()
+
+	var out []Company
+	if err := getPaginated(context.Background(), testConn(t, srv), "/v1/me/companies", &out); err != nil {
+		t.Fatalf("getPaginated: %v", err)
+	}
+	if len(out) != 1 || out[0].UUID != "co-1" {
+		t.Fatalf("out = %+v", out)
+	}
+	if hits != 2 {
+		t.Fatalf("made %d requests, want 1 rate-limited attempt plus 1 retry", hits)
+	}
+}
+
+// TestGetPaginatedRateLimitCap makes sure the retry is bounded: a server that
+// answers 429 forever must produce an error instead of looping.
+func TestGetPaginatedRateLimitCap(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Header().Set("Retry-After", "0")
+		w.WriteHeader(http.StatusTooManyRequests)
+		fmt.Fprint(w, `{"error":"rate limited"}`)
+	}))
+	defer srv.Close()
+
+	var out []Company
+	err := getPaginated(context.Background(), testConn(t, srv), "/v1/me/companies", &out)
+	if err == nil {
+		t.Fatal("expected an error once the retry budget is spent")
+	}
+	if !strings.Contains(err.Error(), "429") {
+		t.Fatalf("error = %v, want the 429 status", err)
+	}
+	if hits != maxRateLimitRetries+1 {
+		t.Fatalf("made %d requests, want %d (first attempt plus %d retries)",
+			hits, maxRateLimitRetries+1, maxRateLimitRetries)
+	}
+}
+
+// TestGetPaginatedDoesNotRetryOtherErrors pins that the retry is scoped to
+// 429. Retrying a 403 would multiply every permission failure by the budget.
+func TestGetPaginatedDoesNotRetryOtherErrors(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprint(w, `{"error":"forbidden"}`)
+	}))
+	defer srv.Close()
+
+	var out []Company
+	if err := getPaginated(context.Background(), testConn(t, srv), "/v1/me/companies", &out); err == nil {
+		t.Fatal("expected an error on 403")
+	}
+	if hits != 1 {
+		t.Fatalf("made %d requests, want a single attempt", hits)
+	}
+}
+
+func TestRetryDelay(t *testing.T) {
+	cases := []struct {
+		name       string
+		retryAfter string
+		attempt    int
+		want       time.Duration
+	}{
+		{"absent falls back to backoff", "", 0, baseRetryBackoff},
+		{"backoff doubles", "", 2, 4 * baseRetryBackoff},
+		{"backoff is capped", "", 20, maxRetryAfter},
+		{"unparseable falls back to backoff", "soon", 1, 2 * baseRetryBackoff},
+		{"delay seconds honored", "3", 0, 3 * time.Second},
+		{"zero seconds honored", "0", 3, 0},
+		{"header is capped", "3600", 0, maxRetryAfter},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := retryDelay(c.retryAfter, c.attempt); got != c.want {
+				t.Fatalf("retryDelay(%q, %d) = %v, want %v", c.retryAfter, c.attempt, got, c.want)
+			}
+		})
+	}
+}
+
+func TestParseRetryAfter(t *testing.T) {
+	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+
+	if d, ok := parseRetryAfter("  7 ", now); !ok || d != 7*time.Second {
+		t.Errorf("delay-seconds: got %v, %v", d, ok)
+	}
+	if d, ok := parseRetryAfter("Mon, 31 Aug 2026 12:00:20 GMT", now); !ok || d != 20*time.Second {
+		t.Errorf("http-date: got %v, %v", d, ok)
+	}
+	// A date already in the past must not become a negative wait.
+	if d := clampDelay(mustParseRetryAfter(t, "Mon, 31 Aug 2026 11:59:00 GMT", now)); d != 0 {
+		t.Errorf("past http-date clamped to %v, want 0", d)
+	}
+	if _, ok := parseRetryAfter("", now); ok {
+		t.Error("empty header must report no value")
+	}
+	if _, ok := parseRetryAfter("later", now); ok {
+		t.Error("unparseable header must report no value")
+	}
+}
+
+func mustParseRetryAfter(t *testing.T, value string, now time.Time) time.Duration {
+	t.Helper()
+	d, ok := parseRetryAfter(value, now)
+	if !ok {
+		t.Fatalf("parseRetryAfter(%q) reported no value", value)
+	}
+	return d
+}
+
+// TestDepartmentMembershipNilVsEmpty pins the nil-vs-empty distinction the
+// department resource relies on to tell "no contractors are assigned" from
+// "the payload never reported membership". Without it, every department with
+// zero contractors re-read the department list on each access.
+func TestDepartmentMembershipNilVsEmpty(t *testing.T) {
+	var reported Department
+	if err := json.Unmarshal([]byte(`{"uuid":"dep-1","contractors":[]}`), &reported); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if reported.ContractorRefs == nil {
+		t.Error(`"contractors": [] must decode to a present, empty slice`)
+	}
+	if len(reported.ContractorRefs) != 0 {
+		t.Errorf("ContractorRefs = %+v, want empty", reported.ContractorRefs)
+	}
+
+	for _, payload := range []string{`{"uuid":"dep-1"}`, `{"uuid":"dep-1","contractors":null}`} {
+		var absent Department
+		if err := json.Unmarshal([]byte(payload), &absent); err != nil {
+			t.Fatalf("unmarshal %s: %v", payload, err)
+		}
+		if absent.ContractorRefs != nil {
+			t.Errorf("%s decoded to %+v, want nil", payload, absent.ContractorRefs)
+		}
 	}
 }

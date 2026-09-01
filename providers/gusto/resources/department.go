@@ -16,6 +16,13 @@ type mqlGustoDepartmentInternal struct {
 	cacheCompanyUUID string
 	employeeUUIDs    []string
 	contractorUUIDs  []string
+	// contractorsPopulated records that the department payload actually
+	// carried the contractor list. A department with no contractors yields an
+	// empty-but-present list, so length alone cannot tell "nobody is
+	// assigned" from "the payload never said" - and reading the empty case as
+	// "never said" sends every such department back through the department
+	// list on every access.
+	contractorsPopulated bool
 }
 
 func (d *mqlGustoDepartment) id() (string, error) {
@@ -72,9 +79,14 @@ func newMqlGustoDepartment(runtime *plugin.Runtime, d *connection.Department) (*
 	for _, ref := range d.EmployeeRefs {
 		dept.employeeUUIDs = append(dept.employeeUUIDs, ref.UUID)
 	}
-	dept.contractorUUIDs = make([]string, 0, len(d.ContractorRef))
-	for _, ref := range d.ContractorRef {
-		dept.contractorUUIDs = append(dept.contractorUUIDs, ref.UUID)
+	// A JSON null or an absent key leaves the slice nil, which is the one
+	// signal that the payload did not report contractor membership at all.
+	if d.ContractorRefs != nil {
+		dept.contractorUUIDs = make([]string, 0, len(d.ContractorRefs))
+		for _, ref := range d.ContractorRefs {
+			dept.contractorUUIDs = append(dept.contractorUUIDs, ref.UUID)
+		}
+		dept.contractorsPopulated = true
 	}
 	return dept, nil
 }
@@ -167,7 +179,7 @@ func (d *mqlGustoDepartment) contractors() ([]any, error) {
 // re-reading the department list when the resource was built by a path that
 // did not populate them. The list is memoized on the connection.
 func (d *mqlGustoDepartment) contractorRefs() ([]string, error) {
-	if len(d.contractorUUIDs) > 0 || d.cacheCompanyUUID == "" || d.Uuid.Data == "" {
+	if d.contractorsPopulated || d.cacheCompanyUUID == "" || d.Uuid.Data == "" {
 		return d.contractorUUIDs, nil
 	}
 	conn := d.MqlRuntime.Connection.(*connection.GustoConnection)
@@ -179,12 +191,15 @@ func (d *mqlGustoDepartment) contractorRefs() ([]string, error) {
 		if departments[i].UUID != d.Uuid.Data {
 			continue
 		}
-		uuids := make([]string, 0, len(departments[i].ContractorRef))
-		for _, ref := range departments[i].ContractorRef {
+		uuids := make([]string, 0, len(departments[i].ContractorRefs))
+		for _, ref := range departments[i].ContractorRefs {
 			uuids = append(uuids, ref.UUID)
 		}
+		d.contractorUUIDs = uuids
+		d.contractorsPopulated = true
 		return uuids, nil
 	}
+	d.contractorsPopulated = true
 	return nil, nil
 }
 

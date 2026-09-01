@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -70,11 +71,11 @@ type Contractor struct {
 
 // Department is a Gusto department.
 type Department struct {
-	UUID          string        `json:"uuid"`
-	CompanyUUID   string        `json:"company_uuid"`
-	Title         string        `json:"title"`
-	EmployeeRefs  []uuidWrapper `json:"employees"`
-	ContractorRef []uuidWrapper `json:"contractors"`
+	UUID           string        `json:"uuid"`
+	CompanyUUID    string        `json:"company_uuid"`
+	Title          string        `json:"title"`
+	EmployeeRefs   []uuidWrapper `json:"employees"`
+	ContractorRefs []uuidWrapper `json:"contractors"`
 }
 
 type uuidWrapper struct {
@@ -288,6 +289,19 @@ func (c *GustoConnection) ListAdmins(ctx context.Context, companyUUID string) ([
 // unending pagination chain.
 const maxPages = 500
 
+// maxRateLimitRetries caps how many times a single request is retried after a
+// 429 response. The cap is what keeps a server that answers 429 forever from
+// turning one list call into an unbounded loop.
+const maxRateLimitRetries = 4
+
+// baseRetryBackoff is the first delay used when a 429 arrives without a
+// usable Retry-After header. It doubles with each further attempt.
+const baseRetryBackoff = 500 * time.Millisecond
+
+// maxRetryAfter caps any single rate-limit wait, whether it came from a
+// Retry-After header or from the exponential backoff.
+const maxRetryAfter = 30 * time.Second
+
 // maxBodySize caps the bytes read from a single API response. It guards
 // against an oversized or malicious body exhausting memory.
 const maxBodySize = 50 << 20 // 50 MiB
@@ -326,29 +340,9 @@ func getPaginated[T any](ctx context.Context, c *GustoConnection, path string, o
 			return fmt.Errorf("gusto API %s: %w", path, err)
 		}
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, next, nil)
+		header, body, err := fetchPage(ctx, c, path, next)
 		if err != nil {
 			return err
-		}
-		req.Header.Set("Authorization", "Bearer "+c.token)
-		req.Header.Set("Accept", "application/json")
-		req.Header.Set("X-Gusto-API-Version", c.apiVersion)
-		req.Header.Set("User-Agent", userAgent)
-
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			return err
-		}
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxBodySize+1))
-		resp.Body.Close()
-		if readErr != nil {
-			return readErr
-		}
-		if int64(len(body)) > maxBodySize {
-			return fmt.Errorf("gusto API %s response exceeded the %d-byte size limit", path, maxBodySize)
-		}
-		if resp.StatusCode >= 400 {
-			return fmt.Errorf("gusto API %s returned %d: %s", path, resp.StatusCode, errSnippet(body))
 		}
 
 		var pageItems []T
@@ -357,9 +351,105 @@ func getPaginated[T any](ctx context.Context, c *GustoConnection, path string, o
 		}
 		*out = append(*out, pageItems...)
 
-		next = nextPageURL(resp.Header.Get("Link"))
+		next = nextPageURL(header.Get("Link"))
 	}
 	return nil
+}
+
+// fetchPage performs a single authenticated GET and returns the response
+// headers and body. A 429 is retried a bounded number of times: Gusto
+// rate-limits per token, and a scan that walks every company x resource list
+// trips that limit often enough that treating one 429 as fatal would abort
+// the whole scan. Every other status is returned to the caller unchanged.
+func fetchPage(ctx context.Context, c *GustoConnection, path, rawURL string) (http.Header, []byte, error) {
+	for attempt := 0; ; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+		if err != nil {
+			return nil, nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("X-Gusto-API-Version", c.apiVersion)
+		req.Header.Set("User-Agent", userAgent)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, nil, err
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxBodySize+1))
+		resp.Body.Close()
+		if readErr != nil {
+			return nil, nil, readErr
+		}
+		if int64(len(body)) > maxBodySize {
+			return nil, nil, fmt.Errorf("gusto API %s response exceeded the %d-byte size limit", path, maxBodySize)
+		}
+		if resp.StatusCode == http.StatusTooManyRequests && attempt < maxRateLimitRetries {
+			if err := sleepCtx(ctx, retryDelay(resp.Header.Get("Retry-After"), attempt)); err != nil {
+				return nil, nil, err
+			}
+			continue
+		}
+		if resp.StatusCode >= 400 {
+			return nil, nil, fmt.Errorf("gusto API %s returned %d: %s", path, resp.StatusCode, errSnippet(body))
+		}
+		return resp.Header, body, nil
+	}
+}
+
+// retryDelay returns how long to wait before retrying a rate-limited request.
+// It honors Retry-After in both RFC 9110 forms (delay-seconds and HTTP-date)
+// and otherwise backs off exponentially from baseRetryBackoff. The result is
+// clamped to [0, maxRetryAfter] so a mistaken or hostile header cannot stall
+// a scan for hours.
+func retryDelay(retryAfter string, attempt int) time.Duration {
+	if d, ok := parseRetryAfter(retryAfter, time.Now()); ok {
+		return clampDelay(d)
+	}
+	return clampDelay(baseRetryBackoff << attempt)
+}
+
+func clampDelay(d time.Duration) time.Duration {
+	if d < 0 {
+		return 0
+	}
+	if d > maxRetryAfter {
+		return maxRetryAfter
+	}
+	return d
+}
+
+// parseRetryAfter decodes a Retry-After header value. It reports ok=false when
+// the header is absent or in neither documented form, which leaves the caller
+// on its own backoff rather than retrying immediately.
+func parseRetryAfter(value string, now time.Time) (time.Duration, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, false
+	}
+	if seconds, err := strconv.Atoi(value); err == nil {
+		return time.Duration(seconds) * time.Second, true
+	}
+	if t, err := http.ParseTime(value); err == nil {
+		return t.Sub(now), true
+	}
+	return 0, false
+}
+
+// sleepCtx waits for d, returning early when the context is cancelled so a
+// rate-limit backoff never outlives the query that started it.
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return ctx.Err()
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // sameOrigin reports an error when raw does not share base's scheme and host.
