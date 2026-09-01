@@ -112,6 +112,40 @@ var rootTrustAnchors = []rootAnchor{
 	{DigestType: 2, Digest: "683d2d0acb8c9b712a1948b27f741219298d0a450d612c483af444a4c0fb2b16"},
 }
 
+// resolveWithDnssec asks one resolver for the first of the record types that
+// returns records, and reports which type answered.
+//
+// Checking is left enabled, so a resolver that validates answers SERVFAIL for a
+// zone whose signatures do not verify rather than handing back data it would
+// not itself accept.
+func (d *DnsClient) resolveWithDnssec(server, name string, recordTypes []string) (*dns.Msg, string, uint16, error) {
+	var (
+		msg        *dns.Msg
+		answerType string
+		qtype      uint16
+		lastErr    error
+	)
+
+	for _, recordType := range recordTypes {
+		candidate, err := d.exchangeDnssec(server, name, stringToType[recordType], false)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if msg == nil {
+			msg, qtype, answerType = candidate, stringToType[recordType], recordType
+		}
+		if len(candidate.Answer) > 0 {
+			return candidate, recordType, stringToType[recordType], nil
+		}
+	}
+
+	if msg == nil {
+		return nil, "", 0, lastErr
+	}
+	return msg, answerType, qtype, nil
+}
+
 // ValidateDnssec resolves the client's name with DNSSEC requested and reports
 // what came back.
 //
@@ -145,25 +179,30 @@ func (d *DnsClient) ValidateDnssec(recordTypes ...string) (*DnssecValidation, er
 		res.Error = "no resolver is configured"
 		return res, nil
 	}
-	server := d.config.Servers[0]
 
-	// Checking is left enabled, so a resolver that validates answers SERVFAIL
-	// for a zone whose signatures do not verify rather than handing back data
-	// it would not itself accept.
-	var msg *dns.Msg
-	var qtype uint16
-	var lastErr error
-	for _, recordType := range recordTypes {
-		candidate, err := d.exchangeDnssec(server, res.Name, stringToType[recordType], false)
+	// Try each configured resolver until one honors the DNSSEC OK bit. A
+	// resolver that strips EDNS0 answers without signatures however the zone is
+	// signed, so taking its answer as the verdict reports a correctly signed
+	// zone as unsigned. The first response is kept either way, so a run where
+	// no resolver honors DNSSEC still reports the response code it did get.
+	var (
+		server  string
+		msg     *dns.Msg
+		qtype   uint16
+		lastErr error
+	)
+	for _, candidateServer := range d.config.Servers {
+		candidate, candidateType, candidateQtype, err := d.resolveWithDnssec(candidateServer, res.Name, recordTypes)
 		if err != nil {
 			lastErr = err
 			continue
 		}
+
 		if msg == nil {
-			msg, qtype, res.RecordType = candidate, stringToType[recordType], recordType
+			server, msg, qtype, res.RecordType = candidateServer, candidate, candidateQtype, candidateType
 		}
-		if len(candidate.Answer) > 0 {
-			msg, qtype, res.RecordType = candidate, stringToType[recordType], recordType
+		if responseHasDnssecOk(candidate) {
+			server, msg, qtype, res.RecordType = candidateServer, candidate, candidateQtype, candidateType
 			break
 		}
 	}
@@ -179,6 +218,17 @@ func (d *DnsClient) ValidateDnssec(recordTypes ...string) (*DnssecValidation, er
 	res.ResponseCode = dns.RcodeToString[msg.Rcode]
 	res.AuthenticatedData = msg.AuthenticatedData
 	res.DnssecOk = responseHasDnssecOk(msg)
+
+	// No resolver returned DNSSEC records for a query that asked for them, so
+	// the answer says nothing about the zone: a signed zone and an unsigned one
+	// look identical from here. Stop rather than concluding from an unsigned
+	// answer that the zone is unsigned, and leave the verdicts at their zero
+	// values for the caller to report as unknown.
+	if !res.DnssecOk {
+		res.Error = "the resolver did not return DNSSEC records for a query that asked for them, " +
+			"so nothing here describes how the zone is signed"
+		return res, nil
+	}
 
 	// Reasons accumulate rather than overwrite. The resolver's refusal is
 	// context, the walk's finding is the diagnosis, and reporting only the
@@ -210,9 +260,14 @@ func (d *DnsClient) ValidateDnssec(recordTypes ...string) (*DnssecValidation, er
 		return res, nil
 	}
 
-	res.SignaturesVerified = d.verifySignatures(server, rrsigs, answer.Answer)
-	if !res.SignaturesVerified {
-		reasons = append(reasons, "no signature over the answer verified against a key its signing zone publishes")
+	verified, unreadable := d.verifySignatures(server, rrsigs, answer.Answer)
+	res.SignaturesVerified = verified
+	if !verified {
+		if unreadable != "" {
+			reasons = append(reasons, unreadable)
+		} else {
+			reasons = append(reasons, "no signature over the answer verified against a key its signing zone publishes")
+		}
 	}
 
 	// The signing zone is where the chain starts. It is the RRSIG's signer,
@@ -291,7 +346,10 @@ func fingerprintSignature(signature string) string {
 // signed zone as unvalidated. Skipping is only safe because the count below
 // requires at least one signature to have actually been checked -- otherwise an
 // answer carrying nothing but irrelevant RRSIGs would verify vacuously.
-func (d *DnsClient) verifySignatures(server string, rrsigs []*dns.RRSIG, answer []dns.RR) bool {
+// The second return explains a false result: it names the resolver when the key
+// set could not be read, and is empty when the signatures were genuinely checked
+// and did not verify.
+func (d *DnsClient) verifySignatures(server string, rrsigs []*dns.RRSIG, answer []dns.RR) (bool, string) {
 	keysByZone := map[string][]*dns.DNSKEY{}
 	verified := 0
 
@@ -304,20 +362,25 @@ func (d *DnsClient) verifySignatures(server string, rrsigs []*dns.RRSIG, answer 
 		zone := sig.SignerName
 		keys, ok := keysByZone[zone]
 		if !ok {
-			keys, _ = d.dnskeys(server, zone)
+			fetched, dnssecOk, err := d.dnskeys(server, zone)
+			if err != nil || !dnssecOk {
+				return false, "the resolver did not return the DNSKEY set for " + zone +
+					", so the answer's signatures could not be checked"
+			}
+			keys = fetched
 			keysByZone[zone] = keys
 		}
 		if len(keys) == 0 {
-			return false
+			return false, ""
 		}
 
 		if !verifyWithAnyKey(sig, keys, rrset) {
-			return false
+			return false, ""
 		}
 		verified++
 	}
 
-	return verified > 0
+	return verified > 0, ""
 }
 
 // verifyWithAnyKey reports whether any of the zone's keys validates the
@@ -352,6 +415,17 @@ func (d *DnsClient) walkChain(server, zone string) (chain []string, brokenAt str
 		keyMsg, err := d.exchangeDnssec(server, zone, dns.TypeDNSKEY, true)
 		if err != nil {
 			return chain, zone, "could not read the DNSKEY set for " + zone + ": " + err.Error()
+		}
+
+		// A resolver can honor the DNSSEC OK bit for one name and strip it for
+		// the next, so the walk has to check every response rather than trusting
+		// that the one which selected this resolver settled the question. An
+		// answer with no DNSSEC records in it cannot support any finding about
+		// the zone, and reporting one accuses the zone's operator of a break
+		// that is on the path to the resolver.
+		if !responseHasDnssecOk(keyMsg) {
+			return chain, zone, "the resolver did not return DNSSEC records for the DNSKEY set of " + zone +
+				", so the chain of trust could not be followed past it"
 		}
 
 		keys := dnskeysIn(keyMsg.Answer)
@@ -511,12 +585,15 @@ func matchesRootAnchor(keys []*dns.DNSKEY) bool {
 
 // dnskeys reads a zone's DNSKEY set, returning an empty slice rather than an
 // error when it cannot be read, because every caller treats the two the same.
-func (d *DnsClient) dnskeys(server, zone string) ([]*dns.DNSKEY, error) {
+// The second return reports whether the response carried DNSSEC records at all.
+// A resolver can honor the DNSSEC OK bit for one name and strip it for the next,
+// and an empty key set from a stripped response is not evidence about the zone.
+func (d *DnsClient) dnskeys(server, zone string) ([]*dns.DNSKEY, bool, error) {
 	msg, err := d.exchangeDnssec(server, zone, dns.TypeDNSKEY, true)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return dnskeysIn(msg.Answer), nil
+	return dnskeysIn(msg.Answer), responseHasDnssecOk(msg), nil
 }
 
 // dnskeysIn picks the DNSKEY records out of a record set.

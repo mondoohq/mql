@@ -227,11 +227,17 @@ func TestVerifySignaturesSkipsIrrelevantRrsigs(t *testing.T) {
 		// Every signature is skipped, so nothing was actually checked. This
 		// must not pass: skipping is only safe while at least one signature
 		// still has to verify.
-		assert.False(t, d.verifySignatures("", []*dns.RRSIG{nsecSig}, []dns.RR{a1}))
+		verified, unreadable := d.verifySignatures("", []*dns.RRSIG{nsecSig}, []dns.RR{a1})
+		assert.False(t, verified)
+		// Nothing was fetched, so this is a genuine "did not verify" rather
+		// than a key set the resolver would not hand over.
+		assert.Empty(t, unreadable)
 	})
 
 	t.Run("no signatures at all does not verify", func(t *testing.T) {
-		assert.False(t, d.verifySignatures("", nil, []dns.RR{a1}))
+		verified, unreadable := d.verifySignatures("", nil, []dns.RR{a1})
+		assert.False(t, verified)
+		assert.Empty(t, unreadable)
 	})
 }
 

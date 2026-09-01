@@ -232,6 +232,29 @@ func nsec3ParamFromParams(paramsM map[string]any) *dns.NSEC3PARAM {
 	return nil
 }
 
+// dnssecVerdicts maps the four fields that are read off the answer's signatures.
+//
+// All four are unknown when the resolver did not honor the DNSSEC OK bit: it
+// then returns the same unsigned-looking answer for a signed zone and an
+// unsigned one, so reporting false would assert that a zone is unsigned on the
+// strength of an answer that was never going to carry a signature. dnssecOk
+// itself, the response code and the resolver's authenticated-data flag are
+// facts about the exchange rather than about the zone, so they stay populated
+// and the reason remains readable.
+func dnssecVerdicts(validation *dnsshake.DnssecValidation, signaturesCurrentlyValid bool) (
+	signed *llx.RawData, signaturesVerified *llx.RawData,
+	chainOfTrustValidated *llx.RawData, currentlyValid *llx.RawData,
+) {
+	if !validation.DnssecOk {
+		return llx.NilData, llx.NilData, llx.NilData, llx.NilData
+	}
+
+	return llx.BoolData(len(validation.Signatures) > 0),
+		llx.BoolData(validation.SignaturesVerified),
+		llx.BoolData(validation.ChainOfTrustValidated),
+		llx.BoolData(signaturesCurrentlyValid)
+}
+
 // dnssecValidation resolves the domain with DNSSEC requested and reports what
 // the resolution actually produced.
 //
@@ -332,6 +355,9 @@ func (d *mqlDns) dnssecValidation(fqdn string) (*mqlDnsDnssecValidationResult, e
 		expiresInData = llx.TimeData(remaining)
 	}
 
+	signedData, signaturesVerifiedData, chainOfTrustValidatedData, signaturesCurrentlyValidData :=
+		dnssecVerdicts(validation, signaturesCurrentlyValid)
+
 	res, err := CreateResource(d.MqlRuntime, "dns.dnssecValidationResult", map[string]*llx.RawData{
 		"__id":                     llx.StringData("dns.dnssecValidationResult/" + fqdn),
 		"name":                     llx.StringData(validation.Name),
@@ -339,17 +365,17 @@ func (d *mqlDns) dnssecValidation(fqdn string) (*mqlDnsDnssecValidationResult, e
 		"responseCode":             llx.StringData(validation.ResponseCode),
 		"dnssecOk":                 llx.BoolData(validation.DnssecOk),
 		"authenticatedData":        llx.BoolData(validation.AuthenticatedData),
-		"signed":                   llx.BoolData(len(validation.Signatures) > 0),
+		"signed":                   signedData,
 		"signatures":               llx.ArrayData(signatures, types.Resource("dns.rrsigRecord")),
-		"signaturesVerified":       llx.BoolData(validation.SignaturesVerified),
-		"chainOfTrustValidated":    llx.BoolData(validation.ChainOfTrustValidated),
+		"signaturesVerified":       signaturesVerifiedData,
+		"chainOfTrustValidated":    chainOfTrustValidatedData,
 		"chain":                    llx.ArrayData(llx.TArr2Raw(validation.Chain), types.String),
 		"brokenAtZone":             llx.StringData(validation.BrokenAtZone),
 		"signerNames":              llx.ArrayData(signerNames, types.String),
 		"signatureAlgorithms":      llx.ArrayData(algorithms, types.Int),
 		"earliestSignatureExpiry":  earliestExpiryData,
 		"signatureExpiresIn":       expiresInData,
-		"signaturesCurrentlyValid": llx.BoolData(signaturesCurrentlyValid),
+		"signaturesCurrentlyValid": signaturesCurrentlyValidData,
 		"error":                    llx.StringData(validation.Error),
 	})
 	if err != nil {

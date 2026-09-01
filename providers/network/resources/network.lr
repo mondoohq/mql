@@ -900,10 +900,14 @@ private dns.rrsigRecord @defaults("typeCovered algorithm signerName") {
 // `dns(fqdn: "example.com").dnssecValidation`.
 //
 // Nothing here raises an error when validation does not succeed. An unsigned
-// zone, an unreachable resolver, and a genuinely broken chain of trust all
-// report their state in these fields with `error` explaining which one
-// happened, so a scan of a fleet that includes unsigned domains still
-// completes.
+// zone, an unreachable resolver, a resolver that does not return DNSSEC
+// records, and a genuinely broken chain of trust all report their state in
+// these fields with `error` explaining which one happened, so a scan of a
+// fleet that includes unsigned domains still completes.
+//
+// The last of those is not a statement about the zone: when `dnssecOk` is
+// false the resolver answered without signatures whatever the zone publishes,
+// so the verdict fields are null rather than false.
 dns.dnssecValidationResult @defaults("chainOfTrustValidated authenticatedData") {
   // Name that was queried
   name string
@@ -918,8 +922,11 @@ dns.dnssecValidationResult @defaults("chainOfTrustValidated authenticatedData") 
   // Whether the resolver returned DNSSEC records for a query that asked for them
   //
   // False when the path to the resolver strips EDNS0 or the resolver does not
-  // support DNSSEC, in which case none of the other fields can be trusted to
-  // say anything about the zone.
+  // support DNSSEC. Every resolver the host is configured with is tried before
+  // this reports false. When it does, the answer describes the resolver rather
+  // than the zone, so signed, signaturesVerified, signaturesCurrentlyValid and
+  // chainOfTrustValidated are all null instead of reporting a verdict, and
+  // error says which case this is.
   dnssecOk bool
   // Whether the resolver set the Authenticated Data flag on the response
   //
@@ -928,6 +935,10 @@ dns.dnssecValidationResult @defaults("chainOfTrustValidated authenticatedData") 
   // `chainOfTrustValidated` is computed here rather than taken on trust.
   authenticatedData bool
   // Whether the answer carried at least one RRSIG record
+  //
+  // Null when dnssecOk is false: a resolver that did not return DNSSEC records
+  // answers the same way for a signed zone and an unsigned one, so an unsigned
+  // answer is not evidence that the zone is unsigned.
   signed bool
   // Signatures covering the answer
   signatures []dns.rrsigRecord
@@ -935,7 +946,7 @@ dns.dnssecValidationResult @defaults("chainOfTrustValidated authenticatedData") 
   //
   // The cryptographic check of the answer itself, independent of anything the
   // resolver claims. False when no signature could be verified, including
-  // when the answer carried none.
+  // when the answer carried none. Null when dnssecOk is false.
   signaturesVerified bool
   // Whether the chain of trust validated from this answer up to the root
   //
@@ -943,7 +954,8 @@ dns.dnssecValidationResult @defaults("chainOfTrustValidated authenticatedData") 
   // set is checked against the DS record its parent publishes, up to the IANA
   // root trust anchor. False for an unsigned zone, an insecure delegation, a
   // DS that no longer matches a published key, and any zone the walk could not
-  // reach.
+  // reach. Null when dnssecOk is false, because the answer the walk would
+  // start from never carried a signature.
   chainOfTrustValidated bool
   // Zones the chain of trust walk traversed, from the signed answer up to the root
   chain []string
@@ -973,7 +985,7 @@ dns.dnssecValidationResult @defaults("chainOfTrustValidated authenticatedData") 
   //
   // False when any signature has expired or has not yet become valid, and
   // false when the answer carried no signatures at all, so it cannot pass
-  // vacuously on an unsigned zone.
+  // vacuously on an unsigned zone. Null when dnssecOk is false.
   signaturesCurrentlyValid bool
   // Why validation did not complete, empty when the chain of trust validated
   //
