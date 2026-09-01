@@ -173,14 +173,41 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 	case asset.Platform.Name == "gentoo":
 		pms = append(pms, &GentooPkgManager{conn: conn, platform: asset.Platform})
 	case asset.Platform.IsFamily("linux"):
-		// no clear package manager for linux platform found
-		// most likely we land here if we have a yocto-based system
+		// No case above claimed this platform, so nothing above it knows which
+		// package manager it uses. Every distro named above had to be named
+		// because it carries neither a family nor a name any earlier case
+		// matches, and a distro nobody has added yet is indistinguishable from
+		// one nobody ever will: it lands here and, without a probe, reports no
+		// package manager at all. CBL-Mariner 2.0 (ID=mariner) was one such
+		// case, with a populated rpm database and no package inventory.
+		//
+		// So ask the filesystem instead of the name. A package database on
+		// disk is the same evidence the named cases stand on, and it is
+		// evidence the distro provides itself.
 		opkgPaths := []string{"/bin/opkg", "/usr/bin/opkg"}
 		for i := range opkgPaths {
 			if _, err := conn.FileSystem().Stat(opkgPaths[i]); err == nil {
 				pms = append(pms, &OpkgPkgManager{conn: conn})
 				break
 			}
+		}
+
+		// rpm keeps its database under /var/lib/rpm, or under
+		// /usr/lib/sysimage/rpm on systems that moved it for /var immutability.
+		rpmPaths := []string{"/var/lib/rpm", "/usr/lib/sysimage/rpm"}
+		for i := range rpmPaths {
+			if _, err := conn.FileSystem().Stat(rpmPaths[i]); err == nil {
+				pms = append(pms, &RpmPkgManager{conn: conn, platform: asset.Platform})
+				break
+			}
+		}
+
+		if _, err := conn.FileSystem().Stat("/var/lib/dpkg/status"); err == nil {
+			pms = append(pms, &DebPkgManager{conn: conn, platform: asset.Platform})
+		}
+
+		if _, err := conn.FileSystem().Stat("/lib/apk/db/installed"); err == nil {
+			pms = append(pms, &AlpinePkgManager{conn: conn, platform: asset.Platform})
 		}
 	}
 
