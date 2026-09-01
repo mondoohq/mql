@@ -121,6 +121,15 @@ func (s *UnixGroupManager) listEtcGroup() ([]*Group, error) {
 //
 // getent group emits the same colon separated format as /etc/group, so the
 // existing parser handles it unchanged.
+//
+// Enumeration is a courtesy, not a guarantee: an NSS module may serve lookups
+// by name while declining to list. sssd ships enumerate=false by default, so on
+// a host joined to LDAP or AD this returns only what the files module holds and
+// the directory-backed groups are absent -- indistinguishable from a host that
+// simply has few groups. The fallback yields the same set in that case, so the
+// answer stays correct; it is not, however, complete. Enumerating a large
+// directory is also slow, which is why sssd defaults it off. Reporting group
+// membership for directory-backed accounts needs a per-name lookup, not a list.
 func (s *UnixGroupManager) listGetentGroup() ([]*Group, error) {
 	getent, err := s.conn.RunCommand("getent group")
 	if err != nil {
