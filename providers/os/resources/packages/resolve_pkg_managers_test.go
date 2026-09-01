@@ -36,15 +36,17 @@ func managerNames(pms []OperatingSystemPkgManager) []string {
 	return names
 }
 
-// CBL-Mariner 2.0 reports ID=mariner with family ["linux","unix","os"]. It is
-// not in the redhat family and no case names it, so before the filesystem
-// probe it matched nothing and packages errored on a host with 69 rpms in a
-// healthy /var/lib/rpm.
-func TestResolveSystemPkgManagersMariner(t *testing.T) {
+// The rpm database still lives under /var/lib/rpm on most rpm distros. CBL-Mariner
+// 2.0 was the host that exposed the gap: it reports ID=mariner with family
+// ["linux","unix","os"], so it is not in the redhat family, and before the probe
+// no case named it and packages errored on a host with 69 rpms on disk. Mariner
+// itself is now claimed by name, so it no longer reaches this branch and cannot
+// stand in for it. The path is covered here instead, on a distro nobody has
+// named, which is the case the probe exists to serve.
+func TestResolveSystemPkgManagersUnknownRpmVarLibPath(t *testing.T) {
 	conn := newProbeConn(t, &inventory.Platform{
-		Name:    "mariner",
-		Version: "2.0",
-		Family:  []string{"linux", "unix", "os"},
+		Name:   "someotherrpmdistro",
+		Family: []string{"linux", "unix", "os"},
 	}, "/var/lib/rpm")
 
 	pms, err := ResolveSystemPkgManagers(conn)
