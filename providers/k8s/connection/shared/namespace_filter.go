@@ -31,8 +31,8 @@ const globMetaChars = `*?[]{}\`
 // of them are kept and exclude is not consulted. With no includes, exclude
 // removes matching namespaces. Patterns are globs, so "kube-*" works.
 type NamespaceFilter struct {
-	include    []glob.Glob
-	exclude    []glob.Glob
+	include    []*glob.Pattern
+	exclude    []*glob.Pattern
 	includeRaw []string
 	excludeRaw []string
 }
@@ -55,11 +55,11 @@ func NewNamespaceFilter(include, exclude string) (NamespaceFilter, error) {
 	return f, nil
 }
 
-func compileGlobs(patterns []string) ([]glob.Glob, error) {
+func compileGlobs(patterns []string) ([]*glob.Pattern, error) {
 	if len(patterns) == 0 {
 		return nil, nil
 	}
-	out := make([]glob.Glob, 0, len(patterns))
+	out := make([]*glob.Pattern, 0, len(patterns))
 	for _, p := range patterns {
 		g, err := glob.Compile(p)
 		if err != nil {
@@ -83,7 +83,7 @@ func (f NamespaceFilter) Matches(namespace string) bool {
 	return !matchesAnyGlob(f.exclude, namespace)
 }
 
-func matchesAnyGlob(globs []glob.Glob, value string) bool {
+func matchesAnyGlob(globs []*glob.Pattern, value string) bool {
 	for _, g := range globs {
 		if g.Match(value) {
 			return true
