@@ -91,9 +91,15 @@ func (s *UnixGroupManager) Group(id string) (*Group, error) {
 // and fallen back to /etc/passwd. The two managers disagreeing is why the same
 // host reported 37 users but 6 groups.
 func (s *UnixGroupManager) listGroups() ([]*Group, error) {
-	if groups, err := s.listGetentGroup(); err == nil && len(groups) != 0 {
+	groups, err := s.listGetentGroup()
+	if err == nil && len(groups) != 0 {
 		return groups, nil
 	}
+	// getent is missing on busybox style images and fails when NSS is
+	// misconfigured. Record why we dropped to /etc/group, otherwise a host that
+	// should have resolved through NSS looks indistinguishable from one that
+	// never had getent at all.
+	log.Debug().Err(err).Int("groups", len(groups)).Msg("getent group did not return groups, falling back to /etc/group")
 	return s.listEtcGroup()
 }
 
