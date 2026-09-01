@@ -190,6 +190,11 @@ func (f *mqlFirewalld) zones() ([]any, error) {
 		return nil, err
 	}
 	if f.cacheStatus != "running" {
+		// firewall-cmd can only enumerate zones through a running daemon, so a
+		// stopped firewalld leaves the zone set unread. Returning an empty list
+		// would make `firewalld.zones.all(...)` and `.none(...)` pass
+		// vacuously on exactly the host whose firewall is off.
+		f.Zones.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
@@ -241,9 +242,17 @@ func ParseGetsebool(output string) []SELinuxBool {
 func (s *mqlSelinux) booleans() ([]any, error) {
 	conn, ok := s.MqlRuntime.Connection.(shared.Connection)
 	if !ok {
+		// Nothing was read. An empty list would be worse than no list at all:
+		// `booleans.none(...)` and `booleans.all(...)` are vacuously true over
+		// an empty list, so an unreadable host would pass every assertion. A
+		// null list fails them instead.
+		s.Booleans.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 
+	// read records whether a source answered at all, which is not the same as
+	// whether it answered with entries.
+	read := false
 	var parsed []SELinuxBool
 	if conn.Capabilities().Has(shared.Capability_RunCommand) {
 		o, err := CreateResource(s.MqlRuntime, "command", map[string]*llx.RawData{
@@ -256,17 +265,24 @@ func (s *mqlSelinux) booleans() ([]any, error) {
 			// also skip the /sys/fs/selinux fallback below.
 			if run, cmdErr := commandResult(cmd); cmdErr == nil && run.exitcode == 0 {
 				parsed = ParseGetsebool(run.stdout)
+				read = true
 			}
 		}
 	}
 
 	// Fall back to /sys/fs/selinux/booleans/ directory (each file contains
 	// "1" or "0" for the boolean's current value)
-	if parsed == nil {
-		parsed = readSelinuxBooleansFromFS(conn.FileSystem())
+	if len(parsed) == 0 {
+		if fsBools, fsRead := readSelinuxBooleansFromFS(conn.FileSystem()); fsRead {
+			parsed = fsBools
+			read = true
+		}
 	}
 
-	if parsed == nil {
+	if !read {
+		// Neither getsebool nor selinuxfs answered, so the boolean set is
+		// unknown rather than empty.
+		s.Booleans.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 
@@ -286,11 +302,15 @@ func (s *mqlSelinux) booleans() ([]any, error) {
 
 // readSelinuxBooleansFromFS reads boolean values from /sys/fs/selinux/booleans/.
 // Each file in that directory contains "1" (on) or "0" (off).
-func readSelinuxBooleansFromFS(fs afero.Fs) []SELinuxBool {
+//
+// The second return value reports whether the directory could be read at all.
+// It separates "selinuxfs is not mounted, so we know nothing" from "selinuxfs
+// is mounted and exposes no booleans", which the slice alone cannot express.
+func readSelinuxBooleansFromFS(fs afero.Fs) ([]SELinuxBool, bool) {
 	const dir = "/sys/fs/selinux/booleans"
 	entries, err := afero.ReadDir(fs, dir)
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	var bools []SELinuxBool
 	for _, entry := range entries {
@@ -307,7 +327,7 @@ func readSelinuxBooleansFromFS(fs afero.Fs) []SELinuxBool {
 			Value: val == "1",
 		})
 	}
-	return bools
+	return bools, true
 }
 
 // SELinuxModule represents a parsed semodule entry.
@@ -367,6 +387,10 @@ func ParseSemodule(output string) []SELinuxModule {
 func (s *mqlSelinux) modules() ([]any, error) {
 	conn, ok := s.MqlRuntime.Connection.(shared.Connection)
 	if !ok || !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		// Without command execution the module list was never read. An empty
+		// list is vacuously true for `modules.none(...)` and `modules.all(...)`,
+		// so report nothing rather than a measurement we never made.
+		s.Modules.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 
@@ -382,6 +406,9 @@ func (s *mqlSelinux) modules() ([]any, error) {
 		return nil, err
 	}
 	if run.exitcode != 0 {
+		// semodule is absent or refused to answer, so the loaded modules are
+		// unknown. Only an exit code of 0 licenses an empty list.
+		s.Modules.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
 
