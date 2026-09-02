@@ -60,6 +60,10 @@ func (in *Inventory) ToV1Inventory() *inventory.Inventory {
 			log.Warn().Err(err).Str("hostname", host).Msg("could not parse hostname")
 		}
 
+		// Deliberately no MarkRequestedNames here: a domainlist file holds targets,
+		// not names. The name is a verbatim copy of the line that produced the
+		// connection, so marking it would pin `https://example.com` and suppress the
+		// normalized `example.com` a provider computes after connecting.
 		out.Spec.Assets = append(out.Spec.Assets, &inventory.Asset{
 			Name:        name,
 			Connections: []*inventory.Config{tc},

@@ -124,6 +124,8 @@ func NewAssetExplorer(ctx context.Context, cfg AssetExplorerConfig) (*AssetExplo
 			return nil, err
 		}
 
+		requested := requestedName(resolvedRootAsset)
+
 		awr, err := createRuntimeForAsset(resolvedRootAsset, cfg.Upstream, cfg.Recording, e.features)
 		if err != nil {
 			log.Error().Err(err).Str("asset", resolvedRootAsset.Name).Msg("unable to create runtime for asset")
@@ -131,7 +133,14 @@ func NewAssetExplorer(ctx context.Context, cfg AssetExplorerConfig) (*AssetExplo
 			continue
 		}
 
+		// createRuntimeForAsset reports a duplicate connection as (nil, nil)
+		if awr == nil {
+			log.Debug().Str("asset", resolvedRootAsset.GetName()).Msg("skipping duplicate root asset")
+			continue
+		}
+
 		resolvedRootAsset = awr.Asset
+		restoreRequestedName(resolvedRootAsset, requested)
 
 		tracked := &TrackedAsset{
 			Asset:   resolvedRootAsset,
@@ -151,6 +160,7 @@ func NewAssetExplorer(ctx context.Context, cfg AssetExplorerConfig) (*AssetExplo
 
 		// Discover immediate children from the root's connection inventory
 		e.discoverChildren(tracked)
+		handDownRequestedName(tracked, requested)
 	}
 
 	return e, nil
@@ -210,6 +220,8 @@ func (e *AssetExplorer) Connect(asset *TrackedAsset) (*TrackedAsset, error) {
 		return nil, fmt.Errorf("asset %q has been closed and cannot be reconnected", asset.Asset.GetName())
 	}
 
+	requested := requestedName(asset.Asset)
+
 	awr, err := createRuntimeForAsset(asset.Asset, e.upstream, e.recording, e.features)
 	if err != nil {
 		e.errors = append(e.errors, &AssetWithError{Asset: asset.Asset, Err: err})
@@ -225,6 +237,8 @@ func (e *AssetExplorer) Connect(asset *TrackedAsset) (*TrackedAsset, error) {
 	asset.Runtime = awr.Runtime
 	asset.State = AssetConnected
 
+	restoreRequestedName(asset.Asset, requested)
+
 	// Run dedup: if this newly connected asset's platform IDs conflict with
 	// an already-connected asset, handle subset/superset logic.
 	if len(asset.Asset.PlatformIds) > 0 {
@@ -239,6 +253,7 @@ func (e *AssetExplorer) Connect(asset *TrackedAsset) (*TrackedAsset, error) {
 	}
 
 	e.discoverChildren(asset)
+	handDownRequestedName(asset, requested)
 
 	return asset, nil
 }
@@ -329,6 +344,43 @@ func (e *AssetExplorer) discoverChildren(parent *TrackedAsset) {
 			e.seenPlatformIDs[id] = struct{}{}
 		}
 	}
+}
+
+// handDownRequestedName passes a requested asset name to the one asset below a
+// node that can actually be scanned.
+//
+// The fan-out providers connect to an API rather than to a machine: the aws
+// provider's detect step sets a platform but never a platform ID, and a node with
+// no platform IDs is not scannable and gets dropped. Renaming that node therefore
+// changes nothing a user sees -- the asset that gets scanned is a discovered child,
+// the account. So when a node cannot be scanned itself and has exactly one child,
+// the request belongs to that child. Children are discovered one level at a time,
+// so a request that has to travel further down is handed on again when that child
+// is connected and its own children appear.
+//
+// Exactly one child is the whole condition. A node that fans out to many children
+// has no single asset the request could mean, and guessing would rename one of a
+// fleet after the scan as a whole. This is v12's `len(Assets) == 1` rule, asked one
+// level at a time because children are discovered lazily rather than all up front.
+//
+// Mutates tracked assets, so callers must hold e.mu or otherwise guarantee that
+// nothing else can reach the explorer: Connect holds the lock, and the constructor
+// runs before the explorer is returned to anyone.
+func handDownRequestedName(node *TrackedAsset, requested string) {
+	if requested == "" || node == nil {
+		return
+	}
+	if len(node.Asset.GetPlatformIds()) > 0 || len(node.Children) != 1 {
+		return
+	}
+
+	child := node.Children[0]
+	log.Debug().
+		Str("discovered", child.Asset.GetName()).
+		Str("requested", requested).
+		Msg("handing the requested asset name to the only scannable descendant")
+	child.Asset.Name = requested
+	child.Asset.NameOverride = true
 }
 
 // dedup checks if the given asset's platform IDs conflict with any other

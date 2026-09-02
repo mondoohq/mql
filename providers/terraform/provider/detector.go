@@ -34,9 +34,14 @@ func (s *Service) detect(asset *inventory.Asset, _ *connection.Connection) error
 		name = "terraform-hcl"
 		techSegments = []string{"iac", "terraform", "hcl"}
 	}
+	platform := PlatformByName(name)
 	p := &inventory.Platform{TechnologyUrlSegments: techSegments}
-	PlatformByName(name).Apply(p)
+	platform.Apply(p)
 	asset.MergePlatform(p)
+
+	// name the asset after what was actually connected to, so a plan file does not
+	// get announced as HCL
+	titlePrefix := platform.Title + " "
 
 	// we always prefer the git url since it is more reliable
 	url, ok := asset.Connections[0].Options["ssh-url"]
@@ -50,7 +55,7 @@ func (s *Service) detect(asset *inventory.Asset, _ *connection.Connection) error
 			asset.PlatformIds = []string{platformID}
 		}
 		asset.Connections[0].PlatformId = asset.PlatformIds[0]
-		asset.Name = "Terraform HCL " + org + "/" + repo
+		asset.Name = titlePrefix + org + "/" + repo
 		return nil
 	}
 
@@ -65,7 +70,7 @@ func (s *Service) detect(asset *inventory.Asset, _ *connection.Connection) error
 			asset.PlatformIds = []string{platformID}
 		}
 		asset.Connections[0].PlatformId = asset.PlatformIds[0]
-		asset.Name = "Terraform HCL " + parseNameFromPath(projectPath)
+		asset.Name = titlePrefix + parseNameFromPath(projectPath)
 		return nil
 	}
 

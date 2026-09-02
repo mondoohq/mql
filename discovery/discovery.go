@@ -6,6 +6,7 @@ package discovery
 import (
 	"maps"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/cli/config"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers"
@@ -88,6 +89,48 @@ func createRuntimeForAsset(asset *inventory.Asset, upstream *upstream.UpstreamCo
 	clonedAsset := proto.Clone(connAsset).(*inventory.Asset)
 
 	return &AssetWithRuntime{Asset: clonedAsset, Runtime: runtime}, nil
+}
+
+// requestedName returns the name the caller explicitly asked for, or "" when the
+// asset carries no such request.
+//
+// The name on an inventory asset is not on its own evidence that anyone asked for
+// it. Around seventeen providers set Asset.Name in their own ParseCLI, before any
+// user input is involved -- the os provider names a `docker <id>` asset after the
+// raw container id, auth0 names its asset "Auth0" -- and their detect step then
+// replaces that placeholder with something better once connected. Only an explicit
+// request (cnspec's --asset-name, or a `name:` in an inventory file) sets
+// NameOverride, so only that outranks what detect computed.
+func requestedName(asset *inventory.Asset) string {
+	if !asset.GetNameOverride() {
+		return ""
+	}
+	return asset.GetName()
+}
+
+// restoreRequestedName puts an explicitly requested asset name back on an asset
+// after it has been connected.
+//
+// Connecting replaces the asset with the provider's connection asset, and a
+// provider's detect step names that asset after whatever it connected to. Several
+// providers do so unconditionally rather than only filling in a name that is still
+// empty, which drops the caller's name. The caller asked for it by name, so it wins.
+//
+// The marker rides along so the name survives a second connect and can be handed
+// down to a descendant, which is how a request reaches the asset that actually gets
+// scanned when the root itself is not scannable.
+func restoreRequestedName(asset *inventory.Asset, requested string) {
+	if asset == nil || requested == "" {
+		return
+	}
+	if asset.GetName() != requested {
+		log.Debug().
+			Str("detected", asset.GetName()).
+			Str("requested", requested).
+			Msg("restoring the requested asset name")
+		asset.Name = requested
+	}
+	asset.NameOverride = true
 }
 
 // prepareAsset prepares the asset for further processing by adding mondoo-specific labels and annotations
