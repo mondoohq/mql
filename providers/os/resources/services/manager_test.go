@@ -468,3 +468,24 @@ func TestManagerNobara(t *testing.T) {
 	_, ok := mm.(*services.SystemDServiceManager)
 	assert.True(t, ok, "SystemDServiceManager used for Nobara Linux")
 }
+
+// Probing only /sbin/init put every systemd distro that ships no init binary on
+// the noop manager, which answers with an empty service list instead of saying
+// it could not look. Debian, Ubuntu, Fedora, openSUSE and Amazon Linux images
+// all carry systemd unit files without /sbin/init, and AlmaLinux ships
+// /sbin/init as a symlink to a systemd binary that is not in the image.
+func TestResolveManagerFindsSystemdWithoutSbinInit(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:    "debian",
+			Version: "12",
+			Family:  []string{"debian", "linux", "unix", "os"},
+		},
+	}, mock.WithPath("./testdata/systemd-units-no-sbin-init.toml"))
+	require.NoError(t, err)
+
+	osm, err := services.ResolveManager(mockConn)
+	require.NoError(t, err)
+	assert.NotEqual(t, "none", osm.Name(),
+		"a target carrying systemd unit files has a service manager to read")
+}

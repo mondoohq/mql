@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/coreos/go-systemd/unit"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 )
@@ -47,16 +48,23 @@ func (s *SystemDServiceManager) Name() string {
 	return "systemd Service Manager"
 }
 
+// errSystemctlNoOutput reports that systemctl ran but produced nothing this
+// parser recognizes as a unit-file listing. It is the one failure that means
+// "systemd is not the running init here", which is what makes reading the units
+// off disk the right answer. A read failure on stdout is an IO fault and says
+// nothing about the target, so it is deliberately not covered by this sentinel.
+var errSystemctlNoOutput = errors.New("unexpected output from systemctl list-unit-files")
+
 func ParseServiceSystemDUnitFiles(input io.Reader) ([]*Service, error) {
 	var services []*Service
 	content, err := io.ReadAll(input)
 	if err != nil {
-		return nil, fmt.Errorf("error executing systemctl list-unit-files: %v", err)
+		return nil, fmt.Errorf("error executing systemctl list-unit-files: %w", err)
 	}
 
 	lines := strings.Split(string(content), "\n")
 	if len(lines) < 2 {
-		return nil, fmt.Errorf("unexpected output from systemctl list-unit-files %v", content)
+		return nil, fmt.Errorf("%w: %q", errSystemctlNoOutput, content)
 	}
 
 	for _, line := range lines[1 : len(lines)-1] {
@@ -261,7 +269,20 @@ func (s *SystemDServiceManager) List() ([]*Service, error) {
 
 	services, err := ParseServiceSystemDUnitFiles(cmdList.Stdout)
 	if err != nil {
-		return nil, err
+		// Being able to run a command does not mean systemd is the running
+		// init. A container built from a systemd distro carries the unit files
+		// without ever starting systemd, so systemctl produces nothing usable
+		// there. Read the units off disk instead of reporting the failure as
+		// the service list.
+		//
+		// Only an unusable listing means that. Failing to read stdout is an IO
+		// fault, and answering it with a filesystem listing would present a
+		// plausible service list built from a read that never completed.
+		if !errors.Is(err, errSystemctlNoOutput) {
+			return nil, err
+		}
+		log.Debug().Err(err).Msg("systemctl did not answer, reading systemd units from disk instead")
+		return (&SystemdFSServiceManager{Fs: s.conn.FileSystem()}).List()
 	}
 
 	// Step 2: Get running state from list-units (provides Running/Description)
