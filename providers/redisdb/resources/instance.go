@@ -87,6 +87,7 @@ func (r *mqlRedisdbInstance) setConfigFields(cfg map[string]string, readable boo
 		r.TlsEnabled = plugin.TValue[bool]{State: null}
 		r.TlsAuthClients = plugin.TValue[string]{State: null}
 		r.AclFile = plugin.TValue[string]{State: null}
+		r.AclPubsubDefault = plugin.TValue[string]{State: null}
 		return
 	}
 
@@ -112,6 +113,10 @@ func (r *mqlRedisdbInstance) setConfigFields(cfg map[string]string, readable boo
 	r.TlsEnabled = plugin.TValue[bool]{Data: tlsPort != 0, State: set}
 	r.TlsAuthClients = plugin.TValue[string]{Data: cfg["tls-auth-clients"], State: set}
 	r.AclFile = plugin.TValue[string]{Data: cfg["aclfile"], State: set}
+	// Governs what an access-control user with no channel rules can reach, so
+	// an empty channelPatterns list only means "no channels" when this is
+	// resetchannels.
+	r.AclPubsubDefault = plugin.TValue[string]{Data: cfg["acl-pubsub-default"], State: set}
 }
 
 // bindsAll reports whether a bind list exposes the server on all interfaces:

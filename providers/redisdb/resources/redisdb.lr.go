@@ -15,10 +15,11 @@ import (
 
 // The MQL type names exposed as public consts for ease of reference.
 const (
-	ResourceRedisdb         string = "redisdb"
-	ResourceRedisdbInstance string = "redisdb.instance"
-	ResourceRedisdbAclUser  string = "redisdb.acl.user"
-	ResourceRedisdbConfig   string = "redisdb.config"
+	ResourceRedisdb            string = "redisdb"
+	ResourceRedisdbInstance    string = "redisdb.instance"
+	ResourceRedisdbAclUser     string = "redisdb.acl.user"
+	ResourceRedisdbAclSelector string = "redisdb.acl.selector"
+	ResourceRedisdbConfig      string = "redisdb.config"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -36,6 +37,10 @@ func init() {
 		"redisdb.acl.user": {
 			// to override args, implement: initRedisdbAclUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createRedisdbAclUser,
+		},
+		"redisdb.acl.selector": {
+			// to override args, implement: initRedisdbAclSelector(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createRedisdbAclSelector,
 		},
 		"redisdb.config": {
 			// to override args, implement: initRedisdbConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -157,6 +162,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"redisdb.instance.aclFile": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedisdbInstance).GetAclFile()).ToDataRes(types.String)
 	},
+	"redisdb.instance.aclPubsubDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedisdbInstance).GetAclPubsubDefault()).ToDataRes(types.String)
+	},
 	"redisdb.instance.users": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedisdbInstance).GetUsers()).ToDataRes(types.Array(types.Resource("redisdb.acl.user")))
 	},
@@ -186,6 +194,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"redisdb.acl.user.commandRules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedisdbAclUser).GetCommandRules()).ToDataRes(types.Array(types.String))
+	},
+	"redisdb.acl.user.selectors": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedisdbAclUser).GetSelectors()).ToDataRes(types.Array(types.Resource("redisdb.acl.selector")))
+	},
+	"redisdb.acl.selector.commandRules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedisdbAclSelector).GetCommandRules()).ToDataRes(types.Array(types.String))
+	},
+	"redisdb.acl.selector.keyPatterns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedisdbAclSelector).GetKeyPatterns()).ToDataRes(types.Array(types.String))
+	},
+	"redisdb.acl.selector.channelPatterns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRedisdbAclSelector).GetChannelPatterns()).ToDataRes(types.Array(types.String))
 	},
 	"redisdb.config.save": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRedisdbConfig).GetSave()).ToDataRes(types.String)
@@ -294,6 +314,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlRedisdbInstance).AclFile, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"redisdb.instance.aclPubsubDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedisdbInstance).AclPubsubDefault, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"redisdb.instance.users": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlRedisdbInstance).Users, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -336,6 +360,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"redisdb.acl.user.commandRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlRedisdbAclUser).CommandRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"redisdb.acl.user.selectors": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedisdbAclUser).Selectors, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"redisdb.acl.selector.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedisdbAclSelector).__id, ok = v.Value.(string)
+		return
+	},
+	"redisdb.acl.selector.commandRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedisdbAclSelector).CommandRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"redisdb.acl.selector.keyPatterns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedisdbAclSelector).KeyPatterns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"redisdb.acl.selector.channelPatterns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRedisdbAclSelector).ChannelPatterns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"redisdb.config.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -466,6 +510,7 @@ type mqlRedisdbInstance struct {
 	TlsEnabled         plugin.TValue[bool]
 	TlsAuthClients     plugin.TValue[string]
 	AclFile            plugin.TValue[string]
+	AclPubsubDefault   plugin.TValue[string]
 	Users              plugin.TValue[[]any]
 	Config             plugin.TValue[*mqlRedisdbConfig]
 }
@@ -562,6 +607,10 @@ func (c *mqlRedisdbInstance) GetAclFile() *plugin.TValue[string] {
 	return &c.AclFile
 }
 
+func (c *mqlRedisdbInstance) GetAclPubsubDefault() *plugin.TValue[string] {
+	return &c.AclPubsubDefault
+}
+
 func (c *mqlRedisdbInstance) GetUsers() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Users, func() ([]any, error) {
 		if c.MqlRuntime.HasRecording {
@@ -598,7 +647,7 @@ func (c *mqlRedisdbInstance) GetConfig() *plugin.TValue[*mqlRedisdbConfig] {
 type mqlRedisdbAclUser struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlRedisdbAclUserInternal it will be used here
+	mqlRedisdbAclUserInternal
 	Name            plugin.TValue[string]
 	IsDefault       plugin.TValue[bool]
 	Enabled         plugin.TValue[bool]
@@ -607,6 +656,7 @@ type mqlRedisdbAclUser struct {
 	KeyPatterns     plugin.TValue[[]any]
 	ChannelPatterns plugin.TValue[[]any]
 	CommandRules    plugin.TValue[[]any]
+	Selectors       plugin.TValue[[]any]
 }
 
 // createRedisdbAclUser creates a new instance of this resource
@@ -671,6 +721,76 @@ func (c *mqlRedisdbAclUser) GetChannelPatterns() *plugin.TValue[[]any] {
 
 func (c *mqlRedisdbAclUser) GetCommandRules() *plugin.TValue[[]any] {
 	return &c.CommandRules
+}
+
+func (c *mqlRedisdbAclUser) GetSelectors() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Selectors, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("redisdb.acl.user", c.__id, "selectors")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.selectors()
+	})
+}
+
+// mqlRedisdbAclSelector for the redisdb.acl.selector resource
+type mqlRedisdbAclSelector struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlRedisdbAclSelectorInternal it will be used here
+	CommandRules    plugin.TValue[[]any]
+	KeyPatterns     plugin.TValue[[]any]
+	ChannelPatterns plugin.TValue[[]any]
+}
+
+// createRedisdbAclSelector creates a new instance of this resource
+func createRedisdbAclSelector(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlRedisdbAclSelector{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("redisdb.acl.selector", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlRedisdbAclSelector) MqlName() string {
+	return "redisdb.acl.selector"
+}
+
+func (c *mqlRedisdbAclSelector) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlRedisdbAclSelector) GetCommandRules() *plugin.TValue[[]any] {
+	return &c.CommandRules
+}
+
+func (c *mqlRedisdbAclSelector) GetKeyPatterns() *plugin.TValue[[]any] {
+	return &c.KeyPatterns
+}
+
+func (c *mqlRedisdbAclSelector) GetChannelPatterns() *plugin.TValue[[]any] {
+	return &c.ChannelPatterns
 }
 
 // mqlRedisdbConfig for the redisdb.config resource

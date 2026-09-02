@@ -2,6 +2,10 @@
 # SPDX-License-Identifier: BUSL-1.1
 
 redisdb 13.0.0
+redisdb.acl.selector 13.0.3
+redisdb.acl.selector.channelPatterns 13.0.3
+redisdb.acl.selector.commandRules 13.0.3
+redisdb.acl.selector.keyPatterns 13.0.3
 redisdb.acl.user 13.0.0
 redisdb.acl.user.channelPatterns 13.0.0
 redisdb.acl.user.commandRules 13.0.0
@@ -11,6 +15,7 @@ redisdb.acl.user.keyPatterns 13.0.0
 redisdb.acl.user.name 13.0.0
 redisdb.acl.user.nopass 13.0.0
 redisdb.acl.user.passwordCount 13.0.0
+redisdb.acl.user.selectors 13.0.3
 redisdb.config 13.0.0
 redisdb.config.appendFsync 13.0.0
 redisdb.config.appendOnly 13.0.0
@@ -23,6 +28,7 @@ redisdb.config.rdbEnabled 13.0.0
 redisdb.config.save 13.0.0
 redisdb.instance 13.0.0
 redisdb.instance.aclFile 13.0.0
+redisdb.instance.aclPubsubDefault 13.0.3
 redisdb.instance.bind 13.0.0
 redisdb.instance.bindsAllInterfaces 13.0.0
 redisdb.instance.config 13.0.0

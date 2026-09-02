@@ -11,3 +11,11 @@ type mqlRedisdbInstanceInternal struct {
 	configCache    map[string]string
 	configReadable bool
 }
+
+// mqlRedisdbAclUserInternal caches the selectors parsed alongside the user's
+// base rules when the ACL roster was read, so the selectors accessor resolves
+// without a second ACL round trip. The code generator embeds this into
+// mqlRedisdbAclUser.
+type mqlRedisdbAclUserInternal struct {
+	selectorCache []aclRules
+}

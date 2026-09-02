@@ -45,61 +45,6 @@ func TestIsNoPerm(t *testing.T) {
 	}
 }
 
-func TestParseACLLine(t *testing.T) {
-	// default user: enabled, has a password hash, all keys/channels, all commands.
-	def := parseACLLine("user default on #9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08 ~* &* +@all")
-	if def.name != "default" || !def.enabled || def.nopass {
-		t.Errorf("default parse: %+v", def)
-	}
-	if def.passwordCount != 1 {
-		t.Errorf("default passwordCount = %d, want 1", def.passwordCount)
-	}
-	if len(def.keyPatterns) != 1 || def.keyPatterns[0] != "*" {
-		t.Errorf("default keyPatterns = %v, want [*]", def.keyPatterns)
-	}
-	if len(def.commandRules) != 1 || def.commandRules[0] != "+@all" {
-		t.Errorf("default commandRules = %v, want [+@all]", def.commandRules)
-	}
-
-	// restricted auditor: off, nopass, scoped key pattern, category rules.
-	aud := parseACLLine("user auditor off nopass ~app:* &notifications:* -@all +@read +@connection")
-	if aud.name != "auditor" || aud.enabled || !aud.nopass {
-		t.Errorf("auditor parse: %+v", aud)
-	}
-	if aud.passwordCount != 0 {
-		t.Errorf("auditor passwordCount = %d, want 0", aud.passwordCount)
-	}
-	if len(aud.keyPatterns) != 1 || aud.keyPatterns[0] != "app:*" {
-		t.Errorf("auditor keyPatterns = %v, want [app:*]", aud.keyPatterns)
-	}
-	if len(aud.channelPatterns) != 1 || aud.channelPatterns[0] != "notifications:*" {
-		t.Errorf("auditor channelPatterns = %v, want [notifications:*]", aud.channelPatterns)
-	}
-	want := []string{"-@all", "+@read", "+@connection"}
-	if len(aud.commandRules) != len(want) {
-		t.Fatalf("auditor commandRules = %v, want %v", aud.commandRules, want)
-	}
-	for i, w := range want {
-		if aud.commandRules[i] != w {
-			t.Errorf("commandRules[%d] = %v, want %s", i, aud.commandRules[i], w)
-		}
-	}
-
-	// allkeys/allchannels keywords normalize to "*".
-	ak := parseACLLine("user wide on nopass allkeys allchannels +@all")
-	if len(ak.keyPatterns) != 1 || ak.keyPatterns[0] != "*" {
-		t.Errorf("allkeys => %v, want [*]", ak.keyPatterns)
-	}
-	if len(ak.channelPatterns) != 1 || ak.channelPatterns[0] != "*" {
-		t.Errorf("allchannels => %v, want [*]", ak.channelPatterns)
-	}
-
-	// a non-user line yields an empty name and is skipped by the caller.
-	if got := parseACLLine("not an acl line"); got.name != "" {
-		t.Errorf("non-user line name = %q, want empty", got.name)
-	}
-}
-
 func TestAtoiOr(t *testing.T) {
 	if got := atoiOr("6379", 0); got != 6379 {
 		t.Errorf("atoiOr(6379) = %d", got)

@@ -70,6 +70,14 @@ redisdb.instance @defaults("version isValkey protectedMode requirepassSet") {
   tlsAuthClients string
   // Path to the external ACL file, or empty when access-control rules are inline
   aclFile string
+  // Default pub/sub permission granted to newly created access-control users
+  //
+  // The acl-pubsub-default setting. "resetchannels" grants a new user no
+  // channels until channel rules are added; "allchannels" grants every
+  // channel. Under "allchannels" a user with an empty channelPatterns list
+  // reaches every channel, so the empty list means unrestricted rather than
+  // restricted, and reading a user's channel exposure depends on this value.
+  aclPubsubDefault string
   // Access-control users defined on the server
   users() []redisdb.acl.user
   // Durability and resource-limit configuration
@@ -80,8 +88,12 @@ redisdb.instance @defaults("version isValkey protectedMode requirepassSet") {
 //
 // A single access-control user and the rules that govern it: whether it is
 // enabled, whether it has no password, and the key patterns, channel patterns,
-// and command rules it is granted. Parsed from ACL LIST. The name field selects
-// the user, for example redisdb.instance.users.where(name == "default").
+// and command rules it is granted. The keyPatterns, channelPatterns, and
+// commandRules fields describe the user's base rules only; any additional
+// permission sets attached to the user are reported separately by selectors,
+// and a full picture of what the user can reach needs both. Read from
+// ACL GETUSER. The name field selects the user, for example
+// redisdb.instance.users.where(name == "default").
 redisdb.acl.user @defaults("name enabled nopass") {
   // User name
   name string
@@ -99,20 +111,57 @@ redisdb.acl.user @defaults("name enabled nopass") {
   // A count of the configured password hashes; the hashes themselves are not
   // exposed.
   passwordCount int
-  // Key patterns the user may access
+  // Key patterns the user's base rules may access
   //
-  // Glob patterns of the keys the user is allowed to operate on. A single "*"
-  // means all keys.
+  // Glob patterns of the keys the base rules allow the user to operate on. A
+  // single "*" means all keys. Keys reachable only through a selector are not
+  // listed here; read selectors for those.
   keyPatterns []string
-  // Pub/sub channel patterns the user may access
+  // Pub/sub channel patterns the user's base rules may access
+  //
+  // A single "*" means all channels. An empty list means the base rules grant
+  // no channels, unless the server's aclPubsubDefault is "allchannels", in
+  // which case a user created without channel rules reaches every channel.
+  // Channels reachable only through a selector are not listed here.
+  channelPatterns []string
+  // Command rules granted by the user's base rules
+  //
+  // The effective command allow and deny rules, for example "+@all -@dangerous"
+  // or "-@all +get +set". Categories are prefixed with @. Commands permitted
+  // only by a selector are not listed here, so a "-@all" base rule set does not
+  // on its own mean the user can run nothing.
+  commandRules []string
+  // Additional permission sets attached to the user
+  //
+  // Selectors, available on Redis 7.0 and later. Redis permits a command when
+  // the base rules allow it or when any one selector allows it, so a user
+  // whose base commandRules read "-@all" can still hold a selector granting
+  // "+@all ~*". An audit of what the user can actually do has to read these
+  // alongside the base rules. Empty on servers without selector support.
+  selectors() []redisdb.acl.selector
+}
+
+// Redis or Valkey access-control selector
+//
+// One additional permission set attached to an access-control user, available
+// on Redis 7.0 and later. A selector carries its own command rules, key
+// patterns, and channel patterns, and grants access on its own: Redis permits
+// a command when the user's base rules allow it or when any one selector
+// allows it. Selectors are reported in the order Redis applies them.
+private redisdb.acl.selector @defaults("commandRules keyPatterns") {
+  // Command rules granted by this selector
+  //
+  // The allow and deny rules that apply within the selector, for example
+  // "-@all +set". Categories are prefixed with @.
+  commandRules []string
+  // Key patterns this selector may access
+  //
+  // Glob patterns of the keys the selector allows. A single "*" means all keys.
+  keyPatterns []string
+  // Pub/sub channel patterns this selector may access
   //
   // A single "*" means all channels.
   channelPatterns []string
-  // Command rules granted to the user
-  //
-  // The effective command allow and deny rules, for example "+@all -@dangerous"
-  // or "-@all +get +set". Categories are prefixed with @.
-  commandRules []string
 }
 
 // Redis or Valkey durability configuration
