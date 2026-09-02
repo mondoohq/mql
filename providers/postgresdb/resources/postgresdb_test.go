@@ -5,23 +5,38 @@ package resources
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
 func TestClassifyPassword(t *testing.T) {
-	scram := "SCRAM-SHA-256$4096:abc$def:ghi"
-	md5 := "md5deadbeef"
-	other := "plaintext"
+	// The values below are the tokens passwordFormExpr emits, plus the raw
+	// shapes the classifier still tolerates. No real credential material is
+	// used: the SCRAM and md5 bodies are placeholders.
+	scramToken := "SCRAM-SHA-256$"
+	scramRaw := "SCRAM-SHA-256$4096:AAAA$BBBB:CCCC"
+	md5Token := "md5"
+	md5Raw := "md5" + strings.Repeat("0", 32) // synthetic, not a real digest
+	other := "other"
+	plaintext := "plaintext"
 	cases := []struct {
 		name string
 		in   *string
 		want string
 	}{
+		// rolpassword IS NULL: the role has no password at all
 		{"nil", nil, "none"},
+		// the '' branch of passwordFormExpr
 		{"empty", strPtr(""), "none"},
-		{"scram", &scram, "scram-sha-256"},
-		{"md5", &md5, "md5"},
-		{"other", &other, "other"},
+		// tokens as emitted by passwordFormExpr
+		{"scram token", &scramToken, "scram-sha-256"},
+		{"md5 token", &md5Token, "md5"},
+		{"other token", &other, "other"},
+		// raw catalog shapes must classify the same way, so the mapping is
+		// unchanged for any caller holding a full rolpassword value
+		{"scram raw", &scramRaw, "scram-sha-256"},
+		{"md5 raw", &md5Raw, "md5"},
+		{"plaintext", &plaintext, "other"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -29,6 +44,45 @@ func TestClassifyPassword(t *testing.T) {
 				t.Errorf("classifyPassword = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestPasswordFormExprEmitsOnlyDiscriminators pins the invariant this
+// projection exists for: every branch yields NULL or a fixed token, so
+// rolpassword itself never crosses the connection.
+func TestPasswordFormExprEmitsOnlyDiscriminators(t *testing.T) {
+	if strings.Contains(passwordFormExpr, "substring") || strings.Contains(passwordFormExpr, "left(") {
+		t.Errorf("passwordFormExpr must not transfer a slice of the credential:\n%s", passwordFormExpr)
+	}
+	// rolpassword may only appear on the left of a comparison, never as a
+	// THEN/ELSE result that would be sent to the client
+	for _, result := range []string{"THEN NULL", "THEN ''", "THEN 'SCRAM-SHA-256$'", "THEN 'md5'", "ELSE 'other'"} {
+		if !strings.Contains(passwordFormExpr, result) {
+			t.Errorf("passwordFormExpr missing branch %q:\n%s", result, passwordFormExpr)
+		}
+	}
+	if n := strings.Count(passwordFormExpr, "THEN rolpassword"); n != 0 {
+		t.Errorf("passwordFormExpr returns the credential in %d branch(es)", n)
+	}
+}
+
+// TestPasswordFormExprTokensRoundTrip proves the SQL tokens and the Go
+// classifier agree, so the values reported by passwordType do not change.
+func TestPasswordFormExprTokensRoundTrip(t *testing.T) {
+	want := map[string]string{
+		"SCRAM-SHA-256$": "scram-sha-256",
+		"md5":            "md5",
+		"other":          "other",
+		"":               "none",
+	}
+	for token, expect := range want {
+		if !strings.Contains(passwordFormExpr, "'"+token+"'") && token != "" {
+			t.Errorf("passwordFormExpr does not emit token %q", token)
+		}
+		tok := token
+		if got := classifyPassword(&tok); got != expect {
+			t.Errorf("classifyPassword(%q) = %q, want %q", token, got, expect)
+		}
 	}
 }
 

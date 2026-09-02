@@ -19,24 +19,25 @@ const roleColumns = `r.rolname, r.oid::bigint, r.rolsuper, r.rolcanlogin, r.rolc
 	r.rolvaliduntil, r.rolconfig`
 
 // passwordTypesByOid best-effort reads pg_authid (superuser-only) and maps each
-// role oid to how its password is stored. An empty map means the catalog was
-// not readable, so passwordType is left null.
+// role oid to how its password is stored. The credential itself stays in the
+// server: only the passwordFormExpr discriminator is selected. An empty map
+// means the catalog was not readable, so passwordType is left null.
 func passwordTypesByOid(pool *pgxpool.Pool) map[int64]string {
 	out := map[int64]string{}
-	rows, err := pool.Query(pgContext(), "SELECT oid::bigint, rolpassword FROM pg_authid")
+	rows, err := pool.Query(pgContext(), "SELECT oid::bigint, "+passwordFormExpr+" FROM pg_authid")
 	if err != nil {
 		return out
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var oid int64
-		var rolpassword *string
-		if err := rows.Scan(&oid, &rolpassword); err != nil {
+		var passwordForm *string
+		if err := rows.Scan(&oid, &passwordForm); err != nil {
 			// Return an empty map on a partial read so every role reports a
 			// uniform null passwordType rather than a confusing mix.
 			return map[int64]string{}
 		}
-		out[oid] = classifyPassword(rolpassword)
+		out[oid] = classifyPassword(passwordForm)
 	}
 	if err := rows.Err(); err != nil {
 		return map[int64]string{}

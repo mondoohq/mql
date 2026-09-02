@@ -61,7 +61,32 @@ func privilegeResourceID(parentID, grantee, privilegeType string) string {
 
 // --- password classification ------------------------------------------------
 
-// classifyPassword maps a pg_authid.rolpassword value to how the password is
+// passwordFormExpr is the server-side projection behind the passwordType field.
+//
+// pg_authid.rolpassword holds the role's stored credential. passwordType only
+// reports which form that credential is stored in, so the discriminator is
+// derived by the server and nothing but a fixed token crosses the connection.
+//
+// A fixed-width prefix would not be enough. Per the PostgreSQL documentation
+// the SCRAM form is "SCRAM-SHA-256$<iteration count>:<salt>$<StoredKey>:
+// <ServerKey>", whose discriminator is exactly 14 characters, but the md5 form
+// is "md5" followed by a 32-character hex digest. Any prefix wide enough to
+// name SCRAM therefore also carries 11 hex digits of an md5 role's digest, and
+// a legacy plaintext value (possible on a catalog upgraded in place from
+// before PostgreSQL 10) would be transferred outright. Emitting the token
+// itself is the only projection that leaks nothing for every form.
+//
+// The tokens are the prefixes classifyPassword already recognizes, so the
+// values reported by passwordType are unchanged.
+const passwordFormExpr = `CASE
+		WHEN rolpassword IS NULL THEN NULL
+		WHEN rolpassword = '' THEN ''
+		WHEN rolpassword LIKE 'SCRAM-SHA-256$%' THEN 'SCRAM-SHA-256$'
+		WHEN rolpassword LIKE 'md5%' THEN 'md5'
+		ELSE 'other'
+	END`
+
+// classifyPassword maps a passwordFormExpr token to how the password is
 // stored. A nil pointer (unreadable or no password) yields "none".
 func classifyPassword(rolpassword *string) string {
 	if rolpassword == nil || *rolpassword == "" {
