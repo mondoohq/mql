@@ -41,6 +41,7 @@ mongo.role.privileges 13.0.0
 mongo.role.role 13.0.0
 mongo.user 13.0.0
 mongo.user.db 13.0.0
+mongo.user.effectiveRoles 13.1.1
 mongo.user.isPrivileged 13.0.0
 mongo.user.mechanisms 13.0.0
 mongo.user.roles 13.0.0

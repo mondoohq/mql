@@ -76,10 +76,12 @@ mongo.instance @defaults("version") {
 // MongoDB user
 //
 // A MongoDB user account, identified by `user` within its authentication
-// database `db`. `roles` lists the role grants (each with the database it
-// applies to); `isPrivileged` flags accounts holding a high-privilege built-in
-// role (for example root, __system, or any of the *AnyDatabase roles), the
-// focus of the CIS superuser review.
+// database `db`. `roles` lists the role grants written on the account (each
+// with the database it applies to) and `effectiveRoles` expands those grants
+// through role inheritance, so it also reports the roles reached through a
+// custom role. `isPrivileged` flags accounts that reach a high-privilege
+// built-in role (for example root, __system, or any of the *AnyDatabase
+// roles), directly or by inheritance.
 mongo.user @defaults("user db") {
   // User name
   user string
@@ -91,7 +93,17 @@ mongo.user @defaults("user db") {
   mechanisms []string
   // Roles granted to the user
   roles() []mongo.role
+  // Roles in effect for the user, including inherited ones
+  //
+  // The grants in `roles` expanded through MongoDB role inheritance: a role
+  // that includes another role confers that role too, transitively. This is
+  // the set `isPrivileged` is decided on.
+  effectiveRoles() []mongo.role
   // Whether the user holds a high-privilege built-in role
+  //
+  // Decided on `effectiveRoles`, so an account that reaches root, dbOwner,
+  // clusterAdmin or one of the *AnyDatabase roles through a custom role is
+  // flagged just like one granted the role directly.
   isPrivileged bool
 }
 

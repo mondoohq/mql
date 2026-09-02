@@ -10,7 +10,11 @@ type roleRef struct {
 }
 
 // mqlMongoUserInternal caches the user's role grants (gathered in the bulk
-// usersInfo call) so the roles() accessor builds them without a re-query.
+// usersInfo call) so the roles() accessor builds them without a re-query, plus
+// the inheritance-expanded set behind effectiveRoles() and isPrivileged.
 type mqlMongoUserInternal struct {
 	cacheRoleRefs []roleRef
+
+	cacheEffectiveRefs []roleRef
+	effectiveResolved  bool
 }

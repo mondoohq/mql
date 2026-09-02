@@ -100,6 +100,7 @@ func TestIntegrationResolveAll(t *testing.T) {
 
 	for _, x := range resolveList(t, "users", inst.GetUsers()) {
 		u := x.(*mqlMongoUser)
+		resolveList(t, "user.effectiveRoles", u.GetEffectiveRoles())
 		for _, r := range resolveList(t, "user.roles", u.GetRoles()) {
 			role := r.(*mqlMongoRole)
 			resolveList(t, "role.privileges", role.GetPrivileges())
@@ -175,6 +176,12 @@ func TestIntegrationSeededFixtures(t *testing.T) {
 		t.Error("instance.roles should include appReadMetrics@appdb from admin.system.roles")
 	}
 
+	// appuser's effective roles expand the custom role into the read role it
+	// inherits, and neither is privileged.
+	if !hasEffectiveRole(appuser, "read") {
+		t.Error("appuser effectiveRoles should include the inherited read role")
+	}
+
 	// high-privilege user flagged
 	opsadmin := users["opsadmin"]
 	if opsadmin == nil {
@@ -183,4 +190,34 @@ func TestIntegrationSeededFixtures(t *testing.T) {
 	if !opsadmin.GetIsPrivileged().Data {
 		t.Error("opsadmin holds readWriteAnyDatabase and should be flagged privileged")
 	}
+
+	// Users whose only grant is a custom role that inherits a superuser role
+	// must be flagged too: one level of indirection for metricsbot, two for
+	// supportbot. Neither has a privileged role written on the account.
+	for _, name := range []string{"metricsbot", "supportbot"} {
+		u := users[name]
+		if u == nil {
+			t.Fatalf("%s not found", name)
+		}
+		for _, r := range u.GetRoles().Data {
+			if _, priv := privilegedRoles[r.(*mqlMongoRole).GetRole().Data]; priv {
+				t.Fatalf("%s fixture is wrong: it holds a privileged role directly", name)
+			}
+		}
+		if !u.GetIsPrivileged().Data {
+			t.Errorf("%s inherits userAdminAnyDatabase and should be flagged privileged", name)
+		}
+		if !hasEffectiveRole(u, "userAdminAnyDatabase") {
+			t.Errorf("%s effectiveRoles should include the inherited userAdminAnyDatabase", name)
+		}
+	}
+}
+
+func hasEffectiveRole(u *mqlMongoUser, name string) bool {
+	for _, r := range u.GetEffectiveRoles().Data {
+		if r.(*mqlMongoRole).GetRole().Data == name {
+			return true
+		}
+	}
+	return false
 }

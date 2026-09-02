@@ -38,6 +38,9 @@ func (r *mqlMongoInstance) users() ([]any, error) {
 
 	users := asArray(res["users"])
 	serverID := r.__id
+	// One memoized lookup for the whole listing: users share roles, so the role
+	// graph is read once no matter how many accounts reference it.
+	lookup := newServerRoleLookup(conn)
 	list := []any{}
 	for _, u := range users {
 		m := asMap(u)
@@ -48,13 +51,13 @@ func (r *mqlMongoInstance) users() ([]any, error) {
 		db := toStr(m["db"])
 		refs := roleRefsFromDoc(m["roles"])
 
-		privileged := false
-		for _, ref := range refs {
-			if _, ok := privilegedRoles[ref.role]; ok {
-				privileged = true
-				break
-			}
+		// Role grants are transitive, so the privilege decision is made on the
+		// inheritance-expanded set rather than on the direct grants alone.
+		effective, err := resolveEffectiveRoles(refs, lookup)
+		if err != nil {
+			return nil, err
 		}
+		privileged := hasPrivilegedRole(effective)
 
 		mechanisms := []any{}
 		for _, x := range asArray(m["mechanisms"]) {
@@ -74,15 +77,34 @@ func (r *mqlMongoInstance) users() ([]any, error) {
 		}
 		mqlUser := res.(*mqlMongoUser)
 		mqlUser.cacheRoleRefs = refs
+		mqlUser.cacheEffectiveRefs = effective
+		mqlUser.effectiveResolved = true
 		list = append(list, mqlUser)
 	}
 	return list, nil
 }
 
 func (r *mqlMongoUser) roles() ([]any, error) {
+	return r.roleResources(r.cacheRoleRefs)
+}
+
+func (r *mqlMongoUser) effectiveRoles() ([]any, error) {
+	if !r.effectiveResolved {
+		refs, err := resolveEffectiveRoles(r.cacheRoleRefs, newServerRoleLookup(mongoConnection(r.MqlRuntime)))
+		if err != nil {
+			return nil, err
+		}
+		r.cacheEffectiveRefs = refs
+		r.effectiveResolved = true
+	}
+	return r.roleResources(r.cacheEffectiveRefs)
+}
+
+// roleResources turns role references into mongo.role resources.
+func (r *mqlMongoUser) roleResources(refs []roleRef) ([]any, error) {
 	serverID := mongoConnection(r.MqlRuntime).ServerID()
 	list := []any{}
-	for _, ref := range r.cacheRoleRefs {
+	for _, ref := range refs {
 		role, err := newMongoRole(r.MqlRuntime, serverID, ref.db, ref.role)
 		if err != nil {
 			return nil, err

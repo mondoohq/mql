@@ -196,6 +196,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mongo.user.roles": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMongoUser).GetRoles()).ToDataRes(types.Array(types.Resource("mongo.role")))
 	},
+	"mongo.user.effectiveRoles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMongoUser).GetEffectiveRoles()).ToDataRes(types.Array(types.Resource("mongo.role")))
+	},
 	"mongo.user.isPrivileged": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMongoUser).GetIsPrivileged()).ToDataRes(types.Bool)
 	},
@@ -355,6 +358,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mongo.user.roles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMongoUser).Roles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mongo.user.effectiveRoles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMongoUser).EffectiveRoles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"mongo.user.isPrivileged": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -683,12 +690,13 @@ type mqlMongoUser struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlMongoUserInternal
-	User         plugin.TValue[string]
-	Db           plugin.TValue[string]
-	UserId       plugin.TValue[string]
-	Mechanisms   plugin.TValue[[]any]
-	Roles        plugin.TValue[[]any]
-	IsPrivileged plugin.TValue[bool]
+	User           plugin.TValue[string]
+	Db             plugin.TValue[string]
+	UserId         plugin.TValue[string]
+	Mechanisms     plugin.TValue[[]any]
+	Roles          plugin.TValue[[]any]
+	EffectiveRoles plugin.TValue[[]any]
+	IsPrivileged   plugin.TValue[bool]
 }
 
 // createMongoUser creates a new instance of this resource
@@ -752,6 +760,22 @@ func (c *mqlMongoUser) GetRoles() *plugin.TValue[[]any] {
 		}
 
 		return c.roles()
+	})
+}
+
+func (c *mqlMongoUser) GetEffectiveRoles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.EffectiveRoles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mongo.user", c.__id, "effectiveRoles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.effectiveRoles()
 	})
 }
 
