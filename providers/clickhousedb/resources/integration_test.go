@@ -144,6 +144,23 @@ func TestIntegrationSeededFixtures(t *testing.T) {
 	if app.GetAnyHost().Data {
 		t.Error("appuser should be host-restricted, not any-host")
 	}
+	if v := app.GetHostIps(); len(v.Data) == 0 {
+		t.Errorf("appuser.hostIps = %v (err=%v), want the seeded range", v.Data, v.Error)
+	}
+
+	// The seeded openregexpuser is pinned to one IP address but also carries a
+	// host name expression matching every name, so it is reachable from
+	// anywhere. Reading host_ip alone reported it as restricted.
+	open := users["openregexpuser"]
+	if open == nil {
+		t.Fatal("seeded openregexpuser not found")
+	}
+	if v := open.GetHostNamesRegexp(); len(v.Data) == 0 {
+		t.Errorf("openregexpuser.hostNamesRegexp = %v (err=%v), want the seeded expression", v.Data, v.Error)
+	}
+	if !open.GetAnyHost().Data {
+		t.Error("openregexpuser should be any-host: its host name expression matches every name")
+	}
 
 	// The seeded analyst role holds a broad SELECT grant.
 	var analyst *mqlClickhousedbRole

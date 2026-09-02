@@ -189,8 +189,32 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"clickhousedb.user.hostNames": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClickhousedbUser).GetHostNames()).ToDataRes(types.Array(types.String))
 	},
+	"clickhousedb.user.hostNamesRegexp": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClickhousedbUser).GetHostNamesRegexp()).ToDataRes(types.Array(types.String))
+	},
+	"clickhousedb.user.hostNamesLike": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClickhousedbUser).GetHostNamesLike()).ToDataRes(types.Array(types.String))
+	},
 	"clickhousedb.user.defaultRoles": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClickhousedbUser).GetDefaultRoles()).ToDataRes(types.Array(types.String))
+	},
+	"clickhousedb.user.defaultRolesAll": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClickhousedbUser).GetDefaultRolesAll()).ToDataRes(types.Bool)
+	},
+	"clickhousedb.user.defaultRolesExcept": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClickhousedbUser).GetDefaultRolesExcept()).ToDataRes(types.Array(types.String))
+	},
+	"clickhousedb.user.defaultDatabase": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClickhousedbUser).GetDefaultDatabase()).ToDataRes(types.String)
+	},
+	"clickhousedb.user.granteesAny": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClickhousedbUser).GetGranteesAny()).ToDataRes(types.Bool)
+	},
+	"clickhousedb.user.granteesList": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClickhousedbUser).GetGranteesList()).ToDataRes(types.Array(types.String))
+	},
+	"clickhousedb.user.granteesExcept": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClickhousedbUser).GetGranteesExcept()).ToDataRes(types.Array(types.String))
 	},
 	"clickhousedb.user.grants": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClickhousedbUser).GetGrants()).ToDataRes(types.Array(types.String))
@@ -358,8 +382,40 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlClickhousedbUser).HostNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"clickhousedb.user.hostNamesRegexp": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClickhousedbUser).HostNamesRegexp, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"clickhousedb.user.hostNamesLike": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClickhousedbUser).HostNamesLike, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"clickhousedb.user.defaultRoles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClickhousedbUser).DefaultRoles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"clickhousedb.user.defaultRolesAll": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClickhousedbUser).DefaultRolesAll, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"clickhousedb.user.defaultRolesExcept": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClickhousedbUser).DefaultRolesExcept, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"clickhousedb.user.defaultDatabase": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClickhousedbUser).DefaultDatabase, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"clickhousedb.user.granteesAny": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClickhousedbUser).GranteesAny, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"clickhousedb.user.granteesList": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClickhousedbUser).GranteesList, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"clickhousedb.user.granteesExcept": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClickhousedbUser).GranteesExcept, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"clickhousedb.user.grants": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -724,15 +780,23 @@ type mqlClickhousedbUser struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlClickhousedbUserInternal it will be used here
-	Name         plugin.TValue[string]
-	AuthTypes    plugin.TValue[[]any]
-	HasPassword  plugin.TValue[bool]
-	AnyHost      plugin.TValue[bool]
-	Storage      plugin.TValue[string]
-	HostIps      plugin.TValue[[]any]
-	HostNames    plugin.TValue[[]any]
-	DefaultRoles plugin.TValue[[]any]
-	Grants       plugin.TValue[[]any]
+	Name               plugin.TValue[string]
+	AuthTypes          plugin.TValue[[]any]
+	HasPassword        plugin.TValue[bool]
+	AnyHost            plugin.TValue[bool]
+	Storage            plugin.TValue[string]
+	HostIps            plugin.TValue[[]any]
+	HostNames          plugin.TValue[[]any]
+	HostNamesRegexp    plugin.TValue[[]any]
+	HostNamesLike      plugin.TValue[[]any]
+	DefaultRoles       plugin.TValue[[]any]
+	DefaultRolesAll    plugin.TValue[bool]
+	DefaultRolesExcept plugin.TValue[[]any]
+	DefaultDatabase    plugin.TValue[string]
+	GranteesAny        plugin.TValue[bool]
+	GranteesList       plugin.TValue[[]any]
+	GranteesExcept     plugin.TValue[[]any]
+	Grants             plugin.TValue[[]any]
 }
 
 // createClickhousedbUser creates a new instance of this resource
@@ -795,8 +859,40 @@ func (c *mqlClickhousedbUser) GetHostNames() *plugin.TValue[[]any] {
 	return &c.HostNames
 }
 
+func (c *mqlClickhousedbUser) GetHostNamesRegexp() *plugin.TValue[[]any] {
+	return &c.HostNamesRegexp
+}
+
+func (c *mqlClickhousedbUser) GetHostNamesLike() *plugin.TValue[[]any] {
+	return &c.HostNamesLike
+}
+
 func (c *mqlClickhousedbUser) GetDefaultRoles() *plugin.TValue[[]any] {
 	return &c.DefaultRoles
+}
+
+func (c *mqlClickhousedbUser) GetDefaultRolesAll() *plugin.TValue[bool] {
+	return &c.DefaultRolesAll
+}
+
+func (c *mqlClickhousedbUser) GetDefaultRolesExcept() *plugin.TValue[[]any] {
+	return &c.DefaultRolesExcept
+}
+
+func (c *mqlClickhousedbUser) GetDefaultDatabase() *plugin.TValue[string] {
+	return &c.DefaultDatabase
+}
+
+func (c *mqlClickhousedbUser) GetGranteesAny() *plugin.TValue[bool] {
+	return &c.GranteesAny
+}
+
+func (c *mqlClickhousedbUser) GetGranteesList() *plugin.TValue[[]any] {
+	return &c.GranteesList
+}
+
+func (c *mqlClickhousedbUser) GetGranteesExcept() *plugin.TValue[[]any] {
+	return &c.GranteesExcept
 }
 
 func (c *mqlClickhousedbUser) GetGrants() *plugin.TValue[[]any] {

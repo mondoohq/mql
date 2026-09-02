@@ -80,17 +80,56 @@ clickhousedb.user @defaults("name") {
   hasPassword bool
   // Whether the user may connect from any host
   //
-  // True when the host restriction allows all addresses (for example "::/0" or
-  // "0.0.0.0/0"), meaning the account is not limited to specific hosts.
+  // ClickHouse restricts where an account may connect from through three
+  // independent lists, and admits a connection when any one of them matches.
+  // This is true when any of them admits every origin: an IP range covering all
+  // addresses (for example "::/0" or "0.0.0.0/0"), a host name regular
+  // expression that matches any name (for example ".*" or "^.*$"), or a LIKE
+  // pattern built only from "%". An account pinned to a single IP range but
+  // also carrying an open regular expression is reachable from anywhere, and is
+  // reported here as such.
   anyHost bool
   // Where the user is defined: "local_directory" (SQL-managed) or "users_xml" (config file)
   storage string
   // IP ranges the user may connect from, for example "::/0" for any host
   hostIps []string
-  // Host name patterns the user may connect from
+  // Host names the user may connect from
   hostNames []string
+  // Regular expressions matching host names the user may connect from
+  //
+  // Set by "HOST REGEXP". These are matched against the resolved name of the
+  // connecting host independently of hostIps, so a pattern that matches any
+  // name opens the account to every host no matter how narrow hostIps is.
+  hostNamesRegexp []string
+  // LIKE patterns matching host names the user may connect from
+  //
+  // Set by "HOST LIKE". These are matched against the resolved name of the
+  // connecting host independently of hostIps, so a pattern built only from "%"
+  // opens the account to every host no matter how narrow hostIps is.
+  hostNamesLike []string
   // Roles applied to the user by default on login
   defaultRoles []string
+  // Whether every role granted to the user is applied by default on login
+  //
+  // True when the user carries "DEFAULT ROLE ALL", which keeps the default set
+  // in step with future grants. The roles named in defaultRolesExcept are held
+  // back from that set.
+  defaultRolesAll bool
+  // Roles held back from the default set when defaultRolesAll is true
+  defaultRolesExcept []string
+  // Database selected when the connection names none, empty for the server default
+  defaultDatabase string
+  // Whether the user may pass its own grants on to anyone
+  //
+  // True when the user carries "GRANTEES ANY", which is the default. Together
+  // with a privilege held WITH GRANT OPTION it lets the account hand that
+  // privilege to any other user or role, so the account can widen access beyond
+  // what it was given. The names in granteesExcept are excluded.
+  granteesAny bool
+  // Users and roles the user may pass its own grants on to
+  granteesList []string
+  // Users and roles the user may not pass its own grants on to
+  granteesExcept []string
   // Privileges granted to the user, each rendered as "<privilege> ON <scope>"
   grants() []string
 }

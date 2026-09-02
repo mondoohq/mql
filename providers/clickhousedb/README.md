@@ -57,10 +57,16 @@ clickhousedb.instance.users.where: [
 
 **Users reachable from any host**
 
+ClickHouse gates the origin of a connection on three independent lists and admits
+the connection when any one of them matches, so `anyHost` reads all three. An
+account pinned to a narrow IP range that also carries a host name pattern matching
+every name is reachable from anywhere.
+
 ```shell
-mql> clickhousedb.instance.users.where(anyHost) { name hostIps }
+mql> clickhousedb.instance.users.where(anyHost) { name hostIps hostNamesRegexp hostNamesLike }
 clickhousedb.instance.users.where: [
-  0: { name: "default"  hostIps: ["::/0"] }
+  0: { name: "default"           hostIps: ["::/0"]       hostNamesRegexp: []        hostNamesLike: [] }
+  1: { name: "regexp_open_user"  hostIps: ["10.0.0.1"]   hostNamesRegexp: ["^.*$"]  hostNamesLike: [] }
 ]
 ```
 
@@ -100,7 +106,7 @@ If `clickhousedb.instance.users` comes back empty, the server does not have SQL-
 
 ## Development
 
-The integration tests live in `resources/integration_test.go` and are gated on the `CLICKHOUSE_TEST_*` environment, so they skip in CI and run only when you point them at a live server. `resources/testdata/seed.sql` holds the fixtures they assert on (a password-less user, a host-restricted user, a role with a broad grant).
+The integration tests live in `resources/integration_test.go` and are gated on the `CLICKHOUSE_TEST_*` environment, so they skip in CI and run only when you point them at a live server. `resources/testdata/seed.sql` holds the fixtures they assert on (a password-less user, a host-restricted user, a user opened up by a host name expression, a role with a broad grant).
 
 To run the whole thing locally in one step, `resources/testdata/integration.sh` starts a throwaway ClickHouse container, loads the seed, runs the tests, and tears the container down (a few seconds once the image is cached):
 

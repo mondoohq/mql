@@ -19,3 +19,13 @@ CREATE ROLE IF NOT EXISTS analyst;
 GRANT SELECT ON *.* TO analyst;
 CREATE USER IF NOT EXISTS appuser IDENTIFIED WITH no_password HOST IP '10.0.0.0/8';
 GRANT analyst TO appuser;
+
+-- A user pinned to one IP address that also carries a host name regular
+-- expression matching every name. ClickHouse admits a connection when any of
+-- host_ip, host_names_regexp or host_names_like matches, so this account is
+-- reachable from anywhere despite the narrow IP entry.
+--
+-- The expression is spelled "^.*$" rather than ".*" on purpose: ClickHouse
+-- rewrites a bare ".*" into the any-host form and moves it into host_ip, which
+-- would hide the case this fixture exists to cover.
+CREATE USER IF NOT EXISTS openregexpuser IDENTIFIED WITH no_password HOST IP '10.0.0.1', REGEXP '^.*$';
