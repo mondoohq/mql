@@ -1,0 +1,8 @@
+{
+  "name": "myvendor/odd",
+  "version": "3.0.0",
+  "license": {"type": "MIT"},
+  "require": {
+    "monolog/monolog": "^3.0"
+  }
+}

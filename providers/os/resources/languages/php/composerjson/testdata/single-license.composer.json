@@ -1,0 +1,8 @@
+{
+  "name": "myvendor/single",
+  "version": "1.0.0",
+  "license": "MIT",
+  "require": {
+    "monolog/monolog": "^3.0"
+  }
+}
