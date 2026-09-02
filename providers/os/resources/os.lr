@@ -1079,7 +1079,26 @@ package @defaults("name version") {
   // Whether a newer version than the installed one is available
   outdated() bool
 
-  // Files this package installed on the asset
+  // Package-manager records that evidence this package
+  //
+  // The file, directory, or database entry the package manager recorded this
+  // package in, usually a single record. It is provenance for the package
+  // entry, not the list of files the package installed on disk, so it does not
+  // answer which package owns a given path.
+  //
+  // The record is per-backend:
+  //
+  //   dpkg      /var/lib/dpkg/info/<name>.list
+  //   rpm       the rpm database directory, %{_dbpath}
+  //   apk       /lib/apk/db/installed
+  //   pacman    the local database entry for the package
+  //   xbps      the package's own file list, the one backend that does report
+  //             the installed paths
+  //   macOS     the application bundle path
+  //   Windows   the install location from the uninstall registry
+  //
+  // Empty on package managers with no such record, among them flatpak, snap,
+  // homebrew, nix, gentoo, and the BSD package tools.
   files() []pkgFileInfo
 
   // Package vendor
@@ -1110,9 +1129,15 @@ package @defaults("name version") {
   installDate time
 }
 
-// File installed by a package
+// File recorded for a package
+//
+// A single filesystem path a backend reported for a package entry: the
+// package-manager record that evidences an installed system package, or the
+// manifest, lockfile, or archive that declared a language dependency or a
+// plugin. It is evidence for the package entry rather than a file the package
+// installed on disk.
 private pkgFileInfo @defaults("path") {
-  // Path to the file
+  // Path to the recorded file or directory
   path string
 }
 
