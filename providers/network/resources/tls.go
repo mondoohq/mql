@@ -413,8 +413,61 @@ func (s *mqlTls) extensions(params any) ([]any, error) {
 	return res, nil
 }
 
+// dialTLSWithoutSNI opens a TLS connection that sends no server_name extension.
+//
+// tls.DialWithDialer cannot do this: it clones the config and fills ServerName
+// in from the dial address whenever it is empty, so a config with no ServerName
+// still sends SNI for the host being dialed. Dialing the socket separately and
+// handing it to tls.Client is what actually leaves the extension off, which is
+// the whole point of the probe.
+func dialTLSWithoutSNI(dialer *net.Dialer, proto, addr string) (*tls.Conn, error) {
+	raw, err := dialer.Dial(proto, addr)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := raw.SetDeadline(time.Now().Add(DefaultDialerTimeout)); err != nil {
+		raw.Close()
+		return nil, err
+	}
+
+	// Certificate verification is deliberately off, and here it is not even
+	// well defined: with no server name there is nothing to verify the
+	// certificate against. This resource reports validity rather than requiring
+	// it, through isVerified and certificateMatchesDomain, so a chain that does
+	// not verify is the finding rather than a reason to refuse the connection.
+	// Verifying at the transport would make the resource fail on exactly the
+	// endpoints it exists to describe.
+	conn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
+	if err := conn.Handshake(); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	// The deadline covered the handshake; leaving it in place would expire the
+	// connection while the caller is still reading from it.
+	if err := raw.SetDeadline(time.Time{}); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	return conn, nil
+}
+
+// gatherTlsCertificates returns the chain the endpoint serves for domainName,
+// and the chain it serves to a client that sends no SNI at all.
+//
+// The second chain is reported in full rather than as the certificates that
+// differ from the first. A host that serves the same certificate either way
+// genuinely does serve it without SNI, and reporting nothing there says the
+// opposite. The interesting case - a default virtual host answering with an
+// unrelated certificate - reads the same way in both shapes.
+//
+// Only a failure of the first connection is an error. A server that requires
+// SNI closes the second one, and that is an answer about the endpoint rather
+// than a failure of the scan: the non-SNI chain comes back nil and the caller
+// reports it as unknown.
 func gatherTlsCertificates(proto, host, port, domainName string) ([]*x509.Certificate, []*x509.Certificate, error) {
-	isSNIcert := map[string]struct{}{}
 	dialer := &net.Dialer{Timeout: DefaultDialerTimeout}
 	addr := net.JoinHostPort(host, port)
 	log.Trace().
@@ -422,6 +475,7 @@ func gatherTlsCertificates(proto, host, port, domainName string) ([]*x509.Certif
 		Str("domain_name", domainName).
 		Dur("timeout", DefaultDialerTimeout).
 		Msg("network.tls> gathering tls certificates")
+
 	conn, err := tls.DialWithDialer(dialer, proto, addr, &tls.Config{
 		InsecureSkipVerify: true,
 		ServerName:         domainName,
@@ -431,28 +485,19 @@ func gatherTlsCertificates(proto, host, port, domainName string) ([]*x509.Certif
 	}
 	defer conn.Close()
 
-	// Get the ConnectionState where we can find x509.Certificate(s)
 	sniCerts := conn.ConnectionState().PeerCertificates
-	for _, sniCerts := range sniCerts {
-		isSNIcert[sniCerts.SerialNumber.String()] = struct{}{}
-	}
 
-	nonSniCerts := []*x509.Certificate{}
-	nonSniConn, err := tls.DialWithDialer(dialer, proto, addr, &tls.Config{
-		InsecureSkipVerify: true,
-	})
+	nonSniConn, err := dialTLSWithoutSNI(dialer, proto, addr)
 	if err != nil {
-		return nil, nil, err
+		log.Debug().
+			Str("address", addr).
+			Err(err).
+			Msg("network.tls> endpoint served no certificate without SNI")
+		return sniCerts, nil, nil
 	}
 	defer nonSniConn.Close()
-	potentialNonSniCerts := nonSniConn.ConnectionState()
-	for _, nonSniCert := range potentialNonSniCerts.PeerCertificates {
-		if _, ok := isSNIcert[nonSniCert.SerialNumber.String()]; !ok {
-			nonSniCerts = append(nonSniCerts, nonSniCert)
-		}
-	}
 
-	return sniCerts, nonSniCerts, nil
+	return sniCerts, nonSniConn.ConnectionState().PeerCertificates, nil
 }
 
 // we should only detect once if the socket is running on TLS or not, if we have already detected it and, it
@@ -575,6 +620,19 @@ func (s *mqlTls) populateCertificates(socket *mqlSocket, domainName string) erro
 		s.Certificates = plugin.TValue[[]any]{Data: mqlCerts, State: plugin.StateIsSet}
 	}
 
+	// A server that requires SNI closes the connection that omits it, so there
+	// is no chain to report. That is unknown rather than empty: an empty list
+	// would read as "this endpoint serves nothing without SNI", which is a
+	// different statement from "it would not talk to us at all".
+	if nonSniCerts == nil {
+		s.NonSniCertificates.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil
+	}
+
+	// The non-SNI chain is matched against the same domain name so that
+	// isVerified keeps its meaning: the question there is whether the
+	// certificate served without SNI would satisfy a client asking for this
+	// host, which is exactly what makes a default virtual host interesting.
 	mqlNonSniCerts, _, err := parseCertificates(s.MqlRuntime, domainName, nonSniCerts, revocations)
 	if err != nil {
 		s.NonSniCertificates = plugin.TValue[[]any]{Error: err, State: plugin.StateIsSet}

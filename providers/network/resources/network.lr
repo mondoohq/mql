@@ -232,6 +232,15 @@ tls @defaults("socket domainName") {
   // Certificates provided in this TLS/SSL connection
   certificates(socket, domainName) []certificate
   // Certificates provided without server name indication (SNI)
+  //
+  // The full chain the endpoint serves to a client that sends no SNI, which is
+  // what an attacker reaches by connecting to the address directly. On a host
+  // with several virtual hosts behind one address this is the default one, and
+  // it is often a certificate for an unrelated name, so comparing it against
+  // `certificates` shows what the address discloses on its own.
+  //
+  // Null when the endpoint requires SNI and would not complete a handshake
+  // without it, which is different from serving no certificate.
   nonSniCertificates(socket, domainName) []certificate
   // Whether the served leaf certificate covers the connection hostname
   //
