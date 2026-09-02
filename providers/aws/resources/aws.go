@@ -144,7 +144,7 @@ func ecrRepositoryArnFromImageUri(image string) string {
 	if repoName == "" {
 		return ""
 	}
-	return fmt.Sprintf("arn:aws:ecr:%s:%s:repository/%s", hostParts[3], hostParts[0], repoName)
+	return ecrRepositoryArn(false, hostParts[3], hostParts[0], repoName)
 }
 
 // awsResolveVpcFromSubnets resolves the VPC that a workload's subnets belong to

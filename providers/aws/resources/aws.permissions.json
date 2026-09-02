@@ -1,7 +1,7 @@
 {
   "provider": "aws",
-  "version": "13.53.3",
-  "generated_at": "2026-08-19T15:36:50-07:00",
+  "version": "13.53.5",
+  "generated_at": "2026-09-15T13:12:04-07:00",
   "permissions": [
     "access-analyzer:GetFindingV2",
     "access-analyzer:ListAnalyzers",
@@ -352,6 +352,8 @@
     "ecr-public:DescribeImages",
     "ecr-public:DescribeRepositories",
     "ecr-public:GetRepositoryCatalogData",
+    "ecr-public:GetRepositoryPolicy",
+    "ecr-public:ListTagsForResource",
     "ecr:BatchGetRepositoryScanningConfiguration",
     "ecr:DescribeImageScanFindings",
     "ecr:DescribeImages",
@@ -3218,6 +3220,18 @@
       "permission": "ecr-public:GetRepositoryCatalogData",
       "service": "ecr-public",
       "action": "GetRepositoryCatalogData",
+      "source_file": "aws_ecr.go"
+    },
+    {
+      "permission": "ecr-public:GetRepositoryPolicy",
+      "service": "ecr-public",
+      "action": "GetRepositoryPolicy",
+      "source_file": "aws_ecr.go"
+    },
+    {
+      "permission": "ecr-public:ListTagsForResource",
+      "service": "ecr-public",
+      "action": "ListTagsForResource",
       "source_file": "aws_ecr.go"
     },
     {

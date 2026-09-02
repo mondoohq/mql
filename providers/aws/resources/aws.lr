@@ -16366,7 +16366,11 @@ private aws.ecr.repository @defaults("uri region") {
   images() []aws.ecr.image
   // Region where the image is stored
   region string
-  // Whether the repository option to scan on image push is enabled
+  // Scan-on-push setting
+  //
+  // Whether the repository scans an image for vulnerabilities as it is
+  // pushed. Null for public repositories: ECR Public returns no scanning
+  // settings, so the value is unknown rather than known to be off.
   imageScanOnPush bool
   // Image tag mutability
   //
@@ -16377,19 +16381,39 @@ private aws.ecr.repository @defaults("uri region") {
   // Comparing a null value against a concrete one yields false, so an
   // `imageTagMutability == "IMMUTABLE"` check does not pass for them.
   imageTagMutability string
-  // Encryption type for images at rest (AES256, KMS, or KMS_DSSE)
+  // Encryption type for images at rest
+  //
+  // One of AES256, KMS, or KMS_DSSE. Null for public repositories: ECR
+  // Public returns no encryption settings, so the value is unknown rather
+  // than known to be any of them.
   encryptionType string
   // KMS key protecting images at rest, when encryptionType is KMS or KMS_DSSE
   kmsKey() aws.kms.key
   // When the repository was created
   createdAt time
-  // Scanning frequency for the repository: SCAN_ON_PUSH, CONTINUOUS_SCAN, or MANUAL
+  // Scanning frequency for the repository
+  //
+  // One of SCAN_ON_PUSH, CONTINUOUS_SCAN, or MANUAL. Null when the
+  // frequency could not be determined: public repositories, which expose no
+  // scanning configuration, and a repository whose scanning configuration
+  // the scan was not allowed to read.
   scanningFrequency() string
-  // Access policy for the repository (parsed JSON; private repositories only)
+  // Access policy for the repository
+  //
+  // The parsed resource policy document, for private and public
+  // repositories alike. Null when the repository carries no policy, and
+  // also when the policy could not be read.
   policy() dict
   // Parsed statements from the repository access policy
+  //
+  // Empty when the repository carries no policy. Null when the policy could
+  // not be read, since an empty list would claim the policy grants nothing.
   policyStatements() []aws.iam.policyStatement
-  // Whether the resource policy grants public access (a wildcard principal with no scoping conditions)
+  // Whether the resource policy grants public access
+  //
+  // True when a statement grants to a wildcard principal with no scoping
+  // conditions. Null when the policy could not be read, so that a denied
+  // read is not reported as a repository that is not public.
   isPublic() bool
   // Lifecycle policy for the repository
   lifecyclePolicy() aws.ecr.lifecyclePolicy
@@ -16403,7 +16427,10 @@ private aws.ecr.repository @defaults("uri region") {
   operatingSystems() []string
   // Architectures from catalog data (public repositories only)
   architectures() []string
-  // AWS resource tags for the repository (private repositories only)
+  // AWS resource tags for the repository
+  //
+  // Tags on private and public repositories alike. Null when the tags could
+  // not be read, since an empty map would claim the repository is untagged.
   tags() map[string]string
   // CloudFormation stack that manages this repository, if any
   cloudformationStack() aws.cloudformation.stack
