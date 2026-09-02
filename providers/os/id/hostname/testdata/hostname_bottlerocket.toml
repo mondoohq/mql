@@ -1,0 +1,46 @@
+# A Bottlerocket Kubernetes node reached over a mounted host root: no command
+# execution, and no /etc/hostname, because netdog sets only the kernel hostname.
+# The full os-release lives in /usr/lib on the immutable root partition; /etc is
+# a tmpfs the settings applier renders at boot.
+
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "6.12.48"
+
+[files."/etc/os-release"]
+enoent = true
+
+[files."/etc/hostname"]
+enoent = true
+
+[files."/usr/lib/os-release"]
+content = """
+NAME=Bottlerocket
+ID=bottlerocket
+VERSION="1.62.1 (aws-k8s-1.34)"
+PRETTY_NAME="Bottlerocket OS 1.62.1 (aws-k8s-1.34)"
+VARIANT_ID=aws-k8s-1.34
+VERSION_ID=1.62.1
+BUILD_ID=8f2a1c93
+VENDOR_NAME=Bottlerocket
+HOME_URL="https://github.com/bottlerocket-os/bottlerocket"
+SUPPORT_URL="https://github.com/bottlerocket-os/bottlerocket/discussions"
+BUG_REPORT_URL="https://github.com/bottlerocket-os/bottlerocket/issues"
+DOCUMENTATION_URL="https://bottlerocket.dev"
+"""
+
+[files."/etc/network/hostname.env"]
+content = """
+HOSTNAME=ip-10-0-42-17.us-west-2.compute.internal
+"""
+
+[files."/etc/hosts"]
+content = """
+127.0.0.1 localhost localhost.localdomain localhost4 localhost4.localdomain4 ip-10-0-42-17.us-west-2.compute.internal
+::1 localhost localhost.localdomain localhost6 localhost6.localdomain6 ip-10-0-42-17.us-west-2.compute.internal
+"""

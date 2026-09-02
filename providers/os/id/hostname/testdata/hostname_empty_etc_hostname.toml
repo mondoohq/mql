@@ -1,0 +1,36 @@
+# An /etc/hostname that exists but names nothing. It must not resolve the
+# hostname to the empty string; the remaining sources still have the answer.
+
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "6.1.0-28-amd64"
+
+[files."/etc/hostname"]
+content = "\n\n"
+
+[files."/etc/debian_version"]
+content = "12.9"
+
+[files."/etc/os-release"]
+content = """
+PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"
+NAME="Debian GNU/Linux"
+VERSION_ID="12"
+VERSION="12 (bookworm)"
+VERSION_CODENAME=bookworm
+ID=debian
+HOME_URL="https://www.debian.org/"
+SUPPORT_URL="https://www.debian.org/support"
+BUG_REPORT_URL="https://bugs.debian.org/"
+"""
+
+[files."/etc/hosts"]
+content = """
+127.0.0.1	localhost
+127.0.1.1	debian-box.example.com	debian-box
+"""
