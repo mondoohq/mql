@@ -308,6 +308,7 @@ type brewFormula struct {
 	Tap      string `json:"tap"`
 	Desc     string `json:"desc"`
 	Homepage string `json:"homepage"`
+	Revision int    `json:"revision"`
 	Versions struct {
 		Stable string `json:"stable"`
 	} `json:"versions"`
@@ -356,11 +357,15 @@ func ParseHomebrewInfo(data []byte, prefix string) ([]HomebrewPackage, error) {
 
 	// Parse formulae — iterate all installed versions (Homebrew can have multiple)
 	for _, f := range info.Formulae {
+		latestVersion := f.Versions.Stable
+		if f.Revision > 0 {
+			latestVersion = fmt.Sprintf("%s_%d", latestVersion, f.Revision)
+		}
 		for _, inst := range f.Installed {
 			pkgs = append(pkgs, HomebrewPackage{
 				Name:                  f.Name,
 				Version:               inst.Version,
-				LatestVersion:         f.Versions.Stable,
+				LatestVersion:         latestVersion,
 				Purl:                  newHomebrewPurl(f.Name, inst.Version, f.Tap),
 				Description:           f.Desc,
 				Homepage:              f.Homepage,
