@@ -128,10 +128,13 @@ var arch = &PlatformResolver{
 	Name:     "arch",
 	IsFamily: false,
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
-		if pf.Name == "arch" {
+		// Arch Linux ARM ships ID=archarm. It is the same distribution built for
+		// ARM, so it reports as arch rather than as a platform of its own.
+		if pf.Name == "archarm" {
+			pf.Name = "arch"
 			return true, nil
 		}
-		return false, nil
+		return pf.Name == "arch", nil
 	},
 }
 

@@ -912,6 +912,32 @@ func TestAltLinuxIsClaimedByItsOwnResolver(t *testing.T) {
 		"a container image claimed only by the generic resolver is reported as scratch")
 }
 
+// Arch Linux ARM sets ID=archarm and reports as arch.
+func TestArchArmDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-archarm.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "arch", di.Name, "Arch Linux ARM is arch, not a platform of its own")
+	assert.Equal(t, []string{"arch", "linux", "unix", "os"}, di.Family,
+		"Arch Linux ARM belongs to the arch family")
+}
+
+// A container image whose platform is only claimed by the generic resolver is
+// reported as "scratch", which is how Arch Linux ARM images were coming back -
+// and an undetected platform takes the package manager with it, so `packages`
+// errored on an image pacman happily lists.
+func TestArchArmIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-archarm.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.NotEqual(t, defaultLinux, leaf, "Arch Linux ARM must not be left to the generic linux resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf))
+}
+
 // Manjaro ARM sets ID=manjaro-arm and reports as manjaro.
 func TestManjaroArmDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-manjaro-arm.toml")
