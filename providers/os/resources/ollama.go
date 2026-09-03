@@ -564,11 +564,36 @@ func (i *mqlOllamaConfigIntegration) models() ([]any, error) {
 		if !ok {
 			continue
 		}
-		if m, ok := byName[name]; ok {
+		if m, ok := matchOllamaModel(byName, name); ok {
 			out = append(out, m)
 		}
 	}
 	return out, nil
+}
+
+// matchOllamaModel resolves a configured model name against the model store.
+//
+// Ollama treats an untagged name as implicitly :latest - `ollama run qwen3.5`
+// and `ollama run qwen3.5:latest` are the same model - but the store reports
+// the fully qualified name. An integration that records the bare name found
+// nothing, so `models` came back empty on a host that had the model pulled.
+func matchOllamaModel(byName map[string]any, name string) (any, bool) {
+	if m, ok := byName[name]; ok {
+		return m, true
+	}
+	if !strings.Contains(name, ":") {
+		if m, ok := byName[name+":latest"]; ok {
+			return m, true
+		}
+	}
+	// The reverse also happens: a config pinned to :latest against a store
+	// entry that reports the bare name.
+	if base, tag, found := strings.Cut(name, ":"); found && tag == "latest" {
+		if m, ok := byName[base]; ok {
+			return m, true
+		}
+	}
+	return nil, false
 }
 
 // id carries the user as well as the tool name: the integrations are per-user,
