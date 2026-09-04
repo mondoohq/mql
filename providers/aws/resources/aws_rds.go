@@ -1052,6 +1052,10 @@ func initAwsRdsSnapshot(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 	}
 	arnVal := args["arn"].Value.(string)
 
+	if cached := cachedByArn(runtime, ResourceAwsRdsSnapshot, arnVal); cached != nil {
+		return args, cached, nil
+	}
+
 	parsed, err := arn.Parse(arnVal)
 	if err != nil {
 		return nil, nil, errors.New("invalid arn for rds snapshot: " + arnVal)

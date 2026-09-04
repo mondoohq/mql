@@ -769,8 +769,13 @@ func initAwsCloudwatchLoggroup(runtime *plugin.Runtime, args map[string]*llx.Raw
 		return nil, nil, errors.New("arn required to fetch cloudwatch log group")
 	}
 
-	conn := runtime.Connection.(*connection.AwsConnection)
 	arnVal := args["arn"].Value.(string)
+
+	if cached := cachedByArn(runtime, ResourceAwsCloudwatchLoggroup, arnVal); cached != nil {
+		return args, cached, nil
+	}
+
+	conn := runtime.Connection.(*connection.AwsConnection)
 
 	// Targeted lookup: derive the region + group name from the ARN and fetch
 	// just this one log group (by name prefix) instead of describing every log

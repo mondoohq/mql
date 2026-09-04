@@ -68,6 +68,47 @@ func regionFromSqsQueueURL(queueURL string) string {
 	return ""
 }
 
+// resolvedSqsQueueByArn returns the queue this ARN names out of the account's
+// queue list, or nil.
+//
+// It deliberately reads the list only when it is *already* resolved rather than
+// calling GetQueues: for a one-off query against a single queue, listing every
+// queue in every region costs more than the GetQueueUrl it would save. During a
+// scan the list is always resolved, because discovery walks it to build the
+// queue assets in the first place.
+//
+// The queue name and owning account are the URL's path, whatever form the
+// hostname takes (sqs.<region>., sqs-fips.<region>., <region>.queue.), so
+// matching on the path plus the region the hostname implies does not assume a
+// commercial endpoint.
+func resolvedSqsQueueByArn(runtime *plugin.Runtime, queueArn arn.ARN) *mqlAwsSqsQueue {
+	obj, err := CreateResource(runtime, ResourceAwsSqs, map[string]*llx.RawData{})
+	if err != nil {
+		return nil
+	}
+	sqsRes, ok := obj.(*mqlAwsSqs)
+	if !ok || !sqsRes.Queues.IsSet() || sqsRes.Queues.Error != nil {
+		return nil
+	}
+
+	wantPath := "/" + queueArn.AccountID + "/" + queueArn.Resource
+	for _, raw := range sqsRes.Queues.Data {
+		q, ok := raw.(*mqlAwsSqsQueue)
+		if !ok || !q.Url.IsSet() {
+			continue
+		}
+		u, err := url.Parse(q.Url.Data)
+		if err != nil || u.Path != wantPath {
+			continue
+		}
+		if regionFromSqsQueueURL(q.Url.Data) != queueArn.Region {
+			continue
+		}
+		return q
+	}
+	return nil
+}
+
 // initAwsSqsQueue resolves a single SQS queue. Queues are keyed by their URL,
 // which is also what every queue API call takes. A queue requested by ARN
 // alone (from a discovered aws-sqs-queue asset, or from another resource that
@@ -111,6 +152,14 @@ func initAwsSqsQueue(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 	parsedArn, err := arn.Parse(arnVal)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// This resource keys its __id on the queue URL, which is the very thing
+	// GetQueueUrl is called to resolve, so the ARN cannot be a cache key the
+	// way it is for the ARN-keyed resources. Match the already-resolved list
+	// instead, which during a scan has been walked by discovery already.
+	if q := resolvedSqsQueueByArn(runtime, parsedArn); q != nil {
+		return args, q, nil
 	}
 
 	conn := runtime.Connection.(*connection.AwsConnection)

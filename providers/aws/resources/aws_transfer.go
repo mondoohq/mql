@@ -117,6 +117,11 @@ func initAwsTransferServer(runtime *plugin.Runtime, args map[string]*llx.RawData
 	}
 
 	arnVal := args["arn"].Value.(string)
+
+	if cached := cachedByArn(runtime, ResourceAwsTransferServer, arnVal); cached != nil {
+		return args, cached, nil
+	}
+
 	parsed, err := arn.Parse(arnVal)
 	if err != nil {
 		return nil, nil, err

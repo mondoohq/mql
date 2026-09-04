@@ -77,6 +77,10 @@ func initAwsCloudtrailTrail(runtime *plugin.Runtime, args map[string]*llx.RawDat
 
 	log.Debug().Str("arn", arnVal).Str("name", nameVal).Msg("init cloudtrail trail")
 
+	if cached := cachedByArn(runtime, ResourceAwsCloudtrailTrail, arnVal); cached != nil {
+		return args, cached, nil
+	}
+
 	// Targeted lookup: when we have a real ARN, derive the home region from it
 	// (or use an explicit region arg) and fetch just this one trail instead of
 	// describing every trail in every region.

@@ -469,6 +469,10 @@ func initAwsElbLoadbalancer(runtime *plugin.Runtime, args map[string]*llx.RawDat
 		return nil, nil, errors.New("elb load balancer does not exist")
 	}
 
+	if cached := cachedByArn(runtime, ResourceAwsElbLoadbalancer, arnVal); cached != nil {
+		return args, cached, nil
+	}
+
 	// Issue a single targeted Describe against the ARN's region instead of
 	// listing every load balancer in every region. ELBv2 (app/net/gateway) and
 	// classic ELB live in different APIs; discriminate by the ARN form.
