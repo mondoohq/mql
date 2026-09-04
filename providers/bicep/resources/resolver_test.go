@@ -28,6 +28,14 @@ func (r *mapResources) Set(key string, value plugin.Resource) {
 	r.m[key] = value
 }
 
+func (r *mapResources) GetOrSet(key string, value plugin.Resource) (plugin.Resource, bool) {
+	if existing, ok := r.m[key]; ok {
+		return existing, true
+	}
+	r.m[key] = value
+	return value, false
+}
+
 func testRuntime() *plugin.Runtime {
 	return &plugin.Runtime{Resources: &mapResources{m: map[string]plugin.Resource{}}}
 }
