@@ -169,7 +169,7 @@ func Schema(ast *LR) (*resources.Schema, error) {
 		}
 	}
 
-	if err := validateReplacedBy(res); err != nil {
+	if err := validateReplacedBy(res, ast); err != nil {
 		return nil, err
 	}
 
@@ -303,8 +303,33 @@ func resourceSchema(r *Resource, ast *LR) (*resources.ResourceInfo, error) {
 // relative form is rendered later against whatever root the query compiles
 // with - so a typo here would otherwise survive all the way to a message that
 // points a user at nothing. See ADR 040.
-func validateReplacedBy(res *resources.Schema) error {
+func validateReplacedBy(res *resources.Schema, ast *LR) error {
 	var errs []error
+
+	// A replacement may live in a peer provider: every rooted provider now
+	// carries `asset`, which core owns, so `@replaced_by("asset.version")` is
+	// the natural way to retire a provider's own scalar version field. Those
+	// targets are checked against what the peer's schema actually exposes,
+	// recorded while imports were resolved - a cross-provider pointer nobody
+	// verifies is exactly the kind that rots.
+	peerHasMember := func(resource, field string) bool {
+		if ast == nil || ast.importedMembers == nil {
+			return false
+		}
+		members, ok := ast.importedMembers[resource]
+		if !ok {
+			return false
+		}
+		_, ok = members[field]
+		return ok
+	}
+	peerHasResource := func(resource string) bool {
+		if ast == nil || ast.importedMembers == nil {
+			return false
+		}
+		_, ok := ast.importedMembers[resource]
+		return ok
+	}
 
 	// The owner of the target - the target itself when it names a resource -
 	// has to survive the v15 cutover, or the notice points a user at something
@@ -326,6 +351,11 @@ func validateReplacedBy(res *resources.Schema) error {
 			reachable(what, target)
 			return
 		}
+		if peerHasResource(target) {
+			// A peer's resource is reachable by definition of being imported;
+			// this provider's roots are not the judge of another's tree.
+			return
+		}
 		// Not a resource, so it has to be a field on one. Only the last segment
 		// can be the field name; everything before it is the owning resource,
 		// which is itself dotted.
@@ -337,6 +367,13 @@ func validateReplacedBy(res *resources.Schema) error {
 					return
 				}
 				errs = append(errs, fmt.Errorf("%s: @replaced_by(%q) - resource %q has no field %q", what, target, owner, field))
+				return
+			}
+			if peerHasResource(owner) {
+				if peerHasMember(owner, field) {
+					return
+				}
+				errs = append(errs, fmt.Errorf("%s: @replaced_by(%q) - %q is imported but has no field %q", what, target, owner, field))
 				return
 			}
 		}

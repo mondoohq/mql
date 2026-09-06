@@ -158,6 +158,14 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.VllmConnection
 	}
 	PlatformByName("vllm-server").Apply(asset.Platform)
 
+	// `asset.version` is the canonical, cross-provider way to ask what version
+	// something is, and every root carries `asset` (ADR 031). A server that
+	// does not answer leaves it empty rather than failing the connect: not
+	// knowing the version is not a reason to be unable to scan.
+	if version, err := conn.Version(context.Background()); err == nil {
+		asset.Platform.Version = version
+	}
+
 	asset.Fqdn = conn.Conf.Host
 	asset.PlatformIds = []string{"//platformid.api.mondoo.app/runtime/vllm/server/" + conn.BaseURL()}
 	return nil

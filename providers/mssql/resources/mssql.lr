@@ -1,6 +1,8 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/mssql"
 option go_package = "go.mondoo.com/mql/providers/mssql/resources"
 option root = "mssql"
@@ -39,7 +41,7 @@ mssql.server @defaults("name version edition") {
   // between). Falls back to the connection's port when the DMV is unavailable.
   port() int
   // Full version banner from @@VERSION
-  version string
+  version @maturity("deprecated") @replaced_by("asset.version") string
   // Product version number, for example 16.0.1000.6
   productVersion string
   // Service pack or cumulative update level

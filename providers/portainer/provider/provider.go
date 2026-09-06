@@ -155,7 +155,12 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.PortainerConne
 			asset.Name = "Portainer Server " + h
 		}
 	}
-	asset.Platform = connection.InstancePlatform()
+	platform := connection.InstancePlatform()
+	// `asset.version` is the canonical, cross-provider way to ask what version
+	// something is, and every root carries `asset` (ADR 031). The connection
+	// already knows it.
+	platform.Version = conn.Version()
+	asset.Platform = platform
 	asset.PlatformIds = []string{connection.NewInstancePlatformID(conn.InstanceKey())}
 	return nil
 }

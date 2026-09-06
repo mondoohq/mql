@@ -363,3 +363,84 @@ func TestRootsCarryAssetDoesNotOverwrite(t *testing.T) {
 
 	assert.Equal(t, string(types.Resource("mine")), res.Resources["os.base"].Fields["asset"].Type)
 }
+
+// A replacement can live in a peer provider. Every rooted provider carries
+// `asset`, which core owns, so retiring a provider's own scalar `version` in
+// favour of the canonical `asset.version` is the natural migration - and it is
+// only expressible if the gate can see across the import.
+//
+// Seeing across it is not the same as trusting it: the peer's members are
+// recorded while imports resolve, so a target is still checked down to the
+// field. A cross-provider pointer nobody verifies is exactly the kind that rots.
+func TestReplacedByAcrossProviders(t *testing.T) {
+	schemaOf := func(t *testing.T, src string) error {
+		t.Helper()
+		files := map[string]string{
+			"providers/demo/resources/demo.lr": src,
+			"providers/core/resources/core.lr": `
+option provider = "go.mondoo.com/mql/providers/core"
+option go_package = "go.mondoo.com/mql/providers/core/resources"
+
+asset @global {
+  version string
+  platform string
+}
+`,
+		}
+		res, err := Resolve("providers/demo/resources/demo.lr", func(path string) ([]byte, error) {
+			raw, ok := files[path]
+			require.Truef(t, ok, "unexpected read of %q", path)
+			return []byte(raw), nil
+		})
+		require.NoError(t, err)
+		_, err = Schema(res)
+		return err
+	}
+
+	const header = `
+import core
+
+option provider = "go.mondoo.com/mql/providers/demo"
+option go_package = "go.mondoo.com/mql/providers/demo/resources"
+option root = "demo.instance"
+`
+
+	t.Run("a field on a peer's resource", func(t *testing.T) {
+		err := schemaOf(t, header+`
+demo.instance @root {
+  version @maturity("deprecated") @replaced_by("asset.version") string
+}
+`)
+		require.NoError(t, err)
+	})
+
+	t.Run("the peer's resource itself", func(t *testing.T) {
+		err := schemaOf(t, header+`
+demo.instance @root {
+  details @maturity("deprecated") @replaced_by("asset") dict
+}
+`)
+		require.NoError(t, err)
+	})
+
+	// Crossing a provider boundary must not turn the check off.
+	t.Run("a field the peer does not have", func(t *testing.T) {
+		err := schemaOf(t, header+`
+demo.instance @root {
+  version @maturity("deprecated") @replaced_by("asset.noSuchField") string
+}
+`)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `"asset" is imported but has no field "noSuchField"`)
+	})
+
+	t.Run("a resource no provider here has", func(t *testing.T) {
+		err := schemaOf(t, header+`
+demo.instance @root {
+  version @maturity("deprecated") @replaced_by("nosuch.thing") string
+}
+`)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "does not name a resource or field")
+	})
+}

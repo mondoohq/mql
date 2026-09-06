@@ -37,6 +37,7 @@ func ResolveWithRoot(filePath string, providersRoot string, readFile func(path s
 	}
 
 	res.imports = make(map[string]map[string]struct{})
+	res.importedMembers = make(map[string]map[string]struct{})
 	res.packPaths = map[string]string{}
 	res.packProviders = map[string]string{}
 	importMap := map[string]map[string]*Resource{
@@ -67,6 +68,21 @@ func ResolveWithRoot(filePath string, providersRoot string, readFile func(path s
 		}
 
 		res.imports[packName] = resources
+
+		// Record what each peer resource exposes, so a cross-provider
+		// `@replaced_by` target can be verified down to the field instead of
+		// being accepted because the resource name happened to exist.
+		childByID := map[string]*Resource{}
+		for i := range childLR.Resources {
+			childByID[childLR.Resources[i].ID] = childLR.Resources[i]
+		}
+		for id := range childByID {
+			members := map[string]struct{}{}
+			for name := range childLR.exposedMembers(childByID, id, 0) {
+				members[name] = struct{}{}
+			}
+			res.importedMembers[id] = members
+		}
 
 		goPkg := childLR.Options["go_package"]
 		if goPkg == "" {

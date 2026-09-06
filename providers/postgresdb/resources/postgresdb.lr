@@ -1,6 +1,8 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/postgresdb"
 option go_package = "go.mondoo.com/mql/providers/postgresdb/resources"
 option root = "postgresdb"
@@ -24,7 +26,7 @@ postgresdb @root {}
 // `foreignServers`, and the replication collections.
 postgresdb.instance @defaults("version") {
   // Full server version string
-  version string
+  version @maturity("deprecated") @replaced_by("asset.version") string
   // Cluster system identifier (stable unique id for the server)
   systemIdentifier string
   // Time the server was started

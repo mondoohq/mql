@@ -1,6 +1,8 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/portainer"
 option go_package = "go.mondoo.com/mql/providers/portainer/resources"
 option root = "portainer"
@@ -15,7 +17,7 @@ option root = "portainer"
 // are the paths by which code reaches those hosts.
 portainer @root {
   // Portainer server version
-  version() string
+  version() @maturity("deprecated") @replaced_by("asset.version") string
   // Unique Portainer instance identifier
   instanceId() string
   // Instance-wide authentication and container-security settings

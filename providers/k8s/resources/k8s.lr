@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 import os
+import core
 import network
 
 option provider = "go.mondoo.com/mql/providers/k8s"

@@ -140,6 +140,14 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.JamfConnection
 		return err
 	}
 
+	// The Jamf Pro version belongs on the asset: `asset.version` is the
+	// canonical, cross-provider way to ask what version something is, and every
+	// root carries `asset` (ADR 031). A provider-specific `version` field is a
+	// second spelling of the same fact.
+	if info, err := conn.Client.GetJamfProVersion(); err == nil && info != nil && info.Version != nil {
+		platform.Version = *info.Version
+	}
+
 	asset.Platform = platform
 	asset.PlatformIds = []string{conn.Identifier()}
 	return nil

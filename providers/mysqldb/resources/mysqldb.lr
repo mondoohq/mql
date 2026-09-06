@@ -1,6 +1,8 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/mysqldb"
 option go_package = "go.mondoo.com/mql/providers/mysqldb/resources"
 option root = "mysqldb"
@@ -24,7 +26,7 @@ mysqldb @root {}
 // `components`, and `replicationChannels`.
 mysqldb.instance @defaults("version flavor") {
   // Full server version, for example 8.0.40
-  version string
+  version @maturity("deprecated") @replaced_by("asset.version") string
   // Server version comment (distribution string)
   versionComment string
   // Detected flavor: mysql, mariadb, or percona

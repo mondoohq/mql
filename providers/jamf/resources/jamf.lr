@@ -1,6 +1,8 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/jamf"
 option go_package = "go.mondoo.com/mql/providers/jamf/resources"
 option root = "jamf"
@@ -27,7 +29,7 @@ jamf @root {
   sso() jamf.ssoSettings
 
   // Retrieve the Jamf Pro version string
-  version() string
+  version() @maturity("deprecated") @replaced_by("asset.version") string
 
   // Retrieve a list of all user accounts configured in Jamf Pro
   users() []jamf.user

@@ -68,6 +68,20 @@ func SchemaRefs(lr *LR) []PeerRef {
 		refs = append(refs, PeerRef{Peer: pack, Resource: resource, Field: field, Origin: origin})
 	}
 
+	// Every asset root carries `asset`, which core owns (attachAssetToRoots).
+	// That reference is created by the schema builder rather than written in
+	// the file, so counting only what is written would make a rooted provider
+	// look like it imports core for nothing - and the fix a reader would then
+	// apply, dropping the import, is the wrong one.
+	if _, ok := lr.imports["core"]; ok {
+		for _, r := range lr.Resources {
+			if r != nil && r.IsRoot {
+				refs = append(refs, PeerRef{Peer: "core", Resource: "asset", Origin: "asset root"})
+				break
+			}
+		}
+	}
+
 	var walkType func(t Type, origin string)
 	walkType = func(t Type, origin string) {
 		switch {

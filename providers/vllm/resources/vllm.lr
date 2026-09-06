@@ -1,6 +1,8 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/vllm"
 option go_package = "go.mondoo.com/mql/providers/vllm/resources"
 option root = "vllm"
@@ -19,7 +21,7 @@ vllm @root {
   // Minimal exposed metrics posture
   metrics() vllm.metrics
   // vLLM server version, if the /version endpoint is observable
-  version() string
+  version() @maturity("deprecated") @replaced_by("asset.version") string
   // Models loaded for serving
   models() []vllm.model
   // Engine configuration the server reports for itself

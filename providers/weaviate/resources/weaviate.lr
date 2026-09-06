@@ -1,6 +1,8 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/weaviate"
 option go_package = "go.mondoo.com/mql/providers/weaviate/resources"
 option root = "weaviate.instance"
@@ -21,7 +23,7 @@ weaviate {
 // cluster nodes are reached from here.
 weaviate.instance @defaults("version rbacEnabled anonymousAccessEnabled") @root {
   // Server version, for example "1.38.8"
-  version string
+  version @maturity("deprecated") @replaced_by("asset.version") string
   // Hostname the server reports for itself
   hostname string
   // Names of the enabled modules, for example "text2vec-openai"

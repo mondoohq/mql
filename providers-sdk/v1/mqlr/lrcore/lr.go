@@ -119,7 +119,12 @@ type LR struct {
 	Aliases   []Alias        `{ "alias" @@ }`
 	Resources []*Resource    `{ @@ }`
 	imports   map[string]map[string]struct{}
-	packPaths map[string]string
+	// importedMembers maps a peer provider's resource id to the members it
+	// exposes, embeds expanded. It is what lets a `@replaced_by` point at
+	// another provider's resource - `asset.version` on any rooted provider -
+	// and still be checked rather than taken on trust.
+	importedMembers map[string]map[string]struct{}
+	packPaths       map[string]string
 	// packProviders maps an import's pack name to the provider ID that import
 	// declares via `option provider`. This is the peer's *runtime* identity and
 	// is what Schema.Dependencies must record; packPaths holds its Go package

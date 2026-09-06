@@ -1,6 +1,8 @@
 // Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
+import core
+
 option provider = "go.mondoo.com/mql/providers/mongo"
 option go_package = "go.mondoo.com/mql/providers/mongo/resources"
 option root = "mongo"
@@ -26,7 +28,7 @@ mongo @root {}
 // parameter set through `parameters`.
 mongo.instance @defaults("version") {
   // Full server version, for example 7.0.14
-  version string
+  version @maturity("deprecated") @replaced_by("asset.version") string
   // Git version the server was built from
   gitVersion string
   // TCP port the server listens on
