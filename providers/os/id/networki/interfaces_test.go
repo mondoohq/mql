@@ -383,6 +383,7 @@ func TestInterfacesWindows(t *testing.T) {
 
 	interfaces, err := subject.Interfaces(conn, platform)
 	require.NoError(t, err)
+	// The fixture includes an adapter with a null InterfaceAlias, which is skipped.
 	assert.Len(t, interfaces, 4)
 
 	index := subject.FindInterface(interfaces, subject.Interface{Name: "Ethernet0"})
@@ -427,6 +428,45 @@ func TestInterfacesWindows(t *testing.T) {
 				assert.Equal(t, "::", ipv6.Gateway)
 			}
 		}
+
+		// The link-local address carries a `%N` zone index that has to be
+		// stripped before it parses.
+		assert.NotEqual(t, -1, teredoTunneling.FindIP(net.ParseIP("fe80::869:1f7d:a331:f3e1")))
+	}
+
+	// This adapter has a single IP address, so `ConvertTo-Json` reports a bare
+	// object rather than a one-element array.
+	index = subject.FindInterface(interfaces, subject.Interface{Name: "isatap.localdomain"})
+	if assert.NotEqual(t, -1, index) {
+		isatap := interfaces[index]
+		if assert.Len(t, isatap.IPAddresses, 1) {
+			assert.True(t, net.ParseIP("fe80::5efe:192.168.5.38").Equal(isatap.IPAddresses[0].IP))
+		}
+	}
+}
+
+func TestInterfacesWindowsSingleInterface(t *testing.T) {
+	// A host with one network interface makes `ConvertTo-Json` report a bare
+	// object rather than a one-element array.
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/windows_get_net_ip_cmd_single.toml"))
+	require.NoError(t, err)
+	platform, ok := detector.DetectOS(conn)
+	require.True(t, ok)
+
+	interfaces, err := subject.Interfaces(conn, platform)
+	require.NoError(t, err)
+	require.Len(t, interfaces, 1)
+
+	ethernet0 := interfaces[0]
+	assert.Equal(t, "Ethernet0", ethernet0.Name)
+	assert.Equal(t, "00:50:56:B0:9A:A5", ethernet0.MACAddress)
+	assert.Equal(t, 1500, ethernet0.MTU)
+	if assert.Len(t, ethernet0.IPAddresses, 1) {
+		ipv4 := ethernet0.IPAddresses[0]
+		assert.Equal(t, "192.168.5.38", ipv4.IP.String())
+		assert.Equal(t, "192.168.5.38/24", ipv4.CIDR)
+		assert.Equal(t, "192.168.5.0/24", ipv4.Subnet)
+		assert.Equal(t, "192.168.5.1", ipv4.Gateway)
 	}
 }
 

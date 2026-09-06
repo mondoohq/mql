@@ -7,6 +7,17 @@ command = "powershell.exe -NoProfile -EncodedCommand JABQAHIAbwBnAHIAZQBzAHMAUAB
 stdout = """
 [
     {
+        "InterfaceIndex":  99,
+        "InterfaceAlias":  null,
+        "NlMtu":  1500,
+        "ConnectionState":  0,
+        "AddressFamily":  23,
+        "MacAddress":  null,
+        "IPAddresses":  null,
+        "DefaultGateway":  null,
+        "Virtual":  null
+    },
+    {
         "InterfaceIndex":  4,
         "InterfaceAlias":  "Teredo Tunneling Pseudo-Interface",
         "NlMtu":  1280,
