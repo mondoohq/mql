@@ -554,6 +554,7 @@ func (r *Runtime) CreateResource(name string, args map[string]*llx.Primitive) (l
 			Resource:          name,
 			ResourceID:        string(res.Data.Value),
 			RequestResourceId: req.ResourceId,
+			Args:              args,
 			Data:              nil,
 			Field:             "",
 		}
