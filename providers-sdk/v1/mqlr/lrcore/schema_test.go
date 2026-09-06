@@ -315,3 +315,57 @@ func TestReplacedByReachability(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+// TestSchemaAliasOrderIsDeterministic pins the bug where AWS codegen reported
+// three phantom "breaking schema change" warnings on roughly half of its runs.
+//
+// aws.lr declares `aws.accessanalyzer` and `aws.accessAnalyzer` as aliases of
+// the same resource, and likewise for their `.analyzer` children. An alias and
+// its target share one *ResourceInfo, so both children wrote the same `analyzer`
+// field on the same object and the first writer won. The finalization loop
+// ordered names by depth only, which left the two same-depth spellings in map
+// order, so the winner -- and therefore the field's type in the emitted schema
+// -- changed from run to run on identical input.
+func TestSchemaAliasOrderIsDeterministic(t *testing.T) {
+	src := `
+option provider = "🐱"
+
+alias x.thing = x.y.Thing
+alias x.Thing = x.y.Thing
+alias x.thing.leaf = x.y.Thing.leaf
+alias x.Thing.leaf = x.y.Thing.leaf
+
+x.y.Thing {
+  name string
+}
+
+x.y.Thing.leaf {
+  val string
+}
+`
+	read := func(string) ([]byte, error) { return []byte(src), nil }
+
+	schemaOf := func(t *testing.T) *resources.Schema {
+		t.Helper()
+		ast, err := Resolve("providers/x/resources/x.lr", read)
+		require.NoError(t, err)
+		schema, err := Schema(ast)
+		require.NoError(t, err)
+		return schema
+	}
+
+	first := schemaOf(t)
+	target := first.Resources["x.y.Thing"]
+	require.NotNil(t, target)
+	require.NotNil(t, target.Fields["leaf"])
+
+	// Both alias spellings sit at the same depth, so the tie-break is the name:
+	// "x.Thing.leaf" sorts before "x.thing.leaf" (uppercase T is the lower byte).
+	assert.Equal(t, string(types.Resource("x.Thing.leaf")), target.Fields["leaf"].Type,
+		"the lexicographically first spelling must win the shared field")
+
+	for range 50 {
+		next := schemaOf(t)
+		require.Equal(t, first, next, "identical input must produce an identical schema")
+	}
+}
