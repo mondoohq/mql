@@ -90,10 +90,24 @@ func Schema(ast *LR) (*resources.Schema, error) {
 		}
 	}
 
+	// Shallowest first, so a parent is finalized before anything that hangs off
+	// it, then by name so the order is total.
+	//
+	// The name tie-break is not cosmetic. Depth alone leaves every same-depth
+	// group in Go's randomized map order, and the loop below writes into shared
+	// state: an alias and its target are the same *ResourceInfo (see the alias
+	// block above), so two aliases of one target both write the same field on
+	// the same object, and the first one wins. Whichever spelling that was
+	// decided the field's type, so the same .lr produced two different schemas
+	// from run to run -- enough to make the ADR 040 change report warn about
+	// breaking changes that nobody made.
 	sorted := slices.SortedFunc(maps.Keys(res.Resources), func(a, b string) int {
 		aDepth := strings.Count(a, ".")
 		bDepth := strings.Count(b, ".")
-		return aDepth - bDepth
+		if aDepth != bDepth {
+			return aDepth - bDepth
+		}
+		return strings.Compare(a, b)
 	})
 
 	// In this block we finalize the schema. This means:
