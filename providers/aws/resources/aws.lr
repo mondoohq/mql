@@ -5952,6 +5952,39 @@ private aws.ses.identity @defaults("name identityType verificationStatus verifie
   policies() map[string]string
   // Tags for the identity
   tags() map[string]string
+  // S/MIME signing certificates associated with the identity
+  certificates() []aws.ses.identity.certificate
+}
+
+// SES email identity S/MIME certificate
+//
+// Certificate association that lets Amazon SES S/MIME-sign mail sent from one
+// address on the identity. Signing only happens while the association is
+// ACTIVE and the certificate has not passed `certificateExpiryTime`, so a
+// certificate that is expired, FAILED, or INACTIVE leaves that address sending
+// unsigned mail without any other signal that signing stopped. The
+// `fromAddress` field names the address the certificate applies to.
+private aws.ses.identity.certificate @defaults("fromAddress status certificateExpiryTime") {
+  // Amazon Resource Name (ARN) of the certificate
+  //
+  // Null when SES reports the association without a certificate ARN.
+  arn string
+  // Certificate Manager certificate backing the association
+  //
+  // Null when SES reports no certificate ARN, or when the certificate is no
+  // longer present in Certificate Manager.
+  certificate() aws.acm.certificate
+  // Email address the certificate applies to
+  fromAddress string
+  // Status of the certificate association
+  //
+  // One of PROVISIONING, INACTIVE, DEPROVISIONING, ACTIVE, or FAILED. Only
+  // ACTIVE signs outbound mail.
+  status string
+  // Time after which the certificate is no longer valid
+  //
+  // Null when SES reports no expiry for the certificate.
+  certificateExpiryTime time
 }
 
 // SES configuration set
@@ -7772,6 +7805,10 @@ aws.guardduty {
   findings() []aws.guardduty.finding
   // List of GuardDuty detectors
   detectors() []aws.guardduty.detector
+  // Customer-authored detection rules defined in the account
+  customDetectionRules() []aws.guardduty.customDetectionRule
+  // Organization rollouts of custom detection rules
+  customDetectionRuleOrgConfigurations() []aws.guardduty.customDetectionRule.organizationConfiguration
 }
 
 // Amazon GuardDuty detector
@@ -7926,6 +7963,142 @@ private aws.guardduty.detector.member @defaults("accountId relationshipStatus") 
   updatedAt time
   // Detector ID of the administrator
   administratorId string
+}
+
+// Amazon GuardDuty custom detection rule
+//
+// Customer-authored detection rule that GuardDuty evaluates against a data
+// source to raise findings of its own, alongside the managed detections.
+// The rule carries the detection expression, the severity it assigns to the
+// findings it produces, and the MITRE ATT&CK tactic and technique it maps to.
+// A rule only evaluates where it is associated, so `associations` is what
+// says which accounts it actually covers and whether each one runs it live
+// or in DRY_RUN, which evaluates the rule and raises nothing. The `arn`
+// field selects a rule.
+private aws.guardduty.customDetectionRule @defaults("name severity region") {
+  // Amazon Resource Name (ARN) of the rule
+  arn string
+  // Unique ID of the rule
+  ruleId string
+  // Display name of the rule
+  name string
+  // Description of what the rule detects
+  description string
+  // Region where the rule is defined
+  region string
+  // AWS service the rule applies to
+  service string
+  // Severity assigned to findings the rule produces
+  //
+  // One of CRITICAL, HIGH, MEDIUM, or LOW.
+  severity string
+  // MITRE ATT&CK tactic the rule maps to
+  tactic string
+  // MITRE ATT&CK technique the rule maps to
+  technique string
+  // Data source the rule analyzes
+  //
+  // CloudTrailManagementEvent is the only value GuardDuty reports today.
+  dataSource string
+  // Language the detection expression is written in
+  //
+  // SQL is the only value GuardDuty reports today.
+  language string
+  // Schema version the rule definition targets
+  schemaVersion string
+  // Time the rule was created
+  createdAt time
+  // Time the rule was last updated
+  updatedAt time
+  // Detection expression the rule evaluates
+  //
+  // The rule body itself, written in the language named by `language`. Null
+  // when the rule definition cannot be read.
+  expression() string
+  // Associations that put the rule into effect
+  associations() []aws.guardduty.customDetectionRule.association
+}
+
+// Amazon GuardDuty custom detection rule association
+//
+// Binding of a custom detection rule to an account, which is what makes the
+// rule evaluate there at all. `mode` reports LIVE when the rule raises
+// findings and DRY_RUN when it is evaluated and raises none, so a rule whose
+// only association is DRY_RUN contributes no detection coverage. `expiresAt`
+// reports when the binding lapses, after which the rule stops evaluating in
+// that account. The `arn` field selects an association.
+private aws.guardduty.customDetectionRule.association @defaults("associationId mode expiresAt") {
+  // Amazon Resource Name (ARN) of the association
+  arn string
+  // Unique ID of the association
+  associationId string
+  // Region where the association exists
+  region string
+  // Execution mode of the associated rule
+  //
+  // LIVE evaluates the rule and raises findings. DRY_RUN evaluates the rule
+  // and raises no findings at all.
+  mode string
+  // Custom detection rule the association puts into effect
+  rule aws.guardduty.customDetectionRule
+  // Account the rule is associated with
+  //
+  // Null when the association detail cannot be read.
+  accountId() string
+  // Time the association was created
+  createdAt time
+  // Time the association was last updated
+  updatedAt time
+  // Time the association expires
+  //
+  // The rule stops evaluating in the associated account after this time.
+  // Null when the association carries no expiry.
+  expiresAt time
+}
+
+// Amazon GuardDuty custom detection rule organization rollout
+//
+// Organization-wide rollout of a custom detection rule, which is what
+// determines whether the rule reaches member accounts. `status` reports
+// ACTIVE once the rollout completed, PROCESSING while it is still applying,
+// and FAILED when it did not reach the organization, with `statusReason`
+// carrying the cause. `includeAccountIds` and `excludeAccountIds` report the
+// accounts the rollout targets and skips, and `mode` reports whether member
+// accounts run the rule live or in DRY_RUN.
+private aws.guardduty.customDetectionRule.organizationConfiguration @defaults("mode status region") {
+  // Region where the rollout is configured
+  region string
+  // Custom detection rule this rollout applies
+  //
+  // Null when the rule is no longer present in the region.
+  rule() aws.guardduty.customDetectionRule
+  // Execution mode applied to member accounts
+  //
+  // LIVE evaluates the rule and raises findings. DRY_RUN evaluates the rule
+  // and raises no findings at all.
+  mode string
+  // Rollout status
+  //
+  // One of ACTIVE, PROCESSING, or FAILED.
+  status string
+  // Reason accompanying the current status
+  statusReason string
+  // Accounts the rollout targets
+  //
+  // Null when the rollout detail cannot be read.
+  includeAccountIds() []string
+  // Accounts the rollout skips
+  //
+  // Null when the rollout detail cannot be read.
+  excludeAccountIds() []string
+  // Time the rollout was created
+  createdAt time
+  // Time the rollout was last updated
+  updatedAt time
+  // Time the rollout expires
+  //
+  // Null when the rollout carries no expiry.
+  expiresAt time
 }
 
 // AWS GuardDuty finding
@@ -21036,8 +21209,14 @@ aws.eks.cluster @defaults("arn version status") {
   encryptionConfig() @maturity("deprecated") []dict
   // KMS key used for envelope encryption of Kubernetes secrets
   encryptionKmsKey() aws.kms.key
-  // Resource types encrypted with the KMS key (e.g., "secrets")
-  encryptionResources() []string
+  // Resource types encrypted with the KMS key
+  //
+  // Deprecated in favor of encryptionKmsKey, which reports whether a
+  // customer-managed key is attached at all. Amazon EKS envelope-encrypts
+  // every Kubernetes API object by default on clusters running Kubernetes
+  // 1.28 or later, so this list no longer determines what is encrypted and
+  // reads empty on clusters that are in fact encrypted.
+  encryptionResources() @maturity("deprecated") @replaced_by("aws.eks.cluster.encryptionKmsKey") []string
   // Cluster logging configuration
   //
   // Contains a `ClusterLogging` list, where each entry has `Enabled` and a
@@ -24300,6 +24479,8 @@ aws.kinesis @defaults("streams") {
   streamConsumers() []aws.kinesis.streamConsumer
   // List of Kinesis video streams
   videoStreams() []aws.kinesis.videoStream
+  // List of Kinesis delivery channels
+  channels() []aws.kinesis.channel
 }
 
 // Amazon Kinesis data stream
@@ -24392,6 +24573,114 @@ private aws.kinesis.videoStream @defaults("name status mediaType region") {
   region string
   // Tags for the stream
   tags() map[string]string
+}
+
+// Amazon Kinesis delivery channel
+//
+// Continuous egress path that lands records from one or more Kinesis data
+// streams into Amazon S3, either as objects in a general purpose bucket or as
+// rows in an Apache Iceberg streaming table. Because the channel writes stream
+// data out to durable storage, the same questions asked of a Firehose delivery
+// stream apply: `kmsKey` and `encryptionType` report whether delivered data is
+// encrypted with a customer managed key, `iamRole` reports the identity the
+// service assumes to write, `destinationBucketOwner` reports the account
+// expected to own the destination bucket, which is the guard against delivery
+// into an unintended account, and `cloudWatchLogsEnabled` reports whether
+// delivery errors are recorded anywhere. The `arn` field selects a channel.
+private aws.kinesis.channel @defaults("name status destinationType region") {
+  // Amazon Resource Name (ARN) of the channel
+  arn string
+  // Name of the channel
+  name string
+  // Region where the channel exists
+  region string
+  // Current status of the channel
+  //
+  // One of CREATING, ACTIVE, UPDATING, DELETING, or FAILED.
+  status string
+  // Reason accompanying a FAILED status
+  statusReason string
+  // Destination the channel delivers to
+  //
+  // S3 delivers objects to a general purpose bucket. S3_TABLES delivers rows
+  // to streaming tables on Apache Iceberg.
+  destinationType string
+  // Time the channel was created
+  createdAt time
+  // Kinesis data streams the channel reads records from
+  sourceStreams() []aws.kinesis.stream
+  // IAM role the service assumes to write records to the destination
+  iamRole() aws.iam.role
+  // Server-side encryption type applied to delivered data
+  //
+  // KMS is the only value Kinesis reports today. Null when the channel has no
+  // customer managed encryption configured.
+  encryptionType() string
+  // Customer managed KMS key that encrypts delivered data
+  //
+  // Null when the channel has no customer managed encryption configured.
+  kmsKey() aws.kms.key
+  // Whether delivery is logged to Amazon CloudWatch Logs
+  cloudWatchLogsEnabled() bool
+  // CloudWatch Logs log group that receives delivery logs
+  cloudWatchLogGroupName() string
+  // CloudWatch Logs log stream that receives delivery logs
+  cloudWatchLogStreamName() string
+  // Maximum age, in seconds, of undelivered data
+  dataFreshnessInSeconds() int
+  // General purpose S3 bucket the channel delivers objects to
+  //
+  // Null when the destination is a streaming table.
+  destinationBucket() aws.s3.bucket
+  // Account expected to own the destination bucket
+  //
+  // Delivery fails when the bucket is owned by a different account, which is
+  // what stops records reaching a bucket whose ownership changed. Null when
+  // the destination is a streaming table.
+  destinationBucketOwner() string
+  // Compression applied to delivered objects
+  //
+  // One of NONE, GZIP, or ZSTD. Null when the destination is a streaming table.
+  destinationCompressionType() string
+  // S3 storage class for delivered objects
+  //
+  // One of STANDARD, INTELLIGENT_TIERING, or GLACIER_IR. Null when the
+  // destination is a streaming table.
+  destinationStorageClass() string
+  // Template used to construct the S3 object key for delivered objects
+  //
+  // Null when the destination is a streaming table or the default template is
+  // in use.
+  destinationOutputKeyTemplate() string
+  // S3 bucket that receives records the channel could not deliver
+  deadLetterBucket() aws.s3.bucket
+  // Account expected to own the dead-letter bucket
+  deadLetterBucketOwner() string
+  // S3 key prefix under which undeliverable records are written
+  deadLetterErrorOutputPrefix() string
+  // Streaming tables the channel delivers rows to
+  //
+  // Empty when the destination is a general purpose bucket.
+  tables() []aws.kinesis.channel.table
+}
+
+// Amazon Kinesis delivery channel streaming table
+//
+// Single Apache Iceberg table in an Amazon S3 table bucket that a delivery
+// channel writes rows into. The table is identified by its table bucket,
+// namespace, and name, and reports the compression applied to the Parquet
+// data files written to it.
+private aws.kinesis.channel.table @defaults("name namespace compressionType") {
+  // Amazon Resource Name (ARN) of the S3 table bucket holding the table
+  tableBucketArn string
+  // Namespace (database) the table belongs to
+  namespace string
+  // Name of the destination table
+  name string
+  // Compression applied to Parquet data files
+  //
+  // One of NONE, ZSTD, or SNAPPY.
+  compressionType string
 }
 
 // Amazon Kinesis Firehose delivery stream
@@ -29827,7 +30116,8 @@ private aws.bedrock.dataRetentionConfiguration @defaults("region mode") {
   // Retention mode
   //
   // One of `default` (Bedrock's standard retention), `none` (no invocation
-  // data retained), `provider_data_share` (data may be shared with the
+  // data retained), `aws_review` (invocation data may be retained for human
+  // review by AWS), `provider_data_share` (data may be shared with the
   // model provider), or `inherit` (the organization's setting applies).
   mode string
   // Time the retention setting was last updated
@@ -30007,6 +30297,8 @@ private aws.bedrock.agentCore {
   workloadIdentities() []aws.bedrock.agentCore.workloadIdentity
   // Capacity providers that run agent runtimes on account-owned EC2 instances
   capacityProviders() []aws.bedrock.agentCore.capacityProvider
+  // Consent portals where end users grant agents access to their resources
+  consentPortals() []aws.bedrock.agentCore.consentPortal
 }
 
 // Amazon Bedrock AgentCore gateway
@@ -30480,6 +30772,83 @@ private aws.bedrock.agentCore.apiKeyCredentialProvider @defaults("name") {
   createdAt time
   // Time the credential provider was last updated
   updatedAt time
+}
+
+// Amazon Bedrock AgentCore consent portal
+//
+// Hosted page, reachable on the public internet at `portalUrl`, where an end
+// user signs in to an identity provider and grants an agent standing
+// authorization to reach their resources on their behalf. Every consent
+// granted through the portal leaves a delegated-access grant in place until
+// it is revoked, so the portal is worth reviewing as an access surface in its
+// own right: `credentialProvider` is the OAuth2 provider that authenticates
+// the end user, `oauthScopes` is the access the portal asks them to grant,
+// `iamRole` is the identity the portal itself assumes to reach the resources
+// it serves, and `sources` lists those resources. The `arn` field selects a
+// portal.
+private aws.bedrock.agentCore.consentPortal @defaults("name status portalUrl") {
+  // Amazon Resource Name (ARN) of the consent portal
+  arn string
+  // Name of the consent portal
+  name string
+  // Region where the consent portal exists
+  region string
+  // Description of the consent portal
+  description string
+  // Current status of the consent portal
+  //
+  // One of CREATING, ACTIVE, UPDATING, UPDATE_FAILED, DELETING, or FAILED.
+  status string
+  // Publicly reachable URL end users visit to grant authorization
+  //
+  // Null while the portal is still being created.
+  portalUrl string
+  // Time the consent portal was created
+  createdAt time
+  // Time the consent portal was last updated
+  updatedAt time
+  // Reason accompanying the current status
+  //
+  // Null when the portal reports no additional status information.
+  statusReason() string
+  // OAuth2 credential provider that authenticates end users to the portal
+  //
+  // Null when the provider is no longer present in the region.
+  credentialProvider() aws.bedrock.agentCore.oauth2CredentialProvider
+  // OAuth2 scopes the portal requests when authenticating end users
+  //
+  // The access an end user is asked to delegate when they consent.
+  oauthScopes() []string
+  // Audience value the portal sends when requesting tokens
+  //
+  // Null when the portal requests tokens without an audience.
+  oauthAudience() string
+  // IAM role the consent portal assumes to reach the resources it serves
+  iamRole() aws.iam.role
+  // Resources served by the consent portal
+  sources() []aws.bedrock.agentCore.consentPortal.source
+}
+
+// Amazon Bedrock AgentCore consent portal source
+//
+// Single resource that a consent portal serves, meaning a resource an end
+// user can be asked to grant an agent access to. `type` reports the kind of
+// resource and `gateway` resolves the MCP gateway when the source names one.
+private aws.bedrock.agentCore.consentPortal.source @defaults("type identifier") {
+  // Identifier of the source resource
+  //
+  // For an agentcore-gateway source this is the gateway ID or its Amazon
+  // Resource Name (ARN), whichever the portal was configured with.
+  identifier string
+  // Kind of resource the source names
+  //
+  // agentcore-gateway is the only value AgentCore reports today.
+  type string
+  // MCP gateway the source names
+  //
+  // Null when the source names something other than a gateway, or when the
+  // gateway is no longer present in the region.
+  gateway() aws.bedrock.agentCore.gateway
 }
 
 // Amazon Bedrock AgentCore workload identity
