@@ -148,3 +148,29 @@ func TestSpdxHashes(t *testing.T) {
 	assert.Contains(t, data, "SHA512")
 	assert.Contains(t, data, testHashHex)
 }
+
+// TestSpdxParseKeepsPackagesWithoutAPurpose pins the import against an optional
+// field. primary_package_purpose is OPTIONAL in SPDX 2.3 and most producers
+// omit it -- mql's own SPDX renderer among them -- but the import keyed on it
+// and dropped every package whose purpose was unstated.
+//
+// The failure was silent in the worst way: Render then Parse of this
+// three-package SBOM returned ZERO packages, so `xgrep scan --sbom <spdx>` read
+// a real document as a project with no dependencies rather than as one it could
+// not interpret. Verified against the parent commit, where this returns 0.
+func TestSpdxParseKeepsPackagesWithoutAPurpose(t *testing.T) {
+	out := bytes.Buffer{}
+	require.NoError(t, sbom.NewSPDX(sbom.FormatSpdxJSON).Render(&out, graphBom()))
+	// The fixture states no purpose for any package, which is the ordinary case.
+	assert.NotContains(t, out.String(), "primaryPackagePurpose")
+
+	got, err := sbom.NewProtobom().Parse(bytes.NewReader(out.Bytes()))
+	require.NoError(t, err)
+	require.Len(t, got.GetPackages(), 3, "every rendered package should survive the round trip")
+
+	names := []string{}
+	for _, p := range got.GetPackages() {
+		names = append(names, p.GetName())
+	}
+	assert.ElementsMatch(t, []string{"app", "left-pad", "jest"}, names)
+}

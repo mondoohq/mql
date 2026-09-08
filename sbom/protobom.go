@@ -184,21 +184,36 @@ func (s *Protobom) convertToSbom(doc *protobom_sbom.Document) *Sbom {
 			pkg.Cpes = nil
 		}
 
-		purposes := node.GetPrimaryPurpose()
-		if len(purposes) > 0 {
-			switch purposes[0] {
-			case protobom_sbom.Purpose_OPERATING_SYSTEM:
-				bom.Asset.Platform = &Platform{
-					Name:    pkg.Name,
-					Version: pkg.Version,
-					Title:   pkg.Description,
-				}
-				bom.Asset.Platform.Family = familyMap[pkg.Name]
-				bom.Asset.Platform.Cpes = pkg.Cpes
-			case protobom_sbom.Purpose_APPLICATION:
-				bom.Packages = append(bom.Packages, pkg)
-			}
+		// A FILE node describes a file inside a package, not a package, so it is
+		// the one thing that must not become one.
+		if node.GetType() == protobom_sbom.Node_FILE {
+			continue
 		}
+
+		// primary_package_purpose is OPTIONAL in SPDX 2.3 and most producers omit
+		// it -- mql's own SPDX renderer among them. Keying the import on it
+		// dropped EVERY package whose purpose was unstated, so an SPDX document
+		// round-tripped through this package arrived empty: `Render` then `Parse`
+		// of a three-package SBOM returned zero. `xgrep scan --sbom <spdx>` read
+		// that as a project with no dependencies rather than as a document it
+		// could not interpret, which is the silent-empty failure the format's
+		// optional fields are most likely to produce.
+		//
+		// The node TYPE is the discriminator that always holds: protobom states
+		// PACKAGE or FILE for every node, where purpose is advisory. Purpose is
+		// still read, for the one thing it uniquely says -- that a package is the
+		// operating system, which makes it the asset's platform as well.
+		if purposes := node.GetPrimaryPurpose(); len(purposes) > 0 &&
+			purposes[0] == protobom_sbom.Purpose_OPERATING_SYSTEM {
+			bom.Asset.Platform = &Platform{
+				Name:    pkg.Name,
+				Version: pkg.Version,
+				Title:   pkg.Description,
+			}
+			bom.Asset.Platform.Family = familyMap[pkg.Name]
+			bom.Asset.Platform.Cpes = pkg.Cpes
+		}
+		bom.Packages = append(bom.Packages, pkg)
 	}
 
 	return bom
