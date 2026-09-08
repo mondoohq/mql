@@ -174,3 +174,62 @@ func TestSpdxParseKeepsPackagesWithoutAPurpose(t *testing.T) {
 	}
 	assert.ElementsMatch(t, []string{"app", "left-pad", "jest"}, names)
 }
+
+// TestSpdxDependencyGraphRoundTrips is the read half of TestSpdxDependencyGraph
+// above, which only ever asserted that a DEPENDS_ON relationship was WRITTEN.
+//
+// The graph was write-only on the SPDX side: the renderer emitted every edge
+// and the parser read nodes alone, so a document round-tripped through SPDX
+// arrived with its packages intact and its dependency structure silently gone.
+// CycloneDX kept the graph (#10659); SPDX dropped it. Against the parent commit
+// this fails with an empty Dependencies.
+func TestSpdxDependencyGraphRoundTrips(t *testing.T) {
+	out := bytes.Buffer{}
+	require.NoError(t, sbom.NewSPDX(sbom.FormatSpdxJSON).Render(&out, graphBom()))
+
+	got, err := sbom.NewProtobom().Parse(bytes.NewReader(out.Bytes()))
+	require.NoError(t, err)
+	require.NotNil(t, got)
+
+	require.Len(t, got.Dependencies, 1, "the DEPENDS_ON relationship should come back as one edge")
+	assert.Equal(t, "pkg:npm/app@1.0.0", got.Dependencies[0].Ref)
+	assert.Equal(t, []string{"pkg:npm/left-pad@1.3.0"}, got.Dependencies[0].DependencyRefs)
+}
+
+// TestSpdxDependencyGraphReadsDependencyOf pins the inverted spelling. SPDX
+// states the same fact two ways -- DEPENDS_ON and DEPENDENCY_OF -- and a
+// producer may emit either, so a reader that understands only one silently
+// loses half the documents in the wild. The direction matters: a dependencyOf
+// edge names the DEPENDENCY as its source, so importing it unreversed would
+// invert the graph and make a library depend on the application.
+//
+// Built through protobom rather than through the renderer, because mql's SPDX
+// renderer only ever writes DEPENDS_ON.
+func TestSpdxDependencyGraphReadsDependencyOf(t *testing.T) {
+	doc := `{
+	  "spdxVersion": "SPDX-2.3",
+	  "dataLicense": "CC0-1.0",
+	  "SPDXID": "SPDXRef-DOCUMENT",
+	  "name": "app",
+	  "documentNamespace": "https://example.com/app",
+	  "creationInfo": {"created": "2026-09-08T00:00:00Z", "creators": ["Tool: test-1"]},
+	  "packages": [
+	    {"SPDXID": "SPDXRef-App", "name": "app", "versionInfo": "1.0.0", "downloadLocation": "NOASSERTION",
+	     "externalRefs": [{"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:npm/app@1.0.0"}]},
+	    {"SPDXID": "SPDXRef-LeftPad", "name": "left-pad", "versionInfo": "1.3.0", "downloadLocation": "NOASSERTION",
+	     "externalRefs": [{"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl", "referenceLocator": "pkg:npm/left-pad@1.3.0"}]}
+	  ],
+	  "relationships": [
+	    {"spdxElementId": "SPDXRef-LeftPad", "relatedSpdxElement": "SPDXRef-App", "relationshipType": "DEPENDENCY_OF"}
+	  ]
+	}`
+
+	got, err := sbom.NewProtobom().Parse(strings.NewReader(doc))
+	require.NoError(t, err)
+	require.NotNil(t, got)
+
+	require.Len(t, got.Dependencies, 1)
+	// app depends on left-pad, NOT the reverse.
+	assert.Equal(t, "pkg:npm/app@1.0.0", got.Dependencies[0].Ref)
+	assert.Equal(t, []string{"pkg:npm/left-pad@1.3.0"}, got.Dependencies[0].DependencyRefs)
+}

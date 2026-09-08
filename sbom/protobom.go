@@ -5,6 +5,8 @@ package sbom
 
 import (
 	"io"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/package-url/packageurl-go"
@@ -159,6 +161,11 @@ func (s *Protobom) convertToSbom(doc *protobom_sbom.Document) *Sbom {
 		return bom // no nodes, return empty SBOM
 	}
 
+	// Node ID -> the bom-ref the package will be known by, so the edges below
+	// can be translated out of protobom's node space into the same reference
+	// space Sbom.Dependencies uses everywhere else (BomRefFor).
+	refByNode := map[string]string{}
+
 	for _, node := range doc.GetNodeList().GetNodes() {
 		pkg := &Package{
 			Name:    node.Name,
@@ -214,7 +221,82 @@ func (s *Protobom) convertToSbom(doc *protobom_sbom.Document) *Sbom {
 			bom.Asset.Platform.Cpes = pkg.Cpes
 		}
 		bom.Packages = append(bom.Packages, pkg)
+		// Only a node that became a package can be an edge endpoint: an edge
+		// naming anything else is dropped below rather than emitted as a
+		// reference to something the SBOM does not contain.
+		if id := node.GetId(); id != "" {
+			refByNode[id] = BomRefFor(pkg)
+		}
 	}
 
+	bom.Dependencies = protobomDependencies(doc, refByNode)
+
 	return bom
+}
+
+// protobomDependencies reads the package->package graph out of a protobom
+// document's edges, the read counterpart to the SPDX renderer's DEPENDS_ON
+// relationships (spdx.go).
+//
+// Without this the graph was write-only on the SPDX side: the renderer emitted
+// every edge and the parser read nodes alone, so an SBOM round-tripped through
+// SPDX lost its dependency structure entirely while CycloneDX kept it. The
+// CycloneDX reader gained its counterpart in #10659; this is the same fix on
+// the other format, and the two now agree.
+//
+// Both directions are read because a producer may state either and they carry
+// the same fact: SPDX has DEPENDS_ON and DEPENDENCY_OF, and protobom maps them
+// to Edge_dependsOn and Edge_dependencyOf. A dependencyOf edge is INVERTED on
+// import -- its `From` is the dependency and each `To` is a dependent -- so
+// that both spellings land in one direction downstream.
+//
+// Deliberately NOT read: Edge_devDependency and the other typed edges. This
+// field carries the production dependency graph, and folding a dev-scoped edge
+// into it would state that a dev-only package is depended on in production,
+// which is a stronger claim than the document made.
+func protobomDependencies(doc *protobom_sbom.Document, refByNode map[string]string) []*Dependency {
+	if doc.GetNodeList() == nil || len(refByNode) == 0 {
+		return nil
+	}
+	// Accumulated by source ref, since two edges may share one `From` and a
+	// dependencyOf edge contributes to a `From` that is not its own.
+	refs := map[string][]string{}
+	seen := map[[2]string]bool{}
+	add := func(from, to string) {
+		if from == "" || to == "" || from == to || seen[[2]string{from, to}] {
+			return
+		}
+		seen[[2]string{from, to}] = true
+		refs[from] = append(refs[from], to)
+	}
+
+	for _, e := range doc.GetNodeList().GetEdges() {
+		from, ok := refByNode[e.GetFrom()]
+		if !ok {
+			continue
+		}
+		for _, toNode := range e.GetTo() {
+			to, ok := refByNode[toNode]
+			if !ok {
+				continue
+			}
+			switch e.GetType() {
+			case protobom_sbom.Edge_dependsOn:
+				add(from, to)
+			case protobom_sbom.Edge_dependencyOf:
+				add(to, from)
+			}
+		}
+	}
+	if len(refs) == 0 {
+		return nil
+	}
+	// Sorted so a document's edge order does not decide the output's, which
+	// keeps a re-render byte-stable and a test assertable.
+	out := make([]*Dependency, 0, len(refs))
+	for _, from := range slices.Sorted(maps.Keys(refs)) {
+		slices.Sort(refs[from])
+		out = append(out, &Dependency{Ref: from, DependencyRefs: refs[from]})
+	}
+	return out
 }
