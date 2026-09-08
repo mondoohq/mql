@@ -330,6 +330,14 @@ func (ccx *CycloneDX) convertCycloneDxToSbom(bom *cyclonedx.BOM) (*Sbom, error) 
 			Version:     component.Version,
 			Purl:        component.PackageURL,
 			Description: component.Description,
+			// The document's own identity for this component, kept because it
+			// is what `dependencies` keys on. A producer chooses its own
+			// bom-refs -- a purl, a UUID, an internal id -- and dropping them
+			// while keeping the edges verbatim left every edge naming a
+			// component the consumer could no longer resolve. BomRefFor
+			// prefers this field, so a render/parse/render round-trip now also
+			// preserves the refs instead of rewriting them.
+			BomRef: component.BOMRef,
 		}
 
 		// parse purl to gather package type

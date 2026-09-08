@@ -233,3 +233,80 @@ func TestSpdxDependencyGraphReadsDependencyOf(t *testing.T) {
 	assert.Equal(t, "pkg:npm/app@1.0.0", got.Dependencies[0].Ref)
 	assert.Equal(t, []string{"pkg:npm/left-pad@1.3.0"}, got.Dependencies[0].DependencyRefs)
 }
+
+// TestCycloneDXParseKeepsTheBomRef pins the identity the `dependencies` section
+// keys on.
+//
+// CycloneDX states edges by `bom-ref`, and a producer is free to choose one --
+// a purl, a UUID, an internal id. The reader dropped `bom-ref` while keeping
+// the edges verbatim, so for any producer that does not happen to use purls as
+// bom-refs, every edge referenced a component the consumer could no longer
+// identify. The graph parsed, and then correlated with nothing.
+func TestCycloneDXParseKeepsTheBomRef(t *testing.T) {
+	doc := `{
+  "bomFormat": "CycloneDX", "specVersion": "1.5", "version": 1,
+  "metadata": {"component": {"type": "application", "name": "app", "version": "1.0.0"}},
+  "components": [
+    {"bom-ref": "3f2504e0-4f89-11d3-9a0c-0305e82c3301", "type": "library",
+     "name": "left-pad", "version": "1.3.0", "purl": "pkg:npm/left-pad@1.3.0"},
+    {"bom-ref": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "type": "library",
+     "name": "right-pad", "version": "2.0.0", "purl": "pkg:npm/right-pad@2.0.0"}
+  ],
+  "dependencies": [
+    {"ref": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+     "dependsOn": ["7c9e6679-7425-40de-944b-e07fc1f90ae7"]}
+  ]
+}`
+	out, err := sbom.New(sbom.FormatCycloneDxJSON).Parse(strings.NewReader(doc))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	byRef := map[string]*sbom.Package{}
+	for _, p := range out.Packages {
+		byRef[p.BomRef] = p
+	}
+	if len(byRef) != 2 {
+		t.Fatalf("every component's bom-ref must survive the read, got %v", byRef)
+	}
+	// The edge is only usable if its endpoints resolve to components.
+	if len(out.Dependencies) != 1 {
+		t.Fatalf("expected the one dependency entry, got %d", len(out.Dependencies))
+	}
+	from, ok := byRef[out.Dependencies[0].Ref]
+	if !ok {
+		t.Fatalf("edge source %q resolves to no component", out.Dependencies[0].Ref)
+	}
+	if from.Purl != "pkg:npm/left-pad@1.3.0" {
+		t.Errorf("edge source resolved to %q", from.Purl)
+	}
+	to, ok := byRef[out.Dependencies[0].DependencyRefs[0]]
+	if !ok {
+		t.Fatalf("edge target %q resolves to no component", out.Dependencies[0].DependencyRefs[0])
+	}
+	if to.Purl != "pkg:npm/right-pad@2.0.0" {
+		t.Errorf("edge target resolved to %q", to.Purl)
+	}
+}
+
+// TestCycloneDXRoundTripPreservesTheProducersRefs is the second half of keeping
+// bom-ref: a document read and written back keeps the identities it arrived
+// with, rather than having every ref rewritten to a purl. Anything holding a
+// reference INTO the document -- an attestation, a VEX statement, a reviewer's
+// note -- still resolves afterwards.
+func TestCycloneDXRoundTripPreservesTheProducersRefs(t *testing.T) {
+	doc := `{
+  "bomFormat": "CycloneDX", "specVersion": "1.5", "version": 1,
+  "metadata": {"component": {"type": "application", "name": "app", "version": "1.0.0"}},
+  "components": [
+    {"bom-ref": "3f2504e0-4f89-11d3-9a0c-0305e82c3301", "type": "library",
+     "name": "left-pad", "version": "1.3.0", "purl": "pkg:npm/left-pad@1.3.0"}
+  ]
+}`
+	in, err := sbom.New(sbom.FormatCycloneDxJSON).Parse(strings.NewReader(doc))
+	require.NoError(t, err)
+
+	var buf bytes.Buffer
+	require.NoError(t, sbom.New(sbom.FormatCycloneDxJSON).Render(&buf, in))
+	assert.Contains(t, buf.String(), "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+		"the producer's bom-ref must survive a render, not be rewritten to a purl")
+}
