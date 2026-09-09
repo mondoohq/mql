@@ -6,6 +6,7 @@ package gemfilelock
 import (
 	"bufio"
 	"io"
+	"sort"
 	"strings"
 
 	"go.mondoo.com/mql/providers/os/resources/languages"
@@ -92,9 +93,21 @@ func parseGemfileLock(r io.Reader) (*gemfileLock, error) {
 				continue
 			}
 
-			// Top-level gems are indented 4 spaces: "    name (version)"
-			// Sub-dependencies are indented 6+ spaces — skip them
-			if !strings.HasPrefix(line, "    ") || strings.HasPrefix(line, "      ") {
+			// Top-level gems are indented 4 spaces: "    name (version)".
+			// Sub-dependencies are indented 6+ and belong to the gem above them.
+			if !strings.HasPrefix(line, "    ") {
+				continue
+			}
+			if strings.HasPrefix(line, "      ") {
+				// A dependency line of the gem most recently appended. Bundler
+				// always writes them directly beneath their gem, so the last
+				// entry is the owner; a stray one before any gem has no owner
+				// and is dropped rather than guessed at.
+				if n := len(lock.Gems); n > 0 && trimmed != "" {
+					if name := gemDepName(trimmed); name != "" {
+						lock.Gems[n-1].Deps = append(lock.Gems[n-1].Deps, name)
+					}
+				}
 				continue
 			}
 
@@ -127,6 +140,59 @@ func parseGemfileLock(r io.Reader) (*gemfileLock, error) {
 	}
 
 	return lock, nil
+}
+
+// gemDepName takes the gem name from a dependency line beneath a spec entry,
+// which is written as `rack` or `rack (~> 2.2)`. Only the name is kept: the
+// parenthesised part is a REQUIREMENT, and the version Bundler actually resolved
+// is on that gem's own spec entry, which is where dependsOnRefs looks it up.
+func gemDepName(line string) string {
+	name, _, _ := strings.Cut(line, " ")
+	return strings.TrimSuffix(strings.TrimSpace(name), "!")
+}
+
+// dependsOnRefs turns one gem's dependency names into purls of the gems that
+// satisfy them.
+//
+// Resolved by name against the same gem set this file emits, so an edge's target
+// is always a package that exists. A name with no spec entry is dropped rather
+// than synthesised: it means the lock referenced a gem it did not resolve here
+// (a git or path source, which this extractor does not inventory), and inventing
+// the node would assert a package the project does not install from RubyGems.
+func dependsOnRefs(deps []string, byName map[string]gemEntry) []string {
+	if len(deps) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	var refs []string
+	for _, name := range deps {
+		target, ok := byName[name]
+		if !ok || target.Version == "" {
+			continue
+		}
+		ref := ruby.NewPackageUrl(target.Name, target.Version)
+		if seen[ref] {
+			continue
+		}
+		seen[ref] = true
+		refs = append(refs, ref)
+	}
+	if len(refs) == 0 {
+		return nil
+	}
+	sort.Strings(refs)
+	return refs
+}
+
+// gemsByName indexes the resolved gems for edge resolution.
+func (l *gemfileLock) gemsByName() map[string]gemEntry {
+	out := make(map[string]gemEntry, len(l.Gems))
+	for _, g := range l.Gems {
+		if _, dup := out[g.Name]; !dup {
+			out[g.Name] = g
+		}
+	}
+	return out
 }
 
 // parseGemEntry parses "name (version)" or "name (version-platform)" from a GEM specs line.
@@ -179,10 +245,11 @@ func (l *gemfileLock) Root() *languages.Package {
 
 // Direct returns gems listed in the DEPENDENCIES section.
 func (l *gemfileLock) Direct() languages.Packages {
+	byName := l.gemsByName()
 	var direct languages.Packages
 	for _, gem := range l.Gems {
 		if l.DirectDeps[gem.Name] {
-			direct = append(direct, makePackage(gem, l.evidence))
+			direct = append(direct, makePackage(gem, byName, l.evidence))
 		}
 	}
 	return direct
@@ -190,19 +257,21 @@ func (l *gemfileLock) Direct() languages.Packages {
 
 // Transitive returns all resolved gems.
 func (l *gemfileLock) Transitive() languages.Packages {
+	byName := l.gemsByName()
 	var all languages.Packages
 	for _, gem := range l.Gems {
-		all = append(all, makePackage(gem, l.evidence))
+		all = append(all, makePackage(gem, byName, l.evidence))
 	}
 	return all
 }
 
-func makePackage(gem gemEntry, evidence []string) *languages.Package {
+func makePackage(gem gemEntry, byName map[string]gemEntry, evidence []string) *languages.Package {
 	return &languages.Package{
 		Name:         gem.Name,
 		Version:      gem.Version,
 		Purl:         ruby.NewPackageUrl(gem.Name, gem.Version),
 		Cpes:         ruby.NewCpes(gem.Name, gem.Version),
 		EvidenceList: ruby.NewEvidenceList(evidence),
+		DependsOn:    dependsOnRefs(gem.Deps, byName),
 	}
 }

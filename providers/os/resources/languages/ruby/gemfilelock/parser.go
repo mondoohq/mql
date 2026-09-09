@@ -20,4 +20,13 @@ type gemfileLock struct {
 type gemEntry struct {
 	Name    string
 	Version string
+	// Deps are the gem names listed beneath this entry in the specs section --
+	// its own runtime dependencies, as Bundler resolved them. Names only: the
+	// constraint written beside each one (`rack (~> 2.2)`) is a requirement, not
+	// the resolved version, which is on that gem's own spec entry.
+	//
+	// This is the RubyGems package->package graph. Bundler writes it into every
+	// Gemfile.lock and the parser skipped past it, so a consumer could see which
+	// gems a project resolves but not which of them any other gem pulls in.
+	Deps []string
 }
