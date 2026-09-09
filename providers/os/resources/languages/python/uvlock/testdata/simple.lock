@@ -5,6 +5,10 @@ requires-python = ">=3.11"
 name = "my-project"
 version = "0.1.0"
 source = { virtual = "." }
+dependencies = [
+    { name = "django" },
+    { name = "requests" },
+]
 
 [[package]]
 name = "django"
@@ -15,6 +19,16 @@ source = { registry = "https://pypi.org/simple" }
 name = "requests"
 version = "2.31.0"
 source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "urllib3" },
+    { name = "not-locked" },
+]
+
+[package.optional-dependencies]
+socks = [
+    { name = "charset_normalizer" },
+]
 
 [[package]]
 name = "certifi"
@@ -24,4 +38,9 @@ source = { registry = "https://pypi.org/simple" }
 [[package]]
 name = "urllib3"
 version = "2.1.0"
+source = { registry = "https://pypi.org/simple" }
+
+[[package]]
+name = "charset-normalizer"
+version = "3.3.2"
 source = { registry = "https://pypi.org/simple" }

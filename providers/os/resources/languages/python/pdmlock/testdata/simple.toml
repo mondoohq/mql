@@ -12,6 +12,11 @@ groups = ["default"]
 name = "requests"
 version = "2.31.0"
 groups = ["default"]
+dependencies = [
+    "certifi>=2017.4.17",
+    "charset_normalizer<4,>=2",
+    "not-locked>=1.0",
+]
 
 [[package]]
 name = "pytest"
@@ -21,4 +26,9 @@ groups = ["dev"]
 [[package]]
 name = "certifi"
 version = "2024.2.2"
+groups = ["default"]
+
+[[package]]
+name = "charset-normalizer"
+version = "3.3.2"
 groups = ["default"]
