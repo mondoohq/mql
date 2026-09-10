@@ -23,6 +23,7 @@ dependencies = [
     { name = "certifi" },
     { name = "urllib3" },
     { name = "not-locked" },
+    { name = "zope.interface" },
 ]
 
 [package.optional-dependencies]
@@ -43,4 +44,12 @@ source = { registry = "https://pypi.org/simple" }
 [[package]]
 name = "charset-normalizer"
 version = "3.3.2"
+source = { registry = "https://pypi.org/simple" }
+
+# Spelled the way the project publishes it. Neither this nor the reference above
+# is PEP 503 normalized, and they are not normalized the SAME way, so resolving
+# the edge needs BOTH the index and the lookup normalized.
+[[package]]
+name = "Zope_Interface"
+version = "6.1"
 source = { registry = "https://pypi.org/simple" }

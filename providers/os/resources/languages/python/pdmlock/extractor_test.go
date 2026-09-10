@@ -24,7 +24,7 @@ func TestParseSimple(t *testing.T) {
 	assert.Nil(t, bom.Direct())
 
 	pkgs := bom.Transitive()
-	assert.Len(t, pkgs, 5)
+	assert.Len(t, pkgs, 6)
 
 	django := pkgs.Find("django")
 	require.NotNil(t, django)
@@ -62,6 +62,7 @@ func TestPdmLockDependencyEdges(t *testing.T) {
 	assert.Equal(t, []string{
 		"pkg:pypi/certifi@2024.2.2",
 		"pkg:pypi/charset-normalizer@3.3.2",
+		"pkg:pypi/zope-interface@6.1",
 	}, requests.DependsOn)
 
 	assert.Nil(t, pkgs.Find("certifi").DependsOn)
@@ -86,4 +87,30 @@ func TestPep508Name(t *testing.T) {
 	for in, want := range cases {
 		assert.Equal(t, want, pep508Name(in), "pep508Name(%q)", in)
 	}
+}
+
+// TestPdmLockNormalizesBothSidesOfTheIndex covers the half of normalization the
+// existing test cannot reach.
+//
+// Names are normalized in two places -- building the index from each package's
+// own name, and looking a requirement up in it -- and a fixture whose package
+// entries are already normalized exercises only the second. Dropping
+// `NormalizeName` from the index side passed the whole suite, so the code had a
+// test named for the property that could not fail if half of it broke.
+//
+// The two spellings here are deliberately different from each other and both
+// non-normalized: `Zope_Interface` as the entry, `zope.interface` in the
+// requirement. A same-spelling pair would still resolve with the index side
+// removed, which is exactly how this hid.
+func TestPdmLockNormalizesBothSidesOfTheIndex(t *testing.T) {
+	f, err := os.Open("testdata/simple.toml")
+	require.NoError(t, err)
+	defer f.Close()
+
+	bom, err := (&Extractor{}).Parse(f, "pdm.lock")
+	require.NoError(t, err)
+
+	assert.Contains(t, bom.Transitive().Find("requests").DependsOn,
+		"pkg:pypi/zope-interface@6.1",
+		"resolving this edge needs the entry AND the requirement normalized")
 }

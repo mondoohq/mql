@@ -16,6 +16,7 @@ dependencies = [
     "certifi>=2017.4.17",
     "charset_normalizer<4,>=2",
     "not-locked>=1.0",
+    "zope.interface>=5.0",
 ]
 
 [[package]]
@@ -31,4 +32,12 @@ groups = ["default"]
 [[package]]
 name = "charset-normalizer"
 version = "3.3.2"
+groups = ["default"]
+
+# Spelled the way the project publishes it. Neither this nor the requirement
+# above is PEP 503 normalized, and they are not normalized the SAME way, so
+# resolving the edge needs BOTH the index and the lookup normalized.
+[[package]]
+name = "Zope_Interface"
+version = "6.1"
 groups = ["default"]
