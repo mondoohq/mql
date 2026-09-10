@@ -5058,6 +5058,7 @@ aws.elb.loadbalancer.attributes 11.15.2
 aws.elb.loadbalancer.availabilityZones 11.15.2
 aws.elb.loadbalancer.cloudformationStack 13.39.2
 aws.elb.loadbalancer.createdAt 11.15.2
+aws.elb.loadbalancer.crossZoneLoadBalancing 13.53.4
 aws.elb.loadbalancer.dnsName 11.15.2
 aws.elb.loadbalancer.elbType 11.15.2
 aws.elb.loadbalancer.enforceSecurityGroupInboundRulesOnPrivateLinkTraffic 13.53.4

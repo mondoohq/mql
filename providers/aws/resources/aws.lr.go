@@ -12393,6 +12393,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.elb.loadbalancer.attribute": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsElbLoadbalancer).GetAttribute()).ToDataRes(types.Resource("aws.elb.loadbalancer.attribute"))
 	},
+	"aws.elb.loadbalancer.crossZoneLoadBalancing": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsElbLoadbalancer).GetCrossZoneLoadBalancing()).ToDataRes(types.Bool)
+	},
 	"aws.elb.loadbalancer.healthCheck": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsElbLoadbalancer).GetHealthCheck()).ToDataRes(types.Dict)
 	},
@@ -48258,6 +48261,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.elb.loadbalancer.attribute": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsElbLoadbalancer).Attribute, ok = plugin.RawToTValue[*mqlAwsElbLoadbalancerAttribute](v.Value, v.Error)
+		return
+	},
+	"aws.elb.loadbalancer.crossZoneLoadBalancing": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsElbLoadbalancer).CrossZoneLoadBalancing, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"aws.elb.loadbalancer.healthCheck": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -113424,6 +113431,7 @@ type mqlAwsElbLoadbalancer struct {
 	Listeners                                            plugin.TValue[[]any]
 	EnforcesTls                                          plugin.TValue[bool]
 	Attribute                                            plugin.TValue[*mqlAwsElbLoadbalancerAttribute]
+	CrossZoneLoadBalancing                               plugin.TValue[bool]
 	HealthCheck                                          plugin.TValue[any]
 }
 
@@ -113675,6 +113683,12 @@ func (c *mqlAwsElbLoadbalancer) GetAttribute() *plugin.TValue[*mqlAwsElbLoadbala
 		}
 
 		return c.attribute()
+	})
+}
+
+func (c *mqlAwsElbLoadbalancer) GetCrossZoneLoadBalancing() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.CrossZoneLoadBalancing, func() (bool, error) {
+		return c.crossZoneLoadBalancing()
 	})
 }
 

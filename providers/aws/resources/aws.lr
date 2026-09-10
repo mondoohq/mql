@@ -7175,6 +7175,15 @@ private aws.elb.loadbalancer @defaults("name region elbType scheme dnsName") {
   enforcesTls() bool
   // Typed attributes for ALB/NLB load balancers
   attribute() aws.elb.loadbalancer.attribute
+  // Whether cross-zone load balancing is enabled
+  //
+  // When enabled, each load balancer node distributes traffic across the
+  // registered targets in every enabled availability zone; when disabled, a
+  // node only reaches targets in its own zone, so an imbalanced zone becomes a
+  // capacity and availability problem. Always true for application load
+  // balancers, which cannot turn it off. Reported for classic, application,
+  // network, and gateway load balancers alike.
+  crossZoneLoadBalancing() bool
   // Classic load balancer health check
   //
   // Health check configuration for a Classic Load Balancer, null for
@@ -7378,9 +7387,11 @@ private aws.elb.loadbalancer.attribute {
   deletionProtectionEnabled bool
   // Cross-zone load balancing setting
   //
-  // Value of the `load_balancing.cross_zone.enabled` attribute, either
-  // `true` or `false`. Always `true` for application load balancers.
-  crossZoneEnabled string
+  // Deprecated in favor of aws.elb.loadbalancer.crossZoneLoadBalancing, which
+  // reports a boolean and covers classic load balancers as well. Value of the
+  // `load_balancing.cross_zone.enabled` attribute, either `true` or `false`.
+  // Always `true` for application load balancers.
+  crossZoneEnabled @maturity("deprecated") @replaced_by("aws.elb.loadbalancer.crossZoneLoadBalancing") string
   // Whether access logs are enabled
   accessLogsEnabled bool
   // S3 bucket for access logs

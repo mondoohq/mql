@@ -266,10 +266,47 @@ type mqlAwsElbLoadbalancerInternal struct {
 	v2AttrsFetched bool
 	v2AttrsLock    sync.Mutex
 
+	// Cached v1 DescribeLoadBalancerAttributes response, shared between attributes()
+	// and crossZoneLoadBalancing() so a classic load balancer is described once.
+	cachedV1Attrs  *elbv1types.LoadBalancerAttributes
+	v1AttrsFetched bool
+	v1AttrsLock    sync.Mutex
+
 	// Tag caching for the filter guard pattern during listing.
 	cacheTags   map[string]any
 	tagsFetched bool
 	tagsLock    sync.Mutex
+}
+
+// fetchV1Attrs fetches and caches classic load balancer attributes with
+// double-check locking.
+func (a *mqlAwsElbLoadbalancer) fetchV1Attrs() (*elbv1types.LoadBalancerAttributes, error) {
+	if a.v1AttrsFetched {
+		return a.cachedV1Attrs, nil
+	}
+	a.v1AttrsLock.Lock()
+	defer a.v1AttrsLock.Unlock()
+	if a.v1AttrsFetched {
+		return a.cachedV1Attrs, nil
+	}
+
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	region, err := GetRegionFromArn(a.Arn.Data)
+	if err != nil {
+		return nil, err
+	}
+	name := a.Name.Data
+	svc := conn.Elb(region)
+
+	resp, err := svc.DescribeLoadBalancerAttributes(context.Background(),
+		&elasticloadbalancing.DescribeLoadBalancerAttributesInput{LoadBalancerName: &name})
+	if err != nil {
+		return nil, err
+	}
+
+	a.cachedV1Attrs = resp.LoadBalancerAttributes
+	a.v1AttrsFetched = true
+	return a.cachedV1Attrs, nil
 }
 
 // fetchV2Attrs fetches and caches v2 load balancer attributes with double-check locking.
@@ -584,23 +621,12 @@ func (a *mqlAwsElbLoadbalancer) listenerDescriptions() ([]any, error) {
 }
 
 func (a *mqlAwsElbLoadbalancer) attributes() ([]any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	arnVal := a.Arn.Data
-	name := a.Name.Data
-
-	region, err := GetRegionFromArn(arnVal)
-	if err != nil {
-		return nil, err
-	}
-
-	if isV1LoadBalancerArn(arnVal) {
-		svc := conn.Elb(region)
-		ctx := context.Background()
-		attributes, err := svc.DescribeLoadBalancerAttributes(ctx, &elasticloadbalancing.DescribeLoadBalancerAttributesInput{LoadBalancerName: &name})
+	if isV1LoadBalancerArn(a.Arn.Data) {
+		attributes, err := a.fetchV1Attrs()
 		if err != nil {
 			return nil, err
 		}
-		j, err := convert.JsonToDict(attributes.LoadBalancerAttributes)
+		j, err := convert.JsonToDict(attributes)
 		if err != nil {
 			return nil, err
 		}
@@ -1435,6 +1461,42 @@ func attrMapInt(m map[string]string, key string) int64 {
 
 func (a *mqlAwsElbLoadbalancerAttribute) id() (string, error) {
 	return a.LoadBalancerArn.Data + "/attributes", nil
+}
+
+// crossZoneLoadBalancing reports whether cross-zone load balancing is on. The
+// setting lives in a different place for each load balancer family: classic
+// load balancers carry a dedicated CrossZoneLoadBalancing struct, while ELBv2
+// load balancers carry the load_balancing.cross_zone.enabled attribute.
+func (a *mqlAwsElbLoadbalancer) crossZoneLoadBalancing() (bool, error) {
+	if isV1LoadBalancerArn(a.Arn.Data) {
+		attrs, err := a.fetchV1Attrs()
+		if err != nil {
+			return false, err
+		}
+		if attrs == nil || attrs.CrossZoneLoadBalancing == nil {
+			return false, nil
+		}
+		return attrs.CrossZoneLoadBalancing.Enabled, nil
+	}
+
+	attrs, err := a.fetchV2Attrs()
+	if err != nil {
+		return false, err
+	}
+	return crossZoneEnabledFromV2Attrs(attrs), nil
+}
+
+// crossZoneEnabledFromV2Attrs reads load_balancing.cross_zone.enabled out of an
+// ELBv2 attribute list. The attribute is absent on load balancer types that do
+// not carry the setting, which reads as disabled.
+func crossZoneEnabledFromV2Attrs(attrs []elbtypes.LoadBalancerAttribute) bool {
+	for _, attr := range attrs {
+		if attr.Key == nil || *attr.Key != "load_balancing.cross_zone.enabled" {
+			continue
+		}
+		return attr.Value != nil && *attr.Value == "true"
+	}
+	return false
 }
 
 func (a *mqlAwsElbLoadbalancer) attribute() (*mqlAwsElbLoadbalancerAttribute, error) {

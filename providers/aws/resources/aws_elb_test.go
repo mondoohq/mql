@@ -6,6 +6,7 @@ package resources
 import (
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	elbtypes "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -75,4 +76,56 @@ func TestIsV1LoadBalancerArn(t *testing.T) {
 			assert.Equal(t, tt.want, isV1LoadBalancerArn(tt.arn))
 		})
 	}
+}
+
+// TestCrossZoneEnabledFromV2Attrs verifies that the cross-zone attribute is
+// read by exact key and only the literal "true" counts as enabled. The
+// attribute is absent on load balancer types that do not carry the setting,
+// which must read as disabled rather than as an error.
+func TestCrossZoneEnabledFromV2Attrs(t *testing.T) {
+	key := "load_balancing.cross_zone.enabled"
+	other := "deletion_protection.enabled"
+
+	t.Run("enabled", func(t *testing.T) {
+		assert.True(t, crossZoneEnabledFromV2Attrs([]elbtypes.LoadBalancerAttribute{
+			{Key: &key, Value: aws.String("true")},
+		}))
+	})
+
+	t.Run("disabled", func(t *testing.T) {
+		assert.False(t, crossZoneEnabledFromV2Attrs([]elbtypes.LoadBalancerAttribute{
+			{Key: &key, Value: aws.String("false")},
+		}))
+	})
+
+	t.Run("attribute absent reads as disabled", func(t *testing.T) {
+		assert.False(t, crossZoneEnabledFromV2Attrs([]elbtypes.LoadBalancerAttribute{
+			{Key: &other, Value: aws.String("true")},
+		}))
+	})
+
+	t.Run("does not match on a different key carrying true", func(t *testing.T) {
+		prefixed := "routing." + key
+		assert.False(t, crossZoneEnabledFromV2Attrs([]elbtypes.LoadBalancerAttribute{
+			{Key: &prefixed, Value: aws.String("true")},
+		}))
+	})
+
+	t.Run("nil value reads as disabled", func(t *testing.T) {
+		assert.False(t, crossZoneEnabledFromV2Attrs([]elbtypes.LoadBalancerAttribute{
+			{Key: &key, Value: nil},
+		}))
+	})
+
+	t.Run("nil key is skipped, later match still wins", func(t *testing.T) {
+		assert.True(t, crossZoneEnabledFromV2Attrs([]elbtypes.LoadBalancerAttribute{
+			{Key: nil, Value: aws.String("false")},
+			{Key: &key, Value: aws.String("true")},
+		}))
+	})
+
+	t.Run("empty and nil attribute lists read as disabled", func(t *testing.T) {
+		assert.False(t, crossZoneEnabledFromV2Attrs([]elbtypes.LoadBalancerAttribute{}))
+		assert.False(t, crossZoneEnabledFromV2Attrs(nil))
+	})
 }
