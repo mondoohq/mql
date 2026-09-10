@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net9.0": {
+      "Contoso.Core": {
+        "type": "Direct",
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "n9"
+      }
+    },
+    "net472": {
+      "Contoso.Core": {
+        "type": "Direct",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "n4"
+      }
+    }
+  }
+}
