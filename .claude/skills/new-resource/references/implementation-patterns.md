@@ -88,7 +88,7 @@ func (a *mqlAwsDocumentdbSnapshot) vpc() (*mqlAwsVpc, error) {
 
 Run `./mqlr generate` a **second time** after adding an `Internal` struct; the first pass does not see it. Same on removal, or the stale embed fails the build with `undefined: mql<Name>Internal`. Name cache fields so they cannot collide with a generated accessor (`cachePath`, not `path`).
 
-**`securityGroupIdHandler`** (`providers/aws/resources/aws_ec2.go`) is a reusable embedded struct that turns a list of security group IDs into typed `[]aws.ec2.securitygroup` references:
+**`securityGroupIdHandler`** (`providers/aws/resources/aws.go`) is a reusable embedded struct that turns a list of security group IDs into typed `[]aws.ec2.securitygroup` references:
 
 ```go
 type mqlAwsRdsProxyInternal struct {
