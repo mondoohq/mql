@@ -1,0 +1,37 @@
+[Application]
+name=org.mozilla.firefox
+runtime=org.freedesktop.Platform/aarch64/25.08
+sdk=org.freedesktop.Sdk/aarch64/25.08
+base=app/org.mozilla.firefox.BaseApp/aarch64/25.08
+command=firefox
+required-flatpak=0.11.1
+
+[Extension org.mozilla.firefox.Locale]
+directory=share/runtime/langpack
+autodelete=true
+locale-subset=true
+
+[Extension org.mozilla.firefox.systemconfig]
+directory=etc/firefox
+no-autodownload=true
+
+[Context]
+shared=network;ipc;
+sockets=x11;wayland;pulseaudio;fallback-x11;pcsc;cups;
+devices=all;
+features=devel;
+filesystems=xdg-config/gtk-3.0:ro;xdg-download;/run/.heim_org.h5l.kcm-socket;xdg-run/speech-dispatcher:ro;
+persistent=.mozilla;
+
+[Session Bus Policy]
+org.mozilla.firefox.*=own
+org.gtk.vfs.*=talk
+org.mpris.MediaPlayer2.firefox.*=own
+org.a11y.Bus=talk
+org.freedesktop.FileManager1=talk
+
+[System Bus Policy]
+org.freedesktop.NetworkManager=talk
+
+[Environment]
+DICPATH=/usr/share/hunspell
