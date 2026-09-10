@@ -7989,8 +7989,11 @@ aws.opensearch.domain 11.15.2
 aws.opensearch.domain.accessPolicies 13.53.4
 aws.opensearch.domain.advancedSecurityEnabled 11.15.2
 aws.opensearch.domain.anonymousAuthEnabled 11.15.2
+aws.opensearch.domain.applicationLogEnabled 13.53.4
+aws.opensearch.domain.applicationLogGroup 13.53.4
 aws.opensearch.domain.arn 11.15.2
 aws.opensearch.domain.auditLogEnabled 11.15.2
+aws.opensearch.domain.auditLogGroup 13.53.4
 aws.opensearch.domain.autoSoftwareUpdateEnabled 11.16.1
 aws.opensearch.domain.autoTuneState 11.15.2
 aws.opensearch.domain.automatedSnapshotPauseEnabled 13.25.1
@@ -8018,6 +8021,8 @@ aws.opensearch.domain.encryptionAtRestKmsKey 11.16.1
 aws.opensearch.domain.endpoint 11.15.2
 aws.opensearch.domain.enforceHTTPS 11.15.2
 aws.opensearch.domain.engineVersion 11.15.2
+aws.opensearch.domain.indexSlowLogEnabled 13.53.4
+aws.opensearch.domain.indexSlowLogGroup 13.53.4
 aws.opensearch.domain.instanceCount 11.15.2
 aws.opensearch.domain.instanceType 11.15.2
 aws.opensearch.domain.internalUserDatabaseEnabled 11.15.2
@@ -8038,6 +8043,8 @@ aws.opensearch.domain.policyStatements 13.53.4
 aws.opensearch.domain.processing 11.15.2
 aws.opensearch.domain.region 11.15.2
 aws.opensearch.domain.samlEnabled 11.15.2
+aws.opensearch.domain.searchSlowLogEnabled 13.53.4
+aws.opensearch.domain.searchSlowLogGroup 13.53.4
 aws.opensearch.domain.securityGroups 11.15.2
 aws.opensearch.domain.serviceSoftwareAutomatedUpdateDate 13.39.2
 aws.opensearch.domain.serviceSoftwareCancellable 13.39.2

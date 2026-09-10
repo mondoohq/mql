@@ -11823,6 +11823,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.opensearch.domain.auditLogEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsOpensearchDomain).GetAuditLogEnabled()).ToDataRes(types.Bool)
 	},
+	"aws.opensearch.domain.auditLogGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchDomain).GetAuditLogGroup()).ToDataRes(types.Resource("aws.cloudwatch.loggroup"))
+	},
+	"aws.opensearch.domain.indexSlowLogEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchDomain).GetIndexSlowLogEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.opensearch.domain.indexSlowLogGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchDomain).GetIndexSlowLogGroup()).ToDataRes(types.Resource("aws.cloudwatch.loggroup"))
+	},
+	"aws.opensearch.domain.searchSlowLogEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchDomain).GetSearchSlowLogEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.opensearch.domain.searchSlowLogGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchDomain).GetSearchSlowLogGroup()).ToDataRes(types.Resource("aws.cloudwatch.loggroup"))
+	},
+	"aws.opensearch.domain.applicationLogEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchDomain).GetApplicationLogEnabled()).ToDataRes(types.Bool)
+	},
+	"aws.opensearch.domain.applicationLogGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsOpensearchDomain).GetApplicationLogGroup()).ToDataRes(types.Resource("aws.cloudwatch.loggroup"))
+	},
 	"aws.opensearch.domain.ipAddressType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsOpensearchDomain).GetIpAddressType()).ToDataRes(types.String)
 	},
@@ -47450,6 +47471,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.opensearch.domain.auditLogEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsOpensearchDomain).AuditLogEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.opensearch.domain.auditLogGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchDomain).AuditLogGroup, ok = plugin.RawToTValue[*mqlAwsCloudwatchLoggroup](v.Value, v.Error)
+		return
+	},
+	"aws.opensearch.domain.indexSlowLogEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchDomain).IndexSlowLogEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.opensearch.domain.indexSlowLogGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchDomain).IndexSlowLogGroup, ok = plugin.RawToTValue[*mqlAwsCloudwatchLoggroup](v.Value, v.Error)
+		return
+	},
+	"aws.opensearch.domain.searchSlowLogEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchDomain).SearchSlowLogEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.opensearch.domain.searchSlowLogGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchDomain).SearchSlowLogGroup, ok = plugin.RawToTValue[*mqlAwsCloudwatchLoggroup](v.Value, v.Error)
+		return
+	},
+	"aws.opensearch.domain.applicationLogEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchDomain).ApplicationLogEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"aws.opensearch.domain.applicationLogGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsOpensearchDomain).ApplicationLogGroup, ok = plugin.RawToTValue[*mqlAwsCloudwatchLoggroup](v.Value, v.Error)
 		return
 	},
 	"aws.opensearch.domain.ipAddressType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -111556,6 +111605,13 @@ type mqlAwsOpensearchDomain struct {
 	CreatedAt                          plugin.TValue[*time.Time]
 	AutoTuneState                      plugin.TValue[string]
 	AuditLogEnabled                    plugin.TValue[bool]
+	AuditLogGroup                      plugin.TValue[*mqlAwsCloudwatchLoggroup]
+	IndexSlowLogEnabled                plugin.TValue[bool]
+	IndexSlowLogGroup                  plugin.TValue[*mqlAwsCloudwatchLoggroup]
+	SearchSlowLogEnabled               plugin.TValue[bool]
+	SearchSlowLogGroup                 plugin.TValue[*mqlAwsCloudwatchLoggroup]
+	ApplicationLogEnabled              plugin.TValue[bool]
+	ApplicationLogGroup                plugin.TValue[*mqlAwsCloudwatchLoggroup]
 	IpAddressType                      plugin.TValue[string]
 	ServiceSoftwareNewVersion          plugin.TValue[string]
 	ServiceSoftwareCurrentVersion      plugin.TValue[string]
@@ -111850,6 +111906,82 @@ func (c *mqlAwsOpensearchDomain) GetAutoTuneState() *plugin.TValue[string] {
 
 func (c *mqlAwsOpensearchDomain) GetAuditLogEnabled() *plugin.TValue[bool] {
 	return &c.AuditLogEnabled
+}
+
+func (c *mqlAwsOpensearchDomain) GetAuditLogGroup() *plugin.TValue[*mqlAwsCloudwatchLoggroup] {
+	return plugin.GetOrCompute[*mqlAwsCloudwatchLoggroup](&c.AuditLogGroup, func() (*mqlAwsCloudwatchLoggroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.opensearch.domain", c.__id, "auditLogGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsCloudwatchLoggroup), nil
+			}
+		}
+
+		return c.auditLogGroup()
+	})
+}
+
+func (c *mqlAwsOpensearchDomain) GetIndexSlowLogEnabled() *plugin.TValue[bool] {
+	return &c.IndexSlowLogEnabled
+}
+
+func (c *mqlAwsOpensearchDomain) GetIndexSlowLogGroup() *plugin.TValue[*mqlAwsCloudwatchLoggroup] {
+	return plugin.GetOrCompute[*mqlAwsCloudwatchLoggroup](&c.IndexSlowLogGroup, func() (*mqlAwsCloudwatchLoggroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.opensearch.domain", c.__id, "indexSlowLogGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsCloudwatchLoggroup), nil
+			}
+		}
+
+		return c.indexSlowLogGroup()
+	})
+}
+
+func (c *mqlAwsOpensearchDomain) GetSearchSlowLogEnabled() *plugin.TValue[bool] {
+	return &c.SearchSlowLogEnabled
+}
+
+func (c *mqlAwsOpensearchDomain) GetSearchSlowLogGroup() *plugin.TValue[*mqlAwsCloudwatchLoggroup] {
+	return plugin.GetOrCompute[*mqlAwsCloudwatchLoggroup](&c.SearchSlowLogGroup, func() (*mqlAwsCloudwatchLoggroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.opensearch.domain", c.__id, "searchSlowLogGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsCloudwatchLoggroup), nil
+			}
+		}
+
+		return c.searchSlowLogGroup()
+	})
+}
+
+func (c *mqlAwsOpensearchDomain) GetApplicationLogEnabled() *plugin.TValue[bool] {
+	return &c.ApplicationLogEnabled
+}
+
+func (c *mqlAwsOpensearchDomain) GetApplicationLogGroup() *plugin.TValue[*mqlAwsCloudwatchLoggroup] {
+	return plugin.GetOrCompute[*mqlAwsCloudwatchLoggroup](&c.ApplicationLogGroup, func() (*mqlAwsCloudwatchLoggroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.opensearch.domain", c.__id, "applicationLogGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsCloudwatchLoggroup), nil
+			}
+		}
+
+		return c.applicationLogGroup()
+	})
 }
 
 func (c *mqlAwsOpensearchDomain) GetIpAddressType() *plugin.TValue[string] {

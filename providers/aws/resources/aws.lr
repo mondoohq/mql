@@ -6608,6 +6608,20 @@ private aws.opensearch.domain @defaults("name engineVersion") {
   autoTuneState string
   // Whether audit logging is enabled for the domain
   auditLogEnabled bool
+  // CloudWatch log group receiving audit logs
+  auditLogGroup() aws.cloudwatch.loggroup
+  // Whether index slow log publishing is enabled
+  indexSlowLogEnabled bool
+  // CloudWatch log group receiving index slow logs
+  indexSlowLogGroup() aws.cloudwatch.loggroup
+  // Whether search slow log publishing is enabled
+  searchSlowLogEnabled bool
+  // CloudWatch log group receiving search slow logs
+  searchSlowLogGroup() aws.cloudwatch.loggroup
+  // Whether OpenSearch application log publishing is enabled
+  applicationLogEnabled bool
+  // CloudWatch log group receiving OpenSearch application logs
+  applicationLogGroup() aws.cloudwatch.loggroup
   // IP address type for the domain (ipv4 or dualstack)
   ipAddressType string
   // New service software version available for the domain (empty string if up to date)
