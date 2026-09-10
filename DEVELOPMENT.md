@@ -346,6 +346,44 @@ AssetUrlTrees: []*inventory.AssetUrlBranch{
 
 The build emits the tree into `providers/<your-provider>/dist/<your-provider>.json`; check it with `make providers/build/<your-provider>` and grep for `AssetUrlTrees` in the dist json. Mention the resulting URL shape in the provider's `README.md` so reviewers know what asset paths to expect.
 
+## Architecture overview
+
+```
+mql/
+├── cli/                    # CLI commands and execution runtime
+├── mql/                    # MQL executor (high-level query interface)
+├── mqlc/                   # MQL compiler (parses MQL to bytecode)
+├── llx/                    # Low-level execution engine (bytecode VM)
+├── providers/              # Provider coordinator and built-in providers
+├── providers-sdk/v1/       # SDK for building provider plugins
+├── explorer/               # Query bundles, packs, and execution orchestration
+├── content/                # Built-in query packs and policies
+├── apps/mql/               # Main mql CLI application
+└── apps/mql/cmd/           # CLI command implementations (shell in cli/shell/, output formats in cli/reporter/)
+```
+
+**Query execution.** MQL string → `mqlc.Compile()` → `llx.CodeBundle` (protobuf bytecode + metadata) → wrapped in
+`explorer.ExecutionQuery` → run by `executor.Executor` against the runtime → `llx.RawResult`. The layers are **MQL**
+(`mql/`, high-level executor), **MQLC** (`mqlc/`, compiles text to bytecode) and **LLX** (`llx/`, the bytecode VM).
+
+**Providers** are gRPC plugins (hashicorp/go-plugin), each its own Go module so dependency trees stay separate and
+binaries small. The **core provider** (`asset`, `time`, `regex`) is always compiled in; the others are external
+binaries loaded at runtime, and can be made builtin for debugging via `providers.yaml` (see [Debug providers](#debug-providers)).
+`providers.Coordinator` spawns each as a subprocess; each implements `ParseCLI()`/`Connect()`/`GetData()`/
+`StoreData()`/`Disconnect()`; `providers.Runtime` manages them per asset, and they can discover child assets (K8s → pods).
+
+**Field resolution.** The compiler requests a field → `provider.GetData(connection, resource, field, args)` → backend
+fetch (cloud API, SSH, …) → `llx.Primitive` → `llx.RawData`, cached in the executor. Field access is lazy: only the
+fields a query touches are fetched.
+
+**Code generation.** Three steps feed the build: protobuf (`.proto` → `.pb.go`), resources (`.lr` → `.lr.go`,
+`.lr.versions`, `.resources.json`, `.permissions.json`), and provider config (`providers.yaml` → `builtin_dev.go`).
+`make mql/generate` runs all three; `make providers/mqlr` builds the resource generator for a single-provider run.
+
+**Provider layout.** Each provider under `providers/<name>/` has `config/` (provider configuration), `connection/`
+(connection management and auth), `provider/` (ParseCLI, Connect, GetData), `resources/` (implementations and `.lr`
+files), `main.go` (binary entry point) and `gen/main.go` (generates the CLI configuration JSON).
+
 ## Providers development best practices
 
 The more time we spend building providers, the more we learn how to do better in the future. Here we describe learnings
@@ -358,6 +396,10 @@ are not just for code readers — the code generator emits them as the `title`/`
 generated `*.resources.json`, which is what powers our user-facing docs and IDE autocomplete. A field with no comment
 ends up as an empty entry in the docs.
 
+The parser enforces the comment's shape: either a single title line, or a title, one blank `//` line, and a multi-line
+description. Titles are capped at 150 characters, may not start with "deprecated", and descriptions may not start with
+`Deprecated.` or `Deprecated:`. The full set of enforced and stylistic rules is in `CLAUDE.md` §2 Step 1.
+
 Write the comment for someone who has never seen the provider's Go code:
 
 - **Describe what it represents, not how it's implemented.** "Static IP address reserved for a project" is useful;
@@ -368,12 +410,16 @@ Write the comment for someone who has never seen the provider's Go code:
   settings" beats a bare "GitHub resource".
 - **Match the SDK/API vocabulary** that someone reading docs would search for (e.g., "Amazon S3 bucket lifecycle rule",
   not "lifecycle entry on the bucket").
-- **For deprecated fields**, prefix the comment with `DEPRECATED:` and name the replacement (see the `@maturity`
-  section in `CLAUDE.md`).
+- **For deprecated fields**, mark them `@maturity("deprecated")` and open the description with
+  `Deprecated in favor of ...` or `Deprecated, please use ...`. The title stays a plain noun phrase; a title or
+  description that starts with "deprecated" is rejected at parse time (see `CLAUDE.md` §5).
+- **No em dashes** in `.lr` files. Use a period, comma, parentheses, or colon.
 
 ```lr
-// Snowflake Data Cloud — entry point for inspecting accounts, users, roles, grants, databases,
-// warehouses, shares, and network/password/session policies
+// Snowflake Data Cloud
+//
+// Entry point for inspecting accounts, users, roles, grants, databases,
+// warehouses, shares, and network/password/session policies.
 snowflake {
   // Role currently in use for this Snowflake session
   currentRole() string

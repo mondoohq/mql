@@ -8,6 +8,8 @@ argument-hint: "<provider>/<resource> (e.g. os/bind9, aws/aws.ec2.instance)"
 
 **CLAUDE.md is the rulebook** — doc-comment format, the typed-reference gate, `CreateResource` vs `NewResource`, `.lr.versions`, the sub-resource bar. Read it and follow it. This skill is the part that rulebooks do not carry: the traps that bite *even when you know the rule*, the commands that catch them mechanically, and the verification that proves the resource against a real target rather than against your reading of it.
 
+The Go shapes behind the rules — `CreateResource`/`NewResource`/`init`, `Internal` structs and `securityGroupIdHandler`, null singular accessors, lazy detail fetches, the `command` resource, discovery filters, pagination — are in [references/implementation-patterns.md](references/implementation-patterns.md). Open it once the shape is decided (step 2) and you start writing Go.
+
 Work through it in order. Every step ends in something you can run.
 
 ## 1. Ground the schema in a real artifact before writing it
