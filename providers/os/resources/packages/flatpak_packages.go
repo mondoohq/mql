@@ -463,8 +463,13 @@ func parseFlatpakDir(afs *afero.Afero, appDir, installationRoot string) ([]flatp
 				}
 				branch := branchEntry.Name()
 
-				deploy, ok := resolveFlatpakDeployment(afs, path.Join(branchDir, branch), installationRoot, appID, arch, branch)
-				if !ok {
+				deploy, outcome := resolveFlatpakDeployment(afs, path.Join(branchDir, branch), installationRoot, appID, arch, branch)
+				switch outcome {
+				case flatpakResolveNotADeployment:
+					// Not a branch. Silent by design -- see
+					// flatpakResolveOutcome.
+					continue
+				case flatpakResolveUnreadable:
 					// A branch directory exists but no deployment could be read
 					// from it. Warn rather than skip silently: deploy is a
 					// versioned GVariant tuple, so a future flatpak that
@@ -490,6 +495,28 @@ func parseFlatpakDir(afs *afero.Afero, appDir, installationRoot string) ([]flatp
 	return deployments, nil
 }
 
+// flatpakResolveOutcome says why a branch directory produced no deployment.
+//
+// The two failures are not the same event and must not log the same way. A
+// directory that holds nothing deployment-shaped is simply not a branch, and on
+// a container IMAGE there are many of them: the image is read as a layered tar
+// whose ReadDir reports every descendant, not just direct children, so each
+// file under the deployment (locale codes, icon sizes, bin, browser) comes back
+// as a branch candidate. One installed application produced 154 of them. Those
+// must be silent. A directory that does hold commit-named subdirectories but
+// yielded no readable record is the case worth a WARN.
+type flatpakResolveOutcome int
+
+const (
+	// flatpakResolveOK means a deployment was read.
+	flatpakResolveOK flatpakResolveOutcome = iota
+	// flatpakResolveNotADeployment means the directory is not a branch.
+	flatpakResolveNotADeployment
+	// flatpakResolveUnreadable means it looks like a branch but no deployment
+	// record could be read from it.
+	flatpakResolveUnreadable
+)
+
 // resolveFlatpakDeployment reads the deploy record for one
 // <app>/<arch>/<branch> directory.
 //
@@ -510,21 +537,26 @@ func parseFlatpakDir(afs *afero.Afero, appDir, installationRoot string) ([]flatp
 // which is live -- resolve that against the remote's OSTree ref, and if it
 // still cannot be decided, report nothing for this branch rather than guess a
 // version for the host.
-func resolveFlatpakDeployment(afs *afero.Afero, branchDir, installationRoot, appID, arch, branch string) (flatpakDeployment, bool) {
+func resolveFlatpakDeployment(afs *afero.Afero, branchDir, installationRoot, appID, arch, branch string) (flatpakDeployment, flatpakResolveOutcome) {
 	if deploy, ok := parseFlatpakDeployFile(afs, path.Join(branchDir, "active", "deploy")); ok {
-		return deploy, true
+		return deploy, flatpakResolveOK
 	}
 
 	entries, err := afs.ReadDir(branchDir)
 	if err != nil {
-		return flatpakDeployment{}, false
+		return flatpakDeployment{}, flatpakResolveNotADeployment
 	}
 
 	candidates := map[string]flatpakDeployment{}
+	// Commit-named subdirectories are what makes a directory a branch. Counting
+	// them separately from the ones that parsed is what tells "this is not a
+	// branch at all" apart from "this is a branch we could not read".
+	commitDirs := 0
 	for _, entry := range entries {
 		if !isFlatpakCommit(entry.Name()) {
 			continue
 		}
+		commitDirs++
 		deploy, ok := parseFlatpakDeployFile(afs, path.Join(branchDir, entry.Name(), "deploy"))
 		if !ok {
 			continue
@@ -539,10 +571,13 @@ func resolveFlatpakDeployment(afs *afero.Afero, branchDir, installationRoot, app
 
 	switch len(candidates) {
 	case 0:
-		return flatpakDeployment{}, false
+		if commitDirs == 0 {
+			return flatpakDeployment{}, flatpakResolveNotADeployment
+		}
+		return flatpakDeployment{}, flatpakResolveUnreadable
 	case 1:
 		for _, deploy := range candidates {
-			return deploy, true
+			return deploy, flatpakResolveOK
 		}
 	}
 
@@ -551,13 +586,13 @@ func resolveFlatpakDeployment(afs *afero.Afero, branchDir, installationRoot, app
 	for commit, deploy := range candidates {
 		refPath := path.Join(installationRoot, "repo", "refs", "remotes", deploy.origin, "app", appID, arch, branch)
 		if ref, err := afs.ReadFile(refPath); err == nil && strings.TrimSpace(string(ref)) == commit {
-			return deploy, true
+			return deploy, flatpakResolveOK
 		}
 	}
 
 	log.Debug().Str("app", appID).Str("branch", branch).Int("deployments", len(candidates)).
 		Msg("mql[flatpak]> cannot tell which deployment is active, skipping")
-	return flatpakDeployment{}, false
+	return flatpakDeployment{}, flatpakResolveUnreadable
 }
 
 // isFlatpakDeploymentDir rejects the two symlinks flatpak keeps alongside real

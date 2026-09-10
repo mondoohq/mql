@@ -549,3 +549,58 @@ func TestFlatpakScopeFromOptions(t *testing.T) {
 			remotes[flatpakRemoteKey("extra", "flathub")])
 	})
 }
+
+// TestResolveFlatpakDeploymentOutcomes pins the difference between a directory
+// that is not a branch and a branch whose record cannot be read. A container
+// image is read as a layered tar whose ReadDir reports every descendant, so
+// every file under a deployment arrives here as a branch candidate; warning on
+// those produced 154 WARN lines for a single installed application. Only the
+// unreadable case may warn.
+func TestResolveFlatpakDeploymentOutcomes(t *testing.T) {
+	const (
+		appID  = "org.mozilla.firefox"
+		arch   = "aarch64"
+		commit = "c84b98e041e58749e824ae83bb2de6da268f0a0ca19f299329a6943de768cb67"
+		root   = "/var/lib/flatpak"
+	)
+
+	t.Run("a readable deployment resolves", func(t *testing.T) {
+		afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+		branchDir := root + "/app/" + appID + "/" + arch + "/stable"
+		deploy := buildFlatpakDeploy("flathub", commit, [2]string{"appdata-version", "154.0.1"})
+		require.NoError(t, afs.WriteFile(branchDir+"/active/deploy", deploy, 0o644))
+
+		got, outcome := resolveFlatpakDeployment(afs, branchDir, root, appID, arch, "stable")
+		assert.Equal(t, flatpakResolveOK, outcome)
+		assert.Equal(t, "154.0.1", got.version)
+	})
+
+	t.Run("a path inside the deployment is not a branch", func(t *testing.T) {
+		afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+		// "browser" is a directory inside the deployed app, not a branch. It
+		// holds no commit-named subdirectory, so it must resolve silently.
+		branchDir := root + "/app/" + appID + "/" + arch + "/browser"
+		require.NoError(t, afs.WriteFile(branchDir+"/omni.ja", []byte("zip"), 0o644))
+
+		_, outcome := resolveFlatpakDeployment(afs, branchDir, root, appID, arch, "browser")
+		assert.Equal(t, flatpakResolveNotADeployment, outcome)
+	})
+
+	t.Run("a missing directory is not a branch", func(t *testing.T) {
+		afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+		_, outcome := resolveFlatpakDeployment(afs, root+"/app/"+appID+"/"+arch+"/th", root, appID, arch, "th")
+		assert.Equal(t, flatpakResolveNotADeployment, outcome)
+	})
+
+	t.Run("a commit directory that will not parse is unreadable", func(t *testing.T) {
+		afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+		branchDir := root + "/app/" + appID + "/" + arch + "/stable"
+		// Shaped like a deployment -- a commit-named directory -- but the
+		// record is not a deploy tuple. This is the case worth a WARN: a
+		// GVariant layout change would look exactly like this.
+		require.NoError(t, afs.WriteFile(branchDir+"/"+commit+"/deploy", []byte("not gvariant"), 0o644))
+
+		_, outcome := resolveFlatpakDeployment(afs, branchDir, root, appID, arch, "stable")
+		assert.Equal(t, flatpakResolveUnreadable, outcome)
+	})
+}
