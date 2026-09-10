@@ -48,8 +48,18 @@ func (f *File) Read(b []byte) (n int, err error) {
 	return f.reader.Read(b)
 }
 
+// ReadAt gives random access to the entry, which platform detection needs to
+// parse an ELF header. The tar entry is already extracted into memory, so the
+// underlying reader supports it directly.
 func (f *File) ReadAt(b []byte, off int64) (n int, err error) {
-	return 0, errors.New("not implemented yet")
+	if f.reader == nil {
+		return 0, errors.New("no tar data available")
+	}
+	ra, ok := f.reader.(io.ReaderAt)
+	if !ok {
+		return 0, errors.New("tar entry does not support random access")
+	}
+	return ra.ReadAt(b, off)
 }
 
 func (f *File) Readdir(n int) ([]os.FileInfo, error) {

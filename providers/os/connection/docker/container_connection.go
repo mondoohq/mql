@@ -308,7 +308,8 @@ func NewContainerImageConnection(id uint32, conf *inventory.Config, asset *inven
 		imageRef = conf.Host
 	}
 
-	tarConn, err := tar.NewConnection(
+	var tarConn *tar.Connection
+	tarConn, err = tar.NewConnection(
 		id,
 		conf,
 		asset,
@@ -316,6 +317,14 @@ func NewContainerImageConnection(id uint32, conf *inventory.Config, asset *inven
 			img, err := image.LoadImageFromDockerEngine(imageRef, disableInmemoryCache)
 			if err != nil {
 				return filename, err
+			}
+
+			// Carry the architecture over from the image config, the same way the
+			// registry path does. A tar connection has no command capability to ask
+			// `uname -m`, so without this the asset reports an empty architecture.
+			// This runs before platform detection reads the field back.
+			if imgConfig, cfgErr := img.ConfigFile(); cfgErr == nil && imgConfig != nil {
+				tarConn.PlatformArchitecture = imgConfig.Architecture
 			}
 
 			err = tar.StreamToTmpFile(mutate.Extract(img), tmpFile)
