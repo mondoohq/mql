@@ -1560,6 +1560,43 @@ func (a *mqlAwsS3Bucket) objectLockRetentionYears() (int64, error) {
 	return int64(*retention.Years), nil
 }
 
+// defaultObjectLockEventHold returns the bucket's default event hold
+// duration, or nil when the default retention rule does not configure one.
+func (a *mqlAwsS3Bucket) defaultObjectLockEventHold() (*s3types.EventHoldDuration, error) {
+	retention, err := a.defaultObjectLockRetention()
+	if err != nil {
+		return nil, err
+	}
+	if retention == nil {
+		return nil, nil
+	}
+	return retention.DefaultEventHold, nil
+}
+
+func (a *mqlAwsS3Bucket) objectLockEventHoldDays() (int64, error) {
+	hold, err := a.defaultObjectLockEventHold()
+	if err != nil {
+		return 0, err
+	}
+	if hold == nil || hold.Days == nil {
+		a.ObjectLockEventHoldDays.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return int64(*hold.Days), nil
+}
+
+func (a *mqlAwsS3Bucket) objectLockEventHoldYears() (int64, error) {
+	hold, err := a.defaultObjectLockEventHold()
+	if err != nil {
+		return 0, err
+	}
+	if hold == nil || hold.Years == nil {
+		a.ObjectLockEventHoldYears.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
+	}
+	return int64(*hold.Years), nil
+}
+
 func (a *mqlAwsS3Bucket) website() (*mqlAwsS3BucketWebsiteConfiguration, error) {
 	// Placeholder buckets (e.g., cross-account references) can't be queried
 	region, ok, err := a.bucketRegion()

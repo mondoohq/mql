@@ -262,6 +262,7 @@ claude.userProfile 13.0.0
 claude.userProfile.accessType 13.1.3
 claude.userProfile.createdAt 13.0.0
 claude.userProfile.externalId 13.0.0
+claude.userProfile.externalUserOnboardedAt 13.1.3
 claude.userProfile.id 13.0.0
 claude.userProfile.name 13.0.0
 claude.userProfile.relationship 13.0.0

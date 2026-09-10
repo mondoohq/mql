@@ -73,6 +73,8 @@ const (
 	ResourceDatabricksAccountConf                  string = "databricks.accountConf"
 	ResourceDatabricksRuleSet                      string = "databricks.ruleSet"
 	ResourceDatabricksRuleSetGrant                 string = "databricks.ruleSet.grant"
+	ResourceDatabricksDomain                       string = "databricks.domain"
+	ResourceDatabricksSandbox                      string = "databricks.sandbox"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -307,6 +309,14 @@ func init() {
 			// to override args, implement: initDatabricksRuleSetGrant(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createDatabricksRuleSetGrant,
 		},
+		"databricks.domain": {
+			// to override args, implement: initDatabricksDomain(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatabricksDomain,
+		},
+		"databricks.sandbox": {
+			// to override args, implement: initDatabricksSandbox(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createDatabricksSandbox,
+		},
 	}
 }
 
@@ -455,6 +465,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"databricks.registeredModels": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricks).GetRegisteredModels()).ToDataRes(types.Array(types.Resource("databricks.registeredModel")))
+	},
+	"databricks.domains": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricks).GetDomains()).ToDataRes(types.Array(types.Resource("databricks.domain")))
+	},
+	"databricks.sandboxes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricks).GetSandboxes()).ToDataRes(types.Array(types.Resource("databricks.sandbox")))
 	},
 	"databricks.customerManagedKeys": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricks).GetCustomerManagedKeys()).ToDataRes(types.Array(types.Resource("databricks.customerManagedKey")))
@@ -2439,6 +2455,60 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"databricks.ruleSet.grant.principalName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDatabricksRuleSetGrant).GetPrincipalName()).ToDataRes(types.String)
 	},
+	"databricks.domain.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksDomain).GetId()).ToDataRes(types.String)
+	},
+	"databricks.domain.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksDomain).GetName()).ToDataRes(types.String)
+	},
+	"databricks.domain.subtitle": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksDomain).GetSubtitle()).ToDataRes(types.String)
+	},
+	"databricks.domain.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksDomain).GetDescription()).ToDataRes(types.String)
+	},
+	"databricks.domain.tagKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksDomain).GetTagKey()).ToDataRes(types.String)
+	},
+	"databricks.domain.effectiveDraft": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksDomain).GetEffectiveDraft()).ToDataRes(types.Bool)
+	},
+	"databricks.domain.businessOwnerIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksDomain).GetBusinessOwnerIds()).ToDataRes(types.Array(types.Int))
+	},
+	"databricks.domain.technicalOwnerIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksDomain).GetTechnicalOwnerIds()).ToDataRes(types.Array(types.Int))
+	},
+	"databricks.domain.parentDomain": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksDomain).GetParentDomain()).ToDataRes(types.Resource("databricks.domain"))
+	},
+	"databricks.domain.subdomains": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksDomain).GetSubdomains()).ToDataRes(types.Array(types.Resource("databricks.domain")))
+	},
+	"databricks.domain.createTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksDomain).GetCreateTime()).ToDataRes(types.Time)
+	},
+	"databricks.domain.updateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksDomain).GetUpdateTime()).ToDataRes(types.Time)
+	},
+	"databricks.sandbox.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSandbox).GetName()).ToDataRes(types.String)
+	},
+	"databricks.sandbox.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSandbox).GetDisplayName()).ToDataRes(types.String)
+	},
+	"databricks.sandbox.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSandbox).GetState()).ToDataRes(types.String)
+	},
+	"databricks.sandbox.inactivityTimeoutSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSandbox).GetInactivityTimeoutSeconds()).ToDataRes(types.Int)
+	},
+	"databricks.sandbox.createTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSandbox).GetCreateTime()).ToDataRes(types.Time)
+	},
+	"databricks.sandbox.updateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDatabricksSandbox).GetUpdateTime()).ToDataRes(types.Time)
+	},
 }
 
 func GetData(resource plugin.Resource, field string, args map[string]*llx.RawData) *plugin.DataRes {
@@ -2557,6 +2627,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"databricks.registeredModels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDatabricks).RegisteredModels, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"databricks.domains": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricks).Domains, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"databricks.sandboxes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricks).Sandboxes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"databricks.customerManagedKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -5427,6 +5505,86 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDatabricksRuleSetGrant).PrincipalName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"databricks.domain.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksDomain).__id, ok = v.Value.(string)
+		return
+	},
+	"databricks.domain.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksDomain).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.domain.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksDomain).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.domain.subtitle": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksDomain).Subtitle, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.domain.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksDomain).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.domain.tagKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksDomain).TagKey, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.domain.effectiveDraft": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksDomain).EffectiveDraft, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"databricks.domain.businessOwnerIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksDomain).BusinessOwnerIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"databricks.domain.technicalOwnerIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksDomain).TechnicalOwnerIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"databricks.domain.parentDomain": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksDomain).ParentDomain, ok = plugin.RawToTValue[*mqlDatabricksDomain](v.Value, v.Error)
+		return
+	},
+	"databricks.domain.subdomains": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksDomain).Subdomains, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"databricks.domain.createTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksDomain).CreateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"databricks.domain.updateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksDomain).UpdateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"databricks.sandbox.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSandbox).__id, ok = v.Value.(string)
+		return
+	},
+	"databricks.sandbox.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSandbox).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.sandbox.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSandbox).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.sandbox.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSandbox).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"databricks.sandbox.inactivityTimeoutSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSandbox).InactivityTimeoutSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"databricks.sandbox.createTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSandbox).CreateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"databricks.sandbox.updateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDatabricksSandbox).UpdateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
 }
 
 func SetData(resource plugin.Resource, field string, val *llx.RawData) error {
@@ -5482,6 +5640,8 @@ type mqlDatabricks struct {
 	InstanceProfiles          plugin.TValue[[]any]
 	ServingEndpoints          plugin.TValue[[]any]
 	RegisteredModels          plugin.TValue[[]any]
+	Domains                   plugin.TValue[[]any]
+	Sandboxes                 plugin.TValue[[]any]
 	CustomerManagedKeys       plugin.TValue[[]any]
 	Jobs                      plugin.TValue[[]any]
 	Pipelines                 plugin.TValue[[]any]
@@ -5950,6 +6110,38 @@ func (c *mqlDatabricks) GetRegisteredModels() *plugin.TValue[[]any] {
 		}
 
 		return c.registeredModels()
+	})
+}
+
+func (c *mqlDatabricks) GetDomains() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Domains, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("databricks", c.__id, "domains")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.domains()
+	})
+}
+
+func (c *mqlDatabricks) GetSandboxes() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Sandboxes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("databricks", c.__id, "sandboxes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.sandboxes()
 	})
 }
 
@@ -12412,4 +12604,196 @@ func (c *mqlDatabricksRuleSetGrant) GetPrincipalType() *plugin.TValue[string] {
 
 func (c *mqlDatabricksRuleSetGrant) GetPrincipalName() *plugin.TValue[string] {
 	return &c.PrincipalName
+}
+
+// mqlDatabricksDomain for the databricks.domain resource
+type mqlDatabricksDomain struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlDatabricksDomainInternal
+	Id                plugin.TValue[string]
+	Name              plugin.TValue[string]
+	Subtitle          plugin.TValue[string]
+	Description       plugin.TValue[string]
+	TagKey            plugin.TValue[string]
+	EffectiveDraft    plugin.TValue[bool]
+	BusinessOwnerIds  plugin.TValue[[]any]
+	TechnicalOwnerIds plugin.TValue[[]any]
+	ParentDomain      plugin.TValue[*mqlDatabricksDomain]
+	Subdomains        plugin.TValue[[]any]
+	CreateTime        plugin.TValue[*time.Time]
+	UpdateTime        plugin.TValue[*time.Time]
+}
+
+// createDatabricksDomain creates a new instance of this resource
+func createDatabricksDomain(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatabricksDomain{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("databricks.domain", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatabricksDomain) MqlName() string {
+	return "databricks.domain"
+}
+
+func (c *mqlDatabricksDomain) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatabricksDomain) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlDatabricksDomain) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatabricksDomain) GetSubtitle() *plugin.TValue[string] {
+	return &c.Subtitle
+}
+
+func (c *mqlDatabricksDomain) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlDatabricksDomain) GetTagKey() *plugin.TValue[string] {
+	return &c.TagKey
+}
+
+func (c *mqlDatabricksDomain) GetEffectiveDraft() *plugin.TValue[bool] {
+	return &c.EffectiveDraft
+}
+
+func (c *mqlDatabricksDomain) GetBusinessOwnerIds() *plugin.TValue[[]any] {
+	return &c.BusinessOwnerIds
+}
+
+func (c *mqlDatabricksDomain) GetTechnicalOwnerIds() *plugin.TValue[[]any] {
+	return &c.TechnicalOwnerIds
+}
+
+func (c *mqlDatabricksDomain) GetParentDomain() *plugin.TValue[*mqlDatabricksDomain] {
+	return plugin.GetOrCompute[*mqlDatabricksDomain](&c.ParentDomain, func() (*mqlDatabricksDomain, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("databricks.domain", c.__id, "parentDomain")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlDatabricksDomain), nil
+			}
+		}
+
+		return c.parentDomain()
+	})
+}
+
+func (c *mqlDatabricksDomain) GetSubdomains() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Subdomains, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("databricks.domain", c.__id, "subdomains")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.subdomains()
+	})
+}
+
+func (c *mqlDatabricksDomain) GetCreateTime() *plugin.TValue[*time.Time] {
+	return &c.CreateTime
+}
+
+func (c *mqlDatabricksDomain) GetUpdateTime() *plugin.TValue[*time.Time] {
+	return &c.UpdateTime
+}
+
+// mqlDatabricksSandbox for the databricks.sandbox resource
+type mqlDatabricksSandbox struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlDatabricksSandboxInternal it will be used here
+	Name                     plugin.TValue[string]
+	DisplayName              plugin.TValue[string]
+	State                    plugin.TValue[string]
+	InactivityTimeoutSeconds plugin.TValue[int64]
+	CreateTime               plugin.TValue[*time.Time]
+	UpdateTime               plugin.TValue[*time.Time]
+}
+
+// createDatabricksSandbox creates a new instance of this resource
+func createDatabricksSandbox(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlDatabricksSandbox{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("databricks.sandbox", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlDatabricksSandbox) MqlName() string {
+	return "databricks.sandbox"
+}
+
+func (c *mqlDatabricksSandbox) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlDatabricksSandbox) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlDatabricksSandbox) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlDatabricksSandbox) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlDatabricksSandbox) GetInactivityTimeoutSeconds() *plugin.TValue[int64] {
+	return &c.InactivityTimeoutSeconds
+}
+
+func (c *mqlDatabricksSandbox) GetCreateTime() *plugin.TValue[*time.Time] {
+	return &c.CreateTime
+}
+
+func (c *mqlDatabricksSandbox) GetUpdateTime() *plugin.TValue[*time.Time] {
+	return &c.UpdateTime
 }

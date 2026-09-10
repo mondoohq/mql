@@ -2066,6 +2066,7 @@ aws.cloudtrail.trail.logFileValidationEnabled 11.15.2
 aws.cloudtrail.trail.logGroup 11.15.2
 aws.cloudtrail.trail.managedBy 13.39.2
 aws.cloudtrail.trail.name 11.15.2
+aws.cloudtrail.trail.recursiveLogging 13.53.4
 aws.cloudtrail.trail.region 11.15.2
 aws.cloudtrail.trail.s3bucket 11.15.2
 aws.cloudtrail.trail.snsTopic 13.12.1
@@ -9155,6 +9156,8 @@ aws.s3.bucket.metricsConfigurations 13.6.3
 aws.s3.bucket.name 11.15.2
 aws.s3.bucket.notificationConfiguration 13.6.3
 aws.s3.bucket.objectLockEnabled 11.15.2
+aws.s3.bucket.objectLockEventHoldDays 13.53.4
+aws.s3.bucket.objectLockEventHoldYears 13.53.4
 aws.s3.bucket.objectLockRetentionDays 13.53.4
 aws.s3.bucket.objectLockRetentionMode 13.53.4
 aws.s3.bucket.objectLockRetentionYears 13.53.4

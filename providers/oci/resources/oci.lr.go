@@ -9058,6 +9058,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.redis.cluster.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciRedisCluster).GetName()).ToDataRes(types.String)
 	},
+	"oci.redis.cluster.clusterRole": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciRedisCluster).GetClusterRole()).ToDataRes(types.String)
+	},
+	"oci.redis.cluster.primaryCluster": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciRedisCluster).GetPrimaryCluster()).ToDataRes(types.Resource("oci.redis.cluster"))
+	},
 	"oci.redis.cluster.compartment": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciRedisCluster).GetCompartment()).ToDataRes(types.Resource("oci.compartment"))
 	},
@@ -22914,6 +22920,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.redis.cluster.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciRedisCluster).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.redis.cluster.clusterRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedisCluster).ClusterRole, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.redis.cluster.primaryCluster": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciRedisCluster).PrimaryCluster, ok = plugin.RawToTValue[*mqlOciRedisCluster](v.Value, v.Error)
 		return
 	},
 	"oci.redis.cluster.compartment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -55177,6 +55191,8 @@ type mqlOciRedisCluster struct {
 	mqlOciRedisClusterInternal
 	Id                         plugin.TValue[string]
 	Name                       plugin.TValue[string]
+	ClusterRole                plugin.TValue[string]
+	PrimaryCluster             plugin.TValue[*mqlOciRedisCluster]
 	Compartment                plugin.TValue[*mqlOciCompartment]
 	SoftwareVersion            plugin.TValue[string]
 	ClusterMode                plugin.TValue[string]
@@ -55242,6 +55258,26 @@ func (c *mqlOciRedisCluster) GetId() *plugin.TValue[string] {
 
 func (c *mqlOciRedisCluster) GetName() *plugin.TValue[string] {
 	return &c.Name
+}
+
+func (c *mqlOciRedisCluster) GetClusterRole() *plugin.TValue[string] {
+	return &c.ClusterRole
+}
+
+func (c *mqlOciRedisCluster) GetPrimaryCluster() *plugin.TValue[*mqlOciRedisCluster] {
+	return plugin.GetOrCompute[*mqlOciRedisCluster](&c.PrimaryCluster, func() (*mqlOciRedisCluster, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.redis.cluster", c.__id, "primaryCluster")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciRedisCluster), nil
+			}
+		}
+
+		return c.primaryCluster()
+	})
 }
 
 func (c *mqlOciRedisCluster) GetCompartment() *plugin.TValue[*mqlOciCompartment] {

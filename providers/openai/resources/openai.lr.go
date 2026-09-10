@@ -742,6 +742,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"openai.project.apiKey.lastUsedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiProjectApiKey).GetLastUsedAt()).ToDataRes(types.Time)
 	},
+	"openai.project.apiKey.expiresAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenaiProjectApiKey).GetExpiresAt()).ToDataRes(types.Time)
+	},
 	"openai.project.apiKey.ownerType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiProjectApiKey).GetOwnerType()).ToDataRes(types.String)
 	},
@@ -1708,6 +1711,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"openai.project.apiKey.lastUsedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenaiProjectApiKey).LastUsedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"openai.project.apiKey.expiresAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenaiProjectApiKey).ExpiresAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"openai.project.apiKey.ownerType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -4026,6 +4033,7 @@ type mqlOpenaiProjectApiKey struct {
 	RedactedValue  plugin.TValue[string]
 	CreatedAt      plugin.TValue[*time.Time]
 	LastUsedAt     plugin.TValue[*time.Time]
+	ExpiresAt      plugin.TValue[*time.Time]
 	OwnerType      plugin.TValue[string]
 	OwnerName      plugin.TValue[string]
 	OwnerId        plugin.TValue[string]
@@ -4083,6 +4091,10 @@ func (c *mqlOpenaiProjectApiKey) GetCreatedAt() *plugin.TValue[*time.Time] {
 
 func (c *mqlOpenaiProjectApiKey) GetLastUsedAt() *plugin.TValue[*time.Time] {
 	return &c.LastUsedAt
+}
+
+func (c *mqlOpenaiProjectApiKey) GetExpiresAt() *plugin.TValue[*time.Time] {
+	return &c.ExpiresAt
 }
 
 func (c *mqlOpenaiProjectApiKey) GetOwnerType() *plugin.TValue[string] {

@@ -3333,6 +3333,7 @@ oci.queue.queues 13.17.2
 oci.redis 13.5.1
 oci.redis.cluster 13.5.1
 oci.redis.cluster.clusterMode 13.5.1
+oci.redis.cluster.clusterRole 13.21.1
 oci.redis.cluster.compartment 13.12.2
 oci.redis.cluster.created 13.5.1
 oci.redis.cluster.definedTags 13.5.1
@@ -3344,6 +3345,7 @@ oci.redis.cluster.name 13.5.1
 oci.redis.cluster.networkSecurityGroups 13.5.1
 oci.redis.cluster.nodeCount 13.5.1
 oci.redis.cluster.nodeMemoryInGBs 13.5.1
+oci.redis.cluster.primaryCluster 13.21.1
 oci.redis.cluster.primaryEndpointIpAddress 13.5.1
 oci.redis.cluster.primaryFqdn 13.5.1
 oci.redis.cluster.replicasEndpointIpAddress 13.5.1

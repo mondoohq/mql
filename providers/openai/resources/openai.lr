@@ -658,8 +658,8 @@ openai.project.user @defaults("email role") @maturity("preview") {
 //
 // API key within an organization project. Each key has an owner
 // (user or service account) and a redacted value for identification.
-// Audit key age, last usage, and ownership to spot stale or
-// over-privileged credentials during security reviews.
+// Audit key age, last usage, expiration, and ownership to spot stale,
+// non-expiring, or over-privileged credentials during security reviews.
 openai.project.apiKey @defaults("id name") @maturity("preview") {
   // API key identifier
   id string
@@ -671,6 +671,10 @@ openai.project.apiKey @defaults("id name") @maturity("preview") {
   createdAt time
   // Last usage timestamp
   lastUsedAt time
+  // Expiration timestamp
+  //
+  // Null when the key does not expire.
+  expiresAt time
   // Owner type
   //
   // One of user or service_account.

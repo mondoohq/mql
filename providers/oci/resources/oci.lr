@@ -8933,16 +8933,27 @@ oci.redis {
 // `oci.redis.cluster(id: "ocid1.rediscluster.oc1...")`. Surfaces the
 // cache engine and version, the sharding mode and shard/node counts,
 // per-node memory, the primary, replica, and discovery endpoints, the
-// subnet and network security groups governing reachability, and the
-// lifecycle state. Use it to audit which engine versions are running,
-// how clusters are placed on the network, and which security groups
-// control access.
+// subnet and network security groups governing reachability, the
+// cross-region replication role and primary cluster, and the lifecycle
+// state. Use it to audit which engine versions are running, how clusters
+// are placed on the network, which security groups control access, and
+// which clusters replicate from a primary in another region.
 private oci.redis.cluster @defaults("name softwareVersion state") {
   init(id? string)
   // Cluster OCID
   id string
   // Cluster display name
   name string
+  // Role of the cluster in cross-region replication
+  //
+  // One of PRIMARY, SECONDARY, or STANDALONE. Null when the API does not
+  // report a role.
+  clusterRole string
+  // Primary cluster this cluster replicates from
+  //
+  // Null unless the cluster is a SECONDARY in a cross-region replication
+  // setup.
+  primaryCluster() oci.redis.cluster
   // Compartment containing the cluster
   compartment() oci.compartment
   // Cache engine version (e.g., REDIS_7_0, VALKEY_7_2, VALKEY_8_1)

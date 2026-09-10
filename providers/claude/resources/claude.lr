@@ -489,9 +489,10 @@ claude.messageBatch @defaults("id processingStatus") {
 // Claude user profile
 //
 // User profile representing an entity that interacts with the Claude
-// platform. The `relationship` field describes how the entity relates
-// to the platform: one of external, resold, or internal.
-claude.userProfile @defaults("id name relationship") {
+// platform. The `accessType` field describes how the platform uses the
+// API on behalf of the entity, and `externalUserOnboardedAt` records when
+// the platform onboarded the end user behind the profile.
+claude.userProfile @defaults("id name accessType") {
   // Profile identifier
   id string
   // Profile display name
@@ -500,8 +501,9 @@ claude.userProfile @defaults("id name relationship") {
   externalId string
   // Relationship to the platform
   //
-  // One of external, resold, or internal.
-  relationship string
+  // Deprecated in favor of accessType. The API no longer reports a
+  // relationship, so this field is always null.
+  relationship @maturity("deprecated") @replaced_by("claude.userProfile.accessType") string
   // How the platform uses the API on behalf of this entity
   //
   // `application` means the platform sells a product that calls the API
@@ -510,6 +512,10 @@ claude.userProfile @defaults("id name relationship") {
   // profile identifies the company it is resold to. Null when the profile
   // does not report an access type.
   accessType string
+  // Timestamp the platform onboarded the end user behind this profile
+  //
+  // Null when the platform has not reported an onboarding time.
+  externalUserOnboardedAt time
   // Profile creation timestamp
   createdAt time
   // Last update timestamp

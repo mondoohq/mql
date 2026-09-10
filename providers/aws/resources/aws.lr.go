@@ -17613,6 +17613,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.cloudtrail.trail.includeGlobalServiceEvents": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudtrailTrail).GetIncludeGlobalServiceEvents()).ToDataRes(types.Bool)
 	},
+	"aws.cloudtrail.trail.recursiveLogging": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudtrailTrail).GetRecursiveLogging()).ToDataRes(types.Bool)
+	},
 	"aws.cloudtrail.trail.s3bucket": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudtrailTrail).GetS3bucket()).ToDataRes(types.Resource("aws.s3.bucket"))
 	},
@@ -17921,6 +17924,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.s3.bucket.objectLockRetentionYears": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsS3Bucket).GetObjectLockRetentionYears()).ToDataRes(types.Int)
+	},
+	"aws.s3.bucket.objectLockEventHoldDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3Bucket).GetObjectLockEventHoldDays()).ToDataRes(types.Int)
+	},
+	"aws.s3.bucket.objectLockEventHoldYears": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsS3Bucket).GetObjectLockEventHoldYears()).ToDataRes(types.Int)
 	},
 	"aws.s3.bucket.metricsConfigurations": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsS3Bucket).GetMetricsConfigurations()).ToDataRes(types.Array(types.Resource("aws.s3.bucket.metricsConfiguration")))
@@ -56004,6 +56013,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsCloudtrailTrail).IncludeGlobalServiceEvents, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"aws.cloudtrail.trail.recursiveLogging": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudtrailTrail).RecursiveLogging, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"aws.cloudtrail.trail.s3bucket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsCloudtrailTrail).S3bucket, ok = plugin.RawToTValue[*mqlAwsS3Bucket](v.Value, v.Error)
 		return
@@ -56458,6 +56471,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.s3.bucket.objectLockRetentionYears": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsS3Bucket).ObjectLockRetentionYears, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.s3.bucket.objectLockEventHoldDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3Bucket).ObjectLockEventHoldDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"aws.s3.bucket.objectLockEventHoldYears": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsS3Bucket).ObjectLockEventHoldYears, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"aws.s3.bucket.metricsConfigurations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -134678,6 +134699,7 @@ type mqlAwsCloudtrailTrail struct {
 	IsOrganizationTrail                  plugin.TValue[bool]
 	LogFileValidationEnabled             plugin.TValue[bool]
 	IncludeGlobalServiceEvents           plugin.TValue[bool]
+	RecursiveLogging                     plugin.TValue[bool]
 	S3bucket                             plugin.TValue[*mqlAwsS3Bucket]
 	SnsTopic                             plugin.TValue[*mqlAwsSnsTopic]
 	LogGroup                             plugin.TValue[*mqlAwsCloudwatchLoggroup]
@@ -134781,6 +134803,10 @@ func (c *mqlAwsCloudtrailTrail) GetLogFileValidationEnabled() *plugin.TValue[boo
 
 func (c *mqlAwsCloudtrailTrail) GetIncludeGlobalServiceEvents() *plugin.TValue[bool] {
 	return &c.IncludeGlobalServiceEvents
+}
+
+func (c *mqlAwsCloudtrailTrail) GetRecursiveLogging() *plugin.TValue[bool] {
+	return &c.RecursiveLogging
 }
 
 func (c *mqlAwsCloudtrailTrail) GetS3bucket() *plugin.TValue[*mqlAwsS3Bucket] {
@@ -135808,6 +135834,8 @@ type mqlAwsS3Bucket struct {
 	ObjectLockRetentionMode          plugin.TValue[string]
 	ObjectLockRetentionDays          plugin.TValue[int64]
 	ObjectLockRetentionYears         plugin.TValue[int64]
+	ObjectLockEventHoldDays          plugin.TValue[int64]
+	ObjectLockEventHoldYears         plugin.TValue[int64]
 	MetricsConfigurations            plugin.TValue[[]any]
 	Exists                           plugin.TValue[bool]
 	CreatedAt                        plugin.TValue[*time.Time]
@@ -136127,6 +136155,18 @@ func (c *mqlAwsS3Bucket) GetObjectLockRetentionDays() *plugin.TValue[int64] {
 func (c *mqlAwsS3Bucket) GetObjectLockRetentionYears() *plugin.TValue[int64] {
 	return plugin.GetOrCompute[int64](&c.ObjectLockRetentionYears, func() (int64, error) {
 		return c.objectLockRetentionYears()
+	})
+}
+
+func (c *mqlAwsS3Bucket) GetObjectLockEventHoldDays() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ObjectLockEventHoldDays, func() (int64, error) {
+		return c.objectLockEventHoldDays()
+	})
+}
+
+func (c *mqlAwsS3Bucket) GetObjectLockEventHoldYears() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ObjectLockEventHoldYears, func() (int64, error) {
+		return c.objectLockEventHoldYears()
 	})
 }
 

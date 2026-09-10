@@ -73,6 +73,7 @@ func (o *mqlOciRedis) clusters() ([]any, error) {
 					"name":                       llx.StringDataPtr(c.DisplayName),
 					"softwareVersion":            llx.StringData(string(c.SoftwareVersion)),
 					"clusterMode":                llx.StringData(string(c.ClusterMode)),
+					"clusterRole":                llx.StringDataPtr(redisClusterRole(c.ClusterRole)),
 					"nodeCount":                  llx.IntDataPtr(c.NodeCount),
 					"nodeMemoryInGBs":            llx.FloatData(nodeMemory),
 					"shardCount":                 llx.IntDataPtr(c.ShardCount),
@@ -96,6 +97,7 @@ func (o *mqlOciRedis) clusters() ([]any, error) {
 				mqlClusterTyped.cacheSubnetID = stringValue(c.SubnetId)
 				mqlClusterTyped.cacheNsgIDs = c.NsgIds
 				mqlClusterTyped.cacheRegion = region
+				mqlClusterTyped.cachePrimaryClusterID = stringValue(c.PrimaryClusterId)
 				res = append(res, mqlClusterTyped)
 			}
 
@@ -105,9 +107,21 @@ func (o *mqlOciRedis) clusters() ([]any, error) {
 
 type mqlOciRedisClusterInternal struct {
 	ociCompartmentRef
-	cacheSubnetID string
-	cacheNsgIDs   []string
-	cacheRegion   string
+	cacheSubnetID         string
+	cacheNsgIDs           []string
+	cacheRegion           string
+	cachePrimaryClusterID string
+}
+
+// redisClusterRole maps the cross-region replication role to a nullable
+// string. Clusters created before the role was reported come back with an
+// empty role, which has to read as null rather than as a fourth role value.
+func redisClusterRole(role redis.RedisClusterClusterRoleEnum) *string {
+	if role == "" {
+		return nil
+	}
+	s := string(role)
+	return &s
 }
 
 func initOciRedisCluster(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -151,6 +165,20 @@ func initOciRedisCluster(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 
 func (o *mqlOciRedisCluster) id() (string, error) {
 	return "oci.redis.cluster/" + o.Id.Data, nil
+}
+
+func (o *mqlOciRedisCluster) primaryCluster() (*mqlOciRedisCluster, error) {
+	if o.cachePrimaryClusterID == "" {
+		o.PrimaryCluster.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	mqlCluster, err := NewResource(o.MqlRuntime, "oci.redis.cluster", map[string]*llx.RawData{
+		"id": llx.StringData(o.cachePrimaryClusterID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return mqlCluster.(*mqlOciRedisCluster), nil
 }
 
 func (o *mqlOciRedisCluster) subnet() (*mqlOciNetworkSubnet, error) {

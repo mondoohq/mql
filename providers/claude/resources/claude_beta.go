@@ -624,15 +624,16 @@ func (r *mqlClaude) userProfiles() ([]interface{}, error) {
 		p := pager.Current()
 
 		mqlProfile, err := CreateResource(r.MqlRuntime, "claude.userProfile", map[string]*llx.RawData{
-			"__id":         llx.StringData(p.ID),
-			"id":           llx.StringData(p.ID),
-			"name":         llx.StringData(p.Name),
-			"externalId":   llx.StringData(p.ExternalID),
-			"relationship": llx.StringData(string(p.Relationship)),
-			"accessType":   claudeAccessType(p.AccessType),
-			"createdAt":    llx.TimeData(p.CreatedAt),
-			"updatedAt":    llx.TimeData(p.UpdatedAt),
-			"type":         llx.StringData(string(p.Type)),
+			"__id":                    llx.StringData(p.ID),
+			"id":                      llx.StringData(p.ID),
+			"name":                    llx.StringData(p.Name),
+			"externalId":              llx.StringData(p.ExternalID),
+			"relationship":            llx.NilData,
+			"accessType":              claudeAccessType(p.AccessType),
+			"externalUserOnboardedAt": llx.TimeDataPtr(nullableTime(p.ExternalUserOnboardedAt)),
+			"createdAt":               llx.TimeData(p.CreatedAt),
+			"updatedAt":               llx.TimeData(p.UpdatedAt),
+			"type":                    llx.StringData(string(p.Type)),
 		})
 		if err != nil {
 			return nil, err

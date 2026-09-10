@@ -12686,6 +12686,15 @@ private aws.cloudtrail.trail @defaults("name region") {
   logFileValidationEnabled bool
   // Whether API calls from global services are included
   includeGlobalServiceEvents bool
+  // Whether the trail records CloudTrail's own log delivery events
+  //
+  // When false, CloudTrail suppresses the events it generates itself while
+  // delivering log files to the trail's destinations, including the S3
+  // bucket and CloudWatch Logs. Those delivery events are what lets a
+  // reviewer confirm that logging kept running, so a trail that turns them
+  // off has a gap in its own audit record. AWS defaults this to true. Null
+  // when the API does not report the setting.
+  recursiveLogging bool
   // S3 bucket where trail files are delivered
   s3bucket() aws.s3.bucket
   // SNS topic the trail uses to send notifications
@@ -13053,6 +13062,20 @@ private aws.s3.bucket @defaults("name location public") {
   // Null when the default retention rule expresses its period in days, or
   // when the bucket has no default retention rule at all.
   objectLockRetentionYears() int
+  // Default Object Lock event hold duration in days
+  //
+  // Every new object written to the bucket automatically gets an event
+  // hold of this length, on top of any retention period. Null when the
+  // default event hold is expressed in years, or when the bucket has no
+  // default event hold configured. Ranges from 1 to 36500 days.
+  objectLockEventHoldDays() int
+  // Default Object Lock event hold duration in years
+  //
+  // Every new object written to the bucket automatically gets an event
+  // hold of this length, on top of any retention period. Null when the
+  // default event hold is expressed in days, or when the bucket has no
+  // default event hold configured. Ranges from 1 to 100 years.
+  objectLockEventHoldYears() int
   // Bucket metrics configurations for request metrics
   metricsConfigurations() []aws.s3.bucket.metricsConfiguration
   // Whether the bucket still exists (stale reference)

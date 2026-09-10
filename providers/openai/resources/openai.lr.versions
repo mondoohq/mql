@@ -154,6 +154,7 @@ openai.organizationUser.roles 13.0.12
 openai.project 13.0.0
 openai.project.apiKey 13.0.0
 openai.project.apiKey.createdAt 13.0.0
+openai.project.apiKey.expiresAt 13.1.3
 openai.project.apiKey.id 13.0.0
 openai.project.apiKey.lastUsedAt 13.0.0
 openai.project.apiKey.name 13.0.0

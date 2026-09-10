@@ -20,7 +20,7 @@ option root = "databricks"
 // warehouses, catalogs, storageCredentials, credentials, connections,
 // externalLocations, systemSchemas, deltaSharingRecipients,
 // deltaSharingShares, globalInitScripts, instanceProfiles, servingEndpoints,
-// and registeredModels fields.
+// registeredModels, domains, and sandboxes fields.
 databricks @root {
   // Workspaces registered in the account
   workspaces() []databricks.workspace
@@ -74,6 +74,10 @@ databricks @root {
   servingEndpoints() []databricks.servingEndpoint
   // Unity Catalog registered models in the workspace's metastore
   registeredModels() []databricks.registeredModel
+  // Data domains that organize the workspace's data assets under named owners
+  domains() []databricks.domain
+  // Serverless sandboxes provisioned in the workspace
+  sandboxes() []databricks.sandbox
   // Customer-managed encryption keys registered in the account
   customerManagedKeys() []databricks.customerManagedKey
   // Jobs defined in the workspace
@@ -2418,4 +2422,75 @@ private databricks.ruleSet.grant @defaults("role principal") {
   principalType string
   // Principal without its qualifying prefix, such as a user name or an application id
   principalName string
+}
+
+// Databricks data domain
+//
+// A data domain in the workspace, the organizational unit that groups data
+// assets under named business and technical owners. Covers the owners, the
+// governed tag key the domain applies to its assets, whether the domain is
+// still a draft, and the parent domain when it is a subdomain. A domain with
+// no owners has nobody accountable for the assets it groups. Select a domain
+// by id, for example `databricks.domains.where(id == "finance")`.
+databricks.domain @defaults("id tagKey effectiveDraft") {
+  // Domain identifier
+  id string
+  // Full resource name in the form domains/{id}
+  name string
+  // Short description
+  subtitle string
+  // Full description
+  description string
+  // Governed tag key associated with the domain
+  tagKey string
+  // Whether the domain is a draft, as resolved by the server
+  effectiveDraft bool
+  // Identity IDs of the business owners
+  //
+  // Numeric IDs of the users, groups, or service principals accountable for
+  // the domain from the business side. Empty when no business owner is set.
+  businessOwnerIds []int
+  // Identity IDs of the technical owners
+  //
+  // Numeric IDs of the users, groups, or service principals accountable for
+  // the domain from the technical side. Empty when no technical owner is set.
+  technicalOwnerIds []int
+  // Parent domain when this domain is a subdomain
+  //
+  // Null for a top-level domain.
+  parentDomain() databricks.domain
+  // Subdomains nested directly under this domain
+  subdomains() []databricks.domain
+  // Creation timestamp
+  createTime time
+  // Last update timestamp
+  updateTime time
+}
+
+// Databricks serverless sandbox
+//
+// A sandbox in the workspace: an isolated, pre-configured serverless compute
+// environment that runs arbitrary commands. Covers the lifecycle state and
+// the idle timeout after which the sandbox stops on its own. A sandbox with
+// no inactivity timeout keeps its compute reachable until someone stops it.
+// Select a sandbox by name, for example
+// `databricks.sandboxes.where(name == "sandboxes/my-sandbox")`.
+databricks.sandbox @defaults("name displayName state") {
+  // Resource name in the form sandboxes/{id}
+  name string
+  // Display label
+  displayName string
+  // Lifecycle state
+  //
+  // One of SANDBOX_STATE_PENDING, SANDBOX_STATE_RUNNING, SANDBOX_STATE_STOPPING,
+  // or SANDBOX_STATE_STOPPED. Null when the server reported no status.
+  state string
+  // Idle seconds after which the sandbox is stopped automatically
+  //
+  // Null when no inactivity timeout is configured.
+  inactivityTimeoutSeconds int
+  // Creation timestamp
+  createTime time
+  // Last update timestamp
+  updateTime time
 }

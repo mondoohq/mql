@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/databricks/databricks-sdk-go/service/compute"
+	"github.com/databricks/databricks-sdk-go/service/domains"
 	"github.com/databricks/databricks-sdk-go/service/iam"
 	"github.com/databricks/databricks-sdk-go/service/provisioning"
 	"go.mondoo.com/mql/llx"
@@ -45,6 +46,11 @@ type mqlDatabricksInternal struct {
 	privateAccessOnce sync.Once
 	privateAccessByID map[string]provisioning.PrivateAccessSettings
 	privateAccessErr  error
+
+	domainsOnce sync.Once
+	domainList  []domains.Domain
+	domainsByID map[string]domains.Domain
+	domainsErr  error
 }
 
 // cachedAccountGroups lists the account groups at most once per scan, caching

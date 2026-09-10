@@ -380,3 +380,86 @@ func TestS3ObjectLockRetentionValues(t *testing.T) {
 		assert.True(t, bucket.ObjectLockRetentionDays.IsNull(), "an unset day period must not read as zero days")
 	})
 }
+
+// TestS3ObjectLockEventHoldValues covers the default event hold that sits
+// beside the retention period. A retention rule without an event hold must
+// read null on both duration fields, not as a zero-day hold, and a hold
+// expressed in one unit must read null in the other.
+func TestS3ObjectLockEventHoldValues(t *testing.T) {
+	newBucket := func(retention *s3types.DefaultRetention) *mqlAwsS3Bucket {
+		bucket := &mqlAwsS3Bucket{}
+		bucket.Exists = plugin.TValue[bool]{Data: true, State: plugin.StateIsSet}
+		bucket.objectLockConfig = &s3types.ObjectLockConfiguration{
+			ObjectLockEnabled: s3types.ObjectLockEnabledEnabled,
+			Rule:              &s3types.ObjectLockRule{DefaultRetention: retention},
+		}
+		bucket.objectLockOnce.Do(func() {})
+		return bucket
+	}
+
+	t.Run("retention without an event hold", func(t *testing.T) {
+		retention := &s3types.DefaultRetention{
+			Mode: s3types.ObjectLockRetentionModeGovernance,
+			Days: aws.Int32(30),
+		}
+
+		bucket := newBucket(retention)
+		days, err := bucket.objectLockEventHoldDays()
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), days)
+		assert.True(t, bucket.ObjectLockEventHoldDays.IsNull(), "a missing event hold must not read as a zero-day hold")
+
+		bucket = newBucket(retention)
+		years, err := bucket.objectLockEventHoldYears()
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), years)
+		assert.True(t, bucket.ObjectLockEventHoldYears.IsNull(), "a missing event hold must not read as a zero-year hold")
+	})
+
+	t.Run("event hold in days", func(t *testing.T) {
+		retention := &s3types.DefaultRetention{
+			Mode:             s3types.ObjectLockRetentionModeCompliance,
+			Years:            aws.Int32(7),
+			DefaultEventHold: &s3types.EventHoldDuration{Days: aws.Int32(90)},
+		}
+
+		bucket := newBucket(retention)
+		days, err := bucket.objectLockEventHoldDays()
+		require.NoError(t, err)
+		assert.Equal(t, int64(90), days)
+		assert.False(t, bucket.ObjectLockEventHoldDays.IsNull())
+
+		bucket = newBucket(retention)
+		years, err := bucket.objectLockEventHoldYears()
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), years)
+		assert.True(t, bucket.ObjectLockEventHoldYears.IsNull(), "a day-expressed hold must not also read as zero years")
+	})
+
+	t.Run("event hold in years", func(t *testing.T) {
+		retention := &s3types.DefaultRetention{
+			Mode:             s3types.ObjectLockRetentionModeCompliance,
+			Days:             aws.Int32(30),
+			DefaultEventHold: &s3types.EventHoldDuration{Years: aws.Int32(2)},
+		}
+
+		bucket := newBucket(retention)
+		years, err := bucket.objectLockEventHoldYears()
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), years)
+
+		bucket = newBucket(retention)
+		days, err := bucket.objectLockEventHoldDays()
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), days)
+		assert.True(t, bucket.ObjectLockEventHoldDays.IsNull(), "a year-expressed hold must not also read as zero days")
+	})
+
+	t.Run("no default retention rule at all", func(t *testing.T) {
+		bucket := newBucket(nil)
+		days, err := bucket.objectLockEventHoldDays()
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), days)
+		assert.True(t, bucket.ObjectLockEventHoldDays.IsNull())
+	})
+}

@@ -649,6 +649,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"claude.userProfile.accessType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeUserProfile).GetAccessType()).ToDataRes(types.String)
 	},
+	"claude.userProfile.externalUserOnboardedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeUserProfile).GetExternalUserOnboardedAt()).ToDataRes(types.Time)
+	},
 	"claude.userProfile.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeUserProfile).GetCreatedAt()).ToDataRes(types.Time)
 	},
@@ -1625,6 +1628,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"claude.userProfile.accessType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeUserProfile).AccessType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.userProfile.externalUserOnboardedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeUserProfile).ExternalUserOnboardedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"claude.userProfile.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -3612,14 +3619,15 @@ type mqlClaudeUserProfile struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlClaudeUserProfileInternal it will be used here
-	Id           plugin.TValue[string]
-	Name         plugin.TValue[string]
-	ExternalId   plugin.TValue[string]
-	Relationship plugin.TValue[string]
-	AccessType   plugin.TValue[string]
-	CreatedAt    plugin.TValue[*time.Time]
-	UpdatedAt    plugin.TValue[*time.Time]
-	Type         plugin.TValue[string]
+	Id                      plugin.TValue[string]
+	Name                    plugin.TValue[string]
+	ExternalId              plugin.TValue[string]
+	Relationship            plugin.TValue[string]
+	AccessType              plugin.TValue[string]
+	ExternalUserOnboardedAt plugin.TValue[*time.Time]
+	CreatedAt               plugin.TValue[*time.Time]
+	UpdatedAt               plugin.TValue[*time.Time]
+	Type                    plugin.TValue[string]
 }
 
 // createClaudeUserProfile creates a new instance of this resource
@@ -3672,6 +3680,10 @@ func (c *mqlClaudeUserProfile) GetRelationship() *plugin.TValue[string] {
 
 func (c *mqlClaudeUserProfile) GetAccessType() *plugin.TValue[string] {
 	return &c.AccessType
+}
+
+func (c *mqlClaudeUserProfile) GetExternalUserOnboardedAt() *plugin.TValue[*time.Time] {
+	return &c.ExternalUserOnboardedAt
 }
 
 func (c *mqlClaudeUserProfile) GetCreatedAt() *plugin.TValue[*time.Time] {

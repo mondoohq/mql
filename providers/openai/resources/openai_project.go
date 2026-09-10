@@ -119,6 +119,7 @@ func (r *mqlOpenaiProject) apiKeys() ([]any, error) {
 			"redactedValue": llx.StringData(k.RedactedValue),
 			"createdAt":     llx.TimeDataPtr(unixToNullableTime(k.CreatedAt)),
 			"lastUsedAt":    llx.TimeDataPtr(unixToNullableTime(k.LastUsedAt)),
+			"expiresAt":     llx.TimeDataPtr(unixToNullableTime(k.ExpiresAt)),
 			"ownerType":     llx.StringData(ownerType),
 			"ownerName":     llx.StringData(ownerName),
 			"ownerId":       llx.StringData(ownerId),

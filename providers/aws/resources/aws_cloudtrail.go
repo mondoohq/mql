@@ -145,6 +145,7 @@ func buildCloudtrailTrailResource(runtime *plugin.Runtime, trail types.Trail) (*
 		"isOrganizationTrail":        llx.BoolDataPtr(trail.IsOrganizationTrail),
 		"logFileValidationEnabled":   llx.BoolDataPtr(trail.LogFileValidationEnabled),
 		"includeGlobalServiceEvents": llx.BoolDataPtr(trail.IncludeGlobalServiceEvents),
+		"recursiveLogging":           llx.BoolDataPtr(trail.RecursiveLogging),
 		"region":                     llx.StringDataPtr(trail.HomeRegion),
 		"hasInsightSelectors":        llx.BoolDataPtr(trail.HasInsightSelectors),
 		"hasCustomEventSelectors":    llx.BoolDataPtr(trail.HasCustomEventSelectors),
