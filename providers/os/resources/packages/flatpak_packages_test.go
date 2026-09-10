@@ -125,8 +125,12 @@ func TestParseFlatpakDir(t *testing.T) {
 	// The filesystem path gets the FULL commit; the CLI truncates it to 12.
 	assert.Equal(t, "c84b98e041e58749e824ae83bb2de6da268f0a0ca19f299329a6943de768cb67", firefox.commit)
 
+	// The PURL publishes the SHORT commit even though the filesystem knows the
+	// full one, so that a running container and its own image do not become two
+	// packages in an inventory. Compare with TestParseFlatpakList, which reaches
+	// the same PURL through the CLI.
 	assert.Equal(t,
-		"pkg:flatpak/flathub/org.mozilla.firefox@154.0.1?branch=stable&commit=c84b98e041e58749e824ae83bb2de6da268f0a0ca19f299329a6943de768cb67",
+		"pkg:flatpak/flathub/org.mozilla.firefox@154.0.1?branch=stable&commit=c84b98e041e5",
 		firefox.toPackage().PUrl)
 }
 
@@ -267,4 +271,28 @@ func TestAddFlatpakRepositoryURL(t *testing.T) {
 	t.Run("unparseable PURL is returned unchanged", func(t *testing.T) {
 		assert.Equal(t, "not-a-purl", addFlatpakRepositoryURL("not-a-purl", "https://example.com"))
 	})
+}
+
+// TestFlatpakPurlIsStableAcrossPaths pins that the CLI and the filesystem paths
+// describe one deployment identically. They do not know the same things -- the
+// filesystem reads the full commit and the CLI a 12-character prefix -- so
+// without normalizing, scanning a running container and scanning its own image
+// would put two packages in the inventory for one installed application.
+func TestFlatpakPurlIsStableAcrossPaths(t *testing.T) {
+	const (
+		fullCommit  = "c84b98e041e58749e824ae83bb2de6da268f0a0ca19f299329a6943de768cb67"
+		shortCommit = "c84b98e041e5"
+	)
+
+	fromFS := flatpakDeployment{
+		appID: "org.mozilla.firefox", version: "154.0.1", branch: "stable",
+		arch: "aarch64", origin: "flathub", commit: fullCommit,
+	}
+	fromCLI := fromFS
+	fromCLI.commit = shortCommit
+
+	assert.Equal(t, fromCLI.toPackage().PUrl, fromFS.toPackage().PUrl)
+	assert.Equal(t,
+		"pkg:flatpak/flathub/org.mozilla.firefox@154.0.1?branch=stable&commit="+shortCommit,
+		fromFS.toPackage().PUrl)
 }

@@ -630,7 +630,7 @@ func newFlatpakPurl(appID, version, origin, branch, commit string) string {
 	if branch != "" {
 		qualifiers = append(qualifiers, packageurl.Qualifier{Key: "branch", Value: branch})
 	}
-	if commit != "" {
+	if commit = shortFlatpakCommit(commit); commit != "" {
 		qualifiers = append(qualifiers, packageurl.Qualifier{Key: "commit", Value: commit})
 	}
 	return packageurl.NewPackageURL(
@@ -641,6 +641,26 @@ func newFlatpakPurl(appID, version, origin, branch, commit string) string {
 		qualifiers,
 		"",
 	).String()
+}
+
+// flatpakShortCommitLen is the number of checksum characters the PURL carries.
+//
+// The two enumeration paths know the commit to different precisions: the
+// filesystem reads the full 64-character checksum, while `flatpak list`
+// truncates its column to 12 and does so even with the :f (full) suffix.
+// Publishing whichever one happened to be available would give the same
+// deployment two different PURLs depending on how the asset was reached -- a
+// running container and its own image would land in the inventory as two
+// packages. Both paths publish the same 12-character prefix instead, which is
+// what flatpak itself shows and is ample to tell one deployment of an
+// application from another.
+const flatpakShortCommitLen = 12
+
+func shortFlatpakCommit(commit string) string {
+	if len(commit) > flatpakShortCommitLen {
+		return commit[:flatpakShortCommitLen]
+	}
+	return commit
 }
 
 // addFlatpakRepositoryURL adds the remote's URL to a PURL as the
