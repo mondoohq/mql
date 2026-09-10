@@ -29,7 +29,9 @@ func TestParseFlatpakList(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
-	pkgs, err := ParseFlatpakList(f)
+	deployments, err := parseFlatpakList(f)
+	require.NoError(t, err)
+	pkgs := flatpakPackages(deployments, nil)
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 
@@ -56,7 +58,9 @@ func TestParseFlatpakListCellShapes(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
-	pkgs, err := ParseFlatpakList(f)
+	deployments, err := parseFlatpakList(f)
+	require.NoError(t, err)
+	pkgs := flatpakPackages(deployments, nil)
 	require.NoError(t, err)
 	require.Len(t, pkgs, 5)
 
@@ -370,7 +374,9 @@ func TestFlatpakDeployDictStringHandlesAlignmentPadding(t *testing.T) {
 // appears twice with identical fields.
 func TestParseFlatpakListDedupesInstallations(t *testing.T) {
 	const row = "org.mozilla.firefox\t154.0.1\tstable\taarch64\tflathub\tc84b98e041e5\tsystem\n"
-	pkgs, err := ParseFlatpakList(strings.NewReader(row + row))
+	deployments, err := parseFlatpakList(strings.NewReader(row + row))
+	require.NoError(t, err)
+	pkgs := flatpakPackages(deployments, nil)
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1, "one application, not two identical PURLs")
 	assert.Equal(t,
@@ -379,7 +385,9 @@ func TestParseFlatpakListDedupesInstallations(t *testing.T) {
 
 	t.Run("a different branch is different software", func(t *testing.T) {
 		other := "org.mozilla.firefox\t154.0.1\tbeta\taarch64\tflathub\tdeadbeefcafe\tsystem\n"
-		pkgs, err := ParseFlatpakList(strings.NewReader(row + other))
+		deployments, err := parseFlatpakList(strings.NewReader(row + other))
+		require.NoError(t, err)
+		pkgs := flatpakPackages(deployments, nil)
 		require.NoError(t, err)
 		assert.Len(t, pkgs, 2)
 	})
@@ -484,4 +492,60 @@ func TestListFromFSFindsRootUserInstallation(t *testing.T) {
 	require.Len(t, pkgs, 1)
 	assert.Equal(t, "org.mozilla.firefox", pkgs[0].Name)
 	assert.Equal(t, "154.0.1", pkgs[0].Version)
+}
+
+// TestParseFlatpakDeployAcceptsEmptyOrigin pins that a bundle-installed
+// application still reaches the inventory.
+//
+// flatpak stores the origin as `origin ? origin : ""`, so
+// `flatpak install --bundle app.flatpak` produces a record whose first string is
+// empty. Treating that as a parse failure drops the application entirely — and
+// on a container image the filesystem walk is the only path — to lose a field
+// that only the provenance qualifier needs.
+func TestParseFlatpakDeployAcceptsEmptyOrigin(t *testing.T) {
+	const commit = "c84b98e041e58749e824ae83bb2de6da268f0a0ca19f299329a6943de768cb67"
+	deployment, ok := parseFlatpakDeploy(buildFlatpakDeploy("", commit,
+		[2]string{"appdata-version", "1.4.2"}))
+	require.True(t, ok, "an empty origin is a value, not a parse failure")
+	assert.Empty(t, deployment.origin)
+	assert.Equal(t, commit, deployment.commit)
+	assert.Equal(t, "1.4.2", deployment.version)
+
+	deployment.appID = "org.example.Bundled"
+	// No remote namespace, but the commit still identifies the deployment.
+	assert.Equal(t, "pkg:flatpak/org.example.Bundled@1.4.2?commit=c84b98e041e5",
+		deployment.toPackage().PUrl)
+}
+
+// TestFlatpakScopeFromOptions pins that a CUSTOM system installation is its own
+// scope.
+//
+// flatpak names a custom installation in the options cell, so collapsing
+// anything-not-"user" onto "system" lets a custom installation's remote
+// overwrite the default installation's remote of the same name — the collision
+// the (scope, name) key exists to prevent.
+func TestFlatpakScopeFromOptions(t *testing.T) {
+	tests := map[string]string{
+		"system":                   flatpakScopeSystem,
+		"user":                     flatpakScopeUser,
+		"system,oci,no-gpg-verify": flatpakScopeSystem,
+		"user,no-enumerate":        flatpakScopeUser,
+		"extra,oci":                "extra",
+		"oci,no-gpg-verify":        flatpakScopeSystem,
+		"":                         flatpakScopeSystem,
+	}
+	for options, want := range tests {
+		assert.Equal(t, want, flatpakScopeFromOptions(options), options)
+	}
+
+	t.Run("a custom installation does not collide with the default one", func(t *testing.T) {
+		const listing = "flathub\thttps://dl.flathub.org/repo/\tsystem\n" +
+			"flathub\thttps://mirror.corp/repo/\textra,oci\n"
+		remotes := ParseFlatpakRemotes(strings.NewReader(listing))
+		require.Len(t, remotes, 2)
+		assert.Equal(t, "https://dl.flathub.org/repo/",
+			remotes[flatpakRemoteKey(flatpakScopeSystem, "flathub")])
+		assert.Equal(t, "https://mirror.corp/repo/",
+			remotes[flatpakRemoteKey("extra", "flathub")])
+	})
 }

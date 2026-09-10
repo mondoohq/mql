@@ -29,7 +29,7 @@ const (
 	flatpakUserInstallation = ".local/share/flatpak"
 
 	// flatpakListCmd enumerates installed applications. The column ORDER is the
-	// parser's contract, ParseFlatpakList reads by position, so the command and
+	// parser's contract, parseFlatpakList reads by position, so the command and
 	// the parser have to change together. That is why they sit next to each
 	// other.
 	//
@@ -96,7 +96,7 @@ func (fpm *FlatpakPkgManager) listFromCLI() ([]Package, error) {
 		return nil, fmt.Errorf("flatpak list failed with exit code %d", cmd.ExitStatus)
 	}
 
-	deployments, err := parseFlatpakListDeployments(cmd.Stdout)
+	deployments, err := parseFlatpakList(cmd.Stdout)
 	if err != nil {
 		return nil, err
 	}
@@ -167,48 +167,66 @@ func flatpakRemoteKey(scope, name string) string {
 	return scope + "\x00" + name
 }
 
-// flatpakScopeUser and flatpakScopeSystem are the two installation scopes a
-// remote or a deployment can belong to. `flatpak list --columns=installation`
-// reports "user", "system", or the name of a custom system installation;
-// anything that is not "user" is a system installation, which is the scope its
-// remotes are configured in.
+// flatpakScopeUser and flatpakScopeSystem are the two BUILT-IN installation
+// scopes. A host can also define custom system installations, which flatpak
+// names in both the `installation` and `options` columns, and each of those is
+// its own scope -- collapsing them onto "system" would let a custom
+// installation's remote overwrite the default one's remote of the same name,
+// which is the collision the (scope, name) key exists to prevent.
 const (
 	flatpakScopeUser   = "user"
 	flatpakScopeSystem = "system"
 )
 
+// flatpakScopeFromOptions reads the scope out of a remote's options cell.
+// Options is a comma-separated flag list ("system", "user", "oci",
+// "no-gpg-verify", or a custom installation's name), so the scope is whichever
+// flag is not one of the known non-scope flags.
 func flatpakScopeFromOptions(options string) string {
 	for _, opt := range strings.Split(options, ",") {
-		if strings.TrimSpace(opt) == flatpakScopeUser {
-			return flatpakScopeUser
+		opt = strings.TrimSpace(opt)
+		if opt == "" || flatpakNonScopeOptions[opt] {
+			continue
 		}
+		return opt
 	}
 	return flatpakScopeSystem
+}
+
+// flatpakNonScopeOptions are the option flags that describe the remote rather
+// than the installation it belongs to. Anything else in the cell names the
+// installation.
+var flatpakNonScopeOptions = map[string]bool{
+	"oci":                true,
+	"no-gpg-verify":      true,
+	"no-enumerate":       true,
+	"no-deps":            true,
+	"disabled":           true,
+	"gpg-verify":         true,
+	"gpg-verify-summary": true,
 }
 
 func flatpakScopeFromInstallation(installation string) string {
-	if installation == flatpakScopeUser {
-		return flatpakScopeUser
+	if installation == "" {
+		return flatpakScopeSystem
 	}
-	return flatpakScopeSystem
+	return installation
 }
 
-// ParseFlatpakList parses the output of flatpakListCmd. Each line is
-// tab-delimited: APPLICATION, VERSION, BRANCH, ARCH, ORIGIN, ACTIVE COMMIT.
+// parseFlatpakList parses the output of flatpakListCmd. Each line is
+// tab-delimited: APPLICATION, VERSION, BRANCH, ARCH, ORIGIN, ACTIVE COMMIT,
+// INSTALLATION.
 //
 // Trailing columns are optional so a short line from an older flatpak still
 // yields an application and a version rather than nothing.
-func ParseFlatpakList(r io.Reader) ([]Package, error) {
-	deployments, err := parseFlatpakListDeployments(r)
-	if err != nil {
-		return nil, err
-	}
-	return flatpakPackages(deployments, nil), nil
-}
-
-// parseFlatpakListDeployments is the parsing half, kept apart so the CLI path
-// can stamp each deployment's remote URL before packages are built.
-func parseFlatpakListDeployments(r io.Reader) ([]flatpakDeployment, error) {
+//
+// Deliberately NOT exported, and it returns deployments rather than packages.
+// listFromCLI needs the deployments so it can stamp each one's remote URL, and
+// an exported wrapper that skipped that step would be a second, more inviting
+// entry point producing PURLs without the qualifier a consumer treats as the
+// publisher boundary -- a difference that surfaces only as missing advisory
+// matches.
+func parseFlatpakList(r io.Reader) ([]flatpakDeployment, error) {
 	var deployments []flatpakDeployment
 	scanner := bufio.NewScanner(r)
 
@@ -601,8 +619,15 @@ func parseFlatpakDeployFile(afs *afero.Afero, deployPath string) (flatpakDeploym
 // parseFlatpakDeploy is the pure half of parseFlatpakDeployFile, split out so
 // the byte-level parsing is testable against a real deploy file.
 func parseFlatpakDeploy(data []byte) (flatpakDeployment, bool) {
+	// An EMPTY origin is a legitimate value, not a parse failure: flatpak stores
+	// the origin as `origin ? origin : ""`, so a bundle-installed application
+	// (`flatpak install --bundle app.flatpak`) has none. Rejecting the record
+	// would drop the application from the inventory entirely -- and on a
+	// container image the filesystem walk is the only path -- to lose a field
+	// that only the provenance qualifier needs. The commit and version in the
+	// same record are still good.
 	origin, rest, ok := nextFlatpakString(data)
-	if !ok || !isPrintableFlatpakValue(origin) {
+	if !ok || (origin != "" && !isPrintableFlatpakValue(origin)) {
 		return flatpakDeployment{}, false
 	}
 
