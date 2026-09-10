@@ -1,1 +1,1 @@
-org.mozilla.firefox	154.0.1	stable	aarch64	flathub	c84b98e041e5
+org.mozilla.firefox	154.0.1	stable	aarch64	flathub	c84b98e041e5	system

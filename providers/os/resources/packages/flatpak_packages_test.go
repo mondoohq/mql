@@ -103,10 +103,32 @@ func TestParseFlatpakRemotes(t *testing.T) {
 
 	remotes := ParseFlatpakRemotes(f)
 	require.Len(t, remotes, 2)
-	assert.Equal(t, "https://dl.flathub.org/repo/", remotes["flathub"])
+	assert.Equal(t, "https://dl.flathub.org/repo/",
+		remotes[flatpakRemoteKey(flatpakScopeSystem, "flathub")])
 	// The entitled Red Hat remote. Its URL is an oci+https one, which is why
 	// the value is taken verbatim rather than validated as an http(s) URL.
-	assert.Equal(t, "oci+https://flatpaks.redhat.io/rhel/", remotes["rhel"])
+	assert.Equal(t, "oci+https://flatpaks.redhat.io/rhel/",
+		remotes[flatpakRemoteKey(flatpakScopeSystem, "rhel")])
+}
+
+// TestParseFlatpakRemotesScopesByInstallation pins that a per-user remote cannot
+// redefine a system remote of the same name.
+//
+// `flatpak remotes` lists system and user remotes together with no installation
+// column, so the name alone is ambiguous. Captured from the lab host after
+// `flatpak remote-add --user testuser https://example.com/repo/`, then edited to
+// reuse the name "rhel" -- which is legal, and is the case that matters.
+func TestParseFlatpakRemotesScopesByInstallation(t *testing.T) {
+	const listing = "flathub\thttps://dl.flathub.org/repo/\tsystem\n" +
+		"rhel\toci+https://flatpaks.redhat.io/rhel/\tsystem,oci,no-gpg-verify\n" +
+		"rhel\thttps://example.com/repo/\tuser\n"
+
+	remotes := ParseFlatpakRemotes(strings.NewReader(listing))
+	require.Len(t, remotes, 3, "the two 'rhel' remotes are distinct entries")
+	assert.Equal(t, "oci+https://flatpaks.redhat.io/rhel/",
+		remotes[flatpakRemoteKey(flatpakScopeSystem, "rhel")])
+	assert.Equal(t, "https://example.com/repo/",
+		remotes[flatpakRemoteKey(flatpakScopeUser, "rhel")])
 }
 
 func TestParseFlatpakDir(t *testing.T) {
@@ -151,7 +173,7 @@ func TestParseFlatpakDirIgnoresSymlinkedViews(t *testing.T) {
 		appID  = "org.mozilla.firefox"
 		commit = "c84b98e041e58749e824ae83bb2de6da268f0a0ca19f299329a6943de768cb67"
 	)
-	deploy := []byte("flathub\x00" + commit + "\x00\x00\x00appdata-version\x00154.0.1\x00")
+	deploy := buildFlatpakDeploy("flathub", commit, [2]string{"appdata-version", "154.0.1"})
 
 	// The real deployment.
 	require.NoError(t, afs.WriteFile(appDir+"/"+appID+"/aarch64/stable/active/deploy", deploy, 0o644))
@@ -215,7 +237,8 @@ func TestParseFlatpakDeployRejectsGarbage(t *testing.T) {
 // lose the application from the inventory entirely.
 func TestParseFlatpakDeployVersionIsOptional(t *testing.T) {
 	const commit = "9c99837c6427a4bd0e6be5be5e4f0f2bd6c6a2f4b0d7a1c8e3f5b9d2a7c4e6f8"
-	deployment, ok := parseFlatpakDeploy([]byte("flathub\x00" + commit + "\x00\x00\x00runtime\x00org.freedesktop.Platform/aarch64/25.08\x00"))
+	deployment, ok := parseFlatpakDeploy(buildFlatpakDeploy("flathub", commit,
+		[2]string{"runtime", "org.freedesktop.Platform/aarch64/25.08"}))
 	require.True(t, ok)
 	assert.Equal(t, "flathub", deployment.origin)
 	assert.Equal(t, commit, deployment.commit)
@@ -346,7 +369,7 @@ func TestFlatpakDeployDictStringHandlesAlignmentPadding(t *testing.T) {
 // INSTALLATION, so an application installed both system-wide and per-user
 // appears twice with identical fields.
 func TestParseFlatpakListDedupesInstallations(t *testing.T) {
-	const row = "org.mozilla.firefox\t154.0.1\tstable\taarch64\tflathub\tc84b98e041e5\n"
+	const row = "org.mozilla.firefox\t154.0.1\tstable\taarch64\tflathub\tc84b98e041e5\tsystem\n"
 	pkgs, err := ParseFlatpakList(strings.NewReader(row + row))
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1, "one application, not two identical PURLs")
@@ -355,7 +378,7 @@ func TestParseFlatpakListDedupesInstallations(t *testing.T) {
 		pkgs[0].PUrl)
 
 	t.Run("a different branch is different software", func(t *testing.T) {
-		other := "org.mozilla.firefox\t154.0.1\tbeta\taarch64\tflathub\tdeadbeefcafe\n"
+		other := "org.mozilla.firefox\t154.0.1\tbeta\taarch64\tflathub\tdeadbeefcafe\tsystem\n"
 		pkgs, err := ParseFlatpakList(strings.NewReader(row + other))
 		require.NoError(t, err)
 		assert.Len(t, pkgs, 2)
@@ -374,8 +397,11 @@ func TestParseFlatpakListDedupesInstallations(t *testing.T) {
 func TestListFromFSScopesRemotesPerInstallation(t *testing.T) {
 	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
 
-	const commit = "c84b98e041e58749e824ae83bb2de6da268f0a0ca19f299329a6943de768cb67"
-	deploy := []byte("rhel\x00" + commit + "\x00\x00\x00appdata-version\x00140.14.0\x00")
+	const (
+		commit     = "c84b98e041e58749e824ae83bb2de6da268f0a0ca19f299329a6943de768cb67"
+		userCommit = "9c99837c6427a4bd0e6be5be5e4f0f2bd6c6a2f4b0d7a1c8e3f5b9d2a7c4e6f8"
+	)
+	deploy := buildFlatpakDeploy("rhel", commit, [2]string{"appdata-version", "140.14.0"})
 
 	// System installation: the entitled Red Hat remote.
 	require.NoError(t, afs.WriteFile(
@@ -384,14 +410,78 @@ func TestListFromFSScopesRemotesPerInstallation(t *testing.T) {
 		[]byte("[remote \"rhel\"]\nurl=oci+https://flatpaks.redhat.io/rhel/\n"), 0o644))
 
 	// A per-user installation that reuses the name "rhel" for something else.
-	require.NoError(t, afs.WriteFile("/home/alice/.local/share/flatpak/repo/config",
+	// It must carry a deployment of its OWN: parseFlatpakDir errors on a missing
+	// app directory and the loop moves on, so a root with only a repo config is
+	// never read -- an earlier version of this test did exactly that and would
+	// have passed against the merged map it was written to rule out.
+	const userRoot = "/home/alice/.local/share/flatpak"
+	userDeploy := buildFlatpakDeploy("rhel", userCommit, [2]string{"appdata-version", "1.2.3"})
+	require.NoError(t, afs.WriteFile(
+		userRoot+"/app/org.example.App/aarch64/stable/active/deploy", userDeploy, 0o644))
+	require.NoError(t, afs.WriteFile(userRoot+"/repo/config",
 		[]byte("[remote \"rhel\"]\nurl=https://flatpaks.example.com/repo/\n"), 0o644))
 
 	fpm := &FlatpakPkgManager{}
 	pkgs, err := fpm.listFromFSWith(afs)
 	require.NoError(t, err)
-	require.Len(t, pkgs, 1)
-	assert.Contains(t, pkgs[0].PUrl, "flatpaks.redhat.io",
+	require.Len(t, pkgs, 2)
+
+	byName := map[string]Package{}
+	for _, p := range pkgs {
+		byName[p.Name] = p
+	}
+
+	// Both deployments name the remote "rhel"; each must get ITS OWN URL.
+	assert.Contains(t, byName["org.mozilla.firefox"].PUrl, "flatpaks.redhat.io",
 		"the system deployment must keep the SYSTEM remote's URL")
-	assert.NotContains(t, pkgs[0].PUrl, "example.com")
+	assert.NotContains(t, byName["org.mozilla.firefox"].PUrl, "flatpaks.example.com")
+	assert.Contains(t, byName["org.example.App"].PUrl, "flatpaks.example.com",
+		"the per-user deployment must keep the USER remote's URL")
+}
+
+// TestFlatpakDeployDictStringEmptyValue pins that an empty string value reads as
+// empty rather than as the byte that follows it.
+//
+// The alignment gap has to be COMPUTED from the key's offset, not found by
+// scanning for NULs: a scan cannot tell padding from a value that is itself the
+// empty string, so it consumes the empty value's own terminator and returns the
+// GVariant type-signature byte ("s") as the version. That would publish
+// <app>@s — a PURL that looks versioned and can never match, which is exactly
+// what newFlatpakPurl's contract says is worse than a visibly unversioned one.
+func TestFlatpakDeployDictStringEmptyValue(t *testing.T) {
+	const commit = "c84b98e041e58749e824ae83bb2de6da268f0a0ca19f299329a6943de768cb67"
+	data := buildFlatpakDeploy("flathub", commit, [2]string{"appdata-version", ""})
+
+	v, ok := flatpakDeployDictString(data, "appdata-version")
+	assert.Empty(t, v, "an empty value must not read as the following type byte")
+	assert.False(t, ok)
+
+	d, parsed := parseFlatpakDeploy(data)
+	require.True(t, parsed)
+	assert.Empty(t, d.version)
+	assert.NotContains(t, d.toPackage().PUrl, "@s")
+}
+
+// TestListFromFSFindsRootUserInstallation pins that /root is treated as a home
+// directory rather than as a container of them.
+//
+// Iterating the entries INSIDE /root builds /root/<subdir>/.local/share/flatpak
+// and never /root/.local/share/flatpak, so anything installed with
+// `sudo flatpak install --user` is invisible — and the filesystem walk is the
+// only path available when a container image is scanned.
+func TestListFromFSFindsRootUserInstallation(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+
+	const commit = "c84b98e041e58749e824ae83bb2de6da268f0a0ca19f299329a6943de768cb67"
+	deploy := buildFlatpakDeploy("flathub", commit, [2]string{"appdata-version", "154.0.1"})
+	require.NoError(t, afs.WriteFile(
+		"/root/.local/share/flatpak/app/org.mozilla.firefox/aarch64/stable/active/deploy",
+		deploy, 0o644))
+
+	fpm := &FlatpakPkgManager{}
+	pkgs, err := fpm.listFromFSWith(afs)
+	require.NoError(t, err)
+	require.Len(t, pkgs, 1)
+	assert.Equal(t, "org.mozilla.firefox", pkgs[0].Name)
+	assert.Equal(t, "154.0.1", pkgs[0].Version)
 }
