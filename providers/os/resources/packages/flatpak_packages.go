@@ -152,7 +152,7 @@ func ParseFlatpakRemotes(r io.Reader) map[string]string {
 // Trailing columns are optional so a short line from an older flatpak still
 // yields an application and a version rather than nothing.
 func ParseFlatpakList(r io.Reader) ([]Package, error) {
-	var pkgs []Package
+	var deployments []flatpakDeployment
 	scanner := bufio.NewScanner(r)
 
 	for scanner.Scan() {
@@ -189,14 +189,33 @@ func ParseFlatpakList(r io.Reader) ([]Package, error) {
 			// commit. The filesystem path reads the full 64-character one.
 			commit: column(5),
 		}
-		pkgs = append(pkgs, deployment.toPackage())
+		deployments = append(deployments, deployment)
 	}
 
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
 
-	return pkgs, nil
+	return dedupeFlatpakDeployments(deployments), nil
+}
+
+// dedupeFlatpakDeployments collapses deployments that describe the same
+// software. `flatpak list` prints one row per INSTALLATION, so an application
+// installed both system-wide and per-user appears twice with an identical
+// application, version, branch, arch, origin and commit -- and would otherwise
+// become two packages with byte-identical PURLs. The filesystem path collapses
+// the same case; both paths have to agree on the package count.
+func dedupeFlatpakDeployments(deployments []flatpakDeployment) []Package {
+	seen := make(map[string]struct{}, len(deployments))
+	pkgs := make([]Package, 0, len(deployments))
+	for _, d := range deployments {
+		if _, ok := seen[d.key()]; ok {
+			continue
+		}
+		seen[d.key()] = struct{}{}
+		pkgs = append(pkgs, d.toPackage())
+	}
+	return pkgs
 }
 
 // flatpakColumnValue normalizes one `flatpak --columns` cell. flatpak renders
@@ -221,6 +240,13 @@ type flatpakDeployment struct {
 	arch    string
 	origin  string
 	commit  string
+
+	// installationRoot is the installation this deployment was found under
+	// (/var/lib/flatpak, or a per-user root). It scopes the remote-name lookup;
+	// it is not part of the identity, so key() ignores it -- the same
+	// application at the same commit is the same software wherever it is
+	// installed.
+	installationRoot string
 }
 
 // key identifies a deployment. A system-wide and a per-user install of the same
@@ -242,8 +268,12 @@ func (d flatpakDeployment) toPackage() Package {
 }
 
 func (fpm *FlatpakPkgManager) listFromFS() ([]Package, error) {
-	afs := &afero.Afero{Fs: fpm.conn.FileSystem()}
+	return fpm.listFromFSWith(&afero.Afero{Fs: fpm.conn.FileSystem()})
+}
 
+// listFromFSWith is the filesystem enumeration against an explicit filesystem,
+// so the walk can be tested without a connection.
+func (fpm *FlatpakPkgManager) listFromFSWith(afs *afero.Afero) ([]Package, error) {
 	roots := []string{flatpakSystemInstallation}
 
 	// Per-user installations under the usual home directory roots.
@@ -260,6 +290,14 @@ func (fpm *FlatpakPkgManager) listFromFS() ([]Package, error) {
 		}
 	}
 
+	// Remotes are resolved PER INSTALLATION ROOT, never merged. A remote name is
+	// scoped to its installation: `flatpak remote-add --user rhel <other-url>`
+	// is legal and would, in a merged map, overwrite the system `rhel` entry and
+	// hand every system-installed Red Hat Flatpak a foreign repository_url --
+	// which CanonicalFlatpakOrigin then reads as a different publisher, dropping
+	// all Red Hat advisory coverage. That is precisely the boundary the URL was
+	// added to enforce.
+	remoteURLs := map[string]map[string]string{}
 	var deployments []flatpakDeployment
 	for _, root := range roots {
 		found, err := parseFlatpakDir(afs, path.Join(root, "app"), root)
@@ -267,16 +305,7 @@ func (fpm *FlatpakPkgManager) listFromFS() ([]Package, error) {
 			continue
 		}
 		deployments = append(deployments, found...)
-	}
-
-	// One remote-name to URL map for the host, read from the repo config of
-	// every installation root, so the filesystem path carries the same
-	// provenance the CLI path does.
-	remotes := map[string]string{}
-	for _, root := range roots {
-		for name, url := range parseFlatpakRepoConfig(afs, path.Join(root, "repo", "config")) {
-			remotes[name] = url
-		}
+		remoteURLs[root] = parseFlatpakRepoConfig(afs, path.Join(root, "repo", "config"))
 	}
 
 	seen := map[string]struct{}{}
@@ -287,7 +316,7 @@ func (fpm *FlatpakPkgManager) listFromFS() ([]Package, error) {
 		}
 		seen[d.key()] = struct{}{}
 		pkg := d.toPackage()
-		if url, ok := remotes[d.origin]; ok {
+		if url, ok := remoteURLs[d.installationRoot][d.origin]; ok {
 			pkg.PUrl = addFlatpakRepositoryURL(pkg.PUrl, url)
 		}
 		pkgs = append(pkgs, pkg)
@@ -346,11 +375,23 @@ func parseFlatpakDir(afs *afero.Afero, appDir, installationRoot string) ([]flatp
 
 				deploy, ok := resolveFlatpakDeployment(afs, path.Join(branchDir, branch), installationRoot, appID, arch, branch)
 				if !ok {
+					// A branch directory exists but no deployment could be read
+					// from it. Warn rather than skip silently: deploy is a
+					// versioned GVariant tuple, so a future flatpak that
+					// reorders or prepends a field would make every file fail to
+					// parse and this function would return zero packages for a
+					// host full of Flatpaks, with List() still reporting
+					// success. One WARN naming the application is the difference
+					// between "we lost the inventory" and total silence.
+					log.Warn().Str("app", appID).Str("arch", arch).Str("branch", branch).
+						Str("installation", installationRoot).
+						Msg("mql[flatpak]> could not read a deployment record; application not reported")
 					continue
 				}
 				deploy.appID = appID
 				deploy.arch = arch
 				deploy.branch = branch
+				deploy.installationRoot = installationRoot
 				deployments = append(deployments, deploy)
 			}
 		}
@@ -518,19 +559,46 @@ func nextFlatpakString(data []byte) (string, []byte, bool) {
 }
 
 // flatpakDeployDictString reads the string value of a GVariant dictionary key.
-// The value is the NUL-terminated string immediately following the key.
+//
+// The value does NOT always sit immediately after the key. GVariant aligns the
+// variant inside an {sv} entry to 8 bytes, so the serializer inserts up to 7
+// NUL padding bytes after the key's own terminator whenever len(key)+1 is not a
+// multiple of 8. Both shapes occur in one real deploy file:
+//
+//	appdata-version\0154.0.1\0        15+1 = 16, aligned, no padding
+//	appdata-name\0\0\0\0Firefox\0        12+1 = 13, three padding bytes
+//
+// Reading the byte right after the key therefore yields "" for half the keys in
+// the file. This originally happened to work only because the one key needed
+// was 15 characters long.
 func flatpakDeployDictString(data []byte, key string) (string, bool) {
 	needle := append([]byte(key), 0)
 	idx := bytes.Index(data, needle)
 	if idx < 0 {
 		return "", false
 	}
-	value, _, ok := nextFlatpakString(data[idx+len(needle):])
+	rest := data[idx+len(needle):]
+
+	// Skip the alignment padding. At most 7 bytes, so a longer run of NULs is
+	// not padding and the key has no string value to read.
+	pad := 0
+	for pad < len(rest) && rest[pad] == 0 {
+		pad++
+	}
+	if pad > flatpakMaxGVariantPadding {
+		return "", false
+	}
+
+	value, _, ok := nextFlatpakString(rest[pad:])
 	if !ok || !isPrintableFlatpakValue(value) {
 		return "", false
 	}
 	return value, true
 }
+
+// flatpakMaxGVariantPadding is the largest alignment gap GVariant can insert
+// before an 8-aligned value.
+const flatpakMaxGVariantPadding = 7
 
 // flatpakValueMaxLen bounds a value read out of the GVariant blob. Application
 // versions and remote names are short; anything longer is a sign the parse

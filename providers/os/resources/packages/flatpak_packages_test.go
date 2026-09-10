@@ -5,6 +5,7 @@ package packages
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -295,4 +296,102 @@ func TestFlatpakPurlIsStableAcrossPaths(t *testing.T) {
 	assert.Equal(t,
 		"pkg:flatpak/flathub/org.mozilla.firefox@154.0.1?branch=stable&commit="+shortCommit,
 		fromFS.toPackage().PUrl)
+}
+
+// TestFlatpakDeployDictStringHandlesAlignmentPadding is the regression test for
+// a reader that only worked by coincidence.
+//
+// GVariant aligns the variant inside an {sv} entry to 8 bytes, so up to 7 NUL
+// padding bytes follow a key whose length+1 is not a multiple of 8. Both shapes
+// are present in the real fixture: "appdata-version" (15+1=16) has none, while
+// "appdata-name" (12+1=13) has three. The original reader took the byte right
+// after the key and therefore read "" for the padded half.
+func TestFlatpakDeployDictStringHandlesAlignmentPadding(t *testing.T) {
+	data, err := os.ReadFile("testdata/flatpak/app/org.mozilla.firefox/aarch64/stable/active/deploy")
+	require.NoError(t, err)
+
+	t.Run("aligned key", func(t *testing.T) {
+		v, ok := flatpakDeployDictString(data, "appdata-version")
+		require.True(t, ok)
+		assert.Equal(t, "154.0.1", v)
+	})
+
+	t.Run("padded key", func(t *testing.T) {
+		v, ok := flatpakDeployDictString(data, "appdata-name")
+		require.True(t, ok, "a key needing alignment padding must still resolve")
+		assert.Equal(t, "Firefox", v)
+	})
+
+	t.Run("another aligned key", func(t *testing.T) {
+		v, ok := flatpakDeployDictString(data, "runtime")
+		require.True(t, ok)
+		assert.Equal(t, "org.freedesktop.Platform/aarch64/25.08", v)
+	})
+
+	t.Run("absent key", func(t *testing.T) {
+		_, ok := flatpakDeployDictString(data, "no-such-key")
+		assert.False(t, ok)
+	})
+
+	t.Run("a long NUL run is not padding", func(t *testing.T) {
+		// More than 7 NULs cannot be alignment; refusing to walk it keeps the
+		// reader from wandering into binary and returning noise.
+		_, ok := flatpakDeployDictString([]byte("eol\x00\x00\x00\x00\x00\x00\x00\x00\x00value\x00"), "eol")
+		assert.False(t, ok)
+	})
+}
+
+// TestParseFlatpakListDedupesInstallations pins that the CLI path collapses the
+// same software the filesystem path does. `flatpak list` prints one row per
+// INSTALLATION, so an application installed both system-wide and per-user
+// appears twice with identical fields.
+func TestParseFlatpakListDedupesInstallations(t *testing.T) {
+	const row = "org.mozilla.firefox\t154.0.1\tstable\taarch64\tflathub\tc84b98e041e5\n"
+	pkgs, err := ParseFlatpakList(strings.NewReader(row + row))
+	require.NoError(t, err)
+	require.Len(t, pkgs, 1, "one application, not two identical PURLs")
+	assert.Equal(t,
+		"pkg:flatpak/flathub/org.mozilla.firefox@154.0.1?branch=stable&commit=c84b98e041e5",
+		pkgs[0].PUrl)
+
+	t.Run("a different branch is different software", func(t *testing.T) {
+		other := "org.mozilla.firefox\t154.0.1\tbeta\taarch64\tflathub\tdeadbeefcafe\n"
+		pkgs, err := ParseFlatpakList(strings.NewReader(row + other))
+		require.NoError(t, err)
+		assert.Len(t, pkgs, 2)
+	})
+}
+
+// TestListFromFSScopesRemotesPerInstallation pins that a per-user remote cannot
+// redefine a system remote's URL.
+//
+// A remote name is scoped to its installation, so `flatpak remote-add --user
+// rhel <other-url>` is legal. Merging every root's repo config into one map
+// would let it overwrite the system `rhel` entry, hand every system-installed
+// Red Hat Flatpak a foreign repository_url, and — because the server reads that
+// URL to decide the publisher — drop all Red Hat advisory coverage. That is the
+// exact boundary the URL exists to enforce.
+func TestListFromFSScopesRemotesPerInstallation(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+
+	const commit = "c84b98e041e58749e824ae83bb2de6da268f0a0ca19f299329a6943de768cb67"
+	deploy := []byte("rhel\x00" + commit + "\x00\x00\x00appdata-version\x00140.14.0\x00")
+
+	// System installation: the entitled Red Hat remote.
+	require.NoError(t, afs.WriteFile(
+		"/var/lib/flatpak/app/org.mozilla.firefox/aarch64/stable/active/deploy", deploy, 0o644))
+	require.NoError(t, afs.WriteFile("/var/lib/flatpak/repo/config",
+		[]byte("[remote \"rhel\"]\nurl=oci+https://flatpaks.redhat.io/rhel/\n"), 0o644))
+
+	// A per-user installation that reuses the name "rhel" for something else.
+	require.NoError(t, afs.WriteFile("/home/alice/.local/share/flatpak/repo/config",
+		[]byte("[remote \"rhel\"]\nurl=https://flatpaks.example.com/repo/\n"), 0o644))
+
+	fpm := &FlatpakPkgManager{}
+	pkgs, err := fpm.listFromFSWith(afs)
+	require.NoError(t, err)
+	require.Len(t, pkgs, 1)
+	assert.Contains(t, pkgs[0].PUrl, "flatpaks.redhat.io",
+		"the system deployment must keep the SYSTEM remote's URL")
+	assert.NotContains(t, pkgs[0].PUrl, "example.com")
 }
