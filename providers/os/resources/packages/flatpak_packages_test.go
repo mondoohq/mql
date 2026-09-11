@@ -624,6 +624,7 @@ func TestParseFlatpakDirReadsSiblingApplications(t *testing.T) {
 		firefoxCommit  = "c84b98e041e58749e824ae83bb2de6da268f0a0ca19f299329a6943de768cb67"
 		spotifyCommit  = "1f3c7a9b2d4e6f8a0b1c3d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a"
 		thunderbirdSha = "5a7b9c1d3e5f7a9b1c3d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b"
+		gimpCommit     = "3e5f7a9b1c3d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f"
 	)
 
 	// Three applications, two remotes, one installation root.
@@ -634,9 +635,16 @@ func TestParseFlatpakDirReadsSiblingApplications(t *testing.T) {
 	require.NoError(t, afs.WriteFile(appDir+"/org.mozilla.Thunderbird/aarch64/stable/active/deploy",
 		buildFlatpakDeploy("rhel", thunderbirdSha, [2]string{"appdata-version", "140.14.0"}), 0o644))
 
+	// An x86_64 deployment alongside the aarch64 ones. The arch is a pass-through
+	// directory level -- nothing in the walk matches on its value -- and the
+	// on-disk fixture can only capture the arch of the host it was taken from,
+	// so the arch that most real hosts actually run is pinned here instead.
+	require.NoError(t, afs.WriteFile(appDir+"/org.gimp.GIMP/x86_64/stable/active/deploy",
+		buildFlatpakDeploy("flathub", gimpCommit, [2]string{"appdata-version", "3.0.4"}), 0o644))
+
 	deployments, err := parseFlatpakDir(afs, appDir, "/var/lib/flatpak")
 	require.NoError(t, err)
-	require.Len(t, deployments, 3, "one deployment per installed application")
+	require.Len(t, deployments, 4, "one deployment per installed application")
 
 	byID := map[string]flatpakDeployment{}
 	for _, d := range deployments {
@@ -656,4 +664,10 @@ func TestParseFlatpakDirReadsSiblingApplications(t *testing.T) {
 	require.Contains(t, byID, "org.mozilla.Thunderbird")
 	assert.Equal(t, "rhel", byID["org.mozilla.Thunderbird"].origin)
 	assert.Equal(t, "140.14.0", byID["org.mozilla.Thunderbird"].version)
+
+	// The arch travels through untouched, whatever it is.
+	require.Contains(t, byID, "org.gimp.GIMP")
+	assert.Equal(t, "x86_64", byID["org.gimp.GIMP"].arch)
+	assert.Equal(t, "3.0.4", byID["org.gimp.GIMP"].version)
+	assert.Equal(t, "aarch64", byID["org.mozilla.firefox"].arch)
 }
