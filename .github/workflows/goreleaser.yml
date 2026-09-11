@@ -67,9 +67,44 @@ jobs:
           echo "github.ref: ${{ github.ref }}"
           echo "github.ref_name: ${{ github.ref_name }}"
           echo "github.event_name: ${{ github.event_name }}"
+      # A tag's release channel is derived from its semver pre-release segment,
+      # never declared: `14.0.0-rc.2` is preview, `13.38.1` is stable, and build
+      # metadata (`8.4.0+41`) is not a pre-release so it stays stable. This
+      # replaces a substring test for alpha/beta/pre/rc that disagreed with the
+      # equivalent lists in cnspec and in the publishing tools. See minstaller
+      # ADR 0003.
+      - name: Determine release channel
+        id: channel
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if [ "$REF_TYPE" != "tag" ]; then
+            echo "not a tag ($REF_NAME), treating as stable"
+            echo "channel=stable" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          CORE="${REF_NAME#v}"
+          CORE="${CORE%%+*}"
+          if ! printf '%s' "$CORE" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::tag $REF_NAME is not a semver version, so its release channel cannot be derived"
+            exit 1
+          fi
+
+          case "$CORE" in
+            *-*) CHANNEL=preview ;;
+            *)   CHANNEL=stable ;;
+          esac
+
+          echo "$REF_NAME -> channel=$CHANNEL"
+          echo "channel=$CHANNEL" >> $GITHUB_OUTPUT
+
+      # A pre-release still builds and still gets a GitHub release; what it must
+      # not do is promote `latest` or start the cnspec release train.
       - name: Skip Publish for non-release tags
         id: skip-publish
-        if: contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'pre') || contains(github.ref, 'rc') || inputs.skip-publish == true
+        if: steps.channel.outputs.channel != 'stable' || inputs.skip-publish == true
         run: |
           echo "Skipping publish for non-release tags"
           echo "skip-publish=true" >> $GITHUB_OUTPUT
