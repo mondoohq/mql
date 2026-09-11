@@ -1,0 +1,124 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+import core
+
+option provider = "go.mondoo.com/mql/providers/firebase"
+option go_package = "go.mondoo.com/mql/providers/firebase/resources"
+option root = "firebase.project"
+
+// Firebase project
+//
+// Security-relevant configuration of a Firebase project, read from the
+// public endpoints a deployed app exposes rather than from an
+// authenticated admin API. The project is selected by `projectId` and
+// `apiKey`, or discovered from a hosting `domain` whose pages embed the
+// Firebase config. The `realtimeDatabase`, `firestore`, `storage`,
+// `authConfig` and `hosting` fields each probe one service for
+// unauthenticated exposure.
+firebase.project @defaults("projectId domain") @maturity("experimental") @root {
+  // Firebase project ID
+  projectId string
+  // Firebase web API key (semi-public: required for client-side Firebase SDKs, but restricted by API key restrictions in the Google Cloud console)
+  apiKey string
+  // Firebase auth domain
+  authDomain string
+  // Domain used to discover this project (empty if project ID was provided directly)
+  domain string
+  // Realtime Database security posture
+  realtimeDatabase() firebase.project.realtimeDatabase
+  // Authentication configuration from public Identity Toolkit API
+  authConfig() firebase.project.authConfig
+  // Hosting configuration discovered from well-known paths
+  hosting() firebase.project.hosting
+  // Cloud Storage security posture
+  storage() firebase.project.storage
+  // Cloud Firestore security posture
+  firestore() firebase.project.firestore
+}
+
+// Firebase Realtime Database exposure
+//
+// Unauthenticated read access to the project's default Realtime Database.
+// `publiclyReadable` reports whether the root document answers a plain GET,
+// and `structureExposed` whether a shallow query discloses the top-level
+// keys even when the data itself is protected. `url` is the database
+// endpoint that answered.
+firebase.project.realtimeDatabase @defaults("url publiclyReadable") @maturity("experimental") {
+  // Realtime Database URL tested
+  url string
+  // Whether the database is publicly readable without authentication
+  publiclyReadable bool
+  // Whether the shallow query exposed database structure keys
+  structureExposed bool
+}
+
+// Firebase Authentication configuration
+//
+// Sign-in settings the Identity Toolkit API discloses for the project's web
+// API key: the enabled `signInProviders`, whether `anonymousAuthEnabled`,
+// the `authorizedDomains` allowed for OAuth redirects, and whether
+// `emailEnumerationProtection` is on. Projects created before September
+// 2023 default to enumeration protection off, which lets anyone learn
+// whether an email address holds an account.
+firebase.project.authConfig @defaults("signInProviders anonymousAuthEnabled") @maturity("experimental") {
+  // Enabled sign-in providers (e.g. password, google.com, anonymous)
+  signInProviders []string
+  // Whether anonymous authentication is enabled
+  anonymousAuthEnabled bool
+  // Authorized domains for OAuth redirects
+  authorizedDomains []string
+  // Whether email enumeration protection is enabled (projects before Sept 2023 default to off)
+  emailEnumerationProtection bool
+}
+
+// Firebase Hosting exposure
+//
+// What the hosting `domain` publishes about the app: the Apple App Site
+// Association and Android Asset Links documents under `/.well-known`, and
+// whether the JavaScript bundles the landing page loads ship with public
+// source maps. `sourceMapExposed` and `exposedSourceMaps` flag maps that
+// disclose the original source of a production build.
+firebase.project.hosting @defaults("domain sourceMapExposed") @maturity("experimental") {
+  // Domain checked
+  domain string
+  // Apple App Site Association data from /.well-known/apple-app-site-association
+  appleAppSiteAssociation dict
+  // Android Asset Links data from /.well-known/assetlinks.json
+  androidAssetLinks dict
+  // Whether JavaScript source maps are publicly accessible
+  sourceMapExposed bool
+  // URLs of exposed source maps found
+  exposedSourceMaps []string
+}
+
+// Firebase Cloud Storage exposure
+//
+// Unauthenticated listing of the project's default storage bucket.
+// `publiclyListable` reports whether the bucket's object listing at
+// `bucketUrl` answers without credentials, which exposes every object
+// name in the bucket.
+firebase.project.storage @defaults("bucketUrl publiclyListable") @maturity("experimental") {
+  // Storage bucket URL tested
+  bucketUrl string
+  // Whether the default storage bucket is publicly listable
+  publiclyListable bool
+}
+
+// Firebase Cloud Firestore exposure
+//
+// Unauthenticated access to the project's default Firestore database.
+// `publiclyReadable` reports whether documents can be read directly,
+// `structureExposed` whether the collection names can be listed even when
+// documents cannot, and `exposedCollections` names the top-level
+// collections learned either way. `url` is the REST endpoint probed.
+firebase.project.firestore @defaults("url publiclyReadable") @maturity("experimental") {
+  // Firestore REST API URL tested
+  url string
+  // Whether the default Firestore database documents are publicly readable
+  publiclyReadable bool
+  // Whether the database structure (collection IDs) is exposed via listCollectionIds
+  structureExposed bool
+  // Top-level collection IDs exposed (from document reads or listCollectionIds)
+  exposedCollections []string
+}

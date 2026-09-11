@@ -1,0 +1,31 @@
+# Copyright Mondoo, Inc. 2024, 2026
+# SPDX-License-Identifier: BUSL-1.1
+
+firebase.project 14.0.0
+firebase.project.apiKey 14.0.0
+firebase.project.authConfig 14.0.0
+firebase.project.authConfig.anonymousAuthEnabled 14.0.0
+firebase.project.authConfig.authorizedDomains 14.0.0
+firebase.project.authConfig.emailEnumerationProtection 14.0.0
+firebase.project.authConfig.signInProviders 14.0.0
+firebase.project.authDomain 14.0.0
+firebase.project.domain 14.0.0
+firebase.project.firestore 14.0.0
+firebase.project.firestore.exposedCollections 14.0.0
+firebase.project.firestore.publiclyReadable 14.0.0
+firebase.project.firestore.structureExposed 14.0.0
+firebase.project.firestore.url 14.0.0
+firebase.project.hosting 14.0.0
+firebase.project.hosting.androidAssetLinks 14.0.0
+firebase.project.hosting.appleAppSiteAssociation 14.0.0
+firebase.project.hosting.domain 14.0.0
+firebase.project.hosting.exposedSourceMaps 14.0.0
+firebase.project.hosting.sourceMapExposed 14.0.0
+firebase.project.projectId 14.0.0
+firebase.project.realtimeDatabase 14.0.0
+firebase.project.realtimeDatabase.publiclyReadable 14.0.0
+firebase.project.realtimeDatabase.structureExposed 14.0.0
+firebase.project.realtimeDatabase.url 14.0.0
+firebase.project.storage 14.0.0
+firebase.project.storage.bucketUrl 14.0.0
+firebase.project.storage.publiclyListable 14.0.0

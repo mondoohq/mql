@@ -228,6 +228,7 @@ PROVIDERS := \
 	digitalocean \
 	dropbox \
 	elasticsearch \
+	firebase \
 	gcp \
 	github \
 	gitlab \
