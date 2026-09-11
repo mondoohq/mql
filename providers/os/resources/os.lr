@@ -14299,6 +14299,57 @@ windows.driver @defaults("name running signed") {
   purl string
 }
 
+// Certificates held in the Windows certificate stores
+windows.certificates {
+  []windows.certificate
+}
+
+// Certificate in a Windows certificate store
+//
+// Single certificate as it sits in one store: the `store` holding it, the
+// `location` that scopes it to the machine or to one account, its
+// `thumbprint`, and whether the store also holds the matching private key.
+// `store` carries the trust decision rather than the certificate itself. A
+// certificate in Root is trusted as a certification authority, one in
+// Disallowed is explicitly distrusted, and one in TrustedPublisher lets
+// code it signed run without prompting, so the same certificate means
+// different things in different stores. Read `certificate` for the subject,
+// issuer, validity dates and extensions.
+windows.certificate @defaults("store location thumbprint") {
+  // Store location the certificate was found in
+  //
+  // Either "LocalMachine", the machine-wide store every account on the host
+  // sees, or "CurrentUser", the store belonging to the account the scan runs
+  // as. CurrentUser is not the store of any other user on the machine, so an
+  // audit of machine trust reads LocalMachine.
+  location string
+  // Name of the store the certificate was found in
+  //
+  // For example "Root" for trusted root certification authorities, "CA" for
+  // intermediates, "My" for certificates the host holds an identity for,
+  // "TrustedPublisher" for publishers whose signed code runs without
+  // prompting, and "Disallowed" for certificates that are explicitly
+  // distrusted.
+  store string
+  // SHA-1 hash the store keys the certificate by
+  //
+  // Uppercase hex with no separators. Windows keys certificates by this value
+  // throughout its own tooling, so it is what matches a certificate against a
+  // vendor advisory or a removal instruction.
+  thumbprint string
+  // Whether the store also holds the certificate's private key
+  //
+  // True for a certificate the host can authenticate or sign with, rather
+  // than one it merely trusts. The private key itself is never read.
+  hasPrivateKey bool
+  // Parsed certificate
+  //
+  // Subject, issuer, validity dates, extensions and public key. Null when the
+  // stored bytes could not be parsed, which leaves the store entry reportable
+  // rather than dropping it from the list.
+  certificate() network.certificate
+}
+
 // Windows BitLocker drive encryption
 //
 // BitLocker Drive Encryption state across volumes: the encryption,

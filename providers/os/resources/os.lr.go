@@ -490,6 +490,8 @@ const (
 	ResourceWindowsPrinterDriver                          string = "windows.printerDriver"
 	ResourceWindowsDrivers                                string = "windows.drivers"
 	ResourceWindowsDriver                                 string = "windows.driver"
+	ResourceWindowsCertificates                           string = "windows.certificates"
+	ResourceWindowsCertificate                            string = "windows.certificate"
 	ResourceWindowsBitlocker                              string = "windows.bitlocker"
 	ResourceWindowsBitlockerPolicy                        string = "windows.bitlocker.policy"
 	ResourceWindowsBitlockerPolicyDriveSettings           string = "windows.bitlocker.policy.driveSettings"
@@ -2536,6 +2538,14 @@ func init() {
 		"windows.driver": {
 			// to override args, implement: initWindowsDriver(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createWindowsDriver,
+		},
+		"windows.certificates": {
+			// to override args, implement: initWindowsCertificates(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWindowsCertificates,
+		},
+		"windows.certificate": {
+			// to override args, implement: initWindowsCertificate(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWindowsCertificate,
 		},
 		"windows.bitlocker": {
 			// to override args, implement: initWindowsBitlocker(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -13936,6 +13946,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"windows.driver.purl": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsDriver).GetPurl()).ToDataRes(types.String)
+	},
+	"windows.certificates.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsCertificates).GetList()).ToDataRes(types.Array(types.Resource("windows.certificate")))
+	},
+	"windows.certificate.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsCertificate).GetLocation()).ToDataRes(types.String)
+	},
+	"windows.certificate.store": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsCertificate).GetStore()).ToDataRes(types.String)
+	},
+	"windows.certificate.thumbprint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsCertificate).GetThumbprint()).ToDataRes(types.String)
+	},
+	"windows.certificate.hasPrivateKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsCertificate).GetHasPrivateKey()).ToDataRes(types.Bool)
+	},
+	"windows.certificate.certificate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsCertificate).GetCertificate()).ToDataRes(types.Resource("certificate"))
 	},
 	"windows.bitlocker.available": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsBitlocker).GetAvailable()).ToDataRes(types.Bool)
@@ -33397,6 +33425,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"windows.driver.purl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindowsDriver).Purl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.certificates.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsCertificates).__id, ok = v.Value.(string)
+		return
+	},
+	"windows.certificates.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsCertificates).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"windows.certificate.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsCertificate).__id, ok = v.Value.(string)
+		return
+	},
+	"windows.certificate.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsCertificate).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.certificate.store": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsCertificate).Store, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.certificate.thumbprint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsCertificate).Thumbprint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.certificate.hasPrivateKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsCertificate).HasPrivateKey, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.certificate.certificate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsCertificate).Certificate, ok = plugin.RawToTValue[plugin.Resource](v.Value, v.Error)
 		return
 	},
 	"windows.bitlocker.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -85980,6 +86040,143 @@ func (c *mqlWindowsDriver) GetSigner() *plugin.TValue[string] {
 
 func (c *mqlWindowsDriver) GetPurl() *plugin.TValue[string] {
 	return &c.Purl
+}
+
+// mqlWindowsCertificates for the windows.certificates resource
+type mqlWindowsCertificates struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlWindowsCertificatesInternal it will be used here
+	List plugin.TValue[[]any]
+}
+
+// createWindowsCertificates creates a new instance of this resource
+func createWindowsCertificates(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWindowsCertificates{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("windows.certificates", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWindowsCertificates) MqlName() string {
+	return "windows.certificates"
+}
+
+func (c *mqlWindowsCertificates) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWindowsCertificates) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("windows.certificates", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.list()
+	})
+}
+
+// mqlWindowsCertificate for the windows.certificate resource
+type mqlWindowsCertificate struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlWindowsCertificateInternal
+	Location      plugin.TValue[string]
+	Store         plugin.TValue[string]
+	Thumbprint    plugin.TValue[string]
+	HasPrivateKey plugin.TValue[bool]
+	Certificate   plugin.TValue[plugin.Resource]
+}
+
+// createWindowsCertificate creates a new instance of this resource
+func createWindowsCertificate(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWindowsCertificate{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("windows.certificate", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWindowsCertificate) MqlName() string {
+	return "windows.certificate"
+}
+
+func (c *mqlWindowsCertificate) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWindowsCertificate) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlWindowsCertificate) GetStore() *plugin.TValue[string] {
+	return &c.Store
+}
+
+func (c *mqlWindowsCertificate) GetThumbprint() *plugin.TValue[string] {
+	return &c.Thumbprint
+}
+
+func (c *mqlWindowsCertificate) GetHasPrivateKey() *plugin.TValue[bool] {
+	return &c.HasPrivateKey
+}
+
+func (c *mqlWindowsCertificate) GetCertificate() *plugin.TValue[plugin.Resource] {
+	return plugin.GetOrCompute[plugin.Resource](&c.Certificate, func() (plugin.Resource, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("windows.certificate", c.__id, "certificate")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(plugin.Resource), nil
+			}
+		}
+
+		return c.certificate()
+	})
 }
 
 // mqlWindowsBitlocker for the windows.bitlocker resource

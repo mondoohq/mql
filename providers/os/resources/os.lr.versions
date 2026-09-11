@@ -4230,6 +4230,14 @@ windows.bitlocker.volume.persistentVolumeID 9.0.1
 windows.bitlocker.volume.protectionStatus 9.0.1
 windows.bitlocker.volume.version 9.0.1
 windows.bitlocker.volumes 9.0.1
+windows.certificate 13.40.10
+windows.certificate.certificate 13.40.10
+windows.certificate.hasPrivateKey 13.40.10
+windows.certificate.location 13.40.10
+windows.certificate.store 13.40.10
+windows.certificate.thumbprint 13.40.10
+windows.certificates 13.40.10
+windows.certificates.list 13.40.10
 windows.computerInfo 9.0.1
 windows.defender 13.29.1
 windows.defender.asrRule 13.29.1
