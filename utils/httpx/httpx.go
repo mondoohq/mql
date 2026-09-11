@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"sync/atomic"
 	"time"
@@ -56,15 +55,11 @@ func DownloadTimeout() time.Duration {
 // lifecycle including body reads. Callers should wrap the response body with
 // NewIdleTimeoutReader to detect stalled transfers.
 func ClientForDownload() (*http.Client, error) {
-	var proxyFn func(*http.Request) (*url.URL, error)
-
-	proxy, err := config.GetAPIProxy()
+	// api_proxy, the environment or the operating system's settings, in that
+	// order; see cli/config/proxy.go.
+	proxyFn, err := config.ProxyFunc()
 	if err != nil {
 		log.Fatal().Err(err).Msg("could not parse proxy URL")
-	}
-
-	if proxy != nil {
-		proxyFn = http.ProxyURL(proxy)
 	}
 
 	retryClient := retryablehttp.NewClient()

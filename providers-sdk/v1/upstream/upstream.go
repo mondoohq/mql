@@ -7,13 +7,13 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"net/url"
 
 	"github.com/mitchellh/hashstructure/v2"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql"
 	"go.mondoo.com/mql/utils/multierr"
 	rangerUtils "go.mondoo.com/mql/utils/ranger"
+	"go.mondoo.com/mql/utils/sysproxy"
 	"go.mondoo.com/ranger-rpc"
 	guard_cert_auth "go.mondoo.com/ranger-rpc/plugins/authentication/cert"
 	"go.mondoo.com/ranger-rpc/plugins/authentication/statictoken"
@@ -99,11 +99,23 @@ func (c *UpstreamConfig) InitClient(ctx context.Context) (*UpstreamClient, error
 	return &res, nil
 }
 
+// DefaultHttpClient returns ranger's default HTTP client with proxy selection
+// that honors the environment and the operating system's proxy settings (see
+// sysproxy). It is the client for Mondoo Platform traffic whenever no
+// api_proxy is configured, in the CLI and inside provider processes alike, so
+// a provider on a Windows machine with a system proxy reaches the platform
+// the same way the CLI that started it does.
+func DefaultHttpClient() *http.Client {
+	return ranger.NewHttpClient(rangerUtils.WithProxyFunc(sysproxy.ProxyFunc()))
+}
+
 func (c *UpstreamConfig) httpClient() *http.Client {
 	if c.ApiProxy == "" {
-		return ranger.DefaultHttpClient()
+		return DefaultHttpClient()
 	}
-	proxy, err := url.Parse(c.ApiProxy)
+	// An api_proxy is explicit configuration and overrides the environment and
+	// the operating system's settings.
+	proxy, err := sysproxy.ParseProxyURL(c.ApiProxy)
 	if err != nil {
 		log.Fatal().Err(err).Msg("could not parse proxy URL")
 	}

@@ -190,6 +190,22 @@ func TestRenderCli_MqlSection_ConfigFileShown(t *testing.T) {
 	assert.NotContains(t, out, "defaults — no config file")
 }
 
+func TestRenderCli_PlatformSection_Proxy(t *testing.T) {
+	s := healthyRegisteredStatus()
+	s.Client.Proxy = "http://user:xxxxx@proxy.corp:3128"
+	s.Client.ProxySource = "system"
+
+	out := s.RenderCli(RenderOptions{Color: false})
+
+	assert.Contains(t, out, "http://user:xxxxx@proxy.corp:3128")
+	assert.Contains(t, out, "(system)")
+	assert.NotContains(t, out, "direct connection")
+
+	s.Client.Proxy, s.Client.ProxySource = "", ""
+	out = s.RenderCli(RenderOptions{Color: false})
+	assert.Contains(t, out, "direct connection")
+}
+
 func TestRenderCli_MqlSection_UpdateAvailableShowsArrow(t *testing.T) {
 	s := healthyRegisteredStatus()
 	s.Client.Version = "13.22.0"

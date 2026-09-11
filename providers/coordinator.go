@@ -409,6 +409,7 @@ func (c *coordinator) unsafeStartProvider(id string, update UpdateProvidersConfi
 		pluginCmd := exec.Command(provider.binPath(), []string{"run_as_plugin", "--log-level", zerolog.GlobalLevel().String()}...)
 
 		addColorConfig(pluginCmd)
+		addProxyConfig(pluginCmd)
 
 		pluginLogger := &hclogger{Logger: log.Logger}
 		pluginLogger.SetLevel(hclog.Warn)

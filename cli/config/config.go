@@ -317,8 +317,16 @@ type CommonOpts struct {
 	// two-state feature flag cannot express.
 	Strict *bool `json:"strict,omitempty" mapstructure:"strict"`
 
-	// API Proxy for communicating with Mondoo Platform API
+	// API Proxy for communicating with Mondoo Platform API. It overrides the
+	// HTTPS_PROXY environment and the operating system's proxy settings.
 	APIProxy string `json:"api_proxy,omitempty" mapstructure:"api_proxy"`
+
+	// SystemProxy controls whether the operating system's proxy settings are
+	// used when neither api_proxy nor the environment names a proxy (on
+	// Windows: Internet Settings and the WinHTTP default proxy). Unset means
+	// on. Set it to false to connect directly, or to honor only the
+	// HTTPS_PROXY environment. See KeySystemProxy.
+	SystemProxy *bool `json:"system_proxy,omitempty" mapstructure:"system_proxy"`
 
 	// labels that will be applied to all assets
 	Labels map[string]string `json:"labels,omitempty" mapstructure:"labels"`
