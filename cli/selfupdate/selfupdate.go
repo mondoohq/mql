@@ -42,6 +42,10 @@ const (
 	EnvAutoUpdateEngine = "MONDOO_AUTO_UPDATE_ENGINE"
 	// DefaultReleaseURL is the URL to fetch the latest release information
 	DefaultReleaseURL = "https://releases.mondoo.com/mql/latest.json"
+
+	// DefaultReleasesURL is the release bucket the manifest is read from when
+	// updates_url is not configured.
+	DefaultReleasesURL = "https://releases.mondoo.com"
 	// markerFilePrefix is the prefix for per-binary marker files that track when the last update check occurred.
 	// Each binary gets its own marker (e.g., ".last-update-check-mql", ".last-update-check-cnspec").
 	markerFilePrefix = ".last-update-check-"
@@ -69,6 +73,21 @@ type Release struct {
 	Name    string        `json:"name"`
 	Version string        `json:"version"`
 	Files   []ReleaseFile `json:"files"`
+}
+
+// ChannelManifest returns the manifest document a release channel is published
+// as, next to the artifacts it points at.
+//
+// A channel changes which pointer is read, never where the artifacts live, so a
+// pinned version resolves the same on every channel. Note this is the bucket
+// spelling: the install service instead takes the channel as a `?channel=`
+// query parameter, because its routes are named after the package rather than
+// after the document.
+func ChannelManifest(channel string) string {
+	if channel == config.ChannelPreview {
+		return "preview.json"
+	}
+	return "latest.json"
 }
 
 // ReleaseFile represents a downloadable release file

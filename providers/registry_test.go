@@ -9,13 +9,16 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/cli/config"
 )
 
 func TestNewMondooProviderRegistry(t *testing.T) {
@@ -366,4 +369,61 @@ func TestFlushVersionCacheForcesRefetch(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, int64(2), atomic.LoadInt64(&hits))
+}
+
+// TestRegistryChannelSelectsPointerDocument pins that the release track changes
+// which pointer document the registry reads, and nothing else. Providers live in
+// one tree: a preview client downloads the same archives from the same URLs, it
+// just resolves a different version for them.
+func TestRegistryChannelSelectsPointerDocument(t *testing.T) {
+	var requested []string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested = append(requested, r.URL.Path)
+
+		version := "13.53.4"
+		if strings.HasSuffix(r.URL.Path, "/preview.json") {
+			version = "14.0.0-rc.2"
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"providers":[{"name":"aws","version":"` + version + `"}]}`))
+	}))
+	defer server.Close()
+
+	t.Run("stable reads latest.json", func(t *testing.T) {
+		r := NewMondooProviderRegistry(WithBaseURL(server.URL), WithChannel(config.ChannelStable))
+		v, err := r.GetLatestVersion(context.Background(), "aws")
+		require.NoError(t, err)
+		assert.Equal(t, "13.53.4", v)
+	})
+
+	t.Run("preview reads preview.json", func(t *testing.T) {
+		r := NewMondooProviderRegistry(WithBaseURL(server.URL), WithChannel(config.ChannelPreview))
+		v, err := r.GetLatestVersion(context.Background(), "aws")
+		require.NoError(t, err)
+		assert.Equal(t, "14.0.0-rc.2", v)
+	})
+
+	assert.Equal(t, []string{"/latest.json", "/preview.json"}, requested)
+}
+
+// TestRegistryChannelReadAtFetchTime pins the reason the channel is not captured
+// in the constructor: the package-level registry is built during package init,
+// before InitViperConfig has read mondoo.yml, so a constructor-time read would
+// only ever see the default.
+func TestRegistryChannelReadAtFetchTime(t *testing.T) {
+	r := NewMondooProviderRegistry(WithBaseURL("https://example.com/providers"))
+
+	viper.Set(config.KeyUpdateChannel, "")
+	t.Cleanup(func() { viper.Set(config.KeyUpdateChannel, "") })
+	assert.Equal(t, "latest.json", r.pointerDocument(), "built before config was loaded")
+
+	// Same registry instance, config loaded afterwards.
+	viper.Set(config.KeyUpdateChannel, "preview")
+	assert.Equal(t, "preview.json", r.pointerDocument())
+
+	// An explicit channel wins over config: that is what WithChannel is for.
+	pinned := NewMondooProviderRegistry(WithChannel(config.ChannelStable))
+	assert.Equal(t, "latest.json", pinned.pointerDocument())
 }

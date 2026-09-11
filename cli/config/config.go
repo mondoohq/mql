@@ -227,6 +227,41 @@ func GetProviderPortRange() string {
 	return viper.GetString(KeyProviderPortRange)
 }
 
+// KeyUpdateChannel is the config key selecting which release track binary
+// updates and providers resolve through. It comes from mondoo.yml or, through
+// viper's env binding, from MONDOO_UPDATE_CHANNEL.
+//
+// The key is flat rather than nested under `update` or `providers` because
+// InitViperConfig disables viper's key delimiter, so a dotted lookup of a
+// nested key silently returns nothing.
+const KeyUpdateChannel = "update_channel"
+
+// Release channels. The channel a version belongs to is decided by the release
+// service, from the version's semver pre-release segment; the client only picks
+// which track to ask for.
+const (
+	// ChannelStable is the default: the newest release with no pre-release
+	// segment.
+	ChannelStable = "stable"
+	// ChannelPreview is the pre-release track: the newest release overall,
+	// release candidates included. It is never older than stable, so a client
+	// tracking it moves forward when a candidate becomes a final release.
+	ChannelPreview = "preview"
+)
+
+// GetUpdateChannel returns the update_channel setting, normalized. An unset or
+// unrecognized value is stable: a typo must not silently put a fleet on
+// pre-releases, and it must not stop updates either.
+func GetUpdateChannel() string {
+	channel := strings.ToLower(strings.TrimSpace(viper.GetString(KeyUpdateChannel)))
+	switch channel {
+	case ChannelPreview:
+		return ChannelPreview
+	default:
+		return ChannelStable
+	}
+}
+
 // GetFeatures returns the features from viper config.
 // This can be called after InitViperConfig() to get features before cobra initialization.
 func GetFeatures() mql.Features {
@@ -337,6 +372,10 @@ type CommonOpts struct {
 	// transport, so the setting has no effect elsewhere. Unset means an
 	// OS-assigned port. See KeyProviderPortRange.
 	ProviderPortRange string `json:"provider_port_range,omitempty" mapstructure:"provider_port_range"`
+
+	// UpdateChannel selects which release track binary updates and providers
+	// resolve through. Unset means "stable". See KeyUpdateChannel.
+	UpdateChannel string `json:"update_channel,omitempty" mapstructure:"update_channel"`
 }
 
 // Workload Identity Federation

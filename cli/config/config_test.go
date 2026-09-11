@@ -374,3 +374,24 @@ func TestGetProviderPortRange(t *testing.T) {
 		assert.Equal(t, "50000-50100", GetProviderPortRange())
 	})
 }
+
+// TestGetUpdateChannel pins that a typo cannot silently move a fleet onto
+// pre-releases, and cannot stop it updating either: anything unrecognized is
+// stable.
+func TestGetUpdateChannel(t *testing.T) {
+	t.Cleanup(func() { viper.Set(KeyUpdateChannel, "") })
+
+	for value, want := range map[string]string{
+		"":         ChannelStable,
+		"stable":   ChannelStable,
+		"preview":  ChannelPreview,
+		"PREVIEW":  ChannelPreview,
+		" preview": ChannelPreview,
+		"beta":     ChannelStable,
+		"edge":     ChannelStable,
+		"rubbish":  ChannelStable,
+	} {
+		viper.Set(KeyUpdateChannel, value)
+		assert.Equal(t, want, GetUpdateChannel(), "value: %q", value)
+	}
+}
