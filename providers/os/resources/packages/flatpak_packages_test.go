@@ -604,3 +604,56 @@ func TestResolveFlatpakDeploymentOutcomes(t *testing.T) {
 		assert.Equal(t, flatpakResolveUnreadable, outcome)
 	})
 }
+
+// TestParseFlatpakDirReadsSiblingApplications covers the app-directory loop:
+// several applications installed side by side in one installation root, each
+// resolved to its own identity.
+//
+// The on-disk fixture holds a single application, because it is a byte-for-byte
+// capture of one lab host. This is the case that capture cannot express, and it
+// was previously covered by a hand-written fixture whose `metadata` file
+// declared `version=` and `origin=` keys that flatpak does not write -- the
+// reason that fixture is gone. The deploy records here are built by
+// buildFlatpakDeploy, whose encoding is pinned against the real captured file
+// by TestParseFlatpakDeploy.
+func TestParseFlatpakDirReadsSiblingApplications(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+
+	const (
+		appDir         = "/var/lib/flatpak/app"
+		firefoxCommit  = "c84b98e041e58749e824ae83bb2de6da268f0a0ca19f299329a6943de768cb67"
+		spotifyCommit  = "1f3c7a9b2d4e6f8a0b1c3d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a"
+		thunderbirdSha = "5a7b9c1d3e5f7a9b1c3d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b"
+	)
+
+	// Three applications, two remotes, one installation root.
+	require.NoError(t, afs.WriteFile(appDir+"/org.mozilla.firefox/aarch64/stable/active/deploy",
+		buildFlatpakDeploy("flathub", firefoxCommit, [2]string{"appdata-version", "154.0.1"}), 0o644))
+	require.NoError(t, afs.WriteFile(appDir+"/com.spotify.Client/aarch64/stable/active/deploy",
+		buildFlatpakDeploy("flathub", spotifyCommit, [2]string{"appdata-version", "1.2.31.564"}), 0o644))
+	require.NoError(t, afs.WriteFile(appDir+"/org.mozilla.Thunderbird/aarch64/stable/active/deploy",
+		buildFlatpakDeploy("rhel", thunderbirdSha, [2]string{"appdata-version", "140.14.0"}), 0o644))
+
+	deployments, err := parseFlatpakDir(afs, appDir, "/var/lib/flatpak")
+	require.NoError(t, err)
+	require.Len(t, deployments, 3, "one deployment per installed application")
+
+	byID := map[string]flatpakDeployment{}
+	for _, d := range deployments {
+		byID[d.appID] = d
+	}
+
+	require.Contains(t, byID, "org.mozilla.firefox")
+	assert.Equal(t, "154.0.1", byID["org.mozilla.firefox"].version)
+	assert.Equal(t, "flathub", byID["org.mozilla.firefox"].origin)
+
+	require.Contains(t, byID, "com.spotify.Client")
+	assert.Equal(t, "1.2.31.564", byID["com.spotify.Client"].version)
+	assert.Equal(t, spotifyCommit, byID["com.spotify.Client"].commit)
+
+	// A sibling from a different remote keeps its own origin: the origin is a
+	// property of the deployment, never of the installation it sits in.
+	require.Contains(t, byID, "org.mozilla.Thunderbird")
+	assert.Equal(t, "rhel", byID["org.mozilla.Thunderbird"].origin)
+	assert.Equal(t, "140.14.0", byID["org.mozilla.Thunderbird"].version)
+}
