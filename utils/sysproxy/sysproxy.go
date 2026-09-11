@@ -370,17 +370,27 @@ func (s *selector) environment(representative *url.URL) []string {
 
 	var httpProxy, httpsProxy *url.URL
 	var bypass []string
+	scriptAnswered := false
+	if settings.usesScript() && representative != nil && s.script != nil {
+		// A script that runs is the authority: its answer for the
+		// representative is exported as is, a DIRECT included, and it has no
+		// exception list to carry over. A script that cannot run (WPAD on a
+		// network without WPAD, the Windows default) decides nothing, and the
+		// manual settings below apply, as they do for the process itself.
+		if res := s.script(settings, representative); res.err == nil {
+			scriptAnswered = true
+			if res.proxies == "" {
+				return nil
+			}
+			p, err := firstProxy(res.proxies, representative.Scheme)
+			if err != nil || p == nil {
+				return nil
+			}
+			httpProxy, httpsProxy = p, p
+		}
+	}
 	switch {
-	case settings.usesScript():
-		if representative == nil {
-			return nil
-		}
-		// The script is the authority on exceptions; nothing to carry over.
-		p, err := s.systemProxy(settings, representative)
-		if err != nil || p == nil {
-			return nil
-		}
-		httpProxy, httpsProxy = p, p
+	case scriptAnswered:
 	case settings.Proxy != "":
 		httpProxy, _ = proxyForScheme(settings.Proxy, "http")
 		httpsProxy, _ = proxyForScheme(settings.Proxy, "https")
@@ -687,10 +697,10 @@ func ToNoProxy(entries []string) string {
 		if i := strings.IndexByte(e, '/'); i >= 0 {
 			e = e[:i]
 		}
-		switch {
-		case e == "":
+		switch e {
+		case "":
 			continue
-		case e == "*":
+		case "*":
 			return "*"
 		}
 		if cidr, ok := ipv4WildcardToCIDR(e); ok {

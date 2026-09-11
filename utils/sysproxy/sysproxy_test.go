@@ -177,7 +177,7 @@ func TestMatchGlob(t *testing.T) {
 	assert.True(t, matchGlob("*", ""))
 	assert.True(t, matchGlob("a*c", "abbbc"))
 	assert.True(t, matchGlob("a*c", "ac"))
-	assert.False(t, matchGlob("a*c", "abd"))
+	assert.False(t, matchGlob("a*c", "axd"))
 	assert.True(t, matchGlob("*.b.c", "a.b.c"))
 	assert.False(t, matchGlob("*.b.c", "b.c"))
 	assert.True(t, matchGlob("a?c", "abc"))
@@ -425,10 +425,33 @@ func TestSelectorEnvironment(t *testing.T) {
 		assert.Nil(t, ts.environment(rep))
 	})
 
-	t.Run("script needs a representative", func(t *testing.T) {
+	t.Run("script without a representative exports nothing on its own", func(t *testing.T) {
 		ts := newTestSelector(&httpproxy.Config{}, &Settings{AutoDetect: true})
 		assert.Nil(t, ts.environment(nil))
 		assert.Zero(t, ts.scriptCalls)
+	})
+
+	t.Run("script that cannot run leaves the manual proxy and its exceptions in charge", func(t *testing.T) {
+		// The Windows default: auto-detect on and no WPAD on the network, with a
+		// netsh proxy whose bypass list covers the API host. Found on a real
+		// machine: the representative being bypassed used to export nothing,
+		// sending the provider's cloud SDK traffic direct.
+		ts := newTestSelector(&httpproxy.Config{}, &Settings{AutoDetect: true, MachineProxy: "netsh:8080", MachineBypass: []string{"*.mondoo.com", "<local>"}})
+		ts.script = scriptResult{err: errors.New("WPAD failed")}
+		assert.Equal(t, []string{"HTTP_PROXY=http://netsh:8080", "HTTPS_PROXY=http://netsh:8080", "NO_PROXY=*.mondoo.com"}, ts.environment(rep))
+		assert.Equal(t, 1, ts.scriptCalls)
+	})
+
+	t.Run("script that cannot run without a representative still exports the manual proxy", func(t *testing.T) {
+		ts := newTestSelector(&httpproxy.Config{}, &Settings{AutoDetect: true, Proxy: "manual:1"})
+		ts.script = scriptResult{err: errors.New("WPAD failed")}
+		assert.Equal(t, []string{"HTTP_PROXY=http://manual:1", "HTTPS_PROXY=http://manual:1"}, ts.environment(nil))
+		assert.Zero(t, ts.scriptCalls, "nothing to evaluate the script for")
+	})
+
+	t.Run("manual exceptions covering the representative still export the proxy", func(t *testing.T) {
+		ts := newTestSelector(&httpproxy.Config{}, &Settings{Proxy: "sys:3128", Bypass: []string{"*.mondoo.com"}})
+		assert.Equal(t, []string{"HTTP_PROXY=http://sys:3128", "HTTPS_PROXY=http://sys:3128", "NO_PROXY=*.mondoo.com"}, ts.environment(rep))
 	})
 
 	t.Run("machine proxy", func(t *testing.T) {
