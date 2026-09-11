@@ -15,6 +15,7 @@
 
   ── Mondoo Platform ──────────────────────────────────────────────
   │  Endpoint   https://us.api.mondoo.com
+  │  Proxy      none — direct connection
   │  Status     SERVING   API v13 ✓ in sync
   │  Time       2026-06-29T21:37:00Z
   │  Ingest     https://ingest.us.mondoo.com   ✓ reachable · 41ms

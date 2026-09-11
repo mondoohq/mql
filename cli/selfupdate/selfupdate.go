@@ -27,6 +27,7 @@ import (
 	"go.mondoo.com/mql/logger/zerologadapter"
 	"go.mondoo.com/mql/providers/core/resources/versions/semver"
 	"go.mondoo.com/mql/utils/httpx"
+	"go.mondoo.com/mql/utils/sysproxy"
 )
 
 const (
@@ -595,15 +596,13 @@ func checkWritable(path string) error {
 
 // httpClientWithRetry creates an HTTP client with retry capabilities
 func httpClientWithRetry() (*http.Client, error) {
-	var proxyFn func(*http.Request) (*url.URL, error)
-
-	proxy, err := config.GetAPIProxy()
+	// api_proxy, the environment or the operating system's settings, in that
+	// order; see cli/config/proxy.go. A broken api_proxy is reported and the
+	// download proceeds as it would without one.
+	proxyFn, err := config.ProxyFunc()
 	if err != nil {
 		log.Warn().Err(err).Msg("self-update: could not parse proxy URL")
-	}
-
-	if proxy != nil {
-		proxyFn = http.ProxyURL(proxy)
+		proxyFn = sysproxy.EnvironmentProxyFunc()
 	}
 
 	retryClient := retryablehttp.NewClient()
