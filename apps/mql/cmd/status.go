@@ -255,6 +255,11 @@ func checkStatus(ctx context.Context) (Status, error) {
 		}
 	}
 
+	// The release track updates and providers resolve through. Shown even when
+	// it is the default, so a support conversation can establish in one command
+	// whether a machine is on pre-releases.
+	s.Client.UpdateChannel = config.GetUpdateChannel()
+
 	// Determine the providers URL:
 	// 1. If updates_url is set, use updates_url + "/providers"
 	// 2. Otherwise, use the default
@@ -326,6 +331,7 @@ type ClientStatus struct {
 	Registered     bool                `json:"registered,omitempty"`
 	PingPongError  error               `json:"pingPongError,omitempty"`
 	UpdatesURL     string              `json:"updatesUrl,omitempty"`
+	UpdateChannel  string              `json:"updateChannel,omitempty"`
 	ProvidersURL   string              `json:"providersUrl,omitempty"`
 	ConfigFile     string              `json:"configFile,omitempty"`
 	Providers      []ProviderStatus    `json:"-"`
