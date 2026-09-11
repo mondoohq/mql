@@ -14166,6 +14166,76 @@ windows.printerDriver @defaults("name version manufacturer") {
   printProcessor string
 }
 
+// Kernel and file system drivers registered on the machine
+windows.drivers {
+  []windows.driver
+}
+
+// Windows kernel or file system driver
+//
+// Single driver registered with the service control manager: the service
+// `name` it loads under, the on-disk `path` of its image, the `startMode`
+// that decides when it loads, and whether it is currently `running`.
+// `signed` and `signer` carry the Authenticode verdict on the image, which
+// is what a bring-your-own-vulnerable-driver audit reads, and `purl`
+// identifies the driver for vulnerability matching in the same
+// pkg:windows-driver namespace as windows.printerDriver.
+windows.driver @defaults("name running signed") {
+  // Service name the driver is registered under
+  name string
+  // Friendly name the driver reports
+  displayName string
+  // Description the driver reports
+  description string
+  // Absolute path of the driver image
+  //
+  // Resolved from the raw registry value, which is stored in NT form such as
+  // `\??\C:\Windows\system32\drivers\foo.sys` or relative to `\SystemRoot`.
+  // Falls back to the conventional `drivers\<name>.sys` location when the
+  // registry carries no path at all.
+  path string
+  // Driver image on disk
+  //
+  // Null only when the driver records no path at all. A driver whose image
+  // was deleted still resolves here with `exists` reporting false, which is
+  // worth flagging on its own: the service entry survives the image, and a
+  // later write to that path is loaded under the driver's identity.
+  file(path) file
+  // Kind of driver
+  //
+  // Either "Kernel Driver" or "File System Driver".
+  serviceType string
+  // When the driver loads
+  //
+  // One of "Boot", "System", "Auto", "Manual", or "Disabled".
+  startMode string
+  // Whether the driver is currently loaded
+  running bool
+  // File version of the driver image
+  version string
+  // Company name recorded in the driver image
+  manufacturer string
+  // Whether the image carries a valid Authenticode signature
+  //
+  // Null when no verdict could be reached, which is not the same as unsigned:
+  // a missing image or an unreadable certificate store leaves the question
+  // unanswered. Compare against false to find drivers measured as unsigned.
+  signed bool
+  // Common name of the certificate subject that signed the image
+  //
+  // For example "Microsoft Windows Hardware Compatibility Publisher". Empty
+  // when the image is unsigned or the signature could not be read.
+  signer string
+  // Package URL identifying this driver
+  //
+  // A pkg:windows-driver purl whose namespace is the vendor taken from
+  // `manufacturer`, for example
+  // pkg:windows-driver/microsoft/storahci@10.0.26100.1150. Empty when the
+  // image records no company name, because a driver name alone does not
+  // identify a driver across vendors.
+  purl string
+}
+
 // Windows BitLocker drive encryption
 //
 // BitLocker Drive Encryption state across volumes: the encryption,

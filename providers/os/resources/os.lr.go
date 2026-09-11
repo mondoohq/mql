@@ -487,6 +487,8 @@ const (
 	ResourceWindowsDnsServerZoneSigningKey                string = "windows.dnsServer.zone.signingKey"
 	ResourceWindowsPrinterDrivers                         string = "windows.printerDrivers"
 	ResourceWindowsPrinterDriver                          string = "windows.printerDriver"
+	ResourceWindowsDrivers                                string = "windows.drivers"
+	ResourceWindowsDriver                                 string = "windows.driver"
 	ResourceWindowsBitlocker                              string = "windows.bitlocker"
 	ResourceWindowsBitlockerPolicy                        string = "windows.bitlocker.policy"
 	ResourceWindowsBitlockerPolicyDriveSettings           string = "windows.bitlocker.policy.driveSettings"
@@ -2521,6 +2523,14 @@ func init() {
 		"windows.printerDriver": {
 			// to override args, implement: initWindowsPrinterDriver(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createWindowsPrinterDriver,
+		},
+		"windows.drivers": {
+			// to override args, implement: initWindowsDrivers(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWindowsDrivers,
+		},
+		"windows.driver": {
+			// to override args, implement: initWindowsDriver(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWindowsDriver,
 		},
 		"windows.bitlocker": {
 			// to override args, implement: initWindowsBitlocker(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -13849,6 +13859,48 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"windows.printerDriver.printProcessor": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsPrinterDriver).GetPrintProcessor()).ToDataRes(types.String)
+	},
+	"windows.drivers.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDrivers).GetList()).ToDataRes(types.Array(types.Resource("windows.driver")))
+	},
+	"windows.driver.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetName()).ToDataRes(types.String)
+	},
+	"windows.driver.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetDisplayName()).ToDataRes(types.String)
+	},
+	"windows.driver.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetDescription()).ToDataRes(types.String)
+	},
+	"windows.driver.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetPath()).ToDataRes(types.String)
+	},
+	"windows.driver.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetFile()).ToDataRes(types.Resource("file"))
+	},
+	"windows.driver.serviceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetServiceType()).ToDataRes(types.String)
+	},
+	"windows.driver.startMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetStartMode()).ToDataRes(types.String)
+	},
+	"windows.driver.running": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetRunning()).ToDataRes(types.Bool)
+	},
+	"windows.driver.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetVersion()).ToDataRes(types.String)
+	},
+	"windows.driver.manufacturer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetManufacturer()).ToDataRes(types.String)
+	},
+	"windows.driver.signed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetSigned()).ToDataRes(types.Bool)
+	},
+	"windows.driver.signer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetSigner()).ToDataRes(types.String)
+	},
+	"windows.driver.purl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetPurl()).ToDataRes(types.String)
 	},
 	"windows.bitlocker.available": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsBitlocker).GetAvailable()).ToDataRes(types.Bool)
@@ -33202,6 +33254,70 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"windows.printerDriver.printProcessor": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindowsPrinterDriver).PrintProcessor, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.drivers.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDrivers).__id, ok = v.Value.(string)
+		return
+	},
+	"windows.drivers.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDrivers).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"windows.driver.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).__id, ok = v.Value.(string)
+		return
+	},
+	"windows.driver.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.driver.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.driver.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.driver.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.driver.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"windows.driver.serviceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).ServiceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.driver.startMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).StartMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.driver.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).Running, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.driver.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.driver.manufacturer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).Manufacturer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.driver.signed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).Signed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.driver.signer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).Signer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.driver.purl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).Purl, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"windows.bitlocker.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -85485,6 +85601,188 @@ func (c *mqlWindowsPrinterDriver) GetDataFile() *plugin.TValue[string] {
 
 func (c *mqlWindowsPrinterDriver) GetPrintProcessor() *plugin.TValue[string] {
 	return &c.PrintProcessor
+}
+
+// mqlWindowsDrivers for the windows.drivers resource
+type mqlWindowsDrivers struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlWindowsDriversInternal it will be used here
+	List plugin.TValue[[]any]
+}
+
+// createWindowsDrivers creates a new instance of this resource
+func createWindowsDrivers(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWindowsDrivers{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("windows.drivers", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWindowsDrivers) MqlName() string {
+	return "windows.drivers"
+}
+
+func (c *mqlWindowsDrivers) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWindowsDrivers) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("windows.drivers", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.list()
+	})
+}
+
+// mqlWindowsDriver for the windows.driver resource
+type mqlWindowsDriver struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlWindowsDriverInternal it will be used here
+	Name         plugin.TValue[string]
+	DisplayName  plugin.TValue[string]
+	Description  plugin.TValue[string]
+	Path         plugin.TValue[string]
+	File         plugin.TValue[*mqlFile]
+	ServiceType  plugin.TValue[string]
+	StartMode    plugin.TValue[string]
+	Running      plugin.TValue[bool]
+	Version      plugin.TValue[string]
+	Manufacturer plugin.TValue[string]
+	Signed       plugin.TValue[bool]
+	Signer       plugin.TValue[string]
+	Purl         plugin.TValue[string]
+}
+
+// createWindowsDriver creates a new instance of this resource
+func createWindowsDriver(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWindowsDriver{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("windows.driver", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWindowsDriver) MqlName() string {
+	return "windows.driver"
+}
+
+func (c *mqlWindowsDriver) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWindowsDriver) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlWindowsDriver) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlWindowsDriver) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlWindowsDriver) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlWindowsDriver) GetFile() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.File, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("windows.driver", c.__id, "file")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		vargPath := c.GetPath()
+		if vargPath.Error != nil {
+			return nil, vargPath.Error
+		}
+
+		return c.file(vargPath.Data)
+	})
+}
+
+func (c *mqlWindowsDriver) GetServiceType() *plugin.TValue[string] {
+	return &c.ServiceType
+}
+
+func (c *mqlWindowsDriver) GetStartMode() *plugin.TValue[string] {
+	return &c.StartMode
+}
+
+func (c *mqlWindowsDriver) GetRunning() *plugin.TValue[bool] {
+	return &c.Running
+}
+
+func (c *mqlWindowsDriver) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlWindowsDriver) GetManufacturer() *plugin.TValue[string] {
+	return &c.Manufacturer
+}
+
+func (c *mqlWindowsDriver) GetSigned() *plugin.TValue[bool] {
+	return &c.Signed
+}
+
+func (c *mqlWindowsDriver) GetSigner() *plugin.TValue[string] {
+	return &c.Signer
+}
+
+func (c *mqlWindowsDriver) GetPurl() *plugin.TValue[string] {
+	return &c.Purl
 }
 
 // mqlWindowsBitlocker for the windows.bitlocker resource
