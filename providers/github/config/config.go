@@ -16,10 +16,10 @@ var Config = plugin.Provider{
 	// A connection reports the concrete kind through ConnectRes.Root.
 	Root:    "github",
 	ID:      "go.mondoo.com/mql/providers/github",
-	Version: "13.9.0",
+	Version: "13.9.1",
 	// Every root carries `asset`, which core owns (ADR 042).
 	Requires: []plugin.ProviderDep{
-		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.9.1"},
 	},
 	ConnectionTypes: []string{provider.ConnectionType},
 	// GitHub's 5,000 requests/hour is already the binding constraint on a large
