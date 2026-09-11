@@ -11114,6 +11114,9 @@ windows {
   // Registered Windows Task Scheduler tasks
   scheduledTasks() []windows.scheduledTask
 
+  // Active logon sessions
+  logonSessions() []windows.logonSession
+
   // Device Guard policy (Virtualization-Based Security, HVCI, and Credential Guard)
   deviceGuard() windows.deviceGuard
   // System-wide Windows Exploit Protection configuration
@@ -11440,6 +11443,63 @@ private windows.scheduledTask.settings @defaults("enabled hidden priority") {
   networkId string
   // Name of the network profile the task is tied to
   networkName string
+}
+
+// Windows logon session
+//
+// Single active logon session as the Local Security Authority reports it:
+// the `logonType` that created it, the `authenticationPackage` that
+// authenticated it, the account it runs as, and when it started.
+// `logonType` and its readable form `logonTypeName` carry most of the audit
+// value, since a session's type says how it was established: 10 is an
+// incoming Remote Desktop logon, 3 is a network logon, and 9 is a session
+// created with alternate credentials. `authenticationPackage` reports
+// whether the session was authenticated with Kerberos or fell back to NTLM.
+private windows.logonSession @defaults("logonTypeName accountName authenticationPackage") {
+  // Locally unique identifier the Local Security Authority assigned
+  //
+  // For example "0x3e7". Unique for the life of the boot, and reused after a
+  // restart, so it identifies a session within one scan rather than over time.
+  logonId string
+  // How the session was established
+  //
+  // 2 interactive, 3 network, 4 batch, 5 service, 7 unlock, 8 network
+  // cleartext, 9 new credentials, 10 remote interactive, 11 cached
+  // interactive.
+  logonType int
+  // Readable form of logonType
+  //
+  // For example "RemoteInteractive" for type 10. Empty for a type outside
+  // the documented set, in which case read logonType directly.
+  logonTypeName string
+  // Package that authenticated the session
+  //
+  // For example "Kerberos", "NTLM", or "Negotiate".
+  authenticationPackage string
+  // When the session started
+  //
+  // Null when the Local Security Authority reports no start time, which is
+  // normal for some of the sessions the system creates at boot.
+  startTime time
+  // Account name the session authenticated as
+  accountName string
+  // Domain of the account the session authenticated as
+  //
+  // The machine name for a local account, the domain name for a domain
+  // account, and "NT AUTHORITY" for the accounts the system creates.
+  accountDomain string
+  // Security identifier of the account the session authenticated as
+  //
+  // Empty when the account could not be translated to a SID, which happens
+  // for a domain account while the domain is unreachable.
+  sid string
+  // Local user account the session authenticated as
+  //
+  // Matched on `sid`, so it resolves only for an account that exists on this
+  // machine. Null for a domain account, for the accounts the system creates,
+  // and when the SID could not be translated. Read `accountName` and
+  // `accountDomain` to identify a session whose account is not local.
+  user() user
 }
 
 // macOS system extension

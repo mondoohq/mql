@@ -4664,6 +4664,17 @@ windows.hotfix.hotfixId 9.0.1
 windows.hotfix.installedBy 9.0.1
 windows.hotfix.installedOn 9.0.1
 windows.hotfixes 9.0.1
+windows.logonSession 13.40.10
+windows.logonSession.accountDomain 13.40.10
+windows.logonSession.accountName 13.40.10
+windows.logonSession.authenticationPackage 13.40.10
+windows.logonSession.logonId 13.40.10
+windows.logonSession.logonType 13.40.10
+windows.logonSession.logonTypeName 13.40.10
+windows.logonSession.sid 13.40.10
+windows.logonSession.startTime 13.40.10
+windows.logonSession.user 13.40.10
+windows.logonSessions 13.40.10
 windows.lsa 13.29.1
 windows.lsa.disableDomainCreds 13.29.1
 windows.lsa.everyoneIncludesAnonymous 13.29.1

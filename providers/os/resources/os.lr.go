@@ -422,6 +422,7 @@ const (
 	ResourceWindowsScheduledTaskAction                    string = "windows.scheduledTask.action"
 	ResourceWindowsScheduledTaskTrigger                   string = "windows.scheduledTask.trigger"
 	ResourceWindowsScheduledTaskSettings                  string = "windows.scheduledTask.settings"
+	ResourceWindowsLogonSession                           string = "windows.logonSession"
 	ResourceMacosSystemExtension                          string = "macos.systemExtension"
 	ResourceSafari                                        string = "safari"
 	ResourceSafariExtension                               string = "safari.extension"
@@ -2261,6 +2262,10 @@ func init() {
 		"windows.scheduledTask.settings": {
 			// to override args, implement: initWindowsScheduledTaskSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createWindowsScheduledTaskSettings,
+		},
+		"windows.logonSession": {
+			// to override args, implement: initWindowsLogonSession(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWindowsLogonSession,
 		},
 		"macos.systemExtension": {
 			// to override args, implement: initMacosSystemExtension(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -11834,6 +11839,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"windows.scheduledTasks": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindows).GetScheduledTasks()).ToDataRes(types.Array(types.Resource("windows.scheduledTask")))
 	},
+	"windows.logonSessions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindows).GetLogonSessions()).ToDataRes(types.Array(types.Resource("windows.logonSession")))
+	},
 	"windows.deviceGuard": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindows).GetDeviceGuard()).ToDataRes(types.Resource("windows.deviceGuard"))
 	},
@@ -12115,6 +12123,33 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"windows.scheduledTask.settings.networkName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsScheduledTaskSettings).GetNetworkName()).ToDataRes(types.String)
+	},
+	"windows.logonSession.logonId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLogonSession).GetLogonId()).ToDataRes(types.String)
+	},
+	"windows.logonSession.logonType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLogonSession).GetLogonType()).ToDataRes(types.Int)
+	},
+	"windows.logonSession.logonTypeName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLogonSession).GetLogonTypeName()).ToDataRes(types.String)
+	},
+	"windows.logonSession.authenticationPackage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLogonSession).GetAuthenticationPackage()).ToDataRes(types.String)
+	},
+	"windows.logonSession.startTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLogonSession).GetStartTime()).ToDataRes(types.Time)
+	},
+	"windows.logonSession.accountName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLogonSession).GetAccountName()).ToDataRes(types.String)
+	},
+	"windows.logonSession.accountDomain": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLogonSession).GetAccountDomain()).ToDataRes(types.String)
+	},
+	"windows.logonSession.sid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLogonSession).GetSid()).ToDataRes(types.String)
+	},
+	"windows.logonSession.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLogonSession).GetUser()).ToDataRes(types.Resource("user"))
 	},
 	"macos.systemExtension.identifier": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMacosSystemExtension).GetIdentifier()).ToDataRes(types.String)
@@ -30208,6 +30243,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlWindows).ScheduledTasks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"windows.logonSessions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindows).LogonSessions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"windows.deviceGuard": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindows).DeviceGuard, ok = plugin.RawToTValue[*mqlWindowsDeviceGuard](v.Value, v.Error)
 		return
@@ -30630,6 +30669,46 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"windows.scheduledTask.settings.networkName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindowsScheduledTaskSettings).NetworkName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.logonSession.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).__id, ok = v.Value.(string)
+		return
+	},
+	"windows.logonSession.logonId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).LogonId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.logonSession.logonType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).LogonType, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"windows.logonSession.logonTypeName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).LogonTypeName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.logonSession.authenticationPackage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).AuthenticationPackage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.logonSession.startTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).StartTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"windows.logonSession.accountName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).AccountName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.logonSession.accountDomain": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).AccountDomain, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.logonSession.sid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).Sid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.logonSession.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).User, ok = plugin.RawToTValue[*mqlUser](v.Value, v.Error)
 		return
 	},
 	"macos.systemExtension.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -77885,6 +77964,7 @@ type mqlWindows struct {
 	ServerFeatures    plugin.TValue[[]any]
 	OptionalFeatures  plugin.TValue[[]any]
 	ScheduledTasks    plugin.TValue[[]any]
+	LogonSessions     plugin.TValue[[]any]
 	DeviceGuard       plugin.TValue[*mqlWindowsDeviceGuard]
 	ExploitProtection plugin.TValue[*mqlWindowsExploitProtection]
 	SmartScreen       plugin.TValue[*mqlWindowsSmartScreen]
@@ -77989,6 +78069,22 @@ func (c *mqlWindows) GetScheduledTasks() *plugin.TValue[[]any] {
 		}
 
 		return c.scheduledTasks()
+	})
+}
+
+func (c *mqlWindows) GetLogonSessions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.LogonSessions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("windows", c.__id, "logonSessions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.logonSessions()
 	})
 }
 
@@ -79100,6 +79196,107 @@ func (c *mqlWindowsScheduledTaskSettings) GetNetworkId() *plugin.TValue[string] 
 
 func (c *mqlWindowsScheduledTaskSettings) GetNetworkName() *plugin.TValue[string] {
 	return &c.NetworkName
+}
+
+// mqlWindowsLogonSession for the windows.logonSession resource
+type mqlWindowsLogonSession struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlWindowsLogonSessionInternal it will be used here
+	LogonId               plugin.TValue[string]
+	LogonType             plugin.TValue[int64]
+	LogonTypeName         plugin.TValue[string]
+	AuthenticationPackage plugin.TValue[string]
+	StartTime             plugin.TValue[*time.Time]
+	AccountName           plugin.TValue[string]
+	AccountDomain         plugin.TValue[string]
+	Sid                   plugin.TValue[string]
+	User                  plugin.TValue[*mqlUser]
+}
+
+// createWindowsLogonSession creates a new instance of this resource
+func createWindowsLogonSession(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWindowsLogonSession{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("windows.logonSession", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWindowsLogonSession) MqlName() string {
+	return "windows.logonSession"
+}
+
+func (c *mqlWindowsLogonSession) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWindowsLogonSession) GetLogonId() *plugin.TValue[string] {
+	return &c.LogonId
+}
+
+func (c *mqlWindowsLogonSession) GetLogonType() *plugin.TValue[int64] {
+	return &c.LogonType
+}
+
+func (c *mqlWindowsLogonSession) GetLogonTypeName() *plugin.TValue[string] {
+	return &c.LogonTypeName
+}
+
+func (c *mqlWindowsLogonSession) GetAuthenticationPackage() *plugin.TValue[string] {
+	return &c.AuthenticationPackage
+}
+
+func (c *mqlWindowsLogonSession) GetStartTime() *plugin.TValue[*time.Time] {
+	return &c.StartTime
+}
+
+func (c *mqlWindowsLogonSession) GetAccountName() *plugin.TValue[string] {
+	return &c.AccountName
+}
+
+func (c *mqlWindowsLogonSession) GetAccountDomain() *plugin.TValue[string] {
+	return &c.AccountDomain
+}
+
+func (c *mqlWindowsLogonSession) GetSid() *plugin.TValue[string] {
+	return &c.Sid
+}
+
+func (c *mqlWindowsLogonSession) GetUser() *plugin.TValue[*mqlUser] {
+	return plugin.GetOrCompute[*mqlUser](&c.User, func() (*mqlUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("windows.logonSession", c.__id, "user")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlUser), nil
+			}
+		}
+
+		return c.user()
+	})
 }
 
 // mqlMacosSystemExtension for the macos.systemExtension resource
