@@ -137,7 +137,21 @@ func TestParseFlatpakDir(t *testing.T) {
 	afs := &afero.Afero{Fs: afero.NewOsFs()}
 	deployments, err := parseFlatpakDir(afs, "testdata/flatpak/app", "testdata/flatpak")
 	require.NoError(t, err)
+
+	// One deployment, though the fixture tree holds three branch directories.
+	// The other two (com.spotify.Client/x86_64 and org.mozilla.firefox/x86_64)
+	// carry a metadata file and no deploy record, which is precisely the shape
+	// the previous implementation read: it parsed metadata, found neither an
+	// origin= nor a version= key in it, and reported a package with neither.
+	// They must be skipped, and skipped silently -- a directory holding no
+	// deployment record is not a deployment.
 	require.Len(t, deployments, 1)
+	for _, d := range deployments {
+		assert.NotEqual(t, "com.spotify.Client", d.appID,
+			"a metadata-only directory is not a deployment")
+		assert.NotEqual(t, "x86_64", d.arch,
+			"a metadata-only directory is not a deployment")
+	}
 
 	firefox := deployments[0]
 	assert.Equal(t, "org.mozilla.firefox", firefox.appID)

@@ -1,0 +1,14 @@
+[Application]
+name=com.spotify.Client
+version=1.2.31.564
+runtime=org.freedesktop.Platform/x86_64/23.08
+sdk=org.freedesktop.Sdk/x86_64/23.08
+origin=flathub
+
+[Context]
+shared=ipc;network;
+sockets=x11;wayland;pulseaudio;
+
+[Extension com.spotify.Client.Locale]
+directory=share/runtime/locale
+autodelete=true

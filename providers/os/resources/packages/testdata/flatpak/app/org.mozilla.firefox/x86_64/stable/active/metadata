@@ -1,0 +1,5 @@
+[Application]
+name=org.mozilla.firefox
+version=131.0
+runtime=org.freedesktop.Platform/x86_64/23.08
+origin=flathub
