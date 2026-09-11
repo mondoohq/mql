@@ -17,6 +17,18 @@ import (
 func (r *mqlWindowsLogonSession) id() (string, error) {
 	// The LSA assigns each session a locally unique identifier, which is
 	// unique for the life of the boot.
+	//
+	// Both guards exist because an empty id is silently destructive here
+	// rather than merely wrong: every session missing one would share a cache
+	// key, and CreateResource returns the cached first instance for a repeated
+	// id, so the second session would report the first one's values. Failing
+	// loudly is the only outcome that does not invent data.
+	if r.LogonId.Error != nil {
+		return "", r.LogonId.Error
+	}
+	if r.LogonId.Data == "" {
+		return "", errors.New("windows.logonSession has no logonId")
+	}
 	return "windows.logonSession/" + r.LogonId.Data, nil
 }
 

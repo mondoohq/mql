@@ -66,8 +66,9 @@ Get-CimInstance -ClassName Win32_LoggedOnUser | ForEach-Object {
 
 // LogonSession is one active logon session as the LSA reports it.
 type LogonSession struct {
-	// LogonId is the LUID the LSA assigned, e.g. "0x3e7". Unique for the life
-	// of the boot and reused after a restart.
+	// LogonId is the LUID the LSA assigned, as WMI reports it: the decimal
+	// low part, e.g. "999" for the session created at boot. Unique for the
+	// life of the boot and reused after a restart.
 	LogonId string `json:"LogonId"`
 	// LogonType is the documented Win32 logon type. See LogonTypeName.
 	LogonType int64 `json:"LogonType"`

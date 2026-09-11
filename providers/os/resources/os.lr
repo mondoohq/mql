@@ -11458,8 +11458,11 @@ private windows.scheduledTask.settings @defaults("enabled hidden priority") {
 private windows.logonSession @defaults("logonTypeName accountName authenticationPackage") {
   // Locally unique identifier the Local Security Authority assigned
   //
-  // For example "0x3e7". Unique for the life of the boot, and reused after a
-  // restart, so it identifies a session within one scan rather than over time.
+  // The decimal low part of the LUID, which is the form WMI reports, for
+  // example "999" for the session the system creates at boot. Tools that
+  // print the same identifier in hex show that one as 0x3e7. Unique for the
+  // life of the boot, and reused after a restart, so it identifies a session
+  // within one scan rather than over time.
   logonId string
   // How the session was established
   //

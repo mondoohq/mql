@@ -22,13 +22,13 @@ import (
 // incoming Remote Desktop logon by a domain account whose SID translated, and
 // a network logon whose SID did not.
 const logonSessionsJSON = `[
- {"LogonId":"0x3e7","LogonType":0,"AuthenticationPackage":"Negotiate","StartTime":null,
+ {"LogonId":"999","LogonType":0,"AuthenticationPackage":"Negotiate","StartTime":null,
   "AccountName":"WIN-SRV01$","AccountDomain":"WORKGROUP","Sid":"S-1-5-18"},
- {"LogonId":"0x1a2b3","LogonType":2,"AuthenticationPackage":"Negotiate","StartTime":"2026-09-11T14:23:11.1234567Z",
+ {"LogonId":"107587","LogonType":2,"AuthenticationPackage":"Negotiate","StartTime":"2026-09-11T14:23:11.1234567Z",
   "AccountName":"Administrator","AccountDomain":"WIN-SRV01","Sid":"S-1-5-21-1004336348-1177238915-682003330-500"},
- {"LogonId":"0x4c5d6","LogonType":10,"AuthenticationPackage":"Kerberos","StartTime":"2026-09-11T15:02:44.0000000Z",
+ {"LogonId":"312790","LogonType":10,"AuthenticationPackage":"Kerberos","StartTime":"2026-09-11T15:02:44.0000000Z",
   "AccountName":"jdoe","AccountDomain":"CONTOSO","Sid":"S-1-5-21-99-88-77-1105"},
- {"LogonId":"0x7e8f9","LogonType":3,"AuthenticationPackage":"NTLM","StartTime":"2026-09-11T15:10:02.5000000Z",
+ {"LogonId":"518393","LogonType":3,"AuthenticationPackage":"NTLM","StartTime":"2026-09-11T15:10:02.5000000Z",
   "AccountName":"svc_backup","AccountDomain":"CONTOSO","Sid":null}
 ]`
 
@@ -40,7 +40,7 @@ func TestParseLogonSessions(t *testing.T) {
 	// Every field read by value: a mistyped struct tag yields the zero value
 	// rather than an error, so only comparing the value catches it.
 	s := sessions[1]
-	assert.Equal(t, "0x1a2b3", s.LogonId)
+	assert.Equal(t, "107587", s.LogonId)
 	assert.Equal(t, int64(2), s.LogonType)
 	assert.Equal(t, "Negotiate", s.AuthenticationPackage)
 	assert.Equal(t, "Administrator", s.AccountName)
@@ -78,11 +78,11 @@ func TestParseLogonSessionsBadTimestamp(t *testing.T) {
 	// A timestamp that does not parse leaves the field null rather than
 	// failing the whole collection or inventing the zero time.
 	sessions, err := ParseLogonSessions(strings.NewReader(
-		`[{"LogonId":"0x1","LogonType":2,"StartTime":"not-a-timestamp"}]`))
+		`[{"LogonId":"1","LogonType":2,"StartTime":"not-a-timestamp"}]`))
 	require.NoError(t, err)
 	require.Len(t, sessions, 1)
 	assert.Nil(t, sessions[0].StartTime)
-	assert.Equal(t, "0x1", sessions[0].LogonId)
+	assert.Equal(t, "1", sessions[0].LogonId)
 }
 
 func TestLogonTypeName(t *testing.T) {
