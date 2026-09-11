@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/purl"
 )
 
 const (
@@ -883,7 +884,11 @@ func newFlatpakPurl(appID, version, origin, branch, commit string) string {
 		qualifiers = append(qualifiers, packageurl.Qualifier{Key: "commit", Value: commit})
 	}
 	return packageurl.NewPackageURL(
-		FlatpakPkgFormat,
+		// The purl TYPE is owned by the purl package, not by this collector:
+		// the server matches on it, so a second literal here is a second place
+		// for the two to drift apart silently. Same split as snap, where
+		// SnapPkgFormat is the Package.Format and purl.TypeSnap is the purl type.
+		string(purl.TypeFlatpak),
 		origin,
 		appID,
 		version,

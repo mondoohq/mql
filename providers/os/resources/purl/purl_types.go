@@ -32,6 +32,14 @@ var (
 	Type_X_Platform Type = "platform"
 	// TypeSnap is a pkg:snap purl.
 	TypeSnap Type = "snap"
+	// TypeFlatpak is a pkg:flatpak purl.
+	//
+	// The namespace is the REMOTE the application was installed from, not a
+	// vendor: one application ID names different software depending on where it
+	// came from. org.mozilla.firefox is the rapid channel from Flathub and ESR
+	// from Red Hat's own remote, so the remote is what keeps two builds of "the
+	// same" app apart -- and what decides which advisories apply to it.
+	TypeFlatpak Type = "flatpak"
 	// TypeCos is a pkg:cos purl for Google Container-Optimized OS packages.
 	// Tracks the shape proposed in package-url/purl-spec#270 and emitted by
 	// osv-scalibr; not (yet) in the formal purl-spec registry.
@@ -51,6 +59,7 @@ var (
 		TypeWindows:       {},
 		TypeWindowsDriver: {},
 		TypeMacos:         {},
+		TypeFlatpak:       {},
 		Type_X_Platform:   {},
 		TypeGeneric:       {},
 		TypeApk:           {},
