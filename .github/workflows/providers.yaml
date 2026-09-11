@@ -16,6 +16,11 @@ on:
         type: boolean
         required: false
         default: false
+      allow_major_promotion:
+        description: "Allow publishing a new major to the stable channel (see minstaller ADR 0003)"
+        type: boolean
+        required: false
+        default: false
       use-test-cert:
         description: "Use test certificate profile (not publicly trusted)"
         required: false
@@ -52,6 +57,8 @@ jobs:
 
       - name: Detect providers
         id: providers
+        env:
+          ALLOW_MAJOR_PROMOTION: ${{ inputs.allow_major_promotion }}
         run: |
           providers=$(find providers -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
           echo "providers=$(echo -n $providers | jq -Rsc 'split(" ")')" >> $GITHUB_OUTPUT
@@ -77,6 +84,27 @@ jobs:
               DIST_VERSION=$(curl -s https://releases.mondoo.com/providers/${p}/latest.json | jq -r .version)
             fi
             printf "PROVIDER $p:\n  Local version: $REPO_VERSION\n  Remote version: $DIST_VERSION\n"
+
+            # Providers share one namespace across release lines, and every
+            # client resolves through providers/latest.json -- whatever is
+            # newest there is what the whole fleet installs. A version carrying
+            # a semver pre-release segment lands on the preview channel and is
+            # invisible to stable clients; a plain one does not.
+            #
+            # So a plain version whose major is ahead of what stable currently
+            # serves would hand every client on the previous major a provider
+            # built for the next one, as a side effect of a routine bump. Refuse
+            # it. Promoting a major is deliberate: re-run with
+            # allow_major_promotion. See minstaller ADR 0003.
+            if [[ "$DIST_VERSION" != "unreleased" && "$ALLOW_MAJOR_PROMOTION" != "true" ]]; then
+              REPO_MAJOR=${REPO_VERSION%%.*}
+              DIST_MAJOR=${DIST_VERSION%%.*}
+              if [[ "$REPO_VERSION" != *-* && "$REPO_MAJOR" -gt "$DIST_MAJOR" ]]; then
+                echo "::error::$p $REPO_VERSION would promote major $REPO_MAJOR to the stable channel, where $DIST_VERSION is serving every client on major $DIST_MAJOR. Give it a pre-release segment (e.g. ${REPO_MAJOR}.0.0-rc.1) to publish it to preview, or re-run with allow_major_promotion to promote it deliberately."
+                exit 1
+              fi
+            fi
+
             if [[ $REPO_VERSION != $DIST_VERSION ]]; then
               echo "  Adding $p to build list"
               build="$build $p"
