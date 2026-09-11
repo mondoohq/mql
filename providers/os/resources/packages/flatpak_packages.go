@@ -180,15 +180,35 @@ const (
 
 // flatpakScopeFromOptions reads the scope out of a remote's options cell.
 // Options is a comma-separated flag list ("system", "user", "oci",
-// "no-gpg-verify", or a custom installation's name), so the scope is whichever
-// flag is not one of the known non-scope flags.
+// "no-gpg-verify", or a custom installation's name).
+//
+// "system" and "user" are matched POSITIVELY and win wherever they appear in
+// the cell. Only when neither is present is an unrecognised token read as a
+// custom installation's name, because those names are arbitrary and cannot be
+// enumerated. Selecting the first non-flag token instead made the answer depend
+// on field order against a list of flags we do not control: a flatpak release
+// adding one flag we have not listed would, if it sorted before "system", have
+// been returned as the scope and given every remote in that installation a
+// scope no deployment uses -- silently losing all of them.
+//
+// The residual risk is narrow and unavoidable: a new flag preceding a custom
+// installation's name in a cell that names no standard scope.
 func flatpakScopeFromOptions(options string) string {
+	custom := ""
 	for _, opt := range strings.Split(options, ",") {
 		opt = strings.TrimSpace(opt)
+		if opt == flatpakScopeSystem || opt == flatpakScopeUser {
+			return opt
+		}
 		if opt == "" || flatpakNonScopeOptions[opt] {
 			continue
 		}
-		return opt
+		if custom == "" {
+			custom = opt
+		}
+	}
+	if custom != "" {
+		return custom
 	}
 	return flatpakScopeSystem
 }
@@ -708,9 +728,26 @@ func nextFlatpakString(data []byte) (string, []byte, bool) {
 // was 15 characters long.
 func flatpakDeployDictString(data []byte, key string) (string, bool) {
 	needle := append([]byte(key), 0)
-	idx := bytes.Index(data, needle)
-	if idx < 0 {
-		return "", false
+	// The match must START a string, not land inside one. bytes.Index finds the
+	// key bytes anywhere in the blob, so a longer key ending in the same suffix
+	// ("xa-appdata-version" for "appdata-version") or a value that happens to
+	// contain the key text would both match, and the value read back would
+	// belong to a different field. A string in this blob is NUL-terminated, so
+	// the byte before a genuine key is either a NUL or the start of the buffer.
+	// Keep searching rather than giving up: the real key may sit after a
+	// spurious hit.
+	idx := -1
+	for off := 0; ; {
+		hit := bytes.Index(data[off:], needle)
+		if hit < 0 {
+			return "", false
+		}
+		hit += off
+		if hit == 0 || data[hit-1] == 0 {
+			idx = hit
+			break
+		}
+		off = hit + 1
 	}
 	// The gap is COMPUTED, not scanned. Scanning for NULs cannot tell alignment
 	// padding from a value that is itself the empty string -- it would consume

@@ -22,6 +22,15 @@ func buildFlatpakDeploy(origin, commit string, kv ...[2]string) []byte {
 	b.WriteByte(0)
 
 	for _, entry := range kv {
+		// Keys sit at an aligned offset in a real file: the captured record has
+		// "appdata-version" at byte 176, preceded by the previous entry's type
+		// signature and then NUL padding. Without this the builder emits a key
+		// immediately after the previous 's', which no real deploy file does --
+		// and a fixture that is laid out differently from the thing it stands in
+		// for cannot test the reader's offset arithmetic.
+		for b.Len()%flatpakGVariantAlignment != 0 {
+			b.WriteByte(0)
+		}
 		b.WriteString(entry[0])
 		b.WriteByte(0)
 		for b.Len()%flatpakGVariantAlignment != 0 {

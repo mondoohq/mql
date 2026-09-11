@@ -32,7 +32,6 @@ func TestParseFlatpakList(t *testing.T) {
 	deployments, err := parseFlatpakList(f)
 	require.NoError(t, err)
 	pkgs := flatpakPackages(deployments, nil)
-	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 
 	firefox := pkgs[0]
@@ -61,7 +60,6 @@ func TestParseFlatpakListCellShapes(t *testing.T) {
 	deployments, err := parseFlatpakList(f)
 	require.NoError(t, err)
 	pkgs := flatpakPackages(deployments, nil)
-	require.NoError(t, err)
 	require.Len(t, pkgs, 5)
 
 	byPurl := map[string]Package{}
@@ -377,7 +375,6 @@ func TestParseFlatpakListDedupesInstallations(t *testing.T) {
 	deployments, err := parseFlatpakList(strings.NewReader(row + row))
 	require.NoError(t, err)
 	pkgs := flatpakPackages(deployments, nil)
-	require.NoError(t, err)
 	require.Len(t, pkgs, 1, "one application, not two identical PURLs")
 	assert.Equal(t,
 		"pkg:flatpak/flathub/org.mozilla.firefox@154.0.1?branch=stable&commit=c84b98e041e5",
@@ -388,7 +385,6 @@ func TestParseFlatpakListDedupesInstallations(t *testing.T) {
 		deployments, err := parseFlatpakList(strings.NewReader(row + other))
 		require.NoError(t, err)
 		pkgs := flatpakPackages(deployments, nil)
-		require.NoError(t, err)
 		assert.Len(t, pkgs, 2)
 	})
 }
@@ -531,8 +527,14 @@ func TestFlatpakScopeFromOptions(t *testing.T) {
 		"system,oci,no-gpg-verify": flatpakScopeSystem,
 		"user,no-enumerate":        flatpakScopeUser,
 		"extra,oci":                "extra",
-		"oci,no-gpg-verify":        flatpakScopeSystem,
-		"":                         flatpakScopeSystem,
+		// A flag we do not know about must not shadow a standard scope, wherever
+		// it appears in the cell. Reading the first non-flag token would have
+		// returned "no-filter" here and given the remote a scope no deployment
+		// uses.
+		"no-filter,system":  flatpakScopeSystem,
+		"no-filter,user":    flatpakScopeUser,
+		"oci,no-gpg-verify": flatpakScopeSystem,
+		"":                  flatpakScopeSystem,
 	}
 	for options, want := range tests {
 		assert.Equal(t, want, flatpakScopeFromOptions(options), options)
@@ -670,4 +672,44 @@ func TestParseFlatpakDirReadsSiblingApplications(t *testing.T) {
 	assert.Equal(t, "x86_64", byID["org.gimp.GIMP"].arch)
 	assert.Equal(t, "3.0.4", byID["org.gimp.GIMP"].version)
 	assert.Equal(t, "aarch64", byID["org.mozilla.firefox"].arch)
+}
+
+// TestFlatpakDeployDictStringMatchesKeyStart pins that a key lookup matches a
+// key, not any occurrence of the key's bytes.
+//
+// The blob is searched with bytes.Index, which has no notion of where a string
+// begins. A longer key ending in the same suffix ("xa-appdata-version" for
+// "appdata-version") matches at an offset inside that longer key, and the value
+// read back belongs to the wrong field entirely. Strings here are
+// NUL-terminated, so a genuine key starts the buffer or follows a NUL.
+func TestFlatpakDeployDictStringMatchesKeyStart(t *testing.T) {
+	const commit = "c84b98e041e58749e824ae83bb2de6da268f0a0ca19f299329a6943de768cb67"
+
+	t.Run("a longer key ending in the same suffix is not the key", func(t *testing.T) {
+		deploy := buildFlatpakDeploy("flathub", commit,
+			[2]string{"xa-appdata-version", "999.999.999"},
+			[2]string{"appdata-version", "154.0.1"})
+
+		got, ok := flatpakDeployDictString(deploy, "appdata-version")
+		require.True(t, ok)
+		assert.Equal(t, "154.0.1", got,
+			"matched inside xa-appdata-version and read the wrong field's value")
+	})
+
+	t.Run("the key is still found when it is the only entry", func(t *testing.T) {
+		deploy := buildFlatpakDeploy("flathub", commit,
+			[2]string{"appdata-version", "154.0.1"})
+
+		got, ok := flatpakDeployDictString(deploy, "appdata-version")
+		require.True(t, ok)
+		assert.Equal(t, "154.0.1", got)
+	})
+
+	t.Run("an absent key is absent", func(t *testing.T) {
+		deploy := buildFlatpakDeploy("flathub", commit,
+			[2]string{"xa-appdata-version", "999.999.999"})
+
+		_, ok := flatpakDeployDictString(deploy, "appdata-version")
+		assert.False(t, ok, "only a suffix match exists, which is not the key")
+	})
 }
