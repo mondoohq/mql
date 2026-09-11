@@ -416,16 +416,25 @@ func TestGetUpdateChannelFollowsTheBuild(t *testing.T) {
 	viper.Set(KeyUpdateChannel, ChannelPreview)
 	assert.Equal(t, ChannelPreview, GetUpdateChannel(), "explicit preview must override a stable build")
 
-	// A typo still falls back to stable, even on a pre-release build: the
-	// value was not understood, so it cannot be acted on.
+	// An unrecognized value is treated as unset, not forced to stable. Someone
+	// who typed `beta` meaning `preview` on a release candidate would otherwise
+	// get stable providers against a pre-release binary — the exact schema
+	// mismatch this is here to prevent.
 	SetRunningVersion("14.0.0-rc.2")
+	viper.Set(KeyUpdateChannel, "beta")
+	assert.Equal(t, ChannelPreview, GetUpdateChannel())
+
+	// And on a stable build the same typo is still stable, so a garbage value
+	// can never move a released binary onto pre-releases.
+	SetRunningVersion("13.38.1")
 	viper.Set(KeyUpdateChannel, "beta")
 	assert.Equal(t, ChannelStable, GetUpdateChannel())
 }
 
 // TestGetUpdateChannel pins that a typo cannot silently move a fleet onto
-// pre-releases, and cannot stop it updating either: anything unrecognized is
-// stable.
+// pre-releases, and cannot stop it updating either. With no running version
+// recorded — a stable build, or a caller that never set one — anything
+// unrecognized resolves stable.
 func TestGetUpdateChannel(t *testing.T) {
 	t.Cleanup(func() { viper.Set(KeyUpdateChannel, "") })
 	SetRunningVersion("")

@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"os"
 	"strings"
+	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	"github.com/go-viper/mapstructure/v2"
@@ -254,45 +255,67 @@ const (
 //
 // It is injected rather than read from a package variable because the binary
 // that matters is cnspec or mql, and this package is shared by both.
-var runningVersion string
+//
+// atomic.Value rather than a plain string: the write happens once at startup
+// and the reads come later, so there is no race today, but nothing in the types
+// says so. Tests in particular are free to run in parallel.
+var runningVersion atomic.Value // string
 
 // SetRunningVersion records the executing binary's version, so an unset
 // update_channel can follow the build rather than defaulting to stable. Call it
 // before anything resolves a channel.
 func SetRunningVersion(version string) {
-	runningVersion = version
+	runningVersion.Store(version)
+}
+
+// getRunningVersion returns the recorded version, or "" if none was set.
+func getRunningVersion() string {
+	version, _ := runningVersion.Load().(string)
+	return version
 }
 
 // GetUpdateChannel returns the release channel this binary resolves through.
 //
-// An explicit update_channel wins. An unrecognized one is stable: a typo must
-// not silently put a fleet on pre-releases, and it must not stop updates
-// either.
+// An explicit update_channel wins. Anything else -- unset, or a value we do not
+// recognize -- follows the running build: a pre-release build resolves the
+// pre-release track, everything else resolves stable.
 //
-// With nothing configured the channel follows the running build. Installing a
-// pre-release and then resolving *stable* providers is the v13/v14 mismatch in
-// miniature: a 14.0.0-rc.2 binary would pull 13.x providers, built against a
-// different schema, and report the resulting nulls as passing checks. Someone
-// who installed a release candidate has already chosen the pre-release track;
+// Following the build matters because installing a pre-release and then
+// resolving *stable* providers is the v13/v14 mismatch in miniature. A
+// 14.0.0-rc.2 binary would pull 13.x providers, built against a different
+// schema, and report the resulting nulls as passing checks. Someone who
+// installed a release candidate has already chosen the pre-release track;
 // making them say so twice only creates a way to get it half-applied.
 //
-// The inverse holds too, and is what keeps this safe: a stable build never
-// derives preview, so no released binary can be moved onto pre-releases by
-// anything other than an explicit setting.
+// An unrecognized value is treated as unset rather than forced to stable. It
+// means "we do not know what you asked for", and the honest answer to that is
+// the default behaviour, not a third one. Forcing stable would have produced
+// exactly the schema mismatch above for anyone who typed `beta` meaning
+// `preview` on a release candidate.
+//
+// A stable build still never derives preview, which is what keeps this safe: no
+// released binary can be moved onto pre-releases by a typo, only by asking for
+// it precisely.
 func GetUpdateChannel() string {
-	switch strings.ToLower(strings.TrimSpace(viper.GetString(KeyUpdateChannel))) {
+	configured := strings.ToLower(strings.TrimSpace(viper.GetString(KeyUpdateChannel)))
+
+	switch configured {
 	case ChannelPreview:
 		return ChannelPreview
 	case ChannelStable:
 		return ChannelStable
 	case "":
-		if isPrereleaseVersion(runningVersion) {
-			return ChannelPreview
-		}
-		return ChannelStable
 	default:
-		return ChannelStable
+		log.Warn().
+			Str("configured", configured).
+			Str(KeyUpdateChannel, strings.Join([]string{ChannelStable, ChannelPreview}, ", ")).
+			Msg("unknown update channel, falling back to the channel this build belongs to")
 	}
+
+	if isPrereleaseVersion(getRunningVersion()) {
+		return ChannelPreview
+	}
+	return ChannelStable
 }
 
 // isPrereleaseVersion reports whether a version carries a semver pre-release
