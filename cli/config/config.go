@@ -249,17 +249,63 @@ const (
 	ChannelPreview = "preview"
 )
 
-// GetUpdateChannel returns the update_channel setting, normalized. An unset or
-// unrecognized value is stable: a typo must not silently put a fleet on
-// pre-releases, and it must not stop updates either.
+// runningVersion is the version of the binary that is executing, set once at
+// startup by the app. Empty means unknown, which reads as stable.
+//
+// It is injected rather than read from a package variable because the binary
+// that matters is cnspec or mql, and this package is shared by both.
+var runningVersion string
+
+// SetRunningVersion records the executing binary's version, so an unset
+// update_channel can follow the build rather than defaulting to stable. Call it
+// before anything resolves a channel.
+func SetRunningVersion(version string) {
+	runningVersion = version
+}
+
+// GetUpdateChannel returns the release channel this binary resolves through.
+//
+// An explicit update_channel wins. An unrecognized one is stable: a typo must
+// not silently put a fleet on pre-releases, and it must not stop updates
+// either.
+//
+// With nothing configured the channel follows the running build. Installing a
+// pre-release and then resolving *stable* providers is the v13/v14 mismatch in
+// miniature: a 14.0.0-rc.2 binary would pull 13.x providers, built against a
+// different schema, and report the resulting nulls as passing checks. Someone
+// who installed a release candidate has already chosen the pre-release track;
+// making them say so twice only creates a way to get it half-applied.
+//
+// The inverse holds too, and is what keeps this safe: a stable build never
+// derives preview, so no released binary can be moved onto pre-releases by
+// anything other than an explicit setting.
 func GetUpdateChannel() string {
-	channel := strings.ToLower(strings.TrimSpace(viper.GetString(KeyUpdateChannel)))
-	switch channel {
+	switch strings.ToLower(strings.TrimSpace(viper.GetString(KeyUpdateChannel))) {
 	case ChannelPreview:
 		return ChannelPreview
+	case ChannelStable:
+		return ChannelStable
+	case "":
+		if isPrereleaseVersion(runningVersion) {
+			return ChannelPreview
+		}
+		return ChannelStable
 	default:
 		return ChannelStable
 	}
+}
+
+// isPrereleaseVersion reports whether a version carries a semver pre-release
+// segment. Build metadata is stripped first: it is not a pre-release under
+// SemVer 10, and it is where the edge builds put their commit counter.
+//
+// Deliberately not a full semver parse. This has to answer for "unstable" and
+// for the `-rolling` suffix as well as for real versions, and a parse error on
+// a development build must not decide a channel.
+func isPrereleaseVersion(version string) bool {
+	core, _, _ := strings.Cut(version, "+")
+	_, prerelease, found := strings.Cut(strings.TrimPrefix(core, "v"), "-")
+	return found && prerelease != ""
 }
 
 // GetFeatures returns the features from viper config.
