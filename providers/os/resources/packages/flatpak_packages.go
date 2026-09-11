@@ -464,23 +464,26 @@ func parseFlatpakDir(afs *afero.Afero, appDir, installationRoot string) ([]flatp
 				branch := branchEntry.Name()
 
 				deploy, outcome := resolveFlatpakDeployment(afs, path.Join(branchDir, branch), installationRoot, appID, arch, branch)
-				switch outcome {
-				case flatpakResolveNotADeployment:
-					// Not a branch. Silent by design -- see
-					// flatpakResolveOutcome.
-					continue
-				case flatpakResolveUnreadable:
-					// A branch directory exists but no deployment could be read
-					// from it. Warn rather than skip silently: deploy is a
-					// versioned GVariant tuple, so a future flatpak that
-					// reorders or prepends a field would make every file fail to
-					// parse and this function would return zero packages for a
-					// host full of Flatpaks, with List() still reporting
-					// success. One WARN naming the application is the difference
-					// between "we lost the inventory" and total silence.
-					log.Warn().Str("app", appID).Str("arch", arch).Str("branch", branch).
-						Str("installation", installationRoot).
-						Msg("mql[flatpak]> could not read a deployment record; application not reported")
+				// Only an explicit OK publishes a package. Anything else skips,
+				// including an outcome added later: falling through on an
+				// unrecognised one would report a zero-value deployment, which
+				// is the versionless, originless package this reader exists to
+				// stop producing.
+				if outcome != flatpakResolveOK {
+					if outcome == flatpakResolveUnreadable {
+						// A branch directory exists but no deployment could be
+						// read from it. Warn rather than skip silently: deploy
+						// is a versioned GVariant tuple, so a future flatpak
+						// that reorders or prepends a field would make every
+						// file fail to parse and this function would return
+						// zero packages for a host full of Flatpaks, with
+						// List() still reporting success. One WARN naming the
+						// application is the difference between "we lost the
+						// inventory" and total silence.
+						log.Warn().Str("app", appID).Str("arch", arch).Str("branch", branch).
+							Str("installation", installationRoot).
+							Msg("mql[flatpak]> could not read a deployment record; application not reported")
+					}
 					continue
 				}
 				deploy.appID = appID
