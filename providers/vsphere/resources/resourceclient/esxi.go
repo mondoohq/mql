@@ -8,6 +8,7 @@ import (
 	"errors"
 	"regexp"
 	"strings"
+	"sync"
 
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 
@@ -29,6 +30,40 @@ type Esxi struct {
 	InventoryPath string
 	c             *govmomi.Client
 	host          *object.HostSystem
+
+	// esx.NewExecutor costs two SOAP round trips of its own --
+	// RetrieveManagedMethodExecuter and RetrieveDynamicTypeManager -- and every
+	// esxcli helper below used to build a fresh one per command. On a
+	// four-asset scan that was 275 executors, so 550 setup calls: 36% of all
+	// SOAP traffic. It also threw away the executor's CommandInfo cache each
+	// time.
+	execOnce sync.Once
+	exec     *esx.Executor
+	execErr  error
+	// Executor.Run populates that CommandInfo map, so one executor cannot be
+	// used concurrently -- and llx runs query blocks in goroutines.
+	execMu sync.Mutex
+}
+
+// executor returns this host's esxcli executor, building it at most once.
+func (esxi *Esxi) executor() (*esx.Executor, error) {
+	esxi.execOnce.Do(func() {
+		esxi.exec, esxi.execErr = esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
+	})
+	return esxi.exec, esxi.execErr
+}
+
+// runEsxCli runs one esxcli command on this host's shared executor.
+func (esxi *Esxi) runEsxCli(args ...string) (*esx.Response, error) {
+	e, err := esxi.executor()
+	if err != nil {
+		return nil, err
+	}
+
+	esxi.execMu.Lock()
+	defer esxi.execMu.Unlock()
+
+	return e.Run(context.Background(), args)
 }
 
 var sliceKeys = []string{"Uplinks", "Portgroups"}
@@ -68,12 +103,7 @@ func esxiValuesSliceToDict(values []esx.Values) []map[string]any {
 
 // (Get - EsxCli).network.vswitch.standard.list()
 func (esxi *Esxi) VswitchStandard() ([]map[string]any, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := e.Run(context.Background(), []string{"network", "vswitch", "standard", "list"})
+	res, err := esxi.runEsxCli("network", "vswitch", "standard", "list")
 	if err != nil {
 		return nil, err
 	}
@@ -84,15 +114,10 @@ func (esxi *Esxi) VswitchStandard() ([]map[string]any, error) {
 var doubleSpaceRegex = regexp.MustCompile(`\s+`)
 
 func (esxi *Esxi) Command(command string) ([]map[string]any, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
 	sanitizedCommand := doubleSpaceRegex.ReplaceAllString(command, " ")
 	args := strings.Split(sanitizedCommand, " ")
 
-	resp, err := e.Run(context.Background(), args)
+	resp, err := esxi.runEsxCli(args...)
 	if err != nil {
 		return nil, err
 	}
@@ -106,12 +131,7 @@ func (esxi *Esxi) Command(command string) ([]map[string]any, error) {
 
 // (Get-ESXCli).network.vswitch.standard.policy.shaping.get('vSwitch0')
 func (esxi *Esxi) VswitchStandardShapingPolicy(standardSwitchName string) (map[string]any, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := e.Run(context.Background(), []string{"network", "vswitch", "standard", "policy", "shaping", "get", "--vswitch-name", standardSwitchName})
+	resp, err := esxi.runEsxCli("network", "vswitch", "standard", "policy", "shaping", "get", "--vswitch-name", standardSwitchName)
 	if err != nil {
 		return nil, err
 	}
@@ -129,12 +149,7 @@ func (esxi *Esxi) VswitchStandardShapingPolicy(standardSwitchName string) (map[s
 
 // (Get-ESXCli).network.vswitch.standard.policy.failover.get('vSwitch0')
 func (esxi *Esxi) VswitchStandardFailoverPolicy(standardSwitchName string) (map[string]any, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := e.Run(context.Background(), []string{"network", "vswitch", "standard", "policy", "failover", "get", "--vswitch-name", standardSwitchName})
+	resp, err := esxi.runEsxCli("network", "vswitch", "standard", "policy", "failover", "get", "--vswitch-name", standardSwitchName)
 	if err != nil {
 		return nil, err
 	}
@@ -152,12 +167,7 @@ func (esxi *Esxi) VswitchStandardFailoverPolicy(standardSwitchName string) (map[
 
 // (Get-ESXCli).network.vswitch.standard.policy.security.get('vSwitch0')
 func (esxi *Esxi) VswitchStandardSecurityPolicy(standardSwitchName string) (map[string]any, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := e.Run(context.Background(), []string{"network", "vswitch", "standard", "policy", "security", "get", "--vswitch-name", standardSwitchName})
+	resp, err := esxi.runEsxCli("network", "vswitch", "standard", "policy", "security", "get", "--vswitch-name", standardSwitchName)
 	if err != nil {
 		return nil, err
 	}
@@ -175,12 +185,7 @@ func (esxi *Esxi) VswitchStandardSecurityPolicy(standardSwitchName string) (map[
 
 // (Get-EsxCli).network.vswitch.dvs.vmware.list()
 func (esxi *Esxi) VswitchDvs() ([]map[string]any, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := e.Run(context.Background(), []string{"network", "vswitch", "dvs", "vmware", "list"})
+	res, err := esxi.runEsxCli("network", "vswitch", "dvs", "vmware", "list")
 	if err != nil {
 		return nil, err
 	}
@@ -191,12 +196,7 @@ func (esxi *Esxi) VswitchDvs() ([]map[string]any, error) {
 // Adapters will list the Physical NICs currently installed and loaded on the system.
 // (Get-EsxCli).network.nic.list.Invoke()
 func (esxi *Esxi) Adapters() ([]map[string]any, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := e.Run(context.Background(), []string{"network", "nic", "list"})
+	res, err := esxi.runEsxCli("network", "nic", "list")
 	if err != nil {
 		return nil, err
 	}
@@ -207,12 +207,7 @@ func (esxi *Esxi) Adapters() ([]map[string]any, error) {
 // List adapter details for nic
 // Usage esxcli network nic pauseParams list
 func (esxi *Esxi) ListNicDetails(interfacename string) (map[string]any, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := e.Run(context.Background(), []string{"network", "nic", "get", "--nic-name", interfacename})
+	resp, err := esxi.runEsxCli("network", "nic", "get", "--nic-name", interfacename)
 	if err != nil {
 		return nil, err
 	}
@@ -231,12 +226,7 @@ func (esxi *Esxi) ListNicDetails(interfacename string) (map[string]any, error) {
 // List pause parameters of all NICs
 // Usage esxcli network nic pauseParams list
 func (esxi *Esxi) ListNicPauseParams() ([]map[string]any, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := e.Run(context.Background(), []string{"network", "nic", "pauseParams", "list"})
+	res, err := esxi.runEsxCli("network", "nic", "pauseParams", "list")
 	if err != nil {
 		return nil, err
 	}
@@ -260,12 +250,7 @@ type VmKernelNic struct {
 // hosts with N vmkernel NICs. Tags don't have an esxcli-list form, so they
 // stay per-NIC.
 func (esxi *Esxi) Vmknics() ([]VmKernelNic, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := e.Run(context.Background(), []string{"network", "ip", "interface", "list"})
+	res, err := esxi.runEsxCli("network", "ip", "interface", "list")
 	if err != nil {
 		return nil, err
 	}
@@ -316,11 +301,7 @@ func (esxi *Esxi) Vmknics() ([]VmKernelNic, error) {
 // ESXCli call, indexed by interface name. Replaces N per-interface
 // VmknicIp() calls in the Vmknics() loop.
 func (esxi *Esxi) vmknicIpAll(ipprotocol string) (map[string][]any, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := e.Run(context.Background(), []string{"network", "ip", "interface", ipprotocol, "get"})
+	resp, err := esxi.runEsxCli("network", "ip", "interface", ipprotocol, "get")
 	if err != nil {
 		return nil, err
 	}
@@ -340,12 +321,7 @@ func (esxi *Esxi) vmknicIpAll(ipprotocol string) (map[string][]any, error) {
 
 // (Get-EsxCli).network.ip.interface.ipv4.get('vmk0', 'defaultTcpipStack')
 func (esxi *Esxi) VmknicIp(interfacename string, netstack string, ipprotocol string) ([]any, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := e.Run(context.Background(), []string{"network", "ip", "interface", ipprotocol, "get", "--interface-name", interfacename, "--netstack", netstack})
+	resp, err := esxi.runEsxCli("network", "ip", "interface", ipprotocol, "get", "--interface-name", interfacename, "--netstack", netstack)
 	if err != nil {
 		return nil, err
 	}
@@ -366,12 +342,7 @@ func (esxi *Esxi) VmknicIp(interfacename string, netstack string, ipprotocol str
 // see https://blogs.vmware.com/vsphere/2012/12/tagging-vmkernel-traffic-types-using-esxcli-5-1.html
 // see https://kb.vmware.com/s/article/65184
 func (esxi *Esxi) VmknicTags(interfacename string) ([]string, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := e.Run(context.Background(), []string{"network", "ip", "interface", "tag", "get", "--interface-name", interfacename})
+	resp, err := esxi.runEsxCli("network", "ip", "interface", "tag", "get", "--interface-name", interfacename)
 	if err != nil {
 		return nil, err
 	}
@@ -410,12 +381,7 @@ type EsxiVib struct {
 // Vendor          : VMware
 // Version         : 1.2.0.32-0.0.8169922
 func (esxi *Esxi) Vibs() ([]EsxiVib, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := e.Run(context.Background(), []string{"software", "vib", "list"})
+	res, err := esxi.runEsxCli("software", "vib", "list")
 	if err != nil {
 		return nil, err
 	}
@@ -460,12 +426,7 @@ func (esxi *Esxi) Vibs() ([]EsxiVib, error) {
 // on some ESXi releases it lands in res.Values as a single-key map. Try
 // both before reporting "unknown".
 func (esxi *Esxi) SoftwareAcceptance() (string, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return "", err
-	}
-
-	res, err := e.Run(context.Background(), []string{"software", "acceptance", "get"})
+	res, err := esxi.runEsxCli("software", "acceptance", "get")
 	if err != nil {
 		return "", err
 	}
@@ -515,12 +476,7 @@ type EsxiKernelModule struct {
 // true      true     user
 // true      true     procfs
 func (esxi *Esxi) KernelModules() ([]*EsxiKernelModule, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := e.Run(context.Background(), []string{"system", "module", "list"})
+	res, err := esxi.runEsxCli("system", "module", "list")
 	if err != nil {
 		return nil, err
 	}
@@ -589,14 +545,9 @@ func (esxi *Esxi) KernelModules() ([]*EsxiKernelModule, error) {
 // VIBAcceptanceLevel   : certified
 // Version              :
 func (esxi *Esxi) KernelModuleDetails(modulename string) (*EsxiKernelModule, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
 	// NOTE: do not use the powershell syntax, stick with the plain esxcli syntax
 	// esxcli <conn_options> system module get --module=module_name
-	res, err := e.Run(context.Background(), []string{"system", "module", "get", "--module", modulename})
+	res, err := esxi.runEsxCli("system", "module", "get", "--module", modulename)
 	if err != nil {
 		return nil, err
 	}
@@ -716,13 +667,8 @@ func buildAdvancedSetting(val map[string][]string) EsxiAdvancedSetting {
 //
 // supported types are `integer` and `string`, both are converted to string
 func (esxi *Esxi) AdvancedSettings() ([]EsxiAdvancedSetting, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
 	// fetch system settings
-	res, err := e.Run(context.Background(), []string{"system", "settings", "advanced", "list"})
+	res, err := esxi.runEsxCli("system", "settings", "advanced", "list")
 	if err != nil {
 		return nil, err
 	}
@@ -734,7 +680,7 @@ func (esxi *Esxi) AdvancedSettings() ([]EsxiAdvancedSetting, error) {
 
 	// fetch kernel settings
 	// $ESXCli.system.settings.kernel.list()
-	res, err = e.Run(context.Background(), []string{"system", "settings", "kernel", "list"})
+	res, err = esxi.runEsxCli("system", "settings", "kernel", "list")
 	if err != nil {
 		return nil, err
 	}
@@ -767,12 +713,7 @@ func (esxi *Esxi) AdvancedSettings() ([]EsxiAdvancedSetting, error) {
 }
 
 func (esxi *Esxi) Snmp() (map[string]any, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := e.Run(context.Background(), []string{"system", "snmp", "get"})
+	res, err := esxi.runEsxCli("system", "snmp", "get")
 	if err != nil {
 		return nil, err
 	}
@@ -817,12 +758,7 @@ var esxcliNamespaceUnavailableRegex = regexp.MustCompile(`(?i)(not supported|unk
 // namespace unavailable; we treat that as "not enabled" rather than failing the
 // whole host query.
 func (esxi *Esxi) KeyPersistenceEnabled() (bool, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return false, err
-	}
-
-	res, err := e.Run(context.Background(), []string{"system", "security", "keypersistence", "get"})
+	res, err := esxi.runEsxCli("system", "security", "keypersistence", "get")
 	if err != nil {
 		if esxcliNamespaceUnavailableRegex.MatchString(err.Error()) {
 			return false, nil
@@ -849,12 +785,7 @@ func (esxi *Esxi) KeyPersistenceEnabled() (bool, error) {
 //
 // ($ESXCli).system.security.certificatestore.list()
 func (esxi *Esxi) CertificateStore() ([]map[string]any, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := e.Run(context.Background(), []string{"system", "security", "certificatestore", "list"})
+	res, err := esxi.runEsxCli("system", "security", "certificatestore", "list")
 	if err != nil {
 		return nil, err
 	}
@@ -868,12 +799,7 @@ func (esxi *Esxi) CertificateStore() ([]map[string]any, error) {
 // namespace report an empty map rather than failing the whole host query, the
 // same way TlsServerProfile and KeyPersistenceEnabled handle older releases.
 func (esxi *Esxi) esxcliKeyValueList(args []string) (map[string]string, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := e.Run(context.Background(), args)
+	res, err := esxi.runEsxCli(args...)
 	if err != nil {
 		if esxcliNamespaceUnavailableRegex.MatchString(err.Error()) {
 			return map[string]string{}, nil
@@ -922,12 +848,7 @@ func (esxi *Esxi) SshClientConfig() (map[string]string, error) {
 // hosts it is unavailable, which we report as an empty profile rather than an
 // error.
 func (esxi *Esxi) TlsServerProfile() (string, error) {
-	e, err := esx.NewExecutor(context.Background(), esxi.c.Client, esxi.host)
-	if err != nil {
-		return "", err
-	}
-
-	res, err := e.Run(context.Background(), []string{"system", "tls", "server", "get"})
+	res, err := esxi.runEsxCli("system", "tls", "server", "get")
 	if err != nil {
 		if esxcliNamespaceUnavailableRegex.MatchString(err.Error()) {
 			return "", nil
