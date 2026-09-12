@@ -325,24 +325,32 @@ jobs:
         env:
           CHANNEL: ${{ needs.goreleaser.outputs.channel }}
           BUILD: ${{ needs.goreleaser.result }}
+          # Through env rather than `${{ }}` inline: an expression is pasted into
+          # the script before bash parses it, so a tag carrying a quote or `$(…)`
+          # would be read as shell rather than as text.
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
 
+          # build_status carries the value alone. Its label and the newline stay
+          # in the Slack payload, where `\n` inside a double-quoted YAML scalar
+          # is a real escape -- a `\n` that arrives by substitution only renders
+          # because of when GitHub interpolates, which is not worth depending on.
           case "$BUILD" in
             success)
-              echo 'header=:rocket: mql ${{ github.ref_name }} released' >> "$GITHUB_OUTPUT"
+              echo "header=:rocket: mql $REF_NAME released" >> "$GITHUB_OUTPUT"
               echo "mention=" >> "$GITHUB_OUTPUT"
-              echo "build_status=*Build:*\n:white_check_mark: Done" >> "$GITHUB_OUTPUT"
+              echo "build_status=:white_check_mark: Done" >> "$GITHUB_OUTPUT"
               ;;
             skipped)
-              echo 'header=:double_vertical_bar: mql ${{ github.ref_name }} build skipped' >> "$GITHUB_OUTPUT"
+              echo "header=:double_vertical_bar: mql $REF_NAME build skipped" >> "$GITHUB_OUTPUT"
               echo "mention=" >> "$GITHUB_OUTPUT"
-              echo "build_status=*Build:*\n:double_vertical_bar: Skipped" >> "$GITHUB_OUTPUT"
+              echo "build_status=:double_vertical_bar: Skipped" >> "$GITHUB_OUTPUT"
               ;;
             *)
-              echo 'header=:x: mql ${{ github.ref_name }} failed to release' >> "$GITHUB_OUTPUT"
+              echo "header=:x: mql $REF_NAME failed to release" >> "$GITHUB_OUTPUT"
               echo "mention=<!here> " >> "$GITHUB_OUTPUT"
-              echo "build_status=*Build:*\n:x: $BUILD" >> "$GITHUB_OUTPUT"
+              echo "build_status=:x: $BUILD" >> "$GITHUB_OUTPUT"
               ;;
           esac
 
@@ -384,6 +392,6 @@ jobs:
                   - type: "mrkdwn"
                     text: "*Workflow run:*\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|Open run>"
                   - type: "mrkdwn"
-                    text: "${{ steps.meta.outputs.build_status }}"
+                    text: "*Build:*\n${{ steps.meta.outputs.build_status }}"
                   - type: "mrkdwn"
                     text: "*Release notes:*\n<https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}|${{ github.ref_name }}>"
