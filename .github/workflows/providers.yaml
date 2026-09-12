@@ -17,7 +17,7 @@ on:
         required: false
         default: false
       allow_major_promotion:
-        description: "Allow publishing a new major to the stable channel (see minstaller ADR 0003)"
+        description: "Allow publishing a new major to the stable channel"
         type: boolean
         required: false
         default: false
@@ -95,7 +95,7 @@ jobs:
             # serves would hand every client on the previous major a provider
             # built for the next one, as a side effect of a routine bump. Refuse
             # it. Promoting a major is deliberate: re-run with
-            # allow_major_promotion. See minstaller ADR 0003.
+            # allow_major_promotion.
             if [[ "$DIST_VERSION" != "unreleased" && "$ALLOW_MAJOR_PROMOTION" != "true" ]]; then
               REPO_MAJOR=${REPO_VERSION%%.*}
               DIST_MAJOR=${DIST_VERSION%%.*}

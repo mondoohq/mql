@@ -75,8 +75,9 @@ jobs:
       # never declared: `14.0.0-rc.2` is preview, `13.38.1` is stable, and build
       # metadata (`8.4.0+41`) is not a pre-release so it stays stable. This
       # replaces a substring test for alpha/beta/pre/rc that disagreed with the
-      # equivalent lists in cnspec and in the publishing tools. See minstaller
-      # ADR 0003.
+      # equivalent lists in cnspec and in the publishing tools. The rule is
+      # SemVer 9 and 10 with nothing added: everything after a `-` and before
+      # any `+` is the pre-release segment, and its presence is the channel.
       - name: Determine release channel
         id: channel
         env:
