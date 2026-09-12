@@ -4,6 +4,7 @@
 package services
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -496,4 +497,31 @@ func TestSystemDServiceManagerListUsesListUnits(t *testing.T) {
 	// template@: only in list-unit-files, correctly not running
 	assert.False(t, servicesMap["template@"].Running)
 	assert.True(t, servicesMap["template@"].Static)
+}
+
+// failingReader stands in for a stdout pipe that breaks mid-read.
+type failingReader struct{ err error }
+
+func (f failingReader) Read([]byte) (int, error) { return 0, f.err }
+
+// TestParseServiceSystemDUnitFilesErrorKinds pins the distinction List() relies
+// on: an unusable listing means systemd is not the running init and the caller
+// should read the units off disk, while a broken stdout is an IO fault that has
+// to surface. Both used to arrive as an undifferentiated error, so a failed read
+// degraded into a filesystem listing that looked like a real answer.
+func TestParseServiceSystemDUnitFilesErrorKinds(t *testing.T) {
+	t.Run("empty output is a systemctl no-output error", func(t *testing.T) {
+		_, err := ParseServiceSystemDUnitFiles(strings.NewReader(""))
+		require.Error(t, err)
+		assert.ErrorIs(t, err, errSystemctlNoOutput)
+	})
+
+	t.Run("read failure is not a systemctl no-output error", func(t *testing.T) {
+		readErr := errors.New("connection reset by peer")
+		_, err := ParseServiceSystemDUnitFiles(failingReader{err: readErr})
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, errSystemctlNoOutput,
+			"a broken stdout must not be mistaken for systemd being absent")
+		assert.ErrorIs(t, err, readErr, "the underlying read error stays inspectable")
+	})
 }
