@@ -292,8 +292,12 @@ jobs:
       # At this point we know the docker container is published.
       # We can now trigger the mql bump in cnspec, which will also trigger the release of cnspec.
       # The docker container is a pre-requisite for cnspec release.
+      # Fire on every mql tag, including -alpha/-beta/-pre/-rc — cnspec's
+      # cnquery-update.yml is responsible for handling the pre-release
+      # semver + unversioned-mql module path. `skip-cnspec-bump` on
+      # workflow_dispatch still lets an operator opt out.
       - name: Trigger mql bump in cnspec
-        if: ${{ steps.skip-publish.outputs.skip-publish != 'true' && (github.event_name == 'push' || (inputs.skip-cnspec-bump != true && inputs.make-latest != false)) }}
+        if: ${{ github.event_name == 'push' || inputs.skip-cnspec-bump != true }}
         uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
         with:
           token: ${{ secrets.RELEASR_ACTION_TOKEN }}
