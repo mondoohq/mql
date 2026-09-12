@@ -15,10 +15,10 @@ var Config = plugin.Provider{
 	// A connection reports the concrete kind through ConnectRes.Root.
 	Root:    "vercel",
 	ID:      "go.mondoo.com/mql/providers/vercel",
-	Version: "13.2.1",
+	Version: "13.2.2",
 	// Every root carries `asset`, which core owns (ADR 042).
 	Requires: []plugin.ProviderDep{
-		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.2.2"},
 	},
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       connection.Platforms,

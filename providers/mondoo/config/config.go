@@ -14,10 +14,10 @@ var Config = plugin.Provider{
 	// A connection reports the concrete kind through ConnectRes.Root.
 	Root:    "mondoo.organization",
 	ID:      "go.mondoo.com/mql/providers/mondoo",
-	Version: "13.1.17",
+	Version: "13.1.18",
 	// Every root carries `asset`, which core owns (ADR 042).
 	Requires: []plugin.ProviderDep{
-		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.1.18"},
 	},
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       provider.Platforms,
