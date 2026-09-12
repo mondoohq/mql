@@ -16,9 +16,17 @@ import (
 )
 
 // Client is a minimal, hand-written net/http client for the read endpoints
-// of the Bitwarden Public API this provider needs. It is NOT generated from
-// Bitwarden's OpenAPI spec; see providers/bitwarden/README.md for why, and
-// for the production intent (an OpenAPI-generated client per ADR-037).
+// of the Bitwarden Public API this provider needs.
+//
+// The spec-tracked Go type layer generated from Bitwarden's official OpenAPI
+// v3 spec lives in the sibling bwapi package (regenerate with go generate;
+// see bwapi/gen.go). The request/response structs below are NOT the generated
+// bwapi models: the public spec is lossy for read modeling (it omits the
+// hidePasswords/manage grant flags, member resetPasswordEnrolled, and the
+// collection name, mistypes policy data, and models enums as incomplete
+// integers), so decoding into it would drop coverage. TestOpenAPISpecGaps in
+// client_test.go pins each gap; see providers/bitwarden/README.md for the full
+// rationale.
 type Client struct {
 	baseUrl    string
 	httpClient *http.Client
