@@ -332,23 +332,42 @@ jobs:
         run: |
           set -euo pipefail
 
+          # The tag reaches Slack through two different parsers, and it is not
+          # validated anywhere upstream -- git allows `"`, `&`, `<` and `>` in a
+          # ref name. `ref_safe` is escaped for both: backslash and quote so the
+          # value cannot terminate the double-quoted YAML scalar it is pasted
+          # into (that one fails the whole step, not just the rendering), then
+          # the three characters Slack reads as markup. `ref_url` is for the
+          # link target, where percent-encoding rather than escaping is correct.
+          ref_safe=$REF_NAME
+          ref_safe=${ref_safe//\\/\\\\}
+          ref_safe=${ref_safe//\"/\\\"}
+          ref_safe=${ref_safe//&/&amp;}
+          ref_safe=${ref_safe//</&lt;}
+          ref_safe=${ref_safe//>/&gt;}
+          ref_url=$(jq -rn --arg v "$REF_NAME" '$v|@uri')
+          {
+            echo "version=$ref_safe"
+            echo "version_url=$ref_url"
+          } >> "$GITHUB_OUTPUT"
+
           # build_status carries the value alone. Its label and the newline stay
           # in the Slack payload, where `\n` inside a double-quoted YAML scalar
           # is a real escape -- a `\n` that arrives by substitution only renders
           # because of when GitHub interpolates, which is not worth depending on.
           case "$BUILD" in
             success)
-              echo "header=:rocket: mql $REF_NAME released" >> "$GITHUB_OUTPUT"
+              echo "header=:rocket: mql $ref_safe released" >> "$GITHUB_OUTPUT"
               echo "mention=" >> "$GITHUB_OUTPUT"
               echo "build_status=:white_check_mark: Done" >> "$GITHUB_OUTPUT"
               ;;
             skipped)
-              echo "header=:double_vertical_bar: mql $REF_NAME build skipped" >> "$GITHUB_OUTPUT"
+              echo "header=:double_vertical_bar: mql $ref_safe build skipped" >> "$GITHUB_OUTPUT"
               echo "mention=" >> "$GITHUB_OUTPUT"
               echo "build_status=:double_vertical_bar: Skipped" >> "$GITHUB_OUTPUT"
               ;;
             *)
-              echo "header=:x: mql $REF_NAME failed to release" >> "$GITHUB_OUTPUT"
+              echo "header=:x: mql $ref_safe failed to release" >> "$GITHUB_OUTPUT"
               echo "mention=<!here> " >> "$GITHUB_OUTPUT"
               echo "build_status=:x: $BUILD" >> "$GITHUB_OUTPUT"
               ;;
@@ -386,7 +405,7 @@ jobs:
                   - type: "mrkdwn"
                     text: "*Repository:*\n`${{ github.repository }}`"
                   - type: "mrkdwn"
-                    text: "*Version:*\n`${{ github.ref_name }}`"
+                    text: "*Version:*\n`${{ steps.meta.outputs.version }}`"
                   - type: "mrkdwn"
                     text: "*Triggered by:*\n${{ github.actor }}"
                   - type: "mrkdwn"
@@ -394,4 +413,4 @@ jobs:
                   - type: "mrkdwn"
                     text: "*Build:*\n${{ steps.meta.outputs.build_status }}"
                   - type: "mrkdwn"
-                    text: "*Release notes:*\n<https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}|${{ github.ref_name }}>"
+                    text: "*Release notes:*\n<https://github.com/${{ github.repository }}/releases/tag/${{ steps.meta.outputs.version_url }}|${{ steps.meta.outputs.version }}>"
