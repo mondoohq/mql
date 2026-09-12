@@ -10,6 +10,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/upstream"
 	"go.mondoo.com/mql/types"
 	"go.mondoo.com/mql/utils/syncx"
+	"golang.org/x/sync/singleflight"
 )
 
 type Runtime struct {
@@ -22,6 +23,37 @@ type Runtime struct {
 	GetData        GetData
 	SetData        SetData
 	Upstream       *upstream.UpstreamClient
+
+	// initFlights collapses concurrent resolutions of the same resource into a
+	// single run of its init function. See ResolveResource. Its zero value is
+	// ready to use, so runtimes built as struct literals get it for free.
+	initFlights singleflight.Group
+
+	// sharedFlights points at the group of the runtime this one inherited its
+	// resource cache from, so that a family of connections deduplicates against
+	// each other exactly as far as it shares results. Nil means this runtime
+	// owns its flights; see flights.
+	sharedFlights *singleflight.Group
+}
+
+// flights returns the group this runtime resolves through. A child connection
+// that inherited a parent's Resources must also inherit its flights: the two
+// have to agree on scope, or sibling assets scanned in parallel would each run
+// the same init and then race to publish into the one cache they share.
+func (r *Runtime) flights() *singleflight.Group {
+	if r.sharedFlights != nil {
+		return r.sharedFlights
+	}
+	return &r.initFlights
+}
+
+// InheritResourceCacheFrom points this runtime at another runtime's resource
+// cache, and at the flights that keep that cache consistent. Used when a child
+// connection is opened under a parent that has already resolved resources the
+// child would otherwise fetch again.
+func (r *Runtime) InheritResourceCacheFrom(parent *Runtime) {
+	r.Resources = parent.Resources
+	r.sharedFlights = parent.flights()
 }
 
 func NewRuntime(
