@@ -2789,6 +2789,10 @@ func initAwsEc2Instance(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 	}
 	arnVal := args["arn"].Value.(string)
 
+	if cached := cachedByArn(runtime, ResourceAwsEc2Instance, arnVal); cached != nil {
+		return args, cached, nil
+	}
+
 	// Parse the ARN to extract region + instance id and target a single
 	// DescribeInstances call. Fall back to the cross-region list path only
 	// when the ARN is malformed.

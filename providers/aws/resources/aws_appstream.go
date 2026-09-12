@@ -214,6 +214,10 @@ func initAwsAppstreamFleet(runtime *plugin.Runtime, args map[string]*llx.RawData
 			args["arn"] = llx.StringData(assetArn)
 		}
 	}
+	if cached := cachedArgByArn(runtime, ResourceAwsAppstreamFleet, args); cached != nil {
+		return args, cached, nil
+	}
+
 	region, name, err := parseAppstreamRef(args, "fleet/")
 	if err != nil {
 		return nil, nil, err

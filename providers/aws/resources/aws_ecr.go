@@ -1132,6 +1132,10 @@ func initAwsEcrRepository(runtime *plugin.Runtime, args map[string]*llx.RawData)
 		return nil, nil, errors.New("arn or name required to fetch ecr repository")
 	}
 
+	if cached := cachedArgByArn(runtime, ResourceAwsEcrRepository, args); cached != nil {
+		return args, cached, nil
+	}
+
 	// When an ARN is supplied, the registry kind (private vs public), region,
 	// and repository name are all encoded in it, so we can issue a single
 	// targeted DescribeRepositories call instead of listing every repository in

@@ -127,6 +127,11 @@ func initAwsCodebuildProject(runtime *plugin.Runtime, args map[string]*llx.RawDa
 		return nil, nil, errors.New("name and region required to fetch codebuild project")
 	}
 
+	// This resource keys its __id on the name alone, so that is the probe key.
+	if cached := cachedArg(runtime, ResourceAwsCodebuildProject, args, "name"); cached != nil {
+		return args, cached, nil
+	}
+
 	name := args["name"].Value.(string)
 	region := args["region"].Value.(string)
 	conn := runtime.Connection.(*connection.AwsConnection)

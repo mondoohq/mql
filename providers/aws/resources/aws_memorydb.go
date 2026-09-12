@@ -107,6 +107,11 @@ func initAwsMemorydbCluster(runtime *plugin.Runtime, args map[string]*llx.RawDat
 	}
 
 	arnVal := args["arn"].Value.(string)
+
+	if cached := cachedByArn(runtime, ResourceAwsMemorydbCluster, arnVal); cached != nil {
+		return args, cached, nil
+	}
+
 	parsed, err := arn.Parse(arnVal)
 	if err != nil {
 		return nil, nil, err
