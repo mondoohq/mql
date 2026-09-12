@@ -37,15 +37,30 @@ type PlatformResolver struct {
 }
 
 // isUnidentifiedPlatform reports whether detection could not pin down which
-// system this actually is: either nothing named it at all, or the generic
-// fallback resolver was the one that claimed it. Container images in that state
-// are reported as "scratch" instead of by a derived or generic name.
+// system this actually is. Container images in that state are reported as
+// "scratch" instead of by a derived or generic name.
 //
-// This deliberately keys off the resolver that matched rather than the platform
-// name, because a resolver does not always emit the name it is registered under
-// (the "oracle" resolver emits "oraclelinux", for example).
+// This keys off the resolver that matched rather than the platform name,
+// because a resolver does not always emit the name it is registered under (the
+// "oracle" resolver emits "oraclelinux", for example).
+//
+// The generic resolver claiming a system is not on its own enough to call it
+// unidentified. It leaves whatever name os-release supplied, and a
+// distribution that states ID= has told us exactly what it is even though the
+// provider has no resolver for it. Reporting "scratch" there discards an
+// identity the image gives outright, which is how Slackware, Deepin and Anolis
+// OS images were coming back. An image that names nothing still has no
+// distro-id recorded, so it stays unidentified.
 func isUnidentifiedPlatform(pf *inventory.Platform, leaf *PlatformResolver) bool {
-	return pf.Name == "" || leaf == defaultLinux
+	if pf.Name == "" {
+		return true
+	}
+	if leaf != defaultLinux {
+		return false
+	}
+
+	_, namedByOsRelease := pf.Metadata[LabelDistroID]
+	return !namedByOsRelease
 }
 
 func (r *PlatformResolver) Resolve(conn shared.Connection) (*inventory.Platform, bool) {

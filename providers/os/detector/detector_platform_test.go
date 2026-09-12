@@ -1015,6 +1015,45 @@ func TestClearLinuxIsClaimedByItsOwnResolver(t *testing.T) {
 		"a container image claimed only by the generic resolver is reported as scratch")
 }
 
+// A distribution with no resolver of its own is still claimed by the generic
+// linux resolver, which leaves the name os-release supplied. Container images
+// in that state were reported as "scratch", discarding an identity the image
+// states outright. Reserve "scratch" for images that genuinely say nothing.
+func TestOsReleaseNameSurvivesTheGenericResolver(t *testing.T) {
+	for _, tc := range []struct {
+		fixture string
+		name    string
+		version string
+	}{
+		{"detect-slackware.toml", "slackware", "15.0"},
+		{"detect-deepin.toml", "deepin", "25"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/"+tc.fixture))
+			require.NoError(t, err)
+
+			pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+			require.True(t, resolved)
+			assert.Equal(t, tc.name, pf.Name)
+			assert.Equal(t, tc.version, pf.Version)
+			assert.False(t, isUnidentifiedPlatform(pf, leaf),
+				"os-release named this distribution, so a container image must not report scratch")
+		})
+	}
+}
+
+// An image that names nothing is still unidentified, and "scratch" stays the
+// honest answer for it.
+func TestImageWithNoOsReleaseStaysUnidentified(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-generic-linux.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved)
+	assert.True(t, isUnidentifiedPlatform(pf, leaf),
+		"nothing named this system, so it stays scratch")
+}
+
 func TestBusyboxLinuxDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-busybox.toml")
 	assert.Nil(t, err, "was able to create the provider")
