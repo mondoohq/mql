@@ -15,10 +15,10 @@ var Config = plugin.Provider{
 	// Every kind this provider hands out as its own asset is a root (ADR 031).
 	Root:    "kustomize",
 	ID:      "go.mondoo.com/mql/providers/kustomize",
-	Version: "13.1.15",
+	Version: "13.1.16",
 	// Every root carries `asset`, which core owns (ADR 042).
 	Requires: []plugin.ProviderDep{
-		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.1.16"},
 	},
 	Maturity:        resources.MaturityExperimental,
 	ConnectionTypes: []string{provider.DefaultConnectionType},
