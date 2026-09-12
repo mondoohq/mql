@@ -10,6 +10,15 @@ import (
 )
 
 func FilterResource(resType *ApiResource, resourceObjects []runtime.Object, name string, namespace string) ([]runtime.Object, error) {
+	// A namespace only selects among namespaced kinds. Cluster-scoped objects
+	// (Nodes, ClusterRoles, PersistentVolumes, ...) carry an empty
+	// metadata.namespace, so matching them against a requested namespace would
+	// discard every one of them and report the kind as empty rather than
+	// out of scope.
+	if !resType.Resource.Namespaced {
+		namespace = ""
+	}
+
 	// filter root resources
 	roots := filterResource(resourceObjects, resType.Resource.Kind, name, namespace)
 	return roots, nil
