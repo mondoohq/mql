@@ -317,9 +317,12 @@ jobs:
           token: ${{ secrets.RELEASR_ACTION_TOKEN }}
           repository: "mondoohq/cnspec"
           event-type: update-mql
-          client-payload: '{
-            "version": "${{  github.ref_name }}"
-            }'
+          # toJSON, not a raw interpolation into a quoted JSON string: git
+          # allows `"` and `\` in a ref name, either of which would produce
+          # malformed JSON and a dispatch the other repo cannot parse. Matches
+          # how cnspec builds the same kind of payload.
+          client-payload: >-
+            {"version": ${{ toJSON(github.ref_name) }}}
 
   # Reports the release outcome to #release-coordination.
   #
@@ -386,11 +389,12 @@ jobs:
               ;;
           esac
 
-          # cnspec carries the user-facing release; mql being on preview mostly
-          # tells a reader why nothing was promoted and why no cnspec bump PR
-          # appeared.
+          # cnspec carries the user-facing release; mql being on preview tells a
+          # reader why nothing was promoted to latest. The cnspec bump PR opens
+          # either way now, so its absence would be a real problem rather than
+          # an expected consequence of the channel.
           case "$CHANNEL" in
-            preview) echo "channel_line=:test_tube: *preview* — not promoted to latest, and the cnspec bump is manual for now" >> "$GITHUB_OUTPUT" ;;
+            preview) echo "channel_line=:test_tube: *preview* — not promoted to latest; the cnspec bump is dispatched as usual" >> "$GITHUB_OUTPUT" ;;
             *)       echo "channel_line=:package: *stable* — promotes latest and triggers the cnspec bump" >> "$GITHUB_OUTPUT" ;;
           esac
 
