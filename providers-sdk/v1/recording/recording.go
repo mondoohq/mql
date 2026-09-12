@@ -423,8 +423,16 @@ func (r *recording) AddData(req llx.AddDataReq) {
 		asset.IdsLookup = map[string]string{}
 	}
 
-	if req.RequestResourceId != req.ResourceID {
-		asset.IdsLookup[req.Resource+keySep+req.RequestResourceId] = req.ResourceID
+	// When the caller created the resource by name + args (no request id),
+	// derive a deterministic key from the args so e.g. file(path: "/a")
+	// and file(path: "/b") don't collide on the empty request id.
+	requestID := req.RequestResourceId
+	if requestID == "" && len(req.Args) > 0 {
+		requestID = llx.ArgsLookupID(req.Args)
+	}
+
+	if requestID != req.ResourceID {
+		asset.IdsLookup[req.Resource+keySep+requestID] = req.ResourceID
 	}
 
 	obj, exist := asset.resources[req.Resource+keySep+req.ResourceID]
@@ -525,7 +533,6 @@ func (r *recording) GetData(lookup llx.AssetRecordingLookup, resource string, id
 	asset.mu.Lock()
 	defer asset.mu.Unlock()
 	data, ok := obj.Fields[field]
-
 	return data, ok
 }
 
