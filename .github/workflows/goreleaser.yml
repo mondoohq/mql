@@ -39,12 +39,16 @@ on:
 
 env:
   REGISTRY: docker.io
+  # C07QZDJFF89 == #release-coordination
+  SLACK_BOT_CHANNEL_ID: "C07QZDJFF89"
 
 permissions:
   contents: read
 
 jobs:
   goreleaser:
+    outputs:
+      channel: ${{ steps.channel.outputs.channel }}
     permissions:
       # Add "contents" to write release
       contents: "write"
@@ -302,3 +306,83 @@ jobs:
           client-payload: '{
             "version": "${{  github.ref_name }}"
             }'
+
+  # Reports the release outcome to #release-coordination.
+  #
+  # Nothing depends on this job, and it never gates the release: a Slack outage,
+  # a rotated token or a renamed channel must not turn a good release red. It
+  # runs on failure too, because a release that did not happen is the case most
+  # worth announcing.
+  notify:
+    name: Report the release to Slack
+    if: ${{ always() && github.ref_type == 'tag' }}
+    needs: [goreleaser]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compose the message
+        id: meta
+        env:
+          CHANNEL: ${{ needs.goreleaser.outputs.channel }}
+          BUILD: ${{ needs.goreleaser.result }}
+        run: |
+          set -euo pipefail
+
+          case "$BUILD" in
+            success)
+              echo 'header=:rocket: mql ${{ github.ref_name }} released' >> "$GITHUB_OUTPUT"
+              echo "mention=" >> "$GITHUB_OUTPUT"
+              echo "build_status=*Build:*\n:white_check_mark: Done" >> "$GITHUB_OUTPUT"
+              ;;
+            skipped)
+              echo 'header=:double_vertical_bar: mql ${{ github.ref_name }} build skipped' >> "$GITHUB_OUTPUT"
+              echo "mention=" >> "$GITHUB_OUTPUT"
+              echo "build_status=*Build:*\n:double_vertical_bar: Skipped" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo 'header=:x: mql ${{ github.ref_name }} failed to release' >> "$GITHUB_OUTPUT"
+              echo "mention=<!here> " >> "$GITHUB_OUTPUT"
+              echo "build_status=*Build:*\n:x: $BUILD" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+          # cnspec carries the user-facing release; mql being on preview mostly
+          # tells a reader why nothing was promoted and why no cnspec bump PR
+          # appeared.
+          case "$CHANNEL" in
+            preview) echo "channel_line=:test_tube: *preview* — not promoted to latest, and the cnspec bump is manual for now" >> "$GITHUB_OUTPUT" ;;
+            *)       echo "channel_line=:package: *stable* — promotes latest and triggers the cnspec bump" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Post to Slack
+        continue-on-error: true
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: "${{ env.SLACK_BOT_CHANNEL_ID }}"
+            text: "${{ steps.meta.outputs.mention }}${{ steps.meta.outputs.header }}"
+            blocks:
+              - type: "header"
+                text:
+                  type: "plain_text"
+                  text: "${{ steps.meta.outputs.header }}"
+                  emoji: true
+              - type: "section"
+                text:
+                  type: "mrkdwn"
+                  text: "${{ steps.meta.outputs.channel_line }}"
+              - type: "section"
+                fields:
+                  - type: "mrkdwn"
+                    text: "*Repository:*\n`${{ github.repository }}`"
+                  - type: "mrkdwn"
+                    text: "*Version:*\n`${{ github.ref_name }}`"
+                  - type: "mrkdwn"
+                    text: "*Triggered by:*\n${{ github.actor }}"
+                  - type: "mrkdwn"
+                    text: "*Workflow run:*\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|Open run>"
+                  - type: "mrkdwn"
+                    text: "${{ steps.meta.outputs.build_status }}"
+                  - type: "mrkdwn"
+                    text: "*Release notes:*\n<https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}|${{ github.ref_name }}>"
