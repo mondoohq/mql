@@ -4217,7 +4217,7 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlAlicloudKmsKey).GetAutomaticRotation()).ToDataRes(types.String)
 	},
 	"alicloud.kms.key.rotationInterval": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAlicloudKmsKey).GetRotationInterval()).ToDataRes(types.String)
+		return (r.(*mqlAlicloudKmsKey).GetRotationInterval()).ToDataRes(types.Int)
 	},
 	"alicloud.kms.key.creationDate": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudKmsKey).GetCreationDate()).ToDataRes(types.Time)
@@ -4283,7 +4283,7 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlAlicloudKmsSecret).GetAutomaticRotation()).ToDataRes(types.String)
 	},
 	"alicloud.kms.secret.rotationInterval": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAlicloudKmsSecret).GetRotationInterval()).ToDataRes(types.String)
+		return (r.(*mqlAlicloudKmsSecret).GetRotationInterval()).ToDataRes(types.Int)
 	},
 	"alicloud.kms.secret.lastRotationDate": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudKmsSecret).GetLastRotationDate()).ToDataRes(types.Time)
@@ -12874,7 +12874,7 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		return
 	},
 	"alicloud.kms.key.rotationInterval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAlicloudKmsKey).RotationInterval, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		r.(*mqlAlicloudKmsKey).RotationInterval, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"alicloud.kms.key.creationDate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -12966,7 +12966,7 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		return
 	},
 	"alicloud.kms.secret.rotationInterval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAlicloudKmsSecret).RotationInterval, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		r.(*mqlAlicloudKmsSecret).RotationInterval, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"alicloud.kms.secret.lastRotationDate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -29133,7 +29133,7 @@ type mqlAlicloudKmsKey struct {
 	Origin                      plugin.TValue[string]
 	ProtectionLevel             plugin.TValue[string]
 	AutomaticRotation           plugin.TValue[string]
-	RotationInterval            plugin.TValue[string]
+	RotationInterval            plugin.TValue[int64]
 	CreationDate                plugin.TValue[*time.Time]
 	DeleteDate                  plugin.TValue[*time.Time]
 	LastRotationDate            plugin.TValue[*time.Time]
@@ -29225,7 +29225,7 @@ func (c *mqlAlicloudKmsKey) GetAutomaticRotation() *plugin.TValue[string] {
 	return &c.AutomaticRotation
 }
 
-func (c *mqlAlicloudKmsKey) GetRotationInterval() *plugin.TValue[string] {
+func (c *mqlAlicloudKmsKey) GetRotationInterval() *plugin.TValue[int64] {
 	return &c.RotationInterval
 }
 
@@ -29325,7 +29325,7 @@ type mqlAlicloudKmsSecret struct {
 	Arn               plugin.TValue[string]
 	SecretType        plugin.TValue[string]
 	AutomaticRotation plugin.TValue[string]
-	RotationInterval  plugin.TValue[string]
+	RotationInterval  plugin.TValue[int64]
 	LastRotationDate  plugin.TValue[*time.Time]
 	NextRotationDate  plugin.TValue[*time.Time]
 	PlannedDeleteTime plugin.TValue[*time.Time]
@@ -29396,7 +29396,7 @@ func (c *mqlAlicloudKmsSecret) GetAutomaticRotation() *plugin.TValue[string] {
 	return &c.AutomaticRotation
 }
 
-func (c *mqlAlicloudKmsSecret) GetRotationInterval() *plugin.TValue[string] {
+func (c *mqlAlicloudKmsSecret) GetRotationInterval() *plugin.TValue[int64] {
 	return &c.RotationInterval
 }
 

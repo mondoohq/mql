@@ -3997,8 +3997,12 @@ alicloud.kms.key {
   // enabled but KMS cannot rotate the key, for example after the key was
   // disabled.
   automaticRotation string
-  // Interval between automatic rotations, for example 31536000s
-  rotationInterval string
+  // Interval between automatic rotations, in seconds
+  //
+  // For example 31536000 for a key that rotates once a year. Null when the key
+  // reports no interval, which is the case while automatic rotation is
+  // disabled.
+  rotationInterval int
   // Time the key was created
   creationDate time
   // Time the key is scheduled for deletion, null when no deletion is scheduled
@@ -4079,8 +4083,12 @@ alicloud.kms.secret {
   //
   // One of Enabled, Disabled, or Suspended.
   automaticRotation string
-  // Interval between automatic rotations, for example 604800s
-  rotationInterval string
+  // Interval between automatic rotations, in seconds
+  //
+  // For example 604800 for a secret that rotates once a week. Null when the
+  // secret reports no interval, which is the case while automatic rotation is
+  // disabled.
+  rotationInterval int
   // Time the secret was last rotated, null when never rotated
   lastRotationDate time
   // Time the secret is next scheduled to rotate, null when rotation is disabled

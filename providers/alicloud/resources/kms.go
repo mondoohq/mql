@@ -6,6 +6,8 @@ package resources
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	kmsclient "github.com/alibabacloud-go/kms-20160120/v4/client"
@@ -31,6 +33,33 @@ func alicloudParseTime(s *string) *time.Time {
 		}
 	}
 	return nil
+}
+
+// parseRotationIntervalSeconds converts a KMS rotation interval, a decimal
+// number of seconds carrying an optional "s" suffix such as 31536000s, into
+// seconds. It reports false when the input is empty or is not a whole,
+// non-negative number of seconds, so the caller can leave the field null
+// instead of claiming a measured interval of zero.
+func parseRotationIntervalSeconds(v string) (int64, bool) {
+	digits := strings.TrimSuffix(strings.TrimSpace(v), "s")
+	if digits == "" {
+		return 0, false
+	}
+	seconds, err := strconv.ParseInt(digits, 10, 64)
+	if err != nil || seconds < 0 {
+		return 0, false
+	}
+	return seconds, true
+}
+
+// kmsRotationIntervalSeconds returns the rotation interval in seconds, or nil
+// when KMS reported no interval, which keeps the MQL field null.
+func kmsRotationIntervalSeconds(v string) *int64 {
+	seconds, ok := parseRotationIntervalSeconds(v)
+	if !ok {
+		return nil
+	}
+	return &seconds
 }
 
 func (r *mqlAlicloudKms) id() (string, error) {
@@ -158,7 +187,7 @@ func newKmsKey(runtime *plugin.Runtime, region string, meta *kmsclient.DescribeK
 		"origin":             llx.StringDataPtr(meta.Origin),
 		"protectionLevel":    llx.StringDataPtr(meta.ProtectionLevel),
 		"automaticRotation":  llx.StringDataPtr(meta.AutomaticRotation),
-		"rotationInterval":   llx.StringDataPtr(meta.RotationInterval),
+		"rotationInterval":   llx.IntDataPtr(kmsRotationIntervalSeconds(tea.StringValue(meta.RotationInterval))),
 		"creationDate":       llx.TimeDataPtr(alicloudParseTime(meta.CreationDate)),
 		"deleteDate":         llx.TimeDataPtr(alicloudParseTime(meta.DeleteDate)),
 		"lastRotationDate":   llx.TimeDataPtr(alicloudParseTime(meta.LastRotationDate)),
@@ -358,7 +387,7 @@ func newKmsSecret(runtime *plugin.Runtime, conn *connection.AlicloudConnection, 
 		"updateTime":        llx.TimeDataPtr(alicloudParseTime(s.UpdateTime)),
 		"arn":               llx.StringData(secretDetailString(detail, func(d *kmsclient.DescribeSecretResponseBody) *string { return d.Arn })),
 		"automaticRotation": llx.StringData(secretDetailString(detail, func(d *kmsclient.DescribeSecretResponseBody) *string { return d.AutomaticRotation })),
-		"rotationInterval":  llx.StringData(secretDetailString(detail, func(d *kmsclient.DescribeSecretResponseBody) *string { return d.RotationInterval })),
+		"rotationInterval":  llx.IntDataPtr(kmsRotationIntervalSeconds(secretDetailString(detail, func(d *kmsclient.DescribeSecretResponseBody) *string { return d.RotationInterval }))),
 		"description":       llx.StringData(secretDetailString(detail, func(d *kmsclient.DescribeSecretResponseBody) *string { return d.Description })),
 		"dkmsInstanceId":    llx.StringData(secretDetailString(detail, func(d *kmsclient.DescribeSecretResponseBody) *string { return d.DKMSInstanceId })),
 		"lastRotationDate":  llx.TimeDataPtr(secretDetailTime(detail, func(d *kmsclient.DescribeSecretResponseBody) *string { return d.LastRotationDate })),
