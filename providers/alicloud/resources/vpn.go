@@ -319,8 +319,17 @@ func newVpnConnection(runtime *plugin.Runtime, region string, c *vpcclient.Descr
 		ipsecLifetime = c.IpsecConfig.IpsecLifetime
 	}
 
+	// The per-tunnel options ride along in this same response. A dual-tunnel
+	// connection negotiates IKE and IPsec once per tunnel, which the
+	// connection-level IkeConfig and IpsecConfig above cannot express.
+	connectionKey := region + "/" + tea.StringValue(c.VpnConnectionId)
+	tunnels, err := newVpnConnectionTunnels(runtime, connectionKey, c.TunnelOptionsSpecification)
+	if err != nil {
+		return nil, err
+	}
+
 	resource, err := CreateResource(runtime, "alicloud.vpc.vpnConnection", map[string]*llx.RawData{
-		"__id":                         llx.StringData(region + "/" + tea.StringValue(c.VpnConnectionId)),
+		"__id":                         llx.StringData(connectionKey),
 		"vpnConnectionId":              llx.StringDataPtr(c.VpnConnectionId),
 		"name":                         llx.StringDataPtr(c.Name),
 		"regionId":                     llx.StringData(region),
@@ -348,6 +357,7 @@ func newVpnConnection(runtime *plugin.Runtime, region string, c *vpcclient.Descr
 		"ipsecPfs":                     llx.StringDataPtr(ipsecPfs),
 		"ipsecLifetime":                llx.IntDataPtr(ipsecLifetime),
 		"createTime":                   llx.TimeDataPtr(configEpochMillis(c.CreateTime)),
+		"tunnels":                      llx.ArrayData(tunnels, types.Resource("alicloud.vpc.vpnConnection.tunnel")),
 	})
 	if err != nil {
 		return nil, err

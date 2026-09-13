@@ -797,6 +797,18 @@ alicloud.ecs.securitygroup.permission @defaults("direction ipProtocol portRange 
   nicType string
   // Destination port range matched by the rule, for example 22/22 or 1/65535
   portRange string
+  // Lowest destination port the rule matches
+  //
+  // A rule written as -1/-1 matches every port, and reports 1 here alongside
+  // 65535 in toPort. Null when portRange holds no range that resolves to a
+  // pair of ports, which leaves portRange as the only record of it.
+  fromPort int
+  // Highest destination port the rule matches
+  //
+  // A rule written as -1/-1 matches every port, and reports 65535 here
+  // alongside 1 in fromPort. Null when portRange holds no range that resolves
+  // to a pair of ports.
+  toPort int
   // Source port range matched by the rule
   sourcePortRange string
   // Source IPv4 CIDR block for an inbound rule
@@ -815,6 +827,23 @@ alicloud.ecs.securitygroup.permission @defaults("direction ipProtocol portRange 
   sourcePrefixList() alicloud.ecs.prefixList
   // Source IPv6 CIDR block for an inbound rule
   ipv6SourceCidrIp string
+  // Effective IPv4 source CIDR blocks of an inbound rule
+  //
+  // Combines sourceCidrIp with the cidrBlocks of the prefix list the rule is
+  // scoped to, so one list holds every IPv4 address the rule admits. An entry
+  // of 0.0.0.0/0 means the rule admits the whole internet. Empty for an
+  // outbound rule, for a rule scoped to a security group, and for a rule whose
+  // only source is IPv6. When the prefix list cannot be read, the list carries
+  // only the rule's own sourceCidrIp.
+  sourceCidrs() []string
+  // Effective IPv6 source CIDR blocks of an inbound rule
+  //
+  // Combines ipv6SourceCidrIp with the cidrBlocks of the prefix list the rule
+  // is scoped to, when that list holds IPv6 entries. An entry of ::/0 means the
+  // rule admits the whole IPv6 internet. Empty for an outbound rule and for a
+  // rule whose only source is IPv4. When the prefix list cannot be read, the
+  // list carries only the rule's own ipv6SourceCidrIp.
+  ipv6SourceCidrs() []string
   // Destination IPv4 CIDR block for an outbound rule
   destCidrIp string
   // Destination security group for an outbound rule
@@ -831,6 +860,23 @@ alicloud.ecs.securitygroup.permission @defaults("direction ipProtocol portRange 
   destPrefixList() alicloud.ecs.prefixList
   // Destination IPv6 CIDR block for an outbound rule
   ipv6DestCidrIp string
+  // Effective IPv4 destination CIDR blocks of an outbound rule
+  //
+  // Combines destCidrIp with the cidrBlocks of the prefix list the rule is
+  // scoped to, so one list holds every IPv4 address the rule permits traffic to
+  // reach. An entry of 0.0.0.0/0 means the rule permits traffic to the whole
+  // internet. Empty for an inbound rule, for a rule scoped to a security group,
+  // and for a rule whose only destination is IPv6. When the prefix list cannot
+  // be read, the list carries only the rule's own destCidrIp.
+  destinationCidrs() []string
+  // Effective IPv6 destination CIDR blocks of an outbound rule
+  //
+  // Combines ipv6DestCidrIp with the cidrBlocks of the prefix list the rule is
+  // scoped to, when that list holds IPv6 entries. An entry of ::/0 means the
+  // rule permits traffic to the whole IPv6 internet. Empty for an inbound rule
+  // and for a rule whose only destination is IPv4. When the prefix list cannot
+  // be read, the list carries only the rule's own ipv6DestCidrIp.
+  ipv6DestinationCidrs() []string
   // Rule description
   description string
   // Time when the rule was created
@@ -1631,6 +1677,18 @@ alicloud.vpc.networkAcl.entry @defaults("direction policy protocol port") {
   // Written as first/last, for example 22/22. A value of -1/-1 matches every
   // port, which is the form a rule takes when the protocol is not tcp or udp.
   port string
+  // Lowest port the rule matches
+  //
+  // A rule written as -1/-1 matches every port, and reports 1 here alongside
+  // 65535 in toPort. Null when port holds no range that resolves to a pair of
+  // ports, which leaves port as the only record of it.
+  fromPort int
+  // Highest port the rule matches
+  //
+  // A rule written as -1/-1 matches every port, and reports 65535 here
+  // alongside 1 in fromPort. Null when port holds no range that resolves to a
+  // pair of ports.
+  toPort int
   // Source addresses an inbound rule matches
   //
   // Empty on an egress rule. A value of 0.0.0.0/0 matches the whole internet.
@@ -2255,6 +2313,14 @@ alicloud.rds.instance {
   //
   // Deprecated in favor of securityGroups.
   securityGroupIds() @maturity("deprecated") []string
+  // Whether the IP whitelist admits every address
+  //
+  // True when an entry in securityIPList admits any source address: the 0.0.0.0/0
+  // block, the bare 0.0.0.0 the console writes for it, any other block with a
+  // /0 prefix length, the % wildcard, an address range spanning the whole
+  // space, or ::/0. An empty whitelist reports false, and an entry that cannot
+  // be parsed is not counted as open.
+  whitelistAllowsAllAddresses() bool
   // ECS security groups attached to the instance
   //
   // The groups whose rules govern which sources may reach the instance.
@@ -2402,6 +2468,14 @@ alicloud.redis.instance {
   //
   // Deprecated in favor of securityGroups.
   securityGroupIds() @maturity("deprecated") []string
+  // Whether the IP whitelist admits every address
+  //
+  // True when an entry in securityIPList admits any source address: the 0.0.0.0/0
+  // block, the bare 0.0.0.0 the console writes for it, any other block with a
+  // /0 prefix length, the % wildcard, an address range spanning the whole
+  // space, or ::/0. An empty whitelist reports false, and an entry that cannot
+  // be parsed is not counted as open.
+  whitelistAllowsAllAddresses() bool
   // ECS security groups associated with the instance
   //
   // The groups whose rules govern which sources may reach the instance.
@@ -2554,6 +2628,14 @@ alicloud.mongodb.instance {
   //
   // Deprecated in favor of securityGroups.
   securityGroupIds() @maturity("deprecated") []string
+  // Whether the IP whitelist admits every address
+  //
+  // True when an entry in securityIPList admits any source address: the 0.0.0.0/0
+  // block, the bare 0.0.0.0 the console writes for it, any other block with a
+  // /0 prefix length, the % wildcard, an address range spanning the whole
+  // space, or ::/0. An empty whitelist reports false, and an entry that cannot
+  // be parsed is not counted as open.
+  whitelistAllowsAllAddresses() bool
   // ECS security groups bound to the instance
   //
   // The groups whose rules govern which sources may reach the instance.
@@ -2709,6 +2791,14 @@ alicloud.polardb.cluster {
   // gathered across every whitelist group. An entry of 0.0.0.0/0 means the
   // cluster accepts connections from any source.
   accessWhitelist() []string
+  // Whether the IP whitelist admits every address
+  //
+  // True when an entry in accessWhitelist admits any source address: the 0.0.0.0/0
+  // block, the bare 0.0.0.0 the console writes for it, any other block with a
+  // /0 prefix length, the % wildcard, an address range spanning the whole
+  // space, or ::/0. An empty whitelist reports false, and an entry that cannot
+  // be parsed is not counted as open.
+  whitelistAllowsAllAddresses() bool
   // Connection endpoints of the cluster
   //
   // One entry per network address with endpointType (Cluster, Primary, or
@@ -3720,13 +3810,25 @@ alicloud.cs.cluster {
   oidcIssuerUrl() string
   // Whether Kubernetes API server audit logging is enabled
   //
-  // True when the control-plane audit component ships logs to Log Service. When
-  // false, API server activity is not being recorded.
-  auditLogEnabled() bool
+  // Deprecated in favor of alicloud.cs.cluster.apiServerAuditEnabled. This
+  // reports whether control-plane log collection lists a component named audit,
+  // which is not one of the components ACK collects.
+  auditLogEnabled() @maturity("deprecated") bool
+  // Whether Kubernetes API server audit logging is enabled
+  //
+  // True when cluster auditing records API server activity to Log Service. Null
+  // when the cluster auditing configuration does not report the setting.
+  apiServerAuditEnabled() bool
+  // Log Service project that receives the API server audit logs
+  //
+  // Null when cluster auditing is not configured.
+  apiServerAuditLogProject() alicloud.log.project
   // Control-plane components shipping logs to Log Service
   //
-  // For example apiserver, audit, kcm (kube-controller-manager), scheduler, or
-  // ccm (cloud-controller-manager). Empty when control-plane logging is off.
+  // For example kube-apiserver, kube-controller-manager, kube-scheduler, ccm
+  // (cloud-controller-manager), or controlplane-events. Empty when control-plane
+  // logging is off. API server audit logs are a separate feature, reported by
+  // apiServerAuditEnabled.
   controlPlaneLogComponents() []string
   // Retention in days of the control-plane logs, 0 when logging is disabled
   controlPlaneLogTtl() int
@@ -5704,8 +5806,109 @@ alicloud.vpc.vpnConnection @defaults("vpnConnectionId name status") {
   ipsecLifetime int
   // Time the connection was created
   createTime time
+  // Tunnels the connection is built from
+  //
+  // A dual-tunnel connection negotiates IKE and IPsec separately for each
+  // tunnel, so every entry carries its own algorithms and lifetimes and a check
+  // that only reads ikeEncryptionAlgorithm and ipsecEncryptionAlgorithm misses
+  // whatever the second tunnel agreed to. Empty on a connection the API reports
+  // without per-tunnel options.
+  tunnels []alicloud.vpc.vpnConnection.tunnel
+  // IKE encryption algorithms in effect across the connection
+  //
+  // Every distinct encryption algorithm negotiated for the key exchange,
+  // spanning the connection and all of its tunnels, deduplicated and sorted. A
+  // dual-tunnel connection is only as strong as its weaker tunnel, so the
+  // weakest entry is the one that matters for an audit. Empty when neither the
+  // connection nor any tunnel reports an algorithm.
+  ikeEncryptionAlgorithms() []string
+  // IPsec encryption algorithms in effect across the connection
+  //
+  // Every distinct encryption algorithm protecting the tunnel payload, spanning
+  // the connection and all of its tunnels, deduplicated and sorted. A
+  // dual-tunnel connection is only as strong as its weaker tunnel, so the
+  // weakest entry is the one that matters for an audit. Empty when neither the
+  // connection nor any tunnel reports an algorithm.
+  ipsecEncryptionAlgorithms() []string
+  // Diffie-Hellman groups in effect for the key exchange
+  //
+  // Every distinct group used for the key exchange, spanning the connection and
+  // all of its tunnels, deduplicated and sorted. A dual-tunnel connection is
+  // only as strong as its weaker tunnel, so the weakest entry is the one that
+  // matters for an audit. Empty when neither the connection nor any tunnel
+  // reports a group.
+  ikePfsGroups() []string
+  // Diffie-Hellman groups in effect for tunnel rekeying
+  //
+  // Every distinct group used to rekey the tunnel, spanning the connection and
+  // all of its tunnels, deduplicated and sorted. A dual-tunnel connection is
+  // only as strong as its weaker tunnel, so the weakest entry is the one that
+  // matters for an audit. Empty when neither the connection nor any tunnel
+  // reports a group.
+  ipsecPfsGroups() []string
   // VPN gateway the connection terminates on
   vpnGateway() alicloud.vpc.vpnGateway
+}
+
+// VPN connection tunnel
+//
+// A single tunnel of an IPsec-VPN connection, keyed by tunnelId. A dual-tunnel
+// connection runs two tunnels that each negotiate their own IKE and IPsec
+// parameters, so the algorithms and lifetimes here describe that one tunnel and
+// the weaker of the pair is the one that matters. The pre-shared key is
+// deliberately not exposed.
+alicloud.vpc.vpnConnection.tunnel @defaults("tunnelId role status ikeEncryptionAlgorithm") {
+  // Tunnel ID, used as the lookup key
+  tunnelId string
+  // Position of the tunnel within the connection
+  //
+  // 1 for the first tunnel and 2 for the second on a dual-tunnel connection.
+  tunnelIndex int
+  // Which side of the pair the tunnel serves
+  //
+  // master for the tunnel carrying traffic, slave for the standby one.
+  role string
+  // Tunnel status, for example active or updating
+  status string
+  // Negotiation state of the tunnel
+  state string
+  // Public IP address the tunnel terminates on
+  internetIp string
+  // Whether dead peer detection is enabled on the tunnel
+  enableDpd bool
+  // Whether NAT traversal is enabled on the tunnel
+  enableNatTraversal bool
+  // IKE protocol version, either ikev1 or ikev2
+  ikeVersion string
+  // IKE negotiation mode, either main or aggressive
+  //
+  // Aggressive mode completes in fewer exchanges but sends identity
+  // information before the channel is encrypted.
+  ikeMode string
+  // Encryption algorithm negotiated for the key exchange
+  ikeEncryptionAlgorithm string
+  // Authentication algorithm negotiated for the key exchange
+  ikeAuthenticationAlgorithm string
+  // Diffie-Hellman group used for the key exchange
+  ikePfs string
+  // Lifetime of the key-exchange security association in seconds
+  //
+  // Null when the API reports no lifetime for the tunnel.
+  ikeLifetime int
+  // Identifier the Alibaba Cloud side presents during IKE negotiation
+  ikeLocalId string
+  // Identifier the remote peer presents during IKE negotiation
+  ikeRemoteId string
+  // Encryption algorithm protecting the tunnel payload
+  ipsecEncryptionAlgorithm string
+  // Authentication algorithm protecting the tunnel payload
+  ipsecAuthenticationAlgorithm string
+  // Diffie-Hellman group used to rekey the tunnel
+  ipsecPfs string
+  // Lifetime of the tunnel security association in seconds
+  //
+  // Null when the API reports no lifetime for the tunnel.
+  ipsecLifetime int
 }
 
 // Alibaba Cloud Container Registry
@@ -6069,6 +6272,15 @@ alicloud.es.instance @defaults("description instanceId esVersion status") {
   // An entry of 0.0.0.0/0 leaves the cluster open to the whole internet, which
   // is the default the console offers when a public endpoint is switched on.
   publicIpWhitelist() []string
+  // Whether the public endpoint whitelist admits every address
+  //
+  // True when an entry in publicIpWhitelist admits any source address: the
+  // 0.0.0.0/0 block, the bare 0.0.0.0 the console writes for it, any other
+  // block with a /0 prefix length, the % wildcard, an address range spanning
+  // the whole space, or ::/0. Only the public endpoint whitelist is read, not
+  // privateIpWhitelist or kibanaIpWhitelist. An empty whitelist reports false,
+  // and an entry that cannot be parsed is not counted as open.
+  whitelistAllowsAllAddresses() bool
   // Addresses allowed to reach the cluster from inside the VPC
   privateIpWhitelist() []string
   // Whether the Kibana console answers on a public endpoint
