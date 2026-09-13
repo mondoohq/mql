@@ -3085,6 +3085,14 @@ alicloud.rds.instance {
   // The IP addresses and CIDR blocks allowed to connect to the instance. A
   // whitelist entry of 0.0.0.0/0 exposes the instance to the entire internet.
   securityIPList() []string
+  // Whether the IP whitelist admits every address
+  //
+  // True when an entry in securityIPList admits any source address: the 0.0.0.0/0
+  // block, the bare 0.0.0.0 the console writes for it, any other block with a
+  // /0 prefix length, the % wildcard, an address range spanning the whole
+  // space, or ::/0. An empty whitelist reports false, and an entry that cannot
+  // be parsed is not counted as open.
+  whitelistAllowsAllAddresses() bool
   // ECS security groups attached to the instance
   //
   // The groups whose rules govern which sources may reach the instance.
@@ -3228,6 +3236,14 @@ alicloud.redis.instance {
   tdeEnabled() bool
   // IP addresses and CIDR blocks allowed by the instance whitelists
   securityIPList() []string
+  // Whether the IP whitelist admits every address
+  //
+  // True when an entry in securityIPList admits any source address: the 0.0.0.0/0
+  // block, the bare 0.0.0.0 the console writes for it, any other block with a
+  // /0 prefix length, the % wildcard, an address range spanning the whole
+  // space, or ::/0. An empty whitelist reports false, and an entry that cannot
+  // be parsed is not counted as open.
+  whitelistAllowsAllAddresses() bool
   // ECS security groups associated with the instance
   //
   // The groups whose rules govern which sources may reach the instance.
@@ -3384,6 +3400,14 @@ alicloud.mongodb.instance {
   tdeEnabled() bool
   // IP addresses and CIDR blocks in the instance whitelist
   securityIPList() []string
+  // Whether the IP whitelist admits every address
+  //
+  // True when an entry in securityIPList admits any source address: the 0.0.0.0/0
+  // block, the bare 0.0.0.0 the console writes for it, any other block with a
+  // /0 prefix length, the % wildcard, an address range spanning the whole
+  // space, or ::/0. An empty whitelist reports false, and an entry that cannot
+  // be parsed is not counted as open.
+  whitelistAllowsAllAddresses() bool
   // ECS security groups bound to the instance
   //
   // The groups whose rules govern which sources may reach the instance.
@@ -3549,6 +3573,14 @@ alicloud.polardb.cluster {
   // gathered across every whitelist group. An entry of 0.0.0.0/0 means the
   // cluster accepts connections from any source.
   accessWhitelist() []string
+  // Whether the IP whitelist admits every address
+  //
+  // True when an entry in accessWhitelist admits any source address: the 0.0.0.0/0
+  // block, the bare 0.0.0.0 the console writes for it, any other block with a
+  // /0 prefix length, the % wildcard, an address range spanning the whole
+  // space, or ::/0. An empty whitelist reports false, and an entry that cannot
+  // be parsed is not counted as open.
+  whitelistAllowsAllAddresses() bool
   // Connection endpoints of the cluster
   //
   // One entry per network address with endpointType (Cluster, Primary, or
@@ -8591,6 +8623,15 @@ alicloud.es.instance @defaults("description instanceId esVersion status") {
   // An entry of 0.0.0.0/0 leaves the cluster open to the whole internet, which
   // is the default the console offers when a public endpoint is switched on.
   publicIpWhitelist() []string
+  // Whether the public endpoint whitelist admits every address
+  //
+  // True when an entry in publicIpWhitelist admits any source address: the
+  // 0.0.0.0/0 block, the bare 0.0.0.0 the console writes for it, any other
+  // block with a /0 prefix length, the % wildcard, an address range spanning
+  // the whole space, or ::/0. Only the public endpoint whitelist is read, not
+  // privateIpWhitelist or kibanaIpWhitelist. An empty whitelist reports false,
+  // and an entry that cannot be parsed is not counted as open.
+  whitelistAllowsAllAddresses() bool
   // Addresses allowed to reach the cluster from inside the VPC
   privateIpWhitelist() []string
   // Whether the Kibana console answers on a public endpoint
