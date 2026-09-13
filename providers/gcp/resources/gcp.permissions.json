@@ -175,6 +175,7 @@
     "dlp.storedInfoTypes.list",
     "dlp.tableDataProfiles.list",
     "dns.managedZones.getIamPolicy",
+    "dns.dnsKeys.list",
     "dns.managedZones.list",
     "dns.policies.list",
     "dns.resourceRecordSets.list",
@@ -1396,7 +1397,13 @@
       "action": "ManagedZones.GetIamPolicy",
       "source_file": "dns.go"
     },
-    {
+        {
+      "permission": "dns.dnsKeys.list",
+      "service": "dns",
+      "action": "DnsKeys.List",
+      "source_file": "dns_dnskeys.go"
+    },
+{
       "permission": "dns.managedZones.list",
       "service": "dns",
       "action": "ManagedZones.List",

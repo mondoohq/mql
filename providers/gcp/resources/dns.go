@@ -8,6 +8,8 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/v13/llx"
@@ -190,6 +192,14 @@ func initGcpProjectDnsService(runtime *plugin.Runtime, args map[string]*llx.RawD
 
 type mqlGcpProjectDnsServiceManagedzoneInternal struct {
 	cacheAuthorizedNetworkUrls []string
+
+	// The zone's live signing keys, fetched once and shared by dnsKeys() and
+	// dnsSecAlgorithmWeak(). See dns_dnskeys.go.
+	dnsKeysLoaded   atomic.Bool
+	dnsKeysLock     sync.Mutex
+	dnsKeysData     []*dns.DnsKey
+	dnsKeysReadable bool
+	dnsKeysErr      error
 }
 
 func (g *mqlGcpProjectDnsServiceManagedzone) authorizedNetworks() ([]any, error) {
@@ -632,43 +642,6 @@ func (g *mqlGcpProjectDnsServiceRecordset) id() (string, error) {
 	// the type must be part of the key. The authoritative cache key set at
 	// creation also includes the managed zone for cross-zone uniqueness.
 	return "gcp.project.dnsService.recordset/" + projectId + "/" + g.Name.Data + "/" + g.Type.Data, nil
-}
-
-func (g *mqlGcpProjectDnsServiceManagedzone) dnsSecAlgorithmWeak() (bool, error) {
-	enabled := g.GetDnssecEnabled()
-	if enabled.Error != nil {
-		return false, enabled.Error
-	}
-	if !enabled.Data {
-		return false, nil
-	}
-	cfg := g.GetDnssecConfig()
-	if cfg.Error != nil {
-		return false, cfg.Error
-	}
-	if cfg.Data == nil {
-		return false, nil
-	}
-	cfgMap, ok := cfg.Data.(map[string]any)
-	if !ok {
-		return false, nil
-	}
-	specs, ok := cfgMap["defaultKeySpecs"].([]any)
-	if !ok {
-		return false, nil
-	}
-	for _, raw := range specs {
-		spec, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		alg, _ := spec["algorithm"].(string)
-		switch strings.ToUpper(alg) {
-		case "RSASHA1", "RSASHA1-NSEC3-SHA1":
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 func (g *mqlGcpProjectDnsServiceManagedzone) iamPolicy() ([]any, error) {
