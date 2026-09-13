@@ -65,7 +65,6 @@ type GithubConnection struct {
 	// availability ask for it.
 	enterpriseVersionOnce sync.Once
 	enterpriseVersion     string
-	enterpriseVersionErr  error
 
 	// Used to avoid verifying a client with the same options more than once
 	OptionsHash uint64
@@ -169,32 +168,40 @@ func NewGithubConnection(id uint32, asset *inventory.Asset) (*GithubConnection, 
 // its API responses. It is empty on GitHub.com and on GitHub Enterprise Cloud,
 // neither of which sends the header, and on an installation configured to
 // withhold it.
-func (c *GithubConnection) EnterpriseVersion() (string, error) {
+//
+// A failed probe is not an error. The version decides only which features a
+// self-hosted release carries, and a caller that cannot learn the release
+// reports that as null rather than as a failure; on GitHub.com the header never
+// arrives anyway and the answer comes from the organization's plan instead.
+// Returning an error here would be worse than useless: the probe runs under a
+// sync.Once, so a single rate-limited response would be cached and would then
+// fail every later feature lookup in the scan.
+func (c *GithubConnection) EnterpriseVersion() string {
 	c.enterpriseVersionOnce.Do(func() {
 		// Zen is the cheapest endpoint that answers on both GitHub.com and a
 		// GitHub Enterprise Server installation. Only its headers matter here.
 		_, resp, err := c.client.Meta.Zen(c.ctx)
-		if err != nil {
-			c.enterpriseVersionErr = err
-			return
+
+		// go-github returns the response alongside the error for an HTTP-level
+		// failure, and an installation stamps the version header on a rejection
+		// as readily as on a success, so read it before concluding that the
+		// probe told us nothing.
+		if resp != nil && resp.Response != nil {
+			c.enterpriseVersion = resp.Header.Get(enterpriseVersionHeader)
 		}
-		if resp == nil || resp.Response == nil {
-			return
+		if err != nil && c.enterpriseVersion == "" {
+			log.Debug().Err(err).Msg("could not read the GitHub Enterprise Server version")
 		}
-		c.enterpriseVersion = resp.Header.Get(enterpriseVersionHeader)
 	})
-	return c.enterpriseVersion, c.enterpriseVersionErr
+	return c.enterpriseVersion
 }
 
 // IsEnterpriseServer reports whether the target is a GitHub Enterprise Server
-// installation. The version header is authoritative; the configured base URL
-// is the fallback for an installation that withholds it.
-func (c *GithubConnection) IsEnterpriseServer() (bool, error) {
-	version, err := c.EnterpriseVersion()
-	if err != nil {
-		return false, err
-	}
-	return version != "" || c.enterpriseURL != "", nil
+// installation. The version header is authoritative; the configured base URL is
+// the fallback for an installation that withholds it or that could not be
+// probed.
+func (c *GithubConnection) IsEnterpriseServer() bool {
+	return c.EnterpriseVersion() != "" || c.enterpriseURL != ""
 }
 
 func (c *GithubConnection) Name() string {

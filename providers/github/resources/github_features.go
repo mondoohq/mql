@@ -245,14 +245,8 @@ func (g *mqlGithubOrganization) features() (*mqlGithubOrganizationFeatures, erro
 	}
 	orgName := g.Name.Data
 
-	enterpriseServer, err := conn.IsEnterpriseServer()
-	if err != nil {
-		return nil, err
-	}
-	ghesVersion, err := conn.EnterpriseVersion()
-	if err != nil {
-		return nil, err
-	}
+	enterpriseServer := conn.IsEnterpriseServer()
+	ghesVersion := conn.EnterpriseVersion()
 
 	// A GitHub Enterprise Server installation serves no plan, so asking for one
 	// would spend a call to learn nothing.

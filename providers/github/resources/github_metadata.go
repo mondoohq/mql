@@ -23,16 +23,9 @@ func initGithubMetadata(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 	}
 
 	conn := runtime.Connection.(*connection.GithubConnection)
-	version, err := conn.EnterpriseVersion()
-	if err != nil {
-		return nil, nil, err
-	}
-	enterpriseServer, err := conn.IsEnterpriseServer()
-	if err != nil {
-		return nil, nil, err
-	}
+	version := conn.EnterpriseVersion()
 
-	args["enterpriseServer"] = llx.BoolData(enterpriseServer)
+	args["enterpriseServer"] = llx.BoolData(conn.IsEnterpriseServer())
 	// GitHub.com and GitHub Enterprise Cloud run a release nobody can name, so
 	// the absence of a version reads as null rather than as a version of "".
 	args["version"] = llx.NilData
