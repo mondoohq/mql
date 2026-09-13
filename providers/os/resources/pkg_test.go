@@ -227,6 +227,25 @@ func TestParsePkgBlockKeys_Quoting(t *testing.T) {
 	assert.Equal(t, "srv", keys["mirror_type"].Raw)
 }
 
+func TestStripPkgComments_BlockComments(t *testing.T) {
+	// a block comment becomes one space, so it separates the tokens it sat
+	// between rather than joining them. The character right after `*/` must
+	// survive and the one before `/*` must not be swallowed: an off-by-one
+	// either way leaks a stray `/` into a value or welds two tokens together,
+	// and both parse into something plausible
+	assert.Equal(t, "a   b", stripPkgComments("a /* x */ b"))
+	assert.Equal(t, "a b c", stripPkgComments("a b/**/c"))
+
+	// an unterminated block comment runs to the end of the file
+	assert.Equal(t, "a  ", stripPkgComments("a /* x"))
+
+	// `/*` inside a quoted string is part of the value
+	assert.Equal(t, `url: "http://x/*/y"`, stripPkgComments(`url: "http://x/*/y"`))
+
+	// a block comment ending the file leaves nothing dangling
+	assert.Equal(t, "a  ", stripPkgComments("a /* x */"))
+}
+
 func TestParsePkgBlockKeys_CaseInsensitiveKeys(t *testing.T) {
 	// libpkg compares keys case-insensitively, so a repeated key is one key
 	// and the later spelling wins

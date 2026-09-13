@@ -419,13 +419,10 @@ func stripPkgComments(content string) string {
 			}
 
 		case c == '/' && i+1 < len(content) && content[i+1] == '*':
-			i += 2
-			for i+1 < len(content) && !(content[i] == '*' && content[i+1] == '/') {
-				i++
-			}
-			if i+1 < len(content) {
-				i += 2
+			if end := strings.Index(content[i+2:], "*/"); end >= 0 {
+				i += 2 + end + 2
 			} else {
+				// unterminated: the rest of the file is inside the comment
 				i = len(content)
 			}
 			// a block comment separates the tokens around it
