@@ -622,6 +622,8 @@ alicloud.config.rules 13.0.1
 alicloud.cs 13.0.1
 alicloud.cs.cluster 13.0.1
 alicloud.cs.cluster.addons 13.0.1
+alicloud.cs.cluster.apiServerAuditEnabled 13.5.1
+alicloud.cs.cluster.apiServerAuditLogProject 13.5.1
 alicloud.cs.cluster.apiServerInternetExposed 13.0.1
 alicloud.cs.cluster.apiServerIntranetEndpoint 13.0.1
 alicloud.cs.cluster.apiServerPublicEndpoint 13.0.1

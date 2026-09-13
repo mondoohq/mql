@@ -5129,6 +5129,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"alicloud.cs.cluster.auditLogEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudCsCluster).GetAuditLogEnabled()).ToDataRes(types.Bool)
 	},
+	"alicloud.cs.cluster.apiServerAuditEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudCsCluster).GetApiServerAuditEnabled()).ToDataRes(types.Bool)
+	},
+	"alicloud.cs.cluster.apiServerAuditLogProject": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudCsCluster).GetApiServerAuditLogProject()).ToDataRes(types.Resource("alicloud.log.project"))
+	},
 	"alicloud.cs.cluster.controlPlaneLogComponents": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudCsCluster).GetControlPlaneLogComponents()).ToDataRes(types.Array(types.String))
 	},
@@ -14110,6 +14116,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"alicloud.cs.cluster.auditLogEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudCsCluster).AuditLogEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.cs.cluster.apiServerAuditEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudCsCluster).ApiServerAuditEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.cs.cluster.apiServerAuditLogProject": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudCsCluster).ApiServerAuditLogProject, ok = plugin.RawToTValue[*mqlAlicloudLogProject](v.Value, v.Error)
 		return
 	},
 	"alicloud.cs.cluster.controlPlaneLogComponents": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -31954,6 +31968,8 @@ type mqlAlicloudCsCluster struct {
 	RrsaEnabled               plugin.TValue[bool]
 	OidcIssuerUrl             plugin.TValue[string]
 	AuditLogEnabled           plugin.TValue[bool]
+	ApiServerAuditEnabled     plugin.TValue[bool]
+	ApiServerAuditLogProject  plugin.TValue[*mqlAlicloudLogProject]
 	ControlPlaneLogComponents plugin.TValue[[]any]
 	ControlPlaneLogTtl        plugin.TValue[int64]
 	ControlPlaneLogProject    plugin.TValue[*mqlAlicloudLogProject]
@@ -32215,6 +32231,28 @@ func (c *mqlAlicloudCsCluster) GetOidcIssuerUrl() *plugin.TValue[string] {
 func (c *mqlAlicloudCsCluster) GetAuditLogEnabled() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.AuditLogEnabled, func() (bool, error) {
 		return c.auditLogEnabled()
+	})
+}
+
+func (c *mqlAlicloudCsCluster) GetApiServerAuditEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ApiServerAuditEnabled, func() (bool, error) {
+		return c.apiServerAuditEnabled()
+	})
+}
+
+func (c *mqlAlicloudCsCluster) GetApiServerAuditLogProject() *plugin.TValue[*mqlAlicloudLogProject] {
+	return plugin.GetOrCompute[*mqlAlicloudLogProject](&c.ApiServerAuditLogProject, func() (*mqlAlicloudLogProject, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("alicloud.cs.cluster", c.__id, "apiServerAuditLogProject")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAlicloudLogProject), nil
+			}
+		}
+
+		return c.apiServerAuditLogProject()
 	})
 }
 
