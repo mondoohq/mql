@@ -16,6 +16,8 @@ package resources
 // maintainers should not duplicate them on the pod.
 
 import (
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -121,7 +123,9 @@ func specDropsAllCapabilities(spec *corev1.PodSpec) bool {
 		}
 		dropsAll := false
 		for _, d := range sc.Capabilities.Drop {
-			if d == "ALL" {
+			// containerd and CRI-O both match ALL case-insensitively, so a
+			// lowercase "all" drops every capability at runtime.
+			if strings.EqualFold(string(d), "ALL") {
 				dropsAll = true
 				break
 			}
