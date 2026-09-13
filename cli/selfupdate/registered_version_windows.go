@@ -61,9 +61,20 @@ func updateRegisteredVersion(version string) error {
 	// WOW64_64KEY explicitly: the MSI is a 64-bit package and registers under
 	// the 64-bit view. A 64-bit process gets that view by default, but saying
 	// so keeps this correct if the binary is ever built for 386.
+	//
+	// Read before write, and skip the write when it already agrees. This is
+	// called on every update check, not only when an update lands, so the
+	// common case is that there is nothing to do -- and it keeps a
+	// non-elevated process from failing on a SET_VALUE open it did not need.
+	path := uninstallKey + `\` + productCode
+
+	if current, err := registeredDisplayVersion(path); err == nil && current == version {
+		return nil
+	}
+
 	k, err := registry.OpenKey(
 		registry.LOCAL_MACHINE,
-		uninstallKey+`\`+productCode,
+		path,
 		registry.SET_VALUE|registry.WOW64_64KEY,
 	)
 	if err != nil {
@@ -75,6 +86,18 @@ func updateRegisteredVersion(version string) error {
 		return errors.Wrapf(err, "cannot set %s", displayVersionValue)
 	}
 	return nil
+}
+
+// registeredDisplayVersion reads what the Add/Remove entry currently reports.
+func registeredDisplayVersion(path string) (string, error) {
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.QUERY_VALUE|registry.WOW64_64KEY)
+	if err != nil {
+		return "", err
+	}
+	defer k.Close()
+
+	v, _, err := k.GetStringValue(displayVersionValue)
+	return v, err
 }
 
 // installedProductCode reads the ProductCode the MSI recorded, or "" when

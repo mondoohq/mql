@@ -197,6 +197,22 @@ func CheckAndUpdate(cfg Config) (bool, error) {
 		return false, nil
 	}
 
+	// Reconcile what the OS reports with what is actually running, whether or
+	// not an update follows. Three cases need this and none of them involve an
+	// update landing right now:
+	//
+	//   - a pre-release installs under its semver core, because Windows
+	//     Installer accepts numeric fields only, so 14.0.0-rc.5 registers as
+	//     14.0.0 and is wrong from the first boot;
+	//   - `msiexec /f` rewrites the registration from the MSI's own
+	//     ProductVersion, undoing an earlier correction;
+	//   - the binary is already current, so the update path below returns
+	//     early and would never reach a correction.
+	//
+	// Gated behind the refresh interval rather than run per invocation, and it
+	// reads before it writes, so the steady state is one registry read.
+	registerVersion(currentVersion)
+
 	// Fetch the latest release information
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
