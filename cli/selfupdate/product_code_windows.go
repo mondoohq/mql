@@ -6,7 +6,7 @@
 package selfupdate
 
 import (
-	"strings"
+	"runtime"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
@@ -41,8 +41,14 @@ var upgradeCodes = []string{
 // checked before anything is written to it.
 const displayNameValue = "DisplayName"
 
-// mondooDisplayNamePrefix is what the MSI registers as its DisplayName.
-const mondooDisplayNamePrefix = "Mondoo"
+// mondooDisplayNames are the DisplayName values the MSI registers, one per
+// SKU. They are the WiX ProductName verbatim, and are matched exactly rather
+// than by prefix: "Mondoo" is short enough that a prefix test would accept an
+// unrelated product that happens to start with it.
+var mondooDisplayNames = map[string]bool{
+	"Mondoo":            true, // standard
+	"Mondoo Enterprise": true, // enterprise
+}
 
 var (
 	modmsi                      = windows.NewLazySystemDLL("msi.dll")
@@ -77,12 +83,29 @@ func relatedProductCode(upgradeCode string) (string, error) {
 	}
 
 	buf := make([]uint16, productCodeGUIDLen)
+
+	// The two unsafe.Pointer conversions below are case 4 of the patterns
+	// documented in the unsafe package: "Conversion of a Pointer to a uintptr
+	// when calling syscall.Syscall". Both conversions are written inside the
+	// call expression itself, which is what makes them valid -- the compiler
+	// and garbage collector recognise that form and keep the referents alive
+	// and unmoved for the duration of the call. Assigning either uintptr to a
+	// variable first would break that guarantee, so they must stay inline.
+	//
+	// This is the same shape every wrapper in golang.org/x/sys/windows uses;
+	// there is no pointer-free way to hand a DLL a string and a buffer.
 	ret, _, _ := procMsiEnumRelatedProductsW.Call(
 		uintptr(unsafe.Pointer(code)),
 		0, // dwReserved, must be 0
 		0, // iProductIndex, the first related product
 		uintptr(unsafe.Pointer(&buf[0])),
 	)
+
+	// Case 4 already keeps these alive across the call. Said explicitly so
+	// that a later edit moving either conversion out of the call expression
+	// does not quietly become a use-after-free.
+	runtime.KeepAlive(code)
+	runtime.KeepAlive(buf)
 
 	switch ret {
 	case errorSuccess:
@@ -145,5 +168,5 @@ func isMondooUninstallEntry(productCode string) bool {
 	if err != nil {
 		return false
 	}
-	return strings.HasPrefix(name, mondooDisplayNamePrefix)
+	return mondooDisplayNames[name]
 }

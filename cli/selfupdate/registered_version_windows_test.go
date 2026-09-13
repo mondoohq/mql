@@ -6,7 +6,7 @@
 package selfupdate
 
 import (
-	"strings"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -112,14 +112,30 @@ func TestRelatedProductCodeRejectsMalformed(t *testing.T) {
 // that would silently disable the fallback: a malformed entry returns an error
 // and is skipped, so the list would degrade without anything failing.
 func TestUpgradeCodesAreWellFormed(t *testing.T) {
+	// Registry-format GUID: {8-4-4-4-12} upper-case hex. Checking the shape
+	// rather than only the length catches a transposed dash, which would be
+	// the right number of characters and still resolve nothing.
+	guid := regexp.MustCompile(`^\{[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\}$`)
+
 	require.NotEmpty(t, upgradeCodes)
 	seen := map[string]bool{}
 	for _, code := range upgradeCodes {
 		require.Len(t, code, productCodeGUIDLen-1, "%s should be a registry-format GUID", code)
-		require.True(t, strings.HasPrefix(code, "{"), "%s should be brace wrapped", code)
-		require.True(t, strings.HasSuffix(code, "}"), "%s should be brace wrapped", code)
-		require.Equal(t, strings.ToUpper(code), code, "%s should be upper case", code)
+		require.Regexp(t, guid, code, "%s should be a registry-format GUID", code)
 		require.False(t, seen[code], "%s is listed twice", code)
 		seen[code] = true
 	}
+}
+
+// TestMondooDisplayNames pins the DisplayName set against the installer's WiX
+// ProductName values. The match is exact, so a value drifting here silently
+// disables the fallback for that SKU.
+func TestMondooDisplayNames(t *testing.T) {
+	require.True(t, mondooDisplayNames["Mondoo"])
+	require.True(t, mondooDisplayNames["Mondoo Enterprise"])
+
+	// A prefix test would accept these; an exact match must not.
+	require.False(t, mondooDisplayNames["Mondoo "])
+	require.False(t, mondooDisplayNames["MondooBackupTool"])
+	require.False(t, mondooDisplayNames["mondoo"])
 }
