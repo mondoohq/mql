@@ -255,7 +255,7 @@ func (a *mqlAwsCognitoUserPool) passwordPolicy() (any, error) {
 	return convert.JsonToDict(resp.UserPool.Policies.PasswordPolicy)
 }
 
-func (a *mqlAwsCognitoUserPool) passwordRequirements() (*mqlAwsCognitoUserPoolPasswordPolicy, error) {
+func (a *mqlAwsCognitoUserPool) passwordRequirements() (*mqlAwsCognitoUserPoolPasswordRequirements, error) {
 	resp, err := a.fetchDescribeUserPool()
 	if err != nil {
 		return nil, err
@@ -265,7 +265,7 @@ func (a *mqlAwsCognitoUserPool) passwordRequirements() (*mqlAwsCognitoUserPoolPa
 		return nil, nil
 	}
 	pp := resp.UserPool.Policies.PasswordPolicy
-	res, err := CreateResource(a.MqlRuntime, "aws.cognito.userPool.passwordPolicy", map[string]*llx.RawData{
+	res, err := CreateResource(a.MqlRuntime, "aws.cognito.userPool.passwordRequirements", map[string]*llx.RawData{
 		"__id":                          llx.StringData(a.Arn.Data + "/passwordPolicy"),
 		"minimumLength":                 llx.IntDataDefault(pp.MinimumLength, 0),
 		"passwordHistorySize":           llx.IntDataDefault(pp.PasswordHistorySize, 0),
@@ -278,7 +278,7 @@ func (a *mqlAwsCognitoUserPool) passwordRequirements() (*mqlAwsCognitoUserPoolPa
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlAwsCognitoUserPoolPasswordPolicy), nil
+	return res.(*mqlAwsCognitoUserPoolPasswordRequirements), nil
 }
 
 func (a *mqlAwsCognitoUserPool) advancedSecurityMode() (string, error) {

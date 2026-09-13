@@ -22316,7 +22316,7 @@ private aws.cognito.userPool @defaults("arn name") {
   // Password-strength requirements enforced on the user pool
   //
   // Null when the user pool reports no password policy.
-  passwordRequirements() aws.cognito.userPool.passwordPolicy
+  passwordRequirements() aws.cognito.userPool.passwordRequirements
   // Advanced security mode: OFF, AUDIT, ENFORCED
   advancedSecurityMode() string
   // User pool tags
@@ -22414,7 +22414,7 @@ private aws.cognito.userPool @defaults("arn name") {
 // which character classes are mandatory, how many previous passwords are
 // blocked from reuse, and how long an administrator-issued temporary
 // password stays usable.
-private aws.cognito.userPool.passwordPolicy @defaults("minimumLength requireUppercase requireLowercase requireNumbers requireSymbols") {
+private aws.cognito.userPool.passwordRequirements @defaults("minimumLength requireUppercase requireLowercase requireNumbers requireSymbols") {
   // Minimum length of a password, which cannot be less than 6
   minimumLength int
   // Number of previous passwords a user is blocked from reusing

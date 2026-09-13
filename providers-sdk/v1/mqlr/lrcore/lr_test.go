@@ -1420,3 +1420,75 @@ demo.any {
 		assert.Contains(t, err.Error(), "which the compiler answers itself")
 	})
 }
+
+func TestValidateDeprecatedShadowing(t *testing.T) {
+	t.Run("rejects a resource named after the deprecated field it replaces", func(t *testing.T) {
+		_, err := Parse(`
+option provider = "test"
+
+cache.instance {
+	config @maturity("deprecated") @replaced_by("cache.instance.settings") dict
+	settings cache.instance.config
+}
+
+private cache.instance.config {
+	enabled bool
+}
+`)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "resource cache.instance.config")
+		assert.Contains(t, err.Error(), "deprecated field config")
+		assert.Contains(t, err.Error(), "Name the resource after the accessor")
+	})
+
+	t.Run("allows a deprecated field whose own type is that resource", func(t *testing.T) {
+		// The ordinary accessor shape: mqlc's prefersFieldOverResource routes
+		// the path back to the field, so nothing becomes unreachable.
+		_, err := Parse(`
+option provider = "test"
+
+http.header {
+	setCookie() @maturity("deprecated") http.header.setCookie
+	setCookies() []http.header.setCookie
+}
+
+private http.header.setCookie {
+	name string
+}
+`)
+		require.NoError(t, err)
+	})
+
+	t.Run("allows a deprecated list field whose element type is that resource", func(t *testing.T) {
+		_, err := Parse(`
+option provider = "test"
+
+pool.owner {
+	members @maturity("deprecated") []pool.owner.members
+}
+
+private pool.owner.members {
+	name string
+}
+`)
+		require.NoError(t, err)
+	})
+
+	t.Run("ignores a shadowed field that is not deprecated", func(t *testing.T) {
+		// Pre-existing shadows of live fields are a separate defect; this check
+		// only guards the deprecation window it was added for.
+		_, err := Parse(`
+option provider = "test"
+
+user.account {
+	email string
+	emails() []user.account.email
+}
+
+private user.account.email {
+	address string
+}
+`)
+		require.NoError(t, err)
+	})
+}

@@ -1817,7 +1817,7 @@ func (a *mqlAzureSubscriptionSqlServiceServer) failoverGroups() ([]any, error) {
 
 			readWriteListener := llx.NilData
 			if rw := orZero(fg.Properties).ReadWriteEndpoint; rw != nil {
-				const rwResource = "azure.subscription.sqlService.server.failoverGroup.readWriteEndpoint"
+				const rwResource = "azure.subscription.sqlService.server.failoverGroup.readWriteListener"
 				mqlRW, err := CreateResource(a.MqlRuntime, rwResource, map[string]*llx.RawData{
 					"__id":                                   llx.StringData(convert.ToValue(fg.ID) + "/readWriteEndpoint"),
 					"failoverPolicy":                         llx.StringDataPtr(stringEnumPtr(rw.FailoverPolicy)),
@@ -1831,7 +1831,7 @@ func (a *mqlAzureSubscriptionSqlServiceServer) failoverGroups() ([]any, error) {
 
 			readOnlyListener := llx.NilData
 			if ro := orZero(fg.Properties).ReadOnlyEndpoint; ro != nil {
-				const roResource = "azure.subscription.sqlService.server.failoverGroup.readOnlyEndpoint"
+				const roResource = "azure.subscription.sqlService.server.failoverGroup.readOnlyListener"
 				mqlRO, err := CreateResource(a.MqlRuntime, roResource, map[string]*llx.RawData{
 					"__id":           llx.StringData(convert.ToValue(fg.ID) + "/readOnlyEndpoint"),
 					"failoverPolicy": llx.StringDataPtr(stringEnumPtr(ro.FailoverPolicy)),

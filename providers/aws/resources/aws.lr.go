@@ -715,7 +715,7 @@ const (
 	ResourceAwsCognitoUsernameConfiguration                                     string = "aws.cognito.usernameConfiguration"
 	ResourceAwsCognitoTokenValidityUnits                                        string = "aws.cognito.tokenValidityUnits"
 	ResourceAwsCognitoUserPool                                                  string = "aws.cognito.userPool"
-	ResourceAwsCognitoUserPoolPasswordPolicy                                    string = "aws.cognito.userPool.passwordPolicy"
+	ResourceAwsCognitoUserPoolPasswordRequirements                              string = "aws.cognito.userPool.passwordRequirements"
 	ResourceAwsCognitoUserPoolClient                                            string = "aws.cognito.userPoolClient"
 	ResourceAwsCognitoUserPoolDomain                                            string = "aws.cognito.userPoolDomain"
 	ResourceAwsCognitoUserPoolIdentityProvider                                  string = "aws.cognito.userPoolIdentityProvider"
@@ -3847,9 +3847,9 @@ func init() {
 			Init:   initAwsCognitoUserPool,
 			Create: createAwsCognitoUserPool,
 		},
-		"aws.cognito.userPool.passwordPolicy": {
-			// to override args, implement: initAwsCognitoUserPoolPasswordPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
-			Create: createAwsCognitoUserPoolPasswordPolicy,
+		"aws.cognito.userPool.passwordRequirements": {
+			// to override args, implement: initAwsCognitoUserPoolPasswordRequirements(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsCognitoUserPoolPasswordRequirements,
 		},
 		"aws.cognito.userPoolClient": {
 			// to override args, implement: initAwsCognitoUserPoolClient(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -27082,7 +27082,7 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlAwsCognitoUserPool).GetPasswordPolicy()).ToDataRes(types.Dict)
 	},
 	"aws.cognito.userPool.passwordRequirements": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsCognitoUserPool).GetPasswordRequirements()).ToDataRes(types.Resource("aws.cognito.userPool.passwordPolicy"))
+		return (r.(*mqlAwsCognitoUserPool).GetPasswordRequirements()).ToDataRes(types.Resource("aws.cognito.userPool.passwordRequirements"))
 	},
 	"aws.cognito.userPool.advancedSecurityMode": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCognitoUserPool).GetAdvancedSecurityMode()).ToDataRes(types.String)
@@ -27141,26 +27141,26 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.cognito.userPool.updatedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCognitoUserPool).GetUpdatedAt()).ToDataRes(types.Time)
 	},
-	"aws.cognito.userPool.passwordPolicy.minimumLength": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsCognitoUserPoolPasswordPolicy).GetMinimumLength()).ToDataRes(types.Int)
+	"aws.cognito.userPool.passwordRequirements.minimumLength": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCognitoUserPoolPasswordRequirements).GetMinimumLength()).ToDataRes(types.Int)
 	},
-	"aws.cognito.userPool.passwordPolicy.passwordHistorySize": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsCognitoUserPoolPasswordPolicy).GetPasswordHistorySize()).ToDataRes(types.Int)
+	"aws.cognito.userPool.passwordRequirements.passwordHistorySize": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCognitoUserPoolPasswordRequirements).GetPasswordHistorySize()).ToDataRes(types.Int)
 	},
-	"aws.cognito.userPool.passwordPolicy.requireLowercase": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsCognitoUserPoolPasswordPolicy).GetRequireLowercase()).ToDataRes(types.Bool)
+	"aws.cognito.userPool.passwordRequirements.requireLowercase": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCognitoUserPoolPasswordRequirements).GetRequireLowercase()).ToDataRes(types.Bool)
 	},
-	"aws.cognito.userPool.passwordPolicy.requireNumbers": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsCognitoUserPoolPasswordPolicy).GetRequireNumbers()).ToDataRes(types.Bool)
+	"aws.cognito.userPool.passwordRequirements.requireNumbers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCognitoUserPoolPasswordRequirements).GetRequireNumbers()).ToDataRes(types.Bool)
 	},
-	"aws.cognito.userPool.passwordPolicy.requireSymbols": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsCognitoUserPoolPasswordPolicy).GetRequireSymbols()).ToDataRes(types.Bool)
+	"aws.cognito.userPool.passwordRequirements.requireSymbols": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCognitoUserPoolPasswordRequirements).GetRequireSymbols()).ToDataRes(types.Bool)
 	},
-	"aws.cognito.userPool.passwordPolicy.requireUppercase": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsCognitoUserPoolPasswordPolicy).GetRequireUppercase()).ToDataRes(types.Bool)
+	"aws.cognito.userPool.passwordRequirements.requireUppercase": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCognitoUserPoolPasswordRequirements).GetRequireUppercase()).ToDataRes(types.Bool)
 	},
-	"aws.cognito.userPool.passwordPolicy.temporaryPasswordValidityDays": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAwsCognitoUserPoolPasswordPolicy).GetTemporaryPasswordValidityDays()).ToDataRes(types.Int)
+	"aws.cognito.userPool.passwordRequirements.temporaryPasswordValidityDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCognitoUserPoolPasswordRequirements).GetTemporaryPasswordValidityDays()).ToDataRes(types.Int)
 	},
 	"aws.cognito.userPoolClient.clientId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCognitoUserPoolClient).GetClientId()).ToDataRes(types.String)
@@ -69742,7 +69742,7 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		return
 	},
 	"aws.cognito.userPool.passwordRequirements": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsCognitoUserPool).PasswordRequirements, ok = plugin.RawToTValue[*mqlAwsCognitoUserPoolPasswordPolicy](v.Value, v.Error)
+		r.(*mqlAwsCognitoUserPool).PasswordRequirements, ok = plugin.RawToTValue[*mqlAwsCognitoUserPoolPasswordRequirements](v.Value, v.Error)
 		return
 	},
 	"aws.cognito.userPool.advancedSecurityMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -69821,36 +69821,36 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsCognitoUserPool).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
-	"aws.cognito.userPool.passwordPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsCognitoUserPoolPasswordPolicy).__id, ok = v.Value.(string)
+	"aws.cognito.userPool.passwordRequirements.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCognitoUserPoolPasswordRequirements).__id, ok = v.Value.(string)
 		return
 	},
-	"aws.cognito.userPool.passwordPolicy.minimumLength": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsCognitoUserPoolPasswordPolicy).MinimumLength, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+	"aws.cognito.userPool.passwordRequirements.minimumLength": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCognitoUserPoolPasswordRequirements).MinimumLength, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
-	"aws.cognito.userPool.passwordPolicy.passwordHistorySize": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsCognitoUserPoolPasswordPolicy).PasswordHistorySize, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+	"aws.cognito.userPool.passwordRequirements.passwordHistorySize": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCognitoUserPoolPasswordRequirements).PasswordHistorySize, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
-	"aws.cognito.userPool.passwordPolicy.requireLowercase": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsCognitoUserPoolPasswordPolicy).RequireLowercase, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+	"aws.cognito.userPool.passwordRequirements.requireLowercase": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCognitoUserPoolPasswordRequirements).RequireLowercase, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"aws.cognito.userPool.passwordPolicy.requireNumbers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsCognitoUserPoolPasswordPolicy).RequireNumbers, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+	"aws.cognito.userPool.passwordRequirements.requireNumbers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCognitoUserPoolPasswordRequirements).RequireNumbers, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"aws.cognito.userPool.passwordPolicy.requireSymbols": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsCognitoUserPoolPasswordPolicy).RequireSymbols, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+	"aws.cognito.userPool.passwordRequirements.requireSymbols": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCognitoUserPoolPasswordRequirements).RequireSymbols, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"aws.cognito.userPool.passwordPolicy.requireUppercase": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsCognitoUserPoolPasswordPolicy).RequireUppercase, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+	"aws.cognito.userPool.passwordRequirements.requireUppercase": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCognitoUserPoolPasswordRequirements).RequireUppercase, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"aws.cognito.userPool.passwordPolicy.temporaryPasswordValidityDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAwsCognitoUserPoolPasswordPolicy).TemporaryPasswordValidityDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+	"aws.cognito.userPool.passwordRequirements.temporaryPasswordValidityDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCognitoUserPoolPasswordRequirements).TemporaryPasswordValidityDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"aws.cognito.userPoolClient.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -168952,7 +168952,7 @@ type mqlAwsCognitoUserPool struct {
 	DeletionProtection          plugin.TValue[bool]
 	MfaConfiguration            plugin.TValue[string]
 	PasswordPolicy              plugin.TValue[any]
-	PasswordRequirements        plugin.TValue[*mqlAwsCognitoUserPoolPasswordPolicy]
+	PasswordRequirements        plugin.TValue[*mqlAwsCognitoUserPoolPasswordRequirements]
 	AdvancedSecurityMode        plugin.TValue[string]
 	Tags                        plugin.TValue[map[string]any]
 	Clients                     plugin.TValue[[]any]
@@ -169044,15 +169044,15 @@ func (c *mqlAwsCognitoUserPool) GetPasswordPolicy() *plugin.TValue[any] {
 	})
 }
 
-func (c *mqlAwsCognitoUserPool) GetPasswordRequirements() *plugin.TValue[*mqlAwsCognitoUserPoolPasswordPolicy] {
-	return plugin.GetOrCompute[*mqlAwsCognitoUserPoolPasswordPolicy](&c.PasswordRequirements, func() (*mqlAwsCognitoUserPoolPasswordPolicy, error) {
+func (c *mqlAwsCognitoUserPool) GetPasswordRequirements() *plugin.TValue[*mqlAwsCognitoUserPoolPasswordRequirements] {
+	return plugin.GetOrCompute[*mqlAwsCognitoUserPoolPasswordRequirements](&c.PasswordRequirements, func() (*mqlAwsCognitoUserPoolPasswordRequirements, error) {
 		if c.MqlRuntime.HasRecording {
 			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.cognito.userPool", c.__id, "passwordRequirements")
 			if err != nil {
 				return nil, err
 			}
 			if d != nil {
-				return d.Value.(*mqlAwsCognitoUserPoolPasswordPolicy), nil
+				return d.Value.(*mqlAwsCognitoUserPoolPasswordRequirements), nil
 			}
 		}
 
@@ -169220,11 +169220,11 @@ func (c *mqlAwsCognitoUserPool) GetUpdatedAt() *plugin.TValue[*time.Time] {
 	return &c.UpdatedAt
 }
 
-// mqlAwsCognitoUserPoolPasswordPolicy for the aws.cognito.userPool.passwordPolicy resource
-type mqlAwsCognitoUserPoolPasswordPolicy struct {
+// mqlAwsCognitoUserPoolPasswordRequirements for the aws.cognito.userPool.passwordRequirements resource
+type mqlAwsCognitoUserPoolPasswordRequirements struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAwsCognitoUserPoolPasswordPolicyInternal it will be used here
+	// optional: if you define mqlAwsCognitoUserPoolPasswordRequirementsInternal it will be used here
 	MinimumLength                 plugin.TValue[int64]
 	PasswordHistorySize           plugin.TValue[int64]
 	RequireLowercase              plugin.TValue[bool]
@@ -169234,9 +169234,9 @@ type mqlAwsCognitoUserPoolPasswordPolicy struct {
 	TemporaryPasswordValidityDays plugin.TValue[int64]
 }
 
-// createAwsCognitoUserPoolPasswordPolicy creates a new instance of this resource
-func createAwsCognitoUserPoolPasswordPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
-	res := &mqlAwsCognitoUserPoolPasswordPolicy{
+// createAwsCognitoUserPoolPasswordRequirements creates a new instance of this resource
+func createAwsCognitoUserPoolPasswordRequirements(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsCognitoUserPoolPasswordRequirements{
 		MqlRuntime: runtime,
 	}
 
@@ -169248,7 +169248,7 @@ func createAwsCognitoUserPoolPasswordPolicy(runtime *plugin.Runtime, args map[st
 	// to override __id implement: id() (string, error)
 
 	if runtime.HasRecording {
-		args, err = runtime.ResourceFromRecording("aws.cognito.userPool.passwordPolicy", res.__id)
+		args, err = runtime.ResourceFromRecording("aws.cognito.userPool.passwordRequirements", res.__id)
 		if err != nil || args == nil {
 			return res, err
 		}
@@ -169258,39 +169258,39 @@ func createAwsCognitoUserPoolPasswordPolicy(runtime *plugin.Runtime, args map[st
 	return res, nil
 }
 
-func (c *mqlAwsCognitoUserPoolPasswordPolicy) MqlName() string {
-	return "aws.cognito.userPool.passwordPolicy"
+func (c *mqlAwsCognitoUserPoolPasswordRequirements) MqlName() string {
+	return "aws.cognito.userPool.passwordRequirements"
 }
 
-func (c *mqlAwsCognitoUserPoolPasswordPolicy) MqlID() string {
+func (c *mqlAwsCognitoUserPoolPasswordRequirements) MqlID() string {
 	return c.__id
 }
 
-func (c *mqlAwsCognitoUserPoolPasswordPolicy) GetMinimumLength() *plugin.TValue[int64] {
+func (c *mqlAwsCognitoUserPoolPasswordRequirements) GetMinimumLength() *plugin.TValue[int64] {
 	return &c.MinimumLength
 }
 
-func (c *mqlAwsCognitoUserPoolPasswordPolicy) GetPasswordHistorySize() *plugin.TValue[int64] {
+func (c *mqlAwsCognitoUserPoolPasswordRequirements) GetPasswordHistorySize() *plugin.TValue[int64] {
 	return &c.PasswordHistorySize
 }
 
-func (c *mqlAwsCognitoUserPoolPasswordPolicy) GetRequireLowercase() *plugin.TValue[bool] {
+func (c *mqlAwsCognitoUserPoolPasswordRequirements) GetRequireLowercase() *plugin.TValue[bool] {
 	return &c.RequireLowercase
 }
 
-func (c *mqlAwsCognitoUserPoolPasswordPolicy) GetRequireNumbers() *plugin.TValue[bool] {
+func (c *mqlAwsCognitoUserPoolPasswordRequirements) GetRequireNumbers() *plugin.TValue[bool] {
 	return &c.RequireNumbers
 }
 
-func (c *mqlAwsCognitoUserPoolPasswordPolicy) GetRequireSymbols() *plugin.TValue[bool] {
+func (c *mqlAwsCognitoUserPoolPasswordRequirements) GetRequireSymbols() *plugin.TValue[bool] {
 	return &c.RequireSymbols
 }
 
-func (c *mqlAwsCognitoUserPoolPasswordPolicy) GetRequireUppercase() *plugin.TValue[bool] {
+func (c *mqlAwsCognitoUserPoolPasswordRequirements) GetRequireUppercase() *plugin.TValue[bool] {
 	return &c.RequireUppercase
 }
 
-func (c *mqlAwsCognitoUserPoolPasswordPolicy) GetTemporaryPasswordValidityDays() *plugin.TValue[int64] {
+func (c *mqlAwsCognitoUserPoolPasswordRequirements) GetTemporaryPasswordValidityDays() *plugin.TValue[int64] {
 	return &c.TemporaryPasswordValidityDays
 }
 

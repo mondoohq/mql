@@ -303,7 +303,7 @@ func setRedisConfigurationRef(runtime *plugin.Runtime, args map[string]*llx.RawD
 	if parentID == "" {
 		return errors.New("cannot key the Redis configuration: the cache has no id")
 	}
-	res, err := CreateResource(runtime, "azure.subscription.cacheService.redisInstance.redisConfiguration",
+	res, err := CreateResource(runtime, "azure.subscription.cacheService.redisInstance.configuration",
 		map[string]*llx.RawData{
 			"__id":                               llx.StringData(parentID + "/redisConfiguration"),
 			"authNotRequired":                    llx.StringDataPtr(cfg.Authnotrequired),
@@ -317,7 +317,7 @@ func setRedisConfigurationRef(runtime *plugin.Runtime, args map[string]*llx.RawD
 	if err != nil {
 		return err
 	}
-	args["configuration"] = llx.ResourceData(res, "azure.subscription.cacheService.redisInstance.redisConfiguration")
+	args["configuration"] = llx.ResourceData(res, "azure.subscription.cacheService.redisInstance.configuration")
 	return nil
 }
 

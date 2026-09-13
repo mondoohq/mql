@@ -343,14 +343,14 @@ const (
 	ResourceAzureSubscriptionResourceSku                                                                string = "azure.subscription.resourceSku"
 	ResourceAzureSubscriptionResourceIdentity                                                           string = "azure.subscription.resourceIdentity"
 	ResourceAzureSubscriptionMaintenanceWindow                                                          string = "azure.subscription.maintenanceWindow"
-	ResourceAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration                                string = "azure.subscription.cacheService.redisInstance.redisConfiguration"
-	ResourceAzureSubscriptionCosmosDbServiceAccountKeysMetadata                                         string = "azure.subscription.cosmosDbService.account.keysMetadata"
+	ResourceAzureSubscriptionCacheServiceRedisInstanceConfiguration                                     string = "azure.subscription.cacheService.redisInstance.configuration"
+	ResourceAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata                                    string = "azure.subscription.cosmosDbService.account.masterKeyMetadata"
 	ResourceAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata                                   string = "azure.subscription.cosmosDbService.account.accountKeyMetadata"
 	ResourceAzureSubscriptionNetworkServiceTrafficManagerProfileDnsSettings                             string = "azure.subscription.networkService.trafficManagerProfile.dnsSettings"
-	ResourceAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint                             string = "azure.subscription.sqlService.server.failoverGroup.readWriteEndpoint"
-	ResourceAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint                              string = "azure.subscription.sqlService.server.failoverGroup.readOnlyEndpoint"
+	ResourceAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener                             string = "azure.subscription.sqlService.server.failoverGroup.readWriteListener"
+	ResourceAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyListener                              string = "azure.subscription.sqlService.server.failoverGroup.readOnlyListener"
 	ResourceAzureSubscriptionStorageServiceAccountDefenderForStorageSettingOperationStatus              string = "azure.subscription.storageService.account.defenderForStorageSetting.operationStatus"
-	ResourceAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes                           string = "azure.subscription.keyVaultService.key.rotationPolicyObject.attributes"
+	ResourceAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes                     string = "azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes"
 	ResourceAzureSubscriptionServiceBusServiceNamespaceNetworkRulesIpRule                               string = "azure.subscription.serviceBusService.namespace.networkRules.ipRule"
 	ResourceAzureSubscriptionEventHubServiceNamespaceNetworkRulesIpRule                                 string = "azure.subscription.eventHubService.namespace.networkRules.ipRule"
 	ResourceAzureSubscriptionEventGridServiceInboundIpRule                                              string = "azure.subscription.eventGridService.inboundIpRule"
@@ -1908,13 +1908,13 @@ func init() {
 			// to override args, implement: initAzureSubscriptionMaintenanceWindow(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzureSubscriptionMaintenanceWindow,
 		},
-		"azure.subscription.cacheService.redisInstance.redisConfiguration": {
-			// to override args, implement: initAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
-			Create: createAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration,
+		"azure.subscription.cacheService.redisInstance.configuration": {
+			// to override args, implement: initAzureSubscriptionCacheServiceRedisInstanceConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionCacheServiceRedisInstanceConfiguration,
 		},
-		"azure.subscription.cosmosDbService.account.keysMetadata": {
-			// to override args, implement: initAzureSubscriptionCosmosDbServiceAccountKeysMetadata(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
-			Create: createAzureSubscriptionCosmosDbServiceAccountKeysMetadata,
+		"azure.subscription.cosmosDbService.account.masterKeyMetadata": {
+			// to override args, implement: initAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata,
 		},
 		"azure.subscription.cosmosDbService.account.accountKeyMetadata": {
 			// to override args, implement: initAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -1924,21 +1924,21 @@ func init() {
 			// to override args, implement: initAzureSubscriptionNetworkServiceTrafficManagerProfileDnsSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzureSubscriptionNetworkServiceTrafficManagerProfileDnsSettings,
 		},
-		"azure.subscription.sqlService.server.failoverGroup.readWriteEndpoint": {
-			// to override args, implement: initAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
-			Create: createAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint,
+		"azure.subscription.sqlService.server.failoverGroup.readWriteListener": {
+			// to override args, implement: initAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener,
 		},
-		"azure.subscription.sqlService.server.failoverGroup.readOnlyEndpoint": {
-			// to override args, implement: initAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
-			Create: createAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint,
+		"azure.subscription.sqlService.server.failoverGroup.readOnlyListener": {
+			// to override args, implement: initAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyListener(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyListener,
 		},
 		"azure.subscription.storageService.account.defenderForStorageSetting.operationStatus": {
 			// to override args, implement: initAzureSubscriptionStorageServiceAccountDefenderForStorageSettingOperationStatus(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzureSubscriptionStorageServiceAccountDefenderForStorageSettingOperationStatus,
 		},
-		"azure.subscription.keyVaultService.key.rotationPolicyObject.attributes": {
-			// to override args, implement: initAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
-			Create: createAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes,
+		"azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes": {
+			// to override args, implement: initAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes,
 		},
 		"azure.subscription.serviceBusService.namespace.networkRules.ipRule": {
 			// to override args, implement: initAzureSubscriptionServiceBusServiceNamespaceNetworkRulesIpRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -11249,10 +11249,10 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroup).GetReadWriteEndpoint()).ToDataRes(types.Dict)
 	},
 	"azure.subscription.sqlService.server.failoverGroup.readWriteListener": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroup).GetReadWriteListener()).ToDataRes(types.Resource("azure.subscription.sqlService.server.failoverGroup.readWriteEndpoint"))
+		return (r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroup).GetReadWriteListener()).ToDataRes(types.Resource("azure.subscription.sqlService.server.failoverGroup.readWriteListener"))
 	},
 	"azure.subscription.sqlService.server.failoverGroup.readOnlyListener": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroup).GetReadOnlyListener()).ToDataRes(types.Resource("azure.subscription.sqlService.server.failoverGroup.readOnlyEndpoint"))
+		return (r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroup).GetReadOnlyListener()).ToDataRes(types.Resource("azure.subscription.sqlService.server.failoverGroup.readOnlyListener"))
 	},
 	"azure.subscription.sqlService.server.failoverGroup.readOnlyEndpoint": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroup).GetReadOnlyEndpoint()).ToDataRes(types.Dict)
@@ -12245,7 +12245,7 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlAzureSubscriptionCosmosDbServiceAccount).GetKeysMetadata()).ToDataRes(types.Dict)
 	},
 	"azure.subscription.cosmosDbService.account.masterKeyMetadata": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionCosmosDbServiceAccount).GetMasterKeyMetadata()).ToDataRes(types.Resource("azure.subscription.cosmosDbService.account.keysMetadata"))
+		return (r.(*mqlAzureSubscriptionCosmosDbServiceAccount).GetMasterKeyMetadata()).ToDataRes(types.Resource("azure.subscription.cosmosDbService.account.masterKeyMetadata"))
 	},
 	"azure.subscription.cosmosDbService.account.capabilities": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCosmosDbServiceAccount).GetCapabilities()).ToDataRes(types.Array(types.String))
@@ -13145,7 +13145,7 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObject).GetAttributes()).ToDataRes(types.Dict)
 	},
 	"azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObject).GetPolicyAttributes()).ToDataRes(types.Resource("azure.subscription.keyVaultService.key.rotationPolicyObject.attributes"))
+		return (r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObject).GetPolicyAttributes()).ToDataRes(types.Resource("azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes"))
 	},
 	"azure.subscription.keyVaultService.key.rotationPolicyObject.enabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObject).GetEnabled()).ToDataRes(types.Bool)
@@ -15118,38 +15118,38 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.maintenanceWindow.startMinute": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionMaintenanceWindow).GetStartMinute()).ToDataRes(types.Int)
 	},
-	"azure.subscription.cacheService.redisInstance.redisConfiguration.authNotRequired": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration).GetAuthNotRequired()).ToDataRes(types.String)
+	"azure.subscription.cacheService.redisInstance.configuration.authNotRequired": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration).GetAuthNotRequired()).ToDataRes(types.String)
 	},
-	"azure.subscription.cacheService.redisInstance.redisConfiguration.aadEnabled": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration).GetAadEnabled()).ToDataRes(types.String)
+	"azure.subscription.cacheService.redisInstance.configuration.aadEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration).GetAadEnabled()).ToDataRes(types.String)
 	},
-	"azure.subscription.cacheService.redisInstance.redisConfiguration.maxmemoryPolicy": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration).GetMaxmemoryPolicy()).ToDataRes(types.String)
+	"azure.subscription.cacheService.redisInstance.configuration.maxmemoryPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration).GetMaxmemoryPolicy()).ToDataRes(types.String)
 	},
-	"azure.subscription.cacheService.redisInstance.redisConfiguration.rdbBackupEnabled": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration).GetRdbBackupEnabled()).ToDataRes(types.String)
+	"azure.subscription.cacheService.redisInstance.configuration.rdbBackupEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration).GetRdbBackupEnabled()).ToDataRes(types.String)
 	},
-	"azure.subscription.cacheService.redisInstance.redisConfiguration.rdbBackupFrequency": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration).GetRdbBackupFrequency()).ToDataRes(types.String)
+	"azure.subscription.cacheService.redisInstance.configuration.rdbBackupFrequency": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration).GetRdbBackupFrequency()).ToDataRes(types.String)
 	},
-	"azure.subscription.cacheService.redisInstance.redisConfiguration.aofBackupEnabled": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration).GetAofBackupEnabled()).ToDataRes(types.String)
+	"azure.subscription.cacheService.redisInstance.configuration.aofBackupEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration).GetAofBackupEnabled()).ToDataRes(types.String)
 	},
-	"azure.subscription.cacheService.redisInstance.redisConfiguration.preferredDataPersistenceAuthMethod": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration).GetPreferredDataPersistenceAuthMethod()).ToDataRes(types.String)
+	"azure.subscription.cacheService.redisInstance.configuration.preferredDataPersistenceAuthMethod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration).GetPreferredDataPersistenceAuthMethod()).ToDataRes(types.String)
 	},
-	"azure.subscription.cosmosDbService.account.keysMetadata.primaryMasterKey": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata).GetPrimaryMasterKey()).ToDataRes(types.Resource("azure.subscription.cosmosDbService.account.accountKeyMetadata"))
+	"azure.subscription.cosmosDbService.account.masterKeyMetadata.primaryMasterKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata).GetPrimaryMasterKey()).ToDataRes(types.Resource("azure.subscription.cosmosDbService.account.accountKeyMetadata"))
 	},
-	"azure.subscription.cosmosDbService.account.keysMetadata.secondaryMasterKey": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata).GetSecondaryMasterKey()).ToDataRes(types.Resource("azure.subscription.cosmosDbService.account.accountKeyMetadata"))
+	"azure.subscription.cosmosDbService.account.masterKeyMetadata.secondaryMasterKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata).GetSecondaryMasterKey()).ToDataRes(types.Resource("azure.subscription.cosmosDbService.account.accountKeyMetadata"))
 	},
-	"azure.subscription.cosmosDbService.account.keysMetadata.primaryReadonlyMasterKey": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata).GetPrimaryReadonlyMasterKey()).ToDataRes(types.Resource("azure.subscription.cosmosDbService.account.accountKeyMetadata"))
+	"azure.subscription.cosmosDbService.account.masterKeyMetadata.primaryReadonlyMasterKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata).GetPrimaryReadonlyMasterKey()).ToDataRes(types.Resource("azure.subscription.cosmosDbService.account.accountKeyMetadata"))
 	},
-	"azure.subscription.cosmosDbService.account.keysMetadata.secondaryReadonlyMasterKey": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata).GetSecondaryReadonlyMasterKey()).ToDataRes(types.Resource("azure.subscription.cosmosDbService.account.accountKeyMetadata"))
+	"azure.subscription.cosmosDbService.account.masterKeyMetadata.secondaryReadonlyMasterKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata).GetSecondaryReadonlyMasterKey()).ToDataRes(types.Resource("azure.subscription.cosmosDbService.account.accountKeyMetadata"))
 	},
 	"azure.subscription.cosmosDbService.account.accountKeyMetadata.generationTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata).GetGenerationTime()).ToDataRes(types.Time)
@@ -15163,14 +15163,14 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.networkService.trafficManagerProfile.dnsSettings.ttl": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceTrafficManagerProfileDnsSettings).GetTtl()).ToDataRes(types.Int)
 	},
-	"azure.subscription.sqlService.server.failoverGroup.readWriteEndpoint.failoverPolicy": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint).GetFailoverPolicy()).ToDataRes(types.String)
+	"azure.subscription.sqlService.server.failoverGroup.readWriteListener.failoverPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener).GetFailoverPolicy()).ToDataRes(types.String)
 	},
-	"azure.subscription.sqlService.server.failoverGroup.readWriteEndpoint.failoverWithDataLossGracePeriodMinutes": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint).GetFailoverWithDataLossGracePeriodMinutes()).ToDataRes(types.Int)
+	"azure.subscription.sqlService.server.failoverGroup.readWriteListener.failoverWithDataLossGracePeriodMinutes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener).GetFailoverWithDataLossGracePeriodMinutes()).ToDataRes(types.Int)
 	},
-	"azure.subscription.sqlService.server.failoverGroup.readOnlyEndpoint.failoverPolicy": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint).GetFailoverPolicy()).ToDataRes(types.String)
+	"azure.subscription.sqlService.server.failoverGroup.readOnlyListener.failoverPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyListener).GetFailoverPolicy()).ToDataRes(types.String)
 	},
 	"azure.subscription.storageService.account.defenderForStorageSetting.operationStatus.code": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionStorageServiceAccountDefenderForStorageSettingOperationStatus).GetCode()).ToDataRes(types.String)
@@ -15178,14 +15178,14 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.storageService.account.defenderForStorageSetting.operationStatus.message": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionStorageServiceAccountDefenderForStorageSettingOperationStatus).GetMessage()).ToDataRes(types.String)
 	},
-	"azure.subscription.keyVaultService.key.rotationPolicyObject.attributes.expiryTime": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes).GetExpiryTime()).ToDataRes(types.String)
+	"azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes.expiryTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes).GetExpiryTime()).ToDataRes(types.String)
 	},
-	"azure.subscription.keyVaultService.key.rotationPolicyObject.attributes.created": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes).GetCreated()).ToDataRes(types.Time)
+	"azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes).GetCreated()).ToDataRes(types.Time)
 	},
-	"azure.subscription.keyVaultService.key.rotationPolicyObject.attributes.updated": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes).GetUpdated()).ToDataRes(types.Time)
+	"azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes.updated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes).GetUpdated()).ToDataRes(types.Time)
 	},
 	"azure.subscription.serviceBusService.namespace.networkRules.ipRule.ipMask": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionServiceBusServiceNamespaceNetworkRulesIpRule).GetIpMask()).ToDataRes(types.String)
@@ -16169,7 +16169,7 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstance).GetRedisConfiguration()).ToDataRes(types.Dict)
 	},
 	"azure.subscription.cacheService.redisInstance.configuration": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstance).GetConfiguration()).ToDataRes(types.Resource("azure.subscription.cacheService.redisInstance.redisConfiguration"))
+		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstance).GetConfiguration()).ToDataRes(types.Resource("azure.subscription.cacheService.redisInstance.configuration"))
 	},
 	"azure.subscription.cacheService.redisInstance.shardCount": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionCacheServiceRedisInstance).GetShardCount()).ToDataRes(types.Int)
@@ -35424,11 +35424,11 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		return
 	},
 	"azure.subscription.sqlService.server.failoverGroup.readWriteListener": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroup).ReadWriteListener, ok = plugin.RawToTValue[*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint](v.Value, v.Error)
+		r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroup).ReadWriteListener, ok = plugin.RawToTValue[*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.sqlService.server.failoverGroup.readOnlyListener": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroup).ReadOnlyListener, ok = plugin.RawToTValue[*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint](v.Value, v.Error)
+		r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroup).ReadOnlyListener, ok = plugin.RawToTValue[*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyListener](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.sqlService.server.failoverGroup.readOnlyEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -36860,7 +36860,7 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		return
 	},
 	"azure.subscription.cosmosDbService.account.masterKeyMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionCosmosDbServiceAccount).MasterKeyMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata](v.Value, v.Error)
+		r.(*mqlAzureSubscriptionCosmosDbServiceAccount).MasterKeyMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.cosmosDbService.account.capabilities": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -38160,7 +38160,7 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		return
 	},
 	"azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObject).PolicyAttributes, ok = plugin.RawToTValue[*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes](v.Value, v.Error)
+		r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObject).PolicyAttributes, ok = plugin.RawToTValue[*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.keyVaultService.key.rotationPolicyObject.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -41051,56 +41051,56 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionMaintenanceWindow).StartMinute, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
-	"azure.subscription.cacheService.redisInstance.redisConfiguration.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration).__id, ok = v.Value.(string)
+	"azure.subscription.cacheService.redisInstance.configuration.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration).__id, ok = v.Value.(string)
 		return
 	},
-	"azure.subscription.cacheService.redisInstance.redisConfiguration.authNotRequired": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration).AuthNotRequired, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"azure.subscription.cacheService.redisInstance.configuration.authNotRequired": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration).AuthNotRequired, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"azure.subscription.cacheService.redisInstance.redisConfiguration.aadEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration).AadEnabled, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"azure.subscription.cacheService.redisInstance.configuration.aadEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration).AadEnabled, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"azure.subscription.cacheService.redisInstance.redisConfiguration.maxmemoryPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration).MaxmemoryPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"azure.subscription.cacheService.redisInstance.configuration.maxmemoryPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration).MaxmemoryPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"azure.subscription.cacheService.redisInstance.redisConfiguration.rdbBackupEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration).RdbBackupEnabled, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"azure.subscription.cacheService.redisInstance.configuration.rdbBackupEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration).RdbBackupEnabled, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"azure.subscription.cacheService.redisInstance.redisConfiguration.rdbBackupFrequency": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration).RdbBackupFrequency, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"azure.subscription.cacheService.redisInstance.configuration.rdbBackupFrequency": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration).RdbBackupFrequency, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"azure.subscription.cacheService.redisInstance.redisConfiguration.aofBackupEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration).AofBackupEnabled, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"azure.subscription.cacheService.redisInstance.configuration.aofBackupEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration).AofBackupEnabled, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"azure.subscription.cacheService.redisInstance.redisConfiguration.preferredDataPersistenceAuthMethod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration).PreferredDataPersistenceAuthMethod, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"azure.subscription.cacheService.redisInstance.configuration.preferredDataPersistenceAuthMethod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration).PreferredDataPersistenceAuthMethod, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"azure.subscription.cosmosDbService.account.keysMetadata.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata).__id, ok = v.Value.(string)
+	"azure.subscription.cosmosDbService.account.masterKeyMetadata.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata).__id, ok = v.Value.(string)
 		return
 	},
-	"azure.subscription.cosmosDbService.account.keysMetadata.primaryMasterKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata).PrimaryMasterKey, ok = plugin.RawToTValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata](v.Value, v.Error)
+	"azure.subscription.cosmosDbService.account.masterKeyMetadata.primaryMasterKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata).PrimaryMasterKey, ok = plugin.RawToTValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata](v.Value, v.Error)
 		return
 	},
-	"azure.subscription.cosmosDbService.account.keysMetadata.secondaryMasterKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata).SecondaryMasterKey, ok = plugin.RawToTValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata](v.Value, v.Error)
+	"azure.subscription.cosmosDbService.account.masterKeyMetadata.secondaryMasterKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata).SecondaryMasterKey, ok = plugin.RawToTValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata](v.Value, v.Error)
 		return
 	},
-	"azure.subscription.cosmosDbService.account.keysMetadata.primaryReadonlyMasterKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata).PrimaryReadonlyMasterKey, ok = plugin.RawToTValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata](v.Value, v.Error)
+	"azure.subscription.cosmosDbService.account.masterKeyMetadata.primaryReadonlyMasterKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata).PrimaryReadonlyMasterKey, ok = plugin.RawToTValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata](v.Value, v.Error)
 		return
 	},
-	"azure.subscription.cosmosDbService.account.keysMetadata.secondaryReadonlyMasterKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata).SecondaryReadonlyMasterKey, ok = plugin.RawToTValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata](v.Value, v.Error)
+	"azure.subscription.cosmosDbService.account.masterKeyMetadata.secondaryReadonlyMasterKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata).SecondaryReadonlyMasterKey, ok = plugin.RawToTValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.cosmosDbService.account.accountKeyMetadata.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -41127,24 +41127,24 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionNetworkServiceTrafficManagerProfileDnsSettings).Ttl, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
-	"azure.subscription.sqlService.server.failoverGroup.readWriteEndpoint.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint).__id, ok = v.Value.(string)
+	"azure.subscription.sqlService.server.failoverGroup.readWriteListener.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener).__id, ok = v.Value.(string)
 		return
 	},
-	"azure.subscription.sqlService.server.failoverGroup.readWriteEndpoint.failoverPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint).FailoverPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"azure.subscription.sqlService.server.failoverGroup.readWriteListener.failoverPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener).FailoverPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"azure.subscription.sqlService.server.failoverGroup.readWriteEndpoint.failoverWithDataLossGracePeriodMinutes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint).FailoverWithDataLossGracePeriodMinutes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+	"azure.subscription.sqlService.server.failoverGroup.readWriteListener.failoverWithDataLossGracePeriodMinutes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener).FailoverWithDataLossGracePeriodMinutes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
-	"azure.subscription.sqlService.server.failoverGroup.readOnlyEndpoint.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint).__id, ok = v.Value.(string)
+	"azure.subscription.sqlService.server.failoverGroup.readOnlyListener.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyListener).__id, ok = v.Value.(string)
 		return
 	},
-	"azure.subscription.sqlService.server.failoverGroup.readOnlyEndpoint.failoverPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint).FailoverPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"azure.subscription.sqlService.server.failoverGroup.readOnlyListener.failoverPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyListener).FailoverPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.storageService.account.defenderForStorageSetting.operationStatus.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -41159,20 +41159,20 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionStorageServiceAccountDefenderForStorageSettingOperationStatus).Message, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"azure.subscription.keyVaultService.key.rotationPolicyObject.attributes.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes).__id, ok = v.Value.(string)
+	"azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes).__id, ok = v.Value.(string)
 		return
 	},
-	"azure.subscription.keyVaultService.key.rotationPolicyObject.attributes.expiryTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes).ExpiryTime, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes.expiryTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes).ExpiryTime, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"azure.subscription.keyVaultService.key.rotationPolicyObject.attributes.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+	"azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
-	"azure.subscription.keyVaultService.key.rotationPolicyObject.attributes.updated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes).Updated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+	"azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes.updated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes).Updated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.serviceBusService.namespace.networkRules.ipRule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -42596,7 +42596,7 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		return
 	},
 	"azure.subscription.cacheService.redisInstance.configuration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlAzureSubscriptionCacheServiceRedisInstance).Configuration, ok = plugin.RawToTValue[*mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration](v.Value, v.Error)
+		r.(*mqlAzureSubscriptionCacheServiceRedisInstance).Configuration, ok = plugin.RawToTValue[*mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.cacheService.redisInstance.shardCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -81471,8 +81471,8 @@ type mqlAzureSubscriptionSqlServiceServerFailoverGroup struct {
 	PartnerServers    plugin.TValue[[]any]
 	Partners          plugin.TValue[[]any]
 	ReadWriteEndpoint plugin.TValue[any]
-	ReadWriteListener plugin.TValue[*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint]
-	ReadOnlyListener  plugin.TValue[*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint]
+	ReadWriteListener plugin.TValue[*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener]
+	ReadOnlyListener  plugin.TValue[*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyListener]
 	ReadOnlyEndpoint  plugin.TValue[any]
 	Databases         plugin.TValue[[]any]
 }
@@ -81550,11 +81550,11 @@ func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroup) GetReadWriteEndpoint
 	return &c.ReadWriteEndpoint
 }
 
-func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroup) GetReadWriteListener() *plugin.TValue[*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint] {
+func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroup) GetReadWriteListener() *plugin.TValue[*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener] {
 	return &c.ReadWriteListener
 }
 
-func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroup) GetReadOnlyListener() *plugin.TValue[*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint] {
+func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroup) GetReadOnlyListener() *plugin.TValue[*mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyListener] {
 	return &c.ReadOnlyListener
 }
 
@@ -84838,7 +84838,7 @@ type mqlAzureSubscriptionCosmosDbServiceAccount struct {
 	CustomerManagedKeyStatus           plugin.TValue[string]
 	EncryptionKeyVersion               plugin.TValue[string]
 	KeysMetadata                       plugin.TValue[any]
-	MasterKeyMetadata                  plugin.TValue[*mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata]
+	MasterKeyMetadata                  plugin.TValue[*mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata]
 	Capabilities                       plugin.TValue[[]any]
 	EnableAnalyticalStorage            plugin.TValue[bool]
 	AnalyticalStorageSchemaType        plugin.TValue[string]
@@ -85001,7 +85001,7 @@ func (c *mqlAzureSubscriptionCosmosDbServiceAccount) GetKeysMetadata() *plugin.T
 	return &c.KeysMetadata
 }
 
-func (c *mqlAzureSubscriptionCosmosDbServiceAccount) GetMasterKeyMetadata() *plugin.TValue[*mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata] {
+func (c *mqlAzureSubscriptionCosmosDbServiceAccount) GetMasterKeyMetadata() *plugin.TValue[*mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata] {
 	return &c.MasterKeyMetadata
 }
 
@@ -88102,7 +88102,7 @@ type mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObject struct {
 	LifetimeActions  plugin.TValue[[]any]
 	Actions          plugin.TValue[[]any]
 	Attributes       plugin.TValue[any]
-	PolicyAttributes plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes]
+	PolicyAttributes plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes]
 	Enabled          plugin.TValue[bool]
 }
 
@@ -88155,7 +88155,7 @@ func (c *mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObject) GetAttribut
 	return &c.Attributes
 }
 
-func (c *mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObject) GetPolicyAttributes() *plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes] {
+func (c *mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObject) GetPolicyAttributes() *plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes] {
 	return &c.PolicyAttributes
 }
 
@@ -95264,11 +95264,11 @@ func (c *mqlAzureSubscriptionMaintenanceWindow) GetStartMinute() *plugin.TValue[
 	return &c.StartMinute
 }
 
-// mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration for the azure.subscription.cacheService.redisInstance.redisConfiguration resource
-type mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration struct {
+// mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration for the azure.subscription.cacheService.redisInstance.configuration resource
+type mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfigurationInternal it will be used here
+	// optional: if you define mqlAzureSubscriptionCacheServiceRedisInstanceConfigurationInternal it will be used here
 	AuthNotRequired                    plugin.TValue[string]
 	AadEnabled                         plugin.TValue[string]
 	MaxmemoryPolicy                    plugin.TValue[string]
@@ -95278,9 +95278,9 @@ type mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration struct {
 	PreferredDataPersistenceAuthMethod plugin.TValue[string]
 }
 
-// createAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration creates a new instance of this resource
-func createAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
-	res := &mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration{
+// createAzureSubscriptionCacheServiceRedisInstanceConfiguration creates a new instance of this resource
+func createAzureSubscriptionCacheServiceRedisInstanceConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration{
 		MqlRuntime: runtime,
 	}
 
@@ -95292,7 +95292,7 @@ func createAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration(runtime 
 	// to override __id implement: id() (string, error)
 
 	if runtime.HasRecording {
-		args, err = runtime.ResourceFromRecording("azure.subscription.cacheService.redisInstance.redisConfiguration", res.__id)
+		args, err = runtime.ResourceFromRecording("azure.subscription.cacheService.redisInstance.configuration", res.__id)
 		if err != nil || args == nil {
 			return res, err
 		}
@@ -95302,56 +95302,56 @@ func createAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration(runtime 
 	return res, nil
 }
 
-func (c *mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration) MqlName() string {
-	return "azure.subscription.cacheService.redisInstance.redisConfiguration"
+func (c *mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration) MqlName() string {
+	return "azure.subscription.cacheService.redisInstance.configuration"
 }
 
-func (c *mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration) MqlID() string {
+func (c *mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration) MqlID() string {
 	return c.__id
 }
 
-func (c *mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration) GetAuthNotRequired() *plugin.TValue[string] {
+func (c *mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration) GetAuthNotRequired() *plugin.TValue[string] {
 	return &c.AuthNotRequired
 }
 
-func (c *mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration) GetAadEnabled() *plugin.TValue[string] {
+func (c *mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration) GetAadEnabled() *plugin.TValue[string] {
 	return &c.AadEnabled
 }
 
-func (c *mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration) GetMaxmemoryPolicy() *plugin.TValue[string] {
+func (c *mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration) GetMaxmemoryPolicy() *plugin.TValue[string] {
 	return &c.MaxmemoryPolicy
 }
 
-func (c *mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration) GetRdbBackupEnabled() *plugin.TValue[string] {
+func (c *mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration) GetRdbBackupEnabled() *plugin.TValue[string] {
 	return &c.RdbBackupEnabled
 }
 
-func (c *mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration) GetRdbBackupFrequency() *plugin.TValue[string] {
+func (c *mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration) GetRdbBackupFrequency() *plugin.TValue[string] {
 	return &c.RdbBackupFrequency
 }
 
-func (c *mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration) GetAofBackupEnabled() *plugin.TValue[string] {
+func (c *mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration) GetAofBackupEnabled() *plugin.TValue[string] {
 	return &c.AofBackupEnabled
 }
 
-func (c *mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration) GetPreferredDataPersistenceAuthMethod() *plugin.TValue[string] {
+func (c *mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration) GetPreferredDataPersistenceAuthMethod() *plugin.TValue[string] {
 	return &c.PreferredDataPersistenceAuthMethod
 }
 
-// mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata for the azure.subscription.cosmosDbService.account.keysMetadata resource
-type mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata struct {
+// mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata for the azure.subscription.cosmosDbService.account.masterKeyMetadata resource
+type mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadataInternal it will be used here
+	// optional: if you define mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadataInternal it will be used here
 	PrimaryMasterKey           plugin.TValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata]
 	SecondaryMasterKey         plugin.TValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata]
 	PrimaryReadonlyMasterKey   plugin.TValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata]
 	SecondaryReadonlyMasterKey plugin.TValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata]
 }
 
-// createAzureSubscriptionCosmosDbServiceAccountKeysMetadata creates a new instance of this resource
-func createAzureSubscriptionCosmosDbServiceAccountKeysMetadata(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
-	res := &mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata{
+// createAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata creates a new instance of this resource
+func createAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata{
 		MqlRuntime: runtime,
 	}
 
@@ -95363,7 +95363,7 @@ func createAzureSubscriptionCosmosDbServiceAccountKeysMetadata(runtime *plugin.R
 	// to override __id implement: id() (string, error)
 
 	if runtime.HasRecording {
-		args, err = runtime.ResourceFromRecording("azure.subscription.cosmosDbService.account.keysMetadata", res.__id)
+		args, err = runtime.ResourceFromRecording("azure.subscription.cosmosDbService.account.masterKeyMetadata", res.__id)
 		if err != nil || args == nil {
 			return res, err
 		}
@@ -95373,27 +95373,27 @@ func createAzureSubscriptionCosmosDbServiceAccountKeysMetadata(runtime *plugin.R
 	return res, nil
 }
 
-func (c *mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata) MqlName() string {
-	return "azure.subscription.cosmosDbService.account.keysMetadata"
+func (c *mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata) MqlName() string {
+	return "azure.subscription.cosmosDbService.account.masterKeyMetadata"
 }
 
-func (c *mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata) MqlID() string {
+func (c *mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata) MqlID() string {
 	return c.__id
 }
 
-func (c *mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata) GetPrimaryMasterKey() *plugin.TValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata] {
+func (c *mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata) GetPrimaryMasterKey() *plugin.TValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata] {
 	return &c.PrimaryMasterKey
 }
 
-func (c *mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata) GetSecondaryMasterKey() *plugin.TValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata] {
+func (c *mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata) GetSecondaryMasterKey() *plugin.TValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata] {
 	return &c.SecondaryMasterKey
 }
 
-func (c *mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata) GetPrimaryReadonlyMasterKey() *plugin.TValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata] {
+func (c *mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata) GetPrimaryReadonlyMasterKey() *plugin.TValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata] {
 	return &c.PrimaryReadonlyMasterKey
 }
 
-func (c *mqlAzureSubscriptionCosmosDbServiceAccountKeysMetadata) GetSecondaryReadonlyMasterKey() *plugin.TValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata] {
+func (c *mqlAzureSubscriptionCosmosDbServiceAccountMasterKeyMetadata) GetSecondaryReadonlyMasterKey() *plugin.TValue[*mqlAzureSubscriptionCosmosDbServiceAccountAccountKeyMetadata] {
 	return &c.SecondaryReadonlyMasterKey
 }
 
@@ -95495,18 +95495,18 @@ func (c *mqlAzureSubscriptionNetworkServiceTrafficManagerProfileDnsSettings) Get
 	return &c.Ttl
 }
 
-// mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint for the azure.subscription.sqlService.server.failoverGroup.readWriteEndpoint resource
-type mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint struct {
+// mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener for the azure.subscription.sqlService.server.failoverGroup.readWriteListener resource
+type mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpointInternal it will be used here
+	// optional: if you define mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListenerInternal it will be used here
 	FailoverPolicy                         plugin.TValue[string]
 	FailoverWithDataLossGracePeriodMinutes plugin.TValue[int64]
 }
 
-// createAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint creates a new instance of this resource
-func createAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
-	res := &mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint{
+// createAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener creates a new instance of this resource
+func createAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener{
 		MqlRuntime: runtime,
 	}
 
@@ -95518,7 +95518,7 @@ func createAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint(runti
 	// to override __id implement: id() (string, error)
 
 	if runtime.HasRecording {
-		args, err = runtime.ResourceFromRecording("azure.subscription.sqlService.server.failoverGroup.readWriteEndpoint", res.__id)
+		args, err = runtime.ResourceFromRecording("azure.subscription.sqlService.server.failoverGroup.readWriteListener", res.__id)
 		if err != nil || args == nil {
 			return res, err
 		}
@@ -95528,33 +95528,33 @@ func createAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint(runti
 	return res, nil
 }
 
-func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint) MqlName() string {
-	return "azure.subscription.sqlService.server.failoverGroup.readWriteEndpoint"
+func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener) MqlName() string {
+	return "azure.subscription.sqlService.server.failoverGroup.readWriteListener"
 }
 
-func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint) MqlID() string {
+func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener) MqlID() string {
 	return c.__id
 }
 
-func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint) GetFailoverPolicy() *plugin.TValue[string] {
+func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener) GetFailoverPolicy() *plugin.TValue[string] {
 	return &c.FailoverPolicy
 }
 
-func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteEndpoint) GetFailoverWithDataLossGracePeriodMinutes() *plugin.TValue[int64] {
+func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroupReadWriteListener) GetFailoverWithDataLossGracePeriodMinutes() *plugin.TValue[int64] {
 	return &c.FailoverWithDataLossGracePeriodMinutes
 }
 
-// mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint for the azure.subscription.sqlService.server.failoverGroup.readOnlyEndpoint resource
-type mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint struct {
+// mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyListener for the azure.subscription.sqlService.server.failoverGroup.readOnlyListener resource
+type mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyListener struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpointInternal it will be used here
+	// optional: if you define mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyListenerInternal it will be used here
 	FailoverPolicy plugin.TValue[string]
 }
 
-// createAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint creates a new instance of this resource
-func createAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
-	res := &mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint{
+// createAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyListener creates a new instance of this resource
+func createAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyListener(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyListener{
 		MqlRuntime: runtime,
 	}
 
@@ -95566,7 +95566,7 @@ func createAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint(runtim
 	// to override __id implement: id() (string, error)
 
 	if runtime.HasRecording {
-		args, err = runtime.ResourceFromRecording("azure.subscription.sqlService.server.failoverGroup.readOnlyEndpoint", res.__id)
+		args, err = runtime.ResourceFromRecording("azure.subscription.sqlService.server.failoverGroup.readOnlyListener", res.__id)
 		if err != nil || args == nil {
 			return res, err
 		}
@@ -95576,15 +95576,15 @@ func createAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint(runtim
 	return res, nil
 }
 
-func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint) MqlName() string {
-	return "azure.subscription.sqlService.server.failoverGroup.readOnlyEndpoint"
+func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyListener) MqlName() string {
+	return "azure.subscription.sqlService.server.failoverGroup.readOnlyListener"
 }
 
-func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint) MqlID() string {
+func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyListener) MqlID() string {
 	return c.__id
 }
 
-func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyEndpoint) GetFailoverPolicy() *plugin.TValue[string] {
+func (c *mqlAzureSubscriptionSqlServiceServerFailoverGroupReadOnlyListener) GetFailoverPolicy() *plugin.TValue[string] {
 	return &c.FailoverPolicy
 }
 
@@ -95637,19 +95637,19 @@ func (c *mqlAzureSubscriptionStorageServiceAccountDefenderForStorageSettingOpera
 	return &c.Message
 }
 
-// mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes for the azure.subscription.keyVaultService.key.rotationPolicyObject.attributes resource
-type mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes struct {
+// mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes for the azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes resource
+type mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributesInternal it will be used here
+	// optional: if you define mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributesInternal it will be used here
 	ExpiryTime plugin.TValue[string]
 	Created    plugin.TValue[*time.Time]
 	Updated    plugin.TValue[*time.Time]
 }
 
-// createAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes creates a new instance of this resource
-func createAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
-	res := &mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes{
+// createAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes creates a new instance of this resource
+func createAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes{
 		MqlRuntime: runtime,
 	}
 
@@ -95661,7 +95661,7 @@ func createAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes(run
 	// to override __id implement: id() (string, error)
 
 	if runtime.HasRecording {
-		args, err = runtime.ResourceFromRecording("azure.subscription.keyVaultService.key.rotationPolicyObject.attributes", res.__id)
+		args, err = runtime.ResourceFromRecording("azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes", res.__id)
 		if err != nil || args == nil {
 			return res, err
 		}
@@ -95671,23 +95671,23 @@ func createAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes(run
 	return res, nil
 }
 
-func (c *mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes) MqlName() string {
-	return "azure.subscription.keyVaultService.key.rotationPolicyObject.attributes"
+func (c *mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes) MqlName() string {
+	return "azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes"
 }
 
-func (c *mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes) MqlID() string {
+func (c *mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes) MqlID() string {
 	return c.__id
 }
 
-func (c *mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes) GetExpiryTime() *plugin.TValue[string] {
+func (c *mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes) GetExpiryTime() *plugin.TValue[string] {
 	return &c.ExpiryTime
 }
 
-func (c *mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes) GetCreated() *plugin.TValue[*time.Time] {
+func (c *mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes) GetCreated() *plugin.TValue[*time.Time] {
 	return &c.Created
 }
 
-func (c *mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectAttributes) GetUpdated() *plugin.TValue[*time.Time] {
+func (c *mqlAzureSubscriptionKeyVaultServiceKeyRotationPolicyObjectPolicyAttributes) GetUpdated() *plugin.TValue[*time.Time] {
 	return &c.Updated
 }
 
@@ -98929,7 +98929,7 @@ type mqlAzureSubscriptionCacheServiceRedisInstance struct {
 	SkuData                        plugin.TValue[*mqlAzureSubscriptionResourceSku]
 	Tags                           plugin.TValue[map[string]any]
 	RedisConfiguration             plugin.TValue[any]
-	Configuration                  plugin.TValue[*mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration]
+	Configuration                  plugin.TValue[*mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration]
 	ShardCount                     plugin.TValue[int64]
 	StaticIp                       plugin.TValue[string]
 	SubnetId                       plugin.TValue[string]
@@ -99090,7 +99090,7 @@ func (c *mqlAzureSubscriptionCacheServiceRedisInstance) GetRedisConfiguration() 
 	return &c.RedisConfiguration
 }
 
-func (c *mqlAzureSubscriptionCacheServiceRedisInstance) GetConfiguration() *plugin.TValue[*mqlAzureSubscriptionCacheServiceRedisInstanceRedisConfiguration] {
+func (c *mqlAzureSubscriptionCacheServiceRedisInstance) GetConfiguration() *plugin.TValue[*mqlAzureSubscriptionCacheServiceRedisInstanceConfiguration] {
 	return &c.Configuration
 }
 
