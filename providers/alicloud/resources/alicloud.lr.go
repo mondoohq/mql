@@ -132,6 +132,7 @@ const (
 	ResourceAlicloudCenAttachment                string = "alicloud.cen.attachment"
 	ResourceAlicloudVpcVpnGateway                string = "alicloud.vpc.vpnGateway"
 	ResourceAlicloudVpcVpnConnection             string = "alicloud.vpc.vpnConnection"
+	ResourceAlicloudVpcVpnConnectionTunnel       string = "alicloud.vpc.vpnConnection.tunnel"
 	ResourceAlicloudAcr                          string = "alicloud.acr"
 	ResourceAlicloudAcrInstance                  string = "alicloud.acr.instance"
 	ResourceAlicloudAcrNamespace                 string = "alicloud.acr.namespace"
@@ -609,6 +610,10 @@ func init() {
 		"alicloud.vpc.vpnConnection": {
 			// to override args, implement: initAlicloudVpcVpnConnection(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAlicloudVpcVpnConnection,
+		},
+		"alicloud.vpc.vpnConnection.tunnel": {
+			// to override args, implement: initAlicloudVpcVpnConnectionTunnel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAlicloudVpcVpnConnectionTunnel,
 		},
 		"alicloud.acr": {
 			// to override args, implement: initAlicloudAcr(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -5711,8 +5716,71 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"alicloud.vpc.vpnConnection.createTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudVpcVpnConnection).GetCreateTime()).ToDataRes(types.Time)
 	},
+	"alicloud.vpc.vpnConnection.tunnels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnection).GetTunnels()).ToDataRes(types.Array(types.Resource("alicloud.vpc.vpnConnection.tunnel")))
+	},
 	"alicloud.vpc.vpnConnection.vpnGateway": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudVpcVpnConnection).GetVpnGateway()).ToDataRes(types.Resource("alicloud.vpc.vpnGateway"))
+	},
+	"alicloud.vpc.vpnConnection.tunnel.tunnelId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetTunnelId()).ToDataRes(types.String)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.tunnelIndex": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetTunnelIndex()).ToDataRes(types.Int)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.role": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetRole()).ToDataRes(types.String)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetStatus()).ToDataRes(types.String)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetState()).ToDataRes(types.String)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.internetIp": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetInternetIp()).ToDataRes(types.String)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.enableDpd": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetEnableDpd()).ToDataRes(types.Bool)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.enableNatTraversal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetEnableNatTraversal()).ToDataRes(types.Bool)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ikeVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetIkeVersion()).ToDataRes(types.String)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ikeMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetIkeMode()).ToDataRes(types.String)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ikeEncryptionAlgorithm": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetIkeEncryptionAlgorithm()).ToDataRes(types.String)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ikeAuthenticationAlgorithm": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetIkeAuthenticationAlgorithm()).ToDataRes(types.String)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ikePfs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetIkePfs()).ToDataRes(types.String)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ikeLifetime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetIkeLifetime()).ToDataRes(types.Int)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ikeLocalId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetIkeLocalId()).ToDataRes(types.String)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ikeRemoteId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetIkeRemoteId()).ToDataRes(types.String)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ipsecEncryptionAlgorithm": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetIpsecEncryptionAlgorithm()).ToDataRes(types.String)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ipsecAuthenticationAlgorithm": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetIpsecAuthenticationAlgorithm()).ToDataRes(types.String)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ipsecPfs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetIpsecPfs()).ToDataRes(types.String)
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ipsecLifetime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnectionTunnel).GetIpsecLifetime()).ToDataRes(types.Int)
 	},
 	"alicloud.acr.instances": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudAcr).GetInstances()).ToDataRes(types.Array(types.Resource("alicloud.acr.instance")))
@@ -13163,8 +13231,96 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAlicloudVpcVpnConnection).CreateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"alicloud.vpc.vpnConnection.tunnels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnection).Tunnels, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"alicloud.vpc.vpnConnection.vpnGateway": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudVpcVpnConnection).VpnGateway, ok = plugin.RawToTValue[*mqlAlicloudVpcVpnGateway](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).__id, ok = v.Value.(string)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.tunnelId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).TunnelId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.tunnelIndex": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).TunnelIndex, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.role": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).Role, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.internetIp": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).InternetIp, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.enableDpd": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).EnableDpd, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.enableNatTraversal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).EnableNatTraversal, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ikeVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).IkeVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ikeMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).IkeMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ikeEncryptionAlgorithm": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).IkeEncryptionAlgorithm, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ikeAuthenticationAlgorithm": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).IkeAuthenticationAlgorithm, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ikePfs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).IkePfs, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ikeLifetime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).IkeLifetime, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ikeLocalId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).IkeLocalId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ikeRemoteId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).IkeRemoteId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ipsecEncryptionAlgorithm": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).IpsecEncryptionAlgorithm, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ipsecAuthenticationAlgorithm": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).IpsecAuthenticationAlgorithm, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ipsecPfs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).IpsecPfs, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.tunnel.ipsecLifetime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnectionTunnel).IpsecLifetime, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"alicloud.acr.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -30186,6 +30342,7 @@ type mqlAlicloudVpcVpnConnection struct {
 	IpsecPfs                     plugin.TValue[string]
 	IpsecLifetime                plugin.TValue[int64]
 	CreateTime                   plugin.TValue[*time.Time]
+	Tunnels                      plugin.TValue[[]any]
 	VpnGateway                   plugin.TValue[*mqlAlicloudVpcVpnGateway]
 }
 
@@ -30334,6 +30491,10 @@ func (c *mqlAlicloudVpcVpnConnection) GetCreateTime() *plugin.TValue[*time.Time]
 	return &c.CreateTime
 }
 
+func (c *mqlAlicloudVpcVpnConnection) GetTunnels() *plugin.TValue[[]any] {
+	return &c.Tunnels
+}
+
 func (c *mqlAlicloudVpcVpnConnection) GetVpnGateway() *plugin.TValue[*mqlAlicloudVpcVpnGateway] {
 	return plugin.GetOrCompute[*mqlAlicloudVpcVpnGateway](&c.VpnGateway, func() (*mqlAlicloudVpcVpnGateway, error) {
 		if c.MqlRuntime.HasRecording {
@@ -30348,6 +30509,145 @@ func (c *mqlAlicloudVpcVpnConnection) GetVpnGateway() *plugin.TValue[*mqlAliclou
 
 		return c.vpnGateway()
 	})
+}
+
+// mqlAlicloudVpcVpnConnectionTunnel for the alicloud.vpc.vpnConnection.tunnel resource
+type mqlAlicloudVpcVpnConnectionTunnel struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAlicloudVpcVpnConnectionTunnelInternal
+	TunnelId                     plugin.TValue[string]
+	TunnelIndex                  plugin.TValue[int64]
+	Role                         plugin.TValue[string]
+	Status                       plugin.TValue[string]
+	State                        plugin.TValue[string]
+	InternetIp                   plugin.TValue[string]
+	EnableDpd                    plugin.TValue[bool]
+	EnableNatTraversal           plugin.TValue[bool]
+	IkeVersion                   plugin.TValue[string]
+	IkeMode                      plugin.TValue[string]
+	IkeEncryptionAlgorithm       plugin.TValue[string]
+	IkeAuthenticationAlgorithm   plugin.TValue[string]
+	IkePfs                       plugin.TValue[string]
+	IkeLifetime                  plugin.TValue[int64]
+	IkeLocalId                   plugin.TValue[string]
+	IkeRemoteId                  plugin.TValue[string]
+	IpsecEncryptionAlgorithm     plugin.TValue[string]
+	IpsecAuthenticationAlgorithm plugin.TValue[string]
+	IpsecPfs                     plugin.TValue[string]
+	IpsecLifetime                plugin.TValue[int64]
+}
+
+// createAlicloudVpcVpnConnectionTunnel creates a new instance of this resource
+func createAlicloudVpcVpnConnectionTunnel(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAlicloudVpcVpnConnectionTunnel{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("alicloud.vpc.vpnConnection.tunnel", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) MqlName() string {
+	return "alicloud.vpc.vpnConnection.tunnel"
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetTunnelId() *plugin.TValue[string] {
+	return &c.TunnelId
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetTunnelIndex() *plugin.TValue[int64] {
+	return &c.TunnelIndex
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetRole() *plugin.TValue[string] {
+	return &c.Role
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetInternetIp() *plugin.TValue[string] {
+	return &c.InternetIp
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetEnableDpd() *plugin.TValue[bool] {
+	return &c.EnableDpd
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetEnableNatTraversal() *plugin.TValue[bool] {
+	return &c.EnableNatTraversal
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetIkeVersion() *plugin.TValue[string] {
+	return &c.IkeVersion
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetIkeMode() *plugin.TValue[string] {
+	return &c.IkeMode
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetIkeEncryptionAlgorithm() *plugin.TValue[string] {
+	return &c.IkeEncryptionAlgorithm
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetIkeAuthenticationAlgorithm() *plugin.TValue[string] {
+	return &c.IkeAuthenticationAlgorithm
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetIkePfs() *plugin.TValue[string] {
+	return &c.IkePfs
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetIkeLifetime() *plugin.TValue[int64] {
+	return &c.IkeLifetime
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetIkeLocalId() *plugin.TValue[string] {
+	return &c.IkeLocalId
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetIkeRemoteId() *plugin.TValue[string] {
+	return &c.IkeRemoteId
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetIpsecEncryptionAlgorithm() *plugin.TValue[string] {
+	return &c.IpsecEncryptionAlgorithm
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetIpsecAuthenticationAlgorithm() *plugin.TValue[string] {
+	return &c.IpsecAuthenticationAlgorithm
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetIpsecPfs() *plugin.TValue[string] {
+	return &c.IpsecPfs
+}
+
+func (c *mqlAlicloudVpcVpnConnectionTunnel) GetIpsecLifetime() *plugin.TValue[int64] {
+	return &c.IpsecLifetime
 }
 
 // mqlAlicloudAcr for the alicloud.acr resource

@@ -3723,7 +3723,7 @@ alicloud.cs.cluster {
   // Deprecated in favor of alicloud.cs.cluster.apiServerAuditEnabled. This
   // reports whether control-plane log collection lists a component named audit,
   // which is not one of the components ACK collects.
-  auditLogEnabled() @maturity("deprecated") @replaced_by("alicloud.cs.cluster.apiServerAuditEnabled") bool
+  auditLogEnabled() @maturity("deprecated") bool
   // Whether Kubernetes API server audit logging is enabled
   //
   // True when cluster auditing records API server activity to Log Service. Null
@@ -5716,8 +5716,77 @@ alicloud.vpc.vpnConnection @defaults("vpnConnectionId name status") {
   ipsecLifetime int
   // Time the connection was created
   createTime time
+  // Tunnels the connection is built from
+  //
+  // A dual-tunnel connection negotiates IKE and IPsec separately for each
+  // tunnel, so every entry carries its own algorithms and lifetimes and a check
+  // that only reads ikeEncryptionAlgorithm and ipsecEncryptionAlgorithm misses
+  // whatever the second tunnel agreed to. Empty on a connection the API reports
+  // without per-tunnel options.
+  tunnels []alicloud.vpc.vpnConnection.tunnel
   // VPN gateway the connection terminates on
   vpnGateway() alicloud.vpc.vpnGateway
+}
+
+// VPN connection tunnel
+//
+// A single tunnel of an IPsec-VPN connection, keyed by tunnelId. A dual-tunnel
+// connection runs two tunnels that each negotiate their own IKE and IPsec
+// parameters, so the algorithms and lifetimes here describe that one tunnel and
+// the weaker of the pair is the one that matters. The pre-shared key is
+// deliberately not exposed.
+alicloud.vpc.vpnConnection.tunnel @defaults("tunnelId role status ikeEncryptionAlgorithm") {
+  // Tunnel ID, used as the lookup key
+  tunnelId string
+  // Position of the tunnel within the connection
+  //
+  // 1 for the first tunnel and 2 for the second on a dual-tunnel connection.
+  tunnelIndex int
+  // Which side of the pair the tunnel serves
+  //
+  // master for the tunnel carrying traffic, slave for the standby one.
+  role string
+  // Tunnel status, for example active or updating
+  status string
+  // Negotiation state of the tunnel
+  state string
+  // Public IP address the tunnel terminates on
+  internetIp string
+  // Whether dead peer detection is enabled on the tunnel
+  enableDpd bool
+  // Whether NAT traversal is enabled on the tunnel
+  enableNatTraversal bool
+  // IKE protocol version, either ikev1 or ikev2
+  ikeVersion string
+  // IKE negotiation mode, either main or aggressive
+  //
+  // Aggressive mode completes in fewer exchanges but sends identity
+  // information before the channel is encrypted.
+  ikeMode string
+  // Encryption algorithm negotiated for the key exchange
+  ikeEncryptionAlgorithm string
+  // Authentication algorithm negotiated for the key exchange
+  ikeAuthenticationAlgorithm string
+  // Diffie-Hellman group used for the key exchange
+  ikePfs string
+  // Lifetime of the key-exchange security association in seconds
+  //
+  // Null when the API reports no lifetime for the tunnel.
+  ikeLifetime int
+  // Identifier the Alibaba Cloud side presents during IKE negotiation
+  ikeLocalId string
+  // Identifier the remote peer presents during IKE negotiation
+  ikeRemoteId string
+  // Encryption algorithm protecting the tunnel payload
+  ipsecEncryptionAlgorithm string
+  // Authentication algorithm protecting the tunnel payload
+  ipsecAuthenticationAlgorithm string
+  // Diffie-Hellman group used to rekey the tunnel
+  ipsecPfs string
+  // Lifetime of the tunnel security association in seconds
+  //
+  // Null when the API reports no lifetime for the tunnel.
+  ipsecLifetime int
 }
 
 // Alibaba Cloud Container Registry
