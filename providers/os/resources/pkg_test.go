@@ -4,10 +4,16 @@
 package resources
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/fs"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 // freebsdConfLatest is usr.sbin/pkg/FreeBSD.conf.latest from freebsd-src,
@@ -260,16 +266,66 @@ func TestMergePkgRepos_QuotedPriorityDropsBlock(t *testing.T) {
 	assert.Empty(t, repos)
 }
 
+// TestPkgRepos_IgnoresSubdirectories pins the REPOS_DIR walk to the
+// directories themselves. files.find counts depth differently per
+// connection: the command backend hands it to `find -maxdepth`, where 1 is
+// the directory's own entries, and the filesystem backend counts 1 as one
+// level below those, so a filesystem scan sees files in subdirectories that
+// pkg never opens. A repository defined there is not a repository on the
+// host.
+func TestPkgRepos_IgnoresSubdirectories(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, content string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, os.WriteFile(p, []byte(content), 0o644))
+	}
+
+	write("etc/pkg/FreeBSD.conf", freebsdConfLatest)
+	write("usr/local/etc/pkg/repos/internal.conf",
+		`internal: { url: "https://pkg.example.internal/${ABI}", signature_type: "pubkey", pubkey: "/k.pub" }`)
+	write("usr/local/etc/pkg/repos/extra/nested.conf",
+		`nested: { url: "https://pkg.example.internal/nested" }`)
+
+	conn, err := fs.NewFileSystemConnectionWithClose(0, &inventory.Config{
+		Options: map[string]string{"path": root},
+	}, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "freebsd", Family: []string{"unix", "bsd"}},
+	}, nil)
+	require.NoError(t, err)
+
+	pkg := &mqlPkg{MqlRuntime: &plugin.Runtime{
+		Resources:  &syncx.Map[plugin.Resource]{},
+		Connection: conn,
+		Callback:   &providerCallbacks{},
+	}}
+
+	repos, err := pkg.repos()
+	require.NoError(t, err)
+
+	names := []string{}
+	for _, r := range repos {
+		names = append(names, r.(*mqlPkgRepo).Name.Data)
+	}
+	assert.Equal(t, []string{"FreeBSD-ports", "FreeBSD-ports-kmods", "FreeBSD-base", "internal"}, names)
+}
+
 func TestIsPkgConfigFile(t *testing.T) {
-	assert.True(t, isPkgConfigFile("/etc/pkg/FreeBSD.conf"))
-	assert.True(t, isPkgConfigFile("/usr/local/etc/pkg/repos/custom.conf"))
+	assert.True(t, isPkgConfigFile("/etc/pkg/FreeBSD.conf", "/etc/pkg"))
+	assert.True(t, isPkgConfigFile("/usr/local/etc/pkg/repos/custom.conf", "/usr/local/etc/pkg/repos"))
+	assert.True(t, isPkgConfigFile("/etc/pkg/FreeBSD.conf", "/etc/pkg/"))
+
+	// pkg reads each REPOS_DIR entry with scandir and never descends
+	assert.False(t, isPkgConfigFile("/usr/local/etc/pkg/repos/extra/nested.conf", "/usr/local/etc/pkg/repos"))
+	assert.False(t, isPkgConfigFile("/etc/pkg/disabled/FreeBSD.conf", "/etc/pkg"))
 
 	// pkg requires a name longer than ".conf" itself
-	assert.False(t, isPkgConfigFile("/etc/pkg/.conf"))
+	assert.False(t, isPkgConfigFile("/etc/pkg/.conf", "/etc/pkg"))
 	// dotfiles are skipped, so an editor's backup never becomes a repository
-	assert.False(t, isPkgConfigFile("/usr/local/etc/pkg/repos/.FreeBSD.conf"))
-	assert.False(t, isPkgConfigFile("/etc/pkg/FreeBSD.conf.bak"))
-	assert.False(t, isPkgConfigFile("/etc/pkg/README"))
+	assert.False(t, isPkgConfigFile("/usr/local/etc/pkg/repos/.FreeBSD.conf", "/usr/local/etc/pkg/repos"))
+	assert.False(t, isPkgConfigFile("/etc/pkg/FreeBSD.conf.bak", "/etc/pkg"))
+	assert.False(t, isPkgConfigFile("/etc/pkg/README", "/etc/pkg"))
 }
 
 func TestPkgBool(t *testing.T) {

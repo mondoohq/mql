@@ -96,6 +96,11 @@ func (p *mqlPkg) configFiles() ([]*mqlFile, error) {
 	var out []*mqlFile
 
 	for _, dir := range pkgReposDirs {
+		// depth is not the same level count on every connection: the
+		// command backend passes it to `find -maxdepth`, where 1 is the
+		// directory's own entries, while the filesystem backend counts 1 as
+		// one directory below those. Ask for the wider of the two and drop
+		// what is not a direct child.
 		o, err := CreateResource(p.MqlRuntime, "files.find", map[string]*llx.RawData{
 			"from":  llx.StringData(dir),
 			"type":  llx.StringData("file"),
@@ -117,7 +122,7 @@ func (p *mqlPkg) configFiles() ([]*mqlFile, error) {
 			if !ok {
 				continue
 			}
-			if !isPkgConfigFile(mf.Path.Data) {
+			if !isPkgConfigFile(mf.Path.Data, dir) {
 				continue
 			}
 			found = append(found, mf)
@@ -131,11 +136,16 @@ func (p *mqlPkg) configFiles() ([]*mqlFile, error) {
 	return out, nil
 }
 
-// isPkgConfigFile reports whether pkg would read this file. libpkg's
-// configfile() filter skips dotfiles and requires a name longer than
-// ".conf" itself, so a file named exactly ".conf" is ignored where
-// "a.conf" is read.
-func isPkgConfigFile(p string) bool {
+// isPkgConfigFile reports whether pkg would read this file as part of dir.
+// libpkg reads each REPOS_DIR entry with scandir and never descends, so a
+// file in a subdirectory is not configuration whatever it is called. Its
+// configfile() filter then skips dotfiles and requires a name longer than
+// ".conf" itself, so a file named exactly ".conf" is ignored where "a.conf"
+// is read.
+func isPkgConfigFile(p string, dir string) bool {
+	if path.Dir(p) != path.Clean(dir) {
+		return false
+	}
 	base := path.Base(p)
 	if strings.HasPrefix(base, ".") {
 		return false
