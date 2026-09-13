@@ -209,6 +209,7 @@ var validatedGCPPermissions = []string{
 	"dlp.projectDataProfiles.list",
 	"dlp.storedInfoTypes.list",
 	"dlp.tableDataProfiles.list",
+	"dns.dnsKeys.list",
 	"dns.managedZones.getIamPolicy",
 	"dns.managedZones.list",
 	"dns.policies.list",

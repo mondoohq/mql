@@ -112,6 +112,7 @@ const (
 	ResourceGcpProjectCloudDomainsServiceRegistration                                  string = "gcp.project.cloudDomainsService.registration"
 	ResourceGcpProjectDnsService                                                       string = "gcp.project.dnsService"
 	ResourceGcpProjectDnsServiceManagedzone                                            string = "gcp.project.dnsService.managedzone"
+	ResourceGcpProjectDnsServiceManagedzoneDnsKey                                      string = "gcp.project.dnsService.managedzone.dnsKey"
 	ResourceGcpProjectDnsServiceRecordset                                              string = "gcp.project.dnsService.recordset"
 	ResourceGcpProjectDnsServicePolicy                                                 string = "gcp.project.dnsService.policy"
 	ResourceGcpProjectDnsServiceResponsePolicy                                         string = "gcp.project.dnsService.responsePolicy"
@@ -890,6 +891,10 @@ func init() {
 		"gcp.project.dnsService.managedzone": {
 			Init:   initGcpProjectDnsServiceManagedzone,
 			Create: createGcpProjectDnsServiceManagedzone,
+		},
+		"gcp.project.dnsService.managedzone.dnsKey": {
+			// to override args, implement: initGcpProjectDnsServiceManagedzoneDnsKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectDnsServiceManagedzoneDnsKey,
 		},
 		"gcp.project.dnsService.recordset": {
 			// to override args, implement: initGcpProjectDnsServiceRecordset(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -6796,6 +6801,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.dnsService.managedzone.dnsSecAlgorithmWeak": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectDnsServiceManagedzone).GetDnsSecAlgorithmWeak()).ToDataRes(types.Bool)
 	},
+	"gcp.project.dnsService.managedzone.dnsKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDnsServiceManagedzone).GetDnsKeys()).ToDataRes(types.Array(types.Resource("gcp.project.dnsService.managedzone.dnsKey")))
+	},
 	"gcp.project.dnsService.managedzone.dnssecDefaultKeyAlgorithms": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectDnsServiceManagedzone).GetDnssecDefaultKeyAlgorithms()).ToDataRes(types.Array(types.String))
 	},
@@ -6828,6 +6836,36 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.dnsService.managedzone.managedBy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectDnsServiceManagedzone).GetManagedBy()).ToDataRes(types.String)
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).GetId()).ToDataRes(types.String)
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.keyTag": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).GetKeyTag()).ToDataRes(types.Int)
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.algorithm": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).GetAlgorithm()).ToDataRes(types.String)
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.keyLength": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).GetKeyLength()).ToDataRes(types.Int)
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).GetType()).ToDataRes(types.String)
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.isActive": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).GetIsActive()).ToDataRes(types.Bool)
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.creationTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).GetCreationTime()).ToDataRes(types.Time)
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.publicKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).GetPublicKey()).ToDataRes(types.String)
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.digests": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).GetDigests()).ToDataRes(types.Array(types.Dict))
 	},
 	"gcp.project.dnsService.recordset.projectId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectDnsServiceRecordset).GetProjectId()).ToDataRes(types.String)
@@ -25154,6 +25192,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectDnsServiceManagedzone).DnsSecAlgorithmWeak, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"gcp.project.dnsService.managedzone.dnsKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDnsServiceManagedzone).DnsKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"gcp.project.dnsService.managedzone.dnssecDefaultKeyAlgorithms": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectDnsServiceManagedzone).DnssecDefaultKeyAlgorithms, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -25196,6 +25238,50 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.dnsService.managedzone.managedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectDnsServiceManagedzone).ManagedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.keyTag": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).KeyTag, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.algorithm": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).Algorithm, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.keyLength": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).KeyLength, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.isActive": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).IsActive, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.creationTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).CreationTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.publicKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).PublicKey, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.dnsService.managedzone.dnsKey.digests": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).Digests, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"gcp.project.dnsService.recordset.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -57670,6 +57756,7 @@ type mqlGcpProjectDnsServiceManagedzone struct {
 	DnssecEnabled                plugin.TValue[bool]
 	DnssecNonExistence           plugin.TValue[string]
 	DnsSecAlgorithmWeak          plugin.TValue[bool]
+	DnsKeys                      plugin.TValue[[]any]
 	DnssecDefaultKeyAlgorithms   plugin.TValue[[]any]
 	PrivateVisibilityConfig      plugin.TValue[any]
 	AuthorizedNetworks           plugin.TValue[[]any]
@@ -57782,6 +57869,22 @@ func (c *mqlGcpProjectDnsServiceManagedzone) GetDnsSecAlgorithmWeak() *plugin.TV
 	})
 }
 
+func (c *mqlGcpProjectDnsServiceManagedzone) GetDnsKeys() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DnsKeys, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.dnsService.managedzone", c.__id, "dnsKeys")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.dnsKeys()
+	})
+}
+
 func (c *mqlGcpProjectDnsServiceManagedzone) GetDnssecDefaultKeyAlgorithms() *plugin.TValue[[]any] {
 	return &c.DnssecDefaultKeyAlgorithms
 }
@@ -57874,6 +57977,95 @@ func (c *mqlGcpProjectDnsServiceManagedzone) GetManagedBy() *plugin.TValue[strin
 	return plugin.GetOrCompute[string](&c.ManagedBy, func() (string, error) {
 		return c.managedBy()
 	})
+}
+
+// mqlGcpProjectDnsServiceManagedzoneDnsKey for the gcp.project.dnsService.managedzone.dnsKey resource
+type mqlGcpProjectDnsServiceManagedzoneDnsKey struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectDnsServiceManagedzoneDnsKeyInternal it will be used here
+	Id           plugin.TValue[string]
+	KeyTag       plugin.TValue[int64]
+	Algorithm    plugin.TValue[string]
+	KeyLength    plugin.TValue[int64]
+	Type         plugin.TValue[string]
+	IsActive     plugin.TValue[bool]
+	CreationTime plugin.TValue[*time.Time]
+	Description  plugin.TValue[string]
+	PublicKey    plugin.TValue[string]
+	Digests      plugin.TValue[[]any]
+}
+
+// createGcpProjectDnsServiceManagedzoneDnsKey creates a new instance of this resource
+func createGcpProjectDnsServiceManagedzoneDnsKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectDnsServiceManagedzoneDnsKey{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.dnsService.managedzone.dnsKey", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectDnsServiceManagedzoneDnsKey) MqlName() string {
+	return "gcp.project.dnsService.managedzone.dnsKey"
+}
+
+func (c *mqlGcpProjectDnsServiceManagedzoneDnsKey) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectDnsServiceManagedzoneDnsKey) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlGcpProjectDnsServiceManagedzoneDnsKey) GetKeyTag() *plugin.TValue[int64] {
+	return &c.KeyTag
+}
+
+func (c *mqlGcpProjectDnsServiceManagedzoneDnsKey) GetAlgorithm() *plugin.TValue[string] {
+	return &c.Algorithm
+}
+
+func (c *mqlGcpProjectDnsServiceManagedzoneDnsKey) GetKeyLength() *plugin.TValue[int64] {
+	return &c.KeyLength
+}
+
+func (c *mqlGcpProjectDnsServiceManagedzoneDnsKey) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlGcpProjectDnsServiceManagedzoneDnsKey) GetIsActive() *plugin.TValue[bool] {
+	return &c.IsActive
+}
+
+func (c *mqlGcpProjectDnsServiceManagedzoneDnsKey) GetCreationTime() *plugin.TValue[*time.Time] {
+	return &c.CreationTime
+}
+
+func (c *mqlGcpProjectDnsServiceManagedzoneDnsKey) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectDnsServiceManagedzoneDnsKey) GetPublicKey() *plugin.TValue[string] {
+	return &c.PublicKey
+}
+
+func (c *mqlGcpProjectDnsServiceManagedzoneDnsKey) GetDigests() *plugin.TValue[[]any] {
+	return &c.Digests
 }
 
 // mqlGcpProjectDnsServiceRecordset for the gcp.project.dnsService.recordset resource
