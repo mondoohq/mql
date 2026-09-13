@@ -165,8 +165,20 @@ func (s Status) renderMql(b *strings.Builder, st styler) {
 		st.row(b, "Config", st.dim("defaults — no config file loaded"))
 	}
 	st.row(b, "Updates", s.Client.UpdatesURL)
-	if s.Client.UpdateChannel != "" && s.Client.UpdateChannel != config.ChannelStable {
-		st.row(b, "Channel", st.value(s.Client.UpdateChannel))
+
+	// Always shown, dimmed when it is the default -- the same shape as the
+	// Config row above, which reports "no config file loaded" rather than
+	// disappearing.
+	//
+	// Hiding the stable case makes an absent row ambiguous, and the ambiguity
+	// lands in exactly the conversation this is for: a missing Channel could
+	// mean the machine is on stable, or that it is running a binary old enough
+	// not to report a channel at all. Those need different answers.
+	switch s.Client.UpdateChannel {
+	case config.ChannelPreview:
+		st.row(b, "Channel", st.value(config.ChannelPreview)+"  "+st.dim("· pre-releases"))
+	default:
+		st.row(b, "Channel", st.dim(config.ChannelStable+" — the default"))
 	}
 }
 
