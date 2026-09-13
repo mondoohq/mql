@@ -3720,13 +3720,25 @@ alicloud.cs.cluster {
   oidcIssuerUrl() string
   // Whether Kubernetes API server audit logging is enabled
   //
-  // True when the control-plane audit component ships logs to Log Service. When
-  // false, API server activity is not being recorded.
-  auditLogEnabled() bool
+  // Deprecated in favor of alicloud.cs.cluster.apiServerAuditEnabled. This
+  // reports whether control-plane log collection lists a component named audit,
+  // which is not one of the components ACK collects.
+  auditLogEnabled() @maturity("deprecated") @replaced_by("alicloud.cs.cluster.apiServerAuditEnabled") bool
+  // Whether Kubernetes API server audit logging is enabled
+  //
+  // True when cluster auditing records API server activity to Log Service. Null
+  // when the cluster auditing configuration does not report the setting.
+  apiServerAuditEnabled() bool
+  // Log Service project that receives the API server audit logs
+  //
+  // Null when cluster auditing is not configured.
+  apiServerAuditLogProject() alicloud.log.project
   // Control-plane components shipping logs to Log Service
   //
-  // For example apiserver, audit, kcm (kube-controller-manager), scheduler, or
-  // ccm (cloud-controller-manager). Empty when control-plane logging is off.
+  // For example kube-apiserver, kube-controller-manager, kube-scheduler, ccm
+  // (cloud-controller-manager), or controlplane-events. Empty when control-plane
+  // logging is off. API server audit logs are a separate feature, reported by
+  // apiServerAuditEnabled.
   controlPlaneLogComponents() []string
   // Retention in days of the control-plane logs, 0 when logging is disabled
   controlPlaneLogTtl() int
