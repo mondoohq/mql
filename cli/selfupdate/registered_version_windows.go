@@ -12,11 +12,13 @@ import (
 
 const (
 	// mondooInstallKey is written by the MSI. It exists so a self-updating
-	// binary can find the package that installed it without compiling in any
-	// GUID: the ProductCode is regenerated on every build (the WiX Product
-	// carries Id="*"), so it is not knowable ahead of time, and the
-	// UpgradeCode differs per SKU and per architecture. The installer knows
-	// both; the binary should not have to.
+	// binary can find the package that installed it without inferring
+	// anything: the ProductCode is regenerated on every build (the WiX Product
+	// carries Id="*"), so it is not knowable ahead of time. The installer
+	// knows it exactly, and says so here.
+	//
+	// Installs predating this key are found through the UpgradeCode instead,
+	// which is stable by design. See productCodeFromUpgradeCodes.
 	mondooInstallKey = `SOFTWARE\Mondoo`
 
 	// productCodeValue names the installed package's ProductCode, which is the
@@ -100,9 +102,33 @@ func registeredDisplayVersion(path string) (string, error) {
 	return v, err
 }
 
-// installedProductCode reads the ProductCode the MSI recorded, or "" when
-// there is no MSI install on this machine.
+// installedProductCode returns the ProductCode of the installed package, or ""
+// when there is no MSI install on this machine.
+//
+// The pointer key is authoritative and is tried first. It is written by the
+// installer, so it names the package exactly and costs one registry read.
+//
+// It is only present on installs made by an MSI new enough to write it, which
+// leaves every package installed before then -- the whole installed base at
+// the time this was added -- with no way to be found. Those installs are the
+// ones that most need correcting, because they will not receive a value from a
+// newer MSI until they take one, and by then the MSI has set DisplayVersion
+// itself. Falling back to the UpgradeCode reaches them on their next update
+// instead of their next reinstall.
 func installedProductCode() (string, error) {
+	productCode, err := recordedProductCode()
+	if err != nil {
+		return "", err
+	}
+	if productCode != "" {
+		return productCode, nil
+	}
+	return productCodeFromUpgradeCodes()
+}
+
+// recordedProductCode reads the ProductCode the MSI recorded, or "" when the
+// installer did not write one.
+func recordedProductCode() (string, error) {
 	k, err := registry.OpenKey(
 		registry.LOCAL_MACHINE,
 		mondooInstallKey,

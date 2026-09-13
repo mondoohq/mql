@@ -6,6 +6,7 @@
 package selfupdate
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -59,4 +60,66 @@ func TestUpdateRegisteredVersion(t *testing.T) {
 	still, err := registeredDisplayVersion(path)
 	require.NoError(t, err)
 	require.Equal(t, want, still, "a refused write must not have changed anything")
+}
+
+// TestProductCodeFromUpgradeCodes exercises the fallback that finds the
+// installed package when the installer recorded no ProductCode. Like the test
+// above it needs a real MSI install, and skips without one.
+//
+// This is the path every package installed before the pointer key existed
+// takes, so it is the one that decides whether those installs ever report the
+// version they are actually running.
+func TestProductCodeFromUpgradeCodes(t *testing.T) {
+	productCode, err := productCodeFromUpgradeCodes()
+	require.NoError(t, err)
+	if productCode == "" {
+		t.Skip("no Mondoo MSI install on this machine")
+	}
+	t.Logf("resolved ProductCode from UpgradeCode: %s", productCode)
+
+	require.True(t, isMondooUninstallEntry(productCode),
+		"the resolved product should have a Mondoo Add/Remove entry")
+
+	// When the installer did record a ProductCode, the two routes have to
+	// agree. Disagreement would mean the fallback can write to the wrong
+	// package on machines that have both.
+	if recorded, err := recordedProductCode(); err == nil && recorded != "" {
+		require.Equal(t, recorded, productCode,
+			"the UpgradeCode lookup should resolve the same package the installer recorded")
+	}
+}
+
+// TestRelatedProductCodeUnknownUpgradeCode pins the contract that an
+// UpgradeCode nothing is installed under is an ordinary answer and not an
+// error. Every SKU the machine does not have takes this path on every update
+// check, so treating it as a fault would make the common case noisy.
+func TestRelatedProductCodeUnknownUpgradeCode(t *testing.T) {
+	// A syntactically valid GUID that no product registers.
+	productCode, err := relatedProductCode("{0F7E9A21-4C3B-4D5E-8A6F-1B2C3D4E5F60}")
+	require.NoError(t, err)
+	require.Empty(t, productCode)
+}
+
+// TestRelatedProductCodeRejectsMalformed confirms a malformed UpgradeCode is
+// reported rather than silently treated as "nothing installed", which would
+// hide a typo in the upgradeCodes list.
+func TestRelatedProductCodeRejectsMalformed(t *testing.T) {
+	_, err := relatedProductCode("not-a-guid")
+	require.Error(t, err)
+}
+
+// TestUpgradeCodesAreWellFormed guards the hand-maintained list against a typo
+// that would silently disable the fallback: a malformed entry returns an error
+// and is skipped, so the list would degrade without anything failing.
+func TestUpgradeCodesAreWellFormed(t *testing.T) {
+	require.NotEmpty(t, upgradeCodes)
+	seen := map[string]bool{}
+	for _, code := range upgradeCodes {
+		require.Len(t, code, productCodeGUIDLen-1, "%s should be a registry-format GUID", code)
+		require.True(t, strings.HasPrefix(code, "{"), "%s should be brace wrapped", code)
+		require.True(t, strings.HasSuffix(code, "}"), "%s should be brace wrapped", code)
+		require.Equal(t, strings.ToUpper(code), code, "%s should be upper case", code)
+		require.False(t, seen[code], "%s is listed twice", code)
+		seen[code] = true
+	}
 }
