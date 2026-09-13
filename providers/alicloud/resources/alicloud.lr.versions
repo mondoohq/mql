@@ -936,6 +936,7 @@ alicloud.ecs.securitygroup.permission.destPrefixListId 13.0.0
 alicloud.ecs.securitygroup.permission.destSecurityGroup 13.0.0
 alicloud.ecs.securitygroup.permission.destinationCidrs 13.5.1
 alicloud.ecs.securitygroup.permission.direction 13.0.0
+alicloud.ecs.securitygroup.permission.fromPort 13.5.1
 alicloud.ecs.securitygroup.permission.ipProtocol 13.0.0
 alicloud.ecs.securitygroup.permission.ipv6DestCidrIp 13.0.0
 alicloud.ecs.securitygroup.permission.ipv6DestinationCidrs 13.5.1
@@ -952,6 +953,7 @@ alicloud.ecs.securitygroup.permission.sourcePortRange 13.0.0
 alicloud.ecs.securitygroup.permission.sourcePrefixList 13.4.1
 alicloud.ecs.securitygroup.permission.sourcePrefixListId 13.0.0
 alicloud.ecs.securitygroup.permission.sourceSecurityGroup 13.0.0
+alicloud.ecs.securitygroup.permission.toPort 13.5.1
 alicloud.ecs.securitygroup.permissions 13.0.0
 alicloud.ecs.securitygroup.regionId 13.0.0
 alicloud.ecs.securitygroup.resourceGroup 13.3.2
@@ -2275,12 +2277,14 @@ alicloud.vpc.networkAcl.entry.destinationCidrIp 13.4.1
 alicloud.vpc.networkAcl.entry.direction 13.4.1
 alicloud.vpc.networkAcl.entry.entryId 13.4.1
 alicloud.vpc.networkAcl.entry.entryType 13.4.1
+alicloud.vpc.networkAcl.entry.fromPort 13.5.1
 alicloud.vpc.networkAcl.entry.ipVersion 13.4.1
 alicloud.vpc.networkAcl.entry.name 13.4.1
 alicloud.vpc.networkAcl.entry.policy 13.4.1
 alicloud.vpc.networkAcl.entry.port 13.4.1
 alicloud.vpc.networkAcl.entry.protocol 13.4.1
 alicloud.vpc.networkAcl.entry.sourceCidrIp 13.4.1
+alicloud.vpc.networkAcl.entry.toPort 13.5.1
 alicloud.vpc.networkAcl.ingressAclEntries 13.0.0
 alicloud.vpc.networkAcl.ingressEntries 13.4.1
 alicloud.vpc.networkAcl.networkAclId 13.0.0
