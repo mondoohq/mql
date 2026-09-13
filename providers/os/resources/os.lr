@@ -9338,6 +9338,52 @@ private apt.repo @defaults("type url distribution") {
   file file
 }
 
+// FreeBSD pkg configuration
+//
+// FreeBSD package manager configuration. `repos` enumerates every
+// repository pkg would use, read from `/etc/pkg/` and then
+// `/usr/local/etc/pkg/repos/` and merged the way pkg merges them, so a
+// later file redefining a repository by name overrides only the keys it
+// sets. Audit repository trust from there: each `pkg.repo` reports the
+// `signatureType` pkg verifies it with and the key material that
+// verification reads.
+pkg {
+  // All configured pkg repositories
+  repos() []pkg.repo
+}
+
+// FreeBSD pkg repository
+//
+// A single repository pkg would use, named by the configuration block
+// that declares it and merged across every file that redefines that
+// name. `url` is where packages are fetched from, `enabled` reports
+// whether pkg consults the repository, `mirrorType` how mirrors are
+// resolved, and `priority` which repository wins when several offer the
+// same package. The security-relevant field is `signatureType`: `none`
+// means pkg installs from the repository without verifying a signature.
+// `fingerprints` and `pubkey` carry the key material the other two
+// schemes verify against.
+private pkg.repo @defaults("name url signatureType") {
+  // Repository name as declared in the configuration
+  name string
+  // Location packages are fetched from
+  url string
+  // Whether pkg consults this repository
+  enabled bool
+  // How mirrors are resolved: `srv`, `http`, or `none`
+  mirrorType string
+  // Signature scheme the repository is verified with: `fingerprints`, `pubkey`, or `none`
+  signatureType string
+  // Directory holding the fingerprints of keys trusted to sign the repository, null when unset
+  fingerprints() file
+  // Public key the repository signature is verified against, null when unset
+  pubkey() file
+  // Rank against the other repositories when several offer the same package, higher wins
+  priority int
+  // Configuration file that last declared this repository
+  file file
+}
+
 // Windows registry key
 //
 // A Windows registry key selected by `path`, exposing its value entries
