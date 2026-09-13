@@ -745,6 +745,7 @@ alicloud.es.instance.tags 13.4.1
 alicloud.es.instance.updatedAt 13.4.1
 alicloud.es.instance.vpc 13.4.1
 alicloud.es.instance.vswitch 13.4.1
+alicloud.es.instance.whitelistAllowsAllAddresses 13.5.1
 alicloud.es.instance.zoneCount 13.4.1
 alicloud.es.instances 13.4.1
 alicloud.ess 13.2.5
@@ -991,6 +992,7 @@ alicloud.mongodb.instance.tdeEnabled 13.0.0
 alicloud.mongodb.instance.vpc 13.0.0
 alicloud.mongodb.instance.vpcAuthMode 13.0.0
 alicloud.mongodb.instance.vswitch 13.0.0
+alicloud.mongodb.instance.whitelistAllowsAllAddresses 13.5.1
 alicloud.mongodb.instance.zoneId 13.0.0
 alicloud.mongodb.instances 13.0.0
 alicloud.nas 13.0.1
@@ -1221,6 +1223,7 @@ alicloud.polardb.cluster.tags 13.0.0
 alicloud.polardb.cluster.tdeEnabled 13.0.0
 alicloud.polardb.cluster.vpc 13.0.0
 alicloud.polardb.cluster.vswitch 13.0.0
+alicloud.polardb.cluster.whitelistAllowsAllAddresses 13.5.1
 alicloud.polardb.cluster.zoneId 13.0.0
 alicloud.polardb.clusters 13.0.0
 alicloud.ram 13.0.0
@@ -1346,6 +1349,7 @@ alicloud.rds.instance.tdeEnabled 13.0.0
 alicloud.rds.instance.vectorSupportStatus 13.4.1
 alicloud.rds.instance.vpc 13.0.0
 alicloud.rds.instance.vswitch 13.0.0
+alicloud.rds.instance.whitelistAllowsAllAddresses 13.5.1
 alicloud.rds.instance.zoneId 13.0.0
 alicloud.rds.instances 13.0.0
 alicloud.redis 13.0.0
@@ -1384,6 +1388,7 @@ alicloud.redis.instance.tags 13.0.0
 alicloud.redis.instance.tdeEnabled 13.0.0
 alicloud.redis.instance.vpc 13.0.0
 alicloud.redis.instance.vswitch 13.0.0
+alicloud.redis.instance.whitelistAllowsAllAddresses 13.5.1
 alicloud.redis.instance.zoneId 13.0.0
 alicloud.redis.instances 13.0.0
 alicloud.regions 13.0.0
