@@ -52,6 +52,7 @@ alias os.base.opencode = opencode
 alias os.base.openhands = openhands
 alias os.base.package = package
 alias os.base.pi = pi
+alias os.base.pkg = pkg
 alias os.base.podman = podman
 alias os.base.port = port
 alias os.base.ports = ports
