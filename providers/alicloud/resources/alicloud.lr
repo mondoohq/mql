@@ -815,6 +815,23 @@ alicloud.ecs.securitygroup.permission @defaults("direction ipProtocol portRange 
   sourcePrefixList() alicloud.ecs.prefixList
   // Source IPv6 CIDR block for an inbound rule
   ipv6SourceCidrIp string
+  // Effective IPv4 source CIDR blocks of an inbound rule
+  //
+  // Combines sourceCidrIp with the cidrBlocks of the prefix list the rule is
+  // scoped to, so one list holds every IPv4 address the rule admits. An entry
+  // of 0.0.0.0/0 means the rule admits the whole internet. Empty for an
+  // outbound rule, for a rule scoped to a security group, and for a rule whose
+  // only source is IPv6. When the prefix list cannot be read, the list carries
+  // only the rule's own sourceCidrIp.
+  sourceCidrs() []string
+  // Effective IPv6 source CIDR blocks of an inbound rule
+  //
+  // Combines ipv6SourceCidrIp with the cidrBlocks of the prefix list the rule
+  // is scoped to, when that list holds IPv6 entries. An entry of ::/0 means the
+  // rule admits the whole IPv6 internet. Empty for an outbound rule and for a
+  // rule whose only source is IPv4. When the prefix list cannot be read, the
+  // list carries only the rule's own ipv6SourceCidrIp.
+  ipv6SourceCidrs() []string
   // Destination IPv4 CIDR block for an outbound rule
   destCidrIp string
   // Destination security group for an outbound rule
@@ -831,6 +848,23 @@ alicloud.ecs.securitygroup.permission @defaults("direction ipProtocol portRange 
   destPrefixList() alicloud.ecs.prefixList
   // Destination IPv6 CIDR block for an outbound rule
   ipv6DestCidrIp string
+  // Effective IPv4 destination CIDR blocks of an outbound rule
+  //
+  // Combines destCidrIp with the cidrBlocks of the prefix list the rule is
+  // scoped to, so one list holds every IPv4 address the rule permits traffic to
+  // reach. An entry of 0.0.0.0/0 means the rule permits traffic to the whole
+  // internet. Empty for an inbound rule, for a rule scoped to a security group,
+  // and for a rule whose only destination is IPv6. When the prefix list cannot
+  // be read, the list carries only the rule's own destCidrIp.
+  destinationCidrs() []string
+  // Effective IPv6 destination CIDR blocks of an outbound rule
+  //
+  // Combines ipv6DestCidrIp with the cidrBlocks of the prefix list the rule is
+  // scoped to, when that list holds IPv6 entries. An entry of ::/0 means the
+  // rule permits traffic to the whole IPv6 internet. Empty for an inbound rule
+  // and for a rule whose only destination is IPv4. When the prefix list cannot
+  // be read, the list carries only the rule's own ipv6DestCidrIp.
+  ipv6DestinationCidrs() []string
   // Rule description
   description string
   // Time when the rule was created

@@ -1390,6 +1390,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"alicloud.ecs.securitygroup.permission.ipv6SourceCidrIp": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudEcsSecuritygroupPermission).GetIpv6SourceCidrIp()).ToDataRes(types.String)
 	},
+	"alicloud.ecs.securitygroup.permission.sourceCidrs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEcsSecuritygroupPermission).GetSourceCidrs()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.ecs.securitygroup.permission.ipv6SourceCidrs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEcsSecuritygroupPermission).GetIpv6SourceCidrs()).ToDataRes(types.Array(types.String))
+	},
 	"alicloud.ecs.securitygroup.permission.destCidrIp": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudEcsSecuritygroupPermission).GetDestCidrIp()).ToDataRes(types.String)
 	},
@@ -1404,6 +1410,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"alicloud.ecs.securitygroup.permission.ipv6DestCidrIp": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudEcsSecuritygroupPermission).GetIpv6DestCidrIp()).ToDataRes(types.String)
+	},
+	"alicloud.ecs.securitygroup.permission.destinationCidrs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEcsSecuritygroupPermission).GetDestinationCidrs()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.ecs.securitygroup.permission.ipv6DestinationCidrs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEcsSecuritygroupPermission).GetIpv6DestinationCidrs()).ToDataRes(types.Array(types.String))
 	},
 	"alicloud.ecs.securitygroup.permission.description": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudEcsSecuritygroupPermission).GetDescription()).ToDataRes(types.String)
@@ -7079,6 +7091,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAlicloudEcsSecuritygroupPermission).Ipv6SourceCidrIp, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"alicloud.ecs.securitygroup.permission.sourceCidrs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEcsSecuritygroupPermission).SourceCidrs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.ecs.securitygroup.permission.ipv6SourceCidrs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEcsSecuritygroupPermission).Ipv6SourceCidrs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"alicloud.ecs.securitygroup.permission.destCidrIp": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudEcsSecuritygroupPermission).DestCidrIp, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -7097,6 +7117,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"alicloud.ecs.securitygroup.permission.ipv6DestCidrIp": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudEcsSecuritygroupPermission).Ipv6DestCidrIp, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.ecs.securitygroup.permission.destinationCidrs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEcsSecuritygroupPermission).DestinationCidrs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.ecs.securitygroup.permission.ipv6DestinationCidrs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEcsSecuritygroupPermission).Ipv6DestinationCidrs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"alicloud.ecs.securitygroup.permission.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -16032,26 +16060,30 @@ type mqlAlicloudEcsSecuritygroupPermission struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAlicloudEcsSecuritygroupPermissionInternal
-	SecurityGroupRuleId plugin.TValue[string]
-	Direction           plugin.TValue[string]
-	Policy              plugin.TValue[string]
-	Priority            plugin.TValue[string]
-	IpProtocol          plugin.TValue[string]
-	NicType             plugin.TValue[string]
-	PortRange           plugin.TValue[string]
-	SourcePortRange     plugin.TValue[string]
-	SourceCidrIp        plugin.TValue[string]
-	SourceSecurityGroup plugin.TValue[*mqlAlicloudEcsSecuritygroup]
-	SourcePrefixListId  plugin.TValue[string]
-	SourcePrefixList    plugin.TValue[*mqlAlicloudEcsPrefixList]
-	Ipv6SourceCidrIp    plugin.TValue[string]
-	DestCidrIp          plugin.TValue[string]
-	DestSecurityGroup   plugin.TValue[*mqlAlicloudEcsSecuritygroup]
-	DestPrefixListId    plugin.TValue[string]
-	DestPrefixList      plugin.TValue[*mqlAlicloudEcsPrefixList]
-	Ipv6DestCidrIp      plugin.TValue[string]
-	Description         plugin.TValue[string]
-	CreateTime          plugin.TValue[*time.Time]
+	SecurityGroupRuleId  plugin.TValue[string]
+	Direction            plugin.TValue[string]
+	Policy               plugin.TValue[string]
+	Priority             plugin.TValue[string]
+	IpProtocol           plugin.TValue[string]
+	NicType              plugin.TValue[string]
+	PortRange            plugin.TValue[string]
+	SourcePortRange      plugin.TValue[string]
+	SourceCidrIp         plugin.TValue[string]
+	SourceSecurityGroup  plugin.TValue[*mqlAlicloudEcsSecuritygroup]
+	SourcePrefixListId   plugin.TValue[string]
+	SourcePrefixList     plugin.TValue[*mqlAlicloudEcsPrefixList]
+	Ipv6SourceCidrIp     plugin.TValue[string]
+	SourceCidrs          plugin.TValue[[]any]
+	Ipv6SourceCidrs      plugin.TValue[[]any]
+	DestCidrIp           plugin.TValue[string]
+	DestSecurityGroup    plugin.TValue[*mqlAlicloudEcsSecuritygroup]
+	DestPrefixListId     plugin.TValue[string]
+	DestPrefixList       plugin.TValue[*mqlAlicloudEcsPrefixList]
+	Ipv6DestCidrIp       plugin.TValue[string]
+	DestinationCidrs     plugin.TValue[[]any]
+	Ipv6DestinationCidrs plugin.TValue[[]any]
+	Description          plugin.TValue[string]
+	CreateTime           plugin.TValue[*time.Time]
 }
 
 // createAlicloudEcsSecuritygroupPermission creates a new instance of this resource
@@ -16167,6 +16199,18 @@ func (c *mqlAlicloudEcsSecuritygroupPermission) GetIpv6SourceCidrIp() *plugin.TV
 	return &c.Ipv6SourceCidrIp
 }
 
+func (c *mqlAlicloudEcsSecuritygroupPermission) GetSourceCidrs() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SourceCidrs, func() ([]any, error) {
+		return c.sourceCidrs()
+	})
+}
+
+func (c *mqlAlicloudEcsSecuritygroupPermission) GetIpv6SourceCidrs() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Ipv6SourceCidrs, func() ([]any, error) {
+		return c.ipv6SourceCidrs()
+	})
+}
+
 func (c *mqlAlicloudEcsSecuritygroupPermission) GetDestCidrIp() *plugin.TValue[string] {
 	return &c.DestCidrIp
 }
@@ -16209,6 +16253,18 @@ func (c *mqlAlicloudEcsSecuritygroupPermission) GetDestPrefixList() *plugin.TVal
 
 func (c *mqlAlicloudEcsSecuritygroupPermission) GetIpv6DestCidrIp() *plugin.TValue[string] {
 	return &c.Ipv6DestCidrIp
+}
+
+func (c *mqlAlicloudEcsSecuritygroupPermission) GetDestinationCidrs() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DestinationCidrs, func() ([]any, error) {
+		return c.destinationCidrs()
+	})
+}
+
+func (c *mqlAlicloudEcsSecuritygroupPermission) GetIpv6DestinationCidrs() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Ipv6DestinationCidrs, func() ([]any, error) {
+		return c.ipv6DestinationCidrs()
+	})
 }
 
 func (c *mqlAlicloudEcsSecuritygroupPermission) GetDescription() *plugin.TValue[string] {
