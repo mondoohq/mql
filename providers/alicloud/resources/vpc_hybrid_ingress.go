@@ -330,33 +330,41 @@ func (r *mqlAlicloudVpc) customerGateways() ([]any, error) {
 	return res, nil
 }
 
-// customerGateway resolves the remote end of the tunnel out of the account-wide
-// customer gateway listing.
-func (r *mqlAlicloudVpcVpnConnection) customerGateway() (*mqlAlicloudVpcCustomerGateway, error) {
-	wanted := r.CustomerGatewayId.Data
+// lookupCustomerGateway finds a customer gateway by id in the account-wide
+// listing, which is fetched once and cached, so a connection or tunnel resolves
+// its remote end without a call of its own. It returns nil when the id is
+// empty, when the listing cannot be read, and when no gateway carries the id.
+func lookupCustomerGateway(runtime *plugin.Runtime, wanted string) *mqlAlicloudVpcCustomerGateway {
 	if wanted == "" {
-		r.CustomerGateway.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
+		return nil
 	}
-	vpc, err := CreateResource(r.MqlRuntime, "alicloud.vpc", map[string]*llx.RawData{})
+	vpc, err := CreateResource(runtime, "alicloud.vpc", map[string]*llx.RawData{})
 	if err != nil {
-		r.CustomerGateway.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
+		return nil
 	}
 	gateways := vpc.(*mqlAlicloudVpc).GetCustomerGateways()
 	if gateways.Error != nil {
 		log.Debug().Err(gateways.Error).Msg("alicloud> could not resolve a VPN customer gateway")
-		r.CustomerGateway.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
+		return nil
 	}
 	for _, entry := range gateways.Data {
 		gateway, ok := entry.(*mqlAlicloudVpcCustomerGateway)
 		if ok && gateway.CustomerGatewayId.Data == wanted {
-			return gateway, nil
+			return gateway
 		}
 	}
-	r.CustomerGateway.State = plugin.StateIsSet | plugin.StateIsNull
-	return nil, nil
+	return nil
+}
+
+// customerGateway resolves the remote end of the tunnel out of the account-wide
+// customer gateway listing.
+func (r *mqlAlicloudVpcVpnConnection) customerGateway() (*mqlAlicloudVpcCustomerGateway, error) {
+	gateway := lookupCustomerGateway(r.MqlRuntime, r.CustomerGatewayId.Data)
+	if gateway == nil {
+		r.CustomerGateway.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return gateway, nil
 }
 
 // ---------------------------------------------------------------------------
