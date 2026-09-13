@@ -323,6 +323,8 @@ const (
 	ResourceYumConfig                                     string = "yum.config"
 	ResourceApt                                           string = "apt"
 	ResourceAptRepo                                       string = "apt.repo"
+	ResourcePkg                                           string = "pkg"
+	ResourcePkgRepo                                       string = "pkg.repo"
 	ResourceRegistrykey                                   string = "registrykey"
 	ResourceRegistrykeyProperty                           string = "registrykey.property"
 	ResourceContainerImage                                string = "container.image"
@@ -1831,6 +1833,14 @@ func init() {
 		"apt.repo": {
 			// to override args, implement: initAptRepo(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAptRepo,
+		},
+		"pkg": {
+			// to override args, implement: initPkg(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPkg,
+		},
+		"pkg.repo": {
+			// to override args, implement: initPkgRepo(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPkgRepo,
 		},
 		"registrykey": {
 			// to override args, implement: initRegistrykey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -9935,6 +9945,36 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"apt.repo.file": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAptRepo).GetFile()).ToDataRes(types.Resource("file"))
+	},
+	"pkg.repos": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkg).GetRepos()).ToDataRes(types.Array(types.Resource("pkg.repo")))
+	},
+	"pkg.repo.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkgRepo).GetName()).ToDataRes(types.String)
+	},
+	"pkg.repo.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkgRepo).GetUrl()).ToDataRes(types.String)
+	},
+	"pkg.repo.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkgRepo).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"pkg.repo.mirrorType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkgRepo).GetMirrorType()).ToDataRes(types.String)
+	},
+	"pkg.repo.signatureType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkgRepo).GetSignatureType()).ToDataRes(types.String)
+	},
+	"pkg.repo.fingerprints": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkgRepo).GetFingerprints()).ToDataRes(types.Resource("file"))
+	},
+	"pkg.repo.pubkey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkgRepo).GetPubkey()).ToDataRes(types.Resource("file"))
+	},
+	"pkg.repo.priority": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkgRepo).GetPriority()).ToDataRes(types.Int)
+	},
+	"pkg.repo.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkgRepo).GetFile()).ToDataRes(types.Resource("file"))
 	},
 	"registrykey.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRegistrykey).GetPath()).ToDataRes(types.String)
@@ -26028,6 +26068,54 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"apt.repo.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAptRepo).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"pkg.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkg).__id, ok = v.Value.(string)
+		return
+	},
+	"pkg.repos": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkg).Repos, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"pkg.repo.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).__id, ok = v.Value.(string)
+		return
+	},
+	"pkg.repo.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pkg.repo.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pkg.repo.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"pkg.repo.mirrorType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).MirrorType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pkg.repo.signatureType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).SignatureType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pkg.repo.fingerprints": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).Fingerprints, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"pkg.repo.pubkey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).Pubkey, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"pkg.repo.priority": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).Priority, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"pkg.repo.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
 		return
 	},
 	"registrykey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -66028,6 +66116,175 @@ func (c *mqlAptRepo) GetEnabled() *plugin.TValue[bool] {
 }
 
 func (c *mqlAptRepo) GetFile() *plugin.TValue[*mqlFile] {
+	return &c.File
+}
+
+// mqlPkg for the pkg resource
+type mqlPkg struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlPkgInternal it will be used here
+	Repos plugin.TValue[[]any]
+}
+
+// createPkg creates a new instance of this resource
+func createPkg(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPkg{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("pkg", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPkg) MqlName() string {
+	return "pkg"
+}
+
+func (c *mqlPkg) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPkg) GetRepos() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Repos, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("pkg", c.__id, "repos")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.repos()
+	})
+}
+
+// mqlPkgRepo for the pkg.repo resource
+type mqlPkgRepo struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlPkgRepoInternal
+	Name          plugin.TValue[string]
+	Url           plugin.TValue[string]
+	Enabled       plugin.TValue[bool]
+	MirrorType    plugin.TValue[string]
+	SignatureType plugin.TValue[string]
+	Fingerprints  plugin.TValue[*mqlFile]
+	Pubkey        plugin.TValue[*mqlFile]
+	Priority      plugin.TValue[int64]
+	File          plugin.TValue[*mqlFile]
+}
+
+// createPkgRepo creates a new instance of this resource
+func createPkgRepo(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPkgRepo{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("pkg.repo", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPkgRepo) MqlName() string {
+	return "pkg.repo"
+}
+
+func (c *mqlPkgRepo) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPkgRepo) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlPkgRepo) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlPkgRepo) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlPkgRepo) GetMirrorType() *plugin.TValue[string] {
+	return &c.MirrorType
+}
+
+func (c *mqlPkgRepo) GetSignatureType() *plugin.TValue[string] {
+	return &c.SignatureType
+}
+
+func (c *mqlPkgRepo) GetFingerprints() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.Fingerprints, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("pkg.repo", c.__id, "fingerprints")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.fingerprints()
+	})
+}
+
+func (c *mqlPkgRepo) GetPubkey() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.Pubkey, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("pkg.repo", c.__id, "pubkey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.pubkey()
+	})
+}
+
+func (c *mqlPkgRepo) GetPriority() *plugin.TValue[int64] {
+	return &c.Priority
+}
+
+func (c *mqlPkgRepo) GetFile() *plugin.TValue[*mqlFile] {
 	return &c.File
 }
 
