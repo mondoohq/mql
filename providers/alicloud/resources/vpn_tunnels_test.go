@@ -248,3 +248,220 @@ func TestNewVpnConnectionTunnelsNullLifetimes(t *testing.T) {
 	assert.Equal(t, plugin.StateIsNull|plugin.StateIsSet, tunnel.IpsecLifetime.State)
 	assert.Equal(t, plugin.StateIsNull|plugin.StateIsSet, tunnel.EnableDpd.State)
 }
+
+// ---------------------------------------------------------------------------
+// Algorithms in effect across a whole connection
+// ---------------------------------------------------------------------------
+
+// Aliases for the per-tunnel IKE and IPsec configs, so the fixtures below read
+// as the settings they carry.
+type (
+	testTunnelIkeConfig   = vpcclient.DescribeVpnConnectionsResponseBodyVpnConnectionsVpnConnectionTunnelOptionsSpecificationTunnelOptionsTunnelIkeConfig
+	testTunnelIpsecConfig = vpcclient.DescribeVpnConnectionsResponseBodyVpnConnectionsVpnConnectionTunnelOptionsSpecificationTunnelOptionsTunnelIpsecConfig
+)
+
+// testTunnelOptions describes one tunnel as DescribeVpnConnections reports it.
+// A nil argument is a setting the API said nothing about, which is not the same
+// as one it reported blank.
+func testTunnelOptions(id string, ikeEncAlg, ikePfs, ipsecEncAlg, ipsecPfs *string) *vpnTunnelOptions {
+	return &vpnTunnelOptions{
+		TunnelId:          tea.String(id),
+		TunnelIkeConfig:   &testTunnelIkeConfig{IkeEncAlg: ikeEncAlg, IkePfs: ikePfs},
+		TunnelIpsecConfig: &testTunnelIpsecConfig{IpsecEncAlg: ipsecEncAlg, IpsecPfs: ipsecPfs},
+	}
+}
+
+// testConnectionValue mirrors how the lister sets a connection-level string: a
+// value the API did not report stays null rather than becoming an empty string.
+func testConnectionValue(v *string) plugin.TValue[string] {
+	if v == nil {
+		return plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
+	}
+	return plugin.TValue[string]{Data: *v, State: plugin.StateIsSet}
+}
+
+// testVpnConnection assembles a connection from its own settings and the
+// tunnels the API reported alongside them, building the tunnel resources
+// through the lister's own constructor rather than by hand.
+func testVpnConnection(t *testing.T, ikeEncAlg, ikePfs, ipsecEncAlg, ipsecPfs *string, tunnels ...*vpnTunnelOptions) *mqlAlicloudVpcVpnConnection {
+	t.Helper()
+
+	var spec *vpnTunnelOptionsSpec
+	if tunnels != nil {
+		spec = &vpnTunnelOptionsSpec{TunnelOptions: tunnels}
+	}
+	built, err := newVpnConnectionTunnels(testTunnelRuntime(), "cn-hangzhou/vco-aaaaaaaaaaaaaaaaa", spec)
+	require.NoError(t, err)
+
+	conn := &mqlAlicloudVpcVpnConnection{MqlRuntime: testTunnelRuntime()}
+	conn.IkeEncryptionAlgorithm = testConnectionValue(ikeEncAlg)
+	conn.IkePfs = testConnectionValue(ikePfs)
+	conn.IpsecEncryptionAlgorithm = testConnectionValue(ipsecEncAlg)
+	conn.IpsecPfs = testConnectionValue(ipsecPfs)
+	conn.Tunnels = plugin.TValue[[]any]{Data: built, State: plugin.StateIsSet}
+	return conn
+}
+
+// TestVpnConnectionAlgorithmsAgreeingTunnels covers the ordinary connection
+// whose tunnels negotiated what the connection-level fields already report. The
+// repeated value has to collapse: a list carrying one algorithm twice reads as
+// two distinct suites in a policy and makes any count-based check wrong.
+func TestVpnConnectionAlgorithmsAgreeingTunnels(t *testing.T) {
+	t.Run("a single tunnel repeating the connection settings", func(t *testing.T) {
+		conn := testVpnConnection(t,
+			tea.String("aes256"), tea.String("group14"), tea.String("aes256"), tea.String("group14"),
+			testTunnelOptions("tun-aaaaaaaaaaaaaaaaa", tea.String("aes256"), tea.String("group14"), tea.String("aes256"), tea.String("group14")),
+		)
+
+		ike, err := conn.ikeEncryptionAlgorithms()
+		require.NoError(t, err)
+		assert.Equal(t, []any{"aes256"}, ike)
+
+		ipsec, err := conn.ipsecEncryptionAlgorithms()
+		require.NoError(t, err)
+		assert.Equal(t, []any{"aes256"}, ipsec)
+
+		ikePfs, err := conn.ikePfsGroups()
+		require.NoError(t, err)
+		assert.Equal(t, []any{"group14"}, ikePfs)
+
+		ipsecPfs, err := conn.ipsecPfsGroups()
+		require.NoError(t, err)
+		assert.Equal(t, []any{"group14"}, ipsecPfs)
+	})
+
+	t.Run("three tunnels agreeing still yield one entry", func(t *testing.T) {
+		conn := testVpnConnection(t,
+			tea.String("aes256"), tea.String("group14"), tea.String("aes256"), tea.String("group14"),
+			testTunnelOptions("tun-aaaaaaaaaaaaaaaaa", tea.String("aes256"), tea.String("group14"), tea.String("aes256"), tea.String("group14")),
+			testTunnelOptions("tun-bbbbbbbbbbbbbbbbb", tea.String("aes256"), tea.String("group14"), tea.String("aes256"), tea.String("group14")),
+			testTunnelOptions("tun-ccccccccccccccccc", tea.String("aes256"), tea.String("group14"), tea.String("aes256"), tea.String("group14")),
+		)
+
+		ike, err := conn.ikeEncryptionAlgorithms()
+		require.NoError(t, err)
+		assert.Equal(t, []any{"aes256"}, ike)
+
+		ikePfs, err := conn.ikePfsGroups()
+		require.NoError(t, err)
+		assert.Equal(t, []any{"group14"}, ikePfs)
+	})
+}
+
+// TestVpnConnectionAlgorithmsSecondTunnelDiffers is the case the
+// connection-level fields cannot describe, and the reason these four fields
+// exist. The standby tunnel of a dual-tunnel connection negotiated DES and
+// group 2 while the connection-level fields still report AES-256 and group 14,
+// so a check reading only ikeEncryptionAlgorithm passes a connection that is
+// carrying traffic under a broken cipher. Each of the four lists must hold both
+// values, and the four must not read each other's setting.
+func TestVpnConnectionAlgorithmsSecondTunnelDiffers(t *testing.T) {
+	conn := testVpnConnection(t,
+		tea.String("aes256"), tea.String("group14"), tea.String("aes256"), tea.String("group14"),
+		testTunnelOptions("tun-aaaaaaaaaaaaaaaaa", tea.String("aes256"), tea.String("group14"), tea.String("aes256"), tea.String("group14")),
+		testTunnelOptions("tun-bbbbbbbbbbbbbbbbb", tea.String("des"), tea.String("group2"), tea.String("3des"), tea.String("group1")),
+	)
+
+	ike, err := conn.ikeEncryptionAlgorithms()
+	require.NoError(t, err)
+	assert.Equal(t, []any{"aes256", "des"}, ike)
+
+	ipsec, err := conn.ipsecEncryptionAlgorithms()
+	require.NoError(t, err)
+	assert.Equal(t, []any{"3des", "aes256"}, ipsec)
+
+	ikePfs, err := conn.ikePfsGroups()
+	require.NoError(t, err)
+	assert.Equal(t, []any{"group14", "group2"}, ikePfs)
+
+	ipsecPfs, err := conn.ipsecPfsGroups()
+	require.NoError(t, err)
+	assert.Equal(t, []any{"group1", "group14"}, ipsecPfs)
+}
+
+// TestVpnConnectionAlgorithmsWithoutTunnels covers the connections the API
+// reports without per-tunnel options. The connection-level setting is then the
+// whole answer, and dropping it would empty the list on a single-tunnel
+// connection, which the policy's != empty guard reads as nothing to assert.
+func TestVpnConnectionAlgorithmsWithoutTunnels(t *testing.T) {
+	conn := testVpnConnection(t,
+		tea.String("aes256"), tea.String("group14"), tea.String("aes"), tea.String("group5"))
+
+	ike, err := conn.ikeEncryptionAlgorithms()
+	require.NoError(t, err)
+	assert.Equal(t, []any{"aes256"}, ike)
+
+	ipsec, err := conn.ipsecEncryptionAlgorithms()
+	require.NoError(t, err)
+	assert.Equal(t, []any{"aes"}, ipsec)
+
+	ikePfs, err := conn.ikePfsGroups()
+	require.NoError(t, err)
+	assert.Equal(t, []any{"group14"}, ikePfs)
+
+	ipsecPfs, err := conn.ipsecPfsGroups()
+	require.NoError(t, err)
+	assert.Equal(t, []any{"group5"}, ipsecPfs)
+}
+
+// TestVpnConnectionAlgorithmsSkipsUnreportedValues keeps a setting the API said
+// nothing about out of the list. An empty string folded in as an entry is a
+// suite nobody negotiated, and it survives a none() check while making the
+// != empty guard read as if something had been measured.
+func TestVpnConnectionAlgorithmsSkipsUnreportedValues(t *testing.T) {
+	t.Run("an absent and a blank tunnel algorithm are both left out", func(t *testing.T) {
+		conn := testVpnConnection(t,
+			tea.String("aes256"), tea.String("group14"), tea.String("aes256"), tea.String("group14"),
+			testTunnelOptions("tun-aaaaaaaaaaaaaaaaa", nil, nil, nil, nil),
+			testTunnelOptions("tun-bbbbbbbbbbbbbbbbb", tea.String("  "), tea.String(""), tea.String(""), tea.String("  ")),
+		)
+
+		ike, err := conn.ikeEncryptionAlgorithms()
+		require.NoError(t, err)
+		assert.Equal(t, []any{"aes256"}, ike)
+		assert.NotContains(t, ike, "")
+
+		ipsecPfs, err := conn.ipsecPfsGroups()
+		require.NoError(t, err)
+		assert.Equal(t, []any{"group14"}, ipsecPfs)
+		assert.NotContains(t, ipsecPfs, "")
+	})
+
+	t.Run("a connection reporting nothing still carries what its tunnels agreed to", func(t *testing.T) {
+		conn := testVpnConnection(t, nil, nil, nil, nil,
+			testTunnelOptions("tun-aaaaaaaaaaaaaaaaa", tea.String("des"), tea.String("group2"), tea.String("des"), tea.String("group2")),
+		)
+
+		ike, err := conn.ikeEncryptionAlgorithms()
+		require.NoError(t, err)
+		assert.Equal(t, []any{"des"}, ike)
+
+		ikePfs, err := conn.ikePfsGroups()
+		require.NoError(t, err)
+		assert.Equal(t, []any{"group2"}, ikePfs)
+	})
+}
+
+// TestVpnConnectionAlgorithmsEmptyWhenNothingReported pins the empty case. A
+// connection where neither end reported an algorithm must read as an empty
+// list rather than null, because the policy guards with != empty to tell "no
+// algorithm was readable" apart from "a weak algorithm is in use".
+func TestVpnConnectionAlgorithmsEmptyWhenNothingReported(t *testing.T) {
+	conn := testVpnConnection(t, nil, nil, nil, nil,
+		testTunnelOptions("tun-aaaaaaaaaaaaaaaaa", nil, nil, nil, nil),
+	)
+
+	for name, read := range map[string]func() ([]any, error){
+		"ikeEncryptionAlgorithms":   conn.ikeEncryptionAlgorithms,
+		"ipsecEncryptionAlgorithms": conn.ipsecEncryptionAlgorithms,
+		"ikePfsGroups":              conn.ikePfsGroups,
+		"ipsecPfsGroups":            conn.ipsecPfsGroups,
+	} {
+		t.Run(name, func(t *testing.T) {
+			values, err := read()
+			require.NoError(t, err)
+			assert.NotNil(t, values)
+			assert.Empty(t, values)
+		})
+	}
+}

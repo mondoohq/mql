@@ -7726,6 +7726,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"alicloud.vpc.vpnConnection.tunnels": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudVpcVpnConnection).GetTunnels()).ToDataRes(types.Array(types.Resource("alicloud.vpc.vpnConnection.tunnel")))
 	},
+	"alicloud.vpc.vpnConnection.ikeEncryptionAlgorithms": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnection).GetIkeEncryptionAlgorithms()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.vpc.vpnConnection.ipsecEncryptionAlgorithms": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnection).GetIpsecEncryptionAlgorithms()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.vpc.vpnConnection.ikePfsGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnection).GetIkePfsGroups()).ToDataRes(types.Array(types.String))
+	},
+	"alicloud.vpc.vpnConnection.ipsecPfsGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcVpnConnection).GetIpsecPfsGroups()).ToDataRes(types.Array(types.String))
+	},
 	"alicloud.vpc.vpnConnection.vpnGateway": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudVpcVpnConnection).GetVpnGateway()).ToDataRes(types.Resource("alicloud.vpc.vpnGateway"))
 	},
@@ -17903,6 +17915,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"alicloud.vpc.vpnConnection.tunnels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudVpcVpnConnection).Tunnels, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.ikeEncryptionAlgorithms": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnection).IkeEncryptionAlgorithms, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.ipsecEncryptionAlgorithms": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnection).IpsecEncryptionAlgorithms, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.ikePfsGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnection).IkePfsGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.vpnConnection.ipsecPfsGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcVpnConnection).IpsecPfsGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"alicloud.vpc.vpnConnection.vpnGateway": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -40969,6 +40997,10 @@ type mqlAlicloudVpcVpnConnection struct {
 	IpsecLifetime                plugin.TValue[int64]
 	CreateTime                   plugin.TValue[*time.Time]
 	Tunnels                      plugin.TValue[[]any]
+	IkeEncryptionAlgorithms      plugin.TValue[[]any]
+	IpsecEncryptionAlgorithms    plugin.TValue[[]any]
+	IkePfsGroups                 plugin.TValue[[]any]
+	IpsecPfsGroups               plugin.TValue[[]any]
 	VpnGateway                   plugin.TValue[*mqlAlicloudVpcVpnGateway]
 }
 
@@ -41135,6 +41167,30 @@ func (c *mqlAlicloudVpcVpnConnection) GetCreateTime() *plugin.TValue[*time.Time]
 
 func (c *mqlAlicloudVpcVpnConnection) GetTunnels() *plugin.TValue[[]any] {
 	return &c.Tunnels
+}
+
+func (c *mqlAlicloudVpcVpnConnection) GetIkeEncryptionAlgorithms() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IkeEncryptionAlgorithms, func() ([]any, error) {
+		return c.ikeEncryptionAlgorithms()
+	})
+}
+
+func (c *mqlAlicloudVpcVpnConnection) GetIpsecEncryptionAlgorithms() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IpsecEncryptionAlgorithms, func() ([]any, error) {
+		return c.ipsecEncryptionAlgorithms()
+	})
+}
+
+func (c *mqlAlicloudVpcVpnConnection) GetIkePfsGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IkePfsGroups, func() ([]any, error) {
+		return c.ikePfsGroups()
+	})
+}
+
+func (c *mqlAlicloudVpcVpnConnection) GetIpsecPfsGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IpsecPfsGroups, func() ([]any, error) {
+		return c.ipsecPfsGroups()
+	})
 }
 
 func (c *mqlAlicloudVpcVpnConnection) GetVpnGateway() *plugin.TValue[*mqlAlicloudVpcVpnGateway] {
