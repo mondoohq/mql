@@ -1583,8 +1583,16 @@ func (c *compiler) compileAssetRoot(binding *variable) (*variable, error) {
 // windows.deviceGuard, windows.lsa.ntlm, aws.emr.cluster.encryptionConfiguration
 // and friends.
 //
-// Only redirect when the owner really does expose the value under that name and
-// with exactly that type, so nothing that used to compile becomes unreachable.
+// Redirect whenever the owner declares the name itself, whatever the field's
+// type. The type does not change what the alternative is: a bare private
+// resource is unreachable from its own path by definition, so nothing that used
+// to produce an answer stops doing so. It used to be required that the field's
+// type WAS the target resource, which covers the ordinary accessor pattern but
+// leaves a field of any other type shadowed with no way back - `gitlab.user`
+// declares `email string` beside a private `gitlab.user.email`, and the path
+// silently built the resource. Those read as a valid query and only give
+// themselves away when an operation demands the field's real type.
+//
 // Implicit fields are excluded: those are the singular accessors lr generates for
 // every `x.y` resource, they are not backed by an accessor on the owner, so
 // routing through them would break paths that work today.
@@ -1596,7 +1604,7 @@ func (c *compiler) prefersFieldOverResource(owner *resources.ResourceInfo, targe
 	if f == nil || f.GetIsImplicitResource() {
 		return false
 	}
-	return types.Type(f.Type) == types.Resource(target.Name)
+	return true
 }
 
 // compile a resource from an identifier, trying to find the longest matching resource
