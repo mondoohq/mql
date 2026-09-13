@@ -5724,6 +5724,38 @@ alicloud.vpc.vpnConnection @defaults("vpnConnectionId name status") {
   // whatever the second tunnel agreed to. Empty on a connection the API reports
   // without per-tunnel options.
   tunnels []alicloud.vpc.vpnConnection.tunnel
+  // IKE encryption algorithms in effect across the connection
+  //
+  // Every distinct encryption algorithm negotiated for the key exchange,
+  // spanning the connection and all of its tunnels, deduplicated and sorted. A
+  // dual-tunnel connection is only as strong as its weaker tunnel, so the
+  // weakest entry is the one that matters for an audit. Empty when neither the
+  // connection nor any tunnel reports an algorithm.
+  ikeEncryptionAlgorithms() []string
+  // IPsec encryption algorithms in effect across the connection
+  //
+  // Every distinct encryption algorithm protecting the tunnel payload, spanning
+  // the connection and all of its tunnels, deduplicated and sorted. A
+  // dual-tunnel connection is only as strong as its weaker tunnel, so the
+  // weakest entry is the one that matters for an audit. Empty when neither the
+  // connection nor any tunnel reports an algorithm.
+  ipsecEncryptionAlgorithms() []string
+  // Diffie-Hellman groups in effect for the key exchange
+  //
+  // Every distinct group used for the key exchange, spanning the connection and
+  // all of its tunnels, deduplicated and sorted. A dual-tunnel connection is
+  // only as strong as its weaker tunnel, so the weakest entry is the one that
+  // matters for an audit. Empty when neither the connection nor any tunnel
+  // reports a group.
+  ikePfsGroups() []string
+  // Diffie-Hellman groups in effect for tunnel rekeying
+  //
+  // Every distinct group used to rekey the tunnel, spanning the connection and
+  // all of its tunnels, deduplicated and sorted. A dual-tunnel connection is
+  // only as strong as its weaker tunnel, so the weakest entry is the one that
+  // matters for an audit. Empty when neither the connection nor any tunnel
+  // reports a group.
+  ipsecPfsGroups() []string
   // VPN gateway the connection terminates on
   vpnGateway() alicloud.vpc.vpnGateway
 }

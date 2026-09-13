@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 
@@ -159,4 +160,96 @@ func newVpnConnectionTunnel(runtime *plugin.Runtime, connectionKey, tunnelKey st
 	mqlTunnel := resource.(*mqlAlicloudVpcVpnConnectionTunnel)
 	mqlTunnel.cacheCustomerGateway = tea.StringValue(t.CustomerGatewayId)
 	return mqlTunnel, nil
+}
+
+// ---------------------------------------------------------------------------
+// Algorithms in effect across a whole connection
+// ---------------------------------------------------------------------------
+
+// vpnAlgorithmsInEffect folds a connection-level setting together with the
+// setting every tunnel of that connection negotiated. A dual-tunnel connection
+// negotiates IKE and IPsec once per tunnel, so a check reading only the
+// connection-level field scores a connection whose second tunnel agreed to a
+// weak cipher as if it were strong.
+//
+// Values the API did not report are left out rather than folded in as an empty
+// string, and a connection where nothing reported a value yields an empty list.
+// An empty list is distinguishable from a list holding a weak algorithm, where
+// a null read by an assertion is not.
+func vpnAlgorithmsInEffect(connectionValue *plugin.TValue[string], tunnels []any, tunnelValue func(*mqlAlicloudVpcVpnConnectionTunnel) *plugin.TValue[string]) []any {
+	seen := map[string]struct{}{}
+	add := func(v *plugin.TValue[string]) {
+		if v == nil || v.State&plugin.StateIsNull != 0 {
+			return
+		}
+		value := strings.TrimSpace(v.Data)
+		if value == "" {
+			return
+		}
+		seen[value] = struct{}{}
+	}
+
+	add(connectionValue)
+	for _, t := range tunnels {
+		tunnel, ok := t.(*mqlAlicloudVpcVpnConnectionTunnel)
+		if !ok {
+			continue
+		}
+		add(tunnelValue(tunnel))
+	}
+
+	values := make([]string, 0, len(seen))
+	for value := range seen {
+		values = append(values, value)
+	}
+	sort.Strings(values)
+	return strsToAny(values)
+}
+
+// vpnConnectionAlgorithms reads the tunnels a connection is built from and
+// hands them to the fold. The tunnels travel in the response the lister already
+// holds, so nothing here costs a call.
+func vpnConnectionAlgorithms(r *mqlAlicloudVpcVpnConnection, connectionValue *plugin.TValue[string], tunnelValue func(*mqlAlicloudVpcVpnConnectionTunnel) *plugin.TValue[string]) ([]any, error) {
+	tunnels := r.GetTunnels()
+	if tunnels.Error != nil {
+		return nil, tunnels.Error
+	}
+	return vpnAlgorithmsInEffect(connectionValue, tunnels.Data, tunnelValue), nil
+}
+
+func (r *mqlAlicloudVpcVpnConnection) ikeEncryptionAlgorithms() ([]any, error) {
+	return vpnConnectionAlgorithms(r, r.GetIkeEncryptionAlgorithm(),
+		func(t *mqlAlicloudVpcVpnConnectionTunnel) *plugin.TValue[string] {
+			return t.GetIkeEncryptionAlgorithm()
+		})
+}
+
+func (r *mqlAlicloudVpcVpnConnection) ipsecEncryptionAlgorithms() ([]any, error) {
+	return vpnConnectionAlgorithms(r, r.GetIpsecEncryptionAlgorithm(),
+		func(t *mqlAlicloudVpcVpnConnectionTunnel) *plugin.TValue[string] {
+			return t.GetIpsecEncryptionAlgorithm()
+		})
+}
+
+func (r *mqlAlicloudVpcVpnConnection) ikePfsGroups() ([]any, error) {
+	return vpnConnectionAlgorithms(r, r.GetIkePfs(),
+		func(t *mqlAlicloudVpcVpnConnectionTunnel) *plugin.TValue[string] {
+			return t.GetIkePfs()
+		})
+}
+
+func (r *mqlAlicloudVpcVpnConnection) ipsecPfsGroups() ([]any, error) {
+	return vpnConnectionAlgorithms(r, r.GetIpsecPfs(),
+		func(t *mqlAlicloudVpcVpnConnectionTunnel) *plugin.TValue[string] {
+			return t.GetIpsecPfs()
+		})
+}
+
+// strsToAny widens a []string into the []any an MQL list field takes.
+func strsToAny(in []string) []any {
+	res := make([]any, 0, len(in))
+	for _, s := range in {
+		res = append(res, s)
+	}
+	return res
 }
