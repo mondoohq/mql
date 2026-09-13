@@ -115,8 +115,11 @@ github.organization @defaults("login name") {
   collaborators int
   // Organization billing email
   billingEmail string
-  // GitHub plan details (name, seats, filled_seats, private_repos)
-  plan dict
+  // GitHub plan details
+  //
+  // Deprecated in favor of subscription, which reports the same values as
+  // typed fields.
+  plan @maturity("deprecated") dict
   // Whether two-factor authentication is required for all members
   //
   // This value will be null if the API token does not have owner access on the organization.
@@ -249,6 +252,79 @@ github.organization @defaults("login name") {
   // external role can be scoped. Null when the organization uses GitHub's
   // default subject format.
   oidcSubjectClaimKeys() []string
+  // Plan the organization is subscribed to
+  //
+  // Plan name, seat counts and repository allowances for the organization.
+  // Null unless the token has owner access on the organization, which is what
+  // GitHub requires before it reports a plan, and on a GitHub Enterprise
+  // Server installation, which serves no plan.
+  subscription() github.organization.subscription
+  // Availability of the features GitHub gates behind an Enterprise account
+  //
+  // Whether the organization's account includes each of the features that
+  // GitHub sells only with an Enterprise plan, so a check covering one of them
+  // can be skipped where the account does not include it rather than reported
+  // as a finding.
+  features() github.organization.features
+}
+
+// GitHub Organization Subscription
+//
+// Plan a GitHub organization is subscribed to, with the seat counts and
+// repository allowances it carries. The `name` field decides which entries of
+// github.organization.features the organization can use. GitHub reports a plan
+// only to a token with owner access on the organization, and a GitHub
+// Enterprise Server installation serves none at all.
+private github.organization.subscription @defaults("name seats filledSeats") {
+  // Plan name
+  //
+  // Commonly `free`, `team`, or `enterprise`. GitHub does not publish the full
+  // set, and an account created under an earlier plan reports the name that
+  // plan carried.
+  name string
+  // Disk space the plan allows, in kilobytes
+  space int
+  // Number of collaborators the plan allows
+  collaborators int
+  // Number of private repositories the plan allows
+  privateRepos int
+  // Number of seats currently filled
+  filledSeats int
+  // Number of seats the plan carries
+  seats int
+}
+
+// GitHub Organization Feature Availability
+//
+// Whether the organization's account includes each of the features GitHub
+// gates behind an Enterprise plan. A policy that checks one of these features
+// reads the matching field first, so that an account without the feature is
+// skipped rather than reported for a control it cannot configure.
+//
+// Each field is true on a GitHub Enterprise Cloud plan, true on a GitHub
+// Enterprise Server installation running at least the release that introduced
+// the feature, and false on Free and Team. Every field is null when the plan
+// cannot be read, which is the case for a token without owner access on the
+// organization, since nothing was measured either way.
+private github.organization.features @defaults("auditLog samlSingleSignOn ipAllowList") {
+  // Whether the organization audit log is available
+  auditLog bool
+  // Whether SAML single sign-on is available
+  samlSingleSignOn bool
+  // Whether the IP allow list is available
+  ipAllowList bool
+  // Whether custom organization roles are available
+  //
+  // Requires GitHub Enterprise Server 3.13 or later.
+  customRoles bool
+  // Whether approval of fine-grained personal access tokens is available
+  //
+  // Requires GitHub Enterprise Server 3.12 or later.
+  approvedTokens bool
+  // Whether audit log streaming is available
+  //
+  // Requires GitHub Enterprise Server 3.16 or later.
+  auditLogStreaming bool
 }
 
 // Self-hosted runner group
@@ -2577,4 +2653,23 @@ private github.actionsVariable @defaults("name scope visibility") {
   selectedRepositoriesUrl string
   // Repositories that have access to this organization variable (only when visibility is "selected")
   selectedRepositories() []github.repository
+}
+
+// GitHub Deployment Metadata
+//
+// Where the GitHub account under scan is hosted and, for a GitHub Enterprise
+// Server installation, which release it runs. `enterpriseServer` separates a
+// self-hosted installation from GitHub.com, and `version` is what a feature
+// introduced in a particular release is compared against, which is how
+// github.organization.features decides whether an installation carries a
+// feature. Readable with any authenticated token.
+github.metadata @defaults("enterpriseServer version") {
+  // Whether the target is a GitHub Enterprise Server installation
+  enterpriseServer bool
+  // GitHub Enterprise Server release the installation runs
+  //
+  // Null on GitHub.com and on GitHub Enterprise Cloud, neither of which
+  // reports a release, and on an installation that does not answer with a
+  // version.
+  version string
 }
