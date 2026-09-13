@@ -703,9 +703,11 @@ func (g *mqlGithubOrganizationAuditLogStreamConfig) id() (string, error) {
 	return g.__id, nil
 }
 
-// ghAuditLogStream represents the response of the (private) GitHub Enterprise
-// Cloud audit log stream config endpoint.
-// API docs: GET /orgs/{org}/audit-log/stream-config (Enterprise Cloud only).
+// ghAuditLogStream represents the response of the GitHub audit log stream
+// config endpoint, GET /orgs/{org}/audit-log/stream-config. The path is absent
+// from GitHub's published REST descriptions for github.com, GitHub Enterprise
+// Cloud and GitHub Enterprise Server, all of which carry audit log streaming
+// only under /enterprises/{enterprise}/audit-log/streams.
 type ghAuditLogStream struct {
 	ID         int64      `json:"id"`
 	StreamType string     `json:"stream_type"`
@@ -713,6 +715,37 @@ type ghAuditLogStream struct {
 	PausedAt   *time.Time `json:"paused_at"`
 	CreatedAt  *time.Time `json:"created_at"`
 	UpdatedAt  *time.Time `json:"updated_at"`
+}
+
+// httpStatusOf returns the HTTP status a GitHub API failure carries, taken from
+// the response when the client returned one and otherwise from the typed error.
+// Transport failures carry no status and report 0.
+func httpStatusOf(resp *github.Response, err error) int {
+	if resp != nil && resp.Response != nil {
+		return resp.StatusCode
+	}
+	var ghErr *github.ErrorResponse
+	if errors.As(err, &ghErr) && ghErr.Response != nil {
+		return ghErr.Response.StatusCode
+	}
+	return 0
+}
+
+// auditLogStreamConfigError reports why an organization's audit log streaming
+// configuration could not be read. A failed read is never turned into a null
+// resource: a policy asserting `enabled` would then read "we could not tell" as
+// "streaming is off".
+func auditLogStreamConfigError(orgLogin string, resp *github.Response, err error) error {
+	if err == nil {
+		return nil
+	}
+	switch httpStatusOf(resp, err) {
+	case http.StatusNotFound:
+		return fmt.Errorf("audit log streaming configuration for organization %q could not be read: GitHub serves audit log streams from the enterprise endpoints (GET /enterprises/{enterprise}/audit-log/streams): %w", orgLogin, err)
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return fmt.Errorf("audit log streaming configuration for organization %q could not be read: access denied, this requires organization owner access on GitHub Enterprise Cloud: %w", orgLogin, err)
+	}
+	return fmt.Errorf("audit log streaming configuration for organization %q could not be read: %w", orgLogin, err)
 }
 
 func (g *mqlGithubOrganization) auditLogStreamConfig() (*mqlGithubOrganizationAuditLogStreamConfig, error) {
@@ -726,13 +759,7 @@ func (g *mqlGithubOrganization) auditLogStreamConfig() (*mqlGithubOrganizationAu
 	var stream ghAuditLogStream
 	resp, err := doRawJSON(conn.Context(), conn.Client(), urlStr, &stream)
 	if err != nil {
-		// 404 means no stream configured or org isn't enterprise; treat as null
-		// (matches samlConfig / ipAllowList pattern).
-		if isAccessDeniedOrNotFound(err) || (resp != nil && resp.StatusCode == http.StatusNotFound) {
-			g.AuditLogStreamConfig.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
-		return nil, err
+		return nil, auditLogStreamConfigError(orgLogin, resp, err)
 	}
 
 	// Prefer the API's `enabled` field; fall back to "stream is configured" if
