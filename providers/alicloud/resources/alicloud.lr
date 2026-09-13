@@ -797,6 +797,18 @@ alicloud.ecs.securitygroup.permission @defaults("direction ipProtocol portRange 
   nicType string
   // Destination port range matched by the rule, for example 22/22 or 1/65535
   portRange string
+  // Lowest destination port the rule matches
+  //
+  // A rule written as -1/-1 matches every port, and reports 1 here alongside
+  // 65535 in toPort. Null when portRange holds no range that resolves to a
+  // pair of ports, which leaves portRange as the only record of it.
+  fromPort int
+  // Highest destination port the rule matches
+  //
+  // A rule written as -1/-1 matches every port, and reports 65535 here
+  // alongside 1 in fromPort. Null when portRange holds no range that resolves
+  // to a pair of ports.
+  toPort int
   // Source port range matched by the rule
   sourcePortRange string
   // Source IPv4 CIDR block for an inbound rule
@@ -1665,6 +1677,18 @@ alicloud.vpc.networkAcl.entry @defaults("direction policy protocol port") {
   // Written as first/last, for example 22/22. A value of -1/-1 matches every
   // port, which is the form a rule takes when the protocol is not tcp or udp.
   port string
+  // Lowest port the rule matches
+  //
+  // A rule written as -1/-1 matches every port, and reports 1 here alongside
+  // 65535 in toPort. Null when port holds no range that resolves to a pair of
+  // ports, which leaves port as the only record of it.
+  fromPort int
+  // Highest port the rule matches
+  //
+  // A rule written as -1/-1 matches every port, and reports 65535 here
+  // alongside 1 in fromPort. Null when port holds no range that resolves to a
+  // pair of ports.
+  toPort int
   // Source addresses an inbound rule matches
   //
   // Empty on an egress rule. A value of 0.0.0.0/0 matches the whole internet.

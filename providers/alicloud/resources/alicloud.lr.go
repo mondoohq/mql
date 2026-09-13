@@ -1372,6 +1372,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"alicloud.ecs.securitygroup.permission.portRange": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudEcsSecuritygroupPermission).GetPortRange()).ToDataRes(types.String)
 	},
+	"alicloud.ecs.securitygroup.permission.fromPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEcsSecuritygroupPermission).GetFromPort()).ToDataRes(types.Int)
+	},
+	"alicloud.ecs.securitygroup.permission.toPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEcsSecuritygroupPermission).GetToPort()).ToDataRes(types.Int)
+	},
 	"alicloud.ecs.securitygroup.permission.sourcePortRange": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudEcsSecuritygroupPermission).GetSourcePortRange()).ToDataRes(types.String)
 	},
@@ -2121,6 +2127,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"alicloud.vpc.networkAcl.entry.port": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudVpcNetworkAclEntry).GetPort()).ToDataRes(types.String)
+	},
+	"alicloud.vpc.networkAcl.entry.fromPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcNetworkAclEntry).GetFromPort()).ToDataRes(types.Int)
+	},
+	"alicloud.vpc.networkAcl.entry.toPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudVpcNetworkAclEntry).GetToPort()).ToDataRes(types.Int)
 	},
 	"alicloud.vpc.networkAcl.entry.sourceCidrIp": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudVpcNetworkAclEntry).GetSourceCidrIp()).ToDataRes(types.String)
@@ -7082,6 +7094,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAlicloudEcsSecuritygroupPermission).PortRange, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"alicloud.ecs.securitygroup.permission.fromPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEcsSecuritygroupPermission).FromPort, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.ecs.securitygroup.permission.toPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEcsSecuritygroupPermission).ToPort, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"alicloud.ecs.securitygroup.permission.sourcePortRange": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudEcsSecuritygroupPermission).SourcePortRange, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -8128,6 +8148,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"alicloud.vpc.networkAcl.entry.port": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudVpcNetworkAclEntry).Port, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.networkAcl.entry.fromPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcNetworkAclEntry).FromPort, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"alicloud.vpc.networkAcl.entry.toPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudVpcNetworkAclEntry).ToPort, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"alicloud.vpc.networkAcl.entry.sourceCidrIp": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -16102,6 +16130,8 @@ type mqlAlicloudEcsSecuritygroupPermission struct {
 	IpProtocol           plugin.TValue[string]
 	NicType              plugin.TValue[string]
 	PortRange            plugin.TValue[string]
+	FromPort             plugin.TValue[int64]
+	ToPort               plugin.TValue[int64]
 	SourcePortRange      plugin.TValue[string]
 	SourceCidrIp         plugin.TValue[string]
 	SourceSecurityGroup  plugin.TValue[*mqlAlicloudEcsSecuritygroup]
@@ -16184,6 +16214,14 @@ func (c *mqlAlicloudEcsSecuritygroupPermission) GetNicType() *plugin.TValue[stri
 
 func (c *mqlAlicloudEcsSecuritygroupPermission) GetPortRange() *plugin.TValue[string] {
 	return &c.PortRange
+}
+
+func (c *mqlAlicloudEcsSecuritygroupPermission) GetFromPort() *plugin.TValue[int64] {
+	return &c.FromPort
+}
+
+func (c *mqlAlicloudEcsSecuritygroupPermission) GetToPort() *plugin.TValue[int64] {
+	return &c.ToPort
 }
 
 func (c *mqlAlicloudEcsSecuritygroupPermission) GetSourcePortRange() *plugin.TValue[string] {
@@ -18425,6 +18463,8 @@ type mqlAlicloudVpcNetworkAclEntry struct {
 	Policy            plugin.TValue[string]
 	Protocol          plugin.TValue[string]
 	Port              plugin.TValue[string]
+	FromPort          plugin.TValue[int64]
+	ToPort            plugin.TValue[int64]
 	SourceCidrIp      plugin.TValue[string]
 	DestinationCidrIp plugin.TValue[string]
 	EntryType         plugin.TValue[string]
@@ -18489,6 +18529,14 @@ func (c *mqlAlicloudVpcNetworkAclEntry) GetProtocol() *plugin.TValue[string] {
 
 func (c *mqlAlicloudVpcNetworkAclEntry) GetPort() *plugin.TValue[string] {
 	return &c.Port
+}
+
+func (c *mqlAlicloudVpcNetworkAclEntry) GetFromPort() *plugin.TValue[int64] {
+	return &c.FromPort
+}
+
+func (c *mqlAlicloudVpcNetworkAclEntry) GetToPort() *plugin.TValue[int64] {
+	return &c.ToPort
 }
 
 func (c *mqlAlicloudVpcNetworkAclEntry) GetSourceCidrIp() *plugin.TValue[string] {
