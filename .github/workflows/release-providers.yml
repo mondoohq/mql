@@ -19,6 +19,21 @@ permissions:
 
 jobs:
   release-providers:
+    # Stable releases only, until pre-release providers are designed.
+    #
+    # Providers publish into one `providers/<name>/<version>/` namespace behind
+    # a single `providers/latest.json`, and nothing there distinguishes a
+    # channel yet. A v14 pre-release bumping providers to 14.x would therefore
+    # be served to every v13 client in the field, which resolves providers from
+    # that same document.
+    #
+    # The binaries already derive a channel from the semver tag and publish to
+    # `preview`; providers have not been given the equivalent. Until they are,
+    # a pre-release must not start a provider release. Tracked in #10782.
+    #
+    # workflow_dispatch stays open so a provider release can still be run by
+    # hand when that is what is wanted.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
