@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode"
 
 	"github.com/ollama/ollama/api"
@@ -322,7 +323,11 @@ func (r *mqlOllama) runningModels() ([]interface{}, error) {
 }
 
 type mqlOllamaModelInternal struct {
-	fetched bool
+	// fetched is read on fetchShow's fast path, outside the mutex that guards
+	// the write, so it is atomic rather than a plain bool. show is written
+	// before fetched is stored and read only once fetched reads true, so that
+	// store and load order the two.
+	fetched atomic.Bool
 	show    *api.ShowResponse
 	lock    sync.Mutex
 
@@ -335,12 +340,12 @@ type mqlOllamaModelInternal struct {
 }
 
 func (r *mqlOllamaModel) fetchShow() (*api.ShowResponse, error) {
-	if r.fetched {
+	if r.fetched.Load() {
 		return r.show, nil
 	}
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	if r.fetched {
+	if r.fetched.Load() {
 		return r.show, nil
 	}
 	conn := ollamaConn(r.MqlRuntime)
@@ -351,7 +356,7 @@ func (r *mqlOllamaModel) fetchShow() (*api.ShowResponse, error) {
 		return nil, err
 	}
 	r.show = show
-	r.fetched = true
+	r.fetched.Store(true)
 	return r.show, nil
 }
 

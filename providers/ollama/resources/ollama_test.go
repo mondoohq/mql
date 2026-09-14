@@ -4,14 +4,23 @@
 package resources
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
+	"github.com/ollama/ollama/api"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/ollama/connection"
 )
 
 func TestModelNotFoundError(t *testing.T) {
@@ -241,4 +250,78 @@ func TestWriteOpenStatusesDoNotOverlapAuthRequired(t *testing.T) {
 	for _, code := range readOpenStatuses {
 		assert.NotContains(t, authRequiredStatuses, code)
 	}
+}
+
+// The executor resolves the fields of one resource concurrently, so two
+// Show-backed accessors on the same model enter fetchShow at the same time.
+// fetchShow keeps a lock-free fast path, which means its flag is read outside
+// the mutex and written under it: with a plain bool that is a data race, and
+// this test reports it as one under -race.
+//
+// The call count is the second half. The re-check inside the lock is what keeps
+// a burst of accessors down to a single /api/show call, and dropping it would
+// leave this green under -race while costing one request per field.
+func TestFetchShowIsSafeUnderConcurrentAccessors(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		assert.Equal(t, "/api/show", r.URL.Path)
+		_ = json.NewEncoder(w).Encode(api.ShowResponse{
+			License:    "  MIT  ",
+			Modelfile:  "FROM llama3.1:latest\nADAPTER /opt/lora/a.gguf\n",
+			System:     "You are a helpful assistant.",
+			Template:   "{{ .System }}",
+			Parameters: "  stop \"<|eot_id|>\"  ",
+			Renderer:   "harmony",
+			Parser:     "qwen3-coder",
+		})
+	}))
+	defer srv.Close()
+
+	conn, err := connection.NewOllamaConnection(1, &inventory.Asset{}, &inventory.Config{
+		Options: map[string]string{connection.HostOption: srv.URL},
+	})
+	require.NoError(t, err)
+
+	model := &mqlOllamaModel{MqlRuntime: &plugin.Runtime{Connection: conn}}
+	model.Name = plugin.TValue[string]{Data: "llama3.1:latest", State: plugin.StateIsSet}
+
+	accessors := []struct {
+		field string
+		read  func() (string, error)
+		want  string
+	}{
+		{"license", model.license, "MIT"},
+		{"modelfile", model.modelfile, "FROM llama3.1:latest\nADAPTER /opt/lora/a.gguf\n"},
+		{"system", model.system, "You are a helpful assistant."},
+		{"template", model.template, "{{ .System }}"},
+		{"parameters", model.parameters, `stop "<|eot_id|>"`},
+		{"renderer", model.renderer, "harmony"},
+		{"parser", model.parser, "qwen3-coder"},
+	}
+
+	got := make([]string, len(accessors))
+	errs := make([]error, len(accessors))
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i, a := range accessors {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			got[i], errs[i] = a.read()
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	for i, a := range accessors {
+		require.NoError(t, errs[i], a.field)
+		// Each accessor must return its own field of the Show answer. A
+		// crossed pair, renderer reading show.Parser, fails here.
+		assert.Equal(t, a.want, got[i], a.field)
+	}
+
+	assert.Equal(t, int32(1), calls.Load(),
+		"every Show-backed field on one model must share a single /api/show call")
 }
