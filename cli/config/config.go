@@ -312,20 +312,20 @@ func GetUpdateChannel() string {
 			Msg("unknown update channel, falling back to the channel this build belongs to")
 	}
 
-	if isPrereleaseVersion(getRunningVersion()) {
+	if IsPrereleaseVersion(getRunningVersion()) {
 		return ChannelPreview
 	}
 	return ChannelStable
 }
 
-// isPrereleaseVersion reports whether a version carries a semver pre-release
+// IsPrereleaseVersion reports whether a version carries a semver pre-release
 // segment. Build metadata is stripped first: it is not a pre-release under
 // SemVer 10, and it is where the edge builds put their commit counter.
 //
 // Deliberately not a full semver parse. This has to answer for "unstable" and
 // for the `-rolling` suffix as well as for real versions, and a parse error on
 // a development build must not decide a channel.
-func isPrereleaseVersion(version string) bool {
+func IsPrereleaseVersion(version string) bool {
 	core, _, _ := strings.Cut(version, "+")
 	_, prerelease, found := strings.Cut(strings.TrimPrefix(core, "v"), "-")
 	return found && prerelease != ""

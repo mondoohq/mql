@@ -226,6 +226,35 @@ func CheckAndUpdate(cfg Config) (bool, error) {
 		return false, errors.Wrap(err, "failed to fetch latest release")
 	}
 
+	// The stable channel never installs a pre-release, whatever the manifest
+	// says. Channel membership is decided upstream and this binary trusts it,
+	// so one mistake in the index generator reaches every stable install with
+	// nothing in between -- which is how a stable client came to install
+	// provider notion 14.0.0-rc.1 on 2026-09-14.
+	//
+	// The marker is written, unlike the error paths above. Those leave it alone
+	// because the fault is usually local and transient -- a proxy or a DNS entry
+	// the operator corrects and retries within the minute. A pre-release sitting
+	// on a stable pointer is neither: it is upstream state that no amount of
+	// re-running fixes, so re-fetching the manifest on every single invocation
+	// buys nothing and puts a warning in front of every command until someone
+	// else acts. With the marker written the check resumes after the refresh
+	// interval, so the correction is picked up within the hour and the reason is
+	// still stated once per interval rather than never.
+	//
+	// An explicit `update` passes RefreshInterval 0, so this never suppresses an
+	// update the operator asked for by name.
+	if channel := config.GetUpdateChannel(); channel != config.ChannelPreview &&
+		config.IsPrereleaseVersion(release.Version) {
+		log.Warn().
+			Str("current", currentVersion).
+			Str("offered", release.Version).
+			Str("channel", channel).
+			Msg("self-update: refusing a pre-release offered on a stable channel")
+		updateMarkerFile(binPath, cfg.BinaryName)
+		return false, nil
+	}
+
 	// Compare versions
 	cmp, err := semver.Parser{}.Compare(release.Version, currentVersion)
 	if err != nil {

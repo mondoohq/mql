@@ -294,6 +294,27 @@ func (r *MondooProviderRegistry) GetLatestVersion(ctx context.Context, name stri
 	if latestVersion == "" {
 		return "", errors.New("cannot determine latest version of provider '" + name + "'")
 	}
+
+	// The stable channel never installs a pre-release, whatever the pointer
+	// says. Channel membership is decided upstream and everything downstream
+	// trusts it, so a single mistake in the index generator reaches every
+	// stable client with nothing in between.
+	//
+	// That happened on 2026-09-14: the notion provider had only ever been
+	// published as 14.0.0-rc.1, its stable pointer was filled in from preview,
+	// and `MONDOO_UPDATE_CHANNEL=stable cnspec providers install notion`
+	// installed a release candidate. The registry resolved the right channel
+	// and read the right document; the document was wrong.
+	//
+	// Refuse rather than silently fall back: there is no older version to fall
+	// back to here, and installing something the caller did not ask for is what
+	// went wrong in the first place.
+	if r.channel() != config.ChannelPreview && config.IsPrereleaseVersion(latestVersion) {
+		return "", errors.Newf(
+			"refusing to install pre-release %s of provider '%s' on the %s channel",
+			latestVersion, name, r.channel())
+	}
+
 	return latestVersion, nil
 }
 
