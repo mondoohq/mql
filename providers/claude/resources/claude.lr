@@ -998,12 +998,16 @@ claude.organization.activity @defaults("id type actorType actorEmail") {
   actorType string
   // Actor email address
   //
-  // Set for a signed-in user. Null for every other kind of actor,
+  // Set for a signed-in user. Empty for every other kind of actor,
   // including anthropic_actor, which the API never attributes to an
-  // individual address. Read actorType before concluding an activity is
-  // unattributed.
+  // individual address. An empty address does not mean the activity is
+  // unattributed, so read actorType alongside it.
   actorEmail string
   // Actor identifier
+  //
+  // Organization member behind a signed-in user. Empty for every other
+  // kind of actor, which are identified by apiKeyId, adminApiKeyId or
+  // directoryId instead.
   actorId string
   // Email address claimed before sign-in completed
   //

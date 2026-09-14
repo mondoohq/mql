@@ -582,12 +582,18 @@ func activityArgs(a connection.AdminActivity) (map[string]*llx.RawData, error) {
 	}
 
 	return map[string]*llx.RawData{
-		"__id":                 llx.StringData(a.ID),
-		"id":                   llx.StringData(a.ID),
-		"type":                 llx.StringData(a.Type),
-		"actorType":            llx.StringDataPtr(nullableString(a.Actor.Type)),
-		"actorEmail":           llx.StringDataPtr(nullableString(a.Actor.Email)),
-		"actorId":              llx.StringDataPtr(nullableString(a.Actor.ID)),
+		"__id":      llx.StringData(a.ID),
+		"id":        llx.StringData(a.ID),
+		"type":      llx.StringData(a.Type),
+		"actorType": llx.StringDataPtr(nullableString(a.Actor.Type)),
+		// actorEmail and actorId shipped at 13.0.0 reporting a concrete
+		// string, so they keep doing that. Turning an absent value into null
+		// here would be the fail-open direction: a null operand of && or ||
+		// is falsy (ADR 040 part 4), so a shipped assertion that used to fail
+		// could start passing. actorType is the field that says why an email
+		// is empty.
+		"actorEmail":           llx.StringData(a.Actor.Email),
+		"actorId":              llx.StringData(a.Actor.ID),
 		"unauthenticatedEmail": llx.StringDataPtr(nullableString(a.Actor.UnauthenticatedEmail)),
 		"ipAddress":            llx.StringDataPtr(nullableString(a.Actor.IPAddress)),
 		"userAgent":            llx.StringDataPtr(nullableString(a.Actor.UserAgent)),

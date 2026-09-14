@@ -128,10 +128,12 @@ func TestActivityArgsUserActor(t *testing.T) {
 	assert.Nil(t, args["unauthenticatedEmail"].Value)
 }
 
-// An api_actor has no email at all. Before this change actorEmail was the only
-// attribution the schema offered, so machine traffic read as unattributed;
-// actorType plus apiKeyId is what replaces that.
-func TestActivityArgsApiActorReadsNullEmail(t *testing.T) {
+// An api_actor has no email at all. actorEmail and actorId shipped at 13.0.0
+// reporting a concrete string, so they must keep reporting "" rather than
+// null: a null operand of && or || is falsy, so flipping them would let a
+// shipped assertion that used to fail start passing. actorType plus apiKeyId
+// is what carries the new attribution.
+func TestActivityArgsApiActorKeepsEmptyStringEmail(t *testing.T) {
 	a := decodeActivity(t, `{
 		"id": "activity_0001",
 		"created_at": "2026-04-10T08:10:00Z",
@@ -148,8 +150,8 @@ func TestActivityArgsApiActorReadsNullEmail(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "api_actor", args["actorType"].Value)
-	assert.Nil(t, args["actorEmail"].Value)
-	assert.Nil(t, args["actorId"].Value)
+	assert.Equal(t, "", args["actorEmail"].Value)
+	assert.Equal(t, "", args["actorId"].Value)
 	assert.Equal(t, "apikey_0001", args["apiKeyId"].Value)
 	assert.Nil(t, args["adminApiKeyId"].Value)
 }
@@ -195,7 +197,7 @@ func TestActivityArgsUnauthenticatedActor(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "stranger@example.invalid", args["unauthenticatedEmail"].Value)
-	assert.Nil(t, args["actorEmail"].Value)
+	assert.Equal(t, "", args["actorEmail"].Value)
 	assert.Equal(t, "203.0.113.55", args["ipAddress"].Value)
 }
 
@@ -223,7 +225,7 @@ func TestActivityArgsScimDirectorySyncActor(t *testing.T) {
 	assert.Equal(t, "event_0001", args["workosEventId"].Value)
 	assert.Nil(t, args["ipAddress"].Value)
 	assert.Nil(t, args["userAgent"].Value)
-	assert.Nil(t, args["actorEmail"].Value)
+	assert.Equal(t, "", args["actorEmail"].Value)
 }
 
 // Anthropic acting on the organization reports no address by design. That has
@@ -241,7 +243,7 @@ func TestActivityArgsAnthropicActor(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "anthropic_actor", args["actorType"].Value)
-	assert.Nil(t, args["actorEmail"].Value)
+	assert.Equal(t, "", args["actorEmail"].Value)
 }
 
 // An actor kind this schema does not name yet still reports its discriminator,
@@ -274,12 +276,42 @@ func TestActivityArgsMissingActorReadsNull(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "activity_0007", args["__id"].Value)
+
+	// Fields added in this PR have shipped against nothing, so they report
+	// null when the API says nothing.
 	for _, field := range []string{
-		"actorType", "actorEmail", "actorId", "unauthenticatedEmail",
-		"ipAddress", "userAgent", "apiKeyId", "adminApiKeyId",
-		"directoryId", "idpConnectionType", "workosEventId",
+		"actorType", "unauthenticatedEmail", "ipAddress", "userAgent",
+		"apiKeyId", "adminApiKeyId", "directoryId", "idpConnectionType",
+		"workosEventId",
 	} {
 		assert.Nil(t, args[field].Value, field)
+	}
+
+	// The two fields that shipped at 13.0.0 keep their concrete-string
+	// contract even here.
+	assert.Equal(t, "", args["actorEmail"].Value)
+	assert.Equal(t, "", args["actorId"].Value)
+}
+
+// The shipped contract in one place, so a future refactor that reaches for
+// llx.StringDataPtr on either field has to delete an assertion that says why.
+func TestActivityArgsShippedActorFieldsAreNeverNull(t *testing.T) {
+	payloads := []string{
+		`{"id": "a1", "created_at": "2026-04-10T08:00:00Z", "actor": {"type": "api_actor", "api_key_id": "apikey_0001"}}`,
+		`{"id": "a2", "created_at": "2026-04-10T08:00:00Z", "actor": {"type": "admin_api_key_actor", "admin_api_key_id": "adminkey_0001"}}`,
+		`{"id": "a3", "created_at": "2026-04-10T08:00:00Z", "actor": {"type": "anthropic_actor", "email_address": null}}`,
+		`{"id": "a4", "created_at": "2026-04-10T08:00:00Z", "actor": {"type": "scim_directory_sync_actor", "directory_id": "directory_0001"}}`,
+		`{"id": "a5", "created_at": "2026-04-10T08:00:00Z", "actor": {"type": "unauthenticated_user_actor", "unauthenticated_email_address": "x@example.invalid"}}`,
+		`{"id": "a6", "created_at": "2026-04-10T08:00:00Z"}`,
+	}
+
+	for _, payload := range payloads {
+		a := decodeActivity(t, payload)
+		args, err := activityArgs(a)
+		require.NoError(t, err)
+
+		assert.Equal(t, "", args["actorEmail"].Value, a.ID)
+		assert.Equal(t, "", args["actorId"].Value, a.ID)
 	}
 }
 
