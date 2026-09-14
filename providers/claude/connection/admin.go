@@ -99,11 +99,19 @@ func (c *AdminClient) GetOrganization(ctx context.Context) (*AdminOrganization, 
 // Workspaces
 
 type AdminWorkspace struct {
-	ID            string              `json:"id"`
-	Name          string              `json:"name"`
-	DisplayColor  string              `json:"display_color"`
-	CreatedAt     string              `json:"created_at"`
-	ArchivedAt    *string             `json:"archived_at"`
+	ID           string  `json:"id"`
+	Name         string  `json:"name"`
+	DisplayColor string  `json:"display_color"`
+	CreatedAt    string  `json:"created_at"`
+	ArchivedAt   *string `json:"archived_at"`
+	// ExternalKeyID names the customer-managed encryption key protecting this
+	// workspace's data. Null when the workspace uses Anthropic-managed
+	// encryption.
+	ExternalKeyID *string `json:"external_key_id"`
+	// CompartmentID identifies the workspace's encryption compartment, which
+	// is the value a KMS key policy scopes a key to.
+	CompartmentID string              `json:"compartment_id"`
+	Tags          map[string]string   `json:"tags"`
 	DataResidency *AdminDataResidency `json:"data_residency"`
 }
 
@@ -333,9 +341,85 @@ type AdminActivity struct {
 	CreatedAt string         `json:"created_at"`
 }
 
+// AdminActorInfo is the decoded form of the activity feed's actor union. The
+// union is discriminated by Type, and each variant carries a different subset
+// of these values, so a field left empty means the variant does not define it.
+// New variants are expected: an unrecognized Type still decodes, carrying
+// whatever of the shared values it happens to include.
 type AdminActorInfo struct {
-	Email string `json:"email"`
-	ID    string `json:"id"`
+	// Type is the union discriminator, one of user_actor, api_actor,
+	// admin_api_key_actor, unauthenticated_user_actor, anthropic_actor or
+	// scim_directory_sync_actor.
+	Type string
+	// Email is the address of a signed-in user. Only user_actor defines it,
+	// and anthropic_actor always reports it as null.
+	Email string
+	// ID is the organization member id behind a user_actor.
+	ID string
+	// UnauthenticatedEmail is the address supplied before sign-in completed.
+	// It is a claim, not a verified identity.
+	UnauthenticatedEmail string
+	// IPAddress and UserAgent are shared by the user, API, admin key and
+	// unauthenticated variants.
+	IPAddress string
+	UserAgent string
+	// APIKeyID identifies the customer-issued API key behind an api_actor,
+	// AdminAPIKeyID the admin key behind an admin_api_key_actor.
+	APIKeyID      string
+	AdminAPIKeyID string
+	// DirectoryID, IdpConnectionType and WorkosEventID describe a change
+	// pushed by an identity provider through SCIM directory sync.
+	DirectoryID       string
+	IdpConnectionType string
+	WorkosEventID     string
+}
+
+// adminActorPayload is the wire shape of the actor union. It is decoded
+// separately from AdminActorInfo so the union's per-variant key names stay in
+// one place, rather than every consumer having to know that a user's address
+// arrives as email_address while an unauthenticated one arrives under its own
+// key.
+type adminActorPayload struct {
+	Type                        string  `json:"type"`
+	EmailAddress                *string `json:"email_address"`
+	UnauthenticatedEmailAddress *string `json:"unauthenticated_email_address"`
+	UserID                      string  `json:"user_id"`
+	IPAddress                   string  `json:"ip_address"`
+	UserAgent                   string  `json:"user_agent"`
+	APIKeyID                    string  `json:"api_key_id"`
+	AdminAPIKeyID               string  `json:"admin_api_key_id"`
+	DirectoryID                 string  `json:"directory_id"`
+	IdpConnectionType           *string `json:"idp_connection_type"`
+	WorkosEventID               string  `json:"workos_event_id"`
+}
+
+func (a *AdminActorInfo) UnmarshalJSON(data []byte) error {
+	var p adminActorPayload
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+
+	*a = AdminActorInfo{
+		Type:              p.Type,
+		ID:                p.UserID,
+		IPAddress:         p.IPAddress,
+		UserAgent:         p.UserAgent,
+		APIKeyID:          p.APIKeyID,
+		AdminAPIKeyID:     p.AdminAPIKeyID,
+		DirectoryID:       p.DirectoryID,
+		WorkosEventID:     p.WorkosEventID,
+		IdpConnectionType: derefString(p.IdpConnectionType),
+	}
+	a.Email = derefString(p.EmailAddress)
+	a.UnauthenticatedEmail = derefString(p.UnauthenticatedEmailAddress)
+	return nil
+}
+
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func (c *AdminClient) ListActivities(ctx context.Context) ([]AdminActivity, error) {

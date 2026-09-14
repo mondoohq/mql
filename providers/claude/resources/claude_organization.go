@@ -59,12 +59,19 @@ func workspaceArgs(w connection.AdminWorkspace) (map[string]*llx.RawData, error)
 	}
 
 	return map[string]*llx.RawData{
-		"__id":                 llx.StringData(w.ID),
-		"id":                   llx.StringData(w.ID),
-		"name":                 llx.StringData(w.Name),
-		"displayColor":         llx.StringData(w.DisplayColor),
-		"createdAt":            llx.TimeData(createdAt),
-		"archivedAt":           llx.TimeDataPtr(archivedAt),
+		"__id":         llx.StringData(w.ID),
+		"id":           llx.StringData(w.ID),
+		"name":         llx.StringData(w.Name),
+		"displayColor": llx.StringData(w.DisplayColor),
+		"createdAt":    llx.TimeData(createdAt),
+		"archivedAt":   llx.TimeDataPtr(archivedAt),
+		// A workspace on Anthropic-managed encryption has no key at all,
+		// which has to read as null. An empty string would make
+		// "every workspace has a customer-managed key" look satisfiable by
+		// a workspace that has none.
+		"externalKeyId":        llx.StringDataPtr(w.ExternalKeyID),
+		"compartmentId":        llx.StringDataPtr(nullableString(w.CompartmentID)),
+		"tags":                 llx.MapData(toInterfaceMap(w.Tags), types.String),
 		"workspaceGeo":         llx.StringData(workspaceGeo),
 		"defaultInferenceGeo":  llx.StringData(defaultInferenceGeo),
 		"allowedInferenceGeos": llx.ArrayData(allowedInferenceGeos, types.String),
@@ -549,19 +556,12 @@ func (r *mqlClaudeOrganization) activities() ([]interface{}, error) {
 
 	res := make([]interface{}, 0, len(activities))
 	for _, a := range activities {
-		createdAt, err := parseTime(a.CreatedAt)
+		args, err := activityArgs(a)
 		if err != nil {
-			return nil, fmt.Errorf("parsing activity createdAt: %w", err)
+			return nil, err
 		}
 
-		mqlActivity, err := CreateResource(r.MqlRuntime, "claude.organization.activity", map[string]*llx.RawData{
-			"__id":       llx.StringData(a.ID),
-			"id":         llx.StringData(a.ID),
-			"type":       llx.StringData(a.Type),
-			"actorEmail": llx.StringData(a.Actor.Email),
-			"actorId":    llx.StringData(a.Actor.ID),
-			"createdAt":  llx.TimeData(createdAt),
-		})
+		mqlActivity, err := CreateResource(r.MqlRuntime, "claude.organization.activity", args)
 		if err != nil {
 			return nil, err
 		}
@@ -569,4 +569,50 @@ func (r *mqlClaudeOrganization) activities() ([]interface{}, error) {
 	}
 
 	return res, nil
+}
+
+// activityArgs maps a compliance activity onto resource arguments. Each actor
+// variant defines a different subset of the union, so a value the variant does
+// not carry reads as null rather than as the empty string: an api_actor has no
+// email address, and reporting "" there would be a measurement it never made.
+func activityArgs(a connection.AdminActivity) (map[string]*llx.RawData, error) {
+	createdAt, err := parseTime(a.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("parsing activity createdAt: %w", err)
+	}
+
+	return map[string]*llx.RawData{
+		"__id":                 llx.StringData(a.ID),
+		"id":                   llx.StringData(a.ID),
+		"type":                 llx.StringData(a.Type),
+		"actorType":            llx.StringDataPtr(nullableString(a.Actor.Type)),
+		"actorEmail":           llx.StringDataPtr(nullableString(a.Actor.Email)),
+		"actorId":              llx.StringDataPtr(nullableString(a.Actor.ID)),
+		"unauthenticatedEmail": llx.StringDataPtr(nullableString(a.Actor.UnauthenticatedEmail)),
+		"ipAddress":            llx.StringDataPtr(nullableString(a.Actor.IPAddress)),
+		"userAgent":            llx.StringDataPtr(nullableString(a.Actor.UserAgent)),
+		"apiKeyId":             llx.StringDataPtr(nullableString(a.Actor.APIKeyID)),
+		"adminApiKeyId":        llx.StringDataPtr(nullableString(a.Actor.AdminAPIKeyID)),
+		"directoryId":          llx.StringDataPtr(nullableString(a.Actor.DirectoryID)),
+		"idpConnectionType":    llx.StringDataPtr(nullableString(a.Actor.IdpConnectionType)),
+		"workosEventId":        llx.StringDataPtr(nullableString(a.Actor.WorkosEventID)),
+		"createdAt":            llx.TimeData(createdAt),
+	}, nil
+}
+
+// apiKey resolves the organization API key behind an api_actor activity. The
+// feed is retained far longer than the keys it names, so a key that has since
+// been deleted resolves to nothing and leaves apiKeyId as the only record of
+// which credential acted.
+func (r *mqlClaudeOrganizationActivity) apiKey() (*mqlClaudeOrganizationApiKey, error) {
+	key, ok, err := lookupOrganizationChild[*mqlClaudeOrganizationApiKey](
+		r.MqlRuntime, r.ApiKeyId.Data, (*mqlClaudeOrganization).GetApiKeys)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		r.ApiKey.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	return key, nil
 }

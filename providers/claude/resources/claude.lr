@@ -563,7 +563,8 @@ claude.organization @defaults("id name") {
 //
 // Workspace within the Claude organization, including its name, display
 // color, creation date, archive status, data residency configuration,
-// and workspace-level members and rate limits.
+// customer-managed encryption binding, tags, and workspace-level members
+// and rate limits.
 claude.organization.workspace @defaults("id name") {
   // Workspace identifier
   id string
@@ -581,6 +582,24 @@ claude.organization.workspace @defaults("id name") {
   defaultInferenceGeo string
   // Allowed inference geographic regions
   allowedInferenceGeos []string
+  // Customer-managed encryption key protecting this workspace
+  //
+  // Identifier of the key configuration encrypting data stored for the
+  // workspace, which is the AWS KMS key ARN on Claude Platform on AWS.
+  // Null when the workspace relies on Anthropic-managed encryption. The
+  // binding is write-once: a key cannot be detached or replaced once
+  // attached, and rotating the key material leaves this value unchanged.
+  externalKeyId string
+  // Encryption compartment this workspace belongs to
+  //
+  // Value a KMS key policy condition names to scope a key to this
+  // workspace. On GCP and Azure the compartment binding is enforced
+  // without the key configuration referencing it.
+  compartmentId string
+  // User-defined tags on the workspace
+  //
+  // Keys may not begin with anthropic, which is reserved.
+  tags map[string]string
   // Members with access to this workspace
   members() []claude.organization.workspace.member
   // Workspace-level rate limit overrides
@@ -954,9 +973,11 @@ claude.organization.federationRule @defaults("id name") {
 //
 // Entry from the Claude compliance activity feed. The activity feed
 // captures security-relevant events such as logins, permission changes,
-// API key operations, and workspace modifications. Requires either a
-// Compliance Access Key or an Admin API key.
-claude.organization.activity @defaults("id type actorEmail") {
+// API key operations, and workspace modifications, along with who or
+// what performed them, the address and user agent the action came from,
+// and the credential it was made with. Requires either a Compliance
+// Access Key or an Admin API key.
+claude.organization.activity @defaults("id type actorType actorEmail") {
   // Activity event identifier
   id string
   // Event type
@@ -964,10 +985,67 @@ claude.organization.activity @defaults("id type actorEmail") {
   // For example claude_chat_created, claude_file_uploaded, or
   // organization.user.added.
   type string
+  // Kind of actor behind the activity
+  //
+  // One of user_actor for a signed-in console or claude.ai user,
+  // api_actor for a request made with a customer-issued API key,
+  // admin_api_key_actor for an administrative change made with an admin
+  // key, unauthenticated_user_actor for an action taken before sign-in
+  // completed, anthropic_actor for an action Anthropic took on the
+  // organization, or scim_directory_sync_actor for a change pushed by an
+  // identity provider. New kinds can appear, so treat an unrecognized
+  // value as a kind this schema does not name yet.
+  actorType string
   // Actor email address
+  //
+  // Set for a signed-in user. Null for every other kind of actor,
+  // including anthropic_actor, which the API never attributes to an
+  // individual address. Read actorType before concluding an activity is
+  // unattributed.
   actorEmail string
   // Actor identifier
   actorId string
+  // Email address claimed before sign-in completed
+  //
+  // Carried by an activity such as an initiated SSO login, where the
+  // address is what the visitor supplied rather than a verified
+  // identity.
+  unauthenticatedEmail string
+  // Source IP address the activity came from
+  ipAddress string
+  // User agent string the activity came from
+  userAgent string
+  // Identifier of the API key behind the activity
+  //
+  // Set when the actor is an API key issued by the organization. The
+  // value stays readable after the key is deleted, when apiKey no longer
+  // resolves to anything.
+  apiKeyId string
+  // API key behind the activity
+  //
+  // Null when the actor is not an API key, and when the key has since
+  // been deleted from the organization.
+  apiKey() claude.organization.apiKey
+  // Identifier of the admin API key behind the activity
+  //
+  // Set when an organization admin made the change with an admin key.
+  // Admin keys are not part of the organization's API key list, so the
+  // identifier is all the attribution there is.
+  adminApiKeyId string
+  // Identifier of the directory that pushed the change
+  //
+  // Set when an identity provider synchronized the change through SCIM.
+  directoryId string
+  // Kind of identity provider connection behind a directory sync
+  //
+  // For example OktaSCIMV2 or AzureSCIMV2. Null when the provider does
+  // not report one.
+  idpConnectionType string
+  // Identifier of the upstream directory sync event
+  //
+  // Correlates the activity with the event the identity provider
+  // recorded for the same change.
+  workosEventId string
   // Timestamp when the activity was created
   createdAt time
 }

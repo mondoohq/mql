@@ -724,6 +724,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"claude.organization.workspace.allowedInferenceGeos": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationWorkspace).GetAllowedInferenceGeos()).ToDataRes(types.Array(types.String))
 	},
+	"claude.organization.workspace.externalKeyId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationWorkspace).GetExternalKeyId()).ToDataRes(types.String)
+	},
+	"claude.organization.workspace.compartmentId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationWorkspace).GetCompartmentId()).ToDataRes(types.String)
+	},
+	"claude.organization.workspace.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationWorkspace).GetTags()).ToDataRes(types.Map(types.String, types.String))
+	},
 	"claude.organization.workspace.members": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationWorkspace).GetMembers()).ToDataRes(types.Array(types.Resource("claude.organization.workspace.member")))
 	},
@@ -997,11 +1006,41 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"claude.organization.activity.type": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationActivity).GetType()).ToDataRes(types.String)
 	},
+	"claude.organization.activity.actorType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationActivity).GetActorType()).ToDataRes(types.String)
+	},
 	"claude.organization.activity.actorEmail": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationActivity).GetActorEmail()).ToDataRes(types.String)
 	},
 	"claude.organization.activity.actorId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationActivity).GetActorId()).ToDataRes(types.String)
+	},
+	"claude.organization.activity.unauthenticatedEmail": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationActivity).GetUnauthenticatedEmail()).ToDataRes(types.String)
+	},
+	"claude.organization.activity.ipAddress": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationActivity).GetIpAddress()).ToDataRes(types.String)
+	},
+	"claude.organization.activity.userAgent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationActivity).GetUserAgent()).ToDataRes(types.String)
+	},
+	"claude.organization.activity.apiKeyId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationActivity).GetApiKeyId()).ToDataRes(types.String)
+	},
+	"claude.organization.activity.apiKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationActivity).GetApiKey()).ToDataRes(types.Resource("claude.organization.apiKey"))
+	},
+	"claude.organization.activity.adminApiKeyId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationActivity).GetAdminApiKeyId()).ToDataRes(types.String)
+	},
+	"claude.organization.activity.directoryId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationActivity).GetDirectoryId()).ToDataRes(types.String)
+	},
+	"claude.organization.activity.idpConnectionType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationActivity).GetIdpConnectionType()).ToDataRes(types.String)
+	},
+	"claude.organization.activity.workosEventId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeOrganizationActivity).GetWorkosEventId()).ToDataRes(types.String)
 	},
 	"claude.organization.activity.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeOrganizationActivity).GetCreatedAt()).ToDataRes(types.Time)
@@ -1738,6 +1777,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlClaudeOrganizationWorkspace).AllowedInferenceGeos, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"claude.organization.workspace.externalKeyId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationWorkspace).ExternalKeyId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.organization.workspace.compartmentId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationWorkspace).CompartmentId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.organization.workspace.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationWorkspace).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
 	"claude.organization.workspace.members": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeOrganizationWorkspace).Members, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -2146,12 +2197,52 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlClaudeOrganizationActivity).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"claude.organization.activity.actorType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationActivity).ActorType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"claude.organization.activity.actorEmail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeOrganizationActivity).ActorEmail, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"claude.organization.activity.actorId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeOrganizationActivity).ActorId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.organization.activity.unauthenticatedEmail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationActivity).UnauthenticatedEmail, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.organization.activity.ipAddress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationActivity).IpAddress, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.organization.activity.userAgent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationActivity).UserAgent, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.organization.activity.apiKeyId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationActivity).ApiKeyId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.organization.activity.apiKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationActivity).ApiKey, ok = plugin.RawToTValue[*mqlClaudeOrganizationApiKey](v.Value, v.Error)
+		return
+	},
+	"claude.organization.activity.adminApiKeyId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationActivity).AdminApiKeyId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.organization.activity.directoryId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationActivity).DirectoryId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.organization.activity.idpConnectionType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationActivity).IdpConnectionType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.organization.activity.workosEventId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeOrganizationActivity).WorkosEventId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"claude.organization.activity.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -3947,6 +4038,9 @@ type mqlClaudeOrganizationWorkspace struct {
 	WorkspaceGeo         plugin.TValue[string]
 	DefaultInferenceGeo  plugin.TValue[string]
 	AllowedInferenceGeos plugin.TValue[[]any]
+	ExternalKeyId        plugin.TValue[string]
+	CompartmentId        plugin.TValue[string]
+	Tags                 plugin.TValue[map[string]any]
 	Members              plugin.TValue[[]any]
 	RateLimits           plugin.TValue[[]any]
 }
@@ -4013,6 +4107,18 @@ func (c *mqlClaudeOrganizationWorkspace) GetDefaultInferenceGeo() *plugin.TValue
 
 func (c *mqlClaudeOrganizationWorkspace) GetAllowedInferenceGeos() *plugin.TValue[[]any] {
 	return &c.AllowedInferenceGeos
+}
+
+func (c *mqlClaudeOrganizationWorkspace) GetExternalKeyId() *plugin.TValue[string] {
+	return &c.ExternalKeyId
+}
+
+func (c *mqlClaudeOrganizationWorkspace) GetCompartmentId() *plugin.TValue[string] {
+	return &c.CompartmentId
+}
+
+func (c *mqlClaudeOrganizationWorkspace) GetTags() *plugin.TValue[map[string]any] {
+	return &c.Tags
 }
 
 func (c *mqlClaudeOrganizationWorkspace) GetMembers() *plugin.TValue[[]any] {
@@ -5021,11 +5127,21 @@ type mqlClaudeOrganizationActivity struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlClaudeOrganizationActivityInternal it will be used here
-	Id         plugin.TValue[string]
-	Type       plugin.TValue[string]
-	ActorEmail plugin.TValue[string]
-	ActorId    plugin.TValue[string]
-	CreatedAt  plugin.TValue[*time.Time]
+	Id                   plugin.TValue[string]
+	Type                 plugin.TValue[string]
+	ActorType            plugin.TValue[string]
+	ActorEmail           plugin.TValue[string]
+	ActorId              plugin.TValue[string]
+	UnauthenticatedEmail plugin.TValue[string]
+	IpAddress            plugin.TValue[string]
+	UserAgent            plugin.TValue[string]
+	ApiKeyId             plugin.TValue[string]
+	ApiKey               plugin.TValue[*mqlClaudeOrganizationApiKey]
+	AdminApiKeyId        plugin.TValue[string]
+	DirectoryId          plugin.TValue[string]
+	IdpConnectionType    plugin.TValue[string]
+	WorkosEventId        plugin.TValue[string]
+	CreatedAt            plugin.TValue[*time.Time]
 }
 
 // createClaudeOrganizationActivity creates a new instance of this resource
@@ -5068,12 +5184,64 @@ func (c *mqlClaudeOrganizationActivity) GetType() *plugin.TValue[string] {
 	return &c.Type
 }
 
+func (c *mqlClaudeOrganizationActivity) GetActorType() *plugin.TValue[string] {
+	return &c.ActorType
+}
+
 func (c *mqlClaudeOrganizationActivity) GetActorEmail() *plugin.TValue[string] {
 	return &c.ActorEmail
 }
 
 func (c *mqlClaudeOrganizationActivity) GetActorId() *plugin.TValue[string] {
 	return &c.ActorId
+}
+
+func (c *mqlClaudeOrganizationActivity) GetUnauthenticatedEmail() *plugin.TValue[string] {
+	return &c.UnauthenticatedEmail
+}
+
+func (c *mqlClaudeOrganizationActivity) GetIpAddress() *plugin.TValue[string] {
+	return &c.IpAddress
+}
+
+func (c *mqlClaudeOrganizationActivity) GetUserAgent() *plugin.TValue[string] {
+	return &c.UserAgent
+}
+
+func (c *mqlClaudeOrganizationActivity) GetApiKeyId() *plugin.TValue[string] {
+	return &c.ApiKeyId
+}
+
+func (c *mqlClaudeOrganizationActivity) GetApiKey() *plugin.TValue[*mqlClaudeOrganizationApiKey] {
+	return plugin.GetOrCompute[*mqlClaudeOrganizationApiKey](&c.ApiKey, func() (*mqlClaudeOrganizationApiKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.organization.activity", c.__id, "apiKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlClaudeOrganizationApiKey), nil
+			}
+		}
+
+		return c.apiKey()
+	})
+}
+
+func (c *mqlClaudeOrganizationActivity) GetAdminApiKeyId() *plugin.TValue[string] {
+	return &c.AdminApiKeyId
+}
+
+func (c *mqlClaudeOrganizationActivity) GetDirectoryId() *plugin.TValue[string] {
+	return &c.DirectoryId
+}
+
+func (c *mqlClaudeOrganizationActivity) GetIdpConnectionType() *plugin.TValue[string] {
+	return &c.IdpConnectionType
+}
+
+func (c *mqlClaudeOrganizationActivity) GetWorkosEventId() *plugin.TValue[string] {
+	return &c.WorkosEventId
 }
 
 func (c *mqlClaudeOrganizationActivity) GetCreatedAt() *plugin.TValue[*time.Time] {
