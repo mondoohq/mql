@@ -36,6 +36,11 @@ on:
         required: false
         default: true
         type: boolean
+      skip-test-gate:
+        description: "Release even if the tagged commit has no successful test run (emergencies only)"
+        required: false
+        default: false
+        type: boolean
 
 env:
   REGISTRY: docker.io
@@ -46,7 +51,90 @@ permissions:
   contents: read
 
 jobs:
+  # A tag can be created on any commit, including one whose tests never passed.
+  # Nothing downstream re-checks: goreleaser builds whatever the tag points at,
+  # publishes it, and the installer chain copies it to the release bucket.
+  #
+  # On 2026-09-14 five consecutive commits on main had their test runs cancelled
+  # while still queued -- merges arrived faster than the suite completes, and a
+  # concurrency group keeps at most one running plus one pending run. Those
+  # commits were never red, they were never anything, and tagging one would have
+  # produced a release with no test result behind it.
+  #
+  # Testing every commit was the wrong answer to that: git is cumulative, so the
+  # newest commit in a burst already covers the ones behind it, and re-running
+  # the suite on superseded commits spends runner time confirming states nobody
+  # will release. The commit that matters is the one being tagged, so that is
+  # the one this checks.
+  verify-tested:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    steps:
+      - name: Require a successful test run for this commit
+        if: ${{ !inputs.goreleaser-snapshot && !inputs.skip-test-gate }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          # Keyed on workflow file rather than check-run name: a renamed check
+          # would silently drop out of a required-names list, which is the
+          # failure mode this job exists to prevent.
+          workflows=(pr-test-lint.yml pr-test-generated-files.yaml)
+
+          # A run may still be going when the tag lands. Wait, but not forever.
+          deadline=$(( $(date +%s) + 45 * 60 ))
+          failed=0
+
+          for wf in "${workflows[@]}"; do
+            while :; do
+              read -r status conclusion <<<"$(
+                gh api "repos/${REPO}/actions/workflows/${wf}/runs?head_sha=${SHA}&per_page=1" \
+                  --jq '.workflow_runs[0] | "\(.status // "none") \(.conclusion // "none")"' 2>/dev/null || echo "none none"
+              )"
+
+              if [ "$status" = "none" ]; then
+                echo "::error::${wf} never ran for ${SHA}. This commit has no test result, so there is nothing to release."
+                failed=1
+                break
+              fi
+
+              if [ "$status" = "completed" ]; then
+                if [ "$conclusion" = "success" ]; then
+                  echo "::notice::${wf} succeeded for ${SHA}"
+                else
+                  # `cancelled` is the case that prompted this gate. It is not a
+                  # milder form of failure -- it means the suite never produced
+                  # a verdict at all.
+                  echo "::error::${wf} for ${SHA} concluded '${conclusion}', not success. Re-run it and re-tag, or dispatch with skip-test-gate if this is an emergency."
+                  failed=1
+                fi
+                break
+              fi
+
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "::error::${wf} for ${SHA} is still '${status}' after 45 minutes. Refusing to release on an unfinished test run."
+                failed=1
+                break
+              fi
+
+              echo "${wf} is ${status} for ${SHA}; waiting"
+              sleep 60
+            done
+          done
+
+          [ "$failed" -eq 0 ] || exit 1
+
+      - name: Report a bypassed gate
+        if: ${{ inputs.goreleaser-snapshot || inputs.skip-test-gate }}
+        run: |
+          echo "::warning::Test gate bypassed (snapshot=${{ inputs.goreleaser-snapshot }}, skip-test-gate=${{ inputs.skip-test-gate }}). This release has not been checked against its commit's test results."
+
   goreleaser:
+    needs: [verify-tested]
     outputs:
       channel: ${{ steps.channel.outputs.channel }}
     permissions:
