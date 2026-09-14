@@ -20,9 +20,9 @@ require (
 	github.com/stackitcloud/stackit-sdk-go/services/modelserving v0.13.1
 	github.com/stackitcloud/stackit-sdk-go/services/mongodbflex v1.12.2
 	github.com/stackitcloud/stackit-sdk-go/services/objectstorage v1.9.2
-	github.com/stackitcloud/stackit-sdk-go/services/observability v0.25.1
+	github.com/stackitcloud/stackit-sdk-go/services/observability v0.25.2
 	github.com/stackitcloud/stackit-sdk-go/services/opensearch v1.3.1
-	github.com/stackitcloud/stackit-sdk-go/services/postgresflex v1.14.1
+	github.com/stackitcloud/stackit-sdk-go/services/postgresflex v1.15.0
 	github.com/stackitcloud/stackit-sdk-go/services/rabbitmq v1.3.1
 	github.com/stackitcloud/stackit-sdk-go/services/redis v1.4.1
 	github.com/stackitcloud/stackit-sdk-go/services/resourcemanager v0.26.0
@@ -37,7 +37,7 @@ require (
 	github.com/stackitcloud/stackit-sdk-go/services/telemetryrouter v0.5.2
 	github.com/stackitcloud/stackit-sdk-go/services/vpn v0.15.2
 	github.com/stretchr/testify v1.12.1
-	go.mondoo.com/mql v0.0.0-20260910012209-52dad74e912f
+	go.mondoo.com/mql v0.0.0-20260913225403-92593e868bb9
 )
 
 require (
@@ -124,7 +124,7 @@ require (
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.50.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260908043556-f8649ddbbfe6 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260911204522-f61a6ca850bd // indirect
 	google.golang.org/grpc v1.83.2 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect

@@ -24,9 +24,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/athena v1.66.0
 	github.com/aws/aws-sdk-go-v2/service/autoscaling v1.78.0
 	github.com/aws/aws-sdk-go-v2/service/backup v1.65.0
-	github.com/aws/aws-sdk-go-v2/service/batch v1.75.0
+	github.com/aws/aws-sdk-go-v2/service/batch v1.76.0
 	github.com/aws/aws-sdk-go-v2/service/bedrock v1.72.0
-	github.com/aws/aws-sdk-go-v2/service/bedrockagent v1.64.0
+	github.com/aws/aws-sdk-go-v2/service/bedrockagent v1.65.0
 	github.com/aws/aws-sdk-go-v2/service/bedrockagentcorecontrol v1.66.0
 	github.com/aws/aws-sdk-go-v2/service/budgets v1.51.0
 	github.com/aws/aws-sdk-go-v2/service/cloudformation v1.81.0
@@ -46,7 +46,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/costexplorer v1.72.0
 	github.com/aws/aws-sdk-go-v2/service/databasemigrationservice v1.71.0
 	github.com/aws/aws-sdk-go-v2/service/datasync v1.67.0
-	github.com/aws/aws-sdk-go-v2/service/dax v1.38.0
+	github.com/aws/aws-sdk-go-v2/service/dax v1.38.2
 	github.com/aws/aws-sdk-go-v2/service/detective v1.47.0
 	github.com/aws/aws-sdk-go-v2/service/directconnect v1.50.0
 	github.com/aws/aws-sdk-go-v2/service/directoryservice v1.47.0
@@ -55,10 +55,10 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/drs v1.50.0
 	github.com/aws/aws-sdk-go-v2/service/dsql v1.22.0
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.68.0
-	github.com/aws/aws-sdk-go-v2/service/ec2 v1.331.0
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.332.0
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.65.0
 	github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.47.0
-	github.com/aws/aws-sdk-go-v2/service/ecs v1.97.0
+	github.com/aws/aws-sdk-go-v2/service/ecs v1.98.0
 	github.com/aws/aws-sdk-go-v2/service/efs v1.49.0
 	github.com/aws/aws-sdk-go-v2/service/eks v1.99.0
 	github.com/aws/aws-sdk-go-v2/service/elasticache v1.61.0
@@ -84,7 +84,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/kms v1.60.0
 	github.com/aws/aws-sdk-go-v2/service/lakeformation v1.55.0
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.108.0
-	github.com/aws/aws-sdk-go-v2/service/lightsail v1.65.0
+	github.com/aws/aws-sdk-go-v2/service/lightsail v1.66.0
 	github.com/aws/aws-sdk-go-v2/service/macie2 v1.59.0
 	github.com/aws/aws-sdk-go-v2/service/memorydb v1.42.0
 	github.com/aws/aws-sdk-go-v2/service/mq v1.44.0
@@ -102,9 +102,9 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.70.0
 	github.com/aws/aws-sdk-go-v2/service/route53domains v1.44.0
 	github.com/aws/aws-sdk-go-v2/service/route53resolver v1.54.0
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.113.0
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.113.1
 	github.com/aws/aws-sdk-go-v2/service/s3control v1.79.0
-	github.com/aws/aws-sdk-go-v2/service/sagemaker v1.276.0
+	github.com/aws/aws-sdk-go-v2/service/sagemaker v1.277.0
 	github.com/aws/aws-sdk-go-v2/service/scheduler v1.25.0
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.49.0
 	github.com/aws/aws-sdk-go-v2/service/securityhub v1.81.0
@@ -135,7 +135,7 @@ require (
 	github.com/rs/zerolog v1.35.1
 	github.com/spf13/afero v1.15.0
 	github.com/stretchr/testify v1.12.1
-	go.mondoo.com/mql v0.0.0-20260910012209-52dad74e912f
+	go.mondoo.com/mql v0.0.0-20260913225403-92593e868bb9
 	golang.org/x/sync v0.23.0
 	k8s.io/client-go v0.37.0
 )
@@ -235,7 +235,7 @@ require (
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
-	github.com/mattn/go-runewidth v0.0.29 // indirect
+	github.com/mattn/go-runewidth v0.0.30 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/moby/buildkit v0.29.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
@@ -288,7 +288,7 @@ require (
 	github.com/tonistiigi/go-csvvalue v0.0.0-20240814133006-030d3b2625d0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
-	go.mondoo.com/mondoo-go v0.0.0-20260909120712-e544d4e81e9c // indirect
+	go.mondoo.com/mondoo-go v0.0.0-20260912001156-c395844c0d2f // indirect
 	go.mondoo.com/ranger-rpc v0.8.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0 // indirect
@@ -306,7 +306,7 @@ require (
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.50.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260908043556-f8649ddbbfe6 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260911204522-f61a6ca850bd // indirect
 	google.golang.org/grpc v1.83.2 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect

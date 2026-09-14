@@ -9,8 +9,8 @@ require (
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1
 	github.com/vmware/govmomi v0.56.0
-	go.mondoo.com/mondoo-go v0.0.0-20260909120712-e544d4e81e9c
-	go.mondoo.com/mql v0.0.0-20260910012209-52dad74e912f
+	go.mondoo.com/mondoo-go v0.0.0-20260912001156-c395844c0d2f
+	go.mondoo.com/mql v0.0.0-20260913225403-92593e868bb9
 	golang.org/x/sync v0.23.0
 )
 
@@ -100,7 +100,7 @@ require (
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.50.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260908043556-f8649ddbbfe6 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260911204522-f61a6ca850bd // indirect
 	google.golang.org/grpc v1.83.2 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect

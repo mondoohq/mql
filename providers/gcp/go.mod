@@ -8,17 +8,17 @@ require (
 	cloud.google.com/go/accessapproval v1.13.0
 	cloud.google.com/go/accesscontextmanager v1.15.0
 	cloud.google.com/go/aiplatform v1.126.0
-	cloud.google.com/go/alloydb v1.29.0
+	cloud.google.com/go/alloydb v1.30.0
 	cloud.google.com/go/artifactregistry v1.26.0
 	cloud.google.com/go/asset v1.28.0
 	cloud.google.com/go/backupdr v1.16.0
 	cloud.google.com/go/batch v1.22.0
 	cloud.google.com/go/bigquery v1.83.0
-	cloud.google.com/go/bigtable v1.56.0
+	cloud.google.com/go/bigtable v1.57.0
 	cloud.google.com/go/certificatemanager v1.15.0
 	cloud.google.com/go/cloudbuild v1.33.0
 	cloud.google.com/go/cloudtasks v1.19.0
-	cloud.google.com/go/compute v1.67.0
+	cloud.google.com/go/compute v1.68.0
 	cloud.google.com/go/container v1.54.0
 	cloud.google.com/go/containeranalysis v0.19.0
 	cloud.google.com/go/datastream v1.21.0
@@ -52,7 +52,7 @@ require (
 	cloud.google.com/go/security v1.27.0
 	cloud.google.com/go/securitycenter v1.46.0
 	cloud.google.com/go/serviceusage v1.15.0
-	cloud.google.com/go/spanner v1.95.0
+	cloud.google.com/go/spanner v1.95.1
 	github.com/aws/smithy-go v1.28.1
 	github.com/cockroachdb/errors v1.14.0
 	github.com/google/go-containerregistry v0.22.1
@@ -60,7 +60,7 @@ require (
 	github.com/mitchellh/hashstructure/v2 v2.0.2
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1
-	go.mondoo.com/mql v0.0.0-20260910012209-52dad74e912f
+	go.mondoo.com/mql v0.0.0-20260913225403-92593e868bb9
 	go.mondoo.com/ranger-rpc v0.8.1
 	golang.org/x/oauth2 v0.37.0
 	google.golang.org/api v0.297.0
@@ -70,7 +70,7 @@ require (
 	// v0.0.0-20260807164820-c8921c73eeea as part of its ongoing alias pruning.
 	// Bumping past this pin breaks the gcp provider build until upstream ships
 	// an accesscontextmanager regenerated against the pruned genproto.
-	google.golang.org/genproto v0.0.0-20260908043556-f8649ddbbfe6
+	google.golang.org/genproto v0.0.0-20260911204522-f61a6ca850bd
 	google.golang.org/protobuf v1.36.12
 )
 
@@ -79,9 +79,9 @@ require (
 	cloud.google.com/go/grafeas v0.3.17 // indirect
 	cloud.google.com/go/osconfig v1.22.0 // indirect
 	github.com/CycloneDX/cyclonedx-go v0.12.0 // indirect
-	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.37.0 // indirect
-	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.61.0 // indirect
-	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.61.0 // indirect
+	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.38.0 // indirect
+	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.62.0 // indirect
+	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.62.0 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/anchore/go-struct-converter v0.1.0 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.3 // indirect
@@ -108,7 +108,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/knqyf263/go-rpmdb v0.1.1 // indirect
-	github.com/mattn/go-runewidth v0.0.29 // indirect
+	github.com/mattn/go-runewidth v0.0.30 // indirect
 	github.com/moby/buildkit v0.29.0 // indirect
 	github.com/moby/moby/api v1.56.0 // indirect
 	github.com/moby/moby/client v0.6.0 // indirect
@@ -141,14 +141,14 @@ require (
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f // indirect
 	github.com/tonistiigi/go-csvvalue v0.0.0-20240814133006-030d3b2625d0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	go.mondoo.com/mondoo-go v0.0.0-20260909120712-e544d4e81e9c // indirect
+	go.mondoo.com/mondoo-go v0.0.0-20260912001156-c395844c0d2f // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.46.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.46.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.46.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/telemetry v0.0.0-20260909141559-55ac43c52cc3 // indirect
+	golang.org/x/telemetry v0.0.0-20260910141331-15ceca2b0a1f // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.3 // indirect
 	k8s.io/api v0.37.0 // indirect
@@ -193,7 +193,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.0 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.3 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.3 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ec2 v1.331.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.332.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ec2instanceconnect v1.40.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.65.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.47.0 // indirect
@@ -296,8 +296,8 @@ require (
 	golang.org/x/time v0.16.0 // indirect
 	golang.org/x/tools v0.50.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260908043556-f8649ddbbfe6 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260908043556-f8649ddbbfe6
+	google.golang.org/genproto/googleapis/api v0.0.0-20260911204522-f61a6ca850bd // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260911204522-f61a6ca850bd
 	google.golang.org/grpc v1.83.2
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

@@ -16,14 +16,14 @@ require (
 	github.com/alibabacloud-go/darabonba-openapi/v2 v2.2.4
 	github.com/alibabacloud-go/ddoscoo-20200101/v5 v5.0.2
 	github.com/alibabacloud-go/dds-20151201/v10 v10.4.2
-	github.com/alibabacloud-go/ecs-20140526/v7 v7.11.2
+	github.com/alibabacloud-go/ecs-20140526/v7 v7.11.3
 	github.com/alibabacloud-go/elasticsearch-20170613/v6 v6.3.3
 	github.com/alibabacloud-go/ess-20220222/v2 v2.13.3
 	github.com/alibabacloud-go/fc-20230330/v4 v4.8.2
 	github.com/alibabacloud-go/kms-20160120/v4 v4.3.0
-	github.com/alibabacloud-go/nas-20170626/v4 v4.7.1
+	github.com/alibabacloud-go/nas-20170626/v4 v4.7.2
 	github.com/alibabacloud-go/nlb-20220430/v4 v4.1.3
-	github.com/alibabacloud-go/polardb-20170801/v9 v9.2.2
+	github.com/alibabacloud-go/polardb-20170801/v9 v9.2.4
 	github.com/alibabacloud-go/r-kvstore-20150101/v7 v7.6.0
 	github.com/alibabacloud-go/ram-20150501/v2 v2.2.1
 	github.com/alibabacloud-go/rds-20140815/v16 v16.9.1
@@ -39,7 +39,7 @@ require (
 	github.com/aliyun/credentials-go v1.4.13
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1
-	go.mondoo.com/mql v0.0.0-20260910012209-52dad74e912f
+	go.mondoo.com/mql v0.0.0-20260913225403-92593e868bb9
 )
 
 require (
@@ -148,7 +148,7 @@ require (
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 	golang.org/x/tools v0.50.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260908043556-f8649ddbbfe6 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260911204522-f61a6ca850bd // indirect
 	google.golang.org/grpc v1.83.2 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/ini.v1 v1.67.3 // indirect
