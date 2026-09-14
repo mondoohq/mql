@@ -66,6 +66,14 @@ func TestCatalogPlatforms(t *testing.T) {
 	assert.True(t, byName["centos"], "centos should be a catalogued platform")
 	assert.True(t, byName["centos-stream"], "centos-stream should be a catalogued platform")
 
+	// Chainguard OS is a platform of its own rather than Wolfi, which is what
+	// the free-tier images report. The catalog is what separates a known
+	// platform from an unrecognized system that happened to carry an ID:
+	// plugin.PlatformInfo.Apply degrades a name it cannot find here to
+	// "unknown".
+	assert.True(t, byName["chainguard"], "chainguard should be a catalogued platform")
+	assert.True(t, byName["wolfi"], "wolfi should be a catalogued platform")
+
 	// darwin is a kernel and a family, never a platform of its own
 	assert.True(t, byName["macos"], "macos should be a catalogued platform")
 	assert.False(t, byName["darwin"], "darwin should not be a catalogued platform")

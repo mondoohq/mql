@@ -159,6 +159,26 @@ var bellsoftHardenedContainers = &PlatformResolver{
 // WizOS is an Alpine-lineage distro (ID_LIKE=alpine) that ships its own
 // ID=wizos in /etc/os-release and uses apk. It is resolved before alpine so
 // its exact-name match wins over alpine's /etc/alpine-release fallback.
+// Chainguard OS is the distribution behind Chainguard's production container
+// images. It is not Wolfi: the free-tier images report ID=wolfi and resolve as
+// wolfi, while the production images set ID=chainguard, declare no ID_LIKE and
+// carry their own release line and advisory feed.
+//
+// VERSION_ID is a date stamp rather than a dotted version ("20230214"), which is
+// how a rolling distribution spells a release.
+//
+// The images ship an apk database but no apk binary, so /etc/os-release is the
+// only evidence detection has, and there is no /etc/alpine-release for alpine's
+// fallback to find either. The package inventory still reads: the database apk
+// wrote is left in place.
+var chainguard = &PlatformResolver{
+	Name:     "chainguard",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		return pf.Name == "chainguard", nil
+	},
+}
+
 var wizos = &PlatformResolver{
 	Name:     "wizos",
 	IsFamily: false,
@@ -1627,7 +1647,7 @@ var linuxFamily = &PlatformResolver{
 	IsFamily: true,
 	// NOTE: altlinux runs before the redhat family, whose members probe
 	// /etc/redhat-release and /etc/fedora-release, both of which ALT ships.
-	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, alpaquita, bellsoftHardenedContainers, wizos, alpine, wolfi, nixos, gentoo, voidlinux, clearlinux, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, cos, flatcar, talos, opencloudos, cirros, defaultLinux},
+	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, alpaquita, bellsoftHardenedContainers, chainguard, wizos, alpine, wolfi, nixos, gentoo, voidlinux, clearlinux, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, cos, flatcar, talos, opencloudos, cirros, defaultLinux},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		detected := false
 		osrd := NewOSReleaseDetector(conn)
