@@ -1,10 +1,11 @@
-// Copyright Mondoo, Inc. 2026
+// Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package sbom
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -117,10 +118,17 @@ func TestFormatRegistry(t *testing.T) {
 	assert.False(t, IsSupportedFormat("bogus-format"))
 	assert.False(t, IsSupportedFormat(""))
 
-	all := AllFormats()
-	for _, documented := range []string{FormatJson, FormatCycloneDxJSON, FormatCycloneDxXML, FormatSpdxJSON, FormatSpdxTagValue, FormatList} {
-		assert.Contains(t, all, documented)
-	}
+	// Split before asserting. AllFormats returns one comma-joined string, and a
+	// substring check on it passes for the wrong reason: "json" is inside
+	// "cyclonedx-json", so the assertion would hold even if the entry were gone.
+	advertised := strings.Split(AllFormats(), ", ")
+	assert.ElementsMatch(t, []string{
+		FormatJson, FormatCycloneDxJSON, FormatCycloneDxXML,
+		FormatSpdxJSON, FormatSpdxTagValue, FormatList,
+	}, advertised, "the advertised list must be exactly the documented formats")
+
 	// aliases are accepted but not advertised
-	assert.NotContains(t, all, "cnspec-json")
+	assert.NotContains(t, advertised, "cnspec-json")
+	assert.NotContains(t, advertised, "cnquery-json")
+	assert.NotContains(t, advertised, "list")
 }
