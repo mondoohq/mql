@@ -2,7 +2,7 @@ name: "Build & Release Providers"
 
 on:
   push:
-    branches: ["v13"]
+    branches: ["v13", "main"]
     paths: ["providers/**"]
   workflow_dispatch:
     inputs:
@@ -76,14 +76,27 @@ jobs:
               continue
             fi
             cd providers/$p
-            REPO_VERSION=$(grep Version: config/config.go | cut -f2 -d\")
-            STATUS_CODE=$(curl -s -o /dev/null -I -w "%{http_code}" https://releases.mondoo.com/providers/${p}/latest.json)
+            # Anchor on the Version field. A bare `grep Version:` also matches the
+            # MinVersion entries in the Requires block. Those exist on main and not
+            # on v13, so REPO_VERSION became a multi-line string that can never equal
+            # DIST_VERSION, and every provider would rebuild on every push.
+            REPO_VERSION=$(grep -m1 -E '^[[:space:]]*Version:' config/config.go | cut -f2 -d\")
+
+            # Compare against the pointer for the channel this version belongs to.
+            # A pre-release publishes to preview and never changes latest.json, so
+            # comparing it against latest.json is a second comparison that never
+            # converges: it would republish the same version on every push.
+            case "$REPO_VERSION" in
+              *-*) POINTER="preview.json" ;;
+              *)   POINTER="latest.json" ;;
+            esac
+            STATUS_CODE=$(curl -s -o /dev/null -I -w "%{http_code}" https://releases.mondoo.com/providers/${p}/${POINTER})
             if [ "$STATUS_CODE" -eq "404" ]; then
               DIST_VERSION="unreleased"
             else
-              DIST_VERSION=$(curl -s https://releases.mondoo.com/providers/${p}/latest.json | jq -r .version)
+              DIST_VERSION=$(curl -s https://releases.mondoo.com/providers/${p}/${POINTER} | jq -r .version)
             fi
-            printf "PROVIDER $p:\n  Local version: $REPO_VERSION\n  Remote version: $DIST_VERSION\n"
+            printf "PROVIDER $p:\n  Local version: $REPO_VERSION\n  Remote version: $DIST_VERSION (from $POINTER)\n"
 
             # Providers share one namespace across release lines, and every
             # client resolves through providers/latest.json -- whatever is
