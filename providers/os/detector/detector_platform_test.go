@@ -975,6 +975,35 @@ func TestChainguardIsClaimedByItsOwnResolver(t *testing.T) {
 		"a container image claimed only by the generic resolver is reported as scratch")
 }
 
+// MinimOS is the distribution behind the Minimus hardened container images.
+func TestMinimosDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-minimos.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "minimos", di.Name, "os name should be identified")
+	assert.Equal(t, "MinimOS", di.Title, "os title should be identified")
+	assert.Equal(t, "20241031", di.Version, "the release line is a date stamp, not a dotted version")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+// As with Chainguard OS, the name survives without a resolver but a container
+// image scan does not: an image claimed only by the generic resolver is
+// reported as "scratch", and "scratch" reports zero packages from a populated
+// apk database without erroring.
+func TestMinimosIsClaimedByItsOwnResolver(t *testing.T) {
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-minimos.toml"))
+	require.NoError(t, err)
+
+	pf, leaf, resolved := OperatingSystems.resolvePlatform(&inventory.Platform{}, mockConn)
+	require.True(t, resolved, "platform should resolve")
+	require.NotNil(t, leaf)
+
+	assert.NotEqual(t, defaultLinux, leaf, "MinimOS must not be left to the generic linux resolver")
+	assert.False(t, isUnidentifiedPlatform(pf, leaf),
+		"a container image claimed only by the generic resolver is reported as scratch")
+}
+
 // Arch Linux ARM sets ID=archarm and reports as arch.
 func TestArchArmDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-archarm.toml")

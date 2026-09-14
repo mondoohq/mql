@@ -139,6 +139,22 @@ func TestResolveSystemPkgManagersChainguardByName(t *testing.T) {
 	assert.Equal(t, []string{"apk Package Manager"}, managerNames(pms))
 }
 
+// The same for the other two hardened-image distros, for the same reason.
+func TestResolveSystemPkgManagersHardenedImageDistrosByName(t *testing.T) {
+	for _, name := range []string{"minimos", "echo"} {
+		t.Run(name, func(t *testing.T) {
+			conn := newProbeConn(t, &inventory.Platform{
+				Name:   name,
+				Family: []string{"linux", "unix", "os"},
+			}, "/etc/os-release")
+
+			pms, err := ResolveSystemPkgManagers(conn)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"apk Package Manager"}, managerNames(pms))
+		})
+	}
+}
+
 // The probe lives in the plain-linux branch, which a distro that already
 // matched an earlier case never reaches. If it ever leaked out of that branch,
 // every rpm and dpkg host would resolve a second manager and packages would
