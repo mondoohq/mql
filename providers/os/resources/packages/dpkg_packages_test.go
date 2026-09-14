@@ -367,6 +367,13 @@ func TestParseDpkgOrigin(t *testing.T) {
 		// dpkg pads the field; the values must not carry the padding.
 		{"  pam  ", "pam", ""},
 		{"", "", ""},
+		// Malformed shapes. These are not hypothetical politeness: the server
+		// parses this same field with its own implementation, and the two have
+		// to agree here too, so pin the answers rather than leave them to
+		// whichever parser is reading.
+		{"foo (1.2", "foo", ""},
+		{"a (1) (2)", "a", "1"},
+		{"(1.2)", "", "1.2"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.source, func(t *testing.T) {

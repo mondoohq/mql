@@ -60,6 +60,11 @@ type Package struct {
 	// data keyed on the source package: those fixed versions are source
 	// versions, so comparing a binary version against one compares across two
 	// different version spaces and can invert the verdict.
+	//
+	// Reach: MQL (`package.originVersion`) only. The SBOM carries `origin` and
+	// not this field, so an SBOM consumer still has to split the raw field with
+	// ParseDpkgOrigin. Widening that is a change to the SBOM proto and to the
+	// query that populates it, in another repository.
 	OriginVersion string `json:"origin_version,omitempty"`
 
 	Format string `json:"format"`

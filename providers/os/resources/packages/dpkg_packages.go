@@ -31,11 +31,6 @@ const (
 // with the number of packages a distribution ships.
 const dpkgMaxLine = 4 * 1024 * 1024
 
-var (
-	// e.g. source with version: samba (2:4.17.12+dfsg-0+deb12u1)
-	DPKG_ORIGIN_REGEX = regexp.MustCompile(`^\s*([^\(]*)(?:\((.*)\))?\s*$`)
-)
-
 // ParseDpkgOrigin splits a Debian "Source:" control field into the source
 // package name and, when present, the source version.
 //
@@ -52,12 +47,35 @@ var (
 //
 // Callers that treat the raw field as a bare package name silently get
 // "glibc (2.36-9+deb12u4)" as the name, which matches nothing.
+//
+// Scanning rather than matching a regexp is deliberate on both counts. This
+// runs for every Source field on a host -- thousands per dpkg scan -- and a
+// submatch slice per package is pure garbage. It also keeps malformed input
+// predictable: an unterminated "foo (1.2" yields the name "foo" and no version,
+// where an anchored regexp fails to match outright and tempts a caller into
+// returning the whole raw string as the name. The first '(' ends the name and
+// the first ')' after it ends the version, so a doubled "a (1) (2)" yields
+// version "1" rather than "1) (2".
+//
+// This grammar is shared with the server's own parser for the same field. They
+// are separate implementations -- the server cannot wait on an agent release to
+// read a field agents have always sent -- so they have to agree byte for byte,
+// including on malformed input. Change one and change the other.
 func ParseDpkgOrigin(origin string) (name string, version string) {
-	m := DPKG_ORIGIN_REGEX.FindStringSubmatch(origin)
-	if m == nil {
-		return strings.TrimSpace(origin), ""
+	origin = strings.TrimSpace(origin)
+	if origin == "" {
+		return "", ""
 	}
-	return strings.TrimSpace(m[1]), strings.TrimSpace(m[2])
+	i := strings.IndexByte(origin, '(')
+	if i < 0 {
+		return origin, ""
+	}
+	name = strings.TrimSpace(origin[:i])
+	rest := origin[i+1:]
+	if j := strings.IndexByte(rest, ')'); j >= 0 {
+		version = strings.TrimSpace(rest[:j])
+	}
+	return name, version
 }
 
 // isDpkgFieldSpace reports whether c belongs to the regexp `\s` class. Go
