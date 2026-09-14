@@ -40,14 +40,25 @@ type paginatedResponse[T any] struct {
 	LastID  string `json:"last_id"`
 }
 
+// withQuery appends one query parameter to a request path. Callers hand in
+// paths that already carry parameters, so the separator is chosen from what is
+// already there rather than assumed to be "?".
+func withQuery(path, key, value string) string {
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	return path + sep + key + "=" + url.QueryEscape(value)
+}
+
 func paginate[T any](ctx context.Context, c *AdminClient, path string) ([]T, error) {
 	const maxPages = 1000
 	var all []T
 	afterID := ""
 	for page := 0; page < maxPages; page++ {
-		reqURL := path + "?limit=100"
+		reqURL := withQuery(path, "limit", "100")
 		if afterID != "" {
-			reqURL += "&after_id=" + url.QueryEscape(afterID)
+			reqURL = withQuery(reqURL, "after_id", afterID)
 		}
 		body, err := c.get(ctx, reqURL)
 		if err != nil {
@@ -126,8 +137,13 @@ func (f *FlexibleStringSlice) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ListWorkspaces returns every workspace in the organization, archived ones
+// included. The endpoint defaults include_archived to false, and an archived
+// workspace still holds its member list and its encryption binding, so an
+// offboarding review that cannot see it is reviewing an incomplete estate.
 func (c *AdminClient) ListWorkspaces(ctx context.Context) ([]AdminWorkspace, error) {
-	return paginate[AdminWorkspace](ctx, c, "/v1/organizations/workspaces")
+	path := withQuery("/v1/organizations/workspaces", "include_archived", "true")
+	return paginate[AdminWorkspace](ctx, c, path)
 }
 
 // Users
@@ -238,11 +254,7 @@ func paginatePageToken[T any](ctx context.Context, client *AdminClient, basePath
 	for i := 0; i < maxPages; i++ {
 		reqURL := basePath
 		if pageToken != "" {
-			sep := "?"
-			if strings.Contains(reqURL, "?") {
-				sep = "&"
-			}
-			reqURL += sep + "page=" + url.QueryEscape(pageToken)
+			reqURL = withQuery(reqURL, "page", pageToken)
 		}
 		body, err := client.get(ctx, reqURL)
 		if err != nil {

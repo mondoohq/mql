@@ -28,6 +28,49 @@ func lookupMember(runtime *plugin.Runtime, id string) (*mqlClaudeOrganizationMem
 
 // claude.organization
 
+// workspaceArgs maps an organization workspace onto resource arguments.
+func workspaceArgs(w connection.AdminWorkspace) (map[string]*llx.RawData, error) {
+	createdAt, err := parseTime(w.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("parsing workspace createdAt: %w", err)
+	}
+
+	// A live workspace has no archive date at all. Reporting the zero time
+	// would date every active workspace to year 1 and make it read as the
+	// oldest archived workspace in the organization.
+	var archivedAt *time.Time
+	if w.ArchivedAt != nil && *w.ArchivedAt != "" {
+		parsed, err := parseTime(*w.ArchivedAt)
+		if err != nil {
+			return nil, fmt.Errorf("parsing workspace archivedAt: %w", err)
+		}
+		archivedAt = &parsed
+	}
+
+	var workspaceGeo, defaultInferenceGeo string
+	var allowedInferenceGeos []interface{}
+	if w.DataResidency != nil {
+		workspaceGeo = w.DataResidency.WorkspaceGeo
+		defaultInferenceGeo = w.DataResidency.DefaultInferenceGeo
+		allowedInferenceGeos = toInterfaceSlice(w.DataResidency.AllowedInferenceGeos)
+	}
+	if allowedInferenceGeos == nil {
+		allowedInferenceGeos = []interface{}{}
+	}
+
+	return map[string]*llx.RawData{
+		"__id":                 llx.StringData(w.ID),
+		"id":                   llx.StringData(w.ID),
+		"name":                 llx.StringData(w.Name),
+		"displayColor":         llx.StringData(w.DisplayColor),
+		"createdAt":            llx.TimeData(createdAt),
+		"archivedAt":           llx.TimeDataPtr(archivedAt),
+		"workspaceGeo":         llx.StringData(workspaceGeo),
+		"defaultInferenceGeo":  llx.StringData(defaultInferenceGeo),
+		"allowedInferenceGeos": llx.ArrayData(allowedInferenceGeos, types.String),
+	}, nil
+}
+
 func (r *mqlClaudeOrganization) workspaces() ([]interface{}, error) {
 	admin, err := requireAdmin(r.MqlRuntime)
 	if err != nil {
@@ -41,43 +84,12 @@ func (r *mqlClaudeOrganization) workspaces() ([]interface{}, error) {
 
 	res := make([]interface{}, 0, len(workspaces))
 	for _, w := range workspaces {
-		createdAt, err := parseTime(w.CreatedAt)
+		args, err := workspaceArgs(w)
 		if err != nil {
-			return nil, fmt.Errorf("parsing workspace createdAt: %w", err)
-		}
-		var archivedAt time.Time
-		if w.ArchivedAt != nil {
-			archivedAt, err = parseTime(*w.ArchivedAt)
-			if err != nil {
-				return nil, fmt.Errorf("parsing workspace archivedAt: %w", err)
-			}
+			return nil, err
 		}
 
-		var workspaceGeo, defaultInferenceGeo string
-		var allowedInferenceGeos []interface{}
-		if w.DataResidency != nil {
-			workspaceGeo = w.DataResidency.WorkspaceGeo
-			defaultInferenceGeo = w.DataResidency.DefaultInferenceGeo
-			allowedInferenceGeos = make([]interface{}, len(w.DataResidency.AllowedInferenceGeos))
-			for i, g := range w.DataResidency.AllowedInferenceGeos {
-				allowedInferenceGeos[i] = g
-			}
-		}
-		if allowedInferenceGeos == nil {
-			allowedInferenceGeos = []interface{}{}
-		}
-
-		mqlWs, err := CreateResource(r.MqlRuntime, "claude.organization.workspace", map[string]*llx.RawData{
-			"__id":                 llx.StringData(w.ID),
-			"id":                   llx.StringData(w.ID),
-			"name":                 llx.StringData(w.Name),
-			"displayColor":         llx.StringData(w.DisplayColor),
-			"createdAt":            llx.TimeData(createdAt),
-			"archivedAt":           llx.TimeData(archivedAt),
-			"workspaceGeo":         llx.StringData(workspaceGeo),
-			"defaultInferenceGeo":  llx.StringData(defaultInferenceGeo),
-			"allowedInferenceGeos": llx.ArrayData(allowedInferenceGeos, types.String),
-		})
+		mqlWs, err := CreateResource(r.MqlRuntime, "claude.organization.workspace", args)
 		if err != nil {
 			return nil, err
 		}
