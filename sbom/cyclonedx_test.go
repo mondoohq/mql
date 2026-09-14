@@ -183,6 +183,48 @@ func TestCycloneDxJsonDecoding_Alpine_syft(t *testing.T) {
 // it, so Parse returned an Sbom with no edges at all and the round-trip was
 // silently lossy in the one field that distinguishes a transitive dependency
 // something reaches from one nothing reaches.
+// TestCycloneDxJsonDecoding_CentosStreamFamily covers the ingest fallback for a
+// document written by another tool, which carries no mondoo:platform:* property
+// for the reader to take the family from. The platform name is then the only
+// thing left to derive it from, and CentOS Stream is named in full there rather
+// than as centos.
+//
+// The expected chain is spelled out rather than read back from familyMap: an
+// expectation taken from the same map the implementation reads agrees with it
+// by construction and cannot fail.
+func TestCycloneDxJsonDecoding_CentosStreamFamily(t *testing.T) {
+	doc := `{
+	  "bomFormat": "CycloneDX",
+	  "specVersion": "1.5",
+	  "version": 1,
+	  "metadata": {
+	    "component": {
+	      "type": "operating-system",
+	      "name": "centos-stream",
+	      "version": "9",
+	      "description": "CentOS Stream 9"
+	    }
+	  },
+	  "components": [
+	    {
+	      "type": "operating-system",
+	      "name": "centos-stream",
+	      "version": "9",
+	      "description": "CentOS Stream 9"
+	    }
+	  ]
+	}`
+
+	formatHandler := &sbom.CycloneDX{Format: cyclonedx.BOMFileFormatJSON}
+	bom, err := formatHandler.Parse(bytes.NewReader([]byte(doc)))
+	require.NoError(t, err)
+	require.NotNil(t, bom)
+
+	assert.Equal(t, "centos-stream", bom.Asset.Platform.Name)
+	assert.Equal(t, "9", bom.Asset.Platform.Version)
+	assert.Equal(t, []string{"linux", "unix", "os"}, bom.Asset.Platform.Family)
+}
+
 func TestCycloneDXRoundTripPreservesDependencyGraph(t *testing.T) {
 	in := &sbom.Sbom{
 		Asset: &sbom.Asset{Name: "app", Platform: &sbom.Platform{Name: "alpine", Version: "3.19"}},

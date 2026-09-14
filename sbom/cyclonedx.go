@@ -448,9 +448,14 @@ var familyMap = map[string][]string{
 	"debian":  {"linux", "unix", "os"},
 	"ubuntu":  {"linux", "unix", "os"},
 	"centos":  {"linux", "unix", "os"},
-	"alpine":  {"linux", "unix", "os"},
-	"fedora":  {"linux", "unix", "os"},
-	"rhel":    {"linux", "unix", "os"},
+	// CentOS Stream is a platform of its own, and a foreign document naming it
+	// spells it out rather than calling it centos. Without an entry the lookup
+	// misses and the asset arrives with no family at all, which reads as "not a
+	// linux system" to everything downstream of ingest.
+	"centos-stream": {"linux", "unix", "os"},
+	"alpine":        {"linux", "unix", "os"},
+	"fedora":        {"linux", "unix", "os"},
+	"rhel":          {"linux", "unix", "os"},
 }
 
 // cycloneDXTools renders the tool that produced the document, or nothing when
