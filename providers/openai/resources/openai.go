@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/openai/openai-go/v3"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/openai/connection"
 )
@@ -43,6 +44,21 @@ func emptyToNil(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// stringArg reads a non-empty string init argument. It reports false when the
+// argument is absent, null, of another type, or empty, which are the cases an
+// init has to hand back to the runtime rather than turn into a lookup.
+func stringArg(args map[string]*llx.RawData, name string) (string, bool) {
+	raw, ok := args[name]
+	if !ok || raw == nil || raw.Value == nil {
+		return "", false
+	}
+	s, ok := raw.Value.(string)
+	if !ok || s == "" {
+		return "", false
+	}
+	return s, true
 }
 
 // dataPlaneClient returns the project-scoped client used for data-plane

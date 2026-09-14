@@ -73,6 +73,12 @@ openai @defaults("organization") @maturity("preview") @root {
   batches() []openai.batch
   // Skills available to the project
   skills() []openai.skill
+  // Reusable agents defined in the project
+  agents() []openai.agent
+  // Vaults holding MCP server credentials for the project
+  vaults() []openai.vault
+  // Environment templates that provision agent sandboxes
+  environmentTemplates() []openai.environmentTemplate
 }
 
 // OpenAI certificate
@@ -951,4 +957,303 @@ openai.auditLog @defaults("id type effectiveAt") @maturity("preview") {
   // the issuer and audience that were trusted. Null for event types that carry
   // no payload, such as login.succeeded.
   details dict
+}
+
+// OpenAI agent
+//
+// Reusable agent defined in the project, carrying the model it runs on, the
+// instructions appended to its base prompt, and the tools it may call. The
+// `tools` collection is where an agent reaches outside the project: an mcp
+// tool names an external MCP server, the vault credential it authenticates
+// with, and the subset of server tools it is limited to, while a web_search
+// tool carries the domain allowlist in force. The `multiAgentEnabled` field
+// reports whether the agent may spawn subagents, which takes a single run
+// beyond the agent that started it.
+openai.agent @defaults("id name model") @maturity("preview") {
+  init(id string)
+  // Agent identifier
+  id string
+  // Agent name, null when the agent is unnamed
+  name string
+  // Model used for inference
+  model string
+  // Instructions appended to the agent's base instructions
+  instructions string
+  // Service tier used for model requests
+  //
+  // One of auto, default, flex, priority, or fast.
+  serviceTier string
+  // User-provided metadata key-value pairs
+  metadata map[string]string
+  // Whether the agent may spawn subagents
+  multiAgentEnabled bool
+  // Maximum number of subagents that may run at the same time
+  //
+  // Null when subagents are turned off.
+  maxConcurrentSubagents int
+  // Reasoning effort applied on each turn
+  //
+  // One of none, minimal, low, medium, high, xhigh, or max.
+  reasoningEffort string
+  // Reasoning summary format requested from the agent
+  //
+  // One of concise, detailed, or auto.
+  reasoningSummary string
+  // Amount of text the agent produces
+  //
+  // One of low, medium, or high.
+  textVerbosity string
+  // Tools available to the agent
+  tools []openai.agent.tool
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+}
+
+// Tool available to an OpenAI agent
+//
+// Single tool an agent may call, where `type` selects which of the remaining
+// fields carry a value. An mcp tool names an external server in `serverLabel`
+// and `transportServerUrl`, the vault credential it authenticates with in
+// `credential`, and the server tools it is limited to in `allowedTools`, which
+// is empty when every tool the server publishes is allowed. A web_search tool
+// carries its domain allowlist in `allowedDomains` and the source it draws
+// results from in `mode`. The metadata an mcp tool sends alongside its requests
+// is not reported, because it can hold secret values.
+openai.agent.tool @defaults("type serverLabel name") @maturity("preview") {
+  // Tool type
+  //
+  // One of function, tool_search, programmatic_tool_calling, mcp, or web_search.
+  type string
+  // Name of a function tool, null for every other type
+  name string
+  // Description of a function tool
+  description string
+  // JSON Schema for a function tool's parameters
+  parameters dict
+  // Whether a function tool is discovered through tool search instead of loaded up front
+  deferLoading bool
+  // Whether tools can be called from model-generated code
+  //
+  // Carried by a programmatic_tool_calling tool, null for every other type.
+  enabled bool
+  // Label identifying the MCP server in tool calls
+  serverLabel string
+  // Where outbound MCP connections start
+  //
+  // One of service, where OpenAI reaches the server directly, or environment,
+  // where the connection leaves from the sandbox the agent runs in.
+  connectionOrigin string
+  // Vault credential the agent authenticates to the MCP server with
+  //
+  // Null when the MCP server takes no credential, and when the credential the
+  // tool names is no longer in any vault the project can read.
+  credential() openai.vault.credential
+  // MCP tools the agent is limited to
+  //
+  // Empty when the agent may call every tool the server publishes.
+  allowedTools []string
+  // Whether the MCP server must initialize before the first turn
+  required bool
+  // Transport used to reach the MCP server
+  //
+  // One of http or stdio.
+  transportType string
+  // URL of an MCP server reached over HTTP
+  transportServerUrl string
+  // Names of the HTTP headers sent to an MCP server
+  //
+  // Header values are not reported.
+  transportHeaderNames []string
+  // Command that starts a local MCP server process
+  transportCommand string
+  // Arguments passed to the MCP server command
+  transportArgs []string
+  // Working directory the MCP server command starts in
+  transportCwd string
+  // Environment variable names an MCP server process inherits from the sandbox
+  transportEnvVars []string
+  // Search domains a web_search tool is limited to
+  //
+  // Empty when web search is unrestricted.
+  allowedDomains []string
+  // Source web search results come from
+  //
+  // One of disabled, cached, or live.
+  mode string
+  // Amount of search context made available to the model
+  //
+  // One of low, medium, or high.
+  contextSize string
+}
+
+// OpenAI vault
+//
+// Collection of credentials that agent tools authenticate to MCP servers with.
+// The `credentials` collection reports the authentication method and server URL
+// of each entry without the secret behind it, so the external servers a
+// project's agents can reach are readable from the vault alone.
+openai.vault @defaults("id name") @maturity("preview") {
+  init(id string)
+  // Vault identifier
+  id string
+  // Vault name, null when the vault is unnamed
+  name string
+  // User-provided metadata key-value pairs
+  metadata map[string]string
+  // Creation timestamp
+  createdAt time
+  // Credentials stored in this vault
+  credentials() []openai.vault.credential
+}
+
+// OpenAI vault credential
+//
+// Credential an agent authenticates to an MCP server with, reported without the
+// secret behind it. The `authType` field names the authentication method:
+// mcp_oauth carries an access token that stops working at `expiresAt` and the
+// settings to renew it in `refreshClientId`, `refreshTokenEndpoint`,
+// `refreshScope`, `refreshResource` and `refreshTokenEndpointAuthType`, while
+// static_bearer carries a token with no expiration and nothing to renew it, so
+// a static_bearer credential against an external `mcpServerUrl` stays valid
+// until someone rotates it by hand.
+openai.vault.credential @defaults("id name authType mcpServerUrl") @maturity("preview") {
+  // Credential identifier
+  id string
+  // Credential name
+  name string
+  // Vault holding this credential
+  //
+  // Null when the vault is no longer readable by the project.
+  vault() openai.vault
+  // Authentication method
+  //
+  // One of mcp_oauth or static_bearer.
+  authType string
+  // HTTPS MCP server URL this credential authorizes
+  mcpServerUrl string
+  // Point the OAuth access token stops working at
+  //
+  // Null for a static_bearer credential, which has no expiration, and for an
+  // mcp_oauth credential whose expiration the API does not report.
+  expiresAt time
+  // OAuth client ID sent when requesting a new access token
+  refreshClientId string
+  // HTTPS OAuth token endpoint used to renew the access token
+  refreshTokenEndpoint string
+  // Space-separated OAuth scopes requested when renewing the access token
+  refreshScope string
+  // Resource URI sent to the OAuth token endpoint when renewing the access token
+  refreshResource string
+  // How the OAuth client authenticates to the token endpoint
+  //
+  // One of none, client_secret_basic, or client_secret_post. The client secret
+  // itself is not reported.
+  refreshTokenEndpointAuthType string
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+}
+
+// OpenAI agent environment template
+//
+// Reusable configuration that provisions a fresh sandbox for each agent
+// session. The `networkPolicyType` field reports whether the sandbox reaches
+// any destination, none at all, or only the ones in
+// `networkPolicyAllowedDomains`, which bounds where an agent running in it can
+// send data. The package, plugin, skill and file fields list what is placed in
+// the sandbox before the agent starts, and `capabilityDirectories` names the
+// directories that expose capabilities to it.
+openai.environmentTemplate @defaults("id name networkPolicyType") @maturity("preview") {
+  init(id string)
+  // Template identifier
+  id string
+  // Template name, null when the template is unnamed
+  name string
+  // Outbound network policy mode
+  //
+  // One of enabled, where the sandbox reaches any destination, disabled, where
+  // it has no outbound access, or restricted, where only the listed domains
+  // are reachable.
+  networkPolicyType string
+  // Domains a restricted sandbox may reach
+  //
+  // Empty under the enabled and disabled modes, where no allowlist applies.
+  networkPolicyAllowedDomains []string
+  // Directories that expose capabilities to the agent
+  capabilityDirectories []string
+  // npm packages installed globally in the sandbox
+  npmPackages []string
+  // Python packages installed in the sandbox
+  pythonPackages []string
+  // System packages installed in the sandbox
+  systemPackages []string
+  // Plugins installed in the sandbox
+  //
+  // Maps each installed plugin name to the description it declares.
+  plugins map[string]string
+  // Skills placed in the sandbox
+  skills []openai.environmentTemplate.skill
+  // Files placed in the sandbox
+  files []openai.environmentTemplate.file
+  // Creation timestamp
+  createdAt time
+  // Last update timestamp
+  updatedAt time
+}
+
+// Skill placed in an OpenAI agent sandbox
+//
+// Skill available inside the sandbox an agent session runs in, either resolved
+// from the project skill library or supplied with the template. The `type`
+// field separates the two: a skill_reference entry resolves `skill` at the
+// selector in `version`, and an inline entry carries its own `name` and
+// `description` and is not registered in the project, so nothing else can
+// review or replace it.
+openai.environmentTemplate.skill @defaults("type name version") @maturity("preview") {
+  // Skill source
+  //
+  // One of skill_reference or inline.
+  type string
+  // Skill resolved from the project skill library
+  //
+  // Null for an inline skill, which is not registered in the project, and for
+  // a reference to a skill the project no longer lists.
+  skill() openai.skill
+  // Version selector applied to the referenced skill
+  //
+  // Includes latest, which resolves again whenever a session starts. Null for
+  // an inline skill.
+  version string
+  // Name an inline skill declares
+  name string
+  // Description an inline skill declares
+  description string
+}
+
+// File placed in an OpenAI agent sandbox
+//
+// File written into the sandbox an agent session runs in, before the agent
+// starts. The `type` field separates a file_id entry, which resolves `file`
+// from the project uploads at session start, from an inline entry, whose
+// contents travel with the template and are reported only as `sizeBytes`. The
+// `path` field is where the file lands inside the sandbox.
+openai.environmentTemplate.file @defaults("path type") @maturity("preview") {
+  // Absolute path the file takes inside the sandbox
+  path string
+  // File source
+  //
+  // One of file_id or inline.
+  type string
+  // Uploaded project file resolved at session start
+  //
+  // Null for an inline file, whose contents travel with the template, and for
+  // a reference to a file the project no longer lists.
+  file() openai.file
+  // Decoded size of an inline file in bytes
+  //
+  // Null for a file_id entry, whose size is reported on the uploaded file.
+  sizeBytes int
 }
