@@ -936,6 +936,113 @@ func updateMsSqlPackages(pkgs []Package, latestMsSqlUpdate Package) []Package {
 	return pkgs
 }
 
+// dotNetSuffixedRelease captures the release from the ".NET installer" family of
+// DisplayNames, which carry it after a " - " separator and before the optional
+// preview/arch tail:
+//
+//	Microsoft .NET Runtime - 8.0.30 (arm64)                    -> 8.0.30
+//	Microsoft .NET Desktop Runtime - 6.0.36 (x64)              -> 6.0.36
+//	Microsoft ASP.NET Core Runtime - 10.0.0 Preview 3 (arm64)  -> 10.0.0
+//	Microsoft .NET Core Runtime - 3.1.32 (x64)                 -> 3.1.32
+//	Microsoft .NET Host FX Resolver - 8.0.15 (arm64)           -> 8.0.15
+//	Microsoft .NET Targeting Pack - 8.0.15 (arm64)             -> 8.0.15
+//
+// Anchored on "Microsoft .NET " / "Microsoft ASP.NET Core " so it only ever sees
+// Microsoft's own .NET installer entries. Entries with no " - <release>" —
+// "Microsoft .NET Toolset 8.0.408 (arm64)", the Microsoft.NET.Workload.* and
+// Microsoft.NET.Sdk.* manifests — are deliberately not matched: they encode
+// their versions on schemes of their own and nothing here needs them.
+var dotNetSuffixedRelease = regexp.MustCompile(`^Microsoft (?:ASP\.NET Core|\.NET) [A-Za-z. ]*- (\d+(?:\.\d+)*)`)
+
+// aspNetCoreSharedFrameworkRelease captures the release from the ASP.NET Core
+// runtime's other DisplayName shape, which carries it in the middle with the
+// hyphen optional. Both spellings occur on the same host:
+//
+//	Microsoft ASP.NET Core 8.0.28 - Shared Framework (x86)
+//	Microsoft ASP.NET Core 8.0.15 Shared Framework (arm64)
+//
+// Its sibling "Microsoft ASP.NET Core 8.0.15 Targeting Pack (arm64)" is a
+// different component and does not match.
+var aspNetCoreSharedFrameworkRelease = regexp.MustCompile(`^Microsoft ASP\.NET Core (\d+(?:\.\d+)*) (?:- )?Shared Framework\b`)
+
+// windowsDesktopRuntimeRelease matches the WPF/WinForms runtime, which Microsoft
+// registers under the "Windows Desktop Runtime" name rather than the ".NET"
+// brand — so it matches neither of the patterns above, and its packed MSI
+// version would otherwise never be recovered. Verified on the VM:
+//
+//	BUNDLE  Microsoft Windows Desktop Runtime - 8.0.30 (arm64)  8.0.30.36323
+//	msi     Microsoft Windows Desktop Runtime - 8.0.30 (arm64)  64.120.56881
+//
+// The separator is optional because Microsoft dropped it at 10.0. Both
+// punctuations are live in one fleet inventory:
+//
+//	Microsoft Windows Desktop Runtime - 8.0.29 (x64)
+//	Microsoft Windows Desktop Runtime 10.0.10 (x64)
+//
+// Anchored on the full product name rather than folded into the general
+// pattern above: making the separator optional there would also match
+// "Microsoft ASP.NET Core 8.0.15 Targeting Pack", which must stay untouched.
+var windowsDesktopRuntimeRelease = regexp.MustCompile(`^Microsoft Windows Desktop Runtime (?:- )?(\d+(?:\.\d+)*)`)
+
+// normalizeDotNetPackedVersion rewrites the DisplayVersion of a .NET installer
+// entry to the release its own DisplayName carries.
+//
+// The .NET runtime installers register up to two Add/Remove-Programs entries for
+// a single installed runtime, and only one of them carries a version a human or
+// an advisory would recognise. Verified on a clean Windows 11 ARM64 VM with
+// Microsoft's own dotnet-runtime-win-arm64.exe (8.0.30):
+//
+//	DisplayName                              DisplayVersion  written by
+//	Microsoft .NET Runtime - 8.0.30 (arm64)  8.0.30.36317    the burn bundle
+//	Microsoft .NET Runtime - 8.0.30 (arm64)  64.120.56788    the MSI
+//
+// The second is the MSI ProductVersion, which Windows Installer constrains to
+// major<=255, minor<=255, build<=65535. .NET packs the release to fit —
+// first component = major*8 — so the value shares no scale with anything:
+//
+//	.NET 2.1.30 -> 16.120.30411     .NET 6.0.36  -> 48.144.23141
+//	.NET 3.1.32 -> 24.192.31915     .NET 8.0.30  -> 64.120.56788
+//	.NET 5.0.17 -> 40.68.31213      .NET 10.0.10 -> 80.40.55332
+//
+// Installing the STANDALONE MSI rather than the bundle — what a managed
+// Intune/SCCM rollout does — registers only the second entry. Verified on the
+// same VM: after `msiexec /i dotnet-runtime-8.0.30-win-arm64.msi /qn` the host
+// has one entry, at 64.120.56788. On such a host the DisplayName is the only
+// place the real release appears at all, which is why this cannot be left to a
+// consumer to work around.
+//
+// Applied to BOTH entries, not just the packed one, so that a bundle-installed
+// host reports the runtime ONCE. The two entries describe a single install, and
+// leaving the bundle's 8.0.30.36317 alongside a repaired 8.0.30 would give them
+// different versions, hence different PURLs, hence two package rows and two
+// findings carrying the same CVEs for one runtime. Collapsing both onto the
+// DisplayName's release makes them identical on x64 — where both entries are
+// registered under the same arch — so they converge instead of duplicating.
+//
+// The build component dropped from the bundle entry (…36317) costs nothing:
+// every MSRC .NET runtime bound is three-component, so it never affected a
+// verdict, and 8.0.30 is the version the product calls itself.
+//
+// Residual, ARM64 only: there the bundle entry is registered under
+// Wow6432Node and is therefore labelled arch x86 while the MSI entry is ARM64,
+// so the two rows stay distinct on arch even once their versions agree. That
+// arch labelling is a separate question and is not touched here.
+func normalizeDotNetPackedVersion(name, version string) string {
+	if version == "" {
+		return version
+	}
+	for _, re := range []*regexp.Regexp{
+		dotNetSuffixedRelease,
+		aspNetCoreSharedFrameworkRelease,
+		windowsDesktopRuntimeRelease,
+	} {
+		if m := re.FindStringSubmatch(name); m != nil {
+			return m[1]
+		}
+	}
+	return version
+}
+
 // msSqlSpVersionRegex matches the MSI DisplayVersion form for SP-era SQL Server
 // (2012=11, 2014=12, 2016=13). The minor component carries the SP level
 // (1–4); the build component carries the canonical patch level Microsoft's
@@ -1005,6 +1112,12 @@ func createPackage(name, version, format, arch, publisher, installLocation strin
 	version = sanitizePackageField(version)
 	publisher = sanitizePackageField(publisher)
 	installLocation = sanitizePackageField(installLocation)
+	// Recover the real release for a .NET installer entry whose DisplayVersion is
+	// the packed MSI ProductVersion. Runs before the PURL is built so the PURL,
+	// the Version field and everything derived from them agree.
+	if format == "windows/app" {
+		version = normalizeDotNetPackedVersion(name, version)
+	}
 	pkg := &Package{
 		Name:    name,
 		Version: version,
