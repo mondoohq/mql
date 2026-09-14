@@ -20,6 +20,13 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
+// Pointers cross into WinHTTP as uintptr(unsafe.Pointer(&x)) written directly
+// in the argument list of (*LazyProc).Call, which is rule 4 of the unsafe
+// package documentation: Call is marked //go:uintptrescapes, so the referents
+// stay allocated and pinned for the duration of the system call. No pointer
+// is stored as a uintptr, and the strings WinHTTP allocates are read with
+// UTF16PtrToString and released with GlobalFree straight away (takeString).
+//
 // Everything here goes through winhttp.dll rather than the registry because
 // WinHTTP is what resolves the effective settings: it reads the per-user
 // Internet Settings the way Windows itself does, it knows the machine-wide

@@ -491,3 +491,19 @@ func TestSettingsString(t *testing.T) {
 	assert.Equal(t, "auto-detect, script http://pac/p.pac, proxy p:1, machine proxy m:2",
 		(&Settings{AutoDetect: true, AutoConfigURL: "http://pac/p.pac", Proxy: "p:1", MachineProxy: "m:2"}).String())
 }
+
+func TestSettingsStringRedactsCredentials(t *testing.T) {
+	s := &Settings{
+		AutoConfigURL: "http://svc:pacsecret@pac.corp/proxy.pac",
+		Proxy:         "http=alice:secret@a:1;https=https://bob:hunter2@b:2;socks=s:1080",
+		MachineProxy:  "carol:pw@m:3128",
+	}
+	out := s.String()
+	assert.Equal(t, "script http://svc:xxxxx@pac.corp/proxy.pac, proxy http=alice:xxxxx@a:1;https=https://bob:xxxxx@b:2;socks=s:1080, machine proxy carol:xxxxx@m:3128", out)
+	for _, secret := range []string{"pacsecret", "secret@", "hunter2", "pw@"} {
+		assert.NotContains(t, out, secret)
+	}
+	// a user without a password and entries without credentials are untouched
+	assert.Equal(t, "alice@a:1", redactEntry("alice@a:1"))
+	assert.Equal(t, "a:1", redactEntry("a:1"))
+}

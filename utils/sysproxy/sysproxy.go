@@ -97,7 +97,9 @@ func (s *Settings) usesScript() bool {
 	return s != nil && (s.AutoDetect || s.AutoConfigURL != "")
 }
 
-// String summarizes the settings for logs and status output.
+// String summarizes the settings for logs and status output. Proxy entries
+// and the script URL may carry credentials ("user:pass@proxy:3128"); those
+// are redacted the way url.URL.Redacted does it.
 func (s *Settings) String() string {
 	if s.IsZero() {
 		return "none"
@@ -107,15 +109,50 @@ func (s *Settings) String() string {
 		parts = append(parts, "auto-detect")
 	}
 	if s.AutoConfigURL != "" {
-		parts = append(parts, "script "+s.AutoConfigURL)
+		parts = append(parts, "script "+redactEntry(s.AutoConfigURL))
 	}
 	if s.Proxy != "" {
-		parts = append(parts, "proxy "+s.Proxy)
+		parts = append(parts, "proxy "+redactList(s.Proxy))
 	}
 	if s.MachineProxy != "" {
-		parts = append(parts, "machine proxy "+s.MachineProxy)
+		parts = append(parts, "machine proxy "+redactList(s.MachineProxy))
 	}
 	return strings.Join(parts, ", ")
+}
+
+// redactList redacts the password of every entry of a Windows proxy list,
+// keeping the list's shape ("http=user:xxxxx@a:1;https=b:2").
+func redactList(list string) string {
+	entries := SplitList(list)
+	for i, entry := range entries {
+		if key, value, keyed := strings.Cut(entry, "="); keyed {
+			entries[i] = key + "=" + redactEntry(value)
+		} else {
+			entries[i] = redactEntry(entry)
+		}
+	}
+	return strings.Join(entries, ";")
+}
+
+// redactEntry replaces the password in a proxy entry or URL with xxxxx and
+// returns anything without credentials unchanged, scheme or not.
+func redactEntry(entry string) string {
+	if !strings.Contains(entry, "@") {
+		return entry
+	}
+	withScheme, added := entry, false
+	if !strings.Contains(entry, "://") {
+		withScheme, added = "http://"+entry, true
+	}
+	u, err := url.Parse(withScheme)
+	if err != nil || u.User == nil {
+		return entry
+	}
+	out := u.Redacted()
+	if added {
+		out = strings.TrimPrefix(out, "http://")
+	}
+	return out
 }
 
 // Enabled reports whether the operating system's settings may be consulted:
