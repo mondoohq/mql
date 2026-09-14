@@ -16,16 +16,20 @@ import (
 
 // The MQL type names exposed as public consts for ease of reference.
 const (
-	ResourceHuggingface                  string = "huggingface"
-	ResourceHuggingfaceUser              string = "huggingface.user"
-	ResourceHuggingfaceOrganization      string = "huggingface.organization"
-	ResourceHuggingfaceAccessToken       string = "huggingface.accessToken"
-	ResourceHuggingfaceAccessTokenScope  string = "huggingface.accessToken.scope"
-	ResourceHuggingfaceModel             string = "huggingface.model"
-	ResourceHuggingfaceDataset           string = "huggingface.dataset"
-	ResourceHuggingfaceSpace             string = "huggingface.space"
-	ResourceHuggingfaceWebhook           string = "huggingface.webhook"
-	ResourceHuggingfaceInferenceEndpoint string = "huggingface.inferenceEndpoint"
+	ResourceHuggingface                   string = "huggingface"
+	ResourceHuggingfaceUser               string = "huggingface.user"
+	ResourceHuggingfaceOrganization       string = "huggingface.organization"
+	ResourceHuggingfaceAccessToken        string = "huggingface.accessToken"
+	ResourceHuggingfaceAccessTokenScope   string = "huggingface.accessToken.scope"
+	ResourceHuggingfaceModel              string = "huggingface.model"
+	ResourceHuggingfaceDataset            string = "huggingface.dataset"
+	ResourceHuggingfaceSpace              string = "huggingface.space"
+	ResourceHuggingfaceSpaceRuntimeStatus string = "huggingface.space.runtimeStatus"
+	ResourceHuggingfaceSpaceDomain        string = "huggingface.space.domain"
+	ResourceHuggingfaceRepositoryScan     string = "huggingface.repositoryScan"
+	ResourceHuggingfaceRepositoryScanFile string = "huggingface.repositoryScan.file"
+	ResourceHuggingfaceWebhook            string = "huggingface.webhook"
+	ResourceHuggingfaceInferenceEndpoint  string = "huggingface.inferenceEndpoint"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -63,6 +67,22 @@ func init() {
 		"huggingface.space": {
 			// to override args, implement: initHuggingfaceSpace(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createHuggingfaceSpace,
+		},
+		"huggingface.space.runtimeStatus": {
+			// to override args, implement: initHuggingfaceSpaceRuntimeStatus(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createHuggingfaceSpaceRuntimeStatus,
+		},
+		"huggingface.space.domain": {
+			// to override args, implement: initHuggingfaceSpaceDomain(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createHuggingfaceSpaceDomain,
+		},
+		"huggingface.repositoryScan": {
+			// to override args, implement: initHuggingfaceRepositoryScan(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createHuggingfaceRepositoryScan,
+		},
+		"huggingface.repositoryScan.file": {
+			// to override args, implement: initHuggingfaceRepositoryScanFile(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createHuggingfaceRepositoryScanFile,
 		},
 		"huggingface.webhook": {
 			// to override args, implement: initHuggingfaceWebhook(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -278,6 +298,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"huggingface.model.gated": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceModel).GetGated()).ToDataRes(types.Bool)
 	},
+	"huggingface.model.gatedMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceModel).GetGatedMode()).ToDataRes(types.String)
+	},
 	"huggingface.model.disabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceModel).GetDisabled()).ToDataRes(types.Bool)
 	},
@@ -295,6 +318,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"huggingface.model.siblings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceModel).GetSiblings()).ToDataRes(types.Array(types.Dict))
+	},
+	"huggingface.model.securityStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceModel).GetSecurityStatus()).ToDataRes(types.Resource("huggingface.repositoryScan"))
 	},
 	"huggingface.dataset.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceDataset).GetId()).ToDataRes(types.String)
@@ -314,11 +340,35 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"huggingface.dataset.downloads": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceDataset).GetDownloads()).ToDataRes(types.Int)
 	},
+	"huggingface.dataset.downloadsAllTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceDataset).GetDownloadsAllTime()).ToDataRes(types.Int)
+	},
 	"huggingface.dataset.likes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceDataset).GetLikes()).ToDataRes(types.Int)
 	},
 	"huggingface.dataset.private": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceDataset).GetPrivate()).ToDataRes(types.Bool)
+	},
+	"huggingface.dataset.gated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceDataset).GetGated()).ToDataRes(types.Bool)
+	},
+	"huggingface.dataset.gatedMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceDataset).GetGatedMode()).ToDataRes(types.String)
+	},
+	"huggingface.dataset.disabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceDataset).GetDisabled()).ToDataRes(types.Bool)
+	},
+	"huggingface.dataset.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceDataset).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"huggingface.dataset.lastModified": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceDataset).GetLastModified()).ToDataRes(types.Time)
+	},
+	"huggingface.dataset.sha": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceDataset).GetSha()).ToDataRes(types.String)
+	},
+	"huggingface.dataset.securityStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceDataset).GetSecurityStatus()).ToDataRes(types.Resource("huggingface.repositoryScan"))
 	},
 	"huggingface.space.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceSpace).GetId()).ToDataRes(types.String)
@@ -340,6 +390,78 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"huggingface.space.private": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceSpace).GetPrivate()).ToDataRes(types.Bool)
+	},
+	"huggingface.space.sdk": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpace).GetSdk()).ToDataRes(types.String)
+	},
+	"huggingface.space.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpace).GetRegion()).ToDataRes(types.String)
+	},
+	"huggingface.space.subdomain": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpace).GetSubdomain()).ToDataRes(types.String)
+	},
+	"huggingface.space.disabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpace).GetDisabled()).ToDataRes(types.Bool)
+	},
+	"huggingface.space.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpace).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"huggingface.space.lastModified": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpace).GetLastModified()).ToDataRes(types.Time)
+	},
+	"huggingface.space.sha": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpace).GetSha()).ToDataRes(types.String)
+	},
+	"huggingface.space.runtime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpace).GetRuntime()).ToDataRes(types.Resource("huggingface.space.runtimeStatus"))
+	},
+	"huggingface.space.securityStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpace).GetSecurityStatus()).ToDataRes(types.Resource("huggingface.repositoryScan"))
+	},
+	"huggingface.space.runtimeStatus.stage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpaceRuntimeStatus).GetStage()).ToDataRes(types.String)
+	},
+	"huggingface.space.runtimeStatus.currentHardware": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpaceRuntimeStatus).GetCurrentHardware()).ToDataRes(types.String)
+	},
+	"huggingface.space.runtimeStatus.requestedHardware": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpaceRuntimeStatus).GetRequestedHardware()).ToDataRes(types.String)
+	},
+	"huggingface.space.runtimeStatus.currentReplicas": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpaceRuntimeStatus).GetCurrentReplicas()).ToDataRes(types.Int)
+	},
+	"huggingface.space.runtimeStatus.requestedReplicas": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpaceRuntimeStatus).GetRequestedReplicas()).ToDataRes(types.Int)
+	},
+	"huggingface.space.runtimeStatus.autoscaling": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpaceRuntimeStatus).GetAutoscaling()).ToDataRes(types.Bool)
+	},
+	"huggingface.space.runtimeStatus.gcTimeout": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpaceRuntimeStatus).GetGcTimeout()).ToDataRes(types.Int)
+	},
+	"huggingface.space.runtimeStatus.devMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpaceRuntimeStatus).GetDevMode()).ToDataRes(types.Bool)
+	},
+	"huggingface.space.runtimeStatus.domains": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpaceRuntimeStatus).GetDomains()).ToDataRes(types.Array(types.Resource("huggingface.space.domain")))
+	},
+	"huggingface.space.domain.domain": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpaceDomain).GetDomain()).ToDataRes(types.String)
+	},
+	"huggingface.space.domain.stage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceSpaceDomain).GetStage()).ToDataRes(types.String)
+	},
+	"huggingface.repositoryScan.scansDone": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceRepositoryScan).GetScansDone()).ToDataRes(types.Bool)
+	},
+	"huggingface.repositoryScan.filesWithIssues": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceRepositoryScan).GetFilesWithIssues()).ToDataRes(types.Array(types.Resource("huggingface.repositoryScan.file")))
+	},
+	"huggingface.repositoryScan.file.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceRepositoryScanFile).GetPath()).ToDataRes(types.String)
+	},
+	"huggingface.repositoryScan.file.level": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHuggingfaceRepositoryScanFile).GetLevel()).ToDataRes(types.String)
 	},
 	"huggingface.webhook.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHuggingfaceWebhook).GetId()).ToDataRes(types.String)
@@ -596,6 +718,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlHuggingfaceModel).Gated, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"huggingface.model.gatedMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceModel).GatedMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"huggingface.model.disabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlHuggingfaceModel).Disabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -618,6 +744,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"huggingface.model.siblings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlHuggingfaceModel).Siblings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"huggingface.model.securityStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceModel).SecurityStatus, ok = plugin.RawToTValue[*mqlHuggingfaceRepositoryScan](v.Value, v.Error)
 		return
 	},
 	"huggingface.dataset.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -648,12 +778,44 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlHuggingfaceDataset).Downloads, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
+	"huggingface.dataset.downloadsAllTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceDataset).DownloadsAllTime, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"huggingface.dataset.likes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlHuggingfaceDataset).Likes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"huggingface.dataset.private": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlHuggingfaceDataset).Private, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"huggingface.dataset.gated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceDataset).Gated, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"huggingface.dataset.gatedMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceDataset).GatedMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.dataset.disabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceDataset).Disabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"huggingface.dataset.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceDataset).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"huggingface.dataset.lastModified": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceDataset).LastModified, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"huggingface.dataset.sha": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceDataset).Sha, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.dataset.securityStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceDataset).SecurityStatus, ok = plugin.RawToTValue[*mqlHuggingfaceRepositoryScan](v.Value, v.Error)
 		return
 	},
 	"huggingface.space.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -686,6 +848,118 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"huggingface.space.private": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlHuggingfaceSpace).Private, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.sdk": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpace).Sdk, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpace).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.subdomain": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpace).Subdomain, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.disabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpace).Disabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpace).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.lastModified": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpace).LastModified, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.sha": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpace).Sha, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.runtime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpace).Runtime, ok = plugin.RawToTValue[*mqlHuggingfaceSpaceRuntimeStatus](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.securityStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpace).SecurityStatus, ok = plugin.RawToTValue[*mqlHuggingfaceRepositoryScan](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.runtimeStatus.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpaceRuntimeStatus).__id, ok = v.Value.(string)
+		return
+	},
+	"huggingface.space.runtimeStatus.stage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpaceRuntimeStatus).Stage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.runtimeStatus.currentHardware": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpaceRuntimeStatus).CurrentHardware, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.runtimeStatus.requestedHardware": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpaceRuntimeStatus).RequestedHardware, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.runtimeStatus.currentReplicas": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpaceRuntimeStatus).CurrentReplicas, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.runtimeStatus.requestedReplicas": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpaceRuntimeStatus).RequestedReplicas, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.runtimeStatus.autoscaling": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpaceRuntimeStatus).Autoscaling, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.runtimeStatus.gcTimeout": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpaceRuntimeStatus).GcTimeout, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.runtimeStatus.devMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpaceRuntimeStatus).DevMode, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.runtimeStatus.domains": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpaceRuntimeStatus).Domains, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.domain.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpaceDomain).__id, ok = v.Value.(string)
+		return
+	},
+	"huggingface.space.domain.domain": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpaceDomain).Domain, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.space.domain.stage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceSpaceDomain).Stage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.repositoryScan.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceRepositoryScan).__id, ok = v.Value.(string)
+		return
+	},
+	"huggingface.repositoryScan.scansDone": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceRepositoryScan).ScansDone, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"huggingface.repositoryScan.filesWithIssues": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceRepositoryScan).FilesWithIssues, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"huggingface.repositoryScan.file.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceRepositoryScanFile).__id, ok = v.Value.(string)
+		return
+	},
+	"huggingface.repositoryScan.file.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceRepositoryScanFile).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"huggingface.repositoryScan.file.level": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHuggingfaceRepositoryScanFile).Level, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"huggingface.webhook.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1253,25 +1527,27 @@ type mqlHuggingfaceModel struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlHuggingfaceModelInternal
-	Id           plugin.TValue[string]
-	ModelId      plugin.TValue[string]
-	Author       plugin.TValue[string]
-	Private      plugin.TValue[bool]
-	PipelineTag  plugin.TValue[string]
-	LibraryName  plugin.TValue[string]
-	Tags         plugin.TValue[[]any]
-	Downloads    plugin.TValue[int64]
-	Likes        plugin.TValue[int64]
-	Sha          plugin.TValue[string]
-	CreatedAt    plugin.TValue[*time.Time]
-	LastModified plugin.TValue[*time.Time]
-	Gated        plugin.TValue[bool]
-	Disabled     plugin.TValue[bool]
-	License      plugin.TValue[string]
-	CardData     plugin.TValue[any]
-	ModelCard    plugin.TValue[string]
-	Config       plugin.TValue[any]
-	Siblings     plugin.TValue[[]any]
+	Id             plugin.TValue[string]
+	ModelId        plugin.TValue[string]
+	Author         plugin.TValue[string]
+	Private        plugin.TValue[bool]
+	PipelineTag    plugin.TValue[string]
+	LibraryName    plugin.TValue[string]
+	Tags           plugin.TValue[[]any]
+	Downloads      plugin.TValue[int64]
+	Likes          plugin.TValue[int64]
+	Sha            plugin.TValue[string]
+	CreatedAt      plugin.TValue[*time.Time]
+	LastModified   plugin.TValue[*time.Time]
+	Gated          plugin.TValue[bool]
+	GatedMode      plugin.TValue[string]
+	Disabled       plugin.TValue[bool]
+	License        plugin.TValue[string]
+	CardData       plugin.TValue[any]
+	ModelCard      plugin.TValue[string]
+	Config         plugin.TValue[any]
+	Siblings       plugin.TValue[[]any]
+	SecurityStatus plugin.TValue[*mqlHuggingfaceRepositoryScan]
 }
 
 // createHuggingfaceModel creates a new instance of this resource
@@ -1369,6 +1645,10 @@ func (c *mqlHuggingfaceModel) GetGated() *plugin.TValue[bool] {
 	return &c.Gated
 }
 
+func (c *mqlHuggingfaceModel) GetGatedMode() *plugin.TValue[string] {
+	return &c.GatedMode
+}
+
 func (c *mqlHuggingfaceModel) GetDisabled() *plugin.TValue[bool] {
 	return &c.Disabled
 }
@@ -1403,19 +1683,43 @@ func (c *mqlHuggingfaceModel) GetSiblings() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlHuggingfaceModel) GetSecurityStatus() *plugin.TValue[*mqlHuggingfaceRepositoryScan] {
+	return plugin.GetOrCompute[*mqlHuggingfaceRepositoryScan](&c.SecurityStatus, func() (*mqlHuggingfaceRepositoryScan, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("huggingface.model", c.__id, "securityStatus")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlHuggingfaceRepositoryScan), nil
+			}
+		}
+
+		return c.securityStatus()
+	})
+}
+
 // mqlHuggingfaceDataset for the huggingface.dataset resource
 type mqlHuggingfaceDataset struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlHuggingfaceDatasetInternal it will be used here
-	Id          plugin.TValue[string]
-	Name        plugin.TValue[string]
-	Description plugin.TValue[string]
-	Tags        plugin.TValue[[]any]
-	Author      plugin.TValue[string]
-	Downloads   plugin.TValue[int64]
-	Likes       plugin.TValue[int64]
-	Private     plugin.TValue[bool]
+	mqlHuggingfaceDatasetInternal
+	Id               plugin.TValue[string]
+	Name             plugin.TValue[string]
+	Description      plugin.TValue[string]
+	Tags             plugin.TValue[[]any]
+	Author           plugin.TValue[string]
+	Downloads        plugin.TValue[int64]
+	DownloadsAllTime plugin.TValue[int64]
+	Likes            plugin.TValue[int64]
+	Private          plugin.TValue[bool]
+	Gated            plugin.TValue[bool]
+	GatedMode        plugin.TValue[string]
+	Disabled         plugin.TValue[bool]
+	CreatedAt        plugin.TValue[*time.Time]
+	LastModified     plugin.TValue[*time.Time]
+	Sha              plugin.TValue[string]
+	SecurityStatus   plugin.TValue[*mqlHuggingfaceRepositoryScan]
 }
 
 // createHuggingfaceDataset creates a new instance of this resource
@@ -1479,6 +1783,10 @@ func (c *mqlHuggingfaceDataset) GetDownloads() *plugin.TValue[int64] {
 	return &c.Downloads
 }
 
+func (c *mqlHuggingfaceDataset) GetDownloadsAllTime() *plugin.TValue[int64] {
+	return &c.DownloadsAllTime
+}
+
 func (c *mqlHuggingfaceDataset) GetLikes() *plugin.TValue[int64] {
 	return &c.Likes
 }
@@ -1487,18 +1795,67 @@ func (c *mqlHuggingfaceDataset) GetPrivate() *plugin.TValue[bool] {
 	return &c.Private
 }
 
+func (c *mqlHuggingfaceDataset) GetGated() *plugin.TValue[bool] {
+	return &c.Gated
+}
+
+func (c *mqlHuggingfaceDataset) GetGatedMode() *plugin.TValue[string] {
+	return &c.GatedMode
+}
+
+func (c *mqlHuggingfaceDataset) GetDisabled() *plugin.TValue[bool] {
+	return &c.Disabled
+}
+
+func (c *mqlHuggingfaceDataset) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlHuggingfaceDataset) GetLastModified() *plugin.TValue[*time.Time] {
+	return &c.LastModified
+}
+
+func (c *mqlHuggingfaceDataset) GetSha() *plugin.TValue[string] {
+	return &c.Sha
+}
+
+func (c *mqlHuggingfaceDataset) GetSecurityStatus() *plugin.TValue[*mqlHuggingfaceRepositoryScan] {
+	return plugin.GetOrCompute[*mqlHuggingfaceRepositoryScan](&c.SecurityStatus, func() (*mqlHuggingfaceRepositoryScan, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("huggingface.dataset", c.__id, "securityStatus")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlHuggingfaceRepositoryScan), nil
+			}
+		}
+
+		return c.securityStatus()
+	})
+}
+
 // mqlHuggingfaceSpace for the huggingface.space resource
 type mqlHuggingfaceSpace struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlHuggingfaceSpaceInternal it will be used here
-	Id          plugin.TValue[string]
-	Name        plugin.TValue[string]
-	Description plugin.TValue[string]
-	Tags        plugin.TValue[[]any]
-	Author      plugin.TValue[string]
-	Likes       plugin.TValue[int64]
-	Private     plugin.TValue[bool]
+	mqlHuggingfaceSpaceInternal
+	Id             plugin.TValue[string]
+	Name           plugin.TValue[string]
+	Description    plugin.TValue[string]
+	Tags           plugin.TValue[[]any]
+	Author         plugin.TValue[string]
+	Likes          plugin.TValue[int64]
+	Private        plugin.TValue[bool]
+	Sdk            plugin.TValue[string]
+	Region         plugin.TValue[string]
+	Subdomain      plugin.TValue[string]
+	Disabled       plugin.TValue[bool]
+	CreatedAt      plugin.TValue[*time.Time]
+	LastModified   plugin.TValue[*time.Time]
+	Sha            plugin.TValue[string]
+	Runtime        plugin.TValue[*mqlHuggingfaceSpaceRuntimeStatus]
+	SecurityStatus plugin.TValue[*mqlHuggingfaceRepositoryScan]
 }
 
 // createHuggingfaceSpace creates a new instance of this resource
@@ -1564,6 +1921,317 @@ func (c *mqlHuggingfaceSpace) GetLikes() *plugin.TValue[int64] {
 
 func (c *mqlHuggingfaceSpace) GetPrivate() *plugin.TValue[bool] {
 	return &c.Private
+}
+
+func (c *mqlHuggingfaceSpace) GetSdk() *plugin.TValue[string] {
+	return &c.Sdk
+}
+
+func (c *mqlHuggingfaceSpace) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlHuggingfaceSpace) GetSubdomain() *plugin.TValue[string] {
+	return &c.Subdomain
+}
+
+func (c *mqlHuggingfaceSpace) GetDisabled() *plugin.TValue[bool] {
+	return &c.Disabled
+}
+
+func (c *mqlHuggingfaceSpace) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlHuggingfaceSpace) GetLastModified() *plugin.TValue[*time.Time] {
+	return &c.LastModified
+}
+
+func (c *mqlHuggingfaceSpace) GetSha() *plugin.TValue[string] {
+	return &c.Sha
+}
+
+func (c *mqlHuggingfaceSpace) GetRuntime() *plugin.TValue[*mqlHuggingfaceSpaceRuntimeStatus] {
+	return plugin.GetOrCompute[*mqlHuggingfaceSpaceRuntimeStatus](&c.Runtime, func() (*mqlHuggingfaceSpaceRuntimeStatus, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("huggingface.space", c.__id, "runtime")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlHuggingfaceSpaceRuntimeStatus), nil
+			}
+		}
+
+		return c.runtime()
+	})
+}
+
+func (c *mqlHuggingfaceSpace) GetSecurityStatus() *plugin.TValue[*mqlHuggingfaceRepositoryScan] {
+	return plugin.GetOrCompute[*mqlHuggingfaceRepositoryScan](&c.SecurityStatus, func() (*mqlHuggingfaceRepositoryScan, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("huggingface.space", c.__id, "securityStatus")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlHuggingfaceRepositoryScan), nil
+			}
+		}
+
+		return c.securityStatus()
+	})
+}
+
+// mqlHuggingfaceSpaceRuntimeStatus for the huggingface.space.runtimeStatus resource
+type mqlHuggingfaceSpaceRuntimeStatus struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlHuggingfaceSpaceRuntimeStatusInternal it will be used here
+	Stage             plugin.TValue[string]
+	CurrentHardware   plugin.TValue[string]
+	RequestedHardware plugin.TValue[string]
+	CurrentReplicas   plugin.TValue[int64]
+	RequestedReplicas plugin.TValue[int64]
+	Autoscaling       plugin.TValue[bool]
+	GcTimeout         plugin.TValue[int64]
+	DevMode           plugin.TValue[bool]
+	Domains           plugin.TValue[[]any]
+}
+
+// createHuggingfaceSpaceRuntimeStatus creates a new instance of this resource
+func createHuggingfaceSpaceRuntimeStatus(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlHuggingfaceSpaceRuntimeStatus{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("huggingface.space.runtimeStatus", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlHuggingfaceSpaceRuntimeStatus) MqlName() string {
+	return "huggingface.space.runtimeStatus"
+}
+
+func (c *mqlHuggingfaceSpaceRuntimeStatus) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlHuggingfaceSpaceRuntimeStatus) GetStage() *plugin.TValue[string] {
+	return &c.Stage
+}
+
+func (c *mqlHuggingfaceSpaceRuntimeStatus) GetCurrentHardware() *plugin.TValue[string] {
+	return &c.CurrentHardware
+}
+
+func (c *mqlHuggingfaceSpaceRuntimeStatus) GetRequestedHardware() *plugin.TValue[string] {
+	return &c.RequestedHardware
+}
+
+func (c *mqlHuggingfaceSpaceRuntimeStatus) GetCurrentReplicas() *plugin.TValue[int64] {
+	return &c.CurrentReplicas
+}
+
+func (c *mqlHuggingfaceSpaceRuntimeStatus) GetRequestedReplicas() *plugin.TValue[int64] {
+	return &c.RequestedReplicas
+}
+
+func (c *mqlHuggingfaceSpaceRuntimeStatus) GetAutoscaling() *plugin.TValue[bool] {
+	return &c.Autoscaling
+}
+
+func (c *mqlHuggingfaceSpaceRuntimeStatus) GetGcTimeout() *plugin.TValue[int64] {
+	return &c.GcTimeout
+}
+
+func (c *mqlHuggingfaceSpaceRuntimeStatus) GetDevMode() *plugin.TValue[bool] {
+	return &c.DevMode
+}
+
+func (c *mqlHuggingfaceSpaceRuntimeStatus) GetDomains() *plugin.TValue[[]any] {
+	return &c.Domains
+}
+
+// mqlHuggingfaceSpaceDomain for the huggingface.space.domain resource
+type mqlHuggingfaceSpaceDomain struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlHuggingfaceSpaceDomainInternal it will be used here
+	Domain plugin.TValue[string]
+	Stage  plugin.TValue[string]
+}
+
+// createHuggingfaceSpaceDomain creates a new instance of this resource
+func createHuggingfaceSpaceDomain(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlHuggingfaceSpaceDomain{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("huggingface.space.domain", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlHuggingfaceSpaceDomain) MqlName() string {
+	return "huggingface.space.domain"
+}
+
+func (c *mqlHuggingfaceSpaceDomain) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlHuggingfaceSpaceDomain) GetDomain() *plugin.TValue[string] {
+	return &c.Domain
+}
+
+func (c *mqlHuggingfaceSpaceDomain) GetStage() *plugin.TValue[string] {
+	return &c.Stage
+}
+
+// mqlHuggingfaceRepositoryScan for the huggingface.repositoryScan resource
+type mqlHuggingfaceRepositoryScan struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlHuggingfaceRepositoryScanInternal it will be used here
+	ScansDone       plugin.TValue[bool]
+	FilesWithIssues plugin.TValue[[]any]
+}
+
+// createHuggingfaceRepositoryScan creates a new instance of this resource
+func createHuggingfaceRepositoryScan(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlHuggingfaceRepositoryScan{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("huggingface.repositoryScan", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlHuggingfaceRepositoryScan) MqlName() string {
+	return "huggingface.repositoryScan"
+}
+
+func (c *mqlHuggingfaceRepositoryScan) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlHuggingfaceRepositoryScan) GetScansDone() *plugin.TValue[bool] {
+	return &c.ScansDone
+}
+
+func (c *mqlHuggingfaceRepositoryScan) GetFilesWithIssues() *plugin.TValue[[]any] {
+	return &c.FilesWithIssues
+}
+
+// mqlHuggingfaceRepositoryScanFile for the huggingface.repositoryScan.file resource
+type mqlHuggingfaceRepositoryScanFile struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlHuggingfaceRepositoryScanFileInternal it will be used here
+	Path  plugin.TValue[string]
+	Level plugin.TValue[string]
+}
+
+// createHuggingfaceRepositoryScanFile creates a new instance of this resource
+func createHuggingfaceRepositoryScanFile(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlHuggingfaceRepositoryScanFile{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("huggingface.repositoryScan.file", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlHuggingfaceRepositoryScanFile) MqlName() string {
+	return "huggingface.repositoryScan.file"
+}
+
+func (c *mqlHuggingfaceRepositoryScanFile) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlHuggingfaceRepositoryScanFile) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlHuggingfaceRepositoryScanFile) GetLevel() *plugin.TValue[string] {
+	return &c.Level
 }
 
 // mqlHuggingfaceWebhook for the huggingface.webhook resource

@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	hfmodels "go.mondoo.com/mql/providers/huggingface/internal/huggingface-hub-go/models"
 )
 
 func TestNormalizeModelID(t *testing.T) {
@@ -59,6 +60,37 @@ func TestParseHFTime(t *testing.T) {
 	assert.Nil(t, parseHFTime(""))
 	assert.Nil(t, parseHFTime("not-a-timestamp"))
 }
+
+// gatedMode has to keep "auto" (anyone accepting the terms is admitted) apart
+// from "manual" (an owner approves each request), and has to stay null when the
+// Hub never reported the field. Returning the mode unconditionally would turn an
+// unread setting into the claim that the repository is ungated.
+func TestGatedModeValue(t *testing.T) {
+	tests := []struct {
+		name string
+		in   hfmodels.GatedValue
+		want *string
+	}{
+		{"ungated", hfmodels.GatedValue{IsGated: false, Mode: "false"}, ptr("false")},
+		{"auto", hfmodels.GatedValue{IsGated: true, Mode: "auto"}, ptr("auto")},
+		{"manual", hfmodels.GatedValue{IsGated: true, Mode: "manual"}, ptr("manual")},
+		{"legacy bool true", hfmodels.GatedValue{IsGated: true, Mode: "true"}, ptr("true")},
+		{"never reported", hfmodels.GatedValue{}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := gatedModeValue(tt.in)
+			if tt.want == nil {
+				assert.Nil(t, got, "an unreported gated field must resolve to null, not to \"false\"")
+				return
+			}
+			require.NotNil(t, got)
+			assert.Equal(t, *tt.want, *got)
+		})
+	}
+}
+
+func ptr(s string) *string { return &s }
 
 func TestStringsToInterface(t *testing.T) {
 	assert.Equal(t, []any{}, stringsToInterface(nil))

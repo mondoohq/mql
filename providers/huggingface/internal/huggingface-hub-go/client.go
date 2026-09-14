@@ -68,6 +68,10 @@ func (c *Client) GetSpace(ctx context.Context, spaceID string) (*models.Space, e
 	return c.api.GetSpace(ctx, spaceID)
 }
 
+func (c *Client) GetRepoScan(ctx context.Context, repoType models.RepoType, repoID string) (*models.RepoScan, error) {
+	return c.api.GetRepoScan(ctx, repoType, repoID)
+}
+
 func (c *Client) ListModels(ctx context.Context, opts *models.ModelListOptions) (*models.ModelList, error) {
 	return c.api.ListModels(ctx, opts)
 }

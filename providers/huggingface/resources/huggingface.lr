@@ -138,6 +138,13 @@ huggingface.model @defaults("id author") {
   lastModified time
   // Whether the model requires access approval
   gated bool
+  // How access to the model is granted
+  //
+  // One of false when the model is ungated, auto when any account that accepts
+  // the terms is admitted straight away, or manual when a repository owner
+  // reviews each request. Null when the Hub did not report the setting, which
+  // is not the same as ungated.
+  gatedMode string
   disabled bool
   license() string
   // Parsed YAML frontmatter from the model card (datasets, language, metrics, base_model, etc.)
@@ -152,6 +159,8 @@ huggingface.model @defaults("id author") {
   // single `rfilename` key holding the file path relative to the
   // repository root.
   siblings() []dict
+  // Malware and unsafe-serialization scan of the model files
+  securityStatus() huggingface.repositoryScan
 }
 
 // Hugging Face dataset repository
@@ -167,9 +176,29 @@ huggingface.dataset @defaults("id") {
   description string
   tags []string
   author string
+  // Downloads recorded in the last 30 days
   downloads int
+  // Downloads recorded since the dataset was created
+  downloadsAllTime int
   likes int
   private bool
+  // Whether the dataset requires access approval
+  gated bool
+  // How access to the dataset is granted
+  //
+  // One of false when the dataset is ungated, auto when any account that
+  // accepts the terms is admitted straight away, or manual when a repository
+  // owner reviews each request. Null when the Hub did not report the setting,
+  // which is not the same as ungated.
+  gatedMode string
+  // Whether the dataset has been disabled by the Hub
+  disabled bool
+  createdAt time
+  lastModified time
+  // Git SHA of the current revision
+  sha string
+  // Malware and unsafe-serialization scan of the dataset files
+  securityStatus() huggingface.repositoryScan
 }
 
 // Hugging Face Space application
@@ -187,6 +216,132 @@ huggingface.space @defaults("id") {
   author string
   likes int
   private bool
+  // Stack that runs the Space
+  //
+  // One of gradio, streamlit, docker, or static. A docker Space runs an image
+  // the author controls, so it is not limited to the hosted app frameworks.
+  sdk string
+  // Region the Space runs in
+  //
+  // For example us or eu. A Space pinned to eu keeps its data and traffic in
+  // the European Union.
+  region string
+  // Host label the Space is served from under hf.space
+  subdomain string
+  // Whether the Space has been disabled by the Hub
+  disabled bool
+  createdAt time
+  lastModified time
+  // Git SHA of the current revision
+  sha string
+  // Execution state of the container serving the Space
+  runtime() huggingface.space.runtimeStatus
+  // Malware and unsafe-serialization scan of the Space files
+  securityStatus() huggingface.repositoryScan
+}
+
+// Runtime state of a Hugging Face Space
+//
+// Execution state of the container serving a Space: the lifecycle stage, the
+// hardware it runs on and the hardware it was configured with, the replica
+// counts, the idle timeout after which it sleeps, whether developer mode is
+// on, and the domains it answers on. A Space with devMode enabled accepts SSH
+// into the running container, so leaving it on for a Space that serves real
+// traffic hands out a shell on the workload.
+private huggingface.space.runtimeStatus @defaults("stage currentHardware") {
+  // Lifecycle stage of the Space container
+  //
+  // Stages seen from the Hub include RUNNING, RUNNING_BUILDING,
+  // RUNNING_APP_STARTING, APP_STARTING, BUILDING, SLEEPING, PAUSED,
+  // RUNTIME_ERROR, BUILD_ERROR, CONFIG_ERROR, and NO_APP_FILE. The Hub adds
+  // stages as the platform changes, so treat the list as open.
+  stage string
+  // Hardware flavor the Space is running on
+  //
+  // For example cpu-basic, cpu-upgrade, zero-a10g, or l40sx1. Null while the
+  // Space is not running, which is not the same as running on the free tier.
+  currentHardware string
+  // Hardware flavor the Space is configured to use
+  //
+  // Null when no flavor has been requested.
+  requestedHardware string
+  // Replicas currently serving the Space
+  //
+  // Null while the Space is not running.
+  currentReplicas int
+  // Replicas the Space is configured to run
+  //
+  // Null when the Space scales automatically and no fixed count is set; see
+  // autoscaling.
+  requestedReplicas int
+  // Whether the Space scales its replica count automatically
+  autoscaling bool
+  // Idle seconds after which the Space sleeps
+  //
+  // Null on a Space that never sleeps. Zero would mean it sleeps immediately,
+  // so the two are kept apart.
+  gcTimeout int
+  // Whether developer mode is enabled
+  //
+  // Developer mode opens SSH access into the running container. Null when the
+  // Hub did not report the setting, which is not the same as off.
+  devMode bool
+  // Domains the Space answers on
+  domains []huggingface.space.domain
+}
+
+// Domain a Hugging Face Space answers on
+//
+// One hostname bound to a Space together with the provisioning stage of that
+// binding. Every Space has a generated hf.space domain; further entries are
+// custom domains the owner attached.
+private huggingface.space.domain @defaults("domain stage") {
+  // Fully qualified domain name
+  domain string
+  // Provisioning stage of the domain
+  //
+  // For example READY when the domain serves traffic, or EXPIRED_CHALLENGE
+  // when its certificate validation lapsed and was never renewed.
+  stage string
+}
+
+// Security scan of a Hugging Face repository
+//
+// Verdict of the Hub's automated scan over the files in a model, dataset, or
+// Space repository, combining antivirus detection with analysis of the imports
+// a pickle-serialized file would execute. The scansDone field reports whether
+// the scan finished: a newly created or recently updated repository reports
+// false with an empty filesWithIssues, so a check that reads only
+// filesWithIssues passes on a repository nothing has looked at yet. Assert
+// scansDone alongside the file list.
+private huggingface.repositoryScan @defaults("scansDone") {
+  // Whether the Hub has finished scanning the repository
+  //
+  // False while a scan is outstanding. An empty filesWithIssues is evidence of
+  // a clean repository only when this is true.
+  scansDone bool
+  // Files the scan reported a finding on
+  //
+  // Empty when the repository is clean, and also empty while scansDone is
+  // false. Clean files are not listed.
+  filesWithIssues []huggingface.repositoryScan.file
+}
+
+// File flagged by a repository security scan
+//
+// One file the Hub's scan reported a finding on, located by path within the
+// repository and graded by level.
+private huggingface.repositoryScan.file @defaults("path level") {
+  // Path of the file relative to the repository root
+  path string
+  // Severity the scan assigned to the finding
+  //
+  // Levels the Hub reports on a flagged file are caution, suspicious, and
+  // unsafe. An unsafe verdict on a pickle-serialized file means loading the
+  // repository executes the code that file carries, so a model marked unsafe
+  // runs attacker-chosen code the moment it is loaded. Clean, queued, and
+  // unscanned files are not listed at all.
+  level string
 }
 
 // Hugging Face webhook

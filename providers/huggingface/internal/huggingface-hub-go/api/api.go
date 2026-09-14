@@ -100,6 +100,24 @@ func parseNextLink(header string) string {
 	return ""
 }
 
+// setExpand writes the expand[] selector onto a list request.
+//
+// expand[] is restrictive rather than additive: the Hub returns only the named
+// fields, so the caller has to name every field it intends to read. When it is
+// set the server ignores full=true, so full is only sent on its own to keep the
+// request saying what it means.
+func setExpand(params url.Values, expand []string, full bool) {
+	if len(expand) == 0 {
+		if full {
+			params.Set("full", "true")
+		}
+		return
+	}
+	for _, field := range expand {
+		params.Add("expand[]", field)
+	}
+}
+
 // getPaged performs a GET against a relative endpoint or an absolute URL (as
 // returned by parseNextLink), decodes the body into result, and returns the
 // URL of the next page (empty when the response has no rel="next" link).
@@ -223,6 +241,18 @@ func (a *API) GetSpace(ctx context.Context, spaceID string) (*models.Space, erro
 	return &space, nil
 }
 
+// GetRepoScan reads the Hub's malware and unsafe-serialization verdict for one
+// repository. Models, datasets, and Spaces all serve it at the same path under
+// their own type segment.
+func (a *API) GetRepoScan(ctx context.Context, repoType models.RepoType, repoID string) (*models.RepoScan, error) {
+	var scan models.RepoScan
+	err := a.request(ctx, http.MethodGet, fmt.Sprintf("%s/%s/scan", repoType, escapeRepoID(repoID)), nil, &scan)
+	if err != nil {
+		return nil, err
+	}
+	return &scan, nil
+}
+
 func (a *API) ListModels(ctx context.Context, opts *models.ModelListOptions) (*models.ModelList, error) {
 	if opts == nil {
 		opts = models.NewModelListOptions()
@@ -249,9 +279,7 @@ func (a *API) ListModels(ctx context.Context, opts *models.ModelListOptions) (*m
 	if opts.Limit > 0 {
 		params.Set("limit", fmt.Sprintf("%d", opts.Limit))
 	}
-	if opts.Full {
-		params.Set("full", "true")
-	}
+	setExpand(params, opts.Expand, opts.Full)
 
 	endpoint := "models"
 	if len(params) > 0 {
@@ -300,9 +328,7 @@ func (a *API) ListDatasets(ctx context.Context, opts *models.DatasetListOptions)
 	if opts.Limit > 0 {
 		params.Set("limit", fmt.Sprintf("%d", opts.Limit))
 	}
-	if opts.Full {
-		params.Set("full", "true")
-	}
+	setExpand(params, opts.Expand, opts.Full)
 
 	endpoint := "datasets"
 	if len(params) > 0 {
@@ -351,9 +377,7 @@ func (a *API) ListSpaces(ctx context.Context, opts *models.SpaceListOptions) (*m
 	if opts.Limit > 0 {
 		params.Set("limit", fmt.Sprintf("%d", opts.Limit))
 	}
-	if opts.Full {
-		params.Set("full", "true")
-	}
+	setExpand(params, opts.Expand, opts.Full)
 
 	endpoint := "spaces"
 	if len(params) > 0 {

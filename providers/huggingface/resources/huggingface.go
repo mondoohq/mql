@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.mondoo.com/mql/llx"
@@ -151,6 +152,7 @@ func createModelResource(runtime *plugin.Runtime, m hfmodels.Model) (*mqlHugging
 		"likes":        llx.IntData(int64(m.Likes)),
 		"lastModified": llx.TimeDataPtr(lastMod),
 		"gated":        llx.BoolData(m.Gated.IsGated),
+		"gatedMode":    llx.StringDataPtr(gatedModeValue(m.Gated)),
 		"disabled":     llx.BoolData(m.Disabled),
 	})
 	if err != nil {
@@ -159,6 +161,7 @@ func createModelResource(runtime *plugin.Runtime, m hfmodels.Model) (*mqlHugging
 	model := res.(*mqlHuggingfaceModel)
 	model.listAuthor = m.Author
 	model.listSha = m.Sha
+	model.listCreatedAt = m.CreatedAt
 	return model, nil
 }
 
@@ -182,15 +185,22 @@ func (r *mqlHuggingface) datasets() ([]any, error) {
 	datasets := make([]any, 0, len(datasetList.Datasets))
 	for _, d := range datasetList.Datasets {
 		res, err := CreateResource(r.MqlRuntime, "huggingface.dataset", map[string]*llx.RawData{
-			"__id":        llx.StringData("huggingface.dataset/" + d.ID),
-			"id":          llx.StringData(d.ID),
-			"name":        llx.StringData(d.Name),
-			"description": llx.StringData(d.Description),
-			"tags":        llx.ArrayData(stringsToInterface(d.Tags), types.String),
-			"author":      llx.StringData(d.Author),
-			"downloads":   llx.IntData(int64(d.Downloads)),
-			"likes":       llx.IntData(int64(d.Likes)),
-			"private":     llx.BoolData(d.Private),
+			"__id":             llx.StringData("huggingface.dataset/" + d.ID),
+			"id":               llx.StringData(d.ID),
+			"name":             llx.StringData(d.Name),
+			"description":      llx.StringData(d.Description),
+			"tags":             llx.ArrayData(stringsToInterface(d.Tags), types.String),
+			"author":           llx.StringData(d.Author),
+			"downloads":        llx.IntData(int64(d.Downloads)),
+			"downloadsAllTime": llx.IntData(int64(d.DownloadsAllTime)),
+			"likes":            llx.IntData(int64(d.Likes)),
+			"private":          llx.BoolData(d.Private),
+			"gated":            llx.BoolData(d.Gated.IsGated),
+			"gatedMode":        llx.StringDataPtr(gatedModeValue(d.Gated)),
+			"disabled":         llx.BoolData(d.Disabled),
+			"createdAt":        llx.TimeDataPtr(parseHFTime(d.CreatedAt)),
+			"lastModified":     llx.TimeDataPtr(parseHFTime(d.LastModified)),
+			"sha":              llx.StringData(d.Sha),
 		})
 		if err != nil {
 			return nil, err
@@ -221,18 +231,28 @@ func (r *mqlHuggingface) spaces() ([]any, error) {
 	spaces := make([]any, 0, len(spaceList.Spaces))
 	for _, sp := range spaceList.Spaces {
 		res, err := CreateResource(r.MqlRuntime, "huggingface.space", map[string]*llx.RawData{
-			"__id":        llx.StringData("huggingface.space/" + sp.ID),
-			"id":          llx.StringData(sp.ID),
-			"name":        llx.StringData(sp.Name),
-			"description": llx.StringData(sp.Description),
-			"tags":        llx.ArrayData(stringsToInterface(sp.Tags), types.String),
-			"author":      llx.StringData(sp.Author),
-			"likes":       llx.IntData(int64(sp.Likes)),
-			"private":     llx.BoolData(sp.Private),
+			"__id":         llx.StringData("huggingface.space/" + sp.ID),
+			"id":           llx.StringData(sp.ID),
+			"name":         llx.StringData(sp.Name),
+			"description":  llx.StringData(sp.Description),
+			"tags":         llx.ArrayData(stringsToInterface(sp.Tags), types.String),
+			"author":       llx.StringData(sp.Author),
+			"likes":        llx.IntData(int64(sp.Likes)),
+			"private":      llx.BoolData(sp.Private),
+			"sdk":          llx.StringData(sp.SDK),
+			"region":       llx.StringData(sp.Region),
+			"subdomain":    llx.StringData(sp.Subdomain),
+			"disabled":     llx.BoolData(sp.Disabled),
+			"createdAt":    llx.TimeDataPtr(parseHFTime(sp.CreatedAt)),
+			"lastModified": llx.TimeDataPtr(parseHFTime(sp.LastModified)),
+			"sha":          llx.StringData(sp.Sha),
 		})
 		if err != nil {
 			return nil, err
 		}
+		// The list call asks for the runtime block, so runtime() costs no
+		// further request.
+		res.(*mqlHuggingfaceSpace).runtimeInfo = sp.Runtime
 		spaces = append(spaces, res)
 	}
 
@@ -462,6 +482,7 @@ func initHuggingfaceModel(runtime *plugin.Runtime, args map[string]*llx.RawData)
 	args["sha"] = llx.StringData(detail.Sha)
 	args["lastModified"] = llx.TimeDataPtr(lastMod)
 	args["gated"] = llx.BoolData(detail.Gated.IsGated)
+	args["gatedMode"] = llx.StringDataPtr(gatedModeValue(detail.Gated))
 	args["disabled"] = llx.BoolData(detail.Disabled)
 	args["createdAt"] = llx.TimeDataPtr(createdAt)
 
@@ -478,11 +499,13 @@ func initHuggingfaceModel(runtime *plugin.Runtime, args map[string]*llx.RawData)
 }
 
 type mqlHuggingfaceModelInternal struct {
-	listAuthor string
-	listSha    string
-	detail     *hfmodels.ModelDetail
-	detailOnce sync.Once
-	detailErr  error
+	listAuthor    string
+	listSha       string
+	listCreatedAt string
+	detail        *hfmodels.ModelDetail
+	detailOnce    sync.Once
+	detailErr     error
+	scanCache     repoScanCache
 }
 
 func (r *mqlHuggingfaceModel) fetchDetail() (*hfmodels.ModelDetail, error) {
@@ -531,11 +554,27 @@ func (r *mqlHuggingfaceModel) sha() (string, error) {
 }
 
 func (r *mqlHuggingfaceModel) createdAt() (*time.Time, error) {
+	// The list call asks for createdAt, so a listed model answers without the
+	// per-model detail request.
+	if r.listCreatedAt != "" {
+		return parseHFTime(r.listCreatedAt), nil
+	}
 	detail, err := r.fetchDetail()
 	if err != nil {
 		return nil, err
 	}
 	return parseHFTime(detail.CreatedAt), nil
+}
+
+func (r *mqlHuggingfaceModel) securityStatus() (*mqlHuggingfaceRepositoryScan, error) {
+	scan, err := r.scanCache.get(r.MqlRuntime, hfmodels.RepoTypeModel, r.Id.Data)
+	if err != nil {
+		return nil, err
+	}
+	if scan == nil {
+		r.SecurityStatus.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return scan, nil
 }
 
 func (r *mqlHuggingfaceModel) license() (string, error) {
@@ -606,6 +645,154 @@ func (r *mqlHuggingfaceModel) siblings() ([]any, error) {
 	return result, nil
 }
 
+// --- huggingface.dataset ---
+
+type mqlHuggingfaceDatasetInternal struct {
+	scanCache repoScanCache
+}
+
+func (r *mqlHuggingfaceDataset) securityStatus() (*mqlHuggingfaceRepositoryScan, error) {
+	scan, err := r.scanCache.get(r.MqlRuntime, hfmodels.RepoTypeDataset, r.Id.Data)
+	if err != nil {
+		return nil, err
+	}
+	if scan == nil {
+		r.SecurityStatus.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return scan, nil
+}
+
+// --- huggingface.space ---
+
+type mqlHuggingfaceSpaceInternal struct {
+	runtimeInfo *hfmodels.SpaceRuntime
+	scanCache   repoScanCache
+}
+
+func (r *mqlHuggingfaceSpace) securityStatus() (*mqlHuggingfaceRepositoryScan, error) {
+	scan, err := r.scanCache.get(r.MqlRuntime, hfmodels.RepoTypeSpace, r.Id.Data)
+	if err != nil {
+		return nil, err
+	}
+	if scan == nil {
+		r.SecurityStatus.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return scan, nil
+}
+
+func (r *mqlHuggingfaceSpace) runtime() (*mqlHuggingfaceSpaceRuntimeStatus, error) {
+	if r.runtimeInfo == nil {
+		// The Hub reported no runtime block for this Space. Resolve the field
+		// to null rather than to a zeroed record that would read as a stopped
+		// Space with developer mode off.
+		r.Runtime.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	rt := r.runtimeInfo
+
+	domains := make([]any, 0, len(rt.Domains))
+	for _, d := range rt.Domains {
+		dres, err := CreateResource(r.MqlRuntime, "huggingface.space.domain", map[string]*llx.RawData{
+			// A custom domain can be moved between Spaces, so the id carries
+			// the Space it is bound to as well as the name.
+			"__id":   llx.StringData("huggingface.space.domain/" + r.Id.Data + "/" + d.Domain),
+			"domain": llx.StringData(d.Domain),
+			"stage":  llx.StringData(d.Stage),
+		})
+		if err != nil {
+			return nil, err
+		}
+		domains = append(domains, dres)
+	}
+
+	res, err := CreateResource(r.MqlRuntime, "huggingface.space.runtimeStatus", map[string]*llx.RawData{
+		"__id":  llx.StringData("huggingface.space.runtimeStatus/" + r.Id.Data),
+		"stage": llx.StringData(rt.Stage),
+		// Hardware, replica counts, the sleep timeout and developer mode are
+		// all absent on a Space that is not running. Each stays null instead of
+		// collapsing to a zero value that would state a fact nobody read.
+		"currentHardware":   llx.StringDataPtr(rt.Hardware.Current),
+		"requestedHardware": llx.StringDataPtr(rt.Hardware.Requested),
+		"currentReplicas":   llx.IntDataPtr(rt.Replicas.Current.Count),
+		"requestedReplicas": llx.IntDataPtr(rt.Replicas.Requested.Count),
+		"autoscaling":       llx.BoolData(rt.Replicas.Requested.Auto),
+		"gcTimeout":         llx.IntDataPtr(rt.GcTimeout),
+		"devMode":           llx.BoolDataPtr(rt.DevMode),
+		"domains":           llx.ArrayData(domains, types.Resource("huggingface.space.domain")),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlHuggingfaceSpaceRuntimeStatus), nil
+}
+
+// --- repository security scan ---
+
+// repoScanCache memoizes one repository's scan verdict. The runtime can resolve
+// the same field from more than one goroutine, so the call is guarded rather
+// than repeated.
+type repoScanCache struct {
+	loaded atomic.Bool
+	mu     sync.Mutex
+	scan   *mqlHuggingfaceRepositoryScan
+	err    error
+}
+
+func (c *repoScanCache) get(runtime *plugin.Runtime, repoType hfmodels.RepoType, repoID string) (*mqlHuggingfaceRepositoryScan, error) {
+	if c.loaded.Load() {
+		return c.scan, c.err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.loaded.Load() {
+		return c.scan, c.err
+	}
+	c.scan, c.err = fetchRepoScan(runtime, repoType, repoID)
+	c.loaded.Store(true)
+	return c.scan, c.err
+}
+
+// fetchRepoScan reads the Hub's scan verdict for one repository. A repository
+// the token cannot see, and one the Hub keeps no scan record for, both resolve
+// to nil so the field reads null: an empty result would report a repository
+// nobody could read as one with nothing wrong.
+func fetchRepoScan(runtime *plugin.Runtime, repoType hfmodels.RepoType, repoID string) (*mqlHuggingfaceRepositoryScan, error) {
+	client := hfConn(runtime).Client()
+
+	scan, err := client.GetRepoScan(context.Background(), repoType, repoID)
+	if isAccessDenied(err) || isNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	files := make([]any, 0, len(scan.FilesWithIssues))
+	for _, f := range scan.FilesWithIssues {
+		res, err := CreateResource(runtime, "huggingface.repositoryScan.file", map[string]*llx.RawData{
+			// The same path occurs in many repositories, so the id carries the
+			// repository type and id alongside it.
+			"__id":  llx.StringData("huggingface.repositoryScan.file/" + string(repoType) + "/" + repoID + "/" + f.Path),
+			"path":  llx.StringData(f.Path),
+			"level": llx.StringData(f.Level),
+		})
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, res)
+	}
+
+	res, err := CreateResource(runtime, "huggingface.repositoryScan", map[string]*llx.RawData{
+		"__id":            llx.StringData("huggingface.repositoryScan/" + string(repoType) + "/" + repoID),
+		"scansDone":       llx.BoolData(scan.ScansDone),
+		"filesWithIssues": llx.ArrayData(files, types.Resource("huggingface.repositoryScan.file")),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlHuggingfaceRepositoryScan), nil
+}
+
 // --- simple id() methods ---
 
 func (r *mqlHuggingfaceOrganization) id() (string, error) {
@@ -628,6 +815,22 @@ func (r *mqlHuggingfaceSpace) id() (string, error) {
 	return "huggingface.space/" + r.Id.Data, nil
 }
 
+func (r *mqlHuggingfaceSpaceRuntimeStatus) id() (string, error) {
+	return r.__id, nil
+}
+
+func (r *mqlHuggingfaceSpaceDomain) id() (string, error) {
+	return r.__id, nil
+}
+
+func (r *mqlHuggingfaceRepositoryScan) id() (string, error) {
+	return r.__id, nil
+}
+
+func (r *mqlHuggingfaceRepositoryScanFile) id() (string, error) {
+	return r.__id, nil
+}
+
 func (r *mqlHuggingfaceWebhook) id() (string, error) {
 	return "huggingface.webhook/" + r.Id.Data, nil
 }
@@ -637,6 +840,16 @@ func (r *mqlHuggingfaceInferenceEndpoint) id() (string, error) {
 }
 
 // --- helpers ---
+
+// gatedModeValue reports how access to a repository is granted, or nil when
+// the Hub did not report the gated field at all. An unread setting must not
+// read as "false", which would claim the repository is ungated.
+func gatedModeValue(g hfmodels.GatedValue) *string {
+	if g.Mode == "" {
+		return nil
+	}
+	return &g.Mode
+}
 
 func stringsToInterface(s []string) []any {
 	result := make([]any, len(s))

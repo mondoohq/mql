@@ -63,6 +63,60 @@ func TestModelListUnmarshal(t *testing.T) {
 	assert.True(t, gated.Models[0].Gated.IsGated)
 }
 
+// Responses built with expand[] carry no modelId at all, because the model
+// endpoint's allowlist has no such name. Without the backfill the shipped
+// modelId field comes back empty for every listed model, so this pins it. A
+// modelId the server does send must survive untouched.
+func TestModelListNormalizeBackfillsModelID(t *testing.T) {
+	// Live shape of an expand[] response: id present, modelId absent.
+	var expanded ModelList
+	require.NoError(t, json.Unmarshal([]byte(
+		`[{"id":"meta-llama/Llama-3.2-1B-Instruct","gated":"manual"}]`), &expanded))
+	require.Len(t, expanded.Models, 1)
+	assert.Equal(t, "meta-llama/Llama-3.2-1B-Instruct", expanded.Models[0].ModelID)
+
+	// A server-supplied modelId is not overwritten.
+	var explicit ModelList
+	require.NoError(t, json.Unmarshal([]byte(
+		`[{"id":"acme/new","modelId":"acme/legacy"}]`), &explicit))
+	require.Len(t, explicit.Models, 1)
+	assert.Equal(t, "acme/legacy", explicit.Models[0].ModelID)
+
+	// The object-wrapped form goes through the same backfill.
+	var wrapped ModelList
+	require.NoError(t, json.Unmarshal([]byte(`{"models":[{"id":"acme/one"}]}`), &wrapped))
+	require.Len(t, wrapped.Models, 1)
+	assert.Equal(t, "acme/one", wrapped.Models[0].ModelID)
+}
+
+// Without expand[] the model list endpoint omits gated, disabled, sha, author
+// and lastModified entirely, so a listed gated model decoded from that response
+// reads as ungated. The expanded response is what carries the truth.
+func TestModelDecodeGatedFromExpandedList(t *testing.T) {
+	// Live: /api/models?author=meta-llama (no expand) omits gated altogether.
+	var bare ModelList
+	require.NoError(t, json.Unmarshal([]byte(
+		`[{"id":"meta-llama/Llama-3.2-1B-Instruct","likes":1649,"private":false}]`), &bare))
+	require.Len(t, bare.Models, 1)
+	assert.Empty(t, bare.Models[0].Gated.Mode,
+		"an omitted gated field must not decode to a mode")
+
+	// Live: the same request with expand[]=gated&expand[]=disabled&expand[]=sha.
+	var expanded ModelList
+	require.NoError(t, json.Unmarshal([]byte(
+		`[{"id":"meta-llama/Llama-3.2-1B-Instruct","author":"meta-llama","disabled":false,`+
+			`"gated":"manual","lastModified":"2024-10-24T15:07:51.000Z",`+
+			`"sha":"9213176726f574b556790deb65791e0c5aa438b6","createdAt":"2024-09-18T15:12:47.000Z"}]`), &expanded))
+	require.Len(t, expanded.Models, 1)
+	m := expanded.Models[0]
+	assert.True(t, m.Gated.IsGated)
+	assert.Equal(t, "manual", m.Gated.Mode)
+	assert.Equal(t, "meta-llama", m.Author)
+	assert.Equal(t, "9213176726f574b556790deb65791e0c5aa438b6", m.Sha)
+	assert.Equal(t, "2024-10-24T15:07:51.000Z", m.LastModified)
+	assert.Equal(t, "2024-09-18T15:12:47.000Z", m.CreatedAt)
+}
+
 func TestDatasetAndSpaceListUnmarshal(t *testing.T) {
 	var dl DatasetList
 	require.NoError(t, json.Unmarshal([]byte(`[{"id":"a/d1"}]`), &dl))
