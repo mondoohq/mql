@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"os"
 	"strings"
+	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
 	"github.com/go-viper/mapstructure/v2"
@@ -227,6 +228,109 @@ func GetProviderPortRange() string {
 	return viper.GetString(KeyProviderPortRange)
 }
 
+// KeyUpdateChannel is the config key selecting which release track binary
+// updates and providers resolve through. It comes from mondoo.yml or, through
+// viper's env binding, from MONDOO_UPDATE_CHANNEL.
+//
+// The key is flat rather than nested under `update` or `providers` because
+// InitViperConfig disables viper's key delimiter, so a dotted lookup of a
+// nested key silently returns nothing.
+const KeyUpdateChannel = "update_channel"
+
+// Release channels. The channel a version belongs to is decided by the release
+// service, from the version's semver pre-release segment; the client only picks
+// which track to ask for.
+const (
+	// ChannelStable is the default: the newest release with no pre-release
+	// segment.
+	ChannelStable = "stable"
+	// ChannelPreview is the pre-release track: the newest release overall,
+	// release candidates included. It is never older than stable, so a client
+	// tracking it moves forward when a candidate becomes a final release.
+	ChannelPreview = "preview"
+)
+
+// runningVersion is the version of the binary that is executing, set once at
+// startup by the app. Empty means unknown, which reads as stable.
+//
+// It is injected rather than read from a package variable because the binary
+// that matters is cnspec or mql, and this package is shared by both.
+//
+// atomic.Value rather than a plain string: the write happens once at startup
+// and the reads come later, so there is no race today, but nothing in the types
+// says so. Tests in particular are free to run in parallel.
+var runningVersion atomic.Value // string
+
+// SetRunningVersion records the executing binary's version, so an unset
+// update_channel can follow the build rather than defaulting to stable. Call it
+// before anything resolves a channel.
+func SetRunningVersion(version string) {
+	runningVersion.Store(version)
+}
+
+// getRunningVersion returns the recorded version, or "" if none was set.
+func getRunningVersion() string {
+	version, _ := runningVersion.Load().(string)
+	return version
+}
+
+// GetUpdateChannel returns the release channel this binary resolves through.
+//
+// An explicit update_channel wins. Anything else -- unset, or a value we do not
+// recognize -- follows the running build: a pre-release build resolves the
+// pre-release track, everything else resolves stable.
+//
+// Following the build matters because installing a pre-release and then
+// resolving *stable* providers is the v13/v14 mismatch in miniature. A
+// 14.0.0-rc.2 binary would pull 13.x providers, built against a different
+// schema, and report the resulting nulls as passing checks. Someone who
+// installed a release candidate has already chosen the pre-release track;
+// making them say so twice only creates a way to get it half-applied.
+//
+// An unrecognized value is treated as unset rather than forced to stable. It
+// means "we do not know what you asked for", and the honest answer to that is
+// the default behaviour, not a third one. Forcing stable would have produced
+// exactly the schema mismatch above for anyone who typed `beta` meaning
+// `preview` on a release candidate.
+//
+// A stable build still never derives preview, which is what keeps this safe: no
+// released binary can be moved onto pre-releases by a typo, only by asking for
+// it precisely.
+func GetUpdateChannel() string {
+	configured := strings.ToLower(strings.TrimSpace(viper.GetString(KeyUpdateChannel)))
+
+	switch configured {
+	case ChannelPreview:
+		return ChannelPreview
+	case ChannelStable:
+		return ChannelStable
+	case "":
+	default:
+		log.Warn().
+			Str("configured", configured).
+			Str(KeyUpdateChannel, strings.Join([]string{ChannelStable, ChannelPreview}, ", ")).
+			Msg("unknown update channel, falling back to the channel this build belongs to")
+	}
+
+	if isPrereleaseVersion(getRunningVersion()) {
+		return ChannelPreview
+	}
+	return ChannelStable
+}
+
+// isPrereleaseVersion reports whether a version carries a semver pre-release
+// segment. Build metadata is stripped first: it is not a pre-release under
+// SemVer 10, and it is where the edge builds put their commit counter.
+//
+// Deliberately not a full semver parse. This has to answer for "unstable" and
+// for the `-rolling` suffix as well as for real versions, and a parse error on
+// a development build must not decide a channel.
+func isPrereleaseVersion(version string) bool {
+	core, _, _ := strings.Cut(version, "+")
+	_, prerelease, found := strings.Cut(strings.TrimPrefix(core, "v"), "-")
+	return found && prerelease != ""
+}
+
 // GetFeatures returns the features from viper config.
 // This can be called after InitViperConfig() to get features before cobra initialization.
 func GetFeatures() mql.Features {
@@ -345,6 +449,10 @@ type CommonOpts struct {
 	// transport, so the setting has no effect elsewhere. Unset means an
 	// OS-assigned port. See KeyProviderPortRange.
 	ProviderPortRange string `json:"provider_port_range,omitempty" mapstructure:"provider_port_range"`
+
+	// UpdateChannel selects which release track binary updates and providers
+	// resolve through. Unset means "stable". See KeyUpdateChannel.
+	UpdateChannel string `json:"update_channel,omitempty" mapstructure:"update_channel"`
 }
 
 // Workload Identity Federation

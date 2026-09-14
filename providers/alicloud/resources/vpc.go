@@ -1220,6 +1220,7 @@ func vpcNetworkAclEntryKey(direction string, args vpcNetworkAclEntryArgs) string
 func newVpcNetworkAclEntry(runtime *plugin.Runtime, aclID, direction string, args vpcNetworkAclEntryArgs) (plugin.Resource, error) {
 	entryID := vpcStr(args.entryID)
 	key := vpcNetworkAclEntryKey(direction, args)
+	fromPort, toPort := portRangeBounds(vpcStr(args.port))
 	return CreateResource(runtime, "alicloud.vpc.networkAcl.entry", map[string]*llx.RawData{
 		"__id":              llx.StringData(aclID + "/" + key),
 		"entryId":           llx.StringData(entryID),
@@ -1229,6 +1230,8 @@ func newVpcNetworkAclEntry(runtime *plugin.Runtime, aclID, direction string, arg
 		"policy":            llx.StringDataPtr(args.policy),
 		"protocol":          llx.StringDataPtr(args.protocol),
 		"port":              llx.StringDataPtr(args.port),
+		"fromPort":          llx.IntDataPtr(fromPort),
+		"toPort":            llx.IntDataPtr(toPort),
 		"sourceCidrIp":      llx.StringData(vpcStr(args.sourceCidrIp)),
 		"destinationCidrIp": llx.StringData(vpcStr(args.destinationCidrIp)),
 		"entryType":         llx.StringDataPtr(args.entryType),

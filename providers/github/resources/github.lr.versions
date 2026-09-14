@@ -322,6 +322,9 @@ github.mergeRequest.stackSize 13.8.3
 github.mergeRequest.state 9.0.0
 github.mergeRequest.title 9.0.0
 github.mergeRequest.updatedAt 13.1.1
+github.metadata 13.9.1
+github.metadata.enterpriseServer 13.9.1
+github.metadata.version 13.9.1
 github.milestone 11.4.122
 github.milestone.closedAt 11.4.122
 github.milestone.closedIssues 11.4.122
@@ -409,6 +412,13 @@ github.organization.description 9.0.0
 github.organization.diskUsage 9.0.0
 github.organization.email 9.0.0
 github.organization.failedInvitations 13.7.8
+github.organization.features 13.9.1
+github.organization.features.approvedTokens 13.9.1
+github.organization.features.auditLog 13.9.1
+github.organization.features.auditLogStreaming 13.9.1
+github.organization.features.customRoles 13.9.1
+github.organization.features.ipAllowList 13.9.1
+github.organization.features.samlSingleSignOn 13.9.1
 github.organization.followers 9.0.0
 github.organization.following 9.0.0
 github.organization.hasOrganizationProjects 11.1.3
@@ -533,6 +543,13 @@ github.organization.secretScanningPushProtectionEnabledForNewRepos 11.4.120
 github.organization.secretScanningValidityChecksEnabled 11.4.120
 github.organization.secrets 13.1.1
 github.organization.securityManagerTeams 13.9.1
+github.organization.subscription 13.9.1
+github.organization.subscription.collaborators 13.9.1
+github.organization.subscription.filledSeats 13.9.1
+github.organization.subscription.name 13.9.1
+github.organization.subscription.privateRepos 13.9.1
+github.organization.subscription.seats 13.9.1
+github.organization.subscription.space 13.9.1
 github.organization.teams 9.0.0
 github.organization.totalPrivateRepos 9.0.0
 github.organization.totalPublicRepos 11.4.30

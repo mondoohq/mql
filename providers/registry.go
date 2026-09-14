@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/cli/config"
 	"go.mondoo.com/mql/utils/httpx"
 	"golang.org/x/sync/singleflight"
 )
@@ -66,6 +67,11 @@ const (
 type MondooProviderRegistry struct {
 	BaseURL string
 
+	// Channel is the release track provider versions resolve through. Empty
+	// means "read it from config at fetch time", which is what the package-level
+	// registry does.
+	Channel string
+
 	// CacheTTL is how long a fetched latest.json is reused. Zero means
 	// defaultLatestVersionsTTL.
 	CacheTTL time.Duration
@@ -102,6 +108,13 @@ func WithBaseURL(baseURL string) MondooProviderRegistryOption {
 	}
 }
 
+// WithChannel pins the release track, overriding the configured one.
+func WithChannel(channel string) MondooProviderRegistryOption {
+	return func(r *MondooProviderRegistry) {
+		r.Channel = channel
+	}
+}
+
 // NewMondooProviderRegistry creates a new MondooProviderRegistry with the given options.
 // By default, it uses "https://releases.mondoo.com/providers" as the base URL.
 func NewMondooProviderRegistry(opts ...MondooProviderRegistryOption) *MondooProviderRegistry {
@@ -118,6 +131,31 @@ func NewMondooProviderRegistry(opts ...MondooProviderRegistryOption) *MondooProv
 
 func LatestVersion(ctx context.Context, name string) (string, error) {
 	return registry.GetLatestVersion(ctx, name)
+}
+
+// channel returns the release track this registry resolves through.
+//
+// It is read at fetch time rather than captured in the constructor: the
+// package-level registry is built during package init, long before
+// InitViperConfig has read mondoo.yml, so a constructor would only ever see the
+// default. Reading it here also means every path that reaches a provider
+// install honours the setting, not just the ones that went through AttachCLIs.
+func (r *MondooProviderRegistry) channel() string {
+	if r.Channel != "" {
+		return r.Channel
+	}
+	return config.GetUpdateChannel()
+}
+
+// pointerDocument is the document listing each provider's current version for
+// this registry's channel. Providers live in one tree, so a channel changes
+// which pointer is read and nothing else: the archive, provider.json and
+// schema.json URLs are the same on every channel.
+func (r *MondooProviderRegistry) pointerDocument() string {
+	if r.channel() == config.ChannelPreview {
+		return "preview.json"
+	}
+	return "latest.json"
 }
 
 func (r *MondooProviderRegistry) clock() time.Time {
@@ -201,10 +239,12 @@ func (r *MondooProviderRegistry) fetchLatestVersions(ctx context.Context) (*Prov
 		return nil, err
 	}
 
-	latestURL, err := url.JoinPath(r.BaseURL, "latest.json")
+	pointer := r.pointerDocument()
+	latestURL, err := url.JoinPath(r.BaseURL, pointer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to construct latest version URL")
 	}
+	log.Debug().Str("url", latestURL).Str("channel", r.channel()).Msg("fetching provider versions")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, latestURL, nil)
 	if err != nil {

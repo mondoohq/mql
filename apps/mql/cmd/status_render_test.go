@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/cli/config"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/upstream/health"
 )
@@ -204,6 +205,43 @@ func TestRenderCli_PlatformSection_Proxy(t *testing.T) {
 	s.Client.Proxy, s.Client.ProxySource = "", ""
 	out = s.RenderCli(RenderOptions{Color: false})
 	assert.Contains(t, out, "direct connection")
+}
+
+func TestRenderCli_MqlSection_ChannelAlwaysShown(t *testing.T) {
+	// The row exists whatever the channel. A support conversation needs to
+	// tell "this machine is on stable" apart from "this binary is too old to
+	// report a channel", and an absent row cannot distinguish them.
+	t.Run("stable is shown, marked as the default", func(t *testing.T) {
+		s := healthyRegisteredStatus()
+		s.Client.UpdateChannel = config.ChannelStable
+
+		out := s.RenderCli(RenderOptions{Color: false})
+
+		assert.Contains(t, out, "Channel")
+		assert.Contains(t, out, "stable — the default")
+	})
+
+	t.Run("an empty channel still renders as stable", func(t *testing.T) {
+		// GetUpdateChannel always resolves to one of the two, but the field is
+		// plumbed through a struct that something else could leave unset.
+		s := healthyRegisteredStatus()
+		s.Client.UpdateChannel = ""
+
+		out := s.RenderCli(RenderOptions{Color: false})
+
+		assert.Contains(t, out, "stable — the default")
+	})
+
+	t.Run("preview is called out, not dimmed away", func(t *testing.T) {
+		s := healthyRegisteredStatus()
+		s.Client.UpdateChannel = config.ChannelPreview
+
+		out := s.RenderCli(RenderOptions{Color: false})
+
+		assert.Contains(t, out, "preview")
+		assert.Contains(t, out, "pre-releases")
+		assert.NotContains(t, out, "stable — the default")
+	})
 }
 
 func TestRenderCli_MqlSection_UpdateAvailableShowsArrow(t *testing.T) {

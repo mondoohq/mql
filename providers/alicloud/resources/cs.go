@@ -122,6 +122,10 @@ type mqlAlicloudCsClusterInternal struct {
 	logLock    sync.Mutex
 	logFetched atomic.Bool
 	logBody    *csclient.CheckControlPlaneLogEnableResponseBody
+
+	auditLock    sync.Mutex
+	auditFetched atomic.Bool
+	auditBody    *csclient.GetClusterAuditProjectResponseBody
 }
 
 // newCsCluster builds a fully populated alicloud.cs.cluster from a
@@ -338,17 +342,106 @@ func (r *mqlAlicloudCsCluster) oidcIssuerUrl() (string, error) {
 	return tea.StringValue(d.RrsaConfig.Issuer), nil
 }
 
-func (r *mqlAlicloudCsCluster) auditLogEnabled() (bool, error) {
-	lb, err := r.controlPlaneLog()
-	if err != nil || lb == nil {
-		return false, err
+// clusterAuditProject lazily fetches and caches GetClusterAuditProject, the
+// cluster auditing configuration that carries the API server audit setting. A
+// transient error is not cached and is returned.
+func (r *mqlAlicloudCsCluster) clusterAuditProject() (*csclient.GetClusterAuditProjectResponseBody, error) {
+	if r.auditFetched.Load() {
+		return r.auditBody, nil
 	}
-	for _, c := range lb.Components {
-		if strings.EqualFold(tea.StringValue(c), "audit") {
-			return true, nil
+	r.auditLock.Lock()
+	defer r.auditLock.Unlock()
+	if r.auditFetched.Load() {
+		return r.auditBody, nil
+	}
+
+	conn := r.MqlRuntime.Connection.(*connection.AlicloudConnection)
+	client, err := conn.CsClient(r.region)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.GetClusterAuditProject(tea.String(r.clusterId))
+	if err != nil {
+		return nil, err
+	}
+	if resp != nil {
+		r.auditBody = resp.Body
+	}
+	r.auditFetched.Store(true)
+	return r.auditBody, nil
+}
+
+// csControlPlaneLogComponentEnabled reports whether the control plane log
+// configuration collects the named component. CheckControlPlaneLogEnable lists
+// only the components it collects, so an absent response and an empty list both
+// mean the component is not collected.
+func csControlPlaneLogComponentEnabled(body *csclient.CheckControlPlaneLogEnableResponseBody, component string) bool {
+	if body == nil {
+		return false
+	}
+	for _, c := range body.Components {
+		if strings.EqualFold(strings.TrimSpace(tea.StringValue(c)), component) {
+			return true
 		}
 	}
-	return false, nil
+	return false
+}
+
+// csClusterAuditEnabled reads the API server audit setting out of the cluster
+// auditing configuration. The second return value is false when the
+// configuration does not carry the setting, which is a null field rather than a
+// measured false.
+func csClusterAuditEnabled(body *csclient.GetClusterAuditProjectResponseBody) (bool, bool) {
+	if body == nil || body.AuditEnabled == nil {
+		return false, false
+	}
+	return *body.AuditEnabled, true
+}
+
+// csClusterAuditProjectName reads the Log Service project holding the API
+// server audit logs, empty when cluster auditing is not configured.
+func csClusterAuditProjectName(body *csclient.GetClusterAuditProjectResponseBody) string {
+	if body == nil {
+		return ""
+	}
+	return strings.TrimSpace(tea.StringValue(body.SlsProjectName))
+}
+
+func (r *mqlAlicloudCsCluster) auditLogEnabled() (bool, error) {
+	lb, err := r.controlPlaneLog()
+	if err != nil {
+		return false, err
+	}
+	return csControlPlaneLogComponentEnabled(lb, "audit"), nil
+}
+
+// apiServerAuditEnabled reports the cluster auditing setting. A configuration
+// that does not carry the setting resolves to null: not knowing whether audit
+// logs are collected is not the same as knowing they are not.
+func (r *mqlAlicloudCsCluster) apiServerAuditEnabled() (bool, error) {
+	ab, err := r.clusterAuditProject()
+	if err != nil {
+		return false, err
+	}
+	enabled, known := csClusterAuditEnabled(ab)
+	if !known {
+		r.ApiServerAuditEnabled.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return enabled, nil
+}
+
+func (r *mqlAlicloudCsCluster) apiServerAuditLogProject() (*mqlAlicloudLogProject, error) {
+	ab, err := r.clusterAuditProject()
+	if err != nil {
+		return nil, err
+	}
+	project := csClusterAuditProjectName(ab)
+	if project == "" {
+		r.ApiServerAuditLogProject.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return resolveLogProject(r.MqlRuntime, r.region, project)
 }
 
 func (r *mqlAlicloudCsCluster) controlPlaneLogComponents() ([]any, error) {

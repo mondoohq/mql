@@ -921,7 +921,7 @@ func cosmosKeysMetadataToMql(runtime *plugin.Runtime, accountID string, km *cosm
 	if accountID == "" {
 		return nil, errors.New("cannot key the Cosmos DB key metadata: the account has no id")
 	}
-	const resourceName = "azure.subscription.cosmosDbService.account.keysMetadata"
+	const resourceName = "azure.subscription.cosmosDbService.account.masterKeyMetadata"
 	const entryName = "azure.subscription.cosmosDbService.account.accountKeyMetadata"
 
 	entry := func(key string, meta *cosmosdb.AccountKeyMetadata) (*llx.RawData, error) {

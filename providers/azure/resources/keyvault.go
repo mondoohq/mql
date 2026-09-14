@@ -1299,7 +1299,7 @@ func (a *mqlAzureSubscriptionKeyVaultServiceKey) rotationPolicy() (*mqlAzureSubs
 
 	policyAttributes := llx.NilData
 	if attrs := policyResp.Attributes; attrs != nil {
-		const attributesResource = "azure.subscription.keyVaultService.key.rotationPolicyObject.attributes"
+		const attributesResource = "azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes"
 		mqlAttrs, err := CreateResource(a.MqlRuntime, attributesResource, map[string]*llx.RawData{
 			"__id":       llx.StringData(id + "/rotationPolicy/attributes"),
 			"expiryTime": llx.StringDataPtr(attrs.ExpiryTime),

@@ -374,3 +374,82 @@ func TestGetProviderPortRange(t *testing.T) {
 		assert.Equal(t, "50000-50100", GetProviderPortRange())
 	})
 }
+
+// TestGetUpdateChannelFollowsTheBuild pins that a pre-release binary resolves
+// pre-release providers without being told to.
+//
+// Installing a 14.0.0-rc.2 binary and then pulling 13.x providers is the
+// v13/v14 mismatch in miniature: they are built against a different schema, and
+// the resulting nulls read as passing checks. The inverse is what keeps it
+// safe — a stable build never derives preview, so no released binary can be
+// moved onto pre-releases except by an explicit setting.
+func TestGetUpdateChannelFollowsTheBuild(t *testing.T) {
+	t.Cleanup(func() {
+		viper.Set(KeyUpdateChannel, "")
+		SetRunningVersion("")
+	})
+
+	for version, want := range map[string]string{
+		"14.0.0-rc.2":      ChannelPreview,
+		"14.0.0-pre.1":     ChannelPreview,
+		"v14.0.0-rc.2":     ChannelPreview,
+		"14.0.0-rc.2.3508": ChannelPreview,
+		"14.0.0-rolling":   ChannelPreview,
+		"13.38.1":          ChannelStable,
+		"14.0.0":           ChannelStable,
+		"8.4.0+41":         ChannelStable, // build metadata is not a pre-release
+		"unstable":         ChannelStable, // a build with no version ldflags
+		"":                 ChannelStable,
+	} {
+		viper.Set(KeyUpdateChannel, "")
+		SetRunningVersion(version)
+		assert.Equal(t, want, GetUpdateChannel(), "version: %q", version)
+	}
+
+	// An explicit setting wins over the build in both directions, so a
+	// pre-release can be pinned to stable and vice versa.
+	SetRunningVersion("14.0.0-rc.2")
+	viper.Set(KeyUpdateChannel, ChannelStable)
+	assert.Equal(t, ChannelStable, GetUpdateChannel(), "explicit stable must override a pre-release build")
+
+	SetRunningVersion("13.38.1")
+	viper.Set(KeyUpdateChannel, ChannelPreview)
+	assert.Equal(t, ChannelPreview, GetUpdateChannel(), "explicit preview must override a stable build")
+
+	// An unrecognized value is treated as unset, not forced to stable. Someone
+	// who typed `beta` meaning `preview` on a release candidate would otherwise
+	// get stable providers against a pre-release binary — the exact schema
+	// mismatch this is here to prevent.
+	SetRunningVersion("14.0.0-rc.2")
+	viper.Set(KeyUpdateChannel, "beta")
+	assert.Equal(t, ChannelPreview, GetUpdateChannel())
+
+	// And on a stable build the same typo is still stable, so a garbage value
+	// can never move a released binary onto pre-releases.
+	SetRunningVersion("13.38.1")
+	viper.Set(KeyUpdateChannel, "beta")
+	assert.Equal(t, ChannelStable, GetUpdateChannel())
+}
+
+// TestGetUpdateChannel pins that a typo cannot silently move a fleet onto
+// pre-releases, and cannot stop it updating either. With no running version
+// recorded — a stable build, or a caller that never set one — anything
+// unrecognized resolves stable.
+func TestGetUpdateChannel(t *testing.T) {
+	t.Cleanup(func() { viper.Set(KeyUpdateChannel, "") })
+	SetRunningVersion("")
+
+	for value, want := range map[string]string{
+		"":         ChannelStable,
+		"stable":   ChannelStable,
+		"preview":  ChannelPreview,
+		"PREVIEW":  ChannelPreview,
+		" preview": ChannelPreview,
+		"beta":     ChannelStable,
+		"edge":     ChannelStable,
+		"rubbish":  ChannelStable,
+	} {
+		viper.Set(KeyUpdateChannel, value)
+		assert.Equal(t, want, GetUpdateChannel(), "value: %q", value)
+	}
+}

@@ -1153,6 +1153,7 @@ func (r *mqlAlicloudEcsSecuritygroup) permissions() ([]any, error) {
 			if p.SecurityGroupRuleId != nil && *p.SecurityGroupRuleId != "" {
 				ruleKey = *p.SecurityGroupRuleId
 			}
+			fromPort, toPort := portRangeBounds(strDeref(p.PortRange))
 			resource, err := CreateResource(r.MqlRuntime, "alicloud.ecs.securitygroup.permission", map[string]*llx.RawData{
 				"__id":                llx.StringData(sgId + "/" + direction + "/" + ruleKey),
 				"securityGroupRuleId": llx.StringDataPtr(p.SecurityGroupRuleId),
@@ -1162,6 +1163,8 @@ func (r *mqlAlicloudEcsSecuritygroup) permissions() ([]any, error) {
 				"ipProtocol":          llx.StringDataPtr(p.IpProtocol),
 				"nicType":             llx.StringDataPtr(p.NicType),
 				"portRange":           llx.StringDataPtr(p.PortRange),
+				"fromPort":            llx.IntDataPtr(fromPort),
+				"toPort":              llx.IntDataPtr(toPort),
 				"sourcePortRange":     llx.StringDataPtr(p.SourcePortRange),
 				"sourceCidrIp":        llx.StringDataPtr(p.SourceCidrIp),
 				"sourcePrefixListId":  llx.StringDataPtr(p.SourcePrefixListId),

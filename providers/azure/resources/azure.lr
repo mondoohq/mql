@@ -8387,9 +8387,9 @@ private azure.subscription.sqlService.server.failoverGroup @defaults("name repli
   // policy and grace period as typed fields.
   readWriteEndpoint @maturity("deprecated") @replaced_by("azure.subscription.sqlService.server.failoverGroup.readWriteListener") dict
   // Failover configuration of the read-write listener endpoint
-  readWriteListener azure.subscription.sqlService.server.failoverGroup.readWriteEndpoint
+  readWriteListener azure.subscription.sqlService.server.failoverGroup.readWriteListener
   // Failover configuration of the read-only listener endpoint
-  readOnlyListener azure.subscription.sqlService.server.failoverGroup.readOnlyEndpoint
+  readOnlyListener azure.subscription.sqlService.server.failoverGroup.readOnlyListener
   // Read-only endpoint configuration
   //
   // Deprecated in favor of readOnlyListener, which carries the failover
@@ -9391,7 +9391,7 @@ azure.subscription.cosmosDbService.account @defaults("name kind location") {
   // generation times as typed fields.
   keysMetadata @maturity("deprecated") @replaced_by("azure.subscription.cosmosDbService.account.masterKeyMetadata") dict
   // Generation times of the account's four master keys
-  masterKeyMetadata azure.subscription.cosmosDbService.account.keysMetadata
+  masterKeyMetadata azure.subscription.cosmosDbService.account.masterKeyMetadata
   // Optional capabilities turned on for the account
   //
   // Capability names such as EnableServerless,
@@ -10280,7 +10280,7 @@ private azure.subscription.keyVaultService.key.rotationPolicyObject @defaults("e
   // lifetime and the policy provenance as typed fields.
   attributes @maturity("deprecated") @replaced_by("azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes") dict
   // Lifetime and provenance the policy records
-  policyAttributes azure.subscription.keyVaultService.key.rotationPolicyObject.attributes
+  policyAttributes azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes
   // Whether automatic key rotation is enabled (true if rotationPolicy exists with Rotate action)
   enabled bool
 }
@@ -12272,7 +12272,7 @@ private azure.subscription.maintenanceWindow @defaults("customWindow dayOfWeek s
 // the credential the cache uses to reach its backup storage. ARM reports every
 // one of these as a string rather than a boolean, so "true" and "false" arrive
 // as text.
-private azure.subscription.cacheService.redisInstance.redisConfiguration @defaults("authNotRequired aadEnabled maxmemoryPolicy") {
+private azure.subscription.cacheService.redisInstance.configuration @defaults("authNotRequired aadEnabled maxmemoryPolicy") {
   // Whether the cache accepts connections without an access key
   //
   // Azure reports "true" when key authentication is turned off, and leaves the
@@ -12304,7 +12304,7 @@ private azure.subscription.cacheService.redisInstance.redisConfiguration @defaul
 // not been regenerated in a long time is the signal a key-rotation audit is
 // looking for, and the read-only keys rotate independently of the read-write
 // ones.
-private azure.subscription.cosmosDbService.account.keysMetadata {
+private azure.subscription.cosmosDbService.account.masterKeyMetadata {
   // Metadata of the primary read-write master key
   primaryMasterKey azure.subscription.cosmosDbService.account.accountKeyMetadata
   // Metadata of the secondary read-write master key
@@ -12344,7 +12344,7 @@ private azure.subscription.networkService.trafficManagerProfile.dnsSettings @def
 // server. An automatic policy fails over without an operator, after the grace
 // period has elapsed; a manual policy leaves the group on the primary until
 // someone triggers the failover.
-private azure.subscription.sqlService.server.failoverGroup.readWriteEndpoint @defaults("failoverPolicy") {
+private azure.subscription.sqlService.server.failoverGroup.readWriteListener @defaults("failoverPolicy") {
   // Failover policy of the read-write endpoint, "Automatic" or "Manual"
   failoverPolicy string
   // Grace period Azure waits before failing over with possible data loss, in minutes
@@ -12358,7 +12358,7 @@ private azure.subscription.sqlService.server.failoverGroup.readWriteEndpoint @de
 // Whether the read-only listener of a failover group follows the primary when
 // the group fails over. Disabled means read-only traffic stops rather than
 // following the new primary.
-private azure.subscription.sqlService.server.failoverGroup.readOnlyEndpoint @defaults("failoverPolicy") {
+private azure.subscription.sqlService.server.failoverGroup.readOnlyListener @defaults("failoverPolicy") {
   // Failover policy of the read-only endpoint, "Enabled" or "Disabled"
   failoverPolicy string
 }
@@ -12382,7 +12382,7 @@ private azure.subscription.storageService.account.defenderForStorageSetting.oper
 // policy itself was created and last changed. The expiry time is an ISO 8601
 // duration, for example "P90D" for ninety days, and is the value a
 // "keys rotate at least every N days" check reads.
-private azure.subscription.keyVaultService.key.rotationPolicyObject.attributes @defaults("expiryTime") {
+private azure.subscription.keyVaultService.key.rotationPolicyObject.policyAttributes @defaults("expiryTime") {
   // Lifetime of a key version created under this policy, as an ISO 8601 duration
   //
   // For example "P90D" or "P1Y". Null when the policy sets no expiry, which
@@ -13492,7 +13492,7 @@ azure.subscription.cacheService.redisInstance @defaults("id hostName") {
   // settings as typed fields.
   redisConfiguration @maturity("deprecated") @replaced_by("azure.subscription.cacheService.redisInstance.configuration") dict
   // Redis server configuration the cache runs with
-  configuration azure.subscription.cacheService.redisInstance.redisConfiguration
+  configuration azure.subscription.cacheService.redisInstance.configuration
   // Number of shards (Premium Cluster Cache only)
   shardCount int
   // Static IP address (when deployed in a VNet)

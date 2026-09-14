@@ -82,6 +82,38 @@ func (n *noopOsServiceManager) Get(name string) (*Service, error) {
 
 var amazonlinux1version = regexp.MustCompile(`^201\d`)
 
+// initSystemPaths are the on-disk traces of an init system, in the order they
+// are probed. /sbin/init alone is not enough to go on: Debian, Ubuntu, Fedora,
+// openSUSE and Amazon Linux all ship systemd unit files in their images without
+// shipping /sbin/init, and probing only that path put every one of them on the
+// noop manager, which reports an empty service list rather than saying it could
+// not look. A scan of such a target answered "no services" about a system whose
+// units were sitting on disk unread.
+var initSystemPaths = []string{
+	"/sbin/init",
+	// systemd, both the binary and the unit trees. The usr-merged and
+	// non-merged layouts are both listed because /lib is only a symlink to
+	// /usr/lib on some of them.
+	"/usr/lib/systemd/systemd",
+	"/lib/systemd/systemd",
+	"/usr/lib/systemd/system",
+	"/lib/systemd/system",
+	"/etc/systemd/system",
+}
+
+// hasInitSystem reports whether the target carries any init system this package
+// knows how to read. It is deliberately a presence check rather than a decision
+// about which manager applies: that choice belongs to the switch in
+// ResolveManager, which keys off the platform.
+func hasInitSystem(conn shared.Connection) bool {
+	for _, path := range initSystemPaths {
+		if _, err := conn.FileInfo(path); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 func ResolveManager(conn shared.Connection) (OSServiceManager, error) {
 	var osm OSServiceManager
 
@@ -91,12 +123,10 @@ func ResolveManager(conn shared.Connection) (OSServiceManager, error) {
 	}
 
 	useNoopInit := false
-	if asset.Platform.IsFamily("linux") {
-		// If we're on linux, check if there is no init system. If there is no init system,
-		// we don't have managed services. This happens in containers.
-		if _, err := conn.FileInfo("/sbin/init"); err != nil {
-			useNoopInit = true
-		}
+	if asset.Platform.IsFamily("linux") && !hasInitSystem(conn) {
+		// Nothing on the target names an init system, so there are no managed
+		// services to report. This happens in containers.
+		useNoopInit = true
 	}
 
 	switch {

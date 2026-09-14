@@ -5,6 +5,7 @@ package main
 
 import (
 	"os"
+	"strings"
 
 	"go.mondoo.com/mql"
 	"go.mondoo.com/mql/apps/mql/cmd"
@@ -22,6 +23,11 @@ import (
 func main() {
 	defer health.ReportPanic("mql", mql.Version, mql.Build)
 
+	// Before anything resolves a channel. With update_channel unset, a
+	// pre-release build follows the pre-release track rather than pulling
+	// stable providers built against a different schema.
+	config.SetRunningVersion(mql.GetVersion())
+
 	// Clean up leftover .old binary from a previous in-place update (Windows).
 	selfupdate.CleanupOldBinary()
 
@@ -31,9 +37,10 @@ func main() {
 
 	// Check for self-update before anything else
 	if run, localOnly := selfUpdateMode(); run {
-		releaseURL := selfupdate.DefaultReleaseURL
+		manifest := selfupdate.ChannelManifest(config.GetUpdateChannel())
+		releaseURL := selfupdate.DefaultReleasesURL + "/mql/" + manifest
 		if updatesURL := config.GetUpdatesURL(); updatesURL != "" {
-			releaseURL = updatesURL + "/mql/latest.json"
+			releaseURL = strings.TrimSuffix(updatesURL, "/") + "/mql/" + manifest
 		}
 		cfg := selfupdate.Config{
 			Enabled:         true,

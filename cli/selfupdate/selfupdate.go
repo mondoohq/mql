@@ -43,6 +43,10 @@ const (
 	EnvAutoUpdateEngine = "MONDOO_AUTO_UPDATE_ENGINE"
 	// DefaultReleaseURL is the URL to fetch the latest release information
 	DefaultReleaseURL = "https://releases.mondoo.com/mql/latest.json"
+
+	// DefaultReleasesURL is the release bucket the manifest is read from when
+	// updates_url is not configured.
+	DefaultReleasesURL = "https://releases.mondoo.com"
 	// markerFilePrefix is the prefix for per-binary marker files that track when the last update check occurred.
 	// Each binary gets its own marker (e.g., ".last-update-check-mql", ".last-update-check-cnspec").
 	markerFilePrefix = ".last-update-check-"
@@ -70,6 +74,21 @@ type Release struct {
 	Name    string        `json:"name"`
 	Version string        `json:"version"`
 	Files   []ReleaseFile `json:"files"`
+}
+
+// ChannelManifest returns the manifest document a release channel is published
+// as, next to the artifacts it points at.
+//
+// A channel changes which pointer is read, never where the artifacts live, so a
+// pinned version resolves the same on every channel. Note this is the bucket
+// spelling: the install service instead takes the channel as a `?channel=`
+// query parameter, because its routes are named after the package rather than
+// after the document.
+func ChannelManifest(channel string) string {
+	if channel == config.ChannelPreview {
+		return "preview.json"
+	}
+	return "latest.json"
 }
 
 // ReleaseFile represents a downloadable release file
@@ -179,6 +198,22 @@ func CheckAndUpdate(cfg Config) (bool, error) {
 		return false, nil
 	}
 
+	// Reconcile what the OS reports with what is actually running, whether or
+	// not an update follows. Three cases need this and none of them involve an
+	// update landing right now:
+	//
+	//   - a pre-release installs under its semver core, because Windows
+	//     Installer accepts numeric fields only, so 14.0.0-rc.5 registers as
+	//     14.0.0 and is wrong from the first boot;
+	//   - `msiexec /f` rewrites the registration from the MSI's own
+	//     ProductVersion, undoing an earlier correction;
+	//   - the binary is already current, so the update path below returns
+	//     early and would never reach a correction.
+	//
+	// Gated behind the refresh interval rather than run per invocation, and it
+	// reads before it writes, so the steady state is one registry read.
+	registerVersion(currentVersion)
+
 	// Fetch the latest release information
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -251,6 +286,7 @@ func CheckAndUpdate(cfg Config) (bool, error) {
 			return false, errors.Wrap(err, "in-place swap failed")
 		}
 		binaryPath = originalPath
+		registerVersion(release.Version)
 	}
 
 	// Re-execute with the new binary
@@ -260,6 +296,24 @@ func CheckAndUpdate(cfg Config) (bool, error) {
 
 	// If ExecUpdatedBinary returns (Windows case), we've spawned a new process
 	return true, nil
+}
+
+// registerVersion points the OS package manager's record at the version now on
+// disk, where the platform has such a record.
+//
+// Deliberately not fatal. The binary has already been replaced and verified at
+// this point, so the update succeeded; only the bookkeeping did not. Writing
+// the Add/Remove entry needs HKLM, which an interactive non-elevated `update`
+// will not have even though the swap into a user-writable location did. A
+// warning is the honest outcome: the machine is running the new version and
+// Windows will keep reporting the old one until something with the rights
+// corrects it.
+func registerVersion(version string) {
+	if err := updateRegisteredVersion(version); err != nil {
+		log.Warn().Err(err).
+			Str("version", version).
+			Msg("self-update: updated the binary but could not update the version the OS reports")
+	}
 }
 
 // getBinPath returns the path where updated binaries should be stored
@@ -322,6 +376,7 @@ func execLocalIfNewer(binPath, binName, currentVersion string) (bool, error) {
 			return false, errors.Wrap(err, "in-place swap failed")
 		}
 		localBinary = originalPath
+		registerVersion(localVersion)
 	}
 
 	// Exec to the newer local binary

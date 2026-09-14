@@ -113,6 +113,7 @@ func init() {
 	_ = viper.BindEnv("features")
 	_ = viper.BindEnv("strict")
 	_ = viper.BindEnv("updates_url")
+	_ = viper.BindEnv(config.KeyUpdateChannel)
 
 	config.Init(rootCmd)
 }

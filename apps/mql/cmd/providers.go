@@ -15,9 +15,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/errors"
 	"github.com/muesli/termenv"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"go.mondoo.com/mql/cli/config"
 	"go.mondoo.com/mql/cli/theme"
 	"go.mondoo.com/mql/cli/theme/colors"
 	"go.mondoo.com/mql/providers"
@@ -44,6 +47,44 @@ func init() {
 	installProviderCmd.Flags().String("url", "", "Install a provider via a URL")
 	installProviderCmd.Flags().Bool("schema-only", false, "Install only the provider's config and resource schema, without its binary")
 	deleteProviderCmd.Flags().Bool("yes", false, "Confirm removal of all providers when using the 'all' target")
+
+	for _, cmd := range []*cobra.Command{installProviderCmd, updateProviderCmd} {
+		cmd.Flags().String("channel", "", "Release channel to resolve from: stable or preview (default: the configured update_channel, or the channel this build belongs to)")
+	}
+}
+
+// applyChannelFlag lets a single command resolve from a different release
+// channel without editing mondoo.yml.
+//
+// A stable install is the case this exists for: trying one pre-release provider
+// should not mean reconfiguring the machine and remembering to put it back. The
+// override lasts for this process only.
+//
+// It is applied by setting the config key rather than by threading a parameter
+// down to the registry, because the registry reads the channel at fetch time --
+// so everything that resolves during this command agrees, including the version
+// this command prints back.
+func applyChannelFlag(cmd *cobra.Command) error {
+	channel, _ := cmd.Flags().GetString("channel")
+	if channel == "" {
+		return nil
+	}
+
+	normalized := strings.ToLower(strings.TrimSpace(channel))
+	switch normalized {
+	case config.ChannelStable, config.ChannelPreview:
+	default:
+		// An unknown channel elsewhere falls back to the build, because it came
+		// from a config file someone may not be looking at. Here it was just
+		// typed on the command line, so say so rather than quietly doing
+		// something else.
+		return errors.Newf("unknown channel %q, expected %s or %s",
+			channel, config.ChannelStable, config.ChannelPreview)
+	}
+
+	viper.Set(config.KeyUpdateChannel, normalized)
+	log.Info().Str("channel", normalized).Msg("resolving providers from an overridden release channel")
+	return nil
 }
 
 var ProvidersCmd = &cobra.Command{
@@ -74,9 +115,23 @@ var installProviderCmd = &cobra.Command{
 With --schema-only, only the provider's config and resource schema are
 installed, skipping the (much larger) binary download. That is enough to
 compile queries against the provider's resources, but not to connect to
-assets; for that, install the provider fully.`,
+assets; for that, install the provider fully.
+
+--channel resolves this one command from a different release channel, without
+changing any configuration. It has no effect when a version is pinned
+(NAME@VERSION) or when installing from --file or --url, since none of those
+consult a channel.
+
+Examples:
+  mql providers install aws                     # the configured channel
+  mql providers install aws --channel preview   # one-off, from the pre-release track
+  mql providers install aws@13.53.4             # exact version, channel ignored`,
 	PreRun: func(cmd *cobra.Command, args []string) {},
 	Run: func(cmd *cobra.Command, args []string) {
+		if err := applyChannelFlag(cmd); err != nil {
+			log.Fatal().Err(err).Msg("invalid channel")
+		}
+
 		schemaOnly, _ := cmd.Flags().GetBool("schema-only")
 
 		// Explicit installs of files will ignore version recommendations.
@@ -118,13 +173,22 @@ provider names to update just those. Providers already on the latest version
 are skipped, and naming a provider that isn't installed is reported and skipped
 rather than treated as an error.
 
+--channel resolves this one command from a different release channel, without
+changing any configuration. On a stable install that is how you try a
+pre-release provider: the override lasts for this command only, so the next
+update goes back to whatever is configured.
+
 Examples:
   mql providers update              # update every installed provider
   mql providers update aws          # update just the aws provider
-  mql providers update aws gcp      # update the aws and gcp providers`,
+  mql providers update aws gcp      # update the aws and gcp providers
+  mql providers update aws --channel preview   # one-off, from the pre-release track`,
 	Args:   cobra.ArbitraryArgs,
 	PreRun: func(cmd *cobra.Command, args []string) {},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := applyChannelFlag(cmd); err != nil {
+			return err
+		}
 		return updateProviders(cmd.Root().Name(), args)
 	},
 }

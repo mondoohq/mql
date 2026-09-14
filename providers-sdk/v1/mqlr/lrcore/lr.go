@@ -15,6 +15,7 @@ import (
 
 	"github.com/alecthomas/participle"
 	"github.com/alecthomas/participle/lexer"
+	"go.mondoo.com/mql/providers-sdk/v1/resources"
 	"go.mondoo.com/mql/types"
 )
 
@@ -582,6 +583,7 @@ func Parse(input string) (*LR, error) {
 	validationErrs = append(validationErrs, res.validateAliases()...)
 	validationErrs = append(validationErrs, res.validateEmbedAmbiguity()...)
 	validationErrs = append(validationErrs, res.validateRootMembers()...)
+	validationErrs = append(validationErrs, res.validateDeprecatedShadowing()...)
 
 	if len(validationErrs) > 0 {
 		return res, errors.Join(append([]error{err}, validationErrs...)...)
@@ -666,6 +668,68 @@ func (lr *LR) validateAliases() []error {
 		if declared[name] {
 			errs = append(errs, errors.New("alias "+name+" has the same name as a resource; "+
 				"the alias silently replaces it"))
+		}
+	}
+	return errs
+}
+
+// typeName is the declared type of a field as written, with a list unwrapped so
+// `[]x.y` and `x.y` both report `x.y`. Map and anonymous types report "".
+func (t *Type) typeName() string {
+	switch {
+	case t == nil:
+		return ""
+	case t.SimpleType != nil:
+		return t.SimpleType.Type
+	case t.ListType != nil:
+		return t.ListType.Type.typeName()
+	default:
+		return ""
+	}
+}
+
+// validateDeprecatedShadowing rejects a resource whose name occupies the path of
+// a deprecated field, which silently revokes that field's deprecation window.
+//
+// mqlc resolves a dotted path by taking the longest matching resource name, and
+// that match wins unconditionally over a field on a shorter one
+// (compileResource). So declaring `x.y.z` as a resource while `x.y` still has a
+// field `z` makes the field unreachable through its own path: `x.y.z` builds the
+// bare resource instead. prefersFieldOverResource only redirects back to the
+// field when the field's type IS that resource, which is the ordinary accessor
+// pattern and stays allowed here; a field of any other type has no way back.
+//
+// The damage is worst for a deprecated field, because `@replaced_by` promises
+// the old path keeps working until removal. Naming the replacement resource
+// after the path it replaces breaks every query written against the old field
+// in the same release that told those queries they had time to migrate. Name
+// the replacement after its accessor instead - the accessor field's type is
+// that resource, so the benign case above applies and both paths resolve.
+func (lr *LR) validateDeprecatedShadowing() []error {
+	declared := map[string]bool{}
+	for _, r := range lr.Resources {
+		if r != nil {
+			declared[r.ID] = true
+		}
+	}
+
+	var errs []error
+	for _, r := range lr.Resources {
+		if r == nil || r.Body == nil {
+			continue
+		}
+		for _, f := range r.Body.Fields {
+			if f.BasicField == nil || f.BasicField.Maturity != resources.MaturityDeprecated {
+				continue
+			}
+			path := r.ID + "." + f.BasicField.ID
+			if !declared[path] || f.BasicField.Type.typeName() == path {
+				continue
+			}
+			errs = append(errs, errors.New("resource "+path+" has the same name as the "+
+				"deprecated field "+f.BasicField.ID+" on "+r.ID+"; the resource wins the path "+
+				"and the field cannot be read until it is removed. Name the resource after the "+
+				"accessor that returns it"))
 		}
 	}
 	return errs

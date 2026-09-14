@@ -12,6 +12,7 @@
   │  API        v13
   │  Config     defaults — no config file loaded
   │  Updates    https://releases.mondoo.com
+  │  Channel    stable — the default
 
   ── Mondoo Platform ──────────────────────────────────────────────
   │  Endpoint   https://us.api.mondoo.com

@@ -1,0 +1,7 @@
+# A container image built from a systemd distro: the unit tree is on disk but
+# /sbin/init was never installed. Debian, Ubuntu, Fedora, openSUSE and Amazon
+# Linux images are all shaped this way.
+[files."/usr/lib/systemd/system"]
+mode = 2147484141
+[files."/etc/systemd/system"]
+mode = 2147484141

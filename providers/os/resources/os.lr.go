@@ -333,6 +333,8 @@ const (
 	ResourceYumConfig                                     string = "yum.config"
 	ResourceApt                                           string = "apt"
 	ResourceAptRepo                                       string = "apt.repo"
+	ResourcePkg                                           string = "pkg"
+	ResourcePkgRepo                                       string = "pkg.repo"
 	ResourceRegistrykey                                   string = "registrykey"
 	ResourceRegistrykeyProperty                           string = "registrykey.property"
 	ResourceContainerImage                                string = "container.image"
@@ -422,6 +424,7 @@ const (
 	ResourceWindowsScheduledTaskAction                    string = "windows.scheduledTask.action"
 	ResourceWindowsScheduledTaskTrigger                   string = "windows.scheduledTask.trigger"
 	ResourceWindowsScheduledTaskSettings                  string = "windows.scheduledTask.settings"
+	ResourceWindowsLogonSession                           string = "windows.logonSession"
 	ResourceMacosSystemExtension                          string = "macos.systemExtension"
 	ResourceSafari                                        string = "safari"
 	ResourceSafariExtension                               string = "safari.extension"
@@ -487,6 +490,10 @@ const (
 	ResourceWindowsDnsServerZoneSigningKey                string = "windows.dnsServer.zone.signingKey"
 	ResourceWindowsPrinterDrivers                         string = "windows.printerDrivers"
 	ResourceWindowsPrinterDriver                          string = "windows.printerDriver"
+	ResourceWindowsDrivers                                string = "windows.drivers"
+	ResourceWindowsDriver                                 string = "windows.driver"
+	ResourceWindowsCertificates                           string = "windows.certificates"
+	ResourceWindowsCertificate                            string = "windows.certificate"
 	ResourceWindowsBitlocker                              string = "windows.bitlocker"
 	ResourceWindowsBitlockerPolicy                        string = "windows.bitlocker.policy"
 	ResourceWindowsBitlockerPolicyDriveSettings           string = "windows.bitlocker.policy.driveSettings"
@@ -1906,6 +1913,14 @@ func init() {
 			// to override args, implement: initAptRepo(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAptRepo,
 		},
+		"pkg": {
+			// to override args, implement: initPkg(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPkg,
+		},
+		"pkg.repo": {
+			// to override args, implement: initPkgRepo(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createPkgRepo,
+		},
 		"registrykey": {
 			// to override args, implement: initRegistrykey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createRegistrykey,
@@ -2262,6 +2277,10 @@ func init() {
 			// to override args, implement: initWindowsScheduledTaskSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createWindowsScheduledTaskSettings,
 		},
+		"windows.logonSession": {
+			// to override args, implement: initWindowsLogonSession(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWindowsLogonSession,
+		},
 		"macos.systemExtension": {
 			// to override args, implement: initMacosSystemExtension(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMacosSystemExtension,
@@ -2521,6 +2540,22 @@ func init() {
 		"windows.printerDriver": {
 			// to override args, implement: initWindowsPrinterDriver(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createWindowsPrinterDriver,
+		},
+		"windows.drivers": {
+			// to override args, implement: initWindowsDrivers(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWindowsDrivers,
+		},
+		"windows.driver": {
+			// to override args, implement: initWindowsDriver(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWindowsDriver,
+		},
+		"windows.certificates": {
+			// to override args, implement: initWindowsCertificates(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWindowsCertificates,
+		},
+		"windows.certificate": {
+			// to override args, implement: initWindowsCertificate(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWindowsCertificate,
 		},
 		"windows.bitlocker": {
 			// to override args, implement: initWindowsBitlocker(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -10484,6 +10519,36 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"apt.repo.file": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAptRepo).GetFile()).ToDataRes(types.Resource("file"))
 	},
+	"pkg.repos": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkg).GetRepos()).ToDataRes(types.Array(types.Resource("pkg.repo")))
+	},
+	"pkg.repo.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkgRepo).GetName()).ToDataRes(types.String)
+	},
+	"pkg.repo.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkgRepo).GetUrl()).ToDataRes(types.String)
+	},
+	"pkg.repo.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkgRepo).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"pkg.repo.mirrorType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkgRepo).GetMirrorType()).ToDataRes(types.String)
+	},
+	"pkg.repo.signatureType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkgRepo).GetSignatureType()).ToDataRes(types.String)
+	},
+	"pkg.repo.fingerprints": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkgRepo).GetFingerprints()).ToDataRes(types.Resource("file"))
+	},
+	"pkg.repo.pubkey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkgRepo).GetPubkey()).ToDataRes(types.Resource("file"))
+	},
+	"pkg.repo.priority": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkgRepo).GetPriority()).ToDataRes(types.Int)
+	},
+	"pkg.repo.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPkgRepo).GetFile()).ToDataRes(types.Resource("file"))
+	},
 	"registrykey.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRegistrykey).GetPath()).ToDataRes(types.String)
 	},
@@ -11834,6 +11899,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"windows.scheduledTasks": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindows).GetScheduledTasks()).ToDataRes(types.Array(types.Resource("windows.scheduledTask")))
 	},
+	"windows.logonSessions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindows).GetLogonSessions()).ToDataRes(types.Array(types.Resource("windows.logonSession")))
+	},
 	"windows.deviceGuard": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindows).GetDeviceGuard()).ToDataRes(types.Resource("windows.deviceGuard"))
 	},
@@ -12115,6 +12183,33 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"windows.scheduledTask.settings.networkName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsScheduledTaskSettings).GetNetworkName()).ToDataRes(types.String)
+	},
+	"windows.logonSession.logonId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLogonSession).GetLogonId()).ToDataRes(types.String)
+	},
+	"windows.logonSession.logonType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLogonSession).GetLogonType()).ToDataRes(types.Int)
+	},
+	"windows.logonSession.logonTypeName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLogonSession).GetLogonTypeName()).ToDataRes(types.String)
+	},
+	"windows.logonSession.authenticationPackage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLogonSession).GetAuthenticationPackage()).ToDataRes(types.String)
+	},
+	"windows.logonSession.startTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLogonSession).GetStartTime()).ToDataRes(types.Time)
+	},
+	"windows.logonSession.accountName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLogonSession).GetAccountName()).ToDataRes(types.String)
+	},
+	"windows.logonSession.accountDomain": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLogonSession).GetAccountDomain()).ToDataRes(types.String)
+	},
+	"windows.logonSession.sid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLogonSession).GetSid()).ToDataRes(types.String)
+	},
+	"windows.logonSession.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLogonSession).GetUser()).ToDataRes(types.Resource("user"))
 	},
 	"macos.systemExtension.identifier": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMacosSystemExtension).GetIdentifier()).ToDataRes(types.String)
@@ -13849,6 +13944,66 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"windows.printerDriver.printProcessor": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsPrinterDriver).GetPrintProcessor()).ToDataRes(types.String)
+	},
+	"windows.drivers.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDrivers).GetList()).ToDataRes(types.Array(types.Resource("windows.driver")))
+	},
+	"windows.driver.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetName()).ToDataRes(types.String)
+	},
+	"windows.driver.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetDisplayName()).ToDataRes(types.String)
+	},
+	"windows.driver.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetDescription()).ToDataRes(types.String)
+	},
+	"windows.driver.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetPath()).ToDataRes(types.String)
+	},
+	"windows.driver.file": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetFile()).ToDataRes(types.Resource("file"))
+	},
+	"windows.driver.serviceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetServiceType()).ToDataRes(types.String)
+	},
+	"windows.driver.startMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetStartMode()).ToDataRes(types.String)
+	},
+	"windows.driver.running": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetRunning()).ToDataRes(types.Bool)
+	},
+	"windows.driver.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetVersion()).ToDataRes(types.String)
+	},
+	"windows.driver.manufacturer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetManufacturer()).ToDataRes(types.String)
+	},
+	"windows.driver.signed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetSigned()).ToDataRes(types.Bool)
+	},
+	"windows.driver.signer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetSigner()).ToDataRes(types.String)
+	},
+	"windows.driver.purl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDriver).GetPurl()).ToDataRes(types.String)
+	},
+	"windows.certificates.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsCertificates).GetList()).ToDataRes(types.Array(types.Resource("windows.certificate")))
+	},
+	"windows.certificate.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsCertificate).GetLocation()).ToDataRes(types.String)
+	},
+	"windows.certificate.store": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsCertificate).GetStore()).ToDataRes(types.String)
+	},
+	"windows.certificate.thumbprint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsCertificate).GetThumbprint()).ToDataRes(types.String)
+	},
+	"windows.certificate.hasPrivateKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsCertificate).GetHasPrivateKey()).ToDataRes(types.Bool)
+	},
+	"windows.certificate.certificate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsCertificate).GetCertificate()).ToDataRes(types.Resource("certificate"))
 	},
 	"windows.bitlocker.available": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsBitlocker).GetAvailable()).ToDataRes(types.Bool)
@@ -28100,6 +28255,54 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAptRepo).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
 		return
 	},
+	"pkg.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkg).__id, ok = v.Value.(string)
+		return
+	},
+	"pkg.repos": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkg).Repos, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"pkg.repo.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).__id, ok = v.Value.(string)
+		return
+	},
+	"pkg.repo.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pkg.repo.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pkg.repo.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"pkg.repo.mirrorType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).MirrorType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pkg.repo.signatureType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).SignatureType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"pkg.repo.fingerprints": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).Fingerprints, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"pkg.repo.pubkey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).Pubkey, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"pkg.repo.priority": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).Priority, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"pkg.repo.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPkgRepo).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
 	"registrykey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlRegistrykey).__id, ok = v.Value.(string)
 		return
@@ -30208,6 +30411,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlWindows).ScheduledTasks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"windows.logonSessions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindows).LogonSessions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"windows.deviceGuard": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindows).DeviceGuard, ok = plugin.RawToTValue[*mqlWindowsDeviceGuard](v.Value, v.Error)
 		return
@@ -30630,6 +30837,46 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"windows.scheduledTask.settings.networkName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindowsScheduledTaskSettings).NetworkName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.logonSession.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).__id, ok = v.Value.(string)
+		return
+	},
+	"windows.logonSession.logonId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).LogonId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.logonSession.logonType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).LogonType, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"windows.logonSession.logonTypeName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).LogonTypeName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.logonSession.authenticationPackage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).AuthenticationPackage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.logonSession.startTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).StartTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"windows.logonSession.accountName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).AccountName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.logonSession.accountDomain": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).AccountDomain, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.logonSession.sid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).Sid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.logonSession.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLogonSession).User, ok = plugin.RawToTValue[*mqlUser](v.Value, v.Error)
 		return
 	},
 	"macos.systemExtension.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -33202,6 +33449,102 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"windows.printerDriver.printProcessor": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindowsPrinterDriver).PrintProcessor, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.drivers.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDrivers).__id, ok = v.Value.(string)
+		return
+	},
+	"windows.drivers.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDrivers).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"windows.driver.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).__id, ok = v.Value.(string)
+		return
+	},
+	"windows.driver.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.driver.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.driver.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.driver.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.driver.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"windows.driver.serviceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).ServiceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.driver.startMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).StartMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.driver.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).Running, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.driver.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.driver.manufacturer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).Manufacturer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.driver.signed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).Signed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.driver.signer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).Signer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.driver.purl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDriver).Purl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.certificates.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsCertificates).__id, ok = v.Value.(string)
+		return
+	},
+	"windows.certificates.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsCertificates).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"windows.certificate.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsCertificate).__id, ok = v.Value.(string)
+		return
+	},
+	"windows.certificate.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsCertificate).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.certificate.store": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsCertificate).Store, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.certificate.thumbprint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsCertificate).Thumbprint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.certificate.hasPrivateKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsCertificate).HasPrivateKey, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.certificate.certificate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsCertificate).Certificate, ok = plugin.RawToTValue[plugin.Resource](v.Value, v.Error)
 		return
 	},
 	"windows.bitlocker.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -70707,6 +71050,175 @@ func (c *mqlAptRepo) GetFile() *plugin.TValue[*mqlFile] {
 	return &c.File
 }
 
+// mqlPkg for the pkg resource
+type mqlPkg struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlPkgInternal it will be used here
+	Repos plugin.TValue[[]any]
+}
+
+// createPkg creates a new instance of this resource
+func createPkg(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPkg{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("pkg", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPkg) MqlName() string {
+	return "pkg"
+}
+
+func (c *mqlPkg) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPkg) GetRepos() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Repos, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("pkg", c.__id, "repos")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.repos()
+	})
+}
+
+// mqlPkgRepo for the pkg.repo resource
+type mqlPkgRepo struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlPkgRepoInternal
+	Name          plugin.TValue[string]
+	Url           plugin.TValue[string]
+	Enabled       plugin.TValue[bool]
+	MirrorType    plugin.TValue[string]
+	SignatureType plugin.TValue[string]
+	Fingerprints  plugin.TValue[*mqlFile]
+	Pubkey        plugin.TValue[*mqlFile]
+	Priority      plugin.TValue[int64]
+	File          plugin.TValue[*mqlFile]
+}
+
+// createPkgRepo creates a new instance of this resource
+func createPkgRepo(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPkgRepo{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("pkg.repo", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPkgRepo) MqlName() string {
+	return "pkg.repo"
+}
+
+func (c *mqlPkgRepo) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPkgRepo) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlPkgRepo) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlPkgRepo) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlPkgRepo) GetMirrorType() *plugin.TValue[string] {
+	return &c.MirrorType
+}
+
+func (c *mqlPkgRepo) GetSignatureType() *plugin.TValue[string] {
+	return &c.SignatureType
+}
+
+func (c *mqlPkgRepo) GetFingerprints() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.Fingerprints, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("pkg.repo", c.__id, "fingerprints")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.fingerprints()
+	})
+}
+
+func (c *mqlPkgRepo) GetPubkey() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.Pubkey, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("pkg.repo", c.__id, "pubkey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		return c.pubkey()
+	})
+}
+
+func (c *mqlPkgRepo) GetPriority() *plugin.TValue[int64] {
+	return &c.Priority
+}
+
+func (c *mqlPkgRepo) GetFile() *plugin.TValue[*mqlFile] {
+	return &c.File
+}
+
 // mqlRegistrykey for the registrykey resource
 type mqlRegistrykey struct {
 	MqlRuntime *plugin.Runtime
@@ -77885,6 +78397,7 @@ type mqlWindows struct {
 	ServerFeatures    plugin.TValue[[]any]
 	OptionalFeatures  plugin.TValue[[]any]
 	ScheduledTasks    plugin.TValue[[]any]
+	LogonSessions     plugin.TValue[[]any]
 	DeviceGuard       plugin.TValue[*mqlWindowsDeviceGuard]
 	ExploitProtection plugin.TValue[*mqlWindowsExploitProtection]
 	SmartScreen       plugin.TValue[*mqlWindowsSmartScreen]
@@ -77989,6 +78502,22 @@ func (c *mqlWindows) GetScheduledTasks() *plugin.TValue[[]any] {
 		}
 
 		return c.scheduledTasks()
+	})
+}
+
+func (c *mqlWindows) GetLogonSessions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.LogonSessions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("windows", c.__id, "logonSessions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.logonSessions()
 	})
 }
 
@@ -79100,6 +79629,107 @@ func (c *mqlWindowsScheduledTaskSettings) GetNetworkId() *plugin.TValue[string] 
 
 func (c *mqlWindowsScheduledTaskSettings) GetNetworkName() *plugin.TValue[string] {
 	return &c.NetworkName
+}
+
+// mqlWindowsLogonSession for the windows.logonSession resource
+type mqlWindowsLogonSession struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlWindowsLogonSessionInternal it will be used here
+	LogonId               plugin.TValue[string]
+	LogonType             plugin.TValue[int64]
+	LogonTypeName         plugin.TValue[string]
+	AuthenticationPackage plugin.TValue[string]
+	StartTime             plugin.TValue[*time.Time]
+	AccountName           plugin.TValue[string]
+	AccountDomain         plugin.TValue[string]
+	Sid                   plugin.TValue[string]
+	User                  plugin.TValue[*mqlUser]
+}
+
+// createWindowsLogonSession creates a new instance of this resource
+func createWindowsLogonSession(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWindowsLogonSession{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("windows.logonSession", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWindowsLogonSession) MqlName() string {
+	return "windows.logonSession"
+}
+
+func (c *mqlWindowsLogonSession) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWindowsLogonSession) GetLogonId() *plugin.TValue[string] {
+	return &c.LogonId
+}
+
+func (c *mqlWindowsLogonSession) GetLogonType() *plugin.TValue[int64] {
+	return &c.LogonType
+}
+
+func (c *mqlWindowsLogonSession) GetLogonTypeName() *plugin.TValue[string] {
+	return &c.LogonTypeName
+}
+
+func (c *mqlWindowsLogonSession) GetAuthenticationPackage() *plugin.TValue[string] {
+	return &c.AuthenticationPackage
+}
+
+func (c *mqlWindowsLogonSession) GetStartTime() *plugin.TValue[*time.Time] {
+	return &c.StartTime
+}
+
+func (c *mqlWindowsLogonSession) GetAccountName() *plugin.TValue[string] {
+	return &c.AccountName
+}
+
+func (c *mqlWindowsLogonSession) GetAccountDomain() *plugin.TValue[string] {
+	return &c.AccountDomain
+}
+
+func (c *mqlWindowsLogonSession) GetSid() *plugin.TValue[string] {
+	return &c.Sid
+}
+
+func (c *mqlWindowsLogonSession) GetUser() *plugin.TValue[*mqlUser] {
+	return plugin.GetOrCompute[*mqlUser](&c.User, func() (*mqlUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("windows.logonSession", c.__id, "user")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlUser), nil
+			}
+		}
+
+		return c.user()
+	})
 }
 
 // mqlMacosSystemExtension for the macos.systemExtension resource
@@ -85485,6 +86115,325 @@ func (c *mqlWindowsPrinterDriver) GetDataFile() *plugin.TValue[string] {
 
 func (c *mqlWindowsPrinterDriver) GetPrintProcessor() *plugin.TValue[string] {
 	return &c.PrintProcessor
+}
+
+// mqlWindowsDrivers for the windows.drivers resource
+type mqlWindowsDrivers struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlWindowsDriversInternal it will be used here
+	List plugin.TValue[[]any]
+}
+
+// createWindowsDrivers creates a new instance of this resource
+func createWindowsDrivers(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWindowsDrivers{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("windows.drivers", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWindowsDrivers) MqlName() string {
+	return "windows.drivers"
+}
+
+func (c *mqlWindowsDrivers) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWindowsDrivers) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("windows.drivers", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.list()
+	})
+}
+
+// mqlWindowsDriver for the windows.driver resource
+type mqlWindowsDriver struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlWindowsDriverInternal it will be used here
+	Name         plugin.TValue[string]
+	DisplayName  plugin.TValue[string]
+	Description  plugin.TValue[string]
+	Path         plugin.TValue[string]
+	File         plugin.TValue[*mqlFile]
+	ServiceType  plugin.TValue[string]
+	StartMode    plugin.TValue[string]
+	Running      plugin.TValue[bool]
+	Version      plugin.TValue[string]
+	Manufacturer plugin.TValue[string]
+	Signed       plugin.TValue[bool]
+	Signer       plugin.TValue[string]
+	Purl         plugin.TValue[string]
+}
+
+// createWindowsDriver creates a new instance of this resource
+func createWindowsDriver(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWindowsDriver{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("windows.driver", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWindowsDriver) MqlName() string {
+	return "windows.driver"
+}
+
+func (c *mqlWindowsDriver) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWindowsDriver) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlWindowsDriver) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlWindowsDriver) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlWindowsDriver) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlWindowsDriver) GetFile() *plugin.TValue[*mqlFile] {
+	return plugin.GetOrCompute[*mqlFile](&c.File, func() (*mqlFile, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("windows.driver", c.__id, "file")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFile), nil
+			}
+		}
+
+		vargPath := c.GetPath()
+		if vargPath.Error != nil {
+			return nil, vargPath.Error
+		}
+
+		return c.file(vargPath.Data)
+	})
+}
+
+func (c *mqlWindowsDriver) GetServiceType() *plugin.TValue[string] {
+	return &c.ServiceType
+}
+
+func (c *mqlWindowsDriver) GetStartMode() *plugin.TValue[string] {
+	return &c.StartMode
+}
+
+func (c *mqlWindowsDriver) GetRunning() *plugin.TValue[bool] {
+	return &c.Running
+}
+
+func (c *mqlWindowsDriver) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlWindowsDriver) GetManufacturer() *plugin.TValue[string] {
+	return &c.Manufacturer
+}
+
+func (c *mqlWindowsDriver) GetSigned() *plugin.TValue[bool] {
+	return &c.Signed
+}
+
+func (c *mqlWindowsDriver) GetSigner() *plugin.TValue[string] {
+	return &c.Signer
+}
+
+func (c *mqlWindowsDriver) GetPurl() *plugin.TValue[string] {
+	return &c.Purl
+}
+
+// mqlWindowsCertificates for the windows.certificates resource
+type mqlWindowsCertificates struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlWindowsCertificatesInternal it will be used here
+	List plugin.TValue[[]any]
+}
+
+// createWindowsCertificates creates a new instance of this resource
+func createWindowsCertificates(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWindowsCertificates{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("windows.certificates", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWindowsCertificates) MqlName() string {
+	return "windows.certificates"
+}
+
+func (c *mqlWindowsCertificates) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWindowsCertificates) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("windows.certificates", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.list()
+	})
+}
+
+// mqlWindowsCertificate for the windows.certificate resource
+type mqlWindowsCertificate struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlWindowsCertificateInternal
+	Location      plugin.TValue[string]
+	Store         plugin.TValue[string]
+	Thumbprint    plugin.TValue[string]
+	HasPrivateKey plugin.TValue[bool]
+	Certificate   plugin.TValue[plugin.Resource]
+}
+
+// createWindowsCertificate creates a new instance of this resource
+func createWindowsCertificate(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWindowsCertificate{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("windows.certificate", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWindowsCertificate) MqlName() string {
+	return "windows.certificate"
+}
+
+func (c *mqlWindowsCertificate) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWindowsCertificate) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlWindowsCertificate) GetStore() *plugin.TValue[string] {
+	return &c.Store
+}
+
+func (c *mqlWindowsCertificate) GetThumbprint() *plugin.TValue[string] {
+	return &c.Thumbprint
+}
+
+func (c *mqlWindowsCertificate) GetHasPrivateKey() *plugin.TValue[bool] {
+	return &c.HasPrivateKey
+}
+
+func (c *mqlWindowsCertificate) GetCertificate() *plugin.TValue[plugin.Resource] {
+	return plugin.GetOrCompute[plugin.Resource](&c.Certificate, func() (plugin.Resource, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("windows.certificate", c.__id, "certificate")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(plugin.Resource), nil
+			}
+		}
+
+		return c.certificate()
+	})
 }
 
 // mqlWindowsBitlocker for the windows.bitlocker resource

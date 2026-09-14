@@ -112,7 +112,13 @@ func (fs *FS) Chown(name string, uid, gid int) error {
 func (fs *FS) stat(header *tar.Header) (os.FileInfo, error) {
 	statHeader, ok := fs.resolveHeader(header)
 	if !ok {
-		return nil, errors.New("could not resolve " + header.Name + " -> " + header.Linkname)
+		// A link whose target is not in the archive is dangling, which is what
+		// os.Stat reports as not-exist. Returning a bare error here made callers
+		// that branch on os.IsNotExist treat it as a hard failure instead: a
+		// systemd unit masked by a symlink to /dev/null aborted the whole
+		// service list, because /dev/null is never in a container image. Open
+		// already returns os.ErrNotExist for the same case.
+		return nil, &os.PathError{Op: "stat", Path: header.Name, Err: os.ErrNotExist}
 	}
 	return statHeader.FileInfo(), nil
 }
@@ -120,6 +126,34 @@ func (fs *FS) stat(header *tar.Header) (os.FileInfo, error) {
 // maxLinkHops bounds link resolution. A tar can carry a symlink cycle, and
 // following one forever would hang the scan on a malformed or hostile image.
 const maxLinkHops = 32
+
+// LstatIfPossible reports on the link itself rather than on its target, so a
+// symlink is reported as a symlink. It satisfies afero.Lstater, which callers
+// probe for when the distinction matters: systemd unit lookup needs it to tell
+// an alias and a masked unit apart from a regular unit file.
+func (fs *FS) LstatIfPossible(name string) (os.FileInfo, bool, error) {
+	h, ok := fs.FileMap[name]
+	if !ok {
+		return nil, true, &os.PathError{Op: "lstat", Path: name, Err: os.ErrNotExist}
+	}
+	// true: this is a real lstat, not a Stat standing in for one.
+	return h.FileInfo(), true, nil
+}
+
+// ReadlinkIfPossible returns the target a symlink points at, without resolving
+// it against the archive. It satisfies afero.LinkReader. The target may well not
+// be in the archive at all, as with a unit masked to /dev/null, so reading the
+// link and resolving it are deliberately separate steps.
+func (fs *FS) ReadlinkIfPossible(name string) (string, error) {
+	h, ok := fs.FileMap[name]
+	if !ok {
+		return "", &os.PathError{Op: "readlink", Path: name, Err: os.ErrNotExist}
+	}
+	if h.Typeflag != tar.TypeSymlink {
+		return "", &os.PathError{Op: "readlink", Path: name, Err: os.ErrInvalid}
+	}
+	return h.Linkname, nil
+}
 
 // resolveHeader follows link entries to the one that actually holds the bytes,
 // and reports whether it found it.
