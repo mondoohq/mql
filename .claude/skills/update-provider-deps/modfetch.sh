@@ -4,6 +4,12 @@
 #
 # modfetch.sh <module-path> <version>  ->  extracts the module and prints its directory
 #
+# The printed path is the extraction root, not the module root. The module unpacks
+# under <printed>/<module-path>@<version>/, so a file at the top of the module, its
+# CHANGELOG.md say, sits two levels below what this prints. structdiff.py and
+# enumdrift.py walk down and are unaffected; a direct grep or sed needs the full
+# nested path.
+#
 # Fetches the module zip straight from proxy.golang.org and unpacks it. Going to the
 # proxy rather than through `go mod download` matters for two reasons: it needs no
 # module context (so you can fetch a version the tree does not depend on, which is the

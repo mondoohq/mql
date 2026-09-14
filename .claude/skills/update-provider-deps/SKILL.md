@@ -179,6 +179,19 @@ NEW=$($P/modfetch.sh github.com/okta/okta-sdk-golang/v6 v6.1.7)
 python3 $P/structdiff.py "$OLD" "$NEW" --types-from providers/okta
 ```
 
+Two things about that output, both learned the hard way:
+
+- **`modfetch.sh` prints the extraction root, not the module root.** The module lands under
+  `<printed>/<module-path>@<version>/`, so `$NEW/CHANGELOG.md` does not exist. `structdiff.py`
+  and `enumdrift.py` walk down and are fine; a `grep` or `sed` of your own needs the nested
+  path. AWS service modules and the `cloud.google.com/go/*` sub-modules each ship a
+  `CHANGELOG.md` worth reading, and this is what stops you finding it.
+- **`structdiff.py` cannot see embedded structs.** A release that adds capability by
+  embedding reports as no change at all: hcloud-go v2.48.0 embedded `DeprecatableResource`
+  into `hcloud.Image`, giving it `Deprecation` and `UnavailableAfter`, and the tool reported
+  nothing for the module. When release notes mention something the diff does not show, read
+  the type's source before concluding the release was empty.
+
 `structdiff.py`'s `RETYPED` and `REMOVED` lines are the dangerous output. For each one, ask
 whether the affected value reaches a **shipped `.lr` field**. If it does, the upgrade has a
 user-visible consequence and needs a deliberate decision rather than a mechanical fix.

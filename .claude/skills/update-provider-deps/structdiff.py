@@ -31,6 +31,13 @@ Two limits worth knowing before trusting the output:
     google.golang.org/api or cloudflare-go, generic names like `User`, `Identity` and
     `Schedule` exist in several packages and get merged into one entry. Treat those
     results as indicative and confirm against the package you actually import.
+  * Embedded structs are invisible. FIELD_RE wants a name and a type, so a bare embedded
+    line such as `DeprecatableResource` never matches and neither it nor the fields it
+    carries are reported. A release that adds capability by embedding therefore shows as
+    no change at all: hcloud-go v2.48.0 embedded DeprecatableResource into hcloud.Image,
+    giving it Deprecation, and this tool reported nothing for the module. When the notes
+    mention a change you cannot see here, read the type's source before concluding the
+    release was empty. EMBED_RE below is defined for this case but not yet wired in.
 """
 import os
 import re
