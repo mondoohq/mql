@@ -376,15 +376,41 @@ func (r *mqlTogether) secrets() ([]interface{}, error) {
 	return res, nil
 }
 
+// scopedProjectID reports the project a project-scoped list call has to be
+// filtered to. The --project option wins when the operator set one, since a key
+// with access to several projects has to be able to ask for a single one.
+// Otherwise the project the API key itself resolves to is used, taken from the
+// /whoami response the root resource already holds.
+//
+// An empty return value sends the list call out unfiltered, so a failed
+// identity lookup is reported rather than swallowed: reporting objects from
+// projects the scan was never pointed at is worse than reporting nothing.
+func (r *mqlTogether) scopedProjectID() (string, error) {
+	if project := togetherConn(r.MqlRuntime).Project(); project != "" {
+		return project, nil
+	}
+	return r.projectId()
+}
+
 func (r *mqlTogether) clusterStorageVolumes() ([]interface{}, error) {
 	conn := togetherConn(r.MqlRuntime)
-	return listClusterStorageVolumes(r.MqlRuntime, conn.Client(), conn.Project())
+
+	project, err := r.scopedProjectID()
+	if err != nil {
+		return nil, err
+	}
+
+	return listClusterStorageVolumes(r.MqlRuntime, conn.Client(), project)
 }
 
 // listClusterStorageVolumes lists project-scoped cluster storage volumes. The
 // list endpoint accepts only a project filter and the returned volumes carry no
 // cluster reference, so they belong to the account's project and are shared
 // across its clusters.
+//
+// project is empty only for a key that resolves to no project at all. Such an
+// account has nothing to filter by, and every volume the key can see is its
+// own.
 func listClusterStorageVolumes(runtime *plugin.Runtime, client *together.Client, project string) ([]interface{}, error) {
 	params := together.BetaClusterStorageListParams{}
 	if project != "" {
