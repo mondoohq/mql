@@ -8,6 +8,7 @@ import (
 	"errors"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/weaviate/weaviate-go-client/v5/weaviate/fault"
 	"github.com/weaviate/weaviate-go-client/v5/weaviate/rbac"
@@ -38,6 +39,27 @@ func isForbidden(err error) bool {
 		return ce.StatusCode == 401 || ce.StatusCode == 403
 	}
 	return false
+}
+
+// isNotFound reports whether an error is a Weaviate HTTP 404. The group
+// endpoints answer 404 on a server with no OpenID Connect configuration, where
+// the honest answer is that no group holds a role rather than an error.
+func isNotFound(err error) bool {
+	var ce *fault.WeaviateClientError
+	if errors.As(err, &ce) {
+		return ce.StatusCode == 404
+	}
+	return false
+}
+
+// nonZeroTime returns a pointer to t, or nil when the server reported no time
+// at all. The API sends an absent timestamp as the zero time, so without this
+// a key that has never been used reports January of year 1 instead of null.
+func nonZeroTime(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
 }
 
 // builtinRoles is the set of Weaviate-provided, predefined role names. These
@@ -87,6 +109,13 @@ func nodeResourceID(serverID, name string) string {
 	return serverID + "/node/" + name
 }
 
+// groupResourceID keys a group by both dimensions it can repeat along. One
+// name can belong to two kinds of group, and a key built from the name alone
+// would report the second as the first.
+func groupResourceID(serverID, groupType, groupID string) string {
+	return serverID + "/group/" + groupType + "/" + groupID
+}
+
 // --- shared role builder ----------------------------------------------------
 
 // hasPermissions reports whether a role carries any permission at all. The user
@@ -127,6 +156,25 @@ func newWeaviateRole(runtime *plugin.Runtime, serverID string, role *rbac.Role) 
 	}
 	r.cacheRole = role
 	return r, nil
+}
+
+// --- shared group builder ---------------------------------------------------
+
+// groupTypeOIDC is the only kind of group Weaviate assigns roles to today. The
+// roles of a group are read through a per-kind endpoint, so the kind has to
+// travel with the group.
+const groupTypeOIDC = "oidc"
+
+func newWeaviateGroup(runtime *plugin.Runtime, serverID, groupID, groupType string) (*mqlWeaviateGroup, error) {
+	res, err := CreateResource(runtime, "weaviate.group", map[string]*llx.RawData{
+		"__id":      llx.StringData(groupResourceID(serverID, groupType, groupID)),
+		"groupId":   llx.StringData(groupID),
+		"groupType": llx.StringData(groupType),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlWeaviateGroup), nil
 }
 
 var _ = types.String

@@ -44,6 +44,11 @@ weaviate.instance @defaults("version rbacEnabled anonymousAccessEnabled") @root 
   // Only database-managed users are listed. Users authenticated through OIDC
   // are not enumerated here and appear only in role assignments.
   users() []weaviate.user
+  // Identity-provider groups the server holds role assignments for
+  //
+  // Groups reach the server through OpenID Connect. A server without it
+  // reports no groups.
+  groups() []weaviate.group
   // Cluster nodes backing the server
   nodes() []weaviate.node
 }
@@ -96,6 +101,11 @@ weaviate.role @defaults("name isBuiltin") {
   permissions() []weaviate.role.permission
   // Identifiers of the users assigned this role
   assignedUsers() []string
+  // Identity-provider groups assigned this role
+  //
+  // A role granted to a group is held by every member of that group, so a role
+  // can be in use while assignedUsers is empty.
+  assignedGroups() []weaviate.group
 }
 
 // Weaviate role permission
@@ -170,7 +180,32 @@ weaviate.user @defaults("userId userType") {
   userType string
   // Whether the user is active
   active bool
+  // When the user was created
+  //
+  // Null for a user defined by the server's environment rather than created
+  // through the API, which the server reports without a creation time.
+  createdAt time
+  // When the user's API key was last used to authenticate
+  //
+  // Null when the key has never been used, which separates a credential that
+  // is idle from one that has never been exercised at all.
+  lastUsedAt time
   // Roles assigned to the user
+  roles() []weaviate.role
+}
+
+// Weaviate identity-provider group
+//
+// A group the server holds role assignments for, and the roles granted to it.
+// A role granted to a group is held by every member, which is an assignment
+// path the user list does not show. The groupId field selects the group, for
+// example weaviate.instance.groups.where(groupId == "platform-admins").
+weaviate.group @defaults("groupId groupType") {
+  // Group identifier as the identity provider reports it
+  groupId string
+  // Kind of group, for example "oidc"
+  groupType string
+  // Roles granted to the group, with their permissions
   roles() []weaviate.role
 }
 

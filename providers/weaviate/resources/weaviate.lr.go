@@ -7,6 +7,7 @@ package resources
 
 import (
 	"errors"
+	"time"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -20,6 +21,7 @@ const (
 	ResourceWeaviateRole           string = "weaviate.role"
 	ResourceWeaviateRolePermission string = "weaviate.role.permission"
 	ResourceWeaviateUser           string = "weaviate.user"
+	ResourceWeaviateGroup          string = "weaviate.group"
 	ResourceWeaviateNode           string = "weaviate.node"
 )
 
@@ -46,6 +48,10 @@ func init() {
 		"weaviate.user": {
 			// to override args, implement: initWeaviateUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createWeaviateUser,
+		},
+		"weaviate.group": {
+			// to override args, implement: initWeaviateGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWeaviateGroup,
 		},
 		"weaviate.node": {
 			// to override args, implement: initWeaviateNode(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -155,6 +161,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"weaviate.instance.users": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWeaviateInstance).GetUsers()).ToDataRes(types.Array(types.Resource("weaviate.user")))
 	},
+	"weaviate.instance.groups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateInstance).GetGroups()).ToDataRes(types.Array(types.Resource("weaviate.group")))
+	},
 	"weaviate.instance.nodes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWeaviateInstance).GetNodes()).ToDataRes(types.Array(types.Resource("weaviate.node")))
 	},
@@ -200,6 +209,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"weaviate.role.assignedUsers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWeaviateRole).GetAssignedUsers()).ToDataRes(types.Array(types.String))
 	},
+	"weaviate.role.assignedGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateRole).GetAssignedGroups()).ToDataRes(types.Array(types.Resource("weaviate.group")))
+	},
 	"weaviate.role.permission.action": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWeaviateRolePermission).GetAction()).ToDataRes(types.String)
 	},
@@ -239,8 +251,23 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"weaviate.user.active": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWeaviateUser).GetActive()).ToDataRes(types.Bool)
 	},
+	"weaviate.user.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateUser).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"weaviate.user.lastUsedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateUser).GetLastUsedAt()).ToDataRes(types.Time)
+	},
 	"weaviate.user.roles": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWeaviateUser).GetRoles()).ToDataRes(types.Array(types.Resource("weaviate.role")))
+	},
+	"weaviate.group.groupId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateGroup).GetGroupId()).ToDataRes(types.String)
+	},
+	"weaviate.group.groupType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateGroup).GetGroupType()).ToDataRes(types.String)
+	},
+	"weaviate.group.roles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateGroup).GetRoles()).ToDataRes(types.Array(types.Resource("weaviate.role")))
 	},
 	"weaviate.node.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWeaviateNode).GetName()).ToDataRes(types.String)
@@ -320,6 +347,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlWeaviateInstance).Users, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"weaviate.instance.groups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateInstance).Groups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"weaviate.instance.nodes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWeaviateInstance).Nodes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -388,6 +419,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlWeaviateRole).AssignedUsers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"weaviate.role.assignedGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateRole).AssignedGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"weaviate.role.permission.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWeaviateRolePermission).__id, ok = v.Value.(string)
 		return
@@ -448,8 +483,32 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlWeaviateUser).Active, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"weaviate.user.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateUser).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"weaviate.user.lastUsedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateUser).LastUsedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
 	"weaviate.user.roles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWeaviateUser).Roles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"weaviate.group.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateGroup).__id, ok = v.Value.(string)
+		return
+	},
+	"weaviate.group.groupId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateGroup).GroupId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.group.groupType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateGroup).GroupType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.group.roles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateGroup).Roles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"weaviate.node.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -520,6 +579,7 @@ type mqlWeaviateInstance struct {
 	Collections            plugin.TValue[[]any]
 	Roles                  plugin.TValue[[]any]
 	Users                  plugin.TValue[[]any]
+	Groups                 plugin.TValue[[]any]
 	Nodes                  plugin.TValue[[]any]
 }
 
@@ -635,6 +695,22 @@ func (c *mqlWeaviateInstance) GetUsers() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlWeaviateInstance) GetGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Groups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("weaviate.instance", c.__id, "groups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.groups()
+	})
+}
+
 func (c *mqlWeaviateInstance) GetNodes() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Nodes, func() ([]any, error) {
 		if c.MqlRuntime.HasRecording {
@@ -745,10 +821,11 @@ type mqlWeaviateRole struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlWeaviateRoleInternal
-	Name          plugin.TValue[string]
-	IsBuiltin     plugin.TValue[bool]
-	Permissions   plugin.TValue[[]any]
-	AssignedUsers plugin.TValue[[]any]
+	Name           plugin.TValue[string]
+	IsBuiltin      plugin.TValue[bool]
+	Permissions    plugin.TValue[[]any]
+	AssignedUsers  plugin.TValue[[]any]
+	AssignedGroups plugin.TValue[[]any]
 }
 
 // createWeaviateRole creates a new instance of this resource
@@ -810,6 +887,22 @@ func (c *mqlWeaviateRole) GetPermissions() *plugin.TValue[[]any] {
 func (c *mqlWeaviateRole) GetAssignedUsers() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.AssignedUsers, func() ([]any, error) {
 		return c.assignedUsers()
+	})
+}
+
+func (c *mqlWeaviateRole) GetAssignedGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AssignedGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("weaviate.role", c.__id, "assignedGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.assignedGroups()
 	})
 }
 
@@ -907,10 +1000,12 @@ type mqlWeaviateUser struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlWeaviateUserInternal
-	UserId   plugin.TValue[string]
-	UserType plugin.TValue[string]
-	Active   plugin.TValue[bool]
-	Roles    plugin.TValue[[]any]
+	UserId     plugin.TValue[string]
+	UserType   plugin.TValue[string]
+	Active     plugin.TValue[bool]
+	CreatedAt  plugin.TValue[*time.Time]
+	LastUsedAt plugin.TValue[*time.Time]
+	Roles      plugin.TValue[[]any]
 }
 
 // createWeaviateUser creates a new instance of this resource
@@ -957,10 +1052,84 @@ func (c *mqlWeaviateUser) GetActive() *plugin.TValue[bool] {
 	return &c.Active
 }
 
+func (c *mqlWeaviateUser) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlWeaviateUser) GetLastUsedAt() *plugin.TValue[*time.Time] {
+	return &c.LastUsedAt
+}
+
 func (c *mqlWeaviateUser) GetRoles() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Roles, func() ([]any, error) {
 		if c.MqlRuntime.HasRecording {
 			d, err := c.MqlRuntime.FieldResourceFromRecording("weaviate.user", c.__id, "roles")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.roles()
+	})
+}
+
+// mqlWeaviateGroup for the weaviate.group resource
+type mqlWeaviateGroup struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlWeaviateGroupInternal it will be used here
+	GroupId   plugin.TValue[string]
+	GroupType plugin.TValue[string]
+	Roles     plugin.TValue[[]any]
+}
+
+// createWeaviateGroup creates a new instance of this resource
+func createWeaviateGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWeaviateGroup{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("weaviate.group", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWeaviateGroup) MqlName() string {
+	return "weaviate.group"
+}
+
+func (c *mqlWeaviateGroup) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWeaviateGroup) GetGroupId() *plugin.TValue[string] {
+	return &c.GroupId
+}
+
+func (c *mqlWeaviateGroup) GetGroupType() *plugin.TValue[string] {
+	return &c.GroupType
+}
+
+func (c *mqlWeaviateGroup) GetRoles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Roles, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("weaviate.group", c.__id, "roles")
 			if err != nil {
 				return nil, err
 			}

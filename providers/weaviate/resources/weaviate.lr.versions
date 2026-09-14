@@ -12,9 +12,14 @@ weaviate.collection.name 13.0.0
 weaviate.collection.replicationFactor 13.0.0
 weaviate.collection.vectorIndexType 13.0.0
 weaviate.collection.vectorizer 13.0.0
+weaviate.group 14.0.0
+weaviate.group.groupId 14.0.0
+weaviate.group.groupType 14.0.0
+weaviate.group.roles 14.0.0
 weaviate.instance 13.0.0
 weaviate.instance.anonymousAccessEnabled 13.0.0
 weaviate.instance.collections 13.0.0
+weaviate.instance.groups 14.0.0
 weaviate.instance.hostname 13.0.0
 weaviate.instance.modules 13.0.0
 weaviate.instance.nodes 13.0.0
@@ -33,6 +38,7 @@ weaviate.node.shardCount 13.0.0
 weaviate.node.status 13.0.0
 weaviate.node.version 13.0.0
 weaviate.role 13.0.0
+weaviate.role.assignedGroups 14.0.0
 weaviate.role.assignedUsers 13.0.0
 weaviate.role.isBuiltin 13.0.0
 weaviate.role.name 13.0.0
@@ -50,6 +56,8 @@ weaviate.role.permission.verbosity 14.0.0
 weaviate.role.permissions 13.0.0
 weaviate.user 13.0.0
 weaviate.user.active 13.0.0
+weaviate.user.createdAt 14.0.0
+weaviate.user.lastUsedAt 14.0.0
 weaviate.user.roles 13.0.0
 weaviate.user.userId 13.0.0
 weaviate.user.userType 13.0.0

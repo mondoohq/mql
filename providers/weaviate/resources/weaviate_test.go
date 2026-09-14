@@ -6,6 +6,7 @@ package resources
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/weaviate/weaviate-go-client/v5/weaviate/fault"
 	"github.com/weaviate/weaviate-go-client/v5/weaviate/rbac"
@@ -408,6 +409,94 @@ func TestPermissionQualifiersAreNullOffDomain(t *testing.T) {
 	}
 	if p.Collection.Data != "Article" {
 		t.Errorf("collection = %q, want Article", p.Collection.Data)
+	}
+}
+
+func TestIsNotFound(t *testing.T) {
+	cases := []struct {
+		err  error
+		want bool
+	}{
+		{&fault.WeaviateClientError{StatusCode: 404}, true},
+		{&fault.WeaviateClientError{StatusCode: 403}, false},
+		{&fault.WeaviateClientError{StatusCode: 500}, false},
+		{errors.New("plain error"), false},
+		{nil, false},
+	}
+	for _, c := range cases {
+		if got := isNotFound(c.err); got != c.want {
+			t.Errorf("isNotFound(%v) = %v, want %v", c.err, got, c.want)
+		}
+	}
+}
+
+// TestNonZeroTime pins null rather than year 1 for a timestamp the server did
+// not report. A live 1.38.9 sends a never-used API key back as
+// "lastUsedAt":"0001-01-01T00:00:00.000Z", which the client decodes to the zero
+// time, so reporting it by value would date every unused key to January of the
+// year 1 and make "not used in 90 days" true for a key issued this morning.
+func TestNonZeroTime(t *testing.T) {
+	if got := nonZeroTime(time.Time{}); got != nil {
+		t.Errorf("nonZeroTime(zero) = %v, want nil", got)
+	}
+	// The zero value of the wire format decodes to the same zero time.
+	wire, err := time.Parse(time.RFC3339, "0001-01-01T00:00:00.000Z")
+	if err != nil {
+		t.Fatalf("parsing the wire zero: %v", err)
+	}
+	if got := nonZeroTime(wire); got != nil {
+		t.Errorf("nonZeroTime(%v) = %v, want nil", wire, got)
+	}
+
+	real := time.Date(2026, 9, 14, 20, 28, 8, 0, time.UTC)
+	got := nonZeroTime(real)
+	if got == nil || !got.Equal(real) {
+		t.Errorf("nonZeroTime(%v) = %v, want the same instant", real, got)
+	}
+}
+
+// TestGroupResourceIDCarriesGroupType guards the second identity dimension. One
+// group name can belong to two kinds of group, and an id built from the name
+// alone makes the second resolve to the first through the resource cache.
+func TestGroupResourceIDCarriesGroupType(t *testing.T) {
+	const s = "http://localhost:8080"
+	oidc := groupResourceID(s, "oidc", "platform-admins")
+	other := groupResourceID(s, "db", "platform-admins")
+	if oidc == other {
+		t.Errorf("two kinds of group named platform-admins share the id %q", oidc)
+	}
+	if oidc != "http://localhost:8080/group/oidc/platform-admins" {
+		t.Errorf("id = %q", oidc)
+	}
+}
+
+// TestGroupsOfDifferentTypesAreDistinctResources is the same guarantee one
+// level up: the ids have to keep the two groups apart in the resource cache.
+func TestGroupsOfDifferentTypesAreDistinctResources(t *testing.T) {
+	runtime := testRuntime()
+	const serverID = "http://localhost:8080"
+	oidc, err := newWeaviateGroup(runtime, serverID, "platform-admins", groupTypeOIDC)
+	if err != nil {
+		t.Fatalf("newWeaviateGroup: %v", err)
+	}
+	other, err := newWeaviateGroup(runtime, serverID, "platform-admins", "db")
+	if err != nil {
+		t.Fatalf("newWeaviateGroup: %v", err)
+	}
+	if oidc == other {
+		t.Fatal("two kinds of group named platform-admins resolved to one resource")
+	}
+	if oidc.GroupType.Data != groupTypeOIDC || other.GroupType.Data != "db" {
+		t.Errorf("groupType = %q and %q", oidc.GroupType.Data, other.GroupType.Data)
+	}
+	// The same group asked for twice is one resource, which is what makes the
+	// dedup in assignedGroups necessary rather than cosmetic.
+	again, err := newWeaviateGroup(runtime, serverID, "platform-admins", groupTypeOIDC)
+	if err != nil {
+		t.Fatalf("newWeaviateGroup: %v", err)
+	}
+	if again != oidc {
+		t.Error("one group should resolve to one resource")
 	}
 }
 
