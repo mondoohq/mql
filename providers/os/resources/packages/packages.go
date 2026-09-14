@@ -146,11 +146,13 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 		}
 	case asset.Platform.IsFamily("suse"): // suse handling
 		pms = append(pms, &SusePkgManager{RpmPkgManager{conn: conn, platform: asset.Platform}})
-	// alpine, wolfi, wizos, alpaquita and BellSoft Hardened Containers share apk.
-	// Hardened Containers ship no apk binary at all, but the database it wrote is
-	// left in place, so the package inventory still reads.
+	// alpine, wolfi, wizos, alpaquita, Chainguard OS and BellSoft Hardened
+	// Containers share apk. Hardened Containers and Chainguard ship no apk binary
+	// at all, but the database it wrote is left in place, so the package
+	// inventory still reads.
 	case asset.Platform.Name == "alpine" || asset.Platform.Name == "wolfi" || asset.Platform.Name == "wizos" ||
-		asset.Platform.Name == "alpaquita" || asset.Platform.Name == "bellsoft-hardened-containers":
+		asset.Platform.Name == "alpaquita" || asset.Platform.Name == "bellsoft-hardened-containers" ||
+		asset.Platform.Name == "chainguard":
 		pms = append(pms, &AlpinePkgManager{conn: conn, platform: asset.Platform})
 	case asset.Platform.Name == "void": // Void Linux uses xbps
 		pms = append(pms, &XbpsPkgManager{conn: conn, platform: asset.Platform})
