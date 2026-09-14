@@ -53,6 +53,7 @@ var (
 	TypeEbuild  = Type(packageurl.TypeEbuild)
 	TypeNix     = Type(packageurl.TypeNix)
 	TypeRPM     = Type(packageurl.TypeRPM)
+	TypeGithub  = Type(packageurl.TypeGithub)
 
 	KnownTypes = map[Type]struct{}{
 		TypeAppx:          {},
@@ -69,6 +70,8 @@ var (
 		TypeNix:           {},
 		TypeRPM:           {},
 		TypeCos:           {},
+		TypeSnap:          {},
+		TypeGithub:        {},
 	}
 )
 
