@@ -67,6 +67,13 @@ gcp.cloudIdentity.membership.memberKey 13.15.1
 gcp.cloudIdentity.membership.name 13.15.1
 gcp.cloudIdentity.membership.roles 13.15.1
 gcp.cloudIdentity.membership.type 13.15.1
+gcp.effectiveTag 13.37.1
+gcp.effectiveTag.inherited 13.37.1
+gcp.effectiveTag.namespacedTagKey 13.37.1
+gcp.effectiveTag.namespacedTagValue 13.37.1
+gcp.effectiveTag.tagKey 13.37.1
+gcp.effectiveTag.tagKeyParent 13.37.1
+gcp.effectiveTag.tagValue 13.37.1
 gcp.essentialContact 9.0.0
 gcp.essentialContact.email 9.0.0
 gcp.essentialContact.languageTag 9.0.0
@@ -777,6 +784,7 @@ gcp.project.bigqueryService.dataset.defaultCollation 13.1.2
 gcp.project.bigqueryService.dataset.defaultPartitionExpirationMs 13.1.2
 gcp.project.bigqueryService.dataset.defaultTableExpirationMs 11.6.6
 gcp.project.bigqueryService.dataset.description 9.0.0
+gcp.project.bigqueryService.dataset.effectiveTags 13.37.1
 gcp.project.bigqueryService.dataset.externalDatasetReference 13.16.3
 gcp.project.bigqueryService.dataset.id 9.0.0
 gcp.project.bigqueryService.dataset.isCaseInsensitive 13.1.2
@@ -850,6 +858,7 @@ gcp.project.bigqueryService.table.created 9.0.0
 gcp.project.bigqueryService.table.datasetId 9.0.0
 gcp.project.bigqueryService.table.description 9.0.0
 gcp.project.bigqueryService.table.dlpDataProfile 13.14.2
+gcp.project.bigqueryService.table.effectiveTags 13.37.1
 gcp.project.bigqueryService.table.expirationTime 9.0.0
 gcp.project.bigqueryService.table.externalDataConfig 9.0.0
 gcp.project.bigqueryService.table.foreignKey 13.36.1
@@ -1536,6 +1545,7 @@ gcp.project.cloudRunService.service.customAudiences 13.1.2
 gcp.project.cloudRunService.service.defaultUriDisabled 13.1.2
 gcp.project.cloudRunService.service.deleted 9.0.0
 gcp.project.cloudRunService.service.description 9.0.0
+gcp.project.cloudRunService.service.effectiveTags 13.37.1
 gcp.project.cloudRunService.service.encryptionKeyRef 13.27.2
 gcp.project.cloudRunService.service.etag 13.1.2
 gcp.project.cloudRunService.service.expired 9.0.0
@@ -1786,6 +1796,7 @@ gcp.project.computeService.disk.created 9.0.0
 gcp.project.computeService.disk.description 9.0.0
 gcp.project.computeService.disk.diskEncryption 13.37.1
 gcp.project.computeService.disk.diskEncryptionKey 9.0.0
+gcp.project.computeService.disk.effectiveTags 13.37.1
 gcp.project.computeService.disk.enableConfidentialCompute 11.6.6
 gcp.project.computeService.disk.guestOsFeatures 9.0.0
 gcp.project.computeService.disk.id 9.0.0
@@ -1845,6 +1856,7 @@ gcp.project.computeService.firewall.description 9.0.0
 gcp.project.computeService.firewall.destinationRanges 9.0.0
 gcp.project.computeService.firewall.direction 9.0.0
 gcp.project.computeService.firewall.disabled 9.0.0
+gcp.project.computeService.firewall.effectiveTags 13.37.1
 gcp.project.computeService.firewall.id 9.0.0
 gcp.project.computeService.firewall.logConfig 13.7.2
 gcp.project.computeService.firewall.logConfigMetadata 13.18.1
@@ -1997,6 +2009,7 @@ gcp.project.computeService.instance.created 9.0.0
 gcp.project.computeService.instance.deletionProtection 9.0.0
 gcp.project.computeService.instance.description 9.0.0
 gcp.project.computeService.instance.disks 9.0.0
+gcp.project.computeService.instance.effectiveTags 13.37.1
 gcp.project.computeService.instance.enableDisplay 9.0.0
 gcp.project.computeService.instance.exposure 13.24.1
 gcp.project.computeService.instance.exposure.firewallAllowsIngress 13.24.1
@@ -2256,6 +2269,7 @@ gcp.project.computeService.network 9.0.0
 gcp.project.computeService.network.autoCreateSubnetworks 9.0.0
 gcp.project.computeService.network.created 9.0.0
 gcp.project.computeService.network.description 9.0.0
+gcp.project.computeService.network.effectiveTags 13.37.1
 gcp.project.computeService.network.enableUlaInternalIpv6 9.0.0
 gcp.project.computeService.network.firewallPolicy 11.6.6
 gcp.project.computeService.network.firewallPolicyRef 13.27.2
@@ -2566,6 +2580,7 @@ gcp.project.computeService.subnetwork 9.0.0
 gcp.project.computeService.subnetwork.allowSubnetCidrRoutesOverlap 13.16.3
 gcp.project.computeService.subnetwork.created 9.0.0
 gcp.project.computeService.subnetwork.description 9.0.0
+gcp.project.computeService.subnetwork.effectiveTags 13.37.1
 gcp.project.computeService.subnetwork.enableFlowLogs 9.0.0
 gcp.project.computeService.subnetwork.externalIpv6Prefix 9.0.0
 gcp.project.computeService.subnetwork.fingerprint 9.0.0
@@ -2687,6 +2702,7 @@ gcp.project.computeService.urlMaps 11.6.6
 gcp.project.computeService.vpnGateway 11.6.6
 gcp.project.computeService.vpnGateway.created 11.6.6
 gcp.project.computeService.vpnGateway.description 11.6.6
+gcp.project.computeService.vpnGateway.effectiveTags 13.37.1
 gcp.project.computeService.vpnGateway.gatewayIpVersion 11.6.6
 gcp.project.computeService.vpnGateway.id 11.6.6
 gcp.project.computeService.vpnGateway.labels 11.6.6
@@ -2701,6 +2717,7 @@ gcp.project.computeService.vpnTunnel 11.6.6
 gcp.project.computeService.vpnTunnel.created 11.6.6
 gcp.project.computeService.vpnTunnel.description 11.6.6
 gcp.project.computeService.vpnTunnel.detailedStatus 11.6.6
+gcp.project.computeService.vpnTunnel.effectiveTags 13.37.1
 gcp.project.computeService.vpnTunnel.id 11.6.6
 gcp.project.computeService.vpnTunnel.ikeVersion 11.6.6
 gcp.project.computeService.vpnTunnel.labels 11.6.6
@@ -3297,6 +3314,7 @@ gcp.project.dnsService.managedzone.dnssecConfig 9.0.0
 gcp.project.dnsService.managedzone.dnssecDefaultKeyAlgorithms 13.18.1
 gcp.project.dnsService.managedzone.dnssecEnabled 13.1.2
 gcp.project.dnsService.managedzone.dnssecNonExistence 13.22.2
+gcp.project.dnsService.managedzone.effectiveTags 13.37.1
 gcp.project.dnsService.managedzone.forwardingTargets 13.18.1
 gcp.project.dnsService.managedzone.iamPolicy 13.9.1
 gcp.project.dnsService.managedzone.id 9.0.0
@@ -3599,6 +3617,7 @@ gcp.project.gkeService.cluster.databaseEncryptionKey 13.2.3
 gcp.project.gkeService.cluster.databaseEncryptionState 13.2.3
 gcp.project.gkeService.cluster.defaultMaxPodsPerNode 13.21.2
 gcp.project.gkeService.cluster.description 9.0.0
+gcp.project.gkeService.cluster.effectiveTags 13.37.1
 gcp.project.gkeService.cluster.enableKubernetesAlpha 9.0.0
 gcp.project.gkeService.cluster.enableTpu 11.6.6
 gcp.project.gkeService.cluster.enabledK8sBetaApis 13.1.2
@@ -4955,6 +4974,7 @@ gcp.project.secretmanagerService.secret 11.1.0
 gcp.project.secretmanagerService.secret.annotations 11.1.0
 gcp.project.secretmanagerService.secret.createTime 11.1.0
 gcp.project.secretmanagerService.secret.customerManagedEncryptionEnabled 13.21.2
+gcp.project.secretmanagerService.secret.effectiveTags 13.37.1
 gcp.project.secretmanagerService.secret.etag 11.1.0
 gcp.project.secretmanagerService.secret.expireTime 11.1.0
 gcp.project.secretmanagerService.secret.iamPolicy 11.1.0
@@ -5170,6 +5190,7 @@ gcp.project.sqlService.instance.diskEncryptionStatus 9.0.0
 gcp.project.sqlService.instance.dnsName 11.6.6
 gcp.project.sqlService.instance.dnsNames 13.16.3
 gcp.project.sqlService.instance.drReplica 13.27.2
+gcp.project.sqlService.instance.effectiveTags 13.37.1
 gcp.project.sqlService.instance.etag 13.1.2
 gcp.project.sqlService.instance.failoverReplica 9.0.0
 gcp.project.sqlService.instance.failoverReplicaRef 13.27.2
@@ -5369,6 +5390,7 @@ gcp.project.storageService.bucket.defaultKmsKey 13.2.3
 gcp.project.storageService.bucket.defaultObjectAccessControl 13.37.1
 gcp.project.storageService.bucket.defaultObjectAcl 13.12.2
 gcp.project.storageService.bucket.dlpDataProfile 13.14.2
+gcp.project.storageService.bucket.effectiveTags 13.37.1
 gcp.project.storageService.bucket.encryption 11.0.57
 gcp.project.storageService.bucket.hierarchicalNamespace 13.16.3
 gcp.project.storageService.bucket.iamConfiguration 9.0.0

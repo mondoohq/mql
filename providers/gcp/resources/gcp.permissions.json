@@ -52,7 +52,9 @@
     "backupdr.managementServers.list",
     "batch.jobs.list",
     "bigquery.connections.list",
+    "bigquery.datasets.listEffectiveTags",
     "bigquery.reservations.list",
+    "bigquery.tables.listEffectiveTags",
     "bigtable.appProfiles.list",
     "binaryauthorization.attestors.list",
     "binaryauthorization.policy.get",
@@ -90,6 +92,7 @@
     "cloudsql.backupRuns.list",
     "cloudsql.databases.list",
     "cloudsql.instances.list",
+    "cloudsql.instances.listEffectiveTags",
     "cloudsql.sslCerts.list",
     "cloudsql.users.list",
     "cloudtasks.queues.getIamPolicy",
@@ -99,10 +102,12 @@
     "compute.backendBuckets.list",
     "compute.backendServices.list",
     "compute.disks.list",
+    "compute.disks.listEffectiveTags",
     "compute.externalVpnGateways.list",
     "compute.firewallPolicies.get",
     "compute.firewallPolicies.list",
     "compute.firewalls.list",
+    "compute.firewalls.listEffectiveTags",
     "compute.healthChecks.list",
     "compute.images.getIamPolicy",
     "compute.images.list",
@@ -110,6 +115,7 @@
     "compute.instanceGroups.list",
     "compute.instanceTemplates.list",
     "compute.instances.list",
+    "compute.instances.listEffectiveTags",
     "compute.interconnectAttachments.list",
     "compute.interconnects.list",
     "compute.machineTypes.get",
@@ -117,6 +123,7 @@
     "compute.networkEndpointGroups.list",
     "compute.networks.get",
     "compute.networks.list",
+    "compute.networks.listEffectiveTags",
     "compute.packetMirrorings.list",
     "compute.projects.get",
     "compute.publicAdvertisedPrefixes.list",
@@ -133,6 +140,7 @@
     "compute.sslCertificates.list",
     "compute.sslPolicies.list",
     "compute.storagePools.list",
+    "compute.subnetworks.listEffectiveTags",
     "compute.targetHttpProxies.list",
     "compute.targetHttpsProxies.list",
     "compute.targetPools.list",
@@ -140,10 +148,13 @@
     "compute.targetTcpProxies.list",
     "compute.urlMaps.list",
     "compute.vpnGateways.list",
+    "compute.vpnGateways.listEffectiveTags",
     "compute.vpnTunnels.list",
+    "compute.vpnTunnels.listEffectiveTags",
     "compute.zones.get",
     "compute.zones.list",
     "container.clusters.list",
+    "container.clusters.listEffectiveTags",
     "containeranalysis.occurrences.list",
     "dataflow.jobs.list",
     "dataplex.assets.list",
@@ -179,6 +190,7 @@
     "dns.dnsKeys.list",
     "dns.managedZones.getIamPolicy",
     "dns.managedZones.list",
+    "dns.managedZones.listEffectiveTags",
     "dns.policies.list",
     "dns.resourceRecordSets.list",
     "dns.responsePolicies.list",
@@ -271,8 +283,10 @@
     "run.operations.list",
     "run.services.getIamPolicy",
     "run.services.list",
+    "run.services.listEffectiveTags",
     "secretmanager.secrets.getIamPolicy",
     "secretmanager.secrets.list",
+    "secretmanager.secrets.listEffectiveTags",
     "secretmanager.versions.list",
     "serviceusage.services.get",
     "serviceusage.services.list",
@@ -590,10 +604,22 @@
       "source_file": "bigquery_connection.go"
     },
     {
+      "permission": "bigquery.datasets.listEffectiveTags",
+      "service": "resourcemanager",
+      "action": "EffectiveTags.List",
+      "source_file": "effective_tags.go"
+    },
+    {
       "permission": "bigquery.reservations.list",
       "service": "bigquery",
       "action": "ListReservations",
       "source_file": "bigquery_reservation.go"
+    },
+    {
+      "permission": "bigquery.tables.listEffectiveTags",
+      "service": "resourcemanager",
+      "action": "EffectiveTags.List",
+      "source_file": "effective_tags.go"
     },
     {
       "permission": "bigtable.appProfiles.list",
@@ -830,6 +856,12 @@
       "source_file": "sql.go"
     },
     {
+      "permission": "cloudsql.instances.listEffectiveTags",
+      "service": "resourcemanager",
+      "action": "EffectiveTags.List",
+      "source_file": "effective_tags.go"
+    },
+    {
       "permission": "cloudsql.sslCerts.list",
       "service": "cloudsql",
       "action": "SslCerts.List",
@@ -884,6 +916,12 @@
       "source_file": "compute.go"
     },
     {
+      "permission": "compute.disks.listEffectiveTags",
+      "service": "resourcemanager",
+      "action": "EffectiveTags.List",
+      "source_file": "effective_tags.go"
+    },
+    {
       "permission": "compute.externalVpnGateways.list",
       "service": "compute",
       "action": "ExternalVpnGateways.List",
@@ -912,6 +950,12 @@
       "service": "compute",
       "action": "Firewalls.List",
       "source_file": "compute.go"
+    },
+    {
+      "permission": "compute.firewalls.listEffectiveTags",
+      "service": "resourcemanager",
+      "action": "EffectiveTags.List",
+      "source_file": "effective_tags.go"
     },
     {
       "permission": "compute.healthChecks.list",
@@ -962,6 +1006,12 @@
       "source_file": "compute.go"
     },
     {
+      "permission": "compute.instances.listEffectiveTags",
+      "service": "resourcemanager",
+      "action": "EffectiveTags.List",
+      "source_file": "effective_tags.go"
+    },
+    {
       "permission": "compute.interconnectAttachments.list",
       "service": "compute",
       "action": "InterconnectAttachments.AggregatedList",
@@ -1002,6 +1052,12 @@
       "service": "compute",
       "action": "Networks.List",
       "source_file": "compute.go"
+    },
+    {
+      "permission": "compute.networks.listEffectiveTags",
+      "service": "resourcemanager",
+      "action": "EffectiveTags.List",
+      "source_file": "effective_tags.go"
     },
     {
       "permission": "compute.packetMirrorings.list",
@@ -1130,6 +1186,12 @@
       "source_file": "compute.go"
     },
     {
+      "permission": "compute.subnetworks.listEffectiveTags",
+      "service": "resourcemanager",
+      "action": "EffectiveTags.List",
+      "source_file": "effective_tags.go"
+    },
+    {
       "permission": "compute.targetHttpProxies.list",
       "service": "compute",
       "action": "TargetHttpProxies.AggregatedList",
@@ -1172,10 +1234,22 @@
       "source_file": "compute.go"
     },
     {
+      "permission": "compute.vpnGateways.listEffectiveTags",
+      "service": "resourcemanager",
+      "action": "EffectiveTags.List",
+      "source_file": "effective_tags.go"
+    },
+    {
       "permission": "compute.vpnTunnels.list",
       "service": "compute",
       "action": "VpnTunnels.AggregatedList",
       "source_file": "compute.go"
+    },
+    {
+      "permission": "compute.vpnTunnels.listEffectiveTags",
+      "service": "resourcemanager",
+      "action": "EffectiveTags.List",
+      "source_file": "effective_tags.go"
     },
     {
       "permission": "compute.zones.get",
@@ -1212,6 +1286,12 @@
       "service": "container",
       "action": "ListClusters",
       "source_file": "gke.go"
+    },
+    {
+      "permission": "container.clusters.listEffectiveTags",
+      "service": "resourcemanager",
+      "action": "EffectiveTags.List",
+      "source_file": "effective_tags.go"
     },
     {
       "permission": "containeranalysis.occurrences.list",
@@ -1422,6 +1502,12 @@
       "service": "dns",
       "action": "ManagedZones.List",
       "source_file": "dns.go"
+    },
+    {
+      "permission": "dns.managedZones.listEffectiveTags",
+      "service": "resourcemanager",
+      "action": "EffectiveTags.List",
+      "source_file": "effective_tags.go"
     },
     {
       "permission": "dns.policies.list",
@@ -2051,6 +2137,12 @@
       "source_file": "cloudrun.go"
     },
     {
+      "permission": "run.services.listEffectiveTags",
+      "service": "resourcemanager",
+      "action": "EffectiveTags.List",
+      "source_file": "effective_tags.go"
+    },
+    {
       "permission": "secretmanager.secrets.getIamPolicy",
       "service": "secretmanager",
       "action": "GetIamPolicy",
@@ -2061,6 +2153,12 @@
       "service": "secretmanager",
       "action": "ListSecrets",
       "source_file": "secretmanager.go"
+    },
+    {
+      "permission": "secretmanager.secrets.listEffectiveTags",
+      "service": "resourcemanager",
+      "action": "EffectiveTags.List",
+      "source_file": "effective_tags.go"
     },
     {
       "permission": "secretmanager.versions.list",
@@ -2163,6 +2261,12 @@
       "service": "storage",
       "action": "Buckets.List",
       "source_file": "storage.go"
+    },
+    {
+      "permission": "storage.buckets.listEffectiveTags",
+      "service": "resourcemanager",
+      "action": "EffectiveTags.List",
+      "source_file": "effective_tags.go"
     },
     {
       "permission": "storage.buckets.listEffectiveTags",
