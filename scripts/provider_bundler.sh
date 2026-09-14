@@ -47,7 +47,7 @@ START_TIME=$(date +%s)
 # v13. That made PROVIDER_VERSION two lines, and the bundle filename below
 # then split into two words, so tar read the second as a file to archive:
 #   tar: go.mondoo.com/mql/providers/core_linux_arm.tar.xz: Cannot stat
-PROVIDER_VERSION=$(grep -m1 -E '^[[:space:]]*Version:' ${PROVIDER_PATH}/config/config.go | cut -f2 -d\")
+PROVIDER_VERSION=$(grep -m1 -E '^[[:space:]]*Version:' "${PROVIDER_PATH}/config/config.go" | cut -f2 -d\")
 
 # Build the provider
 echo "Building the ${PROVIDER_NAME} provider (Version: ${PROVIDER_VERSION})..."
