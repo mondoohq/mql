@@ -344,6 +344,18 @@ type mqlOpenaiVaultCredentialInternal struct {
 	cacheVaultID string
 }
 
+// credentialVaultID returns the vault a credential belongs to. An entry that
+// leaves vault_id out still belongs to the vault it was listed from, and
+// falling back keeps the resource key whole: without it the key would start at
+// "/", and two vaults each holding a credential of that id would collide on it
+// so the second one would report the first one's values.
+func credentialVaultID(c openai.Credential, parentVaultID string) string {
+	if c.VaultID != "" {
+		return c.VaultID
+	}
+	return parentVaultID
+}
+
 // mapCredential builds the resource args for an openai.vault.credential.
 //
 // The auth block is a discriminated union over mcp_oauth and static_bearer.
@@ -351,11 +363,11 @@ type mqlOpenaiVaultCredentialInternal struct {
 // and client secrets are never returned in a response, and nothing here copies
 // a raw response body into a dict, so no key the API may add later can reach a
 // scan result without someone naming it first.
-func mapCredential(c openai.Credential) map[string]*llx.RawData {
+func mapCredential(c openai.Credential, parentVaultID string) map[string]*llx.RawData {
 	return map[string]*llx.RawData{
 		// a credential id is unique to its vault, and the credential is only
 		// reachable through one, so the vault is part of the key
-		"__id":                         llx.StringData(c.VaultID + "/" + c.ID),
+		"__id":                         llx.StringData(credentialVaultID(c, parentVaultID) + "/" + c.ID),
 		"id":                           llx.StringData(c.ID),
 		"name":                         llx.StringData(c.Name),
 		"authType":                     llx.StringDataPtr(emptyToNil(c.Auth.Type)),
@@ -388,17 +400,11 @@ func (r *mqlOpenaiVault) credentials() ([]any, error) {
 		client.Beta.Agents.Vaults.Credentials.ListAutoPaging(ctx, vaultID, openai.BetaAgentVaultCredentialListParams{}),
 		func(c openai.Credential) string { return c.ID },
 		func(c openai.Credential) error {
-			mqlCred, err := CreateResource(r.MqlRuntime, "openai.vault.credential", mapCredential(c))
+			mqlCred, err := CreateResource(r.MqlRuntime, "openai.vault.credential", mapCredential(c, vaultID))
 			if err != nil {
 				return err
 			}
-			// the response carries the owning vault, but an entry that leaves
-			// it out still belongs to the vault it was listed from
-			owner := c.VaultID
-			if owner == "" {
-				owner = vaultID
-			}
-			mqlCred.(*mqlOpenaiVaultCredential).cacheVaultID = owner
+			mqlCred.(*mqlOpenaiVaultCredential).cacheVaultID = credentialVaultID(c, vaultID)
 			res = append(res, mqlCred)
 			return nil
 		})

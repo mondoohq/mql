@@ -416,7 +416,7 @@ func TestMapCredentialStaticBearer(t *testing.T) {
 		}
 	}`)
 
-	args := mapCredential(c)
+	args := mapCredential(c, "vault_0001")
 	assert.Equal(t, "vault_0001/cred_0001", args["__id"].Value,
 		"a credential is only reachable through its vault, so the key carries it")
 	assert.Equal(t, "cred_0001", args["id"].Value)
@@ -454,7 +454,7 @@ func TestMapCredentialMcpOAuth(t *testing.T) {
 		}
 	}`)
 
-	args := mapCredential(c)
+	args := mapCredential(c, "vault_0001")
 	assert.Equal(t, "mcp_oauth", args["authType"].Value)
 	assert.Equal(t, "https://calendar.example.com/mcp", args["mcpServerUrl"].Value)
 	assert.Equal(t, time.Date(2026, 3, 26, 18, 5, 33, 0, time.UTC), timeValue(t, args, "expiresAt").UTC())
@@ -485,13 +485,42 @@ func TestMapCredentialWithUnknownExpiry(t *testing.T) {
 		}
 	}`)
 
-	args := mapCredential(c)
+	args := mapCredential(c, "vault_0001")
 	// an unreported expiry has to stay null. A zero time would put the
 	// expiration in year 1 and read as long expired.
 	assert.Nil(t, args["expiresAt"].Value)
 	// the settings the refresh block leaves out stay null rather than ""
 	assertNullFields(t, args, "refreshScope", "refreshResource")
 	assert.Equal(t, "none", args["refreshTokenEndpointAuthType"].Value)
+}
+
+func TestMapCredentialWithoutAVaultIdFallsBackToTheListingVault(t *testing.T) {
+	// An entry that leaves vault_id out still belongs to the vault it was
+	// listed from. Keying it on the empty string would start the key at "/",
+	// and two vaults each holding a credential of that id would collide there:
+	// the second one would report the first one's values.
+	payload := `{
+		"id": "cred_0001",
+		"object": "vault.credential",
+		"name": "issue tracker",
+		"created_at": 1711471533,
+		"updated_at": 1711471533,
+		"auth": {"type": "static_bearer", "mcp_server_url": "https://mcp.example.com/sse"}
+	}`
+
+	first := mapCredential(decodeJSON[openai.Credential](t, payload), "vault_0001")
+	second := mapCredential(decodeJSON[openai.Credential](t, payload), "vault_0002")
+
+	assert.Equal(t, "vault_0001/cred_0001", first["__id"].Value)
+	assert.Equal(t, "vault_0002/cred_0001", second["__id"].Value)
+
+	// a vault_id the API did send still wins over the vault it was listed from
+	withID := decodeJSON[openai.Credential](t, `{
+		"id": "cred_0001", "object": "vault.credential", "vault_id": "vault_0009",
+		"name": "n", "created_at": 1, "updated_at": 1,
+		"auth": {"type": "static_bearer", "mcp_server_url": "https://mcp.example.com/sse"}
+	}`)
+	assert.Equal(t, "vault_0009/cred_0001", mapCredential(withID, "vault_0001")["__id"].Value)
 }
 
 func TestParseRFC3339(t *testing.T) {
