@@ -572,9 +572,10 @@ func (r *mqlClaudeOrganization) activities() ([]interface{}, error) {
 }
 
 // activityArgs maps a compliance activity onto resource arguments. Each actor
-// variant defines a different subset of the union, so a value the variant does
-// not carry reads as null rather than as the empty string: an api_actor has no
-// email address, and reporting "" there would be a measurement it never made.
+// variant defines a different subset of the union, so a field the variant does
+// not carry reads as null rather than as the empty string, which would be a
+// measurement the API never made. actorEmail and actorId are the exception,
+// for the reason given below.
 func activityArgs(a connection.AdminActivity) (map[string]*llx.RawData, error) {
 	createdAt, err := parseTime(a.CreatedAt)
 	if err != nil {
