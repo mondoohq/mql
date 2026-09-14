@@ -10,7 +10,8 @@ option root = "mistral"
 // Mistral AI workspace
 //
 // Mistral AI workspace covering the available models, fine-tuning jobs,
-// uploaded files, and batch inference jobs reachable through a single
+// uploaded files, batch inference jobs, document libraries, and the remote
+// servers the models may call, all reachable through a single
 // API key. Backs AI security posture assessment and AI Bill of
 // Materials generation. API keys are scoped to one workspace, so add
 // each workspace as a separate asset to scan an entire organization.
@@ -25,6 +26,10 @@ mistral @defaults("ownedBy") @maturity("preview") @root {
   files() []mistral.file
   // Batch inference jobs
   batchJobs() []mistral.batchJob
+  // Remote servers the models in this workspace are allowed to call
+  connectors() []mistral.connector
+  // Document libraries available to this workspace
+  libraries() []mistral.library
 }
 
 // Mistral AI model
@@ -58,6 +63,12 @@ mistral.model @defaults("id type ownedBy maxContextLength") @maturity("preview")
   aliases []string
   // Deprecation date if the model is deprecated
   deprecation time
+  // Model Mistral recommends moving to before this one is retired
+  //
+  // Null when Mistral names no successor for the model, so a deprecated model
+  // with nowhere to migrate to is
+  // `mistral.models.where(deprecation != null && replacementModel == null)`.
+  replacementModel() mistral.model
   // Default sampling temperature
   defaultModelTemperature float
   // Whether the model supports chat completions
@@ -142,6 +153,30 @@ mistral.fineTuningJob @defaults("id status model") @maturity("preview") {
   cost float
   // Cost currency (e.g., "USD")
   costCurrency string
+  // Third-party services the job streams training telemetry to
+  integrations []mistral.fineTuningJob.integration
+}
+
+// Third-party service receiving fine-tuning telemetry
+//
+// External service attached to a fine-tuning job, naming the service, the
+// project it writes into, and the run it created. Training metrics leave the
+// workspace for this service while the job runs, so
+// `mistral.fineTuningJobs.all(integrations.length == 0)` asserts that no job
+// reports to an outside destination.
+mistral.fineTuningJob.integration @defaults("type project runName") @maturity("preview") {
+  // Integration type
+  //
+  // The fine-tuning API accepts wandb, for Weights and Biases.
+  type string
+  // Project the integration writes into
+  project string
+  // Integration name
+  name string
+  // Name of the run the job created in the third-party service
+  runName string
+  // URL of the run in the third-party service
+  url string
 }
 
 // Mistral AI file
@@ -218,4 +253,116 @@ mistral.batchJob @defaults("id status endpoint") @maturity("preview") {
   startedAt time
   // Job completion time
   completedAt time
+  // Distinct errors the job reported
+  errors []mistral.batchJob.error
+  // Caller-supplied key/value attribution attached to the job
+  metadata map[string]string
+}
+
+// Error reported by a batch inference job
+//
+// Distinct error a batch inference job reported, with the number of requests
+// it affected. The entries account for `failedRequests` and separate a
+// throttled batch from one refused on content or rejected on validation, which
+// the failure count alone cannot do.
+mistral.batchJob.error @defaults("message count") @maturity("preview") {
+  // Error message
+  message string
+  // Number of requests that hit this error
+  count int
+}
+
+// Remote server the workspace is allowed to call
+//
+// Connector registered in the workspace, covering the server it reaches, the
+// protocol it speaks, who may call it, and whether its tools run in a private
+// execution environment. A connector is an outbound path from the workspace to
+// code Mistral does not control, so `server` and `visibility` together answer
+// which third-party servers the organization can reach:
+// `mistral.connectors.where(visibility == "shared_org")` lists the ones every
+// member can call. No authentication material is exposed, only the names of
+// the methods a connector accepts.
+mistral.connector @defaults("name visibility server") @maturity("preview") {
+  // Connector identifier
+  id string
+  // Connector name
+  name string
+  // Connector description
+  description string
+  // URL of the server the connector calls
+  server string
+  // Protocol the connector speaks
+  //
+  // One of mcp, http, or turbine.
+  protocol string
+  // Who may call the connector
+  //
+  // One of private, shared_workspace, shared_org, or shared_global.
+  visibility string
+  // Kind of entity that owns the connector
+  //
+  // One of user, workspace, org, or system.
+  ownerType string
+  // Authentication methods the connector accepts
+  //
+  // Method names only, drawn from oauth2, bearer, none, github_app, and
+  // slack_app. No credential, token, or header value is reported.
+  supportedAuthMethods []string
+  // Whether the connector runs its tools in a private execution environment
+  privateToolExecution bool
+  // Connector creation time
+  createdAt time
+  // Last modification time
+  modifiedAt time
+}
+
+// Document library in a Mistral AI workspace
+//
+// Library of documents uploaded for retrieval, covering its name, document
+// count, stored size, and owner. The `accesses` field lists every entity the
+// library is shared with and the role each holds, which is who can read the
+// corpus. Document contents are not reported. Query
+// `mistral.libraries.where(nbDocuments > 0) { name accesses { shareWithType role } }`
+// to review sharing on every library that holds documents.
+mistral.library @defaults("id name nbDocuments") @maturity("preview") {
+  // Library identifier
+  id string
+  // Library name
+  name string
+  // Library description
+  description string
+  // Number of documents stored in the library
+  nbDocuments int
+  // Total size of the stored documents in bytes
+  totalSize int
+  // Kind of entity that owns the library
+  //
+  // Such as User, Workspace, or Org.
+  ownerType string
+  // Identifier of the entity that owns the library
+  ownerId string
+  // Library creation time
+  createdAt time
+  // Last modification time
+  updatedAt time
+  // Entities the library is shared with
+  accesses() []mistral.library.access
+}
+
+// Entity granted access to a document library
+//
+// Single share entry on a library, naming the entity the library is shared
+// with and the role it holds. An organization-wide share reports no entity
+// identifier, since it names no single entity.
+mistral.library.access @defaults("shareWithType role") @maturity("preview") {
+  // Kind of entity the library is shared with
+  //
+  // Such as User, Workspace, or Org.
+  shareWithType string
+  // Identifier of the entity the library is shared with
+  shareWithUuid string
+  // Role the entity holds on the library
+  //
+  // Such as Viewer or Editor.
+  role string
 }

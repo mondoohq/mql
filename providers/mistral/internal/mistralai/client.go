@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 )
 
@@ -162,6 +163,85 @@ func (c *Client) ListFiles(ctx context.Context) ([]File, error) {
 
 func (c *Client) ListBatchJobs(ctx context.Context) ([]BatchJob, error) {
 	return listPaged[BatchJob](ctx, c, "/v1/batch/jobs")
+}
+
+// ListConnectors walks every page of GET /v1/connectors. That endpoint uses
+// keyset pagination rather than the offset envelope the older list endpoints
+// return: it reports the next cursor under pagination.next_cursor and a null
+// or empty cursor means the walk is finished. A server that keeps handing back
+// the cursor it was given would otherwise loop forever, so a repeated cursor
+// also ends the walk.
+func (c *Client) ListConnectors(ctx context.Context) ([]Connector, error) {
+	var all []Connector
+	cursor := ""
+	seen := map[string]bool{}
+	for {
+		q := url.Values{}
+		q.Set("page_size", strconv.Itoa(defaultPageSize))
+		if cursor != "" {
+			q.Set("cursor", cursor)
+		}
+
+		var page connectorPage
+		if err := c.request(ctx, http.MethodGet, "/v1/connectors?"+q.Encode(), &page); err != nil {
+			return nil, err
+		}
+		all = append(all, page.Items...)
+
+		if page.Pagination.NextCursor == nil || *page.Pagination.NextCursor == "" {
+			return all, nil
+		}
+		next := *page.Pagination.NextCursor
+		if seen[next] {
+			return all, nil
+		}
+		seen[next] = true
+		cursor = next
+	}
+}
+
+// ListLibraries walks every page of GET /v1/libraries. The endpoint offers both
+// a deprecated offset "page" parameter and an opaque continuation token; the
+// token is the supported form, so the walk follows next_page_token and stops
+// when it comes back null, empty, or unchanged.
+func (c *Client) ListLibraries(ctx context.Context) ([]Library, error) {
+	var all []Library
+	token := ""
+	seen := map[string]bool{}
+	for {
+		q := url.Values{}
+		q.Set("page_size", strconv.Itoa(defaultPageSize))
+		if token != "" {
+			q.Set("page_token", token)
+		}
+
+		var page libraryPage
+		if err := c.request(ctx, http.MethodGet, "/v1/libraries?"+q.Encode(), &page); err != nil {
+			return nil, err
+		}
+		all = append(all, page.Data...)
+
+		if page.NextPageToken == nil || *page.NextPageToken == "" {
+			return all, nil
+		}
+		next := *page.NextPageToken
+		if seen[next] {
+			return all, nil
+		}
+		seen[next] = true
+		token = next
+	}
+}
+
+// ListLibraryAccesses returns every entity a library is shared with. The
+// endpoint is not paginated.
+func (c *Client) ListLibraryAccesses(ctx context.Context, libraryID string) ([]LibraryAccess, error) {
+	var resp libraryAccessList
+	endpoint := "/v1/libraries/" + url.PathEscape(libraryID) + "/share"
+	if err := c.request(ctx, http.MethodGet, endpoint, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Data, nil
 }
 
 func IsAccessDenied(err error) bool {

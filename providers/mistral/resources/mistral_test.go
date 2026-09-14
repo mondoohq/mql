@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/mistral/internal/mistralai"
 	"go.mondoo.com/mql/types"
 )
 
@@ -90,6 +91,50 @@ func TestTimeFromUnixPtr(t *testing.T) {
 	if assert.NotNil(t, got) {
 		assert.True(t, got.Equal(time.Unix(ts, 0)))
 	}
+}
+
+func TestIntegrationID_SeparatesIntegrationsOnOneJob(t *testing.T) {
+	runA, runB := "run-a", "run-b"
+
+	// Two integrations of the same type on one job differ only by project and
+	// run. Keyed on the job and type alone they would share an __id, and
+	// CreateResource would serve the first one's values for both.
+	first := mistralai.WandbIntegration{Type: "wandb", Project: "alpha", RunName: &runA}
+	second := mistralai.WandbIntegration{Type: "wandb", Project: "beta", RunName: &runA}
+	third := mistralai.WandbIntegration{Type: "wandb", Project: "alpha", RunName: &runB}
+
+	ids := map[string]bool{
+		integrationID("ft-1", first):  true,
+		integrationID("ft-1", second): true,
+		integrationID("ft-1", third):  true,
+	}
+	assert.Len(t, ids, 3, "project and run name must both be part of the key")
+
+	assert.NotEqual(t, integrationID("ft-1", first), integrationID("ft-2", first),
+		"the same integration on two jobs must not share an id")
+
+	noRun := mistralai.WandbIntegration{Type: "wandb", Project: "alpha"}
+	assert.Equal(t, "ft-1/wandb/alpha/", integrationID("ft-1", noRun),
+		"an absent run name must not panic or drop the trailing segment")
+}
+
+func TestLibraryAccessID_SeparatesSharesWithNoEntityID(t *testing.T) {
+	uuid := "11111111-1111-1111-1111-111111111111"
+
+	user := mistralai.LibraryAccess{ShareWithType: "User", ShareWithUUID: &uuid}
+	workspace := mistralai.LibraryAccess{ShareWithType: "Workspace", ShareWithUUID: &uuid}
+	assert.NotEqual(t, libraryAccessID("lib-1", user), libraryAccessID("lib-1", workspace),
+		"a user and a workspace sharing one id are separate entries")
+
+	// An org-wide share reports no entity id. Keyed on the id alone every such
+	// entry on a library would collide, so only one share would be reported.
+	org := mistralai.LibraryAccess{ShareWithType: "Org", Role: "Viewer"}
+	orgless := mistralai.LibraryAccess{ShareWithType: "Workspace", Role: "Editor"}
+	assert.NotEqual(t, libraryAccessID("lib-1", org), libraryAccessID("lib-1", orgless))
+	assert.Equal(t, "lib-1/Org/", libraryAccessID("lib-1", org))
+
+	assert.NotEqual(t, libraryAccessID("lib-1", user), libraryAccessID("lib-2", user),
+		"the same entity on two libraries must not share an id")
 }
 
 func TestFloatDataPtr(t *testing.T) {
