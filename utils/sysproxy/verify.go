@@ -31,9 +31,14 @@ import (
 // it is deliberate and stays authoritative.
 
 const (
-	// probeTimeout bounds one probe. A proxy that drops packets costs this
-	// much once per destination per probeTTL.
+	// probeTimeout bounds one probe: connecting, the CONNECT exchange and the
+	// TLS handshake together.
 	probeTimeout = 10 * time.Second
+	// probeDialTimeout bounds the connection to the proxy alone. A proxy that
+	// drops packets costs this much once per process per probeTTL, since an
+	// unreachable proxy is remembered for every destination; proxies answer
+	// in milliseconds, so this is generous.
+	probeDialTimeout = 5 * time.Second
 	// probeTTL is how long a verdict is trusted, for both outcomes.
 	probeTTL = 5 * time.Minute
 )
@@ -41,11 +46,23 @@ const (
 // probeFunc runs the network probe for one proxy and destination.
 type probeFunc func(ctx context.Context, proxy, target *url.URL) error
 
+// unreachableError marks a probe that never got to talk to the proxy. Such a
+// verdict holds for every destination, not just the one probed.
+type unreachableError struct{ err error }
+
+func (e *unreachableError) Error() string { return "connect to proxy: " + e.err.Error() }
+func (e *unreachableError) Unwrap() error { return e.err }
+
 // verifier caches probe verdicts per proxy and destination, running one probe
-// per key at a time.
+// per key at a time. A proxy that could not be reached at all is remembered
+// per proxy, so a proxy that drops packets costs one dial timeout, not one
+// per destination.
 type verifier struct {
 	mu    sync.Mutex
 	cache map[string]*probeEntry
+	// unreachable holds, per proxy URL, the entry of the probe that failed to
+	// connect to it, until that entry expires.
+	unreachable map[string]*probeEntry
 	// probe replaces the network probe in tests.
 	probe probeFunc
 	// tlsConfig is cloned for the handshake with the destination; nil means
@@ -103,11 +120,22 @@ func (v *verifier) usable(proxy, target *url.URL) error {
 		v.mu.Unlock()
 		return e.wait(timeout)
 	}
+	if u, ok := v.unreachable[proxy.String()]; ok && now.Before(u.expires) {
+		// The proxy itself was unreachable moments ago; that holds for this
+		// destination too. Record it there so diagnostics find it.
+		v.cache[key] = u
+		v.mu.Unlock()
+		return u.err
+	}
 	v.sweep(now)
 	e := &probeEntry{done: make(chan struct{}), proxy: proxy.Redacted()}
 	v.cache[key] = e
 	v.mu.Unlock()
 
+	// The goroutine outlives this call when the caller gives up waiting, so
+	// it works on its own copies of the URLs rather than the caller's.
+	proxyCopy, targetCopy := *proxy, *target
+	destination := target.Host
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
@@ -115,19 +143,26 @@ func (v *verifier) usable(proxy, target *url.URL) error {
 		if probe == nil {
 			probe = v.networkProbe
 		}
-		err := probe(ctx, proxy, target)
+		err := probe(ctx, &proxyCopy, &targetCopy)
 
 		v.mu.Lock()
 		e.err = err
 		e.expires = time.Now().Add(ttl)
+		var unreachable *unreachableError
+		if errors.As(err, &unreachable) {
+			if v.unreachable == nil {
+				v.unreachable = map[string]*probeEntry{}
+			}
+			v.unreachable[proxyCopy.String()] = e
+		}
 		v.mu.Unlock()
 		close(e.done)
 
 		if err != nil {
-			log.Warn().Str("proxy", e.proxy).Str("destination", target.Host).Err(err).
+			log.Warn().Str("proxy", e.proxy).Str("destination", destination).Err(err).
 				Msg("the operating system's proxy cannot carry this connection, connecting directly instead")
 		} else {
-			log.Debug().Str("proxy", e.proxy).Str("destination", target.Host).
+			log.Debug().Str("proxy", e.proxy).Str("destination", destination).
 				Msg("the operating system's proxy verified for this destination")
 		}
 	}()
@@ -151,6 +186,11 @@ func (v *verifier) sweep(now time.Time) {
 	for k, e := range v.cache {
 		if !e.expires.IsZero() && now.After(e.expires) {
 			delete(v.cache, k)
+		}
+	}
+	for k, e := range v.unreachable {
+		if now.After(e.expires) {
+			delete(v.unreachable, k)
 		}
 	}
 }
@@ -178,10 +218,10 @@ func (v *verifier) fallbackReason(u *url.URL) string {
 // here rather than on the real request. A SOCKS proxy or a plain http
 // destination is only checked for reachability.
 func (v *verifier) networkProbe(ctx context.Context, proxy, target *url.URL) error {
-	dialer := net.Dialer{}
+	dialer := net.Dialer{Timeout: probeDialTimeout}
 	conn, err := dialer.DialContext(ctx, "tcp", hostPort(proxy))
 	if err != nil {
-		return fmt.Errorf("connect to proxy: %w", err)
+		return &unreachableError{err: err}
 	}
 	defer conn.Close()
 	if deadline, ok := ctx.Deadline(); ok {
@@ -222,9 +262,14 @@ func (v *verifier) networkProbe(ctx context.Context, proxy, target *url.URL) err
 		return fmt.Errorf("read CONNECT response from proxy: %w", err)
 	}
 	if resp.StatusCode/100 != 2 {
-		// The body, if any, is the proxy's error page and of no use here.
+		// The body is the proxy's error page; drain and close it before the
+		// connection goes.
+		_ = resp.Body.Close()
 		return fmt.Errorf("proxy answered CONNECT %s with %s", targetAddr, resp.Status)
 	}
+	// On a 2xx the "body" is the tunnel itself, which the TLS handshake below
+	// uses through conn; it is deliberately not read or closed here, as in
+	// net/http's own CONNECT handling.
 	if br.Buffered() > 0 {
 		return errors.New("proxy sent data before the tunnel was used")
 	}

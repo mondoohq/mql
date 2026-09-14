@@ -219,6 +219,36 @@ func TestVerifierCachesVerdicts(t *testing.T) {
 	assert.Equal(t, int32(3), calls.Load())
 }
 
+func TestVerifierUnreachableProxyIsRememberedForEveryDestination(t *testing.T) {
+	var calls atomic.Int32
+	v := &verifier{
+		cache:   map[string]*probeEntry{},
+		timeout: time.Second,
+		ttl:     time.Minute,
+		probe: func(_ context.Context, proxy, _ *url.URL) error {
+			calls.Add(1)
+			if proxy.Host == "dead:3128" {
+				return &unreachableError{err: errors.New("dial tcp: i/o timeout")}
+			}
+			return errors.New("403 Forbidden")
+		},
+	}
+	dead, refusing := mustURL(t, "http://dead:3128"), mustURL(t, "http://refusing:3128")
+	api, releases := mustURL(t, "https://api.example/"), mustURL(t, "https://releases.example/")
+
+	err := v.usable(dead, api)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "connect to proxy: dial tcp: i/o timeout")
+	require.Error(t, v.usable(dead, releases))
+	assert.Equal(t, int32(1), calls.Load(), "a proxy that cannot be reached is not probed again per destination")
+	assert.Contains(t, v.fallbackReason(releases), "connect to proxy", "the shared verdict is on record for the second destination too")
+
+	// A proxy that answers, even with a refusal, is judged per destination.
+	require.Error(t, v.usable(refusing, api))
+	require.Error(t, v.usable(refusing, releases))
+	assert.Equal(t, int32(3), calls.Load())
+}
+
 func TestVerifierConcurrentCallersShareOneProbe(t *testing.T) {
 	var calls atomic.Int32
 	release := make(chan struct{})
