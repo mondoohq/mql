@@ -13,7 +13,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/providers/os/resources/logrotate"
+	"go.mondoo.com/mql/v13/providers/os/resources/logrotate"
 )
 
 const (

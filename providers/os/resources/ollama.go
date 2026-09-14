@@ -10,12 +10,12 @@ import (
 	"sync"
 
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/llx"
-	"go.mondoo.com/mql/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/providers/os/resources/aimodel"
-	"go.mondoo.com/mql/providers/os/resources/ollama"
-	"go.mondoo.com/mql/providers/os/resources/systemd"
-	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/v13/providers/os/resources/aimodel"
+	"go.mondoo.com/mql/v13/providers/os/resources/ollama"
+	"go.mondoo.com/mql/v13/providers/os/resources/systemd"
+	"go.mondoo.com/mql/v13/types"
 )
 
 // ollamaBinaryPaths are the locations an Ollama server is installed to when the

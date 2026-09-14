@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/spf13/afero"
-	"go.mondoo.com/mql/providers/os/resources/logrotate"
+	"go.mondoo.com/mql/v13/providers/os/resources/logrotate"
 )
 
 // dnfRpmLogPath is dnf's rpm transaction log. Each package the transaction

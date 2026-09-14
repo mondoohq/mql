@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/providers/os/resources/logrotate"
+	"go.mondoo.com/mql/v13/providers/os/resources/logrotate"
 )
 
 func TestPaths(t *testing.T) {
