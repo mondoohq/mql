@@ -207,8 +207,8 @@ jobs:
           fi
           echo "verified ${expected} objects"
 
-      # Indexing and pruning live in the installer repo: they need releasr, and
-      # this repository is public.
+      # Indexing and pruning live in the installer repo: they need publishing
+      # tooling this repository cannot reach. This job hands the work over.
       - name: Generate token
         id: generate-token
         if: ${{ inputs.dry-run != true }}
