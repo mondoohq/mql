@@ -26,8 +26,21 @@ on:
       - ".github/workflows/reusable-lint-providers.yml"
       - "**.toml" # run tests when any recording changed
 
+# On a pull request only the newest commit matters, so runs share a group per
+# pull request and supersede each other.
+#
+# On main every commit is a potential release point, so each gets its own
+# group. Sharing one group there does not merely queue the runs: a group
+# holds at most one running plus one pending run, and a third arrival cancels
+# the pending one. cancel-in-progress being false does not prevent that --
+# it only protects the run that already started.
+#
+# On 2026-09-14 five consecutive commits on main were cancelled that way,
+# each before a single job started (total_jobs=0), because merges arrived
+# faster than the suite completes. A release was then cut from a stretch of
+# main with no test results behind it.
 concurrency:
-  group: pr-test-lint-${{ github.event.pull_request.number || github.ref }}
+  group: pr-test-lint-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
