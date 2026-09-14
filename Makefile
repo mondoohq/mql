@@ -442,6 +442,8 @@ shared/generate:
 	go generate ./providers-sdk/v1/upstream/mvd/cvss
 	go generate ./providers-sdk/v1/upstream/mvd
 	go generate ./providers-sdk/v1/upstream/etl
+	# Before sbomscan, whose vulnscan.proto imports fex.proto.
+	go generate ./providers-sdk/v1/upstream/fex
 	go generate ./providers-sdk/v1/upstream/sbomscan
 	go generate ./providers-sdk/v1/upstream/sbomupload
 
