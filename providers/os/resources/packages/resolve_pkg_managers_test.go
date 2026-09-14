@@ -119,6 +119,42 @@ func TestResolveSystemPkgManagersUnknownLinuxNoDatabase(t *testing.T) {
 	require.Error(t, err)
 }
 
+// Chainguard resolves apk from the platform name, not by finding a database.
+//
+// The images do ship an apk database, so the IsFamily("linux") probe at the end
+// of ResolveSystemPkgManagers would find one anyway - which is exactly why this
+// withholds it. The probe is the fallback for distributions nobody has named
+// yet, and it answers "there is a database here", not "this is the package
+// manager this distribution uses". A platform claimed by name should not need
+// it: without the name, this connection takes the probe branch, finds nothing
+// and returns an error, the same way an unnamed distro with no database does.
+func TestResolveSystemPkgManagersChainguardByName(t *testing.T) {
+	conn := newProbeConn(t, &inventory.Platform{
+		Name:   "chainguard",
+		Family: []string{"linux", "unix", "os"},
+	}, "/etc/os-release")
+
+	pms, err := ResolveSystemPkgManagers(conn)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"apk Package Manager"}, managerNames(pms))
+}
+
+// The same for the other two hardened-image distros, for the same reason.
+func TestResolveSystemPkgManagersHardenedImageDistrosByName(t *testing.T) {
+	for _, name := range []string{"minimos", "echo"} {
+		t.Run(name, func(t *testing.T) {
+			conn := newProbeConn(t, &inventory.Platform{
+				Name:   name,
+				Family: []string{"linux", "unix", "os"},
+			}, "/etc/os-release")
+
+			pms, err := ResolveSystemPkgManagers(conn)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"apk Package Manager"}, managerNames(pms))
+		})
+	}
+}
+
 // The probe lives in the plain-linux branch, which a distro that already
 // matched an earlier case never reaches. If it ever leaked out of that branch,
 // every rpm and dpkg host would resolve a second manager and packages would

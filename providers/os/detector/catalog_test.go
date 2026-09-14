@@ -59,6 +59,21 @@ func TestCatalogPlatforms(t *testing.T) {
 	assert.True(t, byName["alpaquita"], "alpaquita should be a catalogued platform")
 	assert.True(t, byName["bellsoft-hardened-containers"],
 		"bellsoft-hardened-containers should be a catalogued platform")
+
+	// Chainguard OS is a platform of its own rather than Wolfi, which is what
+	// the free-tier images report. The catalog is what separates a known
+	// platform from an unrecognized system that happened to carry an ID:
+	// plugin.PlatformInfo.Apply degrades a name it cannot find here to
+	// "unknown".
+	assert.True(t, byName["chainguard"], "chainguard should be a catalogued platform")
+	assert.True(t, byName["wolfi"], "wolfi should be a catalogued platform")
+
+	// The hardened-image distributions are each a platform of their own. echo
+	// has no detection fixture: no Echo image can be pulled without an account,
+	// so nothing has confirmed its os-release, and the catalog entry is what
+	// this can honestly assert until one can be.
+	assert.True(t, byName["minimos"], "minimos should be a catalogued platform")
+	assert.True(t, byName["echo"], "echo should be a catalogued platform")
 }
 
 // Every name detection can actually emit has to be in the tree, or the platform

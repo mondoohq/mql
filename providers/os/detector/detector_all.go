@@ -144,6 +144,64 @@ var bellsoftHardenedContainers = &PlatformResolver{
 	},
 }
 
+// Chainguard OS is the distribution behind Chainguard's production container
+// images. It is not Wolfi: the free-tier images report ID=wolfi and resolve as
+// wolfi, while the production images set ID=chainguard, declare no ID_LIKE and
+// carry their own release line and advisory feed.
+//
+// VERSION_ID is a date stamp rather than a dotted version ("20230214"), which is
+// how a rolling distribution spells a release.
+//
+// The images ship an apk database but no apk binary, so /etc/os-release is the
+// only evidence detection has, and there is no /etc/alpine-release for alpine's
+// fallback to find either. The package inventory still reads: the database apk
+// wrote is left in place.
+var chainguard = &PlatformResolver{
+	Name:     "chainguard",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		return pf.Name == "chainguard", nil
+	},
+}
+
+// MinimOS is the distribution behind the Minimus hardened container images. It
+// sets ID=minimos with no ID_LIKE, and VERSION_ID is a date stamp
+// ("20241031") rather than a dotted version.
+//
+// The images ship an apk database but no apk binary, the same shape as
+// Chainguard OS and BellSoft Hardened Containers, so os-release is the only
+// evidence detection has and the package inventory reads from the database apk
+// left behind.
+//
+// Minimus announced it is ceasing operations on 2026-10-22 and handing its
+// technology to Echo, and reg.mini.dev goes dark with it. Images pulled before
+// then keep running, and keep needing to be scanned, which is why this stays.
+var minimos = &PlatformResolver{
+	Name:     "minimos",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		return pf.Name == "minimos", nil
+	},
+}
+
+// Echo builds hardened container images and is where Minimus technology landed
+// when Minimus wound down, so its images are expected to carry the same
+// Alpine-lineage shape.
+//
+// UNVERIFIED: the id here is Echo's published platform identifier. Every Echo
+// registry host requires an account, so no image has been pulled to confirm the
+// os-release contents, and there is deliberately no fixture rather than one
+// written from values nobody checked. What is covered is that the name is
+// registered and catalogued; the detector test arrives with the first image
+// someone can pull.
+var echo = &PlatformResolver{
+	Name:     "echo",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		return pf.Name == "echo", nil
+	},
+}
+
 // WizOS is an Alpine-lineage distro (ID_LIKE=alpine) that ships its own
 // ID=wizos in /etc/os-release and uses apk. It is resolved before alpine so
 // its exact-name match wins over alpine's /etc/alpine-release fallback.
@@ -1599,7 +1657,7 @@ var linuxFamily = &PlatformResolver{
 	IsFamily: true,
 	// NOTE: altlinux runs before the redhat family, whose members probe
 	// /etc/redhat-release and /etc/fedora-release, both of which ALT ships.
-	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, alpaquita, bellsoftHardenedContainers, wizos, alpine, wolfi, nixos, gentoo, voidlinux, clearlinux, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, cos, flatcar, talos, opencloudos, cirros, defaultLinux},
+	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, alpaquita, bellsoftHardenedContainers, chainguard, minimos, echo, wizos, alpine, wolfi, nixos, gentoo, voidlinux, clearlinux, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, cos, flatcar, talos, opencloudos, cirros, defaultLinux},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		detected := false
 		osrd := NewOSReleaseDetector(conn)
