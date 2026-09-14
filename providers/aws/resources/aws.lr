@@ -27938,8 +27938,11 @@ private aws.lightsail.distribution @defaults("name arn") {
   //
   // Dict with keys `Name` (origin resource name), `ProtocolPolicy` (protocol
   // used to connect to the origin: http-only or https-only), `RegionName`,
-  // `ResourceType` (typically Instance), `IpAddressType`, and `ResponseTimeout`
-  // (seconds the distribution waits for an origin response).
+  // `ResourceType` (typically Instance), `IpAddressType`, `ResponseTimeout`
+  // (seconds the distribution waits for an origin response), and
+  // `IsPrivateOriginAccessEnabled` (whether the distribution serves objects
+  // from a private Lightsail bucket instead of requiring the origin bucket to
+  // be publicly readable).
   origin dict
   // Default cache behavior of the distribution
   //

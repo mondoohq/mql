@@ -199,7 +199,7 @@ private claude.agent.toolset @defaults("type defaultPermissionPolicy") {
   defaultEnabled bool
   // Permission policy for tools without an entry of their own
   //
-  // One of always_allow or always_ask.
+  // One of always_allow, always_ask, or auto.
   defaultPermissionPolicy string
   // Tools configured individually within the toolset
   tools []claude.agent.toolset.tool
@@ -218,7 +218,7 @@ private claude.agent.toolset.tool @defaults("name enabled permissionPolicy") {
   enabled bool
   // Permission policy for tool execution
   //
-  // One of always_allow or always_ask.
+  // One of always_allow, always_ask, or auto.
   permissionPolicy string
 }
 
