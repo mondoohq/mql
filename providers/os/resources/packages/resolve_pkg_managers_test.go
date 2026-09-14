@@ -92,6 +92,21 @@ func TestResolveSystemPkgManagersUnknownApk(t *testing.T) {
 	assert.IsType(t, &AlpinePkgManager{}, pms[0])
 }
 
+// apk-tools 3 keeps the database under /var/lib/apk rather than /lib/apk. The
+// probe checked only the /lib path, so an unrecognized distro on apk-tools 3
+// resolved no package manager at all even with a populated database on disk.
+func TestResolveSystemPkgManagersUnknownApkVarLib(t *testing.T) {
+	conn := newProbeConn(t, &inventory.Platform{
+		Name:   "somenewapk3distro",
+		Family: []string{"linux", "unix", "os"},
+	}, "/var/lib/apk/db/installed")
+
+	pms, err := ResolveSystemPkgManagers(conn)
+	require.NoError(t, err)
+	require.Len(t, pms, 1)
+	assert.IsType(t, &AlpinePkgManager{}, pms[0])
+}
+
 // The probe must stay evidence-driven: a linux platform with no package
 // database on disk still resolves nothing, and still says so.
 func TestResolveSystemPkgManagersUnknownLinuxNoDatabase(t *testing.T) {
@@ -149,6 +164,26 @@ func TestResolveSystemPkgManagersNoDoubleCountOnKnownPlatforms(t *testing.T) {
 				Family: []string{"linux", "unix", "os"},
 			},
 			files:    []string{"/lib/apk/db/installed"},
+			expected: []string{"apk Package Manager"},
+		},
+		{
+			name: "alpaquita with an apk-tools 3 database",
+			platform: &inventory.Platform{
+				Name:   "alpaquita",
+				Family: []string{"linux", "unix", "os"},
+			},
+			files:    []string{"/var/lib/apk/db/installed"},
+			expected: []string{"apk Package Manager"},
+		},
+		{
+			// The hardened images ship no apk binary, but the database it wrote
+			// is left behind, so the inventory still reads.
+			name: "bellsoft hardened containers with an apk-tools 3 database",
+			platform: &inventory.Platform{
+				Name:   "bellsoft-hardened-containers",
+				Family: []string{"linux", "unix", "os"},
+			},
+			files:    []string{"/var/lib/apk/db/installed"},
 			expected: []string{"apk Package Manager"},
 		},
 	}

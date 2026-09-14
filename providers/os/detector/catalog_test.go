@@ -51,6 +51,15 @@ func TestCatalogPlatforms(t *testing.T) {
 	assert.True(t, byName["azurelinux"], "azurelinux should be a catalogued platform")
 	assert.True(t, byName["mariner"], "mariner should be a catalogued platform")
 
+	// BellSoft Alpaquita and BellSoft Hardened Containers are Alpine-lineage but
+	// each is a platform of its own, with its own release line and its own
+	// advisory feed. Detection reads the name straight off os-release either
+	// way, so the catalog is what says they are known platforms rather than
+	// unrecognized systems that happened to carry an ID.
+	assert.True(t, byName["alpaquita"], "alpaquita should be a catalogued platform")
+	assert.True(t, byName["bellsoft-hardened-containers"],
+		"bellsoft-hardened-containers should be a catalogued platform")
+
 	// darwin is a kernel and a family, never a platform of its own
 	assert.True(t, byName["macos"], "macos should be a catalogued platform")
 	assert.False(t, byName["darwin"], "darwin should not be a catalogued platform")
