@@ -231,7 +231,8 @@ func TestConnectionSettingsFlags(t *testing.T) {
 	assert.False(t, ok, "a truncated blob must not be read as flags")
 }
 
-// testSelector wires a selector to canned settings and a canned script.
+// testSelector wires a selector to canned settings, a canned script and a
+// canned probe verdict.
 type testSelector struct {
 	*selector
 	settings    *Settings
@@ -239,6 +240,10 @@ type testSelector struct {
 	scriptCalls int
 	script      scriptResult
 	enabled     bool
+	// verifyErr is the probe verdict; nil means every proxy is usable.
+	verifyErr error
+	// verified records "proxy target" for every probe asked for.
+	verified []string
 }
 
 func newTestSelector(env *httpproxy.Config, settings *Settings) *testSelector {
@@ -247,6 +252,10 @@ func newTestSelector(env *httpproxy.Config, settings *Settings) *testSelector {
 		func() bool { return ts.enabled },
 		func() (*Settings, error) { ts.detectCalls++; return ts.settings, nil },
 		func(*Settings, *url.URL) scriptResult { ts.scriptCalls++; return ts.script },
+		func(p, target *url.URL) error {
+			ts.verified = append(ts.verified, p.String()+" "+target.Scheme+"://"+target.Host)
+			return ts.verifyErr
+		},
 	)
 	return ts
 }
@@ -370,6 +379,39 @@ func TestSelectorPrecedence(t *testing.T) {
 		require.NoError(t, err)
 		assert.Nil(t, p)
 	})
+
+	t.Run("a system proxy that fails the probe is not used", func(t *testing.T) {
+		// The upgrade safety net: a Windows proxy that cannot carry our
+		// traffic (NTLM, an allowlist, a stale address) leaves the agent
+		// connecting directly, as it did before.
+		ts := newTestSelector(&httpproxy.Config{}, manual)
+		ts.verifyErr = errors.New("407 Proxy Authentication Required")
+		assert.Equal(t, "", ts.resolve(t, "https://api.example/"))
+		assert.Equal(t, []string{"http://sysproxy.corp:3128 https://api.example"}, ts.verified)
+	})
+
+	t.Run("the probe is asked only for hosts the proxy would carry", func(t *testing.T) {
+		ts := newTestSelector(&httpproxy.Config{}, manual)
+		ts.verifyErr = errors.New("unreachable")
+		assert.Equal(t, "", ts.resolve(t, "https://git.corp.example/"))
+		assert.Equal(t, "", ts.resolve(t, "http://localhost:8989/"))
+		assert.Empty(t, ts.verified, "bypassed and loopback hosts never touch the proxy")
+	})
+
+	t.Run("a script's proxy is probed as well", func(t *testing.T) {
+		ts := newTestSelector(&httpproxy.Config{}, &Settings{AutoConfigURL: "http://pac.corp/proxy.pac"})
+		ts.script = scriptResult{proxies: "pacproxy:8080"}
+		ts.verifyErr = errors.New("connect to proxy: connection refused")
+		assert.Equal(t, "", ts.resolve(t, "https://api.example/"))
+		assert.Equal(t, []string{"http://pacproxy:8080 https://api.example"}, ts.verified)
+	})
+
+	t.Run("the machine proxy is probed as well", func(t *testing.T) {
+		ts := newTestSelector(&httpproxy.Config{}, &Settings{MachineProxy: "netsh.corp:8080"})
+		ts.verifyErr = errors.New("403 Forbidden")
+		assert.Equal(t, "", ts.resolve(t, "https://api.example/"))
+		assert.Equal(t, []string{"http://netsh.corp:8080 https://api.example"}, ts.verified)
+	})
 }
 
 func TestSelectorEnvironment(t *testing.T) {
@@ -442,11 +484,38 @@ func TestSelectorEnvironment(t *testing.T) {
 		assert.Equal(t, 1, ts.scriptCalls)
 	})
 
-	t.Run("script that cannot run without a representative still exports the manual proxy", func(t *testing.T) {
-		ts := newTestSelector(&httpproxy.Config{}, &Settings{AutoDetect: true, Proxy: "manual:1"})
-		ts.script = scriptResult{err: errors.New("WPAD failed")}
-		assert.Equal(t, []string{"HTTP_PROXY=http://manual:1", "HTTPS_PROXY=http://manual:1"}, ts.environment(nil))
-		assert.Zero(t, ts.scriptCalls, "nothing to evaluate the script for")
+	t.Run("without a representative nothing is exported", func(t *testing.T) {
+		// Nothing to evaluate a script for and nothing to probe the proxy
+		// against, so nothing is handed to the provider.
+		ts := newTestSelector(&httpproxy.Config{}, &Settings{Proxy: "manual:1"})
+		assert.Nil(t, ts.environment(nil))
+		assert.Empty(t, ts.verified)
+	})
+
+	t.Run("a proxy that fails the probe is not exported", func(t *testing.T) {
+		ts := newTestSelector(&httpproxy.Config{}, &Settings{Proxy: "sys.corp:3128", Bypass: []string{"*.corp.example"}})
+		ts.verifyErr = errors.New("407 Proxy Authentication Required")
+		assert.Nil(t, ts.environment(rep))
+		assert.Equal(t, []string{"http://sys.corp:3128 https://us.api.mondoo.com"}, ts.verified)
+	})
+
+	t.Run("a script's proxy that fails the probe is not exported", func(t *testing.T) {
+		ts := newTestSelector(&httpproxy.Config{}, &Settings{AutoConfigURL: "http://pac/p.pac"})
+		ts.script = scriptResult{proxies: "pacproxy:8080"}
+		ts.verifyErr = errors.New("unreachable")
+		assert.Nil(t, ts.environment(rep))
+	})
+
+	t.Run("the https entry of a keyed list is what gets probed", func(t *testing.T) {
+		ts := newTestSelector(&httpproxy.Config{}, &Settings{Proxy: "http=a:1;https=b:2"})
+		require.NotNil(t, ts.environment(rep))
+		assert.Equal(t, []string{"http://b:2 https://us.api.mondoo.com"}, ts.verified)
+	})
+
+	t.Run("an http-only list is probed against the http form of the representative", func(t *testing.T) {
+		ts := newTestSelector(&httpproxy.Config{}, &Settings{Proxy: "http=a:1"})
+		assert.Equal(t, []string{"HTTP_PROXY=http://a:1"}, ts.environment(rep))
+		assert.Equal(t, []string{"http://a:1 http://us.api.mondoo.com"}, ts.verified)
 	})
 
 	t.Run("manual exceptions covering the representative still export the proxy", func(t *testing.T) {

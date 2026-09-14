@@ -205,6 +205,12 @@ func TestRenderCli_PlatformSection_Proxy(t *testing.T) {
 	s.Client.Proxy, s.Client.ProxySource = "", ""
 	out = s.RenderCli(RenderOptions{Color: false})
 	assert.Contains(t, out, "direct connection")
+	assert.NotContains(t, out, "not usable")
+
+	s.Client.ProxyNote = "system proxy http://proxy.corp:3128 not usable: proxy answered CONNECT us.api.mondoo.com:443 with 407 Proxy Authentication Required"
+	out = s.RenderCli(RenderOptions{Color: false})
+	assert.Contains(t, out, "direct connection")
+	assert.Contains(t, out, "407 Proxy Authentication Required")
 }
 
 func TestRenderCli_MqlSection_ChannelAlwaysShown(t *testing.T) {

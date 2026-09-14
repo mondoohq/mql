@@ -185,9 +185,12 @@ func (s Status) renderMql(b *strings.Builder, st styler) {
 func (s Status) renderPlatform(b *strings.Builder, st styler) {
 	st.section(b, "Mondoo Platform")
 	st.row(b, "Endpoint", s.Upstream.API.Endpoint)
-	if s.Client.Proxy != "" {
+	switch {
+	case s.Client.Proxy != "":
 		st.row(b, "Proxy", st.value(s.Client.Proxy)+"  "+st.dim("("+s.Client.ProxySource+")"))
-	} else {
+	case s.Client.ProxyNote != "":
+		st.row(b, "Proxy", st.dim("none — direct connection")+"  "+st.warn("⚠ "+s.Client.ProxyNote))
+	default:
 		st.row(b, "Proxy", st.dim("none — direct connection"))
 	}
 

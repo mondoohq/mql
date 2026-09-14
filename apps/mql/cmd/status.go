@@ -194,6 +194,10 @@ func checkStatus(ctx context.Context) (Status, error) {
 	} else if proxy != nil {
 		s.Client.Proxy = proxy.Redacted()
 		s.Client.ProxySource = string(source)
+	} else {
+		// Resolving the proxy above ran the probe of a system proxy, so a
+		// failed verdict for the API endpoint is on record by now.
+		s.Client.ProxyNote = config.ProxyFallbackNote(opts.UpstreamApiEndpoint())
 	}
 
 	// Probe the ingest endpoint alongside the checks below rather than in
@@ -349,9 +353,13 @@ type ClientStatus struct {
 	// from (api_proxy, environment, system). Both are empty for a direct
 	// connection. A proxied Windows machine that cannot reach the platform
 	// is diagnosed from these two fields.
-	Proxy       string           `json:"proxy,omitempty"`
-	ProxySource string           `json:"proxySource,omitempty"`
-	Providers   []ProviderStatus `json:"-"`
+	Proxy       string `json:"proxy,omitempty"`
+	ProxySource string `json:"proxySource,omitempty"`
+	// ProxyNote explains a direct connection on a machine whose operating
+	// system names a proxy that failed the probe, for example "system proxy
+	// http://proxy:3128 not usable: proxy answered CONNECT with 407".
+	ProxyNote string           `json:"proxyNote,omitempty"`
+	Providers []ProviderStatus `json:"-"`
 }
 
 // ProviderStatus captures the installed and latest available version of a

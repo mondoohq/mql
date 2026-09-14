@@ -171,6 +171,22 @@ func (c *CommonOpts) EffectiveProxy(target string) (*url.URL, ProxySource, error
 	return proxy, ProxySourceSystem, nil
 }
 
+// ProxyFallbackNote explains why Mondoo Platform traffic to target connects
+// directly although the operating system names a proxy: the proxy failed the
+// probe that every system-selected proxy passes before use (see sysproxy).
+// It is "" when there is nothing to explain, including when an explicit
+// api_proxy or the environment decides.
+func ProxyFallbackNote(target string) string {
+	if !SystemProxyEnabled() || sysproxy.EnvironmentConfigured() {
+		return ""
+	}
+	u, err := url.Parse(target)
+	if err != nil {
+		return ""
+	}
+	return sysproxy.FallbackReason(u)
+}
+
 // UpstreamApiEndpoint returns the configured Mondoo API endpoint (flag,
 // environment, config file) or the default, without a parsed CommonOpts.
 func UpstreamApiEndpoint() string {

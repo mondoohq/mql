@@ -67,7 +67,24 @@ the path of least resistance the product promises.
    scoped to platform traffic and reaches providers through the upstream
    config, as before.
 
-5. **Cost is bounded.** Detection is cached for five minutes so a
+5. **A system proxy is used only after it has carried a probe.** Thousands
+   of Windows installations work today because direct egress is allowed,
+   while their Windows settings name a proxy that cnspec never used: one that
+   requires NTLM, allows only browser destinations, or is stale. Switching
+   them to that proxy on upgrade would break them. So before a
+   system-selected proxy is used for a destination, `utils/sysproxy` connects
+   to the proxy, sends `CONNECT host:443`, and completes a TLS handshake with
+   the destination through the tunnel using the system trust store. A failed
+   probe (unreachable, 407, a refused destination, an intercepting
+   certificate the machine does not trust) means a direct connection, the
+   behavior before this ADR, with one warning naming the proxy, the host and
+   the reason, and the verdict is shown by `mql status`. Verdicts are cached
+   per proxy and destination for five minutes and shared by every client in
+   the process, and the proxy exported to providers is the one that passed
+   the probe for the API endpoint. Explicit configuration (`api_proxy`,
+   `HTTPS_PROXY`) is deliberate and is never probed or overridden.
+
+6. **Cost is bounded.** Detection is cached for five minutes so a
    long-running `cnspec serve` follows a changed proxy without a restart and
    a scan pays once. Script evaluation is cached per origin with the same
    TTL, a failed WPAD discovery is remembered so the Windows default of
@@ -82,7 +99,14 @@ the path of least resistance the product promises.
   for the CLI, the Windows service, and the providers it starts. A machine
   without a proxy behaves as before, with one WPAD probe on the first
   platform call if auto-detection is on, answered from the WinHTTP
-  Auto-Discovery Service's cache on most machines.
+  Auto-Discovery Service's cache on most machines. A machine whose proxy
+  cannot carry our traffic also behaves as before, after one failed probe
+  per destination per five minutes, which costs a dial timeout when the
+  proxy drops packets.
+- The residual upgrade risk is a proxy that passes the probe and fails on
+  real traffic. Proxies that authenticate with Windows credentials are not
+  used at all: Go's client cannot answer NTLM or Kerberos, so the probe sees
+  a 407 and cnspec connects directly, as it always has on such machines.
 - `HTTPS_PROXY` is now read with Go's full semantics (`HTTP_PROXY` for http
   targets, `NO_PROXY` honored) at every call site, where a few sites had
   copied only `HTTPS_PROXY` into a fixed proxy URL. `api_proxy` values

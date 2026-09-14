@@ -21,6 +21,12 @@
 //     exceptions, otherwise the machine-wide WinHTTP proxy with its exceptions
 //  3. a direct connection
 //
+// A proxy from step 2 is used only after a probe has shown that it carries
+// traffic to the destination (see verify.go); when it does not, the
+// connection is made directly, as every version before system proxy support
+// did, and the reason is available through FallbackReason. Steps 1 and 3 are
+// deliberate configuration and are never probed.
+//
 // MONDOO_SYSTEM_PROXY=false turns step 2 off. Platforms other than Windows
 // have no settings to read, so step 2 selects nothing there.
 package sysproxy
@@ -238,7 +244,7 @@ func EnvironmentProxyFunc() func(*http.Request) (*url.URL, error) {
 // precedence documented for this package. Operating system settings are read
 // lazily on the first request and refreshed every detectTTL.
 func ProxyFunc() func(*http.Request) (*url.URL, error) {
-	return newSelector(httpproxy.FromEnvironment(), Enabled, Detect, evaluateScript).proxyForRequest
+	return newSelector(httpproxy.FromEnvironment(), Enabled, Detect, evaluateScript, defaultVerifier.usable).proxyForRequest
 }
 
 // ProxyForURL resolves the proxy for one URL the way ProxyFunc would. It
@@ -251,12 +257,14 @@ func ProxyForURL(u *url.URL) (*url.URL, error) {
 // hand the system proxy to a child process which only understands the
 // environment convention (the cloud SDKs inside provider subprocesses). It
 // returns nothing when the environment already names a proxy, when system
-// settings are disabled, or when none are configured. Variables the parent
-// already has are left alone. A setup script can only be represented by its
-// answer for one URL, so representative should be the destination that
-// matters most, the Mondoo API endpoint.
+// settings are disabled, when none are configured, or when the proxy fails
+// verification for representative. Variables the parent already has are left
+// alone. A setup script can only be represented by its answer for one URL,
+// and the proxy is only ever verified against one, so representative is
+// required and should be the destination that matters most, the Mondoo API
+// endpoint.
 func Environment(representative *url.URL) []string {
-	return newSelector(httpproxy.FromEnvironment(), Enabled, Detect, evaluateScript).environment(representative)
+	return newSelector(httpproxy.FromEnvironment(), Enabled, Detect, evaluateScript, defaultVerifier.usable).environment(representative)
 }
 
 // scriptResult is what a setup script or auto-detection produced for one URL.
@@ -284,10 +292,13 @@ type selector struct {
 	enabled func() bool
 	detect  func() (*Settings, error)
 	script  scriptEvaluator
+	// verify probes a system-selected proxy for a destination and returns
+	// the reason it cannot be used, nil when it can. Nil skips verification.
+	verify func(proxy, target *url.URL) error
 }
 
-func newSelector(env *httpproxy.Config, enabled func() bool, detect func() (*Settings, error), script scriptEvaluator) *selector {
-	s := &selector{enabled: enabled, detect: detect, script: script}
+func newSelector(env *httpproxy.Config, enabled func() bool, detect func() (*Settings, error), script scriptEvaluator, verify func(proxy, target *url.URL) error) *selector {
+	s := &selector{enabled: enabled, detect: detect, script: script, verify: verify}
 	switch {
 	case environmentConfigured(env):
 		s.envProxy = env.ProxyFunc()
@@ -361,20 +372,19 @@ func (s *selector) systemProxy(settings *Settings, u *url.URL) (*url.URL, error)
 			if err != nil {
 				return nil, fmt.Errorf("proxy script returned %q: %w", res.proxies, err)
 			}
-			logSelected(p, "proxy script")
-			return p, nil
+			return s.verified(p, u, "proxy script"), nil
 		}
 	}
 	if settings.Proxy != "" {
-		return manualProxy(settings.Proxy, settings.Bypass, "Internet Settings", u)
+		return s.manualProxy(settings.Proxy, settings.Bypass, "Internet Settings", u)
 	}
 	if settings.MachineProxy != "" {
-		return manualProxy(settings.MachineProxy, settings.MachineBypass, "WinHTTP default proxy", u)
+		return s.manualProxy(settings.MachineProxy, settings.MachineBypass, "WinHTTP default proxy", u)
 	}
 	return nil, nil
 }
 
-func manualProxy(list string, bypass []string, source string, u *url.URL) (*url.URL, error) {
+func (s *selector) manualProxy(list string, bypass []string, source string, u *url.URL) (*url.URL, error) {
 	if bypassed(bypass, u) {
 		return nil, nil
 	}
@@ -382,8 +392,20 @@ func manualProxy(list string, bypass []string, source string, u *url.URL) (*url.
 	if err != nil {
 		return nil, fmt.Errorf("invalid system proxy setting %q: %w", list, err)
 	}
+	return s.verified(p, u, source), nil
+}
+
+// verified returns p when it carries traffic to u, or nil, a direct
+// connection, when the probe says it does not. The probe logs its verdict.
+func (s *selector) verified(p *url.URL, u *url.URL, source string) *url.URL {
+	if p == nil {
+		return nil
+	}
+	if s.verify != nil && s.verify(p, u) != nil {
+		return nil
+	}
 	logSelected(p, source)
-	return p, nil
+	return p
 }
 
 func logSelected(p *url.URL, source string) {
@@ -397,7 +419,7 @@ func logSelected(p *url.URL, source string) {
 
 // environment implements Environment for one selector.
 func (s *selector) environment(representative *url.URL) []string {
-	if s.envProxy != nil || !s.enabled() {
+	if s.envProxy != nil || !s.enabled() || representative == nil {
 		return nil
 	}
 	settings, err := s.detect()
@@ -408,7 +430,7 @@ func (s *selector) environment(representative *url.URL) []string {
 	var httpProxy, httpsProxy *url.URL
 	var bypass []string
 	scriptAnswered := false
-	if settings.usesScript() && representative != nil && s.script != nil {
+	if settings.usesScript() && s.script != nil {
 		// A script that runs is the authority: its answer for the
 		// representative is exported as is, a DIRECT included, and it has no
 		// exception list to carry over. A script that cannot run (WPAD on a
@@ -439,6 +461,21 @@ func (s *selector) environment(representative *url.URL) []string {
 	}
 	if httpProxy == nil && httpsProxy == nil {
 		return nil
+	}
+	// The provider's SDK traffic goes to hosts this process never talks to,
+	// so the proxy is verified against the representative: a proxy that
+	// cannot carry platform traffic is not handed to providers either, and
+	// they connect directly as before.
+	if s.verify != nil {
+		candidate, target := httpsProxy, representative
+		if candidate == nil {
+			plain := *representative
+			plain.Scheme = "http"
+			candidate, target = httpProxy, &plain
+		}
+		if s.verify(candidate, target) != nil {
+			return nil
+		}
 	}
 
 	var env []string
