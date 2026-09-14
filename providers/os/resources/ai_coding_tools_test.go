@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/package-url/packageurl-go"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -231,6 +232,56 @@ func TestSkillPURL(t *testing.T) {
 
 		assert.Equal(t, "", skillPURL(afs, "/repo/skills/deploy/SKILL.md"))
 	})
+}
+
+// TestSkillPURLEncodesTheSkillDirectoryName pins that a skill directory name
+// carrying purl syntax cannot break out of its qualifier.
+//
+// Regression test for https://github.com/mondoohq/mql/issues/10636 (4). The
+// purl used to be assembled by string concatenation, so a directory named
+// "a&b" produced "...?skill=a&b" -- two qualifiers, the second of them
+// valueless -- and a directory with a "#" silently truncated the qualifier
+// into a subpath.
+func TestSkillPURLEncodesTheSkillDirectoryName(t *testing.T) {
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+
+	// Every one of these is a legal directory name on Linux and macOS and is
+	// purl syntax at the same time.
+	cases := []struct{ skillDir, want string }{
+		{"a&b", "pkg:github/acme/skills@0123456789ab?skill=a%26b"},
+		{"a?b", "pkg:github/acme/skills@0123456789ab?skill=a%3Fb"},
+		{"a#b", "pkg:github/acme/skills@0123456789ab?skill=a%23b"},
+		{"a=b", "pkg:github/acme/skills@0123456789ab?skill=a%3Db"},
+		{"a%b", "pkg:github/acme/skills@0123456789ab?skill=a%25b"},
+		{"deploy to prod", "pkg:github/acme/skills@0123456789ab?skill=deploy%20to%20prod"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.skillDir, func(t *testing.T) {
+			mem := afero.NewMemMapFs()
+			afs := &afero.Afero{Fs: mem}
+			writeGitCheckout(t, mem, "/repo", "git@github.com:acme/skills.git", sha)
+			writeSkill(t, mem, "/repo/skills", tc.skillDir)
+
+			rendered := skillPURL(afs, "/repo/skills/"+tc.skillDir+"/SKILL.md")
+			assert.Equal(t, tc.want, rendered)
+
+			// ...and the encoding has to be the reversible one, not merely a
+			// different set of bytes: what reads the purl back has to recover
+			// the directory name the skill actually lives in.
+			parsed, err := packageurl.FromString(rendered)
+			require.NoError(t, err, "purl %q must parse", rendered)
+
+			assert.Equal(t, "github", parsed.Type)
+			assert.Equal(t, "acme", parsed.Namespace)
+			assert.Equal(t, "skills", parsed.Name)
+			assert.Equal(t, "0123456789ab", parsed.Version)
+			assert.Len(t, parsed.Qualifiers, 1,
+				"the directory name must stay inside one qualifier, got %q", rendered)
+			assert.Equal(t, tc.skillDir, parsed.Qualifiers.Map()["skill"],
+				"the directory name must survive the round trip intact")
+		})
+	}
 }
 
 func TestFileURIToPath(t *testing.T) {

@@ -18,6 +18,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/purl"
 	"go.mondoo.com/mql/types"
 	"sigs.k8s.io/yaml"
 )
@@ -639,7 +640,13 @@ func skillPURL(afs *afero.Afero, sourcePath string) string {
 	if sha == "" {
 		return ""
 	}
-	return "pkg:github/" + org + "/" + repo + "@" + sha[:12] + "?skill=" + filepath.Base(skillDir)
+	// Rendered through the purl encoder rather than concatenated: the skill
+	// directory name is an arbitrary name off disk, and a "&", "?" or space in
+	// it would otherwise split the qualifier or terminate the purl.
+	return purl.NewPackageURL(nil, purl.TypeGithub, repo, sha[:12],
+		purl.WithNamespace(org),
+		purl.WithQualifiers(map[string]string{"skill": filepath.Base(skillDir)}),
+	).String()
 }
 
 // resolveGitHeadSha resolves the commit sha HEAD points at using only file
