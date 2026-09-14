@@ -10,6 +10,8 @@ ollama.account.plan 13.0.13
 ollama.authenticationRequired 13.0.13
 ollama.cloudAccount 13.0.13
 ollama.cloudEnabled 13.0.13
+ollama.corsAllowsAnyOrigin 14.0.0
+ollama.dnsRebindingProtected 14.0.0
 ollama.host 13.0.0
 ollama.isLocal 13.0.13
 ollama.model 13.0.0

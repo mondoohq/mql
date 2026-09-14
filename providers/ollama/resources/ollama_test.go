@@ -325,3 +325,92 @@ func TestFetchShowIsSafeUnderConcurrentAccessors(t *testing.T) {
 	assert.Equal(t, int32(1), calls.Load(),
 		"every Show-backed field on one model must share a single /api/show call")
 }
+
+func TestClassifyCorsProbe(t *testing.T) {
+	const probe = "https://0123456789abcdef.example.com"
+
+	tests := []struct {
+		name        string
+		allowOrigin string
+		observed    bool
+		want        bool
+		wantKnown   bool
+	}{
+		// OLLAMA_ORIGINS=* turns the allowlist into every origin, and
+		// gin-contrib/cors then names `*` rather than the caller's origin.
+		{"every origin", "*", true, true, true},
+
+		// A wildcard pattern that happens to cover the unrelated origin is
+		// echoed back instead. Same exposure, different wire form.
+		{"unrelated origin echoed back", probe, true, true, true},
+		{"echo differing only in case", strings.ToUpper(probe), true, true, true},
+
+		// The stock allowlist: the instance answers cross-origin requests and
+		// allows this one nothing.
+		{"refused with no origin named", "", true, false, true},
+		{"another origin named", "http://localhost", true, false, true},
+
+		// Nothing on the instance handles cross-origin requests, so it has said
+		// nothing about them. A false here would pass a check the instance
+		// never earned.
+		{"no cross-origin handling anywhere", "", false, false, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, known := classifyCorsProbe(tt.allowOrigin, probe, tt.observed)
+			assert.Equal(t, tt.wantKnown, known)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+
+	t.Run("an empty probe origin never matches an empty allowance", func(t *testing.T) {
+		got, known := classifyCorsProbe("", "", true)
+		assert.True(t, known)
+		assert.False(t, got, "no origin asked about and none allowed is not permission for every origin")
+	})
+}
+
+func TestClassifyForeignHostProbe(t *testing.T) {
+	tests := []struct {
+		name          string
+		controlStatus int
+		foreignStatus int
+		want          bool
+		wantErr       bool
+	}{
+		// The instance serves its own host name and refuses the unrelated one.
+		{"refused", http.StatusOK, http.StatusForbidden, true, false},
+		// It serves both, so a page that points a domain it controls at this
+		// address is answered.
+		{"served", http.StatusOK, http.StatusOK, false, false},
+
+		// The control was not served, so whatever turned it away would have
+		// turned the other away too and the pair proves nothing. A 403 control
+		// is the case that matters: crediting that refusal to the host name
+		// would report a gated instance as protected.
+		{"gated control", http.StatusUnauthorized, http.StatusUnauthorized, false, true},
+		{"forbidden control", http.StatusForbidden, http.StatusForbidden, false, true},
+		{"failing control", http.StatusBadGateway, http.StatusForbidden, false, true},
+		{"redirected control", http.StatusFound, http.StatusForbidden, false, true},
+
+		// The control was served but the answer to the unrelated name is
+		// neither of the two that mean anything.
+		{"unreadable answer", http.StatusOK, http.StatusBadGateway, false, true},
+		{"redirected answer", http.StatusOK, http.StatusFound, false, true},
+		{"not found", http.StatusOK, http.StatusNotFound, false, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := classifyForeignHostProbe(tt.controlStatus, tt.foreignStatus)
+			if tt.wantErr {
+				assert.Error(t, err, "an unreadable pair must not be reported as a posture finding")
+				assert.False(t, got)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

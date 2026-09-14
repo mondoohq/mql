@@ -97,6 +97,78 @@ func (r *mqlOllama) writeAuthenticationRequired() (bool, error) {
 	return classifyAuthProbe(code, writeOpenStatuses, "write")
 }
 
+// classifyCorsProbe turns the origin an instance allowed a stranger's web page
+// into whether every page is allowed. An answer naming every origin, or naming
+// the unrelated one it was asked about, means any page the user visits can talk
+// to this instance. Anything else is a refusal, but only once something on the
+// instance has been seen handling cross-origin requests at all: without that,
+// the absence of an allowance is silence, and reporting it as a refusal would
+// pass an assertion the instance never earned.
+func classifyCorsProbe(allowOrigin, probeOrigin string, observed bool) (allowsAny bool, known bool) {
+	if allowOrigin == "*" {
+		return true, true
+	}
+	if probeOrigin != "" && strings.EqualFold(allowOrigin, probeOrigin) {
+		return true, true
+	}
+	if observed {
+		return false, true
+	}
+	return false, false
+}
+
+func (r *mqlOllama) corsAllowsAnyOrigin() (bool, error) {
+	obs, err := ollamaConn(r.MqlRuntime).CORS(context.Background())
+	if err != nil {
+		return false, err
+	}
+
+	allowsAny, known := classifyCorsProbe(obs.AllowOrigin, obs.ProbeOrigin, obs.Observed)
+	if !known {
+		r.CorsAllowsAnyOrigin.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return allowsAny, nil
+}
+
+// classifyForeignHostProbe turns the pair of answers into whether the instance
+// refuses a host name it does not answer to. The control is what makes the
+// other answer readable: if the same request under the instance's own name was
+// not served, then whatever turned it away, a gate in front or a server that is
+// not well, would have turned the second one away too, and the refusal would be
+// credited to the host name it had nothing to do with.
+func classifyForeignHostProbe(controlStatus, foreignStatus int) (bool, error) {
+	if controlStatus != http.StatusOK {
+		return false, fmt.Errorf("cannot determine whether an unrelated host name is rejected: the same request under the instance's own host name was answered with status %d", controlStatus)
+	}
+	switch foreignStatus {
+	case http.StatusForbidden:
+		return true, nil
+	case http.StatusOK:
+		return false, nil
+	}
+	return false, fmt.Errorf("cannot determine whether an unrelated host name is rejected: the request was answered with status %d", foreignStatus)
+}
+
+func (r *mqlOllama) dnsRebindingProtected() (bool, error) {
+	conn := ollamaConn(r.MqlRuntime)
+
+	// Ollama applies the host check only to an instance bound to loopback and
+	// lets every host name through on any other address, so on a host we reach
+	// over the network the check is bypassed by design and neither answer would
+	// be a fact about this instance.
+	if !conn.IsLocal() {
+		r.DnsRebindingProtected.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+
+	obs, err := conn.ForeignHostStatus(context.Background())
+	if err != nil {
+		return false, err
+	}
+	return classifyForeignHostProbe(obs.ControlStatus, obs.ForeignStatus)
+}
+
 func (r *mqlOllama) cloudEnabled() (bool, error) {
 	status, err := ollamaConn(r.MqlRuntime).Client().CloudStatusExperimental(context.Background())
 	if err != nil {

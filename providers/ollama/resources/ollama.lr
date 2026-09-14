@@ -59,6 +59,28 @@ ollama @defaults("host version") @root {
   // instance serves. An instance can gate reads and still leave writes open, so
   // this is checked apart from authenticationRequired.
   writeAuthenticationRequired() bool
+  // Whether the API accepts cross-origin requests from any web origin
+  //
+  // Determined by asking the instance, on behalf of a web origin unrelated to
+  // it, which origin it permits. True when the answer permits every origin, or
+  // permits that unrelated one, so any page the user visits can read from and
+  // write to this instance through their browser, whatever isLocal reports.
+  // Ollama permits a fixed set of origins by default, among them file, app and
+  // vscode-webview pages, and widens to every origin when OLLAMA_ORIGINS is set
+  // to `*`. Null when nothing on the instance answers cross-origin requests at
+  // all, which settles the question in neither direction.
+  corsAllowsAnyOrigin() bool
+  // Whether the API rejects requests carrying an unrelated host name
+  //
+  // Determined by asking for the model listing under a host name the instance
+  // does not answer to. True when the instance refuses it, which is what keeps
+  // a web page from reaching a loopback instance by pointing a domain it
+  // controls at 127.0.0.1 and driving the API from the user's own browser.
+  // False means the instance serves whatever host name is claimed, so that path
+  // is open. Null when isLocal is false, because the check applies only to an
+  // instance bound to loopback and says nothing about one reachable over the
+  // network.
+  dnsRebindingProtected() bool
   // Whether the instance may offload inference to Ollama Cloud
   //
   // When enabled, prompts and completions for cloud-hosted models leave the

@@ -136,6 +136,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ollama.writeAuthenticationRequired": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOllama).GetWriteAuthenticationRequired()).ToDataRes(types.Bool)
 	},
+	"ollama.corsAllowsAnyOrigin": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllama).GetCorsAllowsAnyOrigin()).ToDataRes(types.Bool)
+	},
+	"ollama.dnsRebindingProtected": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOllama).GetDnsRebindingProtected()).ToDataRes(types.Bool)
+	},
 	"ollama.cloudEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOllama).GetCloudEnabled()).ToDataRes(types.Bool)
 	},
@@ -360,6 +366,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ollama.writeAuthenticationRequired": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOllama).WriteAuthenticationRequired, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ollama.corsAllowsAnyOrigin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllama).CorsAllowsAnyOrigin, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"ollama.dnsRebindingProtected": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOllama).DnsRebindingProtected, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"ollama.cloudEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -661,6 +675,8 @@ type mqlOllama struct {
 	IsLocal                     plugin.TValue[bool]
 	AuthenticationRequired      plugin.TValue[bool]
 	WriteAuthenticationRequired plugin.TValue[bool]
+	CorsAllowsAnyOrigin         plugin.TValue[bool]
+	DnsRebindingProtected       plugin.TValue[bool]
 	CloudEnabled                plugin.TValue[bool]
 	CloudAccount                plugin.TValue[*mqlOllamaAccount]
 	Models                      plugin.TValue[[]any]
@@ -737,6 +753,18 @@ func (c *mqlOllama) GetAuthenticationRequired() *plugin.TValue[bool] {
 func (c *mqlOllama) GetWriteAuthenticationRequired() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.WriteAuthenticationRequired, func() (bool, error) {
 		return c.writeAuthenticationRequired()
+	})
+}
+
+func (c *mqlOllama) GetCorsAllowsAnyOrigin() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.CorsAllowsAnyOrigin, func() (bool, error) {
+		return c.corsAllowsAnyOrigin()
+	})
+}
+
+func (c *mqlOllama) GetDnsRebindingProtected() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.DnsRebindingProtected, func() (bool, error) {
+		return c.dnsRebindingProtected()
 	})
 }
 
