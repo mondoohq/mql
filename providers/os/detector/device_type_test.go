@@ -410,6 +410,12 @@ func TestDetectDeviceType_ServerDistros(t *testing.T) {
 		{"photon os", "photon", "VMware Photon OS/Linux", []string{"linux", "unix", "os"}},
 		// detect-suse-micro-5.toml
 		{"suse microos", "suse-microos", "SUSE Linux Enterprise Micro 5.1", []string{"suse", "linux", "unix", "os"}},
+		// detect-opensuse-microos.toml. The title carries no "server" keyword
+		// and the desktop spins built on it ship their own ids (aeon,
+		// kalpa-desktop), so the name is what has to answer this.
+		{"opensuse microos", "opensuse-microos", "openSUSE MicroOS", []string{"suse", "linux", "unix", "os"}},
+		// detect-talos.toml. An API-managed Kubernetes host, never a desktop.
+		{"talos", "talos", "Talos (v1.13.9)", []string{"linux", "unix", "os"}},
 		// detect-gardenlinux.toml (no container variant-id on this one)
 		{"gardenlinux", "gardenlinux", "Garden Linux 934.0", []string{"debian", "linux", "unix", "os"}},
 	}
@@ -819,6 +825,8 @@ func TestDetectDeviceType_EnterpriseLinux(t *testing.T) {
 	}{
 		// detect-eurolinux-9.toml
 		{"eurolinux 9", "eurolinux", "EuroLinux 9.1 (Stockholm)", []string{"redhat", "linux", "unix", "os"}},
+		// detect-cloudlinux-9.toml
+		{"cloudlinux 9", "cloudlinux", "CloudLinux 9.6 (Vladimir Lyakhov)", []string{"redhat", "linux", "unix", "os"}},
 		// detect-scientific.toml
 		{"scientific linux", "scientific", "Scientific Linux CERN SLC", []string{"redhat", "linux", "unix", "os"}},
 		// detect-centos-9-stream.toml

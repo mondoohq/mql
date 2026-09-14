@@ -1,0 +1,25 @@
+# openanolis/anolisos:8.8. Anolis ships /etc/redhat-release, which is what the
+# redhat family gates its whole subtree on.
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[files."/etc/os-release"]
+content = """
+NAME="Anolis OS"
+VERSION="8.8"
+ID="anolis"
+ID_LIKE="rhel fedora centos"
+VERSION_ID="8.8"
+PLATFORM_ID="platform:an8"
+PRETTY_NAME="Anolis OS 8.8"
+ANSI_COLOR="0;31"
+HOME_URL="https://openanolis.cn/"
+"""
+
+[files."/etc/redhat-release"]
+content = """
+Anolis OS release 8.8
+"""

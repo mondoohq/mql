@@ -33,7 +33,7 @@ func ResolveSystemUpdateManager(conn shared.Connection) (OperatingSystemUpdateMa
 
 	// TODO: use OS family and select package manager
 	switch pf.Name {
-	case "opensuse", "sles", "opensuse-leap", "opensuse-tumbleweed": // suse family
+	case "opensuse", "sles", "opensuse-leap", "opensuse-tumbleweed", "opensuse-microos": // suse family
 		um = &SuseUpdateManager{conn: conn}
 	case "windows":
 		um = &WindowsUpdateManager{conn: conn}

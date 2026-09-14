@@ -9,6 +9,7 @@ import (
 	"github.com/package-url/packageurl-go"
 	"github.com/stretchr/testify/assert"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/v13/providers/os/detector"
 	"go.mondoo.com/mql/v13/providers/os/resources/purl"
 )
 
@@ -297,6 +298,21 @@ func TestPackageURLString(t *testing.T) {
 		}
 		p := purl.NewPackageURL(platform, purl.TypeRPM, "testpkg", "1.0.0")
 		expected := "pkg:rpm/suse/testpkg@1.0.0?arch=x86_64"
+		assert.Equal(t, expected, p.String())
+	})
+
+	// matches what openSUSE's own build service emits for MicroOS packages:
+	// the namespace collapses to opensuse and the product stays in the distro
+	// qualifier.
+	t.Run("openSUSE MicroOS package", func(t *testing.T) {
+		platform := &inventory.Platform{
+			Name:    "opensuse-microos",
+			Arch:    "x86_64",
+			Version: "20260822",
+			Labels:  map[string]string{detector.LabelDistroID: "opensuse-microos"},
+		}
+		p := purl.NewPackageURL(platform, purl.TypeRPM, "testpkg", "1.0.0")
+		expected := "pkg:rpm/opensuse/testpkg@1.0.0?arch=x86_64&distro=opensuse-microos-20260822"
 		assert.Equal(t, expected, p.String())
 	})
 }

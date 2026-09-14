@@ -1,0 +1,24 @@
+# linuxdeepin/deepin:latest. os-release carries ID=deepin and no ID_LIKE, so
+# the debian resolver never claims it even though /etc/debian_version is here.
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[files."/etc/os-release"]
+content = """
+PRETTY_NAME="Deepin 25"
+NAME="Deepin"
+VERSION_CODENAME=crimson
+ID=deepin
+HOME_URL="https://www.deepin.org/"
+BUG_REPORT_URL="https://bbs.deepin.org"
+VERSION_ID="25"
+VERSION="25"
+"""
+
+[files."/etc/debian_version"]
+content = """
+trixie/sid
+"""

@@ -1,0 +1,28 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "aarch64"
+
+[files."/etc/arch-release"]
+content = ""
+
+[files."/etc/lsb-release"]
+content = """
+DISTRIB_ID=Manjaro-ARM
+DISTRIB_RELEASE=24.03
+DISTRIB_CODENAME=
+DISTRIB_DESCRIPTION="Manjaro ARM Linux"
+"""
+
+[files."/etc/os-release"]
+content = """
+NAME="Manjaro ARM"
+ID="manjaro-arm"
+ID_LIKE="manjaro arch"
+PRETTY_NAME="Manjaro ARM"
+ANSI_COLOR="1;32"
+HOME_URL="https://www.manjaro.org/"
+SUPPORT_URL="https://forum.manjaro.org/c/arm/"
+LOGO=manjarolinux
+"""

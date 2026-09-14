@@ -63,9 +63,11 @@ var containerVariantIDPrefixes = []string{
 // desktopPlatformNames lists platform names (from os-release ID) that are
 // inherently desktop-oriented distributions.
 var desktopPlatformNames = map[string]bool{
+	"deepin":     true,
 	"elementary": true,
 	"linuxmint":  true,
 	"nobara":     true,
+	"openkylin":  true,
 	"pop":        true,
 	"steamos":    true,
 	"zorin":      true,
@@ -77,13 +79,15 @@ var desktopPlatformNames = map[string]bool{
 // are containers or servers. Desktop Alpine users will be detected via the
 // systemd target or session directory fallbacks.
 var serverPlatformNames = map[string]bool{
-	"alpine":       true,
-	"bottlerocket": true,
-	"cos":          true,
-	"flatcar":      true,
-	"gardenlinux":  true,
-	"photon":       true,
-	"suse-microos": true,
+	"alpine":           true,
+	"bottlerocket":     true,
+	"cos":              true,
+	"flatcar":          true,
+	"gardenlinux":      true,
+	"opensuse-microos": true,
+	"photon":           true,
+	"suse-microos":     true,
+	"talos":            true,
 }
 
 // systemdDefaultTargetPaths lists the paths where systemd stores the default

@@ -114,10 +114,17 @@ func traverseFamily(r *PlatformResolver, parents []string) map[string][]string {
 		return res
 	}
 
-	// return child (no family)
-	return map[string][]string{
-		r.Name: parents,
+	// return child (no family), under every name it can emit
+	names := r.Emits
+	if names == nil {
+		names = []string{r.Name}
 	}
+
+	res := map[string][]string{}
+	for _, name := range names {
+		res[name] = parents
+	}
+	return res
 }
 
 func Family(platform string) []string {

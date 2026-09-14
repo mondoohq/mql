@@ -117,7 +117,18 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 		// This is supported in Debian and Ubuntu:
 		// https: // snapcraft.io/docs/distro-support
 		pms = append(pms, &SnapPkgManager{conn: conn, platform: asset.Platform})
-	case asset.Platform.Name == "amazonlinux" || asset.Platform.Name == "photon" || asset.Platform.Name == "wrlinux" || asset.Platform.Name == "bottlerocket" || asset.Platform.Name == "azurelinux":
+	// ALT Linux is rpm based but is not in the redhat family: it ships
+	// /etc/redhat-release and /etc/fedora-release carrying only "ALT Container"
+	// with no distro name, so detection gives it a resolver of its own under
+	// plain linux. Without a case here it matched nothing and packages reported
+	// an error on a system with a populated rpm database.
+	case asset.Platform.Name == "altlinux":
+		fallthrough
+	// opencloudos is rpm based but ships no /etc/redhat-release, so the redhat
+	// family declines it and it resolves as a platform of its own. mariner is
+	// CBL-Mariner 2.x, the name Azure Linux carried before the 3.0 rename; it
+	// is rpm based and resolves as its own platform for the same reason.
+	case asset.Platform.Name == "amazonlinux" || asset.Platform.Name == "photon" || asset.Platform.Name == "wrlinux" || asset.Platform.Name == "bottlerocket" || asset.Platform.Name == "azurelinux" || asset.Platform.Name == "mariner" || asset.Platform.Name == "opencloudos":
 		fallthrough
 	case asset.Platform.IsFamily("redhat") ||
 		asset.Platform.IsFamily("euler") ||

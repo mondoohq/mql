@@ -1,0 +1,26 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "6.16.3-1-default"
+
+[files."/etc/os-release"]
+content = """
+NAME="openSUSE MicroOS"
+# VERSION="20260822"
+ID="opensuse-microos"
+ID_LIKE="suse opensuse opensuse-tumbleweed microos sl-micro"
+VERSION_ID="20260822"
+PRETTY_NAME="openSUSE MicroOS"
+SYSEXT_LEVEL="glibc-2.43"
+ANSI_COLOR="0;32"
+CPE_NAME="cpe:/o:opensuse:microos:20260822"
+BUG_REPORT_URL="https://bugzilla.opensuse.org"
+SUPPORT_URL="https://bugs.opensuse.org"
+HOME_URL="https://www.opensuse.org/"
+DOCUMENTATION_URL="https://en.opensuse.org/Portal:MicroOS"
+LOGO="distributor-logo-MicroOS"
+"""
