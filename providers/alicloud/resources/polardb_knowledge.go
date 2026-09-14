@@ -16,11 +16,17 @@ import (
 	"go.mondoo.com/mql/providers/alicloud/connection"
 )
 
-// polardbKnowledgeMaxPages caps a knowledge-base listing walk. Every other stop
+// polardbKnowledgeMaxPages caps a knowledge listing walk. Every other stop
 // condition depends on the server honoring PageNumber; this one does not, so a
 // server that answers every page with the same full batch stops here instead of
 // repeating until the scan is killed.
 const polardbKnowledgeMaxPages = 500
+
+// polardbSyncLinkPageSize is the page size the synchronization link walk asks
+// for. DescribeKBSyncLinks accepts 10, 20, 30, 50, 100, 200 or 500 and defaults
+// to 30, so asking for the value below trades a smaller number of calls for the
+// same set of links.
+const polardbSyncLinkPageSize = int32(100)
 
 // mqlAlicloudPolardbKnowledgeSpaceInternal caches the values the space needs to
 // list its knowledge bases and to resolve its typed cluster and bucket
@@ -426,6 +432,46 @@ func (r *mqlAlicloudPolardbKnowledgeBase) knowledgeSpace() (*mqlAlicloudPolardbK
 	return res.(*mqlAlicloudPolardbKnowledgeSpace), nil
 }
 
+// polardbSyncLinkPageFunc reads one page of synchronization links. The walk is
+// written against this rather than against the client so that the paging can be
+// exercised without a PolarDB endpoint.
+type polardbSyncLinkPageFunc func(pageNumber, pageSize int32) ([]*polardb.DescribeKBSyncLinksResponseBodyItems, error)
+
+// collectPolardbSyncLinks walks every page of DescribeKBSyncLinks and returns
+// the links it gathered.
+//
+// The endpoint is paginated and answers with the first page of 30 when no page
+// is asked for, so a knowledge base carrying more feeds than that reported only
+// the first 30 of them. A page shorter than the one requested ends the walk, and
+// polardbKnowledgeMaxPages ends a walk whose server keeps answering with a full
+// page whatever PageNumber it is given. An error on any page fails the walk:
+// returning the pages gathered so far would report fewer feeds than exist, and a
+// shorter list satisfies every assertion made about it.
+func collectPolardbSyncLinks(pageSize int32, fetch polardbSyncLinkPageFunc) ([]*polardb.DescribeKBSyncLinksResponseBodyItems, error) {
+	res := []*polardb.DescribeKBSyncLinksResponseBodyItems{}
+	pageNumber := int32(1)
+	pages := 0
+	for {
+		items, err := fetch(pageNumber, pageSize)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, l := range items {
+			if l == nil {
+				continue
+			}
+			res = append(res, l)
+		}
+
+		pages++
+		if len(items) < int(pageSize) || pages >= polardbKnowledgeMaxPages {
+			return res, nil
+		}
+		pageNumber++
+	}
+}
+
 // syncLinks lists the links that pull content into the knowledge base from an
 // external messaging platform.
 func (r *mqlAlicloudPolardbKnowledgeBase) syncLinks() ([]any, error) {
@@ -435,22 +481,30 @@ func (r *mqlAlicloudPolardbKnowledgeBase) syncLinks() ([]any, error) {
 		return nil, err
 	}
 
-	resp, err := client.DescribeKBSyncLinks(&polardb.DescribeKBSyncLinksRequest{
-		RegionId:        tea.String(r.region),
-		KnowledgeBaseId: tea.String(r.knowledgeBaseId),
-	})
+	links, err := collectPolardbSyncLinks(polardbSyncLinkPageSize,
+		func(pageNumber, pageSize int32) ([]*polardb.DescribeKBSyncLinksResponseBodyItems, error) {
+			pn := pageNumber
+			ps := pageSize
+			resp, err := client.DescribeKBSyncLinks(&polardb.DescribeKBSyncLinksRequest{
+				RegionId:        tea.String(r.region),
+				KnowledgeBaseId: tea.String(r.knowledgeBaseId),
+				PageNumber:      &pn,
+				PageSize:        &ps,
+			})
+			if err != nil {
+				return nil, err
+			}
+			if resp == nil || resp.Body == nil {
+				return nil, nil
+			}
+			return resp.Body.Items, nil
+		})
 	if err != nil {
 		return nil, err
 	}
 
 	res := []any{}
-	if resp == nil || resp.Body == nil {
-		return res, nil
-	}
-	for _, l := range resp.Body.Items {
-		if l == nil {
-			continue
-		}
+	for _, l := range links {
 		link, err := newPolardbKnowledgeBaseSyncLink(r.MqlRuntime, r.region, r.knowledgeBaseId, l)
 		if err != nil {
 			return nil, err
