@@ -148,6 +148,85 @@ func TestDotNetBundleHost(t *testing.T) {
 	assert.Equal(t, "8.0.30", fx[0].Version)
 }
 
+// TestDotNetBundleHostArch is the other half of the duplicate-findings guard:
+// the two entries have to agree on the ARCHITECTURE too, because the
+// architecture reaches the PURL.
+//
+// The bundle installer is a 32-bit process, so on an ARM64 host its entry is
+// registered under Wow6432Node and the registry path labels it x86 -- while the
+// MSI entry for the very same runtime is labelled arm64. See
+// normalizeDotNetInstallerArch and https://github.com/mondoohq/mql/issues/10636.
+func TestDotNetBundleHostArch(t *testing.T) {
+	pkgs, err := ParseWindowsAppPackages(winArm64Platform(), strings.NewReader(bundleHost))
+	require.NoError(t, err)
+
+	runtimes := pkgsNamed(pkgs, "Microsoft .NET Runtime - 8.0.30 (arm64)")
+	require.Len(t, runtimes, 2)
+	for _, p := range runtimes {
+		assert.Equal(t, "arm64", p.Arch,
+			"the DisplayName says arm64; the Wow6432Node path must not override it with x86")
+		assert.Contains(t, p.PUrl, "arch=arm64")
+	}
+}
+
+// TestNormalizeDotNetInstallerArch covers the repair directly, including the
+// cases it must leave alone. Promoting an x86 label is only ever right when the
+// DisplayName itself declares a 64-bit build of a .NET installer.
+func TestNormalizeDotNetInstallerArch(t *testing.T) {
+	for _, tc := range []struct {
+		desc         string
+		name         string
+		arch         string
+		platformArch string
+		want         string
+	}{
+		{
+			desc: "arm64 bundle entry mislabelled by Wow6432Node",
+			name: "Microsoft .NET Runtime - 8.0.30 (arm64)", arch: "x86", platformArch: "arm64", want: "arm64",
+		},
+		{
+			desc: "x64 bundle entry mislabelled by Wow6432Node",
+			name: "Microsoft .NET Runtime - 8.0.30 (x64)", arch: "x86", platformArch: "x86_64", want: "x86_64",
+		},
+		{
+			desc: "desktop runtime, the other DisplayName shape",
+			name: "Microsoft Windows Desktop Runtime - 8.0.30 (x64)", arch: "x86", platformArch: "x86_64", want: "x86_64",
+		},
+		{
+			desc: "a genuine 32-bit .NET runtime keeps its x86 label",
+			name: "Microsoft .NET Runtime - 8.0.30 (x86)", arch: "x86", platformArch: "x86_64", want: "x86",
+		},
+		{
+			desc: "an entry already labelled 64-bit is never touched",
+			name: "Microsoft .NET Runtime - 8.0.30 (arm64)", arch: "arm64", platformArch: "arm64", want: "arm64",
+		},
+		{
+			desc: "a non-.NET app is not covered, however it spells its arch",
+			name: "Acme Backup Agent (x64)", arch: "x86", platformArch: "x86_64", want: "x86",
+		},
+		{
+			desc: "a .NET entry with no arch in its DisplayName is left alone",
+			name: "Microsoft .NET Runtime - 8.0.30", arch: "x86", platformArch: "x86_64", want: "x86",
+		},
+		{
+			desc: "an arch in the MIDDLE of the name is not the build target",
+			name: "Microsoft .NET Runtime - 8.0.30 (x64) Language Pack", arch: "x86", platformArch: "x86_64", want: "x86",
+		},
+		{
+			desc: "a 32-bit host has no 64-bit build to promote to",
+			name: "Microsoft .NET Runtime - 8.0.30 (x64)", arch: "x86", platformArch: "x86", want: "x86",
+		},
+		{
+			desc: "an unknown platform arch is never invented",
+			name: "Microsoft .NET Runtime - 8.0.30 (arm64)", arch: "x86", platformArch: "", want: "x86",
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			assert.Equal(t, tc.want, normalizeDotNetInstallerArch(tc.name, tc.arch, tc.platformArch))
+		})
+	}
+}
+
 // TestDotNetSideBySideReleases covers the shape a real estate is actually in:
 // several majors installed at once, a stale left-behind framework beside its
 // current sibling, and the pre-rebrand spelling. The (DisplayName,

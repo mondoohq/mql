@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/package-url/packageurl-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
@@ -120,6 +121,10 @@ func TestWindowsAppxPackagesParser(t *testing.T) {
 		Family:  []string{"windows"},
 	}
 
+	// The purls below carry arch=neutral, not the host's x86: an
+	// architecture-neutral appx has no architecture of its own, and reporting
+	// the host's made Package.Arch and the purl disagree about one package
+	// (https://github.com/mondoohq/mql/issues/10636).
 	pkgs, err := ParseWindowsAppxPackages(pf, c.Stdout)
 	require.NoError(t, err)
 	require.Equal(t, 29, len(pkgs), "detected the right amount of packages")
@@ -130,7 +135,7 @@ func TestWindowsAppxPackagesParser(t *testing.T) {
 		Version: "1.11.5.17763",
 		Arch:    "neutral",
 		Format:  "windows/appx",
-		PUrl:    "pkg:appx/windows/Microsoft.Windows.Cortana@1.11.5.17763?arch=x86",
+		PUrl:    "pkg:appx/windows/Microsoft.Windows.Cortana@1.11.5.17763?arch=neutral",
 		// TODO: this is a bug in the CPE generation, we need to extract the publisher from the package
 		CPEs: []string{
 			"cpe:2.3:a:cn\\=microsoft_corporation\\,_o\\=microsoft_corporation\\,_l\\=redmond\\,_s\\=washington\\,_c\\=us:microsoft.windows.cortana:1.11.5.17763:*:*:*:*:*:*:*",
@@ -144,7 +149,7 @@ func TestWindowsAppxPackagesParser(t *testing.T) {
 		Version: "112.0.1722.39",
 		Arch:    "neutral",
 		Format:  "windows/appx",
-		PUrl:    "pkg:appx/windows/Microsoft.MicrosoftEdge.Stable@112.0.1722.39?arch=x86",
+		PUrl:    "pkg:appx/windows/Microsoft.MicrosoftEdge.Stable@112.0.1722.39?arch=neutral",
 		// TODO: this is a bug in the CPE generation, we need to extract the publisher from the package
 		CPEs: []string{
 			"cpe:2.3:a:cn\\=microsoft_corporation\\,_o\\=microsoft_corporation\\,_l\\=redmond\\,_s\\=washington\\,_c\\=us:microsoft.microsoftedge.stable:112.0.1722.39:*:*:*:*:*:*:*",
@@ -1013,6 +1018,73 @@ func TestCreatePackage(t *testing.T) {
 		assert.Equal(t, "SomeApp", roundtrip["name"])
 		assert.Equal(t, "Acme Corp", roundtrip["vendor"])
 	})
+}
+
+// TestCreatePackagePurlCarriesThePackageArch pins that a Windows package's purl
+// reports the architecture of the PACKAGE, not of the host it was found on.
+//
+// Regression test for https://github.com/mondoohq/mql/issues/10636 (2). The
+// purl was built without the per-package arch, so NewPackageURL fell back to
+// platform.Arch: a 32-bit application on a 64-bit host was recorded as
+// Arch: x86 while its purl claimed ?arch=x86_64. The purl is the field that
+// reaches vulnerability matching, so the wrong one was the one that counted.
+func TestCreatePackagePurlCarriesThePackageArch(t *testing.T) {
+	// 64-bit host, as every modern Windows machine is.
+	platform := &inventory.Platform{
+		Name:    "windows",
+		Version: "10.0.19045",
+		Arch:    "x86_64",
+		Labels:  map[string]string{"distro-id": "windows"},
+	}
+
+	t.Run("32-bit app on a 64-bit host", func(t *testing.T) {
+		pkg := createPackage("Legacy Tool", "1.2.3", "windows/app", "x86", "Acme", "", platform)
+		require.NotNil(t, pkg)
+
+		assert.Equal(t, "x86", pkg.Arch)
+		assert.Contains(t, pkg.PUrl, "arch=x86",
+			"the purl must carry the package's own arch")
+		assert.NotContains(t, pkg.PUrl, "arch=x86_64",
+			"the purl must not fall back to the host arch when the package has its own")
+	})
+
+	t.Run("appx package with its own arch", func(t *testing.T) {
+		pkg := createPackage("Some.Appx", "2.0.0.0", "windows/appx", "arm64", "Acme", "", platform)
+		require.NotNil(t, pkg)
+
+		assert.True(t, strings.HasPrefix(pkg.PUrl, "pkg:appx/"), "got %q", pkg.PUrl)
+		assert.Equal(t, pkg.Arch, purlQualifier(t, pkg.PUrl, "arch"),
+			"Package.Arch and the purl arch qualifier must agree")
+	})
+
+	t.Run("64-bit app on a 64-bit host", func(t *testing.T) {
+		pkg := createPackage("Modern Tool", "1.2.3", "windows/app", "x86_64", "Acme", "", platform)
+		require.NotNil(t, pkg)
+
+		assert.Equal(t, "x86_64", purlQualifier(t, pkg.PUrl, "arch"))
+	})
+
+	t.Run("unknown package arch falls back to the host arch", func(t *testing.T) {
+		// An empty arch means the registry path told us nothing. The host arch
+		// is then the best available guess, and dropping the qualifier entirely
+		// would lose information a match can use.
+		pkg := createPackage("Mystery Tool", "1.2.3", "windows/app", "", "Acme", "", platform)
+		require.NotNil(t, pkg)
+
+		assert.Equal(t, "x86_64", purlQualifier(t, pkg.PUrl, "arch"),
+			"an unknown package arch must still fall back to the platform arch")
+	})
+}
+
+// purlQualifier returns the value of one qualifier of a purl, failing the test
+// if the purl does not parse.
+func purlQualifier(t *testing.T, rawPurl, key string) string {
+	t.Helper()
+	parsed, err := packageurl.FromString(rawPurl)
+	require.NoError(t, err, "purl %q must parse", rawPurl)
+	value, ok := parsed.Qualifiers.Map()[key]
+	require.True(t, ok, "purl %q must carry a %q qualifier", rawPurl, key)
+	return value
 }
 
 // TestHotFixesToPackages_SanitizesFields pins the analogous fix for the
