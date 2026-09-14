@@ -87,13 +87,15 @@ func (ccx *CycloneDX) convertToCycloneDx(bom *Sbom) (*cyclonedx.BOM, error) {
 
 		osRef := "os:" + platform.GetName()
 		emitted[osRef] = true
-		components = append(components, cyclonedx.Component{
+		osComponent := cyclonedx.Component{
 			BOMRef:  osRef,
 			Type:    cyclonedx.ComponentTypeOS,
 			Name:    platform.GetName(),
 			Version: platform.GetVersion(),
 			CPE:     cpe,
-		})
+		}
+		osComponent.Properties = platformProperties(platform)
+		components = append(components, osComponent)
 	}
 
 	// add os packages as components
@@ -182,6 +184,7 @@ func (ccx *CycloneDX) convertToCycloneDx(bom *Sbom) (*cyclonedx.BOM, error) {
 		if pkg.Scope == PackageScopeDev {
 			bomPkg.Scope = cyclonedx.ScopeExcluded
 		}
+		bomPkg.Properties = packageProperties(pkg)
 		if len(pkg.Hashes) > 0 {
 			hashes := make([]cyclonedx.Hash, 0, len(pkg.Hashes))
 			for _, h := range pkg.Hashes {
@@ -367,14 +370,20 @@ func (ccx *CycloneDX) convertCycloneDxToSbom(bom *cyclonedx.BOM) (*Sbom, error) 
 			sbom.Asset.Platform.Name = component.Name
 			sbom.Asset.Platform.Version = component.Version
 			sbom.Asset.Platform.Title = component.Description
+			// familyMap is the fallback for documents from other tools; one we
+			// wrote carries the real values in properties.
 			sbom.Asset.Platform.Family = familyMap[strings.ToLower(component.Name)]
 			if len(component.CPE) > 0 {
 				sbom.Asset.Platform.Cpes = []string{component.CPE}
 			}
+			applyPlatformProperties(sbom.Asset.Platform, component.Properties)
+			applyPackageProperties(pkg, component.Properties)
 			sbom.Packages = append(sbom.Packages, pkg)
 		case cyclonedx.ComponentTypeLibrary:
+			applyPackageProperties(pkg, component.Properties)
 			sbom.Packages = append(sbom.Packages, pkg)
 		case cyclonedx.ComponentTypeApplication:
+			applyPackageProperties(pkg, component.Properties)
 			sbom.Packages = append(sbom.Packages, pkg)
 		}
 	}
