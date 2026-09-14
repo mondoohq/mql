@@ -259,6 +259,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"vllm.server.storedResponsesExposed": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVllmServer).GetStoredResponsesExposed()).ToDataRes(types.Bool)
 	},
+	"vllm.server.weightUpdateRoutesExposed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmServer).GetWeightUpdateRoutesExposed()).ToDataRes(types.Bool)
+	},
 	"vllm.serverInfo.exposed": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVllmServerInfo).GetExposed()).ToDataRes(types.Bool)
 	},
@@ -411,6 +414,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"vllm.metrics.exposedLoraAdapters": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVllmMetrics).GetExposedLoraAdapters()).ToDataRes(types.Array(types.String))
+	},
+	"vllm.metrics.cacheConfigExposed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmMetrics).GetCacheConfigExposed()).ToDataRes(types.Bool)
+	},
+	"vllm.metrics.exposedCacheConfig": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlVllmMetrics).GetExposedCacheConfig()).ToDataRes(types.Map(types.String, types.String))
 	},
 }
 
@@ -606,6 +615,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"vllm.server.storedResponsesExposed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlVllmServer).StoredResponsesExposed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.server.weightUpdateRoutesExposed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmServer).WeightUpdateRoutesExposed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"vllm.serverInfo.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -826,6 +839,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"vllm.metrics.exposedLoraAdapters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlVllmMetrics).ExposedLoraAdapters, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"vllm.metrics.cacheConfigExposed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmMetrics).CacheConfigExposed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"vllm.metrics.exposedCacheConfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlVllmMetrics).ExposedCacheConfig, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
 }
@@ -1212,6 +1233,7 @@ type mqlVllmServer struct {
 	ApiKeyRequired             plugin.TValue[bool]
 	RuntimeLoraUpdatingEnabled plugin.TValue[bool]
 	StoredResponsesExposed     plugin.TValue[bool]
+	WeightUpdateRoutesExposed  plugin.TValue[bool]
 }
 
 // createVllmServer creates a new instance of this resource
@@ -1350,6 +1372,12 @@ func (c *mqlVllmServer) GetRuntimeLoraUpdatingEnabled() *plugin.TValue[bool] {
 func (c *mqlVllmServer) GetStoredResponsesExposed() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.StoredResponsesExposed, func() (bool, error) {
 		return c.storedResponsesExposed()
+	})
+}
+
+func (c *mqlVllmServer) GetWeightUpdateRoutesExposed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.WeightUpdateRoutesExposed, func() (bool, error) {
+		return c.weightUpdateRoutesExposed()
 	})
 }
 
@@ -1813,6 +1841,8 @@ type mqlVllmMetrics struct {
 	LoadTrackingVisible plugin.TValue[bool]
 	ExposedModelNames   plugin.TValue[[]any]
 	ExposedLoraAdapters plugin.TValue[[]any]
+	CacheConfigExposed  plugin.TValue[bool]
+	ExposedCacheConfig  plugin.TValue[map[string]any]
 }
 
 // createVllmMetrics creates a new instance of this resource
@@ -1879,5 +1909,17 @@ func (c *mqlVllmMetrics) GetExposedModelNames() *plugin.TValue[[]any] {
 func (c *mqlVllmMetrics) GetExposedLoraAdapters() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.ExposedLoraAdapters, func() ([]any, error) {
 		return c.exposedLoraAdapters()
+	})
+}
+
+func (c *mqlVllmMetrics) GetCacheConfigExposed() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.CacheConfigExposed, func() (bool, error) {
+		return c.cacheConfigExposed()
+	})
+}
+
+func (c *mqlVllmMetrics) GetExposedCacheConfig() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.ExposedCacheConfig, func() (map[string]any, error) {
+		return c.exposedCacheConfig()
 	})
 }

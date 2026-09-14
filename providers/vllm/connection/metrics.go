@@ -45,8 +45,13 @@ type MetricsSnapshot struct {
 	// CacheConfigExposed reports whether the engine-configuration info series
 	// was present in the scrape.
 	CacheConfigExposed bool
-	ModelNames         []string
-	LoraAdapters       []string
+	// CacheConfig is the label set carried on the engine-configuration info
+	// series, keyed by label name. A scrape that answered but carried no such
+	// series leaves it empty, which is a different answer from a scrape that
+	// never happened.
+	CacheConfig  map[string]string
+	ModelNames   []string
+	LoraAdapters []string
 }
 
 // MetricsSnapshot scrapes /metrics once per connection. The scrape is
@@ -85,7 +90,7 @@ func (c *VllmConnection) MetricsSnapshot(ctx context.Context) (*MetricsSnapshot,
 // ParseMetrics harvests the identifying labels out of a Prometheus text
 // exposition body. It reads label sets only; no sample value is retained.
 func ParseMetrics(raw []byte) *MetricsSnapshot {
-	snapshot := &MetricsSnapshot{Fetched: true}
+	snapshot := &MetricsSnapshot{Fetched: true, CacheConfig: map[string]string{}}
 
 	models := map[string]struct{}{}
 	adapters := map[string]struct{}{}
@@ -103,6 +108,12 @@ func ParseMetrics(raw []byte) *MetricsSnapshot {
 		}
 		if name == cacheConfigMetricName {
 			snapshot.CacheConfigExposed = true
+			// The engine cache settings travel as the labels of this series.
+			// Only its labels are harvested: a label read off any other series
+			// would report a value that is not part of the cache configuration.
+			for key, value := range labels {
+				snapshot.CacheConfig[key] = value
+			}
 		}
 		if model := strings.TrimSpace(labels[labelModelName]); model != "" {
 			models[model] = struct{}{}

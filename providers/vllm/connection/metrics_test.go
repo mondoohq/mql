@@ -176,3 +176,64 @@ func TestMetricsSnapshotRefusedScrapeIsNotFetched(t *testing.T) {
 		}
 	}
 }
+
+// The cache configuration series carries the engine settings as its labels,
+// and those labels are the only thing harvested from it.
+func TestParseMetricsHarvestsCacheConfigLabels(t *testing.T) {
+	snapshot := ParseMetrics([]byte(metricsBody))
+
+	want := map[string]string{
+		"block_size":             "16",
+		"engine":                 "0",
+		"enable_prefix_caching":  "True",
+		"gpu_memory_utilization": "0.9",
+	}
+	if len(snapshot.CacheConfig) != len(want) {
+		t.Fatalf("cacheConfig got %v want %v", snapshot.CacheConfig, want)
+	}
+	for key, value := range want {
+		if got := snapshot.CacheConfig[key]; got != value {
+			t.Fatalf("cacheConfig[%q] got %q want %q", key, got, value)
+		}
+	}
+
+	// model_name rides on the request-count series, not on the configuration
+	// one. Harvesting labels off every vLLM series would pull it in here.
+	if _, ok := snapshot.CacheConfig["model_name"]; ok {
+		t.Fatal("cacheConfig carries a label from another series")
+	}
+	// No sample value is ever retained, so the series value must not appear.
+	for key, value := range snapshot.CacheConfig {
+		if value == "1.0" {
+			t.Fatalf("cacheConfig[%q] carries the sample value", key)
+		}
+	}
+}
+
+// A scrape that answered but carried no configuration series is a real answer:
+// nothing is disclosed. It must render as an empty map, never as null, and the
+// boolean must be false rather than unknown.
+func TestParseMetricsWithoutCacheConfigSeries(t *testing.T) {
+	snapshot := ParseMetrics([]byte("vllm:num_requests_running{model_name=\"m\"} 2.0\n"))
+	if snapshot.CacheConfigExposed {
+		t.Fatal("cacheConfigExposed is true without the configuration series")
+	}
+	if snapshot.CacheConfig == nil {
+		t.Fatal("cacheConfig is null on a scrape that answered")
+	}
+	if len(snapshot.CacheConfig) != 0 {
+		t.Fatalf("cacheConfig got %v want empty", snapshot.CacheConfig)
+	}
+}
+
+// A configuration series emitted by something other than vLLM is not vLLM's
+// engine configuration, and the metric-name prefix is what keeps it out.
+func TestParseMetricsIgnoresForeignCacheConfigSeries(t *testing.T) {
+	snapshot := ParseMetrics([]byte("other:cache_config_info{block_size=\"32\"} 1.0\n"))
+	if snapshot.CacheConfigExposed {
+		t.Fatal("cacheConfigExposed is true for a series vLLM did not emit")
+	}
+	if len(snapshot.CacheConfig) != 0 {
+		t.Fatalf("cacheConfig got %v want empty", snapshot.CacheConfig)
+	}
+}

@@ -104,3 +104,41 @@ func TestStringListFieldSeparatesUnreadFromEmpty(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+// A name/value set that was never read renders as null, and one that was read
+// and carried nothing renders as an empty map. Collapsing the two would report
+// "the engine discloses no cache settings" for a server nobody could scrape.
+func TestStringMapFieldSeparatesUnreadFromEmpty(t *testing.T) {
+	unread := plugin.TValue[map[string]any]{}
+	got, err := stringMapField(&unread, nil)
+	if err != nil || got != nil {
+		t.Fatalf("got (%v,%v), want (nil,nil)", got, err)
+	}
+	if !isNull(unread.State) {
+		t.Fatalf("state got %v, want resolved-and-null", unread.State)
+	}
+
+	empty := plugin.TValue[map[string]any]{}
+	got, err = stringMapField(&empty, map[string]string{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil || len(got) != 0 {
+		t.Fatalf("got %v, want an empty map", got)
+	}
+	if isNull(empty.State) {
+		t.Fatal("a scrape that answered must not render as null")
+	}
+
+	filled := plugin.TValue[map[string]any]{}
+	got, err = stringMapField(&filled, map[string]string{"block_size": "16"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got["block_size"] != "16" {
+		t.Fatalf("got %v, want block_size 16", got)
+	}
+	if isNull(filled.State) {
+		t.Fatal("a reported value must not render as null")
+	}
+}

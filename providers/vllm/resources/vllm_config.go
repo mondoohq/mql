@@ -60,6 +60,21 @@ func stringListField(field *plugin.TValue[[]any], values []string) ([]any, error
 	return out, nil
 }
 
+// stringMapField renders a name/value set. A nil map means the server was never
+// read, so the field resolves to null; an empty map means the server was read
+// and carried nothing, which is a different answer.
+func stringMapField(field *plugin.TValue[map[string]any], values map[string]string) (map[string]any, error) {
+	if values == nil {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	out := make(map[string]any, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out, nil
+}
+
 func dictField(field *plugin.TValue[any], value map[string]any) (any, error) {
 	if value == nil {
 		field.State = plugin.StateIsSet | plugin.StateIsNull

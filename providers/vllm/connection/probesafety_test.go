@@ -18,12 +18,22 @@ import (
 // offloads the engine, /pause aborts every in-flight request, /abort_requests
 // with an empty body aborts everything the engine is tracking,
 // /reset_prefix_cache drops the cache, the LoRA routes swap the served
-// adapters, and the responses cancel route cancels a caller's response.
+// adapters, and the responses cancel route cancels a caller's response. The
+// weight-transfer routes are the worst of them: /update_weights replaces the
+// weights the engine is serving, so a probe that used the documented POST
+// would swap the model out from under a production server.
 var mutatingRoutes = []string{
 	"/pause",
 	"/resume",
 	"/abort_requests",
 	"/scale_elastic_ep",
+	"/fault_tolerance/apply",
+	"/init_weight_transfer_engine",
+	"/start_weight_update",
+	"/start_draft_weight_update",
+	"/update_weights",
+	"/finish_weight_update",
+	"/update_weight_version",
 	"/reset_prefix_cache",
 	"/reset_mm_cache",
 	"/reset_encoder_cache",
@@ -264,5 +274,181 @@ func TestNoStateChangingSpecCarriesABody(t *testing.T) {
 		if spec.StateChanging && spec.Body != "" {
 			t.Fatalf("%s %s carries a body", spec.Method, spec.Path)
 		}
+	}
+}
+
+// The weight-replacement roll-up must be backed by the probe table, and every
+// path it names must be one the probe never reaches with its documented
+// method. A path added to the list but not to the table reports a silent
+// "false" for a route that was never looked at.
+func TestWeightUpdatePathsAreAllStateChangingSpecs(t *testing.T) {
+	specs := DefaultEndpointSpecs()
+	for _, path := range WeightUpdatePaths {
+		idx := slices.IndexFunc(specs, func(s EndpointSpec) bool { return s.Path == path })
+		if idx < 0 {
+			t.Fatalf("%s is named by WeightUpdatePaths but is not probed", path)
+		}
+		spec := specs[idx]
+		if spec.Category != "development" {
+			t.Fatalf("%s category got %q want development, so it feeds devEndpointsExposed", path, spec.Category)
+		}
+		if !spec.StateChanging || spec.WireMethod() != http.MethodGet {
+			t.Fatalf("%s is probed with %s; a weight-replacement route must be probed with GET only", path, spec.WireMethod())
+		}
+	}
+	if len(WeightUpdatePaths) != 6 {
+		t.Fatalf("WeightUpdatePaths has %d entries; vLLM registers six weight-replacement routes", len(WeightUpdatePaths))
+	}
+}
+
+// The read-only members of the same routers report state and nothing else, so
+// they are reached with the method they document. Probing them with a rejected
+// method would answer "the route exists" where the real answer is available.
+func TestReadOnlyControlRoutesAreProbedForReal(t *testing.T) {
+	readOnly := []string{
+		"/weight_info",
+		"/is_paused",
+		"/get_world_size",
+		"/fault_tolerance/status",
+		"/is_scaling_elastic_ep",
+	}
+	specs := DefaultEndpointSpecs()
+	for _, path := range readOnly {
+		idx := slices.IndexFunc(specs, func(s EndpointSpec) bool { return s.Path == path })
+		if idx < 0 {
+			t.Fatalf("missing probe for %s", path)
+		}
+		spec := specs[idx]
+		if spec.StateChanging {
+			t.Fatalf("%s changes nothing but is marked state-changing", path)
+		}
+		if spec.WireMethod() != spec.Method {
+			t.Fatalf("%s is probed with %s instead of its documented %s", path, spec.WireMethod(), spec.Method)
+		}
+	}
+}
+
+// No probe of a weight-replacement route may ever put POST on the wire, with
+// or without an API key configured. This is the assertion the whole change
+// rests on: getting it wrong replaces a served model's weights during a scan.
+func TestWeightUpdateRoutesAreNeverProbedWithPost(t *testing.T) {
+	for _, apiKey := range []string{"", "probe-token"} {
+		var mu sync.Mutex
+		seen := map[string][]string{}
+		bodies := map[string]int{}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			mu.Lock()
+			seen[r.URL.Path] = append(seen[r.URL.Path], r.Method)
+			bodies[r.URL.Path] += len(body)
+			mu.Unlock()
+			if slices.Contains(WeightUpdatePaths, r.URL.Path) {
+				// A registered FastAPI POST route reached with GET.
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			w.WriteHeader(http.StatusNotFound)
+		}))
+
+		conn := &VllmConnection{client: server.Client(), baseURL: server.URL, apiKey: apiKey}
+		observations, err := conn.EndpointObservations(context.Background())
+		if err != nil {
+			server.Close()
+			t.Fatalf("unexpected error: %v", err)
+		}
+		server.Close()
+
+		for _, path := range WeightUpdatePaths {
+			mu.Lock()
+			methods := slices.Clone(seen[path])
+			bodyLen := bodies[path]
+			mu.Unlock()
+
+			if len(methods) == 0 {
+				t.Fatalf("apiKey=%q: %s was never probed", apiKey, path)
+			}
+			for _, method := range methods {
+				if method != http.MethodGet {
+					t.Fatalf("apiKey=%q: %s was probed with %s, which replaces the served weights", apiKey, path, method)
+				}
+			}
+			if bodyLen != 0 {
+				t.Fatalf("apiKey=%q: %s was probed with a %d byte body", apiKey, path, bodyLen)
+			}
+		}
+
+		// A registered route answering the rejected method is the exposure.
+		exposed, known := AnyAnonymousAccessible(observations, WeightUpdatePaths...)
+		if !exposed || !known {
+			t.Fatalf("apiKey=%q: weightUpdateRoutesExposed got (%v,%v) want (true,true)", apiKey, exposed, known)
+		}
+	}
+}
+
+// The four answers a weight-update probe can produce, and the verdict each one
+// must yield. The unknown case is the one that must stay null: a server that
+// never answered has not been shown to be safe.
+func TestWeightUpdateExposureVerdicts(t *testing.T) {
+	observationsWith := func(code *int) []EndpointObservation {
+		out := make([]EndpointObservation, 0, len(WeightUpdatePaths))
+		for _, path := range WeightUpdatePaths {
+			out = append(out, EndpointObservation{
+				Spec:                EndpointSpec{Path: path, Category: "development"},
+				AnonymousStatusCode: code,
+			})
+		}
+		return out
+	}
+
+	tests := []struct {
+		name    string
+		code    *int
+		exposed bool
+		known   bool
+	}{
+		{name: "registered route rejects the method", code: intPtr(http.StatusMethodNotAllowed), exposed: true, known: true},
+		{name: "route absent", code: intPtr(http.StatusNotFound), exposed: false, known: true},
+		{name: "guarded by an auth layer", code: intPtr(http.StatusUnauthorized), exposed: false, known: true},
+		{name: "never answered", code: nil, exposed: false, known: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			exposed, known := AnyAnonymousAccessible(observationsWith(tt.code), WeightUpdatePaths...)
+			if exposed != tt.exposed || known != tt.known {
+				t.Fatalf("got (%v,%v) want (%v,%v)", exposed, known, tt.exposed, tt.known)
+			}
+		})
+	}
+
+	// One open route among five closed ones is still an open route.
+	mixed := observationsWith(intPtr(http.StatusNotFound))
+	mixed[3].AnonymousStatusCode = intPtr(http.StatusMethodNotAllowed)
+	if exposed, known := AnyAnonymousAccessible(mixed, WeightUpdatePaths...); !exposed || !known {
+		t.Fatalf("mixed got (%v,%v) want (true,true)", exposed, known)
+	}
+}
+
+// A proxy that blocks /docs and forwards /redoc publishes the same API
+// surface, so the documentation verdict is read across both routes.
+func TestDocumentationExposureCoversRedoc(t *testing.T) {
+	if !slices.Contains(DocumentationPaths, "/redoc") {
+		t.Fatal("/redoc is not part of the documentation exposure verdict")
+	}
+	observations := []EndpointObservation{
+		{Spec: EndpointSpec{Path: "/docs"}, AnonymousStatusCode: intPtr(http.StatusNotFound)},
+		{Spec: EndpointSpec{Path: "/redoc"}, AnonymousStatusCode: intPtr(http.StatusOK)},
+	}
+	if exposed, known := AnyAnonymousAccessible(observations, DocumentationPaths...); !exposed || !known {
+		t.Fatalf("docsExposed got (%v,%v) want (true,true)", exposed, known)
+	}
+
+	bothAbsent := []EndpointObservation{
+		{Spec: EndpointSpec{Path: "/docs"}, AnonymousStatusCode: intPtr(http.StatusNotFound)},
+		{Spec: EndpointSpec{Path: "/redoc"}, AnonymousStatusCode: intPtr(http.StatusNotFound)},
+	}
+	if exposed, known := AnyAnonymousAccessible(bothAbsent, DocumentationPaths...); exposed || !known {
+		t.Fatalf("docsExposed got (%v,%v) want (false,true)", exposed, known)
 	}
 }

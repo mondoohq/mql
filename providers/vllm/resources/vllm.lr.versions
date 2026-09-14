@@ -14,6 +14,8 @@ vllm.endpoint.present 13.0.1
 vllm.endpoint.requiresAuth 13.0.1
 vllm.endpoints 13.0.1
 vllm.metrics 13.0.1
+vllm.metrics.cacheConfigExposed 14.0.0
+vllm.metrics.exposedCacheConfig 14.0.0
 vllm.metrics.exposedLoraAdapters 13.0.23
 vllm.metrics.exposedModelNames 13.0.23
 vllm.metrics.loadEndpointExposed 13.0.1
@@ -58,6 +60,7 @@ vllm.server.storedResponsesExposed 13.0.23
 vllm.server.tokenizerInfoExposed 13.0.1
 vllm.server.usesTls 13.0.1
 vllm.server.version 13.0.1
+vllm.server.weightUpdateRoutesExposed 14.0.0
 vllm.serverInfo 13.0.23
 vllm.serverInfo.allowRuntimeLoraUpdating 13.0.23
 vllm.serverInfo.collectDetailedTraces 13.0.23

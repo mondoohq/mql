@@ -192,13 +192,17 @@ func (s *mqlVllmServer) version() (string, error) {
 	return version, nil
 }
 
+// docsExposed answers across every interactive documentation route, not just
+// /docs. A proxy that blocks /docs and forwards /redoc publishes the same API
+// surface, and reading /docs alone reported that server as not exposed.
 func (s *mqlVllmServer) docsExposed() (bool, error) {
-	accessible, known, err := endpointAnonymousAccessibleKnown(s.MqlRuntime, http.MethodGet, "/docs")
+	observations, err := allEndpointObservations(s.MqlRuntime)
 	if err != nil {
 		return false, err
 	}
+	accessible, known := connection.AnyAnonymousAccessible(observations, connection.DocumentationPaths...)
 	if !known {
-		s.DocsExposed.State = plugin.StateIsSet | plugin.StateIsNull
+		return nullBool(&s.DocsExposed)
 	}
 	return accessible, nil
 }
@@ -337,6 +341,22 @@ func (s *mqlVllmServer) runtimeLoraUpdatingEnabled() (bool, error) {
 		return nullBool(&s.RuntimeLoraUpdatingEnabled)
 	}
 	return present, nil
+}
+
+// weightUpdateRoutesExposed reports whether a stranger can reach a route that
+// replaces the served weights. The routes are state-changing, so presence is
+// read from a rejected-method answer: a 405 means the request passed whatever
+// authentication layer exists and reached the router, which is the exposure.
+func (s *mqlVllmServer) weightUpdateRoutesExposed() (bool, error) {
+	observations, err := allEndpointObservations(s.MqlRuntime)
+	if err != nil {
+		return false, err
+	}
+	accessible, known := connection.AnyAnonymousAccessible(observations, connection.WeightUpdatePaths...)
+	if !known {
+		return nullBool(&s.WeightUpdateRoutesExposed)
+	}
+	return accessible, nil
 }
 
 func (s *mqlVllmServer) storedResponsesExposed() (bool, error) {
@@ -523,6 +543,22 @@ func (m *mqlVllmMetrics) exposedLoraAdapters() ([]any, error) {
 		return stringListField(&m.ExposedLoraAdapters, nil)
 	}
 	return stringListField(&m.ExposedLoraAdapters, snapshot.LoraAdapters)
+}
+
+func (m *mqlVllmMetrics) cacheConfigExposed() (bool, error) {
+	snapshot := metricsSnapshot(m.MqlRuntime)
+	if snapshot == nil || !snapshot.Fetched {
+		return nullBool(&m.CacheConfigExposed)
+	}
+	return snapshot.CacheConfigExposed, nil
+}
+
+func (m *mqlVllmMetrics) exposedCacheConfig() (map[string]any, error) {
+	snapshot := metricsSnapshot(m.MqlRuntime)
+	if snapshot == nil || !snapshot.Fetched {
+		return stringMapField(&m.ExposedCacheConfig, nil)
+	}
+	return stringMapField(&m.ExposedCacheConfig, snapshot.CacheConfig)
 }
 
 // metricsSnapshot reads the anonymous Prometheus scrape, or nil when the

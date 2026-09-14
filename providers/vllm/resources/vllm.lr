@@ -175,6 +175,20 @@ vllm.server @defaults("baseUrl reachable version") {
   // when the route is absent or demanded credentials, and null when the
   // server left the question undetermined.
   storedResponsesExposed() bool
+  // Whether the weight-replacement routes answer unauthenticated callers
+  //
+  // A vLLM server started in development mode registers routes that swap the
+  // weights it is serving from underneath the running engine, so a caller who
+  // reaches them chooses what the model is and what it will say. The built-in
+  // API key covers only the `/v1`, `/v2`, `/inference`, and `/cohere`
+  // prefixes, and none of these routes sits under one of them, so a key
+  // configured on the server does not guard them. True when an anonymous
+  // request reached one of the routes instead of being turned away, false when
+  // every one of them was absent or rejected the anonymous caller, and null
+  // when no probe settled the question. This is the narrow read of
+  // `devEndpointsExposed`, which also answers true for a read-only route such
+  // as the engine-configuration one.
+  weightUpdateRoutesExposed() bool
 }
 
 // vLLM engine configuration
@@ -394,4 +408,23 @@ vllm.metrics @defaults("prometheusExposed loadEndpointExposed") {
   // Empty when the scrape succeeded and carried no adapter names, and null
   // when the endpoint could not be scraped anonymously at all.
   exposedLoraAdapters() []string
+  // Whether the engine cache configuration is published on the metrics endpoint
+  //
+  // vLLM emits a configuration information series whose labels carry the cache
+  // settings the engine was started with. On a server that does not run in
+  // development mode the engine-configuration route is absent, so this series
+  // is the only place those settings are readable, and it is readable by
+  // anyone who can scrape the endpoint. False when the scrape succeeded and
+  // carried no such series, and null when the endpoint could not be scraped
+  // anonymously at all.
+  cacheConfigExposed() bool
+  // Engine cache settings an anonymous metrics scrape discloses
+  //
+  // The labels carried on the cache configuration series, keyed by label name:
+  // the block size, the cache data type, whether prefix caching is on, and the
+  // rest of the settings the engine was started with. Only the labels of that
+  // one series are read, and no sample value is ever carried across. Empty when
+  // the scrape succeeded and carried no such series, and null when the endpoint
+  // could not be scraped anonymously at all.
+  exposedCacheConfig() map[string]string
 }

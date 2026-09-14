@@ -525,6 +525,29 @@ var AnonymousInferencePaths = []string{
 	"/v1/completions",
 }
 
+// WeightUpdatePaths are the routes that replace the weights a vLLM server is
+// running. vLLM registers them only when the server development mode flag is
+// set, and its built-in API key guards only the "/v1", "/v2", "/inference" and
+// "/cohere" prefixes, so no key configured on the server covers any of them.
+// Every path here is state-changing and is probed with a rejected method.
+var WeightUpdatePaths = []string{
+	"/init_weight_transfer_engine",
+	"/start_weight_update",
+	"/start_draft_weight_update",
+	"/update_weights",
+	"/finish_weight_update",
+	"/update_weight_version",
+}
+
+// DocumentationPaths are the interactive API documentation routes FastAPI
+// serves. vLLM enables both by default and disables both together, but a
+// reverse proxy in front of the server routinely allows one and blocks the
+// other, so the exposure question is answered across the pair.
+var DocumentationPaths = []string{
+	"/docs",
+	"/redoc",
+}
+
 // DefaultEndpointSpecs returns the routes probed on every vLLM server. The
 // table is shared, not rebuilt per call, because it is looked up once per
 // endpoint resource; callers read it and must not modify it. ProbeEndpoint
@@ -535,6 +558,7 @@ func DefaultEndpointSpecs() []EndpointSpec {
 
 var defaultEndpointSpecs = []EndpointSpec{
 	{Method: http.MethodGet, Path: "/docs", Category: "documentation"},
+	{Method: http.MethodGet, Path: "/redoc", Category: "documentation"},
 	{Method: http.MethodGet, Path: "/openapi.json", Category: "documentation"},
 	{Method: http.MethodGet, Path: "/version", Category: "metadata"},
 	{Method: http.MethodGet, Path: "/health", Category: "utility"},
@@ -574,6 +598,12 @@ var defaultEndpointSpecs = []EndpointSpec{
 	{Method: http.MethodPost, Path: "/resume", Category: "operational-control", StateChanging: true, ProbeMethod: http.MethodGet},
 	{Method: http.MethodPost, Path: "/abort_requests", Category: "operational-control", StateChanging: true, ProbeMethod: http.MethodGet},
 	{Method: http.MethodPost, Path: "/scale_elastic_ep", Category: "operational-control", StateChanging: true, ProbeMethod: http.MethodGet},
+	// is_scaling_elastic_ep and fault_tolerance/status only report state, so
+	// they are reached with the method they document. fault_tolerance/apply
+	// dispatches a recovery instruction to the engine and is not.
+	{Method: http.MethodPost, Path: "/is_scaling_elastic_ep", Category: "operational-control", Body: NewPostBody()},
+	{Method: http.MethodGet, Path: "/fault_tolerance/status", Category: "operational-control"},
+	{Method: http.MethodPost, Path: "/fault_tolerance/apply", Category: "operational-control", StateChanging: true, ProbeMethod: http.MethodGet},
 	{Method: http.MethodGet, Path: "/server_info", Category: "development"},
 	{Method: http.MethodPost, Path: "/reset_prefix_cache", Category: "development", StateChanging: true, ProbeMethod: http.MethodGet},
 	{Method: http.MethodPost, Path: "/reset_mm_cache", Category: "development", StateChanging: true, ProbeMethod: http.MethodGet},
@@ -582,6 +612,20 @@ var defaultEndpointSpecs = []EndpointSpec{
 	{Method: http.MethodPost, Path: "/wake_up", Category: "development", StateChanging: true, ProbeMethod: http.MethodGet},
 	{Method: http.MethodGet, Path: "/is_sleeping", Category: "development"},
 	{Method: http.MethodPost, Path: "/collective_rpc", Category: "development", StateChanging: true, ProbeMethod: http.MethodGet},
+	// The weight-transfer routes ride the same development-mode router as
+	// /sleep and /collective_rpc. Six of them replace or re-version the weights
+	// the server is running, so each is probed with a method the route does not
+	// accept and the handler is never reached. The remaining three report state
+	// and nothing else, so they are reached with the method they document.
+	{Method: http.MethodPost, Path: "/init_weight_transfer_engine", Category: "development", StateChanging: true, ProbeMethod: http.MethodGet},
+	{Method: http.MethodPost, Path: "/start_weight_update", Category: "development", StateChanging: true, ProbeMethod: http.MethodGet},
+	{Method: http.MethodPost, Path: "/start_draft_weight_update", Category: "development", StateChanging: true, ProbeMethod: http.MethodGet},
+	{Method: http.MethodPost, Path: "/update_weights", Category: "development", StateChanging: true, ProbeMethod: http.MethodGet},
+	{Method: http.MethodPost, Path: "/finish_weight_update", Category: "development", StateChanging: true, ProbeMethod: http.MethodGet},
+	{Method: http.MethodPost, Path: "/update_weight_version", Category: "development", StateChanging: true, ProbeMethod: http.MethodGet},
+	{Method: http.MethodGet, Path: "/weight_info", Category: "development"},
+	{Method: http.MethodGet, Path: "/is_paused", Category: "development"},
+	{Method: http.MethodGet, Path: "/get_world_size", Category: "development"},
 	{Method: http.MethodPost, Path: "/start_profile", Category: "profiler", StateChanging: true, ProbeMethod: http.MethodGet},
 	{Method: http.MethodPost, Path: "/stop_profile", Category: "profiler", StateChanging: true, ProbeMethod: http.MethodGet},
 }
