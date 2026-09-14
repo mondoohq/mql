@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"go.mondoo.com/mql/providers/os/resources/purl"
 )
 
 // PrinterDriversScript enumerates the print drivers installed on the machine.
@@ -246,9 +248,12 @@ func (d PrinterDriver) Purl() string {
 		return ""
 	}
 
-	p := "pkg:windows-driver/" + vendor + "/" + name
-	if v := d.DottedVersion(); v != "" {
-		p += "@" + v
-	}
-	return p
+	// Rendered through the purl encoder rather than concatenated. purlToken
+	// already leaves nothing that needs escaping, but that is a property of the
+	// tokeniser rather than something this function enforces, and this is the
+	// only producer of pkg:windows-driver -- so the encoding stays in one place
+	// with every other purl mql emits.
+	return purl.NewPackageURL(nil, purl.TypeWindowsDriver, name, d.DottedVersion(),
+		purl.WithNamespace(vendor),
+	).String()
 }

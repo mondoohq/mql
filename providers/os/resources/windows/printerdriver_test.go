@@ -7,8 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/package-url/packageurl-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers/os/resources/purl"
 )
 
 // The fixture mirrors what Get-PrinterDriver | ConvertTo-Json emits: a packed
@@ -236,6 +238,40 @@ func TestPurlOnCapturedWindowsDrivers(t *testing.T) {
 	} {
 		d := PrinterDriver{Name: tc.name, Manufacturer: "Microsoft", HardwareID: tc.hwid}
 		assert.Equal(t, tc.want, d.Purl(), "driver %q", tc.name)
+	}
+}
+
+// TestPurlIsAParseablePurl pins the invariant that lets this PURL be rendered
+// at all: purlToken leaves nothing that needs percent-encoding, so no vendor
+// or driver string can break out of its own component.
+//
+// Related to https://github.com/mondoohq/mql/issues/10636 (4). This is the only
+// producer of pkg:windows-driver, and it used to assemble the string by
+// concatenation, so nothing checked what a token could smuggle in. A hardware
+// ID is the realistic carrier: PnP IDs are full of "&" and backslashes, and an
+// unescaped "&" is exactly what splits one qualifier into two.
+func TestPurlIsAParseablePurl(t *testing.T) {
+	for _, d := range []PrinterDriver{
+		{Name: "PCL 6 Driver", Manufacturer: "RICOH", HardwareID: `PCI\VEN_8086&DEV_1234&SUBSYS_0001`, DriverVersion: 3 << 48},
+		{Name: "Drucker & Fax Treiber", Manufacturer: "Brother Industries, Ltd", DriverVersion: 3 << 48},
+		{Name: "PCL 6 Driver", Manufacturer: "Kyocera Document Solutions, Inc. (日本)", DriverVersion: 3 << 48},
+		{Name: "Universal Print Class Driver", Manufacturer: "Microsoft", HardwareID: "{6d170653-5280-44c2-ba44-2c04bc9d46da}"},
+	} {
+		rendered := d.Purl()
+		require.NotEmpty(t, rendered, "driver %q", d.Name)
+
+		assert.NotContains(t, rendered, "%",
+			"a driver PURL must never need percent-encoding: %q", rendered)
+
+		parsed, err := packageurl.FromString(rendered)
+		require.NoError(t, err, "PURL %q must parse", rendered)
+		assert.Equal(t, string(purl.TypeWindowsDriver), parsed.Type)
+		assert.NotEmpty(t, parsed.Namespace, "the vendor namespace must survive: %q", rendered)
+		assert.NotEmpty(t, parsed.Name)
+		assert.Empty(t, parsed.Qualifiers,
+			"a driver PURL carries no qualifiers, so nothing may have leaked into one: %q", rendered)
+		assert.Equal(t, rendered, parsed.ToString(),
+			"the rendered PURL must already be in canonical form")
 	}
 }
 
