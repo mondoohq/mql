@@ -25,6 +25,42 @@ func readValue(conn shared.Connection, fPath string) string {
 	return string(content)
 }
 
+// bottlerocketPlatform is the platform name the os-release detector assigns to
+// Bottlerocket hosts.
+const bottlerocketPlatform = "bottlerocket"
+
+// bottlerocketAWSVariantPrefix is the VARIANT_ID prefix Bottlerocket uses for
+// its AWS images: aws-k8s-1.34, aws-ecs-2, aws-dev, and their -fips suffixes.
+const bottlerocketAWSVariantPrefix = "aws-"
+
+// isBottlerocketOnAWS reports whether the platform is a Bottlerocket AWS image.
+//
+// Bottlerocket ships no cloud-init, so none of the markers Detect looks for on
+// a mounted filesystem exist on it: there is no /etc/cloud/cloud.cfg, and the
+// /sys DMI files are a pseudo-filesystem that a bind-mounted host root does not
+// carry either. Without this check every Bottlerocket node scanned through a
+// filesystem connection -- which is how the Kubernetes node scan works -- comes
+// back as "not AWS", leaving the `cloud` resource with no provider and its
+// instance metadata erroring out with "unknown provider information".
+//
+// VARIANT_ID is a sound substitute. Bottlerocket builds one image per target
+// platform and names the variant after it (aws-*, vmware-*, metal-*), so an
+// aws- prefix on a Bottlerocket host means the machine is an EC2 instance. The
+// platform name is checked too, because the prefix only carries that meaning
+// under Bottlerocket's variant naming scheme.
+func isBottlerocketOnAWS(p *inventory.Platform) bool {
+	if !strings.EqualFold(p.GetName(), bottlerocketPlatform) {
+		return false
+	}
+
+	variant := p.GetLabels()["variant-id"]
+	if variant == "" {
+		variant = p.GetMetadata()["variant-id"]
+	}
+
+	return strings.HasPrefix(strings.ToLower(variant), bottlerocketAWSVariantPrefix)
+}
+
 func Detect(conn shared.Connection, p *inventory.Platform) (string, string, []string) {
 	var values []string
 	if conn.Type() == shared.Type_FileSystem {
@@ -71,11 +107,13 @@ func Detect(conn shared.Connection, p *inventory.Platform) (string, string, []st
 		}
 	}
 
-	isAws := false
-	for _, v := range values {
-		if strings.Contains(strings.ToLower(v), "amazon") {
-			isAws = true
-			break
+	isAws := isBottlerocketOnAWS(p)
+	if !isAws {
+		for _, v := range values {
+			if strings.Contains(strings.ToLower(v), "amazon") {
+				isAws = true
+				break
+			}
 		}
 	}
 

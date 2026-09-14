@@ -45,6 +45,19 @@ const (
 	Type_Device            ConnectionType = "device"
 
 	ContainerProxyOption string = "container-proxy"
+
+	// HostRootOption marks a filesystem connection whose mounted path is the
+	// root filesystem of the machine cnspec is running on -- the Kubernetes
+	// node scan, which bind-mounts / into the scan pod, is the canonical case.
+	//
+	// It exists because a filesystem connection alone cannot tell "this is my
+	// own host, mounted elsewhere" from "this is a snapshot of some other
+	// machine". Identity lookups that reach out to the local instance metadata
+	// service are only correct for the former; for the latter they would answer
+	// with the *scanner's* identity and silently attribute the scan to the
+	// wrong machine. Callers must therefore opt in explicitly, and only when
+	// they know the mount is the live local root.
+	HostRootOption string = "host-root"
 )
 
 type OSFamily string

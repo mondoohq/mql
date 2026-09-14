@@ -328,6 +328,13 @@ Examples:
 					Desc:    "Path to a local file or directory for the connection to use",
 					Option:  plugin.FlagOption_Deprecated,
 				},
+				{
+					Long:    shared.HostRootOption,
+					Type:    plugin.FlagType_Bool,
+					Default: "false",
+					Desc:    "The mounted path is the root file system of this machine, not a snapshot of another one. Lets cloud identity detection read the local instance metadata service. Do not set it for a mount that came from a different machine.",
+					Option:  plugin.FlagOption_Hidden,
+				},
 			},
 		},
 		{
