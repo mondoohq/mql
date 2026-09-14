@@ -26,7 +26,7 @@ func (a *mqlAi) models() ([]any, error) {
 	osFamily := targetOSFamily(conn)
 
 	var all []any
-	for _, m := range aimodel.DetectAll(afs, home, osFamily) {
+	for _, m := range aimodel.DetectAll(afs, home, osFamily, ollamaModelDirs(a.MqlRuntime)) {
 		res, err := newAiModelResource(a.MqlRuntime, m)
 		if err != nil {
 			return nil, err

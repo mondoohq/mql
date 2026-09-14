@@ -633,3 +633,97 @@ func TestVersion_IsNullWithoutCommandExecution(t *testing.T) {
 	require.NoError(t, mysqlVersion.Error)
 	assert.Empty(t, mysqlVersion.Data)
 }
+
+// MariaDB accepts two names for the slow query log path and treats them as one
+// setting. log_slow_query_file is what its Debian and Ubuntu packages write
+// into 50-server.cnf, so a reader that knows only the MySQL-compatible
+// slow_query_log_file reports nothing on a packaged server whose administrator
+// enabled the line the package shipped — and an operator cannot then check the
+// mode of a file that holds full statement text.
+func TestMariadbConf_SlowQueryLogFileReadsBothSpellings(t *testing.T) {
+	for _, tc := range []struct {
+		fixture  string
+		expected string
+		why      string
+	}{
+		{
+			"mysql_debian13_mariadb.toml",
+			"/var/log/mysql/mariadb-slow.log",
+			"log_slow_query_file is the spelling the Debian package ships",
+		},
+		{
+			"mysql_mariadb114.toml",
+			"/var/log/mysql/compat-name-slow.log",
+			"slow_query_log_file is the MySQL-compatible synonym",
+		},
+	} {
+		t.Run(tc.fixture, func(t *testing.T) {
+			conf := mariadbConf(t, tc.fixture)
+
+			enabled := conf.GetSlowQueryLog()
+			require.NoError(t, enabled.Error)
+			assert.True(t, enabled.Data, "the fixture enables slow query logging")
+
+			path := conf.GetSlowQueryLogFile()
+			require.NoError(t, path.Error)
+			assert.Equal(t, tc.expected, path.Data, tc.why)
+		})
+	}
+}
+
+// A server that sets neither name reports an empty path rather than a guess.
+// MariaDB derives the file from the host name under datadir in that case, which
+// is not something the option file says.
+func TestMariadbConf_SlowQueryLogFileIsEmptyWhenUnset(t *testing.T) {
+	conf := mariadbConf(t, "mysql_almalinux9_mariadb.toml")
+
+	path := conf.GetSlowQueryLogFile()
+	require.NoError(t, path.Error)
+	assert.Empty(t, path.Data)
+}
+
+// An option no file sets reads null, not zero. max_connections=0 is not a
+// configuration a server can run with, so reporting it lets a bounds check pass
+// on a server whose real limit is higher — the direction that matters. port is
+// the exception: 3306 is what the server uses when no file names one.
+func TestMariadbConf_AbsentCountsAreNullNotZero(t *testing.T) {
+	conf := mariadbConf(t, "mysql_almalinux9_mariadb.toml")
+
+	for _, tc := range []struct {
+		name string
+		get  func() *plugin.TValue[int64]
+	}{
+		{"maxConnections", conf.GetMaxConnections},
+		{"serverId", conf.GetServerId},
+		{"logWarnings", conf.GetLogWarnings},
+		{"expireLogsDays", conf.GetExpireLogsDays},
+		{"simplePasswordCheckMinimalLength", conf.GetSimplePasswordCheckMinimalLength},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := tc.get()
+			require.NoError(t, v.Error)
+			assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, v.State,
+				"an option the files do not set has to read null")
+		})
+	}
+
+	port := conf.GetPort()
+	require.NoError(t, port.Error)
+	assert.Equal(t, int64(3306), port.Data, "port keeps the default the server would use")
+}
+
+// A count the files do set still reads as a number.
+func TestMariadbConf_PresentCountsStillRead(t *testing.T) {
+	conf := mariadbConf(t, "mysql_debian13_mariadb.toml")
+
+	// the fixture sets expire_logs_days and leaves max_connections commented
+	set := conf.GetExpireLogsDays()
+	require.NoError(t, set.Error)
+	assert.NotEqual(t, plugin.StateIsSet|plugin.StateIsNull, set.State)
+	assert.Equal(t, int64(10), set.Data)
+
+	unset := conf.GetMaxConnections()
+	require.NoError(t, unset.Error)
+	assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, unset.State,
+		"the same fixture leaves max_connections unset, and that has to stay null")
+}

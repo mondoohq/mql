@@ -697,7 +697,10 @@ func (s *mqlOsLinux) firewalld() (*mqlFirewalld, error) {
 }
 
 func (s *mqlOsLinux) fstab() (*mqlFstab, error) {
-	res, err := CreateResource(s.MqlRuntime, "fstab", map[string]*llx.RawData{})
+	// NewResource, not CreateResource: only NewResource runs initFstab, which
+	// supplies the default /etc/fstab path. Without it the resource is built
+	// with an empty path and every read fails with "file does not exist".
+	res, err := NewResource(s.MqlRuntime, "fstab", map[string]*llx.RawData{})
 	if err != nil {
 		return nil, err
 	}

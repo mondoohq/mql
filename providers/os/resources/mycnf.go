@@ -448,8 +448,36 @@ func optionInt(options map[string]any, key string, fallback int64) int64 {
 	return n
 }
 
+// optionCount resolves an option that counts something, reporting whether the
+// option files set it at all. An absent count is not a zero: max_connections=0
+// is not a configuration a server can run with, and a field that reports one
+// lets a bounds check pass on a server whose real limit is higher. The caller
+// marks the field null in that case, so "the files do not say" stays distinct
+// from "the files say zero".
+//
+// A value that does not parse is treated as absent for the same reason. These
+// options are counts and intervals, where a suffixed or malformed value is a
+// misconfiguration rather than a number to report.
+func optionCount(options map[string]any, key string) (int64, bool) {
+	raw := strings.TrimSpace(optionString(options, key))
+	if raw == "" {
+		return 0, false
+	}
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
 func optionList(options map[string]any, key string) []any {
 	return toAnySlice(mycnf.SplitList(optionString(options, key)))
+}
+
+// optionPathList resolves an option whose value is a list of directories.
+// These use ":" (Unix) or ";" (Windows) rather than the comma/space form.
+func optionPathList(options map[string]any, key string) []any {
+	return toAnySlice(mycnf.SplitPathList(optionString(options, key)))
 }
 
 // bindAddressList resolves bind_address. The server listens on every

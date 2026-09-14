@@ -4,6 +4,7 @@
 package sudoers_test
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -772,4 +773,185 @@ zabbix ALL=(root) NOPASSWD: /usr/sbin/dmidecode, /usr/bin/lsof
 	assert.Equal(t, []string{"zabbix"}, specs[1].Users)
 	assert.Contains(t, specs[1].Commands, "/usr/sbin/dmidecode")
 	assert.Contains(t, specs[1].Commands, "/usr/bin/lsof")
+}
+
+// Regression tests for the TAB separator bug: smartSplit only treated ' ' as a
+// field separator, so `root<TAB>ALL=(ALL) <TAB>ALL` produced a single token,
+// tripped the `len(tokens) < 2` guard in parseLine, and was dropped. Every
+// distribution ships /etc/sudoers with tab-separated fields, so userSpecs came
+// back empty on stock RHEL- and Debian-family hosts while defaults still
+// parsed (DefaultsRegex matches before smartSplit is reached).
+
+func TestParseUserSpecs_TabSeparators(t *testing.T) {
+	tests := []struct {
+		name        string
+		line        string
+		users       []string
+		hosts       []string
+		runasUsers  []string
+		runasGroups []string
+		tags        []string
+		commands    []string
+	}{
+		{
+			// verbatim from ubi10 /etc/sudoers (testdata/ubi10-etc-sudoers.txt)
+			name:       "rhel root rule",
+			line:       "root\tALL=(ALL) \tALL",
+			users:      []string{"root"},
+			hosts:      []string{"ALL"},
+			runasUsers: []string{"ALL"},
+			commands:   []string{"ALL"},
+		},
+		{
+			// verbatim from ubi10 /etc/sudoers
+			name:       "rhel wheel rule",
+			line:       "%wheel\tALL=(ALL)\tALL",
+			users:      []string{"%wheel"},
+			hosts:      []string{"ALL"},
+			runasUsers: []string{"ALL"},
+			commands:   []string{"ALL"},
+		},
+		{
+			// verbatim from debian:13 /etc/sudoers (testdata/debian13-etc-sudoers.txt)
+			name:        "debian root rule",
+			line:        "root\tALL=(ALL:ALL) ALL",
+			users:       []string{"root"},
+			hosts:       []string{"ALL"},
+			runasUsers:  []string{"ALL"},
+			runasGroups: []string{"ALL"},
+			commands:    []string{"ALL"},
+		},
+		{
+			// verbatim from debian:13 /etc/sudoers
+			name:        "debian sudo group rule",
+			line:        "%sudo\tALL=(ALL:ALL) ALL",
+			users:       []string{"%sudo"},
+			hosts:       []string{"ALL"},
+			runasUsers:  []string{"ALL"},
+			runasGroups: []string{"ALL"},
+			commands:    []string{"ALL"},
+		},
+		{
+			// guards the pre-existing space-separated behaviour against a fix
+			// that swaps ' ' for '\t' instead of accepting both
+			name:       "space separated still parses",
+			line:       "root ALL=(ALL) ALL",
+			users:      []string{"root"},
+			hosts:      []string{"ALL"},
+			runasUsers: []string{"ALL"},
+			commands:   []string{"ALL"},
+		},
+		{
+			name:       "mixed tabs and spaces with multiple users",
+			line:       "alice,\tbob\tALL=(ALL)\tNOPASSWD:\t/usr/bin/id",
+			users:      []string{"alice", "bob"},
+			hosts:      []string{"ALL"},
+			runasUsers: []string{"ALL"},
+			tags:       []string{"NOPASSWD"},
+			commands:   []string{"/usr/bin/id"},
+		},
+		{
+			// a tab inside a quoted command argument is data, not a separator
+			name:       "tab inside quoted argument is preserved",
+			line:       "bob\tALL=(root)\t/bin/grep \"foo\tbar\" /etc/hosts",
+			users:      []string{"bob"},
+			hosts:      []string{"ALL"},
+			runasUsers: []string{"root"},
+			commands:   []string{"/bin/grep \"foo\tbar\" /etc/hosts"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			specs := sudoers.ParseUserSpecs("/etc/sudoers", tt.line+"\n")
+			require.Len(t, specs, 1)
+
+			assert.Equal(t, tt.users, specs[0].Users)
+			assert.Equal(t, tt.hosts, specs[0].Hosts)
+			assert.Equal(t, tt.runasUsers, specs[0].RunasUsers)
+			assert.Equal(t, tt.runasGroups, specs[0].RunasGroups)
+			assert.Equal(t, tt.tags, specs[0].Tags)
+			assert.Equal(t, tt.commands, specs[0].Commands)
+		})
+	}
+}
+
+func TestParseUserSpecs_TabbedLineContinuation(t *testing.T) {
+	content := "john\tALL=(ALL)\tNOPASSWD: \\\n" +
+		"\t/usr/bin/systemctl restart nginx, \\\n" +
+		"\t/usr/bin/systemctl reload nginx\n"
+
+	specs := sudoers.ParseUserSpecs("/etc/sudoers", content)
+
+	require.Len(t, specs, 1)
+	assert.Equal(t, 1, specs[0].LineNumber)
+	assert.Equal(t, []string{"john"}, specs[0].Users)
+	assert.Equal(t, []string{"NOPASSWD"}, specs[0].Tags)
+	assert.Equal(t, []string{
+		"/usr/bin/systemctl restart nginx",
+		"/usr/bin/systemctl reload nginx",
+	}, specs[0].Commands)
+}
+
+func TestSmartSplit_TabSeparated(t *testing.T) {
+	assert.Equal(t, []string{"root", "ALL"}, sudoers.SmartSplit("root\tALL"))
+	assert.Equal(t, []string{"user", "host", "cmd"}, sudoers.SmartSplit("user \t host\t\tcmd"))
+}
+
+func TestSmartSplit_TabInsideQuotesDoesNotSplit(t *testing.T) {
+	assert.Equal(t, []string{"user", "host", "\"a\tb\""}, sudoers.SmartSplit("user\thost\t\"a\tb\""))
+}
+
+func TestParseDefaultsLine_TabAfterScopeTarget(t *testing.T) {
+	// A scoped Defaults target may be separated from its parameter by a tab.
+	scope, target, parameter, value, operation, negated := sudoers.ParseDefaultsLine("Defaults:john\t!requiretty")
+
+	assert.Equal(t, "user", scope)
+	assert.Equal(t, "john", target)
+	assert.Equal(t, "requiretty", parameter)
+	assert.Equal(t, "", value)
+	assert.Equal(t, "", operation)
+	assert.True(t, negated)
+}
+
+// The two files below were captured from the stock images, not hand-written,
+// so their separators are the real bytes those distributions ship.
+
+func TestParseSudoers_UBI10Fixture(t *testing.T) {
+	content := readSudoersFixture(t, "testdata/ubi10-etc-sudoers.txt")
+
+	specs := sudoers.ParseUserSpecs("/etc/sudoers", content)
+	require.Len(t, specs, 2)
+	assert.Equal(t, []string{"root"}, specs[0].Users)
+	assert.Equal(t, []string{"ALL"}, specs[0].Hosts)
+	assert.Equal(t, []string{"ALL"}, specs[0].RunasUsers)
+	assert.Equal(t, []string{"ALL"}, specs[0].Commands)
+	assert.Equal(t, []string{"%wheel"}, specs[1].Users)
+	assert.Equal(t, []string{"ALL"}, specs[1].Commands)
+
+	// defaults parsed before the fix and must keep parsing after it
+	assert.Len(t, sudoers.ParseDefaults("/etc/sudoers", content), 11)
+}
+
+func TestParseSudoers_Debian13Fixture(t *testing.T) {
+	content := readSudoersFixture(t, "testdata/debian13-etc-sudoers.txt")
+
+	specs := sudoers.ParseUserSpecs("/etc/sudoers", content)
+	require.Len(t, specs, 2)
+	assert.Equal(t, []string{"root"}, specs[0].Users)
+	assert.Equal(t, []string{"ALL"}, specs[0].RunasUsers)
+	assert.Equal(t, []string{"ALL"}, specs[0].RunasGroups)
+	assert.Equal(t, []string{"ALL"}, specs[0].Commands)
+	assert.Equal(t, []string{"%sudo"}, specs[1].Users)
+	assert.Equal(t, []string{"ALL"}, specs[1].Commands)
+
+	assert.Len(t, sudoers.ParseDefaults("/etc/sudoers", content), 4)
+}
+
+func readSudoersFixture(t *testing.T, path string) string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), "\t", "fixture lost its tabs")
+	return string(raw)
 }

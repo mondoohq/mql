@@ -1,0 +1,47 @@
+# A host whose main rsyslog.conf does NOT include its own `.d` directory.
+#
+# Debian and Ubuntu ship `$IncludeConfig /etc/rsyslog.d/*.conf`, but plenty of
+# configurations leave it out and rely on rsyslog's own handling, so the
+# fragments are reachable only through the resource's `<conf>.d` auto-discovery.
+#
+# The fragment found that way carries its own `$IncludeConfig`. Before the fix
+# the auto-discovery sweep appended fragments as leaves without reading them,
+# so /etc/rsyslog.nested/90-nested.conf never appeared in rsyslog.conf.files.
+
+[files."/etc/rsyslog.conf"]
+path = "/etc/rsyslog.conf"
+content = """$ModLoad imuxsock
+
+*.info;mail.none /var/log/messages
+"""
+
+# Reached only by `<conf>.d` auto-discovery, and pulls in another directory.
+[files."/etc/rsyslog.d/50-frag.conf"]
+path = "/etc/rsyslog.d/50-frag.conf"
+content = """local0.* /var/log/frag.log
+
+$IncludeConfig /etc/rsyslog.nested/*.conf
+"""
+
+# Only reachable through the fragment above.
+[files."/etc/rsyslog.nested/90-nested.conf"]
+path = "/etc/rsyslog.nested/90-nested.conf"
+content = """local2.* /var/log/nested.log
+"""
+
+# Shares the nested directory but does not match the include's `*.conf` glob.
+[files."/etc/rsyslog.nested/notes.txt"]
+path = "/etc/rsyslog.nested/notes.txt"
+content = """not a config fragment
+"""
+
+# Legacy `<conf>.d` auto-discovery.
+[commands."find -L \"/etc/rsyslog.d\" -xdev -type f -perm -0"]
+stdout = """/etc/rsyslog.d/50-frag.conf
+"""
+
+# Include expansion out of the auto-discovered fragment.
+[commands."find -L \"/etc/rsyslog.nested\" -xdev -type f -perm -0 -maxdepth 1"]
+stdout = """/etc/rsyslog.nested/90-nested.conf
+/etc/rsyslog.nested/notes.txt
+"""

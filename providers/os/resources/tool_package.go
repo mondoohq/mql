@@ -109,6 +109,9 @@ var toolPackageSpecs = map[string]toolPackageSpec{
 	"kilocode":         {packageName: "kilocode", managerCandidates: []string{"kilocode"}, runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates},
 	"openhands":        {packageName: "openhands", binaryNames: []string{"openhands"}, managerCandidates: []string{"openhands"}},
 	"qwen.code":        {packageName: "qwen-code", binaryNames: []string{"qwen"}, vendor: "Alibaba"},
+	// Ollama is a model server rather than a coding agent, but it is installed
+	// and versioned the same way, so it resolves through the same path.
+	"ollama": {packageName: "ollama", binaryNames: []string{"ollama"}, managerCandidates: []string{"ollama"}, vendor: "Ollama", inferVersion: inferOllamaVersion},
 }
 
 // resolveToolPackage returns the real system-package-manager entry that
@@ -607,4 +610,50 @@ func (r *mqlOpenhands) runtime() (*mqlExtensionRuntime, error) {
 
 func (r *mqlQwenCode) runtime() (*mqlExtensionRuntime, error) {
 	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["qwen.code"])
+}
+
+// inferOllamaVersion runs `ollama --version` through the command resource, for
+// an installation no package manager owns (the official install script drops a
+// binary into /usr/local/bin without registering it anywhere). Best-effort:
+// unknown when the binary is absent or the output carries no version.
+func inferOllamaVersion(runtime *plugin.Runtime, configPath string) (string, error) {
+	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
+		"command": llx.StringData("ollama --version"),
+	})
+	if err != nil {
+		return "", nil
+	}
+	cmd := o.(*mqlCommand)
+	if exit := cmd.GetExitcode(); exit.Error != nil || exit.Data != 0 {
+		return "", nil
+	}
+	return parseOllamaVersion(cmd.GetStdout().Data), nil
+}
+
+// parseOllamaVersion pulls the version out of `ollama --version`. The command
+// reports two different lines depending on whether a server is reachable:
+// "ollama version is 0.32.14" when one is, and a "client version is 0.32.14"
+// warning when none is. The client line is preferred, because it is the version
+// of the binary installed here rather than of whatever server OLLAMA_HOST points
+// at, which may be another machine entirely.
+func parseOllamaVersion(stdout string) string {
+	var serverVersion string
+	for _, line := range strings.Split(stdout, "\n") {
+		_, rest, found := strings.Cut(line, "version is")
+		if !found {
+			continue
+		}
+		v := strings.TrimSpace(rest)
+		if v == "" {
+			continue
+		}
+		v = strings.Fields(v)[0]
+		if strings.Contains(line, "client version") {
+			return v
+		}
+		if serverVersion == "" {
+			serverVersion = v
+		}
+	}
+	return serverVersion
 }

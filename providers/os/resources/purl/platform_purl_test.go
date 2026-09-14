@@ -147,6 +147,16 @@ func TestNewPlatformPurl(t *testing.T) {
 			wantErr: "",
 		},
 		{
+			name: "rolling release without a version",
+			platform: &inventory.Platform{
+				Name:  "arch",
+				Arch:  "x86_64",
+				Build: "rolling",
+			},
+			want:    "pkg:platform/arch?arch=x86_64&build=rolling&distro=arch-rolling",
+			wantErr: "",
+		},
+		{
 			name:     "nil platform",
 			platform: nil,
 			want:     "",

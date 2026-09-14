@@ -361,6 +361,63 @@ os {
   uptime() time
   // List of available OS updates
   updates() []os.update
+  // Time the most recent operating system update was installed
+  //
+  // Newest completed update the platform's own update mechanism recorded
+  // for software the operating system vendor ships: a vendor package
+  // upgrade in dnf's transaction log, a completed apt upgrade run
+  // (timestamped by its End-Date), a macOS update in the install history,
+  // or a Windows Update Agent entry for a Windows product. Software that
+  // is not the operating system does not count, so a .NET or Office update
+  // on Windows, a third-party rpm such as Docker or Grafana, and an
+  // operator running `apt install` are all excluded, and so is definition
+  // data (XProtect on macOS, Defender signatures on Windows) that lands
+  // daily or weekly. Installing a package is not updating the operating
+  // system, so a first-time install never advances this timestamp, on any
+  // platform.
+  //
+  // Null on containers and container images, which are rebuilt rather than
+  // patched, so the newest install inside one dates the image build rather
+  // than any patching of the workload. Null too wherever the asset keeps
+  // no record of a completed update that can be attributed to the vendor:
+  // an rpm host whose package manager writes no transaction log (SUSE,
+  // yum-era RHEL, Photon), image-based systems that update by swapping the
+  // OS image (Bottlerocket, CoreOS), a Debian host whose apt history has
+  // rotated away or whose newest history log cannot be read, a Windows
+  // host whose update agent history cannot be read, apk and pacman. A
+  // timestamp materially in the future (a skewed clock, a misread
+  // timezone) also reads null rather than reporting the asset as freshly
+  // patched. An inferred, incomplete or ambiguous answer would report a
+  // different fact than the one asked for, so the field reads null instead
+  // of answering loosely.
+  //
+  // Null is not false, so guard on it rather than comparing straight
+  // through: `os.lastUpdate != null && (time.now - os.lastUpdate).days < 30`.
+  lastUpdate() time
+  // Time since the most recent operating system update was installed
+  //
+  // A duration, like `uptime`, so `os.lastUpdateAge.days` reads the patch
+  // age directly. Measured once, when the field is first read, and held for
+  // the rest of the scan rather than tracking the clock, the same way
+  // `uptime` behaves. For an age relative to a specific moment, subtract
+  // instead: `time.now - os.lastUpdate`. Null whenever `lastUpdate` is
+  // null.
+  lastUpdateAge() time
+  // Record the last-update timestamp was read from
+  //
+  // One of "dnf-rpm-log", "apt-security", "apt-history",
+  // "macos-install-history", or "windows-update-agent". Every one of them
+  // names an exact, completed install event, so this reports provenance
+  // rather than precision, and how tightly the vendor attribution holds is
+  // what separates them. "apt-security" is a completed unattended-upgrades
+  // run, whose default origin is the distribution's security pocket, which
+  // makes it the closest an asset comes to recording a vendor security
+  // advisory without an external advisory database; "apt-history" is an
+  // operator-run full upgrade, which vendor packages dominate but which
+  // can also carry a third-party repository. A policy that demands the
+  // vendor security channel can require "apt-security", where a looser one
+  // takes any non-null answer. Null whenever `lastUpdate` is null.
+  lastUpdateSource() string
   // Whether a reboot is pending
   rebootpending() bool
   // Hostname for this OS
@@ -426,6 +483,12 @@ os.base {
   uptime() time
   // List of available OS updates
   updates() []os.update
+  // Time the most recent operating system update was installed, null on containers
+  lastUpdate() time
+  // Time since the most recent operating system update was installed, as a duration
+  lastUpdateAge() time
+  // Record the last-update timestamp was read from (e.g., "dnf-rpm-log", "apt-security")
+  lastUpdateSource() string
   // Whether a reboot is pending
   rebootpending() bool
   // Hostname for this OS
@@ -966,6 +1029,20 @@ package @defaults("name version") {
   format string
   // Status of this package (e.g., if it is needed)
   status() string
+  // Whether the package is held at its current version
+  //
+  // True when the package manager is configured not to upgrade it: a
+  // dpkg or opkg hold, a dnf or yum versionlock, or a zypper lock. An
+  // outdated package that is pinned is a deliberate state rather than a
+  // missed patch, and it will not receive a security update until the
+  // pin is released.
+  //
+  // Read from the package manager's own files, so it answers the same
+  // way on a running host, a container image and a mounted filesystem.
+  // Debian's apt preferences are priorities rather than holds and do
+  // not set this. False on package managers with no lock mechanism,
+  // where it means there is no such thing rather than not checked.
+  pinned bool
 
   // Package URL (purl) identifier for this package
   purl string
@@ -979,6 +1056,20 @@ package @defaults("name version") {
   // (see the `package` accessor on tool resources): the installing source
   // could not be identified. A known origin means the package is
   // manager-tracked and listed in `packages`.
+  //
+  // The exact meaning is per-backend, so compare it against values you know
+  // the backend emits rather than across platforms:
+  //
+  //   flatpak       the remote it was installed from, e.g. "flathub"
+  //   freebsd       the ports origin path, e.g. "security/sudo"
+  //   netbsd        PKGPATH
+  //   macOS         how the bundle was obtained, as classified by Gatekeeper:
+  //                 "apple", "mac_app_store", "ios_app_store",
+  //                 "identified_developer", or "unknown"
+  //
+  // On macOS this distinguishes App Store installs from everything else, which
+  // matters when choosing an update path: an App Store app cannot be upgraded
+  // with `brew upgrade`.
   origin() string
 
   // Latest version the package manager reports as available
@@ -988,7 +1079,26 @@ package @defaults("name version") {
   // Whether a newer version than the installed one is available
   outdated() bool
 
-  // Files this package installed on the asset
+  // Package-manager records that evidence this package
+  //
+  // The file, directory, or database entry the package manager recorded this
+  // package in, usually a single record. It is provenance for the package
+  // entry, not the list of files the package installed on disk, so it does not
+  // answer which package owns a given path.
+  //
+  // The record is per-backend:
+  //
+  //   dpkg      /var/lib/dpkg/info/<name>.list
+  //   rpm       the rpm database directory, %{_dbpath}
+  //   apk       /lib/apk/db/installed
+  //   pacman    the local database entry for the package
+  //   xbps      the package's own file list, the one backend that does report
+  //             the installed paths
+  //   macOS     the application bundle path
+  //   Windows   the install location from the uninstall registry
+  //
+  // Empty on package managers with no such record, among them flatpak, snap,
+  // homebrew, nix, gentoo, and the BSD package tools.
   files() []pkgFileInfo
 
   // Package vendor
@@ -1005,17 +1115,29 @@ package @defaults("name version") {
 
   // Package install date
   //
-  // Time the package was installed on this asset. Populated from
-  // %{INSTALLTIME} (rpm) and the InstallDate column of the Windows
-  // Uninstall registry. Returns the zero time on backends that have
-  // no install-time source (dpkg without log parsing, apk, pacman,
-  // macOS).
+  // Time the installed version of the package was placed on this asset.
+  // Populated from %{INSTALLTIME} (rpm), the install-date field of the
+  // xbps database, the InstallDate column of the Windows Uninstall
+  // registry, and the install, upgrade and `status installed` lines of
+  // the dpkg logs.
+  //
+  // On dpkg the answer is bounded by what logrotate kept, which
+  // distributions ship as twelve monthly copies of /var/log/dpkg.log: a
+  // package untouched for longer than that window carries no date. Null
+  // on backends with no install-time source at all (apk, pacman, macOS)
+  // and on any package whose install was not recorded.
   installDate time
 }
 
-// File installed by a package
+// File recorded for a package
+//
+// A single filesystem path a backend reported for a package entry: the
+// package-manager record that evidences an installed system package, or the
+// manifest, lockfile, or archive that declared a language dependency or a
+// plugin. It is evidence for the package entry rather than a file the package
+// installed on disk.
 private pkgFileInfo @defaults("path") {
-  // Path to the file
+  // Path to the recorded file or directory
   path string
 }
 
@@ -1066,7 +1188,13 @@ private pam.conf.serviceEntry @defaults("service module") {
   // The `/etc/pam.d/<service>` file path the line came from, or the service
   // name in the first column when read from the single-file `/etc/pam.conf`.
   service string
-  // Line number in service file (used for ID)
+  // Line number the entry was read from
+  //
+  // Zero-based: the first line of the file is 0. Every other lineNumber in
+  // this provider counts from 1, including limits.entry, logrotate.entry,
+  // crontab.entry, sudoers and modprobe, so subtract nothing here and add
+  // nothing there when comparing against a text editor. The value forms part
+  // of the entry's identity, so it is kept as it is rather than renumbered.
   lineNumber int
   // PAM entry type (e.g., auth, account, password, session)
   pamType string
@@ -1929,8 +2057,21 @@ private nginx.conf.location @defaults("path") {
   root string
   // try_files directive value
   tryFiles string
-  // return directive value (status + URI/text)
-  return string
+  // return directive value
+  //
+  // Deprecated in favor of returnDirective, which carries the same value.
+  // The name return collides with an MQL keyword, so this field cannot be
+  // read from inside a block: a query such as
+  // `nginx.conf.servers { locations { return } }` compiles but never reads
+  // it. Only dotted access still works.
+  return @maturity("deprecated") string
+  // return directive value
+  //
+  // Status code plus the redirect URI or response text, as written in the
+  // location block. For example "301 https://example.com$request_uri" for a
+  // permanent redirect, or "444" for a connection that is closed without a
+  // response. Empty when the location block has no return directive.
+  returnDirective string
   // fastcgi_pass directive value
   fastcgiPass string
   // All directives within this location block
@@ -3649,7 +3790,7 @@ private haproxy.config.peersSection @defaults("name") {
 // Pair with `postgresql.hba` and `postgresql.ident` for the auxiliary
 // configuration files. By default the file is located by probing the
 // well-known paths for Debian/Ubuntu and RPM installations; pass an
-// explicit path with `postgresql.conf(path: "/path/to/postgresql.conf")`.
+// explicit path with `postgresql.conf("/path/to/postgresql.conf")`.
 postgresql.conf {
   init(path? string)
   // Primary configuration file
@@ -3810,8 +3951,13 @@ mysql {
 // By default the file is located by probing the well-known paths for
 // Debian/Ubuntu and RPM installations, and returns nothing when the host
 // runs MariaDB rather than MySQL. Pass an explicit path with
-// `mysql.conf(path: "/etc/mysql/my.cnf")` to parse a file regardless of
+// `mysql.conf("/etc/mysql/my.cnf")` to parse a file regardless of
 // which product it belongs to.
+//
+// Values come from the option files. A setting given on the
+// command line, which is how a container usually configures MySQL,
+// is not visible here, and an option no file sets reads null rather
+// than zero.
 mysql.conf {
   init(path? string)
   // Primary option file
@@ -4071,8 +4217,13 @@ mariadb {
 // By default the file is located by probing the well-known paths for
 // Debian/Ubuntu and RPM installations, and returns nothing when the host
 // runs MySQL rather than MariaDB. Pass an explicit path with
-// `mariadb.conf(path: "/etc/mysql/mariadb.cnf")` to parse a file regardless
+// `mariadb.conf("/etc/mysql/mariadb.cnf")` to parse a file regardless
 // of which product it belongs to.
+//
+// Values come from the option files. A setting given on the
+// command line, which is how a container usually configures MariaDB,
+// is not visible here, and an option no file sets reads null rather
+// than zero.
 mariadb.conf {
   init(path? string)
   // Primary option file
@@ -4190,6 +4341,14 @@ mariadb.conf {
   generalLogFile(serverOptions) string
   // slow_query_log option
   slowQueryLog(serverOptions) bool
+  // Path the slow query log is written to
+  //
+  // Read from log_slow_query_file, the spelling the Debian and Ubuntu
+  // packages write, falling back to the MySQL-compatible
+  // slow_query_log_file. MariaDB treats the two as one setting. Empty
+  // when neither is set, in which case the server derives the name from
+  // the host name and writes it under datadir.
+  slowQueryLogFile(serverOptions) string
   // server_audit_logging option, from the server_audit plugin
   serverAuditLogging(serverOptions) bool
   // server_audit_events option split into audited event classes
@@ -6824,7 +6983,14 @@ grub.config @defaults("defaultsPath grubPath") {
   params() map[string]string
   // Menu entries defined in grub.cfg
   entries() []grub.config.entry
-  // Whether GRUB password protection is enabled (superusers + password_pbkdf2)
+  // Whether GRUB password protection is enabled
+  //
+  // True when grub.cfg names a superuser and carries a matching password or
+  // password_pbkdf2 credential, including a credential kept in the user.cfg
+  // file beside grub.cfg. A credential that is still an unexpanded shell
+  // variable, such as the templated block many distributions emit
+  // unconditionally, does not count. Null when no grub.cfg exists, since a
+  // host that does not use GRUB is neither protected nor unprotected.
   passwordProtected() bool
 }
 
@@ -7014,7 +7180,7 @@ secpol {
 // control directives that govern which peers and clients may interact with
 // the daemon, and `fudge` carries reference-clock adjustments. `settings`
 // returns every effective directive line. Select a file with
-// `ntp.conf(path: "...")`.
+// `ntp.conf("...")`.
 ntp.conf {
   init(path string)
   // File of the NTP service configuration
@@ -7044,7 +7210,7 @@ ntp.conf {
 // where the control socket listens; and `keyFile`, `makeStep`, and
 // `rtcSync` cover the authentication key file, clock-stepping policy, and
 // real-time-clock synchronization. Select an alternate file with
-// `chrony.conf(path: "...")`; the default resolves to `/etc/chrony.conf`
+// `chrony.conf("...")`; the default resolves to `/etc/chrony.conf`
 // (RHEL family) or `/etc/chrony/chrony.conf` (Debian family).
 chrony.conf {
   init(path string)
@@ -13619,6 +13785,247 @@ private ai.model @defaults("name source") @maturity("preview") {
   tags []string
   // Short description of the model
   description string
+}
+
+// Ollama server configuration on the host
+//
+// Configuration the Ollama server on this host runs with. Ollama keeps no
+// configuration file: every setting is an environment variable read when the
+// daemon starts, so the settings are reconstructed from the systemd unit that
+// starts the server, the drop-ins and environment files that override it, and
+// server.json in the server account's Ollama directory. Each field reports the
+// value the server would actually use, so a setting nothing declares reads as
+// Ollama's own default rather than as empty. That matters most where the
+// default is the safe one: an undeclared bind address is the loopback
+// interface, not nothing.
+//
+// bindAddress, listensOnAllInterfaces, origins, and authEnabled describe who
+// can reach the API. Ollama requires no authentication and serves plain HTTP
+// out of the box, so a server that binds a routable address is readable and
+// writable by anyone who can reach the port. cloudEnabled, remotes, and the
+// proxy settings describe where prompts may travel; debugLogRequests and
+// historyEnabled describe what is written to disk.
+//
+// integrations lists the coding tools on the host that were pointed at this
+// server, and models the model store it serves. The settings resolved from the
+// environment are null when Ollama is not installed, so a check that reads
+// them fails on a host without a server rather than passing against a default.
+ollama.config @defaults("host listensOnAllInterfaces authEnabled") @maturity("preview") {
+  // Whether an Ollama server is installed on this host
+  //
+  // True when the server binary or a unit that starts it was found. Every
+  // setting resolved from the environment is null when this is false.
+  installed() bool
+  // Path to the server binary, empty when it was not found
+  binaryPath() string
+  // Service that runs the server
+  //
+  // Reports whether the server is enabled and running. Null on a host with no
+  // unit for it, including one where the server is started by hand.
+  service() service
+  // Package that installed the server
+  //
+  // Resolves to the system-package-manager entry that installed the server
+  // when one can be identified; otherwise an abstract package (origin
+  // "unknown", empty format, absent from `packages`) that records the
+  // server's presence and, where determinable, an inferred version.
+  package() package
+  // Version of the installed server
+  //
+  // Matches the host against published Ollama advisories. Empty when no
+  // version can be determined without running the binary.
+  version() string
+  // Account the server runs as
+  //
+  // From the unit's User= setting. Empty when the unit names none, in which
+  // case a system service runs as root.
+  user() string
+  // Files the configuration was read from, in the order they were applied
+  //
+  // The unit, then its drop-ins, then the environment files they name. Empty
+  // when nothing on the host declares the server's environment, in which case
+  // every setting reported is Ollama's default.
+  files() []string
+  // Ollama settings as declared, before defaults are applied
+  //
+  // A variable absent here is one nothing gave the daemon. Read this to tell a
+  // setting that was chosen from one that merely matches the default. Only the
+  // variables Ollama reads are reported: a unit's environment is a common place
+  // to keep credentials for unrelated purposes, so anything outside Ollama's
+  // own settings is left out, and so is anything whose name is
+  // credential-shaped.
+  variables() map[string]string
+  // File each declared variable was read from
+  //
+  // Keyed the same as variables, so a setting can be traced to the unit, a
+  // drop-in, or an environment file.
+  variableSources() map[string]string
+
+  // Address the API is served on
+  //
+  // The resolved OLLAMA_HOST, for example "http://127.0.0.1:11434".
+  host() string
+  // Address the API binds to
+  bindAddress() string
+  // Port the API binds to
+  port() int
+  // Whether the API is bound to every interface
+  //
+  // True when the bind address is unspecified (0.0.0.0 or ::), which puts the
+  // API on every network the host is attached to. Ollama binds the loopback
+  // interface by default, so this is always a deliberate change, and it is the
+  // one that turns the other exposure settings into a reachable surface.
+  listensOnAllInterfaces() bool
+  // Whether the API is addressed over TLS
+  //
+  // False when the server is served over plain HTTP, in which case prompts,
+  // completions, and any API token sent to it travel in the clear.
+  tls() bool
+  // Browser origins the API accepts cross-origin requests from
+  //
+  // The entries of OLLAMA_ORIGINS, empty when it is unset. Ollama always
+  // additionally accepts localhost, 127.0.0.1 and 0.0.0.0 on any port, and the
+  // app, file, tauri, vscode-webview and vscode-file schemes, whatever this is
+  // set to. Those additions are not listed here, which reports only what the
+  // host was configured with.
+  origins() []string
+  // Whether any browser origin is accepted
+  //
+  // True when origins contains a bare wildcard. Ollama matches it as a
+  // wildcard rather than literally, so any page in any browser that can reach
+  // the port can drive the API.
+  allowsAnyOrigin() bool
+  // Whether the server requires authentication
+  //
+  // Reports OLLAMA_AUTH. False is the default, meaning any client that can
+  // reach the port can list models, run inference, and pull or delete models.
+  authEnabled() bool
+
+  // Whether the server may reach Ollama Cloud
+  //
+  // False when cloud inference and web search are turned off. While true,
+  // prompts for cloud-hosted models leave the host and are processed by
+  // Ollama Cloud.
+  cloudEnabled() bool
+  // What turned the cloud features off
+  //
+  // One of "none", "env", "config", or "both", naming whether the decision
+  // came from OLLAMA_NO_CLOUD, from server.json, or from both. "none" means
+  // the features are on.
+  cloudDisabledSource() string
+  // Hosts remote models may be served from
+  //
+  // The entries of OLLAMA_REMOTES, defaulting to ollama.com. A model served
+  // from one of these hosts runs there, so prompts for it leave this machine.
+  remotes() []string
+
+  // Directory the model store is kept in
+  //
+  // The resolved OLLAMA_MODELS, defaulting to the Ollama directory under the
+  // server account's home. Packaged installations routinely move this, so it
+  // is rarely the default on a server.
+  modelsPath() string
+  // Models cached in the store this server serves
+  models() []ai.model
+  // Coding tools on the host pointed at this server
+  integrations() []ollama.config.integration
+
+  // Whether inference request bodies are written to disk
+  //
+  // Reports OLLAMA_DEBUG_LOG_REQUESTS, which writes the body of every
+  // inference request, prompts included, to a temporary directory along with
+  // a command to replay it. Intended for debugging and false by default.
+  debugLogRequests() bool
+  // Whether the interactive prompt history is kept
+  //
+  // False when OLLAMA_NOHISTORY suppresses it. While true, prompts typed at
+  // the interactive client are written to the user's Ollama directory.
+  historyEnabled() bool
+  // Log verbosity
+  //
+  // One of "info", "debug", or "trace", resolved from OLLAMA_DEBUG.
+  logLevel() string
+  // Whether unused model blobs are kept rather than pruned at startup
+  noPrune() bool
+
+  // Seconds a model stays loaded in memory after its last request
+  //
+  // -1 keeps models resident indefinitely; 0 unloads each one as soon as its
+  // request finishes. Defaults to 300.
+  keepAliveSeconds() int
+  // Seconds a model load may stall before it is abandoned
+  //
+  // -1 means no limit. Defaults to 300.
+  loadTimeoutSeconds() int
+  // Default context window in tokens
+  //
+  // 0 means Ollama picks a length from the available VRAM rather than being
+  // told one.
+  contextLength() int
+  // Maximum number of requests served in parallel
+  numParallel() int
+  // Maximum number of models held in memory at once
+  //
+  // 0 means Ollama derives the limit from the available VRAM.
+  maxLoadedModels() int
+  // Maximum number of requests queued before further ones are rejected
+  maxQueue() int
+  // Bytes of VRAM reserved per GPU and kept away from models
+  gpuOverhead() int
+  // Whether flash attention is enabled
+  flashAttention() bool
+  // Whether a model is spread across every GPU rather than fitted onto one
+  schedSpread() bool
+  // Quantization type of the key/value cache, empty when unset
+  kvCacheType() string
+  // Inference library the server was pinned to, empty when it autodetects
+  llmLibrary() string
+
+  // HTTP proxy the server sends requests through, empty when unset
+  httpProxy() string
+  // HTTPS proxy the server sends requests through, empty when unset
+  //
+  // Model pulls and cloud inference go through this host, which therefore sees
+  // and can intercept them.
+  httpsProxy() string
+  // Hosts excluded from the configured proxies, empty when unset
+  noProxy() string
+}
+
+// Coding tool wired to the host's Ollama server
+//
+// One entry of a user's Ollama integration configuration, recording that a
+// coding tool was pointed at the local server and which models it was given.
+// The `name` field is the key Ollama files the tool under, for example
+// "claude", "codex", "opencode", "cline", "copilot", or "qwen". Reading these
+// answers which assistants on the host send their prompts to a local model
+// rather than to a vendor API, and, through `models`, whether the model each
+// one asks for is actually present in the store.
+private ollama.config.integration @defaults("name user modelNames") @maturity("preview") {
+  // Name Ollama files the tool under
+  name string
+  // User whose configuration wired the tool up
+  //
+  // The integrations are per-user, so the same tool can be configured
+  // differently by two accounts on one host.
+  user string
+  // Model names the tool was configured with
+  //
+  // What the tool asks for, which is not necessarily what the host has. A name
+  // here with no counterpart in models is a tool pointed at a model that is
+  // not installed.
+  modelNames []string
+  // Models from the store that the configured names resolve to
+  //
+  // Only the names the store actually holds appear here, so a shorter list
+  // than modelNames means the tool asks for a model this host cannot serve.
+  models() []ai.model
+  // Tool-side model names mapped to Ollama model names
+  //
+  // Empty when the tool uses the Ollama names directly.
+  aliases map[string]string
+  // Whether the tool completed Ollama's setup flow
+  onboarded bool
 }
 
 // Claude Code (Anthropic CLI agent) instance

@@ -1,0 +1,30 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "no-distro",
+  "documentNamespace": "",
+  "creationInfo": {
+    "creators": [
+      "Tool: cnquery"
+    ],
+    "created": "2026-08-25T09:00:00Z"
+  },
+  "packages": [
+    {
+      "name": "bash",
+      "SPDXID": "SPDXRef-Package-alpm-bash",
+      "versionInfo": "5.2.037-2",
+      "downloadLocation": "",
+      "filesAnalyzed": false,
+      "licenseDeclared": "5.2.037-2",
+      "externalRefs": [
+        {
+          "referenceCategory": "SECURITY",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:alpm/bash@5.2.037-2?arch=x86_64"
+        }
+      ]
+    }
+  ]
+}

@@ -4,6 +4,7 @@
 package packages
 
 import (
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -25,11 +26,16 @@ const (
 )
 
 type Package struct {
-	Name        string `json:"name"`
-	Version     string `json:"version"`
-	Epoch       string `json:"epoch,omitempty"`
-	Arch        string `json:"arch"`
-	Status      string `json:"status,omitempty"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Epoch   string `json:"epoch,omitempty"`
+	Arch    string `json:"arch"`
+	Status  string `json:"status,omitempty"`
+
+	// Pinned reports that the package manager is configured to hold this
+	// package at its current version: a dpkg or opkg hold, a dnf or yum
+	// versionlock, or a zypper lock.
+	Pinned      bool   `json:"pinned,omitempty"`
 	Description string `json:"description"`
 
 	// this may be the source package or an origin
@@ -142,6 +148,8 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 		pms = append(pms, &SusePkgManager{RpmPkgManager{conn: conn, platform: asset.Platform}})
 	case asset.Platform.Name == "alpine" || asset.Platform.Name == "wolfi" || asset.Platform.Name == "wizos": // alpine, wolfi & wizos share apk
 		pms = append(pms, &AlpinePkgManager{conn: conn, platform: asset.Platform})
+	case asset.Platform.Name == "void": // Void Linux uses xbps
+		pms = append(pms, &XbpsPkgManager{conn: conn, platform: asset.Platform})
 	case asset.Platform.Name == "macos": // macos family
 		pms = append(pms, &MacOSPkgManager{conn: conn, platform: asset.Platform})
 	case asset.Platform.Name == "windows":
@@ -165,14 +173,41 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 	case asset.Platform.Name == "gentoo":
 		pms = append(pms, &GentooPkgManager{conn: conn, platform: asset.Platform})
 	case asset.Platform.IsFamily("linux"):
-		// no clear package manager for linux platform found
-		// most likely we land here if we have a yocto-based system
+		// No case above claimed this platform, so nothing above it knows which
+		// package manager it uses. Every distro named above had to be named
+		// because it carries neither a family nor a name any earlier case
+		// matches, and a distro nobody has added yet is indistinguishable from
+		// one nobody ever will: it lands here and, without a probe, reports no
+		// package manager at all. CBL-Mariner 2.0 (ID=mariner) was one such
+		// case, with a populated rpm database and no package inventory.
+		//
+		// So ask the filesystem instead of the name. A package database on
+		// disk is the same evidence the named cases stand on, and it is
+		// evidence the distro provides itself.
 		opkgPaths := []string{"/bin/opkg", "/usr/bin/opkg"}
 		for i := range opkgPaths {
 			if _, err := conn.FileSystem().Stat(opkgPaths[i]); err == nil {
 				pms = append(pms, &OpkgPkgManager{conn: conn})
 				break
 			}
+		}
+
+		// rpm keeps its database under /var/lib/rpm, or under
+		// /usr/lib/sysimage/rpm on systems that moved it for /var immutability.
+		rpmPaths := []string{"/var/lib/rpm", "/usr/lib/sysimage/rpm"}
+		for i := range rpmPaths {
+			if _, err := conn.FileSystem().Stat(rpmPaths[i]); err == nil {
+				pms = append(pms, &RpmPkgManager{conn: conn, platform: asset.Platform})
+				break
+			}
+		}
+
+		if _, err := conn.FileSystem().Stat("/var/lib/dpkg/status"); err == nil {
+			pms = append(pms, &DebPkgManager{conn: conn, platform: asset.Platform})
+		}
+
+		if _, err := conn.FileSystem().Stat("/lib/apk/db/installed"); err == nil {
+			pms = append(pms, &AlpinePkgManager{conn: conn, platform: asset.Platform})
 		}
 	}
 
@@ -205,4 +240,28 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 	}
 
 	return pms, nil
+}
+
+// isHeldStatus reports whether a dpkg-style status triple holds the package at
+// its current version.
+//
+// The triple is "<want> <flag> <state>". dpkg records a hold in the want field,
+// which is what `apt-mark hold` writes:
+//
+//	Status: hold ok installed
+//
+// opkg records it in the flag field, where dpkg carried it historically:
+//
+//	Status: install hold installed
+//
+// Only those two positions are considered. Matching "hold" anywhere in the
+// string would also fire on a package whose name or state merely contains it.
+func isHeldStatus(status string) bool {
+	fields := strings.Fields(status)
+	for i := 0; i < len(fields) && i < 2; i++ {
+		if fields[i] == "hold" {
+			return true
+		}
+	}
+	return false
 }

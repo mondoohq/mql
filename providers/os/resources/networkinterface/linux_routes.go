@@ -47,7 +47,7 @@ func (l *linuxRouteDetector) List() ([]Route, error) {
 		if err == nil {
 			return routes, nil
 		}
-		log.Debug().Err(err).Msg("Failed to parse ip route JSON output, falling back to /proc/net/route and /proc/net/ipv6_route")
+		log.Debug().Err(err).Msg("Failed to parse ip route JSON output")
 	}
 
 	return nil, errors.New("failed to get network routes")
@@ -97,6 +97,15 @@ func (l *linuxRouteDetector) parseIpRouteJSON(output string) ([]Route, error) {
 
 // convertJSONRouteToRoute converts an ipRouteJSON to a Route
 func (l *linuxRouteDetector) convertJSONRouteToRoute(jsonRoute ipRouteJSON) *Route {
+	// `ip route show table all` includes the entries the kernel installs to
+	// discard traffic. They are not paths anything travels over, and counting
+	// an unreachable ::/0 as a default route makes a host without IPv6
+	// connectivity look like it has some.
+	switch jsonRoute.Type {
+	case "unreachable", "blackhole", "prohibit", "throw":
+		return nil
+	}
+
 	route := &Route{
 		Interface: jsonRoute.Dev,
 		Gateway:   jsonRoute.Gateway,
@@ -185,8 +194,15 @@ func (l *linuxRouteDetector) parseLinuxRoutesFromProc(output string) ([]Route, e
 			flagsInt = 0
 		}
 
-		// Convert flags to strings using BSD-style route flags (RTF_*)
-		flags := parseRouteFlags(int64(flagsInt))
+		flags := parseLinuxRouteFlags(int64(flagsInt))
+
+		// Same discard entries the IPv6 table and `ip route` paths drop. The
+		// kernel's fib_flag_trans sets RTF_REJECT for unreachable and prohibit
+		// routes; blackhole carries no flag of its own here, so only the JSON
+		// path can tell that one apart.
+		if routeFlagsRejected(flags) {
+			continue
+		}
 
 		// Handle gateway
 		gatewayStr := gateway.String()
@@ -223,6 +239,7 @@ func (l *linuxRouteDetector) parseLinuxIPv6RoutesFromProc(output string) ([]Rout
 		destHex := fields[0]
 		prefixLenHex := fields[1] // Destination prefix length (stored as hex string representing decimal)
 		nextHopHex := fields[4]   // Next hop is at index 4
+		flagsHex := fields[8]
 		device := fields[9]
 
 		// Parse destination IPv6 address (32 hex chars = 128 bits)
@@ -260,10 +277,24 @@ func (l *linuxRouteDetector) parseLinuxIPv6RoutesFromProc(output string) ([]Rout
 			continue
 		}
 
+		flagsInt, err := strconv.ParseUint(flagsHex, 16, 64)
+		if err != nil {
+			flagsInt = 0
+		}
+		flags := parseLinuxIPv6RouteFlags(int64(flagsInt))
+
+		// The kernel installs a reject route for every destination it knows is
+		// unreachable, including a ::/0 one on hosts with no IPv6 default
+		// route. Those discard traffic rather than carry it, so reporting them
+		// makes a host look like it has a default route when it does not.
+		if routeFlagsRejected(flags) {
+			continue
+		}
+
 		routes = append(routes, Route{
 			Destination: destStr,
 			Gateway:     gatewayStr,
-			Flags:       []string{}, // /proc/net/ipv6_route doesn't provide flags in a simple format
+			Flags:       flags,
 			Interface:   device,
 		})
 	}

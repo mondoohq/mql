@@ -188,3 +188,18 @@ func TestRsyslogIncludeMatches(t *testing.T) {
 		})
 	}
 }
+
+// A fragment reached only through `<conf>.d` auto-discovery must still have its
+// own includes followed. The sweep used to append such fragments as leaves, so
+// anything they included was silently missing from rsyslog.conf.files.
+func TestRsyslogConf_DotDFragmentIncludesAreFollowed(t *testing.T) {
+	paths := rsyslogFixtureFilesFrom(t, "testdata/rsyslog_dotd_nested.toml")
+
+	assert.Contains(t, paths, "/etc/rsyslog.conf")
+	assert.Contains(t, paths, "/etc/rsyslog.d/50-frag.conf",
+		"the fragment is found by .d auto-discovery")
+	assert.Contains(t, paths, "/etc/rsyslog.nested/90-nested.conf",
+		"the fragment's own $IncludeConfig must be followed")
+	assert.NotContains(t, paths, "/etc/rsyslog.nested/notes.txt",
+		"the include glob still applies to the nested directory")
+}

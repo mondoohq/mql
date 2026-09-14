@@ -200,3 +200,108 @@ func inferClassificationFromTitle(title string) string {
 		return ""
 	}
 }
+
+// nonOSProductMarkers name products that the Windows Update Agent services
+// alongside the operating system but that are not the operating system. A
+// .NET Framework or an Office security update is a real update; counting it
+// would report a host years behind on Windows as patched this morning, which is
+// the same failure the Definition Updates filter exists to prevent.
+//
+// The Defender entries matter beyond the signature stream the classification
+// already drops: the antimalware platform ships its own "Update for Windows
+// Defender Antivirus antimalware platform" entries, whose title would otherwise
+// pass the Windows product test below.
+var nonOSProductMarkers = []string{
+	".net",
+	"office",
+	"visual studio",
+	"visual c++",
+	"sql server",
+	"exchange server",
+	"silverlight",
+	"microsoft edge",
+	"defender",
+	"malicious software removal tool",
+	"security intelligence",
+	"skype",
+	"onedrive",
+	"developer tools, runtimes, and redistributables",
+}
+
+// IsOperatingSystemUpdate reports whether a Windows Update Agent history entry
+// is a patch to the operating system itself.
+//
+// The agent reports a product alongside the classification, but history entries
+// frequently carry no categories at all (see ClassifyUpdate), so the title is
+// the signal that has to hold on its own. Titles name the product they patch
+// after "Update for ", and the first such product is the one being patched:
+//
+//	"2026-08 Cumulative Update for Windows 11 Version 24H2 for x64-based Systems (KB5063878)"
+//	                             -> "Windows 11 Version 24H2"          operating system
+//	"Security Update for Microsoft .NET Framework 4.8 for Windows Server 2019 (KB5034619)"
+//	                    -> "Microsoft .NET Framework 4.8"              not the operating system
+//
+// That second title is why a plain search for "Windows" in the title is wrong:
+// a .NET update names the Windows release it targets, and matching it would
+// count every .NET servicing entry as an operating system patch.
+func IsOperatingSystemUpdate(categories []string, title string) bool {
+	for _, c := range categories {
+		if namesNonOSProduct(c) {
+			return false
+		}
+	}
+	if namesNonOSProduct(title) {
+		return false
+	}
+
+	switch ClassifyUpdate(categories, title) {
+	case "Definition Updates", "Drivers":
+		// Definition data lands daily and a driver is firmware for one device,
+		// so neither says anything about operating system patch state.
+		return false
+	}
+
+	// The servicing stack ships only for the operating system, and its titles
+	// do not always follow the "Update for <product>" shape.
+	if strings.Contains(strings.ToLower(title), "servicing stack update") {
+		return true
+	}
+	// A feature update is a whole operating system version move, titled
+	// "Feature update to Windows 11, version 24H2" with no "for" clause.
+	if strings.Contains(strings.ToLower(title), "feature update to windows") {
+		return true
+	}
+
+	return strings.HasPrefix(strings.ToLower(titleProduct(title)), "windows")
+}
+
+// namesNonOSProduct reports whether s names one of the products the agent
+// services that are not the operating system.
+func namesNonOSProduct(s string) bool {
+	lower := strings.ToLower(s)
+	for _, marker := range nonOSProductMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// titleProduct returns the product an update title says it patches: the text
+// after the first " for ", cut at the next " for " (which introduces the
+// architecture clause) or at the KB parenthetical. Returns "" for a title that
+// names no product.
+func titleProduct(title string) string {
+	const sep = " for "
+	_, rest, ok := strings.Cut(title, sep)
+	if !ok {
+		return ""
+	}
+	if product, _, ok := strings.Cut(rest, sep); ok {
+		rest = product
+	}
+	if product, _, ok := strings.Cut(rest, " ("); ok {
+		rest = product
+	}
+	return strings.TrimSpace(rest)
+}

@@ -300,11 +300,47 @@ func (rpm *RpmPkgManager) isStaticAnalysis() bool {
 }
 
 func (rpm *RpmPkgManager) List() ([]Package, error) {
+	var pkgs []Package
+	var err error
 	if rpm.isStaticAnalysis() {
-		return rpm.staticList()
+		pkgs, err = rpm.staticList()
 	} else {
-		return rpm.runtimeList()
+		pkgs, err = rpm.runtimeList()
 	}
+	if err != nil {
+		return nil, err
+	}
+	return markPinned(pkgs, rpm.lockedPackages()), nil
+}
+
+// lockedPackages reads the versionlock store. Overridden by SusePkgManager,
+// which locks through zypper instead.
+func (rpm *RpmPkgManager) lockedPackages() lockedNames {
+	return readVersionlock(rpm.conn.FileSystem())
+}
+
+// lockedPackages reads zypper's lock store. SUSE has no versionlock plugin, so
+// reading the dnf paths there would always come back empty.
+func (spm *SusePkgManager) lockedPackages() lockedNames {
+	return readZypperLocks(spm.conn.FileSystem())
+}
+
+// List reads the rpm database and marks the packages zypper holds. The
+// embedded RpmPkgManager.List cannot be reused for this: it calls
+// lockedPackages on the embedded value, which resolves to the versionlock
+// reader rather than this override.
+func (spm *SusePkgManager) List() ([]Package, error) {
+	var pkgs []Package
+	var err error
+	if spm.isStaticAnalysis() {
+		pkgs, err = spm.staticList()
+	} else {
+		pkgs, err = spm.runtimeList()
+	}
+	if err != nil {
+		return nil, err
+	}
+	return markPinned(pkgs, spm.lockedPackages()), nil
 }
 
 func (rpm *RpmPkgManager) Available() (map[string]PackageUpdate, error) {
@@ -523,16 +559,21 @@ func modularitySupportedByPlatform(platform *inventory.Platform) bool {
 
 	switch platform.Name {
 	case "oraclelinux", "almalinux", "redhat", "centos", "rocky":
+		// The window is [8, 10): modularity was introduced with RHEL 8 and
+		// removed again in RHEL 10. Do not widen it. On RHEL 7 and older rpm is
+		// 4.11, which has no %{MODULARITYLABEL} tag: it writes an error per
+		// package to stderr, writes nothing to stdout, and still exits 0, so
+		// asking for the tag there returns an empty package list with no error.
 		vParser := semver.Parser{}
-		cmp, err := vParser.Compare(platform.Version, "10")
+		lower, err := vParser.Compare(platform.Version, "8")
 		if err != nil {
 			return false
 		}
-		if cmp < 0 {
-			supported = true
-		} else {
-			supported = false
+		upper, err := vParser.Compare(platform.Version, "10")
+		if err != nil {
+			return false
 		}
+		supported = lower >= 0 && upper < 0
 	}
 
 	return supported

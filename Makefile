@@ -467,6 +467,14 @@ test/go/plain-ci: prep/tools test/generate providers/build/mock providers/build/
 test/integration:
 	go test -cover -p 1 $(shell go list ./... | grep '/test/')
 
+# Docker-backed regression matrix for the package resource, one image per
+# package manager. Deliberately manual: it pulls several images and takes
+# minutes, so it carries the debugtest tag and stays out of `go test ./...`.
+# Run it when changing anything under providers/os/resources/packages.
+.PHONY: test/packages/matrix
+test/packages/matrix:
+	go test -tags debugtest -count=1 -timeout 30m -v ./test/providers/ -run TestPackagesMatrix
+
 test/go-cli/plain-ci: prep/tools test/generate providers/build
 	gotestsum --junitfile report.xml --format pkgname -- -cover -p 1 $(shell go list ./... | grep '/test/')
 

@@ -38,7 +38,7 @@ func initPamConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[str
 		if err != nil {
 			return nil, nil, err
 		}
-		args["file"] = llx.ResourceData(f, "file")
+		args["files"] = llx.ArrayData([]any{f}, types.Resource("file"))
 		delete(args, "path")
 	}
 

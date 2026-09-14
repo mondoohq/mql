@@ -315,4 +315,33 @@ func TestPackageURLString(t *testing.T) {
 		expected := "pkg:rpm/opensuse/testpkg@1.0.0?arch=x86_64&distro=opensuse-microos-20260822"
 		assert.Equal(t, expected, p.String())
 	})
+
+	// Arch and its derivatives ship no VERSION_ID, only BUILD_ID=rolling, so
+	// the distro qualifier has to come from the build id.
+	t.Run("rolling release package", func(t *testing.T) {
+		platform := &inventory.Platform{
+			Name:  "arch",
+			Arch:  "x86_64",
+			Build: "rolling",
+			Labels: map[string]string{
+				"distro-id": "arch",
+			},
+		}
+		p := purl.NewPackageURL(platform, purl.TypeAlpm, "testpkg", "1.0.0")
+		expected := "pkg:alpm/arch/testpkg@1.0.0?arch=x86_64&distro=arch-rolling"
+		assert.Equal(t, expected, p.String())
+	})
+
+	t.Run("package without version or build", func(t *testing.T) {
+		platform := &inventory.Platform{
+			Name: "arch",
+			Arch: "x86_64",
+			Labels: map[string]string{
+				"distro-id": "arch",
+			},
+		}
+		p := purl.NewPackageURL(platform, purl.TypeAlpm, "testpkg", "1.0.0")
+		expected := "pkg:alpm/arch/testpkg@1.0.0?arch=x86_64&distro=arch"
+		assert.Equal(t, expected, p.String())
+	})
 }

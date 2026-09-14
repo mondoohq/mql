@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>date</key>
+		<date>2026-03-17T07:18:17Z</date>
+		<key>displayName</key>
+		<string>macOS 26.3.1</string>
+		<key>displayVersion</key>
+		<string>26.3.1</string>
+		<key>packageIdentifiers</key>
+		<array>
+			<string>com.apple.pkg.update.os.26.3.1</string>
+		</array>
+		<key>processName</key>
+		<string>softwareupdated</string>
+	</dict>
+	<dict>
+		<key>date</key>
+		<date>2026-07-23T10:48:32Z</date>
+		<key>displayName</key>
+		<string>macOS 26.5.2</string>
+		<key>displayVersion</key>
+		<string>26.5.2</string>
+		<key>packageIdentifiers</key>
+		<array>
+			<string>com.apple.pkg.update.os.26.5.2</string>
+		</array>
+		<key>processName</key>
+		<string>softwareupdated</string>
+	</dict>
+	<dict>
+		<key>contentType</key>
+		<string>config-data</string>
+		<key>date</key>
+		<date>2026-08-19T07:01:03Z</date>
+		<key>displayName</key>
+		<string>XProtectPlistConfigData</string>
+		<key>displayVersion</key>
+		<string>5356</string>
+		<key>packageIdentifiers</key>
+		<array>
+			<string>com.apple.pkg.XProtectPlistConfigData</string>
+		</array>
+		<key>processName</key>
+		<string>softwareupdated</string>
+	</dict>
+	<dict>
+		<key>date</key>
+		<date>2026-08-25T11:29:02Z</date>
+		<key>displayName</key>
+		<string>Mondoo</string>
+		<key>displayVersion</key>
+		<string></string>
+		<key>packageIdentifiers</key>
+		<array>
+			<string>com.mondoo.client</string>
+		</array>
+		<key>processName</key>
+		<string>installer</string>
+	</dict>
+	<dict>
+		<key>date</key>
+		<date>2026-08-21T09:03:44Z</date>
+		<key>displayName</key>
+		<string>Command Line Tools for Xcode</string>
+		<key>displayVersion</key>
+		<string>16.4</string>
+		<key>packageIdentifiers</key>
+		<array>
+			<string>com.apple.pkg.CLTools_Executables</string>
+		</array>
+		<key>processName</key>
+		<string>softwareupdated</string>
+	</dict>
+	<dict>
+		<key>date</key>
+		<date>2026-08-20T08:15:09Z</date>
+		<key>displayName</key>
+		<string>RosettaUpdateAuto</string>
+		<key>displayVersion</key>
+		<string>1.0</string>
+		<key>packageIdentifiers</key>
+		<array>
+			<string>com.apple.pkg.RosettaUpdateAuto</string>
+		</array>
+		<key>processName</key>
+		<string>softwareupdated</string>
+	</dict>
+</array>
+</plist>

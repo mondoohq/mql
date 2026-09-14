@@ -227,55 +227,67 @@ func (s *mqlRsyslogConf) files(path string) ([]any, error) {
 		path  string
 		depth int
 	}
-	queue := []queued{{path: path, depth: 0}}
+	var queue []queued
 
-	for len(queue) > 0 {
-		head := queue[0]
-		queue = queue[1:]
+	// drain walks the queue, following includes out of every file it reads.
+	// It runs once for the main config and again for the `.d` fragments, so a
+	// fragment reached only by auto-discovery still gets its own includes
+	// followed instead of being listed as a leaf.
+	drain := func() error {
+		for len(queue) > 0 {
+			head := queue[0]
+			queue = queue[1:]
 
-		clean := filepath.Clean(head.path)
-		if visited[clean] {
-			continue
-		}
-		visited[clean] = true
-
-		f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
-			"path": llx.StringData(clean),
-		})
-		if err != nil {
-			return nil, err
-		}
-		mf := f.(*mqlFile)
-		out = append(out, mf)
-
-		if head.depth >= maxRsyslogIncludeDepth {
-			continue
-		}
-
-		content := mf.GetContent()
-		if content.Error != nil {
-			if errors.Is(content.Error, resources.NotFoundError{}) {
+			clean := filepath.Clean(head.path)
+			if visited[clean] {
 				continue
 			}
-			// Other read errors (permission denied, IO) are non-fatal here:
-			// the file is still listed via the resource, and the caller can
-			// inspect it for the error. Don't abort the whole walk.
-			continue
-		}
+			visited[clean] = true
 
-		patterns := parseRsyslogIncludes(content.Data)
-		parentDir := filepath.Dir(clean)
-		for _, pat := range patterns {
-			matches, err := s.expandIncludePattern(parentDir, pat)
+			f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
+				"path": llx.StringData(clean),
+			})
 			if err != nil {
+				return err
+			}
+			mf := f.(*mqlFile)
+			out = append(out, mf)
+
+			if head.depth >= maxRsyslogIncludeDepth {
 				continue
 			}
-			for _, m := range matches {
-				if !visited[filepath.Clean(m)] {
-					queue = append(queue, queued{path: m, depth: head.depth + 1})
+
+			content := mf.GetContent()
+			if content.Error != nil {
+				if errors.Is(content.Error, resources.NotFoundError{}) {
+					continue
+				}
+				// Other read errors (permission denied, IO) are non-fatal here:
+				// the file is still listed via the resource, and the caller can
+				// inspect it for the error. Don't abort the whole walk.
+				continue
+			}
+
+			patterns := parseRsyslogIncludes(content.Data)
+			parentDir := filepath.Dir(clean)
+			for _, pat := range patterns {
+				matches, err := s.expandIncludePattern(parentDir, pat)
+				if err != nil {
+					continue
+				}
+				for _, m := range matches {
+					if !visited[filepath.Clean(m)] {
+						queue = append(queue, queued{path: m, depth: head.depth + 1})
+					}
 				}
 			}
 		}
+		return nil
+	}
+
+	queue = append(queue, queued{path: path, depth: 0})
+	if err := drain(); err != nil {
+		return nil, err
 	}
 
 	// Legacy `.d` auto-discovery: configurations that rely on the
@@ -304,10 +316,16 @@ func (s *mqlRsyslogConf) files(path string) ([]any, error) {
 				if visited[filepath.Clean(mf.Path.Data)] {
 					continue
 				}
-				visited[filepath.Clean(mf.Path.Data)] = true
-				out = append(out, mf)
+				// Queue rather than append: a fragment dropped into `<conf>.d`
+				// may carry its own $IncludeConfig, and appending it directly
+				// left those nested files out of the list entirely.
+				queue = append(queue, queued{path: mf.Path.Data, depth: 0})
 			}
 		}
+	}
+
+	if err := drain(); err != nil {
+		return nil, err
 	}
 
 	return out, nil

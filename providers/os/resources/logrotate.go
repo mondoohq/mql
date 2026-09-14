@@ -9,8 +9,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/spf13/afero"
 	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/v13/providers/os/connection/shared"
 	"go.mondoo.com/mql/v13/providers/os/resources/logrotate"
 	"go.mondoo.com/mql/v13/types"
 )
@@ -30,6 +32,10 @@ func (l *mqlLogrotate) id() (string, error) {
 
 func (le *mqlLogrotateEntry) id() (string, error) {
 	file := le.File.Data
+	if file == nil {
+		return "", errors.New("cannot determine logrotate entry ID (missing file)")
+	}
+
 	lineNum := strconv.FormatInt(le.LineNumber.Data, 10)
 
 	return file.Path.Data + ":" + lineNum + ":" + le.Path.Data, nil
@@ -39,9 +45,16 @@ func (le *mqlLogrotateEntry) id() (string, error) {
 func (l *mqlLogrotate) files() ([]any, error) {
 	var allFiles []any
 
-	// Add main logrotate.conf
+	var fs afero.Fs
+	if conn, ok := l.MqlRuntime.Connection.(shared.Connection); ok {
+		fs = conn.FileSystem()
+	}
+
+	// Add main logrotate.conf. Distributions that ship packaged defaults under
+	// /usr/etc (openSUSE Leap 16, SLE 16) keep it there unless an administrator
+	// overrode it in /etc.
 	mainFile, err := CreateResource(l.MqlRuntime, "file", map[string]*llx.RawData{
-		"path": llx.StringData(defaultLogrotateConf),
+		"path": llx.StringData(resolveVendorConfigPath(fs, defaultLogrotateConf)),
 	})
 	if err != nil {
 		return nil, err
@@ -56,22 +69,11 @@ func (l *mqlLogrotate) files() ([]any, error) {
 		allFiles = append(allFiles, f)
 	}
 
-	// Check logrotate.d directory
-	dirFile, err := CreateResource(l.MqlRuntime, "file", map[string]*llx.RawData{
-		"path": llx.StringData(defaultLogrotateDir),
-	})
-	if err != nil {
-		return nil, err
-	}
-	dir := dirFile.(*mqlFile)
-	dirExists := dir.GetExists()
-	if dirExists.Error != nil {
-		return nil, dirExists.Error
-	}
-
-	if dirExists.Data {
+	// Drop-ins merge across both trees, with /etc shadowing a same-named file
+	// in /usr/etc.
+	for _, dir := range vendorConfigDirs(fs, defaultLogrotateDir) {
 		files, err := CreateResource(l.MqlRuntime, "files.find", map[string]*llx.RawData{
-			"from":  llx.StringData(defaultLogrotateDir),
+			"from":  llx.StringData(dir),
 			"type":  llx.StringData("file"),
 			"depth": llx.IntData(1),
 		})
@@ -98,6 +100,9 @@ func (l *mqlLogrotate) files() ([]any, error) {
 				strings.HasSuffix(name, ".rpmsave") || strings.HasSuffix(name, ".rpmorig") ||
 				strings.HasSuffix(name, ".dpkg-old") || strings.HasSuffix(name, ".dpkg-new") ||
 				strings.HasSuffix(name, ".dpkg-dist") || strings.HasSuffix(name, "~") {
+				continue
+			}
+			if vendorConfigShadowed(fs, file.Path.Data) {
 				continue
 			}
 

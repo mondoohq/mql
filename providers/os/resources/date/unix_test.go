@@ -352,3 +352,43 @@ func TestTimezoneFromFS_NonUTCDockerImage(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Asia/Tokyo", tz)
 }
+
+// LocationFromFS is what lets a timestamp written without an offset be read in
+// the asset's own zone rather than the scanner's. A nil return is the signal to
+// fall back, so it must not be confused with UTC.
+func TestLocationFromFS(t *testing.T) {
+	t.Run("zone from /etc/timezone", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		require.NoError(t, afero.WriteFile(fs, "/etc/timezone", []byte("Europe/Berlin\n"), 0o644))
+
+		loc := LocationFromFS(fs)
+		require.NotNil(t, loc)
+		assert.Equal(t, "Europe/Berlin", loc.String())
+	})
+
+	t.Run("UTC container image", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		require.NoError(t, afero.WriteFile(fs, "/etc/timezone", []byte("Etc/UTC\n"), 0o644))
+
+		loc := LocationFromFS(fs)
+		require.NotNil(t, loc)
+
+		// The point of resolving the asset's zone: the same naive timestamp must
+		// name a different instant here than it would in the scanner's zone.
+		parsed, err := time.ParseInLocation("2006-01-02 15:04:05", "2026-05-09 14:23:32", loc)
+		require.NoError(t, err)
+		assert.Equal(t, "2026-05-09T14:23:32Z", parsed.UTC().Format(time.RFC3339))
+	})
+
+	t.Run("no zone information", func(t *testing.T) {
+		assert.Nil(t, LocationFromFS(afero.NewMemMapFs()),
+			"an asset with no zone must report nil so the caller can fall back")
+	})
+
+	t.Run("unknown zone name", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		require.NoError(t, afero.WriteFile(fs, "/etc/timezone", []byte("Mars/Olympus_Mons\n"), 0o644))
+
+		assert.Nil(t, LocationFromFS(fs), "a zone the scanner cannot load must report nil, not UTC")
+	})
+}

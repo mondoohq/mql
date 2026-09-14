@@ -249,40 +249,15 @@ func ParseDefaultsLine(line string) (string, string, string, string, string, boo
 		switch line[0] {
 		case ':': // User-specific
 			scope = "user"
-			parts := strings.SplitN(line[1:], " ", 2)
-			target = parts[0]
-			if len(parts) > 1 {
-				line = parts[1]
-			} else {
-				line = ""
-			}
 		case '@': // Host-specific
 			scope = "host"
-			parts := strings.SplitN(line[1:], " ", 2)
-			target = parts[0]
-			if len(parts) > 1 {
-				line = parts[1]
-			} else {
-				line = ""
-			}
 		case '>': // Runas-specific
 			scope = "runas"
-			parts := strings.SplitN(line[1:], " ", 2)
-			target = parts[0]
-			if len(parts) > 1 {
-				line = parts[1]
-			} else {
-				line = ""
-			}
 		case '!': // Command-specific
 			scope = "command"
-			parts := strings.SplitN(line[1:], " ", 2)
-			target = parts[0]
-			if len(parts) > 1 {
-				line = parts[1]
-			} else {
-				line = ""
-			}
+		}
+		if scope != "global" {
+			target, line = splitOnWhitespace(line[1:])
 		}
 	}
 
@@ -323,6 +298,17 @@ func ParseDefaultsLine(line string) (string, string, string, string, string, boo
 	value = strings.Trim(value, "\"")
 
 	return scope, target, parameter, value, operation, negated
+}
+
+// splitOnWhitespace splits s at the first space or tab and returns the leading
+// token plus the remainder with its leading whitespace removed. Sudoers accepts
+// either separator between a scoped Defaults target and its parameter.
+func splitOnWhitespace(s string) (string, string) {
+	idx := strings.IndexAny(s, " \t")
+	if idx == -1 {
+		return s, ""
+	}
+	return s[:idx], strings.TrimLeft(s[idx:], " \t")
 }
 
 // parsedLine represents a parsed line from a sudoers file (internal use)
@@ -478,7 +464,9 @@ func extractTagsAndCommands(result *parsedLine, remaining string) {
 	}
 }
 
-// smartSplit splits a string by whitespace but respects quoted strings
+// smartSplit splits a string on runs of spaces or tabs but respects quoted
+// strings. Distribution-shipped sudoers files separate the user, host and
+// command fields with tabs, so splitting on spaces alone drops every rule.
 func smartSplit(s string) []string {
 	var parts []string
 	var current strings.Builder
@@ -504,7 +492,7 @@ func smartSplit(s string) []string {
 			continue
 		}
 
-		if ch == ' ' && !inQuote {
+		if (ch == ' ' || ch == '\t') && !inQuote {
 			if current.Len() > 0 {
 				parts = append(parts, current.String())
 				current.Reset()

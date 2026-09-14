@@ -97,9 +97,13 @@ func (r *Route) IsIPv6() bool {
 	return ip.To4() == nil && ip.To16() != nil
 }
 
-// routeFlagsMap maps route flag bits to their human-readable names
-// Based on sys/route.h constants (RTF_*) common across BSD-style systems (Linux, macOS, etc.)
-var routeFlagsMap = map[int64]string{
+// bsdRouteFlagsMap maps route flag bits to their human-readable names on
+// BSD-derived systems, per sys/route.h. macOS uses these.
+//
+// Linux does NOT: its RTF_* values in include/uapi/linux/route.h agree only up
+// to RTF_HOST (0x4) and diverge from 0x8 onwards, so Linux routes must be
+// decoded with linuxRouteFlagsMap instead.
+var bsdRouteFlagsMap = map[int64]string{
 	0x1:       "UP",        // RTF_UP - route is up
 	0x2:       "GATEWAY",   // RTF_GATEWAY - route has a gateway
 	0x4:       "HOST",      // RTF_HOST - host route (not a network route)
@@ -124,9 +128,76 @@ var routeFlagsMap = map[int64]string{
 	0x8000000: "MULTICAST", // RTF_MULTICAST - route represents a multicast address
 }
 
-// parseRouteFlags converts route flags integer to an array of flag strings
-func parseRouteFlags(flags int64) []string {
-	return parseFlags(flags, routeFlagsMap)
+// linuxRouteFlagsMap maps the RTF_* bits of /proc/net/route to their names, per
+// include/uapi/linux/route.h. These are the IPv4 flags; the IPv6 table below
+// builds on them.
+var linuxRouteFlagsMap = map[int64]string{
+	0x0001: "UP",        // RTF_UP - route is usable
+	0x0002: "GATEWAY",   // RTF_GATEWAY - destination is a gateway
+	0x0004: "HOST",      // RTF_HOST - host entry, network otherwise
+	0x0008: "REINSTATE", // RTF_REINSTATE - reinstate route after timeout
+	0x0010: "DYNAMIC",   // RTF_DYNAMIC - created dynamically by a redirect
+	0x0020: "MODIFIED",  // RTF_MODIFIED - modified dynamically by a redirect
+	0x0040: "MTU",       // RTF_MTU - route carries a specific MTU
+	0x0080: "WINDOW",    // RTF_WINDOW - per route window clamping
+	0x0100: "IRTT",      // RTF_IRTT - initial round trip time
+	0x0200: "REJECT",    // RTF_REJECT - packets to this destination are rejected
+}
+
+// linuxIPv6RouteFlagsMap maps the flag bits of /proc/net/ipv6_route. IPv6 reuses
+// the low bits above and adds its own from include/uapi/linux/ipv6_route.h.
+var linuxIPv6RouteFlagsMap = map[int64]string{
+	0x00010000: "DEFAULT",   // RTF_DEFAULT - learned via router discovery
+	0x00020000: "ALLONLINK", // RTF_ALLONLINK - no routers on link
+	0x00040000: "ADDRCONF",  // RTF_ADDRCONF - installed from a router advertisement
+	0x00080000: "PREFIX_RT", // RTF_PREFIX_RT - prefix-only route
+	0x00100000: "ANYCAST",   // RTF_ANYCAST - anycast
+	0x00200000: "NONEXTHOP", // RTF_NONEXTHOP - route with no next hop
+	0x00400000: "EXPIRES",   // RTF_EXPIRES - route expires
+	0x00800000: "ROUTEINFO", // RTF_ROUTEINFO - route information from an RA
+	0x01000000: "CACHE",     // RTF_CACHE - cache entry
+	0x02000000: "FLOW",      // RTF_FLOW - flow significant route
+	0x04000000: "POLICY",    // RTF_POLICY - policy route
+	0x40000000: "PCPU",      // RTF_PCPU - per-cpu, read only
+	0x80000000: "LOCAL",     // RTF_LOCAL - route to a local address
+}
+
+func init() {
+	// IPv6 routes carry the IPv4 bits too, so fold them in rather than
+	// restating them and letting the two lists drift apart.
+	for bit, name := range linuxRouteFlagsMap {
+		linuxIPv6RouteFlagsMap[bit] = name
+	}
+}
+
+// parseBSDRouteFlags converts the route flags of a BSD-derived system into an
+// array of flag strings.
+func parseBSDRouteFlags(flags int64) []string {
+	return parseFlags(flags, bsdRouteFlagsMap)
+}
+
+// parseLinuxRouteFlags converts the flags column of /proc/net/route into an
+// array of flag strings.
+func parseLinuxRouteFlags(flags int64) []string {
+	return parseFlags(flags, linuxRouteFlagsMap)
+}
+
+// parseLinuxIPv6RouteFlags converts the flags column of /proc/net/ipv6_route
+// into an array of flag strings.
+func parseLinuxIPv6RouteFlags(flags int64) []string {
+	return parseFlags(flags, linuxIPv6RouteFlagsMap)
+}
+
+// routeFlagsRejected reports whether the route discards traffic rather than
+// carrying it, which is what the kernel installs for an unreachable
+// destination.
+func routeFlagsRejected(flags []string) bool {
+	for _, f := range flags {
+		if f == "REJECT" || f == "BLACKHOLE" {
+			return true
+		}
+	}
+	return false
 }
 
 // parseFlags converts route flags integer to an array of flag strings using the provided flags map

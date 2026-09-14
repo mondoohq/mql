@@ -270,3 +270,95 @@ func TestPamConfServiceEntryParams(t *testing.T) {
 		assert.Equal(t, map[string]any{}, got)
 	})
 }
+
+// newPamDirRuntime builds a runtime whose /etc/pam.d directory contains a
+// single "su" service, alongside a legacy /etc/pam.conf. It mirrors the mock
+// wiring of TestPamConfPrefersPamDirOverPamConf so the path-selected and the
+// default form can be compared against the same host.
+func newPamDirRuntime(t *testing.T) *plugin.Runtime {
+	t.Helper()
+
+	findCmd := filesfind.BuildFilesFindCmd(defaultPamDir, false, "file", "", 0, "", nil, true)
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "arch", Family: []string{"arch", "linux", "unix"}},
+	}, mock.WithData(&mock.TomlData{
+		Files: map[string]*mock.MockFileData{
+			defaultPamDir:         {Path: defaultPamDir, StatData: mock.FileInfo{Mode: os.ModeDir | 0o755}},
+			defaultPamDir + "/su": {Path: defaultPamDir + "/su", Content: "auth required pam_wheel.so use_uid\n"},
+			defaultPamConf:        {Path: defaultPamConf, Content: "login auth required pam_unix.so\n"},
+		},
+		Commands: map[string]*mock.Command{
+			findCmd: {Stdout: defaultPamDir + "/su\n"},
+		},
+	}))
+	require.NoError(t, err)
+
+	return &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+}
+
+func pamPaths(t *testing.T, res plugin.Resource) []string {
+	t.Helper()
+	files := res.(*mqlPamConf).GetFiles()
+	require.NoError(t, files.Error)
+	paths := make([]string, 0, len(files.Data))
+	for _, f := range files.Data {
+		paths = append(paths, f.(*mqlFile).Path.Data)
+	}
+	return paths
+}
+
+func TestPamConfPathSelectsSingleFile(t *testing.T) {
+	// pam.conf("<path>") used to set an arg named 'file', which pam.conf does
+	// not have (only files []file), so every parameterized use failed with
+	// "cannot set 'file' in resource 'pam.conf', field not found".
+	rt := newPamDirRuntime(t)
+
+	res, err := NewResource(rt, "pam.conf", map[string]*llx.RawData{
+		"path": llx.StringData(defaultPamConf),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{defaultPamConf}, pamPaths(t, res),
+		"a path-selected pam.conf reads exactly the requested file")
+
+	// The legacy single-file layout still parses: entries are keyed by the
+	// service column rather than the file path.
+	entries := res.(*mqlPamConf).GetEntries()
+	require.NoError(t, entries.Error)
+	_, hasLogin := entries.Data["login"]
+	assert.True(t, hasLogin, "the /etc/pam.conf 'login' service is parsed")
+}
+
+func TestPamConfPathDoesNotHijackDefault(t *testing.T) {
+	// The parameterized form must not change what the bare pam.conf reads,
+	// and the two must not share a cache key.
+	rt := newPamDirRuntime(t)
+
+	selected, err := NewResource(rt, "pam.conf", map[string]*llx.RawData{
+		"path": llx.StringData(defaultPamConf),
+	})
+	require.NoError(t, err)
+
+	bare, err := NewResource(rt, "pam.conf", map[string]*llx.RawData{})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{defaultPamDir + "/su"}, pamPaths(t, bare),
+		"the bare form still enumerates /etc/pam.d and ignores /etc/pam.conf")
+	assert.Equal(t, []string{defaultPamConf}, pamPaths(t, selected))
+	assert.NotEqual(t, bare.MqlID(), selected.MqlID(),
+		"a path-selected pam.conf must not collide with the default instance")
+}
+
+func TestPamConfPathMissingFile(t *testing.T) {
+	// A path that does not exist still constructs; the absence surfaces as
+	// exists == false rather than as an error, so guarded audits stay clean.
+	rt := newPamRuntime(t)
+
+	res, err := NewResource(rt, "pam.conf", map[string]*llx.RawData{
+		"path": llx.StringData("/etc/pam.d/does-not-exist"),
+	})
+	require.NoError(t, err)
+
+	exists := res.(*mqlPamConf).GetExists()
+	require.NoError(t, exists.Error)
+	assert.False(t, exists.Data)
+}

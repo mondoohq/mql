@@ -79,40 +79,13 @@ func (s *mqlNtpConf) settings(content string) ([]any, error) {
 }
 
 func (s *mqlNtpConf) servers(settings []any) ([]any, error) {
-	res := []any{}
-	var line string
-	for i := range settings {
-		line = settings[i].(string)
-		if strings.HasPrefix(line, "server ") {
-			res = append(res, line[7:])
-		}
-	}
-
-	return res, nil
+	return directiveValues(settings, "server"), nil
 }
 
 func (s *mqlNtpConf) restrict(settings []any) ([]any, error) {
-	res := []any{}
-	var line string
-	for i := range settings {
-		line = settings[i].(string)
-		if strings.HasPrefix(line, "restrict ") {
-			res = append(res, line[9:])
-		}
-	}
-
-	return res, nil
+	return directiveValues(settings, "restrict"), nil
 }
 
 func (s *mqlNtpConf) fudge(settings []any) ([]any, error) {
-	res := []any{}
-	var line string
-	for i := range settings {
-		line = settings[i].(string)
-		if strings.HasPrefix(line, "fudge ") {
-			res = append(res, line[6:])
-		}
-	}
-
-	return res, nil
+	return directiveValues(settings, "fudge"), nil
 }

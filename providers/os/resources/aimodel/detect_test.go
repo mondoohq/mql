@@ -608,7 +608,7 @@ func TestDetectAll(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, filepath.Join(snapshotDir, "model.safetensors"), make([]byte, 200), 0644))
 	require.NoError(t, afero.WriteFile(fs, filepath.Join(modelDir, "blobs/b1"), make([]byte, 200), 0644))
 
-	results := DetectAll(afs, home, "linux")
+	results := DetectAll(afs, home, "linux", nil)
 	assert.GreaterOrEqual(t, len(results), 2)
 
 	sources := map[string]bool{}
@@ -694,4 +694,60 @@ func TestParamSizeRegex(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The packaged Linux service sets OLLAMA_MODELS, so the store is not under
+// $HOME/.ollama/models and looking only there reports no models on a host that
+// has them. This is the shape of a real Arch install: the daemon runs as the
+// "ollama" account with its store at /var/lib/ollama.
+func TestOllamaDetector_RelocatedStore(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	afs := &afero.Afero{Fs: fs}
+
+	const store = "/var/lib/ollama"
+	manifest := ollamaManifest{
+		Config: ollamaDescriptor{Digest: "sha256:cfg1"},
+		Layers: []ollamaLayer{{Size: 4096}},
+	}
+	writeJSON(t, fs, filepath.Join(store, "manifests/registry.ollama.ai/library/qwen3-coder/30b"), manifest)
+	writeJSON(t, fs, filepath.Join(store, "blobs/sha256-cfg1"), map[string]any{"model_family": "qwen3moe"})
+
+	// Looking in the default location finds nothing, which is the bug.
+	assert.Empty(t, DetectAll(afs, "/home/zero", "linux", nil))
+
+	results := DetectAll(afs, "/home/zero", "linux", []string{store})
+	require.Len(t, results, 1)
+	assert.Equal(t, "qwen3-coder:30b", results[0].Name)
+	assert.Equal(t, "ollama", results[0].Source)
+	assert.Equal(t, "Alibaba", results[0].Vendor)
+	assert.Equal(t, "qwen3moe", results[0].Family)
+	assert.Equal(t, int64(4096), results[0].Size)
+}
+
+// A model reachable through two stores is one model, not two: ai.model keys on
+// source and name, so a duplicate would collide in the resource cache and the
+// second entry would silently report the first one's values.
+func TestOllamaDetector_DeduplicatesAcrossStores(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	afs := &afero.Afero{Fs: fs}
+
+	manifest := ollamaManifest{
+		Config: ollamaDescriptor{Digest: "sha256:cfg1"},
+		Layers: []ollamaLayer{{Size: 10}},
+	}
+	for _, store := range []string{"/var/lib/ollama", "/home/zero/.ollama/models"} {
+		writeJSON(t, fs, filepath.Join(store, "manifests/registry.ollama.ai/library/llama3/latest"), manifest)
+		writeJSON(t, fs, filepath.Join(store, "blobs/sha256-cfg1"), map[string]any{"model_family": "llama"})
+	}
+
+	results := DetectAll(afs, "/home/zero", "linux",
+		[]string{"/var/lib/ollama", "/home/zero/.ollama/models"})
+	require.Len(t, results, 1)
+	assert.Equal(t, "llama3:latest", results[0].Name)
+}
+
+func TestOllamaDetector_NoStore(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	assert.Empty(t, DetectAll(afs, "/home/zero", "linux", []string{"/var/lib/ollama"}))
+	assert.Empty(t, DetectAll(afs, "", "linux", nil))
 }

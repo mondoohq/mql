@@ -9,6 +9,7 @@ import (
 
 	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/v13/providers/os/connection/shared"
 	"go.mondoo.com/mql/v13/providers/os/resources/logindefs"
 )
 
@@ -43,8 +44,13 @@ func (s *mqlLogindefs) id() (string, error) {
 }
 
 func (s *mqlLogindefs) file() (*mqlFile, error) {
+	path := defaultLoginDefsConfig
+	if conn, ok := s.MqlRuntime.Connection.(shared.Connection); ok {
+		path = resolveVendorConfigPath(conn.FileSystem(), defaultLoginDefsConfig)
+	}
+
 	f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
-		"path": llx.StringData(defaultLoginDefsConfig),
+		"path": llx.StringData(path),
 	})
 	if err != nil {
 		return nil, err

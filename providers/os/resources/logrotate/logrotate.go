@@ -115,6 +115,14 @@ func ParseContent(filePath string, content string) (globalConfig map[string]stri
 			continue
 		}
 
+		// A path line belonging to a lone-brace block ("paths" on one line,
+		// "{" on the next) is claimed by the brace handler on a later
+		// iteration. Without this it is also recorded here, leaving the log
+		// path in globalConfig as a directive nobody wrote.
+		if nextSignificantIsLoneBrace(lines, i) {
+			continue
+		}
+
 		// Global directive
 		key, value := parseDirective(trimmed)
 		if key != "" {
@@ -160,6 +168,20 @@ func splitPaths(s string) []string {
 		}
 	}
 	return paths
+}
+
+// nextSignificantIsLoneBrace reports whether the next line that is neither
+// blank nor a comment is a lone "{", which makes the current line the path
+// list of the block that brace opens.
+func nextSignificantIsLoneBrace(lines []string, idx int) bool {
+	for j := idx + 1; j < len(lines); j++ {
+		trimmed := strings.TrimSpace(lines[j])
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		return trimmed == "{"
+	}
+	return false
 }
 
 // findPathsBackward scans backward from a lone "{" to find the log path(s).

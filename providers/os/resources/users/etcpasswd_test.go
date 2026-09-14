@@ -4,6 +4,7 @@
 package users_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,6 +13,26 @@ import (
 	"go.mondoo.com/mql/v13/providers/os/connection/mock"
 	"go.mondoo.com/mql/v13/providers/os/resources/users"
 )
+
+func TestParseEtcPasswdSkipsMalformedUidGid(t *testing.T) {
+	// A line with a non-numeric uid/gid must be skipped, not surfaced as a
+	// phantom uid 0 (root) account.
+	const passwd = `root:x:0:0:root:/root:/bin/bash
+broken:x:notanumber:1:broken uid:/home/broken:/bin/sh
+brokengid:x:1001:notanumber:broken gid:/home/brokengid:/bin/sh
+alice:x:1000:1000:Alice:/home/alice:/bin/bash
+`
+
+	m, err := users.ParseEtcPasswd(strings.NewReader(passwd))
+	require.NoError(t, err)
+	require.Equal(t, 2, len(m), "malformed uid/gid lines should be skipped")
+
+	assert.Equal(t, "root", m[0].Name)
+	assert.Equal(t, int64(0), m[0].Uid)
+	assert.Equal(t, "alice", m[1].Name)
+	assert.Equal(t, int64(1000), m[1].Uid)
+	assert.Equal(t, int64(1000), m[1].Gid)
+}
 
 func TestParseLinuxEtcPasswd(t *testing.T) {
 	mock, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/debian.toml"))

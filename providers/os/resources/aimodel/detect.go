@@ -38,6 +38,10 @@ type DetectContext struct {
 	Fs       *afero.Afero
 	Home     string
 	OSFamily string
+	// OllamaModelsDirs are the Ollama model stores to read, resolved from the
+	// server's configuration. Empty falls back to $HOME/.ollama/models, which
+	// is only correct when nothing relocated the store.
+	OllamaModelsDirs []string
 }
 
 // Detector discovers locally cached AI models from a single source.
@@ -66,8 +70,8 @@ func Detectors() []Detector {
 }
 
 // DetectAll runs every detector and returns the combined results.
-func DetectAll(afs *afero.Afero, home, osFamily string) []ModelInfo {
-	ctx := DetectContext{Fs: afs, Home: home, OSFamily: osFamily}
+func DetectAll(afs *afero.Afero, home, osFamily string, ollamaModelsDirs []string) []ModelInfo {
+	ctx := DetectContext{Fs: afs, Home: home, OSFamily: osFamily, OllamaModelsDirs: ollamaModelsDirs}
 	var all []ModelInfo
 	for _, d := range Detectors() {
 		all = append(all, d.Detect(ctx)...)

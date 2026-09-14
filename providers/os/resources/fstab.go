@@ -35,6 +35,13 @@ func initFstab(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[strin
 	return args, nil, nil
 }
 
+// id keys the resource on the file it reads. Without it every fstab shares
+// the empty cache key, so `fstab("/a")` and `fstab("/b")` resolve to whichever
+// one was built first.
+func (f *mqlFstab) id() (string, error) {
+	return "fstab:" + f.Path.Data, nil
+}
+
 func (f *mqlFstab) entries() ([]any, error) {
 	conn, ok := f.MqlRuntime.Connection.(shared.Connection)
 	if !ok {
@@ -137,5 +144,10 @@ func ParseFstab(file io.Reader) ([]FstabEntry, error) {
 }
 
 func (e *mqlFstabEntry) id() (string, error) {
-	return e.Device.Data, nil
+	// The device alone is not unique: "tmpfs /tmp" and "tmpfs /dev/shm" are both
+	// ordinary fstab rows, as are two swap devices that both mount at "none".
+	// Sharing an __id makes the runtime serve the first entry for every
+	// collision, so the later rows vanish from the list entirely. A mount point
+	// appears at most once, so device plus mount point is unique.
+	return e.Device.Data + " " + e.Mountpoint.Data, nil
 }

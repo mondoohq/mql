@@ -405,18 +405,21 @@ func (upm *UnixProcessManager) ListSocketInodesByProcess() (map[int64]plugin.TVa
 }
 
 func (upm *UnixProcessManager) Exists(pid int64) (bool, error) {
-	process, err := upm.Process(pid)
-	if err != nil {
+	upm.lock.Lock()
+	defer upm.lock.Unlock()
+
+	if _, err := upm.listLocked(); err != nil {
 		return false, err
 	}
 
-	if process == nil {
-		return false, nil
-	}
-
-	return true, nil
+	_, ok := upm.byPid[pid]
+	return ok, nil
 }
 
+// Process returns the process for the given pid. A pid that is not in the
+// process list is reported as an error, matching the linux, docker and windows
+// managers: callers check err and then dereference, so a (nil, nil) not-found
+// result panicked them instead.
 func (upm *UnixProcessManager) Process(pid int64) (*OSProcess, error) {
 	upm.lock.Lock()
 	defer upm.lock.Unlock()
@@ -425,11 +428,12 @@ func (upm *UnixProcessManager) Process(pid int64) (*OSProcess, error) {
 		return nil, err
 	}
 
-	if process, ok := upm.byPid[pid]; ok {
-		return process, nil
+	process, ok := upm.byPid[pid]
+	if !ok {
+		return nil, fmt.Errorf("process %d does not exist", pid)
 	}
 
-	return nil, nil
+	return process, nil
 }
 
 // reFindSocketPrintf parses the output of:

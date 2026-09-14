@@ -11,12 +11,14 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/v13/providers/os/connection/shared"
 	"go.mondoo.com/mql/v13/providers/os/resources/cpe"
+	"go.mondoo.com/mql/v13/providers/os/resources/date"
 	"go.mondoo.com/mql/v13/providers/os/resources/purl"
 )
 
@@ -75,6 +77,9 @@ func ParseDpkgPackages(pf *inventory.Platform, input io.Reader) ([]Package, erro
 	add := func(pkg Package) {
 		// do sanitization checks to ensure we have minimal information
 		if pkg.Name != "" && pkg.Version != "" {
+			// A hold lives in the status triple that was just parsed, so it
+			// costs no extra read and is answered the same way on an image.
+			pkg.Pinned = isHeldStatus(pkg.Status)
 			pkg.PUrl = purl.NewPackageURL(pf, purl.TypeDebian, pkg.Name, pkg.Version,
 				purl.WithArch(pkg.Arch),
 				purl.WithEpoch(pkg.Epoch),
@@ -296,7 +301,51 @@ func (dpm *DebPkgManager) List() ([]Package, error) {
 		}
 	}
 
+	dpm.applyInstallDates(fs, pkgList)
+
 	return pkgList, nil
+}
+
+// applyInstallDates fills in the install time dpkg recorded for each package.
+//
+// dpkg keeps no install time in its status file the way rpm keeps
+// %{INSTALLTIME} in the rpm header, so the only record is the log of the
+// operations that placed the packages. Reading it here rather than lazily on
+// the resource keeps installDate an eager field: it ships today, and turning it
+// into a computed method would change a released field's shape.
+//
+// A package the retained logs do not mention keeps its zero time, which the
+// resource layer surfaces as null. That is the same answer it gave before this
+// read existed, so a stripped or rotated-away log costs nothing that was
+// previously there.
+func (dpm *DebPkgManager) applyInstallDates(fs afero.Fs, pkgList []Package) {
+	dates := ReadDpkgInstallDates(fs, dpm.timeZone(fs))
+	if len(dates) == 0 {
+		return
+	}
+
+	for i := range pkgList {
+		if !pkgList[i].InstallDate.IsZero() {
+			continue
+		}
+		if t, ok := dates.Get(pkgList[i].Name, pkgList[i].Arch, pkgList[i].Version); ok {
+			pkgList[i].InstallDate = t
+		}
+	}
+}
+
+// timeZone returns the zone dpkg's log is read in. dpkg writes local time with
+// no offset, so the zone has to come from the asset rather than from the log or
+// from the machine running the scan: a mounted snapshot is rarely in the zone
+// of the host that produced it, and reading the log in the scanner's zone would
+// shift every install date by that offset.
+//
+// An asset carrying no zone information runs in UTC, so UTC is the fallback.
+func (dpm *DebPkgManager) timeZone(fs afero.Fs) *time.Location {
+	if loc := date.LocationFromFS(fs); loc != nil {
+		return loc
+	}
+	return time.UTC
 }
 
 func (dpm *DebPkgManager) Available() (map[string]PackageUpdate, error) {
