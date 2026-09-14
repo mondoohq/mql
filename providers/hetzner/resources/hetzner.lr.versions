@@ -80,6 +80,7 @@ hetzner.image.created 13.0.1
 hetzner.image.createdFrom 13.0.1
 hetzner.image.deleted 13.1.2
 hetzner.image.deprecated 13.0.1
+hetzner.image.deprecation 14.0.0
 hetzner.image.description 13.0.1
 hetzner.image.diskSize 13.0.1
 hetzner.image.id 13.0.1

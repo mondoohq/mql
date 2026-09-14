@@ -585,6 +585,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"hetzner.image.deprecated": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHetznerImage).GetDeprecated()).ToDataRes(types.Time)
 	},
+	"hetzner.image.deprecation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlHetznerImage).GetDeprecation()).ToDataRes(types.Dict)
+	},
 	"hetzner.image.deleted": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlHetznerImage).GetDeleted()).ToDataRes(types.Time)
 	},
@@ -1883,6 +1886,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"hetzner.image.deprecated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlHetznerImage).Deprecated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"hetzner.image.deprecation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlHetznerImage).Deprecation, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
 	"hetzner.image.deleted": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -4438,6 +4445,7 @@ type mqlHetznerImage struct {
 	RapidDeploy  plugin.TValue[bool]
 	Protection   plugin.TValue[any]
 	Deprecated   plugin.TValue[*time.Time]
+	Deprecation  plugin.TValue[any]
 	Deleted      plugin.TValue[*time.Time]
 	Labels       plugin.TValue[map[string]any]
 	BoundServer  plugin.TValue[*mqlHetznerServer]
@@ -4536,6 +4544,10 @@ func (c *mqlHetznerImage) GetProtection() *plugin.TValue[any] {
 
 func (c *mqlHetznerImage) GetDeprecated() *plugin.TValue[*time.Time] {
 	return &c.Deprecated
+}
+
+func (c *mqlHetznerImage) GetDeprecation() *plugin.TValue[any] {
+	return &c.Deprecation
 }
 
 func (c *mqlHetznerImage) GetDeleted() *plugin.TValue[*time.Time] {

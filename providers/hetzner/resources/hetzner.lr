@@ -368,8 +368,20 @@ private hetzner.image @defaults("id name type") {
   // Deletion protection state as `delete` (bool). When true, the image
   // cannot be deleted until protection is disabled.
   protection dict
-  // Deprecation timestamp (nullable)
-  deprecated time
+  // Deprecation announcement timestamp
+  //
+  // Deprecated in favor of hetzner.image.deprecation, which reports the same
+  // announcement alongside the date the image stops being available. Null when
+  // the image is not deprecated.
+  deprecated @maturity("deprecated") time
+  // Deprecation schedule
+  //
+  // Empty when the image is not deprecated. When present it carries
+  // `announced` (timestamp the deprecation was announced) and
+  // `unavailableAfter` (timestamp after which the image can no longer be used
+  // to create servers), which is what tells a fleet booting from a retiring
+  // image how long it has to migrate.
+  deprecation dict
   // Deletion timestamp (nullable)
   deleted time
   // User-defined labels for organizing the resource

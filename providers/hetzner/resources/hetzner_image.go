@@ -56,6 +56,7 @@ func newMqlHetznerImage(runtime *plugin.Runtime, img *hcloud.Image) (*mqlHetzner
 		"rapidDeploy":  llx.BoolData(img.RapidDeploy),
 		"protection":   llx.DictData(protectionDict(img.Protection.Delete)),
 		"deprecated":   llx.TimeDataPtr(timePtr(img.Deprecated)),
+		"deprecation":  llx.DictData(deprecationDict(img.Deprecation)),
 		"deleted":      llx.TimeDataPtr(timePtr(img.Deleted)),
 		"labels":       labelData(img.Labels),
 	})
