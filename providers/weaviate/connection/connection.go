@@ -4,6 +4,7 @@
 package connection
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"net"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/weaviate/weaviate-go-client/v5/weaviate"
 	"github.com/weaviate/weaviate-go-client/v5/weaviate/auth"
+	"github.com/weaviate/weaviate-go-client/v5/weaviate/rbac"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/vault"
@@ -42,6 +44,10 @@ type WeaviateConnection struct {
 	clientOnce sync.Once
 	client     *weaviate.Client
 	clientErr  error
+
+	rolesOnce sync.Once
+	roles     []rbac.Role
+	rolesErr  error
 }
 
 func NewWeaviateConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*WeaviateConnection, error) {
@@ -155,6 +161,24 @@ func (c *WeaviateConnection) AnonymousAccessEnabled() bool {
 	}
 	defer resp.Body.Close()
 	return resp.StatusCode >= 200 && resp.StatusCode < 300
+}
+
+// Roles returns every role defined on the server, with its permissions, read
+// once per connection and shared by every caller. Three of them need the same
+// answer: the instance's role list, the probe that decides whether role-based
+// access control is enabled, and the lookup that turns a role named by a user
+// into that role's permissions. The error is remembered too, so a credential
+// that cannot read roles costs one request rather than one per caller.
+func (c *WeaviateConnection) Roles(ctx context.Context) ([]rbac.Role, error) {
+	c.rolesOnce.Do(func() {
+		client, err := c.Client()
+		if err != nil {
+			c.rolesErr = err
+			return
+		}
+		c.roles, c.rolesErr = client.Roles().AllGetter().Do(ctx)
+	})
+	return c.roles, c.rolesErr
 }
 
 // Client returns the shared Weaviate client, dialing on first use.

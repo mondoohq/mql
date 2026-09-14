@@ -89,9 +89,28 @@ func nodeResourceID(serverID, name string) string {
 
 // --- shared role builder ----------------------------------------------------
 
+// hasPermissions reports whether a role carries any permission at all. The user
+// listing builds its roles from names alone, leaving every permission slice
+// empty, so this separates a role read in full from a bare reference to one.
+func hasPermissions(role *rbac.Role) bool {
+	if role == nil {
+		return false
+	}
+	return len(role.Alias) > 0 || len(role.Backups) > 0 || len(role.Cluster) > 0 ||
+		len(role.Collections) > 0 || len(role.Data) > 0 || len(role.Groups) > 0 ||
+		len(role.MCP) > 0 || len(role.Nodes) > 0 || len(role.Replicate) > 0 ||
+		len(role.Roles) > 0 || len(role.Tenants) > 0 || len(role.Users) > 0
+}
+
 // newWeaviateRole creates a role resource, caching the source role so its
 // permissions resolve without a second fetch. Assigned users are still fetched
 // lazily by the role's own accessor.
+//
+// A role name identifies the role, so every reference to it resolves to one
+// resource and CreateResource hands back the instance built the first time.
+// That makes the cached source role shared state: a bare reference reaching it
+// second must not erase the permissions a full read put there, and a full read
+// reaching it second must replace the bare reference.
 func newWeaviateRole(runtime *plugin.Runtime, serverID string, role *rbac.Role) (*mqlWeaviateRole, error) {
 	_, isBuiltin := builtinRoles[role.Name]
 	res, err := CreateResource(runtime, "weaviate.role", map[string]*llx.RawData{
@@ -103,6 +122,9 @@ func newWeaviateRole(runtime *plugin.Runtime, serverID string, role *rbac.Role) 
 		return nil, err
 	}
 	r := res.(*mqlWeaviateRole)
+	if hasPermissions(r.cacheRole) && !hasPermissions(role) {
+		return r, nil
+	}
 	r.cacheRole = role
 	return r, nil
 }

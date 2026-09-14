@@ -38,7 +38,15 @@ weaviate.role.isBuiltin 13.0.0
 weaviate.role.name 13.0.0
 weaviate.role.permission 13.0.0
 weaviate.role.permission.action 13.0.0
+weaviate.role.permission.alias 14.0.0
 weaviate.role.permission.collection 13.0.0
+weaviate.role.permission.domain 14.0.0
+weaviate.role.permission.group 14.0.0
+weaviate.role.permission.groupType 14.0.0
+weaviate.role.permission.scope 14.0.0
+weaviate.role.permission.shard 14.0.0
+weaviate.role.permission.targetRole 14.0.0
+weaviate.role.permission.verbosity 14.0.0
 weaviate.role.permissions 13.0.0
 weaviate.user 13.0.0
 weaviate.user.active 13.0.0

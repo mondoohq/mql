@@ -203,8 +203,32 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"weaviate.role.permission.action": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWeaviateRolePermission).GetAction()).ToDataRes(types.String)
 	},
+	"weaviate.role.permission.domain": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateRolePermission).GetDomain()).ToDataRes(types.String)
+	},
 	"weaviate.role.permission.collection": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWeaviateRolePermission).GetCollection()).ToDataRes(types.String)
+	},
+	"weaviate.role.permission.scope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateRolePermission).GetScope()).ToDataRes(types.String)
+	},
+	"weaviate.role.permission.targetRole": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateRolePermission).GetTargetRole()).ToDataRes(types.String)
+	},
+	"weaviate.role.permission.group": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateRolePermission).GetGroup()).ToDataRes(types.String)
+	},
+	"weaviate.role.permission.groupType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateRolePermission).GetGroupType()).ToDataRes(types.String)
+	},
+	"weaviate.role.permission.alias": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateRolePermission).GetAlias()).ToDataRes(types.String)
+	},
+	"weaviate.role.permission.shard": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateRolePermission).GetShard()).ToDataRes(types.String)
+	},
+	"weaviate.role.permission.verbosity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWeaviateRolePermission).GetVerbosity()).ToDataRes(types.String)
 	},
 	"weaviate.user.userId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWeaviateUser).GetUserId()).ToDataRes(types.String)
@@ -372,8 +396,40 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlWeaviateRolePermission).Action, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"weaviate.role.permission.domain": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateRolePermission).Domain, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"weaviate.role.permission.collection": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWeaviateRolePermission).Collection, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.role.permission.scope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateRolePermission).Scope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.role.permission.targetRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateRolePermission).TargetRole, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.role.permission.group": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateRolePermission).Group, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.role.permission.groupType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateRolePermission).GroupType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.role.permission.alias": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateRolePermission).Alias, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.role.permission.shard": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateRolePermission).Shard, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"weaviate.role.permission.verbosity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWeaviateRolePermission).Verbosity, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"weaviate.user.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -763,7 +819,15 @@ type mqlWeaviateRolePermission struct {
 	__id       string
 	// optional: if you define mqlWeaviateRolePermissionInternal it will be used here
 	Action     plugin.TValue[string]
+	Domain     plugin.TValue[string]
 	Collection plugin.TValue[string]
+	Scope      plugin.TValue[string]
+	TargetRole plugin.TValue[string]
+	Group      plugin.TValue[string]
+	GroupType  plugin.TValue[string]
+	Alias      plugin.TValue[string]
+	Shard      plugin.TValue[string]
+	Verbosity  plugin.TValue[string]
 }
 
 // createWeaviateRolePermission creates a new instance of this resource
@@ -802,8 +866,40 @@ func (c *mqlWeaviateRolePermission) GetAction() *plugin.TValue[string] {
 	return &c.Action
 }
 
+func (c *mqlWeaviateRolePermission) GetDomain() *plugin.TValue[string] {
+	return &c.Domain
+}
+
 func (c *mqlWeaviateRolePermission) GetCollection() *plugin.TValue[string] {
 	return &c.Collection
+}
+
+func (c *mqlWeaviateRolePermission) GetScope() *plugin.TValue[string] {
+	return &c.Scope
+}
+
+func (c *mqlWeaviateRolePermission) GetTargetRole() *plugin.TValue[string] {
+	return &c.TargetRole
+}
+
+func (c *mqlWeaviateRolePermission) GetGroup() *plugin.TValue[string] {
+	return &c.Group
+}
+
+func (c *mqlWeaviateRolePermission) GetGroupType() *plugin.TValue[string] {
+	return &c.GroupType
+}
+
+func (c *mqlWeaviateRolePermission) GetAlias() *plugin.TValue[string] {
+	return &c.Alias
+}
+
+func (c *mqlWeaviateRolePermission) GetShard() *plugin.TValue[string] {
+	return &c.Shard
+}
+
+func (c *mqlWeaviateRolePermission) GetVerbosity() *plugin.TValue[string] {
+	return &c.Verbosity
 }
 
 // mqlWeaviateUser for the weaviate.user resource
