@@ -6,6 +6,10 @@ on:
     paths: ["providers/**"]
   workflow_dispatch:
     inputs:
+      providers:
+        description: "Only consider these providers (space or comma separated). Empty considers all."
+        type: string
+        required: false
       build_all:
         description: "Force build all providers"
         type: boolean
@@ -59,8 +63,30 @@ jobs:
         id: providers
         env:
           ALLOW_MAJOR_PROMOTION: ${{ inputs.allow_major_promotion }}
+          ONLY_PROVIDERS: ${{ inputs.providers }}
         run: |
           providers=$(find providers -mindepth 1 -maxdepth 1 -type d -exec basename {} \;)
+
+          # Restrict the run to named providers. Without this, the first run on a
+          # branch whose versions have all moved builds every provider at once,
+          # which is not something to discover in production. An unknown name is an
+          # error rather than an empty build, so a typo cannot look like "nothing to do".
+          if [ -n "$ONLY_PROVIDERS" ]; then
+            requested=$(echo "$ONLY_PROVIDERS" | tr ',' ' ')
+            selected=""
+            for r in $requested; do
+              found=0
+              for p in $providers; do
+                if [ "$p" = "$r" ]; then found=1; selected="$selected $r"; fi
+              done
+              if [ "$found" = "0" ]; then
+                echo "::error::requested provider '$r' does not exist under providers/"
+                exit 1
+              fi
+            done
+            providers=$selected
+            echo "=== RESTRICTED TO:$providers ==="
+          fi
           echo "providers=$(echo -n $providers | jq -Rsc 'split(" ")')" >> $GITHUB_OUTPUT
           build=""
           root=$PWD
