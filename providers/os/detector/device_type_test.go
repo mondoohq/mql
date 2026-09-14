@@ -834,7 +834,7 @@ func TestDetectDeviceType_EnterpriseLinux(t *testing.T) {
 		// detect-scientific.toml
 		{"scientific linux", "scientific", "Scientific Linux CERN SLC", []string{"redhat", "linux", "unix", "os"}},
 		// detect-centos-9-stream.toml
-		{"centos stream 9", "centos", "CentOS Stream 9", []string{"redhat", "linux", "unix", "os"}},
+		{"centos stream 9", "centos-stream", "CentOS Stream 9", []string{"redhat", "linux", "unix", "os"}},
 		// detect-hce-2.toml
 		{"huawei cloud euleros", "hce", "Huawei Cloud EulerOS 2.0 (x86_64)", []string{"euler", "linux", "unix", "os"}},
 		// detect-euleros-2.toml
