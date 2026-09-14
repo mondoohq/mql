@@ -409,6 +409,28 @@ func TestValidateDeclaredPeers(t *testing.T) {
 	// still an older line, marker or not
 	assert.Error(t, validateDeclaredPeers(caller, peer("v12.9.9+rolling")))
 
+	// The preview line stamps providers with a semver pre-release segment. It
+	// clears a floor on an older major because the major dominates the
+	// comparison: 14.0.0-rc.1 > 13.0.0. That is what lets preview providers
+	// ship while the declared floors still name the stable line.
+	assert.NoError(t, validateDeclaredPeers(caller, peer("14.0.0-rc.1")))
+
+	// A pre-release orders behind its own release (SemVer 11), so raising a
+	// floor to the major currently being previewed refuses every provider on
+	// that line until it goes GA -- including the one it ships with. Floors
+	// stay on the previous major for the duration of a preview.
+	previewFloor := &Provider{
+		Provider: &plugin.Provider{
+			Name: "os", ID: "go.mondoo.com/mql/providers/os",
+			Requires: []plugin.ProviderDep{
+				{ID: "go.mondoo.com/mql/providers/network", Name: "network", MinVersion: "14.0.0"},
+			},
+		},
+	}
+	assert.Error(t, validateDeclaredPeers(previewFloor, peer("14.0.0-rc.1")),
+		"a floor on the major being previewed refuses its own pre-releases")
+	assert.NoError(t, validateDeclaredPeers(previewFloor, peer("14.0.0")))
+
 	// not installed: not reported here, it fails later when something needs it
 	assert.NoError(t, validateDeclaredPeers(caller, Providers{}))
 	// unknown version is not evidence of a mismatch
