@@ -77,7 +77,13 @@ jobs:
             for r in $requested; do
               found=0
               for p in $providers; do
-                if [ "$p" = "$r" ]; then found=1; selected="$selected $r"; fi
+                if [ "$p" = "$r" ]; then
+                  found=1
+                  # Built without a leading space. `echo -n $providers` below is
+                  # unquoted and would trim one, but not depending on that keeps the
+                  # value correct if the line is ever quoted.
+                  selected="${selected:+$selected }$r"
+                fi
               done
               if [ "$found" = "0" ]; then
                 echo "::error::requested provider '$r' does not exist under providers/"
