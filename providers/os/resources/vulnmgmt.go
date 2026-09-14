@@ -9,12 +9,10 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	mondoogql "go.mondoo.com/mondoo-go"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/resources"
 	"go.mondoo.com/mql/providers-sdk/v1/upstream/gql"
-	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 type mqlVulnmgmtInternal struct {
@@ -120,12 +118,55 @@ func (v *mqlVulnmgmt) stats() (*mqlAuditCvss, error) {
 }
 
 func (v *mqlVulnmgmt) populateData() error {
+	mcc := v.MqlRuntime.Upstream
+	if mcc == nil || mcc.ApiEndpoint == "" {
+		v.setUnavailableData(resources.MissingUpstreamError{})
+		return nil
+	}
+
+	// Incognito assets (no asset MRN, e.g. `cnspec shell`) build their package
+	// inventory locally. Scan that inventory as a PURL-native SBOM through the
+	// uploaded-SBOM vulnerability path and map the returned VEX onto the same
+	// vuln.* resources, so policies and the shell keep resolving — now sourced
+	// from package URLs.
+	//
+	// Managed assets keep using the compact report for now: that report is
+	// matched against the platform's own stored inventory for the asset, so
+	// sending a locally-built SBOM instead would change which packages are
+	// matched — and therefore the asset's score. Converting the managed path is
+	// deliberately left as follow-up work.
+	// TODO: move managed assets onto the uploaded-SBOM path once the scoring
+	// impact of matching a locally-built inventory has been validated.
+	if mcc.AssetMrn == "" {
+		vex, err := v.getVexReport()
+		if err != nil {
+			v.setUnavailableData(err)
+			return nil
+		}
+		// A mapping error can leave the vuln.* fields half-populated; fall back
+		// to the empty, set-but-unavailable state so the resource stays
+		// consistent rather than surfacing a partial report (matching every
+		// other error path here).
+		if err := v.populateFromVex(vex); err != nil {
+			v.setUnavailableData(err)
+			return nil
+		}
+		return nil
+	}
+
 	vulnReport, err := v.getReport()
 	if err != nil {
 		v.setUnavailableData(err)
 		return nil
 	}
+	if err := v.populateFromReport(vulnReport); err != nil {
+		v.setUnavailableData(err)
+		return nil
+	}
+	return nil
+}
 
+func (v *mqlVulnmgmt) populateFromReport(vulnReport *gql.VulnReport) error {
 	mqlVulAdvisories := make([]any, len(vulnReport.Advisories))
 	for i, a := range vulnReport.Advisories {
 		var parsedPublished *time.Time
@@ -258,65 +299,7 @@ func (v *mqlVulnmgmt) getReport() (*gql.VulnReport, error) {
 		v.gqlClient = mondooClient
 	}
 
-	if v.MqlRuntime.Upstream.AssetMrn == "" {
-		log.Debug().Msg("no asset mrn available")
-		return v.getIncognitoReport(mondooClient)
-	}
 	gqlVulnReport, err := mondooClient.GetVulnCompactReport(v.MqlRuntime.Upstream.AssetMrn)
-	if err != nil {
-		return nil, err
-	}
-
-	log.Debug().Interface("gqlReport", gqlVulnReport).Msg("search for asset vuln report")
-	if gqlVulnReport == nil {
-		return nil, errors.New("no vulnerability report available")
-	}
-
-	return gqlVulnReport, nil
-}
-
-func (v *mqlVulnmgmt) getIncognitoReport(mondooClient *gql.MondooClient) (*gql.VulnReport, error) {
-	conn := v.MqlRuntime.Connection.(shared.Connection)
-	platform := conn.Asset().Platform
-
-	pkgsRes, err := CreateResource(v.MqlRuntime, "packages", nil)
-	if err != nil {
-		return nil, err
-	}
-	pkgs := pkgsRes.(*mqlPackages)
-	pkgsList := pkgs.GetList().Data
-
-	gqlPackages := make([]mondoogql.PackageInput, len(pkgsList))
-	for i, p := range pkgsList {
-		mqlPkg := p.(*mqlPackage)
-		gqlPackages[i] = mondoogql.PackageInput{
-			Name:    mondoogql.String(mqlPkg.Name.Data),
-			Version: mondoogql.String(mqlPkg.Version.Data),
-			Arch:    mondoogql.NewStringPtr(mondoogql.String(mqlPkg.Arch.Data)),
-			Origin:  mondoogql.NewStringPtr(mondoogql.String(mqlPkg.Origin.Data)),
-			Format:  mondoogql.NewStringPtr(mondoogql.String(mqlPkg.Format.Data)),
-		}
-	}
-
-	family := []*mondoogql.String{}
-	for _, f := range platform.Family {
-		family = append(family, mondoogql.NewStringPtr(mondoogql.String(f)))
-	}
-	inputPlatform := mondoogql.PlatformInput{
-		Name:    mondoogql.NewStringPtr(mondoogql.String(platform.Name)),
-		Release: mondoogql.NewStringPtr(mondoogql.String(platform.Version)),
-		Build:   mondoogql.NewStringPtr(mondoogql.String(platform.Build)),
-		Family:  &family,
-	}
-	inputLabels := []*mondoogql.KeyValueInput{}
-	for k := range platform.Labels {
-		inputLabels = append(inputLabels, &mondoogql.KeyValueInput{
-			Key:   mondoogql.String(k),
-			Value: mondoogql.NewStringPtr(mondoogql.String(platform.Labels[k])),
-		})
-	}
-	inputPlatform.Labels = &inputLabels
-	gqlVulnReport, err := mondooClient.GetIncognitoVulnReport(inputPlatform, gqlPackages)
 	if err != nil {
 		return nil, err
 	}
