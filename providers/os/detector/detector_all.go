@@ -156,9 +156,6 @@ var bellsoftHardenedContainers = &PlatformResolver{
 	},
 }
 
-// WizOS is an Alpine-lineage distro (ID_LIKE=alpine) that ships its own
-// ID=wizos in /etc/os-release and uses apk. It is resolved before alpine so
-// its exact-name match wins over alpine's /etc/alpine-release fallback.
 // Chainguard OS is the distribution behind Chainguard's production container
 // images. It is not Wolfi: the free-tier images report ID=wolfi and resolve as
 // wolfi, while the production images set ID=chainguard, declare no ID_LIKE and
@@ -179,6 +176,9 @@ var chainguard = &PlatformResolver{
 	},
 }
 
+// WizOS is an Alpine-lineage distro (ID_LIKE=alpine) that ships its own
+// ID=wizos in /etc/os-release and uses apk. It is resolved before alpine so
+// its exact-name match wins over alpine's /etc/alpine-release fallback.
 var wizos = &PlatformResolver{
 	Name:     "wizos",
 	IsFamily: false,
