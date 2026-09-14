@@ -91,6 +91,8 @@ func TestValidTypeString(t *testing.T) {
 // KnownTypes entry makes ValidType reject a type mql ships.
 func TestEveryDeclaredTypeIsRegistered(t *testing.T) {
 	fset := token.NewFileSet()
+	// Relative to the package directory, which is where `go test` runs a test
+	// binary regardless of where the `go test` command itself was invoked.
 	file, err := parser.ParseFile(fset, "purl_types.go", nil, 0)
 	require.NoError(t, err, "purl_types.go must parse")
 
