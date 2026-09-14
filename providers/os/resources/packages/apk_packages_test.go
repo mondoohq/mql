@@ -15,6 +15,34 @@ import (
 	"go.mondoo.com/mql/v13/providers/os/connection/mock"
 )
 
+// apk-tools 3, which BellSoft Alpaquita and BellSoft Hardened Containers ship,
+// keeps the database under /var/lib/apk. List() only looked under /lib/apk and
+// /usr/lib/apk, so it reported "could not read apk package list" on a system
+// whose database was sitting there in full.
+func TestAlpinePkgManagerListVarLibDatabase(t *testing.T) {
+	pf := &inventory.Platform{
+		Name:    "bellsoft-hardened-containers",
+		Version: "stream",
+		Arch:    "x86_64",
+		Family:  []string{"linux", "unix", "os"},
+	}
+
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/packages_apk_var_lib.toml"))
+	require.NoError(t, err)
+
+	apm := &AlpinePkgManager{conn: conn, platform: pf}
+	pkgs, err := apm.List()
+	require.NoError(t, err)
+	require.Len(t, pkgs, 2)
+
+	assert.Equal(t, "busybox", pkgs[0].Name)
+	assert.Equal(t, "1.38.0-r2", pkgs[0].Version)
+	assert.Equal(t, "x86_64", pkgs[0].Arch)
+	assert.Equal(t, AlpinePkgFormat, pkgs[0].Format)
+	assert.Equal(t, "busybox-binsh", pkgs[1].Name)
+	assert.Equal(t, "busybox", pkgs[1].Origin)
+}
+
 func TestAlpineApkdbParser(t *testing.T) {
 	pf := &inventory.Platform{
 		Name:    "alpine",

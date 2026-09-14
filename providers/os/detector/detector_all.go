@@ -110,6 +110,40 @@ var wolfi = &PlatformResolver{
 	},
 }
 
+// BellSoft Alpaquita is an Alpine-lineage distro (ID_LIKE=alpine) that ships
+// its own ID=alpaquita in /etc/os-release and uses apk. It ships
+// /etc/alpaquita-release rather than /etc/alpine-release, so alpine's fallback
+// never claims it, and it is resolved before alpine regardless so that its
+// exact-name match wins.
+//
+// VERSION_ID is the release line rather than a dotted version: "stream" on the
+// rolling line, "23" and "25" on the LTS lines.
+var alpaquita = &PlatformResolver{
+	Name:     "alpaquita",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		return pf.Name == "alpaquita", nil
+	},
+}
+
+// BellSoft Hardened Containers are built on Alpaquita and declare
+// ID_LIKE=alpine, but they are a product of their own with
+// ID=bellsoft-hardened-containers in /etc/os-release, their own release line
+// and their own advisory feed, so they resolve as their own platform rather
+// than as Alpaquita.
+//
+// The images carry no package manager and no release marker file: the apk
+// database is left in place but the apk binary is removed. That makes
+// /etc/os-release the only evidence detection has, and it is why the resolver
+// matches on the name alone with no file probe to fall back on.
+var bellsoftHardenedContainers = &PlatformResolver{
+	Name:     "bellsoft-hardened-containers",
+	IsFamily: false,
+	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
+		return pf.Name == "bellsoft-hardened-containers", nil
+	},
+}
+
 // WizOS is an Alpine-lineage distro (ID_LIKE=alpine) that ships its own
 // ID=wizos in /etc/os-release and uses apk. It is resolved before alpine so
 // its exact-name match wins over alpine's /etc/alpine-release fallback.
@@ -1565,7 +1599,7 @@ var linuxFamily = &PlatformResolver{
 	IsFamily: true,
 	// NOTE: altlinux runs before the redhat family, whose members probe
 	// /etc/redhat-release and /etc/fedora-release, both of which ALT ships.
-	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, wizos, alpine, wolfi, nixos, gentoo, voidlinux, clearlinux, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, cos, flatcar, talos, opencloudos, cirros, defaultLinux},
+	Children: []*PlatformResolver{archFamily, altlinux, redhatFamily, debianFamily, suseFamily, eulerFamily, bottlerocket, amazonlinux, alpaquita, bellsoftHardenedContainers, wizos, alpine, wolfi, nixos, gentoo, voidlinux, clearlinux, busybox, photon, windriver, lede, openwrt, plcnext, mageia, azurelinux, cos, flatcar, talos, opencloudos, cirros, defaultLinux},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		detected := false
 		osrd := NewOSReleaseDetector(conn)

@@ -879,6 +879,35 @@ func TestWizOSLinuxDetector(t *testing.T) {
 	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
 }
 
+// BellSoft Alpaquita and BellSoft Hardened Containers are Alpine-lineage
+// (ID_LIKE=alpine) but ship neither /etc/alpine-release nor an ID alpine's
+// resolver recognizes, so before they were added they fell through to the
+// generic resolver and carried no platform of their own.
+func TestAlpaquitaLinuxDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-alpaquita.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "alpaquita", di.Name, "os name should be identified")
+	assert.Equal(t, "BellSoft Alpaquita Linux Stream (glibc)", di.Title, "os title should be identified")
+	assert.Equal(t, "stream", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
+func TestBellSoftHardenedContainersDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-bellsoft-hardened-containers.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	// The hardened images are built on Alpaquita but are a product of their own,
+	// with their own release line and advisory feed, so they must not be
+	// reported as alpaquita.
+	assert.Equal(t, "bellsoft-hardened-containers", di.Name, "os name should be identified")
+	assert.Equal(t, "BellSoft Hardened Containers Stream (musl)", di.Title, "os title should be identified")
+	assert.Equal(t, "stream", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
+}
+
 // ALT Linux (BaseALT) ships /etc/redhat-release, /etc/fedora-release and
 // /etc/system-release for compatibility, all carrying just "ALT Container" with
 // no version and no distro name. Nothing claimed it, so it fell through to the

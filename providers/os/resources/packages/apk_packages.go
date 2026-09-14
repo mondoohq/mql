@@ -19,10 +19,19 @@ import (
 )
 
 const (
-	AlpinePkgFormat   = "apk"
+	AlpinePkgFormat = "apk"
+
+	// Known locations of the apk database. Alpine keeps it under /lib, Wolfi
+	// under /usr/lib (usrmerge), and apk-tools 3, which BellSoft Alpaquita and
+	// Hardened Containers ship, moved it under /var.
 	ApkDbInstalled    = "/lib/apk/db/installed"
 	ApkDbInstalledUsr = "/usr/lib/apk/db/installed"
+	ApkDbInstalledVar = "/var/lib/apk/db/installed"
 )
+
+// ApkDbPaths is every known location of the apk database, in the order they are
+// tried: most common first.
+var ApkDbPaths = []string{ApkDbInstalled, ApkDbInstalledUsr, ApkDbInstalledVar}
 
 // apkMaxLine caps how long a single line of the apk database may be. The
 // dependency and provides lines of a metapackage are the long ones, and they
@@ -171,17 +180,18 @@ func (apm *AlpinePkgManager) Format() string {
 }
 
 func (apm *AlpinePkgManager) List() ([]Package, error) {
-	fr, err := apm.conn.FileSystem().Open(ApkDbInstalled)
-	if err != nil {
-		// Wolfi uses /usr/lib/apk/db/installed (usrmerge layout)
-		fr, err = apm.conn.FileSystem().Open(ApkDbInstalledUsr)
+	for _, path := range ApkDbPaths {
+		fr, err := apm.conn.FileSystem().Open(path)
 		if err != nil {
-			return nil, fmt.Errorf("could not read apk package list")
+			continue
 		}
-	}
-	defer fr.Close()
 
-	return ParseApkDbPackages(apm.platform, fr), nil
+		pkgs := ParseApkDbPackages(apm.platform, fr)
+		fr.Close()
+		return pkgs, nil
+	}
+
+	return nil, fmt.Errorf("could not read apk package list")
 }
 
 func (apm *AlpinePkgManager) Available() (map[string]PackageUpdate, error) {

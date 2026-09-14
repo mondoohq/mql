@@ -530,6 +530,10 @@ func TestDetectDeviceType_LinuxNoSignals_DefaultServer(t *testing.T) {
 		{"wolfi", "wolfi", "Wolfi", []string{"linux", "unix", "os"}},
 		// detect-wizos.toml
 		{"wizos", "wizos", "WizOS", []string{"linux", "unix", "os"}},
+		// detect-alpaquita.toml
+		{"alpaquita", "alpaquita", "BellSoft Alpaquita Linux Stream (glibc)", []string{"linux", "unix", "os"}},
+		// detect-bellsoft-hardened-containers.toml
+		{"bellsoft hardened containers", "bellsoft-hardened-containers", "BellSoft Hardened Containers Stream (musl)", []string{"linux", "unix", "os"}},
 		// detect-buildroot.toml
 		{"buildroot", "buildroot", "Buildroot 2019.02.9", []string{"linux", "unix", "os"}},
 	}
