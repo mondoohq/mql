@@ -19,7 +19,7 @@ var Config = plugin.Provider{
 	Root: "notion",
 	// Every root carries `asset`, which core owns (ADR 042).
 	Requires: []plugin.ProviderDep{
-		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "14.0.0"},
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
 	},
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Connectors: []plugin.Connector{
