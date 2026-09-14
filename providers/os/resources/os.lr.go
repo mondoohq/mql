@@ -3961,6 +3961,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"package.origin": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPackage).GetOrigin()).ToDataRes(types.String)
 	},
+	"package.originVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackage).GetOriginVersion()).ToDataRes(types.String)
+	},
 	"package.available": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPackage).GetAvailable()).ToDataRes(types.String)
 	},
@@ -18449,6 +18452,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"package.origin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPackage).Origin, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"package.originVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackage).OriginVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"package.available": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -42690,24 +42697,25 @@ type mqlPackage struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlPackageInternal
-	Name        plugin.TValue[string]
-	Description plugin.TValue[string]
-	Version     plugin.TValue[string]
-	Arch        plugin.TValue[string]
-	Epoch       plugin.TValue[string]
-	Format      plugin.TValue[string]
-	Status      plugin.TValue[string]
-	Pinned      plugin.TValue[bool]
-	Purl        plugin.TValue[string]
-	Cpes        plugin.TValue[[]any]
-	Origin      plugin.TValue[string]
-	Available   plugin.TValue[string]
-	Installed   plugin.TValue[bool]
-	Outdated    plugin.TValue[bool]
-	Files       plugin.TValue[[]any]
-	Vendor      plugin.TValue[string]
-	License     plugin.TValue[string]
-	InstallDate plugin.TValue[*time.Time]
+	Name          plugin.TValue[string]
+	Description   plugin.TValue[string]
+	Version       plugin.TValue[string]
+	Arch          plugin.TValue[string]
+	Epoch         plugin.TValue[string]
+	Format        plugin.TValue[string]
+	Status        plugin.TValue[string]
+	Pinned        plugin.TValue[bool]
+	Purl          plugin.TValue[string]
+	Cpes          plugin.TValue[[]any]
+	Origin        plugin.TValue[string]
+	OriginVersion plugin.TValue[string]
+	Available     plugin.TValue[string]
+	Installed     plugin.TValue[bool]
+	Outdated      plugin.TValue[bool]
+	Files         plugin.TValue[[]any]
+	Vendor        plugin.TValue[string]
+	License       plugin.TValue[string]
+	InstallDate   plugin.TValue[*time.Time]
 }
 
 // createPackage creates a new instance of this resource
@@ -42792,6 +42800,12 @@ func (c *mqlPackage) GetCpes() *plugin.TValue[[]any] {
 func (c *mqlPackage) GetOrigin() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Origin, func() (string, error) {
 		return c.origin()
+	})
+}
+
+func (c *mqlPackage) GetOriginVersion() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.OriginVersion, func() (string, error) {
+		return c.originVersion()
 	})
 }
 

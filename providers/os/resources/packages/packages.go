@@ -41,7 +41,27 @@ type Package struct {
 	// this may be the source package or an origin
 	// e.g. on alpine it is used for parent  packages
 	// o 	Package Origin - https://wiki.alpinelinux.org/wiki/Apk_spec
+	//
+	// dpkg is the one backend whose value is not a bare identifier: the Debian
+	// "Source:" control field carries a parenthesized version whenever the
+	// binary version differs from the source version, so Origin reads
+	// "coreutils-from (0.0.0~ubuntu25)" and not "coreutils-from". The raw field
+	// is kept as-is because it is the only place the source version is reported
+	// at all; split it with ParseDpkgOrigin, or read OriginVersion below.
 	Origin string `json:"origin"`
+
+	// OriginVersion is the source package version, for backends that report one
+	// separately from the binary version. Only dpkg does today, and only when
+	// the two differ -- a binNMU, or a source building differently-versioned
+	// binaries (binary aspnetcore-runtime-10.0 10.0.5-0ubuntu1 is built from
+	// source dotnet10 10.0.105-10.0.5-0ubuntu1). Empty means "same as Version".
+	//
+	// This matters to anything comparing an installed package against advisory
+	// data keyed on the source package: those fixed versions are source
+	// versions, so comparing a binary version against one compares across two
+	// different version spaces and can invert the verdict.
+	OriginVersion string `json:"origin_version,omitempty"`
+
 	Format string `json:"format"`
 
 	// Package Url follows https://github.com/package-url/purl-spec

@@ -102,6 +102,14 @@ func (p *mqlPackage) origin() (string, error) {
 	return "", nil
 }
 
+// originVersion is the lazy fallback for backends that report no source version
+// of their own. Only dpkg sets it eagerly during list(), and only when the
+// source version differs from the package version, so every other package
+// resource lands here and reports "" -- which means "same as version".
+func (p *mqlPackage) originVersion() (string, error) {
+	return "", nil
+}
+
 // license is the lazy fallback for package managers that don't surface
 // license inline. Used today for dpkg, which keeps license metadata in
 // the per-package copyright file rather than in /var/lib/dpkg/status.
@@ -183,6 +191,7 @@ func fillPackageArgs(args map[string]*llx.RawData, osPkg *packages.Package, avai
 	args["format"] = llx.StringData(osPkg.Format)
 	args["installed"] = llx.BoolData(true)
 	args["origin"] = llx.StringData(osPkg.Origin)
+	args["originVersion"] = llx.StringData(osPkg.OriginVersion)
 	args["epoch"] = llx.StringData(osPkg.Epoch)
 	args["purl"] = llx.StringData(osPkg.PUrl)
 	args["cpes"] = llx.ArrayData(cpes, types.Resource("cpe"))

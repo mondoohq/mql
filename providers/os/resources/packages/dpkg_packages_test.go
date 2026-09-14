@@ -71,6 +71,9 @@ The sfdisk utility is mostly for automation and scripting uses.`,
 		Arch:    "amd64",
 		Status:  "install ok installed",
 		Origin:  "audit (1:2.4-1)",
+		// A binNMU: the binary was rebuilt as 1:2.4-1+b1 from source audit at
+		// 1:2.4-1, so dpkg records the source version separately.
+		OriginVersion: "1:2.4-1",
 		Description: `Dynamic library for security auditing
 The audit-libs package contains the dynamic libraries needed for
 applications to use the audit framework. It is used to monitor systems for
@@ -343,6 +346,71 @@ and the standard math library, as well as many others.`, pkgs[0].Description)
 GnuPG is GNU's tool for secure communication and data storage.
 For more information see: https://wiki.gnupg.org/WKS
 It is a tool to provide digital encryption.`, pkgs[1].Description)
+}
+
+func TestParseDpkgOrigin(t *testing.T) {
+	// Every value below is copied from a real Ubuntu 26.04 (resolute) or
+	// Debian binary-amd64 Packages index.
+	tests := []struct {
+		source      string
+		wantName    string
+		wantVersion string
+	}{
+		// The common form: dpkg omits the version when it equals the binary's.
+		{"util-linux", "util-linux", ""},
+		// The metapackage that made this parser necessary.
+		{"coreutils-from (0.0.0~ubuntu25)", "coreutils-from", "0.0.0~ubuntu25"},
+		// A source whose binaries carry an entirely different version.
+		{"dotnet10 (10.0.105-10.0.5-0ubuntu1)", "dotnet10", "10.0.105-10.0.5-0ubuntu1"},
+		// An epoch survives the split.
+		{"samba (2:4.17.12+dfsg-0+deb12u1)", "samba", "2:4.17.12+dfsg-0+deb12u1"},
+		// dpkg pads the field; the values must not carry the padding.
+		{"  pam  ", "pam", ""},
+		{"", "", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.source, func(t *testing.T) {
+			name, version := ParseDpkgOrigin(tc.source)
+			assert.Equal(t, tc.wantName, name)
+			assert.Equal(t, tc.wantVersion, version)
+		})
+	}
+}
+
+func TestDpkgParserOriginVersion(t *testing.T) {
+	pf := &inventory.Platform{Name: "ubuntu", Version: "26.04", Arch: "amd64"}
+
+	// Both stanzas are from the Ubuntu 26.04 archive. coreutils is the 10 kB
+	// metapackage built from source coreutils-from; gnu-coreutils carries the
+	// actual GNU binaries and is built from source coreutils at its own version.
+	status := `Package: coreutils
+Status: install ok installed
+Architecture: amd64
+Source: coreutils-from (0.0.0~ubuntu25)
+Version: 9.5-1ubuntu2+0.0.0~ubuntu25
+Description: coreutils meta package
+
+Package: gnu-coreutils
+Status: install ok installed
+Architecture: amd64
+Source: coreutils
+Version: 9.7-3ubuntu2.1
+Description: GNU core utilities
+`
+
+	pkgs, err := ParseDpkgPackages(pf, bytes.NewReader([]byte(status)))
+	require.NoError(t, err)
+	require.Len(t, pkgs, 2)
+
+	// Origin stays raw -- it is the only place the source version is reported,
+	// and consumers on the wire already read this field.
+	assert.Equal(t, "coreutils-from (0.0.0~ubuntu25)", pkgs[0].Origin)
+	assert.Equal(t, "0.0.0~ubuntu25", pkgs[0].OriginVersion)
+
+	// No parenthesized version means the source version equals the binary
+	// version, so OriginVersion stays empty rather than repeating it.
+	assert.Equal(t, "coreutils", pkgs[1].Origin)
+	assert.Empty(t, pkgs[1].OriginVersion)
 }
 
 func TestDpkgControlField(t *testing.T) {

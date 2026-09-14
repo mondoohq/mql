@@ -36,6 +36,30 @@ var (
 	DPKG_ORIGIN_REGEX = regexp.MustCompile(`^\s*([^\(]*)(?:\((.*)\))?\s*$`)
 )
 
+// ParseDpkgOrigin splits a Debian "Source:" control field into the source
+// package name and, when present, the source version.
+//
+// The field has two forms, and which one dpkg writes is not cosmetic:
+//
+//	Source: glibc
+//	Source: glibc (2.36-9+deb12u4)
+//
+// The parenthesized version appears only when the binary version differs from
+// the source version -- a binNMU, or a source package that builds binaries
+// carrying a different version entirely. When it is absent the source version
+// equals the binary package's own Version, so an empty version return means
+// "same as the package version", not "unknown".
+//
+// Callers that treat the raw field as a bare package name silently get
+// "glibc (2.36-9+deb12u4)" as the name, which matches nothing.
+func ParseDpkgOrigin(origin string) (name string, version string) {
+	m := DPKG_ORIGIN_REGEX.FindStringSubmatch(origin)
+	if m == nil {
+		return strings.TrimSpace(origin), ""
+	}
+	return strings.TrimSpace(m[1]), strings.TrimSpace(m[2])
+}
+
 // isDpkgFieldSpace reports whether c belongs to the regexp `\s` class. Go
 // defines that class as [\t\n\f\r ].
 func isDpkgFieldSpace(c byte) bool {
@@ -129,7 +153,13 @@ func ParseDpkgPackages(pf *inventory.Platform, input io.Reader) ([]Package, erro
 		case string(key) == "Status":
 			pkg.Status = string(bytes.TrimSpace(value))
 		case string(key) == "Source":
+			// Origin keeps the raw field: it is the only place the source
+			// version is reported, and consumers on the wire already read it.
+			// OriginVersion carries the parsed version so callers don't have to
+			// re-derive it (and don't skip it because they didn't know it was
+			// in there).
 			pkg.Origin = string(bytes.TrimSpace(value))
+			_, pkg.OriginVersion = ParseDpkgOrigin(pkg.Origin)
 		// description supports multi-line statements, start desc
 		case string(key) == "Description":
 			pkg.Description = string(bytes.TrimSpace(value))

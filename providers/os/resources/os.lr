@@ -1298,7 +1298,28 @@ package @defaults("name version") {
   // On macOS this distinguishes App Store installs from everything else, which
   // matters when choosing an update path: an App Store app cannot be upgraded
   // with `brew upgrade`.
+  //
+  // On dpkg the value is the raw Debian "Source:" field, so it reads
+  // "coreutils-from (0.0.0~ubuntu25)" -- name and version together -- whenever
+  // the binary and source versions differ. Read `originVersion` for the parsed
+  // version instead of splitting this string yourself.
   origin() string
+
+  // Version of the source package this package was built from (optional)
+  //
+  // Set when the package manager reports a source version separately from
+  // `version`. Empty means the source version is the same as `version`, not
+  // that it is unknown.
+  //
+  // Only dpkg reports this today, and only for a binNMU or a source package
+  // that builds binaries carrying a different version (binary
+  // aspnetcore-runtime-10.0 10.0.5-0ubuntu1 is built from source dotnet10
+  // 10.0.105-10.0.5-0ubuntu1).
+  //
+  // Reach for this when comparing a package against data keyed on the source
+  // package: distribution advisories name source versions, so checking a binary
+  // version against one compares two different version spaces.
+  originVersion() string
 
   // Latest version the package manager reports as available
   available string
