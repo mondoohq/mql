@@ -43,7 +43,7 @@ func initWeaviateInstance(runtime *plugin.Runtime, args map[string]*llx.RawData)
 	// but the credential cannot read it (still enabled); any other error (e.g.
 	// 404 when RBAC is off) means it is not enabled.
 	rbacEnabled := false
-	if _, err := conn.Roles(ctx); err == nil || isForbidden(err) {
+	if _, err := conn.Roles(); err == nil || isForbidden(err) {
 		rbacEnabled = true
 	}
 

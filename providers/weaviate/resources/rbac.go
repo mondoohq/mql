@@ -14,7 +14,7 @@ import (
 
 func (r *mqlWeaviateInstance) roles() ([]any, error) {
 	conn := weaviateConnection(r.MqlRuntime)
-	roles, err := conn.Roles(weaviateContext())
+	roles, err := conn.Roles()
 	if err != nil {
 		// RBAC disabled or the credential cannot read roles: no visible roles.
 		if isForbidden(err) {
@@ -253,22 +253,16 @@ func (r *mqlWeaviateInstance) users() ([]any, error) {
 // resolveRole returns the server's own definition of a role named by something
 // else. The user listing names a user's roles and nothing more, leaving every
 // permission slice empty, so a role reached through a user would otherwise
-// report no permissions at all. The full list is read once per connection and
-// shared, so this costs no request of its own. When it cannot be read the
-// reference is returned unchanged, which keeps the role's name available to a
-// credential that may query users but not roles.
+// report no permissions at all. The server's role list is read once per
+// connection and indexed by name, so this costs neither a request nor a scan.
+// When the list cannot be read the reference is returned unchanged, which keeps
+// the role's name available to a credential that may query users but not roles.
 func resolveRole(runtime *plugin.Runtime, ref *rbac.Role) *rbac.Role {
 	if hasPermissions(ref) {
 		return ref
 	}
-	roles, err := weaviateConnection(runtime).Roles(weaviateContext())
-	if err != nil {
-		return ref
-	}
-	for i := range roles {
-		if roles[i].Name == ref.Name {
-			return &roles[i]
-		}
+	if full, ok := weaviateConnection(runtime).RoleByName(ref.Name); ok {
+		return full
 	}
 	return ref
 }

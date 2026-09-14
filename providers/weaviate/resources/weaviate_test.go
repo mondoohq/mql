@@ -9,7 +9,9 @@ import (
 
 	"github.com/weaviate/weaviate-go-client/v5/weaviate/fault"
 	"github.com/weaviate/weaviate-go-client/v5/weaviate/rbac"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/weaviate/connection"
 )
 
 func TestModuleNames(t *testing.T) {
@@ -306,6 +308,33 @@ func TestRolePermissionsSurviveNameOnlyReference(t *testing.T) {
 			t.Errorf("permissions = %v, want read_data and create_roles", got)
 		}
 	})
+}
+
+// TestResolveRoleFallsBackWhenRolesUnreadable exercises the degraded path,
+// which no happy-path test reaches. A credential that may list users but not
+// roles keeps the role's name rather than losing the role altogether, so the
+// lookup has to hand the reference back untouched when it cannot answer.
+func TestResolveRoleFallsBackWhenRolesUnreadable(t *testing.T) {
+	// Port 1 on loopback refuses immediately, which is the cheapest stand-in
+	// for a role list this connection cannot read.
+	conf := &inventory.Config{
+		Type:    "weaviate",
+		Options: map[string]string{"host": "127.0.0.1", "port": "1"},
+	}
+	asset := &inventory.Asset{Connections: []*inventory.Config{conf}}
+	conn, err := connection.NewWeaviateConnection(1, asset, conf)
+	if err != nil {
+		t.Fatalf("building the connection: %v", err)
+	}
+	if _, ok := conn.RoleByName("articleReader"); ok {
+		t.Fatal("an unreadable role list should resolve nothing")
+	}
+
+	runtime := plugin.NewRuntime(conn, nil, false, CreateResource, NewResource, GetData, SetData, nil)
+	ref := &rbac.Role{Name: "articleReader"}
+	if got := resolveRole(runtime, ref); got != ref {
+		t.Errorf("resolveRole = %+v, want the reference itself", got)
+	}
 }
 
 // TestRolePermissionsAreDistinctResources guards the other half of the id: two
