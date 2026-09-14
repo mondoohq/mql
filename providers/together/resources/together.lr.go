@@ -22,6 +22,7 @@ const (
 	ResourceTogetherEndpoint             string = "together.endpoint"
 	ResourceTogetherFile                 string = "together.file"
 	ResourceTogetherCluster              string = "together.cluster"
+	ResourceTogetherClusterNode          string = "together.cluster.node"
 	ResourceTogetherSecret               string = "together.secret"
 	ResourceTogetherClusterStorageVolume string = "together.clusterStorageVolume"
 	ResourceTogetherDeployment           string = "together.deployment"
@@ -57,6 +58,10 @@ func init() {
 		"together.cluster": {
 			// to override args, implement: initTogetherCluster(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createTogetherCluster,
+		},
+		"together.cluster.node": {
+			// to override args, implement: initTogetherClusterNode(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createTogetherClusterNode,
 		},
 		"together.secret": {
 			// to override args, implement: initTogetherSecret(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -372,6 +377,36 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"together.cluster.oidcClientId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTogetherCluster).GetOidcClientId()).ToDataRes(types.String)
 	},
+	"together.cluster.oidcGroupClaim": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherCluster).GetOidcGroupClaim()).ToDataRes(types.String)
+	},
+	"together.cluster.oidcGroupPrefix": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherCluster).GetOidcGroupPrefix()).ToDataRes(types.String)
+	},
+	"together.cluster.oidcUsernameClaim": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherCluster).GetOidcUsernameClaim()).ToDataRes(types.String)
+	},
+	"together.cluster.oidcUsernamePrefix": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherCluster).GetOidcUsernamePrefix()).ToDataRes(types.String)
+	},
+	"together.cluster.kubernetesDashboardEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherCluster).GetKubernetesDashboardEnabled()).ToDataRes(types.Bool)
+	},
+	"together.cluster.jumphostEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherCluster).GetJumphostEnabled()).ToDataRes(types.Bool)
+	},
+	"together.cluster.sshCaEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherCluster).GetSshCaEnabled()).ToDataRes(types.Bool)
+	},
+	"together.cluster.loadBalancer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherCluster).GetLoadBalancer()).ToDataRes(types.String)
+	},
+	"together.cluster.ingressEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherCluster).GetIngressEnabled()).ToDataRes(types.Bool)
+	},
+	"together.cluster.nodes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherCluster).GetNodes()).ToDataRes(types.Array(types.Resource("together.cluster.node")))
+	},
 	"together.cluster.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTogetherCluster).GetCreatedAt()).ToDataRes(types.Time)
 	},
@@ -380,6 +415,45 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"together.cluster.reservationEndTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTogetherCluster).GetReservationEndTime()).ToDataRes(types.Time)
+	},
+	"together.cluster.node.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherClusterNode).GetId()).ToDataRes(types.String)
+	},
+	"together.cluster.node.hostname": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherClusterNode).GetHostname()).ToDataRes(types.String)
+	},
+	"together.cluster.node.role": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherClusterNode).GetRole()).ToDataRes(types.String)
+	},
+	"together.cluster.node.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherClusterNode).GetStatus()).ToDataRes(types.String)
+	},
+	"together.cluster.node.publicIpv4": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherClusterNode).GetPublicIpv4()).ToDataRes(types.String)
+	},
+	"together.cluster.node.isPublic": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherClusterNode).GetIsPublic()).ToDataRes(types.Bool)
+	},
+	"together.cluster.node.networks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherClusterNode).GetNetworks()).ToDataRes(types.Array(types.String))
+	},
+	"together.cluster.node.memoryGib": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherClusterNode).GetMemoryGib()).ToDataRes(types.Float)
+	},
+	"together.cluster.node.numCpuCores": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherClusterNode).GetNumCpuCores()).ToDataRes(types.Int)
+	},
+	"together.cluster.node.numGpus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherClusterNode).GetNumGpus()).ToDataRes(types.Int)
+	},
+	"together.cluster.node.instanceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherClusterNode).GetInstanceId()).ToDataRes(types.String)
+	},
+	"together.cluster.node.autoRemediationEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherClusterNode).GetAutoRemediationEnabled()).ToDataRes(types.Bool)
+	},
+	"together.cluster.node.markedForDeletion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTogetherClusterNode).GetMarkedForDeletion()).ToDataRes(types.Bool)
 	},
 	"together.secret.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTogetherSecret).GetId()).ToDataRes(types.String)
@@ -877,6 +951,46 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlTogetherCluster).OidcClientId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"together.cluster.oidcGroupClaim": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherCluster).OidcGroupClaim, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"together.cluster.oidcGroupPrefix": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherCluster).OidcGroupPrefix, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"together.cluster.oidcUsernameClaim": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherCluster).OidcUsernameClaim, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"together.cluster.oidcUsernamePrefix": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherCluster).OidcUsernamePrefix, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"together.cluster.kubernetesDashboardEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherCluster).KubernetesDashboardEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"together.cluster.jumphostEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherCluster).JumphostEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"together.cluster.sshCaEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherCluster).SshCaEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"together.cluster.loadBalancer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherCluster).LoadBalancer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"together.cluster.ingressEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherCluster).IngressEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"together.cluster.nodes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherCluster).Nodes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"together.cluster.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTogetherCluster).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
@@ -887,6 +1001,62 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"together.cluster.reservationEndTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTogetherCluster).ReservationEndTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"together.cluster.node.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherClusterNode).__id, ok = v.Value.(string)
+		return
+	},
+	"together.cluster.node.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherClusterNode).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"together.cluster.node.hostname": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherClusterNode).Hostname, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"together.cluster.node.role": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherClusterNode).Role, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"together.cluster.node.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherClusterNode).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"together.cluster.node.publicIpv4": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherClusterNode).PublicIpv4, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"together.cluster.node.isPublic": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherClusterNode).IsPublic, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"together.cluster.node.networks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherClusterNode).Networks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"together.cluster.node.memoryGib": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherClusterNode).MemoryGib, ok = plugin.RawToTValue[float64](v.Value, v.Error)
+		return
+	},
+	"together.cluster.node.numCpuCores": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherClusterNode).NumCpuCores, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"together.cluster.node.numGpus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherClusterNode).NumGpus, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"together.cluster.node.instanceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherClusterNode).InstanceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"together.cluster.node.autoRemediationEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherClusterNode).AutoRemediationEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"together.cluster.node.markedForDeletion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTogetherClusterNode).MarkedForDeletion, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"together.secret.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1835,23 +2005,33 @@ type mqlTogetherCluster struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlTogetherClusterInternal it will be used here
-	Id                   plugin.TValue[string]
-	Name                 plugin.TValue[string]
-	ClusterType          plugin.TValue[string]
-	GpuType              plugin.TValue[string]
-	NumGpus              plugin.TValue[int64]
-	Region               plugin.TValue[string]
-	Status               plugin.TValue[string]
-	BillingType          plugin.TValue[string]
-	ProjectId            plugin.TValue[string]
-	CudaVersion          plugin.TValue[string]
-	NvidiaDriverVersion  plugin.TValue[string]
-	NumCpuWorkers        plugin.TValue[int64]
-	OidcIssuer           plugin.TValue[string]
-	OidcClientId         plugin.TValue[string]
-	CreatedAt            plugin.TValue[*time.Time]
-	ReservationStartTime plugin.TValue[*time.Time]
-	ReservationEndTime   plugin.TValue[*time.Time]
+	Id                         plugin.TValue[string]
+	Name                       plugin.TValue[string]
+	ClusterType                plugin.TValue[string]
+	GpuType                    plugin.TValue[string]
+	NumGpus                    plugin.TValue[int64]
+	Region                     plugin.TValue[string]
+	Status                     plugin.TValue[string]
+	BillingType                plugin.TValue[string]
+	ProjectId                  plugin.TValue[string]
+	CudaVersion                plugin.TValue[string]
+	NvidiaDriverVersion        plugin.TValue[string]
+	NumCpuWorkers              plugin.TValue[int64]
+	OidcIssuer                 plugin.TValue[string]
+	OidcClientId               plugin.TValue[string]
+	OidcGroupClaim             plugin.TValue[string]
+	OidcGroupPrefix            plugin.TValue[string]
+	OidcUsernameClaim          plugin.TValue[string]
+	OidcUsernamePrefix         plugin.TValue[string]
+	KubernetesDashboardEnabled plugin.TValue[bool]
+	JumphostEnabled            plugin.TValue[bool]
+	SshCaEnabled               plugin.TValue[bool]
+	LoadBalancer               plugin.TValue[string]
+	IngressEnabled             plugin.TValue[bool]
+	Nodes                      plugin.TValue[[]any]
+	CreatedAt                  plugin.TValue[*time.Time]
+	ReservationStartTime       plugin.TValue[*time.Time]
+	ReservationEndTime         plugin.TValue[*time.Time]
 }
 
 // createTogetherCluster creates a new instance of this resource
@@ -1947,6 +2127,46 @@ func (c *mqlTogetherCluster) GetOidcClientId() *plugin.TValue[string] {
 	return &c.OidcClientId
 }
 
+func (c *mqlTogetherCluster) GetOidcGroupClaim() *plugin.TValue[string] {
+	return &c.OidcGroupClaim
+}
+
+func (c *mqlTogetherCluster) GetOidcGroupPrefix() *plugin.TValue[string] {
+	return &c.OidcGroupPrefix
+}
+
+func (c *mqlTogetherCluster) GetOidcUsernameClaim() *plugin.TValue[string] {
+	return &c.OidcUsernameClaim
+}
+
+func (c *mqlTogetherCluster) GetOidcUsernamePrefix() *plugin.TValue[string] {
+	return &c.OidcUsernamePrefix
+}
+
+func (c *mqlTogetherCluster) GetKubernetesDashboardEnabled() *plugin.TValue[bool] {
+	return &c.KubernetesDashboardEnabled
+}
+
+func (c *mqlTogetherCluster) GetJumphostEnabled() *plugin.TValue[bool] {
+	return &c.JumphostEnabled
+}
+
+func (c *mqlTogetherCluster) GetSshCaEnabled() *plugin.TValue[bool] {
+	return &c.SshCaEnabled
+}
+
+func (c *mqlTogetherCluster) GetLoadBalancer() *plugin.TValue[string] {
+	return &c.LoadBalancer
+}
+
+func (c *mqlTogetherCluster) GetIngressEnabled() *plugin.TValue[bool] {
+	return &c.IngressEnabled
+}
+
+func (c *mqlTogetherCluster) GetNodes() *plugin.TValue[[]any] {
+	return &c.Nodes
+}
+
 func (c *mqlTogetherCluster) GetCreatedAt() *plugin.TValue[*time.Time] {
 	return &c.CreatedAt
 }
@@ -1957,6 +2177,112 @@ func (c *mqlTogetherCluster) GetReservationStartTime() *plugin.TValue[*time.Time
 
 func (c *mqlTogetherCluster) GetReservationEndTime() *plugin.TValue[*time.Time] {
 	return &c.ReservationEndTime
+}
+
+// mqlTogetherClusterNode for the together.cluster.node resource
+type mqlTogetherClusterNode struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlTogetherClusterNodeInternal it will be used here
+	Id                     plugin.TValue[string]
+	Hostname               plugin.TValue[string]
+	Role                   plugin.TValue[string]
+	Status                 plugin.TValue[string]
+	PublicIpv4             plugin.TValue[string]
+	IsPublic               plugin.TValue[bool]
+	Networks               plugin.TValue[[]any]
+	MemoryGib              plugin.TValue[float64]
+	NumCpuCores            plugin.TValue[int64]
+	NumGpus                plugin.TValue[int64]
+	InstanceId             plugin.TValue[string]
+	AutoRemediationEnabled plugin.TValue[bool]
+	MarkedForDeletion      plugin.TValue[bool]
+}
+
+// createTogetherClusterNode creates a new instance of this resource
+func createTogetherClusterNode(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlTogetherClusterNode{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("together.cluster.node", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlTogetherClusterNode) MqlName() string {
+	return "together.cluster.node"
+}
+
+func (c *mqlTogetherClusterNode) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlTogetherClusterNode) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlTogetherClusterNode) GetHostname() *plugin.TValue[string] {
+	return &c.Hostname
+}
+
+func (c *mqlTogetherClusterNode) GetRole() *plugin.TValue[string] {
+	return &c.Role
+}
+
+func (c *mqlTogetherClusterNode) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlTogetherClusterNode) GetPublicIpv4() *plugin.TValue[string] {
+	return &c.PublicIpv4
+}
+
+func (c *mqlTogetherClusterNode) GetIsPublic() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.IsPublic, func() (bool, error) {
+		return c.isPublic()
+	})
+}
+
+func (c *mqlTogetherClusterNode) GetNetworks() *plugin.TValue[[]any] {
+	return &c.Networks
+}
+
+func (c *mqlTogetherClusterNode) GetMemoryGib() *plugin.TValue[float64] {
+	return &c.MemoryGib
+}
+
+func (c *mqlTogetherClusterNode) GetNumCpuCores() *plugin.TValue[int64] {
+	return &c.NumCpuCores
+}
+
+func (c *mqlTogetherClusterNode) GetNumGpus() *plugin.TValue[int64] {
+	return &c.NumGpus
+}
+
+func (c *mqlTogetherClusterNode) GetInstanceId() *plugin.TValue[string] {
+	return &c.InstanceId
+}
+
+func (c *mqlTogetherClusterNode) GetAutoRemediationEnabled() *plugin.TValue[bool] {
+	return &c.AutoRemediationEnabled
+}
+
+func (c *mqlTogetherClusterNode) GetMarkedForDeletion() *plugin.TValue[bool] {
+	return &c.MarkedForDeletion
 }
 
 // mqlTogetherSecret for the together.secret resource

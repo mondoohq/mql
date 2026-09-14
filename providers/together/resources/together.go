@@ -7,12 +7,14 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	together "github.com/togethercomputer/together-go"
+	"github.com/togethercomputer/together-go/packages/respjson"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/together/connection"
@@ -308,25 +310,43 @@ func (r *mqlTogether) clusters() ([]interface{}, error) {
 
 	res := make([]interface{}, 0, len(resp.Clusters))
 	for _, c := range resp.Clusters {
+		nodes, err := clusterNodeResources(r.MqlRuntime, c)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg := c.ClusterConfig
+		oidc := c.OidcConfig
+
 		mqlCluster, err := CreateResource(r.MqlRuntime, "together.cluster", map[string]*llx.RawData{
-			"__id":                 llx.StringData(c.ClusterID),
-			"id":                   llx.StringData(c.ClusterID),
-			"name":                 llx.StringData(c.ClusterName),
-			"clusterType":          llx.StringData(string(c.ClusterType)),
-			"gpuType":              llx.StringData(string(c.GPUType)),
-			"numGpus":              llx.IntData(c.NumGPUs),
-			"region":               llx.StringData(c.Region),
-			"status":               llx.StringData(string(c.Status)),
-			"billingType":          llx.StringData(string(c.BillingType)),
-			"projectId":            llx.StringData(c.ProjectID),
-			"cudaVersion":          llx.StringData(c.CudaVersion),
-			"nvidiaDriverVersion":  llx.StringData(c.NvidiaDriverVersion),
-			"numCpuWorkers":        llx.IntData(c.NumCPUWorkers),
-			"oidcIssuer":           llx.StringData(c.OidcConfig.IssuerURL),
-			"oidcClientId":         llx.StringData(c.OidcConfig.ClientID),
-			"createdAt":            llx.TimeDataPtr(timeOrNil(c.CreatedAt)),
-			"reservationStartTime": llx.TimeDataPtr(timeOrNil(c.ReservationStartTime)),
-			"reservationEndTime":   llx.TimeDataPtr(timeOrNil(c.ReservationEndTime)),
+			"__id":                       llx.StringData(c.ClusterID),
+			"id":                         llx.StringData(c.ClusterID),
+			"name":                       llx.StringData(c.ClusterName),
+			"clusterType":                llx.StringData(string(c.ClusterType)),
+			"gpuType":                    llx.StringData(string(c.GPUType)),
+			"numGpus":                    llx.IntData(c.NumGPUs),
+			"region":                     llx.StringData(c.Region),
+			"status":                     llx.StringData(string(c.Status)),
+			"billingType":                llx.StringData(string(c.BillingType)),
+			"projectId":                  llx.StringData(c.ProjectID),
+			"cudaVersion":                llx.StringData(c.CudaVersion),
+			"nvidiaDriverVersion":        llx.StringData(c.NvidiaDriverVersion),
+			"numCpuWorkers":              llx.IntData(c.NumCPUWorkers),
+			"oidcIssuer":                 llx.StringData(oidc.IssuerURL),
+			"oidcClientId":               llx.StringData(oidc.ClientID),
+			"oidcGroupClaim":             llx.StringDataPtr(reportedString(oidc.GroupClaim, oidc.JSON.GroupClaim)),
+			"oidcGroupPrefix":            llx.StringDataPtr(reportedString(oidc.GroupPrefix, oidc.JSON.GroupPrefix)),
+			"oidcUsernameClaim":          llx.StringDataPtr(reportedString(oidc.UsernameClaim, oidc.JSON.UsernameClaim)),
+			"oidcUsernamePrefix":         llx.StringDataPtr(reportedString(oidc.UsernamePrefix, oidc.JSON.UsernamePrefix)),
+			"kubernetesDashboardEnabled": llx.BoolDataPtr(reportedBool(cfg.KubernetesDashboardEnabled, cfg.JSON.KubernetesDashboardEnabled)),
+			"jumphostEnabled":            llx.BoolDataPtr(reportedBool(cfg.JumphostEnabled, cfg.JSON.JumphostEnabled)),
+			"sshCaEnabled":               llx.BoolDataPtr(reportedBool(cfg.SSHCaEnabled, cfg.JSON.SSHCaEnabled)),
+			"loadBalancer":               llx.StringDataPtr(reportedString(cfg.LoadBalancer, cfg.JSON.LoadBalancer)),
+			"ingressEnabled":             llx.BoolDataPtr(reportedBool(cfg.Ingress.Enabled, cfg.Ingress.JSON.Enabled)),
+			"nodes":                      llx.ArrayData(nodes, types.Resource("together.cluster.node")),
+			"createdAt":                  llx.TimeDataPtr(timeOrNil(c.CreatedAt)),
+			"reservationStartTime":       llx.TimeDataPtr(timeOrNil(c.ReservationStartTime)),
+			"reservationEndTime":         llx.TimeDataPtr(timeOrNil(c.ReservationEndTime)),
 		})
 		if err != nil {
 			return nil, err
@@ -335,6 +355,157 @@ func (r *mqlTogether) clusters() ([]interface{}, error) {
 	}
 
 	return res, nil
+}
+
+// reportedBool carries a boolean through to the schema only when the API
+// actually reported it. A control the response says nothing about reaches the
+// schema as null, where an equality check on it fails, rather than as a false
+// that reads like a measured "not enabled".
+func reportedBool(value bool, field respjson.Field) *bool {
+	if !field.Valid() {
+		return nil
+	}
+	return &value
+}
+
+// reportedString is reportedBool for strings.
+func reportedString(value string, field respjson.Field) *string {
+	if !field.Valid() {
+		return nil
+	}
+	return &value
+}
+
+// Roles a node plays in a cluster. The list response keeps GPU workers and
+// control plane nodes in separate collections and names neither in the record
+// itself, so the role is set from the collection the node came out of.
+const (
+	clusterNodeRoleGPUWorker    = "GPU_WORKER"
+	clusterNodeRoleControlPlane = "CONTROL_PLANE"
+)
+
+// clusterNodeRecord is the union of what a cluster's two kinds of node record
+// report. A value the record does not carry stays nil and reaches the schema as
+// null, so a control plane node reports no GPU count rather than a zero that
+// reads as a measured one.
+type clusterNodeRecord struct {
+	id                     string
+	hostname               string
+	role                   string
+	status                 string
+	publicIPv4             string
+	networks               []string
+	memoryGib              float64
+	numCPUCores            int64
+	numGPUs                *int64
+	instanceID             *string
+	autoRemediationEnabled *bool
+	markedForDeletion      *bool
+}
+
+func gpuWorkerNodeRecord(n together.ClusterGPUWorkerNode) clusterNodeRecord {
+	numGPUs := n.NumGPUs
+	return clusterNodeRecord{
+		id:                     n.NodeID,
+		hostname:               n.HostName,
+		role:                   clusterNodeRoleGPUWorker,
+		status:                 n.Status,
+		publicIPv4:             n.PublicIpv4,
+		networks:               n.Networks,
+		memoryGib:              n.MemoryGib,
+		numCPUCores:            n.NumCPUCores,
+		numGPUs:                &numGPUs,
+		instanceID:             reportedString(n.InstanceID, n.JSON.InstanceID),
+		autoRemediationEnabled: reportedBool(n.AutoRemediationEnabled, n.JSON.AutoRemediationEnabled),
+		markedForDeletion:      reportedBool(n.MarkedForDeletion, n.JSON.MarkedForDeletion),
+	}
+}
+
+func controlPlaneNodeRecord(n together.ClusterControlPlaneNode) clusterNodeRecord {
+	rec := clusterNodeRecord{
+		id:          n.NodeID,
+		hostname:    n.HostName,
+		role:        clusterNodeRoleControlPlane,
+		status:      n.Status,
+		publicIPv4:  n.PublicIpv4,
+		memoryGib:   n.MemoryGib,
+		numCPUCores: n.NumCPUCores,
+	}
+	// A control plane node reports one network, where a GPU worker reports a
+	// list. Both reach the same field.
+	if n.Network != "" {
+		rec.networks = []string{n.Network}
+	}
+	return rec
+}
+
+// clusterNodeID keys a node inside its cluster. A node repeats along three
+// dimensions, the cluster it belongs to, the part it plays in that cluster, and
+// its own identifier, so all three go into the key: two nodes sharing a key
+// would be reported as one, carrying the first one's values.
+//
+// The node identifier is required by the API and the hostname is the fallback
+// for a response that omits it anyway. The index is the last resort, and is
+// there so that nodes with neither stay separate instead of collapsing onto one
+// another.
+func clusterNodeID(clusterID string, rec clusterNodeRecord, index int) string {
+	key := rec.id
+	if key == "" {
+		key = rec.hostname
+	}
+	if key == "" {
+		key = "index-" + strconv.Itoa(index)
+	}
+	return clusterID + "/" + rec.role + "/" + key
+}
+
+// clusterNodeResources builds the node resources of one cluster. Everything it
+// reads is already in the cluster list response, so a cluster's nodes cost no
+// additional API call.
+func clusterNodeResources(runtime *plugin.Runtime, c together.Cluster) ([]interface{}, error) {
+	records := make([]clusterNodeRecord, 0, len(c.GPUWorkerNodes)+len(c.ControlPlaneNodes))
+	for _, n := range c.GPUWorkerNodes {
+		records = append(records, gpuWorkerNodeRecord(n))
+	}
+	for _, n := range c.ControlPlaneNodes {
+		records = append(records, controlPlaneNodeRecord(n))
+	}
+
+	res := make([]interface{}, 0, len(records))
+	for i, rec := range records {
+		networks := make([]interface{}, 0, len(rec.networks))
+		for _, network := range rec.networks {
+			networks = append(networks, network)
+		}
+
+		mqlNode, err := CreateResource(runtime, "together.cluster.node", map[string]*llx.RawData{
+			"__id":                   llx.StringData(clusterNodeID(c.ClusterID, rec, i)),
+			"id":                     llx.StringData(rec.id),
+			"hostname":               llx.StringData(rec.hostname),
+			"role":                   llx.StringData(rec.role),
+			"status":                 llx.StringData(rec.status),
+			"publicIpv4":             llx.StringData(rec.publicIPv4),
+			"networks":               llx.ArrayData(networks, types.String),
+			"memoryGib":              llx.FloatData(rec.memoryGib),
+			"numCpuCores":            llx.IntData(rec.numCPUCores),
+			"numGpus":                llx.IntDataPtr(rec.numGPUs),
+			"instanceId":             llx.StringDataPtr(rec.instanceID),
+			"autoRemediationEnabled": llx.BoolDataPtr(rec.autoRemediationEnabled),
+			"markedForDeletion":      llx.BoolDataPtr(rec.markedForDeletion),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlNode)
+	}
+
+	return res, nil
+}
+
+// isPublic reports whether the node answers on a public address. The list
+// response carries a public IPv4 only for a node that has one.
+func (r *mqlTogetherClusterNode) isPublic() (bool, error) {
+	return r.PublicIpv4.Data != "", nil
 }
 
 func (r *mqlTogether) secrets() ([]interface{}, error) {

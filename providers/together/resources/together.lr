@@ -210,9 +210,12 @@ together.file @defaults("id filename purpose") @maturity("preview") {
 // Together AI GPU compute cluster
 //
 // GPU compute cluster provisioned through Together AI, covering its
-// GPU type, node count, region, billing type, and OIDC configuration.
+// GPU type, node count, region, billing type, OIDC configuration, the
+// management surfaces deployed alongside it, and the nodes it runs on.
 // Use `together.clusters.where(status == "Ready")` to find active
-// clusters or inspect `oidcIssuer` for identity federation auditing.
+// clusters, `kubernetesDashboardEnabled` and `jumphostEnabled` to find
+// administrative entry points into a cluster, and `nodes` to find
+// machines that answer on a public address.
 together.cluster @defaults("name gpuType numGpus region status") @maturity("preview") {
   // Cluster identifier
   id string
@@ -253,12 +256,130 @@ together.cluster @defaults("name gpuType numGpus region status") @maturity("prev
   oidcIssuer string
   // OIDC client ID
   oidcClientId string
+  // Token claim the cluster reads group membership from
+  //
+  // Name of the claim carrying a user's groups, such as groups. Group
+  // role bindings on the cluster match nothing when the claim is unset
+  // or names a claim the identity provider does not assert, which
+  // leaves the bindings in place and silently unmatched. Null when the
+  // cluster reports no OIDC configuration.
+  oidcGroupClaim string
+  // Prefix added to every group name taken from the group claim
+  //
+  // Prefix such as oidc: that the cluster prepends to a group name
+  // before matching it against a role binding. A binding written
+  // against the unprefixed name does not match. Null when the cluster
+  // reports no OIDC configuration.
+  oidcGroupPrefix string
+  // Token claim the cluster reads the username from
+  //
+  // Name of the claim used as the username, such as sub or email. Null
+  // when the cluster reports no OIDC configuration.
+  oidcUsernameClaim string
+  // Prefix added to the username taken from the username claim
+  //
+  // Prefix such as oidc: that the cluster prepends to a username before
+  // matching it against a role binding. Null when the cluster reports
+  // no OIDC configuration.
+  oidcUsernamePrefix string
+  // Whether the Kubernetes dashboard runs on the cluster
+  //
+  // The dashboard is a web console with the permissions of the service
+  // account it runs as, so on a cluster holding model weights and
+  // training data it is an administrative entry point worth accounting
+  // for. Null when the cluster reports no configuration block.
+  kubernetesDashboardEnabled bool
+  // Whether a jumphost is deployed for the cluster
+  //
+  // A jumphost is a reachable host from which the cluster network can
+  // be entered. Null when the cluster reports no configuration block.
+  jumphostEnabled bool
+  // Whether SSH access is brokered by the cluster certificate authority
+  //
+  // True when the cluster runs its own SSH certificate authority and
+  // signs access with OIDC identities, so access follows the identity
+  // provider. False means SSH access rests on keys the cluster does not
+  // broker. Null when the cluster reports no configuration block.
+  sshCaEnabled bool
+  // Load balancer deployed on the cluster
+  //
+  // One of NONE, TRAEFIK, NGINX, or ISTIO. Null when the cluster
+  // reports no configuration block.
+  loadBalancer string
+  // Whether ingress is enabled on the cluster
+  //
+  // True when the cluster accepts inbound traffic through its ingress
+  // configuration. Null when the cluster reports no ingress settings.
+  ingressEnabled bool
+  // Nodes that make up the cluster
+  //
+  // Both the GPU workers and the control plane nodes currently in the
+  // cluster, in one list. Nodes that have left the cluster are not
+  // included.
+  nodes []together.cluster.node
   // Cluster creation time
   createdAt time
   // Reservation start time
   reservationStartTime time
   // Reservation end time
   reservationEndTime time
+}
+
+// Node of a Together AI GPU compute cluster
+//
+// Single machine belonging to a GPU compute cluster, covering both the
+// GPU workers that run the workload and the control plane nodes that
+// run the cluster itself. The `role` field tells the two apart, and
+// `isPublic` reports whether the node answers on a public address: a
+// GPU worker holding model weights and a control plane node fronting
+// the cluster API are both worth finding that way. Use
+// `together.clusters.all(nodes.none(isPublic))` to hold an account to
+// clusters with no publicly addressed machines. Fields that only a GPU
+// worker reports, such as `numGpus` and `instanceId`, are null on a
+// control plane node.
+private together.cluster.node @defaults("hostname role status isPublic") @maturity("preview") {
+  // Node identifier
+  id string
+  // Node hostname
+  hostname string
+  // Part the node plays in the cluster
+  //
+  // One of GPU_WORKER or CONTROL_PLANE.
+  role string
+  // Node status
+  status string
+  // Public IPv4 address of the node
+  //
+  // Empty when the node carries no public address.
+  publicIpv4 string
+  // Whether the node is reachable from the internet
+  //
+  // True when the node carries a public IPv4 address.
+  isPublic() bool
+  // Networks the node is attached to
+  networks []string
+  // Memory in GiB
+  memoryGib float
+  // Number of CPU cores
+  numCpuCores int
+  // Number of GPUs on the node
+  //
+  // Null on a control plane node, which reports no GPU count.
+  numGpus int
+  // Identifier of the instance backing the node
+  //
+  // Null on a control plane node, which reports no instance.
+  instanceId string
+  // Whether the node is replaced automatically when it fails
+  //
+  // Null when the node reports no auto remediation setting, as a
+  // control plane node does.
+  autoRemediationEnabled bool
+  // Whether the node is marked for deletion
+  //
+  // Null when the node reports no deletion marking, as a control plane
+  // node does.
+  markedForDeletion bool
 }
 
 // Together AI managed secret
