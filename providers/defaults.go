@@ -450,6 +450,21 @@ var DefaultProviders Providers = map[string]*Provider{
 		},
 	},
 
+	"firebase": {
+		Provider: &plugin.Provider{
+			Name:            "firebase",
+			ID:              "go.mondoo.com/mql/providers/firebase",
+			ConnectionTypes: []string{"firebase"},
+			Connectors: []plugin.Connector{
+				{
+					Name:  "firebase",
+					Use:   "firebase [domain]",
+					Short: "a Firebase project",
+				},
+			},
+		},
+	},
+
 	"fortios": {
 		Provider: &plugin.Provider{
 			Name:            "fortios",

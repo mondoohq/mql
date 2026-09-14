@@ -129,6 +129,7 @@ To learn about Mondoo Platform, read the [Mondoo Platform docs](https://mondoo.c
 | Dropbox Business teams        | `dropbox`                  | `mql shell dropbox --token TEAM_TOKEN`                                                                                                          |
 | Elasticsearch cluster         | `elasticsearch`            | `mql shell elasticsearch localhost --user elastic --ask-pass`                                                                                   |
 | F5 BIG-IP load balancers      | `bigip`                    | `mql shell bigip --hostname HOST --user USER --password PASSWORD`                                                                               |
+| Firebase projects             | `firebase`                 | `mql shell firebase --project-id PROJECT_ID`                                                                                                    |
 | Fortinet FortiOS devices      | `fortios`                  | `mql shell fortios --hostname HOSTNAME --token TOKEN`                                                                                           |
 | GitHub organizations          | `github org`               | `mql shell github org mondoohq`                                                                                                                 |
 | GitHub repositories           | `github repo`              | `mql shell github repo mondoohq/mql`                                                                                                            |
