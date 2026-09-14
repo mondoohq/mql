@@ -376,8 +376,12 @@ func (ccx *CycloneDX) convertCycloneDxToSbom(bom *cyclonedx.BOM) (*Sbom, error) 
 			if len(component.CPE) > 0 {
 				sbom.Asset.Platform.Cpes = []string{component.CPE}
 			}
+			// Properties on this component describe the platform, not a package.
+			// The operating system is also recorded as a package, but reading
+			// package properties here would let a mondoo:package:* value on the
+			// OS component reach that entry, which nothing writes and no reader
+			// should expect.
 			applyPlatformProperties(sbom.Asset.Platform, component.Properties)
-			applyPackageProperties(pkg, component.Properties)
 			sbom.Packages = append(sbom.Packages, pkg)
 		case cyclonedx.ComponentTypeLibrary:
 			applyPackageProperties(pkg, component.Properties)

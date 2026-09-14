@@ -132,3 +132,26 @@ func TestFormatRegistry(t *testing.T) {
 	assert.NotContains(t, advertised, "cnquery-json")
 	assert.NotContains(t, advertised, "list")
 }
+
+// TestPropertiesStayOnTheirOwnComponent pins which component each kind of
+// property belongs to. The operating system is recorded as a package as well as
+// the platform, so without this a mondoo:package:* value on the OS component
+// would reach that package entry, and a reader restoring "symmetry" would put
+// it back.
+func TestPropertiesStayOnTheirOwnComponent(t *testing.T) {
+	bom := sampleBom()
+	out := roundTrip(t, bom)
+
+	// the OS entry is a package too, but carries no package properties
+	osPkg := findPkg(t, out, "debian")
+	assert.Empty(t, osPkg.Origin, "package properties must not be read off the OS component")
+	assert.Empty(t, osPkg.Architecture)
+
+	// while the platform does get its own
+	assert.Equal(t, "amd64", out.Asset.GetPlatform().GetArch())
+
+	// and a real package keeps both of its
+	pkg := findPkg(t, out, "libc6")
+	assert.Equal(t, "glibc", pkg.Origin)
+	assert.Equal(t, "amd64", pkg.Architecture)
+}
