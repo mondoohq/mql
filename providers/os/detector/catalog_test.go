@@ -74,6 +74,13 @@ func TestCatalogPlatforms(t *testing.T) {
 	assert.True(t, byName["chainguard"], "chainguard should be a catalogued platform")
 	assert.True(t, byName["wolfi"], "wolfi should be a catalogued platform")
 
+	// The hardened-image distributions are each a platform of their own. echo
+	// has no detection fixture: no Echo image can be pulled without an account,
+	// so nothing has confirmed its os-release, and the catalog entry is what
+	// this can honestly assert until one can be.
+	assert.True(t, byName["minimos"], "minimos should be a catalogued platform")
+	assert.True(t, byName["echo"], "echo should be a catalogued platform")
+
 	// darwin is a kernel and a family, never a platform of its own
 	assert.True(t, byName["macos"], "macos should be a catalogued platform")
 	assert.False(t, byName["darwin"], "darwin should not be a catalogued platform")
