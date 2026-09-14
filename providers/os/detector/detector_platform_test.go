@@ -904,6 +904,7 @@ func TestBellSoftHardenedContainersDetector(t *testing.T) {
 	assert.Equal(t, "bellsoft-hardened-containers", di.Name, "os name should be identified")
 	assert.Equal(t, "BellSoft Hardened Containers Stream (musl)", di.Title, "os title should be identified")
 	assert.Equal(t, "stream", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
 	assert.Equal(t, []string{"linux", "unix", "os"}, di.Family)
 }
 

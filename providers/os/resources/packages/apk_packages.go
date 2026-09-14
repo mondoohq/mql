@@ -20,16 +20,17 @@ import (
 
 const (
 	AlpinePkgFormat = "apk"
-	// ApkDbPaths lists where the apk database is found, in the order they are
-	// tried. Alpine keeps it under /lib, Wolfi under /usr/lib (usrmerge), and
-	// apk-tools 3, which BellSoft Alpaquita and Hardened Containers ship, moved
-	// it under /var.
+
+	// Known locations of the apk database. Alpine keeps it under /lib, Wolfi
+	// under /usr/lib (usrmerge), and apk-tools 3, which BellSoft Alpaquita and
+	// Hardened Containers ship, moved it under /var.
 	ApkDbInstalled    = "/lib/apk/db/installed"
 	ApkDbInstalledUsr = "/usr/lib/apk/db/installed"
 	ApkDbInstalledVar = "/var/lib/apk/db/installed"
 )
 
-// ApkDbPaths are every known location of the apk database, most common first.
+// ApkDbPaths is every known location of the apk database, in the order they are
+// tried: most common first.
 var ApkDbPaths = []string{ApkDbInstalled, ApkDbInstalledUsr, ApkDbInstalledVar}
 
 // apkMaxLine caps how long a single line of the apk database may be. The
