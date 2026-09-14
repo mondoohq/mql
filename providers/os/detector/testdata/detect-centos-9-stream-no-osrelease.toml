@@ -1,0 +1,17 @@
+# CentOS Stream with no os-release, the shape detect-centos-6.toml has for
+# CentOS Linux. The release file is the only evidence of Stream here, and the
+# redhat family resolver is what parses it into the title.
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "5.14.0-503.el9.x86_64"
+
+[files."/etc/redhat-release"]
+content = "CentOS Stream release 9"
+
+[files."/etc/centos-release"]
+content = "CentOS Stream release 9"

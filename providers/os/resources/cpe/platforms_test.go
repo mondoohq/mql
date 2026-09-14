@@ -51,6 +51,20 @@ func TestPlatformCPE(t *testing.T) {
 			cpe:      "cpe:2.3:o:debian:debian_linux:10.7:*:*:*:*:*:*:*",
 		},
 		{
+			platform: "centos",
+			version:  "7.9",
+			cpe:      "cpe:2.3:o:centos:centos:7.9:*:*:*:*:*:*:*",
+		},
+		// CentOS Stream is its own platform name but keeps the centos:centos
+		// product: that is the CPE_NAME its own os-release declares, and NVD has
+		// no centos_stream product to point at instead. Without an entry of its
+		// own PlatformCPE reports no CPE at all for a Stream host.
+		{
+			platform: "centos-stream",
+			version:  "9",
+			cpe:      "cpe:2.3:o:centos:centos:9:*:*:*:*:*:*:*",
+		},
+		{
 			platform: "macos",
 			version:  "10.14",
 			cpe:      "cpe:2.3:o:apple:mac_os_x:10.14.0:*:*:*:*:*:*:*",

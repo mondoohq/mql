@@ -22,13 +22,14 @@ import (
 // derivatives keep the configuration in a directory of fragments; the Red Hat
 // and SUSE families put the entry point directly in /etc.
 var bind9ConfPaths = map[string]string{
-	"debian": "/etc/bind/named.conf",
-	"ubuntu": "/etc/bind/named.conf",
-	"redhat": "/etc/named.conf",
-	"fedora": "/etc/named.conf",
-	"centos": "/etc/named.conf",
-	"suse":   "/etc/named.conf",
-	"alpine": "/etc/bind/named.conf",
+	"debian":        "/etc/bind/named.conf",
+	"ubuntu":        "/etc/bind/named.conf",
+	"redhat":        "/etc/named.conf",
+	"fedora":        "/etc/named.conf",
+	"centos":        "/etc/named.conf",
+	"centos-stream": "/etc/named.conf",
+	"suse":          "/etc/named.conf",
+	"alpine":        "/etc/bind/named.conf",
 }
 
 // bind9ConfCandidates is the probe order when the platform is unknown or its

@@ -60,6 +60,12 @@ func TestCatalogPlatforms(t *testing.T) {
 	assert.True(t, byName["bellsoft-hardened-containers"],
 		"bellsoft-hardened-containers should be a catalogued platform")
 
+	// the centos resolver claims CentOS Stream too, under a name of its own.
+	// Stream is upstream of RHEL rather than a rebuild of it, so it needs to be
+	// distinguishable from CentOS Linux by name rather than by version alone.
+	assert.True(t, byName["centos"], "centos should be a catalogued platform")
+	assert.True(t, byName["centos-stream"], "centos-stream should be a catalogued platform")
+
 	// darwin is a kernel and a family, never a platform of its own
 	assert.True(t, byName["macos"], "macos should be a catalogued platform")
 	assert.False(t, byName["darwin"], "darwin should not be a catalogued platform")

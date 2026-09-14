@@ -68,6 +68,22 @@ var platformCPES = []platformCPEEntry{
 				})
 		},
 	},
+	// centos stream
+	//
+	// Stream is its own platform for advisory purposes but not for CPE: its
+	// os-release declares CPE_NAME="cpe:/o:centos:centos:9", and NVD has no
+	// centos_stream product to point at, so it keeps the centos:centos name the
+	// distribution gives itself.
+	{
+		Platform: "centos-stream",
+		CPEBuilder: func(platform, version string, workstation bool) (string, error) {
+			return cpeVersionPatternFunc(
+				"cpe:2.3:o:centos:centos:{{.Version}}:*:*:*:*:*:*:*",
+				cpePatternArgs{
+					Version: version,
+				})
+		},
+	},
 	// debian
 	{
 		Platform: "debian",

@@ -374,7 +374,7 @@ func (rpm *RpmPkgManager) queryFormat() string {
 	// we can only expect if for rhel 7+, therefore we need to run an extra test
 	// be aware that this method is also used for non-redhat systems like suse
 	i, err := strconv.ParseInt(rpm.platform.Version, 0, 32)
-	if err == nil && (rpm.platform.Name == "centos" || rpm.platform.Name == "redhat") && i >= 7 {
+	if err == nil && (rpm.platform.Name == "centos" || rpm.platform.Name == "centos-stream" || rpm.platform.Name == "redhat") && i >= 7 {
 		format = "%{NAME} %{EPOCHNUM}:%{VERSION}-%{RELEASE} %{ARCH}__%{VENDOR}__%{SUMMARY}__%{LICENSE}__%{INSTALLTIME}" + modularity + "\\n"
 	}
 
@@ -601,7 +601,7 @@ func modularitySupportedByPlatform(platform *inventory.Platform) bool {
 	supported := false
 
 	switch platform.Name {
-	case "oraclelinux", "almalinux", "redhat", "centos", "rocky":
+	case "oraclelinux", "almalinux", "redhat", "centos", "centos-stream", "rocky":
 		// The window is [8, 10): modularity was introduced with RHEL 8 and
 		// removed again in RHEL 10. Do not widen it. On RHEL 7 and older rpm is
 		// 4.11, which has no %{MODULARITYLABEL} tag: it writes an error per

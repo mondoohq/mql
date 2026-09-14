@@ -152,7 +152,7 @@ func TestCentos8StreamOSDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-centos-8-stream.toml")
 	assert.Nil(t, err, "was able to create the provider")
 
-	assert.Equal(t, "centos", di.Name, "os name should be identified")
+	assert.Equal(t, "centos-stream", di.Name, "os name should be identified")
 	assert.Equal(t, "CentOS Stream 8", di.Title, "os title should be identified")
 	assert.Equal(t, "8", di.Version, "os version should be identified")
 	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
@@ -163,8 +163,23 @@ func TestCentos9StreamOSDetector(t *testing.T) {
 	di, err := detectPlatformFromMock("./testdata/detect-centos-9-stream.toml")
 	assert.Nil(t, err, "was able to create the provider")
 
-	assert.Equal(t, "centos", di.Name, "os name should be identified")
+	assert.Equal(t, "centos-stream", di.Name, "os name should be identified")
 	assert.Equal(t, "CentOS Stream 9", di.Title, "os title should be identified")
+	assert.Equal(t, "9", di.Version, "os version should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
+}
+
+// CentOS Stream is told apart from CentOS Linux by its title, and on a system
+// with no os-release the title is whatever the redhat family resolver parsed
+// out of /etc/redhat-release. That parse is the only thing standing between a
+// Stream host of this shape and the "centos" name, so it gets its own case.
+func TestCentos9StreamNoOsReleaseOSDetector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-centos-9-stream-no-osrelease.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "centos-stream", di.Name, "os name should be identified")
+	assert.Equal(t, "CentOS Stream", di.Title, "os title should be identified")
 	assert.Equal(t, "9", di.Version, "os version should be identified")
 	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
 	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)

@@ -707,15 +707,39 @@ var cloudlinux = &PlatformResolver{
 	},
 }
 
+// centosStreamTitle is how CentOS Stream spells itself out, in the PRETTY_NAME
+// of os-release and in its release file both.
+const centosStreamTitle = "CentOS Stream"
+
+// centosName is the platform name for a system that resolved as CentOS.
+//
+// Stream kept ID=centos, so the id cannot tell it apart from CentOS Linux, and
+// the title is what says which one this is. By the time this runs the redhat
+// family resolver has filled the title in, either from the PRETTY_NAME of
+// os-release or, on a system that ships no os-release at all, by parsing it out
+// of /etc/redhat-release ("CentOS Stream release 9"), so the title carries the
+// answer on every Stream release.
+//
+// The two are worth telling apart because Stream is upstream of RHEL rather
+// than a rebuild of it: a fix reaches Stream before the RHEL minor it feeds, so
+// matching a Stream host against CentOS advisories reports packages as
+// vulnerable that Stream shipped the fix for weeks earlier.
+func centosName(pf *inventory.Platform) string {
+	if strings.Contains(pf.Title, centosStreamTitle) {
+		return "centos-stream"
+	}
+	return "centos"
+}
+
 // The centos platform resolver finds CentOS and CentOS-like platforms like alma and rocky
 var centos = &PlatformResolver{
 	Name:     "centos",
 	IsFamily: false,
-	Emits:    []string{"centos", "rockylinux", "almalinux"},
+	Emits:    []string{"centos", "centos-stream", "rockylinux", "almalinux"},
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
 		// works for centos 5+
 		if strings.Contains(pf.Title, "CentOS") || pf.Name == "centos" {
-			pf.Name = "centos"
+			pf.Name = centosName(pf)
 			return true, nil
 		}
 
@@ -746,7 +770,7 @@ var centos = &PlatformResolver{
 		}
 
 		if len(pf.Name) == 0 {
-			pf.Name = "centos"
+			pf.Name = centosName(pf)
 		}
 
 		return true, nil

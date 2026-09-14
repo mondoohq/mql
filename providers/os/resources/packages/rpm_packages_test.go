@@ -561,7 +561,7 @@ func TestRedHatModularParser(t *testing.T) {
 // empty list, with no error, on a host with a fully populated rpm database.
 func TestModularitySupportedByPlatform(t *testing.T) {
 	// every distro name the modularity switch knows about
-	modularDistros := []string{"oraclelinux", "almalinux", "redhat", "centos", "rocky"}
+	modularDistros := []string{"oraclelinux", "almalinux", "redhat", "centos", "centos-stream", "rocky"}
 
 	versions := []struct {
 		version string
@@ -701,6 +701,23 @@ func TestRpmQueryFormatRoundTrip(t *testing.T) {
 			assert.Equal(t, "Red Hat, Inc.", p.Vendor)
 			assert.Equal(t, "The GNU libc libraries", p.Description)
 			assert.Equal(t, "LGPLv2+", p.License)
+		})
+	}
+}
+
+// TestRpmQueryFormatCentosStream pins CentOS Stream to the same rpm query
+// format CentOS Linux gets. queryFormat() picks %{EPOCHNUM} over %{EPOCH} by
+// platform name, and Stream only ever existed at 8 and above, so a name the
+// guard does not list drops every Stream host to %{EPOCH} - which rpm renders
+// as "(none)" for the packages that carry no epoch, where %{EPOCHNUM} renders
+// "0". Splitting Stream out of the "centos" name is exactly what would do that.
+func TestRpmQueryFormatCentosStream(t *testing.T) {
+	for _, version := range []string{"8", "9", "10"} {
+		t.Run(version, func(t *testing.T) {
+			mgr := &RpmPkgManager{platform: &inventory.Platform{
+				Name: "centos-stream", Version: version, Arch: "x86_64",
+			}}
+			assert.Contains(t, mgr.queryFormat(), "%{EPOCHNUM}")
 		})
 	}
 }
