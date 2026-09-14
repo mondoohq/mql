@@ -182,7 +182,10 @@ func ResolveManager(conn shared.Connection) (OSServiceManager, error) {
 		osm = &OpenBsdRcctlServiceManager{conn: conn}
 	case asset.Platform.Name == "windows":
 		osm = &WindowsServiceManager{conn: conn}
-	case asset.Platform.Name == "alpine" || asset.Platform.Name == "wizos": // wizos is Alpine-based and uses OpenRC
+	// wizos and alpaquita are Alpine-based and use OpenRC. BellSoft Hardened
+	// Containers are deliberately left out: they are container images with no
+	// init system and no service manager to query.
+	case asset.Platform.Name == "alpine" || asset.Platform.Name == "wizos" || asset.Platform.Name == "alpaquita":
 		osm = &OpenrcServiceManager{conn: conn}
 	case asset.Platform.Name == "gentoo":
 		osm = &OpenrcServiceManager{conn: conn}

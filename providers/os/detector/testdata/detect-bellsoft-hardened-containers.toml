@@ -1,0 +1,24 @@
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "6.1.112"
+
+# Captured from bellsoft/hardened-base:musl. The hardened images ship no release
+# marker file and no apk binary, so /etc/os-release is the only evidence
+# detection has to work from.
+[files."/etc/os-release"]
+content = """
+NAME="BellSoft Hardened Containers"
+ID=bellsoft-hardened-containers
+ID_LIKE=alpine
+VERSION="Stream"
+VERSION_ID=stream
+PRETTY_NAME="BellSoft Hardened Containers Stream (musl)"
+HOME_URL="https://bell-sw.com/"
+BUG_REPORT_URL="https://bell-sw.com/support/"
+LIBC_TYPE=musl
+"""
