@@ -6,14 +6,46 @@ security policies, members, collections, and groups. It authenticates as an
 organization, not a user, and never reads vault item secrets, folders, or
 Send content, since the Public API has no endpoints for them.
 
-**Client note:** ADR-037 specifies a client generated from Bitwarden's
-Public API OpenAPI v3 spec via `oapi-codegen`. This implementation instead
-ships a minimal, hand-written `net/http` client (`connection/client.go`)
-covering only the read endpoints the current schema needs, since generating
-and vendoring the OpenAPI spec was out of scope for this pass. The
-production intent per ADR-037 remains an OpenAPI-generated client; adopting
-it is a drop-in replacement for `connection/client.go` behind the same
-`connection.Client` interface used by `resources/`.
+**Client note:** Bitwarden's official Public API OpenAPI v3 spec is vendored
+at `connection/openapi/swagger.json`, and a spec-tracked Go type layer is
+generated from it into the `connection/bwapi` package (models only, no HTTP
+client) with `oapi-codegen`. Regenerate from the provider directory with:
+
+```shell
+go generate ./connection/bwapi/...
+```
+
+`go generate` is the only supported invocation. The generator config sets
+`output: models.gen.go`, a path oapi-codegen resolves against its working
+directory, so running the tool by hand from elsewhere writes the file to the
+wrong place. `go generate` always runs it with the working directory set to
+`connection/bwapi`.
+
+The provider keeps its own OAuth2 client-credentials transport and a
+minimal, hand-written `net/http` client (`connection/client.go`) for the read
+endpoints it needs. The request/response structs in `client.go` are **not**
+the generated `bwapi` models, because the published spec is lossy for read
+modeling. Concretely, against what this provider actually reads, the spec:
+
+- omits `hidePasswords` and `manage` on the permission-grant model
+  (`AssociationWithPermissionsResponseModel`), which the provider exposes on
+  `collectionAccess` / `groupAccess` / `memberAccess`;
+- omits `resetPasswordEnrolled` on the member model;
+- omits `name` on the collection model;
+- types policy `data` as a nested `map[string]map[string]interface{}`, which
+  cannot decode the flat `data` objects the API returns;
+- models `type`/`status` as incomplete plain integers (e.g. `PolicyType`
+  enumerates 3 of ~23 values) and cannot represent the string wire form the
+  provider's `flexEnum` tolerates;
+- types every id as a UUID, rejecting non-UUID ids and turning a null
+  `userId` (invited members) into a fabricated zero UUID.
+
+Decoding into the generated models would therefore silently drop
+security-relevant coverage. The `bwapi` package is instead used as a
+spec-tracked reference and drift tripwire: `TestOpenAPISpecGaps` (in
+`connection/client_test.go`) fails if a future re-vendor of the spec closes
+one of these gaps, signaling that the corresponding hand-written struct can
+then adopt the generated type.
 
 ## Prerequisites
 

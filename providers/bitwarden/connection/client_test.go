@@ -8,9 +8,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
+
+	"go.mondoo.com/mql/providers/bitwarden/connection/bwapi"
 )
 
 func TestFlexEnumUnmarshalJSON(t *testing.T) {
@@ -432,5 +435,96 @@ func TestListAllPageCapTerminates(t *testing.T) {
 	}
 	if requests != maxListPages {
 		t.Fatalf("requests = %d, want the walk to stop at maxListPages (%d)", requests, maxListPages)
+	}
+}
+
+// fieldSet returns the exported field names of a struct type.
+func fieldSet(t reflect.Type) map[string]struct{} {
+	m := make(map[string]struct{}, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		m[t.Field(i).Name] = struct{}{}
+	}
+	return m
+}
+
+// TestOpenAPIGeneratedModelsDecodeRealShape proves the vendored, spec-generated
+// bwapi models (providers/bitwarden/connection/bwapi/models.gen.go) decode a
+// real, spec-shaped Public API response for the fields the spec covers. It
+// validates the generated type layer end to end even though the provider does
+// not decode into it (see TestOpenAPISpecGaps for why).
+func TestOpenAPIGeneratedModelsDecodeRealShape(t *testing.T) {
+	payload := `{
+		"object": "list",
+		"data": [{
+			"object": "member",
+			"id": "539a36c5-e0d2-4cf9-979e-51ecf5cf6593",
+			"userId": "48b47ee1-493e-4c67-aef7-014996c40eca",
+			"name": "John Smith",
+			"email": "jsmith@example.com",
+			"twoFactorEnabled": true,
+			"status": 2,
+			"type": 0,
+			"accessAll": false,
+			"externalId": null,
+			"collections": [{"id": "bfbc8338-e329-4dc0-b0c9-317c2ebf1a09", "readOnly": true}]
+		}],
+		"continuationToken": null
+	}`
+	var out bwapi.MemberResponseModelListResponseModel
+	if err := json.Unmarshal([]byte(payload), &out); err != nil {
+		t.Fatalf("generated member-list model failed to decode a spec-shaped payload: %v", err)
+	}
+	if len(out.Data) != 1 || out.Data[0].Email != "jsmith@example.com" {
+		t.Fatalf("generated model decode mismatch: %+v", out)
+	}
+	if out.Data[0].Type != bwapi.OrganizationUserTypeN0 {
+		t.Fatalf("generated enum decode = %v, want ordinal 0 (owner)", out.Data[0].Type)
+	}
+	if out.Data[0].Status != bwapi.OrganizationUserStatusTypeN2 {
+		t.Fatalf("generated status enum decode = %v, want ordinal 2 (confirmed)", out.Data[0].Status)
+	}
+}
+
+// TestOpenAPISpecGaps pins the ways Bitwarden's vendored Public API spec
+// diverges from what this provider actually reads. These gaps are the reason
+// the response decoding in client.go stays hand-written rather than switching
+// to the generated bwapi models. Each assertion is a tripwire: if a future
+// re-vendor of the spec closes a gap, its sub-check fails, signaling that the
+// generated type can then replace the corresponding hand-written struct.
+func TestOpenAPISpecGaps(t *testing.T) {
+	// The permission-grant model (our SelectionReadOnly) omits hidePasswords
+	// and manage. The provider exposes both on collectionAccess/groupAccess/
+	// memberAccess, so adopting the generated model would silently report every
+	// grant as hidePasswords=false, manage=false.
+	assoc := fieldSet(reflect.TypeOf(bwapi.AssociationWithPermissionsResponseModel{}))
+	for _, f := range []string{"HidePasswords", "Manage"} {
+		if _, ok := assoc[f]; ok {
+			t.Errorf("spec now models AssociationWithPermissionsResponseModel.%s; SelectionReadOnly can adopt the generated model", f)
+		}
+	}
+
+	// The member model omits resetPasswordEnrolled, which the provider exposes.
+	if _, ok := fieldSet(reflect.TypeOf(bwapi.MemberResponseModel{}))["ResetPasswordEnrolled"]; ok {
+		t.Error("spec now models MemberResponseModel.ResetPasswordEnrolled; revisit the hand-written Member")
+	}
+
+	// The collection model omits name, which the provider exposes.
+	if _, ok := fieldSet(reflect.TypeOf(bwapi.CollectionResponseModel{}))["Name"]; ok {
+		t.Error("spec now models CollectionResponseModel.Name; revisit the hand-written Collection")
+	}
+
+	// Policy data is typed as a nested map[string]map[string]interface{}, which
+	// cannot decode the flat data objects the API actually returns.
+	var p bwapi.PolicyResponseModel
+	if err := json.Unmarshal([]byte(`{"id":"539a36c5-e0d2-4cf9-979e-51ecf5cf6593","type":1,"enabled":true,"data":{"minComplexity":3}}`), &p); err == nil {
+		t.Error("spec's PolicyResponseModel.Data now decodes flat policy data; revisit the hand-written Policy")
+	}
+
+	// Ids are typed as UUIDs, rejecting the non-UUID ids the hand-written
+	// structs tolerate, and enum fields are plain integers that cannot decode
+	// the string wire form flexEnum handles.
+	var g bwapi.GroupResponseModel
+	if err := json.Unmarshal([]byte(`{"id":"group-1","name":"Eng"}`), &g); err == nil {
+		t.Error("spec's GroupResponseModel.Id now tolerates non-UUID ids; the UUID friction is gone")
 	}
 }
