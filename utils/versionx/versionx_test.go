@@ -43,6 +43,14 @@ func TestCompare(t *testing.T) {
 		{"1.2.3-r4", "1.2.3", 1, "apk revision is newer than the bare release"},
 		{"1.2.3-r4", "1.2.3-r10", -1, "apk revisions count, they do not sort as text"},
 		{"1.0.0-rc1", "1.0.0-1ubuntu1", -1, "a candidate precedes a build of the release"},
+		{"1.2.3-devuan1", "1.2.3", 1, "devuan is a revision, not a dev prerelease"},
+		{"1.2.3-preview1", "1.2.3-precise1", -1, "preview leads the release, precise does not"},
+
+		// --- prerelease words, whole words only ---
+		{"1.0.0-dev", "1.0.0", -1, "dev leads its release"},
+		{"1.0.0-devel", "1.0.0", -1, "and so does the spelled-out form"},
+		{"1.0.0-prerelease", "1.0.0", -1, "pre must not stop covering prerelease"},
+		{"1.0.0-DEV.2", "1.0.0", -1, "the word is matched case-insensitively"},
 
 		// --- deb / rpm reality ---
 		{"1:2.4.52-1ubuntu4.6", "1:2.4.52-1ubuntu4.10", -1, "revision 6 < 10"},

@@ -19,12 +19,15 @@ versionx.Satisfies(v, ">= 1.0.0", "< 2.0.0")
    as alternating digit / non-digit runs. Missing trailing components are zeros, so `1.2` and
    `1.2.0` are the same version. No cap on component count.
 3. **Suffix** — everything after the first `-`. A recognized prerelease word (`alpha`, `beta`,
-   `rc`, `pre`, `preview`, `dev`, `snapshot`, `nightly`, `canary`, `milestone`) sorts **before**
-   the bare release; anything else — a distro revision, a dist tag, a build id — sorts **after**
-   it.
+   `rc`, `pre`, `prerelease`, `preview`, `dev`, `devel`, `snapshot`, `nightly`, `canary`,
+   `milestone`) sorts **before** the bare release; anything else — a distro revision, a dist tag,
+   a build id — sorts **after** it. The word has to be the whole word: `1.2.3-devuan1` is a
+   Devuan revision, not a `dev` build, and sorts after `1.2.3`.
 
 Plus: a `~` run sorts before everything (Debian's pre-release marker), and `+build` metadata is
-ignored (semver says it carries no precedence).
+ignored (semver says it carries no precedence). The `+` is dropped for every kind, not only
+semver — the classifier cannot tell the cases apart anyway, since a deb like `1.0+dfsg1-1` matches
+the semver shape — so two versions differing only after the `+` compare equal.
 
 Rule 3 is the one that matters. Under semver `1.0.0-alpha` precedes `1.0.0`; under packaging
 `1.2.3-1ubuntu1` follows `1.2.3`. Both are "X-suffix vs X", nothing in the string says which
@@ -52,6 +55,7 @@ parse one of the two strings and had no answer to give.
 | `2.1.0` | `2.1.0-1` | `<` | `>` ❌ | `>` ❌ | `<` ✅ | bare numeric revision |
 | `1.2.3-r4` | `1.2.3-r10` | `<` | `>` ❌ | `>` ❌ | `<` ✅ | apk revisions count |
 | `1.2.3-r4` | `1.2.3` | `>` | `<` ❌ | `<` ❌ | `>` ✅ | apk revision beats the bare release |
+| `1.2.3-devuan1` | `1.2.3` | `>` | `<` ❌ | `<` ❌ | `>` ✅ | a revision that merely starts with a prerelease word |
 | `1:2.4.52-1ubuntu4.6` | `1:2.4.52-1ubuntu4.10` | `<` | n/a ❌ | `<` ✅ | `<` ✅ | deb epoch + revision |
 | `4.18.0-425.3.1.el8_7` | `4.18.0-425.13.1.el8_7` | `<` | n/a ❌ | `>` ❌ | `<` ✅ | rpm dist tag with an underscore |
 | `1.1.1f-1ubuntu2.20` | `1.1.1k-12.el8` | `<` | n/a ❌ | `<` ✅ | `<` ✅ | openssl letter release |
@@ -64,7 +68,7 @@ parse one of the two strings and had no answer to give.
 | `1!2.0` | `1.9.0` | `>` | n/a ❌ | `>` ✅ | `>` ✅ | PEP 440 epoch |
 | `1.0~rc1` | `1.0` | `<` | n/a ❌ | `>` ❌ | `<` ✅ | Debian tilde |
 
-**Masterminds 8/23** (4 wrong, 11 unanswerable) · **mql v13 14/23** · **versionx 23/23**
+**Masterminds 8/24** (5 wrong, 11 unanswerable) · **mql v13 14/24** · **versionx 24/24**
 
 Every row is a test case in `versionx_test.go`, so the table is reproducible rather than
 asserted.
@@ -73,16 +77,17 @@ asserted.
 
 **It refused, then guessed.** Masterminds v1 takes at most three numeric components and a
 restricted prerelease charset, so it rejects a four-component build, an `_` in an rpm dist tag,
-and a letter patch like `1.1.1k`. That is 11 of the 23 pairs above — most of a real package
+and a letter patch like `1.1.1k`. That is 11 of the 24 pairs above — most of a real package
 inventory. llx's answer to a rejection was a lexical compare on the raw string, which is right by
 accident when the strings happen to align (`1.1.1f` vs `1.1.1k`) and badly wrong the moment digit
 counts differ: `16.1.2.2` below `9.1.0.0`, `126.0.6478.126` below `99.0.4844.51`,
 `425.13` below `425.3`. Nothing errored, nothing logged.
 
-**It parsed, and was still wrong.** The four `-suffix` rows are cases Masterminds accepts and gets
+**It parsed, and was still wrong.** The five `-suffix` rows are cases Masterminds accepts and gets
 backwards for packaged software, because it applies semver's prerelease rule to what is actually a
 distro revision. A version whose suffix parses is not a version whose suffix *means* what semver
-thinks it means.
+thinks it means. Reading the suffix instead of assuming it only moves the problem to where the
+word ends: `devuan1` opens with `dev` and means the opposite of it.
 
 **It had no notion of `~`.** `1.0~rc1` is Debian's way of saying "before 1.0", and both older
 implementations sort it after.

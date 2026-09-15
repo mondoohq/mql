@@ -137,7 +137,13 @@ var reSemver = regexp.MustCompile(`^v?[0-9]+(\.[0-9]+)?(\.[0-9]+)?(-[0-9A-Za-z\-
 // The list is deliberately conservative: a word here REVERSES the order of a version
 // against its own release, so a wrong entry (say "r", which is apk's build marker)
 // would flip real inventories. Bare "m"/"a"/"b" are excluded for the same reason.
-var rePrerelease = regexp.MustCompile(`^(alpha|beta|rc|pre|preview|dev|snapshot|nightly|canary|milestone)`)
+//
+// The word has to END where it ends: the trailing class stops "dev" from claiming
+// "devuan1" (a distro revision, which belongs AFTER its release) and "pre" from
+// claiming "precise". That is also why the longer forms are spelled out — with the
+// boundary in place, "pre" no longer covers "prerelease" and "dev" no longer covers
+// "devel".
+var rePrerelease = regexp.MustCompile(`^(alpha|beta|rc|prerelease|preview|pre|devel|dev|snapshot|nightly|canary|milestone)([^a-z]|$)`)
 
 // Parse reads a version string. It never fails: an unrecognizable string still yields a
 // Version that compares deterministically against every other one (see [Kind]).
@@ -178,6 +184,14 @@ func Parse(s string) Version {
 
 	// 3. Build metadata carries no precedence (semver §10), so it is dropped before
 	// any comparison rather than being allowed to break ties.
+	//
+	// Deliberately unconditional, not semver-only: a '+' in a generic or unrecognized
+	// string is a build identifier often enough that treating it as one everywhere
+	// beats guessing per kind, and the classification above cannot tell the two apart
+	// anyway ("1.0+dfsg1-1", a deb, matches the semver shape). The cost is that two
+	// versions differing only after the '+' compare equal. Don't "fix" this by
+	// restricting it to KindSemver: that changes ordering for the strings it still
+	// cannot classify, without making any of them more correct.
 	if i := strings.IndexByte(rest, '+'); i >= 0 {
 		rest = rest[:i]
 	}

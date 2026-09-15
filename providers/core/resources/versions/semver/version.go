@@ -15,6 +15,14 @@ import (
 // does in MQL and in package inventories, but a string that is not a semantic version
 // is still an error, because every caller of this parser is comparing things that are
 // supposed to be semver and wants to hear about it when one is not.
+//
+// One ordering difference against the Masterminds parser this used to wrap: that one
+// read every "-suffix" as a semver prerelease, so "1.0.0-1" sorted BEFORE "1.0.0".
+// [versionx] only reverses the order for recognized prerelease words (alpha, beta, rc,
+// …) and reads anything else as a later build, so that pair now sorts the other way.
+// Every caller here compares provider and engine versions, which use the standard tags,
+// so the difference does not reach them — but this is the note for whoever git-blames
+// their way to it.
 type Parser struct{}
 
 // Compare returns -1, 0 or +1 as a sorts before, equal to, or after b. It errors when
