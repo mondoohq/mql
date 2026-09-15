@@ -564,7 +564,11 @@ private azure.subscription.deployment @defaults("name provisioningState timestam
   // Where the deployment got its template from. Null when the template was
   // supplied inline with the deployment request rather than linked.
   template azure.subscription.deployment.templateSource
-  // URI of the linked parameters file, when the deployment used one
+  // URI of the linked parameters file, without its query string
+  //
+  // Null when the parameters were supplied inline with the deployment
+  // request. The query string is removed because a parameters file held in
+  // blob storage is linked with the SAS token that reads it.
   parametersLink string
   // Parameters supplied to the deployment
   //

@@ -66,22 +66,31 @@ func TestDeploymentTemplateSourceDoesNotPublishTheSASToken(t *testing.T) {
 	})
 }
 
-// The deprecated templateLink field reads off the same URI, so it leaks the
-// same token unless it is stripped too.
-func TestDeprecatedTemplateLinkAlsoDropsTheSASToken(t *testing.T) {
-	const base = "https://stg.blob.core.windows.net/templates/main.json"
+// Both links on the deployment read off a URI that can carry the token, so
+// both have to be stripped. ParametersLink is the stronger case of the two:
+// unlike TemplateLink it has no QueryString member at all, so a SAS-protected
+// parameters file has nowhere else to put its token.
+func TestDeploymentLinksBothDropTheSASToken(t *testing.T) {
+	const templateBase = "https://stg.blob.core.windows.net/templates/main.json"
+	const paramsBase = "https://stg.blob.core.windows.net/templates/prod.parameters.json"
+	const query = "?sp=r&sig=PLACEHOLDER-NOT-A-REAL-SIGNATURE"
+
 	deployment := &armdeployments.DeploymentExtended{
 		ID:   ptr(testDeploymentID),
 		Name: ptr("from-uri"),
 		Properties: &armdeployments.DeploymentPropertiesExtended{
-			TemplateLink: &armdeployments.TemplateLink{URI: ptr(base + "?sp=r&sig=PLACEHOLDER-NOT-A-REAL-SIGNATURE")},
+			TemplateLink:   &armdeployments.TemplateLink{URI: ptr(templateBase + query)},
+			ParametersLink: &armdeployments.ParametersLink{URI: ptr(paramsBase + query)},
 		},
 	}
 
 	res, err := newMqlAzureDeployment(azureTestRuntime(), deployment)
 	require.NoError(t, err)
-	assert.Equal(t, base, res.TemplateLink.Data)
+
+	assert.Equal(t, templateBase, res.TemplateLink.Data)
 	assert.NotContains(t, res.TemplateLink.Data, "sig=")
+	assert.Equal(t, paramsBase, res.ParametersLink.Data)
+	assert.NotContains(t, res.ParametersLink.Data, "sig=")
 }
 
 // A deployment run from a Template Spec carries an ID and no URI, and one run

@@ -138,10 +138,10 @@ func newMqlAzureDeployment(runtime *plugin.Runtime, deployment *armdeployments.D
 		correlationID = props.CorrelationID
 		templateHash = props.TemplateHash
 		if props.TemplateLink != nil {
-			templateLink = templateURIWithoutCredentials(props.TemplateLink.URI)
+			templateLink = linkURIWithoutCredentials(props.TemplateLink.URI)
 		}
 		if props.ParametersLink != nil {
-			parametersLink = props.ParametersLink.URI
+			parametersLink = linkURIWithoutCredentials(props.ParametersLink.URI)
 		}
 		// Empty when debug logging is off, which is the safe setting: the debug
 		// log persists with the deployment and is readable by anyone who can
@@ -237,16 +237,19 @@ func newMqlAzureDeployment(runtime *plugin.Runtime, deployment *armdeployments.D
 	return mqlDeployment, nil
 }
 
-// templateURIWithoutCredentials strips the query string from a template link
-// URI.
+// linkURIWithoutCredentials strips the query string from a deployment link
+// URI, for both the template link and the parameters link.
 //
 // ARM documents TemplateLink.QueryString as the place a SAS token goes, but a
 // deployment run from a SAS-protected blob comes back with the whole signed
 // URL in TemplateLink.URI and QueryString empty, so publishing URI verbatim
-// puts a working storage credential in the scan result. The query string
-// carries nothing else that identifies the template, so dropping all of it
-// costs nothing and needs no list of parameter names to keep current.
-func templateURIWithoutCredentials(uri *string) *string {
+// puts a working storage credential in the scan result. ParametersLink has no
+// QueryString member at all, so a SAS-protected parameters file has nowhere
+// else to put its token and always arrives this way.
+//
+// The query string carries nothing else that identifies the file, so dropping
+// all of it costs nothing and needs no list of parameter names to keep current.
+func linkURIWithoutCredentials(uri *string) *string {
 	if uri == nil {
 		return nil
 	}
@@ -288,7 +291,7 @@ func deploymentTemplateSource(runtime *plugin.Runtime, deploymentID string, link
 	res, err := CreateResource(runtime, ResourceAzureSubscriptionDeploymentTemplateSource, map[string]*llx.RawData{
 		"__id":           llx.StringData(deploymentID + "/template"),
 		"templateSpecId": llx.StringDataPtr(link.ID),
-		"uri":            llx.StringDataPtr(templateURIWithoutCredentials(link.URI)),
+		"uri":            llx.StringDataPtr(linkURIWithoutCredentials(link.URI)),
 		"contentVersion": llx.StringDataPtr(link.ContentVersion),
 		"relativePath":   llx.StringDataPtr(link.RelativePath),
 	})
