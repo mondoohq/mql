@@ -11,6 +11,7 @@ import (
 
 	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/v13/types"
 )
 
 func initUrl(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -61,8 +62,32 @@ func initUrl(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]
 			args["rawQuery"] = llx.StringData(u.RawQuery)
 		}
 
-		if u.RawFragment != "" || args["rawFragment"] == nil {
-			args["rawFragment"] = llx.StringData(u.RawFragment)
+		// query was never populated here at all, so every read of it reached the
+		// runtime unset and surfaced as a provider bug rather than as a value.
+		//
+		// A query string may repeat a key; the field is a map, so it cannot hold
+		// both. The first occurrence wins, which is what url.Values.Get returns
+		// and what most servers read.
+		query := map[string]any{}
+		for key, values := range u.Query() {
+			if len(values) != 0 {
+				query[key] = values[0]
+			}
+		}
+		if len(query) != 0 || args["query"] == nil {
+			args["query"] = llx.MapData(query, types.String)
+		}
+
+		// RawFragment is only filled in when the fragment carries escaping that
+		// differs from the canonical encoding, so an ordinary "#section" left it
+		// empty and the fragment was reported as absent. Fall back to the decoded
+		// form, which is what the URL carried.
+		rawFragment := u.RawFragment
+		if rawFragment == "" {
+			rawFragment = u.Fragment
+		}
+		if rawFragment != "" || args["rawFragment"] == nil {
+			args["rawFragment"] = llx.StringData(rawFragment)
 		}
 	}
 	return args, nil, nil
@@ -87,12 +112,23 @@ func (x *mqlUrl) string() (string, error) {
 		host += ":" + strconv.Itoa(int(x.Port.Data))
 	}
 
+	// URL.String renders the fragment from Fragment, escaping it, and uses
+	// RawFragment only when it is a valid encoding of that same value. Setting
+	// RawFragment alone therefore dropped the fragment from the round trip
+	// entirely. Supply both: the decoded form for the value, and the raw form so
+	// a fragment that was escaped unusually comes back out as it went in.
+	fragment, err := url.PathUnescape(x.RawFragment.Data)
+	if err != nil {
+		fragment = x.RawFragment.Data
+	}
+
 	u := url.URL{
 		Scheme:      x.Scheme.Data,
 		User:        user,
 		Host:        host,
 		Path:        x.Path.Data,
 		RawQuery:    x.RawQuery.Data,
+		Fragment:    fragment,
 		RawFragment: x.RawFragment.Data,
 	}
 	return u.String(), nil

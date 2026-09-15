@@ -103,22 +103,71 @@ func (s *mqlOsRootCertificates) content(files []any) ([]any, error) {
 	return contents, nil
 }
 
+// certificatesField creates the shared certificates resource for one trust-store
+// file and reads a single field off it.
+func (p *mqlOsRootCertificates) certificatesField(content string, field string) (*llx.RawData, error) {
+	certificates, err := p.MqlRuntime.CreateSharedResource("certificates", map[string]*llx.RawData{
+		"pem": llx.StringData(content),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := p.MqlRuntime.GetSharedData("certificates", certificates.MqlID(), field)
+	if err != nil {
+		return nil, err
+	}
+	if data.Error != nil {
+		return nil, data.Error
+	}
+
+	return data, nil
+}
+
+// unparseable reports how many certificate blocks across all trust-store files
+// could not be decoded. The blocks are skipped so the rest of the store still
+// resolves, and this count is what tells a policy the list is incomplete.
+func (p *mqlOsRootCertificates) unparseable(contents []any) (int64, error) {
+	var total int64
+	for i := range contents {
+		content, ok := contents[i].(string)
+		if !ok {
+			continue
+		}
+
+		data, err := p.certificatesField(content, "unparseable")
+		if err != nil {
+			return 0, err
+		}
+
+		skipped, ok := data.Value.(int64)
+		if !ok {
+			continue
+		}
+		total += skipped
+	}
+
+	return total, nil
+}
+
 func (p *mqlOsRootCertificates) list(contents []any) ([]any, error) {
 	var res []any
 	for i := range contents {
-		certificates, err := p.MqlRuntime.CreateSharedResource("certificates", map[string]*llx.RawData{
-			"pem": llx.StringData(contents[i].(string)),
-		})
+		content, ok := contents[i].(string)
+		if !ok {
+			continue
+		}
+
+		list, err := p.certificatesField(content, "list")
 		if err != nil {
 			return nil, err
 		}
 
-		list, err := p.MqlRuntime.GetSharedData("certificates", certificates.MqlID(), "list")
-		if err != nil {
-			return nil, err
+		certs, ok := list.Value.([]any)
+		if !ok {
+			continue
 		}
-
-		res = append(res, list.Value.([]any)...)
+		res = append(res, certs...)
 	}
 
 	return res, nil
