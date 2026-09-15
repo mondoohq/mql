@@ -86,7 +86,7 @@ func GetRegistryKeyItemScript(path string) string {
 // getRegistryKeyChildItemsScript represents a registry key item and its children
 const getRegistryKeyChildItemsScript = `
 $path = %s
-$children = Get-ChildItem -Path ('Registry::' + $path) -rec -ea SilentlyContinue
+$children = Get-ChildItem -Path ('Registry::' + $path) -ea SilentlyContinue
 
 $properties = @()
 $children | ForEach-Object {

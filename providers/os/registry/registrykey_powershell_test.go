@@ -31,8 +31,27 @@ func TestWindowsRegistryKeyChildParser(t *testing.T) {
 	require.NoError(t, err)
 
 	items, err := ParsePowershellRegistryKeyChildren(r)
-	assert.Nil(t, err)
-	assert.Equal(t, 5, len(items))
+	require.NoError(t, err)
+	require.Len(t, items, 5)
+	// Name carries the child key name; registrykey.children projects it, so a
+	// parser that dropped it would silently empty the resource field.
+	assert.Equal(t, RegistryKeyChild{
+		Name:       "ActiveDesktop",
+		Path:       `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\ActiveDesktop`,
+		Properties: []string{"NoAddingComponents", "NoComponents", "NoHTMLWallPaper"},
+	}, items[0])
+}
+
+// registrykey.children is documented as the immediate children of a key. The
+// script is the only thing that bounds the depth, and a recursive enumeration
+// both breaks that contract and can return an unbounded JSON document for a
+// large hive.
+func TestGetRegistryKeyChildItemsScriptEnumeratesOneLevel(t *testing.T) {
+	script := GetRegistryKeyChildItemsScript(`HKEY_LOCAL_MACHINE\SOFTWARE\Example`)
+
+	assert.Contains(t, script, `Get-ChildItem -Path ('Registry::' + $path)`)
+	assert.NotContains(t, strings.ToLower(script), "-rec")
+	assert.Contains(t, script, `"name" = $_.PSChildName`)
 }
 
 func TestWindowsRegistryKeyMultiStringParser(t *testing.T) {

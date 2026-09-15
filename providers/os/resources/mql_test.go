@@ -2988,7 +2988,7 @@ func TestResource_Registrykey(t *testing.T) {
 		res := testWindowsQuery(t, "registrykey('HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System').children")
 		assert.NotEmpty(t, res)
 		assert.Empty(t, res[0].Result().Error)
-		assert.Equal(t, "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Audit", res[0].Data.Value.([]any)[0])
+		assert.Equal(t, []any{"Audit", "UIPI"}, res[0].Data.Value)
 	})
 
 	t.Run("non-existent registry key - props", func(t *testing.T) {
