@@ -6,6 +6,8 @@ on:
       - "providers/os/**"
       # the plugin transport tests pin how go-plugin picks ports on Windows
       - "providers-sdk/v1/plugin/**"
+      # system proxy detection calls WinHTTP; its smoke tests only run here
+      - "utils/sysproxy/**"
       - ".github/workflows/pr-test-windows.yml"
 
 concurrency:
@@ -40,7 +42,7 @@ jobs:
         run: |
           # Find all _windows_test.go files and extract unique package directories
           $repoRoot = (Get-Location).Path -replace '\\','/'
-          $packages = Get-ChildItem -Path providers/os, providers-sdk/v1/plugin -Recurse -Filter "*_windows_test.go" |
+          $packages = Get-ChildItem -Path providers/os, providers-sdk/v1/plugin, utils/sysproxy -Recurse -Filter "*_windows_test.go" |
             ForEach-Object {
               $rel = ($_.DirectoryName -replace '\\','/').Replace($repoRoot + '/', '')
               "./$rel/..."

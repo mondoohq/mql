@@ -127,11 +127,10 @@ func register(token string, annotations map[string]string, updatesURL string, ti
 	token = strings.TrimSpace(token)
 
 	// NOTE: login is special because we do not have a config yet
-	proxy, err := config.GetAPIProxy()
+	httpClient, err := config.NewHttpClient()
 	if err != nil {
 		return cli_errors.NewCommandError(errors.Wrap(err, "could not parse proxy URL"), 1)
 	}
-	httpClient := ranger.NewHttpClient(ranger.WithProxy(proxy))
 
 	// we handle three cases here:
 	// 1. user has a token provided

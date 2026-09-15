@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -152,4 +153,49 @@ func TestDownloadTimeout_InvalidFallsBackToDefault(t *testing.T) {
 func TestDownloadTimeout_NegativeFallsBackToDefault(t *testing.T) {
 	t.Setenv(EnvDownloadTimeout, "-5s")
 	assert.Equal(t, DefaultDownloadTimeout, DownloadTimeout())
+}
+
+// closeCountingBody returns data on every Read, even after Close, and counts
+// the Close calls, which is how a body that was closed by the idle timer yet
+// still delivers a buffered chunk looks to IdleTimeoutReader.
+type closeCountingBody struct {
+	closes atomic.Int32
+}
+
+func (b *closeCountingBody) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	p[0] = 'x'
+	return 1, nil
+}
+
+func (b *closeCountingBody) Close() error {
+	b.closes.Add(1)
+	return nil
+}
+
+func TestIdleTimeoutReader_ClosesBodyOnce(t *testing.T) {
+	t.Run("data after the timer fired does not re-arm it", func(t *testing.T) {
+		body := &closeCountingBody{}
+		itr := NewIdleTimeoutReader(body, 10*time.Millisecond)
+		time.Sleep(50 * time.Millisecond) // timer fires, closes the body once
+		n, err := itr.Read(make([]byte, 4))
+		require.NoError(t, err) // the body still had a chunk; no error to report yet
+		assert.Equal(t, 1, n)
+		time.Sleep(50 * time.Millisecond) // a re-armed timer would close again here
+		require.NoError(t, itr.Close())
+		assert.Equal(t, int32(1), body.closes.Load())
+	})
+
+	t.Run("close and timer racing close the body once", func(t *testing.T) {
+		for i := 0; i < 50; i++ {
+			body := &closeCountingBody{}
+			itr := NewIdleTimeoutReader(body, time.Millisecond)
+			time.Sleep(time.Millisecond)
+			_ = itr.Close()
+			time.Sleep(2 * time.Millisecond)
+			assert.Equal(t, int32(1), body.closes.Load())
+		}
+	})
 }
