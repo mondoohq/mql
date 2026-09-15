@@ -120,7 +120,7 @@ func (s *Service) AddRuntime(conf *inventory.Config, createRuntime func(connId u
 				log.Warn().Uint32("parent", parentId).Uint32("child", conf.Id).
 					Msg("parent connection not found, proceeding without shared resource cache")
 			} else {
-				runtime.Resources = parentRuntime.Resources
+				runtime.InheritResourceCacheFrom(parentRuntime)
 			}
 		}
 	}
@@ -157,7 +157,7 @@ func (s *Service) deprecatedAddRuntime(createRuntime func(connId uint32) (*Runti
 				log.Warn().Uint32("parent", parentId).Uint32("child", s.lastConnectionID).
 					Msg("parent connection not found, proceeding without shared resource cache")
 			} else {
-				runtime.Resources = parentRuntime.Resources
+				runtime.InheritResourceCacheFrom(parentRuntime)
 			}
 		}
 	}

@@ -59,38 +59,7 @@ func NewResource(runtime *plugin.Runtime, name string, args map[string]*llx.RawD
 		return nil, errors.New("cannot find resource " + name + " in this provider")
 	}
 
-	if f.Init != nil {
-		cargs, res, err := f.Init(runtime, args)
-		if err != nil {
-			return res, err
-		}
-
-		if res != nil {
-			mqlId := res.MqlID()
-			id := name + "\x00" + mqlId
-			if x, ok := runtime.Resources.Get(id); ok {
-				return x, nil
-			}
-			runtime.Resources.Set(id, res)
-			return res, nil
-		}
-
-		args = cargs
-	}
-
-	res, err := f.Create(runtime, args)
-	if err != nil {
-		return nil, err
-	}
-
-	mqlId := res.MqlID()
-	id := name + "\x00" + mqlId
-	if x, ok := runtime.Resources.Get(id); ok {
-		return x, nil
-	}
-
-	runtime.Resources.Set(id, res)
-	return res, nil
+	return plugin.ResolveResource(runtime, name, args, f)
 }
 
 // CreateResource is used by the runtime of this plugin to create resources.
@@ -102,19 +71,7 @@ func CreateResource(runtime *plugin.Runtime, name string, args map[string]*llx.R
 		return nil, errors.New("cannot find resource " + name + " in this provider")
 	}
 
-	res, err := f.Create(runtime, args)
-	if err != nil {
-		return nil, err
-	}
-
-	mqlId := res.MqlID()
-	id := name + "\x00" + mqlId
-	if x, ok := runtime.Resources.Get(id); ok {
-		return x, nil
-	}
-
-	runtime.Resources.Set(id, res)
-	return res, nil
+	return plugin.InstantiateResource(runtime, name, args, f)
 }
 
 var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
