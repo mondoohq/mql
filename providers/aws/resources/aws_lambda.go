@@ -351,6 +351,10 @@ func initAwsLambdaFunction(runtime *plugin.Runtime, args map[string]*llx.RawData
 		arnVal = args["arn"].Value.(string)
 	}
 
+	if cached := cachedByArn(runtime, ResourceAwsLambdaFunction, arnVal); cached != nil {
+		return args, cached, nil
+	}
+
 	// Targeted lookup: derive the region + function name from the ARN and fetch
 	// just this one function instead of listing every function in every region.
 	region := ""

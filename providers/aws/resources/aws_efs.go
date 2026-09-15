@@ -183,6 +183,10 @@ func initAwsEfsFilesystem(runtime *plugin.Runtime, args map[string]*llx.RawData)
 		fsId = strings.TrimPrefix(parsed.Resource, "file-system/")
 	}
 
+	if cached := cachedByArn(runtime, ResourceAwsEfsFilesystem, arnVal); cached != nil {
+		return args, cached, nil
+	}
+
 	if region != "" && fsId != "" {
 		conn := runtime.Connection.(*connection.AwsConnection)
 		svc := conn.Efs(region)

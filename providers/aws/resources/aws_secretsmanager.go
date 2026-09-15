@@ -65,6 +65,11 @@ func initAwsSecretsmanagerSecret(runtime *plugin.Runtime, args map[string]*llx.R
 	}
 
 	arnVal := args["arn"].Value.(string)
+
+	if cached := cachedByArn(runtime, ResourceAwsSecretsmanagerSecret, arnVal); cached != nil {
+		return args, cached, nil
+	}
+
 	region, err := GetRegionFromArn(arnVal)
 	if err != nil {
 		// Returning (args, nil, nil) here would let the runtime create a

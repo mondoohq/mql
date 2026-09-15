@@ -124,6 +124,10 @@ func initAwsOpensearchDomain(runtime *plugin.Runtime, args map[string]*llx.RawDa
 		return nil, nil, errors.New("arn or name required to fetch opensearch domain")
 	}
 
+	if cached := cachedArgByArn(runtime, ResourceAwsOpensearchDomain, args); cached != nil {
+		return args, cached, nil
+	}
+
 	// If we have an ARN but missing region or name, extract from ARN
 	// ARN format: arn:aws:es:REGION:ACCOUNT:domain/DOMAIN_NAME
 	if args["arn"] != nil && (args["region"] == nil || args["name"] == nil) {

@@ -440,6 +440,10 @@ func initAwsEsDomain(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 		return nil, nil, errors.New("arn or name required to fetch es domain")
 	}
 
+	if cached := cachedArgByArn(runtime, ResourceAwsEsDomain, args); cached != nil {
+		return args, cached, nil
+	}
+
 	// If we have an ARN but missing region or name, extract from ARN
 	// ARN format: arn:aws:es:REGION:ACCOUNT:domain/DOMAIN_NAME
 	if args["arn"] != nil && (args["region"] == nil || args["name"] == nil) {

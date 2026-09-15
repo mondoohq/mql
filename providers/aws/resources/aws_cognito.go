@@ -135,6 +135,14 @@ func initAwsCognitoUserPool(runtime *plugin.Runtime, args map[string]*llx.RawDat
 	}
 
 	arnVal := args["arn"].Value.(string)
+
+	// The already-built pool carries the same fields this init would set; the
+	// DescribeUserPool the init primes below is then paid once, by whichever
+	// computed field asks for it, instead of once per query.
+	if cached := cachedByArn(runtime, ResourceAwsCognitoUserPool, arnVal); cached != nil {
+		return args, cached, nil
+	}
+
 	parsed, err := arn.Parse(arnVal)
 	if err != nil {
 		return nil, nil, err
