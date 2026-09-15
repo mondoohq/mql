@@ -28044,6 +28044,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.codedeploy.deployment.deploymentConfigName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCodedeployDeployment).GetDeploymentConfigName()).ToDataRes(types.String)
 	},
+	"aws.codedeploy.deployment.deploymentMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCodedeployDeployment).GetDeploymentMode()).ToDataRes(types.String)
+	},
 	"aws.codedeploy.deployment.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCodedeployDeployment).GetCreatedAt()).ToDataRes(types.Time)
 	},
@@ -71115,6 +71118,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.codedeploy.deployment.deploymentConfigName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsCodedeployDeployment).DeploymentConfigName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.codedeploy.deployment.deploymentMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCodedeployDeployment).DeploymentMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.codedeploy.deployment.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -172363,6 +172370,7 @@ type mqlAwsCodedeployDeployment struct {
 	Status                        plugin.TValue[string]
 	DeploymentGroupName           plugin.TValue[string]
 	DeploymentConfigName          plugin.TValue[string]
+	DeploymentMode                plugin.TValue[string]
 	CreatedAt                     plugin.TValue[*time.Time]
 	CompletedAt                   plugin.TValue[*time.Time]
 	Description                   plugin.TValue[string]
@@ -172436,6 +172444,10 @@ func (c *mqlAwsCodedeployDeployment) GetDeploymentGroupName() *plugin.TValue[str
 
 func (c *mqlAwsCodedeployDeployment) GetDeploymentConfigName() *plugin.TValue[string] {
 	return &c.DeploymentConfigName
+}
+
+func (c *mqlAwsCodedeployDeployment) GetDeploymentMode() *plugin.TValue[string] {
+	return &c.DeploymentMode
 }
 
 func (c *mqlAwsCodedeployDeployment) GetCreatedAt() *plugin.TValue[*time.Time] {

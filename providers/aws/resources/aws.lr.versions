@@ -2379,6 +2379,7 @@ aws.codedeploy.deployment.creator 11.15.2
 aws.codedeploy.deployment.deploymentConfigName 11.15.2
 aws.codedeploy.deployment.deploymentGroupName 11.15.2
 aws.codedeploy.deployment.deploymentId 11.15.2
+aws.codedeploy.deployment.deploymentMode 14.0.0
 aws.codedeploy.deployment.deploymentOverview 11.15.2
 aws.codedeploy.deployment.description 11.15.2
 aws.codedeploy.deployment.errorInformation 11.15.2
