@@ -441,6 +441,7 @@ func listDeployments(runtime *plugin.Runtime, region string, appName, dgName *st
 					"status":                        llx.StringData(string(depInfo.Status)),
 					"deploymentGroupName":           llx.StringDataPtr(depInfo.DeploymentGroupName),
 					"deploymentConfigName":          llx.StringDataPtr(depInfo.DeploymentConfigName),
+					"deploymentMode":                codeDeployDeploymentMode(depInfo.DeploymentMode),
 					"createdAt":                     llx.TimeDataPtr(depInfo.CreateTime),
 					"completedAt":                   llx.TimeDataPtr(depInfo.CompleteTime),
 					"compleatedAt":                  llx.TimeDataPtr(depInfo.CompleteTime),
@@ -459,6 +460,21 @@ func listDeployments(runtime *plugin.Runtime, region string, appName, dgName *st
 		}
 	}
 	return depResources, nil
+}
+
+// codeDeployDeploymentMode publishes DeploymentInfo.DeploymentMode.
+//
+// The SDK types the mode as a value rather than a pointer, so a deployment
+// that recorded no mode arrives as the empty string. AWS documents that state
+// as "no value was recorded either way" and explicitly not as STANDARD, so it
+// reports null: an empty string would read as a mode of "", and STANDARD would
+// claim the deployment downloaded a fresh revision when nothing says it did.
+func codeDeployDeploymentMode(mode codedeploytypes.DeploymentMode) *llx.RawData {
+	if mode == "" {
+		return llx.StringDataPtr(nil)
+	}
+	s := string(mode)
+	return llx.StringDataPtr(&s)
 }
 
 // Helper function to get a single deployment resource
@@ -493,6 +509,7 @@ func getDeploymentResource(runtime *plugin.Runtime, region string, appName, dgNa
 		"status":                        llx.StringData(string(depInfo.Status)),
 		"deploymentGroupName":           llx.StringDataPtr(depInfo.DeploymentGroupName),
 		"deploymentConfigName":          llx.StringDataPtr(depInfo.DeploymentConfigName),
+		"deploymentMode":                codeDeployDeploymentMode(depInfo.DeploymentMode),
 		"createdAt":                     llx.TimeDataPtr(depInfo.CreateTime),
 		"completedAt":                   llx.TimeDataPtr(depInfo.CompleteTime),
 		"compleatedAt":                  llx.TimeDataPtr(depInfo.CompleteTime),

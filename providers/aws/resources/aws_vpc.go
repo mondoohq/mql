@@ -1284,6 +1284,25 @@ type mqlAwsVpcSubnetInternal struct {
 	cacheVpcId string
 }
 
+// vpc resolves the VPC that contains this subnet. DescribeSubnets returns
+// VpcId on every subnet, so both paths that build a subnet already seed
+// cacheVpcId and this costs no extra call once the VPC has been listed.
+func (a *mqlAwsVpcSubnet) vpc() (*mqlAwsVpc, error) {
+	if a.cacheVpcId == "" {
+		a.Vpc.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	mqlVpc, err := NewResource(a.MqlRuntime, ResourceAwsVpc,
+		map[string]*llx.RawData{
+			"arn": llx.StringData(fmt.Sprintf(vpcArnPattern, a.Region.Data, conn.AccountId(), a.cacheVpcId)),
+		})
+	if err != nil {
+		return nil, err
+	}
+	return mqlVpc.(*mqlAwsVpc), nil
+}
+
 func (a *mqlAwsVpcSubnet) routeTable() (*mqlAwsVpcRoutetable, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	region := a.Region.Data

@@ -1,10 +1,11 @@
 {
   "provider": "aws",
-  "version": "13.53.5",
-  "generated_at": "2026-09-15T13:12:04-07:00",
+  "version": "13.54.0",
+  "generated_at": "2026-09-15T13:42:39-07:00",
   "permissions": [
     "access-analyzer:GetFindingV2",
     "access-analyzer:ListAnalyzers",
+    "access-analyzer:ListArchiveRules",
     "access-analyzer:ListFindings",
     "account:GetAlternateContact",
     "account:GetContactInformation",
@@ -90,14 +91,17 @@
     "bedrock-agentcore:GetBrowser",
     "bedrock-agentcore:GetCapacityProvider",
     "bedrock-agentcore:GetCodeInterpreter",
+    "bedrock-agentcore:GetConsentPortal",
     "bedrock-agentcore:GetGateway",
     "bedrock-agentcore:GetGatewayTarget",
+    "bedrock-agentcore:GetMemory",
     "bedrock-agentcore:ListAgentRuntimeEndpoints",
     "bedrock-agentcore:ListAgentRuntimes",
     "bedrock-agentcore:ListApiKeyCredentialProviders",
     "bedrock-agentcore:ListBrowsers",
     "bedrock-agentcore:ListCapacityProviders",
     "bedrock-agentcore:ListCodeInterpreters",
+    "bedrock-agentcore:ListConsentPortals",
     "bedrock-agentcore:ListGatewayRateLimits",
     "bedrock-agentcore:ListGatewayTargets",
     "bedrock-agentcore:ListGateways",
@@ -418,6 +422,7 @@
     "elasticfilesystem:DescribeMountTargetSecurityGroups",
     "elasticfilesystem:DescribeMountTargets",
     "elasticfilesystem:DescribeReplicationConfigurations",
+    "elasticloadbalancing:DescribeListenerCertificates",
     "elasticloadbalancing:DescribeListeners",
     "elasticloadbalancing:DescribeLoadBalancerAttributes",
     "elasticloadbalancing:DescribeLoadBalancers",
@@ -500,11 +505,17 @@
     "glue:ListWorkflows",
     "guardduty:DescribePublishingDestination",
     "guardduty:GetCoverageStatistics",
+    "guardduty:GetCustomDetectionRule",
+    "guardduty:GetCustomDetectionRuleAssociation",
+    "guardduty:GetCustomDetectionRuleOrgConfiguration",
     "guardduty:GetDetector",
     "guardduty:GetFilter",
     "guardduty:GetFindings",
     "guardduty:GetIPSet",
     "guardduty:GetThreatIntelSet",
+    "guardduty:ListCustomDetectionRuleAssociations",
+    "guardduty:ListCustomDetectionRuleOrgConfigurations",
+    "guardduty:ListCustomDetectionRules",
     "guardduty:ListDetectors",
     "guardduty:ListFilters",
     "guardduty:ListFindings",
@@ -544,13 +555,16 @@
     "iam:ListInstanceProfiles",
     "iam:ListMFADevices",
     "iam:ListOpenIDConnectProviders",
+    "iam:ListOrganizationsFeatures",
     "iam:ListPolicies",
     "iam:ListPolicyVersions",
     "iam:ListRolePolicies",
     "iam:ListRoleTags",
     "iam:ListRoles",
     "iam:ListSAMLProviders",
+    "iam:ListSSHPublicKeys",
     "iam:ListServerCertificates",
+    "iam:ListServiceSpecificCredentials",
     "iam:ListUserPolicies",
     "iam:ListUserTags",
     "iam:ListUsers",
@@ -574,7 +588,9 @@
     "kafka:ListNodes",
     "kafka:ListReplicators",
     "kafka:ListScramSecrets",
+    "kinesis:DescribeChannel",
     "kinesis:DescribeStreamSummary",
+    "kinesis:ListChannels",
     "kinesis:ListStreamConsumers",
     "kinesis:ListStreams",
     "kinesis:ListTagsForStream",
@@ -637,7 +653,9 @@
     "macie2:GetCustomDataIdentifier",
     "macie2:GetFindings",
     "macie2:GetFindingsFilter",
+    "macie2:GetFindingsPublicationConfiguration",
     "macie2:GetMacieSession",
+    "macie2:GetRevealConfiguration",
     "macie2:ListAllowLists",
     "macie2:ListClassificationJobs",
     "macie2:ListCustomDataIdentifiers",
@@ -670,6 +688,8 @@
     "organizations:DescribeEffectivePolicy",
     "organizations:DescribeOrganization",
     "organizations:DescribePolicy",
+    "organizations:DescribeResourcePolicy",
+    "organizations:ListAWSServiceAccessForOrganization",
     "organizations:ListAccounts",
     "organizations:ListDelegatedAdministrators",
     "organizations:ListDelegatedServicesForAccount",
@@ -903,13 +923,16 @@
     "secretsmanager:ListSecrets",
     "securityhub:BatchGetStandardsControlAssociations",
     "securityhub:DescribeHub",
+    "securityhub:DescribeOrganizationConfiguration",
     "securityhub:GetEnabledStandards",
+    "securityhub:GetFindingAggregator",
     "securityhub:GetFindingHistory",
     "securityhub:GetFindings",
     "securityhub:GetInsightResults",
     "securityhub:GetInsights",
     "securityhub:ListAutomationRules",
     "securityhub:ListEnabledProductsForImport",
+    "securityhub:ListFindingAggregators",
     "securityhub:ListMembers",
     "securityhub:ListSecurityControlDefinitions",
     "securityhub:ListTagsForResource",
@@ -919,6 +942,7 @@
     "ses:GetEmailIdentity",
     "ses:ListConfigurationSets",
     "ses:ListEmailIdentities",
+    "ses:ListEmailIdentityCertificates",
     "shield:DescribeDRTAccess",
     "shield:DescribeEmergencyContactSettings",
     "shield:DescribeSubscription",
@@ -1042,6 +1066,12 @@
       "permission": "access-analyzer:ListAnalyzers",
       "service": "access-analyzer",
       "action": "ListAnalyzers",
+      "source_file": "aws_iam_accessanalyzer.go"
+    },
+    {
+      "permission": "access-analyzer:ListArchiveRules",
+      "service": "access-analyzer",
+      "action": "ListArchiveRules",
       "source_file": "aws_iam_accessanalyzer.go"
     },
     {
@@ -1567,6 +1597,12 @@
       "source_file": "aws_bedrock_agentcore.go"
     },
     {
+      "permission": "bedrock-agentcore:GetConsentPortal",
+      "service": "bedrock-agentcore",
+      "action": "GetConsentPortal",
+      "source_file": "aws_bedrock_agentcore_consent.go"
+    },
+    {
       "permission": "bedrock-agentcore:GetGateway",
       "service": "bedrock-agentcore",
       "action": "GetGateway",
@@ -1576,6 +1612,12 @@
       "permission": "bedrock-agentcore:GetGatewayTarget",
       "service": "bedrock-agentcore",
       "action": "GetGatewayTarget",
+      "source_file": "aws_bedrock_agentcore.go"
+    },
+    {
+      "permission": "bedrock-agentcore:GetMemory",
+      "service": "bedrock-agentcore",
+      "action": "GetMemory",
       "source_file": "aws_bedrock_agentcore.go"
     },
     {
@@ -1613,6 +1655,12 @@
       "service": "bedrock-agentcore",
       "action": "ListCodeInterpreters",
       "source_file": "aws_bedrock_agentcore.go"
+    },
+    {
+      "permission": "bedrock-agentcore:ListConsentPortals",
+      "service": "bedrock-agentcore",
+      "action": "ListConsentPortals",
+      "source_file": "aws_bedrock_agentcore_consent.go"
     },
     {
       "permission": "bedrock-agentcore:ListGatewayRateLimits",
@@ -3619,6 +3667,12 @@
       "source_file": "aws_efs.go"
     },
     {
+      "permission": "elasticloadbalancing:DescribeListenerCertificates",
+      "service": "elasticloadbalancing",
+      "action": "DescribeListenerCertificates",
+      "source_file": "aws_elb.go"
+    },
+    {
       "permission": "elasticloadbalancing:DescribeListeners",
       "service": "elasticloadbalancing",
       "action": "DescribeListeners",
@@ -4123,6 +4177,24 @@
       "source_file": "aws_guardduty.go"
     },
     {
+      "permission": "guardduty:GetCustomDetectionRule",
+      "service": "guardduty",
+      "action": "GetCustomDetectionRule",
+      "source_file": "aws_guardduty_customrules.go"
+    },
+    {
+      "permission": "guardduty:GetCustomDetectionRuleAssociation",
+      "service": "guardduty",
+      "action": "GetCustomDetectionRuleAssociation",
+      "source_file": "aws_guardduty_customrules.go"
+    },
+    {
+      "permission": "guardduty:GetCustomDetectionRuleOrgConfiguration",
+      "service": "guardduty",
+      "action": "GetCustomDetectionRuleOrgConfiguration",
+      "source_file": "aws_guardduty_customrules.go"
+    },
+    {
       "permission": "guardduty:GetDetector",
       "service": "guardduty",
       "action": "GetDetector",
@@ -4151,6 +4223,24 @@
       "service": "guardduty",
       "action": "GetThreatIntelSet",
       "source_file": "aws_guardduty.go"
+    },
+    {
+      "permission": "guardduty:ListCustomDetectionRuleAssociations",
+      "service": "guardduty",
+      "action": "ListCustomDetectionRuleAssociations",
+      "source_file": "aws_guardduty_customrules.go"
+    },
+    {
+      "permission": "guardduty:ListCustomDetectionRuleOrgConfigurations",
+      "service": "guardduty",
+      "action": "ListCustomDetectionRuleOrgConfigurations",
+      "source_file": "aws_guardduty_customrules.go"
+    },
+    {
+      "permission": "guardduty:ListCustomDetectionRules",
+      "service": "guardduty",
+      "action": "ListCustomDetectionRules",
+      "source_file": "aws_guardduty_customrules.go"
     },
     {
       "permission": "guardduty:ListDetectors",
@@ -4393,6 +4483,12 @@
       "source_file": "aws_iam.go"
     },
     {
+      "permission": "iam:ListOrganizationsFeatures",
+      "service": "iam",
+      "action": "ListOrganizationsFeatures",
+      "source_file": "aws_organizations_root_access.go"
+    },
+    {
       "permission": "iam:ListPolicies",
       "service": "iam",
       "action": "ListPolicies",
@@ -4429,9 +4525,21 @@
       "source_file": "aws_iam.go"
     },
     {
+      "permission": "iam:ListSSHPublicKeys",
+      "service": "iam",
+      "action": "ListSSHPublicKeys",
+      "source_file": "aws_iam.go"
+    },
+    {
       "permission": "iam:ListServerCertificates",
       "service": "iam",
       "action": "ListServerCertificates",
+      "source_file": "aws_iam.go"
+    },
+    {
+      "permission": "iam:ListServiceSpecificCredentials",
+      "service": "iam",
+      "action": "ListServiceSpecificCredentials",
       "source_file": "aws_iam.go"
     },
     {
@@ -4573,10 +4681,22 @@
       "source_file": "aws_msk.go"
     },
     {
+      "permission": "kinesis:DescribeChannel",
+      "service": "kinesis",
+      "action": "DescribeChannel",
+      "source_file": "aws_kinesis_channel.go"
+    },
+    {
       "permission": "kinesis:DescribeStreamSummary",
       "service": "kinesis",
       "action": "DescribeStreamSummary",
       "source_file": "aws_kinesis.go"
+    },
+    {
+      "permission": "kinesis:ListChannels",
+      "service": "kinesis",
+      "action": "ListChannels",
+      "source_file": "aws_kinesis_channel.go"
     },
     {
       "permission": "kinesis:ListStreamConsumers",
@@ -4957,9 +5077,21 @@
       "source_file": "aws_macie.go"
     },
     {
+      "permission": "macie2:GetFindingsPublicationConfiguration",
+      "service": "macie2",
+      "action": "GetFindingsPublicationConfiguration",
+      "source_file": "aws_macie.go"
+    },
+    {
       "permission": "macie2:GetMacieSession",
       "service": "macie2",
       "action": "GetMacieSession",
+      "source_file": "aws_macie.go"
+    },
+    {
+      "permission": "macie2:GetRevealConfiguration",
+      "service": "macie2",
+      "action": "GetRevealConfiguration",
       "source_file": "aws_macie.go"
     },
     {
@@ -5153,6 +5285,18 @@
       "service": "organizations",
       "action": "DescribePolicy",
       "source_file": "aws_organizations_policy.go"
+    },
+    {
+      "permission": "organizations:DescribeResourcePolicy",
+      "service": "organizations",
+      "action": "DescribeResourcePolicy",
+      "source_file": "aws_organizations_resource_policy.go"
+    },
+    {
+      "permission": "organizations:ListAWSServiceAccessForOrganization",
+      "service": "organizations",
+      "action": "ListAWSServiceAccessForOrganization",
+      "source_file": "aws_organizations_root_access.go"
     },
     {
       "permission": "organizations:ListAccounts",
@@ -6649,9 +6793,21 @@
       "source_file": "aws_securityhub.go"
     },
     {
+      "permission": "securityhub:DescribeOrganizationConfiguration",
+      "service": "securityhub",
+      "action": "DescribeOrganizationConfiguration",
+      "source_file": "aws_securityhub.go"
+    },
+    {
       "permission": "securityhub:GetEnabledStandards",
       "service": "securityhub",
       "action": "GetEnabledStandards",
+      "source_file": "aws_securityhub.go"
+    },
+    {
+      "permission": "securityhub:GetFindingAggregator",
+      "service": "securityhub",
+      "action": "GetFindingAggregator",
       "source_file": "aws_securityhub.go"
     },
     {
@@ -6688,6 +6844,12 @@
       "permission": "securityhub:ListEnabledProductsForImport",
       "service": "securityhub",
       "action": "ListEnabledProductsForImport",
+      "source_file": "aws_securityhub.go"
+    },
+    {
+      "permission": "securityhub:ListFindingAggregators",
+      "service": "securityhub",
+      "action": "ListFindingAggregators",
       "source_file": "aws_securityhub.go"
     },
     {
@@ -6743,6 +6905,12 @@
       "service": "ses",
       "action": "ListEmailIdentities",
       "source_file": "aws_ses.go"
+    },
+    {
+      "permission": "ses:ListEmailIdentityCertificates",
+      "service": "ses",
+      "action": "ListEmailIdentityCertificates",
+      "source_file": "aws_ses_certificates.go"
     },
     {
       "permission": "shield:DescribeDRTAccess",

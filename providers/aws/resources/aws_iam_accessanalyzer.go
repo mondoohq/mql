@@ -336,3 +336,96 @@ func (a *mqlAwsIamAccessAnalyzer) listFindings(conn *connection.AwsConnection, a
 	}
 	return tasks
 }
+
+// archiveRules returns the rules that archive matching findings as they are
+// created. Only external- and internal-access analyzers support archive rules;
+// the unused-access analyzer types reject the call, so those resolve to an
+// empty list rather than failing the scan.
+func (a *mqlAwsIamAccessAnalyzerAnalyzer) archiveRules() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.AccessAnalyzer(a.Region.Data)
+	ctx := context.Background()
+	analyzerName := a.Name.Data
+	analyzerArn := a.Arn.Data
+
+	res := []any{}
+	paginator := accessanalyzer.NewListArchiveRulesPaginator(svc, &accessanalyzer.ListArchiveRulesInput{
+		AnalyzerName: aws.String(analyzerName),
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				log.Warn().Str("analyzer", analyzerName).Str("region", a.Region.Data).
+					Msg("no permission to list access analyzer archive rules")
+				return res, nil
+			}
+			var notFound *aatypes.ResourceNotFoundException
+			if errors.As(err, &notFound) {
+				return res, nil
+			}
+			// An unused-access analyzer rejects ListArchiveRules with a
+			// ValidationException, which is expected and means the analyzer has
+			// no archive rules rather than that the call failed. Log the message
+			// so a genuine schema or argument problem is still visible instead of
+			// being silently flattened into an empty list.
+			var validation *aatypes.ValidationException
+			if errors.As(err, &validation) {
+				log.Debug().Err(err).Str("analyzer", analyzerName).Str("region", a.Region.Data).
+					Msg("archive rules are not available for this analyzer")
+				return res, nil
+			}
+			return nil, err
+		}
+		for _, rule := range page.ArchiveRules {
+			filter, err := archiveRuleFilterToDict(rule.Filter)
+			if err != nil {
+				return nil, err
+			}
+			mqlRule, err := CreateResource(a.MqlRuntime, "aws.iam.accessAnalyzer.archiveRule",
+				map[string]*llx.RawData{
+					// Rule names are unique only within one analyzer.
+					"__id":        llx.StringData(analyzerArn + "/archiveRule/" + convert.ToValue(rule.RuleName)),
+					"name":        llx.StringDataPtr(rule.RuleName),
+					"analyzerArn": llx.StringData(analyzerArn),
+					"region":      llx.StringData(a.Region.Data),
+					"filter":      llx.MapData(filter, types.Dict),
+					"createdAt":   llx.TimeDataPtr(rule.CreatedAt),
+					"updatedAt":   llx.TimeDataPtr(rule.UpdatedAt),
+				})
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlRule)
+		}
+	}
+	return res, nil
+}
+
+// archiveRuleFilterToDict converts an archive rule's criteria into a dict per
+// finding property. Each criterion keeps only the comparisons it actually sets,
+// so an absent comparison does not read as an empty match list.
+func archiveRuleFilterToDict(filter map[string]aatypes.Criterion) (map[string]any, error) {
+	res := make(map[string]any, len(filter))
+	for key, criterion := range filter {
+		entry := map[string]any{}
+		if len(criterion.Eq) > 0 {
+			entry["Eq"] = convert.SliceAnyToInterface(criterion.Eq)
+		}
+		if len(criterion.Neq) > 0 {
+			entry["Neq"] = convert.SliceAnyToInterface(criterion.Neq)
+		}
+		if len(criterion.Contains) > 0 {
+			entry["Contains"] = convert.SliceAnyToInterface(criterion.Contains)
+		}
+		if criterion.Exists != nil {
+			entry["Exists"] = *criterion.Exists
+		}
+		res[key] = entry
+	}
+	return res, nil
+}
+
+func (a *mqlAwsIamAccessAnalyzerArchiveRule) id() (string, error) {
+	return a.__id, nil
+}

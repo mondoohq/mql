@@ -266,10 +266,47 @@ type mqlAwsElbLoadbalancerInternal struct {
 	v2AttrsFetched bool
 	v2AttrsLock    sync.Mutex
 
+	// Cached v1 DescribeLoadBalancerAttributes response, shared between attributes()
+	// and crossZoneLoadBalancing() so a classic load balancer is described once.
+	cachedV1Attrs  *elbv1types.LoadBalancerAttributes
+	v1AttrsFetched bool
+	v1AttrsLock    sync.Mutex
+
 	// Tag caching for the filter guard pattern during listing.
 	cacheTags   map[string]any
 	tagsFetched bool
 	tagsLock    sync.Mutex
+}
+
+// fetchV1Attrs fetches and caches classic load balancer attributes with
+// double-check locking.
+func (a *mqlAwsElbLoadbalancer) fetchV1Attrs() (*elbv1types.LoadBalancerAttributes, error) {
+	if a.v1AttrsFetched {
+		return a.cachedV1Attrs, nil
+	}
+	a.v1AttrsLock.Lock()
+	defer a.v1AttrsLock.Unlock()
+	if a.v1AttrsFetched {
+		return a.cachedV1Attrs, nil
+	}
+
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	region, err := GetRegionFromArn(a.Arn.Data)
+	if err != nil {
+		return nil, err
+	}
+	name := a.Name.Data
+	svc := conn.Elb(region)
+
+	resp, err := svc.DescribeLoadBalancerAttributes(context.Background(),
+		&elasticloadbalancing.DescribeLoadBalancerAttributesInput{LoadBalancerName: &name})
+	if err != nil {
+		return nil, err
+	}
+
+	a.cachedV1Attrs = resp.LoadBalancerAttributes
+	a.v1AttrsFetched = true
+	return a.cachedV1Attrs, nil
 }
 
 // fetchV2Attrs fetches and caches v2 load balancer attributes with double-check locking.
@@ -416,9 +453,10 @@ func buildElbV2LoadBalancerResource(runtime *plugin.Runtime, region, accountID s
 		"state":             llx.StringData(state),
 		"elbType":           llx.StringData(string(lb.Type)),
 		"ipAddressType":     llx.StringData(string(lb.IpAddressType)),
-		"region":            llx.StringData(region),
-		"vpc":               llx.NilData, // set vpc to nil as default, if vpc is not set
-		"healthCheck":       llx.NilData, // classic ELB only; ALB/NLB have no LB-level health check
+		"enforceSecurityGroupInboundRulesOnPrivateLinkTraffic": llx.StringData(convert.ToValue(lb.EnforceSecurityGroupInboundRulesOnPrivateLinkTraffic)),
+		"region":      llx.StringData(region),
+		"vpc":         llx.NilData, // set vpc to nil as default, if vpc is not set
+		"healthCheck": llx.NilData, // classic ELB only; ALB/NLB have no LB-level health check
 	}
 
 	if lb.VpcId != nil {
@@ -583,23 +621,12 @@ func (a *mqlAwsElbLoadbalancer) listenerDescriptions() ([]any, error) {
 }
 
 func (a *mqlAwsElbLoadbalancer) attributes() ([]any, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	arnVal := a.Arn.Data
-	name := a.Name.Data
-
-	region, err := GetRegionFromArn(arnVal)
-	if err != nil {
-		return nil, err
-	}
-
-	if isV1LoadBalancerArn(arnVal) {
-		svc := conn.Elb(region)
-		ctx := context.Background()
-		attributes, err := svc.DescribeLoadBalancerAttributes(ctx, &elasticloadbalancing.DescribeLoadBalancerAttributesInput{LoadBalancerName: &name})
+	if isV1LoadBalancerArn(a.Arn.Data) {
+		attributes, err := a.fetchV1Attrs()
 		if err != nil {
 			return nil, err
 		}
-		j, err := convert.JsonToDict(attributes.LoadBalancerAttributes)
+		j, err := convert.JsonToDict(attributes)
 		if err != nil {
 			return nil, err
 		}
@@ -702,6 +729,79 @@ type mqlAwsElbListenerInternal struct {
 	lazyTags
 	defaultActionsCache     []elbtypes.Action
 	mutualAuthTrustStoreArn string
+}
+
+// sniCertificates returns every certificate installed on the listener.
+// DescribeListeners reports only the default certificate, so the certificates
+// served for the other SNI host names need a separate call.
+func (a *mqlAwsElbListener) sniCertificates() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	listenerArn := a.Arn.Data
+
+	region, err := GetRegionFromArn(listenerArn)
+	if err != nil {
+		return nil, err
+	}
+	svc := conn.Elbv2(region)
+	ctx := context.Background()
+
+	res := []any{}
+	paginator := elasticloadbalancingv2.NewDescribeListenerCertificatesPaginator(svc,
+		&elasticloadbalancingv2.DescribeListenerCertificatesInput{ListenerArn: &listenerArn})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				return res, nil
+			}
+			// A listener that terminates no TLS has no certificate list at all.
+			var notFound *elbtypes.ListenerNotFoundException
+			if errors.As(err, &notFound) {
+				return res, nil
+			}
+			return nil, err
+		}
+		for _, cert := range page.Certificates {
+			certArn := convert.ToValue(cert.CertificateArn)
+			if certArn == "" {
+				continue
+			}
+			mqlCert, err := CreateResource(a.MqlRuntime, "aws.elb.listener.certificate",
+				map[string]*llx.RawData{
+					// The same certificate can be installed on many listeners,
+					// so the key has to name the listener as well.
+					"__id":      llx.StringData(listenerArn + "/certificate/" + certArn),
+					"arn":       llx.StringData(certArn),
+					"isDefault": llx.BoolData(convert.ToValue(cert.IsDefault)),
+				})
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, mqlCert)
+		}
+	}
+	return res, nil
+}
+
+func (a *mqlAwsElbListenerCertificate) id() (string, error) {
+	return a.__id, nil
+}
+
+// acmCertificate resolves the listener certificate to its ACM record. A
+// listener can also present an IAM server certificate, which ACM does not know
+// about, so those resolve to null rather than to a blank certificate.
+func (a *mqlAwsElbListenerCertificate) acmCertificate() (*mqlAwsAcmCertificate, error) {
+	certArn := a.Arn.Data
+	if !strings.Contains(certArn, ":acm:") {
+		a.AcmCertificate.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, "aws.acm.certificate",
+		map[string]*llx.RawData{"arn": llx.StringData(certArn)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsAcmCertificate), nil
 }
 
 // mqlAwsElbListenerRuleInternal and mqlAwsElbTruststoreInternal exist only to
@@ -1314,6 +1414,42 @@ func attrMapInt(m map[string]string, key string) int64 {
 
 func (a *mqlAwsElbLoadbalancerAttribute) id() (string, error) {
 	return a.LoadBalancerArn.Data + "/attributes", nil
+}
+
+// crossZoneLoadBalancing reports whether cross-zone load balancing is on. The
+// setting lives in a different place for each load balancer family: classic
+// load balancers carry a dedicated CrossZoneLoadBalancing struct, while ELBv2
+// load balancers carry the load_balancing.cross_zone.enabled attribute.
+func (a *mqlAwsElbLoadbalancer) crossZoneLoadBalancing() (bool, error) {
+	if isV1LoadBalancerArn(a.Arn.Data) {
+		attrs, err := a.fetchV1Attrs()
+		if err != nil {
+			return false, err
+		}
+		if attrs == nil || attrs.CrossZoneLoadBalancing == nil {
+			return false, nil
+		}
+		return attrs.CrossZoneLoadBalancing.Enabled, nil
+	}
+
+	attrs, err := a.fetchV2Attrs()
+	if err != nil {
+		return false, err
+	}
+	return crossZoneEnabledFromV2Attrs(attrs), nil
+}
+
+// crossZoneEnabledFromV2Attrs reads load_balancing.cross_zone.enabled out of an
+// ELBv2 attribute list. The attribute is absent on load balancer types that do
+// not carry the setting, which reads as disabled.
+func crossZoneEnabledFromV2Attrs(attrs []elbtypes.LoadBalancerAttribute) bool {
+	for _, attr := range attrs {
+		if attr.Key == nil || *attr.Key != "load_balancing.cross_zone.enabled" {
+			continue
+		}
+		return attr.Value != nil && *attr.Value == "true"
+	}
+	return false
 }
 
 func (a *mqlAwsElbLoadbalancer) attribute() (*mqlAwsElbLoadbalancerAttribute, error) {

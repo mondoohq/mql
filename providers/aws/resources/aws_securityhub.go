@@ -72,9 +72,11 @@ func (a *mqlAwsSecurityhub) getHubs(conn *connection.AwsConnection) []*jobpool.J
 			}
 			mqlHub, err := CreateResource(a.MqlRuntime, "aws.securityhub.hub",
 				map[string]*llx.RawData{
-					"arn":          llx.StringDataPtr(secHub.HubArn),
-					"subscribedAt": llx.StringDataPtr(secHub.SubscribedAt),
-					"region":       llx.StringData(region),
+					"arn":                     llx.StringDataPtr(secHub.HubArn),
+					"subscribedAt":            llx.StringDataPtr(secHub.SubscribedAt),
+					"region":                  llx.StringData(region),
+					"autoEnableControls":      llx.BoolData(convert.ToValue(secHub.AutoEnableControls)),
+					"controlFindingGenerator": llx.StringData(string(secHub.ControlFindingGenerator)),
 				})
 			if err != nil {
 				return nil, err
@@ -562,6 +564,120 @@ func (a *mqlAwsSecurityhubInsight) results() ([]any, error) {
 
 func (a *mqlAwsSecurityhubInsightResult) id() (string, error) {
 	return a.__id, nil
+}
+
+// organizationConfiguration returns the organization-wide Security Hub
+// settings the delegated administrator applies to member accounts. The call
+// only succeeds for a Security Hub administrator account, so a standalone or
+// member account resolves the field to null rather than failing the scan.
+func (a *mqlAwsSecurityhubHub) organizationConfiguration() (*mqlAwsSecurityhubOrganizationConfiguration, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	region := a.Region.Data
+	svc := conn.Securityhub(region)
+	ctx := context.Background()
+
+	resp, err := svc.DescribeOrganizationConfiguration(ctx, &securityhub.DescribeOrganizationConfigurationInput{})
+	if err != nil {
+		var invalidAccess *types.InvalidAccessException
+		if Is400AccessDeniedError(err) || errors.As(err, &invalidAccess) {
+			a.OrganizationConfiguration.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var configurationType, status, statusMessage string
+	if oc := resp.OrganizationConfiguration; oc != nil {
+		configurationType = string(oc.ConfigurationType)
+		status = string(oc.Status)
+		statusMessage = convert.ToValue(oc.StatusMessage)
+	}
+
+	res, err := CreateResource(a.MqlRuntime, "aws.securityhub.organizationConfiguration",
+		map[string]*llx.RawData{
+			"__id":                      llx.StringData(a.Arn.Data + "/organizationConfiguration"),
+			"region":                    llx.StringData(region),
+			"autoEnable":                llx.BoolData(convert.ToValue(resp.AutoEnable)),
+			"autoEnableStandards":       llx.StringData(string(resp.AutoEnableStandards)),
+			"configurationType":         llx.StringData(configurationType),
+			"status":                    llx.StringData(status),
+			"statusMessage":             llx.StringData(statusMessage),
+			"memberAccountLimitReached": llx.BoolData(convert.ToValue(resp.MemberAccountLimitReached)),
+		})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsSecurityhubOrganizationConfiguration), nil
+}
+
+// findingAggregator returns the cross-region finding aggregator configured for
+// this hub. ListFindingAggregators returns at most one aggregator, and only in
+// the aggregation home region, so every other region resolves to null.
+func (a *mqlAwsSecurityhubHub) findingAggregator() (*mqlAwsSecurityhubFindingAggregator, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	region := a.Region.Data
+	svc := conn.Securityhub(region)
+	ctx := context.Background()
+
+	var aggregatorArn *string
+	paginator := securityhub.NewListFindingAggregatorsPaginator(svc, &securityhub.ListFindingAggregatorsInput{})
+	for paginator.HasMorePages() && aggregatorArn == nil {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			var invalidAccess *types.InvalidAccessException
+			if Is400AccessDeniedError(err) || errors.As(err, &invalidAccess) {
+				a.FindingAggregator.State = plugin.StateIsSet | plugin.StateIsNull
+				return nil, nil
+			}
+			return nil, err
+		}
+		for i := range page.FindingAggregators {
+			if arn := page.FindingAggregators[i].FindingAggregatorArn; arn != nil && *arn != "" {
+				aggregatorArn = arn
+				break
+			}
+		}
+	}
+	if aggregatorArn == nil {
+		a.FindingAggregator.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	detail, err := svc.GetFindingAggregator(ctx, &securityhub.GetFindingAggregatorInput{
+		FindingAggregatorArn: aggregatorArn,
+	})
+	if err != nil {
+		if Is400AccessDeniedError(err) {
+			a.FindingAggregator.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	regions := make([]any, 0, len(detail.Regions))
+	for _, r := range detail.Regions {
+		regions = append(regions, r)
+	}
+
+	res, err := CreateResource(a.MqlRuntime, "aws.securityhub.findingAggregator",
+		map[string]*llx.RawData{
+			"arn":                      llx.StringDataPtr(aggregatorArn),
+			"findingAggregationRegion": llx.StringDataPtr(detail.FindingAggregationRegion),
+			"regionLinkingMode":        llx.StringDataPtr(detail.RegionLinkingMode),
+			"regions":                  llx.ArrayData(regions, mqlTypes.String),
+		})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsSecurityhubFindingAggregator), nil
+}
+
+func (a *mqlAwsSecurityhubOrganizationConfiguration) id() (string, error) {
+	return a.__id, nil
+}
+
+func (a *mqlAwsSecurityhubFindingAggregator) id() (string, error) {
+	return a.Arn.Data, nil
 }
 
 // standardNameFromArn extracts a human-readable name from a Security Hub standard ARN.

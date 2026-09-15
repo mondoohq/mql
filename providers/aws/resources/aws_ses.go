@@ -180,6 +180,13 @@ type mqlAwsSesIdentityInternal struct {
 	cacheName string
 	fetched   bool
 	lock      sync.Mutex
+
+	// Certificates come from a separate API call, so they get their own
+	// guard: an identity queried only for its DKIM settings should not pay
+	// for a certificate listing, and vice versa.
+	certificatesFetched bool
+	certificatesLock    sync.Mutex
+	cachedCertificates  []any
 }
 
 // markIdentityDetailsNull marks every lazily fetched field as resolved-but-null

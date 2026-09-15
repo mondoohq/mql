@@ -223,10 +223,13 @@ func (a *mqlAwsEksCluster) populateFromDescribe(cluster *ekstypes.Cluster) error
 	a.SupportType = plugin.TValue[string]{Data: supportType, State: plugin.StateIsSet}
 
 	authMode := ""
+	var bootstrapClusterCreatorAdmin bool
 	if cluster.AccessConfig != nil {
 		authMode = string(cluster.AccessConfig.AuthenticationMode)
+		bootstrapClusterCreatorAdmin = convert.ToValue(cluster.AccessConfig.BootstrapClusterCreatorAdminPermissions)
 	}
 	a.AuthenticationMode = plugin.TValue[string]{Data: authMode, State: plugin.StateIsSet}
+	a.BootstrapClusterCreatorAdminPermissions = plugin.TValue[bool]{Data: bootstrapClusterCreatorAdmin, State: plugin.StateIsSet}
 
 	var deletionProtection bool
 	if cluster.DeletionProtection != nil {
@@ -267,6 +270,25 @@ func (a *mqlAwsEksCluster) populateFromDescribe(cluster *ekstypes.Cluster) error
 		certAuth = *cluster.CertificateAuthority.Data
 	}
 	a.CertificateAuthority = plugin.TValue[string]{Data: certAuth, State: plugin.StateIsSet}
+
+	// EKS reports a distinct active certificate authority only once a cluster
+	// has been through a rotation. Leaving these null rather than empty keeps
+	// "never rotated" distinguishable from "rotated to an authority with a
+	// blank id".
+	if cluster.CertificateAuthority != nil && cluster.CertificateAuthority.Active != nil {
+		active := cluster.CertificateAuthority.Active
+		activeID := ""
+		if active.Id != nil {
+			activeID = *active.Id
+		}
+		a.ActiveCertificateAuthorityId = plugin.TValue[string]{Data: activeID, State: plugin.StateIsSet}
+		a.ActiveCertificateAuthorityActivatedBy = plugin.TValue[string]{
+			Data: string(active.ActivatedBy), State: plugin.StateIsSet,
+		}
+	} else {
+		a.ActiveCertificateAuthorityId = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
+		a.ActiveCertificateAuthorityActivatedBy = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
+	}
 
 	// Typed encryption config fields
 	var encryptionResources []any
@@ -395,6 +417,10 @@ func (a *mqlAwsEksCluster) authenticationMode() (string, error) {
 	return "", a.fetchDetail()
 }
 
+func (a *mqlAwsEksCluster) bootstrapClusterCreatorAdminPermissions() (bool, error) {
+	return false, a.fetchDetail()
+}
+
 func (a *mqlAwsEksCluster) deletionProtection() (bool, error) {
 	return false, a.fetchDetail()
 }
@@ -476,6 +502,14 @@ func (a *mqlAwsEksCluster) health() (map[string]any, error) {
 }
 
 func (a *mqlAwsEksCluster) certificateAuthority() (string, error) {
+	return "", a.fetchDetail()
+}
+
+func (a *mqlAwsEksCluster) activeCertificateAuthorityId() (string, error) {
+	return "", a.fetchDetail()
+}
+
+func (a *mqlAwsEksCluster) activeCertificateAuthorityActivatedBy() (string, error) {
 	return "", a.fetchDetail()
 }
 

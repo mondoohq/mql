@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/service/cloudfront"
+	cftypes "github.com/aws/aws-sdk-go-v2/service/cloudfront/types"
 	"github.com/cockroachdb/errors"
 	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
@@ -76,6 +77,25 @@ func (a *mqlAwsCloudfrontDistributionOrigin) id() (string, error) {
 	return account + "/" + id, nil
 }
 
+// cloudfrontOriginTls reports how CloudFront reaches a custom origin. The
+// origin leg is configured independently of the viewer leg, so a distribution
+// can enforce HTTPS to viewers while fetching from the origin in plaintext or
+// over a deprecated TLS version. S3 origins served through the S3 origin config
+// carry no custom origin config and yield an empty policy and no protocols,
+// rather than a policy that would read as plaintext.
+func cloudfrontOriginTls(config *cftypes.CustomOriginConfig) (string, []any) {
+	protocols := []any{}
+	if config == nil {
+		return "", protocols
+	}
+	if config.OriginSslProtocols != nil {
+		for _, p := range config.OriginSslProtocols.Items {
+			protocols = append(protocols, string(p))
+		}
+	}
+	return string(config.OriginProtocolPolicy), protocols
+}
+
 func (a *mqlAwsCloudfront) distributions() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 
@@ -102,6 +122,7 @@ func (a *mqlAwsCloudfront) distributions() ([]any, error) {
 					if origin.S3OriginConfig != nil && origin.S3OriginConfig.OriginAccessIdentity != nil {
 						oai = *origin.S3OriginConfig.OriginAccessIdentity
 					}
+					originProtocolPolicy, originSslProtocols := cloudfrontOriginTls(origin.CustomOriginConfig)
 					mqlAwsCloudfrontOrigin, err := CreateResource(a.MqlRuntime, "aws.cloudfront.distribution.origin",
 						map[string]*llx.RawData{
 							// Origin.Id is documented as unique only *within* a
@@ -119,6 +140,8 @@ func (a *mqlAwsCloudfront) distributions() ([]any, error) {
 							"account":               llx.StringData(conn.AccountId()),
 							"originAccessControlId": llx.StringDataPtr(origin.OriginAccessControlId),
 							"originAccessIdentity":  llx.StringData(oai),
+							"originProtocolPolicy":  llx.StringData(originProtocolPolicy),
+							"originSslProtocols":    llx.ArrayData(originSslProtocols, types.String),
 						})
 					if err != nil {
 						return nil, err

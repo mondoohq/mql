@@ -148,6 +148,7 @@ func buildCloudtrailTrailResource(runtime *plugin.Runtime, trail types.Trail) (*
 		"snsTopicARN":                llx.StringDataPtr(trail.SnsTopicARN),
 		"cloudWatchLogsRoleArn":      llx.StringDataPtr(trail.CloudWatchLogsRoleArn),
 		"cloudWatchLogsLogGroupArn":  llx.StringDataPtr(trail.CloudWatchLogsLogGroupArn),
+		"recursiveLogging":           llx.BoolDataPtr(trail.RecursiveLogging),
 		"region":                     llx.StringDataPtr(trail.HomeRegion),
 		"hasInsightSelectors":        llx.BoolDataPtr(trail.HasInsightSelectors),
 		"hasCustomEventSelectors":    llx.BoolDataPtr(trail.HasCustomEventSelectors),

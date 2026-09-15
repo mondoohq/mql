@@ -177,6 +177,11 @@ type mqlAwsOpensearchDomainInternal struct {
 	region                         string
 	subnetIds                      []string
 	cacheCustomEndpointCertificate *string
+
+	cacheAuditLogGroupArn       *string
+	cacheIndexSlowLogGroupArn   *string
+	cacheSearchSlowLogGroupArn  *string
+	cacheApplicationLogGroupArn *string
 }
 
 func newMqlAwsOpensearchDomain(runtime *plugin.Runtime, region string, accountID string, domain opensearch_types.DomainStatus) (*mqlAwsOpensearchDomain, error) {
@@ -310,8 +315,11 @@ func newMqlAwsOpensearchDomain(runtime *plugin.Runtime, region string, accountID
 		autoTuneState = string(domain.AutoTuneOptions.State)
 	}
 
-	// Audit log options
-	auditLogEnabled := parseAuditLogEnabled(domain.LogPublishingOptions)
+	// Log publishing options
+	auditLogEnabled, auditLogArn := parseLogPublishingOption(domain.LogPublishingOptions, "AUDIT_LOGS")
+	indexSlowLogEnabled, indexSlowLogArn := parseLogPublishingOption(domain.LogPublishingOptions, "INDEX_SLOW_LOGS")
+	searchSlowLogEnabled, searchSlowLogArn := parseLogPublishingOption(domain.LogPublishingOptions, "SEARCH_SLOW_LOGS")
+	applicationLogEnabled, applicationLogArn := parseLogPublishingOption(domain.LogPublishingOptions, "ES_APPLICATION_LOGS")
 
 	// Service software options
 	var serviceSoftwareCurrentVersion, serviceSoftwareNewVersion, serviceSoftwareUpdateStatus string
@@ -407,6 +415,7 @@ func newMqlAwsOpensearchDomain(runtime *plugin.Runtime, region string, accountID
 			"vpcEgressEnabled":                   llx.BoolData(vpcEgressEnabled),
 			"enforceHTTPS":                       llx.BoolData(enforceHTTPS),
 			"tlsSecurityPolicy":                  llx.StringData(tlsSecurityPolicy),
+			"accessPolicies":                     llx.StringDataPtr(domain.AccessPolicies),
 			"customEndpointEnabled":              llx.BoolData(customEndpointEnabled),
 			"customEndpoint":                     llx.StringData(customEndpoint),
 			"samlEnabled":                        llx.BoolData(samlEnabled),
@@ -420,6 +429,9 @@ func newMqlAwsOpensearchDomain(runtime *plugin.Runtime, region string, accountID
 			"createdAt":                          createdAt,
 			"autoTuneState":                      llx.StringData(autoTuneState),
 			"auditLogEnabled":                    llx.BoolData(auditLogEnabled),
+			"indexSlowLogEnabled":                llx.BoolData(indexSlowLogEnabled),
+			"searchSlowLogEnabled":               llx.BoolData(searchSlowLogEnabled),
+			"applicationLogEnabled":              llx.BoolData(applicationLogEnabled),
 			"ipAddressType":                      llx.StringData(string(domain.IPAddressType)),
 			"serviceSoftwareNewVersion":          llx.StringData(serviceSoftwareNewVersion),
 			"serviceSoftwareCurrentVersion":      llx.StringData(serviceSoftwareCurrentVersion),
@@ -447,8 +459,39 @@ func newMqlAwsOpensearchDomain(runtime *plugin.Runtime, region string, accountID
 	mqlDomain.region = region
 	mqlDomain.subnetIds = subnetIds
 	mqlDomain.cacheCustomEndpointCertificate = customEndpointCertArn
+	mqlDomain.cacheAuditLogGroupArn = auditLogArn
+	mqlDomain.cacheIndexSlowLogGroupArn = indexSlowLogArn
+	mqlDomain.cacheSearchSlowLogGroupArn = searchSlowLogArn
+	mqlDomain.cacheApplicationLogGroupArn = applicationLogArn
 	mqlDomain.setSecurityGroupArns(sgArns)
 	return mqlDomain, nil
+}
+
+func (a *mqlAwsOpensearchDomain) policyStatements() ([]any, error) {
+	arn := a.GetArn()
+	if arn.Error != nil {
+		return nil, arn.Error
+	}
+	return policyStatementsFromString(a.MqlRuntime, arn.Data, a.GetAccessPolicies())
+}
+
+// isPublic reports whether the OpenSearch domain is reachable from the
+// internet: it has a public endpoint (it is not deployed inside a VPC) and its
+// access policy grants a wildcard principal access that is not scoped by a
+// source-restricting condition.
+func (a *mqlAwsOpensearchDomain) isPublic() (bool, error) {
+	vpcId := a.GetVpcId()
+	if vpcId.Error != nil {
+		return false, vpcId.Error
+	}
+	if vpcId.Data != "" {
+		return esDomainIsPublic(true, false), nil
+	}
+	policyAllowsPublic, err := resourceIsPublic(a.GetPolicyStatements())
+	if err != nil {
+		return false, err
+	}
+	return esDomainIsPublic(false, policyAllowsPublic), nil
 }
 
 func (a *mqlAwsOpensearchDomain) customEndpointCertificate() (*mqlAwsAcmCertificate, error) {
@@ -547,11 +590,37 @@ func (a *mqlAwsOpensearchDomain) tags() (map[string]any, error) {
 // LogPublishingOptions. Returns false if the map is nil, missing the AUDIT_LOGS
 // key, or if the Enabled field is nil/false.
 func parseAuditLogEnabled(opts map[string]opensearch_types.LogPublishingOption) bool {
+	enabled, _ := parseLogPublishingOption(opts, "AUDIT_LOGS")
+	return enabled
+}
+
+// parseLogPublishingOption reads one log type out of a domain's
+// LogPublishingOptions, returning whether publishing is on and the ARN of the
+// CloudWatch log group receiving it. A log type the domain never configured is
+// absent from the map, which reads as disabled with no log group.
+func parseLogPublishingOption(opts map[string]opensearch_types.LogPublishingOption, logType string) (bool, *string) {
 	if opts == nil {
-		return false
+		return false, nil
 	}
-	if auditLog, ok := opts["AUDIT_LOGS"]; ok {
-		return convert.ToValue(auditLog.Enabled)
+	opt, ok := opts[logType]
+	if !ok {
+		return false, nil
 	}
-	return false
+	return convert.ToValue(opt.Enabled), opt.CloudWatchLogsLogGroupArn
+}
+
+func (a *mqlAwsOpensearchDomain) auditLogGroup() (*mqlAwsCloudwatchLoggroup, error) {
+	return esResolveLogGroup(a.MqlRuntime, a.cacheAuditLogGroupArn, &a.AuditLogGroup)
+}
+
+func (a *mqlAwsOpensearchDomain) indexSlowLogGroup() (*mqlAwsCloudwatchLoggroup, error) {
+	return esResolveLogGroup(a.MqlRuntime, a.cacheIndexSlowLogGroupArn, &a.IndexSlowLogGroup)
+}
+
+func (a *mqlAwsOpensearchDomain) searchSlowLogGroup() (*mqlAwsCloudwatchLoggroup, error) {
+	return esResolveLogGroup(a.MqlRuntime, a.cacheSearchSlowLogGroupArn, &a.SearchSlowLogGroup)
+}
+
+func (a *mqlAwsOpensearchDomain) applicationLogGroup() (*mqlAwsCloudwatchLoggroup, error) {
+	return esResolveLogGroup(a.MqlRuntime, a.cacheApplicationLogGroupArn, &a.ApplicationLogGroup)
 }

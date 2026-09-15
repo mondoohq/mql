@@ -4,139 +4,37 @@
 package resources
 
 import (
-	"sync"
-	"sync/atomic"
 	"testing"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/securityhub/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/v13/llx"
 )
 
-func TestStandardNameFromArn(t *testing.T) {
-	t.Run("aws foundational standards ARN", func(t *testing.T) {
-		name := standardNameFromArn("arn:aws:securityhub:us-west-2::standards/aws-foundational-security-best-practices/v/1.0.0")
-		assert.Equal(t, "aws-foundational-security-best-practices", name)
-	})
+// TestFindingAggregatorCacheKeyIsTheArn pins where the finding aggregator's
+// cache key comes from. The creator passes no explicit "__id", which is only
+// safe because id() reads Arn and the generated constructor runs SetAllData
+// before id() - so the arn argument is already in place. Point id() at a
+// cache* field on the Internal struct instead, or stop passing arn, and the
+// key collapses to the empty string for every aggregator in the account.
+func TestFindingAggregatorCacheKeyIsTheArn(t *testing.T) {
+	const arn = "arn:aws:securityhub:us-east-1:000000000000:finding-aggregator/abc"
 
-	t.Run("cis ruleset ARN", func(t *testing.T) {
-		name := standardNameFromArn("arn:aws:securityhub:::ruleset/cis-aws-foundations-benchmark/v/1.2.0")
-		assert.Equal(t, "cis-aws-foundations-benchmark", name)
-	})
+	runtime := testRuntime()
+	res, err := CreateResource(runtime, "aws.securityhub.findingAggregator",
+		map[string]*llx.RawData{"arn": llx.StringData(arn)})
+	require.NoError(t, err)
 
-	t.Run("pci-dss standards ARN", func(t *testing.T) {
-		name := standardNameFromArn("arn:aws:securityhub:us-east-1::standards/pci-dss/v/3.2.1")
-		assert.Equal(t, "pci-dss", name)
-	})
+	assert.Equal(t, arn, res.MqlID(),
+		"the aggregator keys on its own arn, not on the empty string")
 
-	t.Run("nist standards ARN", func(t *testing.T) {
-		name := standardNameFromArn("arn:aws:securityhub:us-east-1::standards/nist-800-53/v/5.0.0")
-		assert.Equal(t, "nist-800-53", name)
-	})
+	other := "arn:aws:securityhub:eu-west-1:000000000000:finding-aggregator/def"
+	res2, err := CreateResource(runtime, "aws.securityhub.findingAggregator",
+		map[string]*llx.RawData{"arn": llx.StringData(other)})
+	require.NoError(t, err)
 
-	t.Run("ARN without standards or ruleset prefix returns full ARN", func(t *testing.T) {
-		arn := "arn:aws:securityhub:us-west-2:123456789012:hub/default"
-		name := standardNameFromArn(arn)
-		assert.Equal(t, arn, name)
-	})
-
-	t.Run("empty string returns empty", func(t *testing.T) {
-		assert.Equal(t, "", standardNameFromArn(""))
-	})
-
-	t.Run("standards ARN without version suffix", func(t *testing.T) {
-		name := standardNameFromArn("arn:aws:securityhub:::standards/my-standard")
-		assert.Equal(t, "my-standard", name)
-	})
-}
-
-// TestSecurityHubEnabledStandardsUsesCache verifies that once
-// getEnabledStandards has populated its cache (standardsFetched == true),
-// subsequent calls return the cached slice without invoking the paginator.
-// This pins down the shared-cache behavior that lets enabledStandards and
-// standardSubscriptions both read from a single GetEnabledStandards fetch.
-func TestSecurityHubEnabledStandardsUsesCache(t *testing.T) {
-	cached := []types.StandardsSubscription{
-		{
-			StandardsArn:             aws.String("arn:aws:securityhub:::ruleset/cis-aws-foundations-benchmark/v/1.4.0"),
-			StandardsSubscriptionArn: aws.String("arn:aws:securityhub:us-east-1:123456789012:subscription/cis-aws-foundations-benchmark/v/1.4.0"),
-			StandardsStatus:          types.StandardsStatusReady,
-		},
-		{
-			StandardsArn:             aws.String("arn:aws:securityhub:::ruleset/aws-foundational-security-best-practices/v/1.0.0"),
-			StandardsSubscriptionArn: aws.String("arn:aws:securityhub:us-east-1:123456789012:subscription/aws-foundational-security-best-practices/v/1.0.0"),
-			StandardsStatus:          types.StandardsStatusReady,
-		},
-	}
-
-	hub := &mqlAwsSecurityhubHub{
-		mqlAwsSecurityhubHubInternal: mqlAwsSecurityhubHubInternal{
-			standardsFetched: true,
-			standards:        cached,
-		},
-	}
-
-	// Cache hit path: returns the pre-populated slice without touching the
-	// runtime. If this ever regresses to call MqlRuntime.Connection, the
-	// nil-deref panic on the zero-value hub will catch it.
-	got, err := hub.getEnabledStandards()
-	assert.NoError(t, err)
-	assert.Equal(t, cached, got)
-}
-
-// TestSecurityHubEnabledStandardsToDicts asserts that enabledStandards
-// converts the cached standards into the dict shape expected by MQL,
-// preserving the keys callers query by.
-func TestSecurityHubEnabledStandardsToDicts(t *testing.T) {
-	hub := &mqlAwsSecurityhubHub{
-		mqlAwsSecurityhubHubInternal: mqlAwsSecurityhubHubInternal{
-			standardsFetched: true,
-			standards: []types.StandardsSubscription{
-				{
-					StandardsArn:             aws.String("arn:aws:securityhub:::ruleset/cis"),
-					StandardsSubscriptionArn: aws.String("arn:aws:securityhub:us-east-1:123:subscription/cis"),
-					StandardsStatus:          types.StandardsStatusReady,
-				},
-			},
-		},
-	}
-
-	out, err := hub.enabledStandards()
-	assert.NoError(t, err)
-	assert.Len(t, out, 1)
-
-	row, ok := out[0].(map[string]any)
-	assert.True(t, ok, "expected dict, got %T", out[0])
-	assert.Equal(t, "arn:aws:securityhub:::ruleset/cis", row["StandardsArn"])
-	assert.Equal(t, "arn:aws:securityhub:us-east-1:123:subscription/cis", row["StandardsSubscriptionArn"])
-	assert.Equal(t, string(types.StandardsStatusReady), row["StandardsStatus"])
-}
-
-// TestSecurityHubStandardsCacheConcurrentHits exercises the double-check
-// pattern: many concurrent callers on a cache-populated hub all read the
-// same slice with no data race (meaningful under `go test -race`).
-func TestSecurityHubStandardsCacheConcurrentHits(t *testing.T) {
-	hub := &mqlAwsSecurityhubHub{
-		mqlAwsSecurityhubHubInternal: mqlAwsSecurityhubHubInternal{
-			standardsFetched: true,
-			standards: []types.StandardsSubscription{
-				{StandardsArn: aws.String("arn:aws:securityhub:::ruleset/x")},
-			},
-		},
-	}
-
-	var wg sync.WaitGroup
-	var got int64
-	for i := 0; i < 50; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			standards, err := hub.getEnabledStandards()
-			if err == nil && len(standards) == 1 {
-				atomic.AddInt64(&got, 1)
-			}
-		}()
-	}
-	wg.Wait()
-	assert.Equal(t, int64(50), got)
+	assert.NotEqual(t, res.MqlID(), res2.MqlID(),
+		"two aggregators must not share a cache row")
+	assert.Equal(t, other, res2.(*mqlAwsSecurityhubFindingAggregator).Arn.Data,
+		"the second aggregator must not resolve to the first one's cached instance")
 }
