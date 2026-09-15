@@ -99,3 +99,21 @@ func TestDeploymentGroupLastDeploymentsWithoutAReference(t *testing.T) {
 		assert.True(t, dg.LastAttemptedDeployment.IsNull())
 	})
 }
+
+// AWS documents an absent deploymentMode as "no value was recorded either way"
+// and explicitly not as STANDARD. The SDK types the field as a value rather
+// than a pointer, so absent arrives as the empty string — and the sibling
+// fields built three lines away (status, creator) publish their enums with
+// llx.StringData(string(...)), which would turn that into a mode of "".
+func TestCodeDeployDeploymentModeIsNullWhenUnrecorded(t *testing.T) {
+	data := codeDeployDeploymentMode("")
+
+	assert.Nil(t, data.Value, "an unrecorded mode is null, not an empty string and not STANDARD")
+}
+
+// A recorded mode has to reach MQL as the value AWS uses on the wire, since
+// that is what a policy author writes deploymentMode == "RESTART" against.
+func TestCodeDeployDeploymentModePublishesTheWireValue(t *testing.T) {
+	assert.Equal(t, "RESTART", codeDeployDeploymentMode(codedeploytypes.DeploymentModeRestart).Value)
+	assert.Equal(t, "STANDARD", codeDeployDeploymentMode(codedeploytypes.DeploymentModeStandard).Value)
+}

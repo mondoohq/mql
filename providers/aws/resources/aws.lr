@@ -22751,6 +22751,14 @@ private aws.codedeploy.deployment @defaults("deploymentId status applicationName
   deploymentGroupName string
   // Deployment configuration name
   deploymentConfigName string
+  // Mode the deployment ran in
+  //
+  // One of STANDARD, which downloaded and installed the revision named by the
+  // deployment, or RESTART, which re-ran the deployment group's last
+  // successful revision without downloading a new one. Null when the
+  // deployment recorded no mode, which is the case for every deployment
+  // created before the mode existed. Null does not mean STANDARD.
+  deploymentMode string
   // Time the deployment was created
   createdAt time
   // Time the deployment was completed
