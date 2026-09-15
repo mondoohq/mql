@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/network/resources/tlsshake"
 )
 
@@ -50,4 +51,27 @@ func TestRevocationFields(t *testing.T) {
 		assert.Equal(t, llx.NilData, revokedAt)
 		assert.Equal(t, llx.BoolFalse, checked)
 	})
+}
+
+func TestPemCertificateReportsNoRevocationCheck(t *testing.T) {
+	// A certificate parsed from PEM has no connection behind it, so no
+	// revocation check ran. All three fields have to say that, or
+	// `revocationChecked == false` matches a PEM certificate alongside one
+	// whose check genuinely failed.
+	cert := &mqlCertificate{}
+
+	isRevoked, err := cert.isRevoked()
+	assert.NoError(t, err)
+	assert.False(t, isRevoked)
+	assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, cert.IsRevoked.State)
+
+	revokedAt, err := cert.revokedAt()
+	assert.NoError(t, err)
+	assert.Nil(t, revokedAt)
+	assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, cert.RevokedAt.State)
+
+	checked, err := cert.revocationChecked()
+	assert.NoError(t, err)
+	assert.False(t, checked)
+	assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, cert.RevocationChecked.State)
 }

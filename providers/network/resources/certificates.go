@@ -561,6 +561,7 @@ func (s *mqlCertificate) revokedAt() (*time.Time, error) {
 }
 
 func (s *mqlCertificate) revocationChecked() (bool, error) {
+	s.RevocationChecked.State = plugin.StateIsSet | plugin.StateIsNull
 	return false, nil
 }
 
