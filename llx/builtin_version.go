@@ -26,9 +26,9 @@ import (
 // a panic in a comparator takes down the whole scan rather than one query.
 func versionCompare(keep func(cmp int) bool) func(left, right any) *RawData {
 	return func(left, right any) *RawData {
-		l, lok := left.(string)
-		r, rok := right.(string)
-		if !lok || !rok {
+		l, lIsStr := left.(string)
+		r, rIsStr := right.(string)
+		if !lIsStr || !rIsStr {
 			return &RawData{
 				Type:  types.Bool,
 				Error: errors.New("version comparison expects version strings"),
