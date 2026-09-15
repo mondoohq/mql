@@ -6,8 +6,8 @@ go 1.26.8
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.47.0
-	github.com/aws/aws-sdk-go-v2/config v1.33.4
-	github.com/aws/aws-sdk-go-v2/credentials v1.20.4
+	github.com/aws/aws-sdk-go-v2/config v1.33.5
+	github.com/aws/aws-sdk-go-v2/credentials v1.20.5
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.0
 	github.com/aws/aws-sdk-go-v2/service/accessanalyzer v1.56.0
 	github.com/aws/aws-sdk-go-v2/service/account v1.41.0
@@ -37,7 +37,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.87.0
 	github.com/aws/aws-sdk-go-v2/service/codeartifact v1.46.0
 	github.com/aws/aws-sdk-go-v2/service/codebuild v1.78.0
-	github.com/aws/aws-sdk-go-v2/service/codedeploy v1.44.0
+	github.com/aws/aws-sdk-go-v2/service/codedeploy v1.45.0
 	github.com/aws/aws-sdk-go-v2/service/codepipeline v1.55.0
 	github.com/aws/aws-sdk-go-v2/service/cognitoidentity v1.42.0
 	github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider v1.74.0
@@ -72,13 +72,13 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/fms v1.53.0
 	github.com/aws/aws-sdk-go-v2/service/fsx v1.74.0
 	github.com/aws/aws-sdk-go-v2/service/globalaccelerator v1.44.0
-	github.com/aws/aws-sdk-go-v2/service/glue v1.158.0
+	github.com/aws/aws-sdk-go-v2/service/glue v1.159.0
 	github.com/aws/aws-sdk-go-v2/service/guardduty v1.92.0
 	github.com/aws/aws-sdk-go-v2/service/iam v1.64.0
 	github.com/aws/aws-sdk-go-v2/service/identitystore v1.44.0
 	github.com/aws/aws-sdk-go-v2/service/inspector2 v1.59.0
 	github.com/aws/aws-sdk-go-v2/service/kafka v1.64.0
-	github.com/aws/aws-sdk-go-v2/service/keyspaces v1.33.0
+	github.com/aws/aws-sdk-go-v2/service/keyspaces v1.33.1
 	github.com/aws/aws-sdk-go-v2/service/kinesis v1.54.0
 	github.com/aws/aws-sdk-go-v2/service/kinesisvideo v1.41.0
 	github.com/aws/aws-sdk-go-v2/service/kms v1.60.0
@@ -118,7 +118,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.78.0
 	github.com/aws/aws-sdk-go-v2/service/ssoadmin v1.48.0
 	github.com/aws/aws-sdk-go-v2/service/storagegateway v1.52.0
-	github.com/aws/aws-sdk-go-v2/service/sts v1.50.0
+	github.com/aws/aws-sdk-go-v2/service/sts v1.51.0
 	github.com/aws/aws-sdk-go-v2/service/timestreaminfluxdb v1.29.0
 	github.com/aws/aws-sdk-go-v2/service/timestreamwrite v1.43.0
 	github.com/aws/aws-sdk-go-v2/service/transfer v1.82.0

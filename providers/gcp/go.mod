@@ -63,7 +63,7 @@ require (
 	go.mondoo.com/mql v0.0.0-20260913225403-92593e868bb9
 	go.mondoo.com/ranger-rpc v0.8.1
 	golang.org/x/oauth2 v0.37.0
-	google.golang.org/api v0.297.0
+	google.golang.org/api v0.298.0
 	// Held back: cloud.google.com/go/accesscontextmanager v1.15.0 (the latest
 	// release) imports google.golang.org/genproto/googleapis/identity/
 	// accesscontextmanager/type, which go-genproto deleted in
