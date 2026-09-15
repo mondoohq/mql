@@ -9,7 +9,9 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	cloudwatchtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
+	cloudwatchlogstypes "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
 )
 
@@ -162,5 +164,37 @@ func TestDatapointCacheKey(t *testing.T) {
 		assert.NotPanics(t, func() {
 			datapointCacheKey("series", cloudwatchtypes.Datapoint{Average: aws.Float64(1)})
 		})
+	})
+}
+
+// TestBuildLogGroupResourceRetention pins how a log group reports its
+// retention. CloudWatch signals "never expire" by returning no retention at
+// all, so defaulting that to 0 put the strongest retention at the bottom of
+// any numeric comparison: `retentionInDays >= 365` excluded exactly the groups
+// that keep their logs forever.
+func TestBuildLogGroupResourceRetention(t *testing.T) {
+	t.Run("a group with a retention reports it", func(t *testing.T) {
+		lg, err := buildLogGroupResource(testRuntime(), "us-east-1", cloudwatchlogstypes.LogGroup{
+			Arn:             aws.String("arn:aws:logs:us-east-1:000000000000:log-group:/aws/lambda/fn:*"),
+			LogGroupName:    aws.String("/aws/lambda/fn"),
+			RetentionInDays: aws.Int32(365),
+		})
+		require.NoError(t, err)
+
+		assert.False(t, lg.RetentionInDays.IsNull())
+		assert.Equal(t, int64(365), lg.RetentionInDays.Data)
+		assert.False(t, lg.NeverExpires.Data)
+	})
+
+	t.Run("a group that never expires reports null, not zero", func(t *testing.T) {
+		lg, err := buildLogGroupResource(testRuntime(), "us-east-1", cloudwatchlogstypes.LogGroup{
+			Arn:          aws.String("arn:aws:logs:us-east-1:000000000000:log-group:/aws/lambda/forever:*"),
+			LogGroupName: aws.String("/aws/lambda/forever"),
+		})
+		require.NoError(t, err)
+
+		assert.True(t, lg.RetentionInDays.IsNull(),
+			"no retention means no expiry, which is not a retention of zero days")
+		assert.True(t, lg.NeverExpires.Data)
 	})
 }

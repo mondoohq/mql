@@ -2140,6 +2140,7 @@ aws.cloudwatch.loggroup.metricsfilter.metrics 11.15.2
 aws.cloudwatch.loggroup.metricsfilter.monitoredEventNames 13.33.2
 aws.cloudwatch.loggroup.metricsfilter.monitoredEventSources 13.33.2
 aws.cloudwatch.loggroup.name 11.15.2
+aws.cloudwatch.loggroup.neverExpires 13.53.6
 aws.cloudwatch.loggroup.region 11.15.2
 aws.cloudwatch.loggroup.resourcePolicy 13.26.3
 aws.cloudwatch.loggroup.retentionInDays 11.15.2
@@ -3321,6 +3322,7 @@ aws.dynamodb.table.status 11.15.2
 aws.dynamodb.table.streamEnabled 11.16.1
 aws.dynamodb.table.streamViewType 11.16.1
 aws.dynamodb.table.tableClass 11.16.1
+aws.dynamodb.table.tableId 13.53.6
 aws.dynamodb.table.tags 11.15.2
 aws.dynamodb.table.ttlDescription 13.6.3
 aws.dynamodb.tables 11.15.2
@@ -3329,6 +3331,8 @@ aws.ec2.allowedImagesState 13.52.2
 aws.ec2.applicationStatusCheck 13.52.2
 aws.ec2.applicationStatusCheck.aggregation 13.52.2
 aws.ec2.applicationStatusCheck.createdAt 13.52.2
+aws.ec2.applicationStatusCheck.deleted 13.53.6
+aws.ec2.applicationStatusCheck.deletedAt 13.53.6
 aws.ec2.applicationStatusCheck.deviceIndex 13.52.2
 aws.ec2.applicationStatusCheck.failureThreshold 13.52.2
 aws.ec2.applicationStatusCheck.healthCheckPaths 13.52.2
@@ -8419,6 +8423,7 @@ aws.rds.snapshot.storageEncryptionType 13.3.1
 aws.rds.snapshot.tags 11.15.2
 aws.rds.snapshot.timezone 13.14.2
 aws.rds.snapshot.type 11.15.2
+aws.rds.snapshots 13.53.6
 aws.redshift 11.15.2
 aws.redshift.cluster 11.15.2
 aws.redshift.cluster.allowVersionUpgrade 11.15.2
@@ -11278,6 +11283,8 @@ aws.waf.rule.statement.orstatement.statementID 11.15.2
 aws.waf.rule.statement.orstatement.statements 11.15.2
 aws.waf.rule.statement.rateBasedStatement 11.15.2
 aws.waf.rule.statement.ratebasedstatement 11.15.2
+aws.waf.rule.statement.ratebasedstatement.ruleName 13.53.6
+aws.waf.rule.statement.ratebasedstatement.statementID 13.53.6
 aws.waf.rule.statement.regexMatchStatement 11.15.2
 aws.waf.rule.statement.regexPatternSetReferenceStatement 11.15.2
 aws.waf.rule.statement.regexmatchstatement 11.15.2

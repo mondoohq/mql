@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail/types"
 
+	"github.com/aws/smithy-go"
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/v13/llx"
@@ -212,6 +213,36 @@ func (a *mqlAwsCloudtrail) getTrails(conn *connection.AwsConnection) []*jobpool.
 	return tasks
 }
 
+// referencedResourceUnavailable reports an error that a retry will not change:
+// the referenced resource is gone, or this caller may not read it.
+//
+// A trail keeps naming a role, topic, bucket, log group or key after that target
+// is deleted, and a scan may legitimately lack permission to read it. Both are
+// permanent for this scan, so the reference is reported as null rather than
+// failing the field - which, because a field error renders as the value of the
+// enclosing collection, would cost the caller every trail.
+//
+// A throttle, a 5xx or a network failure is deliberately excluded. There the
+// target may well exist and simply could not be resolved right now, so reporting
+// null would assert an absence that was never established.
+func referencedResourceUnavailable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if Is400AccessDeniedError(err) {
+		return true
+	}
+	var apiErr smithy.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	switch apiErr.ErrorCode() {
+	case "NoSuchEntity", "NotFound", "NotFoundException", "ResourceNotFoundException":
+		return true
+	}
+	return false
+}
+
 func (a *mqlAwsCloudtrailTrail) snsTopic() (*mqlAwsSnsTopic, error) {
 	if a.trailCache.SnsTopicARN == nil || *a.trailCache.SnsTopicARN == "" {
 		a.SnsTopic.State = plugin.StateIsSet | plugin.StateIsNull
@@ -221,7 +252,13 @@ func (a *mqlAwsCloudtrailTrail) snsTopic() (*mqlAwsSnsTopic, error) {
 		map[string]*llx.RawData{"arn": llx.StringDataPtr(a.trailCache.SnsTopicARN)},
 	)
 	if err != nil {
-		return nil, err
+		if !referencedResourceUnavailable(err) {
+			return nil, err
+		}
+		log.Warn().Err(err).Str("topic", convert.ToValue(a.trailCache.SnsTopicARN)).
+			Msg("cannot resolve the trail's sns topic")
+		a.SnsTopic.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	return mqlTopic.(*mqlAwsSnsTopic), nil
 }
@@ -235,7 +272,13 @@ func (a *mqlAwsCloudtrailTrail) cloudWatchLogsRole() (*mqlAwsIamRole, error) {
 		map[string]*llx.RawData{"arn": llx.StringDataPtr(a.trailCache.CloudWatchLogsRoleArn)},
 	)
 	if err != nil {
-		return nil, err
+		if !referencedResourceUnavailable(err) {
+			return nil, err
+		}
+		log.Warn().Err(err).Str("role", convert.ToValue(a.trailCache.CloudWatchLogsRoleArn)).
+			Msg("cannot resolve the trail's cloudwatch logs role")
+		a.CloudWatchLogsRole.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	return mqlRole.(*mqlAwsIamRole), nil
 }
@@ -247,9 +290,12 @@ func (a *mqlAwsCloudtrailTrail) s3bucket() (*mqlAwsS3Bucket, error) {
 		)
 		if err == nil {
 			return mqlBucket.(*mqlAwsS3Bucket), nil
-		} else {
-			log.Error().Err(err).Msg("cannot get s3 bucket")
 		}
+		if !referencedResourceUnavailable(err) {
+			return nil, err
+		}
+		log.Warn().Err(err).Str("bucket", convert.ToValue(a.trailCache.S3BucketName)).
+			Msg("cannot resolve the trail's s3 bucket")
 	}
 	a.S3bucket.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
@@ -262,9 +308,12 @@ func (a *mqlAwsCloudtrailTrail) logGroup() (*mqlAwsCloudwatchLoggroup, error) {
 		)
 		if err == nil {
 			return mqlLoggroup.(*mqlAwsCloudwatchLoggroup), nil
-		} else {
-			log.Error().Err(err).Msg("cannot get log group")
 		}
+		if !referencedResourceUnavailable(err) {
+			return nil, err
+		}
+		log.Warn().Err(err).Str("logGroup", convert.ToValue(a.trailCache.CloudWatchLogsLogGroupArn)).
+			Msg("cannot resolve the trail's log group")
 	}
 	a.LogGroup.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
@@ -278,9 +327,12 @@ func (a *mqlAwsCloudtrailTrail) kmsKey() (*mqlAwsKmsKey, error) {
 		)
 		if err == nil {
 			return mqlKeyResource.(*mqlAwsKmsKey), nil
-		} else {
-			log.Error().Err(err).Msg("could not create KMS key resource")
 		}
+		if !referencedResourceUnavailable(err) {
+			return nil, err
+		}
+		log.Warn().Err(err).Str("key", convert.ToValue(a.trailCache.KmsKeyId)).
+			Msg("cannot resolve the trail's kms key")
 	}
 	a.KmsKey.State = plugin.StateIsSet | plugin.StateIsNull
 	return nil, nil
@@ -446,15 +498,124 @@ func (a *mqlAwsCloudtrailTrail) getEventSelectorsData() (*cloudtrail.GetEventSel
 	return resp, nil
 }
 
-// capturesAllManagementEvents reports whether any event selector logs
-// management events for both read and write events (readWriteType "All").
+// Advanced event selector field names, and the event category that carries
+// management events. CloudTrail documents these as case-sensitive, but they are
+// compared case-insensitively here so a hand-written trail definition that
+// differs in case is not read as selecting nothing.
+const (
+	advancedSelectorFieldEventCategory = "eventCategory"
+	advancedSelectorFieldReadOnly      = "readOnly"
+	eventCategoryManagement            = "Management"
+)
+
+// containsFold reports whether values holds s, ignoring case. The elements are
+// the runtime's []any form of a string list.
+func containsFold(values []any, s string) bool {
+	for _, v := range values {
+		if str, ok := v.(string); ok && strings.EqualFold(str, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// fieldSelectorConstrains reports whether a field selector places any condition
+// on its field. Every match kind counts: a NotEquals or a prefix match narrows
+// the selector just as an Equals does.
+func fieldSelectorConstrains(fs *mqlAwsCloudtrailTrailAdvancedEventSelectorFieldSelector) (bool, error) {
+	for _, get := range []func() *plugin.TValue[[]any]{
+		fs.GetEquals, fs.GetNotEquals,
+		fs.GetStartsWith, fs.GetNotStartsWith,
+		fs.GetEndsWith, fs.GetNotEndsWith,
+	} {
+		values := get()
+		if values.Error != nil {
+			return false, values.Error
+		}
+		if len(values.Data) > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// advancedSelectorsCaptureAllManagementEvents reports whether a set of advanced
+// event selectors logs management events for both reads and writes.
+//
+// An advanced selector says what it captures through its field selectors rather
+// than through a readWriteType enum: it selects management events with
+// `eventCategory Equals ["Management"]`, and it captures both directions unless
+// it also constrains `readOnly`, which narrows it to one of them.
+func advancedSelectorsCaptureAllManagementEvents(selectors []any) (bool, error) {
+	for _, raw := range selectors {
+		sel, ok := raw.(*mqlAwsCloudtrailTrailAdvancedEventSelector)
+		if !ok {
+			continue
+		}
+
+		fieldSelectors := sel.GetFieldSelectors()
+		if fieldSelectors.Error != nil {
+			return false, fieldSelectors.Error
+		}
+
+		selectsManagement := false
+		restrictsReadOnly := false
+
+		for _, rawFs := range fieldSelectors.Data {
+			fs, ok := rawFs.(*mqlAwsCloudtrailTrailAdvancedEventSelectorFieldSelector)
+			if !ok {
+				continue
+			}
+			field := fs.GetField()
+			if field.Error != nil {
+				return false, field.Error
+			}
+
+			switch {
+			case strings.EqualFold(field.Data, advancedSelectorFieldEventCategory):
+				equals := fs.GetEquals()
+				if equals.Error != nil {
+					return false, equals.Error
+				}
+				if containsFold(equals.Data, eventCategoryManagement) {
+					selectsManagement = true
+				}
+			case strings.EqualFold(field.Data, advancedSelectorFieldReadOnly):
+				constrains, err := fieldSelectorConstrains(fs)
+				if err != nil {
+					return false, err
+				}
+				restrictsReadOnly = restrictsReadOnly || constrains
+			}
+		}
+
+		if selectsManagement && !restrictsReadOnly {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// capturesAllManagementEvents reports whether the trail logs management events
+// for both reads and writes.
+//
+// A trail configures that through one of two mutually exclusive mechanisms, and
+// GetEventSelectors returns whichever one the trail uses. Classic event
+// selectors say it with includeManagementEvents plus readWriteType "All";
+// advanced event selectors say it with field selectors, and are what
+// CloudFormation and Terraform produce. Reading only the classic ones reported
+// false for every trail configured the modern way, which is a false positive on
+// a compliant trail.
 func (a *mqlAwsCloudtrailTrail) capturesAllManagementEvents() (bool, error) {
 	entries := a.GetEventSelectorEntries()
 	if entries.Error != nil {
 		return false, entries.Error
 	}
 	for _, e := range entries.Data {
-		sel := e.(*mqlAwsCloudtrailTrailEventSelector)
+		sel, ok := e.(*mqlAwsCloudtrailTrailEventSelector)
+		if !ok {
+			continue
+		}
 		mgmt := sel.GetIncludeManagementEvents()
 		if mgmt.Error != nil {
 			return false, mgmt.Error
@@ -467,7 +628,12 @@ func (a *mqlAwsCloudtrailTrail) capturesAllManagementEvents() (bool, error) {
 			return true, nil
 		}
 	}
-	return false, nil
+
+	advanced := a.GetAdvancedEventSelectors()
+	if advanced.Error != nil {
+		return false, advanced.Error
+	}
+	return advancedSelectorsCaptureAllManagementEvents(advanced.Data)
 }
 
 func (a *mqlAwsCloudtrailTrail) eventSelectorEntries() ([]any, error) {
@@ -997,7 +1163,13 @@ func (a *mqlAwsCloudtrailEventDataStore) federationRole() (*mqlAwsIamRole, error
 			"arn": llx.StringDataPtr(detail.FederationRoleArn),
 		})
 	if err != nil {
-		return nil, err
+		if !referencedResourceUnavailable(err) {
+			return nil, err
+		}
+		log.Warn().Err(err).Str("role", convert.ToValue(detail.FederationRoleArn)).
+			Msg("cannot resolve the event data store's federation role")
+		a.FederationRole.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	return mqlRole.(*mqlAwsIamRole), nil
 }

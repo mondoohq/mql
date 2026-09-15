@@ -6,7 +6,6 @@ package resources
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -224,6 +223,14 @@ func (a *mqlAwsSecretsmanager) getSecrets(conn *connection.AwsConnection) []*job
 					return nil, err
 				}
 				for _, secret := range secrets.SecretList {
+					// ListSecrets already carries the tags, so the discovery tag
+					// filter costs nothing extra here.
+					if conn.Filters.General.HasTags() &&
+						conn.Filters.General.IsFilteredOutByTags(secretTagsToStringMap(secret.Tags)) {
+						log.Debug().Str("secret", convert.ToValue(secret.ARN)).
+							Msg("excluding secret due to filters")
+						continue
+					}
 					args := map[string]*llx.RawData{
 						"arn":              llx.StringDataPtr(secret.ARN),
 						"region":           llx.StringData(region),
@@ -439,14 +446,9 @@ func (a *mqlAwsSecretsmanagerSecretVersion) kmsKeys() ([]any, error) {
 		if keyID == "DefaultEncryptionKey" {
 			continue
 		}
-		// KmsKeyIds may already be full ARNs or bare key ids; build an ARN from
-		// the version's region + account only when it isn't one already.
-		arnStr := keyID
-		if !strings.HasPrefix(keyID, "arn:") {
-			arnStr = fmt.Sprintf(kmsKeyArnPattern, a.region, a.accountID, keyID)
-		}
+		// KmsKeyIds may be full ARNs, bare key ids, or aliases.
 		mqlKey, err := NewResource(a.MqlRuntime, ResourceAwsKmsKey,
-			map[string]*llx.RawData{"arn": llx.StringData(arnStr)})
+			kmsKeyRefArgs(a.region, a.accountID, keyID))
 		if err != nil {
 			return nil, err
 		}
@@ -483,4 +485,10 @@ func (a *mqlAwsSecretsmanagerSecretReplicaRegion) kmsKey() (*mqlAwsKmsKey, error
 
 func secretTagsToMap(tags []secretstypes.Tag) map[string]any {
 	return tagsToMap(tags, func(t secretstypes.Tag) *string { return t.Key }, func(t secretstypes.Tag) *string { return t.Value })
+}
+
+// secretTagsToStringMap is secretTagsToMap in the shape the discovery filters
+// evaluate against.
+func secretTagsToStringMap(tags []secretstypes.Tag) map[string]string {
+	return tagsToStringMap(tags, func(t secretstypes.Tag) *string { return t.Key }, func(t secretstypes.Tag) *string { return t.Value })
 }

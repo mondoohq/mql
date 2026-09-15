@@ -1,7 +1,7 @@
 {
   "provider": "aws",
-  "version": "13.53.1",
-  "generated_at": "2026-08-16T17:48:34+02:00",
+  "version": "13.53.5",
+  "generated_at": "2026-09-15T13:12:04-07:00",
   "permissions": [
     "access-analyzer:GetFindingV2",
     "access-analyzer:ListAnalyzers",
@@ -352,6 +352,8 @@
     "ecr-public:DescribeImages",
     "ecr-public:DescribeRepositories",
     "ecr-public:GetRepositoryCatalogData",
+    "ecr-public:GetRepositoryPolicy",
+    "ecr-public:ListTagsForResource",
     "ecr:BatchGetRepositoryScanningConfiguration",
     "ecr:DescribeImageScanFindings",
     "ecr:DescribeImages",
@@ -797,7 +799,7 @@
     "sagemaker:DescribeApp",
     "sagemaker:DescribeAppImageConfig",
     "sagemaker:DescribeArtifact",
-    "sagemaker:DescribeAutoMLJob",
+    "sagemaker:DescribeAutoMLJobV2",
     "sagemaker:DescribeCluster",
     "sagemaker:DescribeClusterNode",
     "sagemaker:DescribeCodeRepository",
@@ -2633,6 +2635,12 @@
       "source_file": "aws_directoryservice.go"
     },
     {
+      "permission": "ds:DescribeDirectories",
+      "service": "ds",
+      "action": "DescribeDirectories",
+      "source_file": "aws_workdocs.go"
+    },
+    {
       "permission": "ds:ListTagsForResource",
       "service": "ds",
       "action": "ListTagsForResource",
@@ -3212,6 +3220,18 @@
       "permission": "ecr-public:GetRepositoryCatalogData",
       "service": "ecr-public",
       "action": "GetRepositoryCatalogData",
+      "source_file": "aws_ecr.go"
+    },
+    {
+      "permission": "ecr-public:GetRepositoryPolicy",
+      "service": "ecr-public",
+      "action": "GetRepositoryPolicy",
+      "source_file": "aws_ecr.go"
+    },
+    {
+      "permission": "ecr-public:ListTagsForResource",
+      "service": "ecr-public",
+      "action": "ListTagsForResource",
       "source_file": "aws_ecr.go"
     },
     {
@@ -5999,9 +6019,9 @@
       "source_file": "aws_sagemaker_lineage.go"
     },
     {
-      "permission": "sagemaker:DescribeAutoMLJob",
+      "permission": "sagemaker:DescribeAutoMLJobV2",
       "service": "sagemaker",
-      "action": "DescribeAutoMLJob",
+      "action": "DescribeAutoMLJobV2",
       "source_file": "aws_sagemaker_mlops.go"
     },
     {

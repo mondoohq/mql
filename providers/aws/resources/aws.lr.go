@@ -1051,7 +1051,7 @@ func init() {
 			Create: createAwsVpc,
 		},
 		"aws.vpc.encryptionControl": {
-			// to override args, implement: initAwsVpcEncryptionControl(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initAwsVpcEncryptionControl,
 			Create: createAwsVpcEncryptionControl,
 		},
 		"aws.vpc.routetable": {
@@ -2259,7 +2259,7 @@ func init() {
 			Create: createAwsEmrSecurityConfiguration,
 		},
 		"aws.emr.cluster.encryptionConfiguration": {
-			// to override args, implement: initAwsEmrClusterEncryptionConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initAwsEmrClusterEncryptionConfiguration,
 			Create: createAwsEmrClusterEncryptionConfiguration,
 		},
 		"aws.emr.cluster.step": {
@@ -2859,7 +2859,7 @@ func init() {
 			Create: createAwsRdsDbcluster,
 		},
 		"aws.rds.snapshot": {
-			// to override args, implement: initAwsRdsSnapshot(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initAwsRdsSnapshot,
 			Create: createAwsRdsSnapshot,
 		},
 		"aws.rds.dbinstance": {
@@ -5971,6 +5971,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.waf.rule.statement.orstatement.statements": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsWafRuleStatementOrstatement).GetStatements()).ToDataRes(types.Array(types.Resource("aws.waf.rule.statement")))
+	},
+	"aws.waf.rule.statement.ratebasedstatement.ruleName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsWafRuleStatementRatebasedstatement).GetRuleName()).ToDataRes(types.String)
+	},
+	"aws.waf.rule.statement.ratebasedstatement.statementID": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsWafRuleStatementRatebasedstatement).GetStatementID()).ToDataRes(types.String)
 	},
 	"aws.waf.rule.statement.regexpatternsetreferencestatement.ruleName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsWafRuleStatementRegexpatternsetreferencestatement).GetRuleName()).ToDataRes(types.String)
@@ -16214,6 +16220,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.cloudwatch.loggroup.retentionInDays": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudwatchLoggroup).GetRetentionInDays()).ToDataRes(types.Int)
 	},
+	"aws.cloudwatch.loggroup.neverExpires": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsCloudwatchLoggroup).GetNeverExpires()).ToDataRes(types.Bool)
+	},
 	"aws.cloudwatch.loggroup.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsCloudwatchLoggroup).GetTags()).ToDataRes(types.Map(types.String, types.String))
 	},
@@ -18536,6 +18545,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.dynamodb.table.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDynamodbTable).GetId()).ToDataRes(types.String)
 	},
+	"aws.dynamodb.table.tableId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDynamodbTable).GetTableId()).ToDataRes(types.String)
+	},
 	"aws.dynamodb.table.backups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDynamodbTable).GetBackups()).ToDataRes(types.Array(types.Dict))
 	},
@@ -18718,6 +18730,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.rds.clusters": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRds).GetClusters()).ToDataRes(types.Array(types.Resource("aws.rds.dbcluster")))
+	},
+	"aws.rds.snapshots": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsRds).GetSnapshots()).ToDataRes(types.Array(types.Resource("aws.rds.snapshot")))
 	},
 	"aws.rds.allPendingMaintenanceActions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsRds).GetAllPendingMaintenanceActions()).ToDataRes(types.Array(types.Resource("aws.rds.pendingMaintenanceAction")))
@@ -23089,6 +23104,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.ec2.applicationStatusCheck.lastUpdatedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2ApplicationStatusCheck).GetLastUpdatedAt()).ToDataRes(types.Time)
+	},
+	"aws.ec2.applicationStatusCheck.deletedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2ApplicationStatusCheck).GetDeletedAt()).ToDataRes(types.Time)
+	},
+	"aws.ec2.applicationStatusCheck.deleted": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2ApplicationStatusCheck).GetDeleted()).ToDataRes(types.Bool)
 	},
 	"aws.ec2.applicationStatusCheck.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2ApplicationStatusCheck).GetTags()).ToDataRes(types.Map(types.String, types.String))
@@ -38465,6 +38486,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsWafRuleStatementRatebasedstatement).__id, ok = v.Value.(string)
 		return
 	},
+	"aws.waf.rule.statement.ratebasedstatement.ruleName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsWafRuleStatementRatebasedstatement).RuleName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.waf.rule.statement.ratebasedstatement.statementID": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsWafRuleStatementRatebasedstatement).StatementID, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.waf.rule.statement.regexpatternsetreferencestatement.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsWafRuleStatementRegexpatternsetreferencestatement).__id, ok = v.Value.(string)
 		return
@@ -53485,6 +53514,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsCloudwatchLoggroup).RetentionInDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
+	"aws.cloudwatch.loggroup.neverExpires": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsCloudwatchLoggroup).NeverExpires, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"aws.cloudwatch.loggroup.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsCloudwatchLoggroup).Tags, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
@@ -56905,6 +56938,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsDynamodbTable).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"aws.dynamodb.table.tableId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDynamodbTable).TableId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.dynamodb.table.backups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsDynamodbTable).Backups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -57159,6 +57196,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.rds.clusters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsRds).Clusters, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.rds.snapshots": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsRds).Snapshots, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.rds.allPendingMaintenanceActions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -63387,6 +63428,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.ec2.applicationStatusCheck.lastUpdatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEc2ApplicationStatusCheck).LastUpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.applicationStatusCheck.deletedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ApplicationStatusCheck).DeletedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.applicationStatusCheck.deleted": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ApplicationStatusCheck).Deleted, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"aws.ec2.applicationStatusCheck.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -87681,6 +87730,8 @@ type mqlAwsWafRuleStatementRatebasedstatement struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlAwsWafRuleStatementRatebasedstatementInternal it will be used here
+	RuleName    plugin.TValue[string]
+	StatementID plugin.TValue[string]
 }
 
 // createAwsWafRuleStatementRatebasedstatement creates a new instance of this resource
@@ -87718,6 +87769,14 @@ func (c *mqlAwsWafRuleStatementRatebasedstatement) MqlName() string {
 
 func (c *mqlAwsWafRuleStatementRatebasedstatement) MqlID() string {
 	return c.__id
+}
+
+func (c *mqlAwsWafRuleStatementRatebasedstatement) GetRuleName() *plugin.TValue[string] {
+	return &c.RuleName
+}
+
+func (c *mqlAwsWafRuleStatementRatebasedstatement) GetStatementID() *plugin.TValue[string] {
+	return &c.StatementID
 }
 
 // mqlAwsWafRuleStatementRegexpatternsetreferencestatement for the aws.waf.rule.statement.regexpatternsetreferencestatement resource
@@ -127910,6 +127969,7 @@ type mqlAwsCloudwatchLoggroup struct {
 	Region                    plugin.TValue[string]
 	CreatedAt                 plugin.TValue[*time.Time]
 	RetentionInDays           plugin.TValue[int64]
+	NeverExpires              plugin.TValue[bool]
 	Tags                      plugin.TValue[map[string]any]
 	CloudformationStack       plugin.TValue[*mqlAwsCloudformationStack]
 	ManagedBy                 plugin.TValue[string]
@@ -128041,6 +128101,10 @@ func (c *mqlAwsCloudwatchLoggroup) GetCreatedAt() *plugin.TValue[*time.Time] {
 
 func (c *mqlAwsCloudwatchLoggroup) GetRetentionInDays() *plugin.TValue[int64] {
 	return &c.RetentionInDays
+}
+
+func (c *mqlAwsCloudwatchLoggroup) GetNeverExpires() *plugin.TValue[bool] {
+	return &c.NeverExpires
 }
 
 func (c *mqlAwsCloudwatchLoggroup) GetTags() *plugin.TValue[map[string]any] {
@@ -136990,6 +137054,7 @@ type mqlAwsDynamodbTable struct {
 	Name                       plugin.TValue[string]
 	Region                     plugin.TValue[string]
 	Id                         plugin.TValue[string]
+	TableId                    plugin.TValue[string]
 	Backups                    plugin.TValue[[]any]
 	SseDescription             plugin.TValue[any]
 	SseType                    plugin.TValue[string]
@@ -137078,6 +137143,12 @@ func (c *mqlAwsDynamodbTable) GetRegion() *plugin.TValue[string] {
 
 func (c *mqlAwsDynamodbTable) GetId() *plugin.TValue[string] {
 	return &c.Id
+}
+
+func (c *mqlAwsDynamodbTable) GetTableId() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.TableId, func() (string, error) {
+		return c.tableId()
+	})
 }
 
 func (c *mqlAwsDynamodbTable) GetBackups() *plugin.TValue[[]any] {
@@ -137619,6 +137690,7 @@ type mqlAwsRds struct {
 	// optional: if you define mqlAwsRdsInternal it will be used here
 	Instances                    plugin.TValue[[]any]
 	Clusters                     plugin.TValue[[]any]
+	Snapshots                    plugin.TValue[[]any]
 	AllPendingMaintenanceActions plugin.TValue[[]any]
 	ParameterGroups              plugin.TValue[[]any]
 	ClusterParameterGroups       plugin.TValue[[]any]
@@ -137694,6 +137766,22 @@ func (c *mqlAwsRds) GetClusters() *plugin.TValue[[]any] {
 		}
 
 		return c.clusters()
+	})
+}
+
+func (c *mqlAwsRds) GetSnapshots() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Snapshots, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.rds", c.__id, "snapshots")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.snapshots()
 	})
 }
 
@@ -152353,6 +152441,8 @@ type mqlAwsEc2ApplicationStatusCheck struct {
 	TargetTags                       plugin.TValue[map[string]any]
 	CreatedAt                        plugin.TValue[*time.Time]
 	LastUpdatedAt                    plugin.TValue[*time.Time]
+	DeletedAt                        plugin.TValue[*time.Time]
+	Deleted                          plugin.TValue[bool]
 	Tags                             plugin.TValue[map[string]any]
 	Statuses                         plugin.TValue[[]any]
 }
@@ -152468,6 +152558,14 @@ func (c *mqlAwsEc2ApplicationStatusCheck) GetCreatedAt() *plugin.TValue[*time.Ti
 
 func (c *mqlAwsEc2ApplicationStatusCheck) GetLastUpdatedAt() *plugin.TValue[*time.Time] {
 	return &c.LastUpdatedAt
+}
+
+func (c *mqlAwsEc2ApplicationStatusCheck) GetDeletedAt() *plugin.TValue[*time.Time] {
+	return &c.DeletedAt
+}
+
+func (c *mqlAwsEc2ApplicationStatusCheck) GetDeleted() *plugin.TValue[bool] {
+	return &c.Deleted
 }
 
 func (c *mqlAwsEc2ApplicationStatusCheck) GetTags() *plugin.TValue[map[string]any] {
@@ -187386,39 +187484,57 @@ func (c *mqlAwsSsmPatchBaseline) GetIsDefault() *plugin.TValue[bool] {
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetApprovalRules() *plugin.TValue[[]any] {
-	return &c.ApprovalRules
+	return plugin.GetOrCompute[[]any](&c.ApprovalRules, func() ([]any, error) {
+		return c.approvalRules()
+	})
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetApprovedPatches() *plugin.TValue[[]any] {
-	return &c.ApprovedPatches
+	return plugin.GetOrCompute[[]any](&c.ApprovedPatches, func() ([]any, error) {
+		return c.approvedPatches()
+	})
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetApprovedPatchesComplianceLevel() *plugin.TValue[string] {
-	return &c.ApprovedPatchesComplianceLevel
+	return plugin.GetOrCompute[string](&c.ApprovedPatchesComplianceLevel, func() (string, error) {
+		return c.approvedPatchesComplianceLevel()
+	})
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetRejectedPatches() *plugin.TValue[[]any] {
-	return &c.RejectedPatches
+	return plugin.GetOrCompute[[]any](&c.RejectedPatches, func() ([]any, error) {
+		return c.rejectedPatches()
+	})
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetRejectedPatchesAction() *plugin.TValue[string] {
-	return &c.RejectedPatchesAction
+	return plugin.GetOrCompute[string](&c.RejectedPatchesAction, func() (string, error) {
+		return c.rejectedPatchesAction()
+	})
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetGlobalFilters() *plugin.TValue[[]any] {
-	return &c.GlobalFilters
+	return plugin.GetOrCompute[[]any](&c.GlobalFilters, func() ([]any, error) {
+		return c.globalFilters()
+	})
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetSources() *plugin.TValue[[]any] {
-	return &c.Sources
+	return plugin.GetOrCompute[[]any](&c.Sources, func() ([]any, error) {
+		return c.sources()
+	})
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetCreatedAt() *plugin.TValue[*time.Time] {
-	return &c.CreatedAt
+	return plugin.GetOrCompute[*time.Time](&c.CreatedAt, func() (*time.Time, error) {
+		return c.createdAt()
+	})
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetModifiedAt() *plugin.TValue[*time.Time] {
-	return &c.ModifiedAt
+	return plugin.GetOrCompute[*time.Time](&c.ModifiedAt, func() (*time.Time, error) {
+		return c.modifiedAt()
+	})
 }
 
 func (c *mqlAwsSsmPatchBaseline) GetApprovedPatchesEnableNonSecurity() *plugin.TValue[bool] {

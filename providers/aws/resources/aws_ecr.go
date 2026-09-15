@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
@@ -79,9 +80,47 @@ func (a *mqlAwsEcr) replicationConfiguration() (any, error) {
 		return nil, err
 	}
 	if resp.ReplicationConfiguration == nil {
+		a.ReplicationConfiguration.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	return convert.JsonToDict(resp.ReplicationConfiguration)
+	return ecrReplicationConfigurationToDict(resp.ReplicationConfiguration), nil
+}
+
+// ecrReplicationConfigurationToDict renders the registry replication settings
+// with the key names the schema documents. The SDK struct carries no json
+// tags, so a reflective conversion emits Go field names (Rules, Destinations,
+// RegistryId) and every query written against the documented lowercase keys
+// resolves to null.
+func ecrReplicationConfigurationToDict(cfg *ecrtypes.ReplicationConfiguration) map[string]any {
+	if cfg == nil {
+		return nil
+	}
+
+	rules := make([]any, 0, len(cfg.Rules))
+	for _, rule := range cfg.Rules {
+		destinations := make([]any, 0, len(rule.Destinations))
+		for _, d := range rule.Destinations {
+			destinations = append(destinations, map[string]any{
+				"region":     convert.ToValue(d.Region),
+				"registryId": convert.ToValue(d.RegistryId),
+			})
+		}
+
+		filters := make([]any, 0, len(rule.RepositoryFilters))
+		for _, f := range rule.RepositoryFilters {
+			filters = append(filters, map[string]any{
+				"filter":     convert.ToValue(f.Filter),
+				"filterType": string(f.FilterType),
+			})
+		}
+
+		rules = append(rules, map[string]any{
+			"destinations":      destinations,
+			"repositoryFilters": filters,
+		})
+	}
+
+	return map[string]any{"rules": rules}
 }
 
 func (a *mqlAwsEcrRepository) id() (string, error) {
@@ -183,6 +222,9 @@ func (a *mqlAwsEcr) privateRepositories() ([]any, error) {
 
 func (a *mqlAwsEcrRepository) scanningFrequency() (string, error) {
 	if a.Public.Data {
+		// ECR Public exposes no scanning configuration, so the frequency is
+		// unknown. An empty string is not one of the documented values.
+		a.ScanningFrequency.State = plugin.StateIsSet | plugin.StateIsNull
 		return "", nil
 	}
 
@@ -198,6 +240,9 @@ func (a *mqlAwsEcrRepository) scanningFrequency() (string, error) {
 	})
 	if err != nil {
 		if Is400AccessDeniedError(err) {
+			// The null state above is the answer; this empty string is only
+			// the zero value Go requires and the runtime discards it.
+			a.ScanningFrequency.State = plugin.StateIsSet | plugin.StateIsNull
 			return "", nil
 		}
 		return "", err
@@ -208,6 +253,9 @@ func (a *mqlAwsEcrRepository) scanningFrequency() (string, error) {
 		return string(resp.ScanningConfigurations[0].ScanFrequency), nil
 	}
 
+	// Nothing came back for the repository, so the frequency is unknown rather
+	// than the empty string, which is outside the documented value set.
+	a.ScanningFrequency.State = plugin.StateIsSet | plugin.StateIsNull
 	return "", nil
 }
 
@@ -237,14 +285,14 @@ func (a *mqlAwsEcrRepository) images() ([]any, error) {
 					log.Debug().Str("repository", name).Strs("tags", image.ImageTags).Msg("skipping ecr public image due to tag filters")
 					continue
 				}
-				imageArn := ecrImageArn(ImageInfo{Region: region, RegistryId: convert.ToValue(image.RegistryId), RepoName: name, Digest: convert.ToValue(image.ImageDigest)})
+				imageArn := ecrImageArn(ImageInfo{Public: true, Region: region, RegistryId: convert.ToValue(image.RegistryId), RepoName: name, Digest: convert.ToValue(image.ImageDigest)})
 				mqlImage, err := CreateResource(a.MqlRuntime, ResourceAwsEcrImage,
 					map[string]*llx.RawData{
-						// The public registry always reports region us-east-1 and the
-						// account as its registry id, so a same-named private repo would
-						// otherwise share this key -- and the cachePublic write below
-						// would then flip the private image to "NOT_SCANNED".
-						"__id":              llx.StringData(imageArn + "/public"),
+						// The public ARN names the ecr-public service and carries no
+						// region, so it cannot collide with a same-named private repo --
+						// which matters because the cachePublic write below would
+						// otherwise flip the private image to "NOT_SCANNED".
+						"__id":              llx.StringData(imageArn),
 						"digest":            llx.StringDataPtr(image.ImageDigest),
 						"mediaType":         llx.StringDataPtr(image.ImageManifestMediaType),
 						"artifactMediaType": llx.StringDataPtr(image.ArtifactMediaType),
@@ -254,6 +302,12 @@ func (a *mqlAwsEcrRepository) images() ([]any, error) {
 						"region":            llx.StringData(region),
 						"arn":               llx.StringData(imageArn),
 						"uri":               llx.StringData(uri),
+						"pushedAt":          llx.TimeDataPtr(image.ImagePushedAt),
+						"sizeInBytes":       llx.IntDataPtr(image.ImageSizeInBytes),
+						// ECR Public reports no pull time at all. Leaving the field
+						// unset makes the runtime report a provider bug, so state the
+						// absence explicitly.
+						"lastRecordedPullTime": llx.NilData,
 					})
 				if err != nil {
 					return nil, err
@@ -343,41 +397,99 @@ func newMqlEcrLifecyclePolicyRule(runtime *plugin.Runtime, repoArn string, rule 
 	return resource.(*mqlAwsEcrLifecyclePolicyRule), nil
 }
 
-func (a *mqlAwsEcrRepository) policy() (any, error) {
-	if a.Public.Data {
-		a.Policy.State = plugin.StateIsNull | plugin.StateIsSet
-		return nil, nil
-	}
+// ecrPolicyOutcome is what a failed GetRepositoryPolicy call means.
+type ecrPolicyOutcome int
 
+const (
+	// ecrPolicyOutcomeFailed is an error worth surfacing to the caller.
+	ecrPolicyOutcomeFailed ecrPolicyOutcome = iota
+	// ecrPolicyOutcomeUnreadable is a denial: the repository may well have a
+	// policy, we were simply not allowed to look.
+	ecrPolicyOutcomeUnreadable
+	// ecrPolicyOutcomeAbsent is a successful read of a repository that carries
+	// no policy at all.
+	ecrPolicyOutcomeAbsent
+)
+
+// classifyEcrPolicyError separates the two failures that both leave the policy
+// field null. Only the absent case is a measurement, so only it may let
+// isPublic report false; conflating them is how a scan role missing
+// GetRepositoryPolicy reports a world-pullable repository as private.
+//
+// err must be non-nil: the caller establishes that the call failed before
+// asking what kind of failure it was. There is no outcome that describes a
+// successful read, so a nil error has no meaningful classification here.
+func classifyEcrPolicyError(err error, public bool) ecrPolicyOutcome {
+	if Is400AccessDeniedError(err) {
+		return ecrPolicyOutcomeUnreadable
+	}
+	if public {
+		var notFoundErr *ecrpublic_types.RepositoryPolicyNotFoundException
+		if errors.As(err, &notFoundErr) {
+			return ecrPolicyOutcomeAbsent
+		}
+		return ecrPolicyOutcomeFailed
+	}
+	var notFoundErr *ecrtypes.RepositoryPolicyNotFoundException
+	if errors.As(err, &notFoundErr) {
+		return ecrPolicyOutcomeAbsent
+	}
+	return ecrPolicyOutcomeFailed
+}
+
+func (a *mqlAwsEcrRepository) policy() (any, error) {
 	name := a.Name.Data
-	region := a.Region.Data
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.Ecr(region)
 	ctx := context.Background()
 
-	resp, err := svc.GetRepositoryPolicy(ctx, &ecr.GetRepositoryPolicyInput{
-		RepositoryName: &name,
-	})
-	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.Policy.State = plugin.StateIsNull | plugin.StateIsSet
-			return nil, nil
+	var policyText *string
+	if a.Public.Data {
+		// ECR Public repositories carry their own resource policy, and it is the
+		// only thing that says whether the world can pull from them. Reading it
+		// from the private API is impossible, so it has to come from ecrpublic.
+		// A distinct variable name keeps the permissions extractor, which maps
+		// one client variable per function, from folding this into the private
+		// ecr client assigned below.
+		publicSvc := conn.EcrPublic("us-east-1") // only supported for us-east-1
+		resp, err := publicSvc.GetRepositoryPolicy(ctx, &ecrpublic.GetRepositoryPolicyInput{
+			RegistryId:     aws.String(conn.AccountId()),
+			RepositoryName: &name,
+		})
+		if err != nil {
+			switch classifyEcrPolicyError(err, true) {
+			case ecrPolicyOutcomeUnreadable:
+				return a.markPolicyUnreadable()
+			case ecrPolicyOutcomeAbsent:
+				return a.markPolicyAbsent()
+			default:
+				return nil, err
+			}
 		}
-		var notFoundErr *ecrtypes.RepositoryPolicyNotFoundException
-		if errors.As(err, &notFoundErr) {
-			a.Policy.State = plugin.StateIsNull | plugin.StateIsSet
-			return nil, nil
+		policyText = resp.PolicyText
+	} else {
+		svc := conn.Ecr(a.Region.Data)
+		resp, err := svc.GetRepositoryPolicy(ctx, &ecr.GetRepositoryPolicyInput{
+			RepositoryName: &name,
+		})
+		if err != nil {
+			switch classifyEcrPolicyError(err, false) {
+			case ecrPolicyOutcomeUnreadable:
+				return a.markPolicyUnreadable()
+			case ecrPolicyOutcomeAbsent:
+				return a.markPolicyAbsent()
+			default:
+				return nil, err
+			}
 		}
-		return nil, err
+		policyText = resp.PolicyText
 	}
 
-	if resp.PolicyText == nil {
-		a.Policy.State = plugin.StateIsNull | plugin.StateIsSet
-		return nil, nil
+	if policyText == nil {
+		return a.markPolicyAbsent()
 	}
 
 	var policyDoc any
-	if jsonErr := json.Unmarshal([]byte(*resp.PolicyText), &policyDoc); jsonErr != nil {
+	if jsonErr := json.Unmarshal([]byte(*policyText), &policyDoc); jsonErr != nil {
 		return nil, jsonErr
 	}
 	return policyDoc, nil
@@ -437,7 +549,7 @@ func (a *mqlAwsEcrRepository) lifecyclePolicy() (*mqlAwsEcrLifecyclePolicy, erro
 		map[string]*llx.RawData{
 			"__id":            llx.StringData(policyId),
 			"id":              llx.StringData(policyId),
-			"lastEvaluatedAt": llx.TimeDataPtr(resp.LastEvaluatedAt),
+			"lastEvaluatedAt": llx.TimeDataPtr(ecrEvaluationTime(resp.LastEvaluatedAt)),
 			"rules":           llx.ArrayData(rules, types.Resource("aws.ecr.lifecyclePolicy.rule")),
 		})
 	if err != nil {
@@ -451,10 +563,37 @@ type ImageInfo struct {
 	RepoName   string
 	Digest     string
 	RegistryId string
+	// Public marks an image in the ECR Public registry, which is addressed
+	// through the ecr-public service and has no region component.
+	Public bool
 }
 
 func ecrImageArn(i ImageInfo) string {
+	if i.Public {
+		return fmt.Sprintf("arn:aws:ecr-public::%s:image/%s/%s", i.RegistryId, i.RepoName, i.Digest)
+	}
 	return fmt.Sprintf("arn:aws:ecr:%s:%s:image/%s/%s", i.Region, i.RegistryId, i.RepoName, i.Digest)
+}
+
+// ecrRepositoryArn builds the ARN of an ECR repository. ECR Public repositories
+// live in the ecr-public service and carry no region, which is the shape
+// initAwsEcrRepository parses to pick the registry it queries.
+func ecrRepositoryArn(public bool, region, registryId, repoName string) string {
+	if public {
+		return fmt.Sprintf("arn:aws:ecr-public::%s:repository/%s", registryId, repoName)
+	}
+	return fmt.Sprintf("arn:aws:ecr:%s:%s:repository/%s", region, registryId, repoName)
+}
+
+// ecrEvaluationTime reports a never-evaluated timestamp as absent. ECR fills
+// lastEvaluatedAt with the Unix epoch for a lifecycle policy it has not
+// evaluated yet; forwarding that verbatim renders as a date in 1969 and makes
+// a `lastEvaluatedAt == null` check false.
+func ecrEvaluationTime(t *time.Time) *time.Time {
+	if t == nil || t.IsZero() || t.Unix() == 0 {
+		return nil
+	}
+	return t
 }
 
 func EcrImageName(i ImageInfo) string {
@@ -467,7 +606,7 @@ func (a *mqlAwsEcrImage) repository() (*mqlAwsEcrRepository, error) {
 		a.Repository.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
-	arnVal := fmt.Sprintf("arn:aws:ecr:%s:%s:repository/%s", a.Region.Data, a.RegistryId.Data, repoName)
+	arnVal := ecrRepositoryArn(a.cachePublic, a.Region.Data, a.RegistryId.Data, repoName)
 	res, err := NewResource(a.MqlRuntime, "aws.ecr.repository",
 		map[string]*llx.RawData{"arn": llx.StringData(arnVal)})
 	if err != nil {
@@ -605,20 +744,13 @@ func buildEcrPublicRepositoryResource(runtime *plugin.Runtime, r ecrpublic_types
 			"region":     llx.StringData("us-east-1"),
 			// None of these three are returned by the public ECR API --
 			// ecrpublic's Repository carries only CreatedAt, RegistryId,
-			// RepositoryArn, RepositoryName and RepositoryUri.
-			//
-			// imageScanOnPush and encryptionType are reported as platform
-			// behaviour and both fail safe (no scan-on-push flags the
-			// repository; AES256 matches ECR Public's at-rest encryption).
-			//
-			// imageTagMutability was not: ECR Public has no tag-mutability
-			// control at all and permits re-pushing an existing tag, so
-			// asserting "IMMUTABLE" made every public repository pass an
-			// "image tags must be immutable" policy on fabricated evidence.
-			// Report it as unknown rather than inventing a compliant value.
-			"imageScanOnPush":    llx.BoolData(false),
+			// RepositoryArn, RepositoryName and RepositoryUri. Nothing was
+			// read, so nothing is asserted: a fabricated value reads in a
+			// report exactly like a measured one, whichever way it happens to
+			// fall. Report them as unknown instead.
+			"imageScanOnPush":    llx.NilData,
 			"imageTagMutability": llx.NilData,
-			"encryptionType":     llx.StringData("AES256"),
+			"encryptionType":     llx.NilData,
 			"createdAt":          llx.TimeDataPtr(r.CreatedAt),
 		})
 	if err != nil {
@@ -632,6 +764,27 @@ type mqlAwsEcrRepositoryInternal struct {
 	catalogData    *ecrpublic_types.RepositoryCatalogData
 	catalogLock    sync.Mutex
 	cacheKmsKeyArn *string
+	// policyUnreadable separates a policy that could not be read from one that
+	// was read and found absent. Both leave the policy field null, but only the
+	// first must stop policyStatements and isPublic from reporting that the
+	// repository grants nothing.
+	policyUnreadable bool
+}
+
+// markPolicyUnreadable records a repository policy the scan was not allowed to
+// read. Nothing is known about what it grants, so downstream fields report null
+// rather than an empty statement list.
+func (a *mqlAwsEcrRepository) markPolicyUnreadable() (any, error) {
+	a.policyUnreadable = true
+	a.Policy.State = plugin.StateIsNull | plugin.StateIsSet
+	return nil, nil
+}
+
+// markPolicyAbsent records a repository that genuinely carries no policy. The
+// read succeeded, so isPublic can honestly report false.
+func (a *mqlAwsEcrRepository) markPolicyAbsent() (any, error) {
+	a.Policy.State = plugin.StateIsNull | plugin.StateIsSet
+	return nil, nil
 }
 
 func (a *mqlAwsEcrRepository) kmsKey() (*mqlAwsKmsKey, error) {
@@ -725,14 +878,33 @@ func (a *mqlAwsEcrRepository) architectures() ([]any, error) {
 }
 
 func (a *mqlAwsEcrRepository) tags() (map[string]any, error) {
-	if a.Public.Data {
-		return nil, nil
-	}
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	svc := conn.Ecr(a.Region.Data)
 	ctx := context.Background()
 	arnVal := a.Arn.Data
+	tags := make(map[string]any)
 
+	if a.Public.Data {
+		// ECR Public repositories are tagged like any other resource, and
+		// managedBy and cloudformationStack are derived from those tags.
+		publicSvc := conn.EcrPublic("us-east-1") // only supported for us-east-1
+		resp, err := publicSvc.ListTagsForResource(ctx, &ecrpublic.ListTagsForResourceInput{
+			ResourceArn: &arnVal,
+		})
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				return markTagsUnreadable(&a.Tags)
+			}
+			return nil, err
+		}
+		for _, t := range resp.Tags {
+			if t.Key != nil && t.Value != nil {
+				tags[*t.Key] = *t.Value
+			}
+		}
+		return tags, nil
+	}
+
+	svc := conn.Ecr(a.Region.Data)
 	resp, err := svc.ListTagsForResource(ctx, &ecr.ListTagsForResourceInput{
 		ResourceArn: &arnVal,
 	})
@@ -742,7 +914,6 @@ func (a *mqlAwsEcrRepository) tags() (map[string]any, error) {
 		}
 		return nil, err
 	}
-	tags := make(map[string]any)
 	for _, t := range resp.Tags {
 		if t.Key != nil && t.Value != nil {
 			tags[*t.Key] = *t.Value

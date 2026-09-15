@@ -117,11 +117,21 @@ func (a *mqlAwsIamPolicy) statements() ([]any, error) {
 	return defaultVersion.statements()
 }
 
-// anyWildcardResource reports whether any element is the all-resources
-// wildcard `*`.
+// anyWildcardResource reports whether any element covers a service's whole
+// resource namespace — the global `*`, or an ARN whose resource part is a bare
+// wildcard such as `arn:aws:s3:::*`, which names every bucket in the account.
+// This is the same `:*` test anyWildcardAction applies to actions.
+//
+// A path wildcard under a named resource (`arn:aws:s3:::my-bucket/*`, every
+// object in one bucket) is scoped to that resource and deliberately does not
+// match — it is what a correctly written bucket policy looks like.
 func anyWildcardResource(resources []any) bool {
 	for _, r := range resources {
-		if s, ok := r.(string); ok && s == "*" {
+		s, ok := r.(string)
+		if !ok {
+			continue
+		}
+		if s == "*" || strings.HasSuffix(s, ":*") {
 			return true
 		}
 	}
@@ -143,9 +153,22 @@ func anyWildcardAction(actions []any) bool {
 	return false
 }
 
-// hasWildcardResource reports whether any resource the statement applies to is
-// the all-resources wildcard `*`.
+// hasWildcardResource reports whether the statement applies to every resource:
+// through a wildcard in Resource, or through any NotResource at all.
+//
+// NotResource inverts the set. `{"Effect":"Allow","NotResource":["arn:...:my-secret"]}`
+// applies to every resource except the one named, which is broader than any
+// wildcard the statement could have written out, so the exclusion list only has
+// to be non-empty. hasPublicPrincipal reads NotPrincipal the same way.
 func (a *mqlAwsIamPolicyStatement) hasWildcardResource() (bool, error) {
+	notResources := a.GetNotResources()
+	if notResources.Error != nil {
+		return false, notResources.Error
+	}
+	if len(notResources.Data) > 0 {
+		return true, nil
+	}
+
 	resources := a.GetResources()
 	if resources.Error != nil {
 		return false, resources.Error
@@ -153,9 +176,23 @@ func (a *mqlAwsIamPolicyStatement) hasWildcardResource() (bool, error) {
 	return anyWildcardResource(resources.Data), nil
 }
 
-// hasWildcardAction reports whether any action grants service-wide or global
-// access — the global `*` action or a service-wide wildcard such as `s3:*`.
+// hasWildcardAction reports whether the statement grants service-wide or global
+// access: the global `*` action, a service-wide wildcard such as `s3:*`, or any
+// NotAction at all.
+//
+// NotAction inverts the set the same way NotResource does.
+// `{"Effect":"Allow","NotAction":["iam:*"]}` grants every action in AWS except
+// the IAM ones, which is near-administrator and read as no wildcard at all
+// while only Action was consulted.
 func (a *mqlAwsIamPolicyStatement) hasWildcardAction() (bool, error) {
+	notActions := a.GetNotActions()
+	if notActions.Error != nil {
+		return false, notActions.Error
+	}
+	if len(notActions.Data) > 0 {
+		return true, nil
+	}
+
 	actions := a.GetActions()
 	if actions.Error != nil {
 		return false, actions.Error
@@ -259,7 +296,16 @@ func (a *mqlAwsSqsQueue) policyStatements() ([]any, error) {
 }
 
 func (a *mqlAwsEcrRepository) policyStatements() ([]any, error) {
-	return policyStatementsFromDict(a.MqlRuntime, a.Arn.Data, a.GetPolicy())
+	// GetPolicy has to run first: it is what decides whether the policy was
+	// read at all, and policyUnreadable is only meaningful afterwards.
+	policy := a.GetPolicy()
+	if a.policyUnreadable {
+		// An empty statement list is an assertion that the policy grants
+		// nothing. A policy the scan could not read supports no such claim.
+		a.PolicyStatements.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return policyStatementsFromDict(a.MqlRuntime, a.Arn.Data, policy)
 }
 
 func (a *mqlAwsLambdaFunction) policyStatements() ([]any, error) {
@@ -352,6 +398,33 @@ func resourceIsPublic(statements *plugin.TValue[[]any]) (bool, error) {
 	return statementsAllowPublic(statements.Data)
 }
 
+// resourceIsPublicOrUnknown is resourceIsPublic for a resource whose policy
+// read can be refused. A null statement list means the policy could not be
+// read, and "we were not allowed to look" must not be published as "not
+// public": the isPublic field is marked null instead.
+//
+// A statement list that was read and is merely empty still answers false. The
+// distinction is three-way, and collapsing the first case into the second is
+// how a denied read became a confident isPublic:false.
+//
+// Not every caller is migrated yet. resourceIsPublic above still collapses an
+// unread policy into false for sns.topic, sqs.queue, lambda.function,
+// s3.bucket, secretsmanager.secret, backup.vault, es.domain, opensearch.domain,
+// apigatewayv2.route, sagemaker.modelPackageGroup, the bedrock resources and
+// the snapshot resources. Those are the same defect and want the same helper;
+// each needs its policy accessor to null a denied read first, or the null never
+// reaches here.
+func resourceIsPublicOrUnknown(statements *plugin.TValue[[]any], field *plugin.TValue[bool]) (bool, error) {
+	if statements.Error != nil {
+		return false, statements.Error
+	}
+	if statements.IsNull() {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return statementsAllowPublic(statements.Data)
+}
+
 func (a *mqlAwsKmsKey) isPublic() (bool, error) {
 	return resourceIsPublic(a.GetPolicyStatements())
 }
@@ -365,7 +438,7 @@ func (a *mqlAwsSqsQueue) isPublic() (bool, error) {
 }
 
 func (a *mqlAwsEcrRepository) isPublic() (bool, error) {
-	return resourceIsPublic(a.GetPolicyStatements())
+	return resourceIsPublicOrUnknown(a.GetPolicyStatements(), &a.IsPublic)
 }
 
 // isPublic reports whether the function is exposed publicly — either its

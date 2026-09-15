@@ -1340,6 +1340,36 @@ func (a *mqlAwsEc2) getInstances(conn *connection.AwsConnection) []*jobpool.Job 
 	return tasks
 }
 
+// stateTransitionReasonTime pulls the timestamp out of a StateTransitionReason
+// such as "User initiated (2026-04-05 20:44:17 GMT)".
+var stateTransitionReasonTime = regexp.MustCompile(`.*\((\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}) GMT\)`)
+
+// parseStateTransitionTime reads the transition timestamp out of an instance's
+// StateTransitionReason, or reports nil when there is none.
+//
+// A running instance has an empty StateTransitionReason - the API documents it as
+// "This might be an empty string" - so there is no timestamp to report and the
+// field has to be null. It used to be a zero time.Time handed to llx.TimeData,
+// which is a non-nil pointer, so every running instance carried a value that
+// compared as older than any real date.
+func parseStateTransitionTime(reason string) *time.Time {
+	match := stateTransitionReasonTime.FindStringSubmatch(reason)
+	if len(match) != 2 {
+		return nil
+	}
+	t, err := time.Parse(time.DateTime, match[1])
+	if err != nil {
+		// The reason named a transition but the timestamp did not parse. Keep the
+		// existing sentinel rather than null: something did happen, and we know
+		// it was in the past.
+		log.Error().Str("reason", reason).Err(err).
+			Msg("cannot parse state transition time for ec2 instance")
+		past := llx.NeverPastTime
+		return &past
+	}
+	return &t
+}
+
 func (a *mqlAwsEc2) gatherInstanceInfo(instances []ec2types.Instance, regionVal string) ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	res := []any{}
@@ -1368,16 +1398,7 @@ func (a *mqlAwsEc2) gatherInstanceInfo(instances []ec2types.Instance, regionVal 
 			return nil, err
 		}
 
-		var stateTransitionTime time.Time
-		reg := regexp.MustCompile(`.*\((\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}) GMT\)`)
-		timeString := reg.FindStringSubmatch(convert.ToValue(instance.StateTransitionReason))
-		if len(timeString) == 2 {
-			stateTransitionTime, err = time.Parse(time.DateTime, timeString[1])
-			if err != nil {
-				log.Error().Err(err).Msg("cannot parse state transition time for ec2 instance")
-				stateTransitionTime = llx.NeverPastTime
-			}
-		}
+		stateTransitionTime := parseStateTransitionTime(convert.ToValue(instance.StateTransitionReason))
 		var detailedMonitoring string
 		if instance.Monitoring != nil {
 			detailedMonitoring = string(instance.Monitoring.State)
@@ -1412,7 +1433,7 @@ func (a *mqlAwsEc2) gatherInstanceInfo(instances []ec2types.Instance, regionVal 
 			"stateReason":        llx.MapData(stateReason, types.Any),
 			// "iamInstanceProfile":    llx.MapData(iamInstanceProfile, types.Any),
 			"stateTransitionReason": llx.StringDataPtr(instance.StateTransitionReason),
-			"stateTransitionTime":   llx.TimeData(stateTransitionTime),
+			"stateTransitionTime":   llx.TimeDataPtr(stateTransitionTime),
 			"tags":                  llx.MapData(toInterfaceMap(ec2TagsToMap(instance.Tags)), types.String),
 			"tpmSupport":            llx.StringDataPtr(instance.TpmSupport),
 			"bootMode":              llx.StringData(bootMode(string(instance.BootMode))),
@@ -2669,7 +2690,7 @@ func buildVolumeResource(runtime *plugin.Runtime, region, accountID string, vol 
 			"tags":               llx.MapData(toInterfaceMap(ec2TagsToMap(vol.Tags)), types.String),
 			"throughput":         llx.IntDataDefault(vol.Throughput, 0),
 			"volumeType":         llx.StringData(string(vol.VolumeType)),
-			"sseType":            llx.StringData(string(vol.SseType)),
+			"sseType":            llx.StringData(deriveVolumeSseType(vol)),
 			"fastRestored":       llx.BoolDataPtr(vol.FastRestored),
 			"snapshotId":         llx.StringDataPtr(vol.SnapshotId),
 		})
@@ -4901,4 +4922,19 @@ func (a *mqlAwsEc2Snapshot) sharedExternally() (bool, error) {
 		return false, accounts.Error
 	}
 	return len(accounts.Data) > 0, nil
+}
+
+// deriveVolumeSseType returns the volume's SSE type, deriving it for
+// regions/accounts where DescribeVolumes omits SseType: an encrypted volume
+// always has a KMS key (sse-kms), an unencrypted one has no SSE at all.
+// Without this, encryption-type checks can never pass where the field is
+// missing from the API response.
+func deriveVolumeSseType(vol ec2types.Volume) string {
+	if sse := string(vol.SseType); sse != "" {
+		return sse
+	}
+	if convert.ToValue(vol.Encrypted) {
+		return "sse-kms"
+	}
+	return "none"
 }

@@ -499,7 +499,7 @@ func (a *mqlAwsWafRuleStatementAndstatement) id() (string, error) {
 }
 
 func (a *mqlAwsWafRuleStatementRatebasedstatement) id() (string, error) {
-	return "not implemented", nil
+	return a.StatementID.Data, nil
 }
 
 func (a *mqlAwsWafRuleStatementRegexpatternsetreferencestatement) id() (string, error) {
@@ -981,7 +981,10 @@ func createStatementResource(runtime *plugin.Runtime, statement *waftypes.Statem
 		}
 		if statement.RateBasedStatement != nil {
 			kind = "RateBasedStatement"
-			ratebasedstatement, err = CreateResource(runtime, "aws.waf.rule.statement.ratebasedstatement", map[string]*llx.RawData{})
+			ratebasedstatement, err = CreateResource(runtime, "aws.waf.rule.statement.ratebasedstatement", map[string]*llx.RawData{
+				"statementID": llx.StringData(mqlStatementID),
+				"ruleName":    llx.StringDataPtr(ruleName),
+			})
 			if err != nil {
 				return nil, err
 			}

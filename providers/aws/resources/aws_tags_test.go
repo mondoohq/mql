@@ -18,6 +18,7 @@ import (
 	cstypes "github.com/aws/aws-sdk-go-v2/service/configservice/types"
 	elasticache_types "github.com/aws/aws-sdk-go-v2/service/elasticache/types"
 	emrtypes "github.com/aws/aws-sdk-go-v2/service/emr/types"
+	secretstypes "github.com/aws/aws-sdk-go-v2/service/secretsmanager/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -127,6 +128,18 @@ func TestElasticacheTagsToMap(t *testing.T) {
 		{Key: nil, Value: aws.String("dropped")},
 	})
 	assert.Equal(t, map[string]any{"env": "prod", "empty": ""}, got)
+}
+
+// secretTagsToStringMap feeds the discovery tag filter. A swapped Key/Value
+// accessor here would not fail loudly - it would silently invert every
+// `--filters tag:` match on Secrets Manager.
+func TestSecretTagsToStringMap(t *testing.T) {
+	got := secretTagsToStringMap([]secretstypes.Tag{
+		{Key: aws.String("environment"), Value: aws.String("prod")},
+		{Key: aws.String("empty"), Value: nil},
+		{Key: nil, Value: aws.String("dropped")},
+	})
+	assert.Equal(t, map[string]string{"environment": "prod", "empty": ""}, got)
 }
 
 func TestConfigTagsToMap(t *testing.T) {

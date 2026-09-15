@@ -303,7 +303,10 @@ func (a *mqlAwsSecretsmanagerSecret) managedBy() (string, error) {
 }
 
 func (a *mqlAwsSecretsmanagerSecret) cloudformationStack() (*mqlAwsCloudformationStack, error) {
-	return cloudformationStackFromResourceTags(a.MqlRuntime, a.GetPrimaryRegion().Data, a.GetTags(), &a.CloudformationStack)
+	// region, not primaryRegion: AWS returns primaryRegion only for a secret
+	// replicated to other regions, so for every other secret it is empty and
+	// the stack was looked for in the connection's default region.
+	return cloudformationStackFromResourceTags(a.MqlRuntime, a.Region.Data, a.GetTags(), &a.CloudformationStack)
 }
 
 func (a *mqlAwsEmrCluster) managedBy() (string, error) {

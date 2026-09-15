@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/directoryservice"
 	"github.com/aws/aws-sdk-go-v2/service/workdocs"
 	workdocstypes "github.com/aws/aws-sdk-go-v2/service/workdocs/types"
 	"github.com/rs/zerolog/log"
@@ -79,70 +80,105 @@ func (a *mqlAwsWorkdocs) getUsers(conn *connection.AwsConnection) []*jobpool.Job
 
 	for _, region := range regions {
 		f := func() (jobpool.JobResult, error) {
-			svc := conn.WorkDocs(region)
 			ctx := context.Background()
 			res := []any{}
 
-			params := &workdocs.DescribeUsersInput{
-				Fields:  aws.String("STORAGE_METADATA"),
-				Include: workdocstypes.UserFilterTypeAll,
+			// DescribeUsers is scoped to one WorkDocs organization, and under
+			// SigV4 the API requires it: without an organizationId (or explicit
+			// userIds) it answers ValidationException. A WorkDocs organization
+			// is a registered Directory Service directory, so the directory ids
+			// in this region are the organizations to enumerate.
+			orgIds, err := workdocsOrganizationIds(ctx, conn, region)
+			if err != nil {
+				return nil, err
 			}
-			paginator := workdocs.NewDescribeUsersPaginator(svc, params)
-			for paginator.HasMorePages() {
-				page, err := paginator.NextPage(ctx)
-				if err != nil {
-					if Is400AccessDeniedError(err) {
-						log.Warn().Str("region", region).Msg("error accessing region for AWS WorkDocs API")
-						return res, nil
-					}
-					if isBadRequestError(err) {
-						log.Warn().Str("region", region).Msg("AWS WorkDocs not enabled in region")
-						return res, nil
-					}
-					return nil, err
-				}
-				for _, user := range page.Users {
-					var storageAllocatedInBytes int64
-					var storageUtilizedInBytes int64
-					var storageType string
-					if user.Storage != nil {
-						if user.Storage.StorageUtilizedInBytes != nil {
-							storageUtilizedInBytes = *user.Storage.StorageUtilizedInBytes
-						}
-						if user.Storage.StorageRule != nil {
-							if user.Storage.StorageRule.StorageAllocatedInBytes != nil {
-								storageAllocatedInBytes = *user.Storage.StorageRule.StorageAllocatedInBytes
-							}
-							storageType = string(user.Storage.StorageRule.StorageType)
-						}
-					}
+			if len(orgIds) == 0 {
+				return res, nil
+			}
 
-					mqlUser, err := CreateResource(a.MqlRuntime, "aws.workdocs.user",
-						map[string]*llx.RawData{
-							"id":                      llx.StringDataPtr(user.Id),
-							"username":                llx.StringDataPtr(user.Username),
-							"emailAddress":            llx.StringDataPtr(user.EmailAddress),
-							"givenName":               llx.StringDataPtr(user.GivenName),
-							"surname":                 llx.StringDataPtr(user.Surname),
-							"status":                  llx.StringData(string(user.Status)),
-							"userType":                llx.StringData(string(user.Type)),
-							"createdTimestamp":        llx.TimeDataPtr(user.CreatedTimestamp),
-							"modifiedTimestamp":       llx.TimeDataPtr(user.ModifiedTimestamp),
-							"timeZoneId":              llx.StringDataPtr(user.TimeZoneId),
-							"locale":                  llx.StringData(string(user.Locale)),
-							"organizationId":          llx.StringDataPtr(user.OrganizationId),
-							"storageAllocatedInBytes": llx.IntData(storageAllocatedInBytes),
-							"storageUtilizedInBytes":  llx.IntData(storageUtilizedInBytes),
-							"storageType":             llx.StringData(storageType),
-							"recycleBinFolderId":      llx.StringDataPtr(user.RecycleBinFolderId),
-							"rootFolderId":            llx.StringDataPtr(user.RootFolderId),
-							"region":                  llx.StringData(region),
-						},
-					)
+			svc := conn.WorkDocs(region)
+			for _, orgId := range orgIds {
+				params := &workdocs.DescribeUsersInput{
+					OrganizationId: aws.String(orgId),
+					Fields:         aws.String("STORAGE_METADATA"),
+					Include:        workdocstypes.UserFilterTypeAll,
+				}
+				paginator := workdocs.NewDescribeUsersPaginator(svc, params)
+				for paginator.HasMorePages() {
+					page, err := paginator.NextPage(ctx)
 					if err != nil {
+						// The SDK declares WorkDocs regionalized with a
+						// {region} endpoint template but ships endpoints for
+						// only a handful of regions, so elsewhere the
+						// synthesized host does not resolve. That is not a
+						// failure to read the account, it means there is
+						// nothing here.
+						if IsServiceNotAvailableInRegionError(err) {
+							log.Debug().Str("region", region).Msg("AWS WorkDocs is not available in region")
+							return res, nil
+						}
+						// A denial is a fact about one organization, not about
+						// the region: a policy can scope WorkDocs access to
+						// some directories and not others. Move on to the next
+						// organization rather than dropping the users already
+						// read from the ones that did answer.
+						if Is400AccessDeniedError(err) {
+							log.Warn().Str("region", region).Str("organizationId", orgId).
+								Msg("error accessing WorkDocs organization")
+							break
+						}
+						// A directory that is not registered with WorkDocs is
+						// not an error, it simply hosts no WorkDocs users.
+						if isBadRequestError(err) || isResourceNotFoundError(err) {
+							log.Debug().Str("region", region).Str("organizationId", orgId).
+								Msg("directory is not a WorkDocs organization")
+							break
+						}
 						return nil, err
 					}
-					res = append(res, mqlUser)
+					for _, user := range page.Users {
+						var storageAllocatedInBytes int64
+						var storageUtilizedInBytes int64
+						var storageType string
+						if user.Storage != nil {
+							if user.Storage.StorageUtilizedInBytes != nil {
+								storageUtilizedInBytes = *user.Storage.StorageUtilizedInBytes
+							}
+							if user.Storage.StorageRule != nil {
+								if user.Storage.StorageRule.StorageAllocatedInBytes != nil {
+									storageAllocatedInBytes = *user.Storage.StorageRule.StorageAllocatedInBytes
+								}
+								storageType = string(user.Storage.StorageRule.StorageType)
+							}
+						}
+
+						mqlUser, err := CreateResource(a.MqlRuntime, "aws.workdocs.user",
+							map[string]*llx.RawData{
+								"id":                      llx.StringDataPtr(user.Id),
+								"username":                llx.StringDataPtr(user.Username),
+								"emailAddress":            llx.StringDataPtr(user.EmailAddress),
+								"givenName":               llx.StringDataPtr(user.GivenName),
+								"surname":                 llx.StringDataPtr(user.Surname),
+								"status":                  llx.StringData(string(user.Status)),
+								"userType":                llx.StringData(string(user.Type)),
+								"createdTimestamp":        llx.TimeDataPtr(user.CreatedTimestamp),
+								"modifiedTimestamp":       llx.TimeDataPtr(user.ModifiedTimestamp),
+								"timeZoneId":              llx.StringDataPtr(user.TimeZoneId),
+								"locale":                  llx.StringData(string(user.Locale)),
+								"organizationId":          llx.StringDataPtr(user.OrganizationId),
+								"storageAllocatedInBytes": llx.IntData(storageAllocatedInBytes),
+								"storageUtilizedInBytes":  llx.IntData(storageUtilizedInBytes),
+								"storageType":             llx.StringData(storageType),
+								"recycleBinFolderId":      llx.StringDataPtr(user.RecycleBinFolderId),
+								"rootFolderId":            llx.StringDataPtr(user.RootFolderId),
+								"region":                  llx.StringData(region),
+							},
+						)
+						if err != nil {
+							return nil, err
+						}
+						res = append(res, mqlUser)
+					}
 				}
 			}
 			return jobpool.JobResult(res), nil
@@ -150,6 +186,35 @@ func (a *mqlAwsWorkdocs) getUsers(conn *connection.AwsConnection) []*jobpool.Job
 		tasks = append(tasks, jobpool.NewJob(f))
 	}
 	return tasks
+}
+
+// workdocsOrganizationIds lists the WorkDocs organizations in a region.
+//
+// A WorkDocs organization is an AWS Directory Service directory that has been
+// registered with WorkDocs, and its organization id is the directory id. The
+// WorkDocs API itself offers no way to enumerate them, so the directories are
+// the candidate set; the ones that are not registered simply return no users.
+func workdocsOrganizationIds(ctx context.Context, conn *connection.AwsConnection, region string) ([]string, error) {
+	svc := conn.DirectoryService(region)
+	ids := []string{}
+
+	paginator := directoryservice.NewDescribeDirectoriesPaginator(svc, &directoryservice.DescribeDirectoriesInput{})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
+				log.Debug().Str("region", region).Msg("cannot list directories to resolve WorkDocs organizations")
+				return nil, nil
+			}
+			return nil, err
+		}
+		for _, dir := range page.DirectoryDescriptions {
+			if id := convert.ToValue(dir.DirectoryId); id != "" {
+				ids = append(ids, id)
+			}
+		}
+	}
+	return ids, nil
 }
 
 // rootFolder fetches the user's root folder via GetFolder. The folder id alone

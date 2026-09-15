@@ -7,7 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // AWS-managed patch baselines report their BaselineId as a full ARN owned by an
@@ -66,4 +69,68 @@ func TestSsmPatchBaselineArnIsNeverDoubled(t *testing.T) {
 		"the result must contain exactly one ARN")
 	assert.NotContains(t, got, "111122223333",
 		"an AWS-owned baseline must not be re-attributed to the caller's account")
+}
+
+// TestSsmPatchApprovalRulesAreDictSerializable pins the approval-rule dict to
+// JSON-native values. dict2primitive accepts only bool, int64, float64,
+// string, []any, map[string]any and nil, so leaving the SDK's *int32 and *bool
+// in place fails the whole field at query time rather than degrading it.
+func TestSsmPatchApprovalRulesAreDictSerializable(t *testing.T) {
+	rules := ssmPatchApprovalRules(&types.PatchRuleGroup{
+		PatchRules: []types.PatchRule{
+			{
+				ApproveAfterDays:  aws.Int32(7),
+				EnableNonSecurity: aws.Bool(true),
+				ComplianceLevel:   types.PatchComplianceLevelCritical,
+				PatchFilterGroup: &types.PatchFilterGroup{
+					PatchFilters: []types.PatchFilter{
+						{Key: types.PatchFilterKeyClassification, Values: []string{"Security"}},
+					},
+				},
+			},
+		},
+	})
+
+	require.Len(t, rules, 1)
+	rule, ok := rules[0].(map[string]any)
+	require.True(t, ok)
+
+	assert.Equal(t, int64(7), rule["approveAfterDays"])
+	assert.Equal(t, true, rule["enableNonSecurity"])
+	assert.Equal(t, "CRITICAL", rule["complianceLevel"])
+	assertDictSerializable(t, rule)
+}
+
+// TestSsmPatchApprovalRulesAbsentPointers covers a baseline whose rules omit
+// the optional members, and the nil rule group itself.
+func TestSsmPatchApprovalRulesAbsentPointers(t *testing.T) {
+	assert.Equal(t, []any{}, ssmPatchApprovalRules(nil))
+
+	rules := ssmPatchApprovalRules(&types.PatchRuleGroup{
+		PatchRules: []types.PatchRule{{}},
+	})
+	require.Len(t, rules, 1)
+	rule := rules[0].(map[string]any)
+	assert.Equal(t, int64(0), rule["approveAfterDays"])
+	assert.Equal(t, false, rule["enableNonSecurity"])
+	assertDictSerializable(t, rule)
+}
+
+// assertDictSerializable walks a dict value and fails on any type the llx dict
+// conversion does not accept.
+func assertDictSerializable(t *testing.T, v any) {
+	t.Helper()
+	switch val := v.(type) {
+	case nil, bool, int64, float64, string:
+	case []any:
+		for _, item := range val {
+			assertDictSerializable(t, item)
+		}
+	case map[string]any:
+		for _, item := range val {
+			assertDictSerializable(t, item)
+		}
+	default:
+		t.Fatalf("dict carries a value of type %T, which dict2primitive rejects", v)
+	}
 }

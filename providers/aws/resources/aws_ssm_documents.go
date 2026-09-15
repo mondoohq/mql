@@ -319,6 +319,40 @@ func (a *mqlAwsSsmPatchBaseline) id() (string, error) {
 	return a.Arn.Data, nil
 }
 
+// ssmPatchApprovalRules maps a baseline's approval rules into dicts.
+//
+// Every value has to be JSON-native: dict2primitive rejects a *int32 or a
+// *bool outright, so leaving the SDK pointers in place fails the whole field
+// at query time rather than degrading it.
+func ssmPatchApprovalRules(rules *types.PatchRuleGroup) []any {
+	approvalRules := []any{}
+	if rules == nil {
+		return approvalRules
+	}
+	for _, rule := range rules.PatchRules {
+		patchFilters := []any{}
+		if rule.PatchFilterGroup != nil {
+			for _, pf := range rule.PatchFilterGroup.PatchFilters {
+				vals := make([]any, 0, len(pf.Values))
+				for _, v := range pf.Values {
+					vals = append(vals, v)
+				}
+				patchFilters = append(patchFilters, map[string]any{
+					"key":    string(pf.Key),
+					"values": vals,
+				})
+			}
+		}
+		approvalRules = append(approvalRules, map[string]any{
+			"approveAfterDays":  int64(convert.ToValue(rule.ApproveAfterDays)),
+			"complianceLevel":   string(rule.ComplianceLevel),
+			"enableNonSecurity": convert.ToValue(rule.EnableNonSecurity),
+			"patchFilters":      patchFilters,
+		})
+	}
+	return approvalRules
+}
+
 func (a *mqlAwsSsmPatchBaseline) fetchDetails() error {
 	if a.fetched {
 		return a.fetchErr
@@ -343,31 +377,7 @@ func (a *mqlAwsSsmPatchBaseline) fetchDetails() error {
 		return err
 	}
 
-	// Approval rules
-	approvalRules := []any{}
-	if resp.ApprovalRules != nil {
-		for _, rule := range resp.ApprovalRules.PatchRules {
-			patchFilters := []any{}
-			if rule.PatchFilterGroup != nil {
-				for _, pf := range rule.PatchFilterGroup.PatchFilters {
-					vals := make([]any, 0, len(pf.Values))
-					for _, v := range pf.Values {
-						vals = append(vals, v)
-					}
-					patchFilters = append(patchFilters, map[string]any{
-						"key":    string(pf.Key),
-						"values": vals,
-					})
-				}
-			}
-			approvalRules = append(approvalRules, map[string]any{
-				"approveAfterDays":  rule.ApproveAfterDays,
-				"complianceLevel":   string(rule.ComplianceLevel),
-				"enableNonSecurity": rule.EnableNonSecurity,
-				"patchFilters":      patchFilters,
-			})
-		}
-	}
+	approvalRules := ssmPatchApprovalRules(resp.ApprovalRules)
 
 	// Global filters
 	globalFilters := []any{}

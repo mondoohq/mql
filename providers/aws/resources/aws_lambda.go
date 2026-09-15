@@ -332,8 +332,16 @@ func initAwsLambdaFunction(runtime *plugin.Runtime, args map[string]*llx.RawData
 		if regionArg == nil {
 			return nil, nil, errors.New("region required to fetch lambda function")
 		}
+		// Read the values, not their display form: RawData.String() renders a
+		// string wrapped in quote characters, which would go straight into the
+		// composed ARN and match nothing.
+		name, _ := nameArg.Value.(string)
+		regionVal, _ := regionArg.Value.(string)
+		if name == "" || regionVal == "" {
+			return nil, nil, errors.New("name and region required to fetch lambda function")
+		}
 		conn := runtime.Connection.(*connection.AwsConnection)
-		arnVal = getLambdaArn(nameArg.String(), regionArg.String(), conn.AccountId())
+		arnVal = getLambdaArn(name, regionVal, conn.AccountId())
 		if arnVal == "" {
 			return nil, nil, errors.New("arn required to fetch lambda function")
 		}

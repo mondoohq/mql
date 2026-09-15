@@ -1143,7 +1143,12 @@ private aws.waf.rule.statement.orstatement {
 }
 
 // Rule statement that matches at a certain rate of requests (rate limiting)
-private aws.waf.rule.statement.ratebasedstatement {}
+private aws.waf.rule.statement.ratebasedstatement {
+  // Name of the rule this statement belongs to
+  ruleName string
+  // ID of the statement
+  statementID string
+}
 
 // Rule statement that checks for a regex pattern defined in a regex pattern set
 private aws.waf.rule.statement.regexpatternsetreferencestatement {
@@ -2547,6 +2552,9 @@ private aws.iam.usercredentialreportentry @defaults("arn") {
   passwordNextRotation() time
 
   // IAM user
+  //
+  // Null for the root account entry, which always appears in the report but has
+  // no IAM user behind it. Use isRoot to select that entry.
   user() aws.iam.user
   // Time when user was created
   createdAt() time
@@ -5784,7 +5792,12 @@ private aws.sns.topic @defaults("arn") {
   attributes() dict
   // Tags for the topic
   tags() map[string]string
-  // Signature version used for Amazon SNS message signing (1 or 2)
+  // Signature version used for Amazon SNS message signing
+  //
+  // Either 1 (SHA1 signatures) or 2 (SHA256 signatures). SNS omits the
+  // attribute on a topic that was never given an explicit signature
+  // version, and the service default of 1 is in force on such a topic, so
+  // that is what this field reports.
   signatureVersion() string
   // AWS account ID of the topic owner
   owner() string
@@ -5813,13 +5826,16 @@ private aws.sns.topic @defaults("arn") {
   // messages published to the topic, parsed from JSON. Top-level keys are
   // Name, Description, Version, and Statement, where each statement carries
   // DataDirection, DataIdentifier, and an Operation such as Audit,
-  // Deidentify, or Deny.
+  // Deidentify, or Deny. Null when the topic has no data protection policy
+  // and on FIFO topics, which do not support the feature at all.
   dataProtectionPolicy() dict
   // Active tracing configuration for X-Ray
   //
   // Either PassThrough (only messages that already carry a trace header
   // are traced) or Active (SNS generates a trace header for every
-  // published message).
+  // published message). SNS omits the attribute on a topic that was never
+  // given an explicit tracing mode, and the service default of PassThrough
+  // is in force on such a topic, so that is what this field reports.
   tracingConfig() string
   // Topic-level delivery policy
   //
@@ -5861,8 +5877,13 @@ private aws.sns.subscription @defaults("arn") {
   // ConfirmationWasAuthenticated, PendingConfirmation, RawMessageDelivery,
   // FilterPolicy, FilterPolicyScope, RedrivePolicy, and DeliveryPolicy.
   // Most values are also surfaced as dedicated fields on this resource.
+  // Null for a subscription still awaiting confirmation, which has no ARN
+  // for SNS to answer an attribute request on.
   attributes() dict
   // Whether raw message delivery is enabled (no SNS metadata wrapper)
+  //
+  // Null for a subscription still awaiting confirmation, whose attributes
+  // SNS does not publish.
   rawMessageDelivery() bool
   // Message filter policy
   //
@@ -5872,7 +5893,11 @@ private aws.sns.subscription @defaults("arn") {
   // matching operators such as prefix, anything-but, or numeric ranges.
   // Empty when the subscription receives every message.
   filterPolicy() dict
-  // Scope of the filter policy: MessageAttributes or MessageBody
+  // Scope of the filter policy
+  //
+  // Either MessageAttributes or MessageBody, naming what `filterPolicy`
+  // matches against. Null for a subscription still awaiting confirmation,
+  // whose attributes SNS does not publish.
   filterPolicyScope() string
   // Dead-letter queue redrive policy
   //
@@ -5881,6 +5906,10 @@ private aws.sns.subscription @defaults("arn") {
   // the target queue. Empty when no dead-letter queue is configured.
   redrivePolicy() dict
   // Whether the subscription confirmation was authenticated
+  //
+  // Null for a subscription still awaiting confirmation: there has been no
+  // confirmation to authenticate, which is not the same as a confirmation
+  // that went unauthenticated.
   confirmationWasAuthenticated() bool
   // Subscription delivery policy
   //
@@ -5890,7 +5919,10 @@ private aws.sns.subscription @defaults("arn") {
   // sicklyRetryPolicy, throttlePolicy (maxReceivesPerSecond), and
   // guaranteed.
   deliveryPolicy() dict
-  // Whether the subscription is confirmed
+  // Whether the subscription is still awaiting confirmation
+  //
+  // True while the endpoint owner has not yet confirmed the subscription,
+  // in which case SNS holds no other attributes for it.
   pendingConfirmation() bool
 }
 
@@ -11037,7 +11069,19 @@ private aws.cloudwatch.loggroup @defaults("arn") {
   // When the log group was created
   createdAt time
   // Number of days to retain the log events in the specified log group
+  //
+  // Null when the log group never expires its events, which is what CloudWatch
+  // reports by returning no retention at all, and null again when the group
+  // lives in another account and its retention could not be read. A retention
+  // audit should treat null as "no expiry set" rather than compare it as a
+  // number: `retentionInDays >= 365` excludes exactly the groups that keep
+  // their logs forever.
   retentionInDays int
+  // Whether the log group keeps its events forever
+  //
+  // True when CloudWatch reports no retention on the group. Null when the
+  // retention could not be read, so an unread group is not reported as either.
+  neverExpires bool
   // Tags for the log group
   tags() map[string]string
   // CloudFormation stack that manages this log group, if any
@@ -13560,8 +13604,18 @@ private aws.dynamodb.table @defaults("name region") {
   name string
   // Region where the table exists
   region string
-  // Table ID
-  id string
+  // Table identifier
+  //
+  // Deprecated in favor of tableId. ListTables reports only table names, so
+  // this field was never populated from the listing and always read as empty.
+  id @maturity("deprecated") string
+  // Table identifier
+  //
+  // Unique identifier AWS assigns the table, for example
+  // 6c4ca0b9-bdde-43b7-b0fd-7c271c538b72. A table recreated under the same
+  // name gets a new identifier, so this distinguishes the current table from
+  // an earlier one that shared its name.
+  tableId() string
   // On-demand and system backups of the table
   //
   // Each entry carries BackupArn, BackupName, BackupCreationDateTime,
@@ -13709,7 +13763,12 @@ private aws.sqs.queue {
   kmsKey() aws.kms.key
   // Time when the queue was last modified
   lastModified() time
-  // Maximum amount of messages that can be received by the queue
+  // Receive attempts allowed before a message goes to the dead-letter queue
+  //
+  // The maxReceiveCount of the queue redrive policy: how many times a
+  // single message may be received without being deleted before SQS moves
+  // it to the dead-letter queue named by deadLetterQueue. Null when the
+  // queue has no redrive policy, because no such limit is configured on it.
   maxReceiveCount() int
   // Maximum message size for the queue
   maximumMessageSize() int
@@ -13719,7 +13778,11 @@ private aws.sqs.queue {
   receiveMessageWaitTimeSeconds() int
   // Region for the queue
   region string
-  // Whether SSE is enabled for the queue
+  // Whether SQS-managed server-side encryption (SSE-SQS) is enabled
+  //
+  // Covers SQS-managed encryption keys only. A queue encrypted with a
+  // customer-managed KMS key reports false here and names its key through
+  // kmsKey, so an encryption-at-rest audit has to read both fields.
   sqsManagedSseEnabled() bool
   // Type of queue: fifo or standard
   queueType() string
@@ -13771,6 +13834,11 @@ aws.rds {
   instances() []aws.rds.dbinstance
   // List of RDS database clusters
   clusters() []aws.rds.dbcluster
+  // List of all DB instance and DB cluster snapshots in the account
+  //
+  // Includes manual and automated snapshots, and snapshots whose source
+  // instance or cluster has since been deleted.
+  snapshots() []aws.rds.snapshot
   // List of all pending maintenance actions for the database instance
   allPendingMaintenanceActions() []aws.rds.pendingMaintenanceAction
   // List of all parameter groups
@@ -16298,7 +16366,11 @@ private aws.ecr.repository @defaults("uri region") {
   images() []aws.ecr.image
   // Region where the image is stored
   region string
-  // Whether the repository option to scan on image push is enabled
+  // Scan-on-push setting
+  //
+  // Whether the repository scans an image for vulnerabilities as it is
+  // pushed. Null for public repositories: ECR Public returns no scanning
+  // settings, so the value is unknown rather than known to be off.
   imageScanOnPush bool
   // Image tag mutability
   //
@@ -16309,19 +16381,39 @@ private aws.ecr.repository @defaults("uri region") {
   // Comparing a null value against a concrete one yields false, so an
   // `imageTagMutability == "IMMUTABLE"` check does not pass for them.
   imageTagMutability string
-  // Encryption type for images at rest (AES256, KMS, or KMS_DSSE)
+  // Encryption type for images at rest
+  //
+  // One of AES256, KMS, or KMS_DSSE. Null for public repositories: ECR
+  // Public returns no encryption settings, so the value is unknown rather
+  // than known to be any of them.
   encryptionType string
   // KMS key protecting images at rest, when encryptionType is KMS or KMS_DSSE
   kmsKey() aws.kms.key
   // When the repository was created
   createdAt time
-  // Scanning frequency for the repository: SCAN_ON_PUSH, CONTINUOUS_SCAN, or MANUAL
+  // Scanning frequency for the repository
+  //
+  // One of SCAN_ON_PUSH, CONTINUOUS_SCAN, or MANUAL. Null when the
+  // frequency could not be determined: public repositories, which expose no
+  // scanning configuration, and a repository whose scanning configuration
+  // the scan was not allowed to read.
   scanningFrequency() string
-  // Access policy for the repository (parsed JSON; private repositories only)
+  // Access policy for the repository
+  //
+  // The parsed resource policy document, for private and public
+  // repositories alike. Null when the repository carries no policy, and
+  // also when the policy could not be read.
   policy() dict
   // Parsed statements from the repository access policy
+  //
+  // Empty when the repository carries no policy. Null when the policy could
+  // not be read, since an empty list would claim the policy grants nothing.
   policyStatements() []aws.iam.policyStatement
-  // Whether the resource policy grants public access (a wildcard principal with no scoping conditions)
+  // Whether the resource policy grants public access
+  //
+  // True when a statement grants to a wildcard principal with no scoping
+  // conditions. Null when the policy could not be read, so that a denied
+  // read is not reported as a repository that is not public.
   isPublic() bool
   // Lifecycle policy for the repository
   lifecyclePolicy() aws.ecr.lifecyclePolicy
@@ -16335,7 +16427,10 @@ private aws.ecr.repository @defaults("uri region") {
   operatingSystems() []string
   // Architectures from catalog data (public repositories only)
   architectures() []string
-  // AWS resource tags for the repository (private repositories only)
+  // AWS resource tags for the repository
+  //
+  // Tags on private and public repositories alike. Null when the tags could
+  // not be read, since an empty map would claim the repository is untagged.
   tags() map[string]string
   // CloudFormation stack that manages this repository, if any
   cloudformationStack() aws.cloudformation.stack
@@ -17973,6 +18068,14 @@ private aws.ec2.applicationStatusCheck @defaults("id protocol port aggregation")
   createdAt time
   // Time the check was last modified
   lastUpdatedAt time
+  // Time the check was deleted
+  //
+  // Null for a live check. A deleted check stays visible for a grace period
+  // after deletion, so a query that wants only the checks currently guarding an
+  // application should filter on `deletedAt == null`.
+  deletedAt time
+  // Whether the check is deleted and only visible during its grace period
+  deleted bool
   // Resource tags
   tags map[string]string
   // Current per-instance results for this check
@@ -27209,31 +27312,31 @@ private aws.ssm.patchBaseline @defaults("id name operatingSystem") {
   // auto-approved), `complianceLevel` (severity assigned to patches the rule approves),
   // `enableNonSecurity` (whether non-security updates are included), and `patchFilters`
   // (a list of `key`/`values` filters selecting the patches the rule applies to).
-  approvalRules []dict
+  approvalRules() []dict
   // List of explicitly approved patches
-  approvedPatches []string
+  approvedPatches() []string
   // Compliance level for approved patches: CRITICAL, HIGH, MEDIUM, LOW, INFORMATIONAL, UNSPECIFIED
-  approvedPatchesComplianceLevel string
+  approvedPatchesComplianceLevel() string
   // List of explicitly rejected patches
-  rejectedPatches []string
+  rejectedPatches() []string
   // Action for rejected patches: ALLOW_AS_DEPENDENCY or BLOCK
-  rejectedPatchesAction string
+  rejectedPatchesAction() string
   // Global filters for the patch baseline
   //
   // Filters applied to every patch before the approval rules run. Each entry has `key`
   // (the filter attribute, for example `PRODUCT`, `CLASSIFICATION`, or `SEVERITY`) and
   // `values` (the matching values).
-  globalFilters []dict
+  globalFilters() []dict
   // Patch sources
   //
   // Alternate patch repositories for non-default operating systems. Each entry has `name`
   // (the source name), `products` (the products it applies to), and `configuration` (the
   // repository configuration, for example a yum or apt source definition).
-  sources []dict
+  sources() []dict
   // Creation date
-  createdAt time
+  createdAt() time
   // Last modified date
-  modifiedAt time
+  modifiedAt() time
   // Whether approved patches include non-security updates (Linux baselines)
   approvedPatchesEnableNonSecurity() bool
   // Compliance status reported when security patches are available but not yet approved

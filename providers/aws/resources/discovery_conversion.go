@@ -126,6 +126,9 @@ func getPlatformName(awsObject awsObject) string {
 		if awsObject.objectType == "dbcluster" {
 			return "aws-rds-dbcluster"
 		}
+		if awsObject.objectType == "snapshot" {
+			return "aws-rds-snapshot"
+		}
 	case "dynamodb":
 		switch awsObject.objectType {
 		case "table":
@@ -565,6 +568,27 @@ func addConnectionInfoToEc2Asset(instance *mqlAwsEc2Instance, accountId string, 
 		}
 	}
 	return asset
+}
+
+// ec2InstanceIsDiscoverable reports whether an EC2 instance in this state can
+// still be reached by any connection this provider knows how to build.
+//
+// EC2 keeps a terminated instance visible to DescribeInstances for roughly an
+// hour after it goes away. Such an instance has no network interfaces, no
+// volumes and no SSM agent, so addConnectionInfoToEc2Asset attaches no
+// connections to it and every scan reports it as an asset that could not be
+// connected to. It can never transition back, so there is nothing to wait for.
+// An instance shutting down is on its way to the same place.
+//
+// Stopped instances deliberately stay discoverable: they keep their volumes,
+// can be started again, and are still reachable through EBS scanning.
+func ec2InstanceIsDiscoverable(state string) bool {
+	switch state {
+	case string(types.InstanceStateNameTerminated), string(types.InstanceStateNameShuttingDown):
+		return false
+	default:
+		return true
+	}
 }
 
 func mapEc2InstanceStateCode(state string) inventory.State {

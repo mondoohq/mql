@@ -713,7 +713,13 @@ func buildLogGroupResource(runtime *plugin.Runtime, region string, loggroup clou
 	args["arn"] = llx.StringDataPtr(loggroup.Arn)
 	args["name"] = llx.StringDataPtr(loggroup.LogGroupName)
 	args["region"] = llx.StringData(region)
-	args["retentionInDays"] = llx.IntDataDefault(loggroup.RetentionInDays, 0)
+	// CloudWatch signals "never expire" by returning no retention at all.
+	// Defaulting that to 0 made the strongest retention read as the weakest, so
+	// `retentionInDays >= 365` excluded exactly the groups that keep their logs
+	// forever. Null is the honest reading, and neverExpires is what a filter
+	// can assert on directly.
+	args["retentionInDays"] = llx.IntDataPtr(loggroup.RetentionInDays)
+	args["neverExpires"] = llx.BoolData(loggroup.RetentionInDays == nil)
 	args["createdAt"] = llx.TimeDataPtr(int64MillisToTime(loggroup.CreationTime))
 	args["dataProtectionStatus"] = llx.StringData(string(loggroup.DataProtectionStatus))
 	args["deletionProtectionEnabled"] = llx.BoolDataPtr(loggroup.DeletionProtectionEnabled)
@@ -850,8 +856,12 @@ func initAwsCloudwatchLoggroup(runtime *plugin.Runtime, args map[string]*llx.Raw
 		}
 		args["name"] = llx.StringData(groupName)
 		args["region"] = llx.StringData(grpRegion)
-		args["retentionInDays"] = llx.IntData(-1)
-		args["storedBytes"] = llx.IntData(-1)
+		// Nothing about this group was read, so neither field has a value to
+		// report. -1 was a second sentinel for the same field, which arithmetic
+		// accepts as silently as 0 did.
+		args["retentionInDays"] = llx.NilData
+		args["neverExpires"] = llx.NilData
+		args["storedBytes"] = llx.NilData
 		args["dataProtectionStatus"] = llx.StringData("")
 		args["deletionProtectionEnabled"] = llx.BoolData(false)
 		args["logGroupClass"] = llx.StringData("")

@@ -233,9 +233,7 @@ func (a *mqlAwsDynamodbExport) kmsKey() (*mqlAwsKmsKey, error) {
 	}
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	mqlKey, err := NewResource(a.MqlRuntime, "aws.kms.key",
-		map[string]*llx.RawData{
-			"arn": llx.StringData(fmt.Sprintf(kmsKeyArnPattern, a.region, conn.AccountId(), convert.ToValue(exp.S3SseKmsKeyId))),
-		})
+		kmsKeyRefArgs(a.region, conn.AccountId(), convert.ToValue(exp.S3SseKmsKeyId)))
 	if err != nil {
 		return nil, err
 	}
@@ -373,7 +371,7 @@ func initAwsDynamodbTable(runtime *plugin.Runtime, args map[string]*llx.RawData)
 				"arn":    llx.StringData(arnVal),
 				"name":   llx.StringData(tableName),
 				"region": llx.StringData(region),
-				"id":     llx.StringData(""),
+				"id":     llx.NilData,
 			})
 		if err != nil {
 			return nil, nil, err
@@ -443,6 +441,14 @@ type mqlAwsDynamodbTableInternal struct {
 }
 
 func (a *mqlAwsDynamodbTable) sseKmsKey() (*mqlAwsKmsKey, error) {
+	// cacheSseKmsKeyArn is assigned by fetchDetail, so reading it without
+	// fetching first reports null for every table - including one encrypted
+	// with a customer-managed key, which is the case this field exists to
+	// answer. sourceTable, the sibling built on the same cache, already
+	// fetches first.
+	if err := a.fetchDetail(); err != nil {
+		return nil, err
+	}
 	if a.cacheSseKmsKeyArn == nil || *a.cacheSseKmsKeyArn == "" {
 		a.SseKmsKey.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
@@ -613,7 +619,7 @@ func (a *mqlAwsDynamodb) getTables(conn *connection.AwsConnection) []*jobpool.Jo
 							"arn":    llx.StringData(fmt.Sprintf(dynamoTableArnPattern, region, conn.AccountId(), tableName)),
 							"name":   llx.StringData(tableName),
 							"region": llx.StringData(region),
-							"id":     llx.StringData(""),
+							"id":     llx.NilData,
 						})
 					if err != nil {
 						return nil, err
@@ -681,7 +687,7 @@ func (a *mqlAwsDynamodbTable) fetchDetail() error {
 	a.CreatedAt = plugin.TValue[*time.Time]{Data: table.Table.CreationDateTime, State: plugin.StateIsSet}
 	a.DeletionProtectionEnabled = plugin.TValue[bool]{Data: convert.ToValue(table.Table.DeletionProtectionEnabled), State: plugin.StateIsSet}
 	a.GlobalTableVersion = plugin.TValue[string]{Data: convert.ToValue(table.Table.GlobalTableVersion), State: plugin.StateIsSet}
-	a.Id = plugin.TValue[string]{Data: convert.ToValue(table.Table.TableId), State: plugin.StateIsSet}
+	a.TableId = plugin.TValue[string]{Data: convert.ToValue(table.Table.TableId), State: plugin.StateIsSet}
 	a.SizeBytes = plugin.TValue[int64]{Data: convert.ToValue(table.Table.TableSizeBytes), State: plugin.StateIsSet}
 	a.Status = plugin.TValue[string]{Data: string(table.Table.TableStatus), State: plugin.StateIsSet}
 	a.Items = plugin.TValue[int64]{Data: convert.ToValue(table.Table.ItemCount), State: plugin.StateIsSet}
@@ -1043,6 +1049,19 @@ func (a *mqlAwsDynamodbTable) pitrRecoveryPeriodInDays() (int64, error) {
 
 func (a *mqlAwsDynamodbGlobaltable) id() (string, error) {
 	return a.Arn.Data, nil
+}
+
+// tableId returns the identifier AWS assigns the table.
+//
+// ListTables reports only names, so the identifier costs a DescribeTable. The
+// old plain id field was set to "" at creation time and, because a plain field
+// is already StateIsSet, the runtime never called fetchDetail to replace it --
+// every table reported an empty identifier as though that were the value.
+func (a *mqlAwsDynamodbTable) tableId() (string, error) {
+	if err := a.fetchDetail(); err != nil {
+		return "", err
+	}
+	return a.TableId.Data, nil
 }
 
 func (a *mqlAwsDynamodbTable) id() (string, error) {

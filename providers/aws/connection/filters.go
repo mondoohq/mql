@@ -10,6 +10,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/util/filteropts"
 )
 
@@ -59,20 +60,45 @@ func DiscoveryFiltersFromOpts(opts map[string]string) DiscoveryFilters {
 		AccountTags:          parseMapOpt(opts, "account-tag:"),
 	}
 
-	// TODO: backward compatibility, remove in future versions
-	ec2Tags := parseMapOpt(opts, "ec2:tag:")
-	ec2ExcludeTags := parseMapOpt(opts, "ec2:exclude:tag:")
-	for k, v := range ec2Tags {
-		if _, exists := d.General.Tags[k]; !exists {
-			d.General.Tags[k] = v
-		}
-	}
-	for k, v := range ec2ExcludeTags {
-		if _, exists := d.General.ExcludeTags[k]; !exists {
-			d.General.ExcludeTags[k] = v
-		}
-	}
+	// FIXME: DEPRECATED, remove in v15.0 vv
+	// `ec2:tag:` and `ec2:exclude:tag:` were folded into the general `tag:` and
+	// `exclude:tag:` filters. They still apply, but warn, so the removal lands
+	// on users who have already been told rather than silently dropping a
+	// filter they rely on to scope a scan.
+	mergeDeprecatedTagOpt("ec2:tag:", "tag:", parseMapOpt(opts, "ec2:tag:"), d.General.Tags)
+	mergeDeprecatedTagOpt("ec2:exclude:tag:", "exclude:tag:", parseMapOpt(opts, "ec2:exclude:tag:"), d.General.ExcludeTags)
+	// ^^
 	return d
+}
+
+// mergeDeprecatedTagOpt folds a retired `ec2:`-prefixed tag filter into its
+// general replacement, warning that the option is deprecated. The replacement
+// wins on conflict, so a key carrying a different value under each option gets
+// a second warning naming the value being dropped.
+// FIXME: DEPRECATED, remove in v15.0 vv
+func mergeDeprecatedTagOpt(deprecated, replacement string, from, into map[string]string) {
+	if len(from) == 0 {
+		return
+	}
+
+	log.Warn().
+		Str("option", deprecated).
+		Str("use", replacement).
+		Msg("deprecated AWS discovery filter, please switch to the replacement")
+
+	for k, v := range from {
+		if existing, exists := into[k]; exists {
+			if existing != v {
+				log.Warn().
+					Str("option", deprecated+k).
+					Str("ignored", v).
+					Str("using", existing).
+					Msg("filter key set by both the deprecated and the replacement option, the deprecated value is ignored")
+			}
+			continue
+		}
+		into[k] = v
+	}
 }
 
 type GeneralDiscoveryFilters struct {
