@@ -11357,7 +11357,7 @@ aws.waf.acl.loggingConfiguration.managedByFirewallManager 11.16.1
 aws.waf.acl.loggingConfiguration.redactedFields 11.16.1
 aws.waf.acl.managedByFirewallManager 11.15.2
 aws.waf.acl.name 11.15.2
-aws.waf.acl.region 13.53.4
+aws.waf.acl.region 13.53.5
 aws.waf.acl.rules 11.15.2
 aws.waf.acl.scope 11.15.2
 aws.waf.acl.tags 13.49.1
@@ -11373,7 +11373,7 @@ aws.waf.ipset.arn 11.15.2
 aws.waf.ipset.description 11.15.2
 aws.waf.ipset.id 11.15.2
 aws.waf.ipset.name 11.15.2
-aws.waf.ipset.region 13.53.4
+aws.waf.ipset.region 13.53.5
 aws.waf.ipset.scope 11.15.2
 aws.waf.ipset.tags 13.49.1
 aws.waf.regexPatternSet 11.16.1
@@ -11381,7 +11381,7 @@ aws.waf.regexPatternSet.arn 11.16.1
 aws.waf.regexPatternSet.description 11.16.1
 aws.waf.regexPatternSet.id 11.16.1
 aws.waf.regexPatternSet.name 11.16.1
-aws.waf.regexPatternSet.region 13.53.4
+aws.waf.regexPatternSet.region 13.53.5
 aws.waf.regexPatternSet.regularExpressions 11.16.1
 aws.waf.regexPatternSet.scope 11.16.1
 aws.waf.regexPatternSet.tags 13.49.1
@@ -11568,7 +11568,7 @@ aws.waf.rulegroup.arn 11.15.2
 aws.waf.rulegroup.description 11.15.2
 aws.waf.rulegroup.id 11.15.2
 aws.waf.rulegroup.name 11.15.2
-aws.waf.rulegroup.region 13.53.4
+aws.waf.rulegroup.region 13.53.5
 aws.waf.rulegroup.rules 11.15.2
 aws.waf.rulegroup.scope 11.15.2
 aws.waf.rulegroup.tags 13.49.1
