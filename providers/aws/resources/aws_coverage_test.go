@@ -13,7 +13,7 @@ import (
 	waftypes "github.com/aws/aws-sdk-go-v2/service/wafv2/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
 )
 
 // TestCloudfrontOriginTls covers the origin leg of a CloudFront distribution.
@@ -194,7 +194,7 @@ func TestArchiveRuleFilterToDict(t *testing.T) {
 // check must not fall through to reading the policy.
 func TestOpensearchDomainIsPublicInVpc(t *testing.T) {
 	domain := &mqlAwsOpensearchDomain{}
-	domain.cacheVpcId = "vpc-0123456789abcdef0"
+	domain.VpcId = plugin.TValue[string]{Data: "vpc-0123456789abcdef0", State: plugin.StateIsSet}
 	// PolicyStatements is deliberately left unset: reaching it would mean the
 	// VPC short-circuit did not fire.
 	got, err := domain.isPublic()

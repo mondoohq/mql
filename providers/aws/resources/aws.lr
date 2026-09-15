@@ -7307,7 +7307,7 @@ private aws.elb.loadbalancer.attribute {
   // reports a boolean and covers classic load balancers as well. Value of the
   // `load_balancing.cross_zone.enabled` attribute, either `true` or `false`.
   // Always `true` for application load balancers.
-  crossZoneEnabled @maturity("deprecated") @replaced_by("aws.elb.loadbalancer.crossZoneLoadBalancing") string
+  crossZoneEnabled @maturity("deprecated") string
   // Whether access logs are enabled
   accessLogsEnabled bool
   // S3 bucket for access logs
@@ -21264,7 +21264,7 @@ aws.eks.cluster @defaults("arn version status") {
   // every Kubernetes API object by default on clusters running Kubernetes
   // 1.28 or later, so this list no longer determines what is encrypted and
   // reads empty on clusters that are in fact encrypted.
-  encryptionResources() @maturity("deprecated") @replaced_by("aws.eks.cluster.encryptionKmsKey") []string
+  encryptionResources() @maturity("deprecated") []string
   // Cluster logging configuration
   //
   // Contains a `ClusterLogging` list, where each entry has `Enabled` and a

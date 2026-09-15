@@ -11,11 +11,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/kinesis"
 	kinesis_types "github.com/aws/aws-sdk-go-v2/service/kinesis/types"
 	"github.com/rs/zerolog/log"
-	"go.mondoo.com/mql/llx"
-	"go.mondoo.com/mql/providers-sdk/v1/plugin"
-	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
-	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
-	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/v13/llx"
+	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
+	"go.mondoo.com/mql/v13/providers-sdk/v1/util/jobpool"
+	"go.mondoo.com/mql/v13/providers/aws/connection"
 )
 
 // channelDescribeConcurrency caps the per-region fan-out of DescribeChannel
@@ -280,11 +280,21 @@ func (a *mqlAwsKinesisChannel) kmsKey() (*mqlAwsKmsKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	if desc == nil || desc.EncryptionConfiguration == nil {
+	keyID := ""
+	if desc != nil && desc.EncryptionConfiguration != nil {
+		keyID = convert.ToValue(desc.EncryptionConfiguration.KeyId)
+	}
+	if keyID == "" {
 		a.KmsKey.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	return resolveKmsKeyRef(a.MqlRuntime, desc.EncryptionConfiguration.KeyId, a.cacheRegion, &a.KmsKey.State)
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	res, err := NewResource(a.MqlRuntime, "aws.kms.key",
+		kmsKeyRefArgs(a.cacheRegion, conn.AccountId(), keyID))
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsKmsKey), nil
 }
 
 // cloudWatchLogs returns the logging block, or nil when the channel reports

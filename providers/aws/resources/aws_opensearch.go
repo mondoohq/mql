@@ -480,7 +480,11 @@ func (a *mqlAwsOpensearchDomain) policyStatements() ([]any, error) {
 // access policy grants a wildcard principal access that is not scoped by a
 // source-restricting condition.
 func (a *mqlAwsOpensearchDomain) isPublic() (bool, error) {
-	if a.cacheVpcId != "" {
+	vpcId := a.GetVpcId()
+	if vpcId.Error != nil {
+		return false, vpcId.Error
+	}
+	if vpcId.Data != "" {
 		return esDomainIsPublic(true, false), nil
 	}
 	policyAllowsPublic, err := resourceIsPublic(a.GetPolicyStatements())

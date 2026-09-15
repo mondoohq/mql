@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	iamtypes "github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
-	"go.mondoo.com/mql/providers/aws/connection"
+	"go.mondoo.com/mql/v13/providers/aws/connection"
 )
 
 // isRootAccessNotConfigured reports whether the error means centralized root
