@@ -9760,6 +9760,28 @@ private aws.ecs.service.deploymentConfiguration @defaults("maximumPercent minimu
   linearConfiguration dict
   // Deployment strategy
   strategy string
+  // Whether the deployment completes on early success criteria
+  //
+  // When true, Amazon ECS completes the deployment once the target service
+  // revision reaches earlySuccessCriteriaHealthyPercent and the bake time
+  // elapses, then scales that revision to 100 percent in the background. When
+  // false, the deployment completes only after the revision fully stabilizes
+  // and the previous tasks are removed. Null when the deployment sets no early
+  // success criteria.
+  earlySuccessCriteriaEnabled bool
+  // Percentage of healthy tasks that completes the deployment early
+  //
+  // Relative to the service desiredCount, between 0 and 100, and never below
+  // minimumHealthyPercent. Null when the deployment sets no early success
+  // criteria.
+  earlySuccessCriteriaHealthyPercent int
+  // When the previous service revision is cleaned up
+  //
+  // The API calls this sourceServiceRevisionCleanup. One of BLOCKING, which
+  // removes the previous revision before the deployment completes, or
+  // DEFERRED, which leaves the removal to run after it. Null when the
+  // deployment sets no early success criteria.
+  earlySuccessCriteriaRevisionCleanup string
 }
 
 // Amazon ECS Service Deployment Circuit Breaker

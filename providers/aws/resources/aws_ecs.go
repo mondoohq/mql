@@ -2296,6 +2296,19 @@ func createDeploymentConfigurationResource(runtime *plugin.Runtime, dc *ecstypes
 		"bakeTimeInMinutes":     llx.IntDataPtr(dc.BakeTimeInMinutes),
 		"strategy":              llx.StringData(string(dc.Strategy)),
 	}
+	// A deployment that sets no early success criteria reports the three fields
+	// as null rather than as false/0/"": `enable: false` is a legitimate
+	// reading, so a zero value here would report "criteria configured and
+	// turned off" for a service that configured nothing.
+	if esc := dc.EarlySuccessCriteria; esc != nil {
+		args["earlySuccessCriteriaEnabled"] = llx.BoolData(esc.Enable)
+		args["earlySuccessCriteriaHealthyPercent"] = llx.IntDataPtr(esc.HealthyPercent)
+		args["earlySuccessCriteriaRevisionCleanup"] = llx.StringData(string(esc.SourceServiceRevisionCleanup))
+	} else {
+		args["earlySuccessCriteriaEnabled"] = llx.NilData
+		args["earlySuccessCriteriaHealthyPercent"] = llx.NilData
+		args["earlySuccessCriteriaRevisionCleanup"] = llx.NilData
+	}
 	// Always set deploymentCircuitBreaker, even if nil
 	if circuitBreakerResource != nil {
 		args["deploymentCircuitBreaker"] = llx.ResourceData(circuitBreakerResource.(plugin.Resource), ResourceAwsEcsServiceDeploymentConfigurationDeploymentCircuitBreaker)
