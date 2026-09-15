@@ -234,6 +234,7 @@ use (
    ./mql/providers/auth0
    ./mql/providers/aws
    ./mql/providers/azure
+   ./mql/providers/bitbucket
    ./mql/providers/bitwarden
    ./mql/providers/cassandra
    ./mql/providers/claude
