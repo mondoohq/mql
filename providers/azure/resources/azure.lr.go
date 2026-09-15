@@ -26,6 +26,11 @@ const (
 	ResourceAzureSubscriptionResource                                                                   string = "azure.subscription.resource"
 	ResourceAzureSubscriptionSystemData                                                                 string = "azure.subscription.systemData"
 	ResourceAzureSubscriptionDeployment                                                                 string = "azure.subscription.deployment"
+	ResourceAzureSubscriptionDeploymentTemplateSource                                                   string = "azure.subscription.deployment.templateSource"
+	ResourceAzureSubscriptionDeploymentProvisionedResource                                              string = "azure.subscription.deployment.provisionedResource"
+	ResourceAzureSubscriptionDeploymentDiagnostic                                                       string = "azure.subscription.deployment.diagnostic"
+	ResourceAzureSubscriptionDeploymentExtension                                                        string = "azure.subscription.deployment.extension"
+	ResourceAzureSubscriptionDeploymentDependency                                                       string = "azure.subscription.deployment.dependency"
 	ResourceAzureSubscriptionComputeService                                                             string = "azure.subscription.computeService"
 	ResourceAzureSubscriptionComputeServiceVm                                                           string = "azure.subscription.computeService.vm"
 	ResourceAzureSubscriptionComputeServiceVmImageReference                                             string = "azure.subscription.computeService.vm.imageReference"
@@ -639,6 +644,26 @@ func init() {
 		"azure.subscription.deployment": {
 			// to override args, implement: initAzureSubscriptionDeployment(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAzureSubscriptionDeployment,
+		},
+		"azure.subscription.deployment.templateSource": {
+			// to override args, implement: initAzureSubscriptionDeploymentTemplateSource(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionDeploymentTemplateSource,
+		},
+		"azure.subscription.deployment.provisionedResource": {
+			// to override args, implement: initAzureSubscriptionDeploymentProvisionedResource(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionDeploymentProvisionedResource,
+		},
+		"azure.subscription.deployment.diagnostic": {
+			// to override args, implement: initAzureSubscriptionDeploymentDiagnostic(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionDeploymentDiagnostic,
+		},
+		"azure.subscription.deployment.extension": {
+			// to override args, implement: initAzureSubscriptionDeploymentExtension(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionDeploymentExtension,
+		},
+		"azure.subscription.deployment.dependency": {
+			// to override args, implement: initAzureSubscriptionDeploymentDependency(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAzureSubscriptionDeploymentDependency,
 		},
 		"azure.subscription.computeService": {
 			Init:   initAzureSubscriptionComputeService,
@@ -3427,6 +3452,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.deployment.templateLink": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionDeployment).GetTemplateLink()).ToDataRes(types.String)
 	},
+	"azure.subscription.deployment.template": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeployment).GetTemplate()).ToDataRes(types.Resource("azure.subscription.deployment.templateSource"))
+	},
 	"azure.subscription.deployment.parametersLink": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionDeployment).GetParametersLink()).ToDataRes(types.String)
 	},
@@ -3442,11 +3470,95 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.deployment.outputResources": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionDeployment).GetOutputResources()).ToDataRes(types.Array(types.String))
 	},
+	"azure.subscription.deployment.provisionedResources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeployment).GetProvisionedResources()).ToDataRes(types.Array(types.Resource("azure.subscription.deployment.provisionedResource")))
+	},
+	"azure.subscription.deployment.diagnostics": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeployment).GetDiagnostics()).ToDataRes(types.Array(types.Resource("azure.subscription.deployment.diagnostic")))
+	},
+	"azure.subscription.deployment.extensions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeployment).GetExtensions()).ToDataRes(types.Array(types.Resource("azure.subscription.deployment.extension")))
+	},
+	"azure.subscription.deployment.dependencies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeployment).GetDependencies()).ToDataRes(types.Array(types.Resource("azure.subscription.deployment.dependency")))
+	},
 	"azure.subscription.deployment.error": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionDeployment).GetError()).ToDataRes(types.Dict)
 	},
 	"azure.subscription.deployment.systemMetadata": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionDeployment).GetSystemMetadata()).ToDataRes(types.Resource("azure.subscription.systemData"))
+	},
+	"azure.subscription.deployment.templateSource.templateSpecId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentTemplateSource).GetTemplateSpecId()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.templateSource.uri": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentTemplateSource).GetUri()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.templateSource.contentVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentTemplateSource).GetContentVersion()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.templateSource.relativePath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentTemplateSource).GetRelativePath()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.provisionedResource.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentProvisionedResource).GetId()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.provisionedResource.resourceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentProvisionedResource).GetResourceType()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.provisionedResource.apiVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentProvisionedResource).GetApiVersion()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.provisionedResource.symbolicNamePath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentProvisionedResource).GetSymbolicNamePath()).ToDataRes(types.Array(types.String))
+	},
+	"azure.subscription.deployment.provisionedResource.identifiers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentProvisionedResource).GetIdentifiers()).ToDataRes(types.Dict)
+	},
+	"azure.subscription.deployment.provisionedResource.extension": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentProvisionedResource).GetExtension()).ToDataRes(types.Resource("azure.subscription.deployment.extension"))
+	},
+	"azure.subscription.deployment.diagnostic.level": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentDiagnostic).GetLevel()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.diagnostic.code": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentDiagnostic).GetCode()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.diagnostic.message": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentDiagnostic).GetMessage()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.diagnostic.target": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentDiagnostic).GetTarget()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.diagnostic.additionalInfo": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentDiagnostic).GetAdditionalInfo()).ToDataRes(types.Array(types.Dict))
+	},
+	"azure.subscription.deployment.extension.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentExtension).GetName()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.extension.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentExtension).GetVersion()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.extension.alias": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentExtension).GetAlias()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.extension.configId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentExtension).GetConfigId()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.extension.configHash": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentExtension).GetConfigHash()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.dependency.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentDependency).GetId()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.dependency.resourceName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentDependency).GetResourceName()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.dependency.resourceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentDependency).GetResourceType()).ToDataRes(types.String)
+	},
+	"azure.subscription.deployment.dependency.dependsOn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionDeploymentDependency).GetDependsOn()).ToDataRes(types.Array(types.Resource("azure.subscription.deployment.dependency")))
 	},
 	"azure.subscription.computeService.subscriptionId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionComputeService).GetSubscriptionId()).ToDataRes(types.String)
@@ -24195,6 +24307,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionDeployment).TemplateLink, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.deployment.template": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeployment).Template, ok = plugin.RawToTValue[*mqlAzureSubscriptionDeploymentTemplateSource](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.deployment.parametersLink": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionDeployment).ParametersLink, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -24215,12 +24331,144 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionDeployment).OutputResources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.deployment.provisionedResources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeployment).ProvisionedResources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.diagnostics": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeployment).Diagnostics, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.extensions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeployment).Extensions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.dependencies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeployment).Dependencies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.deployment.error": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionDeployment).Error, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.deployment.systemMetadata": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionDeployment).SystemMetadata, ok = plugin.RawToTValue[*mqlAzureSubscriptionSystemData](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.templateSource.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentTemplateSource).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.deployment.templateSource.templateSpecId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentTemplateSource).TemplateSpecId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.templateSource.uri": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentTemplateSource).Uri, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.templateSource.contentVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentTemplateSource).ContentVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.templateSource.relativePath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentTemplateSource).RelativePath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.provisionedResource.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentProvisionedResource).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.deployment.provisionedResource.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentProvisionedResource).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.provisionedResource.resourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentProvisionedResource).ResourceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.provisionedResource.apiVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentProvisionedResource).ApiVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.provisionedResource.symbolicNamePath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentProvisionedResource).SymbolicNamePath, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.provisionedResource.identifiers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentProvisionedResource).Identifiers, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.provisionedResource.extension": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentProvisionedResource).Extension, ok = plugin.RawToTValue[*mqlAzureSubscriptionDeploymentExtension](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.diagnostic.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentDiagnostic).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.deployment.diagnostic.level": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentDiagnostic).Level, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.diagnostic.code": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentDiagnostic).Code, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.diagnostic.message": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentDiagnostic).Message, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.diagnostic.target": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentDiagnostic).Target, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.diagnostic.additionalInfo": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentDiagnostic).AdditionalInfo, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.extension.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentExtension).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.deployment.extension.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentExtension).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.extension.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentExtension).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.extension.alias": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentExtension).Alias, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.extension.configId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentExtension).ConfigId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.extension.configHash": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentExtension).ConfigHash, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.dependency.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentDependency).__id, ok = v.Value.(string)
+		return
+	},
+	"azure.subscription.deployment.dependency.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentDependency).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.dependency.resourceName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentDependency).ResourceName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.dependency.resourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentDependency).ResourceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.deployment.dependency.dependsOn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionDeploymentDependency).DependsOn, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.computeService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -55179,11 +55427,16 @@ type mqlAzureSubscriptionDeployment struct {
 	OnErrorDeploymentName plugin.TValue[string]
 	ValidationLevel       plugin.TValue[string]
 	TemplateLink          plugin.TValue[string]
+	Template              plugin.TValue[*mqlAzureSubscriptionDeploymentTemplateSource]
 	ParametersLink        plugin.TValue[string]
 	Parameters            plugin.TValue[any]
 	Outputs               plugin.TValue[any]
 	Providers             plugin.TValue[[]any]
 	OutputResources       plugin.TValue[[]any]
+	ProvisionedResources  plugin.TValue[[]any]
+	Diagnostics           plugin.TValue[[]any]
+	Extensions            plugin.TValue[[]any]
+	Dependencies          plugin.TValue[[]any]
 	Error                 plugin.TValue[any]
 	SystemMetadata        plugin.TValue[*mqlAzureSubscriptionSystemData]
 }
@@ -55289,6 +55542,10 @@ func (c *mqlAzureSubscriptionDeployment) GetTemplateLink() *plugin.TValue[string
 	return &c.TemplateLink
 }
 
+func (c *mqlAzureSubscriptionDeployment) GetTemplate() *plugin.TValue[*mqlAzureSubscriptionDeploymentTemplateSource] {
+	return &c.Template
+}
+
 func (c *mqlAzureSubscriptionDeployment) GetParametersLink() *plugin.TValue[string] {
 	return &c.ParametersLink
 }
@@ -55309,6 +55566,22 @@ func (c *mqlAzureSubscriptionDeployment) GetOutputResources() *plugin.TValue[[]a
 	return &c.OutputResources
 }
 
+func (c *mqlAzureSubscriptionDeployment) GetProvisionedResources() *plugin.TValue[[]any] {
+	return &c.ProvisionedResources
+}
+
+func (c *mqlAzureSubscriptionDeployment) GetDiagnostics() *plugin.TValue[[]any] {
+	return &c.Diagnostics
+}
+
+func (c *mqlAzureSubscriptionDeployment) GetExtensions() *plugin.TValue[[]any] {
+	return &c.Extensions
+}
+
+func (c *mqlAzureSubscriptionDeployment) GetDependencies() *plugin.TValue[[]any] {
+	return &c.Dependencies
+}
+
 func (c *mqlAzureSubscriptionDeployment) GetError() *plugin.TValue[any] {
 	return &c.Error
 }
@@ -55327,6 +55600,321 @@ func (c *mqlAzureSubscriptionDeployment) GetSystemMetadata() *plugin.TValue[*mql
 
 		return c.systemMetadata()
 	})
+}
+
+// mqlAzureSubscriptionDeploymentTemplateSource for the azure.subscription.deployment.templateSource resource
+type mqlAzureSubscriptionDeploymentTemplateSource struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionDeploymentTemplateSourceInternal it will be used here
+	TemplateSpecId plugin.TValue[string]
+	Uri            plugin.TValue[string]
+	ContentVersion plugin.TValue[string]
+	RelativePath   plugin.TValue[string]
+}
+
+// createAzureSubscriptionDeploymentTemplateSource creates a new instance of this resource
+func createAzureSubscriptionDeploymentTemplateSource(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionDeploymentTemplateSource{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.deployment.templateSource", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionDeploymentTemplateSource) MqlName() string {
+	return "azure.subscription.deployment.templateSource"
+}
+
+func (c *mqlAzureSubscriptionDeploymentTemplateSource) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionDeploymentTemplateSource) GetTemplateSpecId() *plugin.TValue[string] {
+	return &c.TemplateSpecId
+}
+
+func (c *mqlAzureSubscriptionDeploymentTemplateSource) GetUri() *plugin.TValue[string] {
+	return &c.Uri
+}
+
+func (c *mqlAzureSubscriptionDeploymentTemplateSource) GetContentVersion() *plugin.TValue[string] {
+	return &c.ContentVersion
+}
+
+func (c *mqlAzureSubscriptionDeploymentTemplateSource) GetRelativePath() *plugin.TValue[string] {
+	return &c.RelativePath
+}
+
+// mqlAzureSubscriptionDeploymentProvisionedResource for the azure.subscription.deployment.provisionedResource resource
+type mqlAzureSubscriptionDeploymentProvisionedResource struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionDeploymentProvisionedResourceInternal it will be used here
+	Id               plugin.TValue[string]
+	ResourceType     plugin.TValue[string]
+	ApiVersion       plugin.TValue[string]
+	SymbolicNamePath plugin.TValue[[]any]
+	Identifiers      plugin.TValue[any]
+	Extension        plugin.TValue[*mqlAzureSubscriptionDeploymentExtension]
+}
+
+// createAzureSubscriptionDeploymentProvisionedResource creates a new instance of this resource
+func createAzureSubscriptionDeploymentProvisionedResource(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionDeploymentProvisionedResource{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.deployment.provisionedResource", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionDeploymentProvisionedResource) MqlName() string {
+	return "azure.subscription.deployment.provisionedResource"
+}
+
+func (c *mqlAzureSubscriptionDeploymentProvisionedResource) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionDeploymentProvisionedResource) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzureSubscriptionDeploymentProvisionedResource) GetResourceType() *plugin.TValue[string] {
+	return &c.ResourceType
+}
+
+func (c *mqlAzureSubscriptionDeploymentProvisionedResource) GetApiVersion() *plugin.TValue[string] {
+	return &c.ApiVersion
+}
+
+func (c *mqlAzureSubscriptionDeploymentProvisionedResource) GetSymbolicNamePath() *plugin.TValue[[]any] {
+	return &c.SymbolicNamePath
+}
+
+func (c *mqlAzureSubscriptionDeploymentProvisionedResource) GetIdentifiers() *plugin.TValue[any] {
+	return &c.Identifiers
+}
+
+func (c *mqlAzureSubscriptionDeploymentProvisionedResource) GetExtension() *plugin.TValue[*mqlAzureSubscriptionDeploymentExtension] {
+	return &c.Extension
+}
+
+// mqlAzureSubscriptionDeploymentDiagnostic for the azure.subscription.deployment.diagnostic resource
+type mqlAzureSubscriptionDeploymentDiagnostic struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionDeploymentDiagnosticInternal it will be used here
+	Level          plugin.TValue[string]
+	Code           plugin.TValue[string]
+	Message        plugin.TValue[string]
+	Target         plugin.TValue[string]
+	AdditionalInfo plugin.TValue[[]any]
+}
+
+// createAzureSubscriptionDeploymentDiagnostic creates a new instance of this resource
+func createAzureSubscriptionDeploymentDiagnostic(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionDeploymentDiagnostic{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.deployment.diagnostic", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionDeploymentDiagnostic) MqlName() string {
+	return "azure.subscription.deployment.diagnostic"
+}
+
+func (c *mqlAzureSubscriptionDeploymentDiagnostic) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionDeploymentDiagnostic) GetLevel() *plugin.TValue[string] {
+	return &c.Level
+}
+
+func (c *mqlAzureSubscriptionDeploymentDiagnostic) GetCode() *plugin.TValue[string] {
+	return &c.Code
+}
+
+func (c *mqlAzureSubscriptionDeploymentDiagnostic) GetMessage() *plugin.TValue[string] {
+	return &c.Message
+}
+
+func (c *mqlAzureSubscriptionDeploymentDiagnostic) GetTarget() *plugin.TValue[string] {
+	return &c.Target
+}
+
+func (c *mqlAzureSubscriptionDeploymentDiagnostic) GetAdditionalInfo() *plugin.TValue[[]any] {
+	return &c.AdditionalInfo
+}
+
+// mqlAzureSubscriptionDeploymentExtension for the azure.subscription.deployment.extension resource
+type mqlAzureSubscriptionDeploymentExtension struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionDeploymentExtensionInternal it will be used here
+	Name       plugin.TValue[string]
+	Version    plugin.TValue[string]
+	Alias      plugin.TValue[string]
+	ConfigId   plugin.TValue[string]
+	ConfigHash plugin.TValue[string]
+}
+
+// createAzureSubscriptionDeploymentExtension creates a new instance of this resource
+func createAzureSubscriptionDeploymentExtension(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionDeploymentExtension{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.deployment.extension", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionDeploymentExtension) MqlName() string {
+	return "azure.subscription.deployment.extension"
+}
+
+func (c *mqlAzureSubscriptionDeploymentExtension) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionDeploymentExtension) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlAzureSubscriptionDeploymentExtension) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlAzureSubscriptionDeploymentExtension) GetAlias() *plugin.TValue[string] {
+	return &c.Alias
+}
+
+func (c *mqlAzureSubscriptionDeploymentExtension) GetConfigId() *plugin.TValue[string] {
+	return &c.ConfigId
+}
+
+func (c *mqlAzureSubscriptionDeploymentExtension) GetConfigHash() *plugin.TValue[string] {
+	return &c.ConfigHash
+}
+
+// mqlAzureSubscriptionDeploymentDependency for the azure.subscription.deployment.dependency resource
+type mqlAzureSubscriptionDeploymentDependency struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAzureSubscriptionDeploymentDependencyInternal it will be used here
+	Id           plugin.TValue[string]
+	ResourceName plugin.TValue[string]
+	ResourceType plugin.TValue[string]
+	DependsOn    plugin.TValue[[]any]
+}
+
+// createAzureSubscriptionDeploymentDependency creates a new instance of this resource
+func createAzureSubscriptionDeploymentDependency(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAzureSubscriptionDeploymentDependency{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("azure.subscription.deployment.dependency", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAzureSubscriptionDeploymentDependency) MqlName() string {
+	return "azure.subscription.deployment.dependency"
+}
+
+func (c *mqlAzureSubscriptionDeploymentDependency) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAzureSubscriptionDeploymentDependency) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlAzureSubscriptionDeploymentDependency) GetResourceName() *plugin.TValue[string] {
+	return &c.ResourceName
+}
+
+func (c *mqlAzureSubscriptionDeploymentDependency) GetResourceType() *plugin.TValue[string] {
+	return &c.ResourceType
+}
+
+func (c *mqlAzureSubscriptionDeploymentDependency) GetDependsOn() *plugin.TValue[[]any] {
+	return &c.DependsOn
 }
 
 // mqlAzureSubscriptionComputeService for the azure.subscription.computeService resource

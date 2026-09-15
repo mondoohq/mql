@@ -497,9 +497,10 @@ private azure.subscription.systemData @defaults("createdBy createdAt lastModifie
 // updates a set of resources from a template. The deployment reports its
 // provisioning state and completion timestamp, the deployment mode, the
 // template and parameters used, the resources it produced through
-// `outputResources`, and the `correlationId` that links it to the activity
-// log events it generated. Query this to trace which deployment created or
-// last changed a group of resources.
+// `provisionedResources`, the validation findings it carried in
+// `diagnostics`, and the `correlationId` that links it to the activity log
+// events it generated. Query this to trace which deployment created or last
+// changed a group of resources.
 private azure.subscription.deployment @defaults("name provisioningState timestamp") {
   // Deployment ID
   id string
@@ -554,7 +555,15 @@ private azure.subscription.deployment @defaults("name provisioningState timestam
   // actual access.
   validationLevel string
   // URI of the linked template, when the deployment used one
-  templateLink string
+  //
+  // Deprecated in favor of template, which carries the URI alongside the
+  // Template Spec ID and content version of the same template.
+  templateLink @maturity("deprecated") string
+  // Template the deployment ran
+  //
+  // Where the deployment got its template from. Null when the template was
+  // supplied inline with the deployment request rather than linked.
+  template azure.subscription.deployment.templateSource
   // URI of the linked parameters file, when the deployment used one
   parametersLink string
   // Parameters supplied to the deployment
@@ -575,7 +584,35 @@ private azure.subscription.deployment @defaults("name provisioningState timestam
   // `resourceTypes` list of the provider's resource types.
   providers []dict
   // IDs of the resources provisioned or updated by the deployment
-  outputResources []string
+  //
+  // Deprecated in favor of provisionedResources, which carries the resource
+  // type and API version of each entry alongside its ID.
+  outputResources @maturity("deprecated") []string
+  // Resources the deployment provisioned or updated
+  //
+  // One entry per resource the deployment produced, carrying the resource
+  // type and the API version the template was written against as well as
+  // the ID.
+  provisionedResources []azure.subscription.deployment.provisionedResource
+  // Findings Azure Resource Manager raised while validating the template
+  //
+  // Retained on the deployment after it finished. A deployment can report a
+  // provisioningState of Succeeded while carrying Error level findings, so
+  // the level of each entry says whether the deployment went ahead over a
+  // validation failure. Empty when validation raised nothing.
+  diagnostics []azure.subscription.deployment.diagnostic
+  // Deployment extensions the template used
+  //
+  // Extensions provision resources outside Azure Resource Manager, so this
+  // is the set of external systems the deployment reached into. Empty for a
+  // template that deploys only Azure resources.
+  extensions []azure.subscription.deployment.extension
+  // Dependency graph the deployment resolved from the template
+  //
+  // Each entry names a resource the deployment waited on, with the
+  // resources that entry in turn waited on under dependsOn. Empty when the
+  // template declared no dependencies.
+  dependencies []azure.subscription.deployment.dependency
   // Error details when the deployment failed
   //
   // Null on a successful deployment. When present, an object with `code`,
@@ -584,6 +621,127 @@ private azure.subscription.deployment @defaults("name provisioningState timestam
   error dict
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+}
+
+// Source of the template an Azure Resource Manager deployment ran
+//
+// Where a linked deployment template came from. A deployment naming a
+// Template Spec ran a versioned artifact held in the subscription, where one
+// naming a URI ran whatever that location served at the time, so this is the
+// distinction a check on how infrastructure reaches production is looking
+// for. The query string of the URI is not reported: it carries the SAS token
+// the template was fetched with.
+private azure.subscription.deployment.templateSource @defaults("templateSpecId uri contentVersion") {
+  // Resource ID of the Template Spec the template came from
+  //
+  // Null when the template was linked by URI instead.
+  templateSpecId string
+  // URI the template was fetched from, without its query string
+  //
+  // Null when the template came from a Template Spec instead. The query
+  // string is removed because a template held in blob storage is linked
+  // with the SAS token that reads it.
+  uri string
+  // Content version the linked template had to match
+  //
+  // Null when the deployment accepted whatever version the link resolved to.
+  contentVersion string
+  // Path of the template relative to its parent
+  //
+  // Set on a nested deployment whose template was resolved relative to the
+  // parent template, either inside a Template Spec or under the parent URI.
+  relativePath string
+}
+
+// Resource provisioned by an Azure Resource Manager deployment
+//
+// A single resource the deployment created or updated, as the deployment
+// recorded it. The `apiVersion` field is the API contract the template was
+// written against, which is what an audit checks when a setting can only be
+// expressed from a given version onwards.
+private azure.subscription.deployment.provisionedResource @defaults("id resourceType apiVersion") {
+  // Full Azure resource ID
+  id string
+  // Azure resource type, for example Microsoft.Storage/storageAccounts
+  resourceType string
+  // API version the resource was deployed with
+  apiVersion string
+  // Symbolic names leading to the resource in the deployment template
+  //
+  // Outermost first, walking through nested deployments and the extension
+  // the resource was deployed with. Empty when the template used no
+  // symbolic names.
+  symbolicNamePath []string
+  // Identifiers for a resource deployed through an extension
+  //
+  // Null for a resource deployed directly through Azure Resource Manager.
+  // Keys and values are defined by the extension.
+  identifiers dict
+  // Deployment extension that provisioned the resource
+  //
+  // Null for a resource deployed directly through Azure Resource Manager.
+  extension azure.subscription.deployment.extension
+}
+
+// Finding raised while validating an Azure Resource Manager deployment
+//
+// One diagnostic that Azure Resource Manager recorded while validating the
+// deployment template, retained on the deployment after it finished. The
+// `level` field separates a finding that stopped nothing from one the
+// deployment proceeded over.
+private azure.subscription.deployment.diagnostic @defaults("level code message") {
+  // Severity of the finding
+  //
+  // One of Error, Warning, or Info.
+  level string
+  // Code identifying the kind of finding
+  code string
+  // Description of the finding
+  message string
+  // Element of the template the finding applies to
+  target string
+  // Structured detail carried with the finding
+  //
+  // Each entry has a `type` naming the detail's schema and an `info` object
+  // holding it.
+  additionalInfo []dict
+}
+
+// Extension used by an Azure Resource Manager deployment
+//
+// An extension lets a deployment template provision resources outside Azure
+// Resource Manager, so an extension on a deployment names an external system
+// the template reached into. The extension's configuration values are not
+// reported; `configHash` identifies a configuration without disclosing it.
+private azure.subscription.deployment.extension @defaults("name version alias") {
+  // Extension name
+  name string
+  // Extension version
+  version string
+  // Alias the deployment template refers to the extension by
+  alias string
+  // Configuration ID identifying the deployment target within the extension
+  configId string
+  // Hash of the extension configuration
+  //
+  // Distinguishes configurations that share a configId.
+  configHash string
+}
+
+// Dependency resolved by an Azure Resource Manager deployment
+//
+// One resource the deployment waited on before provisioning the resource
+// that declared it, with the resources it waited on in turn under
+// `dependsOn`.
+private azure.subscription.deployment.dependency @defaults("resourceName resourceType") {
+  // Full Azure resource ID of the dependency
+  id string
+  // Name of the dependency resource
+  resourceName string
+  // Type of the dependency resource
+  resourceType string
+  // Resources this dependency itself waited on
+  dependsOn []azure.subscription.deployment.dependency
 }
 
 // Azure Compute
