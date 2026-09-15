@@ -39,3 +39,38 @@ func TestWafAssociatedLoadBalancersEmptyForCloudFront(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, result)
 }
+
+// TestWafScopesFor pins which scopes a query covers. CLOUDFRONT and REGIONAL
+// are separate estates: CloudFront web ACLs live only in us-east-1, regional
+// ones are per-region, and neither on its own describes an account's WAF
+// posture. So no scope has to mean both, not a default of one.
+func TestWafScopesFor(t *testing.T) {
+	assert.Equal(t, []string{"CLOUDFRONT"}, wafScopesFor("CLOUDFRONT"))
+	assert.Equal(t, []string{"REGIONAL"}, wafScopesFor("REGIONAL"))
+
+	both := []string{"CLOUDFRONT", "REGIONAL"}
+	assert.Equal(t, both, wafScopesFor(""), "no scope covers both")
+
+	// An unrecognized scope is not silently treated as one of the two, since
+	// picking either would report a partial estate as the whole one.
+	assert.Equal(t, both, wafScopesFor("Regional"))
+	assert.Equal(t, both, wafScopesFor("global"))
+}
+
+// TestWafRegionsFor pins where each scope is queried. CLOUDFRONT is pinned to
+// us-east-1, which is where WAF keeps those ACLs regardless of where the
+// distribution serves from; REGIONAL takes the connection's whole region list,
+// because querying only the default region reported an empty estate for every
+// account whose ACLs live anywhere else.
+func TestWafRegionsFor(t *testing.T) {
+	conn := testConn("us-east-1", "eu-west-1", "ap-southeast-2")
+
+	cloudfront, err := wafRegionsFor(conn, "CLOUDFRONT")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"us-east-1"}, cloudfront)
+
+	regional, err := wafRegionsFor(conn, "REGIONAL")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"us-east-1", "eu-west-1", "ap-southeast-2"}, regional,
+		"regional resources exist per region, so every region is queried")
+}

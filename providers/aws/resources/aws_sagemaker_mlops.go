@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -1840,7 +1841,11 @@ func (a *mqlAwsSagemakerAutoMLJob) fetchDetails() error {
 		}
 		mqlCh, err := CreateResource(a.MqlRuntime, ResourceAwsSagemakerAutoMLJobInputChannel,
 			map[string]*llx.RawData{
-				"__id":                llx.StringData(a.Arn.Data + "/inputChannel/" + convert.ToValue(ch.TargetAttributeName)),
+				// Keyed by position, not by target attribute: the target attribute
+				// is the column the job predicts and is the same on every channel
+				// of a job, so keying on it merged the training and validation
+				// channels into one and hid the validation dataset's S3 URI.
+				"__id":                llx.StringData(autoMLInputChannelCacheKey(a.Arn.Data, i)),
 				"targetAttributeName": llx.StringDataPtr(ch.TargetAttributeName),
 				"contentType":         llx.StringDataPtr(ch.ContentType),
 				"compressionType":     llx.StringData(string(ch.CompressionType)),
@@ -1960,8 +1965,20 @@ type mqlAwsSagemakerAutoMLJobInputChannelInternal struct {
 	cacheIndex     int
 }
 
+// autoMLInputChannelCacheKey identifies one input channel of an AutoML job by
+// its position in the job's channel list. A channel has nothing else that
+// distinguishes it: the target attribute names the column being predicted and
+// is identical across a job's channels, and the S3 URI is what a caller is
+// trying to read rather than something to key on.
+func autoMLInputChannelCacheKey(jobArn string, index int) string {
+	return jobArn + "/inputChannel/" + strconv.Itoa(index)
+}
+
+// id is a fallback only. cacheIndex is assigned after CreateResource has
+// computed the key, so this cannot see the position; the creator passes the
+// real key as __id.
 func (a *mqlAwsSagemakerAutoMLJobInputChannel) id() (string, error) {
-	return a.cacheParentArn + "/inputChannel/" + a.TargetAttributeName.Data, nil
+	return autoMLInputChannelCacheKey(a.cacheParentArn, a.cacheIndex), nil
 }
 
 type mqlAwsSagemakerAutoMLJobOutputConfigInternal struct {

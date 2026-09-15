@@ -101,6 +101,21 @@ type mqlAwsElasticacheClusterInternal struct {
 	region                  string
 }
 
+// elasticacheSecurityGroupArns builds the security group arns for a cache
+// cluster, skipping any membership the API reports without an id. Every value
+// it reads is optional, including the cluster id it logs the skip with.
+func elasticacheSecurityGroupArns(region, accountID string, cluster elasticache_types.CacheCluster) []string {
+	sgs := []string{}
+	for _, sg := range cluster.SecurityGroups {
+		if sg.SecurityGroupId == nil {
+			log.Debug().Msgf("elasticache>newMqlAwsElasticacheCluster>missing security group id for cluster %s", convert.ToValue(cluster.CacheClusterId))
+			continue
+		}
+		sgs = append(sgs, NewSecurityGroupArn(region, accountID, convert.ToValue(sg.SecurityGroupId)))
+	}
+	return sgs
+}
+
 func newMqlAwsElasticacheCluster(runtime *plugin.Runtime, region string, accountID string, cluster elasticache_types.CacheCluster) (*mqlAwsElasticacheCluster, error) {
 	cacheNodes := []any{}
 	for i := range cluster.CacheNodes {
@@ -131,14 +146,7 @@ func newMqlAwsElasticacheCluster(runtime *plugin.Runtime, region string, account
 		configurationEndpointPort = int64(convert.ToValue(cluster.ConfigurationEndpoint.Port))
 	}
 
-	sgs := []string{}
-	for _, sg := range cluster.SecurityGroups {
-		if sg.SecurityGroupId == nil {
-			log.Debug().Msgf("elasticache>newMqlAwsElasticacheCluster>missing security group id for cluster %s", *cluster.CacheClusterId)
-			continue
-		}
-		sgs = append(sgs, NewSecurityGroupArn(region, accountID, convert.ToValue(sg.SecurityGroupId)))
-	}
+	sgs := elasticacheSecurityGroupArns(region, accountID, cluster)
 
 	resource, err := CreateResource(runtime, "aws.elasticache.cluster",
 		map[string]*llx.RawData{

@@ -3551,6 +3551,9 @@ func (a *mqlAwsEc2Vpnconnection) id() (string, error) {
 	return a.Arn.Data, nil
 }
 
+// id is a fallback only. A telemetry entry carries nothing but its outside IP,
+// which is empty while the tunnel is provisioning and is not scoped to a
+// connection, so the creator passes a connection-scoped, indexed __id instead.
 func (a *mqlAwsEc2Vgwtelemetry) id() (string, error) {
 	return a.OutsideIpAddress.Data, nil
 }
@@ -3590,10 +3593,19 @@ type mqlAwsEc2VpnconnectionInternal struct {
 }
 
 func newMqlVpnConnection(runtime *plugin.Runtime, region string, accountID string, vpnConn ec2types.VpnConnection) (*mqlAwsEc2Vpnconnection, error) {
+	connID := convert.ToValue(vpnConn.VpnConnectionId)
+
 	mqlVgwT := []any{}
-	for _, vgwT := range vpnConn.VgwTelemetry {
+	for i, vgwT := range vpnConn.VgwTelemetry {
 		mqlVgwTelemetry, err := CreateResource(runtime, ResourceAwsEc2Vgwtelemetry,
 			map[string]*llx.RawData{
+				// Scoped to the connection and indexed, for the same reason the
+				// tunnel options below are: the outside IP is the only thing
+				// distinguishing one telemetry entry from another, and it is
+				// empty while a tunnel is still provisioning - so both tunnels
+				// of a new connection keyed identically, and every connection
+				// in that state shared one row across the whole account.
+				"__id":             llx.StringData(fmt.Sprintf("%s/vgwTelemetry/%d/%s", connID, i, convert.ToValue(vgwT.OutsideIpAddress))),
 				"outsideIpAddress": llx.StringData(convert.ToValue(vgwT.OutsideIpAddress)),
 				"status":           llx.StringData(string(vgwT.Status)),
 				"statusMessage":    llx.StringData(convert.ToValue(vgwT.StatusMessage)),
@@ -3617,13 +3629,12 @@ func newMqlVpnConnection(runtime *plugin.Runtime, region string, accountID strin
 		outsideIpType = convert.ToValue(opts.OutsideIpAddressType)
 		tunnelIpVersion = string(opts.TunnelInsideIpVersion)
 
-		vpnConnID := convert.ToValue(vpnConn.VpnConnectionId)
 		for i, tun := range opts.TunnelOptions {
 			outsideIP := convert.ToValue(tun.OutsideIpAddress)
 			mqlTunnelOpt, err := CreateResource(runtime, ResourceAwsEc2VpnconnectionTunnelOption,
 				map[string]*llx.RawData{
 					// index disambiguates tunnels whose outside IP is still empty during provisioning
-					"__id":                       llx.StringData(fmt.Sprintf("%s/tunnelOption/%d/%s", vpnConnID, i, outsideIP)),
+					"__id":                       llx.StringData(fmt.Sprintf("%s/tunnelOption/%d/%s", connID, i, outsideIP)),
 					"outsideIpAddress":           llx.StringData(outsideIP),
 					"tunnelInsideCidr":           llx.StringData(convert.ToValue(tun.TunnelInsideCidr)),
 					"ikeVersions":                llx.ArrayData(listValuesToStrings(tun.IkeVersions, func(v ec2types.IKEVersionsListValue) *string { return v.Value }), types.String),

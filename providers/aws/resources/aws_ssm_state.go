@@ -5,7 +5,6 @@ package resources
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -112,7 +111,7 @@ func (a *mqlAwsSsmPatchGroup) baseline() (*mqlAwsSsmPatchBaseline, error) {
 		return nil, nil
 	}
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	arn := fmt.Sprintf(ssmPatchBaselineArnPattern, a.Region.Data, conn.AccountId(), a.BaselineId.Data)
+	arn := ssmPatchBaselineArn(a.Region.Data, conn.AccountId(), a.BaselineId.Data)
 	res, err := NewResource(a.MqlRuntime, "aws.ssm.patchBaseline",
 		map[string]*llx.RawData{"arn": llx.StringData(arn)})
 	if err != nil {

@@ -5,8 +5,12 @@ package resources
 
 import (
 	"testing"
+	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	cloudwatchtypes "github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/stretchr/testify/assert"
+	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
 )
 
 func TestParseLogGroupArn(t *testing.T) {
@@ -67,4 +71,96 @@ func TestParseLogGroupArn(t *testing.T) {
 			assert.Equal(t, tt.expectGroup, groupName)
 		})
 	}
+}
+
+// dim builds a resolved metric dimension for the cache-key tests.
+func dim(name, value string) *mqlAwsCloudwatchMetricdimension {
+	d := &mqlAwsCloudwatchMetricdimension{}
+	d.Name = plugin.TValue[string]{Data: name, State: plugin.StateIsSet}
+	d.Value = plugin.TValue[string]{Data: value, State: plugin.StateIsSet}
+	return d
+}
+
+// TestMetricStatisticsCacheKey pins the identity of a statistics series. A
+// CloudWatch metric is identified by namespace, name AND dimensions: AWS/EC2
+// CPUUtilization exists once per instance and is distinguished only by the
+// InstanceId dimension, so a key without dimensions collapses every instance's
+// series onto one cache entry and the first one fetched answers for all of them.
+func TestMetricStatisticsCacheKey(t *testing.T) {
+	const (
+		ns     = "AWS/EC2"
+		metric = "CPUUtilization"
+		region = "us-east-1"
+		label  = "CPUUtilization"
+	)
+
+	t.Run("two instances do not share a key", func(t *testing.T) {
+		first := metricStatisticsCacheKey(ns, metric, region, label,
+			[]any{dim("InstanceId", "i-aaaaaaaaaaaaaaaaa")})
+		second := metricStatisticsCacheKey(ns, metric, region, label,
+			[]any{dim("InstanceId", "i-bbbbbbbbbbbbbbbbb")})
+		assert.NotEqual(t, first, second)
+	})
+
+	t.Run("dimension order does not change the key", func(t *testing.T) {
+		forward := metricStatisticsCacheKey(ns, metric, region, label,
+			[]any{dim("InstanceId", "i-aaaaaaaaaaaaaaaaa"), dim("AutoScalingGroupName", "asg-1")})
+		reverse := metricStatisticsCacheKey(ns, metric, region, label,
+			[]any{dim("AutoScalingGroupName", "asg-1"), dim("InstanceId", "i-aaaaaaaaaaaaaaaaa")})
+		assert.Equal(t, forward, reverse,
+			"the same series must key the same whatever order the API returned its dimensions in")
+	})
+
+	t.Run("the undimensioned aggregate keeps the plain key", func(t *testing.T) {
+		assert.Equal(t, "AWS/EC2/CPUUtilization/us-east-1/CPUUtilization",
+			metricStatisticsCacheKey(ns, metric, region, label, nil))
+	})
+
+	t.Run("a dimensioned series differs from the aggregate", func(t *testing.T) {
+		aggregate := metricStatisticsCacheKey(ns, metric, region, label, nil)
+		scoped := metricStatisticsCacheKey(ns, metric, region, label,
+			[]any{dim("InstanceId", "i-aaaaaaaaaaaaaaaaa")})
+		assert.NotEqual(t, aggregate, scoped)
+	})
+
+	t.Run("region and namespace still separate series", func(t *testing.T) {
+		east := metricStatisticsCacheKey(ns, metric, "us-east-1", label, nil)
+		west := metricStatisticsCacheKey(ns, metric, "us-west-2", label, nil)
+		assert.NotEqual(t, east, west)
+	})
+
+	t.Run("a non-dimension element is skipped, not panicked on", func(t *testing.T) {
+		assert.NotPanics(t, func() {
+			metricStatisticsCacheKey(ns, metric, region, label, []any{"not a dimension", nil})
+		})
+	})
+}
+
+// TestDatapointCacheKey pins that a datapoint is identified within its series.
+// formatDatapointId hashes only the datapoint's own values, so two instances
+// idling at the same value in the same hour hash identically.
+func TestDatapointCacheKey(t *testing.T) {
+	at := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
+	later := at.Add(time.Hour)
+
+	idle := cloudwatchtypes.Datapoint{Timestamp: &at, Average: aws.Float64(0)}
+
+	t.Run("same datapoint values in different series do not collide", func(t *testing.T) {
+		first := datapointCacheKey("AWS/EC2/CPUUtilization/us-east-1/l/InstanceId=i-a", idle)
+		second := datapointCacheKey("AWS/EC2/CPUUtilization/us-east-1/l/InstanceId=i-b", idle)
+		assert.NotEqual(t, first, second)
+	})
+
+	t.Run("consecutive datapoints in one series do not collide", func(t *testing.T) {
+		series := "AWS/EC2/CPUUtilization/us-east-1/l"
+		first := datapointCacheKey(series, idle)
+		second := datapointCacheKey(series, cloudwatchtypes.Datapoint{Timestamp: &later, Average: aws.Float64(0)})
+		assert.NotEqual(t, first, second)
+	})
+
+	t.Run("a datapoint with no timestamp does not panic", func(t *testing.T) {
+		assert.NotPanics(t, func() {
+			datapointCacheKey("series", cloudwatchtypes.Datapoint{Average: aws.Float64(1)})
+		})
+	})
 }

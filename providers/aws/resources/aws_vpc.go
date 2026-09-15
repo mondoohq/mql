@@ -818,39 +818,55 @@ func initAwsVpcPeeringConnection(runtime *plugin.Runtime, args map[string]*llx.R
 	return args, res, nil
 }
 
+// peeringVpcCacheKey names one side of one peering connection.
+//
+// The connection and the side both have to appear in the key. Keying on the
+// region and the VPC id alone gave a VPC one entry per region however many
+// connections it takes part in, so a hub VPC peered to several spokes reported
+// the first connection's CIDRs for all of them.
+func peeringVpcCacheKey(peeringConnectionID, side string) string {
+	return "aws.vpc.peeringConnection.peeringVpc/" + peeringConnectionID + "/" + side
+}
+
+// peeringVpcSide builds the accepter or the requester side of this peering
+// connection from the DescribeVpcPeeringConnections result.
+func (a *mqlAwsVpcPeeringConnection) peeringVpcSide(side string, info *vpctypes.VpcPeeringConnectionVpcInfo) (*mqlAwsVpcPeeringConnectionPeeringVpc, error) {
+	ipv4 := []any{}
+	for i := range info.CidrBlockSet {
+		ipv4 = append(ipv4, convert.ToValue(info.CidrBlockSet[i].CidrBlock))
+	}
+	ipv6 := []any{}
+	for i := range info.Ipv6CidrBlockSet {
+		ipv6 = append(ipv6, convert.ToValue(info.Ipv6CidrBlockSet[i].Ipv6CidrBlock))
+	}
+	var allowDns *bool
+	if info.PeeringOptions != nil {
+		allowDns = info.PeeringOptions.AllowDnsResolutionFromRemoteVpc
+	}
+	mql, err := CreateResource(a.MqlRuntime, ResourceAwsVpcPeeringConnectionPeeringVpc,
+		map[string]*llx.RawData{
+			"__id":                            llx.StringData(peeringVpcCacheKey(a.Id.Data, side)),
+			"allowDnsResolutionFromRemoteVpc": llx.BoolDataPtr(allowDns),
+			"ipv4CiderBlocks":                 llx.ArrayData(ipv4, types.String),
+			"ipv6CiderBlocks":                 llx.ArrayData(ipv6, types.String),
+			"ownerID":                         llx.StringDataPtr(info.OwnerId),
+			"region":                          llx.StringData(a.region),
+			"vpcId":                           llx.StringDataPtr(info.VpcId),
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return mql.(*mqlAwsVpcPeeringConnectionPeeringVpc), nil
+}
+
 func (a *mqlAwsVpcPeeringConnection) acceptorVpc() (*mqlAwsVpcPeeringConnectionPeeringVpc, error) {
 	acceptor := a.peeringConnectionCache.AccepterVpcInfo
 	if acceptor == nil {
 		a.AcceptorVpc.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
-	ipv4 := []any{}
-	for i := range acceptor.CidrBlockSet {
-		ipv4 = append(ipv4, convert.ToValue(acceptor.CidrBlockSet[i].CidrBlock))
-	}
-	ipv6 := []any{}
-	for i := range acceptor.Ipv6CidrBlockSet {
-		ipv6 = append(ipv6, convert.ToValue(acceptor.Ipv6CidrBlockSet[i].Ipv6CidrBlock))
-	}
-	var allowDns *bool
-	if acceptor.PeeringOptions != nil {
-		allowDns = acceptor.PeeringOptions.AllowDnsResolutionFromRemoteVpc
-	}
-	mql, err := CreateResource(a.MqlRuntime, ResourceAwsVpcPeeringConnectionPeeringVpc,
-		map[string]*llx.RawData{
-			"allowDnsResolutionFromRemoteVpc": llx.BoolDataPtr(allowDns),
-			"ipv4CiderBlocks":                 llx.ArrayData(ipv4, types.String),
-			"ipv6CiderBlocks":                 llx.ArrayData(ipv6, types.String),
-			"ownerID":                         llx.StringDataPtr(acceptor.OwnerId),
-			"region":                          llx.StringData(a.region),
-			"vpcId":                           llx.StringDataPtr(acceptor.VpcId),
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return mql.(*mqlAwsVpcPeeringConnectionPeeringVpc), nil
+	return a.peeringVpcSide("accepter", acceptor)
 }
 
 func (a *mqlAwsVpcPeeringConnectionPeeringVpc) vpc() (*mqlAwsVpc, error) {
@@ -868,33 +884,7 @@ func (a *mqlAwsVpcPeeringConnection) requestorVpc() (*mqlAwsVpcPeeringConnection
 		a.RequestorVpc.State = plugin.StateIsNull | plugin.StateIsSet
 		return nil, nil
 	}
-	ipv4 := []any{}
-	for i := range requestor.CidrBlockSet {
-		ipv4 = append(ipv4, convert.ToValue(requestor.CidrBlockSet[i].CidrBlock))
-	}
-	ipv6 := []any{}
-	for i := range requestor.Ipv6CidrBlockSet {
-		ipv6 = append(ipv6, convert.ToValue(requestor.Ipv6CidrBlockSet[i].Ipv6CidrBlock))
-	}
-	var allowDns *bool
-	if requestor.PeeringOptions != nil {
-		allowDns = requestor.PeeringOptions.AllowDnsResolutionFromRemoteVpc
-	}
-	mql, err := CreateResource(a.MqlRuntime, ResourceAwsVpcPeeringConnectionPeeringVpc,
-		map[string]*llx.RawData{
-			"allowDnsResolutionFromRemoteVpc": llx.BoolDataPtr(allowDns),
-			"ipv4CiderBlocks":                 llx.ArrayData(ipv4, types.String),
-			"ipv6CiderBlocks":                 llx.ArrayData(ipv6, types.String),
-			"ownerID":                         llx.StringDataPtr(requestor.OwnerId),
-			"region":                          llx.StringData(a.region),
-			"vpcId":                           llx.StringDataPtr(requestor.VpcId),
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return mql.(*mqlAwsVpcPeeringConnectionPeeringVpc), nil
+	return a.peeringVpcSide("requester", requestor)
 }
 
 func (a *mqlAwsVpc) flowLogs() ([]any, error) {
@@ -916,6 +906,7 @@ func (a *mqlAwsVpc) flowLogs() ([]any, error) {
 		for _, flowLog := range flowLogsRes.FlowLogs {
 			mqlFlowLog, err := CreateResource(a.MqlRuntime, ResourceAwsVpcFlowlog,
 				map[string]*llx.RawData{
+					"__id":                   llx.StringData(vpcFlowLogCacheKey(a.Region.Data, convert.ToValue(flowLog.FlowLogId))),
 					"createdAt":              llx.TimeDataPtr(flowLog.CreationTime),
 					"destination":            llx.StringDataPtr(flowLog.LogDestination),
 					"destinationType":        llx.StringData(string(flowLog.LogDestinationType)),
@@ -2164,6 +2155,20 @@ type mqlAwsVpcFlowlogInternal struct {
 	region                        string
 }
 
+// vpcFlowLogCacheKey builds the cache key for an aws.vpc.flowlog.
+//
+// The resource has no id() method, so without an explicit "__id" every flow
+// log in the account keys on the empty string and CreateResource hands back
+// whichever one was built first. A VPC logging ALL traffic and a VPC logging
+// REJECT then report identical rows, and a check asking whether rejected
+// traffic is captured reads an unrelated flow log's trafficType.
+//
+// Flow log ids are unique per account; the region keeps the key aligned with
+// the rest of the provider and with the ARN the arn() accessor builds.
+func vpcFlowLogCacheKey(region, flowLogID string) string {
+	return region + "/" + flowLogID
+}
+
 func (a *mqlAwsVpcFlowlog) arn() (string, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	return fmt.Sprintf(vpcFlowLogArnPattern, a.Region.Data, conn.AccountId(), a.Id.Data), nil
@@ -2301,6 +2306,7 @@ func (a *mqlAwsVpcSubnet) flowLogs() ([]any, error) {
 		for _, flowLog := range resp.FlowLogs {
 			mqlFlowLog, err := CreateResource(a.MqlRuntime, ResourceAwsVpcFlowlog,
 				map[string]*llx.RawData{
+					"__id":                   llx.StringData(vpcFlowLogCacheKey(a.Region.Data, convert.ToValue(flowLog.FlowLogId))),
 					"createdAt":              llx.TimeDataPtr(flowLog.CreationTime),
 					"destination":            llx.StringDataPtr(flowLog.LogDestination),
 					"destinationType":        llx.StringData(string(flowLog.LogDestinationType)),

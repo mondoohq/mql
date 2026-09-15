@@ -294,7 +294,18 @@ func (dg *mqlAwsCodedeployDeploymentGroup) lastSuccessfulDeployment() (*mqlAwsCo
 		dg.LastSuccessfulDeployment = plugin.TValue[*mqlAwsCodedeployDeployment]{State: plugin.StateIsSet | plugin.StateIsNull}
 		return nil, nil
 	}
-	return getDeploymentResource(dg.MqlRuntime, dg.Region.Data, &dg.ApplicationName.Data, &dg.DeploymentGroupName.Data, dg.sdkData.LastSuccessfulDeployment.DeploymentId)
+	dep, err := getDeploymentResource(dg.MqlRuntime, dg.Region.Data, &dg.ApplicationName.Data, &dg.DeploymentGroupName.Data, dg.sdkData.LastSuccessfulDeployment.DeploymentId)
+	if err != nil {
+		return nil, err
+	}
+	if dep == nil {
+		// The group still names a deployment that CodeDeploy no longer holds.
+		// Returning a typed nil with no error would leave the field set and
+		// not null, and serializing it calls MqlID on the nil receiver.
+		dg.LastSuccessfulDeployment = plugin.TValue[*mqlAwsCodedeployDeployment]{State: plugin.StateIsSet | plugin.StateIsNull}
+		return nil, nil
+	}
+	return dep, nil
 }
 
 func (dg *mqlAwsCodedeployDeploymentGroup) lastAttemptedDeployment() (*mqlAwsCodedeployDeployment, error) {
@@ -302,7 +313,18 @@ func (dg *mqlAwsCodedeployDeploymentGroup) lastAttemptedDeployment() (*mqlAwsCod
 		dg.LastAttemptedDeployment = plugin.TValue[*mqlAwsCodedeployDeployment]{State: plugin.StateIsSet | plugin.StateIsNull}
 		return nil, nil
 	}
-	return getDeploymentResource(dg.MqlRuntime, dg.Region.Data, &dg.ApplicationName.Data, &dg.DeploymentGroupName.Data, dg.sdkData.LastAttemptedDeployment.DeploymentId)
+	dep, err := getDeploymentResource(dg.MqlRuntime, dg.Region.Data, &dg.ApplicationName.Data, &dg.DeploymentGroupName.Data, dg.sdkData.LastAttemptedDeployment.DeploymentId)
+	if err != nil {
+		return nil, err
+	}
+	if dep == nil {
+		// The group still names a deployment that CodeDeploy no longer holds.
+		// Returning a typed nil with no error would leave the field set and
+		// not null, and serializing it calls MqlID on the nil receiver.
+		dg.LastAttemptedDeployment = plugin.TValue[*mqlAwsCodedeployDeployment]{State: plugin.StateIsSet | plugin.StateIsNull}
+		return nil, nil
+	}
+	return dep, nil
 }
 
 func (dg *mqlAwsCodedeployDeploymentGroup) deploymentStyle() (any, error) {

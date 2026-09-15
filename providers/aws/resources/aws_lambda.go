@@ -1287,6 +1287,10 @@ func (a *mqlAwsLambdaFunction) codeSigningConfig() (*mqlAwsLambdaCodeSigningConf
 		return nil, errors.Wrap(err, "could not get code signing config")
 	}
 
+	if configResp.CodeSigningConfig == nil {
+		a.CodeSigningConfig.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
 	csc := configResp.CodeSigningConfig
 
 	allowedArns := []any{}

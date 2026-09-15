@@ -57,6 +57,31 @@ func (a *mqlAwsDirectconnect) connections() ([]any, error) {
 	return res, nil
 }
 
+// walkPages drives a NextToken-paginated Direct Connect operation. fetch is
+// called once per page with the token for that page (nil for the first) and
+// returns the token the service handed back.
+//
+// The walk stops when the service stops handing back a token, and also when it
+// hands back the token it was just given. Direct Connect ships no paginator for
+// these operations, so the loop is hand-written, and a service that echoes the
+// request token would otherwise re-collect the same page forever.
+func walkPages(fetch func(nextToken *string) (*string, error)) error {
+	var token *string
+	for {
+		next, err := fetch(token)
+		if err != nil {
+			return err
+		}
+		if next == nil || *next == "" {
+			return nil
+		}
+		if token != nil && *next == *token {
+			return nil
+		}
+		token = next
+	}
+}
+
 func (a *mqlAwsDirectconnect) getConnections(conn *connection.AwsConnection) []*jobpool.Job {
 	tasks := make([]*jobpool.Job, 0)
 	regions, err := conn.Regions()
@@ -67,42 +92,54 @@ func (a *mqlAwsDirectconnect) getConnections(conn *connection.AwsConnection) []*
 		f := func() (jobpool.JobResult, error) {
 			svc := conn.DirectConnect(region)
 			res := []any{}
-			// DescribeConnections is not paginated; it returns every connection
-			// homed in the region in one response.
-			resp, err := svc.DescribeConnections(context.Background(), &directconnect.DescribeConnectionsInput{})
-			if err != nil {
-				if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-					log.Debug().Str("region", region).Msg("skipping direct connect connections for region")
-					return res, nil
-				}
-				return nil, err
-			}
-			for _, dcConn := range resp.Connections {
-				mqlDcConn, err := CreateResource(a.MqlRuntime, ResourceAwsDirectconnectConnection,
-					map[string]*llx.RawData{
-						"id":                   llx.StringDataPtr(dcConn.ConnectionId),
-						"name":                 llx.StringDataPtr(dcConn.ConnectionName),
-						"state":                llx.StringData(string(dcConn.ConnectionState)),
-						"location":             llx.StringDataPtr(dcConn.Location),
-						"bandwidth":            llx.StringDataPtr(dcConn.Bandwidth),
-						"vlan":                 llx.IntData(int64(dcConn.Vlan)),
-						"region":               llx.StringData(region),
-						"ownerAccount":         llx.StringDataPtr(dcConn.OwnerAccount),
-						"partnerName":          llx.StringDataPtr(dcConn.PartnerName),
-						"providerName":         llx.StringDataPtr(dcConn.ProviderName),
-						"macSecCapable":        llx.BoolDataPtr(dcConn.MacSecCapable),
-						"encryptionMode":       llx.StringDataPtr(dcConn.EncryptionMode),
-						"portEncryptionStatus": llx.StringDataPtr(dcConn.PortEncryptionStatus),
-						"jumboFrameCapable":    llx.BoolDataPtr(dcConn.JumboFrameCapable),
-						"hasLogicalRedundancy": llx.StringData(string(dcConn.HasLogicalRedundancy)),
-						"lagId":                llx.StringDataPtr(dcConn.LagId),
-						"awsDevice":            llx.StringDataPtr(dcConn.AwsDeviceV2),
-						"tags":                 llx.MapData(directConnectTagsToMap(dcConn.Tags), types.String),
-					})
+			// DescribeConnections caps a page at 100 and pages with NextToken.
+			skipRegion := false
+			err := walkPages(func(nextToken *string) (*string, error) {
+				resp, err := svc.DescribeConnections(context.Background(), &directconnect.DescribeConnectionsInput{
+					NextToken: nextToken,
+				})
 				if err != nil {
+					if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
+						log.Debug().Str("region", region).Msg("skipping direct connect connections for region")
+						skipRegion = true
+						return nil, nil
+					}
 					return nil, err
 				}
-				res = append(res, mqlDcConn)
+				for _, dcConn := range resp.Connections {
+					mqlDcConn, err := CreateResource(a.MqlRuntime, ResourceAwsDirectconnectConnection,
+						map[string]*llx.RawData{
+							"id":                   llx.StringDataPtr(dcConn.ConnectionId),
+							"name":                 llx.StringDataPtr(dcConn.ConnectionName),
+							"state":                llx.StringData(string(dcConn.ConnectionState)),
+							"location":             llx.StringDataPtr(dcConn.Location),
+							"bandwidth":            llx.StringDataPtr(dcConn.Bandwidth),
+							"vlan":                 llx.IntData(int64(dcConn.Vlan)),
+							"region":               llx.StringData(region),
+							"ownerAccount":         llx.StringDataPtr(dcConn.OwnerAccount),
+							"partnerName":          llx.StringDataPtr(dcConn.PartnerName),
+							"providerName":         llx.StringDataPtr(dcConn.ProviderName),
+							"macSecCapable":        llx.BoolDataPtr(dcConn.MacSecCapable),
+							"encryptionMode":       llx.StringDataPtr(dcConn.EncryptionMode),
+							"portEncryptionStatus": llx.StringDataPtr(dcConn.PortEncryptionStatus),
+							"jumboFrameCapable":    llx.BoolDataPtr(dcConn.JumboFrameCapable),
+							"hasLogicalRedundancy": llx.StringData(string(dcConn.HasLogicalRedundancy)),
+							"lagId":                llx.StringDataPtr(dcConn.LagId),
+							"awsDevice":            llx.StringDataPtr(dcConn.AwsDeviceV2),
+							"tags":                 llx.MapData(directConnectTagsToMap(dcConn.Tags), types.String),
+						})
+					if err != nil {
+						return nil, err
+					}
+					res = append(res, mqlDcConn)
+				}
+				return resp.NextToken, nil
+			})
+			if err != nil {
+				return nil, err
+			}
+			if skipRegion {
+				return jobpool.JobResult([]any{}), nil
 			}
 			return jobpool.JobResult(res), nil
 		}
@@ -135,20 +172,35 @@ func (a *mqlAwsDirectconnect) getVirtualInterfaces(conn *connection.AwsConnectio
 		f := func() (jobpool.JobResult, error) {
 			svc := conn.DirectConnect(region)
 			res := []any{}
-			resp, err := svc.DescribeVirtualInterfaces(context.Background(), &directconnect.DescribeVirtualInterfacesInput{})
-			if err != nil {
-				if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-					log.Debug().Str("region", region).Msg("skipping direct connect virtual interfaces for region")
-					return res, nil
-				}
-				return nil, err
-			}
-			for _, vif := range resp.VirtualInterfaces {
-				mqlVif, err := newMqlAwsDirectconnectVirtualInterface(a.MqlRuntime, region, vif)
+			// DescribeVirtualInterfaces caps a page at 100 and pages with
+			// NextToken, and ships no paginator either.
+			skipRegion := false
+			err := walkPages(func(nextToken *string) (*string, error) {
+				resp, err := svc.DescribeVirtualInterfaces(context.Background(), &directconnect.DescribeVirtualInterfacesInput{
+					NextToken: nextToken,
+				})
 				if err != nil {
+					if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
+						log.Debug().Str("region", region).Msg("skipping direct connect virtual interfaces for region")
+						skipRegion = true
+						return nil, nil
+					}
 					return nil, err
 				}
-				res = append(res, mqlVif)
+				for _, vif := range resp.VirtualInterfaces {
+					mqlVif, err := newMqlAwsDirectconnectVirtualInterface(a.MqlRuntime, region, vif)
+					if err != nil {
+						return nil, err
+					}
+					res = append(res, mqlVif)
+				}
+				return resp.NextToken, nil
+			})
+			if err != nil {
+				return nil, err
+			}
+			if skipRegion {
+				return jobpool.JobResult([]any{}), nil
 			}
 			return jobpool.JobResult(res), nil
 		}

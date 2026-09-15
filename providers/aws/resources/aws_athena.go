@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -592,10 +593,40 @@ func athenaLambdaArnFromParams(params map[string]any) string {
 	return ""
 }
 
+// namedQueries lists every saved query in the account.
+//
+// A named query belongs to exactly one workgroup, and ListNamedQueries returns
+// the saved queries of a single workgroup: the one named in the request, or
+// primary when the request names none. Listing without a workgroup therefore
+// reports only the primary workgroup's queries, and an account that keeps its
+// analytics in a named workgroup - which is what workgroup separation is for -
+// reported none at all.
+//
+// The workgroups come from the workgroups field rather than a fresh
+// ListWorkGroups call, so a scan that reads both collections lists them once.
 func (a *mqlAwsAthena) namedQueries() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+
+	workgroups := a.GetWorkgroups()
+	if workgroups.Error != nil {
+		return nil, workgroups.Error
+	}
+
+	workgroupsByRegion := map[string][]string{}
+	for _, raw := range workgroups.Data {
+		wg, ok := raw.(*mqlAwsAthenaWorkgroup)
+		if !ok {
+			continue
+		}
+		// A disabled workgroup still holds its saved queries, and they are still
+		// worth auditing, so state is deliberately not filtered on here.
+		if name := wg.Name.Data; name != "" {
+			workgroupsByRegion[wg.Region.Data] = append(workgroupsByRegion[wg.Region.Data], name)
+		}
+	}
+
 	res := []any{}
-	poolOfJobs := jobpool.CreatePool(a.getNamedQueries(conn), 5)
+	poolOfJobs := jobpool.CreatePool(a.getNamedQueries(conn, workgroupsByRegion), 5)
 	poolOfJobs.Run()
 
 	if poolOfJobs.HasErrors() {
@@ -609,50 +640,77 @@ func (a *mqlAwsAthena) namedQueries() ([]any, error) {
 	return res, nil
 }
 
-func (a *mqlAwsAthena) getNamedQueries(conn *connection.AwsConnection) []*jobpool.Job {
-	tasks := make([]*jobpool.Job, 0)
-	regions, err := conn.Regions()
-	if err != nil {
-		return []*jobpool.Job{{Err: err}}
+// listNamedQueryIDs lists the saved query ids in one workgroup.
+//
+// A workgroup that cannot be read contributes nothing rather than failing the
+// region. ListNamedQueries requires access to the specific workgroup, so a role
+// scoped to some workgroups can legitimately see a workgroup in ListWorkGroups
+// and be denied its queries; and a workgroup deleted between the two calls
+// comes back as an invalid request rather than an empty list.
+func listNamedQueryIDs(ctx context.Context, svc *athena.Client, region, workgroup string) ([]string, error) {
+	var queryIds []string
+	paginator := athena.NewListNamedQueriesPaginator(svc, &athena.ListNamedQueriesInput{
+		WorkGroup: &workgroup,
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			if Is400AccessDeniedError(err) {
+				log.Warn().Str("region", region).Str("workgroup", workgroup).
+					Msg("not permitted to list the named queries of this workgroup")
+				return nil, nil
+			}
+			var invalid *athena_types.InvalidRequestException
+			if errors.As(err, &invalid) {
+				log.Debug().Str("region", region).Str("workgroup", workgroup).
+					Msg("workgroup no longer available while listing named queries")
+				return nil, nil
+			}
+			return nil, err
+		}
+		queryIds = append(queryIds, page.NamedQueryIds...)
 	}
+	return queryIds, nil
+}
 
-	for _, region := range regions {
+func (a *mqlAwsAthena) getNamedQueries(conn *connection.AwsConnection, workgroupsByRegion map[string][]string) []*jobpool.Job {
+	tasks := make([]*jobpool.Job, 0, len(workgroupsByRegion))
+
+	for region, workgroupNames := range workgroupsByRegion {
 		f := func() (jobpool.JobResult, error) {
-			log.Debug().Msgf("athena>getNamedQueries>calling aws with region %s", region)
+			log.Debug().Str("region", region).Int("workgroups", len(workgroupNames)).
+				Msg("athena>getNamedQueries>calling aws")
 
 			svc := conn.Athena(region)
 			ctx := context.Background()
 			res := []any{}
 
-			// First, collect all named query IDs
-			var queryIds []string
-			paginator := athena.NewListNamedQueriesPaginator(svc, &athena.ListNamedQueriesInput{})
-			for paginator.HasMorePages() {
-				page, err := paginator.NextPage(ctx)
+			for _, workgroup := range workgroupNames {
+				queryIds, err := listNamedQueryIDs(ctx, svc, region, workgroup)
 				if err != nil {
-					if Is400AccessDeniedError(err) {
-						log.Warn().Str("region", region).Msg("error accessing region for AWS API")
-						return res, nil
-					}
 					return nil, err
 				}
-				queryIds = append(queryIds, page.NamedQueryIds...)
-			}
 
-			// Batch get named queries (max 50 per call)
-			for chunk := range slices.Chunk(queryIds, 50) {
-				batch, err := svc.BatchGetNamedQuery(ctx, &athena.BatchGetNamedQueryInput{
-					NamedQueryIds: chunk,
-				})
-				if err != nil {
-					return nil, err
-				}
-				for _, nq := range batch.NamedQueries {
-					mqlNQ, err := newMqlAwsAthenaNamedQuery(a.MqlRuntime, region, nq)
+				// Batch get named queries (max 50 per call)
+				for chunk := range slices.Chunk(queryIds, 50) {
+					batch, err := svc.BatchGetNamedQuery(ctx, &athena.BatchGetNamedQueryInput{
+						NamedQueryIds: chunk,
+					})
 					if err != nil {
+						if Is400AccessDeniedError(err) {
+							log.Warn().Str("region", region).Str("workgroup", workgroup).
+								Msg("not permitted to read the named queries of this workgroup")
+							break
+						}
 						return nil, err
 					}
-					res = append(res, mqlNQ)
+					for _, nq := range batch.NamedQueries {
+						mqlNQ, err := newMqlAwsAthenaNamedQuery(a.MqlRuntime, region, workgroup, nq)
+						if err != nil {
+							return nil, err
+						}
+						res = append(res, mqlNQ)
+					}
 				}
 			}
 			return jobpool.JobResult(res), nil
@@ -662,8 +720,16 @@ func (a *mqlAwsAthena) getNamedQueries(conn *connection.AwsConnection) []*jobpoo
 	return tasks
 }
 
-func newMqlAwsAthenaNamedQuery(runtime *plugin.Runtime, region string, nq athena_types.NamedQuery) (*mqlAwsAthenaNamedQuery, error) {
+func newMqlAwsAthenaNamedQuery(runtime *plugin.Runtime, region, workgroup string, nq athena_types.NamedQuery) (*mqlAwsAthenaNamedQuery, error) {
 	id := fmt.Sprintf("aws.athena.namedQuery/%s/%s", region, convert.ToValue(nq.NamedQueryId))
+
+	// BatchGetNamedQuery does not always report the workgroup, but the query was
+	// listed under a known one, so fall back to that rather than leaving the
+	// reference unset.
+	queryWorkgroup := convert.ToValue(nq.WorkGroup)
+	if queryWorkgroup == "" {
+		queryWorkgroup = workgroup
+	}
 
 	resource, err := CreateResource(runtime, "aws.athena.namedQuery",
 		map[string]*llx.RawData{
@@ -673,7 +739,7 @@ func newMqlAwsAthenaNamedQuery(runtime *plugin.Runtime, region string, nq athena
 			"database":    llx.StringDataPtr(nq.Database),
 			"queryString": llx.StringDataPtr(nq.QueryString),
 			"description": llx.StringDataPtr(nq.Description),
-			"workGroup":   llx.StringDataPtr(nq.WorkGroup),
+			"workGroup":   llx.StringData(queryWorkgroup),
 			"region":      llx.StringData(region),
 		})
 	if err != nil {

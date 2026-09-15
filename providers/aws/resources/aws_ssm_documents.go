@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -243,6 +244,22 @@ func (a *mqlAwsSsm) patchBaselines() ([]any, error) {
 
 const ssmPatchBaselineArnPattern = "arn:aws:ssm:%s:%s:patchbaseline/%s"
 
+// ssmPatchBaselineArn builds the ARN for a patch baseline.
+//
+// AWS-managed baselines - the ones every account has, and which an unfiltered
+// DescribePatchBaselines returns - report their BaselineId as a full ARN owned by
+// an AWS service account, not as a bare pb-* id. Wrapping that in the pattern
+// produced a doubled ARN that also claimed the caller's account owned an
+// AWS-owned baseline, and since id() returns Arn.Data it became the cache key
+// too. GetPatchBaseline documents the full ARN as the correct input for these,
+// so pass it through untouched.
+func ssmPatchBaselineArn(region, accountID, baselineID string) string {
+	if strings.HasPrefix(baselineID, "arn:") {
+		return baselineID
+	}
+	return fmt.Sprintf(ssmPatchBaselineArnPattern, region, accountID, baselineID)
+}
+
 func (a *mqlAwsSsm) getPatchBaselines(conn *connection.AwsConnection) []*jobpool.Job {
 	tasks := make([]*jobpool.Job, 0)
 	regions, err := conn.Regions()
@@ -267,7 +284,7 @@ func (a *mqlAwsSsm) getPatchBaselines(conn *connection.AwsConnection) []*jobpool
 				}
 
 				for _, pb := range resp.BaselineIdentities {
-					arn := fmt.Sprintf(ssmPatchBaselineArnPattern, region, conn.AccountId(), convert.ToValue(pb.BaselineId))
+					arn := ssmPatchBaselineArn(region, conn.AccountId(), convert.ToValue(pb.BaselineId))
 
 					mqlPB, err := CreateResource(a.MqlRuntime, "aws.ssm.patchBaseline",
 						map[string]*llx.RawData{

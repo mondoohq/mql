@@ -1813,7 +1813,7 @@ func (a *mqlAwsIamPolicyversion) rawDocument() (string, error) {
 			return
 		}
 
-		if policyVersion.PolicyVersion.Document == nil {
+		if policyVersion == nil || policyVersion.PolicyVersion == nil || policyVersion.PolicyVersion.Document == nil {
 			a.rawDocErr = errors.New("could not retrieve the policy document")
 			return
 		}
@@ -1900,12 +1900,12 @@ func initAwsIamRole(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 			return nil, nil, err
 		}
 
+		if resp == nil || resp.Role == nil {
+			return nil, nil, fmt.Errorf("aws iam role %q not found", rolename)
+		}
 		role := resp.Role
 
-		var policyDocumentMap map[string]any
-		if role != nil {
-			policyDocumentMap = decodeIamPolicyDocument(role.AssumeRolePolicyDocument)
-		}
+		policyDocumentMap := decodeIamPolicyDocument(role.AssumeRolePolicyDocument)
 
 		args["arn"] = llx.StringDataPtr(role.Arn)
 		args["id"] = llx.StringDataPtr(role.RoleId)
@@ -2469,6 +2469,9 @@ func initAwsIamInstanceProfile(runtime *plugin.Runtime, args map[string]*llx.Raw
 			return nil, nil, err
 		}
 
+		if resp == nil || resp.InstanceProfile == nil {
+			return nil, nil, fmt.Errorf("aws iam instance profile %q not found", instanceProfileName)
+		}
 		ip := resp.InstanceProfile
 		res, err := CreateResource(runtime, ResourceAwsIamInstanceProfile, map[string]*llx.RawData{
 			"arn":                 llx.StringDataPtr(ip.Arn),

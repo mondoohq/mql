@@ -24,8 +24,13 @@ func (a *mqlAwsInspector) id() (string, error) {
 	return "aws.inspector", nil
 }
 
+// id identifies one coverage row. Inspector reports a resource once per scan
+// type, so an instance covered by both PACKAGE and NETWORK produces two rows
+// that differ only in scanType - without it they collapsed into one and the
+// second scan type became invisible. The region is part of it too, since
+// resource ids like an ECR repository name are only unique within one.
 func (a *mqlAwsInspectorCoverage) id() (string, error) {
-	return a.AccountId.Data + "/" + a.ResourceId.Data, nil
+	return a.AccountId.Data + "/" + a.Region.Data + "/" + a.ResourceId.Data + "/" + a.ScanType.Data, nil
 }
 
 func (a *mqlAwsInspector) coverages() ([]any, error) {
@@ -121,18 +126,21 @@ type mqlAwsInspectorCoverageInstanceInternal struct {
 	cacheAmiId string
 }
 
+// id is a fallback only. The coverage that owns this instance passes an
+// explicit __id, because an instance is a one-to-one detail of a coverage row
+// and has nothing of its own that identifies it: the previous key concatenated
+// the tag map, which is neither unique (two instances tagged alike collide) nor
+// stable (Go randomizes map iteration, so the same instance could key
+// differently between two runs of the same scan).
 func (a *mqlAwsInspectorCoverageInstance) id() (string, error) {
-	strTags := ""
-	for k, v := range a.Tags.Data {
-		strTags = strTags + k + "/" + v.(string) + "/"
-	}
-	return a.Region.Data + "/" + strTags, nil
+	return a.Region.Data, nil
 }
 
 func (a *mqlAwsInspectorCoverage) ec2Instance() (*mqlAwsInspectorCoverageInstance, error) {
 	if a.cacheCoverage != nil && a.cacheCoverage.ResourceMetadata != nil && a.cacheCoverage.ResourceMetadata.Ec2 != nil {
 		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 		args := map[string]*llx.RawData{
+			"__id":     llx.StringData(a.MqlID() + "/ec2Instance"),
 			"platform": llx.StringData(string(a.cacheCoverage.ResourceMetadata.Ec2.Platform)),
 			"tags":     llx.MapData(toInterfaceMap(a.cacheCoverage.ResourceMetadata.Ec2.Tags), llxtypes.String),
 			"region":   llx.StringData(a.Region.Data),
@@ -163,17 +171,17 @@ func listMapConversion(m []string) map[string]any {
 	return newMap
 }
 
+// id is a fallback only, for the same reason as the instance above: the owning
+// coverage passes an explicit __id, and an image tag list is neither a unique
+// nor a stably ordered identity.
 func (a *mqlAwsInspectorCoverageImage) id() (string, error) {
-	tagString := ""
-	for k, v := range a.Tags.Data {
-		tagString = tagString + k + "/" + v.(string) + "/"
-	}
-	return a.Region.Data + "/" + tagString, nil
+	return a.Region.Data, nil
 }
 
 func (a *mqlAwsInspectorCoverage) ecrImage() (*mqlAwsInspectorCoverageImage, error) {
 	if a.cacheCoverage != nil && a.cacheCoverage.ResourceMetadata != nil && a.cacheCoverage.ResourceMetadata.EcrImage != nil {
 		mqlEcr, err := CreateResource(a.MqlRuntime, "aws.inspector.coverage.image", map[string]*llx.RawData{
+			"__id":          llx.StringData(a.MqlID() + "/ecrImage"),
 			"tags":          llx.MapData(listMapConversion(a.cacheCoverage.ResourceMetadata.EcrImage.Tags), llxtypes.String),
 			"imagePulledAt": llx.TimeDataPtr(a.cacheCoverage.ResourceMetadata.EcrImage.ImagePulledAt),
 			"region":        llx.StringData(a.Region.Data),
@@ -193,6 +201,7 @@ func (a *mqlAwsInspectorCoverageRepository) id() (string, error) {
 func (a *mqlAwsInspectorCoverage) ecrRepo() (*mqlAwsInspectorCoverageRepository, error) {
 	if a.cacheCoverage != nil && a.cacheCoverage.ResourceMetadata != nil && a.cacheCoverage.ResourceMetadata.EcrRepository != nil {
 		mqlEcr, err := CreateResource(a.MqlRuntime, "aws.inspector.coverage.repository", map[string]*llx.RawData{
+			"__id":          llx.StringData(a.MqlID() + "/ecrRepo"),
 			"name":          llx.StringDataPtr(a.cacheCoverage.ResourceMetadata.EcrRepository.Name),
 			"scanFrequency": llx.StringData(string(a.cacheCoverage.ResourceMetadata.EcrRepository.ScanFrequency)),
 			"region":        llx.StringData(a.Region.Data),
