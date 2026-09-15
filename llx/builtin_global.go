@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/versionx"
 )
 
 // handleGlobal takes a global function and returns a handler if found.
@@ -217,7 +218,7 @@ func versionCall(e *blockExecutor, f *Function, ref uint64) (*RawData, uint64, e
 		return nil, 0, errors.New("called `version` with unsupported type (expected string)")
 	}
 
-	version := NewVersion(raw)
+	version := versionx.Parse(raw)
 
 	for i := 1; i < len(f.Args); i++ {
 		arg := f.Args[i]
@@ -234,15 +235,21 @@ func versionCall(e *blockExecutor, f *Function, ref uint64) (*RawData, uint64, e
 				typ := strings.ToLower(t)
 				switch typ {
 				case "semver":
-					if version.typ != SEMVER {
+					if version.Kind() != versionx.KindSemver {
 						return &RawData{Error: errors.New("version '" + raw + "' is not a semantic version"), Value: raw, Type: types.Version}, 0, nil
 					}
 				case "debian":
-					if version.typ != SEMVER && version.typ != DEBIAN_VERSION {
+					// KindGeneric counts: the debian format is upstream + revision with
+					// no constraint on the upstream part, so "1.1.1k-12.el8" is a debian
+					// version even though it is not a semantic one. It used to be
+					// rejected here only because the parser underneath was semver-only.
+					switch version.Kind() {
+					case versionx.KindSemver, versionx.KindDebian, versionx.KindGeneric:
+					default:
 						return &RawData{Error: errors.New("version '" + raw + "' is not a debian version"), Value: raw, Type: types.Version}, 0, nil
 					}
 				case "python":
-					if version.typ != SEMVER && version.typ != PYTHON_VERSION {
+					if version.Kind() != versionx.KindSemver && version.Kind() != versionx.KindPython {
 						return &RawData{Error: errors.New("version '" + raw + "' is not a python version"), Value: raw, Type: types.Version}, 0, nil
 					}
 				case "all":

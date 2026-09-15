@@ -1199,6 +1199,22 @@ func TestVersion(t *testing.T) {
 		})
 	})
 
+	t.Run("version type set to debian", func(t *testing.T) {
+		x.TestSimple(t, []testutils.SimpleTest{
+			{Code: "version('1:1.2.3', type: 'debian')", ResultIndex: 0, Expectation: "1:1.2.3"},
+			// A real deb version whose upstream part is not semantic. This used to be
+			// rejected, because the parser underneath only knew semver.
+			{Code: "version('1.1.1k-12.el8', type: 'debian')", ResultIndex: 0, Expectation: "1.1.1k-12.el8"},
+			{Code: "version('4.18.0-425.13.1.el8_7', type: 'debian')", ResultIndex: 0, Expectation: "4.18.0-425.13.1.el8_7"},
+		})
+		x.TestSimpleErrors(t, []testutils.SimpleTest{
+			{
+				Code:        "version('latest', type: 'debian')",
+				ResultIndex: 1, Expectation: "version 'latest' is not a debian version",
+			},
+		})
+	})
+
 	t.Run("version inRange", func(t *testing.T) {
 		x.TestSimple(t, []testutils.SimpleTest{
 			{Code: "version('1.2.3').inRange('>= 1.0.0', '< 2.0.0')", ResultIndex: 0, Expectation: true},
@@ -1210,11 +1226,40 @@ func TestVersion(t *testing.T) {
 			{Code: "version('1.2.3').inRange('1.0.0', '1.2.3')", ResultIndex: 0, Expectation: true},
 			{Code: "version('1.2.3').inRange('1.2.3', '2.0.0')", ResultIndex: 0, Expectation: true},
 			{Code: "version('1.2.3').inRange('1.2.3', '1.2.3')", ResultIndex: 0, Expectation: true},
+
+			// Shapes that used to be an error because the comparator underneath was
+			// semver-only. An epoch outranks everything after it, so 1:1.2.3 is above
+			// the 2.0.0 ceiling; a four-component version is an ordinary version.
+			{Code: "version('1:1.2.3').inRange('>= 1.0.0', '< 2.0.0')", ResultIndex: 0, Expectation: false},
+			{Code: "version('1:1.2.3').inRange('>= 1.0.0', '< 2:1.0.0')", ResultIndex: 0, Expectation: true},
+			{Code: "version('1.2.3.4.5').inRange('>= 1.0.0', '< 2.0.0')", ResultIndex: 0, Expectation: true},
+			{Code: "version('126.0.6478.126').inRange('>= 100.0.0.0', '< 127.0.0.0')", ResultIndex: 0, Expectation: true},
+			{Code: "version('1.1.1k').inRange('>= 1.1.1f', '<= 1.1.1w')", ResultIndex: 0, Expectation: true},
+
+			// Range shorthands. inRange always takes two bounds, so a shorthand fills
+			// the lower one and still narrows the range on its own.
+			{Code: "version('1.9.0').inRange('^1.2.3', '< 3.0.0')", ResultIndex: 0, Expectation: true},
+			{Code: "version('2.0.0').inRange('^1.2.3', '< 3.0.0')", ResultIndex: 0, Expectation: false},
+			{Code: "version('1.2.9').inRange('~1.2.3', '< 3.0.0')", ResultIndex: 0, Expectation: true},
+			{Code: "version('1.3.0').inRange('~1.2.3', '< 3.0.0')", ResultIndex: 0, Expectation: false},
 		})
 
 		x.TestSimpleErrors(t, []testutils.SimpleTest{
-			{Code: "version('1:1.2.3').inRange('>= 1.0.0', '< 2.0.0')", ResultIndex: 0, Expectation: "inRange is only supported on comparable versions (epoch doesn't work yet)"},
-			{Code: "version('1.2.3.4.5').inRange('>= 1.0.0', '< 2.0.0')", ResultIndex: 0, Expectation: "inRange is only supported on comparable versions (semver or similar)"},
+			{Code: "version('latest').inRange('>= 1.0.0', '< 2.0.0')", ResultIndex: 0, Expectation: "inRange is only supported on comparable versions (semver or similar)"},
+		})
+	})
+
+	t.Run("package versions order the way the packager does", func(t *testing.T) {
+		x.TestSimple(t, []testutils.SimpleTest{
+			// A distro revision is a LATER build of its release, where a semver
+			// prerelease precedes it. Both are "X-suffix vs X".
+			{Code: "version('1.2.3') < version('1.2.3-1ubuntu1')", ResultIndex: 2, Expectation: true},
+			{Code: "version('1.0.0-rc1') < version('1.0.0')", ResultIndex: 2, Expectation: true},
+			{Code: "version('1.2.3-r4') < version('1.2.3-r10')", ResultIndex: 2, Expectation: true},
+			{Code: "version('4.18.0-425.3.1.el8_7') < version('4.18.0-425.13.1.el8_7')", ResultIndex: 2, Expectation: true},
+			{Code: "version('1.1.1f') < version('1.1.1k')", ResultIndex: 2, Expectation: true},
+			{Code: "version('9.1.0.0') < version('16.1.2.2')", ResultIndex: 2, Expectation: true},
+			{Code: "version('1.0~rc1') < version('1.0')", ResultIndex: 2, Expectation: true},
 		})
 	})
 }

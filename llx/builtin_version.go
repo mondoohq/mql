@@ -5,133 +5,55 @@ package llx
 
 import (
 	"errors"
-	"regexp"
-	"strconv"
 	"strings"
 
-	"github.com/Masterminds/semver"
 	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/versionx"
 )
 
-type VersionType byte
-
-const (
-	UNKNOWN_VERSION VersionType = iota + 1
-	SEMVER
-	DEBIAN_VERSION
-	PYTHON_VERSION
-)
-
-// Version type, an abstract representation of a software version.
-// It is designed to parse and compare version strings.
-// It is built on semver and adds support for epochs (deb, rpm, python).
-type Version struct {
-	*semver.Version
-	src   string
-	typ   VersionType
-	epoch int
-}
-
-var reEpoch = regexp.MustCompile("^[0-9]+[:!]")
-
-func NewVersion(s string) Version {
-	epoch := 0
-
-	var typ VersionType
-	x, err := semver.NewVersion(s)
-	if err == nil {
-		typ = SEMVER
-	} else {
-		x, epoch, typ = parseEpoch(s)
-	}
-
-	return Version{
-		Version: x,
-		src:     s,
-		typ:     typ,
-		epoch:   epoch,
-	}
-}
-
-func parseEpoch(v string) (*semver.Version, int, VersionType) {
-	prefix := reEpoch.FindString(v)
-	if prefix == "" {
-		return nil, 0, UNKNOWN_VERSION
-	}
-
-	remainder := v[len(prefix):]
-	epochStr := v[:len(prefix)-1]
-	res, err := semver.NewVersion(remainder)
-	if err != nil {
-		return nil, 0, UNKNOWN_VERSION
-	}
-
-	// invalid epoch means we discard the entire version string
-	epoch, err := strconv.Atoi(epochStr)
-	if err != nil {
-		return nil, 0, UNKNOWN_VERSION
-	}
-
-	if prefix[len(prefix)-1] == ':' {
-		return res, epoch, DEBIAN_VERSION
-	}
-	return res, epoch, PYTHON_VERSION
-}
-
-// Compare compares this version to another one. It returns -1, 0, or 1 if
-// the version smaller, equal, or larger than the other version.
+// MQL's `version` type is a thin wrapper over utils/versionx: this file wires the
+// operators to it and does nothing clever of its own. Parsing, ordering and range
+// semantics live in that package so a version orders the same way in MQL, in an
+// inventory listing, and in any service that has to sort the same strings — which was
+// not true while llx carried its own semver-with-lexical-fallback comparator.
 //
-// Versions are compared by X.Y.Z. Build metadata is ignored. Prerelease is
-// lower than the version without a prerelease.
-func (v Version) Compare(o Version) int {
-	if v.epoch != o.epoch {
-		return v.epoch - o.epoch
-	}
-	if v.Version == nil || o.Version == nil {
-		if v.src < o.src {
-			return -1
-		} else if v.src > o.src {
-			return 1
+// Note that `==` and `!=` stay TEXTUAL (versionEqVersion below). Ordering is semantic,
+// so version('1.2') < version('1.2.1'), but equality answers "is this the same version
+// string", which is what a policy asserting an exact pinned version means.
+
+// versionCompare wraps a comparison of two version strings into a builtin operator,
+// guarding the operands: a bare type assertion on runtime data panics the executor, and
+// a panic in a comparator takes down the whole scan rather than one query.
+func versionCompare(keep func(cmp int) bool) func(left, right any) *RawData {
+	return func(left, right any) *RawData {
+		l, lok := left.(string)
+		r, rok := right.(string)
+		if !lok || !rok {
+			return &RawData{
+				Type:  types.Bool,
+				Error: errors.New("version comparison expects version strings"),
+			}
 		}
-		return 0
+		return BoolData(keep(versionx.Compare(l, r)))
 	}
-
-	return v.Version.Compare(o.Version)
 }
 
-func versionLT(left any, right any) *RawData {
-	l := NewVersion(left.(string))
-	r := NewVersion(right.(string))
-	return BoolData(l.Compare(r) < 0)
-}
-
-func versionGT(left any, right any) *RawData {
-	l := NewVersion(left.(string))
-	r := NewVersion(right.(string))
-	return BoolData(l.Compare(r) > 0)
-}
-
-func versionLTE(left any, right any) *RawData {
-	l := NewVersion(left.(string))
-	r := NewVersion(right.(string))
-	return BoolData(l.Compare(r) <= 0)
-}
-
-func versionGTE(left any, right any) *RawData {
-	l := NewVersion(left.(string))
-	r := NewVersion(right.(string))
-	return BoolData(l.Compare(r) >= 0)
-}
+var (
+	versionLT  = versionCompare(func(c int) bool { return c < 0 })
+	versionGT  = versionCompare(func(c int) bool { return c > 0 })
+	versionLTE = versionCompare(func(c int) bool { return c <= 0 })
+	versionGTE = versionCompare(func(c int) bool { return c >= 0 })
+)
 
 func versionCmpVersion(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
 	return nonNilDataOpV2(e, bind, chunk, ref, types.Bool, func(left, right any) *RawData {
-		return BoolData(left.(string) == right.(string))
+		return BoolData(left == right)
 	})
 }
 
 func versionNotVersion(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
 	return nonNilDataOpV2(e, bind, chunk, ref, types.Bool, func(left, right any) *RawData {
-		return BoolData(left.(string) != right.(string))
+		return BoolData(left != right)
 	})
 }
 
@@ -156,16 +78,38 @@ func versionEpoch(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*R
 		return &RawData{Type: types.Int, Error: bind.Error}, 0, nil
 	}
 
-	v := NewVersion(bind.Value.(string))
-	return IntData(v.epoch), 0, nil
-}
-
-func versionInRange(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
-	if bind.Value == nil {
-		return &RawData{Type: types.Int, Error: bind.Error}, 0, nil
+	raw, ok := bind.Value.(string)
+	if !ok {
+		return &RawData{Type: types.Int, Error: errors.New("`epoch` expects a version")}, 0, nil
 	}
 
-	conditions := []string{}
+	return IntData(int64(versionx.Parse(raw).Epoch())), 0, nil
+}
+
+// versionInRange implements `version(x).inRange(lower, upper)`. Each argument is a
+// bound: a bare version is read as inclusive (">=" for the first, "<=" for the rest),
+// and an argument that already names an operator is passed through.
+//
+// Both bounds and the version itself go through versionx, so this now answers for
+// version shapes the old semver-only implementation had to refuse outright — an epoch'd
+// deb version, a four-component build. A version with nothing numeric in it ("latest")
+// is still an error rather than a silent false.
+func versionInRange(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
+	if bind.Value == nil {
+		return &RawData{Type: types.Bool, Error: bind.Error}, 0, nil
+	}
+
+	raw, ok := bind.Value.(string)
+	if !ok {
+		return nil, 0, errors.New("`inRange` expects a version")
+	}
+
+	base := versionx.Parse(raw)
+	if base.Kind() == versionx.KindUnknown {
+		return nil, 0, errors.New("inRange is only supported on comparable versions (semver or similar)")
+	}
+
+	conditions := make([]string, 0, len(chunk.Function.Args))
 	for i := range chunk.Function.Args {
 		argRef := chunk.Function.Args[i]
 
@@ -179,7 +123,14 @@ func versionInRange(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (
 			return nil, 0, errors.New("incorrect type for argument in `inRange` call (expected string)")
 		}
 		ts := strings.TrimSpace(s)
-		if ts[0] != '>' && ts[0] != '<' {
+		if ts == "" {
+			return nil, 0, errors.New("inRange was called with an empty bound")
+		}
+		// A BARE bound is inclusive, and which side it bounds depends on its position:
+		// the first argument is the floor, everything after it the ceiling. A bound
+		// that already carries an operator or is a range of its own ("^1.2.3", "1.2.x")
+		// must be passed through untouched — prefixing it would stack two operators.
+		if versionx.NeedsOperator(ts) {
 			if i == 0 {
 				ts = ">= " + ts
 			} else {
@@ -190,24 +141,12 @@ func versionInRange(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (
 		conditions = append(conditions, ts)
 	}
 
-	base := NewVersion(bind.Value.(string))
-
-	if base.Version == nil {
-		return nil, 0, errors.New("inRange is only supported on comparable versions (semver or similar)")
+	res, err := versionx.Satisfies(base, conditions...)
+	if err != nil {
+		return nil, 0, errors.New("inRange was called with an invalid constraint: " + err.Error())
 	}
-	if base.epoch != 0 {
-		return nil, 0, errors.New("inRange is only supported on comparable versions (epoch doesn't work yet)")
+	if !res {
+		return BoolFalse, 0, nil
 	}
-
-	for _, condition := range conditions {
-		c, err := semver.NewConstraint(condition)
-		if err != nil {
-			return nil, 0, errors.New("inRange was called with an invalid constraint: '" + condition + "'")
-		}
-		if !c.Check(base.Version) {
-			return BoolFalse, 0, nil
-		}
-	}
-
 	return BoolTrue, 0, nil
 }
