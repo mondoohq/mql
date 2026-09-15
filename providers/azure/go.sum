@@ -168,8 +168,8 @@ github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/redis/armredis/v4 v4.0.0 h
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/redis/armredis/v4 v4.0.0/go.mod h1:SF4DGSRInvFhQq0ndZ+nLrsiIKhJ23pacoVtdrmc6Pg=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armdeployments v1.0.0 h1:67nFqWXpo0x5Nz0XEb1yI7s8D+EHy8NsTinYw9sZnLk=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armdeployments v1.0.0/go.mod h1:fewgRjNVE84QVVh798sIMFb7gPXPp7NmnekGnboSnXk=
-github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armdeployments/v2 v2.0.0 h1:beUtRjpgxW6I8oyB/8bZ98+NojDTgcokBj+EiXdDqjg=
-github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armdeployments/v2 v2.0.0/go.mod h1:q9iTxbauRZ9g68KsZ2NpPh/7aC7m7f91AI3gHSTCgr4=
+github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armdeployments/v3 v3.0.0 h1:ZFoN8qUeV8C9aKM9SAk9ePaEUFTZMaqPtznw2BAoSjQ=
+github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armdeployments/v3 v3.0.0/go.mod h1:cKrT1oD6iIHLjt5N7S7n7M2xvQWjifWBRDyM65bXiAs=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armlocks v1.2.0 h1:CMp8GwmUfS/Stg5KBgduD8rPIk9GNj1HMaID/gUAJYg=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armlocks v1.2.0/go.mod h1:GE1wqa9Ny9eZ8wHtHqbCE7mMsFfVbdEY0itmzYV8JEg=
 github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armpolicy v1.0.0 h1:FKYUd0TZfjjWtdk7LR+6rI64yNY1gMe9rNV40Y2Fh4o=
