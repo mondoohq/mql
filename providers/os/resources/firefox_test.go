@@ -17,7 +17,6 @@ func TestFirefoxFieldExtraction(t *testing.T) {
 		"addons": [
 			{
 				"id": "uBlock0@raymondhill.net",
-				"name": "uBlock Origin",
 				"version": "1.56.0",
 				"type": "extension",
 				"description": "An efficient blocker.",
@@ -37,9 +36,18 @@ func TestFirefoxFieldExtraction(t *testing.T) {
 					"description": "An efficient blocker.",
 					"creator": "Raymond Hill"
 				},
-				"permissions": {
+				"userPermissions": {
 					"permissions": ["dns", "menus", "privacy", "storage", "tabs", "webNavigation", "webRequest", "webRequestBlocking"],
-					"origins": ["<all_urls>"]
+					"origins": ["<all_urls>"],
+					"data_collection": []
+				},
+				"optionalPermissions": {
+					"permissions": ["clipboardWrite"],
+					"origins": []
+				},
+				"requestedPermissions": {
+					"permissions": [],
+					"origins": []
 				}
 			},
 			{
@@ -95,8 +103,11 @@ func TestFirefoxFieldExtraction(t *testing.T) {
 	assert.Nil(t, ublock.Loader)
 	assert.Equal(t, 1, ublock.ApplyBackgroundUpdates)
 
-	// Creator
+	// Name and creator: real entries carry these in defaultLocale only, so the
+	// top-level fields stay empty and the locale has to supply them.
+	assert.Empty(t, ublock.Name)
 	require.NotNil(t, ublock.DefaultLocale)
+	assert.Equal(t, "uBlock Origin", ublock.DefaultLocale.Name)
 	assert.Equal(t, "Raymond Hill", ublock.DefaultLocale.Creator)
 
 	// Derived: disabled
@@ -108,12 +119,14 @@ func TestFirefoxFieldExtraction(t *testing.T) {
 	// Derived: native (loader == nil && type == extension)
 	assert.True(t, ublock.Loader == nil && ublock.Type == "extension")
 
-	// Permissions merge
-	require.NotNil(t, ublock.Permissions)
-	merged := firefoxMergeStringSlices(ublock.Permissions.Permissions, ublock.Permissions.Origins)
+	// Granted permissions come from userPermissions, and never from the
+	// optionalPermissions/requestedPermissions siblings.
+	require.NotNil(t, ublock.UserPermissions)
+	merged := firefoxMergeStringSlices(ublock.UserPermissions.Permissions, ublock.UserPermissions.Origins)
 	assert.Contains(t, merged, "dns")
 	assert.Contains(t, merged, "<all_urls>")
-	assert.Len(t, merged, 9) // 8 permissions + 1 origin
+	assert.Len(t, merged, 9)                        // 8 permissions + 1 origin
+	assert.NotContains(t, merged, "clipboardWrite") // optional, not granted
 
 	// Test disabled addon (user disabled)
 	disabled := data.Addons[1]
@@ -122,7 +135,7 @@ func TestFirefoxFieldExtraction(t *testing.T) {
 	assert.True(t, disabled.UserDisabled || disabled.AppDisabled) // disabled = true
 	assert.Equal(t, 0, disabled.ApplyBackgroundUpdates)
 	assert.False(t, disabled.ApplyBackgroundUpdates != 0) // autoupdate = false
-	assert.Nil(t, disabled.Permissions)                   // no permissions field
+	assert.Nil(t, disabled.UserPermissions)               // no userPermissions field
 
 	// Test app-disabled addon
 	appDisabled := data.Addons[2]
