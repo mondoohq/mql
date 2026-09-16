@@ -60,12 +60,17 @@ func (npm *NixPkgManager) listFromCLI() ([]Package, error) {
 	return ParseNixJSON(cmd.Stdout)
 }
 
-// nixJSONOutput represents the JSON output of `nix-env --query --installed --json`.
-// The top-level object maps attribute names to package info objects.
+// nixJSONPackage is one entry of the JSON object `nix-env --query --installed
+// --json` prints. The object is keyed by the package's position in the
+// profile ("0", "1", "2", ...), so only the values carry meaning.
+//
+// pname and version are the fields to read: nix has already split them out of
+// the derivation, which makes them authoritative where a store path name has
+// to be parsed.
 type nixJSONPackage struct {
-	Name    string `json:"pname"`
+	PName   string `json:"pname"`
 	Version string `json:"version"`
-	// Full derivation name (e.g., "curl-8.7.1")
+	// Nix system double pairing architecture with kernel, e.g. "aarch64-linux".
 	System string `json:"system"`
 }
 
@@ -78,7 +83,7 @@ func ParseNixJSON(r io.Reader) ([]Package, error) {
 
 	pkgs := make([]Package, 0, len(packages))
 	for _, np := range packages {
-		name := np.Name
+		name := np.PName
 		if name == "" {
 			continue
 		}
@@ -86,6 +91,7 @@ func ParseNixJSON(r io.Reader) ([]Package, error) {
 		pkgs = append(pkgs, Package{
 			Name:    name,
 			Version: np.Version,
+			Arch:    nixSystemArch(np.System),
 			Format:  NixPkgFormat,
 			PUrl:    newNixPurl(name, np.Version),
 		})
@@ -94,19 +100,30 @@ func ParseNixJSON(r io.Reader) ([]Package, error) {
 	return pkgs, nil
 }
 
+// nixSystemArch returns the architecture of a nix system double such as
+// "aarch64-linux" or "x86_64-darwin". Nix pairs the architecture with the
+// kernel, and only the architecture describes the package.
+func nixSystemArch(system string) string {
+	arch, _, _ := strings.Cut(system, "-")
+	return arch
+}
+
 func (npm *NixPkgManager) listFromFS() ([]Package, error) {
 	afs := &afero.Afero{Fs: npm.conn.FileSystem()}
 	return ParseNixStore(afs, "/nix/store")
 }
 
 // nixStoreRegex matches Nix store path directory names.
-// Format: <32-char hash>-<name>-<version>
-// Example: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee-curl-8.7.1"
+// Format: <32-char hash>-<name>[-<version>][-<output>]
+// Example: "8gdgwydsf6gia9j178nymxwm2bl0z3m3-curl-8.20.0-bin"
 var nixStoreRegex = regexp.MustCompile(`^[a-z0-9]{32}-(.+)$`)
 
 // ParseNixStore enumerates packages from the /nix/store directory.
-// Each directory name is <hash>-<name>-<version>. We extract name and
-// version by splitting on the last hyphen before a version-like segment.
+//
+// The store is a weaker source than nix-env: it holds every path ever built
+// or fetched on the machine, so a package that only an old generation
+// references is still there, and nothing in a path name says whether the
+// running system uses it. Read it only when nix cannot be asked directly.
 func ParseNixStore(afs *afero.Afero, storePath string) ([]Package, error) {
 	entries, err := afs.ReadDir(storePath)
 	if err != nil {
@@ -117,6 +134,10 @@ func ParseNixStore(afs *afero.Afero, storePath string) ([]Package, error) {
 	// in the store with different hashes)
 	seen := map[string]Package{}
 	for _, entry := range entries {
+		// Nix realizes an output as a directory, and writes a derivation,
+		// patch, setup hook or source archive as a plain file. On the store
+		// captured in testdata that is 684 of 841 entries, none of them a
+		// package.
 		if !entry.IsDir() {
 			continue
 		}
@@ -127,13 +148,19 @@ func ParseNixStore(afs *afero.Afero, storePath string) ([]Package, error) {
 		}
 
 		nameVersion := m[1]
-		name, version := splitNixNameVersion(nameVersion)
-		if name == "" {
+
+		// An image or archive filesystem can report an entry without a usable
+		// mode, so reject a derivation by name as well. Derivations outnumber
+		// outputs in a store that has built anything.
+		if strings.HasSuffix(nameVersion, ".drv") {
 			continue
 		}
 
-		// Skip .drv (derivation) directories and internal entries
-		if strings.HasSuffix(name, ".drv") {
+		name, version := splitNixNameVersion(nameVersion)
+		if name == "" || version == "" {
+			// The store's own bookkeeping outputs carry no version:
+			// user-environment, root-profile-env, base-system, channel-nixos,
+			// and the unpacked sources under source. A package always has one.
 			continue
 		}
 
@@ -155,17 +182,56 @@ func ParseNixStore(afs *afero.Afero, storePath string) ([]Package, error) {
 	return pkgs, nil
 }
 
-// splitNixNameVersion splits a Nix store name-version string.
-// Example: "curl-8.7.1" → ("curl", "8.7.1")
-// Example: "python3.11-requests-2.31.0" → ("python3.11-requests", "2.31.0")
-// The version starts at the last hyphen followed by a digit.
+// nixOutputNames are the output names nixpkgs derivations declare. Nix
+// realizes one store path per output and suffixes the path with the output
+// name, so curl-8.20.0 and curl-8.20.0-bin are one package at one version.
+//
+// Only a name on this list is treated as an output, because a version can end
+// in a word of its own: publicsuffix-list-0-unstable-2026-05-13 is version
+// 0-unstable-2026-05-13, and stripping its tail would report a package that
+// does not exist.
+var nixOutputNames = map[string]struct{}{
+	"bin": {}, "debug": {}, "dev": {}, "devdoc": {}, "dist": {},
+	"doc": {}, "info": {}, "lib": {}, "man": {}, "out": {}, "static": {},
+	// gcc calls its runtime output libgcc; util-linux splits login, mount and
+	// swap out of its bin output.
+	"libgcc": {}, "login": {}, "mount": {}, "swap": {},
+}
+
+// splitNixNameVersion splits a nix derivation name into pname and version the
+// way nix itself does: the version begins at the first hyphen that is not
+// followed by a letter (DrvName, src/libexpr/names.cc). A pname can therefore
+// carry hyphens and digits of its own, and a version can carry hyphens too.
+//
+// A store path adds the derivation's output name as a further suffix, which
+// belongs to neither field, so a known output name is removed.
+//
+//	"curl-8.20.0-bin"                     → ("curl", "8.20.0")
+//	"git-minimal-2.54.0"                  → ("git-minimal", "2.54.0")
+//	"glibc-2.42-67"                       → ("glibc", "2.42-67")
+//	"editline-1.17.1-unstable-2025-05-24" → ("editline", "1.17.1-unstable-2025-05-24")
 func splitNixNameVersion(s string) (string, string) {
-	for i := len(s) - 1; i > 0; i-- {
-		if s[i] == '-' && i+1 < len(s) && s[i+1] >= '0' && s[i+1] <= '9' {
-			return s[:i], s[i+1:]
+	name, version := s, ""
+	for i := 0; i+1 < len(s); i++ {
+		if s[i] == '-' && !isNixNameLetter(s[i+1]) {
+			name, version = s[:i], s[i+1:]
+			break
 		}
 	}
-	return s, ""
+
+	if i := strings.LastIndexByte(version, '-'); i != -1 {
+		if _, ok := nixOutputNames[version[i+1:]]; ok {
+			version = version[:i]
+		}
+	}
+
+	return name, version
+}
+
+// isNixNameLetter reports whether b continues a pname rather than starting a
+// version. Nix decides this with isalpha() in the C locale.
+func isNixNameLetter(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
 }
 
 // newNixPurl creates a PURL for a Nix package.
