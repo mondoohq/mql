@@ -12,8 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/providers-sdk/v1/inventory"
-	"go.mondoo.com/mql/providers/os/connection/tar"
+	"go.mondoo.com/mql/v13/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/v13/providers/os/connection/tar"
 )
 
 const osReleaseBody = "NAME=\"Fedora Linux\"\nID=fedora\nVERSION_ID=42\n"
