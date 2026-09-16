@@ -688,8 +688,8 @@ func (t *Type) typeName() string {
 	}
 }
 
-// validateFieldShadowing rejects a resource whose name occupies the path of a
-// field declared on its parent, which makes that field unreachable.
+// validateFieldShadowing rejects a resource or alias whose name occupies the
+// path of a field declared on its parent, which makes that field unreachable.
 //
 // mqlc resolves a dotted path by taking the longest matching resource name, and
 // that match wins unconditionally over a field on a shorter one
@@ -708,24 +708,46 @@ func (t *Type) typeName() string {
 // the replacement after the path it replaces revokes that promise in the same
 // release that made it.
 //
-// The one shape that is not a collision is a field whose own type IS that
-// resource - `ssh() vsphere.host.ssh` beside `private vsphere.host.ssh`. Both
-// readings denote the same thing, so nothing is unreachable, and for a private
-// target mqlc.prefersFieldOverResource routes the path through the accessor so
-// the fields are actually filled. That is the dominant idiom in the tree (~490
-// uses) and stays allowed; goBuilder.checkOwnerFilledResourcesArePrivate is what
-// keeps the public half of it honest.
+// The one shape that is not a collision is a field whose own type IS what the
+// name denotes - `ssh() vsphere.host.ssh` beside `private vsphere.host.ssh`.
+// Both readings mean the same thing, so nothing is unreachable, and for a
+// private target mqlc.prefersFieldOverResource routes the path through the
+// accessor so the fields are actually filled. That is the dominant idiom in the
+// tree (~490 uses) and stays allowed; goBuilder.checkOwnerFilledResourcesArePrivate
+// is what keeps the public half of it honest.
+//
+// Aliases count. `alias x.y.z = t` puts `x.y.z` into the same resource map a
+// declaration would, so it shadows a field `z` on `x.y` exactly as a resource
+// does. validateAliases only compares an alias against other aliases and
+// against resources, so nothing else would catch it, and the day someone adds
+// an alias next to a field of that name the defect this check exists for comes
+// straight back.
 //
 // Scope is one file, which is what Parse sees. A field and a resource
 // contributed to the same path by two different providers slip through; that
 // needs the merged schema, and no provider can be pointed at as the one at
 // fault.
 func (lr *LR) validateFieldShadowing() []error {
-	declared := map[string]bool{}
+	// What each name in the resource namespace denotes. A resource denotes
+	// itself; an alias denotes the resource it points at. Both land in the
+	// schema's resource map (see Alias), so both win a dotted path over a field
+	// of the same name, and both have to be checked.
+	type declaredName struct {
+		kind    string // "resource" or "alias", for the message
+		denotes string // the resource the name resolves to
+	}
+	declared := map[string]declaredName{}
 	for _, r := range lr.Resources {
 		if r != nil {
-			declared[r.ID] = true
+			declared[r.ID] = declaredName{kind: "resource", denotes: r.ID}
 		}
+	}
+	for _, a := range lr.Aliases {
+		name := a.Definition.Type
+		if _, ok := declared[name]; ok {
+			continue // validateAliases reports this one; do not double-report
+		}
+		declared[name] = declaredName{kind: "alias", denotes: a.Type.Type}
 	}
 
 	var errs []error
@@ -738,15 +760,28 @@ func (lr *LR) validateFieldShadowing() []error {
 				continue
 			}
 			path := r.ID + "." + f.BasicField.ID
-			if !declared[path] || f.BasicField.Type.typeName() == path {
+			target, ok := declared[path]
+			if !ok {
 				continue
 			}
-			msg := "resource " + path + " has the same name as the field " +
+			// The accessor shape: the field's own type is what the name
+			// denotes, so both readings mean the same thing and nothing becomes
+			// unreachable. An alias is written by its target, the field may
+			// name either.
+			typeName := f.BasicField.Type.typeName()
+			if typeName == path || typeName == target.denotes {
+				continue
+			}
+
+			remedy := "Declare one or the other: drop the field if the resource " +
+				"supersedes it, or name the resource after the accessor that returns it"
+			if target.kind == "alias" {
+				remedy = "Rename the alias, or drop the field it hides"
+			}
+			msg := target.kind + " " + path + " has the same name as the field " +
 				f.BasicField.ID + " on " + r.ID + "; a dotted path resolves to the " +
-				"longest matching resource, so the resource wins " + path + " and the " +
-				"field cannot be read through its own path. Declare one or the other: " +
-				"drop the field if the resource supersedes it, or name the resource " +
-				"after the accessor that returns it"
+				"longest matching resource, so the " + target.kind + " wins " + path +
+				" and the field cannot be read through its own path. " + remedy
 			if f.BasicField.Maturity == resources.MaturityDeprecated {
 				msg += ". The field is deprecated, so this also revokes the " +
 					"deprecation window @replaced_by promises"

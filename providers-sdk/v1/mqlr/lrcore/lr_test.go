@@ -1497,6 +1497,46 @@ private http.header.setCookie {
 		require.NoError(t, err)
 	})
 
+	t.Run("rejects an alias that occupies a field's path", func(t *testing.T) {
+		// An alias lands in the same resource map a declaration does, so it
+		// wins the path the same way. Nothing else checks it against fields.
+		_, err := Parse(`
+option provider = "test"
+
+alias cloud.compute = cloud.project.computeService
+
+cloud {
+	compute string
+}
+
+cloud.project.computeService {
+	region string
+}
+`)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "alias cloud.compute has the same name as the field compute on cloud")
+		assert.Contains(t, err.Error(), "Rename the alias, or drop the field it hides")
+	})
+
+	t.Run("allows an alias beside a field typed as its target", func(t *testing.T) {
+		// Same accessor shape as a resource: both readings denote the target,
+		// so nothing becomes unreachable.
+		_, err := Parse(`
+option provider = "test"
+
+alias cloud.compute = cloud.project.computeService
+
+cloud {
+	compute() cloud.project.computeService
+}
+
+cloud.project.computeService {
+	region string
+}
+`)
+		require.NoError(t, err)
+	})
+
 	t.Run("allows a list field whose element type is that resource", func(t *testing.T) {
 		_, err := Parse(`
 option provider = "test"
