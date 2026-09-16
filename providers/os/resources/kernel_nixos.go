@@ -24,10 +24,6 @@ const (
 	nixosSystemProfilesDir = "/nix/var/nix/profiles"
 	nixosBootedSystemDir   = "/run/booted-system"
 	nixosBootJSONName      = "boot.json"
-
-	// nixosBootspecV1Key is the namespace a generation records its boot
-	// details under (NixOS RFC 125).
-	nixosBootspecV1Key = "org.nixos.bootspec.v1"
 )
 
 // nixosGenerationLink matches a generation symlink in the system profile
@@ -40,7 +36,10 @@ var nixosGenerationLink = regexp.MustCompile(`^system-(\d+)-link$`)
 // hash: /nix/store/<32 chars>-linux-6.18.50/bzImage yields linux-6.18.50.
 var nixosStoreEntry = regexp.MustCompile(`^/nix/store/[a-z0-9]{32}-([^/]+)`)
 
-// nixosBootJSON is a generation's boot.json, keyed by bootspec namespace.
+// nixosBootJSON is a generation's boot.json, keyed by bootspec namespace:
+// org.nixos.bootspec.v1, which a struct tag has to spell out because it cannot
+// read a constant.
+//
 // reboot.NixosReboot reads the same file for a different question; the two
 // stay separate because a shared reader would couple the kernel resource to
 // the reboot one for two fields.
