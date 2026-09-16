@@ -4,6 +4,7 @@
 package packages
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,6 +20,23 @@ import (
 
 const (
 	NixPkgFormat = "nix"
+
+	// nixStorePrefix is where nix realizes its outputs. It is configurable, but
+	// a NixOS system cannot move it, and a relocated store on another
+	// distribution still answers through nix-env.
+	nixStorePrefix = "/nix/store/"
+
+	// nixosCurrentSystem is the generation NixOS has activated. Its closure is
+	// the set of store paths the running system is built from.
+	nixosCurrentSystem = "/run/current-system"
+
+	// nixSystemClosureCommand lists the directories in the current system's
+	// closure. The directory test runs on the host because nix realizes an
+	// output as a directory and writes generated configuration as a plain file
+	// (etc-sysctl.d-60-nixos.conf), and one round-trip is cheaper than a stat
+	// per path over a remote connection.
+	nixSystemClosureCommand = `nix-store --query --requisites ` + nixosCurrentSystem +
+		` | while IFS= read -r p; do [ -d "$p" ] && printf '%s\n' "$p"; done`
 )
 
 type NixPkgManager struct {
@@ -35,17 +53,84 @@ func (npm *NixPkgManager) Format() string {
 }
 
 func (npm *NixPkgManager) List() ([]Package, error) {
-	// Primary: nix-env CLI (available on NixOS and standalone Nix)
 	if npm.conn.Capabilities().Has(shared.Capability_RunCommand) {
-		pkgs, err := npm.listFromCLI()
-		if err == nil {
-			return pkgs, nil
+		// On NixOS the packages that make up the system are declared in the
+		// configuration and built into a generation, not installed into a
+		// profile. nix-env reports a profile, so on a declaratively managed
+		// host it reports nothing: `nix-env --query --installed --json`
+		// answers "{}" on a NixOS host whose closure holds 681 store paths.
+		// Reading the profile alone left every such host reporting no packages
+		// at all, which a policy asserting a package is absent then passed.
+		closure, closureErr := npm.listFromSystemClosure()
+		if closureErr != nil {
+			log.Debug().Err(closureErr).
+				Msg("mql[nix]> could not read the system closure")
 		}
-		log.Debug().Err(err).Msg("mql[nix]> could not enumerate via CLI, falling back to filesystem")
+
+		// A profile can hold packages beside the system's own, on NixOS as
+		// well as on a distribution that only has nix installed, so both are
+		// asked and the answers merged.
+		profile, profileErr := npm.listFromCLI()
+		if profileErr != nil {
+			log.Debug().Err(profileErr).
+				Msg("mql[nix]> could not enumerate the nix profile")
+		}
+
+		if len(closure) > 0 || len(profile) > 0 {
+			return mergeNixPackages(closure, profile), nil
+		}
+
+		// Neither source answered. An empty profile on a host with no system
+		// closure is a real answer on a machine where nothing is installed,
+		// but so is a failure of both commands, so fall through to the store
+		// rather than reporting an empty list either way.
+		if closureErr == nil && profileErr == nil {
+			log.Debug().Msg("mql[nix]> neither the system closure nor the profile named a package")
+		}
 	}
 
 	// Fallback: parse /nix/store/ directory names
 	return npm.listFromFS()
+}
+
+// listFromSystemClosure reports the packages the running NixOS generation is
+// built from. It returns nothing, and no error, on a host that has no
+// activated generation -- a distribution with nix installed alongside its own
+// package manager.
+func (npm *NixPkgManager) listFromSystemClosure() ([]Package, error) {
+	if _, err := npm.conn.FileSystem().Stat(nixosCurrentSystem); err != nil {
+		return nil, nil
+	}
+
+	cmd, err := npm.conn.RunCommand(nixSystemClosureCommand)
+	if err != nil {
+		return nil, err
+	}
+	if cmd.ExitStatus != 0 {
+		return nil, fmt.Errorf("nix-store query of %s failed with exit code %d",
+			nixosCurrentSystem, cmd.ExitStatus)
+	}
+
+	return ParseNixSystemClosure(cmd.Stdout)
+}
+
+// mergeNixPackages unions the two sources on name and version. A package in
+// the system closure is usually in no profile and vice versa, but a profile
+// can install the very version the system already has.
+func mergeNixPackages(lists ...[]Package) []Package {
+	seen := map[string]struct{}{}
+	res := make([]Package, 0, len(lists[0]))
+	for _, list := range lists {
+		for _, p := range list {
+			key := p.Name + "@" + p.Version
+			if _, dup := seen[key]; dup {
+				continue
+			}
+			seen[key] = struct{}{}
+			res = append(res, p)
+		}
+	}
+	return res
 }
 
 func (npm *NixPkgManager) listFromCLI() ([]Package, error) {
@@ -147,32 +232,106 @@ func ParseNixStore(afs *afero.Afero, storePath string) ([]Package, error) {
 			continue
 		}
 
-		nameVersion := m[1]
-
-		// An image or archive filesystem can report an entry without a usable
-		// mode, so reject a derivation by name as well. Derivations outnumber
-		// outputs in a store that has built anything.
-		if strings.HasSuffix(nameVersion, ".drv") {
+		pkg := nixPackageFromStoreEntry(m[1])
+		if pkg == nil {
 			continue
 		}
 
-		name, version := splitNixNameVersion(nameVersion)
-		if name == "" || version == "" {
-			// The store's own bookkeeping outputs carry no version:
-			// user-environment, root-profile-env, base-system, channel-nixos,
-			// and the unpacked sources under source. A package always has one.
-			continue
-		}
-
-		key := name + "@" + version
+		key := pkg.Name + "@" + pkg.Version
 		if _, ok := seen[key]; !ok {
-			seen[key] = Package{
-				Name:    name,
-				Version: version,
-				Format:  NixPkgFormat,
-				PUrl:    newNixPurl(name, version),
-			}
+			seen[key] = *pkg
 		}
+	}
+
+	pkgs := make([]Package, 0, len(seen))
+	for _, p := range seen {
+		pkgs = append(pkgs, p)
+	}
+	return pkgs, nil
+}
+
+// nixPackageFromStoreEntry turns a store entry name -- the part of a store
+// path after the hash -- into the package it holds, or nil when it holds
+// something that is not one.
+//
+// Both callers need the same answer: a store directory listing and the closure
+// of the running system name their entries identically, and a rule applied to
+// one and not the other would report a different set of packages depending on
+// whether nix could be asked.
+func nixPackageFromStoreEntry(entry string) *Package {
+	// A derivation is a file rather than a directory, so a caller reading real
+	// modes has already skipped it. An image or archive filesystem can report
+	// an entry without a usable mode, and derivations outnumber outputs in a
+	// store that has built anything.
+	if strings.HasSuffix(entry, ".drv") {
+		return nil
+	}
+
+	name, version := splitNixNameVersion(entry)
+	if name == "" || version == "" {
+		// Bookkeeping outputs carry no version: user-environment,
+		// root-profile-env, base-system, channel-nixos, the unpacked sources
+		// under source, and on NixOS every generated systemd unit
+		// (unit-systemd-journald.service). A package always has one.
+		return nil
+	}
+
+	// nix splits the version off at the first hyphen that is not followed by a
+	// letter, so a version can begin with a dot or a hyphen as well as with a
+	// digit. Only a digit begins a real one. NixOS builds a templated systemd
+	// unit into the store as unit-systemd-backlight-.service, whose version
+	// would otherwise read as ".service".
+	if version[0] < '0' || version[0] > '9' {
+		return nil
+	}
+
+	return &Package{
+		Name:    name,
+		Version: version,
+		Format:  NixPkgFormat,
+		PUrl:    newNixPurl(name, version),
+	}
+}
+
+// ParseNixSystemClosure reads the store paths of a NixOS system closure, one
+// per line, as `nix-store --query --requisites` prints them.
+func ParseNixSystemClosure(r io.Reader) ([]Package, error) {
+	seen := map[string]Package{}
+
+	scanner := bufio.NewScanner(r)
+	// A closure line is a store path, but the buffer has to hold one even on a
+	// store with a long prefix.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		// nix writes warnings to stderr, but a caller that merged the streams
+		// would hand them over here, and a warning is not a package.
+		entry, ok := strings.CutPrefix(line, nixStorePrefix)
+		if !ok {
+			continue
+		}
+
+		m := nixStoreRegex.FindStringSubmatch(entry)
+		if m == nil {
+			continue
+		}
+
+		pkg := nixPackageFromStoreEntry(m[1])
+		if pkg == nil {
+			continue
+		}
+
+		key := pkg.Name + "@" + pkg.Version
+		if _, dup := seen[key]; !dup {
+			seen[key] = *pkg
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("could not read nix system closure: %w", err)
 	}
 
 	pkgs := make([]Package, 0, len(seen))
@@ -190,12 +349,26 @@ func ParseNixStore(afs *afero.Afero, storePath string) ([]Package, error) {
 // in a word of its own: publicsuffix-list-0-unstable-2026-05-13 is version
 // 0-unstable-2026-05-13, and stripping its tail would report a package that
 // does not exist.
+// A name missing from this list costs a duplicate entry -- the package is
+// reported once at its version and once with the output name trailing it --
+// while a version word wrongly on it corrupts the version of every release
+// that uses it. That asymmetry is why this is a list of outputs to strip
+// rather than a list of version words to keep.
 var nixOutputNames = map[string]struct{}{
 	"bin": {}, "debug": {}, "dev": {}, "devdoc": {}, "dist": {},
 	"doc": {}, "info": {}, "lib": {}, "man": {}, "out": {}, "static": {},
-	// gcc calls its runtime output libgcc; util-linux splits login, mount and
-	// swap out of its bin output.
-	"libgcc": {}, "login": {}, "mount": {}, "swap": {},
+	// Outputs a single derivation names for itself, all seen in the closure of
+	// a stock NixOS 26.05 system: gcc calls its runtime output libgcc,
+	// util-linux splits login, mount, swap and lastlog out of bin, glibc ships
+	// getent, bind ships host, libressl ships nc, shadow ships su, lvm2 ships
+	// scripts, cloud-utils ships guest, and the kernel ships modules.
+	"libgcc": {}, "login": {}, "mount": {}, "swap": {}, "lastlog": {},
+	"getent": {}, "host": {}, "nc": {}, "su": {}, "scripts": {},
+	"guest": {}, "modules": {}, "env": {},
+	// NixOS builds the kernel modules the initrd needs into
+	// linux-<version>-modules-shrunk, so an output name can be more than one
+	// component long.
+	"shrunk": {},
 }
 
 // splitNixNameVersion splits a nix derivation name into pname and version the
@@ -219,10 +392,18 @@ func splitNixNameVersion(s string) (string, string) {
 		}
 	}
 
-	if i := strings.LastIndexByte(version, '-'); i != -1 {
-		if _, ok := nixOutputNames[version[i+1:]]; ok {
-			version = version[:i]
+	// An output name can be several components long, as in
+	// linux-6.12.93-modules-shrunk, so strip for as long as the tail is one.
+	// Each pass removes a component, so this ends.
+	for {
+		i := strings.LastIndexByte(version, '-')
+		if i == -1 {
+			break
 		}
+		if _, ok := nixOutputNames[version[i+1:]]; !ok {
+			break
+		}
+		version = version[:i]
 	}
 
 	return name, version
