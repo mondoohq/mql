@@ -24,9 +24,30 @@ func TestInterfacesDarwin(t *testing.T) {
 
 	interfaces, err := subject.Interfaces(conn, platform)
 	require.NoError(t, err)
-	assert.Len(t, interfaces, 26)
 
-	index := subject.FindInterface(interfaces, subject.Interface{Name: "en0"})
+	// 25, the number of interfaces this fixture's ifconfig output declares at
+	// column 0. It read 26 before: bridge0's three `member: enN flags=3<...>`
+	// lines carry flags= too, so the parser took them for an interface and
+	// added one named `member`.
+	assert.Len(t, interfaces, 25)
+	for _, iface := range interfaces {
+		assert.NotEqual(t, "member", iface.Name,
+			"a bridge's membership line is not an interface")
+	}
+	assert.Equal(t, -1, subject.FindInterface(interfaces, subject.Interface{Name: "member"}))
+
+	// The membership lines must not overwrite the bridge's own flags with the
+	// LEARNING,DISCOVER they carry either.
+	index := subject.FindInterface(interfaces, subject.Interface{Name: "bridge0"})
+	if assert.NotEqual(t, -1, index) {
+		bridge0 := interfaces[index]
+		assert.ElementsMatch(t,
+			[]string{"UP", "BROADCAST", "SMART", "RUNNING", "SIMPLEX", "MULTICAST"},
+			bridge0.Flags)
+		assert.Equal(t, 1500, bridge0.MTU)
+	}
+
+	index = subject.FindInterface(interfaces, subject.Interface{Name: "en0"})
 	if assert.NotEqual(t, -1, index) {
 		en0 := interfaces[index]
 		assert.Equal(t, "en0", en0.Name)
@@ -548,5 +569,68 @@ func TestInterfacesLinuxSysfsSkipsBondingMasters(t *testing.T) {
 		assert.Equal(t, -1,
 			subject.FindInterface(interfaces, subject.Interface{Name: "bonding_masters"}),
 			"%s", fixture)
+	}
+}
+
+// NetworkInterfaces.plist is macOS's record of every interface the machine has
+// ever seen, not the ones attached now, so it must not add to a live
+// enumeration. en7 in this fixture is an adapter that is not plugged in: the
+// plist remembers it, ifconfig does not mention it, and it was reported as an
+// interface with no mac, no mtu and no address.
+func TestInterfacesDarwinPlistDoesNotAddAbsentHardware(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{},
+		mock.WithPath("./testdata/macos_plist_absent_hardware.toml"))
+	require.NoError(t, err)
+	platform, ok := detector.DetectOS(conn)
+	require.True(t, ok)
+
+	interfaces, err := subject.Interfaces(conn, platform)
+	require.NoError(t, err)
+
+	require.Len(t, interfaces, 2, "only lo0 and en0 are attached")
+	assert.Equal(t, -1,
+		subject.FindInterface(interfaces, subject.Interface{Name: "en7"}),
+		"en7 is in the plist and not on the host")
+
+	// The interface that is attached still resolves fully, including the
+	// gateway the routing table names for it.
+	index := subject.FindInterface(interfaces, subject.Interface{Name: "en0"})
+	if assert.NotEqual(t, -1, index) {
+		en0 := interfaces[index]
+		assert.Equal(t, "80:a9:97:40:12:53", en0.MACAddress)
+		assert.Equal(t, 1500, en0.MTU)
+		if assert.NotNil(t, en0.Active) {
+			assert.True(t, *en0.Active)
+		}
+		i4 := en0.FindIP(net.ParseIP("172.16.1.119"))
+		if assert.NotEqual(t, -1, i4) {
+			ipv4 := en0.IPAddresses[i4]
+			assert.Equal(t, "172.16.1.119/24", ipv4.CIDR, "0xffffff00 is a /24")
+			assert.Equal(t, "172.16.1.0/24", ipv4.Subnet)
+			assert.Equal(t, "172.16.1.255", ipv4.Broadcast)
+			assert.Equal(t, "172.16.1.1", ipv4.Gateway)
+		}
+	}
+}
+
+// The plist is still the fallback for a scan that cannot run ifconfig -- a
+// mounted image or disk -- which is the reason it is consulted at all.
+func TestInterfacesDarwinPlistIsTheFallbackWithoutIfconfig(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{},
+		mock.WithPath("./testdata/macos_plist_only.toml"))
+	require.NoError(t, err)
+	platform, ok := detector.DetectOS(conn)
+	require.True(t, ok)
+
+	interfaces, err := subject.Interfaces(conn, platform)
+	require.NoError(t, err)
+
+	// With no ifconfig to describe what is attached, the plist is all there
+	// is, so both of its interfaces are reported rather than none.
+	require.Len(t, interfaces, 2)
+	for _, name := range []string{"en0", "en7"} {
+		assert.NotEqual(t, -1,
+			subject.FindInterface(interfaces, subject.Interface{Name: name}),
+			"%s should come from the plist when ifconfig cannot run", name)
 	}
 }
