@@ -50,10 +50,30 @@ func (n *neti) detectLinuxInterfaces() ([]Interface, error) {
 
 	// List of enrichment functions that collect additional information that we
 	// couldn't gather in the detectors.
-	enrichments := []func() ([]Interface, error){
+	enrichments := []func() ([]Interface, error){}
+
+	// Addresses are the one thing the sysfs detector cannot answer, because the
+	// kernel does not publish them under /sys/class/net. Where iproute2 is not
+	// installed that left every interface with none, and network.ipv4,
+	// network.ipv6, network.primaryIPv4 and ipAddress empty with it. procfs has
+	// them on every Linux kernel.
+	//
+	// The test is whether anything was found rather than which detector ran:
+	// `ip addr` reports at least the loopback address on any running host, so
+	// no addresses at all means the walk that cannot see them is what answered.
+	// It runs before the gateway enrichments so those have addresses to attach
+	// a gateway to.
+	if interfacesHaveNoIPs(interfaces) {
+		known := interfaceNames(interfaces)
+		enrichments = append(enrichments, func() ([]Interface, error) {
+			return n.getLinuxProcfsIPs(known)
+		})
+	}
+
+	enrichments = append(enrichments,
 		n.getLinuxIPv4GatewayDetails,
 		n.getLinuxIPv6GatewayDetails,
-	}
+	)
 
 	// The sysfs detector already answers Virtual for every interface it walks,
 	// so the enrichment has something to add only when the command detector
