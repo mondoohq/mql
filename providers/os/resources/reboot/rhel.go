@@ -35,6 +35,15 @@ func (s *RpmNewestKernel) RebootPending() (bool, error) {
 		return false, err
 	}
 
+	// `rpm -q` exits non-zero and prints "package kernel is not installed" on
+	// stdout when there is no kernel package, which is the normal case in a
+	// container. Feeding that sentence to the package parser made it report a
+	// dropped package line, so every container scan warned that packages were
+	// missing from the inventory when nothing was.
+	if installedKernelCmd.ExitStatus != 0 {
+		return false, nil
+	}
+
 	var pf *inventory.Platform
 	if s.conn.Asset() != nil {
 		pf = s.conn.Asset().Platform

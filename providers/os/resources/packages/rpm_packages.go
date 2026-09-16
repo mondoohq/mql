@@ -417,6 +417,7 @@ func (rpm *RpmPkgManager) staticList() ([]Package, error) {
 		"/var/lib/rpm/rpmdb.sqlite",          // used on fedora 33-35 and mageia
 		"/var/lib/rpm/Packages",              // used on fedora 32
 		"/var/lib/rpm/Packages.db",           // used on openeuler
+		"/usr/share/rpm/rpmdb.sqlite",        // used on ostree images (fedora coreos, bootc, uBlue)
 	}
 	var tmpRpmDBFile string
 	var detectedPath string

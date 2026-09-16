@@ -6,7 +6,9 @@ package windows
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"strings"
 
 	"go.mondoo.com/mql/v13/providers/os/connection/shared"
 	"go.mondoo.com/mql/v13/providers/os/resources/powershell"
@@ -27,9 +29,27 @@ var securityHealthStatusValues = map[int64]string{
 	3: "SNOOZE",
 }
 
+// securityHealthUnknown is the name reported for a WSC_SECURITY_PROVIDER_HEALTH
+// value outside the documented set. It is deliberately distinct from "GOOD" so
+// a value Windows adds later cannot be read as an all-clear.
+const securityHealthUnknown = "UNKNOWN"
+
 // The available security provider are documented in
 // https://learn.microsoft.com/en-us/windows/win32/api/wscapi/ne-wscapi-wsc_security_provider
+//
+// Every failure exits non-zero rather than emitting a partial object. The
+// health values are an enum whose zero value is GOOD, so an object that is
+// missing a provider decodes to a clean bill of health for it, and an empty
+// object decodes to a clean bill of health for the whole machine. Windows
+// Server has no Security Center at all (wscapi.dll is not present), which is
+// exactly the case that has to report a failure rather than GOOD.
+//
+// The C# wrapper checks the HRESULT before returning outValue for the same
+// reason: WscGetSecurityProviderHealth leaves outValue untouched when it
+// fails, and the caller cannot tell that from a real reading.
 const windowsSecurityHealthScript = `
+$ErrorActionPreference = 'Stop'
+
 $MethodDefinition = @"
 [DllImport("wscapi.dll",CharSet = CharSet.Unicode, SetLastError = true)]
 private static extern int WscGetSecurityProviderHealth(int inValue, ref int outValue);
@@ -38,11 +58,20 @@ public static int GetSecurityProviderHealth(int inValue)
 {
   int outValue = -1;
   int result = WscGetSecurityProviderHealth(inValue, ref outValue);
+  if (result != 0)
+  {
+    throw new System.Exception("WscGetSecurityProviderHealth returned 0x" + result.ToString("X8"));
+  }
   return outValue;
 }
 "@
- 
-$mondoo_wscapi = Add-Type -MemberDefinition $MethodDefinition -Name ‘mondoo_wscapi’ -Namespace ‘Win32’ -PassThru
+
+try {
+  $mondoo_wscapi = Add-Type -MemberDefinition $MethodDefinition -Name 'mondoo_wscapi' -Namespace 'Win32' -PassThru
+} catch {
+  [Console]::Error.WriteLine("could not compile the Windows Security Center wrapper: " + $_.Exception.Message)
+  exit 1
+}
 
 $WSC_SECURITY_PROVIDER_FIREWALL = 1
 $WSC_SECURITY_PROVIDER_AUTOUPDATE_SETTINGS = 2
@@ -52,26 +81,35 @@ $WSC_SECURITY_PROVIDER_INTERNET_SETTINGS = 16
 $WSC_SECURITY_PROVIDER_USER_ACCOUNT_CONTROL = 32
 $WSC_SECURITY_PROVIDER_SERVICE = 64
 
-$securityProviderHealth = New-Object PSObject
-Add-Member -InputObject $securityProviderHealth -MemberType NoteProperty -Name firewall -Value $mondoo_wscapi::GetSecurityProviderHealth($WSC_SECURITY_PROVIDER_FIREWALL)
-Add-Member -InputObject $securityProviderHealth -MemberType NoteProperty -Name autoUpdate -Value $mondoo_wscapi::GetSecurityProviderHealth($WSC_SECURITY_PROVIDER_AUTOUPDATE_SETTINGS)
-Add-Member -InputObject $securityProviderHealth -MemberType NoteProperty -Name antiVirus -Value $mondoo_wscapi::GetSecurityProviderHealth($WSC_SECURITY_PROVIDER_ANTIVIRUS)
-Add-Member -InputObject $securityProviderHealth -MemberType NoteProperty -Name antiSpyware -Value $mondoo_wscapi::GetSecurityProviderHealth($WSC_SECURITY_PROVIDER_ANTISPYWARE)
-Add-Member -InputObject $securityProviderHealth -MemberType NoteProperty -Name internetSettings -Value $mondoo_wscapi::GetSecurityProviderHealth($WSC_SECURITY_PROVIDER_INTERNET_SETTINGS)
-Add-Member -InputObject $securityProviderHealth -MemberType NoteProperty -Name uac -Value $mondoo_wscapi::GetSecurityProviderHealth($WSC_SECURITY_PROVIDER_USER_ACCOUNT_CONTROL)
-Add-Member -InputObject $securityProviderHealth -MemberType NoteProperty -Name securityCenterService -Value $mondoo_wscapi::GetSecurityProviderHealth($WSC_SECURITY_PROVIDER_SERVICE)
+try {
+  $securityProviderHealth = [PSCustomObject]@{
+    firewall              = $mondoo_wscapi::GetSecurityProviderHealth($WSC_SECURITY_PROVIDER_FIREWALL)
+    autoUpdate            = $mondoo_wscapi::GetSecurityProviderHealth($WSC_SECURITY_PROVIDER_AUTOUPDATE_SETTINGS)
+    antiVirus             = $mondoo_wscapi::GetSecurityProviderHealth($WSC_SECURITY_PROVIDER_ANTIVIRUS)
+    antiSpyware           = $mondoo_wscapi::GetSecurityProviderHealth($WSC_SECURITY_PROVIDER_ANTISPYWARE)
+    internetSettings      = $mondoo_wscapi::GetSecurityProviderHealth($WSC_SECURITY_PROVIDER_INTERNET_SETTINGS)
+    uac                   = $mondoo_wscapi::GetSecurityProviderHealth($WSC_SECURITY_PROVIDER_USER_ACCOUNT_CONTROL)
+    securityCenterService = $mondoo_wscapi::GetSecurityProviderHealth($WSC_SECURITY_PROVIDER_SERVICE)
+  }
+} catch {
+  [Console]::Error.WriteLine("could not read the Windows Security Center provider health: " + $_.Exception.Message)
+  exit 1
+}
 
 ConvertTo-Json -Depth 3 -Compress $securityProviderHealth
 `
 
+// powershellSecurityHealthStatus is the raw reading. Every provider is a
+// pointer so a property the script did not emit stays distinguishable from an
+// explicit 0, which is the GOOD status.
 type powershellSecurityHealthStatus struct {
-	Firewall              int64
-	AutoUpdate            int64
-	AntiVirus             int64
-	AntiSpyware           int64
-	InternetSettings      int64
-	Uac                   int64
-	SecurityCenterService int64
+	Firewall              *int64 `json:"firewall"`
+	AutoUpdate            *int64 `json:"autoUpdate"`
+	AntiVirus             *int64 `json:"antiVirus"`
+	AntiSpyware           *int64 `json:"antiSpyware"`
+	InternetSettings      *int64 `json:"internetSettings"`
+	Uac                   *int64 `json:"uac"`
+	SecurityCenterService *int64 `json:"securityCenterService"`
 }
 
 type windowsSecurityHealth struct {
@@ -95,52 +133,75 @@ func GetSecurityProviderHealth(p shared.Connection) (*windowsSecurityHealth, err
 		if err != nil {
 			return nil, err
 		}
-		return nil, errors.New("failed to retrieve security health: " + string(stderr))
+		return nil, errors.New("failed to retrieve security health: " + strings.TrimSpace(string(stderr)))
 	}
 
 	return ParseSecurityProviderHealth(c.Stdout)
 }
 
+// securityHealthStatus pairs a raw WSC_SECURITY_PROVIDER_HEALTH value with its
+// name. A code outside the documented set reads UNKNOWN rather than the empty
+// string, so an unrecognized reading is visible in a query result.
+func securityHealthStatus(code int64) statusCode {
+	text, ok := securityHealthStatusValues[code]
+	if !ok {
+		text = securityHealthUnknown
+	}
+	return statusCode{Code: code, Text: text}
+}
+
+// ParseSecurityProviderHealth decodes the JSON emitted by
+// windowsSecurityHealthScript. Output that is empty, or that omits any of the
+// seven providers, is an error rather than a partial reading: the zero value
+// of the health enum is GOOD, so a missing provider would otherwise be
+// reported as healthy on a host where nothing was read at all.
 func ParseSecurityProviderHealth(r io.Reader) (*windowsSecurityHealth, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
 
+	if strings.TrimSpace(string(data)) == "" {
+		return nil, errors.New("the Windows Security Center API returned no data; it is not available on this host")
+	}
+
 	var status powershellSecurityHealthStatus
-	err = json.Unmarshal(data, &status)
-	if err != nil {
+	if err := json.Unmarshal(data, &status); err != nil {
 		return nil, err
 	}
 
+	// Ordered so the error message is stable.
+	providers := []struct {
+		name  string
+		value *int64
+	}{
+		{"firewall", status.Firewall},
+		{"autoUpdate", status.AutoUpdate},
+		{"antiVirus", status.AntiVirus},
+		{"antiSpyware", status.AntiSpyware},
+		{"internetSettings", status.InternetSettings},
+		{"uac", status.Uac},
+		{"securityCenterService", status.SecurityCenterService},
+	}
+
+	var missing []string
+	for _, p := range providers {
+		if p.value == nil {
+			missing = append(missing, p.name)
+		}
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("the Windows Security Center API did not report %s; the reading cannot be trusted",
+			strings.Join(missing, ", "))
+	}
+
 	return &windowsSecurityHealth{
-		Firewall: statusCode{
-			Code: status.Firewall,
-			Text: securityHealthStatusValues[status.Firewall],
-		},
-		AutoUpdate: statusCode{
-			Code: status.AutoUpdate,
-			Text: securityHealthStatusValues[status.AutoUpdate],
-		},
-		Uac: statusCode{
-			Code: status.Uac,
-			Text: securityHealthStatusValues[status.Uac],
-		},
-		AntiSpyware: statusCode{
-			Code: status.AntiSpyware,
-			Text: securityHealthStatusValues[status.AntiSpyware],
-		},
-		AntiVirus: statusCode{
-			Code: status.AntiVirus,
-			Text: securityHealthStatusValues[status.AntiVirus],
-		},
-		InternetSettings: statusCode{
-			Code: status.InternetSettings,
-			Text: securityHealthStatusValues[status.InternetSettings],
-		},
-		SecurityCenterService: statusCode{
-			Code: status.SecurityCenterService,
-			Text: securityHealthStatusValues[status.SecurityCenterService],
-		},
+		Firewall:              securityHealthStatus(*status.Firewall),
+		AutoUpdate:            securityHealthStatus(*status.AutoUpdate),
+		AntiVirus:             securityHealthStatus(*status.AntiVirus),
+		AntiSpyware:           securityHealthStatus(*status.AntiSpyware),
+		InternetSettings:      securityHealthStatus(*status.InternetSettings),
+		Uac:                   securityHealthStatus(*status.Uac),
+		SecurityCenterService: securityHealthStatus(*status.SecurityCenterService),
 	}, nil
 }

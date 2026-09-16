@@ -31,8 +31,10 @@ type AuditpolSubcategory struct {
 }
 
 // auditpolKnownSubcategories maps subcategory GUIDs (uppercase, no braces) to
-// their canonical English name and audit category. It covers the 59
-// subcategories of MS-GPAC / `auditpol /list /subcategory:*`.
+// their canonical English name and audit category. It covers the 60
+// subcategories `auditpol /list /subcategory:* /v` reports on Windows Server
+// 2016, 2019, 2022, and 2025: the 59 of MS-GPAC plus Access Rights, which the
+// specification does not list but every one of those releases does.
 var auditpolKnownSubcategories = map[string]AuditpolSubcategory{
 	// System
 	"0CCE9210-69AE-11D9-BED3-505054503030": {"Security State Change", "System"},
@@ -52,6 +54,7 @@ var auditpolKnownSubcategories = map[string]AuditpolSubcategory{
 	"0CCE9243-69AE-11D9-BED3-505054503030": {"Network Policy Server", "Logon/Logoff"},
 	"0CCE9247-69AE-11D9-BED3-505054503030": {"User / Device Claims", "Logon/Logoff"},
 	"0CCE9249-69AE-11D9-BED3-505054503030": {"Group Membership", "Logon/Logoff"},
+	"0CCE924B-69AE-11D9-BED3-505054503030": {"Access Rights", "Logon/Logoff"},
 	// Object Access
 	"0CCE921D-69AE-11D9-BED3-505054503030": {"File System", "Object Access"},
 	"0CCE921E-69AE-11D9-BED3-505054503030": {"Registry", "Object Access"},

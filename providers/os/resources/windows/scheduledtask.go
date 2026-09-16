@@ -14,7 +14,20 @@ import (
 // MultipleInstances, Compatibility) are stringified via "$(...)" so they
 // serialize as their names rather than raw integers, and the polymorphic
 // trigger objects are flattened into a single union shape keyed by their CIM
-// class name.
+// class name: Select-Object yields null for a property the concrete trigger
+// class does not carry.
+//
+// The script has to stay under powershell.MaxScriptLength. It is passed to the
+// target base64-encoded as UTF-16, so it arrives roughly three times its source
+// length against a fixed command-line cap, and a script that overruns the cap
+// fails in a way that reads like the Task Scheduler being unavailable rather
+// than like a script that is too long. TestScheduledTasksScriptFitsCommandLine
+// guards the budget; if a property has to be added and the script no longer
+// fits, split it into two round trips rather than raising the cap.
+//
+// Property lists are spelled out and cmdlets are named in full deliberately.
+// Aliases (%, ?, gci) can be absent or redefined under Constrained Language
+// Mode and JEA, which is exactly where this resource is used.
 const SCHEDULED_TASKS = `
 $ErrorActionPreference = 'Stop'
 Get-ScheduledTask | ForEach-Object {
@@ -22,78 +35,42 @@ Get-ScheduledTask | ForEach-Object {
   $p = $t.Principal
   $s = $t.Settings
   [PSCustomObject]@{
-    Name               = $t.TaskName
-    Path               = $t.TaskPath
-    URI                = $t.URI
-    State              = "$($t.State)"
-    Description        = $t.Description
-    Author             = $t.Author
-    Documentation      = $t.Documentation
+    Name = $t.TaskName
+    Path = $t.TaskPath
+    URI = $t.URI
+    State = "$($t.State)"
+    Description = $t.Description
+    Author = $t.Author
+    Documentation = $t.Documentation
     SecurityDescriptor = $t.SecurityDescriptor
-    Source             = $t.Source
-    Date               = $t.Date
-    Principal          = if ($p) {
-      [PSCustomObject]@{
-        UserId      = $p.UserId
-        GroupId     = $p.GroupId
-        DisplayName = $p.DisplayName
-        LogonType   = "$($p.LogonType)"
-        RunLevel    = "$($p.RunLevel)"
-      }
+    Source = $t.Source
+    Date = $t.Date
+    Principal = if ($p) {
+      $p | Select-Object UserId, GroupId, DisplayName,
+        @{ Name = 'LogonType'; Expression = { "$($_.LogonType)" } },
+        @{ Name = 'RunLevel'; Expression = { "$($_.RunLevel)" } }
     } else { $null }
-    Actions = @($t.Actions | ForEach-Object {
-      [PSCustomObject]@{
-        Execute          = $_.Execute
-        Arguments        = $_.Arguments
-        WorkingDirectory = $_.WorkingDirectory
-      }
-    })
-    Triggers = @($t.Triggers | ForEach-Object {
-      $tr = $_
-      [PSCustomObject]@{
-        Type                        = $tr.CimClass.CimClassName
-        Enabled                     = $tr.Enabled
-        StartBoundary               = $tr.StartBoundary
-        EndBoundary                 = $tr.EndBoundary
-        ExecutionTimeLimit          = $tr.ExecutionTimeLimit
-        RepetitionInterval          = $tr.Repetition.Interval
-        RepetitionDuration          = $tr.Repetition.Duration
-        RepetitionStopAtDurationEnd = $tr.Repetition.StopAtDurationEnd
-        Delay                       = $tr.Delay
-        RandomDelay                 = $tr.RandomDelay
-        DaysInterval                = $tr.DaysInterval
-        WeeksInterval               = $tr.WeeksInterval
-        DaysOfWeek                  = $tr.DaysOfWeek
-        UserId                      = $tr.UserId
-      }
-    })
+    Actions = @($t.Actions | Select-Object Execute, Arguments, WorkingDirectory)
+    Triggers = @($t.Triggers | Select-Object @{ Name = 'Type'; Expression = { $_.CimClass.CimClassName } },
+      Enabled, StartBoundary, EndBoundary, ExecutionTimeLimit,
+      @{ Name = 'RepetitionInterval'; Expression = { $_.Repetition.Interval } },
+      @{ Name = 'RepetitionDuration'; Expression = { $_.Repetition.Duration } },
+      @{ Name = 'RepetitionStopAtDurationEnd'; Expression = { $_.Repetition.StopAtDurationEnd } },
+      Delay, RandomDelay, DaysInterval, WeeksInterval, DaysOfWeek, UserId)
     Settings = if ($s) {
-      [PSCustomObject]@{
-        Enabled                         = $s.Enabled
-        Hidden                          = $s.Hidden
-        AllowDemandStart                = $s.AllowDemandStart
-        AllowHardTerminate              = $s.AllowHardTerminate
-        StartWhenAvailable              = $s.StartWhenAvailable
-        RunOnlyIfNetworkAvailable       = $s.RunOnlyIfNetworkAvailable
-        RunOnlyIfIdle                   = $s.RunOnlyIfIdle
-        WakeToRun                       = $s.WakeToRun
-        DisallowStartIfOnBatteries      = $s.DisallowStartIfOnBatteries
-        StopIfGoingOnBatteries          = $s.StopIfGoingOnBatteries
-        DisallowStartOnRemoteAppSession = $s.DisallowStartOnRemoteAppSession
-        RestartCount                    = $s.RestartCount
-        RestartInterval                 = $s.RestartInterval
-        ExecutionTimeLimit              = $s.ExecutionTimeLimit
-        MultipleInstances               = "$($s.MultipleInstances)"
-        Priority                        = $s.Priority
-        DeleteExpiredTaskAfter          = $s.DeleteExpiredTaskAfter
-        Compatibility                   = "$($s.Compatibility)"
-        IdleDuration                    = $s.IdleSettings.IdleDuration
-        IdleWaitTimeout                 = $s.IdleSettings.WaitTimeout
-        IdleStopOnIdleEnd               = $s.IdleSettings.StopOnIdleEnd
-        IdleRestartOnIdle               = $s.IdleSettings.RestartOnIdle
-        NetworkId                       = $s.NetworkSettings.Id
-        NetworkName                     = $s.NetworkSettings.Name
-      }
+      $s | Select-Object Enabled, Hidden, AllowDemandStart, AllowHardTerminate,
+        StartWhenAvailable, RunOnlyIfNetworkAvailable, RunOnlyIfIdle, WakeToRun,
+        DisallowStartIfOnBatteries, StopIfGoingOnBatteries, DisallowStartOnRemoteAppSession,
+        RestartCount, RestartInterval, ExecutionTimeLimit,
+        @{ Name = 'MultipleInstances'; Expression = { "$($_.MultipleInstances)" } },
+        Priority, DeleteExpiredTaskAfter,
+        @{ Name = 'Compatibility'; Expression = { "$($_.Compatibility)" } },
+        @{ Name = 'IdleDuration'; Expression = { $_.IdleSettings.IdleDuration } },
+        @{ Name = 'IdleWaitTimeout'; Expression = { $_.IdleSettings.WaitTimeout } },
+        @{ Name = 'IdleStopOnIdleEnd'; Expression = { $_.IdleSettings.StopOnIdleEnd } },
+        @{ Name = 'IdleRestartOnIdle'; Expression = { $_.IdleSettings.RestartOnIdle } },
+        @{ Name = 'NetworkId'; Expression = { $_.NetworkSettings.Id } },
+        @{ Name = 'NetworkName'; Expression = { $_.NetworkSettings.Name } }
     } else { $null }
   }
 } | ConvertTo-Json -Depth 5`

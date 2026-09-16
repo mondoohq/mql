@@ -57,3 +57,63 @@ func TestStreamFileAsTar(t *testing.T) {
 	_, err = tr.Next()
 	assert.Equal(t, io.EOF, err, "archive must terminate with a valid tar trailer")
 }
+
+// TestExtractFileFromTarStreamLyingHeader checks that a header which declares far more data
+// than the entry holds does not drive the allocation. The read must fail instead.
+func TestExtractFileFromTarStreamLyingHeader(t *testing.T) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	// Write a small entry, then rewrite its header to claim a huge size.
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "big", Typeflag: tar.TypeReg, Mode: 0o644, Size: 4}))
+	_, err := tw.Write([]byte("data"))
+	require.NoError(t, err)
+	require.NoError(t, tw.Close())
+
+	raw := buf.Bytes()
+	// Overwrite the size field of the first header block with 1 TiB in octal.
+	copy(raw[124:136], []byte("20000000000\x00"))
+
+	_, err = ExtractFileFromTarStream("big", bytes.NewReader(raw))
+	require.Error(t, err)
+}
+
+// TestExtractFileFromTarStreamEmptyEntry checks that a zero length match returns an empty
+// reader and no error, the same as a path that is not present at all.
+func TestExtractFileFromTarStreamEmptyEntry(t *testing.T) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "empty", Typeflag: tar.TypeReg, Mode: 0o644, Size: 0}))
+	require.NoError(t, tw.Close())
+
+	r, err := ExtractFileFromTarStream("empty", bytes.NewReader(buf.Bytes()))
+	require.NoError(t, err)
+	content, err := io.ReadAll(r)
+	require.NoError(t, err)
+	assert.Empty(t, content)
+
+	r, err = ExtractFileFromTarStream("missing", bytes.NewReader(buf.Bytes()))
+	require.NoError(t, err)
+	content, err = io.ReadAll(r)
+	require.NoError(t, err)
+	assert.Empty(t, content)
+}
+
+// TestExtractFileFromTarStreamLargeEntry checks the incremental path above the prealloc cap.
+func TestExtractFileFromTarStreamLargeEntry(t *testing.T) {
+	if testing.Short() {
+		t.Skip("allocates more than the prealloc cap")
+	}
+	size := maxTarEntryPrealloc + (1 << 20)
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "large", Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(size)}))
+	_, err := tw.Write(make([]byte, size))
+	require.NoError(t, err)
+	require.NoError(t, tw.Close())
+
+	r, err := ExtractFileFromTarStream("large", bytes.NewReader(buf.Bytes()))
+	require.NoError(t, err)
+	n, err := io.Copy(io.Discard, r)
+	require.NoError(t, err)
+	assert.Equal(t, int64(size), n)
+}

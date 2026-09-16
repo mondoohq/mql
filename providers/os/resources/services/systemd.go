@@ -13,9 +13,11 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/coreos/go-systemd/unit"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/v13/providers/os/connection/shared"
 )
@@ -46,16 +48,23 @@ func (s *SystemDServiceManager) Name() string {
 	return "systemd Service Manager"
 }
 
+// errSystemctlNoOutput reports that systemctl ran but produced nothing this
+// parser recognizes as a unit-file listing. It is the one failure that means
+// "systemd is not the running init here", which is what makes reading the units
+// off disk the right answer. A read failure on stdout is an IO fault and says
+// nothing about the target, so it is deliberately not covered by this sentinel.
+var errSystemctlNoOutput = errors.New("unexpected output from systemctl list-unit-files")
+
 func ParseServiceSystemDUnitFiles(input io.Reader) ([]*Service, error) {
 	var services []*Service
 	content, err := io.ReadAll(input)
 	if err != nil {
-		return nil, fmt.Errorf("error executing systemctl list-unit-files: %v", err)
+		return nil, fmt.Errorf("error executing systemctl list-unit-files: %w", err)
 	}
 
 	lines := strings.Split(string(content), "\n")
 	if len(lines) < 2 {
-		return nil, fmt.Errorf("unexpected output from systemctl list-unit-files %v", content)
+		return nil, fmt.Errorf("%w: %q", errSystemctlNoOutput, content)
 	}
 
 	for _, line := range lines[1 : len(lines)-1] {
@@ -260,7 +269,20 @@ func (s *SystemDServiceManager) List() ([]*Service, error) {
 
 	services, err := ParseServiceSystemDUnitFiles(cmdList.Stdout)
 	if err != nil {
-		return nil, err
+		// Being able to run a command does not mean systemd is the running
+		// init. A container built from a systemd distro carries the unit files
+		// without ever starting systemd, so systemctl produces nothing usable
+		// there. Read the units off disk instead of reporting the failure as
+		// the service list.
+		//
+		// Only an unusable listing means that. Failing to read stdout is an IO
+		// fault, and answering it with a filesystem listing would present a
+		// plausible service list built from a read that never completed.
+		if !errors.Is(err, errSystemctlNoOutput) {
+			return nil, err
+		}
+		log.Debug().Err(err).Msg("systemctl did not answer, reading systemd units from disk instead")
+		return (&SystemdFSServiceManager{Fs: s.conn.FileSystem()}).List()
 	}
 
 	// Step 2: Get running state from list-units (provides Running/Description)
@@ -277,7 +299,10 @@ func (s *SystemDServiceManager) List() ([]*Service, error) {
 	// Step 3: Merge - update services from step 1 with running state from step 2.
 	// Services in list-unit-files but not in list-units are unloaded/templates;
 	// Running=false is correct for them (already the default).
+	known := make(map[string]struct{}, len(services))
 	for _, service := range services {
+		known[service.Name] = struct{}{}
+
 		unitState, ok := unitStates[service.Name]
 		if !ok {
 			continue
@@ -289,7 +314,71 @@ func (s *SystemDServiceManager) List() ([]*Service, error) {
 		}
 	}
 
-	return services, nil
+	// Step 4: Add loaded units that have no unit file of their own. An
+	// instantiated template unit (getty@tty1) is only ever reported by
+	// list-units -- list-unit-files carries the template (getty@) instead --
+	// so without this the running instance is invisible and the template
+	// reads running=false while an instance of it is up.
+	return append(services, s.instanceUnits(unitStates, known)...), nil
+}
+
+// instanceUnits builds services for loaded units that list-unit-files did not
+// report. Their unit-file state is read with a batched "systemctl show" over
+// the instances themselves: that call is unreliable for *template* units
+// (name@.service yields no record), which is why List does not use it for the
+// full set, but concrete instances return a record each. An instance's
+// enablement cannot be inherited from its template -- nut-driver@ can be
+// "indirect" while nut-driver@apc is "enabled" -- so it has to be asked for.
+func (s *SystemDServiceManager) instanceUnits(unitStates map[string]*Service, known map[string]struct{}) []*Service {
+	names := make([]string, 0, len(unitStates))
+	for name, state := range unitStates {
+		if _, ok := known[name]; ok {
+			continue
+		}
+		// list-units --all also names units that do not exist, because some
+		// other unit references them in After=/Conflicts=. They load as
+		// not-found and are not services on this host.
+		if !state.Installed {
+			continue
+		}
+		names = append(names, name)
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	sort.Strings(names)
+
+	units := make([]string, len(names))
+	for i, name := range names {
+		units[i] = ensureSystemdServiceUnit(name)
+	}
+
+	// A failure here costs the unit-file state, not the unit: report the
+	// service with what list-units already told us rather than dropping it.
+	shown := map[string]*Service{}
+	if cmd, err := s.conn.RunCommand(buildSystemdShowCommand(units)); err == nil {
+		if parsed, err := ParseServiceSystemDShow(cmd.Stdout); err == nil {
+			shown = parsed
+		}
+	}
+
+	instances := make([]*Service, 0, len(names))
+	for _, name := range names {
+		if service, ok := shown[name]; ok {
+			instances = append(instances, service)
+			continue
+		}
+		state := unitStates[name]
+		instances = append(instances, &Service{
+			Name:        name,
+			Description: state.Description,
+			Running:     state.Running,
+			Installed:   state.Installed,
+			Type:        "systemd",
+		})
+	}
+
+	return instances
 }
 
 type SystemdFSServiceManager struct {

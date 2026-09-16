@@ -14,7 +14,10 @@ import (
 	"go.mondoo.com/mql/v13/providers/os/connection/shared"
 )
 
-const sysctlPath = "/proc/sys/"
+const (
+	sysctlPath      = "/proc/sys/"
+	procModulesPath = "/proc/modules"
+)
 
 type KernelInfo struct {
 	Version   string            `json:"version"`
@@ -111,53 +114,107 @@ func (s *LinuxKernelManager) Parameters() (map[string]string, error) {
 	}
 
 	log.Debug().Msg("using /proc/sys walking to read kernel parameters")
-	fs := s.conn.FileSystem()
+	return walkProcSys(s.conn.FileSystem())
+}
+
+// walkProcSys reads every readable knob under /proc/sys.
+//
+// Plenty of them are not readable: some are mode 0600 and owned by root
+// (kernel.usermodehelper/bset among them), and some are write-only by design
+// (kernel.kexec_load_disabled, the drop_caches knobs). A scan that is not root
+// hits the first of those a few entries into the walk. Reporting that as the
+// result of the walk cost the caller every parameter, so kernel.parameters was
+// empty for any non-root scan; skip the ones we cannot read and return the
+// rest.
+func walkProcSys(fs afero.Fs) (map[string]string, error) {
 	fsUtil := afero.Afero{Fs: fs}
 	kernelParameters := make(map[string]string)
+
 	err := fsUtil.Walk(sysctlPath, func(path string, f os.FileInfo, err error) error {
-		if f != nil && !f.IsDir() {
-			stat, err := s.conn.FileSystem().Stat(path)
-			if err != nil {
-				log.Error().Err(err)
-				return nil
-			}
-			details := shared.FileModeDetails{
-				FileMode: stat.Mode(),
-			}
-			if !details.UserReadable() {
-				return nil
-			}
-
-			f, err := s.conn.FileSystem().Open(path)
-			if err != nil {
-				log.Error().Err(err)
-				return err
-			}
-
-			content, err := io.ReadAll(f)
-			if err != nil {
-				log.Error().Err(err).Msg("cannot read content")
-				return nil
-			}
-			// remove leading sysctl path
-			k := strings.ReplaceAll(path, sysctlPath, "")
-			k = strings.ReplaceAll(k, "/", ".")
-			kernelParameters[k] = strings.TrimSpace(string(content))
+		if err != nil {
+			// Walk could not even stat this entry. Skipping the directory here
+			// would drop everything after it, so keep going.
+			log.Debug().Err(err).Str("path", path).Msg("mql[kernel]> skipping unreadable sysctl entry")
+			return nil
 		}
+		if f == nil || f.IsDir() {
+			return nil
+		}
+
+		// A handful of knobs are write-only by design -- vm/drop_caches,
+		// vm/compact_memory and net/ipv4/route/flush are the whole set on a
+		// stock kernel. Root can open and read those anyway, so the mode is
+		// what keeps them out of a map of parameter values. The walk already
+		// stat'd this entry, so use what it handed us rather than paying
+		// another syscall per file across ~1000 of them, which on an SSH
+		// connection is ~1000 round trips.
+		details := shared.FileModeDetails{FileMode: f.Mode()}
+		if !details.UserReadable() {
+			return nil
+		}
+
+		file, err := fs.Open(path)
+		if err != nil {
+			log.Debug().Err(err).Str("path", path).Msg("mql[kernel]> could not open sysctl parameter")
+			return nil
+		}
+		defer file.Close()
+
+		content, err := io.ReadAll(file)
+		if err != nil {
+			log.Debug().Err(err).Str("path", path).Msg("mql[kernel]> could not read sysctl parameter")
+			return nil
+		}
+
+		// remove leading sysctl path
+		k := strings.ReplaceAll(path, sysctlPath, "")
+		k = strings.ReplaceAll(k, "/", ".")
+		kernelParameters[k] = strings.TrimSpace(string(content))
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
 
-	return kernelParameters, err
+	return kernelParameters, nil
 }
 
 func (s *LinuxKernelManager) Modules() ([]*KernelModule, error) {
-	// TODO: use proc in future
-	cmd, err := s.conn.RunCommand("/sbin/lsmod")
+	if s.conn.Capabilities().Has(shared.Capability_RunCommand) {
+		cmd, err := s.conn.RunCommand("/sbin/lsmod")
+		// lsmod does not live in /sbin on every distro: Container-Optimized OS
+		// ships it as /bin/lsmod and has an empty /sbin, so the command exits
+		// 127 with no output. Nothing checked the exit status, so an empty
+		// parse was reported as "no modules loaded" rather than as a failure,
+		// and a policy asserting a module is absent passed without ever
+		// reading the module list.
+		//
+		// Each way of missing is logged separately: a command that could not be
+		// run at all and one that ran and failed are different problems on the
+		// target, and from the fallback alone they look identical.
+		switch {
+		case err != nil:
+			log.Debug().Err(err).Msg("could not run /sbin/lsmod, falling back to /proc/modules")
+		case cmd.ExitStatus != 0:
+			log.Debug().Int("exit", cmd.ExitStatus).
+				Msg("/sbin/lsmod exited non-zero, falling back to /proc/modules")
+		default:
+			log.Debug().Msg("using lsmod to read kernel modules")
+			return ParseLsmod(cmd.Stdout), nil
+		}
+	}
+
+	// /proc/modules is the kernel's own interface, so it needs no binary on
+	// PATH and works for a filesystem-only scan that cannot run commands at
+	// all. Parameters() already falls back the same way onto /proc/sys.
+	log.Debug().Msg("using /proc/modules to read kernel modules")
+	f, err := s.conn.FileSystem().Open(procModulesPath)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not read kernel modules")
 	}
+	defer f.Close()
 
-	return ParseLsmod(cmd.Stdout), nil
+	return ParseLinuxProcModules(f), nil
 }
 
 type OSXKernelManager struct {

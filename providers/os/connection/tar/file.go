@@ -5,8 +5,8 @@ package tar
 
 import (
 	"archive/tar"
-	"bufio"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -18,7 +18,7 @@ type File struct {
 	path   string
 	header *tar.Header
 	Fs     *FS
-	reader *bufio.Reader
+	reader io.Reader
 }
 
 func (f *File) Name() string {

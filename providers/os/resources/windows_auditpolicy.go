@@ -45,16 +45,23 @@ func (p *mqlWindowsAuditPolicy) list() ([]any, error) {
 	subcategories := make([]any, len(entries))
 	for i := range entries {
 		entry := entries[i]
-		known, _ := windows.LookupAuditpolSubcategory(entry.SubcategoryGUID)
+		known, ok := windows.LookupAuditpolSubcategory(entry.SubcategoryGUID)
 		name := known.Name
 		if name == "" {
 			name = entry.Subcategory
+		}
+		// a GUID the table does not carry has no known category; report null
+		// rather than an empty string, which would read as a real category and
+		// silently drop the subcategory out of every category filter
+		category := llx.NilData
+		if ok {
+			category = llx.StringData(known.Category)
 		}
 		flags := auditpolInclusionAudits(entry.InclusionSetting)
 		o, err := CreateResource(p.MqlRuntime, "windows.auditPolicy.subcategory", map[string]*llx.RawData{
 			"name":             llx.StringData(name),
 			"guid":             llx.StringData(entry.SubcategoryGUID),
-			"category":         llx.StringData(known.Category),
+			"category":         category,
 			"localizedName":    llx.StringData(entry.Subcategory),
 			"success":          llx.BoolData(flags.success),
 			"failure":          llx.BoolData(flags.failure),

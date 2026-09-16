@@ -11138,6 +11138,10 @@ windows.rdp {
   // Whether supported Plug and Play device redirection is disabled (fDisablePNPRedir)
   pnpDeviceRedirectionDisabled() bool
   // Whether saving of Remote Desktop passwords is disabled (DisablePasswordSaving)
+  //
+  // A Group Policy-only setting under the Terminal Services policy key. False
+  // when no policy sets it, because Windows documents the unconfigured
+  // behavior as letting the user save passwords in Remote Desktop Connection.
   passwordSavingDisabled() bool
   // Whether temporary folders are deleted when the session exits (DeleteTempDirsOnExit)
   deleteTempDirsOnExit() bool
@@ -11727,6 +11731,9 @@ windows.auditPolicy.subcategory @defaults("name success failure") {
   // GUID that identifies the subcategory across Windows versions and languages
   guid string
   // Audit category the subcategory belongs to (e.g. `Logon/Logoff`)
+  //
+  // Null when the subcategory GUID is not one this provider knows, which is
+  // also the state of a subcategory that is not present on the system at all.
   category string
   // Subcategory name as reported by the system in its display language
   localizedName string
@@ -11876,10 +11883,13 @@ windows.smb {
   serverConfiguration() windows.smb.serverConfiguration
   // SMB client (LanmanWorkstation) registry configuration
   clientConfiguration() windows.smb.clientConfiguration
-  // Whether the SMBv1 client driver (mrxsmb10) is enabled (Start != 4)
+  // Whether the SMBv1 client driver (mrxsmb10) is enabled
   //
-  // True when the mrxsmb10 service Start value is anything other than 4
-  // (disabled). SMBv1 is deprecated and should be disabled.
+  // True when the mrxsmb10 service Start value is present and is anything
+  // other than 4 (disabled). False when the service key is absent, which is
+  // how a host that has had the SMB1Protocol optional feature removed looks:
+  // the feature removal deletes the key outright. Server 2019 and later ship
+  // without it. SMBv1 is deprecated and should be disabled.
   smbv1Enabled() bool
 }
 

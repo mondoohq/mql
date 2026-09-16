@@ -103,7 +103,22 @@ func (f *mqlFirewalld) fetchStatus() error {
 	cmd := o.(*mqlCommand)
 	exitcode := cmd.GetExitcode().Data
 	state := strings.TrimSpace(cmd.GetStdout().Data)
-	if exitcode != 0 || state != "running" {
+	if exitcode != 0 {
+		// A refused question is not an answer. firewall-cmd exits non-zero both
+		// when the firewall is genuinely stopped and when polkit declines to
+		// answer an unprivileged caller. Recording the second as "not running"
+		// turns a missing permission into a clean bill of health: zones() below
+		// returns nothing whenever the status is not "running", so every zone
+		// and every rule silently disappears from the scan and an exposure
+		// check finds nothing to object to.
+		if stderr := strings.TrimSpace(cmd.GetStderr().Data); isFirewalldAuthzError(stderr) {
+			return fmt.Errorf("cannot determine firewalld state: %s", stderr)
+		}
+		f.cacheStatus = "not running"
+		f.fetched = true
+		return nil
+	}
+	if state != "running" {
 		f.cacheStatus = "not running"
 		f.fetched = true
 		return nil
@@ -125,6 +140,30 @@ func (f *mqlFirewalld) fetchStatus() error {
 
 	f.fetched = true
 	return nil
+}
+
+// isFirewalldAuthzError reports whether firewall-cmd failed because it was not
+// permitted to answer, rather than because the firewall is stopped. polkit
+// refuses an unprivileged caller with "Authorization failed" on a host where
+// firewalld is running perfectly well.
+func isFirewalldAuthzError(stderr string) bool {
+	if stderr == "" {
+		return false
+	}
+	s := strings.ToLower(stderr)
+	for _, marker := range []string{
+		"authorization failed",
+		"not authorized",
+		"not_authorized",
+		"polkit",
+		"permission denied",
+		"access denied",
+	} {
+		if strings.Contains(s, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *mqlFirewalld) status() (string, error) {

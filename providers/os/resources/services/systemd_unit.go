@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/coreos/go-systemd/unit"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/v13/providers/os/connection/shared"
 )
@@ -104,10 +105,35 @@ type SystemdUnitManager struct {
 	conn shared.Connection
 }
 
+// fsFallback reads the unit files off disk. systemctl needs a running systemd
+// to answer, so it is not available in a container, a chroot, a rescue boot, or
+// on a host that keeps unit files around while another init runs. It reports
+// that by exiting non-zero with nothing on stdout, which parses into an empty
+// unit list -- indistinguishable from a host that genuinely runs no services,
+// and enough to make an assertion over systemd.units pass without ever having
+// read a unit.
+func (m *SystemdUnitManager) fsFallback() *SystemdFSUnitManager {
+	return &SystemdFSUnitManager{Fs: m.conn.FileSystem()}
+}
+
 func (m *SystemdUnitManager) List() ([]*SystemdUnit, error) {
+	units, err := m.listViaSystemctl()
+	if err == nil {
+		return units, nil
+	}
+
+	log.Debug().Err(err).
+		Msg("mql[systemd]> could not list units through systemctl, reading unit files instead")
+	return m.fsFallback().List()
+}
+
+func (m *SystemdUnitManager) listViaSystemctl() ([]*SystemdUnit, error) {
 	cmd, err := m.conn.RunCommand("systemctl list-unit-files --type service --all --no-legend")
 	if err != nil {
 		return nil, err
+	}
+	if cmd.ExitStatus != 0 {
+		return nil, systemctlError("systemctl list-unit-files", cmd)
 	}
 
 	names, err := parseSystemdUnitFileNames(cmd.Stdout)
@@ -127,6 +153,9 @@ func (m *SystemdUnitManager) List() ([]*SystemdUnit, error) {
 		if err != nil {
 			return nil, err
 		}
+		if showCmd.ExitStatus != 0 {
+			return nil, systemctlError("systemctl show", showCmd)
+		}
 
 		records, err := parseSystemdShowRecords(showCmd.Stdout)
 		if err != nil {
@@ -140,13 +169,42 @@ func (m *SystemdUnitManager) List() ([]*SystemdUnit, error) {
 		}
 	}
 
+	// systemctl named the units, so it knowing nothing about any of them is a
+	// failure to report rather than a host with nothing on it
+	if len(res) == 0 {
+		return nil, fmt.Errorf("systemctl show returned no properties for any of the %d service units", len(names))
+	}
+
 	return res, nil
+}
+
+// systemctlError turns a non-zero systemctl exit into an error carrying the
+// reason systemctl printed, which is the part that says what went wrong
+// ("System has not been booted with systemd as init system (PID 1)").
+func systemctlError(what string, cmd *shared.Command) error {
+	reason := ""
+	if cmd.Stderr != nil {
+		if out, err := io.ReadAll(cmd.Stderr); err == nil {
+			reason = strings.TrimSpace(string(out))
+		}
+	}
+	if reason == "" {
+		return fmt.Errorf("%s exited %d", what, cmd.ExitStatus)
+	}
+	return fmt.Errorf("%s exited %d: %s", what, cmd.ExitStatus, reason)
 }
 
 func (m *SystemdUnitManager) Get(name string) (*SystemdUnit, error) {
 	cmd, err := m.conn.RunCommand(buildSystemdUnitShowCommand([]string{name}))
 	if err != nil {
 		return nil, err
+	}
+	if cmd.ExitStatus != 0 {
+		// same reason as List: a systemctl that cannot answer must not read as
+		// "there is no such unit"
+		log.Debug().Err(systemctlError("systemctl show", cmd)).Str("unit", name).
+			Msg("mql[systemd]> could not read unit through systemctl, reading the unit file instead")
+		return m.fsFallback().Get(name)
 	}
 
 	records, err := parseSystemdShowRecords(cmd.Stdout)

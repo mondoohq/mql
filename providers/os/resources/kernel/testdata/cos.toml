@@ -1,0 +1,22 @@
+# Container-Optimized OS from Google. lsmod lives in /bin, and /sbin is empty,
+# so the hard-coded /sbin/lsmod exits 127 with no output. Captured from a live
+# cos-stable-121 instance.
+[commands."/sbin/lsmod"]
+stdout = ""
+exit_status = 127
+
+[files."/proc/modules"]
+content = """nft_chain_nat 12288 3 - Live 0x0000000000000000
+xt_MASQUERADE 12288 1 - Live 0x0000000000000000
+nf_nat 53248 2 nft_chain_nat,xt_MASQUERADE, Live 0x0000000000000000
+xt_addrtype 12288 2 - Live 0x0000000000000000
+nft_compat 20480 8 - Live 0x0000000000000000
+nf_tables 352256 129 nft_chain_nat,nft_compat, Live 0x0000000000000000
+crc32c_intel 16384 4 - Live 0x0000000000000000
+aesni_intel 360448 0 - Live 0x0000000000000000
+crypto_simd 16384 1 aesni_intel, Live 0x0000000000000000
+virtio_balloon 24576 0 - Live 0x0000000000000000
+cryptd 28672 1 crypto_simd, Live 0x0000000000000000
+loadpin_trigger 8192 0 [permanent], Live 0x0000000000000000 (O)
+fuse 184320 1 - Live 0x0000000000000000
+"""

@@ -1,0 +1,56 @@
+// Copyright Mondoo, Inc. 2024, 2026
+// SPDX-License-Identifier: BUSL-1.1
+
+package resources
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// An EFI variable file is a 4-byte attribute header followed by the data.
+func TestEfiVarIsOn(t *testing.T) {
+	on, err := efiVarIsOn([]byte{6, 0, 0, 0, 1})
+	require.NoError(t, err)
+	assert.True(t, on)
+
+	off, err := efiVarIsOn([]byte{6, 0, 0, 0, 0})
+	require.NoError(t, err)
+	assert.False(t, off)
+}
+
+// A truncated read must be an error, not a quiet "off". Reporting Secure Boot
+// as disabled because the bytes were short is a false security finding.
+func TestEfiVarIsOnRejectsShortReads(t *testing.T) {
+	for _, data := range [][]byte{nil, {}, {6}, {6, 0, 0, 0}} {
+		_, err := efiVarIsOn(data)
+		assert.Error(t, err, "%d bytes must not read as a value", len(data))
+	}
+}
+
+// od(1) is how the variable is read when the filesystem cannot serve it --
+// efivarfs rejects the positional reads sftp issues, so over SSH every
+// variable otherwise fails.
+func TestParseEfiVarOd(t *testing.T) {
+	// SetupMode on this host: "Platform is in Setup Mode"
+	on, err := parseEfiVarOd("   6   0   0   0   1\n0000005\n")
+	require.NoError(t, err)
+	assert.True(t, on)
+
+	off, err := parseEfiVarOd("   6   0   0   0   0\n")
+	require.NoError(t, err)
+	assert.False(t, off)
+}
+
+func TestParseEfiVarOdRejectsGarbage(t *testing.T) {
+	_, err := parseEfiVarOd("od: /sys/firmware/efi/efivars/x: Permission denied")
+	assert.Error(t, err)
+
+	_, err = parseEfiVarOd("")
+	assert.Error(t, err, "empty output must not read as off")
+
+	_, err = parseEfiVarOd("   6   0   0   0")
+	assert.Error(t, err, "a short variable must not read as off")
+}

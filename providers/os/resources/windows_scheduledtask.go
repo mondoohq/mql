@@ -319,10 +319,27 @@ func parseWindowsTaskTime(value string) *time.Time {
 	return nil
 }
 
-// normalizeWindowsTaskTime maps the Task Scheduler "never ran" sentinel — any
-// pre-1980 date, e.g. 1899-11-30 — to nil.
+// taskSchedulerNeverRun is the "never ran" value the Task Scheduler 2.0 API
+// reports for a task that has not run: 1999-11-30T00:00:00. It is not a
+// plausible run time, but it is recent enough that a pre-1980 cutoff lets it
+// through, and every task Windows ships with but never runs carries it. The
+// legacy API uses 1899-12-30 instead, which the cutoff does catch.
+var taskSchedulerNeverRun = time.Date(1999, time.November, 30, 0, 0, 0, 0, time.UTC)
+
+// normalizeWindowsTaskTime maps the Task Scheduler "never ran" sentinels to
+// nil: any pre-1980 date (e.g. 1899-12-30) and the 1999-11-30 value the modern
+// API uses.
+//
+// Reporting the sentinel as a real timestamp is worse than reporting nothing.
+// A task that has never run answers "when did this last run" with a concrete
+// date, so an audit asserting that a task ran recently sees a value rather
+// than a null, and one asserting the field is set passes on a task that has
+// never executed.
 func normalizeWindowsTaskTime(tm *time.Time) *time.Time {
 	if tm == nil || tm.Year() < 1980 {
+		return nil
+	}
+	if tm.UTC().Equal(taskSchedulerNeverRun) {
 		return nil
 	}
 	return tm

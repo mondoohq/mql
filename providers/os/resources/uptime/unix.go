@@ -6,6 +6,7 @@ package uptime
 import (
 	"fmt"
 	"io"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -24,7 +25,13 @@ import (
 // Solaris pluralizes with a parenthesized suffix instead of a bare "s",
 // printing "up 26 min(s)" and "up 5 day(s), 21:03", so each unit accepts
 // that spelling too.
-var UnixUptimeRegex = regexp.MustCompile(`^.*up[\s]*(?:\s*(\d+)\s(day(?:s|\(s\))?),)*(?:\s*(\d+)\s(hr(?:s|\(s\))?),)*(?:\s*(\d+)\s(min(?:s|\(s\))?),)*(?:\s+([\d:]+),\s)*\s*(?:(\d+)\suser[s]*,\s)*\s*load\s+average[s]*:\s+(\d+[\.,]\d+)[,\s]+(\d+[\.,]\d+)[,\s]+(\d+[\.,]\d+)\s*$`)
+//
+// The separator after a unit is optional. GNU coreutils ships its own
+// `uptime`, which openSUSE Leap installs instead of the procps one, and it
+// prints "up 1 day 10:51," with no comma after the day count. Requiring the
+// comma made the whole line unparseable, so os.uptime read null on every
+// openSUSE Leap host.
+var UnixUptimeRegex = regexp.MustCompile(`^.*up[\s]*(?:\s*(\d+)\s(day(?:s|\(s\))?),?)*(?:\s*(\d+)\s(hr(?:s|\(s\))?),?)*(?:\s*(\d+)\s(min(?:s|\(s\))?),?)*(?:\s+([\d:]+),\s)*\s*(?:(\d+)\suser[s]*,\s)*\s*load\s+average[s]*:\s+(\d+[\.,]\d+)[,\s]+(\d+[\.,]\d+)[,\s]+(\d+[\.,]\d+)\s*$`)
 
 type UnixUptimeResult struct {
 	Duration           int64
@@ -158,10 +165,46 @@ func (s *Unix) Name() string {
 	return "Unix Uptime"
 }
 
+// procUptimePath is the kernel's own uptime interface on Linux: two
+// space-separated floats, seconds since boot and seconds spent idle.
+const procUptimePath = "/proc/uptime"
+
 func (s *Unix) Duration() (time.Duration, error) {
+	var cmdErr error
+	if s.conn.Capabilities().Has(shared.Capability_RunCommand) {
+		d, err := s.durationFromCommand()
+		if err == nil {
+			return d, nil
+		}
+		cmdErr = err
+		log.Debug().Err(err).Msg("mql[uptime]> could not read the uptime command, trying " + procUptimePath)
+	}
+
+	// The `uptime` command comes from procps, which plenty of minimal images
+	// and container base images do not ship, and its output carries the
+	// locale's load-average separator. /proc/uptime needs no binary on PATH,
+	// is readable by anyone, and is also there for a scan that cannot run
+	// commands at all.
+	d, procErr := s.durationFromProc()
+	if procErr == nil {
+		return d, nil
+	}
+
+	if cmdErr != nil {
+		return 0, fmt.Errorf("could not determine uptime: %w (%s: %v)", cmdErr, procUptimePath, procErr)
+	}
+	return 0, procErr
+}
+
+func (s *Unix) durationFromCommand() (time.Duration, error) {
 	cmd, err := s.conn.RunCommand("uptime")
 	if err != nil {
 		return 0, err
+	}
+	if cmd.ExitStatus != 0 {
+		// An `uptime` that is not installed exits 127 with nothing on stdout,
+		// which the parser could only report as "could not parse uptime: ".
+		return 0, fmt.Errorf("uptime exited %d", cmd.ExitStatus)
 	}
 
 	ut, err := s.parse(cmd.Stdout)
@@ -170,6 +213,43 @@ func (s *Unix) Duration() (time.Duration, error) {
 	}
 
 	return time.Duration(ut.Duration), nil
+}
+
+func (s *Unix) durationFromProc() (time.Duration, error) {
+	f, err := s.conn.FileSystem().Open(procUptimePath)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+
+	content, err := io.ReadAll(f)
+	if err != nil {
+		return 0, err
+	}
+
+	return ParseProcUptime(string(content))
+}
+
+// ParseProcUptime reads the seconds-since-boot value out of /proc/uptime. The
+// file holds two floats -- uptime and idle time -- and only the first matters
+// here. The value is always printed with a "." separator, whatever the locale.
+func ParseProcUptime(content string) (time.Duration, error) {
+	fields := strings.Fields(content)
+	if len(fields) == 0 {
+		return 0, fmt.Errorf("could not parse %s: %q", procUptimePath, content)
+	}
+
+	seconds, err := strconv.ParseFloat(fields[0], 64)
+	if err != nil {
+		return 0, fmt.Errorf("could not parse %s: %w", procUptimePath, err)
+	}
+	if seconds < 0 {
+		return 0, fmt.Errorf("could not parse %s: negative uptime %v", procUptimePath, seconds)
+	}
+
+	// round rather than truncate: the float product of a long uptime and 1e9
+	// is not exact, so truncating drops a sub-nanosecond sliver
+	return time.Duration(math.Round(seconds * float64(time.Second))), nil
 }
 
 func (s *Unix) parse(r io.Reader) (*UnixUptimeResult, error) {

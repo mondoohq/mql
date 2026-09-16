@@ -273,14 +273,27 @@ func computeSmbClientConfig(policy, params, service map[string]registry.Registry
 }
 
 // computeSmbV1Enabled reports whether the SMBv1 client driver (mrxsmb10) is
-// enabled. The driver is enabled unless its Start value is explicitly 4
-// (disabled); an absent value means the default-installed driver is present, so
-// it is treated as enabled.
+// enabled.
+//
+// The driver is enabled when its Start value is present and is anything other
+// than 4 (disabled). An absent Start value means the driver is not installed:
+// removing the SMB1Protocol optional feature deletes the mrxsmb10 service key
+// outright, which is exactly the state a host that has had SMBv1 removed is
+// in. Server 2019, 2022 and 2025 all ship that way, and all three report
+// Get-WindowsOptionalFeature -FeatureName SMB1Protocol as Disabled while the
+// key is gone; Server 2016 still carries the key with Start 2 and reports the
+// feature as Enabled.
+//
+// Treating the absent key as enabled reported SMBv1 as on for every host that
+// had properly removed it, so the field could not return false on any
+// supported Windows Server and an audit requiring SMBv1 to be disabled failed
+// on hosts that had disabled it.
 func computeSmbV1Enabled(driver map[string]registry.RegistryKeyItem) bool {
-	if it, ok := driver["start"]; ok {
-		return it.Value.Number != smbServiceDisabled
+	it, ok := driver["start"]
+	if !ok {
+		return false
 	}
-	return true
+	return it.Value.Number != smbServiceDisabled
 }
 
 func (w *mqlWindowsSmb) serverConfiguration() (*mqlWindowsSmbServerConfiguration, error) {

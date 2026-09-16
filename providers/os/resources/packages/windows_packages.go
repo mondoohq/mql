@@ -1023,24 +1023,89 @@ var windowsDesktopRuntimeRelease = regexp.MustCompile(`^Microsoft Windows Deskto
 // every MSRC .NET runtime bound is three-component, so it never affected a
 // verdict, and 8.0.30 is the version the product calls itself.
 //
-// Residual, ARM64 only: there the bundle entry is registered under
-// Wow6432Node and is therefore labelled arch x86 while the MSI entry is ARM64,
-// so the two rows stay distinct on arch even once their versions agree. That
-// arch labelling is a separate question and is not touched here.
+// The architecture the two entries carry is repaired separately, by
+// normalizeDotNetInstallerArch: the bundle entry is registered under
+// Wow6432Node and is therefore labelled x86 while the MSI entry is labelled
+// with the host's architecture, which would keep the two rows distinct on arch
+// -- and, since the arch reaches the PURL, distinct as findings -- even once
+// their versions agree.
 func normalizeDotNetPackedVersion(name, version string) string {
 	if version == "" {
 		return version
 	}
-	for _, re := range []*regexp.Regexp{
-		dotNetSuffixedRelease,
-		aspNetCoreSharedFrameworkRelease,
-		windowsDesktopRuntimeRelease,
-	} {
+	for _, re := range dotNetInstallerReleasePatterns {
 		if m := re.FindStringSubmatch(name); m != nil {
 			return m[1]
 		}
 	}
 	return version
+}
+
+// dotNetInstallerReleasePatterns is the set of DisplayNames that identify an
+// entry as belonging to the .NET installer family, shared by the version and
+// the architecture repair below.
+var dotNetInstallerReleasePatterns = []*regexp.Regexp{
+	dotNetSuffixedRelease,
+	aspNetCoreSharedFrameworkRelease,
+	windowsDesktopRuntimeRelease,
+}
+
+// dotNetDisplayNameArch captures the architecture Microsoft appends to a .NET
+// installer's DisplayName: the "(arm64)" in "Microsoft .NET Runtime - 8.0.30
+// (arm64)".
+var dotNetDisplayNameArch = regexp.MustCompile(`(?i)\((x86|x64|arm32|arm64)\)\s*$`)
+
+// normalizeDotNetInstallerArch repairs the architecture of a .NET installer
+// entry that the registry path mislabels as 32-bit.
+//
+// A .NET runtime installed from the burn bundle registers twice, and the bundle
+// is itself a 32-bit process: its entry lands under Wow6432Node while the MSI
+// entry for the SAME runtime lands under the plain HKLM key. archForRegistryPath
+// reads Wow6432Node as x86, so the two rows for one install disagree about
+// their architecture. Verified on a clean Windows 11 ARM64 VM with Microsoft's
+// own dotnet-runtime-win-arm64.exe (8.0.30):
+//
+//	DisplayName                              registry path   labelled
+//	Microsoft .NET Runtime - 8.0.30 (arm64)  Wow6432Node     x86     <- the bundle
+//	Microsoft .NET Runtime - 8.0.30 (arm64)  HKLM            arm64   <- the MSI
+//
+// The DisplayName says what the runtime was actually built for, and it says
+// arm64 on both. Once that architecture reaches the PURL -- which it does, see
+// createPackage -- the disagreement stops being cosmetic: the two entries get
+// different PURLs, so one install becomes two package rows and two findings
+// carrying the same CVEs.
+//
+// The repair is deliberately one-directional. It only ever promotes an x86
+// label to the platform's own architecture, and only when the DisplayName
+// declares a 64-bit build, so a genuine 32-bit .NET runtime on a 64-bit host
+// keeps its x86 label. The platform architecture is used rather than the token
+// itself because a 64-bit build on a 64-bit host is built for THAT host, and
+// because the token vocabulary ("x64") is not the one platform detection uses.
+func normalizeDotNetInstallerArch(name, arch, platformArch string) string {
+	if arch != "x86" || platformArch == "" || strings.EqualFold(platformArch, "x86") {
+		return arch
+	}
+
+	isDotNetInstaller := false
+	for _, re := range dotNetInstallerReleasePatterns {
+		if re.MatchString(name) {
+			isDotNetInstaller = true
+			break
+		}
+	}
+	if !isDotNetInstaller {
+		return arch
+	}
+
+	m := dotNetDisplayNameArch.FindStringSubmatch(name)
+	if m == nil {
+		return arch
+	}
+	switch strings.ToLower(m[1]) {
+	case "x64", "arm64":
+		return platformArch
+	}
+	return arch
 }
 
 // msSqlSpVersionRegex matches the MSI DisplayVersion form for SP-era SQL Server
@@ -1117,6 +1182,19 @@ func createPackage(name, version, format, arch, publisher, installLocation strin
 	// the Version field and everything derived from them agree.
 	if format == "windows/app" {
 		version = normalizeDotNetPackedVersion(name, version)
+		if platform != nil {
+			arch = normalizeDotNetInstallerArch(name, arch, platform.Arch)
+		}
+	}
+	// The purl carries the package's OWN architecture, not the host's. Without
+	// WithArch, NewPackageURL falls back to platform.Arch, so a 32-bit
+	// application on a 64-bit host would report Arch: x86 in the package record
+	// and ?arch=x86_64 in its purl -- and the purl is what reaches vulnerability
+	// matching. An empty arch still falls back to the platform, which is the
+	// best guess available when the registry path told us nothing.
+	purlModifiers := []purl.Modifier{}
+	if arch != "" {
+		purlModifiers = append(purlModifiers, purl.WithArch(arch))
 	}
 	pkg := &Package{
 		Name:    name,
@@ -1125,7 +1203,7 @@ func createPackage(name, version, format, arch, publisher, installLocation strin
 		Arch:    arch,
 		Vendor:  publisher,
 		PUrl: purl.NewPackageURL(
-			platform, purlType, name, version,
+			platform, purlType, name, version, purlModifiers...,
 		).String(),
 	}
 	if installLocation != "" {

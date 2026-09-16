@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/v13/providers/os/connection/shared"
 )
 
@@ -31,11 +32,35 @@ func NewSystemdTimerManager(conn shared.Connection) *SystemdTimerManager {
 	return &SystemdTimerManager{conn: conn}
 }
 
+// fsFallback reads the timer unit files off disk. `systemctl list-units` and
+// `systemctl show` need a running systemd to answer, so they are not available
+// in a container, a chroot, a rescue boot, or on a host that keeps unit files
+// around while another init runs. They report that by exiting non-zero with
+// nothing on stdout, which parses into "no properties" rather than a failure,
+// and every timer then reads back with a blank description and no schedule.
+func (m *SystemdTimerManager) fsFallback() *SystemdFSTimerManager {
+	return &SystemdFSTimerManager{Fs: m.conn.FileSystem()}
+}
+
 func (m *SystemdTimerManager) List() ([]*SystemdTimer, error) {
+	timers, err := m.listViaSystemctl()
+	if err == nil {
+		return timers, nil
+	}
+
+	log.Debug().Err(err).
+		Msg("mql[systemd]> could not list timers through systemctl, reading unit files instead")
+	return m.fsFallback().List()
+}
+
+func (m *SystemdTimerManager) listViaSystemctl() ([]*SystemdTimer, error) {
 	// Step 1: Get all timer unit files (provides Enabled/Masked/Static/Installed)
 	cmdList, err := m.conn.RunCommand("systemctl list-unit-files --type timer --all")
 	if err != nil {
 		return nil, err
+	}
+	if cmdList.ExitStatus != 0 {
+		return nil, systemctlError("systemctl list-unit-files --type timer", cmdList)
 	}
 
 	timers, err := ParseSystemdTimerUnitFiles(cmdList.Stdout)
@@ -47,6 +72,9 @@ func (m *SystemdTimerManager) List() ([]*SystemdTimer, error) {
 	cmdUnits, err := m.conn.RunCommand("systemctl list-units --type timer --all")
 	if err != nil {
 		return nil, err
+	}
+	if cmdUnits.ExitStatus != 0 {
+		return nil, systemctlError("systemctl list-units --type timer", cmdUnits)
 	}
 
 	unitStates, err := ParseSystemdTimerListUnits(cmdUnits.Stdout)
@@ -76,6 +104,13 @@ func (m *SystemdTimerManager) Get(name string) (*SystemdTimer, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cmd.ExitStatus != 0 {
+		// same reason as List: a systemctl that cannot answer must not read as
+		// "there is no such timer"
+		log.Debug().Err(systemctlError("systemctl show", cmd)).Str("unit", unit).
+			Msg("mql[systemd]> could not read timer through systemctl, reading the unit file instead")
+		return m.fsFallback().Get(name)
+	}
 
 	props, err := parseShowProperties(cmd.Stdout)
 	if err != nil {
@@ -104,6 +139,11 @@ func (m *SystemdTimerManager) ShowTimerProperties(name string) (map[string]strin
 	cmd, err := m.conn.RunCommand(buildShowPropertyCommand("Unit,OnCalendar,Persistent", unit))
 	if err != nil {
 		return nil, err
+	}
+	if cmd.ExitStatus != 0 {
+		log.Debug().Err(systemctlError("systemctl show", cmd)).Str("unit", unit).
+			Msg("mql[systemd]> could not read timer properties through systemctl, reading the unit file instead")
+		return m.fsFallback().ShowTimerProperties(name)
 	}
 
 	return parseShowProperties(cmd.Stdout)

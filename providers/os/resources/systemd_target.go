@@ -5,10 +5,13 @@ package resources
 
 import (
 	"bufio"
+	"errors"
 	"strings"
 
 	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/v13/providers/os/resources/services"
 	"go.mondoo.com/mql/v13/types"
 )
 
@@ -21,9 +24,20 @@ func (x *mqlSystemdTargets) id() (string, error) {
 }
 
 func (x *mqlSystemdTargets) list() ([]any, error) {
+	conn, ok := x.MqlRuntime.Connection.(shared.Connection)
+	if !ok {
+		return nil, errors.New("systemd.targets is not supported on this connection")
+	}
+
 	names, err := listSystemdTargetNames(x.MqlRuntime)
 	if err != nil {
 		return nil, err
+	}
+	// systemctl needs a running systemd to answer. Where it cannot, the unit
+	// files are still on disk and are where systemctl would have read the
+	// names from anyway.
+	if len(names) == 0 {
+		names = services.ListSystemdFSTargetNames(conn.FileSystem())
 	}
 	if len(names) == 0 {
 		return []any{}, nil
@@ -38,6 +52,15 @@ func (x *mqlSystemdTargets) list() ([]any, error) {
 	propsByName, err := showSystemdTargetPropertiesBatch(x.MqlRuntime, names)
 	if err != nil {
 		return nil, err
+	}
+	// `systemctl show` needs the bus even though listing did not, so it is the
+	// step that fails first. Reporting every target with a blank description
+	// and no dependencies is not a smaller answer, it is a wrong one: read the
+	// unit files instead. The runtime fields (activeState, subState) stay empty
+	// -- they exist only in a running systemd, and an empty string says we did
+	// not read them rather than claiming the target is inactive.
+	if len(propsByName) == 0 {
+		propsByName = services.ReadSystemdFSTargetProperties(conn.FileSystem(), names)
 	}
 
 	res := make([]any, 0, len(names))

@@ -25,6 +25,6 @@ func New(conn shared.Connection) (Uptime, error) {
 	case pf.IsFamily(inventory.FAMILY_WINDOWS):
 		return &Windows{conn: conn}, nil
 	default:
-		return nil, errors.New("your platform is not supported by reboot resource")
+		return nil, errors.New("your platform is not supported by the uptime resource")
 	}
 }

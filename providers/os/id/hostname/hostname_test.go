@@ -26,6 +26,47 @@ func TestHostnameLinuxEtcHostname(t *testing.T) {
 	assert.Equal(t, "9be843c4be9f", hn)
 }
 
+// Bottlerocket never writes /etc/hostname, and a mounted host root cannot run
+// the hostname command, so before the environment file was consulted every scan
+// of such a node reported "cannot determine hostname".
+func TestHostnameBottlerocket(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/hostname_bottlerocket.toml"))
+	require.NoError(t, err)
+	platform, ok := detector.DetectOS(conn)
+	require.True(t, ok)
+	require.Equal(t, "bottlerocket", platform.Name)
+
+	hn, ok := hostname.Hostname(conn, platform)
+	require.True(t, ok)
+
+	assert.Equal(t, "ip-10-0-42-17.us-west-2.compute.internal", hn)
+}
+
+func TestHostnameLinuxEtcHosts(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/hostname_etc_hosts.toml"))
+	require.NoError(t, err)
+	platform, ok := detector.DetectOS(conn)
+	require.True(t, ok)
+
+	hn, ok := hostname.Hostname(conn, platform)
+	require.True(t, ok)
+
+	assert.Equal(t, "debian-box.example.com", hn)
+}
+
+// An empty /etc/hostname used to resolve the hostname to "" and report success.
+func TestHostnameLinuxEmptyEtcHostname(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/hostname_empty_etc_hostname.toml"))
+	require.NoError(t, err)
+	platform, ok := detector.DetectOS(conn)
+	require.True(t, ok)
+
+	hn, ok := hostname.Hostname(conn, platform)
+	require.True(t, ok)
+
+	assert.Equal(t, "debian-box.example.com", hn)
+}
+
 func TestHostnameLinux(t *testing.T) {
 	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/hostname_linux.toml"))
 	require.NoError(t, err)

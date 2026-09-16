@@ -939,7 +939,11 @@ func (s *mqlPort) process() (*mqlProcess, error) {
 
 	// TODO: refresh on the fly, eg when loading this from a recording
 	if s.inode == 0 {
-		return nil, errors.New("no iNode found for this port and cannot yet refresh it")
+		// Sockets without an owning process (TIME_WAIT, kernel-held sockets)
+		// report inode 0 in /proc/net; that is a legitimate "no process",
+		// not an error.
+		s.Process.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 
 	procs, err := ports.processesBySocket()

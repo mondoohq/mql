@@ -23,6 +23,8 @@ func New(conn shared.Connection) (Reboot, error) {
 		return &DebianReboot{conn: conn}, nil
 	case pf.IsFamily("redhat") || pf.Name == "amazonlinux":
 		return &RpmNewestKernel{conn: conn}, nil
+	case pf.IsFamily("suse"):
+		return &ZypperNeedsRebooting{conn: conn}, nil
 	case pf.IsFamily(inventory.FAMILY_WINDOWS):
 		return &WinReboot{conn: conn}, nil
 	default:

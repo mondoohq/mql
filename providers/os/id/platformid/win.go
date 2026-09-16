@@ -5,6 +5,7 @@ package platformid
 
 import (
 	"io"
+	"strings"
 
 	"go.mondoo.com/mql/v13/providers/os/connection/shared"
 )
@@ -20,8 +21,14 @@ func PowershellWindowsMachineId(conn shared.Connection) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	guid := string(data)
-	return guid, nil
+	// PowerShell terminates its output with CRLF. Without trimming it the
+	// machine id carries the line ending into every comparison, and into the
+	// asset identifier built from it in id/platform.go, which then reads
+	// "//platformid.api.mondoo.app/machineid/<uuid>\r\n". The linux and darwin
+	// providers already trim. Case is deliberately left alone: WMI reports the
+	// UUID in upper case, and lowering it here would change the identifier for
+	// every Windows asset already scanned.
+	return strings.TrimSpace(string(data)), nil
 }
 
 type WinIdProvider struct {

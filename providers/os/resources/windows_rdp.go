@@ -178,8 +178,13 @@ func (r *mqlWindowsRdp) pnpDeviceRedirectionDisabled() (bool, error) {
 }
 
 func (r *mqlWindowsRdp) passwordSavingDisabled() (bool, error) {
-	// Windows disables saving Remote Desktop passwords by default
-	return r.resolveBool("DisablePasswordSaving", rdpWinStations, 1)
+	// Policy-only setting. Microsoft documents the unconfigured behavior as
+	// "the user will be able to save passwords using Remote Desktop
+	// Connection", so saving is allowed and this reports false. Defaulting to
+	// true claimed the hardened state on every host that had not set the
+	// policy, which is the direction that makes a check pass without reading
+	// anything.
+	return r.resolveBool("DisablePasswordSaving", rdpWinStations, 0)
 }
 
 func (r *mqlWindowsRdp) deleteTempDirsOnExit() (bool, error) {
@@ -228,13 +233,18 @@ func (r *mqlWindowsRdp) perSessionTempDirsUsed() (bool, error) {
 }
 
 func (r *mqlWindowsRdp) solicitedRemoteAssistanceAllowed() (bool, error) {
-	// Remote Assistance is a policy-only setting; off when not configured
-	return r.resolveBool("fAllowToGetHelp", rdpWinStations, 0)
+	// Remote Assistance is machine-wide, not per-listener: the policy writes
+	// fAllowToGetHelp under the Terminal Services policy key and enabling it
+	// locally writes it under the Terminal Server key. Neither is under
+	// WinStations\RDP-Tcp, so looking there missed a host that had turned
+	// Remote Assistance on outside Group Policy and reported it as off.
+	return r.resolveBool("fAllowToGetHelp", rdpTerminalServer, 0)
 }
 
 func (r *mqlWindowsRdp) offerRemoteAssistanceAllowed() (bool, error) {
-	// offering unsolicited Remote Assistance is off when not configured
-	return r.resolveBool("fAllowUnsolicited", rdpWinStations, 0)
+	// machine-wide for the same reason as fAllowToGetHelp; off when nothing
+	// sets it
+	return r.resolveBool("fAllowUnsolicited", rdpTerminalServer, 0)
 }
 
 func (r *mqlWindowsRdp) webAuthnRedirectionDisabled() (bool, error) {

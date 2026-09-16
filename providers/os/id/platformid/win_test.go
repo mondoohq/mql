@@ -12,13 +12,19 @@ import (
 	"go.mondoo.com/mql/v13/providers/os/connection/mock"
 )
 
-func TestGuidWindows(t *testing.T) {
-	provider, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/guid_windows.toml"))
+// PowerShell terminates its output with CRLF. Returning it untrimmed put the
+// line ending into the machine id, and from there into the asset identifier
+// built in id/platform.go.
+func TestPowershellWindowsMachineIdTrimsLineEnding(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "windows", Family: []string{"windows", "os"}},
+	}, mock.WithPath("./testdata/windows_machineid.toml"))
 	require.NoError(t, err)
 
-	lid := WinIdProvider{connection: provider}
-	id, err := lid.ID()
+	guid, err := PowershellWindowsMachineId(conn)
 	require.NoError(t, err)
 
-	assert.Equal(t, "6BAB78BE-4623-4705-924C-2B22433A4489", id)
+	assert.Equal(t, "03ED6348-E1A9-4DE1-AA28-0CFEDB954237", guid)
+	assert.NotContains(t, guid, "\r")
+	assert.NotContains(t, guid, "\n")
 }

@@ -76,3 +76,40 @@ func toLowerASCII(s string) string {
 	}
 	return string(b)
 }
+
+// Remote Assistance is machine-wide, not per-listener. Its value is written
+// under the Terminal Server key when it is enabled outside Group Policy, never
+// under WinStations\RDP-Tcp, so resolving it against the per-listener map
+// misses a host that has it turned on and reports Remote Assistance as off.
+func TestRemoteAssistanceResolvesAgainstTheMachineWideKey(t *testing.T) {
+	for _, name := range []string{"fAllowToGetHelp", "fAllowUnsolicited"} {
+		t.Run(name, func(t *testing.T) {
+			// how a host with Remote Assistance enabled locally looks: the
+			// value is under the Terminal Server key and no policy sets it
+			tsRoot := map[string]int64{toLowerASCII(name): 1}
+			winSta := map[string]int64{}
+
+			assert.Equal(t, int64(1), resolveRdpValue(nil, tsRoot, name, 0),
+				"the machine-wide key holds the value and has to be the source consulted")
+			assert.Equal(t, int64(0), resolveRdpValue(nil, winSta, name, 0),
+				"the per-listener key never holds it, so resolving there reports the default")
+		})
+	}
+}
+
+// DisablePasswordSaving is a Group Policy-only setting. Microsoft documents the
+// unconfigured behavior as "the user will be able to save passwords using
+// Remote Desktop Connection", so an absent value means saving is allowed and
+// the field is false. Defaulting to true claimed the hardened state on every
+// host that had not set the policy, which is the direction that lets a check
+// pass without reading anything.
+func TestPasswordSavingDefaultsToAllowed(t *testing.T) {
+	assert.Equal(t, int64(0), resolveRdpValue(nil, nil, "DisablePasswordSaving", 0))
+
+	// the policy still wins when it is set, in both directions
+	enabled := map[string]int64{"disablepasswordsaving": 1}
+	assert.Equal(t, int64(1), resolveRdpValue(enabled, nil, "DisablePasswordSaving", 0))
+
+	disabled := map[string]int64{"disablepasswordsaving": 0}
+	assert.Equal(t, int64(0), resolveRdpValue(disabled, nil, "DisablePasswordSaving", 0))
+}
