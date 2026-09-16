@@ -247,6 +247,66 @@ stdout = """<?xml version="1.0" encoding="UTF-8"?>
 			</dict>
 			<dict>
 				<key>_name</key>
+				<string>Ollama</string>
+				<key>arch_kind</key>
+				<string>arch_arm_i64</string>
+				<key>obtained_from</key>
+				<string>identified_developer</string>
+				<key>path</key>
+				<string>/Applications/Ollama.app</string>
+				<key>version</key>
+				<string>0.33.3</string>
+			</dict>
+			<dict>
+				<key>_name</key>
+				<string>Ollama</string>
+				<key>arch_kind</key>
+				<string>arch_arm_i64</string>
+				<key>obtained_from</key>
+				<string>unknown</string>
+				<key>path</key>
+				<string>/Users/user/go/pkg/mod/github.com/ollama/ollama@v0.33.1/app/darwin/Ollama.app</string>
+				<key>version</key>
+				<string>0.0.0</string>
+			</dict>
+			<dict>
+				<key>_name</key>
+				<string>Ollama</string>
+				<key>arch_kind</key>
+				<string>arch_arm_i64</string>
+				<key>obtained_from</key>
+				<string>unknown</string>
+				<key>path</key>
+				<string>/Users/user/Development/gopath/pkg/mod/github.com/ollama/ollama@v0.33.2/app/darwin/Ollama.app</string>
+				<key>version</key>
+				<string>0.0.0</string>
+			</dict>
+			<dict>
+				<key>_name</key>
+				<string>Electron</string>
+				<key>arch_kind</key>
+				<string>arch_arm_i64</string>
+				<key>obtained_from</key>
+				<string>unknown</string>
+				<key>path</key>
+				<string>/Users/user/src/dashboard/node_modules/electron/dist/Electron.app</string>
+				<key>version</key>
+				<string>32.1.0</string>
+			</dict>
+			<dict>
+				<key>_name</key>
+				<string>Scratchpad</string>
+				<key>arch_kind</key>
+				<string>arch_arm_i64</string>
+				<key>obtained_from</key>
+				<string>unknown</string>
+				<key>path</key>
+				<string>/Users/user/Library/Developer/Xcode/DerivedData/Scratchpad-abcdef/Build/Products/Debug/Scratchpad.app</string>
+				<key>version</key>
+				<string>1.0</string>
+			</dict>
+			<dict>
+				<key>_name</key>
 				<string>Spotlight</string>
 				<key>arch_kind</key>
 				<string>arch_arm_i64</string>

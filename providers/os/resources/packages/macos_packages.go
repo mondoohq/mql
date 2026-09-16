@@ -203,6 +203,10 @@ func (mpm *MacOSPkgManager) Files(name string, version string, arch string) ([]F
 // and an application's own login-item helper all ship with, and are patched
 // by, whatever contains them. A Contents directory anywhere above the bundle
 // marks that containment.
+//
+// A third shape is a bundle sitting in a dependency or build cache, which is
+// build input or build output rather than installed software. See
+// dependencyCacheMarkers.
 func isApplicationBundlePath(path string) bool {
 	if path == "" {
 		return false
@@ -218,7 +222,51 @@ func isApplicationBundlePath(path string) bool {
 
 	// The surrounding separators make this a whole-segment match: a directory
 	// named "Contents" matches, one named "TableOfContents" does not.
-	return !strings.Contains(path, "/Contents/")
+	if strings.Contains(path, "/Contents/") {
+		return false
+	}
+
+	// macOS path comparison is case-insensitive for the same reason the
+	// extension check above is.
+	lower := strings.ToLower(path)
+	for _, marker := range dependencyCacheMarkers {
+		if strings.Contains(lower, marker) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// dependencyCacheMarkers are whole-segment path markers for caches that hold
+// dependencies and build products. Nothing under them is installed software:
+// the contents are read-only artifacts that no upgrade path touches, and they
+// are recreated on demand from a manifest.
+//
+// Matching is by path rather than by version, because the placeholder version
+// is incidental. A vendored bundle carrying a real version would be just as
+// wrong to report, and it would be indistinguishable from an install by any
+// version-based rule.
+//
+// Each marker is the invariant part of the cache layout rather than its
+// default location, so a relocated cache is still recognized: the Go module
+// cache is $GOMODCACHE, which defaults to $GOPATH/pkg/mod but follows GOPATH
+// wherever it points.
+//
+// Markers must be ASCII and lowercase. They are compared against a lowercased
+// path, so an uppercase letter in a marker silently never matches: writing
+// "/DerivedData/" here would disable the entry rather than fail loudly.
+var dependencyCacheMarkers = []string{
+	// Go module cache. github.com/ollama/ollama vendors a prebuilt
+	// app/darwin/Ollama.app, so every host that has fetched the module reports
+	// a phantom Ollama install once per cached module version.
+	"/pkg/mod/",
+	// npm and yarn dependency trees, which is where an Electron app keeps the
+	// framework bundle it is built against.
+	"/node_modules/",
+	// Xcode build products, which are rebuilt from source and are not the
+	// copy a user launches even when the project builds a real application.
+	"/deriveddata/",
 }
 
 // bundleVersionFromInfoPlist recovers an app's version from its

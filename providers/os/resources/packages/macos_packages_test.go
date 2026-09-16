@@ -31,7 +31,7 @@ func TestMacOsXPackageParser(t *testing.T) {
 	}
 	m, err := packages.ParseMacOSPackages(mock, pf, c.Stdout)
 	assert.Nil(t, err)
-	assert.Equal(t, 8, len(m), "detected the right amount of packages")
+	assert.Equal(t, 9, len(m), "detected the right amount of packages")
 
 	assert.Equal(t, "Preview", m[0].Name, "pkg name detected")
 	assert.Equal(t, "10.0", m[0].Version, "pkg version detected")
@@ -112,6 +112,33 @@ func TestMacOsXPackageParser(t *testing.T) {
 		assert.NotContains(t, names(m), dropped, "non-application entry dropped")
 	}
 
+	// A dependency or build cache holds build inputs and build products, not
+	// installed software. The Go module cache is the case seen in the field:
+	// github.com/ollama/ollama vendors a prebuilt app skeleton under
+	// app/darwin/ whose Info.plist carries the placeholder version 0.0.0, so
+	// every host that has fetched the module reports a phantom Ollama install
+	// next to the real one, once per cached module version. A 0.0.0 row sorts
+	// below every advisory bound, so it matches every advisory for the product
+	// no matter which version is actually installed.
+	//
+	// Only the real install survives, and it keeps its own version: asserting
+	// the version rather than just the count is what catches a filter that
+	// drops the wrong Ollama.
+	ollama := findByName(m, "Ollama")
+	assert.Len(t, ollama, 1, "only the installed Ollama bundle is reported")
+	assert.Equal(t, "0.33.3", ollama[0].Version, "version of the installed bundle, not the 0.0.0 skeleton")
+	assert.Equal(t, []packages.FileRecord{{Path: "/Applications/Ollama.app"}}, ollama[0].Files)
+
+	// The module cache is matched by its /pkg/mod/ path segment, not by the
+	// default $GOPATH: the second skeleton sits under a relocated GOPATH, and a
+	// filter hardcoded to ~/go would let it through.
+	for _, dropped := range []string{
+		"Electron",   // vendored in node_modules, a dependency of a project
+		"Scratchpad", // an Xcode build product under DerivedData
+	} {
+		assert.NotContains(t, names(m), dropped, "dependency or build cache entry dropped")
+	}
+
 	// Paths that are not an installed application bundle are dropped whatever
 	// version they report, so a stale copy on disk cannot keep a fixed CVE open.
 	for _, dropped := range []string{
@@ -131,4 +158,14 @@ func names(pkgs []packages.Package) []string {
 		list[i] = pkgs[i].Name
 	}
 	return list
+}
+
+func findByName(pkgs []packages.Package, name string) []packages.Package {
+	var found []packages.Package
+	for i := range pkgs {
+		if pkgs[i].Name == name {
+			found = append(found, pkgs[i])
+		}
+	}
+	return found
 }
