@@ -387,7 +387,33 @@ func resource2result(value any, typ types.Type) (*Primitive, error) {
 	if !ok {
 		return nil, errInvalidConversion(value, typ)
 	}
+	// A provider that resolves a resource field to no resource hands back a nil
+	// pointer of that resource's own type. Inside the Resource interface such a
+	// pointer is not == nil, so the check raw2primitive already makes on the
+	// value cannot see it, and MqlID -- which every generated resource
+	// implements by reading a field through a pointer receiver -- dereferenced
+	// it. That panic took down the whole scan rather than the one field, and it
+	// reached here from two directions: a field accessor returning (nil, nil)
+	// without marking the field null, and an init returning a nil resource of
+	// its own type.
+	//
+	// A typed nil is the same absence as an untyped one, so it serializes the
+	// same way.
+	if isNilResource(m) {
+		return NilPrimitive, nil
+	}
 	return &Primitive{Type: string(typ), Value: []byte(m.MqlID())}, nil
+}
+
+// isNilResource reports whether a Resource interface holds a nil pointer.
+func isNilResource(m Resource) bool {
+	v := reflect.ValueOf(m)
+	switch v.Kind() {
+	case reflect.Ptr, reflect.Interface, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan:
+		return v.IsNil()
+	default:
+		return false
+	}
 }
 
 func function2result(value any, typ types.Type) (*Primitive, error) {
