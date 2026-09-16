@@ -15304,10 +15304,10 @@ network {
   // All IPv6 addresses detected on host interfaces
   ipv6() []ip
 
-  // Primary IPv4 address determined by the default route
+  // Routable IPv4 address on the interface carrying the default route, null when there is none
   primaryIPv4() ip
 
-  // Primary IPv6 address determined by the default route
+  // Routable IPv6 address on the interface carrying the default route, null when there is none
   primaryIPv6() ip
 
   // ARP (IPv4) / NDP (IPv6) neighbor cache entries
