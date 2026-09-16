@@ -1,4 +1,4 @@
-// Copyright Mondoo, Inc. 2026
+// Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package fex
@@ -11,6 +11,7 @@ import (
 	"github.com/package-url/packageurl-go"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // FoldAliases collapses VEX records that describe ONE vulnerability under
@@ -151,8 +152,10 @@ func mergeVuln(dst, src *VulnerabilityExchange) {
 	if dst.DatabaseSpecific == nil && src.DatabaseSpecific != nil {
 		dst.DatabaseSpecific = proto.Clone(src.DatabaseSpecific).(*structpb.Struct)
 	}
-	if dst.FirstSeen == nil || (src.FirstSeen != nil && src.FirstSeen.AsTime().Before(dst.FirstSeen.AsTime())) {
-		dst.FirstSeen = src.FirstSeen
+	// Clone rather than share the pointer: the input is not mutated, so the
+	// survivor must not alias a timestamp the caller still holds.
+	if src.FirstSeen != nil && (dst.FirstSeen == nil || src.FirstSeen.AsTime().Before(dst.FirstSeen.AsTime())) {
+		dst.FirstSeen = proto.Clone(src.FirstSeen).(*timestamppb.Timestamp)
 	}
 	// The folded twin's own id and everything it pointed at become aliases of
 	// the survivor; finishAliases dedupes and drops the survivor's own id.

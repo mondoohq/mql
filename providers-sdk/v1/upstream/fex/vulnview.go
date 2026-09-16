@@ -328,6 +328,11 @@ type VulnRow struct {
 // with no resolved component still yields a single row so it is never silently
 // dropped. Rows carry only derived data — callers add file location and
 // presentation themselves.
+//
+// It folds twin CVE/GHSA records internally (see FoldAliases), so callers need
+// not fold beforehand. FoldAliases is idempotent — folding already-folded input
+// is a no-op — so passing the output of getVexReport (which also folds) through
+// here is safe.
 func VulnRows(vex []*VulnerabilityExchange) []VulnRow {
 	// Fold twin records (a CVE-keyed and a GHSA-keyed row for the same
 	// weakness that name each other via aliases/upstream) into one record per

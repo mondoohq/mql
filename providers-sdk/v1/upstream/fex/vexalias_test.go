@@ -1,13 +1,15 @@
-// Copyright Mondoo, Inc. 2026
+// Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package fex
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const strutsPurl = "pkg:maven/org.apache.struts/struts2-core@2.5.20"
@@ -71,6 +73,26 @@ func TestFoldAliasesCollapsesCveGhsaTwins(t *testing.T) {
 	assert.Nil(t, in[0].Aliases)
 	assert.Equal(t, []string{"GHSA-2j39-qcjm-428w"}, in[0].Related)
 	assert.Empty(t, in[0].Affects[0].SubComponents[0].Identifiers["fixed"])
+}
+
+// TestFoldAliasesAdoptedFirstSeenIsCloned guards the "input is not mutated"
+// contract for FirstSeen: when the survivor adopts the folded twin's earlier
+// timestamp, it must clone it rather than alias the caller's proto message.
+func TestFoldAliasesAdoptedFirstSeenIsCloned(t *testing.T) {
+	ts := timestamppb.New(time.Unix(1_600_000_000, 0).UTC())
+	in := []*VulnerabilityExchange{
+		// CVE survivor with no FirstSeen ...
+		{Id: "CVE-2023-50164", Summary: "twin"},
+		// ... GHSA twin carrying the timestamp the survivor will adopt.
+		{Id: "GHSA-2j39-qcjm-428w", Summary: "twin", Upstream: []string{"CVE-2023-50164"}, FirstSeen: ts},
+	}
+	out := FoldAliases(in)
+	require.Len(t, out, 1)
+
+	require.NotNil(t, out[0].FirstSeen)
+	assert.True(t, out[0].FirstSeen.AsTime().Equal(ts.AsTime()), "the earlier timestamp must be adopted")
+	assert.NotSame(t, ts, out[0].FirstSeen, "the adopted timestamp must be a clone, not the caller's pointer")
+	assert.Same(t, ts, in[1].FirstSeen, "the input timestamp pointer is untouched")
 }
 
 // TestFoldAliasesRelatedAloneDoesNotFold pins the accuracy boundary: two CVEs
