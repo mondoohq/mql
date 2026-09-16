@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/v13/providers/os/resources/languages"
 )
 
 // OSGi states a bundle's license in Bundle-License, and the header is
