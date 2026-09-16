@@ -245,16 +245,21 @@ func (c *mqlNetwork) routes() (*mqlNetworkRoutes, error) {
 		interfaces = []networki.Interface{}
 	}
 
-	// Map interfaces by name
-	interfaceMap := make(map[string]networki.Interface)
-	for _, iface := range interfaces {
-		interfaceMap[iface.Name] = iface
-	}
-
 	routeResources := []any{}
 	for _, route := range routes {
 		var ifaceResource plugin.Resource
-		if iface, ok := interfaceMap[route.Interface]; ok {
+		// Matched with FindInterface rather than by exact name. `ip addr`
+		// names a veth or a tunnel with the peer it is attached to -- eth0@if24
+		// inside a container, gre0@NONE for the tunnel devices a stock kernel
+		// carries -- while the routing table names it without. An exact-name
+		// map therefore missed precisely the interface every route on the host
+		// goes through, and route.iface read null for all of them while
+		// resolving fine for lo, which has no peer suffix.
+		//
+		// FindInterface falls back to the base name for this reason, and
+		// AddOrUpdateInterfaces already uses it to merge the detectors.
+		if idx := networki.FindInterface(interfaces, networki.Interface{Name: route.Interface}); idx >= 0 {
+			iface := interfaces[idx]
 			ipaddresses := []any{}
 			for _, ipaddress := range iface.IPAddresses {
 				ipRes, err := NewResource(c.MqlRuntime, "ipAddress", map[string]*llx.RawData{

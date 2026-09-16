@@ -37,3 +37,33 @@ default via 172.31.16.1 dev enX0 proto dhcp src 172.31.24.71 metric 512
 stdout = """
 fe80::/64 dev enX0 proto kernel metric 256 pref medium
 """
+
+# The sysfs facts a real host carries alongside `ip addr`. Whether an
+# interface is virtual is not in the command's output, so it is read from
+# here; enX0 is an ENA NIC and has a device link, lo is synthesized by the
+# kernel and has none. Shape verified against sysfs on real systems, where a
+# virtio NIC resolves under /sys/devices/platform and lo, a container veth,
+# docker0, bond0 and dummy0 resolve under /sys/devices/virtual with no device
+# link.
+[files."/sys/class/net"]
+stat.isdir = true
+
+[files."/sys/class/net/enX0"]
+stat.isdir = false
+[files."/sys/class/net/enX0/ifindex"]
+content = "2"
+[files."/sys/class/net/enX0/address"]
+content = "0a:ff:de:6b:e3:19"
+[files."/sys/class/net/enX0/device"]
+stat.isdir = true
+
+[files."/sys/class/net/lo"]
+stat.isdir = false
+[files."/sys/class/net/lo/ifindex"]
+content = "1"
+[files."/sys/class/net/lo/address"]
+content = "00:00:00:00:00:00"
+
+# The bonding driver's control file sits here too, and is not an interface.
+[files."/sys/class/net/bonding_masters"]
+content = ""

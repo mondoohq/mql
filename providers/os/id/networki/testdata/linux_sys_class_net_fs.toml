@@ -43,3 +43,11 @@ stdout = """
 fe80::/64 dev enX0 proto kernel metric 256 pref medium
 """
 
+
+# /sys/class/net holds the bonding driver's control file alongside the
+# interfaces. It is a plain file with no children, and reporting it as an
+# interface invented one with no mac, no mtu and no flags. Captured from a
+# debian:12 container and from the host namespace of a machine with the
+# bonding module loaded, where it appears either way.
+[files."/sys/class/net/bonding_masters"]
+content = ""

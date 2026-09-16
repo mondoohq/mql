@@ -483,3 +483,70 @@ func TestInterfacesWindowsFallbackIpconfigCmd(t *testing.T) {
 		}
 	}
 }
+
+// Whether an interface is virtual must not depend on whether iproute2 happens
+// to be installed on the host being scanned. `ip addr` does not report it, so
+// it is read from sysfs either way -- enX0 has a device link and is backed by
+// hardware, lo has none and is synthesized by the kernel.
+//
+// Before this, the command detector guessed from the name: a veth or virbr
+// prefix was virtual and everything else was not, so lo read false, and so did
+// the veth that every container calls eth0.
+func TestInterfacesLinuxVirtualIsReadFromSysfs(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/linux_ip_addr_show_cmd.toml"))
+	require.NoError(t, err)
+	platform, ok := detector.DetectOS(conn)
+	require.True(t, ok)
+
+	interfaces, err := subject.Interfaces(conn, platform)
+	require.NoError(t, err)
+
+	index := subject.FindInterface(interfaces, subject.Interface{Name: "lo"})
+	if assert.NotEqual(t, -1, index) {
+		lo := interfaces[index]
+		if assert.NotNil(t, lo.Virtual, "loopback has no verdict") {
+			assert.True(t, *lo.Virtual, "the loopback is synthesized by the kernel")
+		}
+	}
+
+	index = subject.FindInterface(interfaces, subject.Interface{Name: "enX0"})
+	if assert.NotEqual(t, -1, index) {
+		enX0 := interfaces[index]
+		if assert.NotNil(t, enX0.Virtual) {
+			assert.False(t, *enX0.Virtual, "a NIC with a device link is backed by hardware")
+		}
+	}
+
+	// The bonding control file is in this fixture's sysfs too, and is not an
+	// interface however the interfaces were discovered.
+	for _, iface := range interfaces {
+		assert.NotEqual(t, "bonding_masters", iface.Name)
+	}
+}
+
+// /sys/class/net holds the bonding driver's control file beside the
+// interfaces. It is a plain file, so it has no mac, no mtu and no flags, and
+// reporting it put exactly that empty row in the interface list on every
+// distribution scanned without iproute2 installed.
+func TestInterfacesLinuxSysfsSkipsBondingMasters(t *testing.T) {
+	for _, fixture := range []string{
+		"./testdata/linux_sys_class_net_fs.toml",
+		"./testdata/linux_sys_class_net_symlinks.toml",
+	} {
+		conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath(fixture))
+		require.NoError(t, err, fixture)
+		platform, ok := detector.DetectOS(conn)
+		require.True(t, ok, fixture)
+
+		interfaces, err := subject.Interfaces(conn, platform)
+		require.NoError(t, err, fixture)
+
+		for _, iface := range interfaces {
+			assert.NotEqual(t, "bonding_masters", iface.Name,
+				"%s reported the bonding control file as an interface", fixture)
+		}
+		assert.Equal(t, -1,
+			subject.FindInterface(interfaces, subject.Interface{Name: "bonding_masters"}),
+			"%s", fixture)
+	}
+}
