@@ -326,9 +326,17 @@ func TestFirefoxFlexIntUnmarshal(t *testing.T) {
 		{name: "number", raw: `1`, expected: 1},
 		{name: "quoted digit", raw: `"1"`, expected: 1},
 		{name: "quoted zero", raw: `"0"`, expected: 0},
+		{name: "negative", raw: `-1`, expected: -1},
+		{name: "quoted negative", raw: `"-1"`, expected: -1},
 		{name: "null", raw: `null`, expected: 0},
 		{name: "empty string", raw: `""`, expected: 0},
+		{name: "whitespace only", raw: `" "`, expected: 0},
 		{name: "not a number", raw: `"sometimes"`, wantErr: true},
+		// A quoted value too large for the target must error rather than wrap
+		// to a small or negative number, which would read as a real setting.
+		{name: "quoted overflow", raw: `"99999999999999999999"`, wantErr: true},
+		{name: "bare overflow", raw: `99999999999999999999`, wantErr: true},
+		{name: "quoted float", raw: `"1.5"`, wantErr: true},
 	}
 
 	for _, tt := range tests {

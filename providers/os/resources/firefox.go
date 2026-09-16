@@ -6,7 +6,6 @@ package resources
 import (
 	"encoding/json"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -95,21 +94,26 @@ type firefoxExtensionsJSON struct {
 type firefoxFlexInt int
 
 func (f *firefoxFlexInt) UnmarshalJSON(b []byte) error {
-	s := strings.TrimSpace(string(b))
-	if s == "null" {
+	// The common case, and also null, which decodes into an int as a no-op and
+	// so leaves the zero value that an absent setting should read as.
+	var n int
+	if err := json.Unmarshal(b, &n); err == nil {
+		*f = firefoxFlexInt(n)
+		return nil
+	}
+
+	// Older and migrated entries quote the number. Unmarshal the quoted
+	// contents as a number in turn, so the range check and the overflow error
+	// are the same ones a bare number gets.
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	if strings.TrimSpace(s) == "" {
 		*f = 0
 		return nil
 	}
-	// A quoted number carries the same meaning as a bare one here.
-	if unquoted, err := strconv.Unquote(s); err == nil {
-		s = unquoted
-	}
-	if s == "" {
-		*f = 0
-		return nil
-	}
-	n, err := strconv.Atoi(s)
-	if err != nil {
+	if err := json.Unmarshal([]byte(s), &n); err != nil {
 		return err
 	}
 	*f = firefoxFlexInt(n)
