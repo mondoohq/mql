@@ -487,6 +487,24 @@ func (k *mqlKernel) installed() ([]any, error) {
 	conn := k.MqlRuntime.Connection.(shared.Connection)
 	platform := conn.Asset().Platform
 
+	// NixOS has no kernel package to filter for. It keeps whole system
+	// generations, each with the kernel it boots, so the kernels it has
+	// installed are read off those instead. The running version is a fallback
+	// here: nixosInstalledKernels prefers the booted kernel's store path,
+	// which is why an empty version from kernel.info is not fatal.
+	if platform != nil && platform.Name == "nixos" {
+		runningVersion, err := k.runningKernelVersion()
+		if err != nil {
+			return nil, err
+		}
+
+		kernels, err := nixosInstalledKernels(conn.FileSystem(), runningVersion)
+		if err != nil {
+			return nil, err
+		}
+		return convert.JsonToDictSlice(kernels)
+	}
+
 	filterKernel, err := kernelInstalledFilter(platform)
 	if err != nil {
 		return nil, err
