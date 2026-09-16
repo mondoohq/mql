@@ -9,6 +9,11 @@ type gemSpec struct {
 	Name string
 	// Version is the gem version (may be empty if it references a constant).
 	Version string
+	// Licenses holds the licenses the gemspec declares, in the order it wrote
+	// them. A gemspec states them with either `spec.license = "MIT"` or
+	// `spec.licenses = ["MIT", "Apache-2.0"]`; RubyGems keeps a single list
+	// either way, so this does too.
+	Licenses []string
 	// Dependencies is the list of declared dependencies.
 	Dependencies []gemDep
 

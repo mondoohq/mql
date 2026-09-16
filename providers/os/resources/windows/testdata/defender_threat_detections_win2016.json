@@ -1,0 +1,42 @@
+[
+  {
+    "ActionSuccess": true,
+    "AdditionalActionsBitMask": 0,
+    "AMProductVersion": "4.18.26070.9",
+    "CleaningActionID": 2,
+    "CurrentThreatExecutionStatusID": 1,
+    "DetectionID": "{00000000-0000-0000-0000-000000000001}",
+    "DetectionSourceTypeID": 3,
+    "DomainUser": "WIN-EXAMPLE-HOST\\Administrator",
+    "InitialDetectionTime": "/Date(1787635407139)/",
+    "LastThreatStatusChangeTime": "/Date(1787635418235)/",
+    "ProcessName": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "RemediationTime": "/Date(1787635418235)/",
+    "Resources": [
+      "file:_C:\\mqlvalidation\\eicar-probe.txt"
+    ],
+    "ThreatID": 2147519003,
+    "ThreatStatusErrorCode": 0,
+    "ThreatStatusID": 3
+  },
+  {
+    "ActionSuccess": true,
+    "AdditionalActionsBitMask": 0,
+    "AMProductVersion": "4.18.26070.9",
+    "CleaningActionID": 2,
+    "CurrentThreatExecutionStatusID": 0,
+    "DetectionID": "{00000000-0000-0000-0000-000000000002}",
+    "DetectionSourceTypeID": 2,
+    "DomainUser": "NT AUTHORITY\\LOCAL SERVICE",
+    "InitialDetectionTime": "/Date(1787635415765)/",
+    "LastThreatStatusChangeTime": "/Date(1787635420778)/",
+    "ProcessName": "Unknown",
+    "RemediationTime": "/Date(1787635420778)/",
+    "Resources": [
+      "file:_C:\\mqlvalidation\\eicar-probe.txt"
+    ],
+    "ThreatID": 2147519003,
+    "ThreatStatusErrorCode": 0,
+    "ThreatStatusID": 3
+  }
+]

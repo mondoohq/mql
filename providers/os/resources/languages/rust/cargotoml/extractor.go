@@ -81,8 +81,12 @@ func (ct *cargoToml) Root() *languages.Package {
 	}
 
 	return &languages.Package{
-		Name:         ct.Package.Name,
-		Version:      ct.Package.Version,
+		Name:    ct.Package.Name,
+		Version: ct.Package.Version,
+		// The crate's own license. Cargo's `license` is already an SPDX
+		// expression, so it is carried through as written rather than
+		// rebuilt from parts.
+		License:      ct.Package.License,
 		Purl:         rust.NewPackageUrl(ct.Package.Name, ct.Package.Version),
 		Cpes:         rust.NewCpes(ct.Package.Name, ct.Package.Version),
 		EvidenceList: rust.NewEvidenceList(ct.evidence),

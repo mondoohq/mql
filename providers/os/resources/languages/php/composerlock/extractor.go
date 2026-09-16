@@ -67,12 +67,13 @@ func (l *composerLock) Transitive() languages.Packages {
 }
 
 func makePackage(pkg composerPackage, evidence []string, scope string) *languages.Package {
-	// Note: License and Description are available in composer.lock but not yet
-	// exposed via the php.package MQL resource. When license support is added
-	// to the .lr schema, populate them here.
 	return &languages.Package{
-		Name:         pkg.Name,
-		Version:      pkg.Version,
+		Name:    pkg.Name,
+		Version: pkg.Version,
+		// composer.lock records the license as an array, which means a choice
+		// among them; LicenseExpression renders that as SPDX.
+		License:      languages.LicenseExpression(pkg.License),
+		Description:  pkg.Description,
 		Purl:         php.NewPackageUrl(pkg.Name, pkg.Version),
 		Cpes:         php.NewCpes(pkg.Name, pkg.Version),
 		EvidenceList: php.NewEvidenceList(evidence),

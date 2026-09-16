@@ -51,3 +51,57 @@ fe80::/64 dev enX0 proto kernel metric 256 pref medium
 # bonding module loaded, where it appears either way.
 [files."/sys/class/net/bonding_masters"]
 content = ""
+
+# The kernel does not publish interface addresses under /sys/class/net, so the
+# sysfs detector cannot answer them and procfs is where they come from. These
+# match the `ip route show` output above: 172.31.24.71/20 on enX0 by way of the
+# on-link 172.31.16.0/20 route, plus loopback.
+#
+# Destination, Gateway and Mask in /proc/net/route are 32-bit little-endian hex:
+# 00101FAC is 172.31.16.0, 00F0FFFF is 255.255.240.0, 01101FAC is 172.31.16.1.
+[files."/proc/net/route"]
+content = """
+Iface	Destination	Gateway 	Flags	RefCnt	Use	Metric	Mask		MTU	Window	IRTT
+enX0	00000000	01101FAC	0003	0	0	512	00000000	0	0	0
+enX0	00101FAC	00000000	0001	0	0	512	00F0FFFF	0	0	0
+lo	0000007F	00000000	0001	0	0	0	000000FF	0	0	0
+"""
+
+# 127.0.0.0 carries a "/8 host LOCAL" of its own, which is the reservation for
+# the loopback device rather than an address the host answers on. Only the /32
+# LOCAL leaves are addresses.
+[files."/proc/net/fib_trie"]
+content = """
+Main:
+  +-- 0.0.0.0/0 3 0 5
+     |-- 0.0.0.0
+        /0 universe UNICAST
+     +-- 127.0.0.0/8 2 0 2
+        +-- 127.0.0.0/31 1 0 0
+           |-- 127.0.0.0
+              /8 host LOCAL
+           |-- 127.0.0.1
+              /32 host LOCAL
+        |-- 127.255.255.255
+           /32 link BROADCAST
+     +-- 172.31.16.0/20 2 0 2
+        |-- 172.31.16.0
+           /20 link UNICAST
+        |-- 172.31.24.71
+           /32 host LOCAL
+        |-- 172.31.31.255
+           /32 link BROADCAST
+Local:
+  +-- 0.0.0.0/0 3 0 5
+     +-- 172.31.16.0/20 2 0 2
+        |-- 172.31.24.71
+           /32 host LOCAL
+"""
+
+# Address, interface index, prefix length, scope and flags are hexadecimal, so
+# "40" is a /64 and "80" is a /128.
+[files."/proc/net/if_inet6"]
+content = """
+fe800000000000000affde6bfe3ae319 02 40 20 80     enX0
+00000000000000000000000000000001 01 80 10 80       lo
+"""

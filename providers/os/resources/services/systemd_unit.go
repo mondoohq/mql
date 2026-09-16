@@ -144,11 +144,22 @@ func (m *SystemdUnitManager) listViaSystemctl() ([]*SystemdUnit, error) {
 		return []*SystemdUnit{}, nil
 	}
 
-	res := make([]*SystemdUnit, 0, len(names))
-	for start := 0; start < len(names); start += systemdUnitShowChunk {
-		end := min(start+systemdUnitShowChunk, len(names))
+	// systemctl refuses to show an uninstantiated template ("Unit name
+	// autovt@.service is neither a valid invocation ID nor unit name") and
+	// exits non-zero for the whole batch when one is in it. Almost every host
+	// has at least one template, so leaving them in meant every batch failed
+	// and the whole resource fell back to reading unit files -- which loses the
+	// units a generator produced into /run, since the filesystem search path
+	// deliberately does not look there. On openSUSE Leap 16 that was 10 real
+	// units missing. Ask systemctl only about the concrete names and read the
+	// templates off disk, where they always have a unit file.
+	concrete, templates := splitSystemdTemplateUnits(names)
 
-		chunk := names[start:end]
+	res := make([]*SystemdUnit, 0, len(names))
+	for start := 0; start < len(concrete); start += systemdUnitShowChunk {
+		end := min(start+systemdUnitShowChunk, len(concrete))
+
+		chunk := concrete[start:end]
 		showCmd, err := m.conn.RunCommand(buildSystemdUnitShowCommand(chunk))
 		if err != nil {
 			return nil, err
@@ -171,11 +182,47 @@ func (m *SystemdUnitManager) listViaSystemctl() ([]*SystemdUnit, error) {
 
 	// systemctl named the units, so it knowing nothing about any of them is a
 	// failure to report rather than a host with nothing on it
-	if len(res) == 0 {
-		return nil, fmt.Errorf("systemctl show returned no properties for any of the %d service units", len(names))
+	if len(concrete) > 0 && len(res) == 0 {
+		return nil, fmt.Errorf("systemctl show returned no properties for any of the %d service units", len(concrete))
+	}
+
+	fs := m.fsFallback()
+	for _, name := range templates {
+		u, err := fs.Get(name)
+		if err != nil {
+			// the template was named by list-unit-files, so it has a unit file
+			// somewhere; if we cannot read it, say so rather than dropping it
+			log.Debug().Err(err).Str("unit", name).
+				Msg("mql[systemd]> could not read template unit file")
+			continue
+		}
+		res = append(res, u)
 	}
 
 	return res, nil
+}
+
+// splitSystemdTemplateUnits separates uninstantiated template units
+// (`name@.service`) from concrete ones.
+func splitSystemdTemplateUnits(names []string) (concrete, templates []string) {
+	for _, name := range names {
+		if isSystemdTemplateUnit(name) {
+			templates = append(templates, name)
+			continue
+		}
+		concrete = append(concrete, name)
+	}
+	return concrete, templates
+}
+
+// isSystemdTemplateUnit reports whether name is a template rather than an
+// instance: the instance part, between the "@" and the type suffix, is empty.
+func isSystemdTemplateUnit(name string) bool {
+	dot := strings.LastIndexByte(name, '.')
+	if dot < 1 {
+		return false
+	}
+	return name[dot-1] == '@'
 }
 
 // systemctlError turns a non-zero systemctl exit into an error carrying the

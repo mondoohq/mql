@@ -2,12 +2,16 @@
   "version": "0.5",
   "requires": [
     "boost/1.84.0#abc123",
-    "zlib/1.3.1#def456"
+    "zlib/1.3.1#def456",
+    "mylib/2.0@acme/stable#pqr678"
   ],
   "build_requires": [
     "cmake/3.28.1#ghi789"
   ],
   "python_requires": [
     "conan-tools/1.0.0#jkl012"
+  ],
+  "config_requires": [
+    "myconf/1.0#mno345"
   ]
 }

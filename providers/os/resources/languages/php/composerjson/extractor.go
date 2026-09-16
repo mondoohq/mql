@@ -44,8 +44,12 @@ func (cj *composerJson) Root() *languages.Package {
 	}
 
 	return &languages.Package{
-		Name:         cj.Name,
-		Version:      cj.Version,
+		Name:    cj.Name,
+		Version: cj.Version,
+		// The project's own license, which is a different question from the
+		// licenses of what it requires. An array means a choice among them;
+		// LicenseExpression renders that as SPDX.
+		License:      languages.LicenseExpression(cj.License),
 		Purl:         php.NewPackageUrl(cj.Name, cj.Version),
 		Cpes:         php.NewCpes(cj.Name, cj.Version),
 		EvidenceList: php.NewEvidenceList(cj.evidence),

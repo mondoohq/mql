@@ -21,12 +21,13 @@ type packageJson struct {
 	Private         booleanField          `json:"private"`
 	Homepage        string                `json:"homepage"`
 	License         *packageJsonLicense   `json:"license"`
+	Licenses        []packageJsonLicense  `json:"licenses"`
 	Author          *packageJsonPeople    `json:"author"`
 	Contributors    []packageJsonPeople   `json:"contributors"`
-	Dependencies    map[string]string     `jsonn:"dependencies"`
-	DevDependencies map[string]string     `jsonn:"devDependencies"`
+	Dependencies    map[string]string     `json:"dependencies"`
+	DevDependencies map[string]string     `json:"devDependencies"`
 	Repository      packageJsonRepository `json:"repository"`
-	Engines         enginesField          `jsonn:"engines"`
+	Engines         enginesField          `json:"engines"`
 	CPU             []string              `json:"cpu"`
 	OS              []string              `json:"os"`
 
@@ -188,18 +189,41 @@ type packageJsonLicense struct {
 	Value string `json:"value"`
 }
 
-// UnmarshalJSON implements the json.Unmarshaler interface
-// package.json license can be a string or a structured object
-// For now we only support the plain string format and ignore the structured object
+// UnmarshalJSON implements the json.Unmarshaler interface.
+//
+// A license is stated as a plain SPDX string today:
+//
+//	"license": "MIT"
+//
+// Before npm settled on that it was an object naming the license and linking
+// its text, and the same object is what the members of the deprecated
+// `licenses` array are:
+//
+//	"license":  { "type": "ISC", "url": "https://opensource.org/licenses/ISC" }
+//	"licenses": [ { "type": "MIT", "url": "..." }, { "type": "Apache-2.0", ... } ]
+//
+// Both forms are read, and the object's `type` is the license. Its `url` is
+// dropped: a link to the terms is not the identity of the terms, and a URL in a
+// field consumers read as an identifier is worse than an empty one.
 func (a *packageJsonLicense) UnmarshalJSON(b []byte) error {
-	var licenseStr string
-
 	// try to unmarshal as string
-	err := json.Unmarshal(b, &licenseStr)
-	if err == nil {
+	var licenseStr string
+	if err := json.Unmarshal(b, &licenseStr); err == nil {
 		a.Value = licenseStr
+		return nil
 	}
 
-	// we intentionally ignore the structured object
+	// try to unmarshal as the deprecated object form
+	var obj struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(b, &obj); err == nil {
+		a.Value = obj.Type
+		return nil
+	}
+
+	// Any other shape states no license this can read. Leaving the value empty
+	// keeps the rest of the package.json parsing rather than failing the file
+	// over one malformed field.
 	return nil
 }

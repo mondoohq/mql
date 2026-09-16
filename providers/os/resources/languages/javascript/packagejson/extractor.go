@@ -66,15 +66,28 @@ func (p *packageJson) authorName() string {
 	return p.Author.Name
 }
 
-// licenseExpression returns the SPDX expression from package.json
-// `license`. Older packages may use the deprecated `licenses` array;
-// we don't support that here yet — surface empty in that case and add
-// it later if a real package hits it.
+// licenseExpression returns the SPDX expression the package.json states.
+//
+// `license` is the current field and wins whenever it names a license. Packages
+// published before npm settled on it instead carry a `licenses` array, whose
+// members are `{"type": ..., "url": ...}` objects; a package listing several is
+// offering a choice among them, which LicenseExpression renders as SPDX's OR.
+//
+// npm deprecated `licenses` in 2014, but a registry does not rewrite what was
+// published: packages carrying only the array are still installed today, and
+// reading only `license` reported them as stating no license at all.
 func (p *packageJson) licenseExpression() string {
-	if p.License == nil {
-		return ""
+	if p.License != nil {
+		if expr := languages.LicenseExpression([]string{p.License.Value}); expr != "" {
+			return expr
+		}
 	}
-	return p.License.Value
+
+	values := make([]string, 0, len(p.Licenses))
+	for _, l := range p.Licenses {
+		values = append(values, l.Value)
+	}
+	return languages.LicenseExpression(values)
 }
 
 func (p *packageJson) Direct() languages.Packages {
