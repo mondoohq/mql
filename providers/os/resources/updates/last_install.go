@@ -55,6 +55,11 @@ const (
 	// LastUpdateSourceWindowsUpdate is the newest Windows Update Agent history
 	// entry for an operating system product.
 	LastUpdateSourceWindowsUpdate = "windows-update-agent"
+	// LastUpdateSourceNixosGeneration is when the running NixOS generation was
+	// activated. It carries more than the other sources do: NixOS replaces the
+	// whole system at once, so this is the install date of every package on the
+	// host and not the newest of many.
+	LastUpdateSourceNixosGeneration = "nixos-generation"
 )
 
 // lastUpdateSkewTolerance is how far into the future an install timestamp may
@@ -120,6 +125,8 @@ func ResolveLastInstalledUpdate(conn shared.Connection) (*LastInstalledUpdate, e
 		return lastInstalledDebian(conn)
 	case asset.Platform.Name == "macos":
 		return lastInstalledMacos(conn)
+	case asset.Platform.Name == "nixos":
+		return lastInstalledNixos(conn)
 	}
 	return nil, nil
 }
