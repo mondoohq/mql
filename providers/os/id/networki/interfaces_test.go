@@ -5,6 +5,7 @@ package networki_test
 
 import (
 	"net"
+	"slices"
 	"testing"
 
 	subject "go.mondoo.com/mql/v13/providers/os/id/networki"
@@ -363,10 +364,37 @@ func TestInterfacesLinuxFallbackSysNetFilesystem(t *testing.T) {
 			assert.True(t, *enX0.Virtual)
 		}
 		assert.ElementsMatch(t, []string{"MULTICAST", "BROADCAST", "UP"}, enX0.Flags)
-		// Note that this method lacks implementation for gathering ip addresses
-		// configured in the network interfaces, maybe we can look at two files to
-		// get them `/proc/net/fib_trie` and `/proc/net/if_inet6`
-		assert.Empty(t, enX0.IPAddresses)
+
+		// The sysfs walk cannot see addresses -- the kernel does not publish
+		// them under /sys/class/net -- so they are read from procfs. Without
+		// that, every interface on a host with no iproute2 came back with none.
+		cidrs := make([]string, 0, len(enX0.IPAddresses))
+		for _, ip := range enX0.IPAddresses {
+			cidrs = append(cidrs, ip.CIDR)
+		}
+		assert.ElementsMatch(t,
+			[]string{"172.31.24.71/20", "fe80::aff:de6b:fe3a:e319/64"}, cidrs)
+
+		index := slices.IndexFunc(enX0.IPAddresses, func(ip subject.IPAddress) bool {
+			return ip.CIDR == "172.31.24.71/20"
+		})
+		if assert.NotEqual(t, -1, index) {
+			ipv4 := enX0.IPAddresses[index]
+			assert.Equal(t, "172.31.16.0/20", ipv4.Subnet)
+			assert.Equal(t, "172.31.31.255", ipv4.Broadcast)
+			assert.Equal(t, "172.31.16.1", ipv4.Gateway)
+		}
+	}
+
+	index = subject.FindInterface(interfaces, subject.Interface{Name: "lo"})
+	if assert.NotEqual(t, -1, index) {
+		cidrs := make([]string, 0)
+		for _, ip := range interfaces[index].IPAddresses {
+			cidrs = append(cidrs, ip.CIDR)
+		}
+		// 127.0.0.0 has a "/8 host LOCAL" route of its own, and reporting it
+		// would give loopback an address it does not answer on.
+		assert.ElementsMatch(t, []string{"127.0.0.1/8", "::1/128"}, cidrs)
 	}
 }
 
