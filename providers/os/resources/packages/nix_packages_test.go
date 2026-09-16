@@ -145,6 +145,17 @@ func TestSplitNixNameVersion(t *testing.T) {
 		// the only hyphenated tail a version can have.
 		{"glibc-2.42-67", "glibc", "2.42-67"},
 		{"glibc-2.42-67-bin", "glibc", "2.42-67"},
+		{"glibc-2.42-84-getent", "glibc", "2.42-84"},
+
+		// An output name can run to several components.
+		{"linux-6.12.93-modules-shrunk", "linux", "6.12.93"},
+		{"linux-6.18.50-modules", "linux", "6.18.50"},
+		{"util-linux-2.42.2-lastlog", "util-linux", "2.42.2"},
+		{"bind-9.20.26-host", "bind", "9.20.26"},
+		{"libressl-4.2.1-nc", "libressl", "4.2.1"},
+		{"shadow-4.19.4-su", "shadow", "4.19.4"},
+		{"lvm2-2.03.39-scripts", "lvm2", "2.03.39"},
+		{"cloud-utils-0.33-guest", "cloud-utils", "0.33"},
 
 		// A version can end in words of its own. Those are part of the version
 		// and must survive, which is why only a known output name is stripped.
