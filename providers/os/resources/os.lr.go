@@ -2707,7 +2707,7 @@ func init() {
 			Create: createCloudInstance,
 		},
 		"ipAddress": {
-			// to override args, implement: initIpAddress(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Init:   initIpAddress,
 			Create: createIpAddress,
 		},
 		"network": {
