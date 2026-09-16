@@ -274,8 +274,8 @@ func (r *mqlProxmoxVm) disks() ([]any, error) {
 			continue
 		}
 		disk := parseVMDiskConfig(key, valStr)
-		disk["__id"] = llx.StringData(fmt.Sprintf("proxmox.vm.disk/%d/%s", r.Id.Data, key))
-		res, err := CreateResource(r.MqlRuntime, "proxmox.vm.disk", disk)
+		disk["__id"] = llx.StringData(fmt.Sprintf("proxmox.vm.virtualDisk/%d/%s", r.Id.Data, key))
+		res, err := CreateResource(r.MqlRuntime, "proxmox.vm.virtualDisk", disk)
 		if err != nil {
 			return nil, err
 		}

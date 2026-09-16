@@ -405,7 +405,7 @@ func (r *mqlMikrotikUser) userGroup() (*mqlMikrotikUserGroup, error) {
 		r.UserGroup.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	res, err := NewResource(r.MqlRuntime, "mikrotik.user.group", map[string]*llx.RawData{
+	res, err := NewResource(r.MqlRuntime, "mikrotik.userGroup", map[string]*llx.RawData{
 		"name": llx.StringData(r.cacheGroup),
 	})
 	if err != nil {
@@ -418,7 +418,7 @@ func (r *mqlMikrotikUser) userGroup() (*mqlMikrotikUserGroup, error) {
 
 func userGroupArgs(row map[string]string) map[string]*llx.RawData {
 	return map[string]*llx.RawData{
-		"__id":    llx.StringData("mikrotik.user.group/" + row["name"]),
+		"__id":    llx.StringData("mikrotik.userGroup/" + row["name"]),
 		"name":    llx.StringData(row["name"]),
 		"policy":  listField(row, "policy"),
 		"skin":    llx.StringData(row["skin"]),
@@ -427,7 +427,7 @@ func userGroupArgs(row map[string]string) map[string]*llx.RawData {
 }
 
 func newMikrotikUserGroup(runtime *plugin.Runtime, row map[string]string) (plugin.Resource, error) {
-	return CreateResource(runtime, "mikrotik.user.group", userGroupArgs(row))
+	return CreateResource(runtime, "mikrotik.userGroup", userGroupArgs(row))
 }
 
 func initMikrotikUserGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -447,5 +447,5 @@ func initMikrotikUserGroup(runtime *plugin.Runtime, args map[string]*llx.RawData
 			return userGroupArgs(row), nil, nil
 		}
 	}
-	return nil, nil, fmt.Errorf("mikrotik.user.group %q not found", name)
+	return nil, nil, fmt.Errorf("mikrotik.userGroup %q not found", name)
 }

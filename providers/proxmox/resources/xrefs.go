@@ -15,7 +15,7 @@ import (
 // vm.disk / container.mountPoint / storage.volume → storage
 // ---------------------------------------------------------------------------
 
-func (r *mqlProxmoxVmDisk) storageRef() (*mqlProxmoxStorage, error) {
+func (r *mqlProxmoxVmVirtualDisk) storageRef() (*mqlProxmoxStorage, error) {
 	return resolveStorageRef(r.MqlRuntime, r.Storage.Data, &r.StorageRef)
 }
 

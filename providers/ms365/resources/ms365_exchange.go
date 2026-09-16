@@ -596,7 +596,7 @@ func (r *mqlMs365Exchangeonline) getExchangeReport() error {
 	mailboxesWithAudit := []any{}
 	var mailboxesWithAuditErr error
 	for _, m := range report.Mailbox {
-		mql, err := CreateResource(r.MqlRuntime, "ms365.exchangeonline.mailbox",
+		mql, err := CreateResource(r.MqlRuntime, "ms365.exchangeonline.mailboxWithAudit",
 			map[string]*llx.RawData{
 				"__id":                 llx.StringData(m.Identity),
 				"identity":             llx.StringData(m.Identity),

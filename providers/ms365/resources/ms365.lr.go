@@ -185,7 +185,7 @@ const (
 	ResourceMs365ExchangeonlineJournalRule                                                               string = "ms365.exchangeonline.journalRule"
 	ResourceMs365ExchangeonlineExternalSender                                                            string = "ms365.exchangeonline.externalSender"
 	ResourceMs365ExchangeonlineExoMailbox                                                                string = "ms365.exchangeonline.exoMailbox"
-	ResourceMs365ExchangeonlineMailbox                                                                   string = "ms365.exchangeonline.mailbox"
+	ResourceMs365ExchangeonlineMailboxWithAudit                                                          string = "ms365.exchangeonline.mailboxWithAudit"
 	ResourceMs365Sharepointonline                                                                        string = "ms365.sharepointonline"
 	ResourceMs365SharepointonlineTenantConfig                                                            string = "ms365.sharepointonline.tenantConfig"
 	ResourceMs365SharepointonlineSite                                                                    string = "ms365.sharepointonline.site"
@@ -896,9 +896,9 @@ func init() {
 			// to override args, implement: initMs365ExchangeonlineExoMailbox(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMs365ExchangeonlineExoMailbox,
 		},
-		"ms365.exchangeonline.mailbox": {
-			// to override args, implement: initMs365ExchangeonlineMailbox(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
-			Create: createMs365ExchangeonlineMailbox,
+		"ms365.exchangeonline.mailboxWithAudit": {
+			// to override args, implement: initMs365ExchangeonlineMailboxWithAudit(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMs365ExchangeonlineMailboxWithAudit,
 		},
 		"ms365.sharepointonline": {
 			// to override args, implement: initMs365Sharepointonline(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -4882,7 +4882,7 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlMs365Exchangeonline).GetJournalRules()).ToDataRes(types.Array(types.Resource("ms365.exchangeonline.journalRule")))
 	},
 	"ms365.exchangeonline.mailboxesWithAudit": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlMs365Exchangeonline).GetMailboxesWithAudit()).ToDataRes(types.Array(types.Resource("ms365.exchangeonline.mailbox")))
+		return (r.(*mqlMs365Exchangeonline).GetMailboxesWithAudit()).ToDataRes(types.Array(types.Resource("ms365.exchangeonline.mailboxWithAudit")))
 	},
 	"ms365.exchangeonline.transportConfig": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMs365Exchangeonline).GetTransportConfig()).ToDataRes(types.Dict)
@@ -5145,32 +5145,32 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"ms365.exchangeonline.exoMailbox.externalDirectoryObjectId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMs365ExchangeonlineExoMailbox).GetExternalDirectoryObjectId()).ToDataRes(types.String)
 	},
-	"ms365.exchangeonline.mailbox.identity": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlMs365ExchangeonlineMailbox).GetIdentity()).ToDataRes(types.String)
+	"ms365.exchangeonline.mailboxWithAudit.identity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMs365ExchangeonlineMailboxWithAudit).GetIdentity()).ToDataRes(types.String)
 	},
-	"ms365.exchangeonline.mailbox.displayName": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlMs365ExchangeonlineMailbox).GetDisplayName()).ToDataRes(types.String)
+	"ms365.exchangeonline.mailboxWithAudit.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMs365ExchangeonlineMailboxWithAudit).GetDisplayName()).ToDataRes(types.String)
 	},
-	"ms365.exchangeonline.mailbox.primarySmtpAddress": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlMs365ExchangeonlineMailbox).GetPrimarySmtpAddress()).ToDataRes(types.String)
+	"ms365.exchangeonline.mailboxWithAudit.primarySmtpAddress": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMs365ExchangeonlineMailboxWithAudit).GetPrimarySmtpAddress()).ToDataRes(types.String)
 	},
-	"ms365.exchangeonline.mailbox.recipientTypeDetails": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlMs365ExchangeonlineMailbox).GetRecipientTypeDetails()).ToDataRes(types.String)
+	"ms365.exchangeonline.mailboxWithAudit.recipientTypeDetails": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMs365ExchangeonlineMailboxWithAudit).GetRecipientTypeDetails()).ToDataRes(types.String)
 	},
-	"ms365.exchangeonline.mailbox.auditEnabled": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlMs365ExchangeonlineMailbox).GetAuditEnabled()).ToDataRes(types.Bool)
+	"ms365.exchangeonline.mailboxWithAudit.auditEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMs365ExchangeonlineMailboxWithAudit).GetAuditEnabled()).ToDataRes(types.Bool)
 	},
-	"ms365.exchangeonline.mailbox.auditAdmin": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlMs365ExchangeonlineMailbox).GetAuditAdmin()).ToDataRes(types.Array(types.String))
+	"ms365.exchangeonline.mailboxWithAudit.auditAdmin": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMs365ExchangeonlineMailboxWithAudit).GetAuditAdmin()).ToDataRes(types.Array(types.String))
 	},
-	"ms365.exchangeonline.mailbox.auditDelegate": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlMs365ExchangeonlineMailbox).GetAuditDelegate()).ToDataRes(types.Array(types.String))
+	"ms365.exchangeonline.mailboxWithAudit.auditDelegate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMs365ExchangeonlineMailboxWithAudit).GetAuditDelegate()).ToDataRes(types.Array(types.String))
 	},
-	"ms365.exchangeonline.mailbox.auditOwner": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlMs365ExchangeonlineMailbox).GetAuditOwner()).ToDataRes(types.Array(types.String))
+	"ms365.exchangeonline.mailboxWithAudit.auditOwner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMs365ExchangeonlineMailboxWithAudit).GetAuditOwner()).ToDataRes(types.Array(types.String))
 	},
-	"ms365.exchangeonline.mailbox.auditLogAgeLimit": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlMs365ExchangeonlineMailbox).GetAuditLogAgeLimit()).ToDataRes(types.String)
+	"ms365.exchangeonline.mailboxWithAudit.auditLogAgeLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMs365ExchangeonlineMailboxWithAudit).GetAuditLogAgeLimit()).ToDataRes(types.String)
 	},
 	"ms365.sharepointonline.spoTenant": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMs365Sharepointonline).GetSpoTenant()).ToDataRes(types.Dict)
@@ -12221,44 +12221,44 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMs365ExchangeonlineExoMailbox).ExternalDirectoryObjectId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"ms365.exchangeonline.mailbox.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlMs365ExchangeonlineMailbox).__id, ok = v.Value.(string)
+	"ms365.exchangeonline.mailboxWithAudit.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMs365ExchangeonlineMailboxWithAudit).__id, ok = v.Value.(string)
 		return
 	},
-	"ms365.exchangeonline.mailbox.identity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlMs365ExchangeonlineMailbox).Identity, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"ms365.exchangeonline.mailboxWithAudit.identity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMs365ExchangeonlineMailboxWithAudit).Identity, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"ms365.exchangeonline.mailbox.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlMs365ExchangeonlineMailbox).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"ms365.exchangeonline.mailboxWithAudit.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMs365ExchangeonlineMailboxWithAudit).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"ms365.exchangeonline.mailbox.primarySmtpAddress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlMs365ExchangeonlineMailbox).PrimarySmtpAddress, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"ms365.exchangeonline.mailboxWithAudit.primarySmtpAddress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMs365ExchangeonlineMailboxWithAudit).PrimarySmtpAddress, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"ms365.exchangeonline.mailbox.recipientTypeDetails": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlMs365ExchangeonlineMailbox).RecipientTypeDetails, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"ms365.exchangeonline.mailboxWithAudit.recipientTypeDetails": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMs365ExchangeonlineMailboxWithAudit).RecipientTypeDetails, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"ms365.exchangeonline.mailbox.auditEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlMs365ExchangeonlineMailbox).AuditEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+	"ms365.exchangeonline.mailboxWithAudit.auditEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMs365ExchangeonlineMailboxWithAudit).AuditEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"ms365.exchangeonline.mailbox.auditAdmin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlMs365ExchangeonlineMailbox).AuditAdmin, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+	"ms365.exchangeonline.mailboxWithAudit.auditAdmin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMs365ExchangeonlineMailboxWithAudit).AuditAdmin, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
-	"ms365.exchangeonline.mailbox.auditDelegate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlMs365ExchangeonlineMailbox).AuditDelegate, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+	"ms365.exchangeonline.mailboxWithAudit.auditDelegate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMs365ExchangeonlineMailboxWithAudit).AuditDelegate, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
-	"ms365.exchangeonline.mailbox.auditOwner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlMs365ExchangeonlineMailbox).AuditOwner, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+	"ms365.exchangeonline.mailboxWithAudit.auditOwner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMs365ExchangeonlineMailboxWithAudit).AuditOwner, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
-	"ms365.exchangeonline.mailbox.auditLogAgeLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlMs365ExchangeonlineMailbox).AuditLogAgeLimit, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"ms365.exchangeonline.mailboxWithAudit.auditLogAgeLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMs365ExchangeonlineMailboxWithAudit).AuditLogAgeLimit, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"ms365.sharepointonline.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -29533,11 +29533,11 @@ func (c *mqlMs365ExchangeonlineExoMailbox) GetExternalDirectoryObjectId() *plugi
 	return &c.ExternalDirectoryObjectId
 }
 
-// mqlMs365ExchangeonlineMailbox for the ms365.exchangeonline.mailbox resource
-type mqlMs365ExchangeonlineMailbox struct {
+// mqlMs365ExchangeonlineMailboxWithAudit for the ms365.exchangeonline.mailboxWithAudit resource
+type mqlMs365ExchangeonlineMailboxWithAudit struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlMs365ExchangeonlineMailboxInternal it will be used here
+	// optional: if you define mqlMs365ExchangeonlineMailboxWithAuditInternal it will be used here
 	Identity             plugin.TValue[string]
 	DisplayName          plugin.TValue[string]
 	PrimarySmtpAddress   plugin.TValue[string]
@@ -29549,9 +29549,9 @@ type mqlMs365ExchangeonlineMailbox struct {
 	AuditLogAgeLimit     plugin.TValue[string]
 }
 
-// createMs365ExchangeonlineMailbox creates a new instance of this resource
-func createMs365ExchangeonlineMailbox(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
-	res := &mqlMs365ExchangeonlineMailbox{
+// createMs365ExchangeonlineMailboxWithAudit creates a new instance of this resource
+func createMs365ExchangeonlineMailboxWithAudit(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMs365ExchangeonlineMailboxWithAudit{
 		MqlRuntime: runtime,
 	}
 
@@ -29563,7 +29563,7 @@ func createMs365ExchangeonlineMailbox(runtime *plugin.Runtime, args map[string]*
 	// to override __id implement: id() (string, error)
 
 	if runtime.HasRecording {
-		args, err = runtime.ResourceFromRecording("ms365.exchangeonline.mailbox", res.__id)
+		args, err = runtime.ResourceFromRecording("ms365.exchangeonline.mailboxWithAudit", res.__id)
 		if err != nil || args == nil {
 			return res, err
 		}
@@ -29573,47 +29573,47 @@ func createMs365ExchangeonlineMailbox(runtime *plugin.Runtime, args map[string]*
 	return res, nil
 }
 
-func (c *mqlMs365ExchangeonlineMailbox) MqlName() string {
-	return "ms365.exchangeonline.mailbox"
+func (c *mqlMs365ExchangeonlineMailboxWithAudit) MqlName() string {
+	return "ms365.exchangeonline.mailboxWithAudit"
 }
 
-func (c *mqlMs365ExchangeonlineMailbox) MqlID() string {
+func (c *mqlMs365ExchangeonlineMailboxWithAudit) MqlID() string {
 	return c.__id
 }
 
-func (c *mqlMs365ExchangeonlineMailbox) GetIdentity() *plugin.TValue[string] {
+func (c *mqlMs365ExchangeonlineMailboxWithAudit) GetIdentity() *plugin.TValue[string] {
 	return &c.Identity
 }
 
-func (c *mqlMs365ExchangeonlineMailbox) GetDisplayName() *plugin.TValue[string] {
+func (c *mqlMs365ExchangeonlineMailboxWithAudit) GetDisplayName() *plugin.TValue[string] {
 	return &c.DisplayName
 }
 
-func (c *mqlMs365ExchangeonlineMailbox) GetPrimarySmtpAddress() *plugin.TValue[string] {
+func (c *mqlMs365ExchangeonlineMailboxWithAudit) GetPrimarySmtpAddress() *plugin.TValue[string] {
 	return &c.PrimarySmtpAddress
 }
 
-func (c *mqlMs365ExchangeonlineMailbox) GetRecipientTypeDetails() *plugin.TValue[string] {
+func (c *mqlMs365ExchangeonlineMailboxWithAudit) GetRecipientTypeDetails() *plugin.TValue[string] {
 	return &c.RecipientTypeDetails
 }
 
-func (c *mqlMs365ExchangeonlineMailbox) GetAuditEnabled() *plugin.TValue[bool] {
+func (c *mqlMs365ExchangeonlineMailboxWithAudit) GetAuditEnabled() *plugin.TValue[bool] {
 	return &c.AuditEnabled
 }
 
-func (c *mqlMs365ExchangeonlineMailbox) GetAuditAdmin() *plugin.TValue[[]any] {
+func (c *mqlMs365ExchangeonlineMailboxWithAudit) GetAuditAdmin() *plugin.TValue[[]any] {
 	return &c.AuditAdmin
 }
 
-func (c *mqlMs365ExchangeonlineMailbox) GetAuditDelegate() *plugin.TValue[[]any] {
+func (c *mqlMs365ExchangeonlineMailboxWithAudit) GetAuditDelegate() *plugin.TValue[[]any] {
 	return &c.AuditDelegate
 }
 
-func (c *mqlMs365ExchangeonlineMailbox) GetAuditOwner() *plugin.TValue[[]any] {
+func (c *mqlMs365ExchangeonlineMailboxWithAudit) GetAuditOwner() *plugin.TValue[[]any] {
 	return &c.AuditOwner
 }
 
-func (c *mqlMs365ExchangeonlineMailbox) GetAuditLogAgeLimit() *plugin.TValue[string] {
+func (c *mqlMs365ExchangeonlineMailboxWithAudit) GetAuditLogAgeLimit() *plugin.TValue[string] {
 	return &c.AuditLogAgeLimit
 }
 

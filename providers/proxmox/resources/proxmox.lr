@@ -1078,7 +1078,7 @@ proxmox.vm @defaults("id name status") {
   // Network interfaces attached to the VM
   networks() []proxmox.vm.network
   // Disk devices attached to the VM
-  disks() []proxmox.vm.disk
+  disks() []proxmox.vm.virtualDisk
 
   // --- Snapshots ---
 
@@ -1138,20 +1138,20 @@ proxmox.vm.network @defaults("id model bridge") {
   firewall bool
 }
 
-// Proxmox VE VM disk
+// Proxmox VE virtual disk
 //
-// Disk device attached to a virtual machine, keyed by the controller
+// Virtual disk attached to a virtual machine, keyed by the controller
 // slot `id` (e.g. `scsi0`, `virtio0`, `ide0`). Covers the `storage`
 // pool name, disk `size` in bytes, `format` (qcow2, raw, vmdk), `cache`
 // mode, and whether `iothread` and `backup` are enabled for this disk.
-proxmox.vm.disk @defaults("id storage size") {
+proxmox.vm.virtualDisk @defaults("id storage size") {
   // Disk ID (scsi0, virtio0, ide0, ...)
   id string
   // Storage pool name
   //
   // Deprecated in favor of `storageRef`, which resolves the same pool
   // as a storage resource.
-  storage @maturity("deprecated") @replaced_by("proxmox.vm.disk.storageRef") string
+  storage @maturity("deprecated") @replaced_by("proxmox.vm.virtualDisk.storageRef") string
   // Disk size in bytes
   size int
   // Disk format (qcow2, raw, vmdk)

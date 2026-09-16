@@ -510,8 +510,8 @@ func (u *mqlGitlabUser) personalAccessTokens() ([]any, error) {
 	return out, nil
 }
 
-func (e *mqlGitlabUserEmail) id() (string, error) {
-	return "gitlab.user.email/" + strconv.FormatInt(e.Id.Data, 10), nil
+func (e *mqlGitlabUserEmailAddress) id() (string, error) {
+	return "gitlab.user.emailAddress/" + strconv.FormatInt(e.Id.Data, 10), nil
 }
 
 // emails lists the email addresses registered to the user. Requires an admin
@@ -542,7 +542,7 @@ func (u *mqlGitlabUser) emails() ([]any, error) {
 
 	out := make([]any, 0, len(all))
 	for _, e := range all {
-		res, err := CreateResource(u.MqlRuntime, "gitlab.user.email", map[string]*llx.RawData{
+		res, err := CreateResource(u.MqlRuntime, "gitlab.user.emailAddress", map[string]*llx.RawData{
 			"id":          llx.IntData(e.ID),
 			"email":       llx.StringData(e.Email),
 			"confirmedAt": llx.TimeDataPtr(e.ConfirmedAt),

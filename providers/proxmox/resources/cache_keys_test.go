@@ -29,7 +29,7 @@ func vmNetworkKey(vmid int64, slot string) string {
 }
 
 func vmDiskKey(vmid int64, slot string) string {
-	return fmt.Sprintf("proxmox.vm.disk/%d/%s", vmid, slot)
+	return fmt.Sprintf("proxmox.vm.virtualDisk/%d/%s", vmid, slot)
 }
 
 func vmSnapshotKey(vmid int64, name string) string {
@@ -227,7 +227,7 @@ func TestCacheKeyHelpersMatchProductionFormat(t *testing.T) {
 	vmGo := mustReadFile(t, "vm.go")
 	for _, expected := range []string{
 		`"proxmox.vm.network/%d/%s"`,
-		`"proxmox.vm.disk/%d/%s"`,
+		`"proxmox.vm.virtualDisk/%d/%s"`,
 		`"proxmox.vm.snapshot/vm/%d/%s"`,
 		`"proxmox.vm.update/%d/%s"`,
 		`"proxmox.vm.serialPort/%d/%s"`,

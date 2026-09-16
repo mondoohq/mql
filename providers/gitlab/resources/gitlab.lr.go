@@ -21,7 +21,7 @@ const (
 	ResourceGitlabUserPersonalAccessToken                string = "gitlab.user.personalAccessToken"
 	ResourceGitlabUserExternalIdentity                   string = "gitlab.user.externalIdentity"
 	ResourceGitlabUserSshKey                             string = "gitlab.user.sshKey"
-	ResourceGitlabUserEmail                              string = "gitlab.user.email"
+	ResourceGitlabUserEmailAddress                       string = "gitlab.user.emailAddress"
 	ResourceGitlabMember                                 string = "gitlab.member"
 	ResourceGitlabMemberRole                             string = "gitlab.memberRole"
 	ResourceGitlabNamespace                              string = "gitlab.namespace"
@@ -114,9 +114,9 @@ func init() {
 			// to override args, implement: initGitlabUserSshKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGitlabUserSshKey,
 		},
-		"gitlab.user.email": {
-			// to override args, implement: initGitlabUserEmail(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
-			Create: createGitlabUserEmail,
+		"gitlab.user.emailAddress": {
+			// to override args, implement: initGitlabUserEmailAddress(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGitlabUserEmailAddress,
 		},
 		"gitlab.member": {
 			// to override args, implement: initGitlabMember(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -748,7 +748,7 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlGitlabUser).GetPersonalAccessTokens()).ToDataRes(types.Array(types.Resource("gitlab.user.personalAccessToken")))
 	},
 	"gitlab.user.emails": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGitlabUser).GetEmails()).ToDataRes(types.Array(types.Resource("gitlab.user.email")))
+		return (r.(*mqlGitlabUser).GetEmails()).ToDataRes(types.Array(types.Resource("gitlab.user.emailAddress")))
 	},
 	"gitlab.user.personalAccessToken.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabUserPersonalAccessToken).GetId()).ToDataRes(types.Int)
@@ -810,14 +810,14 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gitlab.user.sshKey.user": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabUserSshKey).GetUser()).ToDataRes(types.Resource("gitlab.user"))
 	},
-	"gitlab.user.email.id": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGitlabUserEmail).GetId()).ToDataRes(types.Int)
+	"gitlab.user.emailAddress.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabUserEmailAddress).GetId()).ToDataRes(types.Int)
 	},
-	"gitlab.user.email.email": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGitlabUserEmail).GetEmail()).ToDataRes(types.String)
+	"gitlab.user.emailAddress.email": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabUserEmailAddress).GetEmail()).ToDataRes(types.String)
 	},
-	"gitlab.user.email.confirmedAt": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGitlabUserEmail).GetConfirmedAt()).ToDataRes(types.Time)
+	"gitlab.user.emailAddress.confirmedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabUserEmailAddress).GetConfirmedAt()).ToDataRes(types.Time)
 	},
 	"gitlab.member.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabMember).GetId()).ToDataRes(types.Int)
@@ -3805,20 +3805,20 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGitlabUserSshKey).User, ok = plugin.RawToTValue[*mqlGitlabUser](v.Value, v.Error)
 		return
 	},
-	"gitlab.user.email.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGitlabUserEmail).__id, ok = v.Value.(string)
+	"gitlab.user.emailAddress.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabUserEmailAddress).__id, ok = v.Value.(string)
 		return
 	},
-	"gitlab.user.email.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGitlabUserEmail).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+	"gitlab.user.emailAddress.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabUserEmailAddress).Id, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
-	"gitlab.user.email.email": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGitlabUserEmail).Email, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"gitlab.user.emailAddress.email": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabUserEmailAddress).Email, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"gitlab.user.email.confirmedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGitlabUserEmail).ConfirmedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+	"gitlab.user.emailAddress.confirmedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabUserEmailAddress).ConfirmedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"gitlab.member.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -8381,19 +8381,19 @@ func (c *mqlGitlabUserSshKey) GetUser() *plugin.TValue[*mqlGitlabUser] {
 	})
 }
 
-// mqlGitlabUserEmail for the gitlab.user.email resource
-type mqlGitlabUserEmail struct {
+// mqlGitlabUserEmailAddress for the gitlab.user.emailAddress resource
+type mqlGitlabUserEmailAddress struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlGitlabUserEmailInternal it will be used here
+	// optional: if you define mqlGitlabUserEmailAddressInternal it will be used here
 	Id          plugin.TValue[int64]
 	Email       plugin.TValue[string]
 	ConfirmedAt plugin.TValue[*time.Time]
 }
 
-// createGitlabUserEmail creates a new instance of this resource
-func createGitlabUserEmail(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
-	res := &mqlGitlabUserEmail{
+// createGitlabUserEmailAddress creates a new instance of this resource
+func createGitlabUserEmailAddress(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGitlabUserEmailAddress{
 		MqlRuntime: runtime,
 	}
 
@@ -8410,7 +8410,7 @@ func createGitlabUserEmail(runtime *plugin.Runtime, args map[string]*llx.RawData
 	}
 
 	if runtime.HasRecording {
-		args, err = runtime.ResourceFromRecording("gitlab.user.email", res.__id)
+		args, err = runtime.ResourceFromRecording("gitlab.user.emailAddress", res.__id)
 		if err != nil || args == nil {
 			return res, err
 		}
@@ -8420,23 +8420,23 @@ func createGitlabUserEmail(runtime *plugin.Runtime, args map[string]*llx.RawData
 	return res, nil
 }
 
-func (c *mqlGitlabUserEmail) MqlName() string {
-	return "gitlab.user.email"
+func (c *mqlGitlabUserEmailAddress) MqlName() string {
+	return "gitlab.user.emailAddress"
 }
 
-func (c *mqlGitlabUserEmail) MqlID() string {
+func (c *mqlGitlabUserEmailAddress) MqlID() string {
 	return c.__id
 }
 
-func (c *mqlGitlabUserEmail) GetId() *plugin.TValue[int64] {
+func (c *mqlGitlabUserEmailAddress) GetId() *plugin.TValue[int64] {
 	return &c.Id
 }
 
-func (c *mqlGitlabUserEmail) GetEmail() *plugin.TValue[string] {
+func (c *mqlGitlabUserEmailAddress) GetEmail() *plugin.TValue[string] {
 	return &c.Email
 }
 
-func (c *mqlGitlabUserEmail) GetConfirmedAt() *plugin.TValue[*time.Time] {
+func (c *mqlGitlabUserEmailAddress) GetConfirmedAt() *plugin.TValue[*time.Time] {
 	return &c.ConfirmedAt
 }
 

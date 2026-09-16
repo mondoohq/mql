@@ -38,7 +38,7 @@ const (
 	ResourceMikrotikIpDhcpLease                  string = "mikrotik.ip.dhcp.lease"
 	ResourceMikrotikIpNeighbor                   string = "mikrotik.ip.neighbor"
 	ResourceMikrotikUser                         string = "mikrotik.user"
-	ResourceMikrotikUserGroup                    string = "mikrotik.user.group"
+	ResourceMikrotikUserGroup                    string = "mikrotik.userGroup"
 	ResourceMikrotikIpFirewallMangle             string = "mikrotik.ip.firewall.mangle"
 	ResourceMikrotikIpFirewallRaw                string = "mikrotik.ip.firewall.raw"
 	ResourceMikrotikIpFirewallAddressList        string = "mikrotik.ip.firewall.addressList"
@@ -166,7 +166,7 @@ func init() {
 			// to override args, implement: initMikrotikUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMikrotikUser,
 		},
-		"mikrotik.user.group": {
+		"mikrotik.userGroup": {
 			Init:   initMikrotikUserGroup,
 			Create: createMikrotikUserGroup,
 		},
@@ -437,7 +437,7 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlMikrotik).GetUsers()).ToDataRes(types.Array(types.Resource("mikrotik.user")))
 	},
 	"mikrotik.userGroups": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlMikrotik).GetUserGroups()).ToDataRes(types.Array(types.Resource("mikrotik.user.group")))
+		return (r.(*mqlMikrotik).GetUserGroups()).ToDataRes(types.Array(types.Resource("mikrotik.userGroup")))
 	},
 	"mikrotik.mangleRules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotik).GetMangleRules()).ToDataRes(types.Array(types.Resource("mikrotik.ip.firewall.mangle")))
@@ -1313,18 +1313,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlMikrotikUser).GetComment()).ToDataRes(types.String)
 	},
 	"mikrotik.user.userGroup": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlMikrotikUser).GetUserGroup()).ToDataRes(types.Resource("mikrotik.user.group"))
+		return (r.(*mqlMikrotikUser).GetUserGroup()).ToDataRes(types.Resource("mikrotik.userGroup"))
 	},
-	"mikrotik.user.group.name": func(r plugin.Resource) *plugin.DataRes {
+	"mikrotik.userGroup.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikUserGroup).GetName()).ToDataRes(types.String)
 	},
-	"mikrotik.user.group.policy": func(r plugin.Resource) *plugin.DataRes {
+	"mikrotik.userGroup.policy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikUserGroup).GetPolicy()).ToDataRes(types.Array(types.String))
 	},
-	"mikrotik.user.group.skin": func(r plugin.Resource) *plugin.DataRes {
+	"mikrotik.userGroup.skin": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikUserGroup).GetSkin()).ToDataRes(types.String)
 	},
-	"mikrotik.user.group.comment": func(r plugin.Resource) *plugin.DataRes {
+	"mikrotik.userGroup.comment": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMikrotikUserGroup).GetComment()).ToDataRes(types.String)
 	},
 	"mikrotik.ip.firewall.mangle.chain": func(r plugin.Resource) *plugin.DataRes {
@@ -3832,23 +3832,23 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMikrotikUser).UserGroup, ok = plugin.RawToTValue[*mqlMikrotikUserGroup](v.Value, v.Error)
 		return
 	},
-	"mikrotik.user.group.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+	"mikrotik.userGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotikUserGroup).__id, ok = v.Value.(string)
 		return
 	},
-	"mikrotik.user.group.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+	"mikrotik.userGroup.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotikUserGroup).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"mikrotik.user.group.policy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+	"mikrotik.userGroup.policy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotikUserGroup).Policy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
-	"mikrotik.user.group.skin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+	"mikrotik.userGroup.skin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotikUserGroup).Skin, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"mikrotik.user.group.comment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+	"mikrotik.userGroup.comment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMikrotikUserGroup).Comment, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
@@ -8789,7 +8789,7 @@ func (c *mqlMikrotikUser) GetUserGroup() *plugin.TValue[*mqlMikrotikUserGroup] {
 	})
 }
 
-// mqlMikrotikUserGroup for the mikrotik.user.group resource
+// mqlMikrotikUserGroup for the mikrotik.userGroup resource
 type mqlMikrotikUserGroup struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
@@ -8814,7 +8814,7 @@ func createMikrotikUserGroup(runtime *plugin.Runtime, args map[string]*llx.RawDa
 	// to override __id implement: id() (string, error)
 
 	if runtime.HasRecording {
-		args, err = runtime.ResourceFromRecording("mikrotik.user.group", res.__id)
+		args, err = runtime.ResourceFromRecording("mikrotik.userGroup", res.__id)
 		if err != nil || args == nil {
 			return res, err
 		}
@@ -8825,7 +8825,7 @@ func createMikrotikUserGroup(runtime *plugin.Runtime, args map[string]*llx.RawDa
 }
 
 func (c *mqlMikrotikUserGroup) MqlName() string {
-	return "mikrotik.user.group"
+	return "mikrotik.userGroup"
 }
 
 func (c *mqlMikrotikUserGroup) MqlID() string {

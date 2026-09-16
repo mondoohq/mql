@@ -1421,7 +1421,27 @@ demo.any {
 	})
 }
 
-func TestValidateDeprecatedShadowing(t *testing.T) {
+func TestValidateFieldShadowing(t *testing.T) {
+	t.Run("rejects a resource named after a live field", func(t *testing.T) {
+		// The silent half: this compiles, lints clean, and answers with the
+		// resource instead of the string.
+		_, err := Parse(`
+option provider = "test"
+
+user.account {
+	email string
+	emails() []user.account.email
+}
+
+private user.account.email {
+	address string
+}
+`)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "resource user.account.email has the same name as the field email on user.account")
+		assert.Contains(t, err.Error(), "name the resource after the accessor that returns it")
+	})
+
 	t.Run("rejects a resource named after the deprecated field it replaces", func(t *testing.T) {
 		_, err := Parse(`
 option provider = "test"
@@ -1437,13 +1457,31 @@ private cache.instance.config {
 `)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "resource cache.instance.config")
-		assert.Contains(t, err.Error(), "deprecated field config")
-		assert.Contains(t, err.Error(), "Name the resource after the accessor")
+		assert.Contains(t, err.Error(), "revokes the deprecation window")
 	})
 
-	t.Run("allows a deprecated field whose own type is that resource", func(t *testing.T) {
-		// The ordinary accessor shape: mqlc's prefersFieldOverResource routes
-		// the path back to the field, so nothing becomes unreachable.
+	t.Run("rejects a public resource shadowing a field too", func(t *testing.T) {
+		// prefersFieldOverResource declines outright on a public target, so
+		// there is not even the private case's redirect to fall back on.
+		_, err := Parse(`
+option provider = "test"
+
+device.user {
+	group string
+	userGroup() device.user.group
+}
+
+device.user.group {
+	name string
+}
+`)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "resource device.user.group has the same name as the field group")
+	})
+
+	t.Run("allows a field whose own type is that resource", func(t *testing.T) {
+		// The ordinary accessor shape: both readings denote the same thing, and
+		// mqlc's prefersFieldOverResource routes the path back to the field.
 		_, err := Parse(`
 option provider = "test"
 
@@ -1459,7 +1497,7 @@ private http.header.setCookie {
 		require.NoError(t, err)
 	})
 
-	t.Run("allows a deprecated list field whose element type is that resource", func(t *testing.T) {
+	t.Run("allows a list field whose element type is that resource", func(t *testing.T) {
 		_, err := Parse(`
 option provider = "test"
 
@@ -1474,21 +1512,4 @@ private pool.owner.members {
 		require.NoError(t, err)
 	})
 
-	t.Run("ignores a shadowed field that is not deprecated", func(t *testing.T) {
-		// Pre-existing shadows of live fields are a separate defect; this check
-		// only guards the deprecation window it was added for.
-		_, err := Parse(`
-option provider = "test"
-
-user.account {
-	email string
-	emails() []user.account.email
-}
-
-private user.account.email {
-	address string
-}
-`)
-		require.NoError(t, err)
-	})
 }

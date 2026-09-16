@@ -964,9 +964,10 @@ gitlab.user.createdBy 13.3.9
 gitlab.user.currentSignInAt 13.1.5
 gitlab.user.currentSignInIp 13.3.9
 gitlab.user.email 11.1.129
-gitlab.user.email.confirmedAt 13.4.2
-gitlab.user.email.email 13.4.2
-gitlab.user.email.id 13.4.2
+gitlab.user.emailAddress 14.0.0
+gitlab.user.emailAddress.confirmedAt 14.0.0
+gitlab.user.emailAddress.email 14.0.0
+gitlab.user.emailAddress.id 14.0.0
 gitlab.user.emails 13.4.2
 gitlab.user.external 13.1.5
 gitlab.user.externalIdentities 13.0.8

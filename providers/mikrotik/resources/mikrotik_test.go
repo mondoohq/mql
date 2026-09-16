@@ -105,7 +105,7 @@ func TestUserGroupArgs(t *testing.T) {
 	}
 	args := userGroupArgs(row)
 
-	assert.Equal(t, "mikrotik.user.group/full", args["__id"].Value)
+	assert.Equal(t, "mikrotik.userGroup/full", args["__id"].Value)
 	assert.Equal(t, "full", args["name"].Value)
 	// comma-separated policy is split into a list (whitespace trimmed)
 	assert.Equal(t, []any{"local", "telnet", "ssh", "reboot", "read", "write", "policy"}, args["policy"].Value)

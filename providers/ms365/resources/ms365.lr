@@ -4560,7 +4560,7 @@ ms365.exchangeonline {
   // List of journal rules
   journalRules() []ms365.exchangeonline.journalRule
   // List of mailboxes with audit settings
-  mailboxesWithAudit() []ms365.exchangeonline.mailbox
+  mailboxesWithAudit() []ms365.exchangeonline.mailboxWithAudit
   // Transport configuration settings
   transportConfig() dict
   // Security and Compliance policies
@@ -4830,7 +4830,7 @@ private ms365.exchangeonline.exoMailbox {
 }
 
 // Microsoft 365 Exchange Online Mailbox with Audit Settings
-private ms365.exchangeonline.mailbox @defaults("identity displayName auditEnabled") {
+private ms365.exchangeonline.mailboxWithAudit @defaults("identity displayName auditEnabled") {
   // Mailbox identity
   identity string
   // Display name

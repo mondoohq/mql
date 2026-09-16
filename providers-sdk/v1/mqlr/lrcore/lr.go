@@ -583,7 +583,7 @@ func Parse(input string) (*LR, error) {
 	validationErrs = append(validationErrs, res.validateAliases()...)
 	validationErrs = append(validationErrs, res.validateEmbedAmbiguity()...)
 	validationErrs = append(validationErrs, res.validateRootMembers()...)
-	validationErrs = append(validationErrs, res.validateDeprecatedShadowing()...)
+	validationErrs = append(validationErrs, res.validateFieldShadowing()...)
 
 	if len(validationErrs) > 0 {
 		return res, errors.Join(append([]error{err}, validationErrs...)...)
@@ -688,24 +688,39 @@ func (t *Type) typeName() string {
 	}
 }
 
-// validateDeprecatedShadowing rejects a resource whose name occupies the path of
-// a deprecated field, which silently revokes that field's deprecation window.
+// validateFieldShadowing rejects a resource whose name occupies the path of a
+// field declared on its parent, which makes that field unreachable.
 //
 // mqlc resolves a dotted path by taking the longest matching resource name, and
 // that match wins unconditionally over a field on a shorter one
-// (compileResource). So declaring `x.y.z` as a resource while `x.y` still has a
-// field `z` makes the field unreachable through its own path: `x.y.z` builds the
-// bare resource instead. prefersFieldOverResource only redirects back to the
-// field when the field's type IS that resource, which is the ordinary accessor
-// pattern and stays allowed here; a field of any other type has no way back.
+// (compileResource). So declaring `x.y.z` as a resource while `x.y` declares a
+// field `z` means `x.y.z` builds the bare resource and the field read never
+// happens. There is no resolution rule that could serve both readings: whichever
+// one wins, the other is unreachable by that path. The ambiguity is created in
+// the schema, so the schema is where it has to be refused.
 //
-// The damage is worst for a deprecated field, because `@replaced_by` promises
-// the old path keeps working until removal. Naming the replacement resource
-// after the path it replaces breaks every query written against the old field
-// in the same release that told those queries they had time to migrate. Name
-// the replacement after its accessor instead - the accessor field's type is
-// that resource, so the benign case above applies and both paths resolve.
-func (lr *LR) validateDeprecatedShadowing() []error {
+// Nothing downstream reports it. The field survives into the schema intact
+// (buildResourceChain only synthesizes an implicit field when none is declared),
+// the path compiles, and a comparison against the bare resource runs and
+// answers. A policy author gets a confident wrong verdict with no signal at
+// author time, lint time or scan time. For a deprecated field it is worse still:
+// `@replaced_by` promises the old path keeps working until removal, and naming
+// the replacement after the path it replaces revokes that promise in the same
+// release that made it.
+//
+// The one shape that is not a collision is a field whose own type IS that
+// resource - `ssh() vsphere.host.ssh` beside `private vsphere.host.ssh`. Both
+// readings denote the same thing, so nothing is unreachable, and for a private
+// target mqlc.prefersFieldOverResource routes the path through the accessor so
+// the fields are actually filled. That is the dominant idiom in the tree (~490
+// uses) and stays allowed; goBuilder.checkOwnerFilledResourcesArePrivate is what
+// keeps the public half of it honest.
+//
+// Scope is one file, which is what Parse sees. A field and a resource
+// contributed to the same path by two different providers slip through; that
+// needs the merged schema, and no provider can be pointed at as the one at
+// fault.
+func (lr *LR) validateFieldShadowing() []error {
 	declared := map[string]bool{}
 	for _, r := range lr.Resources {
 		if r != nil {
@@ -719,19 +734,27 @@ func (lr *LR) validateDeprecatedShadowing() []error {
 			continue
 		}
 		for _, f := range r.Body.Fields {
-			if f.BasicField == nil || f.BasicField.Maturity != resources.MaturityDeprecated {
+			if f.BasicField == nil {
 				continue
 			}
 			path := r.ID + "." + f.BasicField.ID
 			if !declared[path] || f.BasicField.Type.typeName() == path {
 				continue
 			}
-			errs = append(errs, errors.New("resource "+path+" has the same name as the "+
-				"deprecated field "+f.BasicField.ID+" on "+r.ID+"; the resource wins the path "+
-				"and the field cannot be read until it is removed. Name the resource after the "+
-				"accessor that returns it"))
+			msg := "resource " + path + " has the same name as the field " +
+				f.BasicField.ID + " on " + r.ID + "; a dotted path resolves to the " +
+				"longest matching resource, so the resource wins " + path + " and the " +
+				"field cannot be read through its own path. Declare one or the other: " +
+				"drop the field if the resource supersedes it, or name the resource " +
+				"after the accessor that returns it"
+			if f.BasicField.Maturity == resources.MaturityDeprecated {
+				msg += ". The field is deprecated, so this also revokes the " +
+					"deprecation window @replaced_by promises"
+			}
+			errs = append(errs, errors.New(msg))
 		}
 	}
+
 	return errs
 }
 

@@ -39,7 +39,7 @@ const (
 	ResourceProxmoxNodeUpdate                   string = "proxmox.node.update"
 	ResourceProxmoxVm                           string = "proxmox.vm"
 	ResourceProxmoxVmNetwork                    string = "proxmox.vm.network"
-	ResourceProxmoxVmDisk                       string = "proxmox.vm.disk"
+	ResourceProxmoxVmVirtualDisk                string = "proxmox.vm.virtualDisk"
 	ResourceProxmoxVmSnapshot                   string = "proxmox.vm.snapshot"
 	ResourceProxmoxVmUpdate                     string = "proxmox.vm.update"
 	ResourceProxmoxStorage                      string = "proxmox.storage"
@@ -191,9 +191,9 @@ func init() {
 			// to override args, implement: initProxmoxVmNetwork(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createProxmoxVmNetwork,
 		},
-		"proxmox.vm.disk": {
-			// to override args, implement: initProxmoxVmDisk(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
-			Create: createProxmoxVmDisk,
+		"proxmox.vm.virtualDisk": {
+			// to override args, implement: initProxmoxVmVirtualDisk(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createProxmoxVmVirtualDisk,
 		},
 		"proxmox.vm.snapshot": {
 			// to override args, implement: initProxmoxVmSnapshot(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -1268,7 +1268,7 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlProxmoxVm).GetNetworks()).ToDataRes(types.Array(types.Resource("proxmox.vm.network")))
 	},
 	"proxmox.vm.disks": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlProxmoxVm).GetDisks()).ToDataRes(types.Array(types.Resource("proxmox.vm.disk")))
+		return (r.(*mqlProxmoxVm).GetDisks()).ToDataRes(types.Array(types.Resource("proxmox.vm.virtualDisk")))
 	},
 	"proxmox.vm.snapshots": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlProxmoxVm).GetSnapshots()).ToDataRes(types.Array(types.Resource("proxmox.vm.snapshot")))
@@ -1312,29 +1312,29 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"proxmox.vm.network.firewall": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlProxmoxVmNetwork).GetFirewall()).ToDataRes(types.Bool)
 	},
-	"proxmox.vm.disk.id": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlProxmoxVmDisk).GetId()).ToDataRes(types.String)
+	"proxmox.vm.virtualDisk.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlProxmoxVmVirtualDisk).GetId()).ToDataRes(types.String)
 	},
-	"proxmox.vm.disk.storage": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlProxmoxVmDisk).GetStorage()).ToDataRes(types.String)
+	"proxmox.vm.virtualDisk.storage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlProxmoxVmVirtualDisk).GetStorage()).ToDataRes(types.String)
 	},
-	"proxmox.vm.disk.size": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlProxmoxVmDisk).GetSize()).ToDataRes(types.Int)
+	"proxmox.vm.virtualDisk.size": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlProxmoxVmVirtualDisk).GetSize()).ToDataRes(types.Int)
 	},
-	"proxmox.vm.disk.format": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlProxmoxVmDisk).GetFormat()).ToDataRes(types.String)
+	"proxmox.vm.virtualDisk.format": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlProxmoxVmVirtualDisk).GetFormat()).ToDataRes(types.String)
 	},
-	"proxmox.vm.disk.cache": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlProxmoxVmDisk).GetCache()).ToDataRes(types.String)
+	"proxmox.vm.virtualDisk.cache": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlProxmoxVmVirtualDisk).GetCache()).ToDataRes(types.String)
 	},
-	"proxmox.vm.disk.iothread": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlProxmoxVmDisk).GetIothread()).ToDataRes(types.Bool)
+	"proxmox.vm.virtualDisk.iothread": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlProxmoxVmVirtualDisk).GetIothread()).ToDataRes(types.Bool)
 	},
-	"proxmox.vm.disk.backup": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlProxmoxVmDisk).GetBackup()).ToDataRes(types.Bool)
+	"proxmox.vm.virtualDisk.backup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlProxmoxVmVirtualDisk).GetBackup()).ToDataRes(types.Bool)
 	},
-	"proxmox.vm.disk.storageRef": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlProxmoxVmDisk).GetStorageRef()).ToDataRes(types.Resource("proxmox.storage"))
+	"proxmox.vm.virtualDisk.storageRef": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlProxmoxVmVirtualDisk).GetStorageRef()).ToDataRes(types.Resource("proxmox.storage"))
 	},
 	"proxmox.vm.snapshot.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlProxmoxVmSnapshot).GetName()).ToDataRes(types.String)
@@ -4049,40 +4049,40 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlProxmoxVmNetwork).Firewall, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"proxmox.vm.disk.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlProxmoxVmDisk).__id, ok = v.Value.(string)
+	"proxmox.vm.virtualDisk.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlProxmoxVmVirtualDisk).__id, ok = v.Value.(string)
 		return
 	},
-	"proxmox.vm.disk.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlProxmoxVmDisk).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"proxmox.vm.virtualDisk.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlProxmoxVmVirtualDisk).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"proxmox.vm.disk.storage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlProxmoxVmDisk).Storage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"proxmox.vm.virtualDisk.storage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlProxmoxVmVirtualDisk).Storage, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"proxmox.vm.disk.size": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlProxmoxVmDisk).Size, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+	"proxmox.vm.virtualDisk.size": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlProxmoxVmVirtualDisk).Size, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
-	"proxmox.vm.disk.format": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlProxmoxVmDisk).Format, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"proxmox.vm.virtualDisk.format": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlProxmoxVmVirtualDisk).Format, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"proxmox.vm.disk.cache": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlProxmoxVmDisk).Cache, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"proxmox.vm.virtualDisk.cache": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlProxmoxVmVirtualDisk).Cache, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"proxmox.vm.disk.iothread": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlProxmoxVmDisk).Iothread, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+	"proxmox.vm.virtualDisk.iothread": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlProxmoxVmVirtualDisk).Iothread, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"proxmox.vm.disk.backup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlProxmoxVmDisk).Backup, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+	"proxmox.vm.virtualDisk.backup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlProxmoxVmVirtualDisk).Backup, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
-	"proxmox.vm.disk.storageRef": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlProxmoxVmDisk).StorageRef, ok = plugin.RawToTValue[*mqlProxmoxStorage](v.Value, v.Error)
+	"proxmox.vm.virtualDisk.storageRef": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlProxmoxVmVirtualDisk).StorageRef, ok = plugin.RawToTValue[*mqlProxmoxStorage](v.Value, v.Error)
 		return
 	},
 	"proxmox.vm.snapshot.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -9660,11 +9660,11 @@ func (c *mqlProxmoxVmNetwork) GetFirewall() *plugin.TValue[bool] {
 	return &c.Firewall
 }
 
-// mqlProxmoxVmDisk for the proxmox.vm.disk resource
-type mqlProxmoxVmDisk struct {
+// mqlProxmoxVmVirtualDisk for the proxmox.vm.virtualDisk resource
+type mqlProxmoxVmVirtualDisk struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlProxmoxVmDiskInternal it will be used here
+	// optional: if you define mqlProxmoxVmVirtualDiskInternal it will be used here
 	Id         plugin.TValue[string]
 	Storage    plugin.TValue[string]
 	Size       plugin.TValue[int64]
@@ -9675,9 +9675,9 @@ type mqlProxmoxVmDisk struct {
 	StorageRef plugin.TValue[*mqlProxmoxStorage]
 }
 
-// createProxmoxVmDisk creates a new instance of this resource
-func createProxmoxVmDisk(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
-	res := &mqlProxmoxVmDisk{
+// createProxmoxVmVirtualDisk creates a new instance of this resource
+func createProxmoxVmVirtualDisk(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlProxmoxVmVirtualDisk{
 		MqlRuntime: runtime,
 	}
 
@@ -9689,7 +9689,7 @@ func createProxmoxVmDisk(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 	// to override __id implement: id() (string, error)
 
 	if runtime.HasRecording {
-		args, err = runtime.ResourceFromRecording("proxmox.vm.disk", res.__id)
+		args, err = runtime.ResourceFromRecording("proxmox.vm.virtualDisk", res.__id)
 		if err != nil || args == nil {
 			return res, err
 		}
@@ -9699,46 +9699,46 @@ func createProxmoxVmDisk(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 	return res, nil
 }
 
-func (c *mqlProxmoxVmDisk) MqlName() string {
-	return "proxmox.vm.disk"
+func (c *mqlProxmoxVmVirtualDisk) MqlName() string {
+	return "proxmox.vm.virtualDisk"
 }
 
-func (c *mqlProxmoxVmDisk) MqlID() string {
+func (c *mqlProxmoxVmVirtualDisk) MqlID() string {
 	return c.__id
 }
 
-func (c *mqlProxmoxVmDisk) GetId() *plugin.TValue[string] {
+func (c *mqlProxmoxVmVirtualDisk) GetId() *plugin.TValue[string] {
 	return &c.Id
 }
 
-func (c *mqlProxmoxVmDisk) GetStorage() *plugin.TValue[string] {
+func (c *mqlProxmoxVmVirtualDisk) GetStorage() *plugin.TValue[string] {
 	return &c.Storage
 }
 
-func (c *mqlProxmoxVmDisk) GetSize() *plugin.TValue[int64] {
+func (c *mqlProxmoxVmVirtualDisk) GetSize() *plugin.TValue[int64] {
 	return &c.Size
 }
 
-func (c *mqlProxmoxVmDisk) GetFormat() *plugin.TValue[string] {
+func (c *mqlProxmoxVmVirtualDisk) GetFormat() *plugin.TValue[string] {
 	return &c.Format
 }
 
-func (c *mqlProxmoxVmDisk) GetCache() *plugin.TValue[string] {
+func (c *mqlProxmoxVmVirtualDisk) GetCache() *plugin.TValue[string] {
 	return &c.Cache
 }
 
-func (c *mqlProxmoxVmDisk) GetIothread() *plugin.TValue[bool] {
+func (c *mqlProxmoxVmVirtualDisk) GetIothread() *plugin.TValue[bool] {
 	return &c.Iothread
 }
 
-func (c *mqlProxmoxVmDisk) GetBackup() *plugin.TValue[bool] {
+func (c *mqlProxmoxVmVirtualDisk) GetBackup() *plugin.TValue[bool] {
 	return &c.Backup
 }
 
-func (c *mqlProxmoxVmDisk) GetStorageRef() *plugin.TValue[*mqlProxmoxStorage] {
+func (c *mqlProxmoxVmVirtualDisk) GetStorageRef() *plugin.TValue[*mqlProxmoxStorage] {
 	return plugin.GetOrCompute[*mqlProxmoxStorage](&c.StorageRef, func() (*mqlProxmoxStorage, error) {
 		if c.MqlRuntime.HasRecording {
-			d, err := c.MqlRuntime.FieldResourceFromRecording("proxmox.vm.disk", c.__id, "storageRef")
+			d, err := c.MqlRuntime.FieldResourceFromRecording("proxmox.vm.virtualDisk", c.__id, "storageRef")
 			if err != nil {
 				return nil, err
 			}

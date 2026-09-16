@@ -121,7 +121,7 @@ empty list means "nothing configured" or "not visible to this token".
 | `proxmox.node.update`       | Pending package update on a node                    |
 | `proxmox.vm`                | QEMU virtual machine with config and metrics        |
 | `proxmox.vm.network`        | Network interface attached to a VM                  |
-| `proxmox.vm.disk`           | Disk device attached to a VM                        |
+| `proxmox.vm.virtualDisk`    | Virtual disk attached to a VM                       |
 | `proxmox.vm.snapshot`       | VM snapshot                                         |
 | `proxmox.vm.update`         | Pending software update inside a VM (via QGA)       |
 | `proxmox.storage`           | Storage pool with capacity information              |

@@ -334,7 +334,7 @@ gitlab.user @defaults("username name state") {
   // Personal access tokens belonging to this user (requires admin or self-access)
   personalAccessTokens() []gitlab.user.personalAccessToken
   // Email addresses registered to this user (requires admin or self-access)
-  emails() []gitlab.user.email
+  emails() []gitlab.user.emailAddress
 }
 
 // GitLab personal access token
@@ -400,7 +400,7 @@ private gitlab.user.sshKey @defaults("id title createdAt") {
 // Unconfirmed addresses (`confirmedAt` is null) can indicate a pending account
 // takeover or an unverified secondary identity. Requires the calling token to
 // be able to read the user's emails (admin or self-access).
-private gitlab.user.email @defaults("email confirmedAt") {
+private gitlab.user.emailAddress @defaults("email confirmedAt") {
   // Email ID
   id int
   // Email address

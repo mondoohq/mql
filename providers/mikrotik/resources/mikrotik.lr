@@ -78,7 +78,7 @@ mikrotik @root {
   // Local user accounts
   users() []mikrotik.user
   // User permission groups
-  userGroups() []mikrotik.user.group
+  userGroups() []mikrotik.userGroup
   // IPv4 firewall mangle rules
   mangleRules() []mikrotik.ip.firewall.mangle
   // IPv4 firewall raw rules, evaluated before connection tracking
@@ -895,7 +895,7 @@ mikrotik.user @defaults("name group disabled") {
   // Optional comment attached to the user
   comment string
   // Permission group the user belongs to
-  userGroup() mikrotik.user.group
+  userGroup() mikrotik.userGroup
 }
 
 // MikroTik user permission group
@@ -906,7 +906,7 @@ mikrotik.user @defaults("name group disabled") {
 // such as configuration write, API access, or full policy control. The
 // `name` field selects the group and exposes the policy set that determines
 // which actions members may perform.
-mikrotik.user.group @defaults("name policy") {
+mikrotik.userGroup @defaults("name policy") {
   // Group name
   name string
   // Set of policies granted to the group
