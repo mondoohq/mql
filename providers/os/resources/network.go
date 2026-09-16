@@ -114,8 +114,21 @@ func (c *mqlNetwork) ipv6() ([]any, error) {
 	return c.ipsByVersion(6)
 }
 
-// primaryIPByDefaultRoute finds the first IP of the given version on the interface
-// associated with the default route for that IP version.
+// primaryIPByDefaultRoute finds the first routable IP of the given version on
+// an interface carrying the default route for that version.
+//
+// Link-local addresses are skipped. A primary address is something to reach the
+// host at, and a link-local one is neither routable nor unique -- awdl0 and
+// llw0 on a Mac carry the same fe80 address, so it identifies neither the host
+// nor an interface -- and it cannot be used at all without a scope the field
+// does not carry.
+//
+// The skip is what makes the answer usable on macOS, where the only IPv6
+// default routes on a host with any VPN client are interface-scoped routes via
+// fe80:: on utun tunnels, and those tunnels carry nothing but their own
+// link-local. This returned that address as the host's primary IPv6 while a
+// global one sat on en0. Where no routable address remains the field reads
+// null, which is the answer a host with no default route already gets.
 func (c *mqlNetwork) primaryIPByDefaultRoute(version uint8, defaultDests []string) (llx.RawIP, error) {
 	routes := c.GetRoutes()
 	if routes.Error != nil {
@@ -165,13 +178,28 @@ func (c *mqlNetwork) primaryIPByDefaultRoute(version uint8, defaultDests []strin
 			if ip.Error != nil {
 				continue
 			}
-			if ip.Data.Version == version {
-				return ip.Data, nil
+			if !isPrimaryIPCandidate(ip.Data, version) {
+				continue
 			}
+			return ip.Data, nil
 		}
 	}
 
 	return llx.RawIP{}, nil
+}
+
+// isPrimaryIPCandidate reports whether an address can stand as the host's
+// primary address of the given version.
+//
+// A link-local address cannot: fe80::/10 and 169.254.0.0/16 are what a host
+// assigns itself for the local link, so neither is routable and neither
+// answers "where is this host". fe80 is not even unique per host -- awdl0 and
+// llw0 on a Mac carry the same one.
+func isPrimaryIPCandidate(ip llx.RawIP, version uint8) bool {
+	if ip.IP == nil || ip.Version != version {
+		return false
+	}
+	return !ip.IsLinkLocalUnicast()
 }
 
 func (c *mqlNetwork) primaryIPv4() (llx.RawIP, error) {
@@ -245,16 +273,21 @@ func (c *mqlNetwork) routes() (*mqlNetworkRoutes, error) {
 		interfaces = []networki.Interface{}
 	}
 
-	// Map interfaces by name
-	interfaceMap := make(map[string]networki.Interface)
-	for _, iface := range interfaces {
-		interfaceMap[iface.Name] = iface
-	}
-
 	routeResources := []any{}
 	for _, route := range routes {
 		var ifaceResource plugin.Resource
-		if iface, ok := interfaceMap[route.Interface]; ok {
+		// Matched with FindInterface rather than by exact name. `ip addr`
+		// names a veth or a tunnel with the peer it is attached to -- eth0@if24
+		// inside a container, gre0@NONE for the tunnel devices a stock kernel
+		// carries -- while the routing table names it without. An exact-name
+		// map therefore missed precisely the interface every route on the host
+		// goes through, and route.iface read null for all of them while
+		// resolving fine for lo, which has no peer suffix.
+		//
+		// FindInterface falls back to the base name for this reason, and
+		// AddOrUpdateInterfaces already uses it to merge the detectors.
+		if idx := networki.FindInterface(interfaces, networki.Interface{Name: route.Interface}); idx >= 0 {
+			iface := interfaces[idx]
 			ipaddresses := []any{}
 			for _, ipaddress := range iface.IPAddresses {
 				ipRes, err := NewResource(c.MqlRuntime, "ipAddress", map[string]*llx.RawData{

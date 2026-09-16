@@ -43,3 +43,10 @@ default via 10.0.2.2 dev enp0s3 proto dhcp metric 100
 stdout = """
 fe80::/64 dev enp0s3 proto kernel metric 256 pref medium
 """
+
+# The bonding driver's control file, which sits in /sys/class/net beside the
+# interfaces. It matters most in this fixture: the interfaces here are
+# symlinks and report IsDir false, so the filter cannot be a directory test
+# and has to look for a marker only a real interface carries.
+[files."/sys/class/net/bonding_masters"]
+content = ""

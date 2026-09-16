@@ -97,7 +97,7 @@ type firefoxAddonEntry struct {
 	Location               string              `json:"location"`
 	Loader                 *string             `json:"loader"`
 	ApplyBackgroundUpdates int                 `json:"applyBackgroundUpdates"`
-	Permissions            *firefoxPermissions `json:"permissions"`
+	UserPermissions        *firefoxPermissions `json:"userPermissions"`
 }
 
 // firefoxLocale represents localized addon information
@@ -107,7 +107,11 @@ type firefoxLocale struct {
 	Creator     string `json:"creator"`
 }
 
-// firefoxPermissions represents the permissions object in Firefox extensions.json
+// firefoxPermissions represents the userPermissions object in Firefox
+// extensions.json: the API permissions and host origins the addon was actually
+// granted. Firefox has never spelled this key "permissions" on an addon entry,
+// and the neighbouring optionalPermissions/requestedPermissions are a different
+// question (what the addon may ask for later, not what it holds).
 type firefoxPermissions struct {
 	Permissions []string `json:"permissions"`
 	Origins     []string `json:"origins"`
@@ -261,8 +265,8 @@ func (f *mqlFirefox) addons() ([]any, error) {
 
 					// Merge permissions and origins
 					var perms []any
-					if addon.Permissions != nil {
-						merged := firefoxMergeStringSlices(addon.Permissions.Permissions, addon.Permissions.Origins)
+					if addon.UserPermissions != nil {
+						merged := firefoxMergeStringSlices(addon.UserPermissions.Permissions, addon.UserPermissions.Origins)
 						perms = make([]any, len(merged))
 						for i, v := range merged {
 							perms[i] = v

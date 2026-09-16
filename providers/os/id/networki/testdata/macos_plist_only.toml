@@ -1,0 +1,61 @@
+# A macOS filesystem with no command execution -- a mounted image or disk --
+# where NetworkInterfaces.plist is the only description of the interfaces.
+# The same plist as macos_plist_absent_hardware.toml with no ifconfig beside
+# it. Shape taken from a real
+# /Library/Preferences/SystemConfiguration/NetworkInterfaces.plist, trimmed to
+# the keys the detector reads plus enough context to stay recognizable.
+#
+# en0 and en7 are both in the plist, and nothing here can say which of them is
+# attached: that is what ifconfig would have answered, and it cannot run. So
+# both are reported, which is the case the plist is read for at all. The
+# fixture next door is the opposite situation, where ifconfig does answer and
+# the plist must not add en7 on top of it.
+
+[commands."uname -s"]
+stdout = "Darwin"
+
+[commands."uname -m"]
+stdout = "arm64"
+
+[commands."uname -r"]
+stdout = "25.6.0"
+
+[commands."/usr/bin/sw_vers"]
+stdout = """
+ProductName:		macOS
+ProductVersion:		26.6.2
+BuildVersion:		25G95
+"""
+
+[files."/Library/Preferences/SystemConfiguration/NetworkInterfaces.plist"]
+content = """
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Interfaces</key>
+	<array>
+		<dict>
+			<key>Active</key>
+			<true/>
+			<key>BSD Name</key>
+			<string>en0</string>
+			<key>IOInterfaceType</key>
+			<integer>6</integer>
+			<key>SCNetworkInterfaceType</key>
+			<string>IEEE80211</string>
+		</dict>
+		<dict>
+			<key>Active</key>
+			<false/>
+			<key>BSD Name</key>
+			<string>en7</string>
+			<key>IOInterfaceType</key>
+			<integer>6</integer>
+			<key>SCNetworkInterfaceType</key>
+			<string>Ethernet</string>
+		</dict>
+	</array>
+</dict>
+</plist>
+"""
