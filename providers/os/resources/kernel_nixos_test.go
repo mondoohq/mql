@@ -187,3 +187,51 @@ func TestParseNixosKernelStorePath(t *testing.T) {
 		assert.Equal(t, tt.version, version, "version for %q", tt.path)
 	}
 }
+
+// Kernel versions are not strings. A host whose generations span a minor bump
+// carries 6.9 and 6.18 at once, and comparing those lexicographically puts 6.9
+// first because "9" sorts above "1" -- so a policy reading the list as
+// newest-first, or taking element 0 as the newest installed kernel, gets the
+// older one.
+func TestNixosInstalledKernelsOrdersVersionsNumerically(t *testing.T) {
+	older := "/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-linux-6.9.1/bzImage"
+	newer := "/nix/store/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb-linux-6.18.50/bzImage"
+
+	fs := nixosProfiles(t, map[string]string{
+		"1": older,
+		"2": newer,
+	}, older)
+
+	kernels, err := nixosInstalledKernels(fs, "6.9.1")
+	require.NoError(t, err)
+
+	require.Len(t, kernels, 2)
+	assert.Equal(t, "6.18.50", kernels[0].Version, "6.18.50 is newer than 6.9.1")
+	assert.False(t, kernels[0].Running)
+	assert.Equal(t, "6.9.1", kernels[1].Version)
+	assert.True(t, kernels[1].Running)
+}
+
+// Kernels of different flavours stay grouped by name, and each group is
+// ordered newest-first within itself.
+func TestNixosInstalledKernelsOrdersByNameThenVersion(t *testing.T) {
+	fs := nixosProfiles(t, map[string]string{
+		"1": "/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-linux-6.9.1/bzImage",
+		"2": "/nix/store/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb-linux-6.18.50/bzImage",
+		"3": "/nix/store/cccccccccccccccccccccccccccccccc-linux-hardened-6.9.1/bzImage",
+		"4": "/nix/store/dddddddddddddddddddddddddddddddd-linux-hardened-6.18.50/bzImage",
+	}, "")
+
+	kernels, err := nixosInstalledKernels(fs, "6.18.50")
+	require.NoError(t, err)
+	require.Len(t, kernels, 4)
+
+	assert.Equal(t, "linux", kernels[0].Name)
+	assert.Equal(t, "6.18.50", kernels[0].Version)
+	assert.Equal(t, "linux", kernels[1].Name)
+	assert.Equal(t, "6.9.1", kernels[1].Version)
+	assert.Equal(t, "linux-hardened", kernels[2].Name)
+	assert.Equal(t, "6.18.50", kernels[2].Version)
+	assert.Equal(t, "linux-hardened", kernels[3].Name)
+	assert.Equal(t, "6.9.1", kernels[3].Version)
+}

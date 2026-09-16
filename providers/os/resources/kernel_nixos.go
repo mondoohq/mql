@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/spf13/afero"
+	"go.mondoo.com/mql/utils/versionx"
 )
 
 // NixOS has no kernel package to enumerate. It builds a whole system
@@ -105,11 +106,17 @@ func nixosInstalledKernels(fs afero.Fs, runningVersion string) ([]KernelVersion,
 
 	// Newest version first, so the list reads like the boot menu rather than
 	// like a directory listing.
+	//
+	// Compared segment by segment rather than as strings: "6.9.1" sorts above
+	// "6.18.50" lexically, because "9" beats "1" before either is read as a
+	// number. A host whose generations span a minor bump carries exactly that
+	// pair, and a policy taking the first entry as the newest installed kernel
+	// would get the older one.
 	sort.Slice(res, func(i, j int) bool {
 		if res[i].Name != res[j].Name {
 			return res[i].Name < res[j].Name
 		}
-		return res[i].Version > res[j].Version
+		return versionx.Compare(res[i].Version, res[j].Version) > 0
 	})
 
 	return res, nil
