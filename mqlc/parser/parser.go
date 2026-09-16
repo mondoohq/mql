@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"errors"
 	"math"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -33,7 +32,7 @@ const LexerRegex = `(\s+)` +
 	`|(?P<Ident>[a-zA-Z$_][a-zA-Z0-9_]*)` +
 	`|(?P<Float>[-+]?\d*\.\d+([eE][-+]?\d+)?)` +
 	`|(?P<Int>[-+]?\d+([eE][-+]?\d+)?)` +
-	`|(?P<String>'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")` +
+	`|(?P<String>'[^']*'|"(?:[^"\\]|\\.)*")` +
 	`|(?P<Comment>(//|#)[^\n]*(\n|\z))` +
 	`|(?P<Regex>/([^\\/]+|\\.)+/[msi]*)` +
 	`|(?P<Op>[-+*/%,:.=<>!|&~;?])` +
@@ -263,42 +262,69 @@ func (p *parser) rewind(token lexer.Token) {
 	p.token = token
 }
 
-var (
-	reUnescape  = regexp.MustCompile(`\\.`)
-	unescapeMap = map[string]string{
-		"\\n": "\n",
-		"\\t": "\t",
-		"\\v": "\v",
-		"\\b": "\b",
-		"\\f": "\f",
-		"\\0": "\x00",
-	}
-)
+var unescapeMap = map[byte]byte{
+	'\\': '\\',
+	'"':  '"',
+	'\'': '\'',
+	'/':  '/',
+	'n':  '\n',
+	'r':  '\r',
+	't':  '\t',
+	'v':  '\v',
+	'b':  '\b',
+	'f':  '\f',
+	'0':  0,
+}
 
-func (p *parser) token2string() string {
+func (p *parser) token2string() (string, error) {
 	v := p.token.Value
 	vv := v[1 : len(v)-1]
 
+	// Single-quoted strings are raw: every backslash is a literal backslash,
+	// including one directly before the closing quote. That keeps Windows and
+	// registry paths (`'HKEY\Providers\'`) writable. A single quote cannot
+	// appear in a single-quoted string; use a double-quoted one for that.
 	if v[0] == '\'' {
-		// Single-quoted strings are raw: escape sequences are kept verbatim.
-		// The one exception is an escaped single quote, the only way to put a
-		// single quote inside single quotes. The lexer could not produce that
-		// pair before, so unescaping it here cannot change an existing literal.
-		return reUnescape.ReplaceAllStringFunc(vv, func(match string) string {
-			if match == `\'` {
-				return "'"
-			}
-			return match
-		})
+		return vv, nil
 	}
 
-	vv = reUnescape.ReplaceAllStringFunc(vv, func(match string) string {
-		if found := unescapeMap[match]; found != "" {
-			return found
+	return p.unescape(vv)
+}
+
+// unescape resolves the escape sequences of a double-quoted string literal.
+// Only the sequences in unescapeMap are valid; anything else is a syntax error,
+// because silently dropping the backslash turned `"C:\Users"` into `C:Users`
+// and the user never learned that the string they wrote is not the string they
+// got. A path belongs in a single-quoted raw string.
+func (p *parser) unescape(s string) (string, error) {
+	if !strings.ContainsRune(s, '\\') {
+		return s, nil
+	}
+
+	var res strings.Builder
+	res.Grow(len(s))
+
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\\' {
+			res.WriteByte(s[i])
+			continue
 		}
-		return string(match[1])
-	})
-	return vv
+
+		if i+1 == len(s) {
+			return "", p.errorMsg("string literal ends in a lone backslash, use \\\\ for a literal backslash")
+		}
+
+		c, ok := unescapeMap[s[i+1]]
+		if !ok {
+			return "", p.errorMsg("invalid escape sequence \\" + string(s[i+1]) +
+				" in string literal, use \\\\ for a literal backslash or a single-quoted raw string")
+		}
+
+		res.WriteByte(c)
+		i++
+	}
+
+	return res.String(), nil
 }
 
 func (p *parser) parseValue() (*Value, error) {
@@ -344,7 +370,10 @@ func (p *parser) parseValue() (*Value, error) {
 		return &Value{Int: &v}, nil
 
 	case String:
-		vv := p.token2string()
+		vv, err := p.token2string()
+		if err != nil {
+			return nil, err
+		}
 		return &Value{String: &vv}, nil
 
 	case Regex:
@@ -451,7 +480,11 @@ func (p *parser) parseMap() (*Value, error) {
 
 		switch p.token.Type {
 		case String:
-			key = p.token2string()
+			var err error
+			key, err = p.token2string()
+			if err != nil {
+				return nil, err
+			}
 		case Ident:
 			key = p.token.Value
 		default:

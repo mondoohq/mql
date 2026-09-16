@@ -129,7 +129,7 @@ func TestParser_ParseValues(t *testing.T) {
 		{"'h\\i'", &Expression{Operand: &Operand{Value: vString("h\\i")}}},
 		{"\"hi\"", &Expression{Operand: &Operand{Value: vString("hi")}}},
 		{"\"h\\ni\"", &Expression{Operand: &Operand{Value: vString("h\ni")}}},
-		{"\"h\\i\"", &Expression{Operand: &Operand{Value: vString("hi")}}},
+		{"\"h\\\\i\"", &Expression{Operand: &Operand{Value: vString("h\\i")}}},
 		{"/hi/", &Expression{Operand: &Operand{Value: vRegex("hi")}}},
 		{"[]", &Expression{Operand: &Operand{Value: &Value{Array: []*Expression{}}}}},
 		{"[1]", &Expression{Operand: &Operand{Value: &Value{Array: []*Expression{
@@ -472,12 +472,8 @@ func TestParser_StringEscapes(t *testing.T) {
 		{`"a\"b"`, `a"b`},
 		{`"\""`, `"`},
 		{`"he said \"hi\""`, `he said "hi"`},
-		// ... and a single quote inside a single-quoted string
-		{`'a\'b'`, `a'b`},
-		{`'\''`, `'`},
 		// both quote styles in one literal, previously unrepresentable
 		{`"he said \"hi\" to 'me'"`, `he said "hi" to 'me'`},
-		{`'he said "hi" to \'me\''`, `he said "hi" to 'me'`},
 		// inline JSON, the shape that found this
 		{`"{\"a\": 1}"`, `{"a": 1}`},
 
@@ -487,15 +483,25 @@ func TestParser_StringEscapes(t *testing.T) {
 		{`"a\\b"`, `a\b`},
 		{`"\\"`, `\`},
 		{`"tab\there"`, "tab\there"},
-		// an unknown escape still collapses to its second character, so a
-		// Windows path keeps losing its separators rather than changing shape
-		{`"C:\path"`, `C:path`},
+		{`"a\rb"`, "a\rb"},
+		{`"a\vb"`, "a\vb"},
+		{`"a\bb"`, "a\bb"},
+		{`"a\fb"`, "a\fb"},
+		{`"a\0b"`, "a\x00b"},
+		// a quote of the other style may be escaped or not
+		{`"a\'b"`, `a'b`},
+		{`"a'b"`, `a'b`},
+		// JSON escapes the forward slash, so we accept it
+		{`"a\/b"`, `a/b`},
 		{`""`, ``},
 
-		// single-quoted strings stay raw for everything but \'
+		// single-quoted strings are raw, backslash included, so a Windows or
+		// registry path survives verbatim even when it ends in a separator
 		{`'h\ni'`, `h\ni`},
 		{`'h\i'`, `h\i`},
 		{`'a\\b'`, `a\\b`},
+		{`'HKEY\Providers\'`, `HKEY\Providers\`},
+		{`'C:\path\'`, `C:\path\`},
 		{`''`, ``},
 	}
 
@@ -515,12 +521,28 @@ func TestParser_StringEscapes(t *testing.T) {
 	}
 }
 
-// TestParser_StringEscapes_unterminated rejects a literal whose closing quote is
-// consumed by a trailing backslash. `"a\"` used to lex as the string `a\`; now
-// the backslash escapes the closing quote and the literal is unterminated,
-// which is a deliberate tightening.
+// TestParser_StringEscapes_invalid rejects a double-quoted literal carrying an
+// escape sequence we do not define. It used to collapse to its second character,
+// so `"C:\Users\dom"` silently became `C:Usersdom` and `"\d+"` became `d+`: a
+// wrong value with no error anywhere. Single-quoted strings are raw and keep
+// taking any backslash.
+func TestParser_StringEscapes_invalid(t *testing.T) {
+	for _, code := range []string{`"C:\Users"`, `"\d+"`, `"a\qb"`, `"\x41"`, `"\u00e9"`, `{"a\zb": 1}`} {
+		t.Run(code, func(t *testing.T) {
+			_, err := Parse(code)
+			require.Error(t, err, "an invalid escape sequence must not parse")
+			assert.Contains(t, err.Error(), "invalid escape sequence")
+		})
+	}
+}
+
+// TestParser_StringEscapes_unterminated rejects a double-quoted literal whose
+// closing quote is consumed by a trailing backslash. `"a\"` used to lex as the
+// string `a\`; now the backslash escapes the closing quote and the literal is
+// unterminated, which is a deliberate tightening. Single-quoted literals are
+// raw, so `'a\'` still closes and keeps its backslash.
 func TestParser_StringEscapes_unterminated(t *testing.T) {
-	for _, code := range []string{`"a\"`, `'a\'`, `"\"`, `'\'`} {
+	for _, code := range []string{`"a\"`, `"\"`} {
 		t.Run(code, func(t *testing.T) {
 			_, err := Parse(code)
 			assert.Error(t, err, "an unterminated string literal must not parse")
@@ -531,7 +553,7 @@ func TestParser_StringEscapes_unterminated(t *testing.T) {
 // TestParser_LexStringEscapes checks that an escaped quote stays inside one
 // String token instead of splitting the source into three.
 func TestParser_LexStringEscapes(t *testing.T) {
-	for _, code := range []string{`"a\"b"`, `'a\'b'`, `"a\\"`, `'a\\'`} {
+	for _, code := range []string{`"a\"b"`, `"a\\"`} {
 		t.Run(code, func(t *testing.T) {
 			res, err := Lex(code)
 			require.NoError(t, err)
