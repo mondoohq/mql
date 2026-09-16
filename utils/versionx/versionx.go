@@ -50,9 +50,17 @@
 //     sorts AFTER it. Treating every dash-suffix as a semver prerelease is what made
 //     apk's -r4/-r10 and Debian's -1ubuntu1 compare backwards.
 //
+//     The words are recognized wherever they appear, not only after a '-', because
+//     PEP 440 and several upstreams attach them straight to the number: 3.7.0beta2 is
+//     a candidate for 3.7.0, and 1.0.post1 is a rebuild of 1.0 and so follows it.
+//
 // Two smaller rules ride along: a '~' segment sorts before everything including the
 // empty string (Debian's pre-release marker, 1.0~rc1 < 1.0), and '+build' metadata is
 // ignored entirely (semver says it carries no precedence).
+//
+// One shape is disambiguated by magnitude rather than grammar: apk writes a unix
+// build stamp where deb writes an epoch, with the same punctuation. See
+// [maxPlausibleEpoch].
 //
 // # Cross-format comparisons
 //
@@ -118,6 +126,7 @@ type Version struct {
 	kind    Kind
 	epoch   int
 	release string // before the first '-', epoch/'v' prefix and +build stripped
+	post    string // a trailing PEP 440 ".postN" component, split out of release
 	suffix  string // after the first '-', +build stripped
 	hasPre  bool   // suffix opens with a recognized prerelease word
 }
@@ -125,25 +134,29 @@ type Version struct {
 // reEpoch matches the leading epoch of a deb/rpm ("1:") or PEP 440 ("1!") version.
 var reEpoch = regexp.MustCompile(`^([0-9]+)([:!])`)
 
+// maxPlausibleEpoch separates a real epoch from an apk build stamp, which is written in
+// the same position with the same punctuation and means the opposite thing.
+//
+//	1:2.4.52-1ubuntu4.6     deb epoch 1
+//	1632431095:1.2.2-r7     apk, and that is a unix timestamp, not an epoch
+//
+// Nothing in the grammar tells them apart, so magnitude does. An epoch is a hand-bumped
+// counter — Debian's are single digits in practice, and the policy that governs them
+// exists precisely so they stay rare — while an apk build stamp has been a ten-digit
+// unix time since 2001. Anything at or above this threshold is a build stamp; anything
+// below it is an epoch, and the gap between the two populations is six orders of
+// magnitude wide.
+//
+// A build stamp is then DROPPED rather than compared, which is what both other Mondoo
+// implementations do (mvd/versions/apk and the core provider's generic.Compare both
+// call VersionWithoutEpoch first). Two apk versions differing only in their stamp
+// therefore compare equal, the same bargain [Parse] already makes for "+build".
+const maxPlausibleEpoch = 10000
+
 // reSemver is the shape MQL has always accepted as "semver": a 1-3 component numeric
 // core with optional prerelease and build, optionally v-prefixed. Deliberately the
 // lenient form (1.2 is semver here) because that is what callers already depend on.
 var reSemver = regexp.MustCompile(`^v?[0-9]+(\.[0-9]+)?(\.[0-9]+)?(-[0-9A-Za-z\-]+(\.[0-9A-Za-z\-]+)*)?(\+[0-9A-Za-z\-]+(\.[0-9A-Za-z\-]+)*)?$`)
-
-// rePrerelease matches a suffix that opens with a word the industry uses to mean "not
-// the release yet". Everything else in suffix position is treated as a later build (a
-// distro revision, a dist tag, a vendor build id) — see the package doc.
-//
-// The list is deliberately conservative: a word here REVERSES the order of a version
-// against its own release, so a wrong entry (say "r", which is apk's build marker)
-// would flip real inventories. Bare "m"/"a"/"b" are excluded for the same reason.
-//
-// The word has to END where it ends: the trailing class stops "dev" from claiming
-// "devuan1" (a distro revision, which belongs AFTER its release) and "pre" from
-// claiming "precise". That is also why the longer forms are spelled out — with the
-// boundary in place, "pre" no longer covers "prerelease" and "dev" no longer covers
-// "devel".
-var rePrerelease = regexp.MustCompile(`^(alpha|beta|rc|prerelease|preview|pre|devel|dev|snapshot|nightly|canary|milestone)([^a-z]|$)`)
 
 // Parse reads a version string. It never fails: an unrecognizable string still yields a
 // Version that compares deterministically against every other one (see [Kind]).
@@ -161,11 +174,15 @@ func Parse(s string) Version {
 		// The regex guarantees digits; an overflowing epoch keeps 0 rather than
 		// erroring, which orders it as "no epoch" instead of losing the version.
 		if n, err := strconv.Atoi(m[1]); err == nil {
-			v.epoch = n
-			if m[2] == ":" {
-				v.kind = KindDebian
-			} else {
-				v.kind = KindPython
+			switch {
+			case m[2] == "!":
+				v.epoch, v.kind = n, KindPython
+			case n < maxPlausibleEpoch:
+				v.epoch, v.kind = n, KindDebian
+			default:
+				// An apk build stamp. It is not an epoch and must not outrank
+				// every other version in the list; drop it and read what
+				// follows as an ordinary version. See maxPlausibleEpoch.
 			}
 			rest = rest[len(m[0]):]
 		}
@@ -205,9 +222,16 @@ func Parse(s string) Version {
 	// prerelease separator and packaging's revision separator.
 	if i := strings.IndexByte(rest, '-'); i >= 0 {
 		v.release, v.suffix = rest[:i], rest[i+1:]
-		v.hasPre = rePrerelease.MatchString(strings.ToLower(v.suffix))
+		v.hasPre = markerRank(v.suffix) < rankRelease
 	} else {
 		v.release = rest
+	}
+
+	// 5. A trailing ".postN" is PEP 440's post-release marker, not a release
+	// component, and it has to come out of the release before anything is compared.
+	// See isPostComponent for why leaving it in place cannot be made consistent.
+	if i := strings.LastIndexByte(v.release, '.'); i >= 0 && isPostComponent(v.release[i+1:]) {
+		v.release, v.post = v.release[:i], v.release[i+1:]
 	}
 
 	return v
@@ -243,7 +267,27 @@ func (v Version) Compare(o Version) int {
 		return c
 	}
 
+	if c := comparePost(v.post, o.post); c != 0 {
+		return c
+	}
+
 	return compareSuffix(v, o)
+}
+
+// comparePost orders the PEP 440 post-release marker, which sits between the release
+// and the suffix: a post-release follows its own release ("1.0.post1" > "1.0", and >
+// "1.0.0", which is the same version) and precedes the next one ("1.0.post1" < "1.0.1",
+// because that comparison was already settled by the release).
+func comparePost(a, b string) int {
+	switch {
+	case a == b:
+		return 0
+	case a == "":
+		return -1
+	case b == "":
+		return 1
+	}
+	return compareRuns(a, b)
 }
 
 // compareSuffix orders the part after the first '-', where semver's prerelease rule and

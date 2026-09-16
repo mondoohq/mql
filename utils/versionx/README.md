@@ -24,6 +24,17 @@ versionx.Satisfies(v, ">= 1.0.0", "< 2.0.0")
    a build id — sorts **after** it. The word has to be the whole word: `1.2.3-devuan1` is a
    Devuan revision, not a `dev` build, and sorts after `1.2.3`.
 
+   The same words are recognized where PEP 440 and several upstreams put them — attached
+   straight to the number, with no `-` to split on. `3.7.0beta2` and `1.0rc1` are candidates
+   for their releases; `1.0.post1` is a *rebuild* of `1.0`, so it sorts after `1.0` and before
+   `1.0.1`. A bare letter is not a word: `1.1.1k` stays openssl's patch release, above `1.1.1`.
+
+Plus: apk writes a unix build stamp where deb writes an epoch, in the same position with the
+same punctuation (`1632431095:1.2.2-r7` vs `1:2.4.52-1ubuntu4.6`). Nothing in the grammar
+separates them, so magnitude does — an epoch is a hand-bumped single digit, a build stamp is
+ten digits — and the stamp is dropped rather than compared, which is what every other Mondoo
+implementation does with it.
+
 Plus: a `~` run sorts before everything (Debian's pre-release marker), and `+build` metadata is
 ignored (semver says it carries no precedence). The `+` is dropped for every kind, not only
 semver — the classifier cannot tell the cases apart anyway, since a deb like `1.0+dfsg1-1` matches
@@ -67,8 +78,13 @@ parse one of the two strings and had no answer to give.
 | `2:1.0.0` | `10.0.0` | `>` | n/a ❌ | `>` ✅ | `>` ✅ | epoch beats a larger major |
 | `1!2.0` | `1.9.0` | `>` | n/a ❌ | `>` ✅ | `>` ✅ | PEP 440 epoch |
 | `1.0~rc1` | `1.0` | `<` | n/a ❌ | `>` ❌ | `<` ✅ | Debian tilde |
+| `3.7.0beta2` | `3.7.0` | `<` | n/a ❌ | n/a ❌ | `<` ✅ | PostGIS attaches the tag to the number |
+| `1.0rc1` | `1.0` | `<` | n/a ❌ | n/a ❌ | `<` ✅ | so does PEP 440 |
+| `1.0.post1` | `1.0` | `>` | n/a ❌ | n/a ❌ | `>` ✅ | a post-release is a rebuild |
+| `1.0.post1` | `1.0.1` | `<` | n/a ❌ | n/a ❌ | `<` ✅ | but below the next real release |
+| `1632431095:1.2.2-r7` | `2.0.0` | `<` | n/a ❌ | n/a ❌ | `<` ✅ | apk build stamp, not an epoch |
 
-**Masterminds 8/24** (5 wrong, 11 unanswerable) · **mql v13 14/24** · **versionx 24/24**
+**Masterminds 8/30** (5 wrong, 17 unanswerable) · **mql v13 14/30** · **versionx 30/30**
 
 Every row is a test case in `versionx_test.go`, so the table is reproducible rather than
 asserted.

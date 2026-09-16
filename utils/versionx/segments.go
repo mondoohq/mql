@@ -77,6 +77,18 @@ func compareRuns(a, b string) int {
 			}
 			return -1
 		default:
+			// Two letter runs. A release-stage word ("beta", "rc") carries an
+			// order the alphabet does not — "rc" follows "beta", and both
+			// precede a distro build id — so the stage scale decides first and
+			// lexical order only breaks ties within a tier. Runs that are not
+			// stage words both rank rankRelease and compare as text, which is
+			// the behavior every non-PEP-440 string keeps.
+			if rx, ry := markerRank(x), markerRank(y); rx != ry {
+				if rx < ry {
+					return -1
+				}
+				return 1
+			}
 			return strings.Compare(x, y)
 		}
 	}
@@ -85,15 +97,9 @@ func compareRuns(a, b string) int {
 	case len(ra) == len(rb):
 		return 0
 	case len(ra) < len(rb):
-		if isTilde(rb[len(ra)]) {
-			return 1
-		}
-		return -1
+		return -extraRunOrder(rb[len(ra)])
 	default:
-		if isTilde(ra[len(rb)]) {
-			return -1
-		}
-		return 1
+		return extraRunOrder(ra[len(rb)])
 	}
 }
 
@@ -141,3 +147,25 @@ func isDigits(s string) bool { return s != "" && isDigit(s[0]) }
 // isTilde reports whether a run opens with Debian's pre-release marker. Only the
 // leading character matters: "~rc" and "~" are both markers, "a~b" is not one.
 func isTilde(s string) bool { return s != "" && s[0] == '~' }
+
+// extraRunOrder reports how a string that keeps going compares against one that has
+// run out, by looking at the first run it has left over.
+//
+// The default is that more is newer — "1.1.1k" is a later release than "1.1.1" — and
+// two things override it. A '~' run is Debian's pre-release marker and sorts before
+// everything, including the absence of a run. A prerelease-stage word does the same for
+// the attached spelling that PEP 440 and several upstreams use, where the marker hangs
+// straight off the number: "3.7.0beta2" and "1.0rc1" are candidates for 3.7.0 and 1.0,
+// not builds on top of them.
+//
+// A post-release word is NOT an override: "1.0post1" really does follow 1.0, which is
+// what the default already says.
+func extraRunOrder(extra string) int {
+	if isTilde(extra) {
+		return -1
+	}
+	if markerRank(extra) < rankRelease {
+		return -1
+	}
+	return 1
+}

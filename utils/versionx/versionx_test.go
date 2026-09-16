@@ -76,6 +76,29 @@ func TestCompare(t *testing.T) {
 		{"1.0~rc1", "1.0~rc2", -1, "~ runs still compare"},
 		{"1.0~beta", "1.0a", -1, "~ sorts before everything"},
 
+		// --- PEP 440 stage words, attached with no separator ---
+		// The marker hangs straight off the number in PostGIS's own release naming
+		// and in PEP 440's canonical spelling, so there is no '-' to split on.
+		{"3.7.0beta2", "3.7.0", -1, "an attached beta is still a candidate for the release"},
+		{"1.0rc1", "1.0", -1, "and so is an attached rc"},
+		{"1.0alpha1", "1.0beta1", -1, "alpha before beta, attached too"},
+		{"1.0beta2", "1.0rc1", -1, "beta before rc"},
+		{"3.7.0beta2", "3.7.0beta10", -1, "the number after the word still counts"},
+		{"1.0.dev1", "1.0", -1, "a dotted dev component leads its release"},
+		{"1.1.1k", "1.1.1", 1, "but a bare letter is openssl's patch, not a stage word"},
+		{"1.0.post1", "1.0", 1, "a post-release is a rebuild, so it follows"},
+		{"1.0.post1", "1.0.0", 1, "and 1.0.0 is the same version as 1.0"},
+		{"1.0.post1", "1.0.1", -1, "but it is below the next real release"},
+		{"1.0.post1", "1.0.post2", -1, "post-releases count"},
+		{"1.0.postgres1", "1.0", -1, "postgres is not post: it stays an unrecognized word"},
+		{"9.0.0.M1", "9.0.0", -1, "Tomcat's dotted milestone spelling"},
+
+		// --- apk writes a build stamp where deb writes an epoch ---
+		{"1632431095:1.2.2-r7", "2.0.0", -1, "a build stamp is not an epoch"},
+		{"1632431095:1.2.2-r7", "1.2.3-r1", -1, "and must not outrank the whole list"},
+		{"1632431095:1.2.2-r7", "1.2.2-r7", 0, "the stamp itself carries no precedence"},
+		{"1:1.2.3", "1632431095:1.2.2-r7", 1, "a real epoch still wins outright"},
+
 		// --- unparseable, but still ordered ---
 		{"latest", "latest", 0, "equal strings are equal"},
 		{"", "1.0", -1, "empty sorts first"},
@@ -164,6 +187,11 @@ func TestOrderIsTotal(t *testing.T) {
 		"", "1", "1.0", "1.0.0", "1.0.0-alpha", "1.0.0-rc1", "1.0.0-1", "1.0~rc1",
 		"1.0.1", "1.1", "2.0", "10.0", "1:1.0", "2:1.0", "1!1.0", "1.0.0.0", "1.0.0k",
 		"latest", "4.18.0-425.13.1.el8_7",
+		// The stage words are where transitivity is easiest to lose: "1.0" and
+		// "1.0.0" are the SAME version, so any rule that orders a marker against
+		// one of them has to give the same answer for the other.
+		"1.0.post1", "1.0.post2", "1.0rc1", "1.0beta1", "1.0.dev1", "1.0.0.post1",
+		"1632431095:1.2.2-r7",
 	}
 
 	for _, a := range versions {
