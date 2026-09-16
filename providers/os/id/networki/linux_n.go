@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -52,7 +53,19 @@ func (n *neti) detectLinuxInterfaces() ([]Interface, error) {
 	enrichments := []func() ([]Interface, error){
 		n.getLinuxIPv4GatewayDetails,
 		n.getLinuxIPv6GatewayDetails,
-		n.getLinuxSysfsVirtual,
+	}
+
+	// The sysfs detector already answers Virtual for every interface it walks,
+	// so the enrichment has something to add only when the command detector
+	// won. Asking anyway costs a second walk of /sys/class/net plus a few
+	// probes per interface, and over a remote connection each of those is a
+	// round trip.
+	//
+	// The test is whether any interface still lacks a verdict rather than
+	// which detector ran: linuxInterfaceVirtual can decline to answer for a
+	// single interface, and that one should still get its chance here.
+	if slices.ContainsFunc(interfaces, func(i Interface) bool { return i.Virtual == nil }) {
+		enrichments = append(enrichments, n.getLinuxSysfsVirtual)
 	}
 
 	for _, detectFn := range enrichments {
