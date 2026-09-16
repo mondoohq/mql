@@ -100,6 +100,7 @@ apache2.conf.virtualHost.sslProtocol 13.16.10
 apache2.conf.virtualHosts 11.8.14
 apache2.version 11.8.14
 apparmor 13.2.4
+apparmor.installed 13.47.0
 apparmor.process 13.2.4
 apparmor.process.executable 13.2.4
 apparmor.process.pid 13.2.4

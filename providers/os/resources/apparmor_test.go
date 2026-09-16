@@ -5,6 +5,7 @@ package resources
 
 import (
 	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -92,7 +93,8 @@ func TestReadApparmorProfilesFromFS(t *testing.T) {
 		"/usr/sbin/dnsmasq (complain)\n"), 0o444)
 	require.NoError(t, err)
 
-	profiles := readApparmorProfilesFromFS(fs)
+	profiles, err := readApparmorProfilesFromFS(fs)
+	require.NoError(t, err)
 	require.Len(t, profiles, 3)
 	assert.Equal(t, "enforce", profiles["/usr/sbin/chronyd"])
 	assert.Equal(t, "unconfined", profiles["MongoDB Compass"])
@@ -150,4 +152,40 @@ func TestApparmorProcessExecutable(t *testing.T) {
 	}))
 
 	assert.Equal(t, "3", apparmorProcessExecutable(&processmgr.OSProcess{Pid: 3}))
+}
+
+// securityfs enforces CAP_MAC_ADMIN regardless of the mode bits, so an
+// unprivileged scan gets EACCES on a world-readable profiles list. Container-
+// Optimized OS is such a host: the file is mode 444 and stat-able, aa-status
+// and apparmor_status are not installed at all, and the read fails. Swallowing
+// that error reported zero profiles on a host running an enforcing one.
+func TestFetchStatusFromKernelUnreadableProfiles(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/sys/kernel/security/apparmor", 0o755))
+	require.NoError(t, afero.WriteFile(fs, apparmorProfilesPath, []byte("docker-default (enforce)\n"), 0o444))
+
+	// the list is present and stat-able, but every open of it fails
+	blocked := &openDeniedFs{Fs: fs, path: apparmorProfilesPath}
+
+	exists, err := afero.Exists(blocked, apparmorProfilesPath)
+	require.NoError(t, err)
+	require.True(t, exists, "the profiles list must still stat")
+
+	profiles, err := readApparmorProfilesFromFS(blocked)
+	require.Error(t, err, "an unreadable profiles list must not read as an empty one")
+	assert.Nil(t, profiles)
+}
+
+// openDeniedFs stats normally but refuses to open one path, the way securityfs
+// behaves for a caller without CAP_MAC_ADMIN.
+type openDeniedFs struct {
+	afero.Fs
+	path string
+}
+
+func (f *openDeniedFs) Open(name string) (afero.File, error) {
+	if name == f.path {
+		return nil, os.ErrPermission
+	}
+	return f.Fs.Open(name)
 }
