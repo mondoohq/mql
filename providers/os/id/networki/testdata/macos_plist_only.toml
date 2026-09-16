@@ -1,13 +1,15 @@
 # A macOS filesystem with no command execution -- a mounted image or disk --
 # where NetworkInterfaces.plist is the only description of the interfaces.
-# Same plist as macos_plist_absent_hardware.toml, without ifconfig. Shape taken from a real
+# The same plist as macos_plist_absent_hardware.toml with no ifconfig beside
+# it. Shape taken from a real
 # /Library/Preferences/SystemConfiguration/NetworkInterfaces.plist, trimmed to
 # the keys the detector reads plus enough context to stay recognizable.
 #
-# en0 is present and ifconfig reports it. en7 is a USB or Thunderbolt adapter
-# the machine has seen before and that is not plugged in now: the plist keeps
-# it forever, ifconfig does not mention it, and it must not be reported as an
-# interface of this host.
+# en0 and en7 are both in the plist, and nothing here can say which of them is
+# attached: that is what ifconfig would have answered, and it cannot run. So
+# both are reported, which is the case the plist is read for at all. The
+# fixture next door is the opposite situation, where ifconfig does answer and
+# the plist must not add en7 on top of it.
 
 [commands."uname -s"]
 stdout = "Darwin"
