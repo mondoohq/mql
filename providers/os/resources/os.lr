@@ -15495,6 +15495,15 @@ private chrome.extensionContentScript @defaults("script match") {
 firefox {
   // All installed Firefox addons across all profiles and users
   addons() []firefox.addon
+
+  // Number of addon records that could not be read
+  //
+  // Counts the entries skipped while decoding every profile's
+  // extensions.json, for example an entry holding a value of a type the
+  // record does not describe. Those entries are left out of addons rather
+  // than failing the profile they belong to, so any value above zero means
+  // addons is an incomplete view of what is installed.
+  unreadableAddons() int
 }
 
 // Firefox browser addon

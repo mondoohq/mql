@@ -14914,6 +14914,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"firefox.addons": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlFirefox).GetAddons()).ToDataRes(types.Array(types.Resource("firefox.addon")))
 	},
+	"firefox.unreadableAddons": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlFirefox).GetUnreadableAddons()).ToDataRes(types.Int)
+	},
 	"firefox.addon.identifier": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlFirefoxAddon).GetIdentifier()).ToDataRes(types.String)
 	},
@@ -34912,6 +34915,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"firefox.addons": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlFirefox).Addons, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"firefox.unreadableAddons": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlFirefox).UnreadableAddons, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"firefox.addon.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -89882,8 +89889,9 @@ func (c *mqlChromeExtensionContentScript) GetPath() *plugin.TValue[string] {
 type mqlFirefox struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlFirefoxInternal it will be used here
-	Addons plugin.TValue[[]any]
+	mqlFirefoxInternal
+	Addons           plugin.TValue[[]any]
+	UnreadableAddons plugin.TValue[int64]
 }
 
 // createFirefox creates a new instance of this resource
@@ -89936,6 +89944,12 @@ func (c *mqlFirefox) GetAddons() *plugin.TValue[[]any] {
 		}
 
 		return c.addons()
+	})
+}
+
+func (c *mqlFirefox) GetUnreadableAddons() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.UnreadableAddons, func() (int64, error) {
+		return c.unreadableAddons()
 	})
 }
 

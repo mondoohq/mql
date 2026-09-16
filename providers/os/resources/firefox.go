@@ -6,6 +6,7 @@ package resources
 import (
 	"encoding/json"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -73,9 +74,46 @@ var firefoxBrowserConfigs = map[string][]firefoxBrowserConfig{
 	},
 }
 
-// firefoxExtensionsJSON represents the structure of Firefox's extensions.json file
+// firefoxExtensionsJSON holds the addons read out of one extensions.json,
+// together with the number of entries that could not be decoded. The count is
+// carried rather than folded into an error because one unreadable addon says
+// nothing about its neighbours, and a silently shorter list satisfies every
+// assertion made about it.
 type firefoxExtensionsJSON struct {
 	Addons []firefoxAddonEntry `json:"addons"`
+	// Set by readFirefoxExtensionsJSON as it decodes, never read from the file.
+	Unreadable int `json:"-"`
+}
+
+// firefoxFlexInt is an int that also decodes from a quoted number.
+//
+// Firefox stores applyBackgroundUpdates as whatever the addon manager last
+// wrote: current entries use a JSON number, while older and migrated ones use a
+// quoted digit. Declaring the field a plain int made a single quoted value fail
+// the decode of the entire file, so one addon cost a profile every addon it had
+// (#10906).
+type firefoxFlexInt int
+
+func (f *firefoxFlexInt) UnmarshalJSON(b []byte) error {
+	s := strings.TrimSpace(string(b))
+	if s == "null" {
+		*f = 0
+		return nil
+	}
+	// A quoted number carries the same meaning as a bare one here.
+	if unquoted, err := strconv.Unquote(s); err == nil {
+		s = unquoted
+	}
+	if s == "" {
+		*f = 0
+		return nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return err
+	}
+	*f = firefoxFlexInt(n)
+	return nil
 }
 
 // firefoxAddonEntry represents a single addon entry in extensions.json
@@ -96,7 +134,7 @@ type firefoxAddonEntry struct {
 	DefaultLocale          *firefoxLocale      `json:"defaultLocale"`
 	Location               string              `json:"location"`
 	Loader                 *string             `json:"loader"`
-	ApplyBackgroundUpdates int                 `json:"applyBackgroundUpdates"`
+	ApplyBackgroundUpdates firefoxFlexInt      `json:"applyBackgroundUpdates"`
 	UserPermissions        *firefoxPermissions `json:"userPermissions"`
 }
 
@@ -128,6 +166,27 @@ func (f *mqlFirefox) id() (string, error) {
 	return "firefox", nil
 }
 
+// mqlFirefoxInternal carries the count of addon entries the decoder skipped,
+// which is known only once addons() has walked every profile. unreadableAddons
+// forces that walk and then reads it.
+type mqlFirefoxInternal struct {
+	unreadableAddons int
+}
+
+func (f *mqlFirefox) unreadableAddons() (int64, error) {
+	// The count is a by-product of the scan, so make sure the scan has run.
+	// GetAddons memoizes, so this costs nothing when addons was already read.
+	addons := f.GetAddons()
+	if addons.Error != nil {
+		return 0, addons.Error
+	}
+	return int64(f.unreadableAddonsCount()), nil
+}
+
+func (f *mqlFirefox) unreadableAddonsCount() int {
+	return f.mqlFirefoxInternal.unreadableAddons
+}
+
 func (f *mqlFirefox) addons() ([]any, error) {
 	conn := f.MqlRuntime.Connection.(shared.Connection)
 	pf := conn.Asset().Platform
@@ -155,6 +214,7 @@ func (f *mqlFirefox) addons() ([]any, error) {
 
 	addons := make([]any, 0, 32) // Pre-allocate with reasonable capacity
 	seen := make(map[string]bool)
+	unreadable := 0
 
 	fs := conn.FileSystem()
 	afs := &afero.Afero{Fs: fs}
@@ -226,6 +286,7 @@ func (f *mqlFirefox) addons() ([]any, error) {
 					log.Debug().Err(err).Str("path", extensionsPath.Data).Msg("could not read extensions.json")
 					continue
 				}
+				unreadable += extensionsData.Unreadable
 
 				for _, addon := range extensionsData.Addons {
 					// Skip built-in/system addons that users typically don't manage
@@ -311,6 +372,11 @@ func (f *mqlFirefox) addons() ([]any, error) {
 		}
 	}
 
+	f.mqlFirefoxInternal.unreadableAddons = unreadable
+	if unreadable > 0 {
+		log.Warn().Int("count", unreadable).Msg("some Firefox addon records could not be read, addons is an incomplete inventory")
+	}
+
 	return addons, nil
 }
 
@@ -326,19 +392,43 @@ func firefoxBrowserDirExists(afs *afero.Afero, dir string) bool {
 	return exists
 }
 
-// readFirefoxExtensionsJSON reads and parses a Firefox extensions.json file
+// readFirefoxExtensionsJSON reads one Firefox extensions.json.
+//
+// The addon array is decoded entry by entry so that an addon carrying a value
+// this struct cannot represent is skipped and counted instead of discarding the
+// file. Decoding the array in one call meant any single unexpected value
+// returned an error for the whole profile, and the caller's log-and-continue
+// then reported the profile as having no addons at all.
+//
+// A file that is not JSON, or whose addons key is not an array, is still an
+// error: that is a profile we could not read, not a profile with no addons.
 func readFirefoxExtensionsJSON(afs *afero.Afero, path string) (*firefoxExtensionsJSON, error) {
 	data, err := afs.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	var extensions firefoxExtensionsJSON
-	if err := json.Unmarshal(data, &extensions); err != nil {
+	var envelope struct {
+		Addons []json.RawMessage `json:"addons"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
 		return nil, err
 	}
 
-	return &extensions, nil
+	extensions := &firefoxExtensionsJSON{
+		Addons: make([]firefoxAddonEntry, 0, len(envelope.Addons)),
+	}
+	for _, raw := range envelope.Addons {
+		var addon firefoxAddonEntry
+		if err := json.Unmarshal(raw, &addon); err != nil {
+			extensions.Unreadable++
+			log.Debug().Err(err).Str("path", path).Msg("skipping an addon entry that could not be decoded")
+			continue
+		}
+		extensions.Addons = append(extensions.Addons, addon)
+	}
+
+	return extensions, nil
 }
 
 // isFirefoxSystemAddon checks if an addon is a built-in/system addon
