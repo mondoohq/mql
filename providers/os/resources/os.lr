@@ -8610,8 +8610,12 @@ luks.keyslot @defaults("index state kdf") {
 // AppArmor status, the loaded profiles and their enforcement modes, and the
 // processes currently under confinement. Use it to confirm AppArmor is
 // active and that security-relevant profiles are in enforce rather than
-// complain or unconfined mode.
-apparmor @defaults("profiles") {
+// complain or unconfined mode. A host that does not have AppArmor reports
+// `installed` false and confines nothing, so gate a policy on `installed`
+// the way one for SELinux gates on selinux.installed.
+apparmor @defaults("installed profiles") {
+  // Whether AppArmor is present on the system
+  installed() bool
   // AppArmor status output version
   version() string
   // Loaded AppArmor profiles

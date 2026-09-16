@@ -10039,6 +10039,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"luks.keyslot.keyMaterialOffset": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlLuksKeyslot).GetKeyMaterialOffset()).ToDataRes(types.Int)
 	},
+	"apparmor.installed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlApparmor).GetInstalled()).ToDataRes(types.Bool)
+	},
 	"apparmor.version": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlApparmor).GetVersion()).ToDataRes(types.String)
 	},
@@ -27493,6 +27496,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"apparmor.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlApparmor).__id, ok = v.Value.(string)
+		return
+	},
+	"apparmor.installed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlApparmor).Installed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"apparmor.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -68506,6 +68513,7 @@ type mqlApparmor struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlApparmorInternal
+	Installed plugin.TValue[bool]
 	Version   plugin.TValue[string]
 	Profiles  plugin.TValue[[]any]
 	Processes plugin.TValue[[]any]
@@ -68546,6 +68554,12 @@ func (c *mqlApparmor) MqlName() string {
 
 func (c *mqlApparmor) MqlID() string {
 	return c.__id
+}
+
+func (c *mqlApparmor) GetInstalled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Installed, func() (bool, error) {
+		return c.installed()
+	})
 }
 
 func (c *mqlApparmor) GetVersion() *plugin.TValue[string] {

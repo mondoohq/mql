@@ -3945,3 +3945,50 @@ func TestResource_WindowsAuditPolicyGerman(t *testing.T) {
 		assert.True(t, truthy)
 	})
 }
+
+// AppArmor on a host that does not have it.
+//
+// The resource used to fail every field with "AppArmor kernel interfaces
+// unavailable" on such a host, so a policy could not ask about AppArmor at all
+// without erroring on RHEL, NixOS or anything else that ships SELinux or
+// nothing. selinux answers installed=false on a host without SELinux, and
+// apparmor now answers the same way: absent is a fact it can report, while a
+// profile list that exists and cannot be read stays an error.
+func TestApparmorAbsent(t *testing.T) {
+	t.Run("installed is a measured false, not an error", func(t *testing.T) {
+		res := x.TestQuery(t, "apparmor.installed")
+		require.NotEmpty(t, res)
+		assert.Empty(t, res[0].Result().Error)
+		assert.Equal(t, false, res[0].Data.Value)
+	})
+
+	t.Run("nothing is confined", func(t *testing.T) {
+		res := x.TestQuery(t, "apparmor.profiles")
+		require.NotEmpty(t, res)
+		assert.Empty(t, res[0].Result().Error)
+		assert.Empty(t, res[0].Data.Value, "a host without AppArmor loads no profiles")
+
+		res = x.TestQuery(t, "apparmor.processes")
+		require.NotEmpty(t, res)
+		assert.Empty(t, res[0].Result().Error)
+		assert.Empty(t, res[0].Data.Value, "a host without AppArmor confines no process")
+	})
+
+	t.Run("version is null rather than an invented empty", func(t *testing.T) {
+		res := x.TestQuery(t, "apparmor.version")
+		require.NotEmpty(t, res)
+		assert.Empty(t, res[0].Result().Error)
+		assert.Nil(t, res[0].Data.Value, "there is no AppArmor version to report")
+	})
+
+	// The gate a policy is meant to use: asking whether AppArmor confines
+	// anything must not error on a host that has none.
+	t.Run("the policy gate resolves", func(t *testing.T) {
+		res := x.TestQuery(t, "apparmor.installed && apparmor.profiles.none(mode == \"complain\")")
+		require.NotEmpty(t, res)
+		assert.Empty(t, res[0].Result().Error)
+		truthy, found := res[0].Data.IsTruthy()
+		assert.True(t, found)
+		assert.False(t, truthy, "AppArmor is not installed, so the gate is false")
+	})
+}
