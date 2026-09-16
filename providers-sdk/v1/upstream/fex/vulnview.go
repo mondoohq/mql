@@ -329,6 +329,11 @@ type VulnRow struct {
 // dropped. Rows carry only derived data — callers add file location and
 // presentation themselves.
 func VulnRows(vex []*VulnerabilityExchange) []VulnRow {
+	// Fold twin records (a CVE-keyed and a GHSA-keyed row for the same
+	// weakness that name each other via aliases/upstream) into one record per
+	// vulnerability, so a twin pair renders as a single row instead of two.
+	vex = FoldAliases(vex)
+
 	var rows []VulnRow
 	for _, v := range vex {
 		if v == nil || v.Id == "" {

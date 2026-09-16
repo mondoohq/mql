@@ -56,7 +56,12 @@ func (v *mqlVulnmgmt) getVexReport() ([]*fex.VulnerabilityExchange, error) {
 		return nil, errors.New("no vulnerability report available")
 	}
 
-	return resp.Vex, nil
+	// The platform returns one record per advisory source: a CVE-keyed record
+	// and a GHSA-keyed record for the same weakness that name each other via
+	// aliases/upstream. Fold those twins into one record per vulnerability so
+	// the vuln.cve/vuln.advisory resources do not double-count a single
+	// weakness. The raw VEX was already uploaded unchanged.
+	return fex.FoldAliases(resp.Vex), nil
 }
 
 // buildSbom assembles a PURL-native SBOM from the asset's `packages` resource
