@@ -252,6 +252,10 @@ func isApplicationBundlePath(path string) bool {
 // default location, so a relocated cache is still recognized: the Go module
 // cache is $GOMODCACHE, which defaults to $GOPATH/pkg/mod but follows GOPATH
 // wherever it points.
+//
+// Markers must be ASCII and lowercase. They are compared against a lowercased
+// path, so an uppercase letter in a marker silently never matches: writing
+// "/DerivedData/" here would disable the entry rather than fail loudly.
 var dependencyCacheMarkers = []string{
 	// Go module cache. github.com/ollama/ollama vendors a prebuilt
 	// app/darwin/Ollama.app, so every host that has fetched the module reports
