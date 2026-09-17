@@ -1,0 +1,10 @@
+{
+  "efi-partition": "/dev/disk/by-partlabel/esp",
+  "efi-subdir": "/boot/efi/EFI/Linux",
+  "luks-partition": "/dev/disk/by-partlabel/root",
+  "kernel-params": "root=LABEL=root rw quiet audit=1",
+  "initramfs-compression": "zstd",
+  "dkms-files": ["/usr/lib/modules/{version}/updates/dkms/*.ko"],
+  "kernel-priority": ["linux", "linux-lts"],
+  "tpm-pcrs": "0+2+7"
+}
