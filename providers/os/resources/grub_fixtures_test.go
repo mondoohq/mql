@@ -204,3 +204,72 @@ func TestFixtureKernelsAreInstalled(t *testing.T) {
 		})
 	}
 }
+
+// TestFixtureBootableMatchesEntryRole states, independently of the
+// implementation, which roles boot an operating system, and checks every entry
+// of all 22 hosts against it. The corpus is required to contain each role, so
+// the negative half cannot quietly stop being exercised: proxmox-nas
+// contributes the memory tests, the Debian and SUSE families the submenus, and
+// the firmware entries are the ones that boot no kernel.
+func TestFixtureBootableMatchesEntryRole(t *testing.T) {
+	bootsAnOS := map[string]bool{
+		GrubEntryNormal:   true,
+		GrubEntryRecovery: true,
+		GrubEntryMemtest:  false,
+		GrubEntrySubmenu:  false,
+		GrubEntryOther:    false,
+	}
+
+	seen := map[string]int{}
+	for _, name := range fixtureNames(t) {
+		t.Run(name, func(t *testing.T) {
+			for _, e := range loadFixtureEntries(t, name) {
+				want, known := bootsAnOS[e.Kind]
+				require.True(t, known, "%q has unknown kind %q", e.Title, e.Kind)
+				seen[e.Kind]++
+
+				assert.Equal(t, want, e.Bootable, "%q is a %s entry", e.Title, e.Kind)
+				if e.Bootable {
+					// An entry with no kernel to hand parameters to cannot be
+					// the subject of a control over boot parameters.
+					assert.NotEmpty(t, e.Kernel, "%q is bootable but boots no kernel", e.Title)
+				}
+			}
+		})
+	}
+
+	for kind := range bootsAnOS {
+		assert.NotZero(t, seen[kind], "no fixture contributes a %q entry", kind)
+	}
+}
+
+// TestFixtureBootedEntryIsBootable checks the flag against the host rather than
+// against the parser: the entry whose command line matches what the boot loader
+// handed the kernel is by definition one that boots an operating system.
+func TestFixtureBootedEntryIsBootable(t *testing.T) {
+	ignore := map[string]bool{"BOOT_IMAGE": true}
+
+	for _, name := range fixtureNames(t) {
+		t.Run(name, func(t *testing.T) {
+			raw := readOracle(t, name, "proc-cmdline.txt")
+			require.NotEmpty(t, raw, "fixture has no /proc/cmdline oracle")
+
+			booted, bootedFlags := ParseCmdline(raw)
+			for k := range ignore {
+				delete(booted, k)
+			}
+
+			entries := loadFixtureEntries(t, name)
+			matched := 0
+			for _, e := range entries {
+				if !parametersAgree(e.Parameters, booted) || !flagsAgree(e.Flags, bootedFlags) {
+					continue
+				}
+				matched++
+				assert.True(t, e.Bootable,
+					"%q carries the command line the host booted with but is not bootable", e.Title)
+			}
+			require.NotZero(t, matched, "no entry matches the booted command line: %s", describeEntries(entries))
+		})
+	}
+}

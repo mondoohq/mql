@@ -1082,6 +1082,7 @@ grub.config 13.2.7
 grub.config.defaultsPath 13.2.7
 grub.config.entries 13.2.7
 grub.config.entry 13.2.7
+grub.config.entry.bootable 13.49.1
 grub.config.entry.cmdline 13.2.7
 grub.config.entry.flags 13.49.0
 grub.config.entry.initrd 13.2.7
