@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
@@ -136,6 +137,34 @@ func ReadUnifiedKernelImage(r io.ReaderAt) (SecbootImage, error) {
 	return img, nil
 }
 
+// secbootImageReader hands back a reader that can be read at an offset, which
+// is what reading a handful of sections out of an executable needs.
+//
+// Not every connection can do that: a container image layer, and the
+// command-backed filesystems that stand in for SSH and WinRM where no file
+// transfer is available, all answer ReadAt with an error. There the image is
+// read into memory instead, which costs the whole file rather than the few
+// kilobytes the sections take, and is the difference between reporting the
+// images and reporting none.
+func secbootImageReader(fs afero.Fs, p string) (io.ReaderAt, func(), error) {
+	f, err := fs.Open(p)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var probe [1]byte
+	if _, err := f.ReadAt(probe[:], 0); err == nil || errors.Is(err, io.EOF) {
+		return f, func() { f.Close() }, nil
+	}
+	f.Close()
+
+	data, err := afero.ReadFile(fs, p)
+	if err != nil {
+		return nil, nil, err
+	}
+	return bytes.NewReader(data), func() {}, nil
+}
+
 // peSectionString returns a section's contents as text. A section is padded out
 // to the file alignment, so it is cut to the length the header declares and
 // then trimmed of the padding a shorter string leaves behind.
@@ -156,9 +185,9 @@ func peSectionString(f *pe.File, name string) string {
 
 type mqlSecbootConfigInternal struct {
 	lock           sync.Mutex
-	fetched        bool
+	fetched        atomic.Bool
 	cachedConfig   SecbootConfig
-	imagesFetched  bool
+	imagesFetched  atomic.Bool
 	cachedImages   []SecbootImage
 	cachedImagesOK bool
 }
@@ -179,12 +208,12 @@ func (s *mqlSecbootConfig) id() (string, error) {
 
 // fetch reads config.json once, so every setting shares a single read.
 func (s *mqlSecbootConfig) fetch() error {
-	if s.fetched {
+	if s.fetched.Load() {
 		return nil
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	if s.fetched {
+	if s.fetched.Load() {
 		return nil
 	}
 
@@ -203,7 +232,7 @@ func (s *mqlSecbootConfig) fetch() error {
 		// A host that does not run secboot has no configuration. The settings
 		// report the defaults the tool would use, and images reports null
 		// rather than describing a host that has none.
-		s.fetched = true
+		s.fetched.Store(true)
 		return nil
 	}
 	defer f.Close()
@@ -213,7 +242,7 @@ func (s *mqlSecbootConfig) fetch() error {
 		return err
 	}
 	s.cachedConfig = cfg
-	s.fetched = true
+	s.fetched.Store(true)
 	return nil
 }
 
@@ -344,12 +373,12 @@ func (s *mqlSecbootConfig) fetchImages() error {
 	if err := s.fetch(); err != nil {
 		return err
 	}
-	if s.imagesFetched {
+	if s.imagesFetched.Load() {
 		return nil
 	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	if s.imagesFetched {
+	if s.imagesFetched.Load() {
 		return nil
 	}
 
@@ -362,7 +391,7 @@ func (s *mqlSecbootConfig) fetchImages() error {
 		return errors.New("filesystem not available")
 	}
 
-	s.imagesFetched = true
+	s.imagesFetched.Store(true)
 
 	dir := s.cachedConfig.EfiSubdir
 	if dir == "" {
@@ -388,13 +417,13 @@ func (s *mqlSecbootConfig) fetchImages() error {
 	images := make([]SecbootImage, 0, len(names))
 	for _, name := range names {
 		p := path.Join(dir, name)
-		f, err := fs.Open(p)
+		r, closer, err := secbootImageReader(fs, p)
 		if err != nil {
 			log.Debug().Str("path", p).Err(err).Msg("cannot open unified kernel image")
 			continue
 		}
-		img, err := ReadUnifiedKernelImage(f)
-		f.Close()
+		img, err := ReadUnifiedKernelImage(r)
+		closer()
 		if err != nil {
 			// A file with an .efi suffix that is not a unified kernel image,
 			// such as the firmware updater secboot copies beside them, is not

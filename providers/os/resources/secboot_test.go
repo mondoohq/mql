@@ -4,11 +4,13 @@
 package resources
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -208,4 +210,53 @@ func TestSecbootFixtureConfig(t *testing.T) {
 	// Not in the file, so it has to come from the defaults.
 	assert.Equal(t, "/etc/machine-id", cfg.MachineIdPath)
 	assert.Equal(t, "auto", cfg.TpmDevice)
+}
+
+// noReadAtFs stands in for the connections that cannot read a file at an
+// offset. A container image layer answers ReadAt with "not implemented yet"
+// (connection/tar/file.go), and so do the command-backed filesystems used over
+// SSH and WinRM when no file transfer is available.
+type noReadAtFs struct{ afero.Fs }
+
+type noReadAtFile struct{ afero.File }
+
+func (f noReadAtFile) ReadAt(_ []byte, _ int64) (int, error) {
+	return 0, errors.New("not implemented")
+}
+
+func (fs noReadAtFs) Open(name string) (afero.File, error) {
+	f, err := fs.Fs.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return noReadAtFile{f}, nil
+}
+
+// TestSecbootImageReaderWithoutReadAt is the container-image and SSH-cat case.
+// Reading sections out of an executable needs a reader that can seek, so
+// without a fallback every image on those connections fails to parse and the
+// host reports no images at all rather than the ones it has.
+func TestSecbootImageReaderWithoutReadAt(t *testing.T) {
+	const image = "/boot/efi/EFI/Linux/linux-9f8e7d6c.efi"
+	base := afero.NewBasePathFs(afero.NewOsFs(), secbootFixtureRoot)
+
+	read := func(t *testing.T, fs afero.Fs) SecbootImage {
+		t.Helper()
+		r, closer, err := secbootImageReader(fs, image)
+		require.NoError(t, err)
+		defer closer()
+		img, err := ReadUnifiedKernelImage(r)
+		require.NoError(t, err)
+		return img
+	}
+
+	seekable := read(t, base)
+	buffered := read(t, noReadAtFs{base})
+
+	// The connection decides how the bytes are fetched, never what they say.
+	assert.Equal(t, seekable.Cmdline, buffered.Cmdline)
+	assert.Equal(t, seekable.Kernel, buffered.Kernel)
+	assert.Equal(t, seekable.Signed, buffered.Signed)
+	assert.Equal(t, "1", buffered.Parameters["audit"])
+	assert.NotEmpty(t, buffered.Cmdline, "the image was not read at all")
 }
