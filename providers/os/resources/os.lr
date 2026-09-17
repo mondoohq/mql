@@ -38,6 +38,7 @@ alias os.base.goose = goose
 alias os.base.haproxy = haproxy
 alias os.base.ipAddress = ipAddress
 alias os.base.jboss = jboss
+alias os.base.jetbrains = jetbrains
 alias os.base.junie = junie
 alias os.base.kilocode = kilocode
 alias os.base.kiro = kiro
