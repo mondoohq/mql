@@ -1,0 +1,1 @@
+BOOT_IMAGE=(hd0,gpt3)/boot/vmlinuz-6.12.0-267.el10.x86_64 root=UUID=cdc4b8b2-23d1-428c-a478-eeca4ab3a004 console=tty0 console=ttyS0,115200n8 nvme_core.io_timeout=4294967295 crashkernel=2G-64G:256M,64G-:512M

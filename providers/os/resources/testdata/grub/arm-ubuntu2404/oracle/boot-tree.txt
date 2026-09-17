@@ -1,0 +1,15 @@
+drwxr-xr-x       4096 /boot
+drwx------        512 /boot/efi
+drwx------        512 /boot/efi/EFI
+drwx------        512 /boot/efi/EFI/BOOT
+-rwx------     987336 /boot/efi/EFI/BOOT/BOOTAA64.EFI
+drwx------        512 /boot/efi/EFI/ubuntu
+-rwx------        110 /boot/efi/EFI/ubuntu/BOOTAA64.CSV
+-rwx------        112 /boot/efi/EFI/ubuntu/grub.cfg
+drwxr-xr-x       4096 /boot/grub
+drwxr-xr-x      12288 /boot/grub/arm64-efi
+drwxr-xr-x       4096 /boot/grub/fonts
+-rw-------       7777 /boot/grub/grub.cfg
+-rw-r--r--       1024 /boot/grub/grubenv
+drwxr-xr-x       4096 /boot/grub/locale
+drwx------      16384 /boot/lost+found

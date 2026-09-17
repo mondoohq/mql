@@ -1,0 +1,7 @@
+index=0
+kernel="/boot/vmlinuz-5.14.0-570.132.1.el9_6.aarch64"
+args="console=ttyS0,115200n8 console=tty0 net.ifnames=0 nvme_core.io_timeout=4294967295 crashkernel=1G-4G:256M,4G-64G:320M,64G-:576M $tuned_params"
+root="UUID=6e148df3-79cf-4284-843c-1e4b2f6cd957"
+initrd="/boot/initramfs-5.14.0-570.132.1.el9_6.aarch64.img $tuned_initrd"
+title="Red Hat Enterprise Linux (5.14.0-570.132.1.el9_6.aarch64) 9.6 (Plow)"
+id="ffffffffffffffffffffffffffffffff-5.14.0-570.132.1.el9_6.aarch64"

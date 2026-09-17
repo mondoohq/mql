@@ -10,13 +10,16 @@ import (
 	"io"
 	"path"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/v13/llx"
 	"go.mondoo.com/mql/v13/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/v13/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/v13/providers/os/connection/shared"
+	"go.mondoo.com/mql/v13/types"
 )
 
 // Known paths for /etc/default/grub
@@ -50,10 +53,24 @@ var grubCfgPaths = []string{
 	"/boot/efi/EFI/Microsoft/grub.cfg",   // WSL/Hyper-V (EFI)
 }
 
+// Boot Loader Specification entries. Red Hat Enterprise Linux 8 and later,
+// CentOS Stream, Rocky Linux, AlmaLinux and Amazon Linux 2023 keep their kernel
+// command lines here and leave grub.cfg with no kernel lines at all.
+const blsEntriesDir = "/boot/loader/entries"
+
+// The GRUB environment block, which holds the value of $kernelopts on the
+// releases whose entries reference it. On some distributions the path under
+// /boot/grub2 is a symlink to a copy on the EFI system partition.
+var grubEnvPaths = []string{
+	"/boot/grub2/grubenv",
+	"/boot/grub/grubenv",
+}
+
 type mqlGrubConfigInternal struct {
 	lock              sync.Mutex
 	fetched           bool
 	cachedGrubFound   bool
+	cachedEntriesOK   bool
 	cachedEntries     []GrubEntry
 	cachedPwProtected bool
 }
@@ -82,10 +99,10 @@ func initGrubConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 	if x, ok := args["grubPath"]; ok {
 		path, ok := x.Value.(string)
 		if !ok || path == "" {
-			args["grubPath"] = llx.StringData(findExistingPath(fs, grubCfgPaths))
+			args["grubPath"] = llx.StringData(findGrubCfg(fs, grubCfgPaths))
 		}
 	} else {
-		args["grubPath"] = llx.StringData(findExistingPath(fs, grubCfgPaths))
+		args["grubPath"] = llx.StringData(findGrubCfg(fs, grubCfgPaths))
 	}
 
 	return args, nil, nil
@@ -102,6 +119,27 @@ func findExistingPath(fs afero.Fs, candidates []string) string {
 		}
 	}
 	return ""
+}
+
+// findGrubCfg returns the first candidate holding a real configuration. A
+// distribution that boots via EFI commonly installs a grub.cfg on the EFI
+// system partition that only chains to the configuration under /boot, and that
+// stub declares no entries, so it is used only when nothing else is readable.
+func findGrubCfg(fs afero.Fs, candidates []string) string {
+	fallback := ""
+	for _, path := range candidates {
+		content, err := afero.ReadFile(fs, path)
+		if err != nil {
+			continue
+		}
+		if fallback == "" {
+			fallback = path
+		}
+		if !isGrubCfgStub(content) {
+			return path
+		}
+	}
+	return fallback
 }
 
 func (g *mqlGrubConfig) id() (string, error) {
@@ -153,12 +191,6 @@ func (g *mqlGrubConfig) fetchGrubCfg() error {
 		return nil
 	}
 
-	cfgPath := g.GetGrubPath().Data
-	if cfgPath == "" {
-		g.fetched = true
-		return nil
-	}
-
 	conn, ok := g.MqlRuntime.Connection.(shared.Connection)
 	if !ok {
 		return errors.New("wrong connection type")
@@ -166,6 +198,16 @@ func (g *mqlGrubConfig) fetchGrubCfg() error {
 	fs := conn.FileSystem()
 	if fs == nil {
 		return errors.New("filesystem not available")
+	}
+
+	cfgPath := g.GetGrubPath().Data
+	if cfgPath == "" {
+		// Without a grub.cfg the entry files can still be read directly.
+		entries, _ := LoadGrubEntries(fs, "", nil)
+		g.cachedEntries = entries
+		g.cachedEntriesOK = len(entries) > 0
+		g.fetched = true
+		return nil
 	}
 
 	f, err := fs.Open(cfgPath)
@@ -179,10 +221,11 @@ func (g *mqlGrubConfig) fetchGrubCfg() error {
 		return err
 	}
 
-	entries, err := ParseGrubCfgEntries(strings.NewReader(string(content)))
+	entries, err := LoadGrubEntries(fs, cfgPath, content)
 	if err != nil {
 		return err
 	}
+	g.cachedEntriesOK = len(entries) > 0
 
 	pwCfg := ParseGrubPasswordConfig(content)
 	protected := pwCfg.Protected()
@@ -207,15 +250,28 @@ func (g *mqlGrubConfig) entries() ([]any, error) {
 		return nil, err
 	}
 
+	if !g.cachedEntriesOK {
+		// A host that does not boot with GRUB has no entries to report. An
+		// empty list would read as "GRUB is installed and offers nothing to
+		// boot", and would satisfy every assertion made over the entries.
+		g.Entries.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
 	resources := make([]any, 0, len(g.cachedEntries))
 	for _, entry := range g.cachedEntries {
-		entryID := "grub.config.entry:" + entry.Title + ":" + entry.Cmdline
+		entryID := "grub.config.entry:" + entry.Source + ":" + entry.Title + ":" + entry.Cmdline
 		resource, err := CreateResource(g.MqlRuntime, "grub.config.entry", map[string]*llx.RawData{
-			"__id":      llx.StringData(entryID),
-			"title":     llx.StringData(entry.Title),
-			"cmdline":   llx.StringData(entry.Cmdline),
-			"initrd":    llx.StringData(entry.Initrd),
-			"isSubmenu": llx.BoolData(entry.IsSubmenu),
+			"__id":       llx.StringData(entryID),
+			"title":      llx.StringData(entry.Title),
+			"kind":       llx.StringData(entry.Kind),
+			"kernel":     llx.StringData(entry.Kernel),
+			"cmdline":    llx.StringData(entry.Cmdline),
+			"parameters": llx.MapData(convert.MapToInterfaceMap(entry.Parameters), types.String),
+			"flags":      llx.ArrayData(convert.SliceAnyToInterface(entry.Flags), types.String),
+			"source":     llx.StringData(entry.Source),
+			"initrd":     llx.StringData(entry.Initrd),
+			"isSubmenu":  llx.BoolData(entry.IsSubmenu),
 		})
 		if err != nil {
 			return nil, err
@@ -279,12 +335,39 @@ func stripQuotes(s string) string {
 	return s
 }
 
-// GrubEntry represents a parsed GRUB menu entry.
+// Entry roles. Only normal and recovery entries boot a kernel that a control
+// over boot parameters applies to.
+const (
+	GrubEntryNormal   = "normal"
+	GrubEntryRecovery = "recovery"
+	GrubEntryMemtest  = "memtest"
+	GrubEntrySubmenu  = "submenu"
+	GrubEntryOther    = "other"
+)
+
+// GrubEntry represents a parsed GRUB boot entry, from a menu entry in grub.cfg
+// or from a Boot Loader Specification file.
 type GrubEntry struct {
 	Title     string
+	Kind      string
+	Kernel    string
 	Cmdline   string
 	Initrd    string
 	IsSubmenu bool
+
+	// Parameters holds the key-value tokens of the kernel command line, last
+	// occurrence winning as the kernel reads them. Flags holds the bare ones.
+	Parameters map[string]string
+	Flags      []string
+
+	// Source is the file the entry was read from.
+	Source string
+
+	// Classes carries the --class values of a menu entry, or grub_class of a
+	// Boot Loader Specification entry, which is how a memory test entry is
+	// labelled. Version is the BLS version key, which names a rescue entry.
+	Classes []string
+	Version string
 }
 
 var (
@@ -292,7 +375,282 @@ var (
 	reSubmenu   = regexp.MustCompile(`^\s*submenu\s+['"]([^'"]+)['"]`)
 	reLinux     = regexp.MustCompile(`^\s*(?:linux|linux16|linuxefi)\s+(.+)`)
 	reInitrd    = regexp.MustCompile(`^\s*(?:initrd|initrd16|initrdefi)\s+(.+)`)
+	reClass     = regexp.MustCompile(`--class\s+(\S+)`)
+
+	// reBlscfg matches the command that hands the menu over to the Boot Loader
+	// Specification entry files.
+	reBlscfg = regexp.MustCompile(`(?m)^\s*blscfg\s*$`)
+
+	// A stub grub.cfg chains to the real configuration instead of declaring
+	// any entries of its own.
+	reConfigfile   = regexp.MustCompile(`(?m)^\s*configfile\s`)
+	reAnyMenuEntry = regexp.MustCompile(`(?m)^\s*(?:menuentry|submenu)\s+['"]`)
+	reAnyLinux     = regexp.MustCompile(`(?m)^\s*(?:linux|linux16|linuxefi)\s`)
 )
+
+// isGrubCfgStub reports whether a grub.cfg only points at another
+// configuration file. Booting from the EFI system partition commonly installs
+// one of these beside the real configuration under /boot.
+func isGrubCfgStub(content []byte) bool {
+	if !reConfigfile.Match(content) {
+		return false
+	}
+	return !reAnyMenuEntry.Match(content) && !reAnyLinux.Match(content) && !reBlscfg.Match(content)
+}
+
+// ParseGrubEnv parses a GRUB environment block. The file is a fixed 1024 bytes
+// padded to the end with '#', which the comment rule discards along with the
+// header line.
+func ParseGrubEnv(r io.Reader) (map[string]string, error) {
+	vars := map[string]string{}
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || line[0] == '#' {
+			continue
+		}
+		key, value, found := strings.Cut(line, "=")
+		if !found {
+			continue
+		}
+		vars[strings.TrimSpace(key)] = strings.TrimSpace(value)
+	}
+	return vars, scanner.Err()
+}
+
+// readGrubEnv returns the GRUB environment variables, or an empty map when no
+// environment block is readable.
+func readGrubEnv(fs afero.Fs) map[string]string {
+	for _, path := range grubEnvPaths {
+		f, err := fs.Open(path)
+		if err != nil {
+			continue
+		}
+		vars, err := ParseGrubEnv(f)
+		f.Close()
+		if err == nil && len(vars) > 0 {
+			return vars
+		}
+	}
+	return map[string]string{}
+}
+
+// ParseBLSEntry parses one Boot Loader Specification entry file, whose lines
+// are a key and a value separated by whitespace.
+func ParseBLSEntry(r io.Reader) (GrubEntry, error) {
+	entry := GrubEntry{}
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || line[0] == '#' {
+			continue
+		}
+
+		key := line
+		value := ""
+		if idx := strings.IndexAny(line, " \t"); idx >= 0 {
+			key = line[:idx]
+			value = strings.TrimSpace(line[idx+1:])
+		}
+
+		switch key {
+		case "title":
+			entry.Title = value
+		case "version":
+			entry.Version = value
+		case "linux":
+			entry.Kernel = value
+		case "initrd":
+			entry.Initrd = value
+		case "options":
+			// The specification allows several options lines, which together
+			// make up one command line.
+			if entry.Cmdline == "" {
+				entry.Cmdline = value
+			} else {
+				entry.Cmdline += " " + value
+			}
+		case "grub_class":
+			entry.Classes = append(entry.Classes, value)
+		}
+	}
+	return entry, scanner.Err()
+}
+
+// readBLSEntries reads every entry file in dir, resolving the bootloader
+// variables the entries reference.
+func readBLSEntries(fs afero.Fs, dir string, vars map[string]string) ([]GrubEntry, error) {
+	files, err := afero.ReadDir(fs, dir)
+	if err != nil {
+		return nil, nil
+	}
+
+	names := []string{}
+	for _, f := range files {
+		if f.IsDir() || !strings.HasSuffix(f.Name(), ".conf") {
+			continue
+		}
+		names = append(names, f.Name())
+	}
+	sort.Strings(names)
+
+	entries := make([]GrubEntry, 0, len(names))
+	for _, name := range names {
+		p := path.Join(dir, name)
+		f, err := fs.Open(p)
+		if err != nil {
+			continue
+		}
+		entry, err := ParseBLSEntry(f)
+		f.Close()
+		if err != nil {
+			continue
+		}
+		entry.Source = p
+		entries = append(entries, entry)
+	}
+
+	finalizeEntries(entries, "", vars)
+	return entries, nil
+}
+
+// LoadGrubEntries returns the entries the bootloader offers on the next boot,
+// reading whichever source it takes them from. content is the grub.cfg at
+// cfgPath, which may be empty when the host has none.
+func LoadGrubEntries(fs afero.Fs, cfgPath string, content []byte) ([]GrubEntry, error) {
+	vars := readGrubEnv(fs)
+
+	// A grub.cfg that calls blscfg hands the menu over to the entry files, so
+	// whatever menu entries it declares itself do not boot.
+	if cfgPath == "" || reBlscfg.Match(content) {
+		return readBLSEntries(fs, blsEntriesDir, vars)
+	}
+
+	entries, err := ParseGrubCfgEntries(strings.NewReader(string(content)))
+	if err != nil {
+		return nil, err
+	}
+	finalizeEntries(entries, cfgPath, vars)
+	return entries, nil
+}
+
+// expandGrubVars resolves the variables the bootloader would expand. A variable
+// with no value is left as written, which is what grubby reports for the tuned
+// variables the Red Hat entries carry.
+func expandGrubVars(s string, vars map[string]string) string {
+	if !strings.ContainsRune(s, '$') {
+		return s
+	}
+	return reShellVar.ReplaceAllStringFunc(s, func(match string) string {
+		name := strings.Trim(match, "${}")
+		if value, ok := vars[name]; ok {
+			return value
+		}
+		return match
+	})
+}
+
+// ParseCmdline splits a kernel command line into its key-value parameters and
+// its bare flags. A parameter repeated on one command line takes its last
+// value, as the kernel does. A token that is still an unresolved variable is
+// not a value and is skipped.
+func ParseCmdline(cmdline string) (map[string]string, []string) {
+	params := map[string]string{}
+	flags := []string{}
+
+	for _, token := range strings.Fields(cmdline) {
+		if strings.HasPrefix(token, "$") {
+			continue
+		}
+		if key, value, found := strings.Cut(token, "="); found {
+			params[key] = value
+			continue
+		}
+		flags = append(flags, token)
+	}
+	return params, flags
+}
+
+// finalizeEntries fills in what every entry needs regardless of the file it
+// came from: the kernel it boots, its parsed command line, and its role.
+func finalizeEntries(entries []GrubEntry, source string, vars map[string]string) {
+	for i := range entries {
+		entry := &entries[i]
+		if entry.Source == "" {
+			entry.Source = source
+		}
+
+		entry.Cmdline = expandGrubVars(entry.Cmdline, vars)
+
+		args := entry.Cmdline
+		if entry.Kernel == "" && args != "" {
+			// A grub.cfg entry writes the kernel path as the first argument of
+			// its linux line; a Boot Loader Specification entry names it
+			// separately and its options are arguments only.
+			kernel, rest, _ := strings.Cut(args, " ")
+			entry.Kernel = kernel
+			args = rest
+		}
+
+		entry.Parameters, entry.Flags = ParseCmdline(args)
+		entry.Kind = classifyEntry(entry)
+	}
+}
+
+// classifyEntry names the role of an entry from the markers the distributions
+// actually use: Debian and Ubuntu write a recovery flag, SUSE writes single,
+// and the Red Hat family names a rescue entry in its version.
+func classifyEntry(entry *GrubEntry) string {
+	if entry.IsSubmenu {
+		return GrubEntrySubmenu
+	}
+	if entry.Kernel == "" {
+		// An entry that boots no kernel, such as one opening the firmware
+		// settings, carries no boot parameters to audit.
+		return GrubEntryOther
+	}
+
+	if hasClass(entry.Classes, "memtest") ||
+		strings.Contains(strings.ToLower(path.Base(entry.Kernel)), "memtest") {
+		return GrubEntryMemtest
+	}
+
+	for _, flag := range entry.Flags {
+		if flag == "recovery" || flag == "single" {
+			return GrubEntryRecovery
+		}
+	}
+	lowerTitle := strings.ToLower(entry.Title)
+	if strings.Contains(lowerTitle, "recovery mode") ||
+		strings.Contains(lowerTitle, "rescue") ||
+		strings.Contains(strings.ToLower(entry.Version), "rescue") {
+		return GrubEntryRecovery
+	}
+
+	return GrubEntryNormal
+}
+
+// menuEntryClasses returns the --class values declared on a menuentry line.
+func menuEntryClasses(line string) []string {
+	matches := reClass.FindAllStringSubmatch(line, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	classes := make([]string, 0, len(matches))
+	for _, m := range matches {
+		classes = append(classes, m[1])
+	}
+	return classes
+}
+
+func hasClass(classes []string, want string) bool {
+	for _, c := range classes {
+		if strings.EqualFold(c, want) {
+			return true
+		}
+	}
+	return false
+}
 
 // ParseGrubCfgEntries parses grub.cfg for menuentry and submenu blocks.
 func ParseGrubCfgEntries(r io.Reader) ([]GrubEntry, error) {
@@ -313,7 +671,7 @@ func ParseGrubCfgEntries(r io.Reader) ([]GrubEntry, error) {
 			if current != nil {
 				entries = append(entries, *current)
 			}
-			current = &GrubEntry{Title: m[1]}
+			current = &GrubEntry{Title: m[1], Classes: menuEntryClasses(line)}
 			depth = 0
 			opened = false
 			if strings.Contains(line, "{") {

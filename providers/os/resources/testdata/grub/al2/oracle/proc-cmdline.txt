@@ -1,0 +1,1 @@
+BOOT_IMAGE=/boot/vmlinuz-4.14.355-284.742.amzn2.x86_64 root=UUID=0bfad01f-e9c0-4c88-a7e5-57e65cec7179 ro console=tty0 console=ttyS0,115200n8 net.ifnames=0 biosdevname=0 nvme_core.io_timeout=4294967295 rd.emergency=poweroff rd.shell=0

@@ -1,0 +1,14 @@
+systemd-boot not installed in ESP.
+System:
+Not booted with EFI
+
+Available Boot Loaders on ESP:
+          ESP: /boot/efi (/dev/disk/by-partuuid/c80e96fd-9ccf-4ece-8c93-e66ffb623bf2)
+         File: ├─/EFI/BOOT/BOOTX64.EFI
+               └─/EFI/BOOT/fbx64.efi
+
+Boot Loader Entries:
+        $BOOT: /boot/efi (/dev/disk/by-partuuid/c80e96fd-9ccf-4ece-8c93-e66ffb623bf2)
+        token: centos
+
+0 entries, no entry could be determined as default.

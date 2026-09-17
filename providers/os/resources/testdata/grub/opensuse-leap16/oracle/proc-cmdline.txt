@@ -1,0 +1,1 @@
+BOOT_IMAGE=/boot/vmlinuz-6.12.0-160000.35-default root=LABEL=ROOT console=ttyS0 net.ifnames=0 iommu.passthrough=1 8250.nr_uarts=4 dis_ucode_ldr multipath=off nvme_core.admin_timeout=4294967295 nvme_core.io_timeout=4294967295 security=selinux selinux=1
