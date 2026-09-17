@@ -53,6 +53,19 @@ var grubCfgPaths = []string{
 	"/boot/efi/EFI/Microsoft/grub.cfg",   // WSL/Hyper-V (EFI)
 }
 
+// Known paths for a GRUB legacy menu. GRUB 0.97 keeps the whole menu in one
+// file, and the distributions that shipped it disagree on its name: Debian and
+// Ubuntu wrote menu.lst, the Red Hat family through RHEL 6 and Amazon Linux 1
+// wrote grub.conf. On the Red Hat family only one of them is a real file and
+// the others are symlinks to it, so every name it answers to is listed, since a
+// filesystem or image scan need not resolve a link.
+var grubLegacyCfgPaths = []string{
+	"/boot/grub/menu.lst",
+	"/boot/grub/grub.conf",
+	"/boot/grub2/grub.conf",
+	"/etc/grub.conf",
+}
+
 // Boot Loader Specification entries. Red Hat Enterprise Linux 8 and later,
 // CentOS Stream, Rocky Linux, AlmaLinux and Amazon Linux 2023 keep their kernel
 // command lines here and leave grub.cfg with no kernel lines at all.
@@ -99,10 +112,10 @@ func initGrubConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 	if x, ok := args["grubPath"]; ok {
 		path, ok := x.Value.(string)
 		if !ok || path == "" {
-			args["grubPath"] = llx.StringData(findGrubCfg(fs, grubCfgPaths))
+			args["grubPath"] = llx.StringData(findBootConfig(fs))
 		}
 	} else {
-		args["grubPath"] = llx.StringData(findGrubCfg(fs, grubCfgPaths))
+		args["grubPath"] = llx.StringData(findBootConfig(fs))
 	}
 
 	return args, nil, nil
@@ -119,6 +132,16 @@ func findExistingPath(fs afero.Fs, candidates []string) string {
 		}
 	}
 	return ""
+}
+
+// findBootConfig returns the boot loader configuration to read. A GRUB 2
+// grub.cfg wins wherever one exists, since a host that has been upgraded can
+// keep a stale legacy menu beside the configuration it actually boots from.
+func findBootConfig(fs afero.Fs) string {
+	if p := findGrubCfg(fs, grubCfgPaths); p != "" {
+		return p
+	}
+	return findExistingPath(fs, grubLegacyCfgPaths)
 }
 
 // findGrubCfg returns the first candidate holding a real configuration. A
@@ -232,6 +255,17 @@ func (g *mqlGrubConfig) fetchGrubCfg() error {
 		return err
 	}
 	g.cachedEntriesOK = len(entries) > 0
+
+	if isGrubLegacyCfg(content) {
+		// A legacy menu states password protection with a directive of its
+		// own, which the GRUB 2 parser does not recognise and would read as
+		// no password on a host that has one.
+		g.cachedEntries = entries
+		g.cachedPwProtected = ParseGrubLegacyPasswordProtected(content)
+		g.cachedGrubFound = true
+		g.fetched = true
+		return nil
+	}
 
 	pwCfg := ParseGrubPasswordConfig(content)
 	protected := pwCfg.Protected()
@@ -389,12 +423,79 @@ var (
 	// Specification entry files.
 	reBlscfg = regexp.MustCompile(`(?m)^\s*blscfg\s*$`)
 
+	// A GRUB legacy menu introduces each entry with a title line and names the
+	// kernel with `kernel`, where GRUB 2 writes `menuentry` and `linux`.
+	reLegacyTitle    = regexp.MustCompile(`^\s*title\s+(.*)$`)
+	reLegacyKernel   = regexp.MustCompile(`^\s*kernel\s+(.+)$`)
+	reLegacyInitrd   = regexp.MustCompile(`^\s*initrd\s+(.+)$`)
+	reAnyLegacyTitle = regexp.MustCompile(`(?m)^\s*title\s+\S`)
+
 	// A stub grub.cfg chains to the real configuration instead of declaring
 	// any entries of its own.
 	reConfigfile   = regexp.MustCompile(`(?m)^\s*configfile\s`)
 	reAnyMenuEntry = regexp.MustCompile(`(?m)^\s*(?:menuentry|submenu)\s+['"]`)
 	reAnyLinux     = regexp.MustCompile(`(?m)^\s*(?:linux|linux16|linuxefi)\s`)
 )
+
+// isGrubLegacyCfg reports whether content is a GRUB legacy menu rather than a
+// GRUB 2 configuration. The decision is made from the file itself rather than
+// from the path it was found at, because the Red Hat family shipped the legacy
+// menu under a name that GRUB 2 also uses on other distributions.
+//
+// Declaring an entry with `title` is what separates the two formats: GRUB 2
+// writes `menuentry`, and none of the 43 grub.cfg files in testdata/grub, which
+// cover 22 hosts across every layout the provider meets, contains a line
+// beginning with `title`. TestGrubCfgCorpusIsNotLegacy holds that.
+func isGrubLegacyCfg(content []byte) bool {
+	return reAnyLegacyTitle.Match(content)
+}
+
+// ParseGrubLegacyEntries parses a GRUB legacy menu. An entry opens with a
+// title line and runs to the next one, so there is no nesting to track and no
+// submenus to separate. `kernel` carries the image and its arguments on one
+// line, exactly as a GRUB 2 `linux` line does, which is why the split into
+// kernel and arguments is left to finalizeEntries. An entry that boots another
+// loader with `chainloader`, which is how a legacy menu offers Windows, names
+// no kernel and is classified as booting no operating system.
+func ParseGrubLegacyEntries(r io.Reader) ([]GrubEntry, error) {
+	var entries []GrubEntry
+	var current *GrubEntry
+
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || trimmed[0] == '#' {
+			continue
+		}
+
+		if m := reLegacyTitle.FindStringSubmatch(line); m != nil {
+			if current != nil {
+				entries = append(entries, *current)
+			}
+			current = &GrubEntry{Title: strings.TrimSpace(m[1])}
+			continue
+		}
+		if current == nil {
+			// Menu-level settings such as default, timeout and password
+			// precede the first entry and belong to no entry.
+			continue
+		}
+
+		if m := reLegacyKernel.FindStringSubmatch(line); m != nil {
+			current.Cmdline = strings.TrimSpace(m[1])
+			continue
+		}
+		if m := reLegacyInitrd.FindStringSubmatch(line); m != nil {
+			current.Initrd = strings.TrimSpace(m[1])
+		}
+	}
+	if current != nil {
+		entries = append(entries, *current)
+	}
+
+	return entries, scanner.Err()
+}
 
 // isGrubCfgStub reports whether a grub.cfg only points at another
 // configuration file. Booting from the EFI system partition commonly installs
@@ -534,7 +635,13 @@ func LoadGrubEntries(fs afero.Fs, cfgPath string, content []byte) ([]GrubEntry, 
 		return readBLSEntries(fs, blsEntriesDir, vars)
 	}
 
-	entries, err := ParseGrubCfgEntries(strings.NewReader(string(content)))
+	var entries []GrubEntry
+	var err error
+	if isGrubLegacyCfg(content) {
+		entries, err = ParseGrubLegacyEntries(bytes.NewReader(content))
+	} else {
+		entries, err = ParseGrubCfgEntries(bytes.NewReader(content))
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -886,6 +993,48 @@ func shellVarNames(value string) []string {
 // on every RHEL-family host, is a template rather than a password.
 func ParseGrubPasswordProtected(content []byte) bool {
 	return ParseGrubPasswordConfig(content).Protected()
+}
+
+// ParseGrubLegacyPasswordProtected reports whether a GRUB legacy menu requires
+// a password before its boot parameters can be changed. GRUB 0.97 has no
+// superusers list and no separate password file: a single menu-level
+// `password` directive gates the interactive command line and the editing of
+// any entry, and is what a `lock` line on an individual entry defers to.
+//
+//	password --md5 $1$salt$hash
+//	password --encrypted $6$salt$hash
+//	password cleartext
+//
+// The directive is only meaningful before the first entry, which is where GRUB
+// reads it, so a `password` line inside an entry body is not counted. The
+// credential is taken literally: unlike a GRUB 2 configuration, a legacy menu
+// is written by hand rather than generated, so there is no templated variable
+// to resolve, and an MD5 crypt hash begins with the `$` that a variable would.
+func ParseGrubLegacyPasswordProtected(content []byte) bool {
+	scanner := bufio.NewScanner(bytes.NewReader(content))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || line[0] == '#' {
+			continue
+		}
+		if reLegacyTitle.MatchString(line) {
+			// Past the menu-level section.
+			return false
+		}
+
+		fields := strings.Fields(line)
+		if fields[0] != "password" {
+			continue
+		}
+		// Skip the option flags that say how the credential is encoded.
+		for _, field := range fields[1:] {
+			if strings.HasPrefix(field, "--") {
+				continue
+			}
+			return true
+		}
+	}
+	return false
 }
 
 // readGrubUserCfg reads user.cfg next to grub.cfg. That is the ${prefix}/user.cfg
