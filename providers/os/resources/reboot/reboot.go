@@ -19,6 +19,10 @@ func New(conn shared.Connection) (Reboot, error) {
 	pf := conn.Asset().Platform
 
 	switch {
+	// NixOS is in the linux family and none of the others, and it carries no
+	// package manager whose reboot marker the cases below look for.
+	case pf.Name == "nixos":
+		return newNixosReboot(conn), nil
 	case pf.IsFamily("debian"):
 		return &DebianReboot{conn: conn}, nil
 	case pf.IsFamily("redhat") || pf.Name == "amazonlinux":
