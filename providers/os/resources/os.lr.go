@@ -9446,8 +9446,23 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"grub.config.entry.title": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGrubConfigEntry).GetTitle()).ToDataRes(types.String)
 	},
+	"grub.config.entry.kind": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGrubConfigEntry).GetKind()).ToDataRes(types.String)
+	},
+	"grub.config.entry.kernel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGrubConfigEntry).GetKernel()).ToDataRes(types.String)
+	},
 	"grub.config.entry.cmdline": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGrubConfigEntry).GetCmdline()).ToDataRes(types.String)
+	},
+	"grub.config.entry.parameters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGrubConfigEntry).GetParameters()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"grub.config.entry.flags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGrubConfigEntry).GetFlags()).ToDataRes(types.Array(types.String))
+	},
+	"grub.config.entry.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGrubConfigEntry).GetSource()).ToDataRes(types.String)
 	},
 	"grub.config.entry.initrd": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGrubConfigEntry).GetInitrd()).ToDataRes(types.String)
@@ -26607,8 +26622,28 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGrubConfigEntry).Title, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"grub.config.entry.kind": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGrubConfigEntry).Kind, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"grub.config.entry.kernel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGrubConfigEntry).Kernel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"grub.config.entry.cmdline": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGrubConfigEntry).Cmdline, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"grub.config.entry.parameters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGrubConfigEntry).Parameters, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"grub.config.entry.flags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGrubConfigEntry).Flags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"grub.config.entry.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGrubConfigEntry).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"grub.config.entry.initrd": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -65320,10 +65355,15 @@ type mqlGrubConfigEntry struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlGrubConfigEntryInternal it will be used here
-	Title     plugin.TValue[string]
-	Cmdline   plugin.TValue[string]
-	Initrd    plugin.TValue[string]
-	IsSubmenu plugin.TValue[bool]
+	Title      plugin.TValue[string]
+	Kind       plugin.TValue[string]
+	Kernel     plugin.TValue[string]
+	Cmdline    plugin.TValue[string]
+	Parameters plugin.TValue[map[string]any]
+	Flags      plugin.TValue[[]any]
+	Source     plugin.TValue[string]
+	Initrd     plugin.TValue[string]
+	IsSubmenu  plugin.TValue[bool]
 }
 
 // createGrubConfigEntry creates a new instance of this resource
@@ -65367,8 +65407,28 @@ func (c *mqlGrubConfigEntry) GetTitle() *plugin.TValue[string] {
 	return &c.Title
 }
 
+func (c *mqlGrubConfigEntry) GetKind() *plugin.TValue[string] {
+	return &c.Kind
+}
+
+func (c *mqlGrubConfigEntry) GetKernel() *plugin.TValue[string] {
+	return &c.Kernel
+}
+
 func (c *mqlGrubConfigEntry) GetCmdline() *plugin.TValue[string] {
 	return &c.Cmdline
+}
+
+func (c *mqlGrubConfigEntry) GetParameters() *plugin.TValue[map[string]any] {
+	return &c.Parameters
+}
+
+func (c *mqlGrubConfigEntry) GetFlags() *plugin.TValue[[]any] {
+	return &c.Flags
+}
+
+func (c *mqlGrubConfigEntry) GetSource() *plugin.TValue[string] {
+	return &c.Source
 }
 
 func (c *mqlGrubConfigEntry) GetInitrd() *plugin.TValue[string] {

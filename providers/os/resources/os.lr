@@ -7739,9 +7739,9 @@ private fstab.entry @defaults("device mountpoint") {
 //
 // GRUB bootloader settings drawn from /etc/default/grub and the generated
 // grub.cfg. The `params` map holds the key-value defaults (for example
-// GRUB_TIMEOUT and GRUB_CMDLINE_LINUX), `entries` lists the boot menu
-// entries with their kernel command lines, and `passwordProtected` reports
-// whether superuser plus password_pbkdf2 protection is configured, a common
+// GRUB_TIMEOUT and GRUB_CMDLINE_LINUX), `entries` lists the boot entries with
+// their kernel command lines, and `passwordProtected` reports whether
+// superuser plus password_pbkdf2 protection is configured, a common
 // boot-security check. Override the file locations with
 // `grub.config(defaultsPath: "...", grubPath: "...")`.
 grub.config @defaults("defaultsPath grubPath") {
@@ -7752,7 +7752,15 @@ grub.config @defaults("defaultsPath grubPath") {
   grubPath string
   // Configuration parameters from /etc/default/grub (e.g., GRUB_TIMEOUT, GRUB_CMDLINE_LINUX)
   params() map[string]string
-  // Menu entries defined in grub.cfg
+  // Boot entries the bootloader offers on the next boot
+  //
+  // Read from the Boot Loader Specification files under /boot/loader/entries
+  // when grub.cfg delegates to them, which is what Red Hat Enterprise Linux 8
+  // and later, CentOS Stream, Rocky Linux, and Amazon Linux 2023 do, and from
+  // the menu entries in grub.cfg otherwise. Null when neither source yields an
+  // entry, since a host whose boot entries cannot be read has none to report
+  // rather than an empty list of them, which would satisfy every assertion
+  // made over the entries.
   entries() []grub.config.entry
   // Whether GRUB password protection is enabled
   //
@@ -7765,18 +7773,44 @@ grub.config @defaults("defaultsPath grubPath") {
   passwordProtected() bool
 }
 
-// GRUB menu entry
+// GRUB boot entry
 //
-// Single boot menu entry from grub.cfg: its title, the kernel command line
-// it boots with (`cmdline`), and the initrd it loads. Inspect `cmdline` to
-// audit kernel boot parameters such as audit=1 or console settings.
-// `isSubmenu` marks entries that group other entries rather than boot
-// directly.
-private grub.config.entry @defaults("title") {
+// Single boot entry, from a menu entry in grub.cfg or from a Boot Loader
+// Specification file under /boot/loader/entries. `parameters` and `flags`
+// hold the kernel command line split into key-value directives and bare
+// tokens, so a check can assert on a parameter such as audit without matching
+// text. `cmdline` keeps the command line as it appears in the file and
+// `kernel` names the kernel image the entry boots. `kind` separates a normal
+// entry from a recovery, memory test, or submenu entry, since a control over
+// boot parameters applies only to the entries that boot a kernel. `source` is
+// the file the entry was read from.
+private grub.config.entry @defaults("title kind") {
   // Menu entry title
   title string
-  // Kernel command line (linux/linux16/linuxefi line)
+  // Entry role
+  //
+  // One of `normal`, `recovery`, `memtest`, `submenu`, or `other`. `other`
+  // covers an entry that boots no kernel, such as one that opens the firmware
+  // settings.
+  kind string
+  // Kernel image the entry boots
+  kernel string
+  // Kernel command line
+  //
+  // The linux, linux16, or linuxefi line of a menu entry, or the options line
+  // of a Boot Loader Specification entry.
   cmdline string
+  // Kernel command line parameters
+  //
+  // Key-value tokens from the kernel command line, with a variable that the
+  // bootloader expands resolved first. When a parameter appears more than
+  // once the last occurrence wins, which is how the kernel reads it. Use
+  // `cmdline` to recover every occurrence.
+  parameters map[string]string
+  // Bare kernel command line tokens, such as ro, quiet, or single
+  flags []string
+  // Path of the file the entry was read from
+  source string
   // Initrd path (initrd/initrd16/initrdefi line)
   initrd string
   // Whether this is a submenu
