@@ -935,7 +935,7 @@ firefox.policies.input.source 13.40.8
 firefox.policies.inputs 13.40.8
 firefox.policies.params 13.40.8
 firefox.policies.source 13.40.8
-firefox.unreadableAddons 14.0.0
+firefox.unreadableAddons 13.48.0
 firewalld 13.2.9
 firewalld.defaultZone 13.2.9
 firewalld.richrule 13.2.9
