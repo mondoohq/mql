@@ -1,0 +1,9 @@
+<idea-plugin allow-bundled-update="true">
+  <name>GitHub</name>
+  <id>org.jetbrains.plugins.github</id>
+  <version>262.9437.287</version>
+  <idea-version since-build="262.9437.287" until-build="262.9437.287" />
+  <vendor>JetBrains</vendor>
+  <category>Version Controls</category>
+  <description>Provides integration with &lt;a href="https://github.com/"&gt;GitHub&lt;/a&gt;. &lt;ul&gt; &lt;li&gt;Specify your GitHub account to access all of your repositories from the IDE.&lt;/li&gt; &lt;</description>
+</idea-plugin>

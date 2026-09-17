@@ -1,0 +1,8 @@
+<idea-plugin url="https://github.com/JetBrains/resharper-unity" require-restart="true">
+  <id>com.intellij.resharper.unity</id>
+  <name>Unity Support</name>
+  <version>262.9437.287</version>
+  <vendor url="https://www.jetbrains.com">JetBrains</vendor>
+  <description>&lt;p&gt;Adds support for the Unity engine.&lt;/p&gt; &lt;p&gt; &lt;strong&gt;Features&lt;/strong&gt; &lt;ul&gt; &lt;li&gt;Code completion of event function declarations in a class.&lt;/li&gt; &lt;li&gt;Use Generat</description>
+  <idea-version since-build="262.9437.287" until-build="262.9437.287" />
+</idea-plugin>

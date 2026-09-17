@@ -15722,6 +15722,83 @@ private crontab.entry @defaults("user command") {
   file file
 }
 
+// JetBrains IDE plugins
+//
+// Plugins discovered across every user account and every installed JetBrains
+// product (IntelliJ IDEA, GoLand, PyCharm, Rider, WebStorm, CLion, DataGrip,
+// DataSpell, PhpStorm, RubyMine, RustRover and the rest). Iterate `plugins`
+// to inventory what extends each IDE, tell a plugin that ships with the
+// product from one a user added, see whether the IDE currently loads it, and
+// find plugins pinned to an IDE build older than the one installed. `paths`
+// lists the plugin directories that were searched.
+jetbrains {
+  // Plugins installed for any JetBrains product, across all users
+  plugins() []jetbrains.plugin
+  // Paths searched for JetBrains plugins
+  paths() []string
+}
+
+// JetBrains IDE plugin
+//
+// Single plugin installed into a JetBrains product, read from the
+// META-INF/plugin.xml descriptor inside the plugin. `identifier` is the
+// stable id the IDE and the JetBrains Marketplace key on, which differs from
+// the display `name`. `bundled` separates plugins shipped with the product
+// from ones a user chose to install, `enabled` reports whether the IDE loads
+// it, and `sinceBuild` with `untilBuild` record the IDE builds the plugin
+// declares support for.
+private jetbrains.plugin @defaults("product name version enabled") {
+  // Stable plugin identifier from the descriptor, for example org.jetbrains.plugins.github
+  identifier string
+  // Display name of the plugin, for example GitHub
+  name string
+  // Plugin version, which for a bundled plugin is the IDE build number
+  version string
+  // Organization or person that authored the plugin
+  vendor string
+  // Marketplace category the plugin declares, for example Version Controls
+  //
+  // Empty when the descriptor states no category, which bundled plugins
+  // often do not.
+  category string
+  // Plugin description from the descriptor, as the HTML the descriptor carries
+  description string
+  // Product the plugin is installed into, for example GoLand 2026.2
+  //
+  // Taken from the product directory holding the plugin, or from the
+  // application name for a plugin bundled with an IDE.
+  product string
+  // Path to the plugin directory or jar
+  path string
+  // Whether the plugin ships with the product rather than being user installed
+  //
+  // Bundled plugins are the majority of what an IDE loads, and on a host
+  // where nobody installed anything extra they are all of it, so they are
+  // reported rather than skipped. Only a false value means somebody chose to
+  // add this plugin.
+  bundled bool
+  // Whether the product loads the plugin
+  //
+  // False when the plugin id appears in the product's disabled plugin list. A
+  // disabled plugin is installed but not executing.
+  enabled bool
+  // Oldest IDE build the plugin declares support for
+  sinceBuild string
+  // Newest IDE build the plugin declares support for
+  //
+  // Empty when the plugin declares no upper bound. JetBrains also writes this
+  // with a trailing wildcard, for example 262.*, meaning every build of that
+  // branch.
+  untilBuild string
+  // Whether the plugin declares support only for IDE builds older than the one it is installed into
+  //
+  // False when the plugin states no upper bound or when the IDE build is not
+  // known, since neither says the plugin is out of range.
+  outsideBuildRange bool
+  // UID of the user who owns this plugin installation
+  uid int
+}
+
 // Visual Studio Code (and forks)
 //
 // Installed editor extensions discovered across all users for VS Code and

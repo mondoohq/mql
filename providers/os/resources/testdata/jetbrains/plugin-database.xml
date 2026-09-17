@@ -1,0 +1,9 @@
+<idea-plugin allow-bundled-update="true">
+  <name>Database Tools and SQL</name>
+  <id>com.intellij.database</id>
+  <version>262.9437.287</version>
+  <idea-version since-build="262.9437.287" until-build="262.9437.287" />
+  <description>The Database Tools and SQL plugin for IntelliJ-based IDEs allows you to query, create, and manage databases and provides full SQL language support. &lt;br&gt;&lt;br&gt; The</description>
+  <vendor>JetBrains</vendor>
+  <category>Database</category>
+</idea-plugin>

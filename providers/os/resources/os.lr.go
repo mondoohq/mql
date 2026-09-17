@@ -539,6 +539,8 @@ const (
 	ResourceUsbDevice                                     string = "usb.device"
 	ResourceCrontab                                       string = "crontab"
 	ResourceCrontabEntry                                  string = "crontab.entry"
+	ResourceJetbrains                                     string = "jetbrains"
+	ResourceJetbrainsPlugin                               string = "jetbrains.plugin"
 	ResourceVscode                                        string = "vscode"
 	ResourceVscodeExtension                               string = "vscode.extension"
 	ResourceLogrotate                                     string = "logrotate"
@@ -2736,6 +2738,14 @@ func init() {
 		"crontab.entry": {
 			// to override args, implement: initCrontabEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createCrontabEntry,
+		},
+		"jetbrains": {
+			// to override args, implement: initJetbrains(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createJetbrains,
+		},
+		"jetbrains.plugin": {
+			// to override args, implement: initJetbrainsPlugin(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createJetbrainsPlugin,
 		},
 		"vscode": {
 			// to override args, implement: initVscode(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -15072,6 +15082,54 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"crontab.entry.file": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCrontabEntry).GetFile()).ToDataRes(types.Resource("file"))
+	},
+	"jetbrains.plugins": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJetbrains).GetPlugins()).ToDataRes(types.Array(types.Resource("jetbrains.plugin")))
+	},
+	"jetbrains.paths": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJetbrains).GetPaths()).ToDataRes(types.Array(types.String))
+	},
+	"jetbrains.plugin.identifier": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJetbrainsPlugin).GetIdentifier()).ToDataRes(types.String)
+	},
+	"jetbrains.plugin.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJetbrainsPlugin).GetName()).ToDataRes(types.String)
+	},
+	"jetbrains.plugin.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJetbrainsPlugin).GetVersion()).ToDataRes(types.String)
+	},
+	"jetbrains.plugin.vendor": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJetbrainsPlugin).GetVendor()).ToDataRes(types.String)
+	},
+	"jetbrains.plugin.category": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJetbrainsPlugin).GetCategory()).ToDataRes(types.String)
+	},
+	"jetbrains.plugin.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJetbrainsPlugin).GetDescription()).ToDataRes(types.String)
+	},
+	"jetbrains.plugin.product": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJetbrainsPlugin).GetProduct()).ToDataRes(types.String)
+	},
+	"jetbrains.plugin.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJetbrainsPlugin).GetPath()).ToDataRes(types.String)
+	},
+	"jetbrains.plugin.bundled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJetbrainsPlugin).GetBundled()).ToDataRes(types.Bool)
+	},
+	"jetbrains.plugin.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJetbrainsPlugin).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"jetbrains.plugin.sinceBuild": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJetbrainsPlugin).GetSinceBuild()).ToDataRes(types.String)
+	},
+	"jetbrains.plugin.untilBuild": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJetbrainsPlugin).GetUntilBuild()).ToDataRes(types.String)
+	},
+	"jetbrains.plugin.outsideBuildRange": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJetbrainsPlugin).GetOutsideBuildRange()).ToDataRes(types.Bool)
+	},
+	"jetbrains.plugin.uid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJetbrainsPlugin).GetUid()).ToDataRes(types.Int)
 	},
 	"vscode.extensions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlVscode).GetExtensions()).ToDataRes(types.Array(types.Resource("vscode.extension")))
@@ -35152,6 +35210,78 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"crontab.entry.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCrontabEntry).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"jetbrains.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJetbrains).__id, ok = v.Value.(string)
+		return
+	},
+	"jetbrains.plugins": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJetbrains).Plugins, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"jetbrains.paths": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJetbrains).Paths, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"jetbrains.plugin.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJetbrainsPlugin).__id, ok = v.Value.(string)
+		return
+	},
+	"jetbrains.plugin.identifier": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJetbrainsPlugin).Identifier, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"jetbrains.plugin.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJetbrainsPlugin).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"jetbrains.plugin.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJetbrainsPlugin).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"jetbrains.plugin.vendor": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJetbrainsPlugin).Vendor, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"jetbrains.plugin.category": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJetbrainsPlugin).Category, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"jetbrains.plugin.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJetbrainsPlugin).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"jetbrains.plugin.product": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJetbrainsPlugin).Product, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"jetbrains.plugin.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJetbrainsPlugin).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"jetbrains.plugin.bundled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJetbrainsPlugin).Bundled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"jetbrains.plugin.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJetbrainsPlugin).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"jetbrains.plugin.sinceBuild": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJetbrainsPlugin).SinceBuild, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"jetbrains.plugin.untilBuild": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJetbrainsPlugin).UntilBuild, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"jetbrains.plugin.outsideBuildRange": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJetbrainsPlugin).OutsideBuildRange, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"jetbrains.plugin.uid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJetbrainsPlugin).Uid, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"vscode.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -90561,6 +90691,188 @@ func (c *mqlCrontabEntry) GetCommand() *plugin.TValue[string] {
 
 func (c *mqlCrontabEntry) GetFile() *plugin.TValue[*mqlFile] {
 	return &c.File
+}
+
+// mqlJetbrains for the jetbrains resource
+type mqlJetbrains struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlJetbrainsInternal it will be used here
+	Plugins plugin.TValue[[]any]
+	Paths   plugin.TValue[[]any]
+}
+
+// createJetbrains creates a new instance of this resource
+func createJetbrains(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlJetbrains{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("jetbrains", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlJetbrains) MqlName() string {
+	return "jetbrains"
+}
+
+func (c *mqlJetbrains) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlJetbrains) GetPlugins() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Plugins, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("jetbrains", c.__id, "plugins")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.plugins()
+	})
+}
+
+func (c *mqlJetbrains) GetPaths() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Paths, func() ([]any, error) {
+		return c.paths()
+	})
+}
+
+// mqlJetbrainsPlugin for the jetbrains.plugin resource
+type mqlJetbrainsPlugin struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlJetbrainsPluginInternal it will be used here
+	Identifier        plugin.TValue[string]
+	Name              plugin.TValue[string]
+	Version           plugin.TValue[string]
+	Vendor            plugin.TValue[string]
+	Category          plugin.TValue[string]
+	Description       plugin.TValue[string]
+	Product           plugin.TValue[string]
+	Path              plugin.TValue[string]
+	Bundled           plugin.TValue[bool]
+	Enabled           plugin.TValue[bool]
+	SinceBuild        plugin.TValue[string]
+	UntilBuild        plugin.TValue[string]
+	OutsideBuildRange plugin.TValue[bool]
+	Uid               plugin.TValue[int64]
+}
+
+// createJetbrainsPlugin creates a new instance of this resource
+func createJetbrainsPlugin(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlJetbrainsPlugin{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("jetbrains.plugin", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlJetbrainsPlugin) MqlName() string {
+	return "jetbrains.plugin"
+}
+
+func (c *mqlJetbrainsPlugin) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlJetbrainsPlugin) GetIdentifier() *plugin.TValue[string] {
+	return &c.Identifier
+}
+
+func (c *mqlJetbrainsPlugin) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlJetbrainsPlugin) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlJetbrainsPlugin) GetVendor() *plugin.TValue[string] {
+	return &c.Vendor
+}
+
+func (c *mqlJetbrainsPlugin) GetCategory() *plugin.TValue[string] {
+	return &c.Category
+}
+
+func (c *mqlJetbrainsPlugin) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlJetbrainsPlugin) GetProduct() *plugin.TValue[string] {
+	return &c.Product
+}
+
+func (c *mqlJetbrainsPlugin) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlJetbrainsPlugin) GetBundled() *plugin.TValue[bool] {
+	return &c.Bundled
+}
+
+func (c *mqlJetbrainsPlugin) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlJetbrainsPlugin) GetSinceBuild() *plugin.TValue[string] {
+	return &c.SinceBuild
+}
+
+func (c *mqlJetbrainsPlugin) GetUntilBuild() *plugin.TValue[string] {
+	return &c.UntilBuild
+}
+
+func (c *mqlJetbrainsPlugin) GetOutsideBuildRange() *plugin.TValue[bool] {
+	return &c.OutsideBuildRange
+}
+
+func (c *mqlJetbrainsPlugin) GetUid() *plugin.TValue[int64] {
+	return &c.Uid
 }
 
 // mqlVscode for the vscode resource
