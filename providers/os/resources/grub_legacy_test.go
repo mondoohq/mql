@@ -227,6 +227,11 @@ func TestParseGrubLegacyPasswordProtected(t *testing.T) {
 			want:    false,
 		},
 		{
+			name:    "bare directive with neither flag nor credential",
+			content: "default=0\npassword\ntitle Linux\nkernel /vmlinuz ro\n",
+			want:    false,
+		},
+		{
 			// GRUB reads the directive from the menu-level section. A line
 			// after the first title is part of an entry, where it does not
 			// protect the menu.
