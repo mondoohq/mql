@@ -256,6 +256,8 @@ const (
 	ResourceFstabEntry                                    string = "fstab.entry"
 	ResourceGrubConfig                                    string = "grub.config"
 	ResourceGrubConfigEntry                               string = "grub.config.entry"
+	ResourceSecbootConfig                                 string = "secboot.config"
+	ResourceSecbootImage                                  string = "secboot.image"
 	ResourceSysrc                                         string = "sysrc"
 	ResourceSysrcEntry                                    string = "sysrc.entry"
 	ResourceProcess                                       string = "process"
@@ -1567,6 +1569,14 @@ func init() {
 		"grub.config.entry": {
 			// to override args, implement: initGrubConfigEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGrubConfigEntry,
+		},
+		"secboot.config": {
+			Init:   initSecbootConfig,
+			Create: createSecbootConfig,
+		},
+		"secboot.image": {
+			// to override args, implement: initSecbootImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createSecbootImage,
 		},
 		"sysrc": {
 			Init:   initSysrc,
@@ -8929,6 +8939,81 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"grub.config.entry.isSubmenu": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGrubConfigEntry).GetIsSubmenu()).ToDataRes(types.Bool)
+	},
+	"secboot.config.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetPath()).ToDataRes(types.String)
+	},
+	"secboot.config.kernelParams": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetKernelParams()).ToDataRes(types.String)
+	},
+	"secboot.config.parameters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetParameters()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"secboot.config.flags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetFlags()).ToDataRes(types.Array(types.String))
+	},
+	"secboot.config.efiPartition": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetEfiPartition()).ToDataRes(types.String)
+	},
+	"secboot.config.efiMountpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetEfiMountpoint()).ToDataRes(types.String)
+	},
+	"secboot.config.efiSubdir": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetEfiSubdir()).ToDataRes(types.String)
+	},
+	"secboot.config.luksPartition": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetLuksPartition()).ToDataRes(types.String)
+	},
+	"secboot.config.efiStub": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetEfiStub()).ToDataRes(types.String)
+	},
+	"secboot.config.certificateStorage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetCertificateStorage()).ToDataRes(types.String)
+	},
+	"secboot.config.machineIdPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetMachineIdPath()).ToDataRes(types.String)
+	},
+	"secboot.config.initramfsCompression": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetInitramfsCompression()).ToDataRes(types.String)
+	},
+	"secboot.config.dracutParams": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetDracutParams()).ToDataRes(types.Array(types.String))
+	},
+	"secboot.config.kernelPriority": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetKernelPriority()).ToDataRes(types.Array(types.String))
+	},
+	"secboot.config.dkmsFiles": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetDkmsFiles()).ToDataRes(types.Array(types.String))
+	},
+	"secboot.config.tpmDevice": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetTpmDevice()).ToDataRes(types.String)
+	},
+	"secboot.config.tpmPcrs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetTpmPcrs()).ToDataRes(types.String)
+	},
+	"secboot.config.fwupdBinary": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetFwupdBinary()).ToDataRes(types.String)
+	},
+	"secboot.config.images": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootConfig).GetImages()).ToDataRes(types.Array(types.Resource("secboot.image")))
+	},
+	"secboot.image.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootImage).GetPath()).ToDataRes(types.String)
+	},
+	"secboot.image.kernel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootImage).GetKernel()).ToDataRes(types.String)
+	},
+	"secboot.image.cmdline": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootImage).GetCmdline()).ToDataRes(types.String)
+	},
+	"secboot.image.parameters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootImage).GetParameters()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"secboot.image.flags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootImage).GetFlags()).ToDataRes(types.Array(types.String))
+	},
+	"secboot.image.signed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSecbootImage).GetSigned()).ToDataRes(types.Bool)
 	},
 	"sysrc.files": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSysrc).GetFiles()).ToDataRes(types.Array(types.Resource("file")))
@@ -24637,6 +24722,114 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"grub.config.entry.isSubmenu": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGrubConfigEntry).IsSubmenu, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"secboot.config.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).__id, ok = v.Value.(string)
+		return
+	},
+	"secboot.config.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"secboot.config.kernelParams": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).KernelParams, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"secboot.config.parameters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).Parameters, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"secboot.config.flags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).Flags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"secboot.config.efiPartition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).EfiPartition, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"secboot.config.efiMountpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).EfiMountpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"secboot.config.efiSubdir": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).EfiSubdir, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"secboot.config.luksPartition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).LuksPartition, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"secboot.config.efiStub": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).EfiStub, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"secboot.config.certificateStorage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).CertificateStorage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"secboot.config.machineIdPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).MachineIdPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"secboot.config.initramfsCompression": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).InitramfsCompression, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"secboot.config.dracutParams": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).DracutParams, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"secboot.config.kernelPriority": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).KernelPriority, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"secboot.config.dkmsFiles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).DkmsFiles, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"secboot.config.tpmDevice": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).TpmDevice, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"secboot.config.tpmPcrs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).TpmPcrs, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"secboot.config.fwupdBinary": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).FwupdBinary, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"secboot.config.images": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootConfig).Images, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"secboot.image.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootImage).__id, ok = v.Value.(string)
+		return
+	},
+	"secboot.image.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootImage).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"secboot.image.kernel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootImage).Kernel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"secboot.image.cmdline": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootImage).Cmdline, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"secboot.image.parameters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootImage).Parameters, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"secboot.image.flags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootImage).Flags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"secboot.image.signed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSecbootImage).Signed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"sysrc.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -60886,6 +61079,265 @@ func (c *mqlGrubConfigEntry) GetInitrd() *plugin.TValue[string] {
 
 func (c *mqlGrubConfigEntry) GetIsSubmenu() *plugin.TValue[bool] {
 	return &c.IsSubmenu
+}
+
+// mqlSecbootConfig for the secboot.config resource
+type mqlSecbootConfig struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlSecbootConfigInternal
+	Path                 plugin.TValue[string]
+	KernelParams         plugin.TValue[string]
+	Parameters           plugin.TValue[map[string]any]
+	Flags                plugin.TValue[[]any]
+	EfiPartition         plugin.TValue[string]
+	EfiMountpoint        plugin.TValue[string]
+	EfiSubdir            plugin.TValue[string]
+	LuksPartition        plugin.TValue[string]
+	EfiStub              plugin.TValue[string]
+	CertificateStorage   plugin.TValue[string]
+	MachineIdPath        plugin.TValue[string]
+	InitramfsCompression plugin.TValue[string]
+	DracutParams         plugin.TValue[[]any]
+	KernelPriority       plugin.TValue[[]any]
+	DkmsFiles            plugin.TValue[[]any]
+	TpmDevice            plugin.TValue[string]
+	TpmPcrs              plugin.TValue[string]
+	FwupdBinary          plugin.TValue[string]
+	Images               plugin.TValue[[]any]
+}
+
+// createSecbootConfig creates a new instance of this resource
+func createSecbootConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSecbootConfig{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("secboot.config", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSecbootConfig) MqlName() string {
+	return "secboot.config"
+}
+
+func (c *mqlSecbootConfig) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSecbootConfig) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlSecbootConfig) GetKernelParams() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.KernelParams, func() (string, error) {
+		return c.kernelParams()
+	})
+}
+
+func (c *mqlSecbootConfig) GetParameters() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Parameters, func() (map[string]any, error) {
+		return c.parameters()
+	})
+}
+
+func (c *mqlSecbootConfig) GetFlags() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Flags, func() ([]any, error) {
+		return c.flags()
+	})
+}
+
+func (c *mqlSecbootConfig) GetEfiPartition() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.EfiPartition, func() (string, error) {
+		return c.efiPartition()
+	})
+}
+
+func (c *mqlSecbootConfig) GetEfiMountpoint() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.EfiMountpoint, func() (string, error) {
+		return c.efiMountpoint()
+	})
+}
+
+func (c *mqlSecbootConfig) GetEfiSubdir() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.EfiSubdir, func() (string, error) {
+		return c.efiSubdir()
+	})
+}
+
+func (c *mqlSecbootConfig) GetLuksPartition() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.LuksPartition, func() (string, error) {
+		return c.luksPartition()
+	})
+}
+
+func (c *mqlSecbootConfig) GetEfiStub() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.EfiStub, func() (string, error) {
+		return c.efiStub()
+	})
+}
+
+func (c *mqlSecbootConfig) GetCertificateStorage() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.CertificateStorage, func() (string, error) {
+		return c.certificateStorage()
+	})
+}
+
+func (c *mqlSecbootConfig) GetMachineIdPath() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.MachineIdPath, func() (string, error) {
+		return c.machineIdPath()
+	})
+}
+
+func (c *mqlSecbootConfig) GetInitramfsCompression() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.InitramfsCompression, func() (string, error) {
+		return c.initramfsCompression()
+	})
+}
+
+func (c *mqlSecbootConfig) GetDracutParams() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DracutParams, func() ([]any, error) {
+		return c.dracutParams()
+	})
+}
+
+func (c *mqlSecbootConfig) GetKernelPriority() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.KernelPriority, func() ([]any, error) {
+		return c.kernelPriority()
+	})
+}
+
+func (c *mqlSecbootConfig) GetDkmsFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DkmsFiles, func() ([]any, error) {
+		return c.dkmsFiles()
+	})
+}
+
+func (c *mqlSecbootConfig) GetTpmDevice() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.TpmDevice, func() (string, error) {
+		return c.tpmDevice()
+	})
+}
+
+func (c *mqlSecbootConfig) GetTpmPcrs() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.TpmPcrs, func() (string, error) {
+		return c.tpmPcrs()
+	})
+}
+
+func (c *mqlSecbootConfig) GetFwupdBinary() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.FwupdBinary, func() (string, error) {
+		return c.fwupdBinary()
+	})
+}
+
+func (c *mqlSecbootConfig) GetImages() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Images, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("secboot.config", c.__id, "images")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.images()
+	})
+}
+
+// mqlSecbootImage for the secboot.image resource
+type mqlSecbootImage struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlSecbootImageInternal it will be used here
+	Path       plugin.TValue[string]
+	Kernel     plugin.TValue[string]
+	Cmdline    plugin.TValue[string]
+	Parameters plugin.TValue[map[string]any]
+	Flags      plugin.TValue[[]any]
+	Signed     plugin.TValue[bool]
+}
+
+// createSecbootImage creates a new instance of this resource
+func createSecbootImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSecbootImage{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("secboot.image", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSecbootImage) MqlName() string {
+	return "secboot.image"
+}
+
+func (c *mqlSecbootImage) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSecbootImage) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlSecbootImage) GetKernel() *plugin.TValue[string] {
+	return &c.Kernel
+}
+
+func (c *mqlSecbootImage) GetCmdline() *plugin.TValue[string] {
+	return &c.Cmdline
+}
+
+func (c *mqlSecbootImage) GetParameters() *plugin.TValue[map[string]any] {
+	return &c.Parameters
+}
+
+func (c *mqlSecbootImage) GetFlags() *plugin.TValue[[]any] {
+	return &c.Flags
+}
+
+func (c *mqlSecbootImage) GetSigned() *plugin.TValue[bool] {
+	return &c.Signed
 }
 
 // mqlSysrc for the sysrc resource
