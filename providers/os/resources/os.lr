@@ -7018,9 +7018,10 @@ grub.config @defaults("defaultsPath grubPath") {
 // tokens, so a check can assert on a parameter such as audit without matching
 // text. `cmdline` keeps the command line as it appears in the file and
 // `kernel` names the kernel image the entry boots. `kind` separates a normal
-// entry from a recovery, memory test, or submenu entry, since a control over
-// boot parameters applies only to the entries that boot a kernel. `source` is
-// the file the entry was read from.
+// entry from a recovery, memory test, or submenu entry, and `bootable` reduces
+// that to the distinction a control over boot parameters rests on, since only
+// an entry that boots an operating system carries parameters to audit.
+// `source` is the file the entry was read from.
 private grub.config.entry @defaults("title kind") {
   // Menu entry title
   title string
@@ -7030,6 +7031,13 @@ private grub.config.entry @defaults("title kind") {
   // covers an entry that boots no kernel, such as one that opens the firmware
   // settings.
   kind string
+  // Whether the entry boots an operating system
+  //
+  // True for a normal or recovery entry, which are the entries a control over
+  // kernel parameters applies to. False for a submenu, a memory test, and an
+  // entry that boots no kernel at all, such as one that opens the firmware
+  // settings.
+  bootable bool
   // Kernel image the entry boots
   kernel string
   // Kernel command line
