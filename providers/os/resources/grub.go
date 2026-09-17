@@ -202,7 +202,13 @@ func (g *mqlGrubConfig) fetchGrubCfg() error {
 
 	cfgPath := g.GetGrubPath().Data
 	if cfgPath == "" {
-		// Without a grub.cfg the entry files can still be read directly.
+		// Without a grub.cfg the entry files can still be read directly. The
+		// Boot Loader Specification is not GRUB's alone, so entries here say
+		// nothing about which bootloader reads them, and systemd-boot keeps
+		// its entries in the same directory. cachedGrubFound therefore stays
+		// false and passwordProtected stays null: reporting false would say
+		// GRUB is installed and unprotected on a host that may not run GRUB
+		// at all.
 		entries, _ := LoadGrubEntries(fs, "", nil)
 		g.cachedEntries = entries
 		g.cachedEntriesOK = len(entries) > 0
