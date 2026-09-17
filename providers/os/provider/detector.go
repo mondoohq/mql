@@ -84,7 +84,9 @@ func (s *Service) detect(asset *inventory.Asset, conn shared.Connection) error {
 				asset.Name = cloudPlatformInfo.Name
 			}
 			asset.Platform.Kind = cloudPlatformInfo.Kind
-			asset.RelatedAssets = append(asset.RelatedAssets, relatedIds2assets(cloudPlatformInfo.RelatedPlatformIDs)...)
+			// RelatedAssets is deprecated in favor of relationships (ADR 030) but is still
+			// what the server consumes, so it stays populated until that migration lands.
+			asset.RelatedAssets = append(asset.RelatedAssets, relatedIds2assets(cloudPlatformInfo.RelatedPlatformIDs)...) //nolint:staticcheck // see comment above
 		}
 	}
 
@@ -118,13 +120,15 @@ func relatedIds2assets(ids []string) []*inventory.Asset {
 	return res
 }
 
+// The asset's RelatedAssets is deprecated in favor of relationships (ADR 030) but is
+// still what the server consumes, so it stays populated until that migration lands.
 func appendRelatedAssetsFromFingerprint(f *id.PlatformFingerprint, a *inventory.Asset) {
 	if f == nil || len(f.RelatedAssets) == 0 {
 		return
 	}
-	included := make(map[string]struct{}, len(a.RelatedAssets))
-	for i := range a.RelatedAssets {
-		included[a.RelatedAssets[i].Id] = struct{}{}
+	included := make(map[string]struct{}, len(a.RelatedAssets)) //nolint:staticcheck // see comment above
+	for i := range a.RelatedAssets {                            //nolint:staticcheck // see comment above
+		included[a.RelatedAssets[i].Id] = struct{}{} //nolint:staticcheck // see comment above
 	}
 	for _, ra := range f.RelatedAssets {
 		shouldAdd := true
@@ -135,7 +139,7 @@ func appendRelatedAssetsFromFingerprint(f *id.PlatformFingerprint, a *inventory.
 			}
 		}
 		if shouldAdd {
-			a.RelatedAssets = append(a.RelatedAssets, &inventory.Asset{Id: ra.PlatformIDs[0]})
+			a.RelatedAssets = append(a.RelatedAssets, &inventory.Asset{Id: ra.PlatformIDs[0]}) //nolint:staticcheck // see comment above
 		}
 	}
 }

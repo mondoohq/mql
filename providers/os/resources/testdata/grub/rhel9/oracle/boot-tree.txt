@@ -1,0 +1,16 @@
+dr-xr-xr-x       4096 /boot
+drwx------      16384 /boot/efi
+drwx------       4096 /boot/efi/EFI
+drwx------       4096 /boot/efi/EFI/BOOT
+-rwx------    1047136 /boot/efi/EFI/BOOT/BOOTX64.EFI
+drwx------       4096 /boot/efi/EFI/redhat
+-rwx------        108 /boot/efi/EFI/redhat/BOOTX64.CSV
+-rwx------        111 /boot/efi/EFI/redhat/grub.cfg
+drwx------         65 /boot/grub2
+drwx------         25 /boot/grub2/fonts
+-rw-r--r--        552 /boot/grub2/grub.cfg
+-rw-r--r--       1024 /boot/grub2/grubenv
+drwxr-xr-x       8192 /boot/grub2/i386-pc
+drwxr-xr-x         21 /boot/loader
+drwx------         81 /boot/loader/entries
+-rw-r--r--        482 /boot/loader/entries/ffffffffffffffffffffffffffffffff-5.14.0-570.132.1.el9_6.x86_64.conf

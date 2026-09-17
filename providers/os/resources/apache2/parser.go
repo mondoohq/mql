@@ -389,9 +389,7 @@ func parseVirtualHost(address string, lines []string, vars map[string]string) Vi
 			vh.ServerName = value
 		case "serveralias":
 			// Apache allows multiple aliases per line and multiple ServerAlias lines.
-			for _, a := range strings.Fields(value) {
-				vh.ServerAliases = append(vh.ServerAliases, a)
-			}
+			vh.ServerAliases = append(vh.ServerAliases, strings.Fields(value)...)
 		case "documentroot":
 			vh.DocumentRoot = value
 		case "sslengine":

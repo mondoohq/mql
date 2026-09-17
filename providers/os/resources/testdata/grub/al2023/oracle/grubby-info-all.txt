@@ -1,0 +1,7 @@
+index=0
+kernel="/boot/vmlinuz-6.1.186-228.374.amzn2023.x86_64"
+args="ro console=tty0 console=ttyS0,115200n8 nvme_core.io_timeout=4294967295 rd.emergency=poweroff rd.shell=0 selinux=1 security=selinux quiet"
+root="UUID=aac71ca1-a270-4b05-af79-23b06cd37819"
+initrd="/boot/initramfs-6.1.186-228.374.amzn2023.x86_64.img"
+title="Amazon Linux (6.1.186-228.374.amzn2023.x86_64) 2023"
+id="11fb3392662e4b38b44881deb9de18e6-6.1.186-228.374.amzn2023.x86_64"

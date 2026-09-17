@@ -1,0 +1,1 @@
+root=UUID=aaab7562-b0d1-40b1-87a9-c17235775696 console=tty0 console=ttyS0,115200n8 net.ifnames=0 nvme_core.io_timeout=4294967295

@@ -1,0 +1,15 @@
+drwxr-xr-x       4096 /boot
+drwxr-xr-x      16384 /boot/efi
+drwxr-xr-x       2048 /boot/efi/EFI
+drwxr-xr-x       2048 /boot/efi/EFI/BOOT
+-rwxr-xr-x        137 /boot/efi/EFI/BOOT/grub.cfg
+drwxr-xr-x         64 /boot/grub2
+drwxr-xr-x         25 /boot/grub2/fonts
+-rw-------       6473 /boot/grub2/grub.cfg
+-rw-r--r--       1024 /boot/grub2/grubenv
+drwxr-xr-x          6 /boot/grub2/themes
+lrwxrwxrwx         32 /boot/Image
+-rw-r--r--   39119360 /boot/Image-6.4.0-150700.53.73-default
+-rw-r--r--         65 /boot/.Image-6.4.0-150700.53.73-default.hmac
+-rw-r--r--         11 /boot/mbrid
+-rw-r--r--        377 /boot/sysctl.conf-6.4.0-150700.53.73-default

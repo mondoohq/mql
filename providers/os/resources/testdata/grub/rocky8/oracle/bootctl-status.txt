@@ -1,0 +1,26 @@
+systemd-boot not installed in ESP.
+Failed to open "/boot/efi/loader/loader.conf": No such file or directory
+Failed to read boot config from "/boot/efi/loader/loader.conf": No such file or directory
+Failed to load bootspec config from "/boot/efi/loader": No such file or directory
+System:
+     Firmware: n/a (n/a)
+  Secure Boot: disabled
+   Setup Mode: setup
+
+Current Loader:
+      Product: n/a
+          ESP: n/a
+         File: └─n/a
+
+Boot Loader Binaries:
+          ESP: /boot/efi (/dev/disk/by-partuuid/5d7b7a5e-9cd6-4e38-a188-273a5c5e3551)
+         File: └─/EFI/BOOT/BOOTX64.EFI
+
+Boot Loader Entries in EFI Variables:
+        Title: rocky
+           ID: 0x0002
+       Status: active, boot-order
+    Partition: /dev/disk/by-partuuid/5d7b7a5e-9cd6-4e38-a188-273a5c5e3551
+         File: └─/EFI/rocky/shimx64.efi
+
+Default Boot Entry:

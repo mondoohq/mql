@@ -1,0 +1,1 @@
+/tmp/collect.sh: line 42: grubby: command not found

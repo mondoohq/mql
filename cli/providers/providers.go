@@ -516,12 +516,13 @@ func setConnector(provider *plugin.Provider, connector *plugin.Connector, run fu
 				continue
 			}
 
-			if flag.ConfigEntry == "-" {
+			switch flag.ConfigEntry {
+			case "-":
 				// Opted out of config entirely — read from cobra only.
 				if v := getFlagValueFromCobra(flag, cmd); v != nil {
 					flagVals[flag.Long] = v
 				}
-			} else if flag.ConfigEntry == "" {
+			case "":
 				// No explicit config mapping. Use cobra when the user
 				// passed the flag on the CLI; otherwise check for a
 				// MONDOO_<FLAG> env var directly (not through viper,
@@ -539,7 +540,7 @@ func setConnector(provider *plugin.Provider, connector *plugin.Connector, run fu
 						flagVals[flag.Long] = v
 					}
 				}
-			} else {
+			default:
 				if v := getFlagValueFromConfig(flag); v != nil {
 					flagVals[flag.Long] = v
 				}

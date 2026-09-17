@@ -1083,8 +1083,13 @@ grub.config.defaultsPath 13.2.7
 grub.config.entries 13.2.7
 grub.config.entry 13.2.7
 grub.config.entry.cmdline 13.2.7
+grub.config.entry.flags 13.49.0
 grub.config.entry.initrd 13.2.7
 grub.config.entry.isSubmenu 13.2.7
+grub.config.entry.kernel 13.49.0
+grub.config.entry.kind 13.49.0
+grub.config.entry.parameters 13.49.0
+grub.config.entry.source 13.49.0
 grub.config.entry.title 13.2.7
 grub.config.grubPath 13.2.7
 grub.config.params 13.2.7

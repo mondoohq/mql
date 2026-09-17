@@ -1,0 +1,2 @@
+EFI variables are not supported on this system.
+error trace:

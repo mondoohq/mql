@@ -1,0 +1,58 @@
+systemd-boot not installed in ESP.
+/boot/loader/entries/09405200442a4b259b2a4b304ae977f2-0-rescue.conf:7: Unknown line 'grub_users', ignoring.
+/boot/loader/entries/09405200442a4b259b2a4b304ae977f2-0-rescue.conf:8: Unknown line 'grub_arg', ignoring.
+/boot/loader/entries/09405200442a4b259b2a4b304ae977f2-0-rescue.conf:9: Unknown line 'grub_class', ignoring.
+/boot/loader/entries/09405200442a4b259b2a4b304ae977f2-5.14.0-687.15.1.el9_8.x86_64.conf:7: Unknown line 'grub_users', ignoring.
+/boot/loader/entries/09405200442a4b259b2a4b304ae977f2-5.14.0-687.15.1.el9_8.x86_64.conf:8: Unknown line 'grub_arg', ignoring.
+/boot/loader/entries/09405200442a4b259b2a4b304ae977f2-5.14.0-687.15.1.el9_8.x86_64.conf:9: Unknown line 'grub_class', ignoring.
+System:
+      Firmware: n/a (n/a)
+ Firmware Arch: x64
+   Secure Boot: disabled (unknown)
+  TPM2 Support: no
+  Boot into FW: supported
+
+Current Boot Loader:
+      Product: n/a
+     Features: ✗ Boot counting
+               ✗ Menu timeout control
+               ✗ One-shot menu timeout control
+               ✗ Default entry control
+               ✗ One-shot entry control
+               ✗ Support for XBOOTLDR partition
+               ✗ Support for passing random seed to OS
+               ✗ Load drop-in drivers
+               ✗ Support Type #1 sort-key field
+               ✗ Support @saved pseudo-entry
+               ✗ Support Type #1 devicetree field
+               ✗ Boot loader sets ESP information
+          ESP: n/a
+         File: └─n/a
+
+Random Seed:
+ System Token: not set
+       Exists: no
+
+Available Boot Loaders on ESP:
+          ESP: /boot/efi (/dev/disk/by-partuuid/0759e0b1-c68a-467a-88b0-e3539d2f3c05)
+         File: └─/EFI/BOOT/BOOTX64.EFI
+
+Boot Loaders Listed in EFI Variables:
+        Title: rocky
+           ID: 0x0002
+       Status: active, boot-order
+    Partition: /dev/disk/by-partuuid/0759e0b1-c68a-467a-88b0-e3539d2f3c05
+         File: └─/EFI/rocky/shimx64.efi
+
+Boot Loader Entries:
+        $BOOT: /boot (/dev/disk/by-partuuid/930b3e59-b76e-46fd-b38d-17aaddee8a0e)
+
+Default Boot Loader Entry:
+         type: Boot Loader Specification Type #1 (.conf)
+        title: Rocky Linux (5.14.0-687.15.1.el9_8.x86_64) 9.8 (Blue Onyx)
+           id: 09405200442a4b259b2a4b304ae977f2-5.14.0-687.15.1.el9_8.x86_64.conf
+       source: /boot/loader/entries/09405200442a4b259b2a4b304ae977f2-5.14.0-687.15.1.el9_8.x86_64.conf
+      version: 5.14.0-687.15.1.el9_8.x86_64
+        linux: /vmlinuz-5.14.0-687.15.1.el9_8.x86_64
+       initrd: /initramfs-5.14.0-687.15.1.el9_8.x86_64.img
+      options: console=ttyS0,115200n8 no_timer_check crashkernel=1G-4G:192M,4G-64G:256M,64G-:512M net.ifnames=0 nvme_core.io_timeout=4294967295 nvme_core.max_retries=10 root=UUID=e5763f63-291d-400f-9e7f-2ddfd421e439
