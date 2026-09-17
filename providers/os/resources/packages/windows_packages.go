@@ -737,6 +737,13 @@ func (w *WinPkgManager) List() ([]Package, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "could not read app package list")
 	}
+	// The .NET runtime installers write no InstallLocation, so their registry
+	// entries arrive here with no files and reach the SBOM with no evidence
+	// path at all. Recover the directory from the dotnet layout, confirmed on
+	// the target before it is attached (windows_dotnet_paths.go).
+	if w.conn.Capabilities().Has(shared.Capability_File) {
+		fillDotNetInstallPaths(w.conn.FileSystem(), appPkgs)
+	}
 	pkgs = append(pkgs, appPkgs...)
 
 	appxPackages, err := w.getAppxPackages()
