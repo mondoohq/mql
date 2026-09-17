@@ -1,0 +1,1 @@
+/dev/nvme0n1p3 /boot  xfs    rw,relatime,seclabel,attr2,inode64,logbufs=8,logbsize=32k,noquota

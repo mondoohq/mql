@@ -1,0 +1,16 @@
+dr-xr-xr-x      16384 /boot
+drwx------      16384 /boot/efi
+drwx------       2048 /boot/efi/EFI
+drwx------       2048 /boot/efi/EFI/BOOT
+-rwx------    1423104 /boot/efi/EFI/BOOT/BOOTAA64.EFI
+drwx------       2048 /boot/efi/EFI/amzn
+-rwx------        134 /boot/efi/EFI/amzn/grub.cfg
+drwx------         64 /boot/grub2
+drwx------         25 /boot/grub2/fonts
+-rw-------       5166 /boot/grub2/grub.cfg
+-rw-------       1024 /boot/grub2/grubenv
+drwxr-xr-x         20 /boot/grub2/themes
+drwx------          6 /boot/grub2/themes/system
+drwxr-xr-x         21 /boot/loader
+drwx------         84 /boot/loader/entries
+-rw-r--r--        484 /boot/loader/entries/cfae6c7a278449e88c21361e16b4a790-6.1.186-228.374.amzn2023.aarch64.conf

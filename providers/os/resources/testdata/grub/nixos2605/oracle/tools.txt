@@ -1,0 +1,6 @@
+grubby: absent
+update-grub: absent
+grub2-mkconfig: absent
+grub-mkconfig: /run/current-system/sw/bin/grub-mkconfig
+bootctl: /run/current-system/sw/bin/bootctl
+kernel-install: absent

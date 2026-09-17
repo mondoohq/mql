@@ -1,0 +1,10 @@
+System:
+   Machine ID: ec252fc6951005f44278d5b58b4fe7e8
+      Boot ID: c8e5597f448c42af876ec0739e281e37
+
+
+No suitable data is provided by the boot manager. See:
+  http://www.freedesktop.org/wiki/Software/systemd/BootLoaderInterface
+  http://www.freedesktop.org/wiki/Specifications/BootLoaderSpec
+for details.
+

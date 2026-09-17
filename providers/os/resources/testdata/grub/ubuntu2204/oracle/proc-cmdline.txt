@@ -1,0 +1,1 @@
+BOOT_IMAGE=/boot/vmlinuz-6.8.0-1063-aws root=PARTUUID=27bb2497-c6e0-425d-bec9-656846e785f3 ro console=tty1 console=ttyS0 nvme_core.io_timeout=4294967295 panic=-1

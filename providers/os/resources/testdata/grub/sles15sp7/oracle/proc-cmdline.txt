@@ -1,0 +1,1 @@
+BOOT_IMAGE=/boot/vmlinuz-6.4.0-150700.53.73-default root=LABEL=ROOT console=ttyS0 net.ifnames=0 iommu.passthrough=1 8250.nr_uarts=4 dis_ucode_ldr multipath=off nvme_core.admin_timeout=4294967295 nvme_core.io_timeout=4294967295 systemd.unified_cgroup_hierarchy=1

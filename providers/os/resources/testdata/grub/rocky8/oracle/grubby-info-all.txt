@@ -1,0 +1,14 @@
+index=0
+kernel="/boot/vmlinuz-4.18.0-553.137.1.el8_10.x86_64"
+args="ro console=ttyS0,115200n8 no_timer_check net.ifnames=0 nvme_core.io_timeout=4294967295 nvme_core.max_retries=10 crashkernel=auto $tuned_params"
+root="UUID=bbf5722a-3cae-4f2b-ad38-138c7acf823c"
+initrd="/boot/initramfs-4.18.0-553.137.1.el8_10.x86_64.img $tuned_initrd"
+title="Rocky Linux (4.18.0-553.137.1.el8_10.x86_64) 8.10 (Green Obsidian)"
+id="d65d7b3020c64a0387d4c90aa164833c-4.18.0-553.137.1.el8_10.x86_64"
+index=1
+kernel="/boot/vmlinuz-0-rescue-d65d7b3020c64a0387d4c90aa164833c"
+args="ro console=ttyS0,115200n8 no_timer_check net.ifnames=0 nvme_core.io_timeout=4294967295 nvme_core.max_retries=10 crashkernel=auto"
+root="UUID=bbf5722a-3cae-4f2b-ad38-138c7acf823c"
+initrd="/boot/initramfs-0-rescue-d65d7b3020c64a0387d4c90aa164833c.img"
+title="Rocky Linux (0-rescue-d65d7b3020c64a0387d4c90aa164833c) 8.10 (Green Obsidian)"
+id="d65d7b3020c64a0387d4c90aa164833c-0-rescue"

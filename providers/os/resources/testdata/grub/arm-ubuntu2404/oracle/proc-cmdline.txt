@@ -1,0 +1,1 @@
+BOOT_IMAGE=/vmlinuz-7.0.0-1012-aws root=PARTUUID=c5b109a8-81d8-4d10-8ddb-fe7c835a13a0 ro console=tty1 console=ttyS0 nvme_core.io_timeout=4294967295 panic=-1

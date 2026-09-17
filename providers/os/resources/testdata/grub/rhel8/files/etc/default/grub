@@ -1,0 +1,4 @@
+GRUB_CMDLINE_LINUX="console=tty0 console=ttyS0,115200n8 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295 crashkernel=auto"
+GRUB_TIMEOUT=0
+GRUB_ENABLE_BLSCFG=true
+GRUB_DEFAULT=saved

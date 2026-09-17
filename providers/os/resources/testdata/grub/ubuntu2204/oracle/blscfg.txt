@@ -1,0 +1,2 @@
+/boot/grub/grub.cfg: no-blscfg
+/boot/efi/EFI/ubuntu/grub.cfg: no-blscfg

@@ -1,0 +1,2 @@
+systemd-1        /boot/efi autofs rw,relatime,fd=50,pgrp=1,timeout=0,minproto=5,maxproto=5,direct,pipe_ino=13557
+/dev/nvme0n1p128 /boot/efi vfat   rw,noatime,fmask=0077,dmask=0077,codepage=437,iocharset=ascii,shortname=winnt,errors=remount-ro
