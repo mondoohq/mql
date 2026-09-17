@@ -1026,7 +1026,10 @@ func ParseGrubLegacyPasswordProtected(content []byte) bool {
 		if fields[0] != "password" {
 			continue
 		}
-		// Skip the option flags that say how the credential is encoded.
+		// Skip the option flags that say how the credential is encoded. A
+		// directive carrying nothing but flags, or nothing at all, names no
+		// credential and protects nothing, so it falls through to the next
+		// line rather than counting.
 		for _, field := range fields[1:] {
 			if strings.HasPrefix(field, "--") {
 				continue
