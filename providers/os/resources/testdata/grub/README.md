@@ -31,6 +31,7 @@ terminated the same day. `proxmox-nas` is a physical Proxmox VE host.
 
 | Fixture | Distribution | Arch | Firmware | Layout | BLS entries | AMI |
 |---|---|---|---|---|---|---|
+| `al1` | Amazon Linux AMI 2018.03 | x86_64 | bios | GRUB legacy menu | 0 | ami-03a3cd72255745584 |
 | `al2` | Amazon Linux 2 | x86_64 | bios | grub.cfg | 0 | ami-0d4f0921b6c18b937 |
 | `al2023` | Amazon Linux 2023.12.20260914 | x86_64 | uefi | BLS inline | 1 | ami-0d21970fc031a9d81 |
 | `arm-al2023` | Amazon Linux 2023.12.20260914 | aarch64 | uefi | BLS inline | 1 | ami-0016b4a92b3d1a1e4 |
@@ -103,6 +104,20 @@ arguments the normal entries carry.
 on `al2023`, `rhel9`, `rhel10`, `centos-stream9` and `centos-stream10`, and on
 `rhel9` it lacks the `crashkernel` argument that the BLS entry and
 `/proc/cmdline` both carry.
+
+**GRUB legacy names its menu twice, and only one of the names is a file.**
+`al1` is the one host here that boots GRUB 0.97. Its menu is
+`/boot/grub/menu.lst`; `/boot/grub/grub.conf` is a symlink to it and
+`/etc/grub.conf` is a second symlink to the same file. A scan that does not
+resolve links sees whichever name it looks for, so all of them are candidates.
+The host has no `/etc/default/grub`, no `grubby` and no configuration
+generator: the menu is the only statement of what it boots, and it is edited by
+hand. `al1` also carries two installed kernels with different arguments, so its
+two entries are not copies of each other.
+
+The AMI is the ECS-optimized build. The stock `amzn-ami-hvm-2018.03` images
+have been deregistered, and `amzn-ami-2018.03.*-amazon-ecs-optimized` is the
+remaining published Amazon Linux 1 AMI.
 
 **No host here boots with systemd-boot.** The `/boot/loader/entries` files
 above are GRUB's, read through `blscfg`. `proxmox-nas` uses GRUB, not

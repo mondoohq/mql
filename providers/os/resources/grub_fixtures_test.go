@@ -48,7 +48,7 @@ func loadFixtureEntries(t *testing.T, name string) []GrubEntry {
 	t.Helper()
 	fs := fixtureFS(name)
 
-	cfgPath := findGrubCfg(fs, grubCfgPaths)
+	cfgPath := findBootConfig(fs)
 	var content []byte
 	if cfgPath != "" {
 		var err error

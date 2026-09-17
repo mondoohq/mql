@@ -6975,7 +6975,8 @@ private fstab.entry @defaults("device mountpoint") {
 // GRUB bootloader configuration
 //
 // GRUB bootloader settings drawn from /etc/default/grub and the generated
-// grub.cfg. The `params` map holds the key-value defaults (for example
+// grub.cfg, or from the single menu file of a GRUB legacy host. The `params`
+// map holds the key-value defaults (for example
 // GRUB_TIMEOUT and GRUB_CMDLINE_LINUX), `entries` lists the boot entries with
 // their kernel command lines, and `passwordProtected` reports whether
 // superuser plus password_pbkdf2 protection is configured, a common
@@ -6985,7 +6986,11 @@ grub.config @defaults("defaultsPath grubPath") {
   init(defaultsPath? string, grubPath? string)
   // Path to /etc/default/grub (key-value defaults)
   defaultsPath string
-  // Path to grub.cfg (generated configuration)
+  // Path to the boot menu
+  //
+  // The generated grub.cfg, or the menu file of a GRUB legacy host, which is
+  // menu.lst on Debian and Ubuntu and grub.conf on the Red Hat family and
+  // Amazon Linux 1.
   grubPath string
   // Configuration parameters from /etc/default/grub (e.g., GRUB_TIMEOUT, GRUB_CMDLINE_LINUX)
   params() map[string]string
@@ -6993,8 +6998,9 @@ grub.config @defaults("defaultsPath grubPath") {
   //
   // Read from the Boot Loader Specification files under /boot/loader/entries
   // when grub.cfg delegates to them, which is what Red Hat Enterprise Linux 8
-  // and later, CentOS Stream, Rocky Linux, and Amazon Linux 2023 do, and from
-  // the menu entries in grub.cfg otherwise. Null when neither source yields an
+  // and later, CentOS Stream, Rocky Linux, and Amazon Linux 2023 do, from the
+  // menu entries in grub.cfg otherwise, and from the title blocks of the menu
+  // file on a GRUB legacy host. Null when no source yields an
   // entry, since a host whose boot entries cannot be read has none to report
   // rather than an empty list of them, which would satisfy every assertion
   // made over the entries.
@@ -7005,15 +7011,19 @@ grub.config @defaults("defaultsPath grubPath") {
   // password_pbkdf2 credential, including a credential kept in the user.cfg
   // file beside grub.cfg. A credential that is still an unexpanded shell
   // variable, such as the templated block many distributions emit
-  // unconditionally, does not count. Null when no grub.cfg exists, since a
-  // host that does not use GRUB is neither protected nor unprotected.
+  // unconditionally, does not count. On a GRUB legacy host it is the
+  // menu-level password directive, which is what gates the interactive command
+  // line and the editing of an entry there. Null when no GRUB configuration
+  // exists, since a host that does not use GRUB is neither protected nor
+  // unprotected.
   passwordProtected() bool
 }
 
 // GRUB boot entry
 //
-// Single boot entry, from a menu entry in grub.cfg or from a Boot Loader
-// Specification file under /boot/loader/entries. `parameters` and `flags`
+// Single boot entry, from a menu entry in grub.cfg, a Boot Loader
+// Specification file under /boot/loader/entries, or a title block in the menu
+// file of a GRUB legacy host. `parameters` and `flags`
 // hold the kernel command line split into key-value directives and bare
 // tokens, so a check can assert on a parameter such as audit without matching
 // text. `cmdline` keeps the command line as it appears in the file and
@@ -7042,8 +7052,9 @@ private grub.config.entry @defaults("title kind") {
   kernel string
   // Kernel command line
   //
-  // The linux, linux16, or linuxefi line of a menu entry, or the options line
-  // of a Boot Loader Specification entry.
+  // The linux, linux16, or linuxefi line of a menu entry, the options line of
+  // a Boot Loader Specification entry, or the kernel line of a GRUB legacy
+  // entry.
   cmdline string
   // Kernel command line parameters
   //
