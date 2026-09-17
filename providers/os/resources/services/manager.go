@@ -122,12 +122,9 @@ func ResolveManager(conn shared.Connection) (OSServiceManager, error) {
 		return nil, errors.New("cannot find OS information for package detection")
 	}
 
-	useNoopInit := false
-	if asset.Platform.IsFamily("linux") && !hasInitSystem(conn) {
-		// Nothing on the target names an init system, so there are no managed
-		// services to report. This happens in containers.
-		useNoopInit = true
-	}
+	// Nothing on the target names an init system, so there are no managed
+	// services to report. This happens in containers.
+	useNoopInit := asset.Platform.IsFamily("linux") && !hasInitSystem(conn)
 
 	switch {
 	case useNoopInit:
