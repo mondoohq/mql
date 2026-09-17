@@ -156,6 +156,16 @@ func (m *SystemdUnitManager) listViaSystemctl() ([]*SystemdUnit, error) {
 	concrete, templates := splitSystemdTemplateUnits(names)
 
 	res := make([]*SystemdUnit, 0, len(names))
+	// list-unit-files names an alias as well as the unit it points at, and
+	// `systemctl show` answers for both with the same Id. Keying on the Id
+	// collapses them back into the one unit they are: without this, a NixOS
+	// 25.11 host reported 117 units for 108 distinct names, double-counting
+	// every aliased unit in a length or a where().
+	//
+	// It also keeps the resource cache honest. The cache key is the unit name,
+	// so the second CreateResource for a name returns the first instance --
+	// putting the same resource in the list twice rather than two resources.
+	seen := make(map[string]struct{}, len(concrete))
 	for start := 0; start < len(concrete); start += systemdUnitShowChunk {
 		end := min(start+systemdUnitShowChunk, len(concrete))
 
@@ -174,9 +184,15 @@ func (m *SystemdUnitManager) listViaSystemctl() ([]*SystemdUnit, error) {
 		}
 
 		for _, record := range records {
-			if u := systemdUnitFromProperties(record); u != nil {
-				res = append(res, u)
+			u := systemdUnitFromProperties(record)
+			if u == nil {
+				continue
 			}
+			if _, dup := seen[u.Name]; dup {
+				continue
+			}
+			seen[u.Name] = struct{}{}
+			res = append(res, u)
 		}
 	}
 
@@ -196,6 +212,10 @@ func (m *SystemdUnitManager) listViaSystemctl() ([]*SystemdUnit, error) {
 				Msg("mql[systemd]> could not read template unit file")
 			continue
 		}
+		if _, dup := seen[u.Name]; dup {
+			continue
+		}
+		seen[u.Name] = struct{}{}
 		res = append(res, u)
 	}
 
