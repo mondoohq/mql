@@ -9449,6 +9449,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"grub.config.entry.kind": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGrubConfigEntry).GetKind()).ToDataRes(types.String)
 	},
+	"grub.config.entry.bootable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGrubConfigEntry).GetBootable()).ToDataRes(types.Bool)
+	},
 	"grub.config.entry.kernel": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGrubConfigEntry).GetKernel()).ToDataRes(types.String)
 	},
@@ -26624,6 +26627,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"grub.config.entry.kind": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGrubConfigEntry).Kind, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"grub.config.entry.bootable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGrubConfigEntry).Bootable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"grub.config.entry.kernel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -65357,6 +65364,7 @@ type mqlGrubConfigEntry struct {
 	// optional: if you define mqlGrubConfigEntryInternal it will be used here
 	Title      plugin.TValue[string]
 	Kind       plugin.TValue[string]
+	Bootable   plugin.TValue[bool]
 	Kernel     plugin.TValue[string]
 	Cmdline    plugin.TValue[string]
 	Parameters plugin.TValue[map[string]any]
@@ -65409,6 +65417,10 @@ func (c *mqlGrubConfigEntry) GetTitle() *plugin.TValue[string] {
 
 func (c *mqlGrubConfigEntry) GetKind() *plugin.TValue[string] {
 	return &c.Kind
+}
+
+func (c *mqlGrubConfigEntry) GetBootable() *plugin.TValue[bool] {
+	return &c.Bootable
 }
 
 func (c *mqlGrubConfigEntry) GetKernel() *plugin.TValue[string] {

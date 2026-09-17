@@ -271,6 +271,7 @@ func (g *mqlGrubConfig) entries() ([]any, error) {
 			"__id":       llx.StringData(entryID),
 			"title":      llx.StringData(entry.Title),
 			"kind":       llx.StringData(entry.Kind),
+			"bootable":   llx.BoolData(entry.Bootable),
 			"kernel":     llx.StringData(entry.Kernel),
 			"cmdline":    llx.StringData(entry.Cmdline),
 			"parameters": llx.MapData(convert.MapToInterfaceMap(entry.Parameters), types.String),
@@ -356,6 +357,7 @@ const (
 type GrubEntry struct {
 	Title     string
 	Kind      string
+	Bootable  bool
 	Kernel    string
 	Cmdline   string
 	Initrd    string
@@ -600,6 +602,7 @@ func finalizeEntries(entries []GrubEntry, source string, vars map[string]string)
 
 		entry.Parameters, entry.Flags = ParseCmdline(args)
 		entry.Kind = classifyEntry(entry)
+		entry.Bootable = entryBootable(entry.Kind)
 	}
 }
 
@@ -634,6 +637,15 @@ func classifyEntry(entry *GrubEntry) string {
 	}
 
 	return GrubEntryNormal
+}
+
+// entryBootable reports whether an entry of this kind boots an operating
+// system, which is what decides whether its kernel command line is subject to
+// a control over boot parameters. A submenu carries no command line at all, a
+// memory test boots a diagnostic rather than the system, and an entry that
+// boots no kernel has nothing to audit.
+func entryBootable(kind string) bool {
+	return kind == GrubEntryNormal || kind == GrubEntryRecovery
 }
 
 // menuEntryClasses returns the --class values declared on a menuentry line.
