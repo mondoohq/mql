@@ -55,18 +55,55 @@ func AttachCLIs(rootCmd *cobra.Command, commands ...*Command) error {
 	return nil
 }
 
+// RegistryURL returns the base URL providers are downloaded from, or an empty
+// string when nothing is configured and the default registry applies. It is
+// exported so `mql status` reports the registry that is actually in effect
+// rather than recomputing the precedence and disagreeing with it.
+//
+// providers_url was removed in v14 in favour of updates_url, but a configuration
+// carrying it is not an error a user sees: viper does not report keys nothing
+// reads, so an operator who mirrors providers internally would have kept a
+// config that looks right while quietly downloading from Mondoo's bucket
+// instead -- which for an air-gapped or policy-restricted network is a reach for
+// the public internet, not merely a stale setting. It is honored again, with the
+// warning it had before it was removed.
+//
+// It is used verbatim, exactly as it was before removal. The suffix is stripped
+// only to word the advice: providers_url names the registry itself, while
+// updates_url names the host the registry hangs off, so the migration drops the
+// "/providers" the code appends back. Stripping it into updates_url here instead
+// would also move binary updates onto that host, which a provider mirror has no
+// reason to serve -- and a failed update check only warns, so that would be
+// silent too.
+func RegistryURL() string {
+	// Bound here rather than in each app's root command, so MONDOO_PROVIDERS_URL
+	// behaves the same for every binary reading this.
+	_ = viper.BindEnv("providers_url")
+
+	if providersURL := strings.TrimSpace(viper.GetString("providers_url")); providersURL != "" {
+		log.Warn().Msgf("providers_url is deprecated, please use updates_url: %s",
+			strings.TrimSuffix(providersURL, "/providers"))
+		return providersURL
+	}
+
+	if updatesURL := strings.TrimSpace(viper.GetString("updates_url")); updatesURL != "" {
+		return strings.TrimSuffix(updatesURL, "/") + "/providers"
+	}
+
+	return ""
+}
+
 func detectConnectorName(args []string, rootCmd *cobra.Command, commands []*Command, existing providers.Providers) (string, bool) {
 	autoUpdate := true
 
 	config.InitViperConfig()
 
 	// Determine the providers URL:
-	// 1. If updates_url is set, use updates_url + "/providers"
-	// 2. Otherwise, use the default
-	if viper.IsSet("updates_url") {
-		if updatesURL := viper.GetString("updates_url"); updatesURL != "" {
-			providers.SetProviderRegistry(providers.NewMondooProviderRegistry(providers.WithBaseURL(updatesURL + "/providers")))
-		}
+	// 1. providers_url, if set -- deprecated, and honored for compatibility
+	// 2. updates_url + "/providers"
+	// 3. the default registry
+	if registryURL := RegistryURL(); registryURL != "" {
+		providers.SetProviderRegistry(providers.NewMondooProviderRegistry(providers.WithBaseURL(registryURL)))
 	}
 
 	if viper.IsSet("auto_update") {

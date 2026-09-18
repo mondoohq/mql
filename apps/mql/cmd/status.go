@@ -22,6 +22,7 @@ import (
 	"go.mondoo.com/mql/cli/components"
 	"go.mondoo.com/mql/cli/config"
 	cli_errors "go.mondoo.com/mql/cli/errors"
+	cliproviders "go.mondoo.com/mql/cli/providers"
 	"go.mondoo.com/mql/cli/selfupdate"
 	"go.mondoo.com/mql/providers"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -262,12 +263,12 @@ func checkStatus(ctx context.Context) (Status, error) {
 	// whether a machine is on pre-releases.
 	s.Client.UpdateChannel = config.GetUpdateChannel()
 
-	// Determine the providers URL:
-	// 1. If updates_url is set, use updates_url + "/providers"
-	// 2. Otherwise, use the default
-	if opts.UpdatesURL != "" {
-		s.Client.ProvidersURL = opts.UpdatesURL + "/providers"
-	} else {
+	// Report the registry that is actually in effect, resolved by the same code
+	// that sets it. Recomputing the precedence here is how this row came to claim
+	// Mondoo's bucket while providers were being downloaded from a configured
+	// mirror.
+	s.Client.ProvidersURL = cliproviders.RegistryURL()
+	if s.Client.ProvidersURL == "" {
 		s.Client.ProvidersURL = providers.DefaultProviderRegistryURL
 	}
 
