@@ -3677,6 +3677,13 @@ sysrc.entry.file 13.2.6
 sysrc.entry.name 13.2.6
 sysrc.entry.value 13.2.6
 sysrc.files 13.2.6
+systemd.boot 13.52.0
+systemd.boot.active 13.52.0
+systemd.boot.bootPath 13.52.0
+systemd.boot.espPath 13.52.0
+systemd.boot.installed 13.52.0
+systemd.boot.selectedEntry 13.52.0
+systemd.boot.version 13.52.0
 systemd.resolved 13.16.10
 systemd.resolved.active 13.16.10
 systemd.resolved.cache 13.16.10
