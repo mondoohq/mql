@@ -75,9 +75,17 @@ type Release struct {
 	Version string `json:"version"`
 }
 
-var mqlLatestReleaseUrl = "https://releases.mondoo.com/mql/latest.json?ignoreCache=1"
+// mqlLatestReleaseUrl is the manifest the version check reads. It is the install
+// service's route, the same one the self-update reads, so the version reported
+// here is the version that would be installed.
+//
+// It cannot be built with selfupdate.ReleaseURL: cli/selfupdate imports this
+// package, so reaching the other way would be a cycle. The bucket's
+// "?ignoreCache=1" is dropped -- the install service does not know that
+// parameter, and carrying it implies a freshness guarantee it never gave.
+var mqlLatestReleaseUrl = "https://install.mondoo.com/package/mql/latest.json"
 
-// GetLatestReleaseName fetches the name of the latest release from releases.mondoo.com
+// GetLatestReleaseName fetches the name of the latest release from releaseUrl
 func GetLatestReleaseName(releaseUrl string, client *http.Client) (string, error) {
 	return GetLatestReleaseNameContext(context.Background(), releaseUrl, client)
 }
@@ -113,7 +121,7 @@ func GetLatestReleaseNameContext(ctx context.Context, releaseUrl string, client 
 	return release.Version, nil
 }
 
-// GetLatestVersion returns the latest version available on releases.mondoo.com
+// GetLatestVersion returns the latest version the install service publishes
 func GetLatestVersion(client *http.Client) (string, error) {
 	releaseName, err := GetLatestReleaseName(mqlLatestReleaseUrl, client)
 	if err != nil {

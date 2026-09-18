@@ -16,7 +16,7 @@ func TestGetLatestVersion(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.NotNil(t, version)
-	assert.Equal(t, mqlLatestReleaseUrl, "https://releases.mondoo.com/mql/latest.json?ignoreCache=1")
+	assert.Equal(t, "https://install.mondoo.com/package/mql/latest.json", mqlLatestReleaseUrl)
 }
 
 // GetCoreVersion reads the ldflag-stamped Version, which the release flow sets

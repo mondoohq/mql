@@ -22,6 +22,7 @@ import (
 	"go.mondoo.com/mql/cli/components"
 	"go.mondoo.com/mql/cli/config"
 	cli_errors "go.mondoo.com/mql/cli/errors"
+	"go.mondoo.com/mql/cli/selfupdate"
 	"go.mondoo.com/mql/providers"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/sysinfo"
@@ -211,11 +212,12 @@ func checkStatus(ctx context.Context) (Status, error) {
 	if opts.UpdatesURL != "" {
 		s.Client.UpdatesURL = opts.UpdatesURL
 	} else {
-		s.Client.UpdatesURL = providers.DefaultUpdatesURL
+		s.Client.UpdatesURL = selfupdate.DefaultUpdatesURL
 	}
 
-	// Fetch latest version using the configured updates URL
-	releaseURL := s.Client.UpdatesURL + "/mql/latest.json?ignoreCache=1"
+	// Read the same manifest the self-update reads, so status cannot report a
+	// version the updater would not install.
+	releaseURL := selfupdate.ReleaseURL(opts.UpdatesURL, "mql", config.GetUpdateChannel())
 	latestVersion, err := mql.GetLatestReleaseNameContext(ctx, releaseURL, httpClient)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to get latest version")

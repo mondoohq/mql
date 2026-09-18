@@ -207,7 +207,10 @@ func GetAutoUpdate() bool {
 	return true
 }
 
-// GetUpdatesURL returns the updates_url setting from viper config.
+// GetUpdatesURL returns the updates_url setting from viper config, or an empty
+// string when it is unset -- which is what selects the default install service
+// rather than any value named here. See the UpdatesURL field for the layout a
+// host has to serve.
 // Returns empty string if not set (caller should use default).
 func GetUpdatesURL() string {
 	return viper.GetString("updates_url")
@@ -430,10 +433,22 @@ type CommonOpts struct {
 	// annotations that will be applied to all assets
 	Annotations map[string]string `json:"annotations,omitempty" mapstructure:"annotations"`
 
-	// UpdatesURL is the base URL where updates are fetched from
-	// if not set, the default Mondoo releases URL is used (https://releases.mondoo.com)
-	// This can be a custom URL for an internal release registry
-	// Providers are fetched from UpdatesURL + "/providers"
+	// UpdatesURL is the base URL updates are fetched from, for an internal
+	// release registry or a mirror. Leave it unset to use Mondoo's.
+	//
+	// It is read by two different consumers, and a host it is pointed at has to
+	// serve both:
+	//
+	//	binary updates   UpdatesURL + "/package/<binary>/latest.json", with the
+	//	                 release channel as a "?channel=" query parameter
+	//	providers        UpdatesURL + "/providers"
+	//
+	// That is the install service's layout, which is what both mql and cnspec
+	// build. It is not the release bucket's: there the manifest is
+	// "/<binary>/latest.json" and a channel is a sibling document rather than a
+	// parameter. Pointing this at a bucket therefore leaves providers working
+	// and binary updates asking for a path that is not there -- which is silent,
+	// because a failed update check only warns.
 	UpdatesURL string `json:"updates_url,omitempty" mapstructure:"updates_url"`
 
 	// ProviderPortRange is the loopback TCP port range ("min-max") that provider

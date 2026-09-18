@@ -5,7 +5,6 @@ package main
 
 import (
 	"os"
-	"strings"
 
 	"go.mondoo.com/mql"
 	"go.mondoo.com/mql/apps/mql/cmd"
@@ -37,11 +36,7 @@ func main() {
 
 	// Check for self-update before anything else
 	if run, localOnly := selfUpdateMode(); run {
-		manifest := selfupdate.ChannelManifest(config.GetUpdateChannel())
-		releaseURL := selfupdate.DefaultReleasesURL + "/mql/" + manifest
-		if updatesURL := config.GetUpdatesURL(); updatesURL != "" {
-			releaseURL = strings.TrimSuffix(updatesURL, "/") + "/mql/" + manifest
-		}
+		releaseURL := selfupdate.ReleaseURL(config.GetUpdatesURL(), "mql", config.GetUpdateChannel())
 		cfg := selfupdate.Config{
 			Enabled:         true,
 			RefreshInterval: selfupdate.DefaultRefreshInterval,

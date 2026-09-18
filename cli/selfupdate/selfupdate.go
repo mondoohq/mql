@@ -40,12 +40,10 @@ const (
 	// to prevent infinite update loops. Provider auto-update (which reads
 	// MONDOO_AUTO_UPDATE via viper) is not affected by this variable.
 	EnvAutoUpdateEngine = "MONDOO_AUTO_UPDATE_ENGINE"
-	// DefaultReleaseURL is the URL to fetch the latest release information
-	DefaultReleaseURL = "https://releases.mondoo.com/mql/latest.json"
-
-	// DefaultReleasesURL is the release bucket the manifest is read from when
-	// updates_url is not configured.
-	DefaultReleasesURL = "https://releases.mondoo.com"
+	// DefaultUpdatesURL is the install service binary updates resolve through
+	// when updates_url is not configured. It is the same service cnspec defaults
+	// to, so one updates_url means the same thing to both binaries.
+	DefaultUpdatesURL = "https://install.mondoo.com"
 	// markerFilePrefix is the prefix for per-binary marker files that track when the last update check occurred.
 	// Each binary gets its own marker (e.g., ".last-update-check-mql", ".last-update-check-cnspec").
 	markerFilePrefix = ".last-update-check-"
@@ -75,19 +73,36 @@ type Release struct {
 	Files   []ReleaseFile `json:"files"`
 }
 
-// ChannelManifest returns the manifest document a release channel is published
-// as, next to the artifacts it points at.
+// ReleaseURL returns the release manifest a binary's self-update reads, from the
+// install service at updatesURL (or the default one when it is empty).
 //
 // A channel changes which pointer is read, never where the artifacts live, so a
-// pinned version resolves the same on every channel. Note this is the bucket
-// spelling: the install service instead takes the channel as a `?channel=`
-// query parameter, because its routes are named after the package rather than
-// after the document.
-func ChannelManifest(channel string) string {
-	if channel == config.ChannelPreview {
-		return "preview.json"
+// pinned version resolves the same on every channel. It travels as a query
+// parameter rather than a different document name because the service's routes
+// are named after the package, not after the manifest: there is no
+// /package/mql/preview.json, and a path-shaped channel would ask for a route
+// that does not exist.
+//
+// The bucket spells the same thing as a sibling document (/mql/preview.json),
+// which is why one updates_url cannot address both: the layouts disagree on the
+// path and on the channel. This builds the install-service spelling, which is
+// what cnspec already uses, so a single configured host serves both binaries.
+func ReleaseURL(updatesURL string, binary string, channel string) string {
+	if updatesURL == "" {
+		updatesURL = DefaultUpdatesURL
 	}
-	return "latest.json"
+
+	manifest := strings.TrimSuffix(updatesURL, "/") + "/package/" + binary + "/latest.json"
+	if channel == "" || channel == config.ChannelStable {
+		return manifest
+	}
+
+	// Encoded rather than concatenated, so a caller passing something other than
+	// the two normalized constants gets a valid URL with one odd parameter
+	// instead of a second "?" or an injected one.
+	query := url.Values{}
+	query.Set("channel", channel)
+	return manifest + "?" + query.Encode()
 }
 
 // ReleaseFile represents a downloadable release file
