@@ -638,8 +638,6 @@ func ParseGrubCfgEntries(r io.Reader) ([]BootEntry, error) {
 var (
 	reSuperusers = regexp.MustCompile(`^set\s+superusers\s*=\s*(.*)$`)
 	rePassword   = regexp.MustCompile(`^password(?:_pbkdf2)?\s+(.*)$`)
-	// reShellVar matches an unexpanded shell variable reference, such as
-	// ${GRUB2_PASSWORD} or $GRUB2_PASSWORD.
 )
 
 // GrubPasswordConfig captures what a grub.cfg states about password protection.

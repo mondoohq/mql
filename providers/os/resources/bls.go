@@ -14,7 +14,8 @@ import (
 	"github.com/spf13/afero"
 )
 
-// Shell-style variable references, which an entry may carry in place of a
+// reShellVar matches an unexpanded shell variable reference, such as
+// ${GRUB2_PASSWORD} or $GRUB2_PASSWORD, which an entry may carry in place of a
 // value the boot loader expands.
 var reShellVar = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)`)
 
