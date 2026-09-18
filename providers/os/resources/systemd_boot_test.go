@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"os"
 	"path"
 	"strings"
 	"testing"
@@ -364,4 +365,111 @@ func TestSystemdBootAccessorsSeparateTheTwoFailures(t *testing.T) {
 	require.Error(t, err)
 	_, err = s.selectedEntry()
 	require.Error(t, err)
+}
+
+// realUnifiedKernelImage is a unified kernel image built by systemd's own
+// ukify, committed as a secboot fixture. Reused here so the reader runs against
+// real section layout and padding rather than a hand-built PE file.
+const realUnifiedKernelImage = "testdata/secboot/host/files/boot/efi/EFI/Linux/linux-9f8e7d6c.efi"
+
+func copyInto(t *testing.T, fs afero.Fs, src, dst string) {
+	t.Helper()
+	data, err := os.ReadFile(src)
+	require.NoError(t, err)
+	require.NoError(t, fs.MkdirAll(path.Dir(dst), 0o755))
+	require.NoError(t, afero.WriteFile(fs, dst, data, 0o644))
+}
+
+func writeEntryFile(t *testing.T, fs afero.Fs, p, body string) {
+	t.Helper()
+	require.NoError(t, fs.MkdirAll(path.Dir(p), 0o755))
+	require.NoError(t, afero.WriteFile(fs, p, []byte(body), 0o644))
+}
+
+func TestReadBootEntries(t *testing.T) {
+	t.Run("an entry file under loader/entries", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		writeEntryFile(t, fs, "/boot/loader/entries/fedora.conf",
+			"title Fedora Linux 42\n"+
+				"version 6.19.0-63.fc42.aarch64\n"+
+				"linux /vmlinuz-6.19.0\n"+
+				"initrd /initramfs-6.19.0.img\n"+
+				"options root=UUID=x ro audit=1 quiet\n")
+
+		entries := readBootEntries(fs, "/boot")
+		require.Len(t, entries, 1)
+		assert.Equal(t, "Fedora Linux 42", entries[0].Title)
+		assert.Equal(t, "/vmlinuz-6.19.0", entries[0].Kernel)
+		assert.Equal(t, "1", entries[0].Parameters["audit"])
+		assert.Contains(t, entries[0].Flags, "ro")
+		assert.True(t, entries[0].Bootable)
+		assert.False(t, entries[0].UnifiedKernelImage)
+		assert.Equal(t, "/boot/loader/entries/fedora.conf", entries[0].Source)
+	})
+
+	t.Run("a unified kernel image under EFI/Linux", func(t *testing.T) {
+		// The case that has no entry file at all, and that a check reading
+		// only loader/entries reports as a host with nothing to boot.
+		fs := afero.NewMemMapFs()
+		copyInto(t, fs, realUnifiedKernelImage, "/boot/EFI/Linux/linux-6.19.0.efi")
+
+		entries := readBootEntries(fs, "/boot")
+		require.Len(t, entries, 1)
+		assert.True(t, entries[0].UnifiedKernelImage)
+		assert.True(t, entries[0].Bootable)
+		assert.Equal(t, "1", entries[0].Parameters["audit"])
+		assert.Equal(t, "/boot/EFI/Linux/linux-6.19.0.efi", entries[0].Source)
+		assert.NotEmpty(t, entries[0].Kernel)
+	})
+
+	t.Run("both sources on one host", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		writeEntryFile(t, fs, "/boot/loader/entries/fedora.conf",
+			"title Fedora Linux 42\nlinux /vmlinuz-6.19.0\noptions root=UUID=x audit=1\n")
+		copyInto(t, fs, realUnifiedKernelImage, "/boot/EFI/Linux/linux-6.19.0.efi")
+
+		entries := readBootEntries(fs, "/boot")
+		require.Len(t, entries, 2)
+	})
+
+	t.Run("an entry that boots no kernel is not bootable", func(t *testing.T) {
+		// bootctl writes an entry for the firmware setup, and a dual-boot host
+		// carries one that chainloads Windows. Neither boots a kernel, so
+		// neither carries parameters to audit, and requiring audit=1 of them
+		// would fail a host that is correctly configured.
+		fs := afero.NewMemMapFs()
+		writeEntryFile(t, fs, "/boot/loader/entries/firmware.conf",
+			"title Reboot Into Firmware Interface\n")
+		writeEntryFile(t, fs, "/boot/loader/entries/windows.conf",
+			"title Windows\nefi /EFI/Microsoft/Boot/bootmgfw.efi\n")
+		writeEntryFile(t, fs, "/boot/loader/entries/fedora.conf",
+			"title Fedora Linux 42\nlinux /vmlinuz-6.19.0\noptions root=UUID=x audit=1\n")
+
+		entries := readBootEntries(fs, "/boot")
+		require.Len(t, entries, 3)
+
+		bootable := []BootEntry{}
+		for _, e := range entries {
+			if e.Bootable {
+				bootable = append(bootable, e)
+			}
+		}
+		require.Len(t, bootable, 1)
+		assert.Equal(t, "Fedora Linux 42", bootable[0].Title)
+	})
+
+	t.Run("the boot loader itself is not an entry", func(t *testing.T) {
+		// systemd-boot's own binary and a firmware updater are valid PE
+		// executables with no command line. They boot no kernel of ours.
+		fs := afero.NewMemMapFs()
+		copyInto(t, fs, "testdata/secboot/host/files/boot/efi/EFI/Linux/fwupdaa64.efi",
+			"/boot/EFI/Linux/fwupdaa64.efi")
+
+		assert.Empty(t, readBootEntries(fs, "/boot"))
+	})
+
+	t.Run("nothing readable yields no entries", func(t *testing.T) {
+		assert.Empty(t, readBootEntries(afero.NewMemMapFs(), "/boot"))
+		assert.Empty(t, readBootEntries(afero.NewMemMapFs(), ""))
+	})
 }

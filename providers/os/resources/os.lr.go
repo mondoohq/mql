@@ -209,6 +209,7 @@ const (
 	ResourceSystemdResolved                               string = "systemd.resolved"
 	ResourceSystemdTimesyncd                              string = "systemd.timesyncd"
 	ResourceSystemdBoot                                   string = "systemd.boot"
+	ResourceSystemdBootEntry                              string = "systemd.boot.entry"
 	ResourceKernel                                        string = "kernel"
 	ResourceKernelModule                                  string = "kernel.module"
 	ResourceKernelCmdline                                 string = "kernel.cmdline"
@@ -1421,6 +1422,10 @@ func init() {
 		"systemd.boot": {
 			// to override args, implement: initSystemdBoot(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createSystemdBoot,
+		},
+		"systemd.boot.entry": {
+			// to override args, implement: initSystemdBootEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createSystemdBootEntry,
 		},
 		"kernel": {
 			Init:   initKernel,
@@ -8212,6 +8217,42 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"systemd.boot.selectedEntry": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSystemdBoot).GetSelectedEntry()).ToDataRes(types.String)
+	},
+	"systemd.boot.entries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBoot).GetEntries()).ToDataRes(types.Array(types.Resource("systemd.boot.entry")))
+	},
+	"systemd.boot.entry.title": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBootEntry).GetTitle()).ToDataRes(types.String)
+	},
+	"systemd.boot.entry.kind": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBootEntry).GetKind()).ToDataRes(types.String)
+	},
+	"systemd.boot.entry.bootable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBootEntry).GetBootable()).ToDataRes(types.Bool)
+	},
+	"systemd.boot.entry.kernel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBootEntry).GetKernel()).ToDataRes(types.String)
+	},
+	"systemd.boot.entry.cmdline": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBootEntry).GetCmdline()).ToDataRes(types.String)
+	},
+	"systemd.boot.entry.parameters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBootEntry).GetParameters()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"systemd.boot.entry.flags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBootEntry).GetFlags()).ToDataRes(types.Array(types.String))
+	},
+	"systemd.boot.entry.unifiedKernelImage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBootEntry).GetUnifiedKernelImage()).ToDataRes(types.Bool)
+	},
+	"systemd.boot.entry.signed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBootEntry).GetSigned()).ToDataRes(types.Bool)
+	},
+	"systemd.boot.entry.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBootEntry).GetSource()).ToDataRes(types.String)
+	},
+	"systemd.boot.entry.initrd": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBootEntry).GetInitrd()).ToDataRes(types.String)
 	},
 	"kernel.info": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlKernel).GetInfo()).ToDataRes(types.Dict)
@@ -24839,6 +24880,58 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"systemd.boot.selectedEntry": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlSystemdBoot).SelectedEntry, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"systemd.boot.entries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBoot).Entries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"systemd.boot.entry.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBootEntry).__id, ok = v.Value.(string)
+		return
+	},
+	"systemd.boot.entry.title": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBootEntry).Title, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"systemd.boot.entry.kind": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBootEntry).Kind, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"systemd.boot.entry.bootable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBootEntry).Bootable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"systemd.boot.entry.kernel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBootEntry).Kernel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"systemd.boot.entry.cmdline": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBootEntry).Cmdline, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"systemd.boot.entry.parameters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBootEntry).Parameters, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"systemd.boot.entry.flags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBootEntry).Flags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"systemd.boot.entry.unifiedKernelImage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBootEntry).UnifiedKernelImage, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"systemd.boot.entry.signed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBootEntry).Signed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"systemd.boot.entry.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBootEntry).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"systemd.boot.entry.initrd": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBootEntry).Initrd, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"kernel.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -60276,6 +60369,7 @@ type mqlSystemdBoot struct {
 	EspPath       plugin.TValue[string]
 	BootPath      plugin.TValue[string]
 	SelectedEntry plugin.TValue[string]
+	Entries       plugin.TValue[[]any]
 }
 
 // createSystemdBoot creates a new instance of this resource
@@ -60349,6 +60443,121 @@ func (c *mqlSystemdBoot) GetSelectedEntry() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.SelectedEntry, func() (string, error) {
 		return c.selectedEntry()
 	})
+}
+
+func (c *mqlSystemdBoot) GetEntries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Entries, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("systemd.boot", c.__id, "entries")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.entries()
+	})
+}
+
+// mqlSystemdBootEntry for the systemd.boot.entry resource
+type mqlSystemdBootEntry struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlSystemdBootEntryInternal it will be used here
+	Title              plugin.TValue[string]
+	Kind               plugin.TValue[string]
+	Bootable           plugin.TValue[bool]
+	Kernel             plugin.TValue[string]
+	Cmdline            plugin.TValue[string]
+	Parameters         plugin.TValue[map[string]any]
+	Flags              plugin.TValue[[]any]
+	UnifiedKernelImage plugin.TValue[bool]
+	Signed             plugin.TValue[bool]
+	Source             plugin.TValue[string]
+	Initrd             plugin.TValue[string]
+}
+
+// createSystemdBootEntry creates a new instance of this resource
+func createSystemdBootEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSystemdBootEntry{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("systemd.boot.entry", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSystemdBootEntry) MqlName() string {
+	return "systemd.boot.entry"
+}
+
+func (c *mqlSystemdBootEntry) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSystemdBootEntry) GetTitle() *plugin.TValue[string] {
+	return &c.Title
+}
+
+func (c *mqlSystemdBootEntry) GetKind() *plugin.TValue[string] {
+	return &c.Kind
+}
+
+func (c *mqlSystemdBootEntry) GetBootable() *plugin.TValue[bool] {
+	return &c.Bootable
+}
+
+func (c *mqlSystemdBootEntry) GetKernel() *plugin.TValue[string] {
+	return &c.Kernel
+}
+
+func (c *mqlSystemdBootEntry) GetCmdline() *plugin.TValue[string] {
+	return &c.Cmdline
+}
+
+func (c *mqlSystemdBootEntry) GetParameters() *plugin.TValue[map[string]any] {
+	return &c.Parameters
+}
+
+func (c *mqlSystemdBootEntry) GetFlags() *plugin.TValue[[]any] {
+	return &c.Flags
+}
+
+func (c *mqlSystemdBootEntry) GetUnifiedKernelImage() *plugin.TValue[bool] {
+	return &c.UnifiedKernelImage
+}
+
+func (c *mqlSystemdBootEntry) GetSigned() *plugin.TValue[bool] {
+	return &c.Signed
+}
+
+func (c *mqlSystemdBootEntry) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlSystemdBootEntry) GetInitrd() *plugin.TValue[string] {
+	return &c.Initrd
 }
 
 // mqlKernel for the kernel resource

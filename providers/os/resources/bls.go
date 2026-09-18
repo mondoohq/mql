@@ -53,6 +53,13 @@ type BootEntry struct {
 	// labelled. Version is the BLS version key, which names a rescue entry.
 	Classes []string
 	Version string
+
+	// UnifiedKernelImage records that the entry is one signed executable
+	// holding the kernel, the initrd and the command line, discovered as a
+	// file rather than declared by an entry file. Signed reports whether that
+	// executable carries a signature.
+	UnifiedKernelImage bool
+	Signed             bool
 }
 
 // ParseBLSEntry parses one Boot Loader Specification entry file, whose lines
@@ -205,9 +212,11 @@ func classifyEntry(entry *BootEntry) string {
 	if entry.IsSubmenu {
 		return BootEntrySubmenu
 	}
-	if entry.Kernel == "" {
+	if entry.Kernel == "" && !entry.UnifiedKernelImage {
 		// An entry that boots no kernel, such as one opening the firmware
-		// settings, carries no boot parameters to audit.
+		// settings or chainloading another operating system, carries no boot
+		// parameters to audit. A unified kernel image is itself the kernel, so
+		// it boots one even where it records no release.
 		return BootEntryOther
 	}
 

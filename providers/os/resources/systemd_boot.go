@@ -14,9 +14,13 @@ import (
 	"sync"
 	"unicode/utf16"
 
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/types"
 )
 
 // Length of the attribute header every EFI variable file begins with.
@@ -203,6 +207,78 @@ func readBootPartitions(fs afero.Fs) bootPartitions {
 	}
 }
 
+// Directories under $BOOT that systemd-boot takes entries from: the Boot
+// Loader Specification entry files, and the unified kernel images, which
+// declare themselves by being there and carry their command line inside.
+const (
+	bootEntriesDir   = "loader/entries"
+	unifiedKernelDir = "EFI/Linux"
+)
+
+// readBootEntries returns every entry systemd-boot offers on the next boot,
+// from both sources it takes them from. A source that cannot be read yields
+// nothing rather than an error: a host keeps its entries in one of these
+// places, not both, so an absent directory is the normal case.
+func readBootEntries(fs afero.Fs, bootPath string) []BootEntry {
+	if bootPath == "" {
+		return nil
+	}
+
+	// The variables a GRUB entry may reference do not exist here: systemd-boot
+	// expands nothing, so an entry states its own command line.
+	entries, _ := readBLSEntries(fs, path.Join(bootPath, bootEntriesDir), nil)
+
+	return append(entries, readUnifiedKernelEntries(fs, path.Join(bootPath, unifiedKernelDir))...)
+}
+
+// readUnifiedKernelEntries reads the unified kernel images in dir. Only the
+// headers and two small sections of each image are read; the kernel inside it
+// is the bulk of the file and is never touched.
+func readUnifiedKernelEntries(fs afero.Fs, dir string) []BootEntry {
+	matches, err := afero.Glob(fs, path.Join(dir, "*.efi"))
+	if err != nil {
+		return nil
+	}
+	sort.Strings(matches)
+
+	entries := []BootEntry{}
+	for _, p := range matches {
+		r, closer, err := secbootImageReader(fs, p)
+		if err != nil {
+			log.Debug().Str("path", p).Err(err).Msg("cannot open unified kernel image")
+			continue
+		}
+		img, err := ReadUnifiedKernelImage(r)
+		closer()
+		if err != nil {
+			// A file with an .efi suffix that is not a unified kernel image is
+			// not an error: it is simply not one of the entries.
+			log.Debug().Str("path", p).Err(err).Msg("not a readable unified kernel image")
+			continue
+		}
+		if img.Cmdline == "" {
+			// An EFI binary carrying no command line boots no kernel of ours,
+			// such as the boot loader itself or a firmware updater beside it.
+			continue
+		}
+
+		entry := BootEntry{
+			Title:              path.Base(p),
+			Kernel:             img.Kernel,
+			Cmdline:            img.Cmdline,
+			Parameters:         img.Parameters,
+			Flags:              img.Flags,
+			Source:             p,
+			UnifiedKernelImage: true,
+			Signed:             img.Signed,
+		}
+		entry.Kind = classifyEntry(&entry)
+		entry.Bootable = entryBootable(entry.Kind)
+		entries = append(entries, entry)
+	}
+	return entries
+}
+
 // loaderVariables is what the boot loader recorded about the boot it performed,
 // read from the EFI variables it sets as it hands control to the kernel.
 type loaderVariables struct {
@@ -251,6 +327,8 @@ type mqlSystemdBootInternal struct {
 	cachedActive      bool
 	cachedSelected    string
 	cachedEfiVarsRead bool
+	cachedEntries     []BootEntry
+	cachedEntriesOK   bool
 
 	// The two sources fail independently, so their failures are kept apart.
 	// fetchErr is a failure to reach the host, which leaves nothing to report.
@@ -286,6 +364,9 @@ func (s *mqlSystemdBoot) fetch() error {
 		s.cachedBootPath = parts.Boot
 		s.cachedInstalled = parts.Installed
 		s.cachedVersion = parts.Version
+
+		s.cachedEntries = readBootEntries(fs, parts.Boot)
+		s.cachedEntriesOK = len(s.cachedEntries) > 0
 
 		vars, err := readLoaderVariables(conn, fs)
 		if err != nil {
@@ -362,4 +443,46 @@ func (s *mqlSystemdBoot) selectedEntry() (string, error) {
 		return "", nil
 	}
 	return s.cachedSelected, nil
+}
+
+func (s *mqlSystemdBoot) entries() ([]any, error) {
+	if err := s.fetch(); err != nil {
+		return nil, err
+	}
+
+	if !s.cachedEntriesOK {
+		// A host whose boot entries cannot be read has none to report. An
+		// empty list would read as "systemd-boot offers nothing to boot", and
+		// would satisfy every assertion made over the entries.
+		s.Entries.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	resources := make([]any, 0, len(s.cachedEntries))
+	for _, entry := range s.cachedEntries {
+		resource, err := CreateResource(s.MqlRuntime, "systemd.boot.entry", map[string]*llx.RawData{
+			"__id":               llx.StringData("systemd.boot.entry:" + entry.Source),
+			"title":              llx.StringData(entry.Title),
+			"kind":               llx.StringData(entry.Kind),
+			"bootable":           llx.BoolData(entry.Bootable),
+			"kernel":             llx.StringData(entry.Kernel),
+			"cmdline":            llx.StringData(entry.Cmdline),
+			"parameters":         llx.MapData(convert.MapToInterfaceMap(entry.Parameters), types.String),
+			"flags":              llx.ArrayData(convert.SliceAnyToInterface(entry.Flags), types.String),
+			"unifiedKernelImage": llx.BoolData(entry.UnifiedKernelImage),
+			"signed":             llx.BoolData(entry.Signed),
+			"source":             llx.StringData(entry.Source),
+			"initrd":             llx.StringData(entry.Initrd),
+		})
+		if err != nil {
+			return nil, err
+		}
+		resources = append(resources, resource)
+	}
+
+	return resources, nil
+}
+
+func (e *mqlSystemdBootEntry) id() (string, error) {
+	return e.MqlID(), nil
 }
