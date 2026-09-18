@@ -240,7 +240,7 @@ func TestSecbootImageReaderWithoutReadAt(t *testing.T) {
 	const image = "/boot/efi/EFI/Linux/linux-9f8e7d6c.efi"
 	base := afero.NewBasePathFs(afero.NewOsFs(), secbootFixtureRoot)
 
-	read := func(t *testing.T, fs afero.Fs) SecbootImage {
+	read := func(t *testing.T, fs afero.Fs) UnifiedKernelImage {
 		t.Helper()
 		r, closer, err := secbootImageReader(fs, image)
 		require.NoError(t, err)
