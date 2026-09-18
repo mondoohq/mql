@@ -180,6 +180,68 @@ const efiLoaderVariable = "4a67b082-0a4c-41cf-b6c7-440b29bb8c4f"
 // in the marker inside its binary.
 const systemdBootLoaderName = "systemd-boot"
 
+// bootPartitions is what the EFI system partition states about the boot loader
+// installed on it, all of it read from files.
+type bootPartitions struct {
+	Esp       string
+	Boot      string
+	Version   string
+	Installed bool
+}
+
+// readBootPartitions reads what the partitions state. Every field degrades to an
+// empty value, so there is nothing here that fails: a partition that cannot be
+// read is a host with no boot loader installed on it, which is an answer rather
+// than an error.
+func readBootPartitions(fs afero.Fs) bootPartitions {
+	esp := findEsp(fs)
+	return bootPartitions{
+		Esp:       esp,
+		Boot:      findBootPath(fs, esp),
+		Installed: systemdBootInstalled(fs, esp),
+		Version:   readSystemdBootVersion(fs, esp),
+	}
+}
+
+// loaderVariables is what the boot loader recorded about the boot it performed,
+// read from the EFI variables it sets as it hands control to the kernel.
+type loaderVariables struct {
+	Name     string
+	Version  string
+	Selected string
+
+	// Readable records whether the variables could be read at all, which is
+	// what separates "another loader booted this host" from "nothing observed
+	// the boot".
+	Readable bool
+}
+
+// readLoaderVariables reads the boot loader interface variables. A host with no
+// EFI variables at all is not a failure: an image and a legacy BIOS host both
+// have none, and neither booted through a loader that could have written them.
+// A variable that exists and cannot be read is an error, because that leaves
+// the question open rather than answering it.
+func readLoaderVariables(conn shared.Connection, fs afero.Fs) (loaderVariables, error) {
+	vars := loaderVariables{}
+
+	if _, err := fs.Stat(efiVarsDir); err != nil {
+		return vars, nil
+	}
+	vars.Readable = true
+
+	info, err := readEfiVarString(conn, fs, "LoaderInfo-"+efiLoaderVariable)
+	if err != nil {
+		return vars, err
+	}
+	vars.Name, vars.Version = parseLoaderInfo(info)
+
+	vars.Selected, err = readEfiVarString(conn, fs, "LoaderEntrySelected-"+efiLoaderVariable)
+	if err != nil {
+		return vars, err
+	}
+	return vars, nil
+}
+
 type mqlSystemdBootInternal struct {
 	once              sync.Once
 	cachedEsp         string
@@ -189,7 +251,15 @@ type mqlSystemdBootInternal struct {
 	cachedActive      bool
 	cachedSelected    string
 	cachedEfiVarsRead bool
-	fetchErr          error
+
+	// The two sources fail independently, so their failures are kept apart.
+	// fetchErr is a failure to reach the host, which leaves nothing to report.
+	// efiVarErr is a failure to read the boot loader variables, which leaves
+	// only the fields that depend on them unanswered: the partitions were
+	// already read by then, and reporting an error for those would discard a
+	// measurement that succeeded.
+	fetchErr  error
+	efiVarErr error
 }
 
 func (s *mqlSystemdBoot) id() (string, error) {
@@ -211,34 +281,26 @@ func (s *mqlSystemdBoot) fetch() error {
 			return
 		}
 
-		s.cachedEsp = findEsp(fs)
-		s.cachedBootPath = findBootPath(fs, s.cachedEsp)
-		s.cachedInstalled = systemdBootInstalled(fs, s.cachedEsp)
-		s.cachedVersion = readSystemdBootVersion(fs, s.cachedEsp)
+		parts := readBootPartitions(fs)
+		s.cachedEsp = parts.Esp
+		s.cachedBootPath = parts.Boot
+		s.cachedInstalled = parts.Installed
+		s.cachedVersion = parts.Version
 
-		if _, err := fs.Stat(efiVarsDir); err != nil {
-			// No EFI variables: a legacy BIOS host, or a scan of an image or a
-			// mounted filesystem, where nothing booted at all. What the loader
-			// would report about a boot cannot be answered either way.
-			return
-		}
-		s.cachedEfiVarsRead = true
-
-		info, err := readEfiVarString(conn, fs, "LoaderInfo-"+efiLoaderVariable)
+		vars, err := readLoaderVariables(conn, fs)
 		if err != nil {
-			s.fetchErr = err
+			s.efiVarErr = err
 			return
 		}
-		name, version := parseLoaderInfo(info)
-		s.cachedActive = name == systemdBootLoaderName
-		if s.cachedActive && version != "" {
+		s.cachedEfiVarsRead = vars.Readable
+		s.cachedActive = vars.Name == systemdBootLoaderName
+		s.cachedSelected = vars.Selected
+		if s.cachedActive && vars.Version != "" {
 			// The loader that ran states its own version, which is what booted
 			// this host even where a different binary now sits on the
 			// partition.
-			s.cachedVersion = version
+			s.cachedVersion = vars.Version
 		}
-
-		s.cachedSelected, s.fetchErr = readEfiVarString(conn, fs, "LoaderEntrySelected-"+efiLoaderVariable)
 	})
 	return s.fetchErr
 }
@@ -246,6 +308,9 @@ func (s *mqlSystemdBoot) fetch() error {
 func (s *mqlSystemdBoot) active() (bool, error) {
 	if err := s.fetch(); err != nil {
 		return false, err
+	}
+	if s.efiVarErr != nil {
+		return false, s.efiVarErr
 	}
 	if !s.cachedEfiVarsRead {
 		// Nothing observed this host boot. Reporting false would say
@@ -288,6 +353,9 @@ func (s *mqlSystemdBoot) bootPath() (string, error) {
 func (s *mqlSystemdBoot) selectedEntry() (string, error) {
 	if err := s.fetch(); err != nil {
 		return "", err
+	}
+	if s.efiVarErr != nil {
+		return "", s.efiVarErr
 	}
 	if !s.cachedEfiVarsRead {
 		s.SelectedEntry.State = plugin.StateIsSet | plugin.StateIsNull

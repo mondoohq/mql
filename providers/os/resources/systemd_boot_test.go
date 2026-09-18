@@ -4,9 +4,11 @@
 package resources
 
 import (
+	"errors"
 	"path"
 	"strings"
 	"testing"
+	"unicode/utf16"
 
 	"github.com/spf13/afero"
 
@@ -259,4 +261,107 @@ func TestReadSystemdBootVersion(t *testing.T) {
 	t.Run("systemd-boot is not installed", func(t *testing.T) {
 		assert.Equal(t, "", readSystemdBootVersion(newBootFs(t, "/boot/efi/EFI/"), "/boot/efi"))
 	})
+}
+
+// writeEfiVar writes a variable the way efivarfs presents one: the attribute
+// header, then UTF-16LE.
+func writeEfiVar(t *testing.T, fs afero.Fs, name, value string) {
+	t.Helper()
+	require.NoError(t, fs.MkdirAll(efiVarsDir, 0o755))
+	data := append([]byte{0x07, 0x00, 0x00, 0x00}, utf16LE(value)...)
+	require.NoError(t, afero.WriteFile(fs, path.Join(efiVarsDir, name+"-"+efiLoaderVariable), data, 0o644))
+}
+
+func utf16LE(s string) []byte {
+	out := []byte{}
+	for _, r := range utf16.Encode([]rune(s)) {
+		out = append(out, byte(r), byte(r>>8))
+	}
+	return append(out, 0x00, 0x00)
+}
+
+func TestReadLoaderVariables(t *testing.T) {
+	t.Run("reads the loader and the entry it selected", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		writeEfiVar(t, fs, "LoaderInfo", "systemd-boot 257.13-1.fc42")
+		writeEfiVar(t, fs, "LoaderEntrySelected", "fedora-6.19.0.conf")
+
+		vars, err := readLoaderVariables(nil, fs)
+		require.NoError(t, err)
+		assert.True(t, vars.Readable)
+		assert.Equal(t, "systemd-boot", vars.Name)
+		assert.Equal(t, "257.13-1.fc42", vars.Version)
+		assert.Equal(t, "fedora-6.19.0.conf", vars.Selected)
+	})
+
+	t.Run("no efivars directory means nothing observed the boot", func(t *testing.T) {
+		// An image or a mounted filesystem. Not an error: there is simply no
+		// boot to describe.
+		vars, err := readLoaderVariables(nil, afero.NewMemMapFs())
+		require.NoError(t, err)
+		assert.False(t, vars.Readable)
+	})
+
+	t.Run("a malformed variable is an error, not an empty answer", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		require.NoError(t, fs.MkdirAll(efiVarsDir, 0o755))
+		require.NoError(t, afero.WriteFile(fs,
+			path.Join(efiVarsDir, "LoaderInfo-"+efiLoaderVariable),
+			[]byte{0x07, 0x00, 0x00, 0x00, 's'}, 0o644))
+
+		_, err := readLoaderVariables(nil, fs)
+		require.Error(t, err)
+	})
+}
+
+func TestBootPartitionsAreReadIndependentlyOfTheVariables(t *testing.T) {
+	// The partition is readable and the variable is not. Reading the EFI system
+	// partition must not depend on the variables at all, so that a failure to
+	// read one cannot take the other down.
+	fs := newBootFs(t, "/boot/EFI/systemd/systemd-bootx64.efi")
+	require.NoError(t, afero.WriteFile(fs, "/boot/EFI/systemd/systemd-bootx64.efi",
+		[]byte("#### LoaderInfo: systemd-boot 257.13-1.fc42 ####"), 0o644))
+	require.NoError(t, fs.MkdirAll(efiVarsDir, 0o755))
+	require.NoError(t, afero.WriteFile(fs,
+		path.Join(efiVarsDir, "LoaderInfo-"+efiLoaderVariable),
+		[]byte{0x07, 0x00, 0x00, 0x00, 's'}, 0o644))
+
+	parts := readBootPartitions(fs)
+	assert.True(t, parts.Installed)
+	assert.Equal(t, "257.13-1.fc42", parts.Version)
+	assert.Equal(t, "/boot", parts.Esp)
+
+	_, err := readLoaderVariables(nil, fs)
+	require.Error(t, err)
+}
+
+func TestSystemdBootAccessorsSeparateTheTwoFailures(t *testing.T) {
+	// A failure to read the boot loader variables must not be reported by the
+	// fields that came off the filesystem and were never in doubt.
+	s := &mqlSystemdBoot{}
+	s.once.Do(func() {}) // the one fetch already happened
+	s.cachedEsp = "/boot"
+	s.cachedBootPath = "/boot"
+	s.cachedInstalled = true
+	s.cachedVersion = "257.13-1.fc42"
+	s.efiVarErr = errors.New("cannot read LoaderInfo: permission denied")
+
+	installed, err := s.installed()
+	require.NoError(t, err)
+	assert.True(t, installed)
+
+	version, err := s.version()
+	require.NoError(t, err)
+	assert.Equal(t, "257.13-1.fc42", version)
+
+	esp, err := s.espPath()
+	require.NoError(t, err)
+	assert.Equal(t, "/boot", esp)
+
+	// The failure is reported by the fields that depend on it, and as an
+	// error rather than as null: the variable was unreadable, not absent.
+	_, err = s.active()
+	require.Error(t, err)
+	_, err = s.selectedEntry()
+	require.Error(t, err)
 }
