@@ -7073,6 +7073,102 @@ private grub.config.entry @defaults("title kind") {
   isSubmenu bool
 }
 
+// Secure Boot image builder configuration
+//
+// Configuration of the secboot utility, which builds one unified kernel image
+// for each installed kernel, signs it for Secure Boot, and installs it on the
+// EFI system partition. Every setting has a built-in default, so a value
+// missing from config.json is that default rather than unset. `kernelParams`
+// is the command line the next build will embed, which is not necessarily the
+// one the images on disk carry, because a change takes effect only when the
+// kernel package is reinstalled and the package hook rebuilds the image.
+// A control over what the host boots belongs on `images`, which is read from
+// the images themselves and is what the firmware loads. Read a different file
+// with `secboot.config(path: "/etc/secboot/config.json")`.
+secboot.config @defaults("path efiSubdir") {
+  init(path? string)
+  // Path to config.json
+  path string
+  // Kernel command line the next image build embeds
+  //
+  // What the tool will put into the next image it builds. It is not what the
+  // host boots with, which is in each image's cmdline.
+  kernelParams() string
+  // Kernel command line parameters the next image build embeds
+  //
+  // Key-value tokens from kernelParams. When a parameter appears more than
+  // once the last occurrence wins, which is how the kernel reads it.
+  parameters() map[string]string
+  // Bare kernel command line tokens the next image build embeds, such as rw or quiet
+  flags() []string
+  // Device holding the EFI system partition
+  efiPartition() string
+  // Mount point of the EFI system partition
+  efiMountpoint() string
+  // Directory on the EFI system partition the images are installed into
+  efiSubdir() string
+  // Device holding the LUKS-encrypted root filesystem
+  luksPartition() string
+  // EFI stub the images are built around
+  efiStub() string
+  // Directory holding the Secure Boot signing certificates and keys
+  certificateStorage() string
+  // File the machine id is read from
+  machineIdPath() string
+  // Compression algorithm applied to the initramfs
+  initramfsCompression() string
+  // Additional command line parameters passed to dracut
+  dracutParams() []string
+  // Kernels to boot, in order of preference
+  kernelPriority() []string
+  // Glob patterns naming the dynamic kernel modules that are signed
+  //
+  // Empty when module signing is off. A `{version}` in a pattern stands for
+  // the kernel version being built.
+  dkmsFiles() []string
+  // TPM device the LUKS key is sealed to
+  tpmDevice() string
+  // TPM platform configuration registers the LUKS key is sealed against
+  tpmPcrs() string
+  // Firmware update binary copied to the EFI system partition
+  fwupdBinary() string
+  // Unified kernel images installed on the EFI system partition
+  //
+  // Read from efiSubdir. Null when that directory cannot be read, since a host
+  // whose images cannot be listed has none to report rather than an empty list
+  // of them, which would satisfy every assertion made over the images.
+  images() []secboot.image
+}
+
+// Unified kernel image
+//
+// Single unified kernel image installed on the EFI system partition, holding
+// the kernel, the initramfs and the kernel command line in one executable.
+// `cmdline` is the command line the image boots with, taken from the image
+// itself rather than from any configuration file, and `parameters` splits it
+// into key-value directives. `signed` reports whether the image carries a
+// Secure Boot signature.
+private secboot.image @defaults("path kernel signed") {
+  // Path of the image
+  path string
+  // Kernel release the image boots
+  kernel string
+  // Kernel command line the image boots with
+  cmdline string
+  // Kernel command line parameters
+  //
+  // Key-value tokens from cmdline. When a parameter appears more than once the
+  // last occurrence wins, which is how the kernel reads it.
+  parameters map[string]string
+  // Bare kernel command line tokens, such as rw or quiet
+  flags []string
+  // Whether the image carries a Secure Boot signature
+  //
+  // True when the executable has a certificate table. It reports that a
+  // signature is present, not that the firmware trusts it.
+  signed bool
+}
+
 // FreeBSD rc.conf system configuration
 //
 // FreeBSD service and system configuration merged from rc.conf and
