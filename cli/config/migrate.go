@@ -4,11 +4,13 @@
 package config
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/spf13/viper"
+	"sigs.k8s.io/yaml"
 )
 
 // ProvidersURLMigration reports what MigrateProvidersURL did, so a command can
@@ -81,6 +83,13 @@ func MigrateProvidersURL() (ProvidersURLMigration, error) {
 		res.Skipped = "providers_url does not end in /providers, so updates_url cannot be derived from it"
 		return res, nil
 	}
+	// Parse before writing. The value reaches this from a config file or from
+	// MONDOO_PROVIDERS_URL, and a migration that writes whatever it was handed
+	// turns a bad setting into a bad config file.
+	if u, err := url.Parse(updatesURL); err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		res.Skipped = "providers_url is not an http(s) URL"
+		return res, nil
+	}
 	res.UpdatesURL = updatesURL
 
 	if err := appendConfigKey(path, "updates_url", updatesURL); err != nil {
@@ -113,7 +122,16 @@ func appendConfigKey(path string, key string, value string) error {
 		return err
 	}
 
-	addition := key + ": " + value + "\n"
+	// Marshalled rather than concatenated. A value carrying a newline would
+	// otherwise continue as further YAML and add keys of its own -- writing
+	// "updates_url: https://host" plus whatever came after the newline, as real
+	// settings.
+	marshalled, err := yaml.Marshal(map[string]string{key: value})
+	if err != nil {
+		return err
+	}
+
+	addition := string(marshalled)
 	if len(current) > 0 && !strings.HasSuffix(string(current), "\n") {
 		addition = "\n" + addition
 	}

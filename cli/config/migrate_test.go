@@ -99,6 +99,40 @@ func TestMigrateProvidersURLDoesNotOverwriteUpdatesURL(t *testing.T) {
 	assert.Equal(t, body, string(got))
 }
 
+// A value carrying a newline must not continue as further YAML and add settings
+// of its own. providers_url reaches this from a config file or from
+// MONDOO_PROVIDERS_URL, so a migration that concatenated it would turn a hostile
+// or merely malformed value into real config keys.
+func TestMigrateProvidersURLDoesNotInjectYAML(t *testing.T) {
+	body := "providers_url: \"https://evil\\nspace_mrn: //attacker/providers\"\n"
+	path := writeConfig(t, "mondoo.yml", body)
+
+	_, err := MigrateProvidersURL()
+	require.NoError(t, err)
+
+	got, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.NotContains(t, string(got), "\nspace_mrn: //attacker",
+		"the newline continued as YAML and injected a setting")
+
+	// Whatever was written has to leave the file parseable, and leave the key it
+	// was not asked to touch alone.
+	viper.Reset()
+	viper.SetConfigFile(path)
+	require.NoError(t, viper.ReadInConfig())
+	assert.Empty(t, viper.GetString("space_mrn"))
+}
+
+// A value that is not an http(s) URL is reported rather than written.
+func TestMigrateProvidersURLRejectsANonURL(t *testing.T) {
+	writeConfig(t, "mondoo.yml", "providers_url: \"not a url/providers\"\n")
+
+	res, err := MigrateProvidersURL()
+	require.NoError(t, err)
+	assert.False(t, res.Migrated)
+	assert.Contains(t, res.Skipped, "http(s) URL")
+}
+
 func TestMigrateProvidersURLNothingToDo(t *testing.T) {
 	writeConfig(t, "mondoo.yml", "space_mrn: //captain.api.mondoo.app/spaces/x\n")
 
