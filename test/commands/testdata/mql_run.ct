@@ -10,6 +10,7 @@ Available Commands:
   device      Run a query with a block device target
   docker      Run a query with a running Docker container, Docker image, or Dockerfile
   filesystem  Run a query with a mounted file system target
+  iac         Run a query with a tree of infrastructure-as-code files
   local       Run a query with your local system
   mock        Run a query with a recording file without an active connection
   recording   Run a query with read recording file from disk
