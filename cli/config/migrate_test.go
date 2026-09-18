@@ -185,3 +185,36 @@ func TestMigrateProvidersURLPreservesModeAndOwner(t *testing.T) {
 	assert.Equal(t, beforeUID, afterUID, "owner was not preserved")
 	assert.Equal(t, beforeGID, afterGID, "group was not preserved")
 }
+
+// A symlinked config must stay a symlink, and the file it points at must be the
+// one that gets the new key. Renaming over a symlink replaces the link with a
+// regular file: the config would carry the new content while the file it pointed
+// at -- the one configuration management writes -- silently kept the old, and the
+// two would diverge from then on.
+func TestMigrateProvidersURLFollowsASymlinkedConfig(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "mondoo.real.yml")
+	link := filepath.Join(dir, "mondoo.yml")
+	require.NoError(t, os.WriteFile(target, []byte("providers_url: https://mirror.example.de/providers\n"), 0o600))
+	if err := os.Symlink(target, link); err != nil {
+		t.Skip("symlinks are not available here")
+	}
+
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.SetConfigFile(link)
+	require.NoError(t, viper.ReadInConfig())
+
+	res, err := MigrateProvidersURL()
+	require.NoError(t, err)
+	require.True(t, res.Migrated)
+
+	info, err := os.Lstat(link)
+	require.NoError(t, err)
+	assert.NotZero(t, info.Mode()&os.ModeSymlink, "the symlink was replaced by a regular file")
+
+	got, err := os.ReadFile(target)
+	require.NoError(t, err)
+	assert.Contains(t, string(got), "updates_url: https://mirror.example.de",
+		"the file the link points at did not get the key")
+}
