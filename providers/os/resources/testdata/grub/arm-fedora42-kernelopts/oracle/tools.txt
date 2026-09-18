@@ -1,0 +1,3 @@
+grub2-mkconfig: grub2-tools-2.12-32.fc42.aarch64
+kernel: 6.19.14-108.fc42.aarch64
+arch: aarch64
