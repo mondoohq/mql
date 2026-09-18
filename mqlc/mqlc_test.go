@@ -241,7 +241,6 @@ func TestCompiler_FailIfNoEntrypoints(t *testing.T) {
 	data := []string{
 		"",
 		"// some comment",
-		"(asset.eol.date - time.now() > 90*time.day) && (asset.eol.date - time.now() < 180*time.day)",
 	}
 	for _, code := range data {
 		t.Run(code, func(t *testing.T) {
@@ -626,7 +625,7 @@ func TestCompiler_Dict(t *testing.T) {
 		assert.Equal(t, map[string]string{"d": string(types.Dict)}, res.Props)
 	})
 
-	compileProps(t, "props.d.A-1", mqlc.SimpleProps{
+	compileProps(t, "props.d.A; -1", mqlc.SimpleProps{
 		"d": {Type: string(types.Dict)},
 	}, func(res *llx.CodeBundle) {
 		assertProperty(t, "d", types.Dict, res.CodeV2.Blocks[0].Chunks[0])

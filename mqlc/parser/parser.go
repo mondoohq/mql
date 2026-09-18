@@ -30,8 +30,8 @@ var tokenNames map[rune]string
 
 const LexerRegex = `(\s+)` +
 	`|(?P<Ident>[a-zA-Z$_][a-zA-Z0-9_]*)` +
-	`|(?P<Float>[-+]?\d*\.\d+([eE][-+]?\d+)?)` +
-	`|(?P<Int>[-+]?\d+([eE][-+]?\d+)?)` +
+	`|(?P<Float>\d*\.\d+([eE][-+]?\d+)?)` +
+	`|(?P<Int>\d+([eE][-+]?\d+)?)` +
 	`|(?P<String>'[^']*'|"(?:[^"\\]|\\.)*")` +
 	`|(?P<Comment>(//|#)[^\n]*(\n|\z))` +
 	`|(?P<Regex>/([^\\/]+|\\.)+/[msi]*)` +
@@ -179,6 +179,10 @@ type parser struct {
 	// indent indicates optimal indentation given strict formatting
 	// and using only tabs
 	indent int
+	// prevLine is the line the previous token sat on. It is what tells a call
+	// apart from a group: `x(y)` is a call, but an `x` and a `(y)` on separate
+	// lines are two expressions. See parseOperandCalls.
+	prevLine int
 }
 
 // expected generates an error string based on the expected type/field
@@ -201,6 +205,8 @@ func (p *parser) errorMsg(msg string) error {
 
 // nextToken loads the next token into p.token
 func (p *parser) nextToken() error {
+	p.prevLine = p.token.Pos.Line
+
 	if p.nextTokens == nil {
 		var err error
 
@@ -548,6 +554,20 @@ func (p *parser) parseOperand() (*Operand, bool, error) {
 			}
 		}
 
+		// parenthesized group, ie: 1 * (2 + 3)
+		if p.token.Type == CallType && p.token.Value == "(" {
+			res, err := p.parseGroup()
+			if err != nil {
+				return nil, false, err
+			}
+			return p.parseOperandCalls(res)
+		}
+
+		// unary sign, ie: -1, -(a + b)
+		if p.token.Type == Op && (p.token.Value == "-" || p.token.Value == "+") {
+			return p.parseUnary()
+		}
+
 		// glob all fields of a resource
 		// ie: resource { * }
 		if p.token.Value == "*" {
@@ -575,6 +595,14 @@ func (p *parser) parseOperand() (*Operand, bool, error) {
 		Value:    value,
 	}
 	_ = p.nextToken()
+
+	return p.parseOperandCalls(&res)
+}
+
+// parseOperandCalls consumes the trailing calls, accessors and block of an
+// operand whose root value is already parsed.
+func (p *parser) parseOperandCalls(operand *Operand) (*Operand, bool, error) {
+	res := *operand
 
 	for {
 		switch p.token.Value {
@@ -619,6 +647,14 @@ func (p *parser) parseOperand() (*Operand, bool, error) {
 			_ = p.nextToken()
 
 		case "(":
+			// A `(` that opens a line is a group, not an argument list. Without
+			// newlines to separate them `x` and `(y)` on two lines read as the
+			// call `x(y)`, which silently rewrites a query nobody wrote. Hand
+			// the token back so it starts the next expression instead.
+			if p.token.Pos.Line > p.prevLine {
+				return &res, false, nil
+			}
+
 			p.indent++
 			_ = p.nextToken()
 			args := []*Arg{}
@@ -777,6 +813,96 @@ func (p *parser) parseOperand() (*Operand, bool, error) {
 			return &res, false, nil
 		}
 	}
+}
+
+// parseGroup parses a parenthesized expression `( expr )` down to the single
+// operand it is worth.
+//
+// The fold happens here, which is what makes redundant parens cost nothing:
+// processOperators already rewrites `2 + 3` into an operand whose value is the
+// `+` and whose argument list is the two sides, and that is exactly the shape a
+// group has to hand back. So `(2+3)` leaves as `+(2,3)`, and the outer parens of
+// `((2+3))` then wrap a lone operand with nothing left to fold. The redundant
+// layers are never built rather than unpacked afterwards, and `1*(((2+3)))`
+// compiles to the same bytecode, and the same checksum, as `1*(2+3)`.
+func (p *parser) parseGroup() (*Operand, error) {
+	p.indent++
+	_ = p.nextToken()
+
+	exp, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+
+	if p.token.Value != ")" {
+		if p.token.EOF() {
+			return nil, &ErrIncomplete{missing: "closing ')'", pos: p.token.Pos, Indent: p.indent}
+		}
+		return nil, &ErrIncorrect{expected: "closing ')'", got: p.token.Value, pos: p.token.Pos}
+	}
+	p.indent--
+
+	if exp == nil || exp.IsEmpty() {
+		return nil, p.errorMsg("missing expression inside of `()`")
+	}
+
+	if err := exp.ProcessOperators(); err != nil {
+		return nil, err
+	}
+	if exp.Operand == nil || len(exp.Operations) != 0 {
+		return nil, p.errorMsg("failed to reduce the expression inside of `()`")
+	}
+
+	_ = p.nextToken()
+	return exp.Operand, nil
+}
+
+// parseUnary handles a leading `-` or `+` on an operand.
+//
+// The sign used to be part of the number token, which meant `1+2` lexed as two
+// numbers and quietly compiled to `2`. Reading it here instead keeps `1+2` an
+// addition and `(2+3)` a group worth grouping, at the price of having to put the
+// sign back on the literals that want it.
+func (p *parser) parseUnary() (*Operand, bool, error) {
+	minus := p.token.Value == "-"
+	_ = p.nextToken()
+
+	operand, standalone, err := p.parseOperand()
+	if err != nil {
+		return nil, false, err
+	}
+	if operand == nil {
+		return nil, false, p.expected("operand after unary sign", "parseUnary")
+	}
+	if !minus {
+		return operand, standalone, nil
+	}
+
+	// A negated literal stays a literal, so `[1, -2]` and `a[-1]` keep the tree
+	// they have always had.
+	if operand.Value != nil && operand.Calls == nil && operand.Block == nil {
+		if operand.Value.Int != nil {
+			v := -(*operand.Value.Int)
+			return &Operand{Comments: operand.Comments, Value: &Value{Int: &v}}, standalone, nil
+		}
+		if operand.Value.Float != nil {
+			v := -(*operand.Value.Float)
+			return &Operand{Comments: operand.Comments, Value: &Value{Float: &v}}, standalone, nil
+		}
+	}
+
+	// Anything else negates as `0 - x`, in the shape processOperators gives a
+	// written-out subtraction, so it needs nothing new from llx.
+	sub := OpSubtract
+	op := sub.String()
+	var zero int64
+	return &Operand{
+		Value: &Value{Ident: &op},
+		Calls: []*Call{{Function: []*Arg{
+			{Value: &Expression{Operand: &Operand{Value: &Value{Int: &zero}}}},
+			{Value: &Expression{Operand: operand}},
+		}}},
+	}, standalone, nil
 }
 
 func (p *parser) parseOperation() (*Operation, error) {
@@ -968,7 +1094,8 @@ func Parse(input string) (*AST, error) {
 			}
 		}
 
-		if thisParser.token.Value != "" && thisParser.token.Type == CallType && thisParser.token.Value != "[" && thisParser.token.Value != "{" {
+		if thisParser.token.Value != "" && thisParser.token.Type == CallType &&
+			thisParser.token.Value != "[" && thisParser.token.Value != "{" && thisParser.token.Value != "(" {
 			return &res, errors.New("mismatched symbol '" + thisParser.token.Value + "' at the end of expression")
 		}
 	}
