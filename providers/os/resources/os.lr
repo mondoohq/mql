@@ -6162,6 +6162,58 @@ systemd.timesyncd @defaults("active synchronized serverName") {
   leapStatus() string
 }
 
+// systemd-boot bootloader state
+//
+// State of the systemd-boot bootloader: whether it is `installed` on the EFI
+// system partition, whether it is `active`, meaning it is what booted this
+// host, the `version` it reports, the `espPath` and `bootPath` it was found
+// at, and the `selectedEntry` the host booted from. `installed`, `version`,
+// `espPath` and `bootPath` are read from the files on the EFI system
+// partition, so they resolve on an image or a mounted filesystem. `active`
+// and `selectedEntry` are read from the EFI variables systemd-boot sets as it
+// runs, so they are null where no booted system can be observed. Useful for
+// asserting which bootloader a host boots with, and for finding a second
+// bootloader left installed beside the one in use.
+systemd.boot @defaults("active version") {
+  // Whether systemd-boot booted this host
+  //
+  // True when the running system was booted by systemd-boot, which the
+  // bootloader states in an EFI variable as it hands control to the kernel.
+  // Null where no EFI variables are readable, such as an image or filesystem
+  // scan, since a bootloader that cannot be observed booting is neither in
+  // use nor out of use.
+  active() bool
+  // Whether the systemd-boot binary is installed on the EFI system partition
+  //
+  // Read from the EFI system partition, so it holds on an image or a mounted
+  // filesystem. A host where this is true and `active` is false carries a
+  // bootloader it does not boot with.
+  installed() bool
+  // systemd-boot version
+  //
+  // Version the bootloader states for itself, such as `257.13-1.fc42`, read
+  // from the binary on the EFI system partition. Empty when systemd-boot is
+  // not installed.
+  version() string
+  // Path to the EFI system partition
+  //
+  // Where the bootloaders are installed, which is `/efi`, `/boot` or
+  // `/boot/efi`. Empty on a legacy BIOS host and on a scan that cannot read
+  // the partition.
+  espPath() string
+  // Path the boot entries are read from
+  //
+  // The extended boot loader partition where the host keeps one, and the EFI
+  // system partition otherwise.
+  bootPath() string
+  // Identifier of the boot entry the host booted from
+  //
+  // Names the entry systemd-boot selected, such as `arch.conf` for an entry
+  // file or the file name of a unified kernel image. Null where no EFI
+  // variables are readable.
+  selectedEntry() string
+}
+
 // Running kernel and its modules
 //
 // Running kernel and its configuration surface. Exposes kernel version

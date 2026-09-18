@@ -101,24 +101,52 @@ func (s *mqlMachineSecureboot) fetchWindowsStatus(conn shared.Connection) error 
 // bytes could not be read turns an unknown into a security finding, or hides
 // one.
 func readEfiVarBool(conn shared.Connection, fs afero.Fs, name string) (bool, error) {
+	data, err := readEfiVarBytes(conn, fs, name)
+	if err != nil {
+		return false, err
+	}
+	if data == nil {
+		return false, nil
+	}
+	return efiVarIsOn(data)
+}
+
+// readEfiVarString reads an EFI variable that holds text. A variable that is
+// absent reads as an empty string, since firmware exposes a variable only once
+// it has one to expose.
+func readEfiVarString(conn shared.Connection, fs afero.Fs, name string) (string, error) {
+	data, err := readEfiVarBytes(conn, fs, name)
+	if err != nil {
+		return "", err
+	}
+	if data == nil {
+		return "", nil
+	}
+	return parseEfiVarString(data)
+}
+
+// readEfiVarBytes reads an EFI variable's contents, header included. A variable
+// that is simply absent reads as nil with no error; any other read failure is
+// returned, never flattened into an empty value.
+func readEfiVarBytes(conn shared.Connection, fs afero.Fs, name string) ([]byte, error) {
 	path := efiVarsDir + "/" + name
 
 	data, err := afero.ReadFile(fs, path)
 	if err == nil {
-		return efiVarIsOn(data)
+		return data, nil
 	}
 	if errors.Is(err, iofs.ErrNotExist) {
-		return false, nil
+		return nil, nil
 	}
 
 	// efivarfs rejects the positional reads sftp issues, so over SSH every
 	// variable fails with SSH_FX_FAILURE even though the file is readable.
 	// Read the bytes through a command when the connection has one.
 	if conn.Capabilities().Has(shared.Capability_RunCommand) {
-		return readEfiVarBoolCmd(conn, path)
+		return readEfiVarBytesCmd(conn, path)
 	}
 
-	return false, err
+	return nil, err
 }
 
 // efiVarIsOn reads the variable's data byte. The data portion starts after the
@@ -131,37 +159,46 @@ func efiVarIsOn(data []byte) (bool, error) {
 	return data[4] == 1, nil
 }
 
-// readEfiVarBoolCmd reads an EFI variable with od(1), which prints the bytes as
-// decimal so they survive the command channel intact.
-func readEfiVarBoolCmd(conn shared.Connection, path string) (bool, error) {
+// readEfiVarBytesCmd reads an EFI variable with od(1), which prints the bytes
+// as decimal so they survive the command channel intact.
+func readEfiVarBytesCmd(conn shared.Connection, path string) ([]byte, error) {
 	cmd, err := conn.RunCommand("od -An -tu1 -- " + shared.ShellEscape(path))
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	if cmd.ExitStatus != 0 {
 		stderr, _ := io.ReadAll(cmd.Stderr)
-		return false, fmt.Errorf("cannot read %s: %s", path, strings.TrimSpace(string(stderr)))
+		return nil, fmt.Errorf("cannot read %s: %s", path, strings.TrimSpace(string(stderr)))
 	}
 
 	stdout, err := io.ReadAll(cmd.Stdout)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	return parseEfiVarOd(string(stdout))
+	return parseEfiVarOdBytes(string(stdout))
 }
 
 // parseEfiVarOd turns "od -An -tu1" output into the variable's data byte.
 func parseEfiVarOd(out string) (bool, error) {
+	data, err := parseEfiVarOdBytes(out)
+	if err != nil {
+		return false, err
+	}
+	return efiVarIsOn(data)
+}
+
+// parseEfiVarOdBytes turns "od -An -tu1" output back into the bytes it printed.
+func parseEfiVarOdBytes(out string) ([]byte, error) {
 	fields := strings.Fields(out)
 	data := make([]byte, 0, len(fields))
 	for _, f := range fields {
 		b, err := strconv.ParseUint(f, 10, 8)
 		if err != nil {
-			return false, fmt.Errorf("unexpected od output %q", f)
+			return nil, fmt.Errorf("unexpected od output %q", f)
 		}
 		data = append(data, byte(b))
 	}
-	return efiVarIsOn(data)
+	return data, nil
 }
 
 func (s *mqlMachineSecureboot) efi() (bool, error) {
