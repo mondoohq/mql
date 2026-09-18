@@ -22,6 +22,28 @@ func TestInventoryParser(t *testing.T) {
 	assert.Equal(t, "{ id: 'secret-1' }", inventory.Spec.CredentialQuery)
 }
 
+// TestInventoryFromYAMLMarksRequestedNames pins the marker a `name:` in an inventory
+// file carries into discovery. Providers name assets themselves during ParseCLI, so
+// discovery cannot tell an authored name from a provider default without it.
+func TestInventoryFromYAMLMarksRequestedNames(t *testing.T) {
+	inv, err := InventoryFromYAML([]byte(`
+spec:
+  assets:
+    - name: my-prod-host
+      connections:
+        - type: ssh
+          host: 10.0.0.1
+    - connections:
+        - type: ssh
+          host: 10.0.0.2
+`))
+	require.NoError(t, err)
+	require.Len(t, inv.Spec.Assets, 2)
+
+	assert.True(t, inv.Spec.Assets[0].NameOverride, "an authored name is a request")
+	assert.False(t, inv.Spec.Assets[1].NameOverride, "no name, nothing to honor")
+}
+
 func TestPlatformMerge(t *testing.T) {
 	base := &Platform{
 		Name:                  "linux",

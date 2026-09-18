@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory/ansibleinventory"
 	"go.mondoo.com/mql/providers-sdk/v1/vault"
@@ -365,4 +366,30 @@ func findAsset(assetList []*inventory.Asset, name string) *inventory.Asset {
 		}
 	}
 	return nil
+}
+
+func TestInventoryNamesAreMarkedAsRequested(t *testing.T) {
+	input, err := os.ReadFile("./testdata/hosts.json")
+	require.NoError(t, err)
+
+	ansibleInventory := ansibleinventory.Inventory{}
+	require.NoError(t, ansibleInventory.Decode(input))
+
+	byName := map[string]*inventory.Asset{}
+	for _, asset := range ansibleInventory.ToV1Inventory().Spec.Assets {
+		byName[asset.Name] = asset
+	}
+
+	// instance1 is the ansible host key the operator wrote; 104.154.55.51 is only
+	// what we connect to. The key is the name, and the marker is what stops a
+	// provider's detect step replacing it once connected.
+	instance := byName["instance1"]
+	require.NotNil(t, instance)
+	assert.Equal(t, "104.154.55.51", instance.Connections[0].Host)
+	assert.True(t, instance.NameOverride)
+
+	// a key with no ansible_host is still the operator's key
+	direct := byName["34.133.130.53"]
+	require.NotNil(t, direct)
+	assert.True(t, direct.NameOverride)
 }
