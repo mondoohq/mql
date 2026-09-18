@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"go.mondoo.com/mql/llx"
@@ -51,11 +52,14 @@ func (s *iacProviderService) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLI
 		Discover: parseIacDiscover(req.Flags),
 	}
 
-	// A list flag given "" arrives as one empty entry rather than as no entries
-	// at all, so presence is what replaces the defaults and an empty value
-	// means an empty ignore set. Both are useful: the second is how you reach
-	// a vendored tree on purpose.
-	if flag, ok := req.Flags["iac-ignore"]; ok {
+	// Presence of the flag is what replaces the defaults; its contents are the
+	// new set, and an empty set is a valid one. A list flag given "" arrives as
+	// one empty entry rather than as no entries at all, and a caller building
+	// the request by hand may pass no entries at all: both mean an empty
+	// ignore set, which is how you reach a vendored tree on purpose. The CLI
+	// only puts the flag here when the user passed it (setConnector checks
+	// Changed), so an unset flag never reaches this branch.
+	if flag, ok := req.Flags["iac-ignore"]; ok && flag != nil {
 		ignore := []string{}
 		for i := range flag.Array {
 			if v := string(flag.Array[i].Value); v != "" {
@@ -240,9 +244,9 @@ func (s *iacProviderService) selectOptIns(parent *Runtime, conf *inventory.Confi
 
 	selected, unknown := ResolveTargetDiscoveries(universe, requested, requestedSet)
 	if len(unknown) > 0 {
+		valid := slices.Concat([]string{DiscoveryAll, DiscoveryAuto}, TargetDiscoveryNames(universe))
 		return nil, errors.New("unknown discovery target(s) " + strings.Join(unknown, ", ") +
-			"; valid values are: " + strings.Join(append([]string{DiscoveryAll, DiscoveryAuto},
-			TargetDiscoveryNames(universe)...), ", "))
+			"; valid values are: " + strings.Join(valid, ", "))
 	}
 
 	optIns := make([]plugin.TargetOptIn, 0, len(selected))
