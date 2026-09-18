@@ -198,6 +198,7 @@ const (
 	ResourceSystemdUnits                                  string = "systemd.units"
 	ResourceSystemdResolved                               string = "systemd.resolved"
 	ResourceSystemdTimesyncd                              string = "systemd.timesyncd"
+	ResourceSystemdBoot                                   string = "systemd.boot"
 	ResourceKernel                                        string = "kernel"
 	ResourceKernelModule                                  string = "kernel.module"
 	ResourceKernelCmdline                                 string = "kernel.cmdline"
@@ -1337,6 +1338,10 @@ func init() {
 		"systemd.timesyncd": {
 			// to override args, implement: initSystemdTimesyncd(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createSystemdTimesyncd,
+		},
+		"systemd.boot": {
+			// to override args, implement: initSystemdBoot(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createSystemdBoot,
 		},
 		"kernel": {
 			Init:   initKernel,
@@ -7646,6 +7651,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"systemd.timesyncd.leapStatus": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSystemdTimesyncd).GetLeapStatus()).ToDataRes(types.String)
+	},
+	"systemd.boot.active": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBoot).GetActive()).ToDataRes(types.Bool)
+	},
+	"systemd.boot.installed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBoot).GetInstalled()).ToDataRes(types.Bool)
+	},
+	"systemd.boot.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBoot).GetVersion()).ToDataRes(types.String)
+	},
+	"systemd.boot.espPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBoot).GetEspPath()).ToDataRes(types.String)
+	},
+	"systemd.boot.bootPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBoot).GetBootPath()).ToDataRes(types.String)
+	},
+	"systemd.boot.selectedEntry": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdBoot).GetSelectedEntry()).ToDataRes(types.String)
 	},
 	"kernel.info": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlKernel).GetInfo()).ToDataRes(types.Dict)
@@ -22766,6 +22789,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"systemd.timesyncd.leapStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlSystemdTimesyncd).LeapStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"systemd.boot.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBoot).__id, ok = v.Value.(string)
+		return
+	},
+	"systemd.boot.active": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBoot).Active, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"systemd.boot.installed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBoot).Installed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"systemd.boot.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBoot).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"systemd.boot.espPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBoot).EspPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"systemd.boot.bootPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBoot).BootPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"systemd.boot.selectedEntry": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdBoot).SelectedEntry, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"kernel.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -55638,6 +55689,92 @@ func (c *mqlSystemdTimesyncd) GetPollIntervalUSec() *plugin.TValue[int64] {
 func (c *mqlSystemdTimesyncd) GetLeapStatus() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.LeapStatus, func() (string, error) {
 		return c.leapStatus()
+	})
+}
+
+// mqlSystemdBoot for the systemd.boot resource
+type mqlSystemdBoot struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlSystemdBootInternal
+	Active        plugin.TValue[bool]
+	Installed     plugin.TValue[bool]
+	Version       plugin.TValue[string]
+	EspPath       plugin.TValue[string]
+	BootPath      plugin.TValue[string]
+	SelectedEntry plugin.TValue[string]
+}
+
+// createSystemdBoot creates a new instance of this resource
+func createSystemdBoot(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSystemdBoot{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("systemd.boot", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSystemdBoot) MqlName() string {
+	return "systemd.boot"
+}
+
+func (c *mqlSystemdBoot) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSystemdBoot) GetActive() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Active, func() (bool, error) {
+		return c.active()
+	})
+}
+
+func (c *mqlSystemdBoot) GetInstalled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Installed, func() (bool, error) {
+		return c.installed()
+	})
+}
+
+func (c *mqlSystemdBoot) GetVersion() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Version, func() (string, error) {
+		return c.version()
+	})
+}
+
+func (c *mqlSystemdBoot) GetEspPath() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.EspPath, func() (string, error) {
+		return c.espPath()
+	})
+}
+
+func (c *mqlSystemdBoot) GetBootPath() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.BootPath, func() (string, error) {
+		return c.bootPath()
+	})
+}
+
+func (c *mqlSystemdBoot) GetSelectedEntry() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SelectedEntry, func() (string, error) {
+		return c.selectedEntry()
 	})
 }
 

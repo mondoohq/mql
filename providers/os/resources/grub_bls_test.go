@@ -99,14 +99,14 @@ func TestExpandGrubVars(t *testing.T) {
 	vars := map[string]string{"kernelopts": "root=UUID=1234 ro audit=1"}
 
 	assert.Equal(t, "root=UUID=1234 ro audit=1",
-		expandGrubVars("$kernelopts", vars))
+		expandVars("$kernelopts", vars))
 	assert.Equal(t, "root=UUID=1234 ro audit=1 quiet",
-		expandGrubVars("${kernelopts} quiet", vars))
+		expandVars("${kernelopts} quiet", vars))
 
 	// grubby leaves a variable it cannot resolve as written, and so does this.
 	assert.Equal(t, "root=UUID=1234 ro audit=1 $tuned_params",
-		expandGrubVars("$kernelopts $tuned_params", vars))
-	assert.Equal(t, "$kernelopts", expandGrubVars("$kernelopts", map[string]string{}))
+		expandVars("$kernelopts $tuned_params", vars))
+	assert.Equal(t, "$kernelopts", expandVars("$kernelopts", map[string]string{}))
 }
 
 func TestIsGrubCfgStub(t *testing.T) {
@@ -129,48 +129,48 @@ func TestClassifyEntry(t *testing.T) {
 	// fixtures under testdata/grub.
 	tests := []struct {
 		name  string
-		entry GrubEntry
+		entry BootEntry
 		want  string
 	}{
 		{
 			name:  "debian recovery flag",
-			entry: GrubEntry{Title: "Debian, with Linux 7.0 (recovery mode)", Kernel: "/boot/vmlinuz", Flags: []string{"ro", "single"}},
-			want:  GrubEntryRecovery,
+			entry: BootEntry{Title: "Debian, with Linux 7.0 (recovery mode)", Kernel: "/boot/vmlinuz", Flags: []string{"ro", "single"}},
+			want:  BootEntryRecovery,
 		},
 		{
 			name:  "ubuntu recovery flag",
-			entry: GrubEntry{Title: "Ubuntu, with Linux 7.0", Kernel: "/vmlinuz", Flags: []string{"ro", "recovery", "nomodeset"}},
-			want:  GrubEntryRecovery,
+			entry: BootEntry{Title: "Ubuntu, with Linux 7.0", Kernel: "/vmlinuz", Flags: []string{"ro", "recovery", "nomodeset"}},
+			want:  BootEntryRecovery,
 		},
 		{
 			name:  "red hat rescue entry named in its version",
-			entry: GrubEntry{Title: "Red Hat Enterprise Linux (0-rescue-ffff) 8.10", Version: "0-rescue-ffff", Kernel: "/boot/vmlinuz-0-rescue-ffff"},
-			want:  GrubEntryRecovery,
+			entry: BootEntry{Title: "Red Hat Enterprise Linux (0-rescue-ffff) 8.10", Version: "0-rescue-ffff", Kernel: "/boot/vmlinuz-0-rescue-ffff"},
+			want:  BootEntryRecovery,
 		},
 		{
 			name:  "proxmox memory test by class",
-			entry: GrubEntry{Title: "Memory test (memtest86+x64.efi)", Kernel: "/boot/memtest86+x64.efi", Classes: []string{"memtest"}},
-			want:  GrubEntryMemtest,
+			entry: BootEntry{Title: "Memory test (memtest86+x64.efi)", Kernel: "/boot/memtest86+x64.efi", Classes: []string{"memtest"}},
+			want:  BootEntryMemtest,
 		},
 		{
 			name:  "memory test by image name alone",
-			entry: GrubEntry{Title: "Memory test", Kernel: "/boot/memtest86+x64.bin"},
-			want:  GrubEntryMemtest,
+			entry: BootEntry{Title: "Memory test", Kernel: "/boot/memtest86+x64.bin"},
+			want:  BootEntryMemtest,
 		},
 		{
 			name:  "firmware settings entry boots no kernel",
-			entry: GrubEntry{Title: "UEFI Firmware Settings"},
-			want:  GrubEntryOther,
+			entry: BootEntry{Title: "UEFI Firmware Settings"},
+			want:  BootEntryOther,
 		},
 		{
 			name:  "submenu",
-			entry: GrubEntry{Title: "Advanced options", IsSubmenu: true},
-			want:  GrubEntrySubmenu,
+			entry: BootEntry{Title: "Advanced options", IsSubmenu: true},
+			want:  BootEntrySubmenu,
 		},
 		{
 			name:  "normal entry",
-			entry: GrubEntry{Title: "Ubuntu", Kernel: "/vmlinuz", Flags: []string{"ro", "quiet"}},
-			want:  GrubEntryNormal,
+			entry: BootEntry{Title: "Ubuntu", Kernel: "/vmlinuz", Flags: []string{"ro", "quiet"}},
+			want:  BootEntryNormal,
 		},
 	}
 
@@ -209,7 +209,7 @@ func TestLoadGrubEntriesExpandsKernelopts(t *testing.T) {
 	assert.Equal(t, "1", entries[0].Parameters["audit"])
 	assert.Equal(t, "UUID=1234", entries[0].Parameters["root"])
 	assert.Equal(t, "/boot/loader/entries/ffff-4.18.0.conf", entries[0].Source)
-	assert.Equal(t, GrubEntryNormal, entries[0].Kind)
+	assert.Equal(t, BootEntryNormal, entries[0].Kind)
 }
 
 func TestLoadGrubEntriesPrefersEntriesOverStaleGrubCfg(t *testing.T) {
