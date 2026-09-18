@@ -46,7 +46,7 @@ func TestParseGrubLegacyEntriesAmazonLinux1(t *testing.T) {
 	assert.Equal(t, "Amazon Linux 2018.03 (4.14.355-195.591.amzn1.x86_64)", first.Title)
 	assert.Equal(t, "/boot/vmlinuz-4.14.355-195.591.amzn1.x86_64", first.Kernel)
 	assert.Equal(t, "/boot/initramfs-4.14.355-195.591.amzn1.x86_64.img", first.Initrd)
-	assert.Equal(t, GrubEntryNormal, first.Kind)
+	assert.Equal(t, BootEntryNormal, first.Kind)
 	assert.True(t, first.Bootable)
 	assert.Equal(t, map[string]string{
 		"root":                 "LABEL=/",
@@ -71,7 +71,7 @@ func TestParseGrubLegacyEntries(t *testing.T) {
 	tests := []struct {
 		name    string
 		content string
-		want    []GrubEntry
+		want    []BootEntry
 	}{
 		{
 			name: "chainloader entry boots no kernel",
@@ -83,9 +83,9 @@ title Windows
 rootnoverify (hd0,1)
 chainloader +1
 `,
-			want: []GrubEntry{
-				{Title: "Amazon Linux", Kernel: "/boot/vmlinuz-4.14.355", Kind: GrubEntryNormal, Bootable: true},
-				{Title: "Windows", Kernel: "", Kind: GrubEntryOther, Bootable: false},
+			want: []BootEntry{
+				{Title: "Amazon Linux", Kernel: "/boot/vmlinuz-4.14.355", Kind: BootEntryNormal, Bootable: true},
+				{Title: "Windows", Kernel: "", Kind: BootEntryOther, Bootable: false},
 			},
 		},
 		{
@@ -93,8 +93,8 @@ chainloader +1
 			content: `title Red Hat Enterprise Linux (2.6.32-754.el6.x86_64)
 kernel /vmlinuz-2.6.32-754.el6.x86_64 ro root=/dev/mapper/vg-root single
 `,
-			want: []GrubEntry{
-				{Title: "Red Hat Enterprise Linux (2.6.32-754.el6.x86_64)", Kernel: "/vmlinuz-2.6.32-754.el6.x86_64", Kind: GrubEntryRecovery, Bootable: true},
+			want: []BootEntry{
+				{Title: "Red Hat Enterprise Linux (2.6.32-754.el6.x86_64)", Kernel: "/vmlinuz-2.6.32-754.el6.x86_64", Kind: BootEntryRecovery, Bootable: true},
 			},
 		},
 		{
@@ -102,8 +102,8 @@ kernel /vmlinuz-2.6.32-754.el6.x86_64 ro root=/dev/mapper/vg-root single
 			content: `title Memory test (memtest86+)
 kernel /boot/memtest86+-5.01
 `,
-			want: []GrubEntry{
-				{Title: "Memory test (memtest86+)", Kernel: "/boot/memtest86+-5.01", Kind: GrubEntryMemtest, Bootable: false},
+			want: []BootEntry{
+				{Title: "Memory test (memtest86+)", Kernel: "/boot/memtest86+-5.01", Kind: BootEntryMemtest, Bootable: false},
 			},
 		},
 		{
@@ -112,8 +112,8 @@ kernel /boot/memtest86+-5.01
 	kernel	/boot/vmlinuz-2.6.32-5-amd64 root=/dev/sda1 ro quiet
 	initrd	/boot/initrd.img-2.6.32-5-amd64
 `,
-			want: []GrubEntry{
-				{Title: "Debian GNU/Linux", Kernel: "/boot/vmlinuz-2.6.32-5-amd64", Initrd: "/boot/initrd.img-2.6.32-5-amd64", Kind: GrubEntryNormal, Bootable: true},
+			want: []BootEntry{
+				{Title: "Debian GNU/Linux", Kernel: "/boot/vmlinuz-2.6.32-5-amd64", Initrd: "/boot/initrd.img-2.6.32-5-amd64", Kind: BootEntryNormal, Bootable: true},
 			},
 		},
 		{
@@ -123,8 +123,8 @@ kernel /boot/memtest86+-5.01
 title Current
 kernel /boot/vmlinuz-current root=/dev/sda1 ro
 `,
-			want: []GrubEntry{
-				{Title: "Current", Kernel: "/boot/vmlinuz-current", Kind: GrubEntryNormal, Bootable: true},
+			want: []BootEntry{
+				{Title: "Current", Kernel: "/boot/vmlinuz-current", Kind: BootEntryNormal, Bootable: true},
 			},
 		},
 		{
@@ -295,7 +295,7 @@ func TestFixtureAl1IsALegacyHost(t *testing.T) {
 	entries := loadFixtureEntries(t, "al1")
 	require.Len(t, entries, 2)
 	for _, e := range entries {
-		assert.Equal(t, GrubEntryNormal, e.Kind)
+		assert.Equal(t, BootEntryNormal, e.Kind)
 		assert.True(t, e.Bootable)
 		assert.Equal(t, "LABEL=/", e.Parameters["root"])
 		assert.Equal(t, "/boot/grub/menu.lst", e.Source)

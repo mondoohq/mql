@@ -44,7 +44,7 @@ func fixtureFS(name string) afero.Fs {
 	return afero.NewBasePathFs(afero.NewOsFs(), filepath.Join(fixtureRoot, name, "files"))
 }
 
-func loadFixtureEntries(t *testing.T, name string) []GrubEntry {
+func loadFixtureEntries(t *testing.T, name string) []BootEntry {
 	t.Helper()
 	fs := fixtureFS(name)
 
@@ -82,7 +82,7 @@ func TestFixtureEveryHostYieldsEntries(t *testing.T) {
 
 			bootable := 0
 			for _, e := range entries {
-				if e.Kind != GrubEntryNormal && e.Kind != GrubEntryRecovery {
+				if e.Kind != BootEntryNormal && e.Kind != BootEntryRecovery {
 					continue
 				}
 				bootable++
@@ -116,7 +116,7 @@ func TestFixtureParametersMatchProcCmdline(t *testing.T) {
 			entries := loadFixtureEntries(t, name)
 			matched := false
 			for _, e := range entries {
-				if e.Kind != GrubEntryNormal {
+				if e.Kind != BootEntryNormal {
 					continue
 				}
 				if !parametersAgree(e.Parameters, booted) {
@@ -167,7 +167,7 @@ func flagsAgree(got, want []string) bool {
 	return true
 }
 
-func describeEntries(entries []GrubEntry) string {
+func describeEntries(entries []BootEntry) string {
 	out := []string{}
 	for _, e := range entries {
 		out = append(out, "\n    ["+e.Kind+"] "+e.Title+" | "+e.Cmdline)
@@ -187,7 +187,7 @@ func TestFixtureKernelsAreInstalled(t *testing.T) {
 			entries := loadFixtureEntries(t, name)
 			found := false
 			for _, e := range entries {
-				if e.Kind == GrubEntryNormal && strings.Contains(e.Kernel, release) {
+				if e.Kind == BootEntryNormal && strings.Contains(e.Kernel, release) {
 					found = true
 					break
 				}
@@ -213,11 +213,11 @@ func TestFixtureKernelsAreInstalled(t *testing.T) {
 // the firmware entries are the ones that boot no kernel.
 func TestFixtureBootableMatchesEntryRole(t *testing.T) {
 	bootsAnOS := map[string]bool{
-		GrubEntryNormal:   true,
-		GrubEntryRecovery: true,
-		GrubEntryMemtest:  false,
-		GrubEntrySubmenu:  false,
-		GrubEntryOther:    false,
+		BootEntryNormal:   true,
+		BootEntryRecovery: true,
+		BootEntryMemtest:  false,
+		BootEntrySubmenu:  false,
+		BootEntryOther:    false,
 	}
 
 	seen := map[string]int{}

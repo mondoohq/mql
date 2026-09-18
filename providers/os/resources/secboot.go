@@ -93,9 +93,9 @@ func ParseSecbootConfig(r io.Reader) (SecbootConfig, error) {
 	return cfg, nil
 }
 
-// SecbootImage is one unified kernel image, read from the image rather than
+// UnifiedKernelImage is one unified kernel image, read from the image rather than
 // from any configuration file.
-type SecbootImage struct {
+type UnifiedKernelImage struct {
 	Path       string
 	Kernel     string
 	Cmdline    string
@@ -114,8 +114,8 @@ const peCertificateTable = 4
 // executable, per the Unified Kernel Image specification, so only the headers
 // and those sections are read: the kernel itself is the bulk of the file and is
 // never touched.
-func ReadUnifiedKernelImage(r io.ReaderAt) (SecbootImage, error) {
-	img := SecbootImage{}
+func ReadUnifiedKernelImage(r io.ReaderAt) (UnifiedKernelImage, error) {
+	img := UnifiedKernelImage{}
 
 	f, err := pe.NewFile(r)
 	if err != nil {
@@ -188,7 +188,7 @@ type mqlSecbootConfigInternal struct {
 	fetched        atomic.Bool
 	cachedConfig   SecbootConfig
 	imagesFetched  atomic.Bool
-	cachedImages   []SecbootImage
+	cachedImages   []UnifiedKernelImage
 	cachedImagesOK bool
 }
 
@@ -414,7 +414,7 @@ func (s *mqlSecbootConfig) fetchImages() error {
 	}
 	sort.Strings(names)
 
-	images := make([]SecbootImage, 0, len(names))
+	images := make([]UnifiedKernelImage, 0, len(names))
 	for _, name := range names {
 		p := path.Join(dir, name)
 		r, closer, err := secbootImageReader(fs, p)

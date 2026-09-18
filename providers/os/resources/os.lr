@@ -5410,6 +5410,133 @@ systemd.timesyncd @defaults("active synchronized serverName") {
   leapStatus() string
 }
 
+// systemd-boot bootloader state
+//
+// State of the systemd-boot bootloader: whether it is `installed` on the EFI
+// system partition, whether it is `active`, meaning it is what booted this
+// host, the `version` it reports, the `espPath` and `bootPath` it was found
+// at, and the `selectedEntry` the host booted from. `installed`, `version`,
+// `espPath` and `bootPath` are read from the files on the EFI system
+// partition, so they resolve on an image or a mounted filesystem. `active`
+// and `selectedEntry` are read from the EFI variables systemd-boot sets as it
+// runs, so they are null where no booted system can be observed. Useful for
+// asserting which bootloader a host boots with, and for finding a second
+// bootloader left installed beside the one in use.
+systemd.boot @defaults("active version") {
+  // Whether systemd-boot booted this host
+  //
+  // True when the running system was booted by systemd-boot, which the
+  // bootloader states in an EFI variable as it hands control to the kernel.
+  // Null where no EFI variables are readable, such as an image or filesystem
+  // scan, since a bootloader that cannot be observed booting is neither in
+  // use nor out of use.
+  active() bool
+  // Whether the systemd-boot binary is installed on the EFI system partition
+  //
+  // Read from the EFI system partition, so it holds on an image or a mounted
+  // filesystem. A host where this is true and `active` is false carries a
+  // bootloader it does not boot with.
+  installed() bool
+  // systemd-boot version
+  //
+  // Version the bootloader states for itself, such as `257.13-1.fc42`, read
+  // from the binary on the EFI system partition. Empty when systemd-boot is
+  // not installed.
+  version() string
+  // Path to the EFI system partition
+  //
+  // Where the bootloaders are installed, which is `/efi`, `/boot` or
+  // `/boot/efi`. Empty on a legacy BIOS host and on a scan that cannot read
+  // the partition.
+  espPath() string
+  // Path the boot entries are read from
+  //
+  // The extended boot loader partition where the host keeps one, and the EFI
+  // system partition otherwise.
+  bootPath() string
+  // Identifier of the boot entry the host booted from
+  //
+  // Names the entry systemd-boot selected, such as `arch.conf` for an entry
+  // file or the file name of a unified kernel image. Null where no EFI
+  // variables are readable.
+  selectedEntry() string
+  // Boot entries the bootloader offers on the next boot
+  //
+  // Read from both sources systemd-boot takes entries from: the Boot Loader
+  // Specification files under `loader/entries`, and the unified kernel images
+  // under `EFI/Linux`, which carry their command line inside the image and
+  // have no entry file at all. Null when neither source yields an entry, since
+  // a host whose boot entries cannot be read has none to report rather than an
+  // empty list of them, which would satisfy every assertion made over the
+  // entries.
+  entries() []systemd.boot.entry
+}
+
+// systemd-boot boot entry
+//
+// Single boot entry, from a Boot Loader Specification file under
+// `loader/entries` or a unified kernel image under `EFI/Linux`. `parameters`
+// and `flags` hold the kernel command line split into key-value directives and
+// bare tokens, so a check can assert on a parameter such as audit without
+// matching text. `cmdline` keeps the command line as it appears and `kernel`
+// names the kernel the entry boots. `bootable` is the distinction a control
+// over boot parameters rests on, since only an entry that boots an operating
+// system carries parameters to audit. `signed` reports whether a unified
+// kernel image carries a signature, which is what Secure Boot verifies.
+private systemd.boot.entry @defaults("title kind") {
+  // Entry title
+  title string
+  // Entry role
+  //
+  // One of `normal`, `recovery`, `memtest`, or `other`. `other` covers an
+  // entry that boots no kernel, such as one that opens the firmware settings
+  // or chainloads another operating system.
+  kind string
+  // Whether the entry boots an operating system
+  //
+  // True for a normal or recovery entry, which are the entries a control over
+  // kernel parameters applies to. False for a memory test and an entry that
+  // boots no kernel at all.
+  bootable bool
+  // Kernel image the entry boots
+  //
+  // The linux line of an entry file, or the kernel release recorded inside a
+  // unified kernel image.
+  kernel string
+  // Kernel command line
+  //
+  // The options line of an entry file, or the command line built into a
+  // unified kernel image.
+  cmdline string
+  // Kernel command line parameters
+  //
+  // Key-value tokens from the kernel command line. When a parameter appears
+  // more than once the last occurrence wins, which is how the kernel reads it.
+  // Use `cmdline` to recover every occurrence.
+  parameters map[string]string
+  // Bare kernel command line tokens, such as ro, quiet, or single
+  flags []string
+  // Whether the entry is a unified kernel image
+  //
+  // A unified kernel image is one signed executable holding the kernel, the
+  // initrd and the command line, discovered under `EFI/Linux` rather than
+  // declared by an entry file.
+  unifiedKernelImage bool
+  // Whether the image carries a signature
+  //
+  // True when a unified kernel image carries an Authenticode signature, which
+  // is what Secure Boot verifies before handing over to it. False for an entry
+  // file, which points at a kernel it does not itself sign.
+  signed bool
+  // Path of the file the entry was read from
+  source string
+  // Initrd path
+  //
+  // The initrd line of an entry file. Empty for a unified kernel image, which
+  // carries its initrd inside the image.
+  initrd string
+}
+
 // Running kernel and its modules
 //
 // Running kernel and its configuration surface. Exposes kernel version
