@@ -406,8 +406,8 @@ var (
 // menu under a name that GRUB 2 also uses on other distributions.
 //
 // Declaring an entry with `title` is what separates the two formats: GRUB 2
-// writes `menuentry`, and none of the 43 grub.cfg files in testdata/grub, which
-// cover 22 hosts across every layout the provider meets, contains a line
+// writes `menuentry`, and none of the 44 grub.cfg files in testdata/grub, which
+// cover 24 hosts across every layout the provider meets, contains a line
 // beginning with `title`. TestGrubCfgCorpusIsNotLegacy holds that.
 func isGrubLegacyCfg(content []byte) bool {
 	return reAnyLegacyTitle.Match(content)
@@ -490,6 +490,31 @@ func ParseGrubEnv(r io.Reader) (map[string]string, error) {
 	return vars, scanner.Err()
 }
 
+// reGrubSetVar matches a variable assignment in grub.cfg, quoted either way or
+// bare.
+var reGrubSetVar = regexp.MustCompile(`(?m)^[ \t]*set[ \t]+([A-Za-z_][A-Za-z0-9_]*)=(?:"([^"]*)"|'([^']*)'|([^ \t\n]*))[ \t]*$`)
+
+// parseGrubCfgVars returns the variables grub.cfg assigns, later assignments
+// winning as GRUB executes them in order.
+//
+// These answer only for a variable the environment block does not define.
+// grub2-mkconfig writes a kernelopts fallback for the host whose entries
+// reference the variable and whose grubenv does not set it, guarded by a test
+// for the variable being unset, which is what makes it a fallback rather than
+// an override:
+//
+//	if [ -z "${kernelopts}" ]; then
+//	  set kernelopts="root=/dev/vda2 ro rhgb quiet audit=1 "
+//	fi
+func parseGrubCfgVars(content []byte) map[string]string {
+	vars := map[string]string{}
+	for _, match := range reGrubSetVar.FindAllSubmatch(content, -1) {
+		value := string(match[2]) + string(match[3]) + string(match[4])
+		vars[string(match[1])] = value
+	}
+	return vars
+}
+
 // readGrubEnv returns the GRUB environment variables, or an empty map when no
 // environment block is readable.
 func readGrubEnv(fs afero.Fs) map[string]string {
@@ -512,6 +537,18 @@ func readGrubEnv(fs afero.Fs) map[string]string {
 // cfgPath, which may be empty when the host has none.
 func LoadGrubEntries(fs afero.Fs, cfgPath string, content []byte) ([]BootEntry, error) {
 	vars := readGrubEnv(fs)
+
+	// GRUB loads the environment block before it reads grub.cfg, so a variable
+	// the block defines is the one the host boots with and the assignments in
+	// grub.cfg answer for the rest. Without this an entry whose options are
+	// $kernelopts, on a host whose grubenv does not define it, reports the
+	// literal variable and no parameters at all, so a control over a kernel
+	// parameter finds nothing to read on a host that boots with it set.
+	for name, value := range parseGrubCfgVars(content) {
+		if _, ok := vars[name]; !ok {
+			vars[name] = value
+		}
+	}
 
 	// A grub.cfg that calls blscfg hands the menu over to the entry files, so
 	// whatever menu entries it declares itself do not boot.

@@ -207,7 +207,7 @@ func TestFixtureKernelsAreInstalled(t *testing.T) {
 
 // TestFixtureBootableMatchesEntryRole states, independently of the
 // implementation, which roles boot an operating system, and checks every entry
-// of all 22 hosts against it. The corpus is required to contain each role, so
+// of all 24 hosts against it. The corpus is required to contain each role, so
 // the negative half cannot quietly stop being exercised: proxmox-nas
 // contributes the memory tests, the Debian and SUSE families the submenus, and
 // the firmware entries are the ones that boot no kernel.

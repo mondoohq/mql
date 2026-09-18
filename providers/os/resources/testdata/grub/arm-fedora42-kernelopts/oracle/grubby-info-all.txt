@@ -1,0 +1,6 @@
+index=0
+kernel="/boot/vmlinuz-6.19.14-108.fc42.aarch64"
+args="$kernelopts"
+initrd="/boot/initramfs-6.19.14-108.fc42.aarch64.img"
+title="Fedora Linux (6.19.14-108.fc42.aarch64) 42 (Container Image)"
+id="d1a0daff5b90448c9667dfadbaff4e14-6.19.14-108.fc42.aarch64"

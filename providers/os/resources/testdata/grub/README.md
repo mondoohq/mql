@@ -1,9 +1,15 @@
 # Boot loader configuration fixtures
 
 Boot loader configuration copied verbatim from real hosts on 2026-09-17, for
-testing `grub.go` against the layouts the os provider actually meets. Nothing
-here is hand-written: every file under a host's `files/` directory is a byte
-copy of that path on the host it is named for.
+testing `grub.go` against the layouts the os provider actually meets. Every
+file under a collected host's `files/` directory is a byte copy of that path on
+the host it is named for.
+
+One host, `arm-fedora42-kernelopts`, is **constructed rather than collected**,
+because the state it holds was not reachable on any host that could be
+launched. Its files are still generated output, not hand-written prose: the
+`grub.cfg` is what `grub2-mkconfig` emitted and the entry is what
+`kernel-install` wrote. See its row in the table below for the recipe.
 
 Each host directory holds:
 
@@ -36,6 +42,7 @@ terminated the same day. `proxmox-nas` is a physical Proxmox VE host.
 | `al2023` | Amazon Linux 2023.12.20260914 | x86_64 | uefi | BLS inline | 1 | ami-0d21970fc031a9d81 |
 | `arm-al2023` | Amazon Linux 2023.12.20260914 | aarch64 | uefi | BLS inline | 1 | ami-0016b4a92b3d1a1e4 |
 | `arm-debian12` | Debian GNU/Linux 12 (bookworm) | aarch64 | uefi | grub.cfg | 0 | ami-0b398d23ef3774293 |
+| `arm-fedora42-kernelopts` | Fedora Linux 42 (Container Image) | aarch64 | none | BLS + $kernelopts fallback | 1 | constructed, see below |
 | `arm-rhel9` | Red Hat Enterprise Linux 9.6 (Plow) | aarch64 | uefi | BLS inline | 1 | ami-07cbe1ffd7a16533f |
 | `arm-sles15sp7` | SUSE Linux Enterprise Server 15 SP7 | aarch64 | uefi | grub.cfg | 0 | ami-06818f021b47f3109 |
 | `arm-ubuntu2404` | Ubuntu 24.04.4 LTS | aarch64 | uefi | grub.cfg | 0 | ami-05c117a6593f02954 |
@@ -54,6 +61,32 @@ terminated the same day. `proxmox-nas` is a physical Proxmox VE host.
 | `sles15sp7` | SUSE Linux Enterprise Server 15 SP7 | x86_64 | uefi | grub.cfg | 0 | ami-0150c541f790e233b |
 | `ubuntu2204` | Ubuntu 22.04.5 LTS | x86_64 | uefi | grub.cfg | 0 | ami-07b3d2f97d89e29a4 |
 | `ubuntu2404` | Ubuntu 24.04.4 LTS | x86_64 | uefi | grub.cfg | 0 | ami-04678417fc39d7171 |
+
+## The constructed host
+
+`arm-fedora42-kernelopts` holds a host whose entries defer to `$kernelopts` and
+whose `grubenv` does not define it, so the value comes from the fallback
+`grub2-mkconfig` writes into `grub.cfg`. None of the collected hosts is in that
+state: `rhel8` and `rocky8` both carry `kernelopts` in `grubenv`, and 9 and
+later write the arguments into the entries. It is reachable by upgrading across
+the Fedora 33/34 change, or by moving from RHEL 8 to 9 with leapp.
+
+Built in a `fedora:42` container with `grub2-tools`, `grubby` and `kernel-core`
+installed, `GRUB_CMDLINE_LINUX="rhgb quiet audit=1"` in `/etc/default/grub`, and
+`grub2-mkconfig` run against a `grub2-probe` shim, since a container has no
+block devices to probe. The entries were then pointed at the variable and the
+variable cleared from the environment block, which is the state an upgraded host
+arrives in:
+
+```bash
+sed -i 's|^options .*|options $kernelopts|' /boot/loader/entries/*.conf
+grub2-editenv /boot/grub2/grubenv unset kernelopts
+```
+
+`oracle/proc-cmdline.txt` is what the host would boot with, built from the
+`set kernelopts` value that `grub2-mkconfig` generated rather than read from a
+running kernel, since the container never booted. That is the one oracle here
+not taken from a live system, and it is why this host is labelled constructed.
 
 ## What the collection showed
 
