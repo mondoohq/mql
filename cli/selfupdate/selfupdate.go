@@ -57,13 +57,34 @@ const (
 type Config struct {
 	Enabled         bool
 	RefreshInterval int64
-	ReleaseURL      string
+	// ReleaseURL is the manifest to read. It is the layout the caller asked for
+	// and the one any error is reported against.
+	ReleaseURL string
+	// FallbackReleaseURLs are tried, in order, when ReleaseURL yields no usable
+	// manifest -- the other layout the same host might publish. Leave it empty to
+	// check exactly one URL.
+	FallbackReleaseURLs []string
 	// BinaryName is the name of the binary to update (e.g., "mql", "cnspec").
 	// Used to match archive entries and construct platform-specific filenames.
 	BinaryName string
 	// CurrentVersion is the current version of the running binary.
 	// If "x.y.z-rolling", self-update is skipped.
 	CurrentVersion string
+}
+
+// releaseURLs is the ordered list of manifests to try: the configured one
+// first, then any fallbacks.
+func (c Config) releaseURLs() []string {
+	urls := make([]string, 0, 1+len(c.FallbackReleaseURLs))
+	if c.ReleaseURL != "" {
+		urls = append(urls, c.ReleaseURL)
+	}
+	for _, u := range c.FallbackReleaseURLs {
+		if u != "" && u != c.ReleaseURL {
+			urls = append(urls, u)
+		}
+	}
+	return urls
 }
 
 // Release represents the release information from latest.json
@@ -87,6 +108,32 @@ type Release struct {
 // which is why one updates_url cannot address both: the layouts disagree on the
 // path and on the channel. This builds the install-service spelling, which is
 // what cnspec already uses, so a single configured host serves both binaries.
+// ReleaseURLs returns the manifests to try for a binary, in order: the install
+// service's layout first, then the release bucket's.
+//
+// The two are the same document published under different paths, and a host
+// answers one of them with a 404. Trying both is what lets updates_url name
+// either kind of host -- an operator mirroring the bucket has "/<binary>/", the
+// install service has "/package/<binary>/", and neither has to know which the
+// client prefers.
+//
+// The channel is spelled differently in each: a query parameter on the service,
+// a sibling document in the bucket. Both spellings are produced here, so a
+// fallback does not quietly drop the caller back onto stable.
+func ReleaseURLs(updatesURL string, binary string, channel string) []string {
+	if updatesURL == "" {
+		updatesURL = DefaultUpdatesURL
+	}
+	base := strings.TrimSuffix(updatesURL, "/")
+
+	bucket := base + "/" + binary + "/latest.json"
+	if channel == config.ChannelPreview {
+		bucket = base + "/" + binary + "/preview.json"
+	}
+
+	return []string{ReleaseURL(updatesURL, binary, channel), bucket}
+}
+
 func ReleaseURL(updatesURL string, binary string, channel string) string {
 	if updatesURL == "" {
 		updatesURL = DefaultUpdatesURL
@@ -232,7 +279,7 @@ func CheckAndUpdate(cfg Config) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	release, err := getLatestRelease(ctx, cfg.ReleaseURL)
+	release, err := getLatestReleaseFrom(ctx, cfg.releaseURLs())
 	if err != nil {
 		// We don't update the marker, which may lead to more checks against the URL
 		// but this is helpful when e.g. a network configuration wasn't set right.
@@ -518,7 +565,9 @@ func getLatestRelease(ctx context.Context, releaseURL string) (*Release, error) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, errors.Newf("unexpected status code: %d", resp.StatusCode)
+		// Name the URL: two layouts are tried, and an operator debugging a mirror
+		// needs to know which one answered this.
+		return nil, errors.Newf("unexpected status code %d from %s", resp.StatusCode, releaseURL)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -531,7 +580,54 @@ func getLatestRelease(ctx context.Context, releaseURL string) (*Release, error) 
 		return nil, errors.Wrap(err, "failed to parse release JSON")
 	}
 
+	// Unmarshalling into Release succeeds for any JSON object, so a document that
+	// is merely well-formed would otherwise pass as a manifest with an empty
+	// version -- read downstream as "no newer release", which is a silent no-op
+	// rather than an error. A manifest names a version.
+	if release.Version == "" {
+		return nil, errors.Newf("no version in the release document at %s", releaseURL)
+	}
+
 	return &release, nil
+}
+
+// LatestVersion returns the version named by the first manifest that answers,
+// trying each layout in turn. It is what a status command should report: the
+// version resolved the same way the updater resolves it, so the two cannot
+// disagree about whether an update is available.
+func LatestVersion(ctx context.Context, releaseURLs []string) (string, error) {
+	release, err := getLatestReleaseFrom(ctx, releaseURLs)
+	if err != nil {
+		return "", err
+	}
+	return release.Version, nil
+}
+
+// getLatestReleaseFrom tries each URL in order and returns the first usable
+// manifest.
+//
+// The candidates are the same manifest in two layouts; see ReleaseURLs. A host
+// serves one of them and answers the other with a 404, so trying the second is
+// the normal path rather than an error case, and only the first error is
+// reported: it belongs to the layout the caller asked for, and reporting the
+// last would describe a URL the operator never configured -- and would hide a
+// real outage on the primary behind a 404 from the fallback.
+func getLatestReleaseFrom(ctx context.Context, releaseURLs []string) (*Release, error) {
+	var firstErr error
+	for _, releaseURL := range releaseURLs {
+		release, err := getLatestRelease(ctx, releaseURL)
+		if err == nil {
+			return release, nil
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+		log.Debug().Str("url", releaseURL).Err(err).Msg("no release manifest here, trying the next layout")
+	}
+	if firstErr == nil {
+		firstErr = errors.New("no release URL to check")
+	}
+	return nil, firstErr
 }
 
 // getPlatformFile finds the appropriate release file for the current platform

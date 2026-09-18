@@ -216,10 +216,12 @@ func checkStatus(ctx context.Context) (Status, error) {
 		s.Client.UpdatesURL = selfupdate.DefaultUpdatesURL
 	}
 
-	// Read the same manifest the self-update reads, so status cannot report a
-	// version the updater would not install.
-	releaseURL := selfupdate.ReleaseURL(opts.UpdatesURL, "mql", config.GetUpdateChannel())
-	latestVersion, err := mql.GetLatestReleaseNameContext(ctx, releaseURL, httpClient)
+	// Read the same manifests the self-update reads, in the same order, so status
+	// cannot report a version the updater would not install -- including when
+	// updates_url names a mirror laid out as the release bucket rather than as
+	// the install service.
+	latestVersion, err := selfupdate.LatestVersion(ctx,
+		selfupdate.ReleaseURLs(opts.UpdatesURL, "mql", config.GetUpdateChannel()))
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to get latest version")
 	}

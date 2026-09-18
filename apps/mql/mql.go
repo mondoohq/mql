@@ -36,13 +36,16 @@ func main() {
 
 	// Check for self-update before anything else
 	if run, localOnly := selfUpdateMode(); run {
-		releaseURL := selfupdate.ReleaseURL(config.GetUpdatesURL(), "mql", config.GetUpdateChannel())
+		// Both layouts, so updates_url can name the install service or a mirror of
+		// the release bucket without the operator having to know which.
+		releaseURLs := selfupdate.ReleaseURLs(config.GetUpdatesURL(), "mql", config.GetUpdateChannel())
 		cfg := selfupdate.Config{
-			Enabled:         true,
-			RefreshInterval: selfupdate.DefaultRefreshInterval,
-			ReleaseURL:      releaseURL,
-			BinaryName:      "mql",
-			CurrentVersion:  mql.GetVersion(),
+			Enabled:             true,
+			RefreshInterval:     selfupdate.DefaultRefreshInterval,
+			ReleaseURL:          releaseURLs[0],
+			FallbackReleaseURLs: releaseURLs[1:],
+			BinaryName:          "mql",
+			CurrentVersion:      mql.GetVersion(),
 		}
 		// "version" does only the local switch (no network) so it stays fast while
 		// still reporting the version that other commands transparently exec into.
