@@ -400,6 +400,21 @@ Examples:
 			},
 		},
 	},
+	// *.dockerfile is the lowercase arm the forge classifiers already match;
+	// PerFile because a Dockerfile connection reads exactly one file, and
+	// handed a directory it would build an asset describing nothing.
+	Targets: []plugin.TargetOptIn{
+		{
+			Target: "iac", Discovery: "dockerfile", ConnType: shared.Type_DockerFile.String(),
+			Auto: true, PerFile: true,
+			Match: []plugin.Matcher{
+				{Glob: "Dockerfile"},
+				{Glob: "Dockerfile.*"},
+				{Glob: "*.Dockerfile"},
+				{Glob: "*.dockerfile"},
+			},
+		},
+	},
 	AssetUrlTrees: []*inventory.AssetUrlBranch{
 		{
 			PathSegments: []string{"technology=os"},

@@ -159,7 +159,7 @@ func loadPlaybooks(root string) ([]*PlaybookFile, error) {
 				continue
 			}
 			data, err := os.ReadFile(full)
-			if err != nil || isVaultEncrypted(data) || !looksLikePlaybook(data) {
+			if err != nil || isVaultEncrypted(data) || !LooksLikePlaybook(data) {
 				continue
 			}
 			pb, err := play.DecodePlaybook(data)
@@ -173,9 +173,13 @@ func loadPlaybooks(root string) ([]*PlaybookFile, error) {
 	return out, nil
 }
 
-// looksLikePlaybook reports whether the YAML is a list whose entries look like
+// LooksLikePlaybook reports whether the YAML is a list whose entries look like
 // plays (have a `hosts:` selector or an `import_playbook:` statement).
-func looksLikePlaybook(data []byte) bool {
+//
+// Exported because the connection applies the same rule to a single playbook
+// file it was handed directly. The two have to agree: a file this says no to
+// must not become an asset on one path and be skipped on the other.
+func LooksLikePlaybook(data []byte) bool {
 	var items []map[string]any
 	if err := yaml.Unmarshal(data, &items); err != nil {
 		return false

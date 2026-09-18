@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestDefaultProvidersIncludesAllLocalProviders guards against the recurring
@@ -220,3 +221,42 @@ var (
 	quotedStringRe     = regexp.MustCompile(`"([^"]+)"`)
 	lrOptionProviderRe = regexp.MustCompile(`(?m)^\s*option\s+provider\s*=\s*"([^"]+)"`)
 )
+
+// TestDefaultProvidersCarryTargetOptIns is the guard against a forgotten
+// `make providers/defaults`.
+//
+// DefaultProviders is what resolves a --discover value before the provider
+// binary exists, so a target opt-in that is declared in a config but missing
+// here means `mql shell iac ./repo --discover k8s` on a clean machine cannot
+// find a provider to install (ADR 045). Nothing else would notice.
+func TestDefaultProvidersCarryTargetOptIns(t *testing.T) {
+	dirs, err := filepath.Glob(filepath.Join("..", "providers", "*"))
+	require.NoError(t, err)
+
+	reDiscovery := regexp.MustCompile(`Target:\s*"([^"]+)",\s*Discovery:\s*"([^"]+)"`)
+
+	checked := 0
+	for _, dir := range dirs {
+		raw, err := os.ReadFile(filepath.Join(dir, "config", "config.go"))
+		if err != nil {
+			continue // not a provider
+		}
+		name := filepath.Base(dir)
+
+		for _, match := range reDiscovery.FindAllStringSubmatch(string(raw), -1) {
+			target, discovery := match[1], match[2]
+			found := DefaultProviders.Lookup(ProviderLookup{Target: target, Discovery: discovery})
+			require.NotNilf(t, found,
+				"provider %q declares target %q discovery %q, but DefaultProviders cannot resolve it. Run `make providers/defaults`.",
+				name, target, discovery)
+			assert.Equalf(t, name, found.Name,
+				"target %q discovery %q resolves to provider %q, expected %q",
+				target, discovery, found.Name, name)
+			checked++
+		}
+	}
+
+	// A guard on the guard: if the regex stops matching, the loop above passes
+	// while checking nothing.
+	assert.Greater(t, checked, 5, "expected several target opt-ins across the providers")
+}

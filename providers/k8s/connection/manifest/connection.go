@@ -6,6 +6,7 @@ package manifest
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -140,6 +141,17 @@ func NewConnection(id uint32, asset *inventory.Asset, opts ...Option) (shared.Co
 	c.ManifestParser, err = shared.NewManifestParser(manifest, c.namespace, "")
 	if err != nil {
 		return nil, err
+	}
+
+	// Zero objects means nothing Kubernetes was here, and connecting anyway
+	// would pass every policy on a folder nothing was ever read from. For a
+	// directory this is a count and not an error check, deliberately:
+	// LoadManifestFile's walk already drops every file that does not decode as
+	// a Kubernetes object, so plain config YAML, Helm templates full of Go
+	// templating and policy bundles all arrive here as an empty set -- while a
+	// single file the user named keeps reporting its own parse error.
+	if len(c.ManifestParser.Objects) == 0 {
+		return nil, fmt.Errorf("no Kubernetes objects found in %s: %w", c.manifestFile, plugin.ErrNoMatch)
 	}
 
 	return c, nil

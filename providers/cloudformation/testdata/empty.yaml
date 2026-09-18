@@ -1,1 +1,4 @@
-# empty cloudformation template
+# A template that declares a section and nothing else. A file with no section at
+# all is refused at connect, so this is the emptiest thing the accessors can
+# actually be handed.
+Description: an otherwise empty cloudformation template

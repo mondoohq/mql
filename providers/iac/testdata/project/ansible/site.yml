@@ -1,0 +1,4 @@
+- name: configure web servers
+  hosts: web
+  roles:
+    - web

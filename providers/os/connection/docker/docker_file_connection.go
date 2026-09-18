@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -79,11 +80,17 @@ func NewDockerfileConnection(_ uint32,
 		return nil, err
 	}
 
-	var filename string
-	if !stat.IsDir() {
-		filename = filepath.Base(absSrc)
-		conf.Path = absSrc
+	// A directory is not a Dockerfile. Handed one, this used to build an asset
+	// literally named "Dockerfile " whose platform ID hashed the directory
+	// path: a plausible-looking asset describing nothing, and the only one of
+	// these that failed silently. Discovery always hands over a single file, so
+	// nothing that works today stops working.
+	if stat.IsDir() {
+		return nil, fmt.Errorf("%s is a directory, not a Dockerfile: %w", absSrc, plugin.ErrNoMatch)
 	}
+
+	filename := filepath.Base(absSrc)
+	conf.Path = absSrc
 
 	asset.Platform = &inventory.Platform{
 		Name:                  "dockerfile",

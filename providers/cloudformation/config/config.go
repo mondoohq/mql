@@ -21,6 +21,17 @@ var Config = plugin.Provider{
 	},
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       provider.Platforms,
+	// PerFile: the connection reads exactly one document, so the unit offered
+	// has to be the file rather than the folder it sits in.
+	Targets: []plugin.TargetOptIn{
+		{
+			Target: "iac", Discovery: "cloudformation", ConnType: provider.DefaultConnectionType,
+			Auto: true, PerFile: true,
+			Match: []plugin.Matcher{
+				{Glob: "*.yaml"}, {Glob: "*.yml"}, {Glob: "*.json"}, {Glob: "*.template"},
+			},
+		},
+	},
 	Connectors: []plugin.Connector{
 		{
 			Name:  "cloudformation",

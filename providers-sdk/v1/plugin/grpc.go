@@ -6,6 +6,7 @@ package plugin
 import (
 	"bytes"
 	"context"
+	"errors"
 	"runtime/debug"
 	"time"
 	"unicode/utf8"
@@ -178,7 +179,14 @@ func (m *GRPCServer) Connect(ctx context.Context, req *ConnectReq) (resp *Connec
 	// when the plugin caller decides to kill the process.
 
 	a := &GRPCProviderCallbackClient{NewProviderCallbackClient(conn)}
-	return m.Impl.Connect(req, a)
+	res, err := m.Impl.Connect(req, a)
+	if err != nil {
+		// Normalize here rather than trusting every provider to wrap in a fixed
+		// order: this runs in the provider process, so errors.Is sees the
+		// sentinel the provider actually wrapped (ADR 045).
+		return nil, normalizeConnectError(err)
+	}
+	return res, nil
 }
 
 func (m *GRPCServer) Disconnect(ctx context.Context, req *DisconnectReq) (resp *DisconnectRes, err error) {
@@ -199,7 +207,14 @@ func (m *GRPCServer) MockConnect(ctx context.Context, req *ConnectReq) (resp *Co
 	// when the plugin caller decides to kill the process.
 
 	a := &GRPCProviderCallbackClient{NewProviderCallbackClient(conn)}
-	return m.Impl.MockConnect(req, a)
+	res, err := m.Impl.MockConnect(req, a)
+	if err != nil {
+		// Normalize here rather than trusting every provider to wrap in a fixed
+		// order: this runs in the provider process, so errors.Is sees the
+		// sentinel the provider actually wrapped (ADR 045).
+		return nil, normalizeConnectError(err)
+	}
+	return res, nil
 }
 
 func (m *GRPCServer) Shutdown(ctx context.Context, req *ShutdownReq) (resp *ShutdownRes, err error) {
@@ -300,4 +315,13 @@ func sanitizeUtf8(s string) string {
 		i += size
 	}
 	return buf.String()
+}
+
+// normalizeConnectError puts a Connect outcome the caller has to recognize into
+// its wire form, and leaves every other error exactly as the provider wrote it.
+func normalizeConnectError(err error) error {
+	if errors.Is(err, ErrNoMatch) {
+		return NoMatchStatus(err)
+	}
+	return err
 }

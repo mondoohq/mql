@@ -5,6 +5,7 @@ package connection
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -101,7 +102,7 @@ func NewHelmConnection(id uint32, asset *inventory.Asset, conf *inventory.Config
 		return nil, err
 	}
 	if len(charts) == 0 {
-		return nil, errors.New("no Helm charts found at " + fetched.localPath)
+		return nil, fmt.Errorf("no Helm charts found at %s: %w", fetched.localPath, plugin.ErrNoMatch)
 	}
 
 	// A remote fetch resolves to exactly one chart archive, so its

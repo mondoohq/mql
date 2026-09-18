@@ -21,6 +21,25 @@ var Config = plugin.Provider{
 	},
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       provider.Platforms,
+	// One opt-in, and not PerFile: every candidate is a folder, which is what
+	// project.Load reads. A playbook file is never offered on its own, so a
+	// playbook inside a project cannot also become an asset of its own.
+	// continue_exploration is set because loadPlaybooks reads only the folder
+	// itself and its playbooks/ subfolder, so a bare playbook further down is
+	// genuinely not part of the project above it.
+	Targets: []plugin.TargetOptIn{
+		{
+			Target: "iac", Discovery: "ansible", ConnType: provider.DefaultConnectionType, Auto: true,
+			Match: []plugin.Matcher{
+				{Glob: "ansible.cfg"},
+				{Glob: "roles/*/tasks/main.yml"},
+				{Glob: "roles/*/tasks/main.yaml"},
+				{Glob: "inventory"},
+				{Glob: "*.yml"},
+				{Glob: "*.yaml"},
+			},
+		},
+	},
 	Connectors: []plugin.Connector{
 		{
 			Name:  "ansible",

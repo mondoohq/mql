@@ -23,6 +23,18 @@ var Config = plugin.Provider{
 	Maturity:        resources.MaturityExperimental,
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       provider.Platforms,
+	// The exact set kustomizationFilenames recognizes, which is also what the
+	// forge classifiers match.
+	Targets: []plugin.TargetOptIn{
+		{
+			Target: "iac", Discovery: "kustomize", ConnType: provider.DefaultConnectionType, Auto: true,
+			Match: []plugin.Matcher{
+				{Glob: "kustomization.yaml"},
+				{Glob: "kustomization.yml"},
+				{Glob: "Kustomization"},
+			},
+		},
+	},
 	Connectors: []plugin.Connector{
 		{
 			Name:  "kustomize",

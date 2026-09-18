@@ -71,7 +71,7 @@ prep/tools/mockgen:
 
 mql/generate: clean/proto llx/generate shared/generate sbom/generate reporter/generate providers
 
-mql/generate/core: clean/proto llx/generate shared/generate providers/proto providers/build/mock providers/build/core sbom/generate reporter/generate
+mql/generate/core: clean/proto llx/generate shared/generate providers/proto providers/build/mock providers/build/core providers/build/iac sbom/generate reporter/generate
 
 # ADR 042 step 4: fail the build when a provider's declared peer dependencies
 # disagree with what its code actually references -- an undeclared cross-provider
@@ -291,6 +291,7 @@ PROVIDERS := \
 providers/build: \
 	providers/build/mock \
 	providers/build/core \
+	providers/build/iac \
 	$(addprefix providers/build/,$(PROVIDERS))
 
 .PHONY: providers/install
@@ -298,6 +299,16 @@ providers/install: $(addprefix providers/install/,$(PROVIDERS))
 
 providers/build/mock: providers/lr
 	./lr go providers-sdk/v1/testutils/mockprovider/resources/mockprovider.lr
+
+# iac is builtin, so it has no main.go to compile and the generic
+# providers/build/% rule would fail on it. --version is explicit because the
+# version detector regex-matches a quoted Version: in config.go and iac tracks
+# the binary's version through mql.GetVersion(), which it cannot read -- without
+# it every entry would silently be stamped with the 9.0.0 fallback.
+providers/build/iac: providers/lr
+	./lr go providers/iac/resources/iac.lr $(LR_DEP_FLAGS)
+	./lr versions providers/iac/resources/iac.lr --version 14.0.0
+	cd providers/iac && go run ./gen/main.go .
 
 providers/build/%: providers/lr
 	@$(call buildProvider, providers/$*)

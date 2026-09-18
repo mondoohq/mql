@@ -4,6 +4,7 @@
 package connection
 
 import (
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"path/filepath"
 	"testing"
 
@@ -320,13 +321,17 @@ func TestTerraformConnectorRejectsAnOpenTofuOnlyTree(t *testing.T) {
 	})
 
 	t.Run("an empty directory is not blamed on OpenTofu", func(t *testing.T) {
-		// Nothing was skipped here, so there is nothing to point the user at;
-		// this stays the pre-existing empty-results warning.
+		// Nothing was skipped here, so there is nothing to point the user at.
+		// The folder is still refused -- connecting an empty configuration
+		// would pass every policy on a project nothing was read from -- but
+		// with the plain message rather than the one naming a connector that
+		// would not help either.
 		dir := writeFiles(t, map[string]string{"README.md": "nothing to see"})
 
-		conn, err := hclConnectionAs(dir, DialectTerraform)
-		require.NoError(t, err)
-		assert.Empty(t, conn.Parser().Files())
+		_, err := hclConnectionAs(dir, DialectTerraform)
+		require.Error(t, err)
+		assert.True(t, plugin.IsNoMatchError(err), err)
+		assert.NotContains(t, err.Error(), "opentofu connector")
 	})
 
 	t.Run("the opentofu connector reads the same tree", func(t *testing.T) {

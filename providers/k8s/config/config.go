@@ -31,6 +31,15 @@ var Config = plugin.Provider{
 	// concurrent asset scans reach the API server rather than queueing locally.
 	// Kept at 8 so a small control plane's API Priority and Fairness has room.
 	DefaultParallelism: 8,
+	// Broad on purpose: a glob cannot settle what a YAML file is, so the probe
+	// is what says no. The manifest connection rejects a folder holding no
+	// Kubernetes objects (ADR 045).
+	Targets: []plugin.TargetOptIn{
+		{
+			Target: "iac", Discovery: "k8s", ConnType: provider.ConnectionType, Auto: true,
+			Match: []plugin.Matcher{{Glob: "*.yaml"}, {Glob: "*.yml"}},
+		},
+	},
 	Connectors: []plugin.Connector{
 		{
 			Name:    "k8s",

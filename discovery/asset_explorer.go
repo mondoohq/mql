@@ -26,6 +26,18 @@ import (
 // coordinator's connection tracking).
 var ErrDuplicateAsset = errors.New("duplicate asset")
 
+// ErrNoMatch is returned by Connect when the provider reported that the target
+// is not its own (plugin.ErrNoMatch, ADR 045). Like ErrDuplicateAsset it is not
+// a failure to report when it happens to a *child*: whatever emitted the child
+// already decided, and recording it would attribute that judgement to the user.
+//
+// A distinct sentinel rather than reusing ErrDuplicateAsset, because "the
+// folder holds no Terraform" and "we already connected this asset" are
+// different things to say. A no-match on a *root* asset stays a reported error:
+// there the user named that connector for that path, and swallowing it would
+// produce a scan that succeeded having connected to nothing.
+var ErrNoMatch = errors.New("target does not match the connector")
+
 // AssetState represents the lifecycle state of a tracked asset.
 type AssetState int
 
@@ -212,7 +224,11 @@ func (e *AssetExplorer) Connect(asset *TrackedAsset) (*TrackedAsset, error) {
 
 	awr, err := createRuntimeForAsset(asset.Asset, e.upstream, e.recording, e.features)
 	if err != nil {
-		e.errors = append(e.errors, &AssetWithError{Asset: asset.Asset, Err: err})
+		// A child a peer provider does not want is not an error the user needs
+		// to see; every other failure is.
+		if !errors.Is(err, ErrNoMatch) {
+			e.errors = append(e.errors, &AssetWithError{Asset: asset.Asset, Err: err})
+		}
 		return nil, err
 	}
 

@@ -41,9 +41,16 @@ func AttachCLIs(rootCmd *cobra.Command, commands ...*Command) error {
 		return err
 	}
 
-	connectorName, autoUpdate := detectConnectorName(os.Args, rootCmd, commands, existing)
-	if connectorName != "" {
-		if _, err := providers.EnsureProvider(providers.ProviderLookup{ConnName: connectorName}, autoUpdate, existing); err != nil {
+	pre := detectConnectorName(os.Args, rootCmd, commands, existing)
+	if pre.ConnectorName != "" {
+		if _, err := providers.EnsureProvider(providers.ProviderLookup{ConnName: pre.ConnectorName}, pre.AutoUpdate, existing); err != nil {
+			return err
+		}
+		// A meta-target directs its connections through --discover, so the
+		// providers it needs follow from that value and are fetched here:
+		// before cobra, before the tree is read, and before any child asset is
+		// connected (ADR 045).
+		if err := ensureTargetDiscoveries(pre, existing); err != nil {
 			return err
 		}
 	}
@@ -108,7 +115,7 @@ func RegistryURL() string {
 	return ""
 }
 
-func detectConnectorName(args []string, rootCmd *cobra.Command, commands []*Command, existing providers.Providers) (string, bool) {
+func detectConnectorName(args []string, rootCmd *cobra.Command, commands []*Command, existing providers.Providers) cliPreflight {
 	autoUpdate := true
 
 	config.InitViperConfig()
@@ -168,9 +175,19 @@ func detectConnectorName(args []string, rootCmd *cobra.Command, commands []*Comm
 
 	autoUpdate, _ = flags.GetBool("auto-update")
 
+	// Read --discover here, where it is already parsed. Changed() is what
+	// separates an unset flag from `--discover ""`: GetStringSlice returns an
+	// empty slice for both, and they mean different things (ADR 045).
+	discover, _ := flags.GetStringSlice("discover")
+	pre := cliPreflight{
+		AutoUpdate:  autoUpdate,
+		Discover:    discover,
+		DiscoverSet: flags.Changed("discover"),
+	}
+
 	parsedArgs := flags.Args()
 	if len(parsedArgs) <= 1 {
-		return "", autoUpdate
+		return pre
 	}
 
 	commandFound := false
@@ -181,18 +198,19 @@ func detectConnectorName(args []string, rootCmd *cobra.Command, commands []*Comm
 		}
 	}
 	if !commandFound {
-		return "", autoUpdate
+		return pre
 	}
 
 	// since we have a known command, we can now expect the connector to be
 	// local by default if nothing else is set
 	if len(parsedArgs) == 2 {
-		return "local", autoUpdate
+		pre.ConnectorName = "local"
+		return pre
 	}
 
-	connector := parsedArgs[2]
+	pre.ConnectorName = parsedArgs[2]
 
-	return connector, autoUpdate
+	return pre
 }
 
 func attachProviders(existing providers.Providers, commands []*Command) {
@@ -218,7 +236,7 @@ func attachProvidersToCmd(existing providers.Providers, cmd *Command) {
 				}
 			}
 			if attach {
-				attachConnectorCmd(provider.Provider, &conn, cmd)
+				attachConnectorCmd(provider.Provider, &conn, cmd, existing)
 			}
 		}
 	}
@@ -228,14 +246,14 @@ func attachProvidersToCmd(existing providers.Providers, cmd *Command) {
 		for i := range p.Connectors {
 			c := p.Connectors[i]
 			if c.Name == "local" {
-				setDefaultConnector(p.Provider, &c, cmd)
+				setDefaultConnector(p.Provider, &c, cmd, existing)
 				break
 			}
 		}
 	}
 }
 
-func setDefaultConnector(provider *plugin.Provider, connector *plugin.Connector, cmd *Command) {
+func setDefaultConnector(provider *plugin.Provider, connector *plugin.Connector, cmd *Command, existing providers.Providers) {
 	cmd.Command.Run = func(cmd *cobra.Command, args []string) {
 		if len(args) > 0 {
 			log.Error().Msg("provider " + args[0] + " does not exist")
@@ -246,10 +264,10 @@ func setDefaultConnector(provider *plugin.Provider, connector *plugin.Connector,
 		log.Info().Msg("Connecting to your local system. To learn how to scan other platforms, use the --help flag.")
 	}
 
-	setConnector(provider, connector, cmd.Run, cmd.Command)
+	setConnector(provider, connector, cmd.Run, cmd.Command, existing)
 }
 
-func attachConnectorCmd(provider *plugin.Provider, connector *plugin.Connector, cmd *Command) {
+func attachConnectorCmd(provider *plugin.Provider, connector *plugin.Connector, cmd *Command, existing providers.Providers) {
 	res := &cobra.Command{
 		Use:     connector.Use,
 		Short:   cmd.Action + connector.Short,
@@ -280,7 +298,7 @@ func attachConnectorCmd(provider *plugin.Provider, connector *plugin.Connector, 
 	})
 
 	cmd.Command.AddCommand(res)
-	setConnector(provider, connector, cmd.Run, res)
+	setConnector(provider, connector, cmd.Run, res, existing)
 }
 
 func genBuiltinFlags(discoveries ...string) []plugin.Flag {
@@ -477,11 +495,11 @@ func getFlagValueFromCobra(flag plugin.Flag, cmd *cobra.Command) *llx.Primitive 
 	return nil
 }
 
-func setConnector(provider *plugin.Provider, connector *plugin.Connector, run func(*cobra.Command, *providers.Runtime, *plugin.ParseCLIRes), cmd *cobra.Command) {
+func setConnector(provider *plugin.Provider, connector *plugin.Connector, run func(*cobra.Command, *providers.Runtime, *plugin.ParseCLIRes), cmd *cobra.Command, existing providers.Providers) {
 	oldRun := cmd.Run
 	oldPreRun := cmd.PreRun
 
-	builtinFlags := genBuiltinFlags(connector.Discovery...)
+	builtinFlags := genBuiltinFlags(discoveriesForHelp(connector, existing)...)
 	allFlags := append(connector.Flags, builtinFlags...)
 
 	cmd.PreRun = func(cc *cobra.Command, args []string) {

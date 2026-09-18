@@ -141,6 +141,12 @@ type ProviderLookup struct {
 	ProviderName string
 	ConnName     string
 	ConnType     string
+	// Target and Discovery resolve a meta-target's --discover value, e.g.
+	// Target "iac", Discovery "k8s" -> the k8s provider (ADR 045). Both are
+	// required together: a Target on its own would match whichever provider
+	// happens to declare any opt-in for it.
+	Target    string
+	Discovery string
 }
 
 func (s ProviderLookup) String() string {
@@ -156,6 +162,12 @@ func (s ProviderLookup) String() string {
 	}
 	if s.ConnType != "" {
 		res = append(res, "conn type="+s.ConnType)
+	}
+	if s.Target != "" {
+		res = append(res, "target="+s.Target)
+	}
+	if s.Discovery != "" {
+		res = append(res, "discovery="+s.Discovery)
 	}
 	return strings.Join(res, " ")
 }
@@ -219,6 +231,20 @@ func (p Providers) Lookup(search ProviderLookup) *Provider {
 					return provider
 				}
 				if slices.Contains(provider.Connectors[i].Aliases, search.ConnName) {
+					return provider
+				}
+			}
+		}
+	}
+
+	// Target+Discovery resolves a meta-target's --discover value (ADR 045).
+	// Last, so the ID -> ProviderName -> ConnType -> ConnName precedence above
+	// is untouched: no caller sets a target alongside another key today, and if
+	// one ever does, the more specific key should still win.
+	if search.Target != "" && search.Discovery != "" {
+		for _, provider := range p {
+			for _, target := range provider.Targets {
+				if target.Target == search.Target && target.Discovery == search.Discovery {
 					return provider
 				}
 			}
@@ -456,6 +482,11 @@ func EnsureProvider(search ProviderLookup, autoUpdate bool, existing Providers) 
 	if search.ID == sbomProvider.ID || search.ConnName == "sbom" || search.ConnType == "sbom" {
 		existing.Add(&sbomProvider)
 		return &sbomProvider, nil
+	}
+
+	if search.ID == iacProvider.ID || search.ConnName == "iac" || search.ConnType == "iac" {
+		existing.Add(&iacProvider)
+		return &iacProvider, nil
 	}
 
 	if search.ID == recordingProviderInstance.ID || search.ConnName == "recording" || search.ConnType == "recording" {

@@ -337,6 +337,11 @@ func (s *Service) Connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 		Asset:     req.Asset,
 		Inventory: inv,
 		Root:      assetRoot(req.Asset.GetPlatform()),
+		// A Dockerfile is one asset and a repository holds many, so taking this
+		// one says nothing about the rest of the tree. Every other connection
+		// type this provider serves is a host or an image, which a tree walk
+		// never offers in the first place (ADR 045).
+		ContinueExploration: req.Asset.Connections[0].Type == shared.Type_DockerFile.String(),
 	}, nil
 }
 

@@ -6,6 +6,7 @@ package connection
 import (
 	"errors"
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"io"
 	"os"
 	"path/filepath"
@@ -63,6 +64,13 @@ func NewAnsibleConnection(id uint32, asset *inventory.Asset, conf *inventory.Con
 		if err != nil {
 			return nil, fmt.Errorf("ansible: cannot load project %q: %w", path, err)
 		}
+		// project.Load treats every missing artifact as empty rather than as an
+		// error, so it succeeds on any directory at all and would connect an
+		// Ansible project made of nothing -- which then passes every policy. A
+		// directory with none of the four is simply not an Ansible project.
+		if isEmptyProject(proj) {
+			return nil, fmt.Errorf("ansible: %s has no ansible.cfg, roles, inventory or playbooks: %w", path, plugin.ErrNoMatch)
+		}
 		conn.proj = proj
 		return conn, nil
 	}
@@ -73,6 +81,18 @@ func NewAnsibleConnection(id uint32, asset *inventory.Asset, conf *inventory.Con
 	}
 	conn.playbook = playbook
 	return conn, nil
+}
+
+// isEmptyProject reports whether loading the directory found nothing that makes
+// it an Ansible project. Playbooks count because project.loadPlaybooks already
+// content-gates them with looksLikePlaybook, so a folder of unrelated YAML does
+// not qualify on their account.
+func isEmptyProject(proj *project.Project) bool {
+	return proj == nil ||
+		(proj.Config == nil &&
+			len(proj.Roles) == 0 &&
+			proj.Inventory == nil &&
+			len(proj.Playbooks) == 0)
 }
 
 func loadPlaybookFile(path string) (play.Playbook, error) {
@@ -89,9 +109,36 @@ func loadPlaybookFile(path string) (play.Playbook, error) {
 
 	playbook, err := play.DecodePlaybook(data)
 	if err != nil {
-		return nil, fmt.Errorf("ansible: cannot decode playbook %q: %w", path, err)
+		// Two very different files fail here, and telling them apart is what
+		// keeps a broken playbook from being silently dropped. A Playbook is a
+		// slice, so any YAML *mapping* -- a Kubernetes manifest, a
+		// CloudFormation template, a CI config -- fails to decode, and that is
+		// a statement about what the file is. YAML that does not parse at all
+		// is a file that is meant to be one of ours and is broken, which stays
+		// a reported error.
+		if !isYAML(data) {
+			return nil, fmt.Errorf("ansible: cannot decode playbook %q: %w", path, err)
+		}
+		return nil, fmt.Errorf("ansible: %s is not a playbook: %v: %w", path, err, plugin.ErrNoMatch)
 	}
+
+	// A YAML list of unrelated dicts decodes cleanly into a playbook whose
+	// plays say nothing, so the connect would succeed and the asset report
+	// nothing. This is the same rule the project loader applies when deciding
+	// which files under a directory are playbooks, so the two paths cannot
+	// disagree about one file.
+	if !project.LooksLikePlaybook(data) {
+		return nil, fmt.Errorf("ansible: %s is not a playbook, no play declares hosts or imports one: %w", path, plugin.ErrNoMatch)
+	}
+
 	return playbook, nil
+}
+
+// isYAML reports whether the bytes parse as YAML at all, whatever shape they
+// take.
+func isYAML(data []byte) bool {
+	var probe any
+	return yaml.Unmarshal(data, &probe) == nil
 }
 
 func (c *AnsibleConnection) Name() string {

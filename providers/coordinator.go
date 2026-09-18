@@ -326,7 +326,8 @@ func (c *coordinator) unsafeStartProvider(id string, update UpdateProvidersConfi
 	if x, ok := builtinProviders[id]; ok {
 		// We don't warn for core providers, which are the only providers
 		// built into the binary (for now).
-		if id != BuiltinCoreID && id != mockProvider.ID && id != sbomProvider.ID && id != recordingProviderInstance.ID {
+		if id != BuiltinCoreID && id != mockProvider.ID && id != sbomProvider.ID &&
+			id != recordingProviderInstance.ID && id != iacProvider.ID {
 			log.Warn().Msg("using builtin provider for " + x.Config.Name)
 		}
 		if id == mockProvider.ID {

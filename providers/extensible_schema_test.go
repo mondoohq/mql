@@ -65,8 +65,13 @@ func TestExtensibleSchema(t *testing.T) {
 	require.Len(t, fieldinfos, 1)
 	require.Equal(t, "first", fieldinfos[0].Provider)
 
-	// Check no dependencies
-	require.Lenf(t, s.AllDependencies(), 0, "should not have dependencies")
+	// The aggregate also carries what the builtin providers declare -- iac
+	// declares core (ADR 042) -- so the baseline is not empty. What this pins
+	// is that the two schemas added above contribute nothing to it.
+	baseline := newExtensibleSchema()
+	baseline.coordinator = newCoordinator()
+	require.Equalf(t, len(baseline.AllDependencies()), len(s.AllDependencies()),
+		"the schemas added here should not have contributed dependencies")
 
 	t.Run("with dependencies", func(t *testing.T) {
 		s.Add("third", &resources.Schema{
@@ -79,10 +84,14 @@ func TestExtensibleSchema(t *testing.T) {
 					Provider: "third",
 				},
 			},
+			// Deliberately not "core": the builtin providers declare that one
+			// too, and the aggregate is keyed by name, so a shared key would
+			// make this assert on which schema was merged last rather than on
+			// this one contributing anything.
 			Dependencies: map[string]*resources.ProviderInfo{
-				"core": {
-					Id:   "go.mondoo.com/mql/v9/providers/core",
-					Name: "core",
+				"eternity-dep": {
+					Id:   "go.mondoo.com/mql/v9/providers/eternity-dep",
+					Name: "eternity-dep",
 				},
 			},
 		})
@@ -92,9 +101,10 @@ func TestExtensibleSchema(t *testing.T) {
 		providers := []string{info.Provider, info.Others[0].Provider, info.Others[1].Provider}
 		assert.ElementsMatch(t, []string{"first", "second", "third"}, providers)
 
-		// Check dependencies
+		// What "third" declared reaches the aggregate.
 		deps := s.AllDependencies()
-		require.Len(t, deps, 1)
-		assert.Equal(t, "go.mondoo.com/mql/v9/providers/core", deps["core"].Id)
+		require.Contains(t, deps, "eternity-dep")
+		assert.Equal(t, "go.mondoo.com/mql/v9/providers/eternity-dep", deps["eternity-dep"].Id)
+		assert.Len(t, deps, len(baseline.AllDependencies())+1)
 	})
 }

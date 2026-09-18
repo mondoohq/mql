@@ -67,6 +67,16 @@ type Provider struct {
 	// resource that only partly covers the asset just to make `_` answer
 	// something.
 	Root string `json:",omitempty"`
+	// Targets are the meta-targets this provider opts into (ADR 045): a
+	// declaration that some shape of file tree is this provider's, so a
+	// meta-target like `iac` can offer it a candidate without hardcoding the
+	// knowledge two more times the way the github and gitlab classifiers do.
+	//
+	// Demand-driven, and deliberately not Requires: declaring an opt-in
+	// installs nothing. Which providers a run needs follows from the
+	// meta-target's --discover value alone, resolved through
+	// ProviderLookup{Target, Discovery} before the tree is read.
+	Targets []TargetOptIn `json:",omitempty"`
 }
 
 // ProviderDep is one declared dependency on another provider.

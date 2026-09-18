@@ -23,6 +23,12 @@ var Config = plugin.Provider{
 	Maturity:        resources.MaturityExperimental,
 	ConnectionTypes: []string{provider.DefaultConnectionType},
 	Platforms:       provider.Platforms,
+	Targets: []plugin.TargetOptIn{
+		{
+			Target: "iac", Discovery: "bicep", ConnType: provider.DefaultConnectionType, Auto: true,
+			Match: []plugin.Matcher{{Glob: "*.bicep"}, {Glob: "*.bicepparam"}},
+		},
+	},
 	Connectors: []plugin.Connector{
 		{
 			Name:  "bicep",

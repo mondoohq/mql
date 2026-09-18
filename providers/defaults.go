@@ -65,6 +65,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			Name:            "ansible",
 			ID:              "go.mondoo.com/mql/providers/ansible",
 			ConnectionTypes: []string{"ansible"},
+			Targets:         []plugin.TargetOptIn{plugin.TargetOptIn{Target: "iac", Discovery: "ansible", ConnType: "ansible", Match: []plugin.Matcher{plugin.Matcher{Glob: "ansible.cfg"}, plugin.Matcher{Glob: "roles/*/tasks/main.yml"}, plugin.Matcher{Glob: "roles/*/tasks/main.yaml"}, plugin.Matcher{Glob: "inventory"}, plugin.Matcher{Glob: "*.yml"}, plugin.Matcher{Glob: "*.yaml"}}, PerFile: false, Options: map[string]string(nil), Auto: true}},
 			Connectors: []plugin.Connector{
 
 				{
@@ -177,6 +178,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			Name:            "bicep",
 			ID:              "go.mondoo.com/mql/providers/bicep",
 			ConnectionTypes: []string{"bicep"},
+			Targets:         []plugin.TargetOptIn{plugin.TargetOptIn{Target: "iac", Discovery: "bicep", ConnType: "bicep", Match: []plugin.Matcher{plugin.Matcher{Glob: "*.bicep"}, plugin.Matcher{Glob: "*.bicepparam"}}, PerFile: false, Options: map[string]string(nil), Auto: true}},
 			Connectors: []plugin.Connector{
 
 				{
@@ -319,6 +321,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			Name:            "cloudformation",
 			ID:              "go.mondoo.com/mql/providers/cloudformation",
 			ConnectionTypes: []string{"cloudformation"},
+			Targets:         []plugin.TargetOptIn{plugin.TargetOptIn{Target: "iac", Discovery: "cloudformation", ConnType: "cloudformation", Match: []plugin.Matcher{plugin.Matcher{Glob: "*.yaml"}, plugin.Matcher{Glob: "*.yml"}, plugin.Matcher{Glob: "*.json"}, plugin.Matcher{Glob: "*.template"}}, PerFile: true, Options: map[string]string(nil), Auto: true}},
 			Connectors: []plugin.Connector{
 
 				{
@@ -567,6 +570,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			Name:            "helm",
 			ID:              "go.mondoo.com/mql/providers/helm",
 			ConnectionTypes: []string{"helm"},
+			Targets:         []plugin.TargetOptIn{plugin.TargetOptIn{Target: "iac", Discovery: "helm", ConnType: "helm", Match: []plugin.Matcher{plugin.Matcher{Glob: "Chart.yaml"}}, PerFile: false, Options: map[string]string(nil), Auto: true}},
 			Connectors: []plugin.Connector{
 
 				{
@@ -605,6 +609,22 @@ var DefaultProviders Providers = map[string]*Provider{
 					Name:  "huggingface",
 					Use:   "huggingface",
 					Short: "Hugging Face",
+				},
+			},
+		},
+	},
+
+	"iac": {
+		Provider: &plugin.Provider{
+			Name:            "iac",
+			ID:              "go.mondoo.com/mql/providers/iac",
+			ConnectionTypes: []string{"iac"},
+			Connectors: []plugin.Connector{
+
+				{
+					Name:  "iac",
+					Use:   "iac PATH",
+					Short: "a tree of infrastructure-as-code files",
 				},
 			},
 		},
@@ -710,6 +730,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			Name:            "k8s",
 			ID:              "go.mondoo.com/mql/providers/k8s",
 			ConnectionTypes: []string{"k8s"},
+			Targets:         []plugin.TargetOptIn{plugin.TargetOptIn{Target: "iac", Discovery: "k8s", ConnType: "k8s", Match: []plugin.Matcher{plugin.Matcher{Glob: "*.yaml"}, plugin.Matcher{Glob: "*.yml"}}, PerFile: false, Options: map[string]string(nil), Auto: true}},
 			Connectors: []plugin.Connector{
 
 				{
@@ -743,6 +764,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			Name:            "kustomize",
 			ID:              "go.mondoo.com/mql/providers/kustomize",
 			ConnectionTypes: []string{"kustomize"},
+			Targets:         []plugin.TargetOptIn{plugin.TargetOptIn{Target: "iac", Discovery: "kustomize", ConnType: "kustomize", Match: []plugin.Matcher{plugin.Matcher{Glob: "kustomization.yaml"}, plugin.Matcher{Glob: "kustomization.yml"}, plugin.Matcher{Glob: "Kustomization"}}, PerFile: false, Options: map[string]string(nil), Auto: true}},
 			Connectors: []plugin.Connector{
 
 				{
@@ -1004,6 +1026,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			ID:              "go.mondoo.com/mql/providers/notion",
 			ConnectionTypes: []string{"notion"},
 			Connectors: []plugin.Connector{
+
 				{
 					Name:  "notion",
 					Use:   "notion",
@@ -1161,6 +1184,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			Name:            "os",
 			ID:              "go.mondoo.com/mql/providers/os",
 			ConnectionTypes: []string{"local", "ssh", "tar", "docker-snapshot", "vagrant", "docker-container", "docker-image", "docker-file", "docker-registry", "container-registry", "registry-image", "filesystem", "winrm", "device"},
+			Targets:         []plugin.TargetOptIn{plugin.TargetOptIn{Target: "iac", Discovery: "dockerfile", ConnType: "docker-file", Match: []plugin.Matcher{plugin.Matcher{Glob: "Dockerfile"}, plugin.Matcher{Glob: "Dockerfile.*"}, plugin.Matcher{Glob: "*.Dockerfile"}, plugin.Matcher{Glob: "*.dockerfile"}}, PerFile: true, Options: map[string]string(nil), Auto: true}},
 			Connectors: []plugin.Connector{
 
 				{
@@ -1395,6 +1419,7 @@ var DefaultProviders Providers = map[string]*Provider{
 			Name:            "terraform",
 			ID:              "go.mondoo.com/mql/providers/terraform",
 			ConnectionTypes: []string{"terraform-state", "terraform-plan", "terraform-hcl", "terraform-hcl-git"},
+			Targets:         []plugin.TargetOptIn{plugin.TargetOptIn{Target: "iac", Discovery: "terraform", ConnType: "terraform-hcl", Match: []plugin.Matcher{plugin.Matcher{Glob: "*.tf"}, plugin.Matcher{Glob: "*.tf.json"}}, PerFile: false, Options: map[string]string{"iac-tool": "terraform"}, Auto: false}, plugin.TargetOptIn{Target: "iac", Discovery: "opentofu", ConnType: "terraform-hcl", Match: []plugin.Matcher{plugin.Matcher{Glob: "*.tofu"}, plugin.Matcher{Glob: "*.tofu.json"}}, PerFile: false, Options: map[string]string{"iac-tool": "opentofu"}, Auto: false}},
 			Connectors: []plugin.Connector{
 
 				{

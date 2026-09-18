@@ -6,6 +6,7 @@ package config
 import (
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/terraform/connection"
 	"go.mondoo.com/mql/providers/terraform/provider"
 )
 
@@ -25,6 +26,23 @@ var Config = plugin.Provider{
 		provider.PlanConnectionType,
 		provider.HclConnectionType,
 		provider.HclGitConnectionType,
+	},
+	// Neither dialect is Auto: the user says which one they mean, because a
+	// folder holding both would otherwise be read twice under one name. The
+	// dialect rides in Options rather than being detected, since detection
+	// would pick one dialect for the folder and both probes would hand back the
+	// same asset (ADR 045).
+	Targets: []plugin.TargetOptIn{
+		{
+			Target: "iac", Discovery: "terraform", ConnType: provider.HclConnectionType,
+			Match:   []plugin.Matcher{{Glob: "*.tf"}, {Glob: "*.tf.json"}},
+			Options: map[string]string{connection.OptionDialect: string(connection.DialectTerraform)},
+		},
+		{
+			Target: "iac", Discovery: "opentofu", ConnType: provider.HclConnectionType,
+			Match:   []plugin.Matcher{{Glob: "*.tofu"}, {Glob: "*.tofu.json"}},
+			Options: map[string]string{connection.OptionDialect: string(connection.DialectOpenTofu)},
+		},
 	},
 	Connectors: []plugin.Connector{
 		{

@@ -26,6 +26,7 @@ providers/mock_plugin_interface.go
 providers/mock_schema.go
 providers-sdk/*/testutils/mockprovider/resources/*.resources.json
 !providers/core/resources/*.resources.json
+!providers/iac/resources/*.resources.json
 providers/os/connection/snapshot/mock_volumemounter.go
 # the IEEE registry export the embedded OUI table is generated from
 providers/os/id/networki/oui/oui.csv

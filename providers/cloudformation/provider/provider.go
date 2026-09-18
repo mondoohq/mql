@@ -82,6 +82,9 @@ func (s *Service) Connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 		Name:      conn.Name(),
 		Asset:     req.Asset,
 		Inventory: nil,
+		// One template is one asset, and a repository holds many, so taking
+		// this file says nothing about the rest of the tree (ADR 045).
+		ContinueExploration: true,
 	}, nil
 }
 

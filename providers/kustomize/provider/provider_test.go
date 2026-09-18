@@ -108,7 +108,7 @@ func TestConnect(t *testing.T) {
 			},
 		}, nil)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "no kustomization.yaml found")
+		assert.Contains(t, err.Error(), "no kustomization file found")
 	})
 
 	t.Run("nil request", func(t *testing.T) {
@@ -438,7 +438,7 @@ func TestConnect_MalformedKustomizationSurfaces(t *testing.T) {
 		},
 	}, nil)
 	require.Error(t, err)
-	assert.NotContains(t, err.Error(), "no kustomization.yaml found",
+	assert.NotContains(t, err.Error(), "no kustomization file found",
 		"a parse error must not be reported as 'no kustomization found'")
 }
 

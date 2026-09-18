@@ -320,7 +320,7 @@ func connectAll(explorer *discovery.AssetExplorer, assets []*discovery.TrackedAs
 	for _, asset := range assets {
 		connected, err := explorer.Connect(asset)
 		if err != nil {
-			if !errors.Is(err, discovery.ErrDuplicateAsset) {
+			if !errors.Is(err, discovery.ErrDuplicateAsset) && !errors.Is(err, discovery.ErrNoMatch) {
 				log.Error().Err(err).Str("asset", asset.Asset.Name).Msg("failed to connect to asset")
 			}
 			continue

@@ -434,10 +434,16 @@ func TestCloudformationResources(t *testing.T) {
 	})
 
 	t.Run("cloudformation empty template guard", func(t *testing.T) {
-		// A file with only comments parses successfully but the cft library
-		// hands us a Template whose Node.Content is empty. Every lazy accessor
-		// (resources, outputs, parameterList, etc.) must short-circuit instead
-		// of dereferencing Content[0].
+		// A template carrying one section and no resources. Every lazy
+		// accessor (resources, outputs, parameterList, etc.) must report
+		// nothing rather than erroring or dereferencing a member that is not
+		// there.
+		//
+		// This used to be a comments-only file, which reached the accessors
+		// with an empty Node.Content. The connection now refuses a document
+		// declaring no CloudFormation section at all, so that shape no longer
+		// reaches here -- see TestCloudformationRejectsForeignDocuments, which
+		// covers the empty and comment-only cases at the connection.
 		tpl, err := loadTemplate("../testdata/empty.yaml")
 		require.NoError(t, err)
 

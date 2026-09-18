@@ -81,6 +81,10 @@ func (s *Service) Connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 		Name:      conn.Name(),
 		Asset:     req.Asset,
 		Inventory: nil,
+		// A project reads the playbooks in its own directory and in
+		// playbooks/, and nothing deeper, so a playbook further down belongs to
+		// no project here and is still worth looking for (ADR 045).
+		ContinueExploration: true,
 	}, nil
 }
 

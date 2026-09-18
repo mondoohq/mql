@@ -92,7 +92,7 @@ func NewKustomizeConnection(id uint32, asset *inventory.Asset, conf *inventory.C
 		return nil, err
 	}
 	if len(entries) == 0 {
-		return nil, errors.New("no kustomization.yaml found at " + conn.path)
+		return nil, fmt.Errorf("no kustomization file found at %s: %w", conn.path, plugin.ErrNoMatch)
 	}
 	conn.kustomizations = entries
 
@@ -155,7 +155,7 @@ func loadKustomizations(kustomizePath string) ([]*KustomizationEntry, error) {
 	}
 
 	if !fi.IsDir() {
-		return nil, errors.New("kustomize path must be a directory: " + kustomizePath)
+		return nil, fmt.Errorf("kustomize path must be a directory: %s: %w", kustomizePath, plugin.ErrNoMatch)
 	}
 
 	// Check if this directory has a kustomization file.

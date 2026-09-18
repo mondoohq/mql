@@ -83,7 +83,17 @@ func goGen(configs []*plugin.Provider) ([]byte, error) {
 			}
 			fmt.Fprintf(&conns, connectorTemplate, conn.Name, conn.Use, conn.Short, aliases)
 		}
-		fmt.Fprintf(&body, providerTemplate, conf.Name, conf.Name, conf.ID, conf.ConnectionTypes, conns.String())
+		// Targets are emitted only when there are any, for the same reason as
+		// Aliases above, and they have to be emitted for the same reason too:
+		// DefaultProviders is what resolves a --discover value before the
+		// provider binary exists, so dropping them means
+		// `mql shell iac ./repo --discover k8s` on a clean machine cannot find
+		// a provider to install (ADR 045).
+		var targets string
+		if len(conf.Targets) > 0 {
+			targets = fmt.Sprintf("\n\t\t\tTargets: %#v,", conf.Targets)
+		}
+		fmt.Fprintf(&body, providerTemplate, conf.Name, conf.Name, conf.ID, conf.ConnectionTypes, targets, conns.String())
 	}
 
 	res := fmt.Sprintf(template, body.String())
@@ -112,7 +122,7 @@ const providerTemplate = `
 		Provider: &plugin.Provider{
 			Name:            %#v,
 			ID:              %#v,
-			ConnectionTypes: %#v,
+			ConnectionTypes: %#v,%s
 			Connectors: []plugin.Connector{
 				%s
 			},

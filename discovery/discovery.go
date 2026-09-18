@@ -4,6 +4,7 @@
 package discovery
 
 import (
+	"fmt"
 	"maps"
 
 	"go.mondoo.com/mql/cli/config"
@@ -78,6 +79,13 @@ func createRuntimeForAsset(asset *inventory.Asset, upstream *upstream.UpstreamCo
 		Upstream: upstream,
 	})
 	if err != nil {
+		// Keep the provider's own message -- it says *why* this is not a match,
+		// which is the only useful half -- and add the sentinel callers branch
+		// on. Signalling it as a nil runtime is not available: callers read
+		// that as ErrDuplicateAsset.
+		if plugin.IsNoMatchError(err) {
+			err = fmt.Errorf("%s: %w", err.Error(), ErrNoMatch)
+		}
 		return nil, err
 	}
 

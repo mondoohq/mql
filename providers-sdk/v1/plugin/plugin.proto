@@ -48,6 +48,30 @@ message ConnectRes {
   // and macOS through one set of connectors, so only the platform detected
   // during Connect decides between `os.linux`, `os.windows` and `os.macos`.
   string root = 5;
+  // Keep exploring below this folder for this provider. Default false: a
+  // provider that says nothing has taken everything it wants here, and the walk
+  // stops descending this branch for it. Other providers are unaffected.
+  bool continue_exploration = 6;
+}
+
+// ErrorKind names a Connect outcome that a caller has to be able to tell apart
+// from a generic failure. It rides a gRPC status detail because an error value
+// does not survive the process boundary, and matching on the message text is
+// how IsUnsupportedProviderError already gets this wrong for a wrapped error.
+enum ErrorKind {
+  ERROR_KIND_UNSPECIFIED = 0;
+  // The connection type was right and the content was not: this target is not
+  // this provider's (ADR 045). A normal outcome, not a failure -- discovery
+  // drops the asset and every other error is retained and reported.
+  ERROR_KIND_NO_MATCH = 1;
+}
+
+// ErrorDetail is what carries an ErrorKind on a status. A message rather than
+// a bare enum because a status detail has to be one, and named for the general
+// case so ErrUnsupportedProvider and ErrProviderTypeDoesNotMatch can move onto
+// the same carrier later without a second message.
+message ErrorDetail {
+  ErrorKind kind = 1;
 }
 
 message ShutdownReq {

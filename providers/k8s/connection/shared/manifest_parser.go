@@ -305,6 +305,17 @@ func LoadManifestFile(manifestFile string) ([]byte, error) {
 					log.Debug().Str("file", path).Msg("ignore file, no .yaml or .yml ending")
 					return nil
 				}
+				// A kustomization declares a kind, so it decodes as an
+				// unstructured object and would make every Kustomize directory
+				// look like a folder of manifests -- yielding a second asset
+				// beside the kustomize one. It is build instructions, not a
+				// manifest to apply, which is also why the forge classifiers
+				// match it ahead of their YAML arm.
+				switch d.Name() {
+				case "kustomization.yaml", "kustomization.yml", "Kustomization":
+					log.Debug().Str("file", path).Msg("ignore file, a kustomization is not a manifest")
+					return nil
+				}
 				// check whether this is valid k8s yaml
 				content, err := os.ReadFile(path)
 				if err != nil {

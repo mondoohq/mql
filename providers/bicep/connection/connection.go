@@ -6,6 +6,7 @@ package connection
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -172,7 +173,7 @@ func NewBicepConnection(id uint32, asset *inventory.Asset, conf *inventory.Confi
 		// Check for ARM template JSON anywhere in the directory tree
 		conn.armTemplates = findARMTemplates(bicepPath)
 		if len(files) == 0 && len(paramFiles) == 0 && len(conn.armTemplates) == 0 {
-			return nil, errors.New("no .bicep, .bicepparam, or ARM template JSON files found at " + bicepPath)
+			return nil, fmt.Errorf("no .bicep, .bicepparam, or ARM template JSON files found at %s: %w", bicepPath, plugin.ErrNoMatch)
 		}
 	} else if strings.HasSuffix(bicepPath, ".json") {
 		// Direct ARM template JSON

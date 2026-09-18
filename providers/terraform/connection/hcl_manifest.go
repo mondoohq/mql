@@ -76,8 +76,14 @@ func newHclConnection(id uint32, path string, asset *inventory.Asset) (*Connecti
 	assetType = configurationfiles
 	// FIXME: cannot handle relative paths
 	stat, err := os.Stat(path)
-	if os.IsNotExist(err) {
-		return nil, errors.New("path is not a valid file or directory")
+	if err != nil {
+		// Only IsNotExist used to be handled, so every other stat failure --
+		// a permission problem, a symlink loop -- left stat nil and panicked on
+		// the IsDir below.
+		if os.IsNotExist(err) {
+			return nil, errors.New("path is not a valid file or directory")
+		}
+		return nil, errors.Wrapf(err, "cannot read %s", path)
 	}
 
 	// Candidate paths are collected first and parsed afterwards. OpenTofu's
@@ -153,9 +159,9 @@ func newHclConnection(id uint32, path string, asset *inventory.Asset) (*Connecti
 	// pass every policy on a project nothing was ever read from, so say what
 	// happened and which connector reads it.
 	if len(resolved.Configs) == 0 && len(resolved.Ignored) > 0 {
-		return nil, errors.Errorf(
-			"%s holds an OpenTofu configuration (%d file(s), e.g. %s) and no Terraform files; use the opentofu connector to scan it",
-			path, len(resolved.Ignored), resolved.Ignored[0])
+		return nil, fmt.Errorf(
+			"%s holds an OpenTofu configuration (%d file(s), e.g. %s) and no Terraform files; use the opentofu connector to scan it: %w",
+			path, len(resolved.Ignored), resolved.Ignored[0], plugin.ErrNoMatch)
 	}
 
 	for _, cfg := range resolved.Configs {
@@ -170,9 +176,12 @@ func newHclConnection(id uint32, path string, asset *inventory.Asset) (*Connecti
 		}
 	}
 
+	// Connecting an empty configuration would pass every policy on a project
+	// nothing was ever read from. Variables alone do not rescue it: a .tfvars
+	// file with no .tf beside it describes inputs to a configuration that is
+	// not here.
 	if len(resolved.Configs) == 0 {
-		log.Warn().Str("path", path).
-			Msg("no Terraform or OpenTofu configuration files were found, results will be empty")
+		return nil, fmt.Errorf("no Terraform or OpenTofu configuration files found at %s: %w", path, plugin.ErrNoMatch)
 	}
 
 	return &Connection{
