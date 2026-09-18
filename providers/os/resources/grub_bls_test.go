@@ -246,3 +246,61 @@ func TestFindGrubCfgSkipsStub(t *testing.T) {
 		[]byte("configfile $prefix/grub.cfg\n"), 0o600))
 	assert.Equal(t, "/boot/efi/EFI/redhat/grub.cfg", findGrubCfg(stubOnly, grubCfgPaths))
 }
+
+func TestParseGrubCfgVars(t *testing.T) {
+	t.Run("the kernelopts fallback grub2-mkconfig writes", func(t *testing.T) {
+		// Verbatim from a grub.cfg that grub2-mkconfig generated, comment
+		// included, because the comment is what states why the line is there.
+		cfg := []byte(`# The kernelopts variable should be defined in the grubenv file. But to ensure that menu
+# entries populated from BootLoaderSpec files that use this variable work correctly even
+# without a grubenv file, define a fallback kernelopts variable if this has not been set.
+if [ -z "${kernelopts}" ]; then
+  set kernelopts="root=/dev/vda2 ro rhgb quiet audit=1 "
+fi
+`)
+
+		vars := parseGrubCfgVars(cfg)
+		assert.Equal(t, "root=/dev/vda2 ro rhgb quiet audit=1 ", vars["kernelopts"])
+	})
+
+	t.Run("a commented assignment is not one", func(t *testing.T) {
+		vars := parseGrubCfgVars([]byte("#  set kernelopts=\"audit=0\"\n"))
+		assert.NotContains(t, vars, "kernelopts")
+	})
+
+	t.Run("later assignments win, as GRUB executes them in order", func(t *testing.T) {
+		vars := parseGrubCfgVars([]byte("set kernelopts=\"audit=0\"\nset kernelopts=\"audit=1\"\n"))
+		assert.Equal(t, "audit=1", vars["kernelopts"])
+	})
+
+	t.Run("unquoted and single-quoted values", func(t *testing.T) {
+		vars := parseGrubCfgVars([]byte("set default=saved\nset pager='1'\n"))
+		assert.Equal(t, "saved", vars["default"])
+		assert.Equal(t, "1", vars["pager"])
+	})
+
+	t.Run("a grub.cfg that assigns nothing", func(t *testing.T) {
+		assert.Empty(t, parseGrubCfgVars([]byte("menuentry 'Fedora' {\n  linux /vmlinuz\n}\n")))
+	})
+}
+
+func TestGrubEnvWinsOverTheCfgFallback(t *testing.T) {
+	// GRUB loads the environment block before it reaches the fallback, and the
+	// fallback is guarded by a test for the variable being unset, so a
+	// grubenv that defines kernelopts is what the host boots with.
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/boot/grub2", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/boot/grub2/grubenv",
+		[]byte("# GRUB Environment Block\nkernelopts=root=UUID=env ro audit=1\n"+strings.Repeat("#", 200)), 0o644))
+	require.NoError(t, fs.MkdirAll(blsEntriesDir, 0o755))
+	require.NoError(t, afero.WriteFile(fs, blsEntriesDir+"/fedora.conf",
+		[]byte("title Fedora\nlinux /vmlinuz-6.19.0\noptions $kernelopts\n"), 0o644))
+
+	cfg := []byte("blscfg\nif [ -z \"${kernelopts}\" ]; then\n  set kernelopts=\"root=UUID=cfg ro audit=0\"\nfi\n")
+
+	entries, err := LoadGrubEntries(fs, "/boot/grub2/grub.cfg", cfg)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "root=UUID=env ro audit=1", entries[0].Cmdline)
+	assert.Equal(t, "1", entries[0].Parameters["audit"])
+}
