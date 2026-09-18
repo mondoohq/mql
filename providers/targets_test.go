@@ -106,10 +106,10 @@ func TestResolveTargetDiscoveries(t *testing.T) {
 		// silently become the default set.
 		{"empty flag selects nothing", []string{""}, true, nil, nil},
 
-		{"a typo is reported", []string{"terrafrom"}, true, nil, []string{"terrafrom"}},
+		{"a typo is reported", []string{"terrafom"}, true, nil, []string{"terrafom"}},
 		// A typo alongside a good name still reports the typo; the caller
 		// decides whether to fail.
-		{"a typo beside a good name", []string{"k8s", "terrafrom"}, true, []string{"k8s"}, []string{"terrafrom"}},
+		{"a typo beside a good name", []string{"k8s", "terrafom"}, true, []string{"k8s"}, []string{"terrafom"}},
 	}
 
 	for _, test := range tests {

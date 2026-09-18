@@ -501,7 +501,7 @@ This is the nature of a meta-provider: it controls fan-out through `--discover`,
 so `--discover` is also where it owes the user an answer about what it could and
 could not reach.
 
-**An unknown value is an error, not an empty result.** `--discover terrafrom`
+**An unknown value is an error, not an empty result.** `--discover terrafom`
 fails and prints the valid names, for the same reason: a typo that silently
 discovers nothing leaves a scan that succeeds with a report quietly missing
 assets.

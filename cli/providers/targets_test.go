@@ -141,14 +141,14 @@ func TestEnsureTargetDiscoveriesUnknownValue(t *testing.T) {
 	withDefaultProviders(t, nil)
 	err := ensureTargetDiscoveries(cliPreflight{
 		ConnectorName: "iac",
-		Discover:      []string{"terrafrom"},
+		Discover:      []string{"terrafom"},
 		DiscoverSet:   true,
 	}, iacProviders())
 
 	require.Error(t, err)
 	// The message has to name the typo and list what would have worked; a bare
 	// "unknown value" leaves the user guessing.
-	assert.Contains(t, err.Error(), "terrafrom")
+	assert.Contains(t, err.Error(), "terrafom")
 	assert.Contains(t, err.Error(), "k8s")
 	assert.Contains(t, err.Error(), "terraform")
 }
