@@ -436,19 +436,19 @@ type CommonOpts struct {
 	// UpdatesURL is the base URL updates are fetched from, for an internal
 	// release registry or a mirror. Leave it unset to use Mondoo's.
 	//
-	// It is read by two different consumers, and a host it is pointed at has to
-	// serve both:
+	// It is read by two consumers, and a host it is pointed at has to serve both:
 	//
 	//	binary updates   UpdatesURL + "/package/<binary>/latest.json", with the
 	//	                 release channel as a "?channel=" query parameter
 	//	providers        UpdatesURL + "/providers"
 	//
-	// That is the install service's layout, which is what both mql and cnspec
-	// build. It is not the release bucket's: there the manifest is
-	// "/<binary>/latest.json" and a channel is a sibling document rather than a
-	// parameter. Pointing this at a bucket therefore leaves providers working
-	// and binary updates asking for a path that is not there -- which is silent,
-	// because a failed update check only warns.
+	// That is the install service's layout, and it is the one to point this at.
+	// A mirror of the release bucket also works: it spells the manifest
+	// "/<binary>/latest.json" and a channel as a sibling document, and the client
+	// falls back to reading that (see selfupdate.ReleaseURLs). The fallback is
+	// there so an existing mirror keeps working, not as a second layout to
+	// publish -- it costs a failed request per check and cannot express a channel
+	// without another document, so it is the one that will be removed.
 	UpdatesURL string `json:"updates_url,omitempty" mapstructure:"updates_url"`
 
 	// ProviderPortRange is the loopback TCP port range ("min-max") that provider

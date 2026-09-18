@@ -120,6 +120,13 @@ type Release struct {
 // The channel is spelled differently in each: a query parameter on the service,
 // a sibling document in the bucket. Both spellings are produced here, so a
 // fallback does not quietly drop the caller back onto stable.
+//
+// The bucket layout is the deprecated half of this. It is here so an existing
+// mirror keeps working without being re-laid-out, not because it is a second
+// supported way to publish: the install service is what updates_url should name
+// going forward, and it is the only layout that serves a channel without a
+// second document per channel. When mirrors have moved, the fallback is the part
+// to delete -- ReleaseURL already returns the layout to keep.
 func ReleaseURLs(updatesURL string, binary string, channel string) []string {
 	if updatesURL == "" {
 		updatesURL = DefaultUpdatesURL

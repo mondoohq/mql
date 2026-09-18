@@ -20,7 +20,24 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
+// DefaultUpdatesURL is the release bucket. It is still where provider downloads
+// resolve when nothing is configured, which is why it is not simply changed here:
+// repointing it moves every provider download onto another host, and that is a
+// deliberate traffic change rather than a rename.
+//
+// Deprecated: the install service is the host to configure going forward. It
+// serves these same provider paths -- it answers them with a redirect here --
+// and it is the only one that also serves the binary-update manifests, so it is
+// the single value updates_url can take that covers both. New code should build
+// URLs from the configured updates_url, or from selfupdate.DefaultUpdatesURL,
+// rather than referring to the bucket by name.
 var DefaultUpdatesURL = "https://releases.mondoo.com"
+
+// DefaultProviderRegistryURL is the registry providers download from when
+// nothing is configured.
+//
+// Deprecated: see DefaultUpdatesURL. This stays as the effective default; the
+// marker is about not hard-coding the bucket in new code.
 var DefaultProviderRegistryURL = DefaultUpdatesURL + "/providers"
 
 var registry ProviderRegistry = NewMondooProviderRegistry()
@@ -116,7 +133,7 @@ func WithChannel(channel string) MondooProviderRegistryOption {
 }
 
 // NewMondooProviderRegistry creates a new MondooProviderRegistry with the given options.
-// By default, it uses "https://releases.mondoo.com/providers" as the base URL.
+// By default, it uses DefaultProviderRegistryURL as the base URL.
 func NewMondooProviderRegistry(opts ...MondooProviderRegistryOption) *MondooProviderRegistry {
 	r := &MondooProviderRegistry{
 		BaseURL: DefaultProviderRegistryURL,
