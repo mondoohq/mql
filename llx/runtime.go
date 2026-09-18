@@ -85,6 +85,11 @@ type AddDataReq struct {
 	Data *RawData
 	// the id of the resource as requested towards the connection
 	RequestResourceId string
+	// the args the resource was initialized with, when it was created by
+	// name + args (no caller-supplied ID). The recording uses these to
+	// derive a deterministic lookup key so that e.g. file(path: "/a") and
+	// file(path: "/b") don't collide on an empty request id.
+	Args map[string]*Primitive
 }
 
 type Recording interface {
