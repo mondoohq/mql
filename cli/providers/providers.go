@@ -9,6 +9,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -55,6 +56,21 @@ func AttachCLIs(rootCmd *cobra.Command, commands ...*Command) error {
 	return nil
 }
 
+// providersURLWarning keeps the deprecation notice to once per process. The
+// setting is rolled out by configuration management, so it is set on every
+// machine in a fleet and read on every invocation -- repeating it per call site
+// would put a line in the output of every scan, which is how a warning stops
+// being read. It is not silenced, because the whole reason this setting is
+// honoured again is that its removal was silent.
+var providersURLWarning sync.Once
+
+func warnProvidersURLDeprecated(providersURL string) {
+	providersURLWarning.Do(func() {
+		log.Warn().Msgf("providers_url is deprecated, please use updates_url: %s",
+			strings.TrimSuffix(providersURL, "/providers"))
+	})
+}
+
 // RegistryURL returns the base URL providers are downloaded from, or an empty
 // string when nothing is configured and the default registry applies. It is
 // exported so `mql status` reports the registry that is actually in effect
@@ -81,8 +97,7 @@ func RegistryURL() string {
 	_ = viper.BindEnv("providers_url")
 
 	if providersURL := strings.TrimSpace(viper.GetString("providers_url")); providersURL != "" {
-		log.Warn().Msgf("providers_url is deprecated, please use updates_url: %s",
-			strings.TrimSuffix(providersURL, "/providers"))
+		warnProvidersURLDeprecated(providersURL)
 		return providersURL
 	}
 
