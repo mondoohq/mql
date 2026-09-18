@@ -43,6 +43,7 @@ func init() {
 	listProvidersCmd.Flags().Bool("json", false, "Output in JSON format")
 	infoProviderCmd.Flags().Bool("json", false, "Output in JSON format")
 	resourcesProviderCmd.Flags().Bool("json", false, "Output in JSON format")
+	resourcesProviderCmd.Flags().Bool("exclude-core-network", false, "When listing resources, show only the provider's own resources and omit the core and network resources available to every provider")
 	installProviderCmd.Flags().StringP("file", "f", "", "Install a provider via a file")
 	installProviderCmd.Flags().String("url", "", "Install a provider via a URL")
 	installProviderCmd.Flags().Bool("schema-only", false, "Install only the provider's config and resource schema, without its binary")
@@ -257,6 +258,8 @@ Examples:
 		if len(args) == 1 {
 			return listResources(cmd, args[0])
 		}
+		// Detail mode always resolves against the full schema so a core or
+		// network resource requested by name still resolves.
 		return showResource(cmd, args[0], args[1])
 	},
 }
@@ -314,9 +317,32 @@ func flagTypeString(ft plugin.FlagType) string {
 	}
 }
 
-// loadProviderSchema loads a provider's schema merged with core and network
-// resources, matching the pattern used by the MCP server.
-func loadProviderSchema(providerName string) (resources.ResourcesSchema, error) {
+// shortProviderName reduces a resource's provider origin to a short, stable
+// name suitable for filtering. ResourceInfo.Provider carries the provider's
+// full module path (e.g. "go.mondoo.com/mql/providers/aws"); this returns the
+// name after "/providers/" ("aws"), falling back to the last path segment.
+func shortProviderName(p string) string {
+	if p == "" {
+		return ""
+	}
+	if i := strings.LastIndex(p, "/providers/"); i >= 0 {
+		rest := p[i+len("/providers/"):]
+		if j := strings.IndexByte(rest, '/'); j >= 0 {
+			rest = rest[:j]
+		}
+		return rest
+	}
+	if i := strings.LastIndexByte(p, '/'); i >= 0 {
+		return p[i+1:]
+	}
+	return p
+}
+
+// loadProviderSchema loads a provider's schema, optionally merged with core and
+// network resources (which are available when querying any provider), matching
+// the pattern used by the MCP server. When includeCoreNetwork is false, only
+// the named provider's own resources are returned.
+func loadProviderSchema(providerName string, includeCoreNetwork bool) (resources.ResourcesSchema, error) {
 	existing, err := providers.ListActive()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list providers: %w", err)
@@ -333,19 +359,21 @@ func loadProviderSchema(providerName string) (resources.ResourcesSchema, error) 
 	}
 	baseSchema.Add(schema)
 
-	// Always include core and network resources, as they are available
-	// when querying any provider.
-	coreSchema, err := loadSingleProviderSchema(existing, "core")
-	if err != nil {
-		return nil, err
-	}
-	baseSchema.Add(coreSchema)
+	if includeCoreNetwork {
+		// Include core and network resources, as they are available when
+		// querying any provider.
+		coreSchema, err := loadSingleProviderSchema(existing, "core")
+		if err != nil {
+			return nil, err
+		}
+		baseSchema.Add(coreSchema)
 
-	networkSchema, err := loadSingleProviderSchema(existing, "network")
-	if err != nil {
-		return nil, err
+		networkSchema, err := loadSingleProviderSchema(existing, "network")
+		if err != nil {
+			return nil, err
+		}
+		baseSchema.Add(networkSchema)
 	}
-	baseSchema.Add(networkSchema)
 
 	return baseSchema, nil
 }
@@ -535,13 +563,15 @@ type resourceSummary struct {
 	Title      string   `json:"title,omitempty"`
 	Desc       string   `json:"desc,omitempty"`
 	Private    bool     `json:"private"`
+	Provider   string   `json:"provider,omitempty"`
 	Maturity   string   `json:"maturity,omitempty"`
 	Defaults   []string `json:"defaults,omitempty"`
 	FieldCount int      `json:"field_count"`
 }
 
 func listResources(cmd *cobra.Command, providerName string) error {
-	schema, err := loadProviderSchema(providerName)
+	excludeCoreNetwork, _ := cmd.Flags().GetBool("exclude-core-network")
+	schema, err := loadProviderSchema(providerName, !excludeCoreNetwork)
 	if err != nil {
 		return err
 	}
@@ -567,6 +597,7 @@ func listResources(cmd *cobra.Command, providerName string) error {
 			Title:      ri.Title,
 			Desc:       ri.Desc,
 			Private:    ri.Private,
+			Provider:   shortProviderName(ri.Provider),
 			Maturity:   ri.Maturity,
 			Defaults:   defaults,
 			FieldCount: len(ri.Fields),
@@ -603,6 +634,7 @@ type resourceDetail struct {
 	Title      string        `json:"title,omitempty"`
 	Desc       string        `json:"desc,omitempty"`
 	Private    bool          `json:"private"`
+	Provider   string        `json:"provider,omitempty"`
 	Maturity   string        `json:"maturity,omitempty"`
 	Defaults   []string      `json:"defaults,omitempty"`
 	FieldCount int           `json:"field_count"`
@@ -619,7 +651,7 @@ type fieldDetail struct {
 }
 
 func showResource(cmd *cobra.Command, providerName string, resourceName string) error {
-	schema, err := loadProviderSchema(providerName)
+	schema, err := loadProviderSchema(providerName, true)
 	if err != nil {
 		return err
 	}
@@ -657,6 +689,7 @@ func showResource(cmd *cobra.Command, providerName string, resourceName string) 
 		Title:      ri.Title,
 		Desc:       ri.Desc,
 		Private:    ri.Private,
+		Provider:   shortProviderName(ri.Provider),
 		Maturity:   ri.Maturity,
 		Defaults:   defaults,
 		FieldCount: len(fields),
