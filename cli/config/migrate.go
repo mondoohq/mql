@@ -103,6 +103,21 @@ func MigrateProvidersURL() (ProvidersURLMigration, error) {
 // appendConfigKey adds one top-level key to a YAML config file, leaving the rest
 // of the file -- including its comments and key order -- exactly as it was.
 func appendConfigKey(path string, key string, value string) error {
+	// Write to what the path points at, not to the path. The write replaces the
+	// file by renaming over it, and renaming over a symlink destroys the link:
+	// the config would become a regular file holding the new content while the
+	// file it pointed at -- the one configuration management writes, and that
+	// anything else sharing it reads -- silently kept the old. Symlinked configs
+	// are ordinary in packaged and containerised layouts, so this is a real
+	// shape, not a hypothetical one.
+	//
+	// A path that is not a symlink resolves to itself. A path that cannot be
+	// resolved -- a dangling link, a permission error on a parent -- is left as
+	// given, which is no worse than not having looked.
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
+
 	current, err := os.ReadFile(path)
 	if err != nil {
 		return err
