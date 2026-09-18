@@ -77,20 +77,22 @@ const (
 )
 
 // Auto includes all API resources except storage containers (which require
-// additional permissions and can be very numerous). Defined in terms of
-// AllAPIResources so the two lists don't drift apart.
+// additional permissions and can be very numerous) and virtual machines, which
+// have to be asked for explicitly. Defined in terms of AllAPIResources so the
+// two lists don't drift apart.
 var Auto = append(
 	[]string{DiscoverySubscriptions},
 	slices.DeleteFunc(slices.Clone(AllAPIResources), func(s string) bool {
-		return s == DiscoveryStorageContainers
+		return s == DiscoveryStorageContainers || s == DiscoveryInstancesApi
 	})...,
 )
 
-// All includes every discovery target: Auto plus OS-level instance discovery
-// and storage containers.
+// All includes every discovery target: Auto plus OS-level instance discovery,
+// virtual machines and storage containers.
 var All = append(
 	slices.Clone(Auto),
 	// DiscoveryInstances, note: we disable this for now since we dont support policies for this. we support the API version (DiscoveryInstancesApi)
+	DiscoveryInstancesApi,
 	DiscoveryStorageContainers,
 )
 

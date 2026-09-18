@@ -54,7 +54,6 @@ func TestAllResolvedResources(t *testing.T) {
 func TestAutoResolvedResources(t *testing.T) {
 	expected := []string{
 		DiscoverySubscriptions,
-		DiscoveryInstancesApi,
 		DiscoverySqlServers,
 		DiscoveryPostgresFlexibleServers,
 		DiscoveryMySqlFlexibleServers,
@@ -80,6 +79,7 @@ func TestAutoResolvedResources(t *testing.T) {
 		DiscoveryCognitiveServices,
 	}
 	require.ElementsMatch(t, expected, Auto)
+	require.NotContains(t, Auto, DiscoveryInstancesApi, "virtual machines are opt-in, not part of auto")
 }
 
 func TestGetDiscoveryTargets(t *testing.T) {
