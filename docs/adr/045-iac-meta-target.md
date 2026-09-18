@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -961,6 +961,17 @@ the tree; nothing is a new kind of thing.
 | build | a `providers/build/iac` target that runs `./lr go`, `./lr versions --version 14.0.0` and `go run ./gen/main.go .` without compiling a binary; add it to `providers/build` and `mql/generate/core`, and keep `iac` out of `PROVIDERS` | `providers/build/mock` (`Makefile:299`) and `buildProvider` (`:83`). `--version` is not optional: the version detector regex-matches a *quoted* `Version:` in `config.go`, and `iac` tracks the binary through `mql.GetVersion()`, so without it every entry is silently stamped with the `9.0.0` fallback — which is why `core.lr.versions` is full of `9.0.0` |
 | gitignore | `!providers/iac/resources/*.resources.json` | the `core` exception, `.gitignore:28` |
 | roots test | satisfied by `Root:` in config and `option root` + `@root` in the `.lr`; `readProviderRootState` reads `providers/iac/config/config.go` | `providers/roots_test.go:59` |
+
+**Experimental at every layer.** `Maturity: resources.MaturityExperimental`
+on the provider is what `mql providers list` tags, and nothing inherits from
+it: the schema carries only what the `.lr` says, so `iac`, `iac.source` and
+`iac.detection` each carry `@maturity("experimental")` (the way `dropbox`,
+`notion` and `bitwarden` mark their roots), which is what `mql shell`,
+`mql providers resources`, the LSP and the generated docs read. Fields inherit
+the resource's level through `EffectiveFieldMaturity`. `plugin.Connector`
+has a `Maturity` field too, but nothing consumes it, so the connector says it
+in its help text instead. Graduating the provider means removing all of these
+together.
 
 The resources package (`providers/iac/resources`) imports only `providers-sdk`,
 so package `providers` can import it without a cycle. The service stays in

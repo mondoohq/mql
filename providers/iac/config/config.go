@@ -41,6 +41,9 @@ Examples:
   mql shell iac ./repo -c "iac.detections { tool path }"
   cnspec scan iac ./repo
   cnspec scan iac ./repo --discover terraform,helm
+
+This provider is experimental: its resources, discovery names and flags may
+change between releases.
 `,
 			MinArgs: 1,
 			MaxArgs: 1,
