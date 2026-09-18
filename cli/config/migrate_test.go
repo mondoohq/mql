@@ -153,3 +153,35 @@ func TestMigrateProvidersURLReportsAnUnwritableConfig(t *testing.T) {
 	require.Error(t, err)
 	assert.False(t, res.Migrated)
 }
+
+// The migration replaces the file rather than editing in place, so the
+// replacement has to carry the original's mode and owner. mondoo.yml holds the
+// service account's private key and is routinely 0600 owned by the account the
+// agent runs as; an admin migrating under sudo must not hand it to root and
+// leave the agent unable to read it.
+//
+// The mode assertion bites anywhere. The owner assertion only bites where the
+// migrating user is not the owner, which is the sudo case and not something a
+// unit test can arrange without root -- run as the owner it is satisfied
+// trivially. It is here so the intent is executable and a change that drops the
+// chown is at least visible against a named expectation.
+func TestMigrateProvidersURLPreservesModeAndOwner(t *testing.T) {
+	path := writeConfig(t, "mondoo.yml", "providers_url: https://mirror.example.de/providers\n")
+	require.NoError(t, os.Chmod(path, 0o600))
+
+	before, err := os.Stat(path)
+	require.NoError(t, err)
+	beforeUID, beforeGID := ownerOf(t, before)
+
+	res, err := MigrateProvidersURL()
+	require.NoError(t, err)
+	require.True(t, res.Migrated)
+
+	after, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, before.Mode().Perm(), after.Mode().Perm(), "mode was not preserved")
+
+	afterUID, afterGID := ownerOf(t, after)
+	assert.Equal(t, beforeUID, afterUID, "owner was not preserved")
+	assert.Equal(t, beforeGID, afterGID, "group was not preserved")
+}

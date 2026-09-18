@@ -154,5 +154,9 @@ func appendConfigKey(path string, key string, value string) error {
 	if err := os.Chmod(tmp.Name(), info.Mode().Perm()); err != nil {
 		return err
 	}
+	// The rename replaces the file, so the replacement has to carry the original's
+	// mode and owner rather than the writing process's.
+	preserveOwner(tmp.Name(), info)
+
 	return os.Rename(tmp.Name(), path)
 }
