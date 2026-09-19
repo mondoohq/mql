@@ -26,4 +26,9 @@ func TestParseInventory(t *testing.T) {
 	assert.Equal(t, "example.com", out.Spec.Assets[0].Connections[0].Host)
 	assert.Equal(t, int32(443), out.Spec.Assets[0].Connections[0].Port)
 	assert.Equal(t, "host", out.Spec.Assets[0].Connections[0].Type)
+
+	// a domainlist line is a target, not a name its author chose. Leaving it
+	// unmarked is what lets a provider replace `example.com:443` with the
+	// normalized name it computes after connecting.
+	assert.False(t, out.Spec.Assets[0].NameOverride)
 }

@@ -239,6 +239,13 @@ func (i *Inventory) ToV1Inventory() *inventory.Inventory {
 		out.Spec.Assets = append(out.Spec.Assets, asset)
 	}
 
+	// An ansible host key is the name the operator chose for that host, and it is
+	// independent of what we connect to as soon as ansible_host is set: `web1` with
+	// `ansible_host: 10.0.0.1` names the asset web1. Without the marker the os
+	// provider's cloud detect renames it to the instance's cloud name and the
+	// operator's ansible naming is gone from the report.
+	out.MarkRequestedNames()
+
 	// move credentials out into credentials section
 	// TODO: check on this error
 	_ = out.PreProcess()

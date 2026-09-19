@@ -90,6 +90,14 @@ message Asset {
   // Resource-anchored relationships to other assets (ADR 030). Each edge
   // names the counterparty asset and the resource on it that anchors the edge.
   repeated AssetRelationship relationships = 39;
+
+  // name_override marks `name` as a name the caller explicitly asked for --
+  // cnspec's --asset-name, or a `name:` on an asset in an inventory file --
+  // rather than a default a provider filled in during ParseCLI. Discovery puts
+  // such a name back on the asset after connecting, because a provider's detect
+  // step overwrites it. Without this marker the two are the same string in the
+  // same field, and a provider default outranks the name detect computed.
+  bool name_override = 40;
 }
 
 // AssetRelationship is a directed, resource-anchored edge to another asset. An
