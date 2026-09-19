@@ -23,7 +23,7 @@ var Config = plugin.Provider{
 		// makes core a peer it calls (ADR 042).
 		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
 		{ID: "go.mondoo.com/mql/providers/network", Name: "network", MinVersion: "13.0.0"},
-		{ID: "go.mondoo.com/mql/providers/os", Name: "os", MinVersion: "13.0.0"},
+		{ID: "go.mondoo.com/mql/providers/os", Name: "os", MinVersion: "13.29.3"},
 	},
 	ConnectionTypes: []string{provider.ConnectionType},
 	Platforms:       resources.Platforms,
@@ -62,6 +62,7 @@ Examples:
 				resources.DiscoveryAdmissionReviews,
 				resources.DiscoveryClusters,
 				resources.DiscoveryContainerImages,
+				resources.DiscoveryRuntimeCache,
 				resources.DiscoveryCronJobs,
 				resources.DiscoveryDaemonSets,
 				resources.DiscoveryDeployments,

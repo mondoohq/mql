@@ -73,6 +73,39 @@ func TestPodRuntimeImageDigests(t *testing.T) {
 	})
 }
 
+func TestPodContainerStatusGroupsPreserveOptionalStarted(t *testing.T) {
+	k8s := podRuntimeK8s(t)
+	p := podByNameRuntime(t, k8s, "status-groups-pod")
+
+	statuses := p.GetContainerStatuses()
+	require.NoError(t, statuses.Error)
+	require.Len(t, statuses.Data, 3)
+	for _, want := range []string{"app", "init", "debugger"} {
+		var found *mqlK8sContainerStatus
+		for _, item := range statuses.Data {
+			candidate := item.(*mqlK8sContainerStatus)
+			if candidate.GetName().Data == want {
+				found = candidate
+				break
+			}
+		}
+		require.NotNil(t, found, want)
+		assert.NotZero(t, found.GetStarted().State&plugin.StateIsNull, want+" started")
+	}
+
+	initStatuses := p.GetInitContainerStatuses()
+	require.NoError(t, initStatuses.Error)
+	require.Len(t, initStatuses.Data, 1)
+	assert.Equal(t, "init", initStatuses.Data[0].(*mqlK8sContainerStatus).GetName().Data)
+	assert.True(t, initStatuses.Data[0].(*mqlK8sContainerStatus).GetStarted().State&plugin.StateIsNull != 0)
+
+	ephemeralStatuses := p.GetEphemeralContainerStatuses()
+	require.NoError(t, ephemeralStatuses.Error)
+	require.Len(t, ephemeralStatuses.Data, 1)
+	assert.Equal(t, "debugger", ephemeralStatuses.Data[0].(*mqlK8sContainerStatus).GetName().Data)
+	assert.True(t, ephemeralStatuses.Data[0].(*mqlK8sContainerStatus).GetStarted().State&plugin.StateIsNull != 0)
+}
+
 func TestImageDigestParsing(t *testing.T) {
 	cases := map[string]string{
 		"docker-pullable://nginx@" + digest1: digest1, // containerd/docker pullable form
