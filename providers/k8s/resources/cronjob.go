@@ -147,6 +147,7 @@ func (k *mqlK8sCronjob) startingDeadlineSeconds() (int64, error) {
 		return 0, err
 	}
 	if cj.Spec.StartingDeadlineSeconds == nil {
+		k.StartingDeadlineSeconds.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return *cj.Spec.StartingDeadlineSeconds, nil

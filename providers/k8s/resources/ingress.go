@@ -126,6 +126,7 @@ func (k *mqlK8sIngress) ingressClassName() (string, error) {
 		return "", err
 	}
 	if ing.Spec.IngressClassName == nil {
+		k.IngressClassName.State = plugin.StateIsSet | plugin.StateIsNull
 		return "", nil
 	}
 	return *ing.Spec.IngressClassName, nil
@@ -372,7 +373,7 @@ func getTLS(ingress *networkingv1.Ingress, objId string, runtime *plugin.Runtime
 					Msg("skipping ingress TLS entry whose certificate could not be read")
 				continue
 			}
-			if certs.Data == nil || len(certs.Data) == 0 {
+			if len(certs.Data) == 0 {
 				// no TLS data in Secret referenced
 				// k8s will allow this, so we'll just follow along with this being
 				// a non-critical issue and skip processing the Secret

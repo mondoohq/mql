@@ -16,7 +16,10 @@ import (
 type mqlK8sRbacSubjectInternal struct {
 	effectiveRulesOnce sync.Once
 	effectiveRulesData []rbacv1.PolicyRule
-	effectiveRulesErr  error
+	// clusterRulesData holds only the rules reached through ClusterRoleBindings;
+	// a RoleBinding's grants stop at its namespace.
+	clusterRulesData  []rbacv1.PolicyRule
+	effectiveRulesErr error
 }
 
 // subjectID builds the stable, unique cache key for an RBAC subject. The fields
@@ -225,48 +228,58 @@ func (k *mqlK8sRbacSubject) clusterRoleBindings() ([]any, error) {
 // to this subject, the union of what the subject is permitted to do. The result
 // is computed once and reused by the four access rollups.
 func (k *mqlK8sRbacSubject) effectiveRules() ([]rbacv1.PolicyRule, error) {
-	k.effectiveRulesOnce.Do(func() {
-		k.effectiveRulesData, k.effectiveRulesErr = k.computeEffectiveRules()
-	})
-	return k.effectiveRulesData, k.effectiveRulesErr
+	all, _, err := k.scopedRules()
+	return all, err
 }
 
-func (k *mqlK8sRbacSubject) computeEffectiveRules() ([]rbacv1.PolicyRule, error) {
-	var rules []rbacv1.PolicyRule
+// scopedRules returns every rule bound to this subject, and separately the
+// subset reached through ClusterRoleBindings.
+func (k *mqlK8sRbacSubject) scopedRules() ([]rbacv1.PolicyRule, []rbacv1.PolicyRule, error) {
+	k.effectiveRulesOnce.Do(func() {
+		k.effectiveRulesData, k.clusterRulesData, k.effectiveRulesErr = k.computeEffectiveRules()
+	})
+	return k.effectiveRulesData, k.clusterRulesData, k.effectiveRulesErr
+}
+
+func (k *mqlK8sRbacSubject) computeEffectiveRules() ([]rbacv1.PolicyRule, []rbacv1.PolicyRule, error) {
+	var rules, clusterRules []rbacv1.PolicyRule
 
 	rbs := k.GetRoleBindings()
 	if rbs.Error != nil {
-		return nil, rbs.Error
+		return nil, nil, rbs.Error
 	}
 	for i := range rbs.Data {
 		rr, err := rbs.Data[i].(*mqlK8sRbacRolebinding).referencedRules()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		rules = append(rules, rr...)
 	}
 
 	crbs := k.GetClusterRoleBindings()
 	if crbs.Error != nil {
-		return nil, crbs.Error
+		return nil, nil, crbs.Error
 	}
 	for i := range crbs.Data {
 		rr, err := crbs.Data[i].(*mqlK8sRbacClusterrolebinding).referencedRules()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		rules = append(rules, rr...)
+		clusterRules = append(clusterRules, rr...)
 	}
 
-	return rules, nil
+	return rules, clusterRules, nil
 }
 
 func (k *mqlK8sRbacSubject) isClusterAdmin() (bool, error) {
-	rules, err := k.effectiveRules()
+	_, clusterRules, err := k.scopedRules()
 	if err != nil {
 		return false, err
 	}
-	return rbacGrantsClusterAdmin(rules), nil
+	// Only a ClusterRoleBinding confers cluster-wide power; a RoleBinding to
+	// the same wildcard ClusterRole is namespace admin.
+	return rbacGrantsClusterAdmin(clusterRules), nil
 }
 
 func (k *mqlK8sRbacSubject) canEscalatePrivileges() (bool, error) {

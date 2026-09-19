@@ -25,7 +25,11 @@ type mqlK8sServiceaccountInternal struct {
 	// hasWildcardPermissions) so they make a single pass over the bindings.
 	effectiveRulesOnce sync.Once
 	effectiveRulesData []rbacv1.PolicyRule
-	effectiveRulesErr  error
+	// clusterRulesData holds only the rules reached through ClusterRoleBindings.
+	// Rules from a RoleBinding apply inside one namespace, so only these can
+	// confer cluster-admin.
+	clusterRulesData  []rbacv1.PolicyRule
+	effectiveRulesErr error
 }
 
 func (k *mqlK8s) serviceaccounts() ([]any, error) {
@@ -184,48 +188,61 @@ func (k *mqlK8sServiceaccount) clusterRoleBindings() ([]any, error) {
 // to this ServiceAccount, the union of what the account is permitted to do. The
 // result is computed once and reused by the four access rollups.
 func (k *mqlK8sServiceaccount) effectiveRules() ([]rbacv1.PolicyRule, error) {
-	k.effectiveRulesOnce.Do(func() {
-		k.effectiveRulesData, k.effectiveRulesErr = k.computeEffectiveRules()
-	})
-	return k.effectiveRulesData, k.effectiveRulesErr
+	all, _, err := k.scopedRules()
+	return all, err
 }
 
-func (k *mqlK8sServiceaccount) computeEffectiveRules() ([]rbacv1.PolicyRule, error) {
-	var rules []rbacv1.PolicyRule
+// scopedRules returns every rule bound to this ServiceAccount, and separately
+// the subset reached through ClusterRoleBindings. Keeping them apart matters
+// because a RoleBinding to a wildcard ClusterRole grants those verbs only
+// inside its own namespace.
+func (k *mqlK8sServiceaccount) scopedRules() ([]rbacv1.PolicyRule, []rbacv1.PolicyRule, error) {
+	k.effectiveRulesOnce.Do(func() {
+		k.effectiveRulesData, k.clusterRulesData, k.effectiveRulesErr = k.computeEffectiveRules()
+	})
+	return k.effectiveRulesData, k.clusterRulesData, k.effectiveRulesErr
+}
+
+func (k *mqlK8sServiceaccount) computeEffectiveRules() ([]rbacv1.PolicyRule, []rbacv1.PolicyRule, error) {
+	var rules, clusterRules []rbacv1.PolicyRule
 
 	rbs := k.GetRoleBindings()
 	if rbs.Error != nil {
-		return nil, rbs.Error
+		return nil, nil, rbs.Error
 	}
 	for i := range rbs.Data {
 		rr, err := rbs.Data[i].(*mqlK8sRbacRolebinding).referencedRules()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		rules = append(rules, rr...)
 	}
 
 	crbs := k.GetClusterRoleBindings()
 	if crbs.Error != nil {
-		return nil, crbs.Error
+		return nil, nil, crbs.Error
 	}
 	for i := range crbs.Data {
 		rr, err := crbs.Data[i].(*mqlK8sRbacClusterrolebinding).referencedRules()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		rules = append(rules, rr...)
+		clusterRules = append(clusterRules, rr...)
 	}
 
-	return rules, nil
+	return rules, clusterRules, nil
 }
 
 func (k *mqlK8sServiceaccount) isClusterAdmin() (bool, error) {
-	rules, err := k.effectiveRules()
+	_, clusterRules, err := k.scopedRules()
 	if err != nil {
 		return false, err
 	}
-	return rbacGrantsClusterAdmin(rules), nil
+	// Only a ClusterRoleBinding confers cluster-wide power. A RoleBinding to
+	// the same wildcard ClusterRole is namespace admin, which must not raise
+	// the cluster-admin alarm.
+	return rbacGrantsClusterAdmin(clusterRules), nil
 }
 
 func (k *mqlK8sServiceaccount) canEscalatePrivileges() (bool, error) {

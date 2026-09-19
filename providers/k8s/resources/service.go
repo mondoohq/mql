@@ -138,6 +138,11 @@ func (k *mqlK8sService) externalTrafficPolicy() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if s.Spec.ExternalTrafficPolicy == "" {
+		// Only defaulted for NodePort and LoadBalancer services.
+		k.ExternalTrafficPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
 	return string(s.Spec.ExternalTrafficPolicy), nil
 }
 
@@ -147,6 +152,7 @@ func (k *mqlK8sService) internalTrafficPolicy() (string, error) {
 		return "", err
 	}
 	if s.Spec.InternalTrafficPolicy == nil {
+		k.InternalTrafficPolicy.State = plugin.StateIsSet | plugin.StateIsNull
 		return "", nil
 	}
 	return string(*s.Spec.InternalTrafficPolicy), nil
@@ -164,6 +170,12 @@ func (k *mqlK8sService) sessionAffinityConfig() (map[string]any, error) {
 	s, err := k.getService()
 	if err != nil {
 		return nil, err
+	}
+	if s.Spec.SessionAffinityConfig == nil {
+		// convert.JsonToDict(nil) yields {}, which reads as a configured but
+		// empty affinity config rather than an absent one.
+		k.SessionAffinityConfig.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	return convert.JsonToDict(s.Spec.SessionAffinityConfig)
 }
@@ -186,6 +198,7 @@ func (k *mqlK8sService) ipFamilyPolicy() (string, error) {
 		return "", err
 	}
 	if s.Spec.IPFamilyPolicy == nil {
+		k.IpFamilyPolicy.State = plugin.StateIsSet | plugin.StateIsNull
 		return "", nil
 	}
 	return string(*s.Spec.IPFamilyPolicy), nil
@@ -197,6 +210,7 @@ func (k *mqlK8sService) loadBalancerClass() (string, error) {
 		return "", err
 	}
 	if s.Spec.LoadBalancerClass == nil {
+		k.LoadBalancerClass.State = plugin.StateIsSet | plugin.StateIsNull
 		return "", nil
 	}
 	return *s.Spec.LoadBalancerClass, nil
@@ -224,7 +238,14 @@ func (k *mqlK8sService) allocateLoadBalancerNodePorts() (bool, error) {
 		return false, err
 	}
 	if s.Spec.AllocateLoadBalancerNodePorts == nil {
-		// Defaults to true for type LoadBalancer.
+		if s.Spec.Type != corev1.ServiceTypeLoadBalancer {
+			// The field only has meaning for type LoadBalancer, and the API
+			// server leaves it unset for every other type. Defaulting it to
+			// true here reported an allocation decision that was never made.
+			k.AllocateLoadBalancerNodePorts.State = plugin.StateIsSet | plugin.StateIsNull
+			return false, nil
+		}
+		// A LoadBalancer manifest that omits the field defaults to true.
 		return true, nil
 	}
 	return *s.Spec.AllocateLoadBalancerNodePorts, nil
@@ -242,6 +263,12 @@ func (k *mqlK8sService) healthCheckNodePort() (int64, error) {
 	s, err := k.getService()
 	if err != nil {
 		return 0, err
+	}
+	if s.Spec.HealthCheckNodePort == 0 {
+		// Only allocated for a LoadBalancer with externalTrafficPolicy: Local.
+		// Reporting 0 is indistinguishable from a real port reading.
+		k.HealthCheckNodePort.State = plugin.StateIsSet | plugin.StateIsNull
+		return 0, nil
 	}
 	return int64(s.Spec.HealthCheckNodePort), nil
 }

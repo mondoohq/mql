@@ -189,11 +189,12 @@ func (k *mqlK8sRbacRolebinding) referencedRules() ([]rbacv1.PolicyRule, error) {
 }
 
 func (k *mqlK8sRbacRolebinding) grantsClusterAdmin() (bool, error) {
-	rules, err := k.referencedRules()
-	if err != nil {
-		return false, err
-	}
-	return rbacGrantsClusterAdmin(rules), nil
+	// A RoleBinding grants inside its own namespace, whatever the referenced
+	// role allows, so it can never confer cluster-admin. Binding a wildcard
+	// ClusterRole through a RoleBinding is namespace admin — read
+	// hasWildcardRule() for that. Reporting true here fired the cluster-admin
+	// alarm on every namespace admin in the cluster.
+	return false, nil
 }
 
 func (k *mqlK8sRbacRolebinding) hasWildcardRule() (bool, error) {

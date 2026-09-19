@@ -49,6 +49,50 @@ func (k *mqlK8s) apps() ([]any, error) {
 		extractApp(apps, labels)
 	}
 
+	// fetch statefulset resources
+	statefulsets := k.GetStatefulsets()
+	if statefulsets.Error != nil {
+		return nil, statefulsets.Error
+	}
+
+	for i := range statefulsets.Data {
+		s := statefulsets.Data[i].(*mqlK8sStatefulset)
+		extractApp(apps, s.GetLabels().Data)
+	}
+
+	// fetch replicaset resources
+	replicasets := k.GetReplicasets()
+	if replicasets.Error != nil {
+		return nil, replicasets.Error
+	}
+
+	for i := range replicasets.Data {
+		r := replicasets.Data[i].(*mqlK8sReplicaset)
+		extractApp(apps, r.GetLabels().Data)
+	}
+
+	// fetch job resources
+	jobs := k.GetJobs()
+	if jobs.Error != nil {
+		return nil, jobs.Error
+	}
+
+	for i := range jobs.Data {
+		j := jobs.Data[i].(*mqlK8sJob)
+		extractApp(apps, j.GetLabels().Data)
+	}
+
+	// fetch cronjob resources
+	cronjobs := k.GetCronjobs()
+	if cronjobs.Error != nil {
+		return nil, cronjobs.Error
+	}
+
+	for i := range cronjobs.Data {
+		c := cronjobs.Data[i].(*mqlK8sCronjob)
+		extractApp(apps, c.GetLabels().Data)
+	}
+
 	// return k8s app list
 	appList := []any{}
 	for _, app := range apps {
@@ -112,15 +156,17 @@ func extractApp(apps map[string]k8sapp, labels map[string]any) {
 		app.managedBy = managedBy.(string)
 	}
 
-	key := app.name + app.instance
+	// Same separator as the __id built in apps(), so the dedup key and the
+	// resource identity agree. Without it ("ab", "c") and ("a", "bc") collide.
+	key := app.name + "/" + app.instance
 	if existing, ok := apps[key]; ok {
 		// if the app already exists, we need to merge the components
 		components := append(existing.components, app.components...)
 		sort.Strings(components)
 		components = slices.Compact(components)
 		existing.components = components
-		apps[app.name+app.instance] = existing
+		apps[key] = existing
 	} else {
-		apps[app.name+app.instance] = app
+		apps[key] = app
 	}
 }

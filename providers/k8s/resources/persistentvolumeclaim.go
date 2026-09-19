@@ -84,6 +84,7 @@ func (k *mqlK8sPersistentvolumeclaim) accessModes() ([]any, error) {
 
 func (k *mqlK8sPersistentvolumeclaim) storageClassName() (string, error) {
 	if k.obj.Spec.StorageClassName == nil {
+		k.StorageClassName.State = plugin.StateIsSet | plugin.StateIsNull
 		return "", nil
 	}
 	return *k.obj.Spec.StorageClassName, nil

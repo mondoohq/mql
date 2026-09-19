@@ -645,9 +645,14 @@ func ingressNetworkExposureArgs(ing *networkingv1.Ingress) []map[string]*llx.Raw
 	} else if internetExposed && len(specHostnames) > 0 {
 		exposureReason = "publicIngressHostname"
 		confidence = "medium"
-	} else if len(addresses) > 0 {
+	} else if len(statusAddresses) > 0 {
 		exposureReason = "privateIngressAddress"
 		confidence = "high"
+	} else if len(specHostnames) > 0 {
+		// A rule hostname is a statement of intent, not a published address, so
+		// it carries the same lower confidence as its public counterpart above.
+		exposureReason = "privateIngressHostname"
+		confidence = "medium"
 	}
 
 	return []map[string]*llx.RawData{networkExposureArgs(networkExposureInputWithMetadata(ing, networkExposureInput{
@@ -1883,7 +1888,10 @@ func primaryInterfaceCoverageArgsForPodWithSelectorContext(pod *corev1.Pod, poli
 		if !primaryPolicyCoversPodWithServiceAccount(policy, pod, namespaceLabels[pod.Namespace], serviceAccountLabels[podServiceAccountKey(pod)]) {
 			continue
 		}
-		policyRefs = append(policyRefs, rawStringData(policy, "policyRef"))
+		// policyRef is itself a comma-joined list, so it has to be split before
+		// dedup: sortedUniqueStrings compares whole strings, and "a,b" and "b"
+		// are distinct to it even though b is already covered.
+		policyRefs = append(policyRefs, splitPolicyRefs(rawStringData(policy, "policyRef"))...)
 		nativePolicies = append(nativePolicies, rawStringArrayData(policy, "nativeNetworkPolicies")...)
 		adminPolicies = append(adminPolicies, rawStringArrayData(policy, "adminNetworkPolicies")...)
 		calicoPolicies = append(calicoPolicies, rawStringArrayData(policy, "calicoPolicies")...)
@@ -1903,6 +1911,15 @@ func primaryInterfaceCoverageArgsForPodWithSelectorContext(pod *corev1.Pod, poli
 	}
 
 	gaps := []string{}
+	// NetworkPolicy is enforced on the pod network namespace, so it does not
+	// apply to a host-network pod whatever selector matched it. Reporting such
+	// a pod as default-denied contradicts k8s.pod.escapesNetworkPolicy and
+	// hides the gap that matters most.
+	if pod.Spec.HostNetwork {
+		defaultDenyIngress = false
+		defaultDenyEgress = false
+		gaps = append(gaps, "pod "+pod.Namespace+"/"+pod.Name+" uses host networking, which NetworkPolicy does not cover")
+	}
 	if !defaultDenyIngress {
 		gaps = append(gaps, "primary ingress is not default-deny for pod "+pod.Namespace+"/"+pod.Name)
 	}
@@ -1996,7 +2013,7 @@ func secondaryInterfaceCoverageArgsForPod(pod *corev1.Pod, policyCoverage []map[
 			if !secondaryPolicyCoversAttachment(policy, pod, attachment) {
 				continue
 			}
-			policyRefs = append(policyRefs, rawStringData(policy, "policyRef"))
+			policyRefs = append(policyRefs, splitPolicyRefs(rawStringData(policy, "policyRef"))...)
 			multiPolicies = append(multiPolicies, rawStringArrayData(policy, "multiNetworkPolicies")...)
 			calicoPolicies = append(calicoPolicies, rawStringArrayData(policy, "calicoPolicies")...)
 			ciliumPolicies = append(ciliumPolicies, rawStringArrayData(policy, "ciliumPolicies")...)
@@ -3402,6 +3419,17 @@ func stringsToAny(in []string) []any {
 		out = append(out, v)
 	}
 	return out
+}
+
+// splitPolicyRefs expands a comma-joined policyRef into its members so they can
+// be deduplicated individually. sortedUniqueStrings compares whole strings, so
+// without this a pod matched by both a broad and a narrow policy reports the
+// broad one twice.
+func splitPolicyRefs(joined string) []string {
+	if joined == "" {
+		return nil
+	}
+	return strings.Split(joined, ",")
 }
 
 func sortedUniqueStrings(in []string) []string {

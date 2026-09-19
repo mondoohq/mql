@@ -92,7 +92,10 @@ func gatewayRouteResources(rt *plugin.Runtime, kinds []string, resourceName stri
 			return nil, err
 		}
 
-		hostnames := stringsToAny(stringSlice(spec["hostnames"]))
+		// spec.hostnames must mirror the manifest: stringSlice() sorts and
+		// dedups (it is built for exposure classification), which silently
+		// rewrites the user's list and breaks hostnames[0].
+		hostnames := stringsToAny(orderedStringSlice(spec["hostnames"]))
 		ts := obj.GetCreationTimestamp()
 		r, err := CreateResource(rt, resourceName, map[string]*llx.RawData{
 			"id":              llx.StringData(objIdFromK8sObj(obj, objT)),
@@ -206,4 +209,31 @@ func (k *mqlK8sUdproute) ownerReferences() ([]any, error) {
 
 func (k *mqlK8sUdproute) managedFields() ([]any, error) {
 	return k8sManagedFields(k.MqlRuntime, k.obj)
+}
+
+// orderedStringSlice reads a string list from an unstructured field, preserving
+// the order and any duplicates the manifest declared.
+//
+// The sibling stringSlice() helper funnels every branch through
+// sortedUniqueStrings(), which is correct for exposure classification (where a
+// set of addresses is compared) but wrong for a schema field that has to mirror
+// the object: sorting rewrites hostnames[0] and deduping loses an entry.
+func orderedStringSlice(value any) []string {
+	switch v := value.(type) {
+	case []string:
+		return v
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			out = append(out, stringValue(item))
+		}
+		return out
+	case string:
+		if v == "" {
+			return nil
+		}
+		return []string{v}
+	default:
+		return nil
+	}
 }

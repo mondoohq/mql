@@ -30,24 +30,11 @@ func (k *mqlK8s) leases() ([]any, error) {
 			return nil, errors.New("not a k8s lease")
 		}
 
-		var holderIdentity, strategy, preferredHolder string
-		if l.Spec.HolderIdentity != nil {
-			holderIdentity = *l.Spec.HolderIdentity
-		}
-		if l.Spec.Strategy != nil {
-			strategy = string(*l.Spec.Strategy)
-		}
-		if l.Spec.PreferredHolder != nil {
-			preferredHolder = *l.Spec.PreferredHolder
-		}
-
-		var leaseDurationSeconds, leaseTransitions int64
-		if l.Spec.LeaseDurationSeconds != nil {
-			leaseDurationSeconds = int64(*l.Spec.LeaseDurationSeconds)
-		}
-		if l.Spec.LeaseTransitions != nil {
-			leaseTransitions = int64(*l.Spec.LeaseTransitions)
-		}
+		// Every field below is optional, and an unheld or never-transferred
+		// lease is exactly the interesting case for a leader-election audit.
+		// Flattening nil to ""/0 reports "held by the empty identity" and
+		// "never changed hands", neither of which was measured.
+		strategy := stringPtrFromTypedPtr(l.Spec.Strategy)
 
 		var acquireTime, renewTime *time.Time
 		if l.Spec.AcquireTime != nil {
@@ -67,13 +54,13 @@ func (k *mqlK8s) leases() ([]any, error) {
 			"namespace":            llx.StringData(obj.GetNamespace()),
 			"kind":                 llx.StringData(objT.GetKind()),
 			"created":              llx.TimeData(ts.Time),
-			"holderIdentity":       llx.StringData(holderIdentity),
-			"leaseDurationSeconds": llx.IntData(leaseDurationSeconds),
+			"holderIdentity":       llx.StringDataPtr(l.Spec.HolderIdentity),
+			"leaseDurationSeconds": llx.IntDataPtr(l.Spec.LeaseDurationSeconds),
 			"acquireTime":          llx.TimeDataPtr(acquireTime),
 			"renewTime":            llx.TimeDataPtr(renewTime),
-			"leaseTransitions":     llx.IntData(leaseTransitions),
-			"strategy":             llx.StringData(strategy),
-			"preferredHolder":      llx.StringData(preferredHolder),
+			"leaseTransitions":     llx.IntDataPtr(l.Spec.LeaseTransitions),
+			"strategy":             llx.StringDataPtr(strategy),
+			"preferredHolder":      llx.StringDataPtr(l.Spec.PreferredHolder),
 		})
 		if err != nil {
 			return nil, err

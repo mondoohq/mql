@@ -30,11 +30,6 @@ func (k *mqlK8s) certificateSigningRequests() ([]any, error) {
 			return nil, errors.New("not a k8s certificatesigningrequest")
 		}
 
-		var expirationSeconds int64
-		if csr.Spec.ExpirationSeconds != nil {
-			expirationSeconds = int64(*csr.Spec.ExpirationSeconds)
-		}
-
 		usages := make([]any, len(csr.Spec.Usages))
 		for i, u := range csr.Spec.Usages {
 			usages[i] = string(u)
@@ -54,7 +49,7 @@ func (k *mqlK8s) certificateSigningRequests() ([]any, error) {
 			"created":           llx.TimeData(ts.Time),
 			"request":           llx.StringData(string(csr.Spec.Request)),
 			"signerName":        llx.StringData(csr.Spec.SignerName),
-			"expirationSeconds": llx.IntData(expirationSeconds),
+			"expirationSeconds": llx.IntDataPtr(csr.Spec.ExpirationSeconds),
 			"usages":            llx.ArrayData(usages, types.String),
 			"username":          llx.StringData(csr.Spec.Username),
 			"requesterUid":      llx.StringData(csr.Spec.UID),

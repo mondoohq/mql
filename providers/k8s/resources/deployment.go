@@ -153,6 +153,7 @@ func (k *mqlK8sDeployment) revisionHistoryLimit() (int64, error) {
 		return 0, err
 	}
 	if d.Spec.RevisionHistoryLimit == nil {
+		k.RevisionHistoryLimit.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return int64(*d.Spec.RevisionHistoryLimit), nil
@@ -164,6 +165,7 @@ func (k *mqlK8sDeployment) progressDeadlineSeconds() (int64, error) {
 		return 0, err
 	}
 	if d.Spec.ProgressDeadlineSeconds == nil {
+		k.ProgressDeadlineSeconds.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return int64(*d.Spec.ProgressDeadlineSeconds), nil
@@ -239,6 +241,7 @@ func (k *mqlK8sDeployment) collisionCount() (int64, error) {
 		return 0, err
 	}
 	if d.Status.CollisionCount == nil {
+		k.CollisionCount.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return int64(*d.Status.CollisionCount), nil

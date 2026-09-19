@@ -29,9 +29,15 @@ func (k *mqlK8s) ingressClasses() ([]any, error) {
 			return nil, errors.New("not a k8s ingressclass")
 		}
 
-		parameters, err := convert.JsonToDict(ic.Spec.Parameters)
-		if err != nil {
-			return nil, err
+		// convert.JsonToDict(nil) yields {}, which reads as a configured but
+		// empty parameters reference rather than an absent one.
+		parametersData := llx.NilData
+		if ic.Spec.Parameters != nil {
+			parameters, err := convert.JsonToDict(ic.Spec.Parameters)
+			if err != nil {
+				return nil, err
+			}
+			parametersData = llx.DictData(parameters)
 		}
 
 		r, err := CreateResource(k.MqlRuntime, "k8s.ingressclass", map[string]*llx.RawData{
@@ -42,7 +48,7 @@ func (k *mqlK8s) ingressClasses() ([]any, error) {
 			"kind":            llx.StringData(objT.GetKind()),
 			"created":         llx.TimeData(ts.Time),
 			"controller":      llx.StringData(ic.Spec.Controller),
-			"parameters":      llx.DictData(parameters),
+			"parameters":      parametersData,
 		})
 		if err != nil {
 			return nil, err

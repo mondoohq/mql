@@ -189,7 +189,7 @@ func getContainers(
 				return nil, err
 			}
 
-			lifecycle, err := convert.JsonToDict(c.Lifecycle)
+			lifecycle, err := dictOrNil(c.Lifecycle)
 			if err != nil {
 				return nil, err
 			}
@@ -205,30 +205,30 @@ func getContainers(
 			}
 
 			args["resources"] = llx.DictData(resources)
-			args["lifecycle"] = llx.DictData(lifecycle)
+			args["lifecycle"] = dictDataOrNil(lifecycle)
 			args["resizePolicy"] = llx.ArrayData(resizePolicy, types.Dict)
 			args["restartPolicy"] = llx.StringData(restartPolicy)
 		}
 
 		if containerType == ContainerContainerType || containerType == InitContainerType {
-			livenessProbe, err := convert.JsonToDict(c.LivenessProbe)
+			livenessProbe, err := dictOrNil(c.LivenessProbe)
 			if err != nil {
 				return nil, err
 			}
 
-			readinessProbe, err := convert.JsonToDict(c.ReadinessProbe)
+			readinessProbe, err := dictOrNil(c.ReadinessProbe)
 			if err != nil {
 				return nil, err
 			}
 
-			startupProbe, err := convert.JsonToDict(c.StartupProbe)
+			startupProbe, err := dictOrNil(c.StartupProbe)
 			if err != nil {
 				return nil, err
 			}
 
-			args["livenessProbe"] = llx.DictData(livenessProbe)
-			args["readinessProbe"] = llx.DictData(readinessProbe)
-			args["startupProbe"] = llx.DictData(startupProbe)
+			args["livenessProbe"] = dictDataOrNil(livenessProbe)
+			args["readinessProbe"] = dictDataOrNil(readinessProbe)
+			args["startupProbe"] = dictDataOrNil(startupProbe)
 		}
 
 		mqlContainer, err := CreateResource(pluginRuntime, resourceType, args)
@@ -295,4 +295,22 @@ func (k *mqlK8sContainer) containerImage() (plugin.Resource, error) {
 	}
 
 	return c, nil
+}
+
+// dictOrNil converts p to a dict, or returns nil when p is a nil pointer, so an
+// undeclared probe or lifecycle stays null rather than reading as {}.
+// convert.JsonToDict starts from a non-nil map, so it turns nil into {}.
+func dictOrNil[T any](p *T) (map[string]any, error) {
+	if p == nil {
+		return nil, nil
+	}
+	return convert.JsonToDict(p)
+}
+
+// dictDataOrNil wraps a dict for CreateResource, preserving a nil map as null.
+func dictDataOrNil(d map[string]any) *llx.RawData {
+	if d == nil {
+		return llx.NilData
+	}
+	return llx.DictData(d)
 }

@@ -4,6 +4,8 @@
 package resources
 
 import (
+	"bytes"
+	"encoding/pem"
 	"errors"
 	"sync"
 
@@ -79,13 +81,25 @@ func (k *mqlK8sSecret) certificates() ([]any, error) {
 		return nil, nil
 	}
 
-	certRawData, ok := k.obj.Data["tls.crt"]
-	if !ok {
-		return nil, errors.New("could not find the 'tls.crt' key")
+	// Re-encode only the blocks that actually parse. A tls.crt that is
+	// truncated, garbage, or carries a stray non-certificate block must not
+	// fail the whole field — report the certificates the secret does hold, the
+	// way the sibling hygiene predicates already do. The API server accepts
+	// such a Secret, so it is a real state, not a scan error.
+	certs := k.tlsCertificates()
+	if len(certs) == 0 {
+		return nil, nil
+	}
+
+	var buf bytes.Buffer
+	for _, cert := range certs {
+		if err := pem.Encode(&buf, &pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}); err != nil {
+			return nil, err
+		}
 	}
 
 	c, err := k.MqlRuntime.CreateSharedResource("certificates", map[string]*llx.RawData{
-		"pem": llx.StringData(string(certRawData)),
+		"pem": llx.StringData(buf.String()),
 	})
 	if err != nil {
 		return nil, err

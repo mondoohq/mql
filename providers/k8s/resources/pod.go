@@ -116,42 +116,54 @@ func (k *mqlK8sPod) containerStatuses() ([]any, error) {
 	}
 
 	resp := []any{}
-	for _, c := range pod.Status.ContainerStatuses {
-		state, err := convert.JsonToDict(c.State)
-		if err != nil {
-			return nil, err
-		}
-		lastState, err := convert.JsonToDict(c.LastTerminationState)
-		if err != nil {
-			return nil, err
-		}
-		statusResources, err := convert.JsonToDict(c.Resources)
-		if err != nil {
-			return nil, err
-		}
-		started := false
-		if c.Started != nil {
-			started = *c.Started
-		}
+	// A pod's runtime state lives in three separate status slices. Reading only
+	// the first one hid every sidecar (init containers with restartPolicy
+	// Always, GA since 1.29) and every attached ephemeral debug container, so
+	// "no container has restarted" passed without ever looking at them.
+	statusGroups := []struct {
+		kind     string
+		statuses []corev1.ContainerStatus
+	}{
+		{"containerstatus", pod.Status.ContainerStatuses},
+		{"initcontainerstatus", pod.Status.InitContainerStatuses},
+		{"ephemeralcontainerstatus", pod.Status.EphemeralContainerStatuses},
+	}
+	for _, group := range statusGroups {
+		for _, c := range group.statuses {
+			state, err := convert.JsonToDict(c.State)
+			if err != nil {
+				return nil, err
+			}
+			lastState, err := convert.JsonToDict(c.LastTerminationState)
+			if err != nil {
+				return nil, err
+			}
+			statusResources, err := convert.JsonToDict(c.Resources)
+			if err != nil {
+				return nil, err
+			}
 
-		args := map[string]*llx.RawData{
-			"__id":         llx.StringData(string(pod.GetUID()) + "-containerstatus-" + c.Name),
-			"name":         llx.StringData(c.Name),
-			"ready":        llx.BoolData(c.Ready),
-			"started":      llx.BoolData(started),
-			"restartCount": llx.IntData(int64(c.RestartCount)),
-			"image":        llx.StringData(c.Image),
-			"imageId":      llx.StringData(c.ImageID),
-			"containerId":  llx.StringData(c.ContainerID),
-			"state":        llx.DictData(state),
-			"lastState":    llx.DictData(lastState),
-			"resources":    llx.DictData(statusResources),
+			args := map[string]*llx.RawData{
+				// The status kind is part of the key: a sidecar and a regular
+				// container may share a name across the two slices.
+				"__id":         llx.StringData(string(pod.GetUID()) + "-" + group.kind + "-" + c.Name),
+				"name":         llx.StringData(c.Name),
+				"ready":        llx.BoolData(c.Ready),
+				"started":      llx.BoolDataPtr(c.Started),
+				"restartCount": llx.IntData(int64(c.RestartCount)),
+				"image":        llx.StringData(c.Image),
+				"imageId":      llx.StringData(c.ImageID),
+				"containerId":  llx.StringData(c.ContainerID),
+				"state":        llx.DictData(state),
+				"lastState":    llx.DictData(lastState),
+				"resources":    llx.DictData(statusResources),
+			}
+			mqlContainer, err := CreateResource(k.MqlRuntime, ResourceK8sContainerStatus, args)
+			if err != nil {
+				return nil, err
+			}
+			resp = append(resp, mqlContainer)
 		}
-		mqlContainer, err := CreateResource(k.MqlRuntime, ResourceK8sContainerStatus, args)
-		if err != nil {
-			return nil, err
-		}
-		resp = append(resp, mqlContainer)
 	}
 	return resp, nil
 }
@@ -292,6 +304,7 @@ func (k *mqlK8sPod) preemptionPolicy() (string, error) {
 		return "", err
 	}
 	if spec.PreemptionPolicy == nil {
+		k.PreemptionPolicy.State = plugin.StateIsSet | plugin.StateIsNull
 		return "", nil
 	}
 	return string(*spec.PreemptionPolicy), nil
@@ -493,6 +506,7 @@ func (k *mqlK8sPod) terminationGracePeriodSeconds() (int64, error) {
 		return 0, err
 	}
 	if spec.TerminationGracePeriodSeconds == nil {
+		k.TerminationGracePeriodSeconds.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return *spec.TerminationGracePeriodSeconds, nil
@@ -504,6 +518,7 @@ func (k *mqlK8sPod) activeDeadlineSeconds() (int64, error) {
 		return 0, err
 	}
 	if spec.ActiveDeadlineSeconds == nil {
+		k.ActiveDeadlineSeconds.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return *spec.ActiveDeadlineSeconds, nil

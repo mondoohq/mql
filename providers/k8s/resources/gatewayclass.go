@@ -33,14 +33,15 @@ func (k *mqlK8s) gatewayClasses() ([]any, error) {
 			return nil, errors.New("not a k8s gatewayclass")
 		}
 
-		description := ""
-		if gc.Spec.Description != nil {
-			description = *gc.Spec.Description
-		}
-
-		parametersRef, err := convert.JsonToDict(gc.Spec.ParametersRef)
-		if err != nil {
-			return nil, err
+		// A GatewayClass that takes no parameters has no parametersRef at
+		// all; {} would claim the controller was handed an empty one.
+		parametersRefData := llx.NilData
+		if gc.Spec.ParametersRef != nil {
+			parametersRef, err := convert.JsonToDict(gc.Spec.ParametersRef)
+			if err != nil {
+				return nil, err
+			}
+			parametersRefData = llx.DictData(parametersRef)
 		}
 
 		conditions, err := convert.JsonToDictSlice(gc.Status.Conditions)
@@ -56,8 +57,8 @@ func (k *mqlK8s) gatewayClasses() ([]any, error) {
 			"kind":            llx.StringData(objT.GetKind()),
 			"created":         llx.TimeData(ts.Time),
 			"controllerName":  llx.StringData(string(gc.Spec.ControllerName)),
-			"description":     llx.StringData(description),
-			"parametersRef":   llx.DictData(parametersRef),
+			"description":     llx.StringDataPtr(gc.Spec.Description),
+			"parametersRef":   parametersRefData,
 			"conditions":      llx.ArrayData(conditions, types.Dict),
 		})
 		if err != nil {

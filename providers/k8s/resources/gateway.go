@@ -43,9 +43,15 @@ func (k *mqlK8s) gateways() ([]any, error) {
 			return nil, err
 		}
 
-		infrastructure, err := convert.JsonToDict(gw.Spec.Infrastructure)
-		if err != nil {
-			return nil, err
+		// A Gateway with no infrastructure block has none; {} would claim the
+		// controller was handed an empty one.
+		infrastructureData := llx.NilData
+		if gw.Spec.Infrastructure != nil {
+			infrastructure, err := convert.JsonToDict(gw.Spec.Infrastructure)
+			if err != nil {
+				return nil, err
+			}
+			infrastructureData = llx.DictData(infrastructure)
 		}
 
 		statusAddresses, err := convert.JsonToDictSlice(gw.Status.Addresses)
@@ -74,7 +80,7 @@ func (k *mqlK8s) gateways() ([]any, error) {
 			"gatewayClassName": llx.StringData(string(gw.Spec.GatewayClassName)),
 			"listeners":        llx.ArrayData(listeners, types.Dict),
 			"addresses":        llx.ArrayData(addresses, types.Dict),
-			"infrastructure":   llx.DictData(infrastructure),
+			"infrastructure":   infrastructureData,
 			"statusAddresses":  llx.ArrayData(statusAddresses, types.Dict),
 			"listenerStatus":   llx.ArrayData(listenerStatus, types.Dict),
 			"conditions":       llx.ArrayData(conditions, types.Dict),

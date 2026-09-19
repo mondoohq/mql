@@ -49,10 +49,10 @@ func (k *mqlK8s) podDisruptionBudgets() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		unhealthyPolicy := ""
-		if pdb.Spec.UnhealthyPodEvictionPolicy != nil {
-			unhealthyPolicy = string(*pdb.Spec.UnhealthyPodEvictionPolicy)
-		}
+		// The API server does not default this field. nil means "IfHealthyBudget
+		// applies by default", which is a different statement from the object
+		// setting the empty string, and "" is not one of the enum's values.
+		unhealthyPolicy := stringPtrFromTypedPtr(pdb.Spec.UnhealthyPodEvictionPolicy)
 		conditions, err := convert.JsonToDictSlice(pdb.Status.Conditions)
 		if err != nil {
 			return nil, err
@@ -69,7 +69,7 @@ func (k *mqlK8s) podDisruptionBudgets() ([]any, error) {
 			"minAvailable":               llx.DictData(minAvailable),
 			"maxUnavailable":             llx.DictData(maxUnavailable),
 			"selector":                   llx.DictData(selector),
-			"unhealthyPodEvictionPolicy": llx.StringData(unhealthyPolicy),
+			"unhealthyPodEvictionPolicy": llx.StringDataPtr(unhealthyPolicy),
 			"currentHealthy":             llx.IntData(int64(pdb.Status.CurrentHealthy)),
 			"desiredHealthy":             llx.IntData(int64(pdb.Status.DesiredHealthy)),
 			"expectedPods":               llx.IntData(int64(pdb.Status.ExpectedPods)),

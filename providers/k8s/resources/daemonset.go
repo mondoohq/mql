@@ -141,6 +141,7 @@ func (k *mqlK8sDaemonset) revisionHistoryLimit() (int64, error) {
 		return 0, err
 	}
 	if ds.Spec.RevisionHistoryLimit == nil {
+		k.RevisionHistoryLimit.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return int64(*ds.Spec.RevisionHistoryLimit), nil
@@ -224,6 +225,7 @@ func (k *mqlK8sDaemonset) collisionCount() (int64, error) {
 		return 0, err
 	}
 	if ds.Status.CollisionCount == nil {
+		k.CollisionCount.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return int64(*ds.Status.CollisionCount), nil

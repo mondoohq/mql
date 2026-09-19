@@ -167,6 +167,7 @@ func (k *mqlK8sHorizontalpodautoscaler) behavior() (map[string]any, error) {
 
 func (k *mqlK8sHorizontalpodautoscaler) observedGeneration() (int64, error) {
 	if k.obj.Status.ObservedGeneration == nil {
+		k.ObservedGeneration.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return *k.obj.Status.ObservedGeneration, nil

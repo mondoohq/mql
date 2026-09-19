@@ -164,6 +164,7 @@ func (k *mqlK8sJob) backoffLimitPerIndex() (int64, error) {
 		return 0, err
 	}
 	if j.Spec.BackoffLimitPerIndex == nil {
+		k.BackoffLimitPerIndex.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return int64(*j.Spec.BackoffLimitPerIndex), nil
@@ -175,6 +176,7 @@ func (k *mqlK8sJob) maxFailedIndexes() (int64, error) {
 		return 0, err
 	}
 	if j.Spec.MaxFailedIndexes == nil {
+		k.MaxFailedIndexes.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return int64(*j.Spec.MaxFailedIndexes), nil
@@ -197,6 +199,7 @@ func (k *mqlK8sJob) activeDeadlineSeconds() (int64, error) {
 		return 0, err
 	}
 	if j.Spec.ActiveDeadlineSeconds == nil {
+		k.ActiveDeadlineSeconds.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return *j.Spec.ActiveDeadlineSeconds, nil
@@ -208,6 +211,7 @@ func (k *mqlK8sJob) ttlSecondsAfterFinished() (int64, error) {
 		return 0, err
 	}
 	if j.Spec.TTLSecondsAfterFinished == nil {
+		k.TtlSecondsAfterFinished.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return int64(*j.Spec.TTLSecondsAfterFinished), nil
@@ -230,6 +234,7 @@ func (k *mqlK8sJob) podReplacementPolicy() (string, error) {
 		return "", err
 	}
 	if j.Spec.PodReplacementPolicy == nil {
+		k.PodReplacementPolicy.State = plugin.StateIsSet | plugin.StateIsNull
 		return "", nil
 	}
 	return string(*j.Spec.PodReplacementPolicy), nil
@@ -273,6 +278,7 @@ func (k *mqlK8sJob) ready() (int64, error) {
 		return 0, err
 	}
 	if j.Status.Ready == nil {
+		k.Ready.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return int64(*j.Status.Ready), nil
@@ -284,6 +290,7 @@ func (k *mqlK8sJob) terminating() (int64, error) {
 		return 0, err
 	}
 	if j.Status.Terminating == nil {
+		k.Terminating.State = plugin.StateIsSet | plugin.StateIsNull
 		return 0, nil
 	}
 	return int64(*j.Status.Terminating), nil
@@ -303,6 +310,7 @@ func (k *mqlK8sJob) failedIndexes() (string, error) {
 		return "", err
 	}
 	if j.Status.FailedIndexes == nil {
+		k.FailedIndexes.State = plugin.StateIsSet | plugin.StateIsNull
 		return "", nil
 	}
 	return *j.Status.FailedIndexes, nil
