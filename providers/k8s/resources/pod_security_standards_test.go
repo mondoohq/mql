@@ -105,6 +105,12 @@ func TestPodSecurityBaseline_Controls(t *testing.T) {
 		{"unsafe sysctl", func(s *corev1.PodSpec) {
 			s.SecurityContext.Sysctls = []corev1.Sysctl{{Name: "kernel.msgmax", Value: "65536"}}
 		}},
+		{"hostPath volume", func(s *corev1.PodSpec) {
+			s.Volumes = []corev1.Volume{{
+				Name:         "host",
+				VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/"}},
+			}}
+		}},
 		{"windows hostProcess", func(s *corev1.PodSpec) {
 			container(s).WindowsOptions = &corev1.WindowsSecurityContextOptions{HostProcess: boolPtr(true)}
 		}},
@@ -127,12 +133,6 @@ func TestPodSecurityRestricted_Controls(t *testing.T) {
 		name   string
 		mutate func(*corev1.PodSpec)
 	}{
-		{"hostPath volume", func(s *corev1.PodSpec) {
-			s.Volumes = []corev1.Volume{{
-				Name:         "host",
-				VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/"}},
-			}}
-		}},
 		{"allowPrivilegeEscalation unset", func(s *corev1.PodSpec) {
 			container(s).AllowPrivilegeEscalation = nil
 		}},
@@ -231,4 +231,37 @@ func findPSSReader(t *testing.T, list []any, name string) pssReader {
 	}
 	require.FailNowf(t, "workload not found", "%q not found", name)
 	return nil
+}
+
+// The Pod Security Standards "Sysctls" allowed-values list grows between
+// Kubernetes releases, and a stale copy reports ordinary workloads as baseline
+// violations. Each name below was accepted at baseline by a live 1.34
+// apiserver, and pods setting them were admitted by the kubelet, which only
+// allows its own safe set.
+func TestPodSecurityBaselineAllowsCurrentSafeSysctls(t *testing.T) {
+	for _, name := range []string{
+		"net.ipv4.tcp_keepalive_time",  // added in 1.29
+		"net.ipv4.tcp_fin_timeout",     // added in 1.29
+		"net.ipv4.tcp_keepalive_intvl", // added in 1.29
+		"net.ipv4.tcp_keepalive_probes",
+		"net.ipv4.tcp_rmem", // added in 1.32
+		"net.ipv4.tcp_wmem",
+	} {
+		t.Run(name, func(t *testing.T) {
+			spec := restrictedSpec()
+			spec.SecurityContext.Sysctls = []corev1.Sysctl{{Name: name, Value: "600"}}
+			assert.True(t, specBaselineSysctls(spec), "%s is a safe sysctl", name)
+			assert.True(t, specMeetsPodSecurityBaseline(spec),
+				"%s must not drop the spec out of baseline", name)
+		})
+	}
+}
+
+// A sysctl outside the safe set must still fail, or the test above would pass
+// on an implementation that simply allowed everything.
+func TestPodSecurityBaselineRejectsUnsafeSysctl(t *testing.T) {
+	spec := restrictedSpec()
+	spec.SecurityContext.Sysctls = []corev1.Sysctl{{Name: "kernel.shmall", Value: "1"}}
+	assert.False(t, specBaselineSysctls(spec))
+	assert.Equal(t, "privileged", specPodSecurityStandard(spec))
 }
