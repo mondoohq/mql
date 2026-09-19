@@ -77,7 +77,33 @@ func (s *UnixGroupManager) Group(id string) (*Group, error) {
 	return findGroup(groups, id)
 }
 
-func (s *UnixGroupManager) List() ([]*Group, error) {
+// listGroups enumerates the groups the system actually resolves, not just the
+// ones written in /etc/group.
+//
+// getent asks NSS, so it also returns groups served by sssd, systemd-userdb,
+// LDAP or a distribution specific module. Reading /etc/group alone under
+// reports on any such host: on Flatcar, whose groups live in
+// /usr/share/flatcar/etc/group behind the usrfiles NSS module, getent lists 56
+// groups and /etc/group holds 6. A group that is missing from the list cannot
+// fail a check, so the gap is silent and points the wrong way.
+//
+// This mirrors UnixUserManager.List, which has always preferred getent passwd
+// and fallen back to /etc/passwd. The two managers disagreeing is why the same
+// host reported 37 users but 6 groups.
+func (s *UnixGroupManager) listGroups() ([]*Group, error) {
+	groups, err := s.listGetentGroup()
+	if err == nil && len(groups) != 0 {
+		return groups, nil
+	}
+	// getent is missing on busybox style images and fails when NSS is
+	// misconfigured. Record why we dropped to /etc/group, otherwise a host that
+	// should have resolved through NSS looks indistinguishable from one that
+	// never had getent at all.
+	log.Debug().Err(err).Int("groups", len(groups)).Msg("getent group did not return groups, falling back to /etc/group")
+	return s.listEtcGroup()
+}
+
+func (s *UnixGroupManager) listEtcGroup() ([]*Group, error) {
 	f, err := s.conn.FileSystem().Open("/etc/group")
 	if err != nil {
 		return nil, err
@@ -87,6 +113,36 @@ func (s *UnixGroupManager) List() ([]*Group, error) {
 	groups, err := ParseEtcGroup(f)
 	if err != nil {
 		return nil, multierr.Wrap(err, "could not parse /etc/group")
+	}
+	return groups, nil
+}
+
+// https://man7.org/linux/man-pages/man1/getent.1.html
+//
+// getent group emits the same colon separated format as /etc/group, so the
+// existing parser handles it unchanged.
+//
+// Enumeration is a courtesy, not a guarantee: an NSS module may serve lookups
+// by name while declining to list. sssd ships enumerate=false by default, so on
+// a host joined to LDAP or AD this returns only what the files module holds and
+// the directory-backed groups are absent -- indistinguishable from a host that
+// simply has few groups. The fallback yields the same set in that case, so the
+// answer stays correct; it is not, however, complete. Enumerating a large
+// directory is also slow, which is why sssd defaults it off. Reporting group
+// membership for directory-backed accounts needs a per-name lookup, not a list.
+func (s *UnixGroupManager) listGetentGroup() ([]*Group, error) {
+	getent, err := s.conn.RunCommand("getent group")
+	if err != nil {
+		return nil, err
+	}
+
+	return ParseEtcGroup(getent.Stdout)
+}
+
+func (s *UnixGroupManager) List() ([]*Group, error) {
+	groups, err := s.listGroups()
+	if err != nil {
+		return nil, err
 	}
 
 	um, err := users.ResolveManager(s.conn)
