@@ -218,6 +218,11 @@ func (k *mqlK8sUdproute) managedFields() ([]any, error) {
 // sortedUniqueStrings(), which is correct for exposure classification (where a
 // set of addresses is compared) but wrong for a schema field that has to mirror
 // the object: sorting rewrites hostnames[0] and deduping loses an entry.
+//
+// Elements still go through stringValue(), so a value is nil-safe and gets
+// TrimSpace'd. That is deliberate: the API server validates a route hostname as
+// a DNS name, so it cannot carry surrounding whitespace, and reusing the helper
+// keeps the *string and non-string cases handled in one place.
 func orderedStringSlice(value any) []string {
 	switch v := value.(type) {
 	case []string:
