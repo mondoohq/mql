@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/masterzen/winrm"
@@ -17,6 +18,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/vault"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/connection/winrm/cat"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 var _ shared.Connection = (*Connection)(nil)
@@ -117,6 +119,28 @@ func (p *Connection) Capabilities() shared.Capabilities {
 	return shared.Capability_File | shared.Capability_RunCommand
 }
 
+// utf16Len counts the UTF-16 code units in s, which is the unit Windows
+// measures a command line in.
+//
+// Neither obvious shorthand is right. len(s) counts UTF-8 bytes, which
+// over-counts every non-ASCII character and would refuse commands that would
+// have run. utf8.RuneCountInString counts code points, which *under*-counts:
+// anything outside the basic multilingual plane is one rune but two UTF-16
+// code units, so a command padded with emoji could slip past the check and be
+// truncated anyway -- the exact failure this guard exists to prevent. Counting
+// the code units directly is neither, and costs one pass with no allocation.
+func utf16Len(s string) int {
+	n := 0
+	for _, r := range s {
+		if r > 0xFFFF {
+			n += 2
+		} else {
+			n++
+		}
+	}
+	return n
+}
+
 func (p *Connection) RunCommand(command string) (*shared.Command, error) {
 	log.Debug().Str("command", command).Str("provider", "winrm").Msg("winrm> run command")
 
@@ -134,6 +158,19 @@ func (p *Connection) RunCommand(command string) (*shared.Command, error) {
 	defer func() {
 		res.Stats.Duration = time.Since(res.Stats.Start)
 	}()
+
+	if n := utf16Len(command); n > powershell.MaxCommandLength {
+		// Past this the command never runs: WinRM hands it to cmd.exe, which
+		// truncates, and stdout comes back empty with a zero exit. A caller
+		// parsing that output reports whatever an empty string means to it --
+		// "unexpected end of JSON input" -- and never learns the command was
+		// too long. Say so instead.
+		err := fmt.Errorf(
+			"command is %d characters, over the %d WinRM allows, so it would be truncated before it ran: %.120s",
+			n, powershell.MaxCommandLength, command)
+		log.Error().Err(err).Msg("winrm command too long")
+		return res, err
+	}
 
 	// Note: winrm does not return err of the command was executed with a non-zero exit code
 	exitCode, err := p.Client.RunWithContext(context.Background(), command, stdoutBuffer, stderrBuffer)
