@@ -80,6 +80,11 @@ func ParseDpkgPackages(pf *inventory.Platform, input io.Reader) ([]Package, erro
 			// A hold lives in the status triple that was just parsed, so it
 			// costs no extra read and is answered the same way on an image.
 			pkg.Pinned = isHeldStatus(pkg.Status)
+			// dpkg keeps the epoch inside Version. Version stays as dpkg
+			// wrote it, the way the rpm reader keeps its epoch-prefixed
+			// version, and Epoch carries the value on its own so the purl
+			// and CPE below can use it.
+			pkg.Epoch = epochFromVersion(pkg.Version)
 			pkg.PUrl = purl.NewPackageURL(pf, purl.TypeDebian, pkg.Name, pkg.Version,
 				purl.WithArch(pkg.Arch),
 				purl.WithEpoch(pkg.Epoch),
