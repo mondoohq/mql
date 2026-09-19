@@ -41,10 +41,15 @@ const (
 	// an empty license however it was read, because ParsePortageDB never
 	// opened LICENSE at all.
 	//
+	// find batches the paths rather than the shell expanding a glob, so the
+	// argument list stays within ARG_MAX however many packages are installed.
 	// -s hides the unreadable ones, -m1 stops at the first line, and the empty
-	// pattern matches every line, so the output is one
-	// "<path>:<value>" line per file that exists.
-	portageMetaCommand = "grep -sH -m1 '' " + PortageDB + "/*/*/DESCRIPTION " + PortageDB + "/*/*/LICENSE"
+	// pattern matches every line, so the output is one "<path>:<value>" line
+	// per file that exists. -H is what keeps the path on every line: grep drops
+	// the prefix when it is handed a single file, which is what the last batch
+	// can be.
+	portageMetaCommand = "find " + PortageDB + " -mindepth 3 -maxdepth 3 -type f " +
+		`\( -name DESCRIPTION -o -name LICENSE \) -exec grep -sH -m1 '' {} +`
 
 	// portageMaxLine caps a single line of the stream above. A DESCRIPTION is
 	// one short sentence, so this only keeps a corrupt database from growing
@@ -140,7 +145,13 @@ func (f *GentooPkgManager) List() ([]Package, error) {
 				}
 				return pkgs, nil
 			}
-			log.Debug().Err(err).Msg("mql[gentoo]> portage database named no package, falling back to qlist")
+			// err is nil when the database simply named no package, and
+			// logging it then prints "error=<nil>".
+			if err != nil {
+				log.Debug().Err(err).Msg("mql[gentoo]> could not read the portage database, falling back to qlist")
+			} else {
+				log.Debug().Msg("mql[gentoo]> portage database named no package, falling back to qlist")
+			}
 		}
 
 		// Fallback: qlist. Reached when the database is unreadable or the
