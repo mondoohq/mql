@@ -6,6 +6,8 @@ package resources
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"sync/atomic"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -35,11 +37,21 @@ func initTerraformState(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 	return args, nil, nil
 }
 
+// errNoState is returned by the terraform.state accessors on an asset that
+// carries no state (an HCL or plan asset). conn.State() returns (nil, nil)
+// there, and every accessor below used to check only state.Values — so a
+// terraform.state.* query against such an asset dereferenced a nil state and
+// took the provider down.
+var errNoState = errors.New("cannot find state: this asset does not carry terraform state")
+
 func (t *mqlTerraformState) outputs() ([]any, error) {
 	conn := t.MqlRuntime.Connection.(*connection.Connection)
 	state, err := conn.State()
 	if err != nil {
 		return nil, err
+	}
+	if state == nil {
+		return nil, errNoState
 	}
 
 	if state.Values == nil {
@@ -58,7 +70,7 @@ func (t *mqlTerraformState) outputs() ([]any, error) {
 			return nil, err
 		}
 		so := r.(*mqlTerraformStateOutput)
-		so.output = output
+		so.output.Store(output)
 		list = append(list, r)
 	}
 
@@ -70,6 +82,10 @@ func (t *mqlTerraformState) rootModule() (*mqlTerraformStateModule, error) {
 	state, err := conn.State()
 	if err != nil {
 		return nil, err
+	}
+
+	if state == nil {
+		return nil, errNoState
 	}
 
 	// A state with `values` present but no `root_module` (e.g. outputs-only or
@@ -92,6 +108,10 @@ func (t *mqlTerraformState) modules() ([]any, error) {
 	state, err := conn.State()
 	if err != nil {
 		return nil, err
+	}
+
+	if state == nil {
+		return nil, errNoState
 	}
 
 	if state.Values == nil || state.Values.RootModule == nil {
@@ -125,6 +145,10 @@ func (t *mqlTerraformState) resources() ([]any, error) {
 		return nil, err
 	}
 
+	if providerState == nil {
+		return nil, errNoState
+	}
+
 	if providerState.Values == nil || providerState.Values.RootModule == nil {
 		return []any{}, nil
 	}
@@ -151,7 +175,17 @@ func (t *mqlTerraformState) resources() ([]any, error) {
 }
 
 type mqlTerraformStateOutputInternal struct {
-	output *connection.Output
+	// output is stamped after CreateResource, which hands back the ALREADY
+	// CACHED instance when the __id matches. plugin.GetOrCompute is
+	// unsynchronized, so two goroutines resolving terraform.state.outputs both
+	// miss its IsSet check, both run the accessor and both reach this write
+	// while value() and compute_type() read it.
+	//
+	// An atomic rather than a sync.Once around the write: the runtime caches
+	// the instance BEFORE the stamp runs, so a reader that picks it up from
+	// that cache has no happens-before edge to the stamp and a write-side
+	// guard alone would leave it racing.
+	output atomic.Pointer[connection.Output]
 }
 
 func initTerraformStateOutput(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -162,14 +196,29 @@ func initTerraformStateOutput(runtime *plugin.Runtime, args map[string]*llx.RawD
 	// check if identifier is there
 	nameRaw := args["identifier"]
 	if nameRaw != nil {
-		name := nameRaw.Value.(string)
-		obj, err := CreateResource(runtime, "terraform.state", nil)
+		// RawData.Value is nil for a null argument, and a bare `.(string)`
+		// assertion on that panics — which crashes the whole scan, since query
+		// blocks run in goroutines.
+		name, ok := nameRaw.Value.(string)
+		if !ok {
+			return nil, nil, errors.New("terraform.state.output requires a string identifier")
+		}
+		// NewResource, not CreateResource: only NewResource runs
+		// initTerraformState, whose "cannot find state" guard is what keeps this
+		// from walking a nil state on an HCL or plan asset. CreateResource also
+		// registered an uninitialized instance under terraform.state's constant
+		// id, so a later correct lookup returned that husk and
+		// terraform.state.formatVersion read as unset.
+		obj, err := NewResource(runtime, "terraform.state", map[string]*llx.RawData{})
 		if err != nil {
 			return nil, nil, err
 		}
 		tfstate := obj.(*mqlTerraformState)
 
 		outputs := tfstate.GetOutputs()
+		if outputs.Error != nil {
+			return nil, nil, outputs.Error
+		}
 		for i := range outputs.Data {
 			o := outputs.Data[i].(*mqlTerraformStateOutput)
 			id := o.Identifier.Data
@@ -177,6 +226,11 @@ func initTerraformStateOutput(runtime *plugin.Runtime, args map[string]*llx.RawD
 				return nil, o, nil
 			}
 		}
+
+		// Falling through here would have the runtime build an output with no
+		// value and no type, whose id collides with nothing useful; report the
+		// miss instead.
+		return nil, nil, fmt.Errorf("terraform.state.output with identifier %q not found", name)
 	}
 
 	return args, nil, nil
@@ -188,24 +242,26 @@ func (t *mqlTerraformStateOutput) id() (string, error) {
 }
 
 func (t *mqlTerraformStateOutput) value() (any, error) {
-	if t.output == nil {
+	output := t.output.Load()
+	if output == nil {
 		return nil, nil
 	}
 
 	var value any
-	if err := json.Unmarshal(t.output.Value, &value); err != nil {
+	if err := json.Unmarshal(output.Value, &value); err != nil {
 		return nil, err
 	}
 	return value, nil
 }
 
-func (t mqlTerraformStateOutput) compute_type() (any, error) {
-	if t.output == nil {
+func (t *mqlTerraformStateOutput) compute_type() (any, error) {
+	output := t.output.Load()
+	if output == nil {
 		return nil, nil
 	}
 
 	var typ any
-	if err := json.Unmarshal([]byte(t.output.Type), &typ); err != nil {
+	if err := json.Unmarshal([]byte(output.Type), &typ); err != nil {
 		return nil, err
 	}
 	return typ, nil
@@ -214,9 +270,12 @@ func (t mqlTerraformStateOutput) compute_type() (any, error) {
 func (t *mqlTerraformStateModule) id() (string, error) {
 	address := t.Address
 
-	name := "terraform.module"
+	// A state root module omits its address, so it needs an id of its own. The
+	// previous bare "terraform.module" was also whatever a blank, lookup-miss
+	// module computed, so the two shared a cache key.
+	name := "terraform.state.module/root"
 	if address.Data != "" {
-		name += "/address/" + address.Data
+		name = "terraform.state.module/address/" + address.Data
 	}
 
 	return name, nil
@@ -235,14 +294,23 @@ func initTerraformStateModule(runtime *plugin.Runtime, args map[string]*llx.RawD
 
 	idRaw := args["identifier"]
 	if idRaw != nil {
-		identifier := idRaw.Value.(string)
-		obj, err := CreateResource(runtime, "terraform.state", nil)
+		identifier, ok := idRaw.Value.(string)
+		if !ok {
+			return nil, nil, errors.New("terraform.state.module requires a string identifier")
+		}
+		// See initTerraformStateOutput: NewResource runs initTerraformState,
+		// which both guards the nil state and keeps the terraform.state
+		// singleton from being cached uninitialized.
+		obj, err := NewResource(runtime, "terraform.state", map[string]*llx.RawData{})
 		if err != nil {
 			return nil, nil, err
 		}
 		tfstate := obj.(*mqlTerraformState)
 
 		modules := tfstate.GetModules()
+		if modules.Error != nil {
+			return nil, nil, modules.Error
+		}
 		for i := range modules.Data {
 			o := modules.Data[i].(*mqlTerraformStateModule)
 			id := o.Address.Data
@@ -250,24 +318,39 @@ func initTerraformStateModule(runtime *plugin.Runtime, args map[string]*llx.RawD
 				return nil, o, nil
 			}
 		}
-		delete(args, "identifier")
+
+		// Dropping the identifier and falling through built a module with no
+		// address, whose id was the ROOT module's id — so a typo'd address
+		// silently resolved to the root module's contents.
+		return nil, nil, fmt.Errorf("terraform.state.module with address %q not found", identifier)
 	}
 
 	return args, nil, nil
 }
 
 type mqlTerraformStateModuleInternal struct {
-	module *connection.Module
+	// module is stamped after CreateResource, which hands back the ALREADY
+	// CACHED instance when the __id matches. The same module is reachable
+	// three ways -- terraform.state.modules walks the whole tree,
+	// terraform.state.rootModule takes the root and rootModule.childModules
+	// takes each child -- and each is a separate field resolution that runs in
+	// its own goroutine, so both this write and the reads below cross
+	// goroutines.
+	//
+	// An atomic rather than a sync.Once around the write, for the reason given
+	// on mqlTerraformStateOutputInternal.output.
+	module atomic.Pointer[connection.Module]
 }
 
 func (t *mqlTerraformStateModule) resources() ([]any, error) {
-	if t.module == nil {
+	module := t.module.Load()
+	if module == nil {
 		return nil, nil
 	}
 
 	var list []any
-	for i := range t.module.Resources {
-		resource := t.module.Resources[i]
+	for i := range module.Resources {
+		resource := module.Resources[i]
 		r, err := newMqlResource(t.MqlRuntime, resource)
 		if err != nil {
 			return nil, err
@@ -287,7 +370,7 @@ func newMqlModule(runtime *plugin.Runtime, module *connection.Module) (*mqlTerra
 	}
 
 	tmr := r.(*mqlTerraformStateModule)
-	tmr.module = module
+	tmr.module.Store(module)
 
 	return tmr, nil
 }
@@ -312,13 +395,14 @@ func newMqlResource(runtime *plugin.Runtime, resource *connection.Resource) (plu
 }
 
 func (t *mqlTerraformStateModule) childModules() ([]any, error) {
-	if t.module == nil {
+	module := t.module.Load()
+	if module == nil {
 		return nil, nil
 	}
 
 	var list []any
-	for i := range t.module.ChildModules {
-		r, err := newMqlModule(t.MqlRuntime, t.module.ChildModules[i])
+	for i := range module.ChildModules {
+		r, err := newMqlModule(t.MqlRuntime, module.ChildModules[i])
 		if err != nil {
 			return nil, err
 		}
@@ -334,6 +418,14 @@ func (t *mqlTerraformStateResource) id() (string, error) {
 	name := "terraform.state.resource"
 	if address.Data != "" {
 		name += "/address/" + address.Data
+	}
+
+	// Terraform records a deposed object as a separate entry carrying the SAME
+	// address, distinguished only by deposed_key. Without it both entries hash
+	// to one cache key and the deposed object is invisible while the list still
+	// reports two.
+	if t.DeposedKey.Data != "" {
+		name += "/deposed/" + t.DeposedKey.Data
 	}
 
 	return name, nil
