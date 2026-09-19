@@ -134,21 +134,28 @@ func (f *GentooPkgManager) List() ([]Package, error) {
 		// hand by then.
 		cmd, err := f.conn.RunCommand(portagePkgDirsCommand)
 		if err == nil && cmd.ExitStatus == 0 {
-			pkgs, err := ParsePortageDBDirs(f.platform, cmd.Stdout)
-			if err == nil && len(pkgs) > 0 {
-				if meta, err := f.conn.RunCommand(portageMetaCommand); err == nil {
+			// Distinct names rather than three nested err: only the
+			// outermost is reused for the qlist call below, and a reader has
+			// to be able to tell at a glance which failure each branch is
+			// about.
+			pkgs, parseErr := ParsePortageDBDirs(f.platform, cmd.Stdout)
+			if parseErr == nil && len(pkgs) > 0 {
+				meta, metaErr := f.conn.RunCommand(portageMetaCommand)
+				if metaErr == nil {
 					// grep exits 1 when nothing matched, which is not an error
 					// here: it only means no package carries either file.
 					applyPortageMeta(pkgs, ParsePortageMeta(meta.Stdout))
 				} else {
-					log.Debug().Err(err).Msg("mql[gentoo]> could not read portage metadata")
+					// The package list is already complete, so a metadata
+					// failure costs the two fields rather than the inventory.
+					log.Debug().Err(metaErr).Msg("mql[gentoo]> could not read portage metadata")
 				}
 				return pkgs, nil
 			}
-			// err is nil when the database simply named no package, and
+			// parseErr is nil when the database simply named no package, and
 			// logging it then prints "error=<nil>".
-			if err != nil {
-				log.Debug().Err(err).Msg("mql[gentoo]> could not read the portage database, falling back to qlist")
+			if parseErr != nil {
+				log.Debug().Err(parseErr).Msg("mql[gentoo]> could not read the portage database, falling back to qlist")
 			} else {
 				log.Debug().Msg("mql[gentoo]> portage database named no package, falling back to qlist")
 			}
