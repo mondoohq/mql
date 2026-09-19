@@ -132,16 +132,18 @@ func (l *mqlLvm) runLvmReport(cmdline string) (string, bool, error) {
 		return "", false, err
 	}
 	cmd := o.(*mqlCommand)
-	exit := cmd.GetExitcode()
-	if exit.Data == 0 {
-		return cmd.Stdout.Data, true, nil
+	run, err := commandResult(cmd)
+	if err != nil {
+		return "", false, err
+	}
+	if run.exitcode == 0 {
+		return run.stdout, true, nil
 	}
 
-	stderr := cmd.Stderr.Data
-	if isLvmNotInstalled(exit.Data, stderr) {
+	if isLvmNotInstalled(run.exitcode, run.stderr) {
 		return "", false, nil
 	}
-	return "", false, fmt.Errorf("lvm command failed (exit %d): %s", exit.Data, strings.TrimSpace(stderr))
+	return "", false, fmt.Errorf("lvm command failed (exit %d): %s", run.exitcode, strings.TrimSpace(run.stderr))
 }
 
 // isLvmNotInstalled reports whether the failure of an lvm reporting command

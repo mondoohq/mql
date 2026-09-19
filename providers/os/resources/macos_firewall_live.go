@@ -5,7 +5,6 @@ package resources
 
 import (
 	"errors"
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -41,10 +40,7 @@ func (m *mqlMacosFirewall) runSocketfilterfw(flag string) (string, error) {
 		return "", err
 	}
 	cmd := res.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return "", fmt.Errorf("socketfilterfw %s failed: %s", flag, cmd.GetStderr().Data)
-	}
-	return cmd.GetStdout().Data, nil
+	return commandOutput(cmd, "socketfilterfw "+flag)
 }
 
 // parseGlobalState reads the numeric state out of --getglobalstate output.

@@ -38,11 +38,12 @@ func (y *mqlYum) repos() ([]any, error) {
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("could not retrieve yum repo list")
+	stdout, err := commandOutput(cmd, "yum -v repolist all")
+	if err != nil {
+		return nil, err
 	}
 
-	repos, err := yum.ParseRepos(strings.NewReader(cmd.Stdout.Data))
+	repos, err := yum.ParseRepos(strings.NewReader(stdout))
 	if err != nil {
 		return nil, err
 	}
@@ -106,11 +107,12 @@ func (y *mqlYum) vars() (map[string]any, error) {
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("could not retrieve yum repo list")
+	stdout, err := commandOutput(cmd, "yum repo variables")
+	if err != nil {
+		return nil, err
 	}
 
-	vars, err := yum.ParseVariables(strings.NewReader(cmd.Stdout.Data))
+	vars, err := yum.ParseVariables(strings.NewReader(stdout))
 	if err != nil {
 		return nil, err
 	}

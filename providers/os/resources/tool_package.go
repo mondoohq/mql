@@ -350,10 +350,11 @@ func inferCodexVersion(runtime *plugin.Runtime, configPath string) (string, erro
 		return "", nil
 	}
 	cmd := o.(*mqlCommand)
-	if cmd.GetExitcode().Data != 0 {
+	run, err := commandResult(cmd)
+	if err != nil || run.exitcode != 0 {
 		return "", nil
 	}
-	for _, field := range strings.Fields(cmd.GetStdout().Data) {
+	for _, field := range strings.Fields(run.stdout) {
 		// Validate with MQL's semver parser instead of a bespoke regex. The
 		// parser exposes only Compare, so we parse by self-compare: a valid
 		// version compares against itself without error.
@@ -377,10 +378,11 @@ func inferClaudeVersion(runtime *plugin.Runtime, configPath string) (string, err
 		return "", nil
 	}
 	cmd := o.(*mqlCommand)
-	if cmd.GetExitcode().Data != 0 {
+	run, err := commandResult(cmd)
+	if err != nil || run.exitcode != 0 {
 		return "", nil
 	}
-	fields := strings.Fields(cmd.GetStdout().Data)
+	fields := strings.Fields(run.stdout)
 	if len(fields) == 0 {
 		return "", nil
 	}

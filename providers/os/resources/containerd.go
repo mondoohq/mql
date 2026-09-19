@@ -5,7 +5,6 @@ package resources
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/kballard/go-shellquote"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/types"
 )
 
@@ -95,12 +95,16 @@ func (p *mqlContainerd) containers() ([]any, error) {
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("failed to list namespaces: " + cmd.Stderr.Data)
+	stdout, err := commandOutput(cmd, "ctr namespaces list")
+	if err != nil {
+		return nil, err
 	}
 
-	namespaces := parseNamespaceList(cmd.Stdout.Data)
-	var containers []any
+	namespaces := parseNamespaceList(stdout)
+	containers := []any{}
+	// incomplete records that at least one namespace or container could not be
+	// read. Combined with an empty result it means "unknown", not "none".
+	incomplete := false
 
 	for _, ns := range namespaces {
 		if ns == "" {
@@ -113,15 +117,21 @@ func (p *mqlContainerd) containers() ([]any, error) {
 		})
 		if err != nil {
 			log.Debug().Str("namespace", ns).Err(err).Msg("skipping namespace, failed to create command")
+			incomplete = true
 			continue
 		}
 		cmd := o.(*mqlCommand)
-		if exit := cmd.GetExitcode(); exit.Data != 0 {
-			log.Debug().Str("namespace", ns).Str("stderr", cmd.Stderr.Data).Msg("skipping namespace, failed to list containers")
+		nsRun, err := commandResult(cmd)
+		if err != nil {
+			return nil, err
+		}
+		if nsRun.exitcode != 0 {
+			log.Debug().Str("namespace", ns).Str("stderr", nsRun.stderr).Msg("skipping namespace, failed to list containers")
+			incomplete = true
 			continue
 		}
 
-		containerIDs := parseContainerIDList(cmd.Stdout.Data)
+		containerIDs := parseContainerIDList(nsRun.stdout)
 
 		// Get tasks info for this namespace to map PIDs and status
 		var taskInfo map[string]taskData
@@ -131,8 +141,10 @@ func (p *mqlContainerd) containers() ([]any, error) {
 		})
 		if err == nil {
 			cmd := o.(*mqlCommand)
-			if exit := cmd.GetExitcode(); exit.Data == 0 {
-				taskInfo = parseTaskList(cmd.Stdout.Data)
+			// exitcode reads as 0 on a command that never ran; parsing that
+			// would report every container as taskless.
+			if taskRun, taskErr := commandResult(cmd); taskErr == nil && taskRun.exitcode == 0 {
+				taskInfo = parseTaskList(taskRun.stdout)
 			}
 		}
 
@@ -147,18 +159,25 @@ func (p *mqlContainerd) containers() ([]any, error) {
 			})
 			if err != nil {
 				log.Debug().Str("namespace", ns).Str("container", containerID).Err(err).Msg("skipping container, failed to create command")
+				incomplete = true
 				continue
 			}
 			cmd := o.(*mqlCommand)
-			if exit := cmd.GetExitcode(); exit.Data != 0 {
-				log.Debug().Str("namespace", ns).Str("container", containerID).Str("stderr", cmd.Stderr.Data).Msg("skipping container, failed to get info")
+			infoRun, err := commandResult(cmd)
+			if err != nil {
+				return nil, err
+			}
+			if infoRun.exitcode != 0 {
+				log.Debug().Str("namespace", ns).Str("container", containerID).Str("stderr", infoRun.stderr).Msg("skipping container, failed to get info")
+				incomplete = true
 				continue
 			}
 
 			// Parse JSON output from ctr
-			info, err := parseContainerInfo([]byte(cmd.Stdout.Data))
+			info, err := parseContainerInfo([]byte(infoRun.stdout))
 			if err != nil {
 				log.Debug().Str("namespace", ns).Str("container", containerID).Err(err).Msg("skipping container, failed to parse info")
+				incomplete = true
 				continue
 			}
 
@@ -196,6 +215,15 @@ func (p *mqlContainerd) containers() ([]any, error) {
 
 			containers = append(containers, containerRes.(*mqlContainerdContainer))
 		}
+	}
+
+	if len(containers) == 0 && incomplete {
+		// Every namespace or container we tried to read was skipped, so we
+		// measured nothing. An empty list would pass
+		// `containerd.containers.none(...)` on a host we never managed to
+		// inspect.
+		p.Containers.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 
 	return containers, nil

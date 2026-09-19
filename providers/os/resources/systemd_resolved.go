@@ -329,5 +329,9 @@ func isSystemdUnitActive(runtime *plugin.Runtime, unit string) (bool, error) {
 		return false, err
 	}
 	cmd := o.(*mqlCommand)
-	return cmd.GetExitcode().Data == 0, nil
+	run, err := commandResult(cmd)
+	if err != nil {
+		return false, err
+	}
+	return run.exitcode == 0, nil
 }
