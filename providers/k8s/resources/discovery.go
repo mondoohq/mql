@@ -1643,6 +1643,12 @@ func namespaceStageName(cfg *inventory.Config) (string, bool) {
 	if len(namespaces) != 1 {
 		return "", false
 	}
+	// The namespace stage fetches the namespace by name, so a glob is not a
+	// namespace it can look up. Those fall through to the cluster stage, which
+	// expands the pattern against the namespaces that exist.
+	if !shared.IsLiteralNamespace(namespaces[0]) {
+		return "", false
+	}
 	return namespaces[0], true
 }
 
