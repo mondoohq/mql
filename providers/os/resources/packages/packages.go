@@ -286,3 +286,38 @@ func isHeldStatus(status string) bool {
 	}
 	return false
 }
+
+// epochFromVersion returns the epoch a Debian-style version string carries, or
+// the empty string when it carries none.
+//
+// Debian writes a version as "[epoch:]upstream_version[-debian_revision]" and
+// keeps the epoch inside the single Version field of the dpkg status file. rpm
+// reports the two separately, so the rpm reader fills both Package.Epoch and
+// the epoch-prefixed Package.Version and every consumer downstream sees an
+// epoch. A deb package with an epoch reported an empty Epoch while its Version
+// plainly began with one, which also left the epoch qualifier off its purl and
+// an empty epoch in its CPE.
+//
+// Only a leading run of digits before the first colon is an epoch. An
+// upstream_version may itself contain a colon, but Debian policy allows that
+// only when an epoch is present, so the first colon is the epoch separator
+// exactly when what precedes it is numeric and non-empty.
+//
+// "0" is reported as no epoch, matching normalizeRpmEpoch: an explicit zero is
+// the same as an absent epoch, and purl already drops a "0" epoch qualifier.
+func epochFromVersion(version string) string {
+	colon := strings.IndexByte(version, ':')
+	if colon < 1 {
+		return ""
+	}
+	epoch := version[:colon]
+	for i := 0; i < len(epoch); i++ {
+		if epoch[i] < '0' || epoch[i] > '9' {
+			return ""
+		}
+	}
+	if strings.TrimLeft(epoch, "0") == "" {
+		return ""
+	}
+	return epoch
+}

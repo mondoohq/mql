@@ -69,17 +69,21 @@ The sfdisk utility is mostly for automation and scripting uses.`,
 	p = Package{
 		Name:    "libaudit1",
 		Version: "1:2.4-1+b1",
-		Arch:    "amd64",
-		Status:  "install ok installed",
-		Origin:  "audit (1:2.4-1)",
+		// The version dpkg writes carries the epoch, and Epoch carries it on
+		// its own too, the same pairing the rpm reader produces. It reaches
+		// the epoch qualifier of the purl and the update component of the CPE.
+		Epoch:  "1",
+		Arch:   "amd64",
+		Status: "install ok installed",
+		Origin: "audit (1:2.4-1)",
 		Description: `Dynamic library for security auditing
 The audit-libs package contains the dynamic libraries needed for
 applications to use the audit framework. It is used to monitor systems for
 security related events.`,
-		PUrl: "pkg:deb/ubuntu/libaudit1@1:2.4-1%2Bb1?arch=amd64&distro=ubuntu-18.04",
+		PUrl: "pkg:deb/ubuntu/libaudit1@1:2.4-1%2Bb1?arch=amd64&distro=ubuntu-18.04&epoch=1",
 		CPEs: []string{
-			"cpe:2.3:a:libaudit1:libaudit1:2.4-1\\+b1:*:*:*:*:*:amd64:*",
-			"cpe:2.3:a:libaudit1:libaudit1:2.4-1\\+b1:*:*:*:*:*:*:*",
+			"cpe:2.3:a:libaudit1:libaudit1:2.4-1\\+b1:1:*:*:*:*:amd64:*",
+			"cpe:2.3:a:libaudit1:libaudit1:2.4-1\\+b1:1:*:*:*:*:*:*",
 		},
 		Format:         "deb",
 		FilesAvailable: PkgFilesAsync,
@@ -493,4 +497,73 @@ func TestParseDpkgUpdatesLineShapes(t *testing.T) {
 	assert.Equal(t, "1:1.34+dfsg-1.1", m["tar"].Available)
 	_, isConf := m["Conf"]
 	assert.False(t, isConf)
+}
+
+func TestEpochFromVersion(t *testing.T) {
+	tests := []struct {
+		version string
+		want    string
+		why     string
+	}{
+		{"1:2.38.1-5+deb12u3", "1", "bsdutils on debian 12"},
+		{"2:6.2.1+dfsg1-1.1", "2", "libgmp10 on debian 12"},
+		{"1:4.13+dfsg1-1+deb12u2", "1", "login on debian 12"},
+		{"10:1.0-1", "10", "epoch is not limited to one digit"},
+		{"3.134", "", "no epoch"},
+		{"5.2.15-2+b13", "", "no epoch"},
+		{"0:1.0-1", "", "an explicit zero epoch is no epoch, as for rpm"},
+		{"00:1.0-1", "", "still zero"},
+		{"", "", "empty version"},
+		{":1.0-1", "", "nothing before the colon is not an epoch"},
+		// An upstream_version may contain a colon only when an epoch is
+		// present, so a non-numeric run before the first colon is part of the
+		// version rather than an epoch.
+		{"1.0:beta-1", "", "non-numeric before the colon"},
+		{"abc:1.0-1", "", "non-numeric before the colon"},
+		{"1a:1.0-1", "", "not all digits before the colon"},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, epochFromVersion(tt.version), "%s (%s)", tt.version, tt.why)
+	}
+}
+
+// TestDpkgParserEpoch pins that an epoch-bearing deb package reports the epoch
+// on its own field, keeps the epoch inside version the way rpm does, and
+// carries the epoch qualifier on its purl. Removing the epochFromVersion call
+// in ParseDpkgPackages makes every assertion but the version one fail.
+func TestDpkgParserEpoch(t *testing.T) {
+	pf := &inventory.Platform{
+		Name:    "debian",
+		Version: "12",
+		Arch:    "arm64",
+		Family:  []string{"debian", "linux", "unix", "os"},
+		Labels:  map[string]string{"distro-id": "debian"},
+	}
+
+	// Real stanzas from a debian:12 container.
+	status := strings.Join([]string{
+		"Package: bsdutils",
+		"Status: install ok installed",
+		"Architecture: arm64",
+		"Version: 1:2.38.1-5+deb12u3",
+		"",
+		"Package: adduser",
+		"Status: install ok installed",
+		"Architecture: all",
+		"Version: 3.134",
+		"",
+	}, "\n")
+
+	m, err := ParseDpkgPackages(pf, strings.NewReader(status))
+	require.NoError(t, err)
+	require.Len(t, m, 2)
+
+	assert.Equal(t, "bsdutils", m[0].Name)
+	assert.Equal(t, "1", m[0].Epoch)
+	assert.Equal(t, "1:2.38.1-5+deb12u3", m[0].Version, "version keeps the epoch, as it does for rpm")
+	assert.Contains(t, m[0].PUrl, "epoch=1")
+
+	assert.Equal(t, "adduser", m[1].Name)
+	assert.Empty(t, m[1].Epoch)
+	assert.NotContains(t, m[1].PUrl, "epoch=")
 }
