@@ -6,6 +6,7 @@ package plugin
 import (
 	"errors"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/upstream"
 	"go.mondoo.com/mql/types"
@@ -328,6 +329,44 @@ func ProtoArgsToRawDataArgs(pargs map[string]*llx.Result) (map[string]*llx.RawDa
 	}
 
 	return res, err
+}
+
+// ResolveResourceArgs replaces any resource references in args (which come in
+// as *llx.MockResource after Primitive deserialization) with the actual
+// resource instances from the runtime's resource cache. This is needed after
+// ProtoArgsToRawDataArgs when args will be passed to generated setters that
+// expect typed resource pointers (e.g., *mqlFile) rather than MockResource.
+func ResolveResourceArgs(args map[string]*llx.RawData, runtime *Runtime) {
+	if runtime == nil {
+		return
+	}
+	for k, v := range args {
+		if v == nil {
+			continue
+		}
+		if !types.Type(v.Type).IsResource() {
+			continue
+		}
+		mock, ok := v.Value.(*llx.MockResource)
+		if !ok || mock == nil {
+			continue
+		}
+		res, ok := runtime.Resources.Get(mock.Name + "\x00" + mock.ID)
+		if !ok {
+			// The MockResource stays in place, and the generated setter for a
+			// resource-typed field rejects it, so this surfaces downstream as a
+			// SetData type mismatch naming the field's owner rather than the
+			// reference that could not be resolved. Log the reference itself so
+			// the two can be connected.
+			log.Debug().
+				Str("field", k).
+				Str("resource", mock.Name).
+				Str("id", mock.ID).
+				Msg("plugin> resource reference is not in the runtime cache, leaving it unresolved")
+			continue
+		}
+		args[k] = llx.ResourceData(res, mock.Name)
+	}
 }
 
 func NonErrorArgs(pargs map[string]*llx.RawData) map[string]*llx.RawData {

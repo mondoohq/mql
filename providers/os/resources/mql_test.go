@@ -983,6 +983,13 @@ func TestResource_AuthorizedKeys(t *testing.T) {
 		assert.Empty(t, res[0].Result().Error)
 		assert.Equal(t, "ssh-rsa", res[0].Data.Value)
 	})
+
+	t.Run("filter authorized keys via user (regression: issue #2223)", func(t *testing.T) {
+		res := x.TestQuery(t, "user(name: 'chris').authorizedkeys.all( type == 'ssh-rsa' )")
+		assert.NotEmpty(t, res)
+		assert.Empty(t, res[0].Result().Error)
+		assert.Equal(t, true, res[0].Data.Value)
+	})
 }
 
 const passwdContent = `root:x:0:0::/root:/bin/bash
