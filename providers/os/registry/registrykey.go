@@ -4,10 +4,9 @@
 package registry
 
 import (
-	"encoding/binary"
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 
@@ -130,11 +129,40 @@ type keyKindRaw struct {
 	Data any
 }
 
+// jsonNumberToInt64 reads a JSON number decoded with UseNumber into an int64
+// without going through float64.
+//
+// float64 carries a 53-bit mantissa, so a REG_QWORD above 2^53 does not survive
+// the round trip: 9007199254740993 decodes as 9007199254740992, and a value past
+// int64 saturates rather than reporting the number stored. PowerShell types
+// REG_QWORD as System.Int64, so int64 is the full range of what can arrive here.
+//
+// float64 is still accepted for callers that decoded without UseNumber, and for
+// the byte elements of a REG_BINARY array, which are always small.
+func jsonNumberToInt64(v any) (int64, bool) {
+	switch n := v.(type) {
+	case json.Number:
+		i, err := n.Int64()
+		if err != nil {
+			return 0, false
+		}
+		return i, true
+	case float64:
+		return int64(n), true
+	}
+	return 0, false
+}
+
 func (k *RegistryKeyValue) UnmarshalJSON(b []byte) error {
 	var raw keyKindRaw
 
+	// Decode numbers as json.Number rather than float64 so a REG_QWORD keeps
+	// every bit of its value; see jsonNumberToInt64.
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+
 	// try to unmarshal the type
-	err := json.Unmarshal(b, &raw)
+	err := dec.Decode(&raw)
 	if err != nil {
 		return err
 	}
@@ -167,7 +195,7 @@ func (k *RegistryKeyValue) UnmarshalJSON(b []byte) error {
 		}
 		data := make([]byte, len(rawData))
 		for i, v := range rawData {
-			val, ok := v.(float64)
+			val, ok := jsonNumberToInt64(v)
 			if !ok {
 				return fmt.Errorf("registry key value is not a byte array: %v", raw.Data)
 			}
@@ -175,11 +203,10 @@ func (k *RegistryKeyValue) UnmarshalJSON(b []byte) error {
 		}
 		k.Binary = data
 	case DWORD: // A number that is a valid UInt32
-		data, ok := raw.Data.(float64)
+		number, ok := jsonNumberToInt64(raw.Data)
 		if !ok {
 			return fmt.Errorf("registry key value is not a number: %v", raw.Data)
 		}
-		number := int64(data)
 		// string fallback
 		k.Number = number
 		k.String = strconv.FormatInt(number, 10)
@@ -214,14 +241,14 @@ func (k *RegistryKeyValue) UnmarshalJSON(b []byte) error {
 		log.Warn().Msg("FULL_RESOURCE_DESCRIPTOR for registry key is not supported")
 	case RESOURCE_REQUIREMENTS_LIST:
 		log.Warn().Msg("RESOURCE_REQUIREMENTS_LIST for registry key is not supported")
-	case QWORD: // 8 bytes of binary data
-		f, ok := raw.Data.(float64)
+	case QWORD: // A number that is a valid UInt64
+		number, ok := jsonNumberToInt64(raw.Data)
 		if !ok {
 			return fmt.Errorf("registry key value is not a number: %v", raw.Data)
 		}
-		buf := make([]byte, 8)
-		binary.LittleEndian.PutUint64(buf[:], math.Float64bits(f))
-		k.Binary = buf
+		// string fallback
+		k.Number = number
+		k.String = strconv.FormatInt(number, 10)
 	}
 	return nil
 }
