@@ -159,15 +159,60 @@ func (l *mqlFilesFind) unixFilesFindCmd() ([]string, error) {
 	if out.Error != nil {
 		return nil, out.Error
 	}
+	exit := cmd.GetExitcode()
+	if exit.Error != nil {
+		return nil, exit.Error
+	}
+
+	lines := strings.TrimSpace(out.Data)
+	if err := checkFindExit("find", callCmd, exit.Data, lines, cmd.GetStderr().Data); err != nil {
+		return nil, err
+	}
 
 	var foundFiles []string
-	lines := strings.TrimSpace(out.Data)
 	if lines == "" {
 		foundFiles = []string{}
 	} else {
 		foundFiles = strings.Split(lines, "\n")
 	}
 	return foundFiles, nil
+}
+
+// checkFindExit decides what a non-zero exit from the search command means.
+//
+// A search tool fails for two very different reasons. It can fail to run at
+// all: `find` is absent (exit 127, common on minimal amazonlinux, opencloudos
+// and openEuler images, which ship no findutils), is not executable (126), or
+// was handed a start path that does not exist. It can also run fine and still
+// report a failure because it could not descend into some subdirectory, which
+// GNU find signals with exit 1 while printing every path it did reach. That
+// second case is routine for an unprivileged scan of /etc or / and its results
+// are valid.
+//
+// Output separates the two. No results plus a failure means nothing was
+// searched, and returning an empty list there is indistinguishable from "the
+// directory is empty" for every caller. Results plus a failure is a partial
+// traversal: keep what was found and warn.
+func checkFindExit(tool string, cmdline string, exitcode int64, stdout string, stderr string) error {
+	if exitcode == 0 {
+		return nil
+	}
+
+	stderr = strings.TrimSpace(stderr)
+	if stdout == "" {
+		msg := tool + " failed with exit code " + strconv.FormatInt(exitcode, 10)
+		if stderr != "" {
+			msg += ": " + stderr
+		}
+		return errors.New(msg)
+	}
+
+	log.Warn().
+		Int64("exitcode", exitcode).
+		Str("stderr", stderr).
+		Str("command", cmdline).
+		Msg("file search reported errors, results may be incomplete")
+	return nil
 }
 
 func (l *mqlFilesFind) windowsPowershellCmd() ([]string, error) {
@@ -189,9 +234,17 @@ func (l *mqlFilesFind) windowsPowershellCmd() ([]string, error) {
 	if out.Error != nil {
 		return nil, out.Error
 	}
+	exit := ps.GetExitcode()
+	if exit.Error != nil {
+		return nil, exit.Error
+	}
+
+	lines := strings.TrimSpace(out.Data)
+	if err := checkFindExit("Get-ChildItem", pwshScript, exit.Data, lines, ps.GetStderr().Data); err != nil {
+		return nil, err
+	}
 
 	var foundFiles []string
-	lines := strings.TrimSpace(out.Data)
 	if lines == "" {
 		foundFiles = []string{}
 	} else {
