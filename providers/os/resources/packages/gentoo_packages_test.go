@@ -5,6 +5,7 @@ package packages
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -101,4 +102,90 @@ func TestSplitCategoryName(t *testing.T) {
 	cat, name = splitCategoryName("nocat")
 	assert.Equal(t, "", cat)
 	assert.Equal(t, "nocat", name)
+}
+
+// The two command outputs below are verbatim from a gentoo/stage3:arm64
+// container.
+const portageDirsFixture = `/var/db/pkg/net-misc/netifrc-0.7.3
+/var/db/pkg/net-misc/curl-7.79.1
+/var/db/pkg/net-misc/rsync-3.2.3-r5
+/var/db/pkg/acct-group/audio-0-r1
+`
+
+const portageMetaFixture = `/var/db/pkg/net-misc/netifrc-0.7.3/DESCRIPTION:Gentoo Network Interface Management Scripts
+/var/db/pkg/net-misc/netifrc-0.7.3/LICENSE:BSD-2
+/var/db/pkg/net-misc/curl-7.79.1/DESCRIPTION:A Client that groks URLs
+/var/db/pkg/net-misc/curl-7.79.1/LICENSE:curl
+/var/db/pkg/net-misc/rsync-3.2.3-r5/DESCRIPTION:File transfer program to keep remote files into sync
+/var/db/pkg/net-misc/rsync-3.2.3-r5/LICENSE:GPL-3
+`
+
+func TestParsePortageDBDirs(t *testing.T) {
+	pkgs, err := ParsePortageDBDirs(nil, strings.NewReader(portageDirsFixture))
+	require.NoError(t, err)
+	require.Len(t, pkgs, 4)
+
+	assert.Equal(t, "net-misc/netifrc", pkgs[0].Name)
+	assert.Equal(t, "0.7.3", pkgs[0].Version)
+	assert.Equal(t, GentooPkgFormat, pkgs[0].Format)
+
+	// a -rN revision belongs to the version, not the name
+	assert.Equal(t, "net-misc/rsync", pkgs[2].Name)
+	assert.Equal(t, "3.2.3-r5", pkgs[2].Version)
+
+	// a package whose version is bare "0-r1"
+	assert.Equal(t, "acct-group/audio", pkgs[3].Name)
+	assert.Equal(t, "0-r1", pkgs[3].Version)
+}
+
+func TestParsePortageMetaAndApply(t *testing.T) {
+	pkgs, err := ParsePortageDBDirs(nil, strings.NewReader(portageDirsFixture))
+	require.NoError(t, err)
+
+	// Before: qlist and the directory listing know nothing but name/version.
+	assert.Empty(t, pkgs[1].Description)
+	assert.Empty(t, pkgs[1].License)
+
+	applyPortageMeta(pkgs, ParsePortageMeta(strings.NewReader(portageMetaFixture)))
+
+	assert.Equal(t, "A Client that groks URLs", pkgs[1].Description)
+	assert.Equal(t, "curl", pkgs[1].License)
+	assert.Equal(t, "Gentoo Network Interface Management Scripts", pkgs[0].Description)
+	assert.Equal(t, "BSD-2", pkgs[0].License)
+	assert.Equal(t, "GPL-3", pkgs[2].License)
+
+	// acct-group/audio has neither file on a real system; it must survive the
+	// merge with empty metadata rather than be dropped or take a neighbour's.
+	assert.Equal(t, "acct-group/audio", pkgs[3].Name)
+	assert.Empty(t, pkgs[3].Description)
+	assert.Empty(t, pkgs[3].License)
+}
+
+func TestParsePortageMetaEdgeCases(t *testing.T) {
+	t.Run("a value containing a colon is kept whole", func(t *testing.T) {
+		meta := ParsePortageMeta(strings.NewReader(
+			"/var/db/pkg/app-misc/foo-1.0/DESCRIPTION:See http://example.com: the docs\n"))
+		assert.Equal(t, "See http://example.com: the docs",
+			meta["/var/db/pkg/app-misc/foo-1.0"]["DESCRIPTION"])
+	})
+
+	t.Run("an empty value is kept", func(t *testing.T) {
+		meta := ParsePortageMeta(strings.NewReader("/var/db/pkg/app-misc/foo-1.0/LICENSE:\n"))
+		assert.Equal(t, "", meta["/var/db/pkg/app-misc/foo-1.0"]["LICENSE"])
+	})
+
+	t.Run("a line with no colon is skipped", func(t *testing.T) {
+		assert.Empty(t, ParsePortageMeta(strings.NewReader("grep: no such file\n\n")))
+	})
+}
+
+func TestPackageFromPortageDir(t *testing.T) {
+	assert.Nil(t, packageFromPortageDir(nil, ""), "empty path")
+	assert.Nil(t, packageFromPortageDir(nil, "/var/db/pkg/net-misc"), "no version")
+	assert.Nil(t, packageFromPortageDir(nil, "/var/db/pkg/net-misc/curl"), "no version")
+
+	p := packageFromPortageDir(nil, "/var/db/pkg/net-misc/curl-7.79.1/")
+	require.NotNil(t, p, "a trailing slash must not defeat the split")
+	assert.Equal(t, "net-misc/curl", p.Name)
+	assert.Equal(t, "7.79.1", p.Version)
 }
