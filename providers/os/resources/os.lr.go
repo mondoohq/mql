@@ -414,6 +414,8 @@ const (
 	ResourceMacosSoftwareupdateEntry                      string = "macos.softwareupdate.entry"
 	ResourceMacosTimemachine                              string = "macos.timemachine"
 	ResourceMacosSystemsetup                              string = "macos.systemsetup"
+	ResourceMacosTcc                                      string = "macos.tcc"
+	ResourceMacosTccEntry                                 string = "macos.tcc.entry"
 	ResourceOpenBSMAudit                                  string = "openBSMAudit"
 	ResourceWindows                                       string = "windows"
 	ResourceWindowsExploitProtection                      string = "windows.exploitProtection"
@@ -2242,6 +2244,14 @@ func init() {
 		"macos.systemsetup": {
 			// to override args, implement: initMacosSystemsetup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMacosSystemsetup,
+		},
+		"macos.tcc": {
+			// to override args, implement: initMacosTcc(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMacosTcc,
+		},
+		"macos.tcc.entry": {
+			// to override args, implement: initMacosTccEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMacosTccEntry,
 		},
 		"openBSMAudit": {
 			Init:   initOpenBSMAudit,
@@ -12018,6 +12028,48 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"macos.systemsetup.disableKeyboardWhenEnclosureLockIsEngaged": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMacosSystemsetup).GetDisableKeyboardWhenEnclosureLockIsEngaged()).ToDataRes(types.String)
+	},
+	"macos.tcc.entries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosTcc).GetEntries()).ToDataRes(types.Array(types.Resource("macos.tcc.entry")))
+	},
+	"macos.tcc.entry.scope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosTccEntry).GetScope()).ToDataRes(types.String)
+	},
+	"macos.tcc.entry.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosTccEntry).GetUser()).ToDataRes(types.Resource("user"))
+	},
+	"macos.tcc.entry.service": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosTccEntry).GetService()).ToDataRes(types.String)
+	},
+	"macos.tcc.entry.serviceName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosTccEntry).GetServiceName()).ToDataRes(types.String)
+	},
+	"macos.tcc.entry.client": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosTccEntry).GetClient()).ToDataRes(types.String)
+	},
+	"macos.tcc.entry.clientType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosTccEntry).GetClientType()).ToDataRes(types.String)
+	},
+	"macos.tcc.entry.authorization": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosTccEntry).GetAuthorization()).ToDataRes(types.String)
+	},
+	"macos.tcc.entry.authorizationValue": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosTccEntry).GetAuthorizationValue()).ToDataRes(types.Int)
+	},
+	"macos.tcc.entry.granted": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosTccEntry).GetGranted()).ToDataRes(types.Bool)
+	},
+	"macos.tcc.entry.authReason": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosTccEntry).GetAuthReason()).ToDataRes(types.String)
+	},
+	"macos.tcc.entry.authReasonValue": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosTccEntry).GetAuthReasonValue()).ToDataRes(types.Int)
+	},
+	"macos.tcc.entry.indirectObjectIdentifier": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosTccEntry).GetIndirectObjectIdentifier()).ToDataRes(types.String)
+	},
+	"macos.tcc.entry.lastModified": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMacosTccEntry).GetLastModified()).ToDataRes(types.Time)
 	},
 	"openBSMAudit.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenBSMAudit).GetPath()).ToDataRes(types.String)
@@ -30768,6 +30820,70 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"macos.systemsetup.disableKeyboardWhenEnclosureLockIsEngaged": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMacosSystemsetup).DisableKeyboardWhenEnclosureLockIsEngaged, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.tcc.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosTcc).__id, ok = v.Value.(string)
+		return
+	},
+	"macos.tcc.entries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosTcc).Entries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"macos.tcc.entry.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosTccEntry).__id, ok = v.Value.(string)
+		return
+	},
+	"macos.tcc.entry.scope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosTccEntry).Scope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.tcc.entry.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosTccEntry).User, ok = plugin.RawToTValue[*mqlUser](v.Value, v.Error)
+		return
+	},
+	"macos.tcc.entry.service": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosTccEntry).Service, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.tcc.entry.serviceName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosTccEntry).ServiceName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.tcc.entry.client": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosTccEntry).Client, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.tcc.entry.clientType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosTccEntry).ClientType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.tcc.entry.authorization": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosTccEntry).Authorization, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.tcc.entry.authorizationValue": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosTccEntry).AuthorizationValue, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"macos.tcc.entry.granted": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosTccEntry).Granted, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"macos.tcc.entry.authReason": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosTccEntry).AuthReason, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.tcc.entry.authReasonValue": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosTccEntry).AuthReasonValue, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"macos.tcc.entry.indirectObjectIdentifier": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosTccEntry).IndirectObjectIdentifier, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"macos.tcc.entry.lastModified": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMacosTccEntry).LastModified, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"openBSMAudit.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -79184,6 +79300,183 @@ func (c *mqlMacosSystemsetup) GetDisableKeyboardWhenEnclosureLockIsEngaged() *pl
 	return plugin.GetOrCompute[string](&c.DisableKeyboardWhenEnclosureLockIsEngaged, func() (string, error) {
 		return c.disableKeyboardWhenEnclosureLockIsEngaged()
 	})
+}
+
+// mqlMacosTcc for the macos.tcc resource
+type mqlMacosTcc struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMacosTccInternal it will be used here
+	Entries plugin.TValue[[]any]
+}
+
+// createMacosTcc creates a new instance of this resource
+func createMacosTcc(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMacosTcc{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("macos.tcc", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMacosTcc) MqlName() string {
+	return "macos.tcc"
+}
+
+func (c *mqlMacosTcc) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMacosTcc) GetEntries() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Entries, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("macos.tcc", c.__id, "entries")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.entries()
+	})
+}
+
+// mqlMacosTccEntry for the macos.tcc.entry resource
+type mqlMacosTccEntry struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMacosTccEntryInternal
+	Scope                    plugin.TValue[string]
+	User                     plugin.TValue[*mqlUser]
+	Service                  plugin.TValue[string]
+	ServiceName              plugin.TValue[string]
+	Client                   plugin.TValue[string]
+	ClientType               plugin.TValue[string]
+	Authorization            plugin.TValue[string]
+	AuthorizationValue       plugin.TValue[int64]
+	Granted                  plugin.TValue[bool]
+	AuthReason               plugin.TValue[string]
+	AuthReasonValue          plugin.TValue[int64]
+	IndirectObjectIdentifier plugin.TValue[string]
+	LastModified             plugin.TValue[*time.Time]
+}
+
+// createMacosTccEntry creates a new instance of this resource
+func createMacosTccEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMacosTccEntry{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("macos.tcc.entry", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMacosTccEntry) MqlName() string {
+	return "macos.tcc.entry"
+}
+
+func (c *mqlMacosTccEntry) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMacosTccEntry) GetScope() *plugin.TValue[string] {
+	return &c.Scope
+}
+
+func (c *mqlMacosTccEntry) GetUser() *plugin.TValue[*mqlUser] {
+	return plugin.GetOrCompute[*mqlUser](&c.User, func() (*mqlUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("macos.tcc.entry", c.__id, "user")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlUser), nil
+			}
+		}
+
+		return c.user()
+	})
+}
+
+func (c *mqlMacosTccEntry) GetService() *plugin.TValue[string] {
+	return &c.Service
+}
+
+func (c *mqlMacosTccEntry) GetServiceName() *plugin.TValue[string] {
+	return &c.ServiceName
+}
+
+func (c *mqlMacosTccEntry) GetClient() *plugin.TValue[string] {
+	return &c.Client
+}
+
+func (c *mqlMacosTccEntry) GetClientType() *plugin.TValue[string] {
+	return &c.ClientType
+}
+
+func (c *mqlMacosTccEntry) GetAuthorization() *plugin.TValue[string] {
+	return &c.Authorization
+}
+
+func (c *mqlMacosTccEntry) GetAuthorizationValue() *plugin.TValue[int64] {
+	return &c.AuthorizationValue
+}
+
+func (c *mqlMacosTccEntry) GetGranted() *plugin.TValue[bool] {
+	return &c.Granted
+}
+
+func (c *mqlMacosTccEntry) GetAuthReason() *plugin.TValue[string] {
+	return &c.AuthReason
+}
+
+func (c *mqlMacosTccEntry) GetAuthReasonValue() *plugin.TValue[int64] {
+	return &c.AuthReasonValue
+}
+
+func (c *mqlMacosTccEntry) GetIndirectObjectIdentifier() *plugin.TValue[string] {
+	return &c.IndirectObjectIdentifier
+}
+
+func (c *mqlMacosTccEntry) GetLastModified() *plugin.TValue[*time.Time] {
+	return &c.LastModified
 }
 
 // mqlOpenBSMAudit for the openBSMAudit resource
