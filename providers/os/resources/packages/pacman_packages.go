@@ -27,6 +27,29 @@ const (
 	// packages installed through helpers like yay or paru register here too,
 	// so they're covered without any extra handling.
 	PacmanLocalDB = "/var/lib/pacman/local"
+
+	// pacmanLocalDBCommand dumps every `desc` record of the local database in
+	// a single command.
+	//
+	// `pacman -Q` prints only "<name> <version>". Arch, description and
+	// license live in the desc records and nowhere in that output, so a host
+	// read through the CLI reported them empty while the same host read
+	// through the filesystem reported them in full. Reading the records is
+	// what makes the two agree.
+	//
+	// `pacman -Qi` carries the same fields but labels them in the caller's
+	// locale ("Architecture" becomes "Architektur" under LANG=de_DE), so its
+	// keys cannot be matched reliably. The desc format is pacman's own
+	// on-disk format and is not translated.
+	//
+	// Each desc file begins with %NAME% and ends with a blank line, so the
+	// concatenation is a well-formed sequence of records.
+	pacmanLocalDBCommand = "find " + PacmanLocalDB + " -maxdepth 2 -name desc -exec cat {} +"
+
+	// pacmanMaxLine caps a single line of a desc record. The values are short,
+	// so this only keeps a corrupt database from growing the buffer without
+	// limit.
+	pacmanMaxLine = 1024 * 1024
 )
 
 // PACMAN_REGEX splits one line of `pacman -Q`, which prints "<name> <version>".
@@ -109,9 +132,20 @@ func (ppm *PacmanPkgManager) Format() string {
 }
 
 func (ppm *PacmanPkgManager) List() ([]Package, error) {
-	// Primary: pacman -Q CLI
 	if ppm.conn.Capabilities().Has(shared.Capability_RunCommand) {
-		cmd, err := ppm.conn.RunCommand("pacman -Q")
+		// Primary: the local database, in one command. It carries every field
+		// `pacman -Q` leaves out.
+		cmd, err := ppm.conn.RunCommand(pacmanLocalDBCommand)
+		if err == nil && cmd.ExitStatus == 0 {
+			if pkgs := ParsePacmanDescStream(ppm.platform, cmd.Stdout); len(pkgs) > 0 {
+				return pkgs, nil
+			}
+			log.Debug().Msg("mql[pacman]> local database named no package, falling back to pacman -Q")
+		}
+
+		// Fallback: pacman -Q. Reached when the database is unreadable or the
+		// image ships no find(1); name and version still answer.
+		cmd, err = ppm.conn.RunCommand("pacman -Q")
 		if err == nil && cmd.ExitStatus == 0 {
 			return ParsePacmanPackages(ppm.platform, cmd.Stdout), nil
 		}
@@ -120,6 +154,49 @@ func (ppm *PacmanPkgManager) List() ([]Package, error) {
 
 	// Fallback: parse /var/lib/pacman/local/*/desc files
 	return ppm.listFromFS()
+}
+
+// ParsePacmanDescStream parses the concatenated `desc` records of pacman's
+// local database, as produced by pacmanLocalDBCommand.
+//
+// A %NAME% header opens a record, so it is what separates one record from the
+// next. Splitting on blank lines would not: a desc record contains blank lines
+// of its own between sections.
+func ParsePacmanDescStream(pf *inventory.Platform, input io.Reader) []Package {
+	pkgs := []Package{}
+
+	scanner := bufio.NewScanner(input)
+	scanner.Buffer(nil, pacmanMaxLine)
+
+	var record []string
+	flush := func() {
+		if len(record) == 0 {
+			return
+		}
+		fields := parsePacmanDescSections(strings.NewReader(strings.Join(record, "\n")))
+		if pkg := packageFromPacmanFields(pf, fields); pkg != nil {
+			pkgs = append(pkgs, *pkg)
+		}
+		record = record[:0]
+	}
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "%NAME%" {
+			flush()
+		}
+		record = append(record, line)
+	}
+	flush()
+
+	if err := scanner.Err(); err != nil {
+		// A read that stopped early leaves the package list short, and a
+		// missing package is a CVE nobody sees. Say so rather than returning
+		// a quietly shorter list.
+		log.Error().Err(err).Msg("mql[pacman]> could not read the local database to its end, the package list is incomplete")
+	}
+
+	return pkgs
 }
 
 func (ppm *PacmanPkgManager) listFromFS() ([]Package, error) {
@@ -166,13 +243,21 @@ func parsePacmanDesc(pf *inventory.Platform, afs *afero.Afero, descPath string) 
 	}
 	defer f.Close()
 
-	fields := parsePacmanDescSections(f)
+	return packageFromPacmanFields(pf, parsePacmanDescSections(f)), nil
+}
 
+// packageFromPacmanFields builds a Package from one parsed desc record. Both
+// readers of the local database go through it, so a package carries the same
+// fields whether the record arrived over a command channel or through the
+// filesystem.
+//
+// Returns nil for a record with no %NAME%, which is not a package.
+func packageFromPacmanFields(pf *inventory.Platform, fields map[string]string) *Package {
 	name := fields["%NAME%"]
-	version := fields["%VERSION%"]
 	if name == "" {
-		return nil, nil
+		return nil
 	}
+	version := fields["%VERSION%"]
 
 	return &Package{
 		Name:        name,
@@ -181,14 +266,12 @@ func parsePacmanDesc(pf *inventory.Platform, afs *afero.Afero, descPath string) 
 		Description: fields["%DESC%"],
 		// Pacman desc files carry %LICENSE% as a multi-line block, one
 		// SPDX identifier per line; parsePacmanDescSections keeps only
-		// the first which is correct for most packages. The fast
-		// `pacman -Q` path doesn't surface license at all; that gap is
-		// expected and gets filled in only when the FS fallback runs.
+		// the first which is correct for most packages.
 		License:        fields["%LICENSE%"],
 		Format:         PacmanPkgFormat,
 		FilesAvailable: PkgFilesAsync,
 		PUrl:           purl.NewPackageURL(pf, purl.TypeAlpm, name, version).String(),
-	}, nil
+	}
 }
 
 // parsePacmanDescSections reads a desc file and returns a map of section key to value.
