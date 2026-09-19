@@ -94,11 +94,16 @@ func initJbossManagement(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 		return nil, nil, management.Error
 	}
 	if management.Data == nil {
-		res, err := newJbossManagement(runtime, nil, "jboss.management")
-		if err != nil {
-			return nil, nil, err
-		}
-		return args, res, nil
+		// newJbossManagement answers (nil, nil) for a nil Management, so
+		// calling it with one handed back a nil *mqlJbossManagement as the
+		// resource. Inside the plugin.Resource interface that pointer is not
+		// == nil, so the caller took it for a resource and dereferenced it
+		// reading its id, panicking the provider and failing the scan.
+		//
+		// A host with no management configuration has no such resource, and
+		// saying so beats a blank one whose every field reads null with
+		// nothing to attribute it to.
+		return nil, nil, errors.New("jboss.management not found: this installation declares no management configuration")
 	}
 	return args, management.Data, nil
 }
