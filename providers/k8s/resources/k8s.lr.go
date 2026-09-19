@@ -58,6 +58,13 @@ const (
 	ResourceK8sEgressNat                                 string = "k8s.egressNat"
 	ResourceK8sNetworkPolicyCoverage                     string = "k8s.networkPolicyCoverage"
 	ResourceK8sCustomresource                            string = "k8s.customresource"
+	ResourceK8sKyverno                                   string = "k8s.kyverno"
+	ResourceK8sKyvernoPolicy                             string = "k8s.kyverno.policy"
+	ResourceK8sKyvernoRule                               string = "k8s.kyverno.rule"
+	ResourceK8sKyvernoPolicyreport                       string = "k8s.kyverno.policyreport"
+	ResourceK8sKyvernoResult                             string = "k8s.kyverno.result"
+	ResourceK8sKyvernoPolicyexception                    string = "k8s.kyverno.policyexception"
+	ResourceK8sKyvernoMapping                            string = "k8s.kyverno.mapping"
 	ResourceK8sPersistentvolume                          string = "k8s.persistentvolume"
 	ResourceK8sRuntimeclass                              string = "k8s.runtimeclass"
 	ResourceK8sVolume                                    string = "k8s.volume"
@@ -270,6 +277,34 @@ func init() {
 		"k8s.customresource": {
 			// to override args, implement: initK8sCustomresource(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createK8sCustomresource,
+		},
+		"k8s.kyverno": {
+			// to override args, implement: initK8sKyverno(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createK8sKyverno,
+		},
+		"k8s.kyverno.policy": {
+			// to override args, implement: initK8sKyvernoPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createK8sKyvernoPolicy,
+		},
+		"k8s.kyverno.rule": {
+			// to override args, implement: initK8sKyvernoRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createK8sKyvernoRule,
+		},
+		"k8s.kyverno.policyreport": {
+			// to override args, implement: initK8sKyvernoPolicyreport(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createK8sKyvernoPolicyreport,
+		},
+		"k8s.kyverno.result": {
+			// to override args, implement: initK8sKyvernoResult(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createK8sKyvernoResult,
+		},
+		"k8s.kyverno.policyexception": {
+			// to override args, implement: initK8sKyvernoPolicyexception(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createK8sKyvernoPolicyexception,
+		},
+		"k8s.kyverno.mapping": {
+			// to override args, implement: initK8sKyvernoMapping(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createK8sKyvernoMapping,
 		},
 		"k8s.persistentvolume": {
 			Init:   initK8sPersistentvolume,
@@ -578,6 +613,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"k8s.customresources": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8s).GetCustomresources()).ToDataRes(types.Array(types.Resource("k8s.customresource")))
+	},
+	"k8s.kyverno": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8s).GetKyverno()).ToDataRes(types.Resource("k8s.kyverno"))
 	},
 	"k8s.validatingWebhookConfigurations": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8s).GetValidatingWebhookConfigurations()).ToDataRes(types.Array(types.Resource("k8s.admission.validatingwebhookconfiguration")))
@@ -2611,10 +2649,10 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlK8sContainer).GetStdinOnce()).ToDataRes(types.Bool)
 	},
 	"k8s.container.env": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlK8sContainer).GetEnv()).ToDataRes(types.Dict)
+		return (r.(*mqlK8sContainer).GetEnv()).ToDataRes(types.Array(types.Dict))
 	},
 	"k8s.container.envFrom": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlK8sContainer).GetEnvFrom()).ToDataRes(types.Dict)
+		return (r.(*mqlK8sContainer).GetEnvFrom()).ToDataRes(types.Array(types.Dict))
 	},
 	"k8s.container.ports": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sContainer).GetPorts()).ToDataRes(types.Array(types.Dict))
@@ -2758,10 +2796,10 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlK8sInitContainer).GetStdinOnce()).ToDataRes(types.Bool)
 	},
 	"k8s.initContainer.env": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlK8sInitContainer).GetEnv()).ToDataRes(types.Dict)
+		return (r.(*mqlK8sInitContainer).GetEnv()).ToDataRes(types.Array(types.Dict))
 	},
 	"k8s.initContainer.envFrom": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlK8sInitContainer).GetEnvFrom()).ToDataRes(types.Dict)
+		return (r.(*mqlK8sInitContainer).GetEnvFrom()).ToDataRes(types.Array(types.Dict))
 	},
 	"k8s.initContainer.ports": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sInitContainer).GetPorts()).ToDataRes(types.Array(types.Dict))
@@ -2863,10 +2901,10 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlK8sEphemeralContainer).GetStdinOnce()).ToDataRes(types.Bool)
 	},
 	"k8s.ephemeralContainer.env": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlK8sEphemeralContainer).GetEnv()).ToDataRes(types.Dict)
+		return (r.(*mqlK8sEphemeralContainer).GetEnv()).ToDataRes(types.Array(types.Dict))
 	},
 	"k8s.ephemeralContainer.envFrom": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlK8sEphemeralContainer).GetEnvFrom()).ToDataRes(types.Dict)
+		return (r.(*mqlK8sEphemeralContainer).GetEnvFrom()).ToDataRes(types.Array(types.Dict))
 	},
 	"k8s.ephemeralContainer.ports": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sEphemeralContainer).GetPorts()).ToDataRes(types.Array(types.Dict))
@@ -3875,6 +3913,378 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"k8s.customresource.context": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sCustomresource).GetContext()).ToDataRes(types.Resource("k8s.context"))
+	},
+	"k8s.kyverno.installed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyverno).GetInstalled()).ToDataRes(types.Bool)
+	},
+	"k8s.kyverno.policyCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyverno).GetPolicyCount()).ToDataRes(types.Int)
+	},
+	"k8s.kyverno.exceptionCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyverno).GetExceptionCount()).ToDataRes(types.Int)
+	},
+	"k8s.kyverno.resultCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyverno).GetResultCount()).ToDataRes(types.Int)
+	},
+	"k8s.kyverno.mirrorPolicyExceptions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyverno).GetMirrorPolicyExceptions()).ToDataRes(types.Bool)
+	},
+	"k8s.kyverno.mirroredExceptionApproval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyverno).GetMirroredExceptionApproval()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.mirroredExceptionAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyverno).GetMirroredExceptionAction()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.failExpiredPolicyExceptions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyverno).GetFailExpiredPolicyExceptions()).ToDataRes(types.Bool)
+	},
+	"k8s.kyverno.reportUnmappedPolicyExceptions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyverno).GetReportUnmappedPolicyExceptions()).ToDataRes(types.Bool)
+	},
+	"k8s.kyverno.reportUnmappedPolicyResults": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyverno).GetReportUnmappedPolicyResults()).ToDataRes(types.Bool)
+	},
+	"k8s.kyverno.policies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyverno).GetPolicies()).ToDataRes(types.Array(types.Resource("k8s.kyverno.policy")))
+	},
+	"k8s.kyverno.rules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyverno).GetRules()).ToDataRes(types.Array(types.Resource("k8s.kyverno.rule")))
+	},
+	"k8s.kyverno.policyReports": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyverno).GetPolicyReports()).ToDataRes(types.Array(types.Resource("k8s.kyverno.policyreport")))
+	},
+	"k8s.kyverno.results": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyverno).GetResults()).ToDataRes(types.Array(types.Resource("k8s.kyverno.result")))
+	},
+	"k8s.kyverno.policyExceptions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyverno).GetPolicyExceptions()).ToDataRes(types.Array(types.Resource("k8s.kyverno.policyexception")))
+	},
+	"k8s.kyverno.mappings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyverno).GetMappings()).ToDataRes(types.Array(types.Resource("k8s.kyverno.mapping")))
+	},
+	"k8s.kyverno.policy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetId()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policy.uid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetUid()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policy.apiVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetApiVersion()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policy.kind": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetKind()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policy.namespace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetNamespace()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policy.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetName()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policy.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetCreated()).ToDataRes(types.Time)
+	},
+	"k8s.kyverno.policy.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"k8s.kyverno.policy.annotations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetAnnotations()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"k8s.kyverno.policy.manifest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetManifest()).ToDataRes(types.Dict)
+	},
+	"k8s.kyverno.policy.title": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetTitle()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policy.category": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetCategory()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policy.severity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetSeverity()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policy.subject": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetSubject()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policy.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetDescription()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policy.background": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetBackground()).ToDataRes(types.Bool)
+	},
+	"k8s.kyverno.policy.validationFailureAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetValidationFailureAction()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policy.ruleCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetRuleCount()).ToDataRes(types.Int)
+	},
+	"k8s.kyverno.policy.rules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetRules()).ToDataRes(types.Array(types.Resource("k8s.kyverno.rule")))
+	},
+	"k8s.kyverno.policy.mappedMondooChecks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicy).GetMappedMondooChecks()).ToDataRes(types.Array(types.Resource("k8s.kyverno.mapping")))
+	},
+	"k8s.kyverno.rule.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoRule).GetId()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.rule.policyId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoRule).GetPolicyId()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.rule.policyApiVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoRule).GetPolicyApiVersion()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.rule.policyKind": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoRule).GetPolicyKind()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.rule.policyNamespace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoRule).GetPolicyNamespace()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.rule.policyName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoRule).GetPolicyName()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.rule.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoRule).GetName()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.rule.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoRule).GetType()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.rule.matchKinds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoRule).GetMatchKinds()).ToDataRes(types.Array(types.String))
+	},
+	"k8s.kyverno.rule.match": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoRule).GetMatch()).ToDataRes(types.Dict)
+	},
+	"k8s.kyverno.rule.exclude": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoRule).GetExclude()).ToDataRes(types.Dict)
+	},
+	"k8s.kyverno.rule.conditions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoRule).GetConditions()).ToDataRes(types.Array(types.Dict))
+	},
+	"k8s.kyverno.rule.manifest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoRule).GetManifest()).ToDataRes(types.Dict)
+	},
+	"k8s.kyverno.rule.mappedMondooChecks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoRule).GetMappedMondooChecks()).ToDataRes(types.Array(types.Resource("k8s.kyverno.mapping")))
+	},
+	"k8s.kyverno.policyreport.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyreport).GetId()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyreport.uid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyreport).GetUid()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyreport.apiVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyreport).GetApiVersion()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyreport.kind": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyreport).GetKind()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyreport.namespace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyreport).GetNamespace()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyreport.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyreport).GetName()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyreport.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyreport).GetCreated()).ToDataRes(types.Time)
+	},
+	"k8s.kyverno.policyreport.scopeKind": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyreport).GetScopeKind()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyreport.scopeNamespace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyreport).GetScopeNamespace()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyreport.scopeName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyreport).GetScopeName()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyreport.scopeUid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyreport).GetScopeUid()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyreport.resultCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyreport).GetResultCount()).ToDataRes(types.Int)
+	},
+	"k8s.kyverno.policyreport.manifest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyreport).GetManifest()).ToDataRes(types.Dict)
+	},
+	"k8s.kyverno.policyreport.results": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyreport).GetResults()).ToDataRes(types.Array(types.Resource("k8s.kyverno.result")))
+	},
+	"k8s.kyverno.result.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetId()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.result.reportId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetReportId()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.result.reportApiVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetReportApiVersion()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.result.reportKind": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetReportKind()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.result.reportNamespace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetReportNamespace()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.result.reportName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetReportName()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.result.scopeKind": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetScopeKind()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.result.scopeNamespace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetScopeNamespace()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.result.scopeName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetScopeName()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.result.scopeUid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetScopeUid()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.result.policy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetPolicy()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.result.rule": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetRule()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.result.category": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetCategory()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.result.severity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetSeverity()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.result.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetSource()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.result.result": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetResult()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.result.scored": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetScored()).ToDataRes(types.Bool)
+	},
+	"k8s.kyverno.result.message": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetMessage()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.result.timestamp": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetTimestamp()).ToDataRes(types.Time)
+	},
+	"k8s.kyverno.result.properties": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetProperties()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"k8s.kyverno.result.mappedMondooCheckUids": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetMappedMondooCheckUids()).ToDataRes(types.Array(types.String))
+	},
+	"k8s.kyverno.result.mappedMondooCheckMrns": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetMappedMondooCheckMrns()).ToDataRes(types.Array(types.String))
+	},
+	"k8s.kyverno.result.mappedPolicyExceptionIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetMappedPolicyExceptionIds()).ToDataRes(types.Array(types.String))
+	},
+	"k8s.kyverno.result.manifest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoResult).GetManifest()).ToDataRes(types.Dict)
+	},
+	"k8s.kyverno.policyexception.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetId()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyexception.uid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetUid()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyexception.apiVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetApiVersion()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyexception.kind": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetKind()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyexception.namespace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetNamespace()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyexception.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetName()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyexception.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetCreated()).ToDataRes(types.Time)
+	},
+	"k8s.kyverno.policyexception.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"k8s.kyverno.policyexception.annotations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetAnnotations()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"k8s.kyverno.policyexception.manifest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetManifest()).ToDataRes(types.Dict)
+	},
+	"k8s.kyverno.policyexception.policyRefs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetPolicyRefs()).ToDataRes(types.Array(types.String))
+	},
+	"k8s.kyverno.policyexception.ruleNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetRuleNames()).ToDataRes(types.Array(types.String))
+	},
+	"k8s.kyverno.policyexception.matchKinds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetMatchKinds()).ToDataRes(types.Array(types.String))
+	},
+	"k8s.kyverno.policyexception.matchNamespaces": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetMatchNamespaces()).ToDataRes(types.Array(types.String))
+	},
+	"k8s.kyverno.policyexception.matchNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetMatchNames()).ToDataRes(types.Array(types.String))
+	},
+	"k8s.kyverno.policyexception.match": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetMatch()).ToDataRes(types.Dict)
+	},
+	"k8s.kyverno.policyexception.validUntil": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetValidUntil()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyexception.validUntilTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetValidUntilTime()).ToDataRes(types.Time)
+	},
+	"k8s.kyverno.policyexception.justification": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetJustification()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyexception.owner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetOwner()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyexception.ticket": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetTicket()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyexception.computedStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetComputedStatus()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.policyexception.statusReasons": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetStatusReasons()).ToDataRes(types.Array(types.String))
+	},
+	"k8s.kyverno.policyexception.mappedMondooCheckUids": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetMappedMondooCheckUids()).ToDataRes(types.Array(types.String))
+	},
+	"k8s.kyverno.policyexception.mappedMondooExceptionIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoPolicyexception).GetMappedMondooExceptionIds()).ToDataRes(types.Array(types.String))
+	},
+	"k8s.kyverno.mapping.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoMapping).GetId()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.mapping.kyvernoKind": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoMapping).GetKyvernoKind()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.mapping.kyvernoNamespace": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoMapping).GetKyvernoNamespace()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.mapping.kyvernoPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoMapping).GetKyvernoPolicy()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.mapping.kyvernoRule": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoMapping).GetKyvernoRule()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.mapping.mondooPolicyUid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoMapping).GetMondooPolicyUid()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.mapping.mondooCheckUid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoMapping).GetMondooCheckUid()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.mapping.mondooCheckMrn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoMapping).GetMondooCheckMrn()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.mapping.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoMapping).GetSource()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.mapping.confidence": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoMapping).GetConfidence()).ToDataRes(types.String)
+	},
+	"k8s.kyverno.mapping.reason": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlK8sKyvernoMapping).GetReason()).ToDataRes(types.String)
 	},
 	"k8s.persistentvolume.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlK8sPersistentvolume).GetId()).ToDataRes(types.String)
@@ -5870,6 +6280,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"k8s.customresources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlK8s).Customresources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8s).Kyverno, ok = plugin.RawToTValue[*mqlK8sKyverno](v.Value, v.Error)
 		return
 	},
 	"k8s.validatingWebhookConfigurations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -8637,11 +9051,11 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		return
 	},
 	"k8s.container.env": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlK8sContainer).Env, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		r.(*mqlK8sContainer).Env, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"k8s.container.envFrom": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlK8sContainer).EnvFrom, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		r.(*mqlK8sContainer).EnvFrom, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"k8s.container.ports": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -8841,11 +9255,11 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		return
 	},
 	"k8s.initContainer.env": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlK8sInitContainer).Env, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		r.(*mqlK8sInitContainer).Env, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"k8s.initContainer.envFrom": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlK8sInitContainer).EnvFrom, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		r.(*mqlK8sInitContainer).EnvFrom, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"k8s.initContainer.ports": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -8985,11 +9399,11 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		return
 	},
 	"k8s.ephemeralContainer.env": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlK8sEphemeralContainer).Env, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		r.(*mqlK8sEphemeralContainer).Env, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"k8s.ephemeralContainer.envFrom": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlK8sEphemeralContainer).EnvFrom, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		r.(*mqlK8sEphemeralContainer).EnvFrom, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"k8s.ephemeralContainer.ports": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -10430,6 +10844,530 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"k8s.customresource.context": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlK8sCustomresource).Context, ok = plugin.RawToTValue[*mqlK8sContext](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyverno).__id, ok = v.Value.(string)
+		return
+	},
+	"k8s.kyverno.installed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyverno).Installed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyverno).PolicyCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.exceptionCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyverno).ExceptionCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.resultCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyverno).ResultCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.mirrorPolicyExceptions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyverno).MirrorPolicyExceptions, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.mirroredExceptionApproval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyverno).MirroredExceptionApproval, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.mirroredExceptionAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyverno).MirroredExceptionAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.failExpiredPolicyExceptions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyverno).FailExpiredPolicyExceptions, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.reportUnmappedPolicyExceptions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyverno).ReportUnmappedPolicyExceptions, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.reportUnmappedPolicyResults": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyverno).ReportUnmappedPolicyResults, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyverno).Policies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.rules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyverno).Rules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyReports": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyverno).PolicyReports, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.results": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyverno).Results, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyExceptions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyverno).PolicyExceptions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.mappings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyverno).Mappings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"k8s.kyverno.policy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.uid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).Uid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.apiVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).ApiVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.kind": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).Kind, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.namespace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).Namespace, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.annotations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).Annotations, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.manifest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).Manifest, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.title": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).Title, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.category": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).Category, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.severity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).Severity, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.subject": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).Subject, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.background": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).Background, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.validationFailureAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).ValidationFailureAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.ruleCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).RuleCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.rules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).Rules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policy.mappedMondooChecks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicy).MappedMondooChecks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.rule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoRule).__id, ok = v.Value.(string)
+		return
+	},
+	"k8s.kyverno.rule.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoRule).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.rule.policyId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoRule).PolicyId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.rule.policyApiVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoRule).PolicyApiVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.rule.policyKind": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoRule).PolicyKind, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.rule.policyNamespace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoRule).PolicyNamespace, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.rule.policyName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoRule).PolicyName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.rule.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoRule).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.rule.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoRule).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.rule.matchKinds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoRule).MatchKinds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.rule.match": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoRule).Match, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.rule.exclude": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoRule).Exclude, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.rule.conditions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoRule).Conditions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.rule.manifest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoRule).Manifest, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.rule.mappedMondooChecks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoRule).MappedMondooChecks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyreport.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyreport).__id, ok = v.Value.(string)
+		return
+	},
+	"k8s.kyverno.policyreport.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyreport).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyreport.uid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyreport).Uid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyreport.apiVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyreport).ApiVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyreport.kind": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyreport).Kind, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyreport.namespace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyreport).Namespace, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyreport.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyreport).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyreport.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyreport).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyreport.scopeKind": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyreport).ScopeKind, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyreport.scopeNamespace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyreport).ScopeNamespace, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyreport.scopeName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyreport).ScopeName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyreport.scopeUid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyreport).ScopeUid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyreport.resultCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyreport).ResultCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyreport.manifest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyreport).Manifest, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyreport.results": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyreport).Results, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).__id, ok = v.Value.(string)
+		return
+	},
+	"k8s.kyverno.result.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.reportId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).ReportId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.reportApiVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).ReportApiVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.reportKind": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).ReportKind, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.reportNamespace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).ReportNamespace, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.reportName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).ReportName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.scopeKind": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).ScopeKind, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.scopeNamespace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).ScopeNamespace, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.scopeName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).ScopeName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.scopeUid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).ScopeUid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.policy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).Policy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.rule": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).Rule, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.category": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).Category, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.severity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).Severity, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.result": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).Result, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.scored": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).Scored, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.message": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).Message, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.timestamp": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).Timestamp, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.properties": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).Properties, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.mappedMondooCheckUids": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).MappedMondooCheckUids, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.mappedMondooCheckMrns": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).MappedMondooCheckMrns, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.mappedPolicyExceptionIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).MappedPolicyExceptionIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.result.manifest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoResult).Manifest, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).__id, ok = v.Value.(string)
+		return
+	},
+	"k8s.kyverno.policyexception.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.uid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).Uid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.apiVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).ApiVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.kind": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).Kind, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.namespace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).Namespace, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.annotations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).Annotations, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.manifest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).Manifest, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.policyRefs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).PolicyRefs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.ruleNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).RuleNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.matchKinds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).MatchKinds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.matchNamespaces": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).MatchNamespaces, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.matchNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).MatchNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.match": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).Match, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.validUntil": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).ValidUntil, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.validUntilTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).ValidUntilTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.justification": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).Justification, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.owner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).Owner, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.ticket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).Ticket, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.computedStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).ComputedStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.statusReasons": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).StatusReasons, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.mappedMondooCheckUids": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).MappedMondooCheckUids, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.policyexception.mappedMondooExceptionIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoPolicyexception).MappedMondooExceptionIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.mapping.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoMapping).__id, ok = v.Value.(string)
+		return
+	},
+	"k8s.kyverno.mapping.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoMapping).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.mapping.kyvernoKind": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoMapping).KyvernoKind, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.mapping.kyvernoNamespace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoMapping).KyvernoNamespace, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.mapping.kyvernoPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoMapping).KyvernoPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.mapping.kyvernoRule": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoMapping).KyvernoRule, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.mapping.mondooPolicyUid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoMapping).MondooPolicyUid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.mapping.mondooCheckUid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoMapping).MondooCheckUid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.mapping.mondooCheckMrn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoMapping).MondooCheckMrn, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.mapping.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoMapping).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.mapping.confidence": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoMapping).Confidence, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"k8s.kyverno.mapping.reason": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlK8sKyvernoMapping).Reason, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"k8s.persistentvolume.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -13140,6 +14078,7 @@ type mqlK8s struct {
 	EgressNats                        plugin.TValue[[]any]
 	NetworkPolicyCoverages            plugin.TValue[[]any]
 	Customresources                   plugin.TValue[[]any]
+	Kyverno                           plugin.TValue[*mqlK8sKyverno]
 	ValidatingWebhookConfigurations   plugin.TValue[[]any]
 	Apps                              plugin.TValue[[]any]
 	PersistentVolumes                 plugin.TValue[[]any]
@@ -13624,6 +14563,22 @@ func (c *mqlK8s) GetCustomresources() *plugin.TValue[[]any] {
 		}
 
 		return c.customresources()
+	})
+}
+
+func (c *mqlK8s) GetKyverno() *plugin.TValue[*mqlK8sKyverno] {
+	return plugin.GetOrCompute[*mqlK8sKyverno](&c.Kyverno, func() (*mqlK8sKyverno, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("k8s", c.__id, "kyverno")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlK8sKyverno), nil
+			}
+		}
+
+		return c.kyverno()
 	})
 }
 
@@ -19827,8 +20782,8 @@ type mqlK8sContainer struct {
 	Tty                      plugin.TValue[bool]
 	Stdin                    plugin.TValue[bool]
 	StdinOnce                plugin.TValue[bool]
-	Env                      plugin.TValue[any]
-	EnvFrom                  plugin.TValue[any]
+	Env                      plugin.TValue[[]any]
+	EnvFrom                  plugin.TValue[[]any]
 	Ports                    plugin.TValue[[]any]
 	Lifecycle                plugin.TValue[any]
 	TerminationMessagePath   plugin.TValue[string]
@@ -20010,11 +20965,11 @@ func (c *mqlK8sContainer) GetStdinOnce() *plugin.TValue[bool] {
 	return &c.StdinOnce
 }
 
-func (c *mqlK8sContainer) GetEnv() *plugin.TValue[any] {
+func (c *mqlK8sContainer) GetEnv() *plugin.TValue[[]any] {
 	return &c.Env
 }
 
-func (c *mqlK8sContainer) GetEnvFrom() *plugin.TValue[any] {
+func (c *mqlK8sContainer) GetEnvFrom() *plugin.TValue[[]any] {
 	return &c.EnvFrom
 }
 
@@ -20167,8 +21122,8 @@ type mqlK8sInitContainer struct {
 	Tty                      plugin.TValue[bool]
 	Stdin                    plugin.TValue[bool]
 	StdinOnce                plugin.TValue[bool]
-	Env                      plugin.TValue[any]
-	EnvFrom                  plugin.TValue[any]
+	Env                      plugin.TValue[[]any]
+	EnvFrom                  plugin.TValue[[]any]
 	Ports                    plugin.TValue[[]any]
 	Lifecycle                plugin.TValue[any]
 	TerminationMessagePath   plugin.TValue[string]
@@ -20350,11 +21305,11 @@ func (c *mqlK8sInitContainer) GetStdinOnce() *plugin.TValue[bool] {
 	return &c.StdinOnce
 }
 
-func (c *mqlK8sInitContainer) GetEnv() *plugin.TValue[any] {
+func (c *mqlK8sInitContainer) GetEnv() *plugin.TValue[[]any] {
 	return &c.Env
 }
 
-func (c *mqlK8sInitContainer) GetEnvFrom() *plugin.TValue[any] {
+func (c *mqlK8sInitContainer) GetEnvFrom() *plugin.TValue[[]any] {
 	return &c.EnvFrom
 }
 
@@ -20414,8 +21369,8 @@ type mqlK8sEphemeralContainer struct {
 	Tty                      plugin.TValue[bool]
 	Stdin                    plugin.TValue[bool]
 	StdinOnce                plugin.TValue[bool]
-	Env                      plugin.TValue[any]
-	EnvFrom                  plugin.TValue[any]
+	Env                      plugin.TValue[[]any]
+	EnvFrom                  plugin.TValue[[]any]
 	Ports                    plugin.TValue[[]any]
 	TerminationMessagePath   plugin.TValue[string]
 	TerminationMessagePolicy plugin.TValue[string]
@@ -20578,11 +21533,11 @@ func (c *mqlK8sEphemeralContainer) GetStdinOnce() *plugin.TValue[bool] {
 	return &c.StdinOnce
 }
 
-func (c *mqlK8sEphemeralContainer) GetEnv() *plugin.TValue[any] {
+func (c *mqlK8sEphemeralContainer) GetEnv() *plugin.TValue[[]any] {
 	return &c.Env
 }
 
-func (c *mqlK8sEphemeralContainer) GetEnvFrom() *plugin.TValue[any] {
+func (c *mqlK8sEphemeralContainer) GetEnvFrom() *plugin.TValue[[]any] {
 	return &c.EnvFrom
 }
 
@@ -24230,6 +25185,1121 @@ func (c *mqlK8sCustomresource) GetContext() *plugin.TValue[*mqlK8sContext] {
 
 		return c.context()
 	})
+}
+
+// mqlK8sKyverno for the k8s.kyverno resource
+type mqlK8sKyverno struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlK8sKyvernoInternal
+	Installed                      plugin.TValue[bool]
+	PolicyCount                    plugin.TValue[int64]
+	ExceptionCount                 plugin.TValue[int64]
+	ResultCount                    plugin.TValue[int64]
+	MirrorPolicyExceptions         plugin.TValue[bool]
+	MirroredExceptionApproval      plugin.TValue[string]
+	MirroredExceptionAction        plugin.TValue[string]
+	FailExpiredPolicyExceptions    plugin.TValue[bool]
+	ReportUnmappedPolicyExceptions plugin.TValue[bool]
+	ReportUnmappedPolicyResults    plugin.TValue[bool]
+	Policies                       plugin.TValue[[]any]
+	Rules                          plugin.TValue[[]any]
+	PolicyReports                  plugin.TValue[[]any]
+	Results                        plugin.TValue[[]any]
+	PolicyExceptions               plugin.TValue[[]any]
+	Mappings                       plugin.TValue[[]any]
+}
+
+// createK8sKyverno creates a new instance of this resource
+func createK8sKyverno(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlK8sKyverno{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("k8s.kyverno", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlK8sKyverno) MqlName() string {
+	return "k8s.kyverno"
+}
+
+func (c *mqlK8sKyverno) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlK8sKyverno) GetInstalled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Installed, func() (bool, error) {
+		return c.installed()
+	})
+}
+
+func (c *mqlK8sKyverno) GetPolicyCount() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.PolicyCount, func() (int64, error) {
+		return c.policyCount()
+	})
+}
+
+func (c *mqlK8sKyverno) GetExceptionCount() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ExceptionCount, func() (int64, error) {
+		return c.exceptionCount()
+	})
+}
+
+func (c *mqlK8sKyverno) GetResultCount() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ResultCount, func() (int64, error) {
+		return c.resultCount()
+	})
+}
+
+func (c *mqlK8sKyverno) GetMirrorPolicyExceptions() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.MirrorPolicyExceptions, func() (bool, error) {
+		return c.mirrorPolicyExceptions()
+	})
+}
+
+func (c *mqlK8sKyverno) GetMirroredExceptionApproval() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.MirroredExceptionApproval, func() (string, error) {
+		return c.mirroredExceptionApproval()
+	})
+}
+
+func (c *mqlK8sKyverno) GetMirroredExceptionAction() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.MirroredExceptionAction, func() (string, error) {
+		return c.mirroredExceptionAction()
+	})
+}
+
+func (c *mqlK8sKyverno) GetFailExpiredPolicyExceptions() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.FailExpiredPolicyExceptions, func() (bool, error) {
+		return c.failExpiredPolicyExceptions()
+	})
+}
+
+func (c *mqlK8sKyverno) GetReportUnmappedPolicyExceptions() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ReportUnmappedPolicyExceptions, func() (bool, error) {
+		return c.reportUnmappedPolicyExceptions()
+	})
+}
+
+func (c *mqlK8sKyverno) GetReportUnmappedPolicyResults() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ReportUnmappedPolicyResults, func() (bool, error) {
+		return c.reportUnmappedPolicyResults()
+	})
+}
+
+func (c *mqlK8sKyverno) GetPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Policies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("k8s.kyverno", c.__id, "policies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.policies()
+	})
+}
+
+func (c *mqlK8sKyverno) GetRules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Rules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("k8s.kyverno", c.__id, "rules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.rules()
+	})
+}
+
+func (c *mqlK8sKyverno) GetPolicyReports() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PolicyReports, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("k8s.kyverno", c.__id, "policyReports")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.policyReports()
+	})
+}
+
+func (c *mqlK8sKyverno) GetResults() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Results, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("k8s.kyverno", c.__id, "results")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.results()
+	})
+}
+
+func (c *mqlK8sKyverno) GetPolicyExceptions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PolicyExceptions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("k8s.kyverno", c.__id, "policyExceptions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.policyExceptions()
+	})
+}
+
+func (c *mqlK8sKyverno) GetMappings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Mappings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("k8s.kyverno", c.__id, "mappings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.mappings()
+	})
+}
+
+// mqlK8sKyvernoPolicy for the k8s.kyverno.policy resource
+type mqlK8sKyvernoPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlK8sKyvernoPolicyInternal
+	Id                      plugin.TValue[string]
+	Uid                     plugin.TValue[string]
+	ApiVersion              plugin.TValue[string]
+	Kind                    plugin.TValue[string]
+	Namespace               plugin.TValue[string]
+	Name                    plugin.TValue[string]
+	Created                 plugin.TValue[*time.Time]
+	Labels                  plugin.TValue[map[string]any]
+	Annotations             plugin.TValue[map[string]any]
+	Manifest                plugin.TValue[any]
+	Title                   plugin.TValue[string]
+	Category                plugin.TValue[string]
+	Severity                plugin.TValue[string]
+	Subject                 plugin.TValue[string]
+	Description             plugin.TValue[string]
+	Background              plugin.TValue[bool]
+	ValidationFailureAction plugin.TValue[string]
+	RuleCount               plugin.TValue[int64]
+	Rules                   plugin.TValue[[]any]
+	MappedMondooChecks      plugin.TValue[[]any]
+}
+
+// createK8sKyvernoPolicy creates a new instance of this resource
+func createK8sKyvernoPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlK8sKyvernoPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("k8s.kyverno.policy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlK8sKyvernoPolicy) MqlName() string {
+	return "k8s.kyverno.policy"
+}
+
+func (c *mqlK8sKyvernoPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlK8sKyvernoPolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlK8sKyvernoPolicy) GetUid() *plugin.TValue[string] {
+	return &c.Uid
+}
+
+func (c *mqlK8sKyvernoPolicy) GetApiVersion() *plugin.TValue[string] {
+	return &c.ApiVersion
+}
+
+func (c *mqlK8sKyvernoPolicy) GetKind() *plugin.TValue[string] {
+	return &c.Kind
+}
+
+func (c *mqlK8sKyvernoPolicy) GetNamespace() *plugin.TValue[string] {
+	return &c.Namespace
+}
+
+func (c *mqlK8sKyvernoPolicy) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlK8sKyvernoPolicy) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlK8sKyvernoPolicy) GetLabels() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Labels, func() (map[string]any, error) {
+		return c.labels()
+	})
+}
+
+func (c *mqlK8sKyvernoPolicy) GetAnnotations() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Annotations, func() (map[string]any, error) {
+		return c.annotations()
+	})
+}
+
+func (c *mqlK8sKyvernoPolicy) GetManifest() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Manifest, func() (any, error) {
+		return c.manifest()
+	})
+}
+
+func (c *mqlK8sKyvernoPolicy) GetTitle() *plugin.TValue[string] {
+	return &c.Title
+}
+
+func (c *mqlK8sKyvernoPolicy) GetCategory() *plugin.TValue[string] {
+	return &c.Category
+}
+
+func (c *mqlK8sKyvernoPolicy) GetSeverity() *plugin.TValue[string] {
+	return &c.Severity
+}
+
+func (c *mqlK8sKyvernoPolicy) GetSubject() *plugin.TValue[string] {
+	return &c.Subject
+}
+
+func (c *mqlK8sKyvernoPolicy) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlK8sKyvernoPolicy) GetBackground() *plugin.TValue[bool] {
+	return &c.Background
+}
+
+func (c *mqlK8sKyvernoPolicy) GetValidationFailureAction() *plugin.TValue[string] {
+	return &c.ValidationFailureAction
+}
+
+func (c *mqlK8sKyvernoPolicy) GetRuleCount() *plugin.TValue[int64] {
+	return &c.RuleCount
+}
+
+func (c *mqlK8sKyvernoPolicy) GetRules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Rules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("k8s.kyverno.policy", c.__id, "rules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.rules()
+	})
+}
+
+func (c *mqlK8sKyvernoPolicy) GetMappedMondooChecks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MappedMondooChecks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("k8s.kyverno.policy", c.__id, "mappedMondooChecks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.mappedMondooChecks()
+	})
+}
+
+// mqlK8sKyvernoRule for the k8s.kyverno.rule resource
+type mqlK8sKyvernoRule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlK8sKyvernoRuleInternal
+	Id                 plugin.TValue[string]
+	PolicyId           plugin.TValue[string]
+	PolicyApiVersion   plugin.TValue[string]
+	PolicyKind         plugin.TValue[string]
+	PolicyNamespace    plugin.TValue[string]
+	PolicyName         plugin.TValue[string]
+	Name               plugin.TValue[string]
+	Type               plugin.TValue[string]
+	MatchKinds         plugin.TValue[[]any]
+	Match              plugin.TValue[any]
+	Exclude            plugin.TValue[any]
+	Conditions         plugin.TValue[[]any]
+	Manifest           plugin.TValue[any]
+	MappedMondooChecks plugin.TValue[[]any]
+}
+
+// createK8sKyvernoRule creates a new instance of this resource
+func createK8sKyvernoRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlK8sKyvernoRule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("k8s.kyverno.rule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlK8sKyvernoRule) MqlName() string {
+	return "k8s.kyverno.rule"
+}
+
+func (c *mqlK8sKyvernoRule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlK8sKyvernoRule) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlK8sKyvernoRule) GetPolicyId() *plugin.TValue[string] {
+	return &c.PolicyId
+}
+
+func (c *mqlK8sKyvernoRule) GetPolicyApiVersion() *plugin.TValue[string] {
+	return &c.PolicyApiVersion
+}
+
+func (c *mqlK8sKyvernoRule) GetPolicyKind() *plugin.TValue[string] {
+	return &c.PolicyKind
+}
+
+func (c *mqlK8sKyvernoRule) GetPolicyNamespace() *plugin.TValue[string] {
+	return &c.PolicyNamespace
+}
+
+func (c *mqlK8sKyvernoRule) GetPolicyName() *plugin.TValue[string] {
+	return &c.PolicyName
+}
+
+func (c *mqlK8sKyvernoRule) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlK8sKyvernoRule) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlK8sKyvernoRule) GetMatchKinds() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MatchKinds, func() ([]any, error) {
+		return c.matchKinds()
+	})
+}
+
+func (c *mqlK8sKyvernoRule) GetMatch() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Match, func() (any, error) {
+		return c.match()
+	})
+}
+
+func (c *mqlK8sKyvernoRule) GetExclude() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Exclude, func() (any, error) {
+		return c.exclude()
+	})
+}
+
+func (c *mqlK8sKyvernoRule) GetConditions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Conditions, func() ([]any, error) {
+		return c.conditions()
+	})
+}
+
+func (c *mqlK8sKyvernoRule) GetManifest() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Manifest, func() (any, error) {
+		return c.manifest()
+	})
+}
+
+func (c *mqlK8sKyvernoRule) GetMappedMondooChecks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MappedMondooChecks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("k8s.kyverno.rule", c.__id, "mappedMondooChecks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.mappedMondooChecks()
+	})
+}
+
+// mqlK8sKyvernoPolicyreport for the k8s.kyverno.policyreport resource
+type mqlK8sKyvernoPolicyreport struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlK8sKyvernoPolicyreportInternal
+	Id             plugin.TValue[string]
+	Uid            plugin.TValue[string]
+	ApiVersion     plugin.TValue[string]
+	Kind           plugin.TValue[string]
+	Namespace      plugin.TValue[string]
+	Name           plugin.TValue[string]
+	Created        plugin.TValue[*time.Time]
+	ScopeKind      plugin.TValue[string]
+	ScopeNamespace plugin.TValue[string]
+	ScopeName      plugin.TValue[string]
+	ScopeUid       plugin.TValue[string]
+	ResultCount    plugin.TValue[int64]
+	Manifest       plugin.TValue[any]
+	Results        plugin.TValue[[]any]
+}
+
+// createK8sKyvernoPolicyreport creates a new instance of this resource
+func createK8sKyvernoPolicyreport(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlK8sKyvernoPolicyreport{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("k8s.kyverno.policyreport", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlK8sKyvernoPolicyreport) MqlName() string {
+	return "k8s.kyverno.policyreport"
+}
+
+func (c *mqlK8sKyvernoPolicyreport) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlK8sKyvernoPolicyreport) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlK8sKyvernoPolicyreport) GetUid() *plugin.TValue[string] {
+	return &c.Uid
+}
+
+func (c *mqlK8sKyvernoPolicyreport) GetApiVersion() *plugin.TValue[string] {
+	return &c.ApiVersion
+}
+
+func (c *mqlK8sKyvernoPolicyreport) GetKind() *plugin.TValue[string] {
+	return &c.Kind
+}
+
+func (c *mqlK8sKyvernoPolicyreport) GetNamespace() *plugin.TValue[string] {
+	return &c.Namespace
+}
+
+func (c *mqlK8sKyvernoPolicyreport) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlK8sKyvernoPolicyreport) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlK8sKyvernoPolicyreport) GetScopeKind() *plugin.TValue[string] {
+	return &c.ScopeKind
+}
+
+func (c *mqlK8sKyvernoPolicyreport) GetScopeNamespace() *plugin.TValue[string] {
+	return &c.ScopeNamespace
+}
+
+func (c *mqlK8sKyvernoPolicyreport) GetScopeName() *plugin.TValue[string] {
+	return &c.ScopeName
+}
+
+func (c *mqlK8sKyvernoPolicyreport) GetScopeUid() *plugin.TValue[string] {
+	return &c.ScopeUid
+}
+
+func (c *mqlK8sKyvernoPolicyreport) GetResultCount() *plugin.TValue[int64] {
+	return &c.ResultCount
+}
+
+func (c *mqlK8sKyvernoPolicyreport) GetManifest() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Manifest, func() (any, error) {
+		return c.manifest()
+	})
+}
+
+func (c *mqlK8sKyvernoPolicyreport) GetResults() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Results, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("k8s.kyverno.policyreport", c.__id, "results")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.results()
+	})
+}
+
+// mqlK8sKyvernoResult for the k8s.kyverno.result resource
+type mqlK8sKyvernoResult struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlK8sKyvernoResultInternal
+	Id                       plugin.TValue[string]
+	ReportId                 plugin.TValue[string]
+	ReportApiVersion         plugin.TValue[string]
+	ReportKind               plugin.TValue[string]
+	ReportNamespace          plugin.TValue[string]
+	ReportName               plugin.TValue[string]
+	ScopeKind                plugin.TValue[string]
+	ScopeNamespace           plugin.TValue[string]
+	ScopeName                plugin.TValue[string]
+	ScopeUid                 plugin.TValue[string]
+	Policy                   plugin.TValue[string]
+	Rule                     plugin.TValue[string]
+	Category                 plugin.TValue[string]
+	Severity                 plugin.TValue[string]
+	Source                   plugin.TValue[string]
+	Result                   plugin.TValue[string]
+	Scored                   plugin.TValue[bool]
+	Message                  plugin.TValue[string]
+	Timestamp                plugin.TValue[*time.Time]
+	Properties               plugin.TValue[map[string]any]
+	MappedMondooCheckUids    plugin.TValue[[]any]
+	MappedMondooCheckMrns    plugin.TValue[[]any]
+	MappedPolicyExceptionIds plugin.TValue[[]any]
+	Manifest                 plugin.TValue[any]
+}
+
+// createK8sKyvernoResult creates a new instance of this resource
+func createK8sKyvernoResult(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlK8sKyvernoResult{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("k8s.kyverno.result", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlK8sKyvernoResult) MqlName() string {
+	return "k8s.kyverno.result"
+}
+
+func (c *mqlK8sKyvernoResult) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlK8sKyvernoResult) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlK8sKyvernoResult) GetReportId() *plugin.TValue[string] {
+	return &c.ReportId
+}
+
+func (c *mqlK8sKyvernoResult) GetReportApiVersion() *plugin.TValue[string] {
+	return &c.ReportApiVersion
+}
+
+func (c *mqlK8sKyvernoResult) GetReportKind() *plugin.TValue[string] {
+	return &c.ReportKind
+}
+
+func (c *mqlK8sKyvernoResult) GetReportNamespace() *plugin.TValue[string] {
+	return &c.ReportNamespace
+}
+
+func (c *mqlK8sKyvernoResult) GetReportName() *plugin.TValue[string] {
+	return &c.ReportName
+}
+
+func (c *mqlK8sKyvernoResult) GetScopeKind() *plugin.TValue[string] {
+	return &c.ScopeKind
+}
+
+func (c *mqlK8sKyvernoResult) GetScopeNamespace() *plugin.TValue[string] {
+	return &c.ScopeNamespace
+}
+
+func (c *mqlK8sKyvernoResult) GetScopeName() *plugin.TValue[string] {
+	return &c.ScopeName
+}
+
+func (c *mqlK8sKyvernoResult) GetScopeUid() *plugin.TValue[string] {
+	return &c.ScopeUid
+}
+
+func (c *mqlK8sKyvernoResult) GetPolicy() *plugin.TValue[string] {
+	return &c.Policy
+}
+
+func (c *mqlK8sKyvernoResult) GetRule() *plugin.TValue[string] {
+	return &c.Rule
+}
+
+func (c *mqlK8sKyvernoResult) GetCategory() *plugin.TValue[string] {
+	return &c.Category
+}
+
+func (c *mqlK8sKyvernoResult) GetSeverity() *plugin.TValue[string] {
+	return &c.Severity
+}
+
+func (c *mqlK8sKyvernoResult) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlK8sKyvernoResult) GetResult() *plugin.TValue[string] {
+	return &c.Result
+}
+
+func (c *mqlK8sKyvernoResult) GetScored() *plugin.TValue[bool] {
+	return &c.Scored
+}
+
+func (c *mqlK8sKyvernoResult) GetMessage() *plugin.TValue[string] {
+	return &c.Message
+}
+
+func (c *mqlK8sKyvernoResult) GetTimestamp() *plugin.TValue[*time.Time] {
+	return &c.Timestamp
+}
+
+func (c *mqlK8sKyvernoResult) GetProperties() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Properties, func() (map[string]any, error) {
+		return c.properties()
+	})
+}
+
+func (c *mqlK8sKyvernoResult) GetMappedMondooCheckUids() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MappedMondooCheckUids, func() ([]any, error) {
+		return c.mappedMondooCheckUids()
+	})
+}
+
+func (c *mqlK8sKyvernoResult) GetMappedMondooCheckMrns() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MappedMondooCheckMrns, func() ([]any, error) {
+		return c.mappedMondooCheckMrns()
+	})
+}
+
+func (c *mqlK8sKyvernoResult) GetMappedPolicyExceptionIds() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MappedPolicyExceptionIds, func() ([]any, error) {
+		return c.mappedPolicyExceptionIds()
+	})
+}
+
+func (c *mqlK8sKyvernoResult) GetManifest() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Manifest, func() (any, error) {
+		return c.manifest()
+	})
+}
+
+// mqlK8sKyvernoPolicyexception for the k8s.kyverno.policyexception resource
+type mqlK8sKyvernoPolicyexception struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlK8sKyvernoPolicyexceptionInternal
+	Id                       plugin.TValue[string]
+	Uid                      plugin.TValue[string]
+	ApiVersion               plugin.TValue[string]
+	Kind                     plugin.TValue[string]
+	Namespace                plugin.TValue[string]
+	Name                     plugin.TValue[string]
+	Created                  plugin.TValue[*time.Time]
+	Labels                   plugin.TValue[map[string]any]
+	Annotations              plugin.TValue[map[string]any]
+	Manifest                 plugin.TValue[any]
+	PolicyRefs               plugin.TValue[[]any]
+	RuleNames                plugin.TValue[[]any]
+	MatchKinds               plugin.TValue[[]any]
+	MatchNamespaces          plugin.TValue[[]any]
+	MatchNames               plugin.TValue[[]any]
+	Match                    plugin.TValue[any]
+	ValidUntil               plugin.TValue[string]
+	ValidUntilTime           plugin.TValue[*time.Time]
+	Justification            plugin.TValue[string]
+	Owner                    plugin.TValue[string]
+	Ticket                   plugin.TValue[string]
+	ComputedStatus           plugin.TValue[string]
+	StatusReasons            plugin.TValue[[]any]
+	MappedMondooCheckUids    plugin.TValue[[]any]
+	MappedMondooExceptionIds plugin.TValue[[]any]
+}
+
+// createK8sKyvernoPolicyexception creates a new instance of this resource
+func createK8sKyvernoPolicyexception(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlK8sKyvernoPolicyexception{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("k8s.kyverno.policyexception", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlK8sKyvernoPolicyexception) MqlName() string {
+	return "k8s.kyverno.policyexception"
+}
+
+func (c *mqlK8sKyvernoPolicyexception) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetUid() *plugin.TValue[string] {
+	return &c.Uid
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetApiVersion() *plugin.TValue[string] {
+	return &c.ApiVersion
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetKind() *plugin.TValue[string] {
+	return &c.Kind
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetNamespace() *plugin.TValue[string] {
+	return &c.Namespace
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetLabels() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Labels, func() (map[string]any, error) {
+		return c.labels()
+	})
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetAnnotations() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Annotations, func() (map[string]any, error) {
+		return c.annotations()
+	})
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetManifest() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Manifest, func() (any, error) {
+		return c.manifest()
+	})
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetPolicyRefs() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.PolicyRefs, func() ([]any, error) {
+		return c.policyRefs()
+	})
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetRuleNames() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RuleNames, func() ([]any, error) {
+		return c.ruleNames()
+	})
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetMatchKinds() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MatchKinds, func() ([]any, error) {
+		return c.matchKinds()
+	})
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetMatchNamespaces() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MatchNamespaces, func() ([]any, error) {
+		return c.matchNamespaces()
+	})
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetMatchNames() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MatchNames, func() ([]any, error) {
+		return c.matchNames()
+	})
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetMatch() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Match, func() (any, error) {
+		return c.match()
+	})
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetValidUntil() *plugin.TValue[string] {
+	return &c.ValidUntil
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetValidUntilTime() *plugin.TValue[*time.Time] {
+	return &c.ValidUntilTime
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetJustification() *plugin.TValue[string] {
+	return &c.Justification
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetOwner() *plugin.TValue[string] {
+	return &c.Owner
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetTicket() *plugin.TValue[string] {
+	return &c.Ticket
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetComputedStatus() *plugin.TValue[string] {
+	return &c.ComputedStatus
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetStatusReasons() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.StatusReasons, func() ([]any, error) {
+		return c.statusReasons()
+	})
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetMappedMondooCheckUids() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MappedMondooCheckUids, func() ([]any, error) {
+		return c.mappedMondooCheckUids()
+	})
+}
+
+func (c *mqlK8sKyvernoPolicyexception) GetMappedMondooExceptionIds() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MappedMondooExceptionIds, func() ([]any, error) {
+		return c.mappedMondooExceptionIds()
+	})
+}
+
+// mqlK8sKyvernoMapping for the k8s.kyverno.mapping resource
+type mqlK8sKyvernoMapping struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlK8sKyvernoMappingInternal
+	Id               plugin.TValue[string]
+	KyvernoKind      plugin.TValue[string]
+	KyvernoNamespace plugin.TValue[string]
+	KyvernoPolicy    plugin.TValue[string]
+	KyvernoRule      plugin.TValue[string]
+	MondooPolicyUid  plugin.TValue[string]
+	MondooCheckUid   plugin.TValue[string]
+	MondooCheckMrn   plugin.TValue[string]
+	Source           plugin.TValue[string]
+	Confidence       plugin.TValue[string]
+	Reason           plugin.TValue[string]
+}
+
+// createK8sKyvernoMapping creates a new instance of this resource
+func createK8sKyvernoMapping(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlK8sKyvernoMapping{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("k8s.kyverno.mapping", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlK8sKyvernoMapping) MqlName() string {
+	return "k8s.kyverno.mapping"
+}
+
+func (c *mqlK8sKyvernoMapping) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlK8sKyvernoMapping) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlK8sKyvernoMapping) GetKyvernoKind() *plugin.TValue[string] {
+	return &c.KyvernoKind
+}
+
+func (c *mqlK8sKyvernoMapping) GetKyvernoNamespace() *plugin.TValue[string] {
+	return &c.KyvernoNamespace
+}
+
+func (c *mqlK8sKyvernoMapping) GetKyvernoPolicy() *plugin.TValue[string] {
+	return &c.KyvernoPolicy
+}
+
+func (c *mqlK8sKyvernoMapping) GetKyvernoRule() *plugin.TValue[string] {
+	return &c.KyvernoRule
+}
+
+func (c *mqlK8sKyvernoMapping) GetMondooPolicyUid() *plugin.TValue[string] {
+	return &c.MondooPolicyUid
+}
+
+func (c *mqlK8sKyvernoMapping) GetMondooCheckUid() *plugin.TValue[string] {
+	return &c.MondooCheckUid
+}
+
+func (c *mqlK8sKyvernoMapping) GetMondooCheckMrn() *plugin.TValue[string] {
+	return &c.MondooCheckMrn
+}
+
+func (c *mqlK8sKyvernoMapping) GetSource() *plugin.TValue[string] {
+	return &c.Source
+}
+
+func (c *mqlK8sKyvernoMapping) GetConfidence() *plugin.TValue[string] {
+	return &c.Confidence
+}
+
+func (c *mqlK8sKyvernoMapping) GetReason() *plugin.TValue[string] {
+	return &c.Reason
 }
 
 // mqlK8sPersistentvolume for the k8s.persistentvolume resource
