@@ -248,3 +248,49 @@ func TestParsePacmanDescStreamEdgeCases(t *testing.T) {
 		assert.Equal(t, "2.0-1", pkgs[0].Version)
 	})
 }
+
+// TestPacmanEpoch pins that a pacman package carrying an epoch reports it on
+// its own field, keeps the epoch inside version the way rpm and dpkg do, and
+// carries the epoch qualifier on its purl -- through both readers.
+//
+// The four packages below are the epoch-bearing ones on a stock
+// menci/archlinuxarm container: iptables, lz4, nftables and zlib.
+func TestPacmanEpoch(t *testing.T) {
+	pf := &inventory.Platform{
+		Name:    "arch",
+		Version: "rolling",
+		Arch:    "aarch64",
+		Family:  []string{"arch", "linux", "unix", "os"},
+		Labels:  map[string]string{"distro-id": "arch"},
+	}
+
+	t.Run("pacman -Q reader", func(t *testing.T) {
+		pkgs := packages.ParsePacmanPackages(pf, strings.NewReader(
+			"iptables 1:1.8.13-1\nbash 5.3.15-1\n"))
+		require.Len(t, pkgs, 2)
+
+		assert.Equal(t, "iptables", pkgs[0].Name)
+		assert.Equal(t, "1", pkgs[0].Epoch)
+		assert.Equal(t, "1:1.8.13-1", pkgs[0].Version, "version keeps the epoch")
+		assert.Contains(t, pkgs[0].PUrl, "epoch=1")
+
+		assert.Equal(t, "bash", pkgs[1].Name)
+		assert.Empty(t, pkgs[1].Epoch)
+		assert.NotContains(t, pkgs[1].PUrl, "epoch=")
+	})
+
+	t.Run("local database reader", func(t *testing.T) {
+		pkgs := packages.ParsePacmanDescStream(pf, strings.NewReader(
+			"%NAME%\nlz4\n\n%VERSION%\n1:1.10.0-2\n\n%ARCH%\naarch64\n\n"+
+				"%NAME%\nbash\n\n%VERSION%\n5.3.15-1\n\n%ARCH%\naarch64\n\n"))
+		require.Len(t, pkgs, 2)
+
+		assert.Equal(t, "lz4", pkgs[0].Name)
+		assert.Equal(t, "1", pkgs[0].Epoch)
+		assert.Equal(t, "1:1.10.0-2", pkgs[0].Version)
+		assert.Contains(t, pkgs[0].PUrl, "epoch=1")
+
+		assert.Empty(t, pkgs[1].Epoch)
+		assert.NotContains(t, pkgs[1].PUrl, "epoch=")
+	})
+}
