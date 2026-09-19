@@ -102,7 +102,14 @@ func (d *Discovery) GetAllResources(ctx context.Context, resTypes *ApiResourceIn
 			v, err := d.GetKindResources(ctx, a, ns, allNs)
 			if err != nil {
 				log.Debug().Msgf("query api resources error: %s, error=%v", a.GroupVersionResource(), err)
-				collectErr = err
+				// Keep the first failure rather than letting the last goroutine
+				// to finish overwrite it, and take the lock: this shares `mu`
+				// with `out` below, so an unguarded write here is a data race.
+				mu.Lock()
+				if collectErr == nil {
+					collectErr = err
+				}
+				mu.Unlock()
 				return
 			}
 			mu.Lock()

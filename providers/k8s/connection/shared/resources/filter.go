@@ -10,6 +10,16 @@ import (
 )
 
 func FilterResource(resType *ApiResource, resourceObjects []runtime.Object, name string, namespace string) ([]runtime.Object, error) {
+	// A cluster-scoped object carries no namespace, so a namespace filter can
+	// never match one and would drop every StorageClass, PersistentVolume,
+	// PriorityClass, RuntimeClass, ClusterRole and so on. Staged discovery sets
+	// a namespace on every namespace asset, so without this guard those kinds
+	// read as empty on all but the cluster asset and every policy over them
+	// passes vacuously.
+	if !resType.Resource.Namespaced {
+		namespace = ""
+	}
+
 	// filter root resources
 	roots := filterResource(resourceObjects, resType.Resource.Kind, name, namespace)
 	return roots, nil
