@@ -1,0 +1,75 @@
+Reading package lists...
+Building dependency tree...
+Reading state information...
+Calculating upgrade...
+The following packages will be upgraded:
+  base-files krb5-locales libc-bin libc6 libgssapi-krb5-2 libk5crypto3
+  libkrb5-3 libkrb5support0 libnetplan1 libperl5.38t64 libpolkit-agent-1-0
+  libpolkit-gobject-1-0 libpython3.12-minimal libpython3.12-stdlib
+  libpython3.12t64 libsqlite3-0 locales motd-news-config netplan-generator
+  netplan.io perl perl-base perl-modules-5.38 polkitd python-apt-common
+  python3-apt python3-distupgrade python3-netplan python3.12
+  python3.12-minimal ubuntu-release-upgrader-core
+31 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+Inst motd-news-config [13ubuntu10.4] (13ubuntu10.5 Ubuntu:24.04/noble-updates [all])
+Inst libc6 [2.39-0ubuntu8.8] (2.39-0ubuntu8.9 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+Conf libc6 (2.39-0ubuntu8.9 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+Inst base-files [13ubuntu10.4] (13ubuntu10.5 Ubuntu:24.04/noble-updates [amd64])
+Conf base-files (13ubuntu10.5 Ubuntu:24.04/noble-updates [amd64])
+Inst libperl5.38t64 [5.38.2-3.2ubuntu0.4] (5.38.2-3.2ubuntu0.6 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64]) [perl:amd64 ]
+Inst perl [5.38.2-3.2ubuntu0.4] (5.38.2-3.2ubuntu0.6 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64]) []
+Inst perl-base [5.38.2-3.2ubuntu0.4] (5.38.2-3.2ubuntu0.6 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64]) []
+Conf perl-base (5.38.2-3.2ubuntu0.6 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64]) []
+Inst perl-modules-5.38 [5.38.2-3.2ubuntu0.4] (5.38.2-3.2ubuntu0.6 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [all])
+Inst libc-bin [2.39-0ubuntu8.8] (2.39-0ubuntu8.9 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+Conf libc-bin (2.39-0ubuntu8.9 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+Inst libpython3.12t64 [3.12.3-1ubuntu0.16] (3.12.3-1ubuntu0.17 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64]) []
+Inst python3.12 [3.12.3-1ubuntu0.16] (3.12.3-1ubuntu0.17 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64]) []
+Inst libpython3.12-stdlib [3.12.3-1ubuntu0.16] (3.12.3-1ubuntu0.17 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64]) []
+Inst python3.12-minimal [3.12.3-1ubuntu0.16] (3.12.3-1ubuntu0.17 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64]) []
+Inst libpython3.12-minimal [3.12.3-1ubuntu0.16] (3.12.3-1ubuntu0.17 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+Inst libsqlite3-0 [3.45.1-1ubuntu2.7] (3.45.1-1ubuntu2.8 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+Inst krb5-locales [1.20.1-6ubuntu2.8] (1.20.1-6ubuntu2.10 Ubuntu:24.04/noble-updates [all])
+Inst libgssapi-krb5-2 [1.20.1-6ubuntu2.8] (1.20.1-6ubuntu2.10 Ubuntu:24.04/noble-updates [amd64]) []
+Inst libkrb5-3 [1.20.1-6ubuntu2.8] (1.20.1-6ubuntu2.10 Ubuntu:24.04/noble-updates [amd64]) []
+Inst libkrb5support0 [1.20.1-6ubuntu2.8] (1.20.1-6ubuntu2.10 Ubuntu:24.04/noble-updates [amd64]) [libk5crypto3:amd64 ]
+Inst libk5crypto3 [1.20.1-6ubuntu2.8] (1.20.1-6ubuntu2.10 Ubuntu:24.04/noble-updates [amd64])
+Inst netplan-generator [1.1.2-8ubuntu1~24.04.2] (1.1.2-8ubuntu1~24.04.3 Ubuntu:24.04/noble-updates [amd64]) []
+Inst python3-netplan [1.1.2-8ubuntu1~24.04.2] (1.1.2-8ubuntu1~24.04.3 Ubuntu:24.04/noble-updates [amd64]) []
+Inst netplan.io [1.1.2-8ubuntu1~24.04.2] (1.1.2-8ubuntu1~24.04.3 Ubuntu:24.04/noble-updates [amd64]) []
+Inst libnetplan1 [1.1.2-8ubuntu1~24.04.2] (1.1.2-8ubuntu1~24.04.3 Ubuntu:24.04/noble-updates [amd64])
+Inst locales [2.39-0ubuntu8.8] (2.39-0ubuntu8.9 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [all])
+Inst python-apt-common [2.7.7ubuntu5.2] (2.7.7ubuntu5.3 Ubuntu:24.04/noble-updates [all])
+Inst python3-apt [2.7.7ubuntu5.2] (2.7.7ubuntu5.3 Ubuntu:24.04/noble-updates [amd64])
+Inst ubuntu-release-upgrader-core [1:24.04.28] (1:24.04.29 Ubuntu:24.04/noble-updates [all]) []
+Inst python3-distupgrade [1:24.04.28] (1:24.04.29 Ubuntu:24.04/noble-updates [all])
+Inst polkitd [124-2ubuntu1.24.04.3] (124-2ubuntu1.24.04.4 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64]) []
+Inst libpolkit-agent-1-0 [124-2ubuntu1.24.04.3] (124-2ubuntu1.24.04.4 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64]) []
+Inst libpolkit-gobject-1-0 [124-2ubuntu1.24.04.3] (124-2ubuntu1.24.04.4 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+Conf motd-news-config (13ubuntu10.5 Ubuntu:24.04/noble-updates [all])
+Conf libperl5.38t64 (5.38.2-3.2ubuntu0.6 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+Conf perl (5.38.2-3.2ubuntu0.6 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+Conf perl-modules-5.38 (5.38.2-3.2ubuntu0.6 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [all])
+Conf libpython3.12t64 (3.12.3-1ubuntu0.17 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+Conf python3.12 (3.12.3-1ubuntu0.17 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+Conf libpython3.12-stdlib (3.12.3-1ubuntu0.17 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+Conf python3.12-minimal (3.12.3-1ubuntu0.17 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+Conf libpython3.12-minimal (3.12.3-1ubuntu0.17 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+Conf libsqlite3-0 (3.45.1-1ubuntu2.8 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+Conf krb5-locales (1.20.1-6ubuntu2.10 Ubuntu:24.04/noble-updates [all])
+Conf libgssapi-krb5-2 (1.20.1-6ubuntu2.10 Ubuntu:24.04/noble-updates [amd64])
+Conf libkrb5-3 (1.20.1-6ubuntu2.10 Ubuntu:24.04/noble-updates [amd64])
+Conf libkrb5support0 (1.20.1-6ubuntu2.10 Ubuntu:24.04/noble-updates [amd64])
+Conf libk5crypto3 (1.20.1-6ubuntu2.10 Ubuntu:24.04/noble-updates [amd64])
+Conf netplan-generator (1.1.2-8ubuntu1~24.04.3 Ubuntu:24.04/noble-updates [amd64])
+Conf python3-netplan (1.1.2-8ubuntu1~24.04.3 Ubuntu:24.04/noble-updates [amd64])
+Conf netplan.io (1.1.2-8ubuntu1~24.04.3 Ubuntu:24.04/noble-updates [amd64])
+Conf libnetplan1 (1.1.2-8ubuntu1~24.04.3 Ubuntu:24.04/noble-updates [amd64])
+Conf locales (2.39-0ubuntu8.9 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [all])
+Conf python-apt-common (2.7.7ubuntu5.3 Ubuntu:24.04/noble-updates [all])
+Conf python3-apt (2.7.7ubuntu5.3 Ubuntu:24.04/noble-updates [amd64])
+Conf ubuntu-release-upgrader-core (1:24.04.29 Ubuntu:24.04/noble-updates [all])
+Conf python3-distupgrade (1:24.04.29 Ubuntu:24.04/noble-updates [all])
+Conf polkitd (124-2ubuntu1.24.04.4 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+Conf libpolkit-agent-1-0 (124-2ubuntu1.24.04.4 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+Conf libpolkit-gobject-1-0 (124-2ubuntu1.24.04.4 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])

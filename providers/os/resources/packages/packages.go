@@ -161,7 +161,18 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 		pms = append(pms, &MacOSPkgManager{conn: conn, platform: asset.Platform})
 	case asset.Platform.Name == "windows":
 		pms = append(pms, &WinPkgManager{conn: conn, platform: asset.Platform})
-	case asset.Platform.Name == "scratch" || asset.Platform.Name == "coreos":
+	// Flatcar Container Linux is the continuation of CoreOS Container Linux
+	// and keeps its design: /usr is immutable and the image ships no package
+	// manager and no package database at all (verified on a live
+	// Flatcar 4757.2.0 host: none of /var/lib/rpm, /usr/lib/sysimage/rpm,
+	// /var/lib/dpkg/status, /lib/apk/db/installed, /var/db/pkg or
+	// /var/lib/pacman exists). Its os-release says ID=flatcar with
+	// ID_LIKE=coreos, so the name below is what detection reports and the
+	// coreos case never matched it. Without this it fell through to the
+	// filesystem probe, found no database, and `packages` failed with
+	// "could not detect suitable package manager for platform" rather than
+	// reporting the empty inventory that is the truth for the platform.
+	case asset.Platform.Name == "scratch" || asset.Platform.Name == "coreos" || asset.Platform.Name == "flatcar":
 		pms = append(pms, &ScratchPkgManager{conn: conn})
 	case asset.Platform.Name == "openwrt":
 		pms = append(pms, &OpkgPkgManager{conn: conn})

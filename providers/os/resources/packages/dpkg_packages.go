@@ -201,7 +201,25 @@ func ParseDpkgCopyrightLicense(fs afero.Fs, pkgName string) string {
 	return ""
 }
 
-var DPKG_UPDATE_REGEX = regexp.MustCompile(`^Inst\s([a-zA-Z0-9.\-_]+)\s\[([a-zA-Z0-9.\-\+]+)\]\s\(([a-zA-Z0-9.\-\+]+)\s*(.*)\)(.*)$`)
+// DPKG_UPDATE_REGEX splits one `Inst` line of `apt-get upgrade --dry-run`:
+//
+//	Inst libc6 [2.39-0ubuntu8.8] (2.39-0ubuntu8.9 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64])
+//	Inst python3-pyasn1 [0.4.8-3+deb12u2] (0.4.8-3+deb12u3 Debian-Security:12/oldstable-security [all])
+//
+// The architecture is the bracketed token that closes the parenthesis, and it
+// is what makes the update joinable to the installed package: packages.list
+// keys available updates by "<name>/<arch>", so an update parsed without one
+// never matches and every deb package reports no available version.
+//
+// A line can carry a further bracketed group after the parenthesis (apt's
+// "because of" note, e.g. `[perl:amd64 ]`), so the arch is taken from the
+// first `[...])` rather than the last `[...]` on the line.
+//
+// Name, version and origin are matched as runs of non-space rather than by
+// enumerating characters. The enumerated classes this replaces had no `:` or
+// `~`, so an epoch-bearing update (`1:1.54.3-5.el9_8`) or a tilde pre-release
+// did not match at all and was dropped.
+var DPKG_UPDATE_REGEX = regexp.MustCompile(`^Inst\s+(\S+)\s+\[([^\]]+)\]\s+\((\S+)\s+(.*?)\s*\[([^\]]+)\]\)`)
 
 func ParseDpkgUpdates(input io.Reader) (map[string]PackageUpdate, error) {
 	pkgs := map[string]PackageUpdate{}
@@ -215,6 +233,7 @@ func ParseDpkgUpdates(input io.Reader) (map[string]PackageUpdate, error) {
 				Name:      m[1],
 				Version:   m[2],
 				Available: m[3],
+				Arch:      m[5],
 			}
 		}
 	}

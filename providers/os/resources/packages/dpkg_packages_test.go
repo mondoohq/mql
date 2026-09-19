@@ -5,6 +5,7 @@ package packages
 
 import (
 	"bytes"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -431,4 +432,65 @@ func BenchmarkParseDpkgPackages(b *testing.B) {
 			b.Fatalf("expected 1600 packages, got %d", len(pkgs))
 		}
 	}
+}
+
+// TestParseDpkgUpdatesArch reads `apt-get upgrade --dry-run` captured from a
+// live Ubuntu 24.04 host on 2026-09-18, where apt listed 31 upgradable
+// packages and mql reported `outdated` 0.
+//
+// The cause was the missing Arch: packages.list keys available updates by
+// "<name>/<arch>", so an update parsed without one is looked up as
+// "libc6/amd64" against a map holding "libc6/" and never matches.
+func TestParseDpkgUpdatesArch(t *testing.T) {
+	f, err := os.Open("./testdata/apt-ubuntu2404.txt")
+	require.NoError(t, err)
+	defer f.Close()
+
+	m, err := ParseDpkgUpdates(f)
+	require.NoError(t, err)
+	assert.Len(t, m, 31, "apt printed 31 Inst lines")
+
+	libc, ok := m["libc6"]
+	require.True(t, ok)
+	assert.Equal(t, "2.39-0ubuntu8.8", libc.Version)
+	assert.Equal(t, "2.39-0ubuntu8.9", libc.Available)
+	assert.Equal(t, "amd64", libc.Arch)
+
+	// an Architecture: all package reports "all", which is what dpkg records
+	// for it too, so the join key still matches
+	mnc, ok := m["motd-news-config"]
+	require.True(t, ok)
+	assert.Equal(t, "all", mnc.Arch)
+
+	// every entry must carry an arch, or its join silently fails
+	for name, u := range m {
+		assert.NotEmpty(t, u.Arch, "package %s has no arch", name)
+	}
+}
+
+func TestParseDpkgUpdatesLineShapes(t *testing.T) {
+	in := strings.Join([]string{
+		// trailing "because of" group must not be read as the arch
+		`Inst libperl5.38t64 [5.38.2-3.2ubuntu0.4] (5.38.2-3.2ubuntu0.6 Ubuntu:24.04/noble-updates, Ubuntu:24.04/noble-security [amd64]) [perl:amd64 ]`,
+		// single origin, no trailing group
+		`Inst liblzma5 [5.4.1-1+deb12u1] (5.4.1-1+deb12u2 Debian-Security:12/oldstable-security [amd64])`,
+		// an epoch in both versions: the enumerated character classes this
+		// regex replaced had no ':' and dropped the line entirely
+		`Inst tar [1:1.34+dfsg-1] (1:1.34+dfsg-1.1 Debian:12/stable [amd64])`,
+		// Conf lines are not upgrades
+		`Conf liblzma5 (5.4.1-1+deb12u2 Debian-Security:12/oldstable-security [amd64])`,
+		`Reading package lists...`,
+	}, "\n")
+
+	m, err := ParseDpkgUpdates(strings.NewReader(in))
+	require.NoError(t, err)
+	require.Len(t, m, 3)
+
+	assert.Equal(t, "amd64", m["libperl5.38t64"].Arch)
+	assert.Equal(t, "5.38.2-3.2ubuntu0.6", m["libperl5.38t64"].Available)
+	assert.Equal(t, "amd64", m["liblzma5"].Arch)
+	assert.Equal(t, "1:1.34+dfsg-1", m["tar"].Version)
+	assert.Equal(t, "1:1.34+dfsg-1.1", m["tar"].Available)
+	_, isConf := m["Conf"]
+	assert.False(t, isConf)
 }

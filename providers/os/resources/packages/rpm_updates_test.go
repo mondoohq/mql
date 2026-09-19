@@ -4,9 +4,12 @@
 package packages
 
 import (
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/mock"
 )
@@ -59,4 +62,73 @@ func TestZypperUpdateParser(t *testing.T) {
 	update = m["bash"]
 	assert.Equal(t, "bash", update.Name, "pkg name detected")
 	assert.Equal(t, "4.3-83.3.1", update.Version, "pkg version detected")
+}
+
+// TestParseRpmCheckUpdate reads `dnf check-update` captured from live EC2
+// hosts on 2026-09-18. Before this parser existed the rpm reader ran a Python
+// 2 / yum-cli snippet that no longer runs on either host, so both reported no
+// updates at all.
+func TestParseRpmCheckUpdate(t *testing.T) {
+	t.Run("rhel9, including the Obsoleting Packages section", func(t *testing.T) {
+		f, err := os.Open("./testdata/dnf-rhel9.txt")
+		require.NoError(t, err)
+		defer f.Close()
+
+		m, err := ParseRpmCheckUpdate(f)
+		require.NoError(t, err)
+		require.NotEmpty(t, m)
+
+		// epoch stays on the available version, as it is printed
+		nm, ok := m["NetworkManager"]
+		require.True(t, ok)
+		assert.Equal(t, "1:1.54.3-5.el9_8", nm.Available)
+		assert.Equal(t, "x86_64", nm.Arch)
+		assert.Equal(t, "rhel-9-baseos-rhui-rpms", nm.Repo)
+
+		acl, ok := m["acl"]
+		require.True(t, ok)
+		assert.Equal(t, "2.4.0-1.el9_8", acl.Available)
+
+		// grub2-tools appears ONLY as the indented @System side of an
+		// obsoletes pair, carrying the older installed version. Reading it
+		// would advertise a downgrade as an available update.
+		if g, ok := m["grub2-tools"]; ok {
+			assert.NotEqual(t, "1:2.06-105.el9_6.2", g.Available,
+				"picked up the obsoleted @System line")
+			assert.NotEqual(t, "@System", g.Repo)
+		}
+		for name, u := range m {
+			assert.NotEqual(t, "@System", u.Repo, "package %s", name)
+			assert.NotEmpty(t, u.Arch, "package %s has no arch", name)
+		}
+	})
+
+	t.Run("alma9", func(t *testing.T) {
+		f, err := os.Open("./testdata/dnf-alma9.txt")
+		require.NoError(t, err)
+		defer f.Close()
+		m, err := ParseRpmCheckUpdate(f)
+		require.NoError(t, err)
+
+		k, ok := m["kernel"]
+		require.True(t, ok)
+		assert.Equal(t, "5.14.0-687.48.1.el9_8", k.Available)
+		assert.Equal(t, "x86_64", k.Arch)
+		assert.Equal(t, "baseos", k.Repo)
+	})
+
+	t.Run("no updates yields an empty map, not an error", func(t *testing.T) {
+		m, err := ParseRpmCheckUpdate(strings.NewReader(""))
+		require.NoError(t, err)
+		assert.Empty(t, m)
+	})
+
+	t.Run("headers and indented lines are ignored", func(t *testing.T) {
+		m, err := ParseRpmCheckUpdate(strings.NewReader(
+			"Last metadata expiration check: 0:00:01 ago.\n\n" +
+				"Obsoleting Packages\n" +
+				"    grub2-tools.x86_64   1:2.06-105.el9_6.2   @System\n"))
+		require.NoError(t, err)
+		assert.Empty(t, m)
+	})
 }

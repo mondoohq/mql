@@ -234,3 +234,26 @@ func TestResolveSystemPkgManagersNoDoubleCountOnKnownPlatforms(t *testing.T) {
 		})
 	}
 }
+
+// Flatcar Container Linux continues CoreOS Container Linux: /usr is immutable
+// and the image carries no package manager and no package database. Detection
+// reports ID=flatcar (its os-release says ID_LIKE=coreos), so the coreos case
+// did not claim it, it fell through to the filesystem probe, matched nothing,
+// and `packages` failed with "could not detect suitable package manager" on a
+// live Flatcar 4757.2.0 host instead of reporting an empty inventory.
+func TestResolveSystemPkgManagersFlatcar(t *testing.T) {
+	for _, name := range []string{"flatcar", "coreos", "scratch"} {
+		t.Run(name, func(t *testing.T) {
+			// no package database of any kind, which is the real Flatcar shape
+			conn := newProbeConn(t, &inventory.Platform{
+				Name:   name,
+				Family: []string{"linux", "unix", "os"},
+			})
+
+			pms, err := ResolveSystemPkgManagers(conn)
+			require.NoError(t, err, "%s must resolve a package manager", name)
+			require.Len(t, pms, 1)
+			assert.IsType(t, &ScratchPkgManager{}, pms[0])
+		})
+	}
+}

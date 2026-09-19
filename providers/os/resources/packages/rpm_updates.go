@@ -7,7 +7,9 @@ import (
 	"bufio"
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"io"
+	"regexp"
 )
 
 func ParseRpmUpdates(input io.Reader) (map[string]PackageUpdate, error) {
@@ -86,4 +88,55 @@ func ParseZypper(input io.Reader) (*zypper, error) {
 		return nil, err
 	}
 	return &patches, nil
+}
+
+// rpmCheckUpdateLine matches one package line of `dnf check-update`:
+//
+//	NetworkManager.x86_64      1:1.54.3-5.el9_8      rhel-9-baseos-rhui-rpms
+//
+// The first field is "<name>.<arch>", the second the available
+// "[epoch:]version-release" and the third the repository.
+//
+// The leading anchor is deliberate. dnf ends its output with an "Obsoleting
+// Packages" section whose second line of each pair is indented and names the
+// *installed* package being obsoleted, with the repo @System:
+//
+//	grub2-tools-minimal.x86_64   1:2.06-126.el9_8    rhel-9-baseos-rhui-rpms
+//	    grub2-tools.x86_64       1:2.06-105.el9_6.2  @System
+//
+// Reading that indented line as an update would report grub2-tools as having
+// an older version available than the one installed. Requiring the line to
+// start at column zero drops it; the @System repo check below is a second
+// guard for the same thing.
+var rpmCheckUpdateLine = regexp.MustCompile(`^(\S+)\.(\S+)\s+(\S+)\s+(\S+)\s*$`)
+
+// ParseRpmCheckUpdate parses the output of `dnf check-update` / `yum
+// check-update` into the available updates, keyed by package name.
+func ParseRpmCheckUpdate(input io.Reader) (map[string]PackageUpdate, error) {
+	pkgs := map[string]PackageUpdate{}
+	scanner := bufio.NewScanner(input)
+	scanner.Buffer(nil, rpmMaxLineSize)
+	for scanner.Scan() {
+		line := scanner.Text()
+		m := rpmCheckUpdateLine.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		// the installed side of an obsoletes pair, not an update
+		if m[4] == "@System" {
+			continue
+		}
+		name, arch, available, repo := m[1], m[2], m[3], m[4]
+		pkgs[name] = PackageUpdate{
+			Name:      name,
+			Arch:      arch,
+			Available: available,
+			Repo:      repo,
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		// a truncated read hides pending updates, which reads as "up to date"
+		return nil, fmt.Errorf("could not read the rpm update list to its end: %w", err)
+	}
+	return pkgs, nil
 }

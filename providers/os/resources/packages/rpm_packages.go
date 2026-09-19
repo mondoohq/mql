@@ -391,18 +391,30 @@ func (rpm *RpmPkgManager) runtimeList() ([]Package, error) {
 }
 
 // fetch all available packages, is that working with centos 6?
-func (rpm *RpmPkgManager) runtimeAvailable() (map[string]PackageUpdate, error) {
-	// python script:
-	// import sys;sys.path.insert(0, "/usr/share/yum-cli");import cli;list = cli.YumBaseCli().returnPkgLists(["updates"]);
-	// print ''.join(["{\"name\":\""+x.name+"\", \"available\":\""+x.evr+"\",\"arch\":\""+x.arch+"\",\"repo\":\""+x.repo.id+"\"}\n" for x in list.updates]);
-	script := "python -c 'import sys;sys.path.insert(0, \"/usr/share/yum-cli\");import cli;list = cli.YumBaseCli().returnPkgLists([\"updates\"]);print \"\".join([ \"{\\\"name\\\":\\\"\"+x.name+\"\\\",\\\"available\\\":\\\"\"+x.evr+\"\\\",\\\"arch\\\":\\\"\"+x.arch+\"\\\",\\\"repo\\\":\\\"\"+x.repo.id+\"\\\"}\\n\" for x in list.updates]);'"
+// rpmCheckUpdateCommand asks the package manager which updates are pending.
+//
+// It replaces a Python 2 snippet that imported yum's `cli` module from
+// /usr/share/yum-cli. Neither survives on a current rpm distro: RHEL 9 has no
+// python2 and no yum-cli, AlmaLinux 9 and Amazon Linux 2023 have no python at
+// all. The snippet therefore produced nothing and every package reported no
+// available update -- silently, because a failure here is logged at debug and
+// the list falls back to empty. Measured on 2026-09-18: RHEL 9 with 602
+// pending updates and AlmaLinux 9 with 56 both reported `outdated` 0.
+//
+// `check-update` is the supported interface on both, and yum keeps it as an
+// alias for compatibility, so one command covers dnf and yum hosts.
+//
+// Exit status 100 means "updates are available" and 0 means "none" -- neither
+// is a failure, which is why the status is not checked.
+const rpmCheckUpdateCommand = "if command -v dnf >/dev/null 2>&1; then dnf -q check-update; else yum -q check-update; fi"
 
-	cmd, err := rpm.conn.RunCommand(script)
+func (rpm *RpmPkgManager) runtimeAvailable() (map[string]PackageUpdate, error) {
+	cmd, err := rpm.conn.RunCommand(rpmCheckUpdateCommand)
 	if err != nil {
 		log.Debug().Err(err).Msg("mql[packages]> could not read rpm package updates")
 		return nil, errors.Wrap(err, "could not read rpm package update list")
 	}
-	return ParseRpmUpdates(cmd.Stdout)
+	return ParseRpmCheckUpdate(cmd.Stdout)
 }
 
 func (rpm *RpmPkgManager) staticList() ([]Package, error) {
