@@ -4,10 +4,9 @@
 package registry
 
 import (
-	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 
@@ -49,7 +48,7 @@ type RegistryKeyItem struct {
 func (k RegistryKeyItem) Kind() string {
 	switch k.Value.Kind {
 	case NONE:
-		return "bone"
+		return "none"
 	case SZ:
 		return "string"
 	case EXPAND_SZ:
@@ -85,7 +84,7 @@ func (k RegistryKeyItem) GetRawValue() any {
 	case EXPAND_SZ:
 		return k.Value.String
 	case BINARY:
-		return k.Value.Binary
+		return binaryToDict(k.Value.Binary)
 	case DWORD:
 		return k.Value.Number
 	case DWORD_BIG_ENDIAN:
@@ -104,6 +103,21 @@ func (k RegistryKeyItem) GetRawValue() any {
 		return k.Value.Number
 	}
 	return nil
+}
+
+// binaryToDict converts REG_BINARY data into a value an llx dict can carry.
+// Dicts only hold JSON-native types, so handing a []byte straight to the client
+// fails with "unsupported child type: []uint8" and takes the whole key read down
+// with it, not just the one binary value.
+func binaryToDict(data []byte) any {
+	if data == nil {
+		return nil
+	}
+	res := make([]any, len(data))
+	for i := range data {
+		res[i] = int64(data[i])
+	}
+	return res
 }
 
 // String returns a string representation of the registry key value
@@ -125,8 +139,57 @@ type RegistryKeyChild struct {
 	Properties []string
 }
 
+// registryValueKinds maps the type names reg.exe prints in the second column of
+// `reg query` output onto the numeric kinds used everywhere else. reg.exe is the
+// only source of a value's type that survives PowerShell's Constrained Language
+// Mode, where RegistryKey.GetValueKind() cannot be invoked at all.
+var registryValueKinds = map[string]int{
+	"REG_NONE":                       NONE,
+	"REG_SZ":                         SZ,
+	"REG_EXPAND_SZ":                  EXPAND_SZ,
+	"REG_BINARY":                     BINARY,
+	"REG_DWORD":                      DWORD,
+	"REG_DWORD_LITTLE_ENDIAN":        DWORD,
+	"REG_DWORD_BIG_ENDIAN":           DWORD_BIG_ENDIAN,
+	"REG_LINK":                       LINK,
+	"REG_MULTI_SZ":                   MULTI_SZ,
+	"REG_RESOURCE_LIST":              RESOURCE_LIST,
+	"REG_FULL_RESOURCE_DESCRIPTOR":   FULL_RESOURCE_DESCRIPTOR,
+	"REG_RESOURCE_REQUIREMENTS_LIST": RESOURCE_REQUIREMENTS_LIST,
+	"REG_QWORD":                      QWORD,
+	"REG_QWORD_LITTLE_ENDIAN":        QWORD,
+}
+
+// resolveRegistryValueKind determines a value's kind from what the collection
+// script managed to report: the reg.exe type name when there is one, otherwise
+// the numeric kind from RegistryKey.GetValueKind().
+//
+// When neither is available it returns an error instead of defaulting to NONE.
+// Defaulting is what made this a silent-data-loss bug: under Constrained
+// Language Mode GetValueKind() is refused for every value, a missing kind
+// decoded as NONE, and NONE discards the data. Value names still enumerated, so
+// a fully readable key reported every one of its values as empty and denylist
+// style checks passed on data that was never read.
+func resolveRegistryValueKind(typeName string, kind *int) (int, error) {
+	if typeName != "" {
+		resolved, ok := registryValueKinds[strings.ToUpper(typeName)]
+		if !ok {
+			return NONE, fmt.Errorf("unknown registry value type %q", typeName)
+		}
+		return resolved, nil
+	}
+	if kind != nil {
+		return *kind, nil
+	}
+	return NONE, errors.New("could not determine the registry value type: reg.exe reported no type for this value and RegistryKey.GetValueKind() returned nothing (it is refused under PowerShell Constrained Language Mode)")
+}
+
 type keyKindRaw struct {
-	Kind int
+	// Kind is the numeric value kind from RegistryKey.GetValueKind(). It is
+	// absent whenever the collection script could not invoke that method.
+	Kind *int
+	// Type is the reg.exe type name, e.g. REG_DWORD.
+	Type string
 	Data any
 }
 
@@ -138,14 +201,18 @@ func (k *RegistryKeyValue) UnmarshalJSON(b []byte) error {
 	if err != nil {
 		return err
 	}
-	k.Kind = raw.Kind
+	kind, err := resolveRegistryValueKind(raw.Type, raw.Kind)
+	if err != nil {
+		return err
+	}
+	k.Kind = kind
 
 	if raw.Data == nil {
 		return nil
 	}
 
 	// see https://learn.microsoft.com/en-us/powershell/scripting/samples/working-with-registry-entries?view=powershell-7
-	switch raw.Kind {
+	switch kind {
 	case NONE:
 		// ignore
 	case SZ: // Any string value
@@ -198,7 +265,16 @@ func (k *RegistryKeyValue) UnmarshalJSON(b []byte) error {
 			if len(value) > 0 {
 				var multiString []string
 				for _, v := range value {
-					multiString = append(multiString, v.(string))
+					// The array comes from JSON, so an element is only a string
+					// if PowerShell emitted one. A null or a number decodes to
+					// something else, and a bare assertion here would panic and
+					// take the whole scan with it. The QWORD and BINARY branches
+					// below already guard theirs.
+					str, ok := v.(string)
+					if !ok {
+						return fmt.Errorf("registry MULTI_SZ entry is not a string: %v", v)
+					}
+					multiString = append(multiString, str)
 				}
 				multiString = normalizeMultiSz(multiString)
 				if len(multiString) > 0 {
@@ -214,14 +290,15 @@ func (k *RegistryKeyValue) UnmarshalJSON(b []byte) error {
 		log.Warn().Msg("FULL_RESOURCE_DESCRIPTOR for registry key is not supported")
 	case RESOURCE_REQUIREMENTS_LIST:
 		log.Warn().Msg("RESOURCE_REQUIREMENTS_LIST for registry key is not supported")
-	case QWORD: // 8 bytes of binary data
-		f, ok := raw.Data.(float64)
+	case QWORD: // A number that is a valid UInt64
+		data, ok := raw.Data.(float64)
 		if !ok {
 			return fmt.Errorf("registry key value is not a number: %v", raw.Data)
 		}
-		buf := make([]byte, 8)
-		binary.LittleEndian.PutUint64(buf[:], math.Float64bits(f))
-		k.Binary = buf
+		number := int64(data)
+		// string fallback
+		k.Number = number
+		k.String = strconv.FormatInt(number, 10)
 	}
 	return nil
 }
