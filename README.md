@@ -183,6 +183,7 @@ To learn about Mondoo Platform, read the [Mondoo Platform docs](https://mondoo.c
 | Running containers            | `docker`                   | `mql shell docker CONTAINER_ID`                                                                                                                 |
 | Redfish controller (BMC)      | `redfish`                  | `mql shell redfish USER@HOST --ask-pass --insecure`                                                                                            |
 | Redis or Valkey server        | `redisdb`                  | `mql shell redisdb localhost --ask-pass`                                                                                                        |
+| Rippling companies            | `rippling`                 | `mql shell rippling --client-id ID --client-secret SECRET --refresh-token TOKEN`                                                                |
 | Shodan organization           | `shodan`                   | `mql shell shodan`                                                                                                                              |
 | Slack team                    | `slack`                    | `mql shell slack --token TOKEN`                                                                                                                 |
 | Snowflake account             | `snowflake`                | `mql shell snowflake --account ACCOUNT_ID --region REGION --user USER --role ROLE --ask-pass`                                                   |
