@@ -5,6 +5,7 @@ package config
 
 import (
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -93,6 +94,14 @@ func Test_probeConfigMemFs(t *testing.T) {
 }
 
 func Test_probeConfigOsFs(t *testing.T) {
+	// Mode 0000 makes a file unreadable on Unix. On Windows the mode bits only
+	// toggle the read-only attribute, which does not stop the file being read, so
+	// ProbeFile correctly reports it as present and the expectation below is the
+	// thing that does not hold there.
+	if runtime.GOOS == "windows" {
+		t.Skip("file mode does not deny reads on Windows")
+	}
+
 	dir := t.TempDir()
 	tmpConfig := filepath.Join(dir, DefaultConfigFile)
 	require.NoError(t, afero.WriteFile(AppFs, tmpConfig, configBody, 0o000))
