@@ -2095,9 +2095,14 @@ func (c *compiler) compileIdentifier(id string, callBinding *variable, calls []*
 		}
 	}
 
-	found, restCalls, typ, err = c.compileResource(id, calls)
+	// Kept out of restCalls: compileResource reports a miss as `false, nil, ...`,
+	// and assigning that into restCalls threw away the rest of the chain for
+	// every branch below - `params { a.b.c }` compiled to `params["a"]` and
+	// answered with the whole subtree under "a".
+	var resourceCalls []*parser.Call
+	found, resourceCalls, typ, err = c.compileResource(id, calls)
 	if found {
-		return restCalls, typ, err
+		return resourceCalls, typ, err
 	}
 
 	// Support easy accessors for dicts and maps, e.g:
