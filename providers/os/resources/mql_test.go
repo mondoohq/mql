@@ -115,6 +115,41 @@ func TestMap(t *testing.T) {
 			Code:        "parse.json('/dummy.json').params.values.length",
 			Expectation: int64(15),
 		},
+		// A managed-preferences plist keys its settings by preference domain, so
+		// the setting sits under a literal key that contains dots. Reading one
+		// with dot notation used to walk "com", find nothing, and hand back
+		// null - so the branch of every profile-managed CIS macOS check that
+		// inspects the MDM evidence could never evaluate true.
+		{
+			Code:        `parse.json(content: '{"com.apple.security.firewall": {"EnableFirewall": {"value": true}}}').params.com.apple.security.firewall.EnableFirewall.value`,
+			Expectation: true,
+		},
+		{
+			// Resolves only by abandoning the shorter "com.apple.MCX" match.
+			Code:        `parse.json(content: '{"com.apple.MCX": {"x": 1}, "com.apple.MCX.FileVault2": {"Enable": {"value": "On"}}}').params.com.apple.MCX.FileVault2.Enable.value`,
+			Expectation: "On",
+		},
+		{
+			// A dotted key nested inside a dotted domain.
+			Code:        `parse.json(content: '{"com.apple.MCX": {"com.apple.EnergySaver.desktop.ACPower": {"value": "on"}}}').params.com.apple.MCX.com.apple.EnergySaver.desktop.ACPower.value`,
+			Expectation: "on",
+		},
+		{
+			// Undotted keys keep resolving exactly as they did before.
+			Code:        `parse.json(content: '{"a": {"b": {"c": 5}}}').params.a.b.c`,
+			Expectation: float64(5),
+		},
+		{
+			// A setting the document does not carry is still absent.
+			Code:        `parse.json(content: '{"com.apple.MCX": {"x": 1}}').params.com.apple.MCX.DisableGuestAccount.value`,
+			Expectation: nil,
+		},
+		{
+			// Bracket notation, the form shipping content already uses, means
+			// the key spelled that way and nothing else.
+			Code:        `parse.json(content: '{"a": {"b": "nested"}}').params["a.b"]`,
+			Expectation: nil,
+		},
 		{
 			Code: "parse.json('/dummy.json').params { _['Protocol'] != 1 }",
 			Expectation: map[string]any{
