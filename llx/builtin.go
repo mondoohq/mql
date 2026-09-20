@@ -1065,6 +1065,17 @@ func (e *blockExecutor) resolveNullBinding(bind *RawData, chunk *Chunk) (*RawDat
 		typ = bind.Type
 	}
 
+	// A walk towards a dotted key is mid-lookup, not null, so the next key
+	// lookup has to run for the path to resolve (see dictWalk). Only a key
+	// lookup continues one; anything else reading through this null is reading
+	// through a null, and a `?` upstream ends the walk rather than widening its
+	// guard. Sits below the non-strict return, so a default compile never
+	// reaches it.
+	if bind.dictPath != nil && !bind.ShortCircuited &&
+		(chunk.Id == "[]" || chunk.Id == "[]?") {
+		return nil, false
+	}
+
 	// A required link errors - unless the null reaching it was produced by an
 	// upstream `?`, which passes through every downstream link untouched. That
 	// pass-through is the short circuit: `a?.b.c` yields null when `a` is null
