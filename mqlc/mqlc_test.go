@@ -1432,6 +1432,28 @@ func TestCompiler_ResourceMap(t *testing.T) {
 	})
 }
 
+// A bare word inside a dict block is the head of a chain, and the rest of that
+// chain has to survive the resource lookup that misses on the head. It did not:
+// compileResource reports a miss as `false, nil, ...`, that nil landed in the
+// shared restCalls, and `params { a.b.c }` compiled down to `params["a"]` -
+// answering with the whole subtree under "a" instead of the value at c.
+func TestCompiler_DictBlockKeepsTheChain(t *testing.T) {
+	compileT(t, "parse.json('/x.json').params { a.b.c }", func(res *llx.CodeBundle) {
+		require.Len(t, res.CodeV2.Blocks, 2)
+
+		chunks := res.CodeV2.Blocks[1].Chunks
+		require.Len(t, chunks, 4, "the block should hold the binding plus one lookup per segment")
+
+		for i, key := range []string{"a", "b", "c"} {
+			assertFunction(t, "[]", &llx.Function{
+				Type:    string(types.Dict),
+				Binding: (2 << 32) | uint64(i+1),
+				Args:    []*llx.Primitive{llx.StringPrimitive(key)},
+			}, chunks[i+1])
+		}
+	})
+}
+
 func TestCompiler_ResourceMapLength(t *testing.T) {
 	compileT(t, "sshd.config.params.length", func(res *llx.CodeBundle) {
 		assertFunction(t, "length", &llx.Function{

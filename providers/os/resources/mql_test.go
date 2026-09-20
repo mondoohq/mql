@@ -2565,6 +2565,63 @@ func TestParsePlist(t *testing.T) {
 	})
 }
 
+// Regression for profile-managed macOS checks: a managed-preferences plist keys
+// its settings by preference domain, and the domain contains dots. Reading one
+// with dot notation used to walk "com", find nothing, and hand back null - so
+// the branch of every such CIS check that inspects the MDM evidence could never
+// evaluate true, however correctly the profile was deployed.
+func TestDictDottedKeyAccessors(t *testing.T) {
+	// Shaped like /Library/Managed Preferences/<user>/complete.plist, including
+	// the two traps it really contains: a domain that is a prefix of a sibling
+	// domain, and a domain whose own keys are dotted.
+	const doc = `{` +
+		`"com.apple.security.firewall": {"EnableFirewall": {"value": true}},` +
+		`"com.apple.MCX": {"com.apple.EnergySaver.desktop.ACPower": {"value": "on"}},` +
+		`"com.apple.MCX.FileVault2": {"Enable": {"value": "On"}},` +
+		`"plain": {"nested": {"leaf": 7}}` +
+		`}`
+	parse := "parse.json(content: '" + doc + "').params"
+
+	x.TestSimple(t, []testutils.SimpleTest{
+		{
+			Code:        parse + ".com.apple.security.firewall.EnableFirewall.value",
+			ResultIndex: 0,
+			Expectation: true,
+		},
+		{
+			// Resolves only by abandoning the shorter "com.apple.MCX" match.
+			Code:        parse + ".com.apple.MCX.FileVault2.Enable.value",
+			ResultIndex: 0,
+			Expectation: "On",
+		},
+		{
+			// A dotted key nested inside a dotted domain.
+			Code:        parse + ".com.apple.MCX.com.apple.EnergySaver.desktop.ACPower.value",
+			ResultIndex: 0,
+			Expectation: "on",
+		},
+		{
+			// Undotted keys keep resolving exactly as they did before.
+			Code:        parse + ".plain.nested.leaf",
+			ResultIndex: 0,
+			Expectation: float64(7),
+		},
+		{
+			// A setting the document does not carry is still absent.
+			Code:        parse + ".com.apple.MCX.DisableGuestAccount.value",
+			ResultIndex: 0,
+			Expectation: nil,
+		},
+		{
+			// Bracket notation, the form shipping content already uses, is
+			// unchanged.
+			Code:        parse + `["com.apple.security.firewall"]["EnableFirewall"]["value"]`,
+			ResultIndex: 0,
+			Expectation: true,
+		},
+	})
+}
+
 func TestParseJson(t *testing.T) {
 	x.TestSimple(t, []testutils.SimpleTest{
 		{
@@ -3539,6 +3596,59 @@ func TestStrict_nullValueIsNotAMissingKey(t *testing.T) {
 
 	code = strictDoc + "['_']['b']"
 	assertErrors(t, runStrict(t, code, true), "the value it reads from is null", code)
+}
+
+// TestStrict_dottedKeyWalkStillReportsRealTypos is the risk the dotted-key walk
+// runs: a chain over a document keyed by preference domain has to survive the
+// nulls its intermediate segments produce, without that tolerance swallowing a
+// name the document genuinely does not contain (ADR 043).
+func TestStrict_dottedKeyWalkStillReportsRealTypos(t *testing.T) {
+	const doc = "parse.json(content: '" +
+		`{"com.apple.security.firewall": {"EnableFirewall": {"value": true}}}` +
+		"').params"
+
+	// The whole path resolves, so none of the intermediate misses may error.
+	code := doc + ".com.apple.security.firewall.EnableFirewall.value"
+	res := runStrict(t, code, true)
+	require.NoError(t, res.Data.Error, "%q should resolve", code)
+	assert.Equal(t, true, res.Data.Value)
+
+	// A segment that continues no key in the document is a claim about
+	// something absent, and still has to be reported as one.
+	code = doc + ".com.apple.security.firewallX.EnableFirewall.value"
+	assertErrors(t, runStrict(t, code, true), "cannot find key", code)
+
+	// Same once the domain itself has resolved: the walk is over, and the leaf
+	// name is simply not there.
+	code = doc + ".com.apple.security.firewall.NOPE"
+	assertErrors(t, runStrict(t, code, true), "cannot find key", code)
+}
+
+// TestStrict_dottedKeyWalkKeepsItsHandsOff checks that tolerating the nulls a
+// walk produces does not become a general licence to read through null.
+func TestStrict_dottedKeyWalkKeepsItsHandsOff(t *testing.T) {
+	// A Kubernetes label continues the text of `labels.app` but no dot chain can
+	// reach it, so "app" is simply missing and has to be reported.
+	code := "parse.json(content: '" +
+		`{"labels": {"app.kubernetes.io/name": "web"}}` +
+		"').params.labels.app"
+	assertErrors(t, runStrict(t, code, true), "cannot find key", code)
+
+	// Only a key lookup continues a walk. Anything else reading through the
+	// null an unfinished walk produced is reading through a null.
+	code = "parse.json(content: '" + `{"com.apple.x": 1}` + "').params.com.length"
+	require.Error(t, runStrict(t, code, true).Data.Error, "%q should error", code)
+
+	// A guard upstream ends the walk rather than widening itself over the rest
+	// of the chain.
+	code = "parse.json(content: '" + `{"com.apple.firewall": {"on": true}}` + "').params.com?.apple.NOPE"
+	assertNull(t, runStrict(t, code, true), code)
+
+	// And a guard downstream does not reach back over it. `a.b?` says b may be
+	// missing, not that anything in the chain may be - so the key that went
+	// missing first is still reported, in a document with no dotted keys at all.
+	code = "parse.json(content: '" + `{"server": {"port": 22}}` + "').params.PermitRootLogn.value?"
+	assertErrors(t, runStrict(t, code, true), "cannot find key", code)
 }
 
 // TestStrict_optionalWaivesBothCauses is the double duty: one mark, in one
