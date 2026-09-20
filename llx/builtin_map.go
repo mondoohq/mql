@@ -17,6 +17,156 @@ import (
 // mapFunctions are all the handlers for builtin array methods
 var mapFunctions map[string]chunkHandlerV2 //nolint:unused
 
+// dictPathState is an in-progress walk towards a key that contains dots.
+type dictPathState struct {
+	root     map[string]any // container the walk is anchored at
+	segments []string       // segments taken since
+}
+
+// maxDictPathProbes bounds one walk. The search is exponential in the worst
+// case - keys "a", "a.a", "a.a.a" keep every prefix alive as a branch - and the
+// documents walked are files read off the scanned host.
+const maxDictPathProbes = 4096
+
+// dictWalk reaches a key that itself contains dots.
+//
+// MQL compiles `params.a.b.c` into one lookup per segment, so a managed
+// preferences plist - which keys its settings by preference domain - sends the
+// chain walking a "com" that does not exist, and every profile-managed CIS
+// macOS check read null. A lookup that misses therefore anchors a walk, and
+// each later link retries the whole path from that anchor.
+//
+// It runs here rather than folding the path in mqlc because whether
+// "com.apple.MCX" is one key or three is a fact about the document, not about
+// the query; folding also mis-compiles a chain that leaves a dict for a map, a
+// resource or a scalar. The bytecode is unchanged as a result, which cuts both
+// ways: no checksum moves, but neither does anything announce that the same
+// query id now answers differently.
+//
+// handled is false when there is nothing to walk and the caller does what it
+// always did. A walk anchors where it first missed, not at the document root,
+// so `{"com": {...}, "com.apple.x": 1}` still reads null for
+// `params.com.apple.x` - as it does today.
+func dictWalk(e *blockExecutor, bind *RawData, ref uint64, key string, typ types.Type) (*RawData, bool) {
+	// Whether another key lookup is waiting to read this one. It decides both
+	// whether a path is worth walking and whether a resolved value carries the
+	// walk on.
+	continues := chainContinues(e, ref)
+
+	if bind.dictPath == nil && !continues {
+		return nil, false
+	}
+
+	here, _ := bind.Value.(map[string]any)
+
+	root, taken := here, []string(nil)
+	if bind.dictPath != nil {
+		root, taken = bind.dictPath.root, bind.dictPath.segments
+	}
+
+	segments := make([]string, len(taken), len(taken)+1)
+	copy(segments, taken)
+	segments = append(segments, key)
+
+	// The plain key wins wherever it is present, which keeps `params["a.b"]`
+	// meaning the key spelled "a.b".
+	if here != nil {
+		if v, ok := here[key]; ok {
+			return dictWalkValue(v, root, segments, continues, typ), true
+		}
+	}
+
+	probes := maxDictPathProbes
+	if v, found := resolveDictPath(root, segments, &probes); found {
+		return dictWalkValue(v, root, segments, continues, typ), true
+	}
+
+	if continues {
+		// More segments are coming, so the path is what will or will not
+		// resolve; this link answers nothing either way.
+		return &RawData{Type: typ, dictPath: &dictPathState{root: root, segments: segments}}, true
+	}
+
+	return &RawData{Type: typ}, true
+}
+
+// dictWalkValue wraps a resolved value, carrying the walk on only while another
+// lookup is waiting to read it. A value that kept its anchor would answer by how
+// it was reached: `params.a.b` in a block or a variable would go on resolving
+// siblings of the document root that `params["a.b"]` does not hold and its own
+// `keys` does not list.
+func dictWalkValue(v any, root map[string]any, segments []string, continues bool, typ types.Type) *RawData {
+	res := &RawData{Type: typ, Value: v}
+	if v != nil && continues {
+		res.dictPath = &dictPathState{root: root, segments: segments}
+	}
+	return res
+}
+
+// chainContinues reports whether the next chunk is another key lookup reading
+// from this one - the only thing a partly-walked path needs to know, and
+// something the compiled code already holds.
+//
+// Asking the document instead, by scanning its keys for one continuing the
+// path, costs O(keys) per missed lookup (315us on a 50k-key document against
+// 50ns for the miss) and, bounded to contain that, stops being deterministic:
+// Go randomizes map iteration, so a partial scan answers from a different draw
+// each run. Non-consecutive chunks fall through to false, which is what this
+// answered before.
+func chainContinues(e *blockExecutor, ref uint64) bool {
+	if e == nil || e.block == nil {
+		return false
+	}
+
+	// Refs count from one, so masking the block off indexes the next chunk.
+	idx := int(ref & 0xFFFFFFFF)
+	if idx <= 0 || idx >= len(e.block.Chunks) {
+		return false
+	}
+
+	next := e.block.Chunks[idx]
+	if next.Id != "[]" && next.Id != "[]?" {
+		return false
+	}
+	f := next.Function
+	return f != nil && f.Binding == ref &&
+		len(f.Args) == 1 && types.Type(f.Args[0].Type) == types.String
+}
+
+// resolveDictPath walks segments through nested maps, shortest prefix first so
+// that undotted documents resolve exactly as they always did.
+//
+// Backtracking is load-bearing: a managed plist holds "com.apple.MCX" beside
+// "com.apple.MCX.FileVault2", so "com.apple.MCX.FileVault2.Enable" matches the
+// shorter domain, finds no "FileVault2", and must come back for the longer one.
+func resolveDictPath(container map[string]any, segments []string, probes *int) (any, bool) {
+	for i := 1; i <= len(segments); i++ {
+		if *probes <= 0 {
+			return nil, false
+		}
+		*probes--
+
+		v, present := container[strings.Join(segments[:i], ".")]
+		if !present {
+			continue
+		}
+		if i == len(segments) {
+			return v, true
+		}
+
+		child, ok := v.(map[string]any)
+		if !ok {
+			// A leaf with segments left is a dead end for this split, not an
+			// answer; a longer prefix may still carry the rest.
+			continue
+		}
+		if cv, ok := resolveDictPath(child, segments[i:], probes); ok {
+			return cv, true
+		}
+	}
+	return nil, false
+}
+
 func mapGetIndex(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
 	args := chunk.Function.Args
 	// TODO: all this needs to go into the compile phase
@@ -29,7 +179,7 @@ func mapGetIndex(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*Ra
 	// ^^ TODO
 
 	childType := bind.Type.Child()
-	if bind.Value == nil {
+	if bind.Value == nil && bind.dictPath == nil {
 		// Propagate null through map access chains instead of erroring.
 		return &RawData{Type: childType}, 0, nil
 	}
@@ -54,13 +204,28 @@ func mapGetIndex(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*Ra
 		return nil, 0, errors.New("Called [] with wrong type " + t.Label())
 	}
 
+	// See dictGetIndex: a walk already under way reads through its own nulls.
+	if bind.dictPath != nil {
+		if res, handled := dictWalk(e, bind, ref, key, childType); handled {
+			return res, 0, nil
+		}
+	}
+
 	m, ok := bind.Value.(map[string]any)
 	if !ok {
 		return nil, 0, errors.New("failed to typecast " + bind.Type.Label() + " into map")
 	}
+	v, present := m[key]
+	if !present {
+		// `macos.userPreferences` is keyed by preference domain, so every one of
+		// its keys is dotted; a chain over it has to be able to walk.
+		if res, handled := dictWalk(e, bind, ref, key, childType); handled {
+			return res, 0, nil
+		}
+	}
 	return &RawData{
 		Type:  childType,
-		Value: m[key],
+		Value: v,
 	}, 0, nil
 }
 
@@ -371,6 +536,16 @@ func dictGetIndex(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*R
 		return nil, 0, errors.New("Called [] with " + strconv.Itoa(len(args)) + " arguments, only 1 supported.")
 	}
 
+	// A walk already under way is consulted before the type switch, because its
+	// intermediate segments have no value to switch on - they are the nulls that
+	// the missing "com" and "com.apple" produce on the way to
+	// "com.apple.security.firewall".
+	if bind.dictPath != nil && types.Type(args[0].Type) == types.String {
+		if res, handled := dictWalk(e, bind, ref, string(args[0].Value), bind.Type); handled {
+			return res, 0, nil
+		}
+	}
+
 	if bind.Value == nil {
 		// Propagate null through dict access chains instead of erroring.
 		// This enables expressions like dict['a']['b'] to evaluate to null
@@ -407,8 +582,17 @@ func dictGetIndex(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*R
 		}
 		// ^^ TODO
 
+		key := string(args[0].Value)
+		v, present := x[key]
+		if !present {
+			// Only now, once the key has genuinely missed, is it worth asking
+			// whether a dotted key spells the path this chain is walking.
+			if res, handled := dictWalk(e, bind, ref, key, bind.Type); handled {
+				return res, 0, nil
+			}
+		}
 		return &RawData{
-			Value: x[string(args[0].Value)],
+			Value: v,
 			Type:  bind.Type,
 		}, 0, nil
 

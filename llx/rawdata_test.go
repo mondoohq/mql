@@ -56,7 +56,7 @@ func TestRawData_String(t *testing.T) {
 		{IPData(ParseIP("1.2.3.4")), "1.2.3.4/8"},
 		{IPData(ParseIP("")), "<null>"},
 		// implicit nil:
-		{&RawData{types.String, nil, nil}, "<null>"},
+		{&RawData{Type: types.String}, "<null>"},
 	}
 
 	for i := range tests {
@@ -98,7 +98,7 @@ func TestTruthy(t *testing.T) {
 		{MapData(map[string]any{"a": true}, types.Bool), true},
 		{ResourceData(nil, "something"), true},
 		// implicit nil:
-		{&RawData{types.String, nil, nil}, false},
+		{&RawData{Type: types.String}, false},
 	}
 
 	for i := range tests {
@@ -210,7 +210,7 @@ func TestSuccess(t *testing.T) {
 			valid:   false,
 		},
 		// implicit nil:
-		{&RawData{types.String, nil, nil}, false, false},
+		{&RawData{Type: types.String}, false, false},
 	}
 
 	for i := range tests {

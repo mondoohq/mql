@@ -24,6 +24,11 @@ type RawData struct {
 	Type  types.Type `json:"type"`
 	Value any        `json:"value"`
 	Error error      `json:"-"`
+	// dictPath carries an in-progress key-path walk across the links of a dict
+	// or map chain, so a key containing dots stays reachable through dot
+	// notation (see dictWalk). Execution state, and unexported besides: it holds
+	// the caller's container, which has no business being serialized.
+	dictPath *dictPathState
 }
 
 // a helper structure exclusively used for json unmarshalling of errors
