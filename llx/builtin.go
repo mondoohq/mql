@@ -348,6 +348,7 @@ func init() {
 			string("lines"):     {f: stringLinesV2, Label: "lines"},
 			string("split"):     {f: stringSplitV2, Label: "split"},
 			string("trim"):      {f: stringTrimV2, Label: "trim"},
+			string("json"):      {f: stringJsonV2, Label: "json"},
 		},
 		types.StringSlice: {
 			// TODO: implement the remaining calls for this type
@@ -558,6 +559,7 @@ func init() {
 			"lines":                           {f: dictLinesV2, Label: "lines"},
 			"split":                           {f: dictSplitV2, Label: "split"},
 			"trim":                            {f: dictTrimV2, Label: "trim"},
+			"json":                            {f: dictJsonV2, Label: "json"},
 			"keys":                            {f: dictKeysV2, Label: "keys"},
 			"values":                          {f: dictValuesV2, Label: "values"},
 			"where":                           {f: dictWhere, Label: "where"},

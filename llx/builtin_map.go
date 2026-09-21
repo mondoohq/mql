@@ -869,6 +869,23 @@ func dictTrimV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*Raw
 	return stringTrimV2(e, bind, chunk, ref)
 }
 
+func dictJsonV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
+	// Unlike the other string-ish dict builtins this returns null for a null
+	// bind rather than erroring. The values it is aimed at are optional
+	// resource attributes, and an absent one has to stay null so the
+	// surrounding `== empty` guard can see it.
+	if bind.Value == nil {
+		return &RawData{Type: types.Dict}, 0, nil
+	}
+
+	_, ok := bind.Value.(string)
+	if !ok {
+		return nil, 0, errors.New("dict value does not support field `json`")
+	}
+
+	return stringJsonV2(e, bind, chunk, ref)
+}
+
 func dictKeysV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
 	if bind.Value == nil {
 		return &RawData{

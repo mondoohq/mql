@@ -4,6 +4,7 @@
 package llx
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"regexp"
@@ -2535,6 +2536,43 @@ func stringTrimV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*R
 	res := strings.Trim(bind.Value.(string), cutset)
 
 	return StringData(res), 0, nil
+}
+
+// stringJsonV2 decodes the bound string as a JSON document and returns the
+// result as a traversable dict, the same value `parse.json(...).params` yields
+// for a file on disk.
+//
+// Providers hand back nested documents as strings wherever the upstream API
+// types the attribute as one. Terraform writes an IAM or KMS policy into plan
+// and state JSON that way, so indexing such a value directly produces a
+// primitive with no type information, which coerces to null; a check reading
+// it then answers about nothing at all. `parse.json` cannot serve those assets
+// because it belongs to the os provider, which a terraform-plan connection
+// does not load. This is a builtin rather than a resource so it runs on every
+// asset and needs no connection.
+func stringJsonV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
+	if bind.Value == nil {
+		return &RawData{Type: types.Dict}, 0, nil
+	}
+
+	s, ok := bind.Value.(string)
+	if !ok {
+		return nil, 0, errors.New("failed to parse JSON, value is not a string")
+	}
+
+	var res any
+	if err := json.Unmarshal([]byte(s), &res); err != nil {
+		// A document that does not parse is reported, not returned as null.
+		// Null would make `.json[...]` read null, `where` yield nothing and an
+		// enclosing `all`/`none` pass vacuously, so malformed input would show
+		// up as a passing check rather than as a problem.
+		return &RawData{
+			Type:  types.Dict,
+			Error: errors.New("failed to parse JSON: " + err.Error()),
+		}, 0, nil
+	}
+
+	return DictData(res), 0, nil
 }
 
 // time methods

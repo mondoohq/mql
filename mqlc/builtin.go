@@ -111,6 +111,10 @@ func init() {
 				typ: stringType, signature: FunctionSignature{Required: 0, Args: []types.Type{types.String}},
 				desc: "Remove all surrounding whitespaces (including newlines and tabs)",
 			},
+			"json": {
+				typ: dictType, signature: FunctionSignature{},
+				desc: "Decode this string as a JSON document and return it as a traversable dict",
+			},
 		},
 		types.Time: {
 			"seconds": {typ: intType, signature: FunctionSignature{}},
@@ -134,6 +138,7 @@ func init() {
 			"lines":     {typ: stringArrayType, signature: FunctionSignature{}},
 			"split":     {typ: stringArrayType, signature: FunctionSignature{Required: 1, Args: []types.Type{types.String}}},
 			"trim":      {typ: stringType, signature: FunctionSignature{Required: 0, Args: []types.Type{types.String}}},
+			"json":      {typ: dictType, signature: FunctionSignature{}},
 			// string / array
 			"in":    {typ: boolType, signature: FunctionSignature{Required: 1, Args: []types.Type{types.Array(types.String), types.Array(types.Dict)}}},
 			"notIn": {typ: boolType, signature: FunctionSignature{Required: 1, Args: []types.Type{types.Array(types.String), types.Array(types.Dict)}}},
