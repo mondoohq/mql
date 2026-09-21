@@ -524,6 +524,8 @@ const (
 	ResourceWindowsDefenderAsrRule                        string = "windows.defender.asrRule"
 	ResourceWindowsDefenderThreat                         string = "windows.defender.threat"
 	ResourceWindowsDefenderThreatDetection                string = "windows.defender.threatDetection"
+	ResourceEdr                                           string = "edr"
+	ResourceEdrProduct                                    string = "edr.product"
 	ResourceCloud                                         string = "cloud"
 	ResourceCloudInstance                                 string = "cloudInstance"
 	ResourceIpAddress                                     string = "ipAddress"
@@ -2682,6 +2684,14 @@ func init() {
 		"windows.defender.threatDetection": {
 			// to override args, implement: initWindowsDefenderThreatDetection(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createWindowsDefenderThreatDetection,
+		},
+		"edr": {
+			// to override args, implement: initEdr(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createEdr,
+		},
+		"edr.product": {
+			// to override args, implement: initEdrProduct(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createEdrProduct,
 		},
 		"cloud": {
 			// to override args, implement: initCloud(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -14883,6 +14893,69 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"windows.defender.threatDetection.resources": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsDefenderThreatDetection).GetResources()).ToDataRes(types.Array(types.String))
+	},
+	"edr.products": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdr).GetProducts()).ToDataRes(types.Array(types.Resource("edr.product")))
+	},
+	"edr.installed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdr).GetInstalled()).ToDataRes(types.Bool)
+	},
+	"edr.healthy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdr).GetHealthy()).ToDataRes(types.Bool)
+	},
+	"edr.product.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetId()).ToDataRes(types.String)
+	},
+	"edr.product.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetName()).ToDataRes(types.String)
+	},
+	"edr.product.vendor": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetVendor()).ToDataRes(types.String)
+	},
+	"edr.product.category": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetCategory()).ToDataRes(types.String)
+	},
+	"edr.product.installed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetInstalled()).ToDataRes(types.Bool)
+	},
+	"edr.product.running": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetRunning()).ToDataRes(types.Bool)
+	},
+	"edr.product.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"edr.product.healthy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetHealthy()).ToDataRes(types.Bool)
+	},
+	"edr.product.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetVersion()).ToDataRes(types.String)
+	},
+	"edr.product.mode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetMode()).ToDataRes(types.String)
+	},
+	"edr.product.signatureAge": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetSignatureAge()).ToDataRes(types.Int)
+	},
+	"edr.product.signatureUpdatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetSignatureUpdatedAt()).ToDataRes(types.Time)
+	},
+	"edr.product.signatureVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetSignatureVersion()).ToDataRes(types.String)
+	},
+	"edr.product.detectedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetDetectedBy()).ToDataRes(types.Array(types.String))
+	},
+	"edr.product.services": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetServices()).ToDataRes(types.Array(types.Resource("service")))
+	},
+	"edr.product.packages": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetPackages()).ToDataRes(types.Array(types.Resource("package")))
+	},
+	"edr.product.processes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetProcesses()).ToDataRes(types.Array(types.Resource("process")))
+	},
+	"edr.product.systemExtensions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetSystemExtensions()).ToDataRes(types.Array(types.Resource("macos.systemExtension")))
 	},
 	"cloud.provider": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloud).GetProvider()).ToDataRes(types.String)
@@ -35034,6 +35107,98 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"windows.defender.threatDetection.resources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindowsDefenderThreatDetection).Resources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"edr.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdr).__id, ok = v.Value.(string)
+		return
+	},
+	"edr.products": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdr).Products, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"edr.installed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdr).Installed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"edr.healthy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdr).Healthy, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"edr.product.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).__id, ok = v.Value.(string)
+		return
+	},
+	"edr.product.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"edr.product.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"edr.product.vendor": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).Vendor, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"edr.product.category": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).Category, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"edr.product.installed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).Installed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"edr.product.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).Running, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"edr.product.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"edr.product.healthy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).Healthy, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"edr.product.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"edr.product.mode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).Mode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"edr.product.signatureAge": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).SignatureAge, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"edr.product.signatureUpdatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).SignatureUpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"edr.product.signatureVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).SignatureVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"edr.product.detectedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).DetectedBy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"edr.product.services": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).Services, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"edr.product.packages": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).Packages, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"edr.product.processes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).Processes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"edr.product.systemExtensions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).SystemExtensions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"cloud.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -89982,6 +90147,263 @@ func (c *mqlWindowsDefenderThreatDetection) GetRemediationTime() *plugin.TValue[
 
 func (c *mqlWindowsDefenderThreatDetection) GetResources() *plugin.TValue[[]any] {
 	return &c.Resources
+}
+
+// mqlEdr for the edr resource
+type mqlEdr struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlEdrInternal
+	Products  plugin.TValue[[]any]
+	Installed plugin.TValue[bool]
+	Healthy   plugin.TValue[bool]
+}
+
+// createEdr creates a new instance of this resource
+func createEdr(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlEdr{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("edr", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlEdr) MqlName() string {
+	return "edr"
+}
+
+func (c *mqlEdr) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlEdr) GetProducts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Products, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("edr", c.__id, "products")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.products()
+	})
+}
+
+func (c *mqlEdr) GetInstalled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Installed, func() (bool, error) {
+		return c.installed()
+	})
+}
+
+func (c *mqlEdr) GetHealthy() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Healthy, func() (bool, error) {
+		return c.healthy()
+	})
+}
+
+// mqlEdrProduct for the edr.product resource
+type mqlEdrProduct struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlEdrProductInternal
+	Id                 plugin.TValue[string]
+	Name               plugin.TValue[string]
+	Vendor             plugin.TValue[string]
+	Category           plugin.TValue[string]
+	Installed          plugin.TValue[bool]
+	Running            plugin.TValue[bool]
+	Enabled            plugin.TValue[bool]
+	Healthy            plugin.TValue[bool]
+	Version            plugin.TValue[string]
+	Mode               plugin.TValue[string]
+	SignatureAge       plugin.TValue[int64]
+	SignatureUpdatedAt plugin.TValue[*time.Time]
+	SignatureVersion   plugin.TValue[string]
+	DetectedBy         plugin.TValue[[]any]
+	Services           plugin.TValue[[]any]
+	Packages           plugin.TValue[[]any]
+	Processes          plugin.TValue[[]any]
+	SystemExtensions   plugin.TValue[[]any]
+}
+
+// createEdrProduct creates a new instance of this resource
+func createEdrProduct(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlEdrProduct{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("edr.product", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlEdrProduct) MqlName() string {
+	return "edr.product"
+}
+
+func (c *mqlEdrProduct) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlEdrProduct) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlEdrProduct) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlEdrProduct) GetVendor() *plugin.TValue[string] {
+	return &c.Vendor
+}
+
+func (c *mqlEdrProduct) GetCategory() *plugin.TValue[string] {
+	return &c.Category
+}
+
+func (c *mqlEdrProduct) GetInstalled() *plugin.TValue[bool] {
+	return &c.Installed
+}
+
+func (c *mqlEdrProduct) GetRunning() *plugin.TValue[bool] {
+	return &c.Running
+}
+
+func (c *mqlEdrProduct) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlEdrProduct) GetHealthy() *plugin.TValue[bool] {
+	return &c.Healthy
+}
+
+func (c *mqlEdrProduct) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlEdrProduct) GetMode() *plugin.TValue[string] {
+	return &c.Mode
+}
+
+func (c *mqlEdrProduct) GetSignatureAge() *plugin.TValue[int64] {
+	return &c.SignatureAge
+}
+
+func (c *mqlEdrProduct) GetSignatureUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.SignatureUpdatedAt
+}
+
+func (c *mqlEdrProduct) GetSignatureVersion() *plugin.TValue[string] {
+	return &c.SignatureVersion
+}
+
+func (c *mqlEdrProduct) GetDetectedBy() *plugin.TValue[[]any] {
+	return &c.DetectedBy
+}
+
+func (c *mqlEdrProduct) GetServices() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Services, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("edr.product", c.__id, "services")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.services()
+	})
+}
+
+func (c *mqlEdrProduct) GetPackages() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Packages, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("edr.product", c.__id, "packages")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.packages()
+	})
+}
+
+func (c *mqlEdrProduct) GetProcesses() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Processes, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("edr.product", c.__id, "processes")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.processes()
+	})
+}
+
+func (c *mqlEdrProduct) GetSystemExtensions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SystemExtensions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("edr.product", c.__id, "systemExtensions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.systemExtensions()
+	})
 }
 
 // mqlCloud for the cloud resource

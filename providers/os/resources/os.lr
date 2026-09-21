@@ -15546,6 +15546,85 @@ windows.defender.threatDetection @defaults("threatId processName actionSuccess")
   resources []string
 }
 
+// Endpoint detection and response agents
+//
+// Endpoint security agents recognized on this asset. products lists every
+// agent that was found, each carrying the packages, services, processes, and
+// system extensions that make it up, so a report can name the vendor and the
+// component that is unhealthy. installed and healthy answer the fleet-wide
+// questions directly, letting an audit assert on one field instead of
+// enumerating vendors per platform. Agents are recognized on Windows, Linux,
+// and macOS.
+edr @defaults("installed healthy") @maturity("preview") {
+  // Every recognized endpoint security agent found on this asset
+  products() []edr.product
+  // Whether at least one recognized agent is installed
+  installed() bool
+  // Whether every installed agent is running, and enabled to start at boot where the platform reports it
+  healthy() bool
+}
+
+// Endpoint security agent
+//
+// A single agent recognized on this asset. The `id` field selects the
+// product, for example `edr.products.where(id == "crowdstrike-falcon")`.
+// installed, running, and enabled report the agent's own components, and
+// healthy combines them for the platform the asset runs. Fields the vendor
+// does not report are null rather than zero, so a check that reads
+// signatureAge on an agent that publishes no content version fails instead
+// of passing against a made-up value.
+private edr.product @defaults("name vendor installed healthy") {
+  // Stable identifier for the product, for example crowdstrike-falcon
+  id string
+  // Product name
+  name string
+  // Vendor that publishes the product
+  vendor string
+  // Product category
+  //
+  // One of edr, epp, av, or xdr.
+  category string
+  // Whether the agent is installed
+  installed bool
+  // Whether every service the agent needs is running
+  running bool
+  // Whether every service the agent needs is enabled to start at boot
+  //
+  // Null on platforms whose service manager does not report a distinct
+  // boot-start setting, which includes launchd on macOS.
+  enabled bool
+  // Whether the agent is installed, running, and enabled where boot-start is reported
+  healthy bool
+  // Version of the agent, null when no component reports one
+  version string
+  // Mode the agent is operating in
+  //
+  // `active` means the agent detects and remediates, `passive` means another
+  // product is the active one and this agent only reports, and `blockOnly`
+  // means it remediates only what endpoint detection and response identifies.
+  // Null for agents that expose no mode.
+  mode string
+  // Days since the agent last updated its detection content, null when the agent reports no content age
+  signatureAge int
+  // Time the agent last updated its detection content
+  signatureUpdatedAt time
+  // Version of the agent's detection content
+  signatureVersion string
+  // Signals that identified the agent
+  //
+  // Each entry names what matched: `package`, `service`, `process`, `path`,
+  // or `systemExtension`.
+  detectedBy []string
+  // Services that make up the agent
+  services() []service
+  // Packages that installed the agent
+  packages() []package
+  // Processes the agent is running
+  processes() []process
+  // System extensions the agent registered, empty off macOS
+  systemExtensions() []macos.systemExtension
+}
+
 // Cloud-asset metadata
 //
 // Cloud provider hosting the asset and the instance metadata it exposes.
