@@ -129,3 +129,26 @@ func TestJsonShadowsADictKeyOfTheSameName(t *testing.T) {
 	require.NoError(t, res.Err())
 	assert.Equal(t, float64(5), res.Value())
 }
+
+// `json` on a value that is already decoded is an error, not a no-op. Adding a
+// fast path that returns a map or array bind as-is fails this test, which is
+// the point: the error tells the author the attribute never carried a JSON
+// string, instead of letting a query pass on a shape they guessed wrong.
+func TestJsonOnAnAlreadyDecodedValueErrors(t *testing.T) {
+	env := testEnv(t)
+	ctx := context.Background()
+
+	for _, query := range []string{
+		`'{"a":23}'.json.json`,
+		`'[1,2,3]'.json.json`,
+	} {
+		t.Run(query, func(t *testing.T) {
+			q, err := env.Compile(query)
+			require.NoError(t, err)
+			res, err := q.Eval(ctx)
+			require.NoError(t, err)
+			require.Error(t, res.Err())
+			assert.Contains(t, res.Err().Error(), "does not support field `json`")
+		})
+	}
+}

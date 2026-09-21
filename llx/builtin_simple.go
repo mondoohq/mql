@@ -2551,10 +2551,13 @@ func stringTrimV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*R
 // does not load. This is a builtin rather than a resource so it runs on every
 // asset and needs no connection.
 //
+// A value that is already decoded is an error rather than a pass-through: it
+// tells the author the attribute never carried a JSON string, so they learn
+// the real shape instead of writing a query that happens to work.
+//
 // Declared experimental (resources.MaturityExperimental in mqlc/builtin.go).
-// The name collides with a dict key called `json` in dot form, and whether a
-// value that is already decoded should pass through rather than error is still
-// open, so the surface may change.
+// The name collides with a dict key called `json` in dot form, so the surface
+// may change.
 func stringJsonV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
 	if bind.Value == nil {
 		return &RawData{Type: types.Dict}, 0, nil
