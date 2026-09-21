@@ -542,6 +542,9 @@ var wellKnownSystemSIDs = map[string]struct{}{
 	".DEFAULT": {},
 }
 
+// isWellKnownSystemSID matches case-insensitively: numeric SIDs have no case,
+// but the ".DEFAULT" template hive has been observed as ".Default" in some
+// registry listings.
 func isWellKnownSystemSID(sid string) bool {
 	_, ok := wellKnownSystemSIDs[strings.ToUpper(sid)]
 	return ok
@@ -652,6 +655,13 @@ var winEnvPercentPattern = regexp.MustCompile(`%([^%]+)%`)
 // than stripped and used: `reg load` on a mis-parsed path fails or targets the
 // wrong hive. A profile with no recorded ProfileImagePath is skipped as well,
 // since there is nothing to enumerate or load a hive from.
+//
+// LOCAL-NATIVE ONLY. ProfileImagePath is REG_EXPAND_SZ and is expanded against
+// this process's environment (expandWindowsEnvPercent), which is correct only
+// because the process runs on the scanned host. The remote PowerShell path
+// enumerates profiles inside the script, and the offline filesystem path reads
+// the machine hive only; neither must be routed through here without resolving
+// %SystemDrive% and friends from the target instead.
 func listWindowsProfiles(reader nativeRegistryReader) []windowsProfile {
 	children, err := reader.Children(profileListPath)
 	if err != nil {
