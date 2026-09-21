@@ -72,6 +72,13 @@ type ConnectionWithOSFamily interface {
 	OSFamily() OSFamily
 }
 
+// ConnectionWithMountPath is implemented by connections that read a directory
+// tree mounted on the scanning host. The path is what such a target can be
+// named by when it carries no identity of its own.
+type ConnectionWithMountPath interface {
+	MountPath() string
+}
+
 type SimpleConnection interface {
 	plugin.Connection
 	Name() string

@@ -4,8 +4,11 @@
 package id
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql"
@@ -135,6 +138,33 @@ func IdentifyPlatform(conn shared.Connection, req *plugin.ConnectReq, p *invento
 		}
 	}
 
+	// A mounted filesystem is the one target that can legitimately carry no
+	// machine identity. An extracted container root filesystem is the common
+	// case: the runtime writes /etc/hostname when the container starts, so the
+	// copy in the image layers is empty, and the DMI and cloud-init sources the
+	// other detectors read are absent from an image altogether. Fall back to
+	// whatever identity the tree does hold, and finally to the mount path, so
+	// the asset stays scannable instead of being discarded for having no id.
+	if len(platformIds) == 0 && conn.Type() == shared.Type_FileSystem {
+		for _, fallback := range []string{ids.IdDetector_MachineID, ids.IdDetector_MountPath} {
+			info, err := gatherPlatformInfo(conn, p, fallback)
+			if err != nil || len(info.IDs) == 0 {
+				log.Debug().Err(err).Str("detector", fallback).Msg("no platform id from fallback detector")
+				continue
+			}
+
+			log.Debug().Str("detector", fallback).Strs("platform-ids", info.IDs).
+				Msg("filesystem carries no hostname, falling back for the platform id")
+			platformIds = append(platformIds, info.IDs...)
+			if fingerprint.Name == "" {
+				fingerprint.Name = info.Name
+			}
+			idDetectors = append(idDetectors, fallback)
+			fingerprint.ActiveIdDetectors = idDetectors
+			break
+		}
+	}
+
 	// if we found zero platform ids something went wrong
 	if len(platformIds) == 0 {
 		return nil, p, errors.New("could not determine a platform identifier")
@@ -259,6 +289,26 @@ func gatherPlatformInfo(conn shared.Connection, pf *inventory.Platform, idDetect
 			}, nil
 		}
 		return &platformInfo{}, nil
+	case ids.IdDetector_MountPath:
+		mounted, ok := conn.(shared.ConnectionWithMountPath)
+		if !ok {
+			return &platformInfo{}, nil
+		}
+
+		// The path is resolved to an absolute one so that the same tree reached
+		// by two spellings stays one asset. Two directories still collide only
+		// if they are the same directory.
+		path, err := filepath.Abs(mounted.MountPath())
+		if err != nil {
+			return nil, err
+		}
+
+		sum := sha256.Sum256([]byte(path))
+		return &platformInfo{
+			IDs:                []string{"//platformid.api.mondoo.app/runtime/filesystem/hash/" + hex.EncodeToString(sum[:])},
+			Name:               path,
+			RelatedPlatformIDs: []string{},
+		}, nil
 	case ids.IdDetector_CloudDetect:
 		cloudPlatformInfo := clouddetect.Detect(conn, pf)
 		if cloudPlatformInfo != nil {
