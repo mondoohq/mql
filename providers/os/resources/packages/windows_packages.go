@@ -238,6 +238,109 @@ func ParseWindowsHotfixes(input io.Reader) ([]PowershellWinHotFix, error) {
 	return powershellWinHotFixPkgs, nil
 }
 
+// psLongDateLayouts are the shapes ConvertTo-Json writes into InstalledOn.DateTime.
+// Windows PowerShell 5.1 renders the invariant/en-US long date; PowerShell 7
+// serializes DateTime as ISO-8601 instead. On a localized host neither matches
+// (German renders "Mittwoch, 12. August 2026 00:00:00"), which is why the
+// caller falls back rather than treating a parse failure as an error.
+var psLongDateLayouts = []string{
+	"Monday, January 2, 2006 3:04:05 PM",
+	"Monday, 02 January 2006 15:04:05",
+	time.RFC3339,
+}
+
+// installedOnDate returns the calendar day Get-HotFix reports for this entry, at
+// UTC midnight — the same shape parseWinInstallDate produces for the registry
+// path, so both Windows package sources agree.
+//
+// Why this is not just InstalledOnTime(): Win32_QuickFixEngineering's InstalledOn
+// is a DATE, which Get-HotFix renders at the host's LOCAL midnight, and
+// ConvertTo-Json then serializes as an epoch-UTC instant. Publishing that instant
+// makes every host at a positive UTC offset report the previous day — a hotfix
+// Windows itself reports installed on the 9th reads as the 8th from Berlin
+// (22:00Z) or Tokyo (15:00Z). Fixtures captured on UTC boxes cannot show this,
+// because there local midnight and UTC midnight are the same instant.
+//
+// Recovering a local calendar day from an instant needs the host's UTC offset,
+// which is not in the payload, so this reads it from the two places it does
+// appear, in order of how explicit they are:
+//
+//  1. InstalledOn.DateTime, which is the local rendering. Authoritative when the
+//     host's locale is one we can parse.
+//  2. The epoch instant, when it sits exactly on a real UTC-offset boundary away
+//     from a midnight (whole hours, or the :30/:45 offsets India, Nepal, the
+//     Chathams and others use). "Exactly" is what keeps this from mangling a
+//     genuine timestamp: an afternoon install at 14:37 local has minutes nobody's
+//     offset can explain, so it is left alone rather than rounded into the next
+//     day.
+//
+// Anything else keeps the raw instant. Offsets beyond ±12h (UTC+13/+14) on a
+// locale we cannot parse still read one day early; recovering those needs the
+// host's timezone, which this payload does not carry.
+func (hf PowershellWinHotFix) installedOnDate() time.Time {
+	if hf.InstalledOn.DateTime != "" {
+		for _, layout := range psLongDateLayouts {
+			if t, err := time.Parse(layout, hf.InstalledOn.DateTime); err == nil {
+				return utcMidnight(t)
+			}
+		}
+	}
+
+	t := hf.InstalledOnTime()
+	if t == nil {
+		// No InstalledOn, or a value PSJsonTimestamp could not read. The zero
+		// time is what fillPackageArgs turns into a real MQL null, so the
+		// consumer sees "unknown" rather than a fabricated date.
+		return time.Time{}
+	}
+	// A non-positive epoch is a sentinel, not a date: /Date(0)/ would otherwise
+	// publish 1970-01-01, and llx renders any time with Unix() <= 0 as a duration
+	// string rather than a timestamp. rpm_packages.go guards the same way.
+	if t.Unix() <= 0 {
+		return time.Time{}
+	}
+
+	utc := t.UTC()
+	if offset, ok := offsetFromMidnight(utc); ok {
+		return utcMidnight(utc.Add(offset))
+	}
+	return utc
+}
+
+// utcMidnight keeps only the calendar day of t, at 00:00 UTC.
+func utcMidnight(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
+
+// offsetFromMidnight reports the UTC offset that would put t at a local midnight,
+// if t sits exactly on a boundary a real timezone uses. Sub-minute components or
+// minutes outside {0, 30, 45} mean t carries a time of day rather than a date, so
+// no offset is claimed.
+func offsetFromMidnight(t time.Time) (time.Duration, bool) {
+	if t.Second() != 0 || t.Nanosecond() != 0 {
+		return 0, false
+	}
+	switch t.Minute() {
+	case 0, 30, 45:
+	default:
+		return 0, false
+	}
+	sinceMidnight := time.Duration(t.Hour())*time.Hour + time.Duration(t.Minute())*time.Minute
+	if sinceMidnight == 0 {
+		return 0, true // already a UTC midnight
+	}
+	// Ahead of UTC: local midnight serialized to the PREVIOUS UTC day, so the
+	// day rolls forward. Behind UTC: it serialized later the same UTC day.
+	if forward := 24*time.Hour - sinceMidnight; forward <= 12*time.Hour {
+		return forward, true
+	}
+	if sinceMidnight <= 12*time.Hour {
+		return 0, true // same UTC calendar day already
+	}
+	return 0, false
+}
+
 func HotFixesToPackages(hotfixes []PowershellWinHotFix) []Package {
 	pkgs := make([]Package, len(hotfixes))
 	for i := range hotfixes {
@@ -251,19 +354,7 @@ func HotFixesToPackages(hotfixes []PowershellWinHotFix) []Package {
 			Description: sanitizePackageField(hotfixes[i].Description),
 			Format:      "windows/hotfix",
 		}
-		// InstalledOnTime is nil when Get-HotFix reported no InstalledOn (or an
-		// unparseable one) for this entry — leave InstallDate at its zero value
-		// rather than dereferencing. fillPackageArgs treats the zero time as
-		// "unknown" and surfaces a real MQL null, not a fabricated date.
-		//
-		// Normalize to UTC to match every other backend that populates
-		// InstallDate (rpm, xbps, the Windows registry path in
-		// parseWinInstallDate) — PSJsonTimestamp itself returns time.Unix's
-		// Local-zone result, which would otherwise make this the only source
-		// whose InstallDate varies with the host's TZ.
-		if t := hotfixes[i].InstalledOnTime(); t != nil {
-			pkg.InstallDate = t.UTC()
-		}
+		pkg.InstallDate = hotfixes[i].installedOnDate()
 		pkgs[i] = pkg
 	}
 	return pkgs

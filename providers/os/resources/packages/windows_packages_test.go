@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -189,7 +190,7 @@ func TestWindowsHotFixParser(t *testing.T) {
 	assert.Equal(t, 6, len(hotfixes), "detected the right amount of packages")
 
 	timestamp := hotfixes[0].InstalledOnTime()
-	assert.NotNil(t, timestamp)
+	require.NotNil(t, timestamp) // dereferenced below: a nil here must fail, not panic
 
 	// Real Get-HotFix JSON shape (see testdata/windows_2019.toml): InstalledOn
 	// carries the raw PowerShell "\/Date(1599609600000)\/" value alongside the
@@ -210,6 +211,80 @@ func TestWindowsHotFixParser(t *testing.T) {
 	hotfixes, err = ParseWindowsHotfixes(strings.NewReader(""))
 	assert.Nil(t, err)
 	assert.Equal(t, 0, len(hotfixes), "detected the right amount of packages")
+}
+
+// TestHotFixInstalledOnCalendarDay is the regression test for the off-by-one day
+// that shipped with the first version of this code.
+//
+// Get-HotFix reports a DATE at the host's local midnight, which ConvertTo-Json
+// serializes as an epoch-UTC instant. Publishing that instant reported the
+// previous day for every host east of UTC. Every fixture in this package was
+// captured on a UTC box, where local midnight IS UTC midnight — so no fixture
+// could show the bug, and the original tests passed while the field was wrong
+// for most of the world.
+func TestHotFixInstalledOnCalendarDay(t *testing.T) {
+	// All of these describe the SAME calendar day: 2020-09-09, as rendered by a
+	// host at the given UTC offset.
+	installedSept9 := time.Date(2020, time.September, 9, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name     string
+		value    string
+		dateTime string
+	}{
+		{"UTC host", "/Date(1599609600000)/", "Wednesday, September 9, 2020 12:00:00 AM"},
+		{"Berlin, UTC+2", "/Date(1599602400000)/", "Wednesday, September 9, 2020 12:00:00 AM"},
+		{"Tokyo, UTC+9", "/Date(1599577200000)/", "Wednesday, September 9, 2020 12:00:00 AM"},
+		{"New York, UTC-4", "/Date(1599624000000)/", "Wednesday, September 9, 2020 12:00:00 AM"},
+		// A localized host: DateTime is unparseable, so the calendar day has to
+		// come from the offset the instant itself implies.
+		{"Berlin, localized DateTime", "/Date(1599602400000)/", "Mittwoch, 9. September 2020 00:00:00"},
+		{"Kolkata, UTC+5:30, localized", "/Date(1599589800000)/", "बुधवार, 9 सितंबर 2020 12:00:00 पूर्वाह्न"},
+		// PowerShell 7 renders ISO-8601 instead of the long form.
+		{"pwsh 7 ISO, UTC+2", "/Date(1599602400000)/", "2020-09-09T00:00:00+02:00"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hf := PowershellWinHotFix{HotFixId: "KB5000001", Description: "Update"}
+			hf.InstalledOn.Value = tt.value
+			hf.InstalledOn.DateTime = tt.dateTime
+
+			pkgs := HotFixesToPackages([]PowershellWinHotFix{hf})
+			require.Len(t, pkgs, 1)
+			assert.True(t, pkgs[0].InstallDate.Equal(installedSept9),
+				"want the calendar day Windows reports (%s), got %s", installedSept9, pkgs[0].InstallDate)
+		})
+	}
+}
+
+// TestHotFixInstalledOnKeepsTimeOfDay pins the limit of the offset inference: a
+// value carrying a real time of day must be left alone, not rounded to a
+// neighbouring midnight. 14:37 is not a UTC offset away from midnight, so no
+// timezone can explain it and the instant stands as reported.
+func TestHotFixInstalledOnKeepsTimeOfDay(t *testing.T) {
+	afternoon := time.Date(2020, time.September, 9, 14, 37, 0, 0, time.UTC)
+	hf := PowershellWinHotFix{HotFixId: "KB5000002", Description: "Update"}
+	hf.InstalledOn.Value = "/Date(" + strconv.FormatInt(afternoon.UnixMilli(), 10) + ")/"
+
+	pkgs := HotFixesToPackages([]PowershellWinHotFix{hf})
+	require.Len(t, pkgs, 1)
+	assert.True(t, pkgs[0].InstallDate.Equal(afternoon),
+		"a genuine time of day must not be snapped to a midnight")
+}
+
+// TestHotFixInstalledOnSentinelEpoch covers the values that parse but mean
+// nothing: /Date(0)/ would publish 1970-01-01, which is not IsZero() and so
+// reaches consumers as a real install date — and llx renders any time with
+// Unix() <= 0 as a duration string rather than a timestamp.
+func TestHotFixInstalledOnSentinelEpoch(t *testing.T) {
+	for _, value := range []string{"/Date(0)/", "/Date(-1)/"} {
+		hf := PowershellWinHotFix{HotFixId: "KB5000003", Description: "Update"}
+		hf.InstalledOn.Value = value
+
+		pkgs := HotFixesToPackages([]PowershellWinHotFix{hf})
+		require.Len(t, pkgs, 1)
+		assert.True(t, pkgs[0].InstallDate.IsZero(), "%s is a sentinel, not an install date", value)
+	}
 }
 
 // TestHotFixesToPackagesMissingInstalledOn covers the entries the fixture
