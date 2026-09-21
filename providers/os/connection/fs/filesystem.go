@@ -16,8 +16,9 @@ import (
 )
 
 var (
-	_ shared.Connection = (*FileSystemConnection)(nil)
-	_ plugin.Closer     = (*FileSystemConnection)(nil)
+	_ shared.Connection              = (*FileSystemConnection)(nil)
+	_ shared.ConnectionWithMountPath = (*FileSystemConnection)(nil)
+	_ plugin.Closer                  = (*FileSystemConnection)(nil)
 )
 
 func NewFileSystemConnectionWithClose(id uint32, conf *inventory.Config, asset *inventory.Asset, closeFN func()) (*FileSystemConnection, error) {
@@ -109,6 +110,12 @@ func (c *FileSystemConnection) Identifier() (string, error) {
 		return "", errors.New("no platform id provided")
 	}
 	return c.tcPlatformId, nil
+}
+
+// MountPath returns the directory this connection reads, implementing
+// shared.ConnectionWithMountPath.
+func (c *FileSystemConnection) MountPath() string {
+	return c.MountedDir
 }
 
 func (c *FileSystemConnection) Name() string {
