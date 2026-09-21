@@ -65,7 +65,9 @@ type Signature struct {
 	// All of them must be running for the agent to count as running.
 	Services []string
 	// ServicePattern matches a family of services whose names carry a version
-	// or instance suffix. At least one match must be running.
+	// or instance suffix. At least one match must be running. It is applied to
+	// the name without systemd's optional .service suffix, and is case
+	// sensitive unless it asks for (?i).
 	ServicePattern *regexp.Regexp
 	// ProcessPattern matches the executables the agent runs.
 	ProcessPattern *regexp.Regexp

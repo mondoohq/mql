@@ -31,6 +31,7 @@ alias os.base.containerd = containerd
 alias os.base.continuedev = continuedev
 alias os.base.cursor = cursor
 alias os.base.docker = docker
+alias os.base.edr = edr
 alias os.base.files = files
 alias os.base.firefox = firefox
 alias os.base.gemini = gemini

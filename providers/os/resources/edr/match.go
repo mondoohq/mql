@@ -247,13 +247,17 @@ func matchNamedServices(sig Signature, inv Inventory) (idx []int, namedFound boo
 	return idx, true
 }
 
+// matchPatternedServices applies the pattern to the same normalized name that
+// matchNamedServices compares against, so a pattern anchored at the end still
+// matches a systemd unit written with its optional .service suffix. Case is
+// left to the pattern, which can ask for (?i) where a platform needs it.
 func matchPatternedServices(sig Signature, inv Inventory) []int {
 	if sig.ServicePattern == nil {
 		return nil
 	}
 	var idx []int
 	for i := range inv.Services {
-		if sig.ServicePattern.MatchString(inv.Services[i].Name) {
+		if sig.ServicePattern.MatchString(normalizeServiceName(inv.Services[i].Name)) {
 			idx = append(idx, i)
 		}
 	}
@@ -291,5 +295,11 @@ func anyExtension(inv Inventory, idx []int, pred func(SystemExtension) bool) boo
 // them up: systemd's optional .service suffix is not part of the identity, and
 // Windows service names are not case sensitive.
 func sameServiceName(a, b string) bool {
-	return strings.EqualFold(strings.TrimSuffix(a, ".service"), strings.TrimSuffix(b, ".service"))
+	return strings.EqualFold(normalizeServiceName(a), normalizeServiceName(b))
+}
+
+// normalizeServiceName drops systemd's optional unit suffix, which the service
+// resource also treats as no part of a service's identity.
+func normalizeServiceName(name string) string {
+	return strings.TrimSuffix(name, ".service")
 }

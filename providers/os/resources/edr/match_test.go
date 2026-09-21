@@ -4,6 +4,7 @@
 package edr
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -586,6 +587,19 @@ func TestServiceNamesMatchWithAndWithoutTheSystemdSuffix(t *testing.T) {
 	}, "crowdstrike-falcon")
 
 	assert.True(t, d.Healthy)
+}
+
+func TestServicePatternsSeeTheNormalizedName(t *testing.T) {
+	// No shipped pattern is anchored at the end, so this asserts on the
+	// helper directly: a pattern written with $ must still match a systemd
+	// unit spelled with its optional suffix.
+	sig := Signature{ServicePattern: regexp.MustCompile(`^falcon-sensor$`)}
+	inv := Inventory{Services: []Service{
+		svc("unrelated.service", true, true),
+		svc("falcon-sensor.service", true, true),
+	}}
+
+	assert.Equal(t, []int{1}, matchPatternedServices(sig, inv))
 }
 
 func TestWindowsServiceNamesAreNotCaseSensitive(t *testing.T) {
