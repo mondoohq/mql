@@ -246,11 +246,25 @@ func HotFixesToPackages(hotfixes []PowershellWinHotFix) []Package {
 		// same PowerShell→JSON path as the registry packages, so apply the
 		// same sanitization so a stray control character can't corrupt the
 		// downstream SBOM projection.
-		pkgs[i] = Package{
+		pkg := Package{
 			Name:        sanitizePackageField(hotfixes[i].HotFixId),
 			Description: sanitizePackageField(hotfixes[i].Description),
 			Format:      "windows/hotfix",
 		}
+		// InstalledOnTime is nil when Get-HotFix reported no InstalledOn (or an
+		// unparseable one) for this entry — leave InstallDate at its zero value
+		// rather than dereferencing. fillPackageArgs treats the zero time as
+		// "unknown" and surfaces a real MQL null, not a fabricated date.
+		//
+		// Normalize to UTC to match every other backend that populates
+		// InstallDate (rpm, xbps, the Windows registry path in
+		// parseWinInstallDate) — PSJsonTimestamp itself returns time.Unix's
+		// Local-zone result, which would otherwise make this the only source
+		// whose InstallDate varies with the host's TZ.
+		if t := hotfixes[i].InstalledOnTime(); t != nil {
+			pkg.InstallDate = t.UTC()
+		}
+		pkgs[i] = pkg
 	}
 	return pkgs
 }

@@ -191,18 +191,56 @@ func TestWindowsHotFixParser(t *testing.T) {
 	timestamp := hotfixes[0].InstalledOnTime()
 	assert.NotNil(t, timestamp)
 
+	// Real Get-HotFix JSON shape (see testdata/windows_2019.toml): InstalledOn
+	// carries the raw PowerShell "\/Date(1599609600000)\/" value alongside the
+	// human-readable DateTime, both for the same instant.
+	expectedInstalledOn := time.Date(2020, time.September, 9, 0, 0, 0, 0, time.UTC)
+	assert.True(t, timestamp.Equal(expectedInstalledOn), "expected InstalledOnTime to match the fixture's InstalledOn value")
+
 	pkgs := HotFixesToPackages(hotfixes)
 	p := findPkg(pkgs, "KB4486553")
 	assert.Equal(t, Package{
 		Name:        "KB4486553",
 		Description: "Update",
 		Format:      "windows/hotfix",
+		InstallDate: expectedInstalledOn,
 	}, p)
 
 	// check empty return
 	hotfixes, err = ParseWindowsHotfixes(strings.NewReader(""))
 	assert.Nil(t, err)
 	assert.Equal(t, 0, len(hotfixes), "detected the right amount of packages")
+}
+
+// TestHotFixesToPackagesMissingInstalledOn covers the entries the fixture
+// above doesn't: Get-HotFix commonly omits InstalledOn (older hotfixes,
+// hotfixes installed by an update agent rather than a user), and a stray
+// value in that field must not panic HotFixesToPackages or fabricate a date.
+func TestHotFixesToPackagesMissingInstalledOn(t *testing.T) {
+	hotfixes := []PowershellWinHotFix{
+		{
+			// InstalledOn entirely absent from the JSON.
+			HotFixId:    "KB0000001",
+			Description: "Update",
+		},
+		{
+			// InstalledOn present but its value does not match the
+			// PowerShell "/Date(...)/ " shape PSJsonTimestamp expects.
+			HotFixId:    "KB0000002",
+			Description: "Update",
+			InstalledOn: struct {
+				Value    string `json:"value"`
+				DateTime string `json:"DateTime"`
+			}{Value: "not-a-date", DateTime: "garbage"},
+		},
+	}
+
+	pkgs := HotFixesToPackages(hotfixes)
+	require.Len(t, pkgs, 2)
+
+	for _, p := range pkgs {
+		assert.True(t, p.InstallDate.IsZero(), "InstallDate should be the zero value when InstalledOn is absent or unparseable")
+	}
 }
 
 func TestGetPackageFromRegistryKeyItems(t *testing.T) {
