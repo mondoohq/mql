@@ -82,12 +82,19 @@ func ParsePacmanPackages(pf *inventory.Platform, input io.Reader) []Package {
 		if m != nil {
 			name := m[1]
 			version := m[2]
+			// pacman keeps the epoch inside the version it prints, the way
+			// dpkg does. Version stays as pacman wrote it and Epoch carries
+			// the value on its own.
+			epoch := epochFromVersion(version)
 			pkgs = append(pkgs, Package{
 				Name:           name,
 				Version:        version,
+				Epoch:          epoch,
 				Format:         PacmanPkgFormat,
 				FilesAvailable: PkgFilesAsync,
-				PUrl:           purl.NewPackageURL(pf, purl.TypeAlpm, name, version).String(),
+				PUrl: purl.NewPackageURL(pf, purl.TypeAlpm, name, version,
+					purl.WithEpoch(epoch),
+				).String(),
 			})
 		} else if strings.TrimSpace(line) != "" && !isPacmanDiagnostic(line) {
 			// A line we cannot parse is a package we do not report. Count it,
@@ -258,10 +265,15 @@ func packageFromPacmanFields(pf *inventory.Platform, fields map[string]string) *
 		return nil
 	}
 	version := fields["%VERSION%"]
+	// %VERSION% is "[epoch:]pkgver-pkgrel" and carries the epoch inline, as
+	// `pacman -Q` does. Version stays as pacman wrote it and Epoch carries the
+	// value on its own, which is the pairing the rpm and dpkg readers produce.
+	epoch := epochFromVersion(version)
 
 	return &Package{
 		Name:        name,
 		Version:     version,
+		Epoch:       epoch,
 		Arch:        fields["%ARCH%"],
 		Description: fields["%DESC%"],
 		// Pacman desc files carry %LICENSE% as a multi-line block, one
@@ -270,7 +282,9 @@ func packageFromPacmanFields(pf *inventory.Platform, fields map[string]string) *
 		License:        fields["%LICENSE%"],
 		Format:         PacmanPkgFormat,
 		FilesAvailable: PkgFilesAsync,
-		PUrl:           purl.NewPackageURL(pf, purl.TypeAlpm, name, version).String(),
+		PUrl: purl.NewPackageURL(pf, purl.TypeAlpm, name, version,
+			purl.WithEpoch(epoch),
+		).String(),
 	}
 }
 
