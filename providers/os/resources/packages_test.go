@@ -50,16 +50,18 @@ func TestFillPackageArgs(t *testing.T) {
 	args := make(map[string]*llx.RawData, 15)
 
 	pkg := packages.Package{
-		Name:        "openssl",
-		Version:     "3.0.11-1",
-		Arch:        "x86_64",
-		Status:      "install ok installed",
-		Description: "TLS toolkit",
-		Format:      "rpm",
-		Origin:      "openssl-src",
-		Epoch:       "1",
-		PUrl:        "pkg:rpm/redhat/openssl@3.0.11-1?arch=x86_64",
-		Vendor:      "Red Hat",
+		Name:         "openssl",
+		Version:      "3.0.11-1",
+		Arch:         "x86_64",
+		Status:       "install ok installed",
+		Description:  "TLS toolkit",
+		Format:       "rpm",
+		Origin:       "openssl-src",
+		Epoch:        "1",
+		PUrl:         "pkg:rpm/redhat/openssl@3.0.11-1?arch=x86_64",
+		Vendor:       "Red Hat",
+		InstallScope: "user",
+		InstallUser:  "S-1-5-21-1-2-3-1001",
 	}
 	fillPackageArgs(args, &pkg, "3.0.12-1", nil)
 
@@ -75,6 +77,8 @@ func TestFillPackageArgs(t *testing.T) {
 	assert.Equal(t, "1", args["epoch"].Value)
 	assert.Equal(t, "pkg:rpm/redhat/openssl@3.0.11-1?arch=x86_64", args["purl"].Value)
 	assert.Equal(t, "Red Hat", args["vendor"].Value)
+	assert.Equal(t, "user", args["installScope"].Value)
+	assert.Equal(t, "S-1-5-21-1-2-3-1001", args["installUser"].Value)
 
 	// An absent install date must stay a real null rather than becoming the Go
 	// zero time, which would report 0001-01-01 as a genuine install date.
@@ -115,4 +119,51 @@ func TestCreateResourceDoesNotRetainArgs(t *testing.T) {
 	assert.Equal(t, "MIT", created[0].License.Data)
 	assert.Empty(t, created[1].License.Data, "beta inherited a license")
 	assert.Equal(t, "GPL-2.0", created[2].License.Data)
+}
+
+// TestPackageInstallScopeAndUserSurface proves installScope/installUser reach
+// the mqlPackage resource end to end: fillPackageArgs -> CreateResource -> the
+// generated field getters, not just the intermediate args map.
+func TestPackageInstallScopeAndUserSurface(t *testing.T) {
+	runtime := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+	args := make(map[string]*llx.RawData, 15)
+
+	t.Run("user-scope package carries its owning SID", func(t *testing.T) {
+		pkg := packages.Package{
+			Name: "Cursor", Version: "1.2.3", Arch: "x86_64", Format: "windows/app",
+			InstallScope: "user", InstallUser: "S-1-5-21-1-2-3-1001",
+		}
+		fillPackageArgs(args, &pkg, "", nil)
+		res, err := CreateResource(runtime, "package", args)
+		require.NoError(t, err)
+		got := res.(*mqlPackage)
+
+		assert.Equal(t, "user", got.InstallScope.Data)
+		assert.Equal(t, "S-1-5-21-1-2-3-1001", got.InstallUser.Data)
+	})
+
+	t.Run("machine-scope package carries no user", func(t *testing.T) {
+		pkg := packages.Package{
+			Name: "7-Zip", Version: "23.01", Arch: "x86_64", Format: "windows/app",
+			InstallScope: "machine",
+		}
+		fillPackageArgs(args, &pkg, "", nil)
+		res, err := CreateResource(runtime, "package", args)
+		require.NoError(t, err)
+		got := res.(*mqlPackage)
+
+		assert.Equal(t, "machine", got.InstallScope.Data)
+		assert.Empty(t, got.InstallUser.Data)
+	})
+
+	t.Run("backend with no such concept leaves both empty", func(t *testing.T) {
+		pkg := packages.Package{Name: "openssl", Version: "3.0.11", Arch: "amd64", Format: "rpm"}
+		fillPackageArgs(args, &pkg, "", nil)
+		res, err := CreateResource(runtime, "package", args)
+		require.NoError(t, err)
+		got := res.(*mqlPackage)
+
+		assert.Empty(t, got.InstallScope.Data)
+		assert.Empty(t, got.InstallUser.Data)
+	})
 }

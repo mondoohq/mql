@@ -8,6 +8,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	osuser "os/user"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -26,6 +27,11 @@ import (
 	"go.mondoo.com/mql/providers/os/resources/cpe"
 	"go.mondoo.com/mql/providers/os/resources/powershell"
 	"go.mondoo.com/mql/providers/os/resources/purl"
+)
+
+const (
+	installScopeMachine = "machine"
+	installScopeUser    = "user"
 )
 
 // Compiled once: reused for each root the appx search walks.
@@ -100,14 +106,51 @@ const (
 	Defender
 )
 
+// installedAppsScript reads the machine-wide Uninstall keys plus the calling
+// identity's own HKCU, then extends the same read to every other user profile
+// Windows knows about (HKLM\...\ProfileList) whose hive is currently live
+// under HKEY_USERS. A profile with no active logon session has no live hive to
+// read remotely -- reaching NTUSER.DAT would mean `reg load`/`reg unload` on
+// the target for a session this code does not own, so that case is simply
+// skipped rather than attempted. This is why an unattended/SYSTEM scan over a
+// remote connection still only sees software installed while a user was
+// logged in; the local native path (getLocalInstalledApps) additionally loads
+// NTUSER.DAT for logged-off users via the connection's UserHiveRegistryHandler.
+//
+// Each entry carries the InstallScope ("machine" or "user") and InstallUser
+// (SID, "user" entries only) it was read under, computed here rather than
+// inferred later from PSPath so the Go parser needs no path parsing.
 const installedAppsScript = `
-Get-ItemProperty (@(
-  'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',
-  'HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',
-  'HKLM:\\SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',
-  'HKCU:\\SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'
-) | Where-Object { Test-Path $_ }) |
-Select-Object -Property DisplayName,DisplayVersion,Publisher,EstimatedSize,InstallSource,UninstallString,InstallLocation,InstallDate,PSPath | ConvertTo-Json -Compress
+$callingSid = $null
+try { $callingSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value } catch {}
+$skipSids = @{ 'S-1-5-18' = $true; 'S-1-5-19' = $true; 'S-1-5-20' = $true; '.DEFAULT' = $true }
+if ($callingSid) { $skipSids[$callingSid] = $true }
+
+$roots = New-Object System.Collections.Generic.List[object]
+$roots.Add(@{ Path = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'; Scope = 'machine'; Sid = '' })
+$roots.Add(@{ Path = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'; Scope = 'user'; Sid = $callingSid })
+$roots.Add(@{ Path = 'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'; Scope = 'machine'; Sid = '' })
+$roots.Add(@{ Path = 'HKCU:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'; Scope = 'user'; Sid = $callingSid })
+
+$plKey = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey('SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList', $false)
+if ($plKey) {
+    try {
+        foreach ($sid in $plKey.GetSubKeyNames()) {
+            if ($skipSids.ContainsKey($sid)) { continue }
+            if (-not (Test-Path "Registry::HKEY_USERS\$sid")) { continue }
+            $roots.Add(@{ Path = "Registry::HKEY_USERS\$sid\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"; Scope = 'user'; Sid = $sid })
+            $roots.Add(@{ Path = "Registry::HKEY_USERS\$sid\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"; Scope = 'user'; Sid = $sid })
+        }
+    } finally { $plKey.Close() }
+}
+
+$roots | Where-Object { Test-Path $_.Path } | ForEach-Object {
+    $scope = $_.Scope
+    $sid = $_.Sid
+    Get-ItemProperty $_.Path |
+    Select-Object -Property DisplayName,DisplayVersion,Publisher,EstimatedSize,InstallSource,UninstallString,InstallLocation,InstallDate,PSPath,
+      @{Name='InstallScope';Expression={$scope}}, @{Name='InstallUser';Expression={$sid}}
+} | ConvertTo-Json -Compress
 `
 
 // We need to fill in the path collected from the registry
@@ -169,6 +212,13 @@ func (p winAppxPackages) toPackage(platform *inventory.Platform) Package {
 	}
 
 	pkg := createPackage(p.Name, p.Version, "windows/appx", p.arch, p.Publisher, p.InstallLocation, platform)
+	// Get-AppxPackage -AllUsers reports no per-user owner: an appx package can
+	// be provisioned for every profile or installed by one user, and nothing
+	// in its output distinguishes the two. Reported as "machine" rather than
+	// left empty, since it IS enumerated once for the whole machine, but this
+	// is not the same attribution guarantee the Uninstall-registry-derived
+	// packages above carry.
+	pkg.InstallScope = installScopeMachine
 
 	return *pkg
 }
@@ -374,6 +424,8 @@ func (w *WinPkgManager) Format() string {
 }
 
 func (w *WinPkgManager) getLocalInstalledApps() ([]Package, error) {
+	callingSid := currentUserSID()
+
 	pkgs := []string{
 		"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
 		"HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
@@ -383,6 +435,7 @@ func (w *WinPkgManager) getLocalInstalledApps() ([]Package, error) {
 	packages := []Package{}
 	for _, r := range pkgs {
 		arch := archForRegistryPath(r, w.platform.Arch)
+		scope, user := installScopeForRegistryPath(r, callingSid)
 		children, err := registry.GetNativeRegistryKeyChildren(r)
 		if err != nil {
 			continue
@@ -395,9 +448,19 @@ func (w *WinPkgManager) getLocalInstalledApps() ([]Package, error) {
 			if p == nil {
 				continue
 			}
+			p.InstallScope = scope
+			p.InstallUser = user
 			packages = append(packages, *p)
 		}
 	}
+
+	// Every other user's profile: the HKCU read above only ever reflects the
+	// identity running the scan, so an unattended/SYSTEM scan never sees
+	// software a user installed into their own profile
+	// (%LOCALAPPDATA%\Programs installers such as VS Code's per-user setup,
+	// Cursor, Postman, GitHub Desktop) without this. callingSid is skipped
+	// here since its Uninstall entries were already read above via HKCU.
+	packages = append(packages, w.getPerProfileInstalledApps(callingSid)...)
 
 	applyM365ChannelQualifier(packages, w.platform, w.m365ChannelFromNativeRegistry)
 
@@ -408,6 +471,224 @@ func (w *WinPkgManager) getLocalInstalledApps() ([]Package, error) {
 		log.Debug().Err(err).Msg("could not get .NET Framework packages from registry")
 	} else {
 		packages = append(packages, dotNetFramework...)
+	}
+	return packages, nil
+}
+
+// currentUserSID returns the SID of the identity running this process. On
+// Windows, os/user.User.Uid IS the SID (there is no separate numeric uid), so
+// this is how getLocalInstalledApps attributes its HKCU read to a specific
+// user and how it excludes that same user's profile from the per-profile
+// enumeration below (their entries were already read via HKCU). Returns ""
+// on any error rather than failing the scan over an attribution detail.
+func currentUserSID() string {
+	u, err := osuser.Current()
+	if err != nil {
+		log.Debug().Err(err).Msg("could not determine current user SID")
+		return ""
+	}
+	return u.Uid
+}
+
+// wellKnownSystemSIDs are service accounts and the profile template whose
+// registry hives are never a signal for user-installed software: LocalSystem,
+// LocalService, NetworkService, and the ".DEFAULT" hive new profiles are
+// copied from.
+var wellKnownSystemSIDs = map[string]struct{}{
+	"S-1-5-18": {},
+	"S-1-5-19": {},
+	"S-1-5-20": {},
+	".DEFAULT": {},
+}
+
+func isWellKnownSystemSID(sid string) bool {
+	_, ok := wellKnownSystemSIDs[strings.ToUpper(sid)]
+	return ok
+}
+
+// profileListPath is where Windows records every user profile on the host,
+// keyed by SID.
+const profileListPath = `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList`
+
+// windowsProfile is one entry under profileListPath: a user's SID and the
+// on-disk path their profile (and NTUSER.DAT) live at.
+type windowsProfile struct {
+	SID  string
+	Path string
+}
+
+// nativeRegistryReader is the subset of the registry package's native Windows
+// registry API used to enumerate profiles and read a live per-user hive. It
+// exists so that logic can be unit-tested with a fake: the real
+// implementation only does anything useful on a Windows build, and even there
+// requires a live registry to read from.
+type nativeRegistryReader interface {
+	Children(path string) ([]registry.RegistryKeyChild, error)
+	Items(path string) ([]registry.RegistryKeyItem, error)
+	IsUserHiveLoaded(sid string) bool
+}
+
+// defaultNativeRegistryReader delegates to the registry package's native
+// Windows registry API.
+type defaultNativeRegistryReader struct{}
+
+func (defaultNativeRegistryReader) Children(path string) ([]registry.RegistryKeyChild, error) {
+	return registry.GetNativeRegistryKeyChildren(path)
+}
+
+func (defaultNativeRegistryReader) Items(path string) ([]registry.RegistryKeyItem, error) {
+	return registry.GetNativeRegistryKeyItems(path)
+}
+
+func (defaultNativeRegistryReader) IsUserHiveLoaded(sid string) bool {
+	return registry.IsUserHiveLoaded(sid)
+}
+
+// userHiveLoader is satisfied by connections (the local connection on
+// Windows) that can load a user's NTUSER.DAT hive on demand. Duck-typed
+// rather than imported so this package does not need to depend on
+// connection/local; see the identical interface registrykey.go defines in the
+// resources package for the same reason.
+type userHiveLoader interface {
+	UserHiveRegistryHandler() *registry.RegistryHandler
+}
+
+// listWindowsProfiles enumerates every user profile Windows knows about,
+// skipping the well-known service SIDs and the .DEFAULT template hive: none
+// of them represent a real user who could have installed software into their
+// own profile. A profile with no recorded ProfileImagePath is skipped too,
+// since there is nothing to enumerate or load a hive from.
+func listWindowsProfiles(reader nativeRegistryReader) []windowsProfile {
+	children, err := reader.Children(profileListPath)
+	if err != nil {
+		log.Debug().Err(err).Msg("could not enumerate Windows user profiles")
+		return nil
+	}
+
+	profiles := make([]windowsProfile, 0, len(children))
+	for _, c := range children {
+		sid := c.Name
+		if isWellKnownSystemSID(sid) {
+			continue
+		}
+		items, err := reader.Items(c.Path + "\\" + c.Name)
+		if err != nil {
+			log.Debug().Err(err).Str("sid", sid).Msg("could not read Windows profile registry entry")
+			continue
+		}
+		path := ""
+		for _, i := range items {
+			if i.Key == "ProfileImagePath" {
+				path = i.Value.String
+			}
+		}
+		if path == "" {
+			continue
+		}
+		profiles = append(profiles, windowsProfile{SID: sid, Path: path})
+	}
+	return profiles
+}
+
+// getPerProfileInstalledApps enumerates the Uninstall entries under every
+// other user's registry hive: the live HKEY_USERS\<sid> hive for a user with
+// an active logon session, or NTUSER.DAT loaded on demand (via the
+// connection's UserHiveRegistryHandler) for one who is not. This is the only
+// way an unattended/SYSTEM scan sees software a user installed into their own
+// profile, since HKCU always reflects the scanning identity rather than the
+// asset's actual users.
+//
+// skipSid excludes one SID from enumeration: the calling identity's own
+// profile, whose Uninstall entries the HKCU read in getLocalInstalledApps
+// already reported. A profile whose hive cannot be read (locked, missing
+// NTUSER.DAT, no loader available) is skipped with a debug log, never a
+// failure.
+func (w *WinPkgManager) getPerProfileInstalledApps(skipSid string) []Package {
+	return w.getPerProfileInstalledAppsWith(skipSid, defaultNativeRegistryReader{})
+}
+
+func (w *WinPkgManager) getPerProfileInstalledAppsWith(skipSid string, reader nativeRegistryReader) []Package {
+	var loader userHiveLoader
+	if l, ok := w.conn.(userHiveLoader); ok {
+		loader = l
+	}
+
+	packages := []Package{}
+	for _, p := range listWindowsProfiles(reader) {
+		if p.SID == skipSid {
+			continue
+		}
+		pkgs, err := w.getProfileInstalledApps(p, reader, loader)
+		if err != nil {
+			log.Debug().Err(err).Str("sid", p.SID).Msg("could not read installed apps from user profile")
+			continue
+		}
+		packages = append(packages, pkgs...)
+	}
+	return packages
+}
+
+// getProfileInstalledApps reads the Uninstall keys (and their Wow6432Node
+// sibling) from one user's registry hive: directly under HKEY_USERS\<sid> if
+// the user is logged in, otherwise from NTUSER.DAT loaded on demand through
+// loader. The hive is never left loaded past this call's needs: LoadUserHive
+// is idempotent and the connection unloads everything it loaded in Close().
+func (w *WinPkgManager) getProfileInstalledApps(p windowsProfile, reader nativeRegistryReader, loader userHiveLoader) ([]Package, error) {
+	subpaths := []string{
+		`Software\Microsoft\Windows\CurrentVersion\Uninstall`,
+		`Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall`,
+	}
+
+	live := reader.IsUserHiveLoaded(p.SID)
+	var rh *registry.RegistryHandler
+	if !live {
+		if loader == nil || p.Path == "" {
+			// No live session and either no connection-level hive loader
+			// (not a local Windows connection) or no on-disk profile path to
+			// load NTUSER.DAT from. Neither is a failure, just nothing more
+			// we can do for this profile.
+			return nil, nil
+		}
+		ntuserDat := strings.TrimRight(p.Path, `\`) + `\NTUSER.DAT`
+		rh = loader.UserHiveRegistryHandler()
+		if err := rh.LoadUserHive(p.SID, ntuserDat); err != nil {
+			return nil, err
+		}
+	}
+
+	packages := []Package{}
+	for _, sp := range subpaths {
+		arch := archForRegistryPath(sp, w.platform.Arch)
+		var children []registry.RegistryKeyChild
+		var err error
+		if live {
+			children, err = reader.Children(`HKEY_USERS\` + p.SID + `\` + sp)
+		} else {
+			children, err = rh.GetUserHiveKeyChildren(p.SID, sp)
+		}
+		if err != nil {
+			continue
+		}
+		for _, c := range children {
+			var items []registry.RegistryKeyItem
+			var itemsErr error
+			if live {
+				items, itemsErr = reader.Items(c.Path + "\\" + c.Name)
+			} else {
+				items, itemsErr = rh.GetUserHiveKeyItems(p.SID, sp+`\`+c.Name)
+			}
+			if itemsErr != nil {
+				log.Debug().Err(itemsErr).Str("path", c.Path).Msg("could not read registry key children")
+				continue
+			}
+			pkg := getPackageFromRegistryKeyItems(items, w.platform, arch)
+			if pkg == nil {
+				continue
+			}
+			pkg.InstallScope = installScopeUser
+			pkg.InstallUser = p.SID
+			packages = append(packages, *pkg)
+		}
 	}
 	return packages, nil
 }
@@ -677,6 +958,11 @@ func (w *WinPkgManager) getFsInstalledApps() ([]Package, error) {
 			if p == nil {
 				continue
 			}
+			// The offline/filesystem path only ever loads the machine
+			// SOFTWARE hive (per-user hives live in each profile's own
+			// NTUSER.DAT, which this path does not locate or load), so every
+			// package it reports is unambiguously machine-scope.
+			p.InstallScope = installScopeMachine
 			packages = append(packages, *p)
 		}
 	}
@@ -823,6 +1109,37 @@ func archForRegistryPath(path string, platformArch string) string {
 	return platformArch
 }
 
+// hkeyUsersSidPattern captures the SID segment of a path of the form
+// "HKEY_USERS\<sid>\...", the shape a live per-user hive read uses.
+var hkeyUsersSidPattern = regexp.MustCompile(`(?i)HKEY_USERS\\([^\\]+)`)
+
+// sidFromHiveUsersPath extracts the SID a HKEY_USERS\<sid>\... path carries.
+// Returns "" for a path with no such segment.
+func sidFromHiveUsersPath(path string) string {
+	m := hkeyUsersSidPattern.FindStringSubmatch(path)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
+// installScopeForRegistryPath derives a package's install scope from the
+// registry root it was read under, mirroring how archForRegistryPath derives
+// architecture: HKLM is machine-wide; HKCU and HKEY_USERS\<sid> are visible
+// only to one user. For a bare HKCU root the SID is whoever is running the
+// scan (callingSid, may be ""); for a HKEY_USERS\<sid> root the SID is read
+// out of the path itself. Wow6432Node siblings of either root carry the same
+// scope as their parent, since the suffix only affects architecture.
+func installScopeForRegistryPath(path, callingSid string) (scope, user string) {
+	if sid := sidFromHiveUsersPath(path); sid != "" {
+		return installScopeUser, sid
+	}
+	if strings.HasPrefix(path, "HKCU") || strings.Contains(path, "HKEY_CURRENT_USER") {
+		return installScopeUser, callingSid
+	}
+	return installScopeMachine, ""
+}
+
 // archFromInstallPath returns "x86" if any of the given paths contain "Program Files (x86)",
 // indicating a 32-bit application. Returns empty string if architecture cannot be determined.
 // The "Program Files (x86)" directory name is constant across all Windows language editions.
@@ -918,6 +1235,10 @@ func ParseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 		// time in that case.
 		InstallDate string `json:"InstallDate"`
 		PSPath      string `json:"PSPath"`
+		// InstallScope and InstallUser are computed by installedAppsScript
+		// itself (see its doc comment), not derived from PSPath here.
+		InstallScope string `json:"InstallScope"`
+		InstallUser  string `json:"InstallUser"`
 	}
 
 	var entries []powershellUninstallEntry
@@ -927,6 +1248,22 @@ func ParseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 	}
 
 	pkgs := []Package{}
+	// seen dedupes an entry that was read twice under the same identity: the
+	// calling identity's own profile is both the plain HKCU root AND, when its
+	// hive happens to be live, a HKEY_USERS\<sid> root the script would
+	// otherwise also enumerate. Keyed on the PHYSICAL registry entry (the
+	// resolved identity plus UninstallString, the value that actually
+	// identifies a product's own uninstall record, plus the Uninstall
+	// subkey's own leaf name from PSPath when present) -- never on the
+	// derived name/version/arch/purl: two DIFFERENT registry entries can
+	// legitimately compute to the identical purl (a .NET runtime's
+	// burn-bundle entry and its companion MSI entry both normalize to the
+	// same name, version and arch -- see normalizeDotNetPackedVersion), and
+	// those must NOT collapse into one. UninstallString is required non-empty
+	// just above, so it is always part of the key; PSPath is not always
+	// present (older fixtures predate it), so it only adds precision when
+	// available rather than being load-bearing on its own.
+	seen := map[string]struct{}{}
 	for i := range entries {
 		entry := entries[i]
 		if entry.UninstallString == "" {
@@ -939,6 +1276,13 @@ func ParseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 		if entry.DisplayName == "" {
 			continue
 		}
+
+		dedupKey := entry.InstallScope + "|" + entry.InstallUser + "|" + entry.UninstallString + "|" + registryPathLeaf(entry.PSPath)
+		if _, dup := seen[dedupKey]; dup {
+			continue
+		}
+		seen[dedupKey] = struct{}{}
+
 		arch := archForRegistryPath(entry.PSPath, platform.Arch)
 		if arch == platform.Arch {
 			if detected := archFromInstallPath(entry.InstallLocation, entry.UninstallString); detected != "" {
@@ -947,10 +1291,25 @@ func ParseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 		}
 		pkg := createPackage(entry.DisplayName, entry.DisplayVersion, "windows/app", arch, entry.Publisher, entry.InstallLocation, platform)
 		pkg.InstallDate = parseWinInstallDate(entry.InstallDate)
+		pkg.InstallScope = entry.InstallScope
+		pkg.InstallUser = entry.InstallUser
+
 		pkgs = append(pkgs, *pkg)
 	}
 
 	return pkgs, nil
+}
+
+// registryPathLeaf returns the final path segment of a registry path or
+// PSPath -- the Uninstall subkey's own name (typically a product GUID or an
+// app-chosen string) -- which identifies the physical registry entry
+// regardless of which root alias (HKCU:\, Registry::HKEY_USERS\<sid>\..., a
+// PowerShell PSPath's "provider::" prefix) was used to read it.
+func registryPathLeaf(path string) string {
+	if i := strings.LastIndexByte(path, '\\'); i >= 0 {
+		return path[i+1:]
+	}
+	return path
 }
 
 // parseWinInstallDate converts the YYYYMMDD string set by most MSI

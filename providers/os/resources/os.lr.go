@@ -4012,6 +4012,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"package.installDate": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPackage).GetInstallDate()).ToDataRes(types.Time)
 	},
+	"package.installScope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackage).GetInstallScope()).ToDataRes(types.String)
+	},
+	"package.installUser": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackage).GetInstallUser()).ToDataRes(types.String)
+	},
 	"pkgFileInfo.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPkgFileInfo).GetPath()).ToDataRes(types.String)
 	},
@@ -18708,6 +18714,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"package.installDate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPackage).InstallDate, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"package.installScope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackage).InstallScope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"package.installUser": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackage).InstallUser, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"pkgFileInfo.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -43213,24 +43227,26 @@ type mqlPackage struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlPackageInternal
-	Name        plugin.TValue[string]
-	Description plugin.TValue[string]
-	Version     plugin.TValue[string]
-	Arch        plugin.TValue[string]
-	Epoch       plugin.TValue[string]
-	Format      plugin.TValue[string]
-	Status      plugin.TValue[string]
-	Pinned      plugin.TValue[bool]
-	Purl        plugin.TValue[string]
-	Cpes        plugin.TValue[[]any]
-	Origin      plugin.TValue[string]
-	Available   plugin.TValue[string]
-	Installed   plugin.TValue[bool]
-	Outdated    plugin.TValue[bool]
-	Files       plugin.TValue[[]any]
-	Vendor      plugin.TValue[string]
-	License     plugin.TValue[string]
-	InstallDate plugin.TValue[*time.Time]
+	Name         plugin.TValue[string]
+	Description  plugin.TValue[string]
+	Version      plugin.TValue[string]
+	Arch         plugin.TValue[string]
+	Epoch        plugin.TValue[string]
+	Format       plugin.TValue[string]
+	Status       plugin.TValue[string]
+	Pinned       plugin.TValue[bool]
+	Purl         plugin.TValue[string]
+	Cpes         plugin.TValue[[]any]
+	Origin       plugin.TValue[string]
+	Available    plugin.TValue[string]
+	Installed    plugin.TValue[bool]
+	Outdated     plugin.TValue[bool]
+	Files        plugin.TValue[[]any]
+	Vendor       plugin.TValue[string]
+	License      plugin.TValue[string]
+	InstallDate  plugin.TValue[*time.Time]
+	InstallScope plugin.TValue[string]
+	InstallUser  plugin.TValue[string]
 }
 
 // createPackage creates a new instance of this resource
@@ -43360,6 +43376,14 @@ func (c *mqlPackage) GetLicense() *plugin.TValue[string] {
 
 func (c *mqlPackage) GetInstallDate() *plugin.TValue[*time.Time] {
 	return &c.InstallDate
+}
+
+func (c *mqlPackage) GetInstallScope() *plugin.TValue[string] {
+	return &c.InstallScope
+}
+
+func (c *mqlPackage) GetInstallUser() *plugin.TValue[string] {
+	return &c.InstallUser
 }
 
 // mqlPkgFileInfo for the pkgFileInfo resource

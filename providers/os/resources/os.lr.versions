@@ -3049,6 +3049,8 @@ package.epoch 9.0.0
 package.files 10.2.0
 package.format 9.0.0
 package.installDate 13.16.10
+package.installScope 14.0.0
+package.installUser 14.0.0
 package.installed 9.0.0
 package.license 13.16.10
 package.name 9.0.0

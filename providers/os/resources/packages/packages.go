@@ -66,6 +66,19 @@ type Package struct {
 	// backend doesn't surface install time (dpkg-without-log, apk,
 	// pacman, macOS).
 	InstallDate time.Time `json:"install_date,omitempty"`
+
+	// InstallScope is "machine" for a package installed system-wide (every
+	// user), or "user" for one installed into a single user's own profile.
+	// Only Windows registry-derived packages set this today: HKLM is
+	// "machine", HKCU or a specific user's registry hive is "user". Empty
+	// for every other package manager and for Windows appx packages, which
+	// carry no per-user attribution.
+	InstallScope string `json:"install_scope,omitempty"`
+
+	// InstallUser is the SID of the user whose registry hive reported this
+	// package, set only when InstallScope is "user". Empty for
+	// machine-scope installs and for backends with no per-user concept.
+	InstallUser string `json:"install_user,omitempty"`
 }
 
 type FileRecord struct {

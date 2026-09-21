@@ -187,6 +187,8 @@ func fillPackageArgs(args map[string]*llx.RawData, osPkg *packages.Package, avai
 	args["purl"] = llx.StringData(osPkg.PUrl)
 	args["cpes"] = llx.ArrayData(cpes, types.Resource("cpe"))
 	args["vendor"] = llx.StringData(osPkg.Vendor)
+	args["installScope"] = llx.StringData(osPkg.InstallScope)
+	args["installUser"] = llx.StringData(osPkg.InstallUser)
 
 	// Only eagerly set license when the backend populated it (rpm, apk,
 	// pacman). dpkg leaves it empty here so the lazy `license()` method on

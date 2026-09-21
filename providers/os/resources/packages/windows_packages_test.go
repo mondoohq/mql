@@ -142,6 +142,8 @@ func TestWindowsAppxPackagesParser(t *testing.T) {
 			"cpe:2.3:a:cn\\=microsoft_corporation\\,_o\\=microsoft_corporation\\,_l\\=redmond\\,_s\\=washington\\,_c\\=us:microsoft.windows.cortana:1.11.5.17763:*:*:*:*:*:*:*",
 		},
 		Vendor: "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+		// Get-AppxPackage -AllUsers carries no per-user owner, see toPackage.
+		InstallScope: "machine",
 	}, p)
 
 	p = findPkg(pkgs, "Microsoft.MicrosoftEdge.Stable")
@@ -162,6 +164,8 @@ func TestWindowsAppxPackagesParser(t *testing.T) {
 			},
 		},
 		FilesAvailable: PkgFilesIncluded,
+		// Get-AppxPackage -AllUsers carries no per-user owner, see toPackage.
+		InstallScope: "machine",
 	}, p)
 
 	// check empty return
@@ -428,6 +432,9 @@ func TestToPackage(t *testing.T) {
 		CPEs: []string{
 			"cpe:2.3:a:cn\\=microsoft_corporation\\,_o\\=microsoft_corporation\\,_l\\=redmond\\,_s\\=washington\\,_c\\=us:microsoft.windows.cortana:1.11.5.17763:*:*:*:*:*:*:*",
 		},
+		// Get-AppxPackage -AllUsers carries no per-user owner, so appx
+		// packages are always reported "machine" scope. See toPackage.
+		InstallScope: "machine",
 	}
 
 	assert.Equal(t, expected, pkg)
@@ -1000,6 +1007,59 @@ func TestWindowsAppPackagesParserInstallPathFallback(t *testing.T) {
 
 	pkg64 := findPkg(pkgs, "Per-User 64-bit App")
 	assert.Equal(t, "amd64", pkg64.Arch, "HKCU app in Program Files should keep platform arch")
+}
+
+// TestWindowsAppPackagesParserInstallScope covers the shape
+// installedAppsScript actually emits: InstallScope/InstallUser are computed
+// by the script itself (see its doc comment), not derived here from PSPath.
+// One HKLM entry, one HKCU entry (the calling identity's own profile), one
+// HKEY_USERS\<sid> entry for a DIFFERENT user, and a duplicate HKEY_USERS
+// entry for the CALLING identity's own SID -- which the script should not
+// normally emit (its own $skipSids excludes $callingSid), but the Go-side
+// dedup in ParseWindowsAppPackages is a safety net for the case it does not
+// exclude it (e.g. a WindowsIdentity lookup that returns a different string
+// shape than the enumerated ProfileList SID).
+func TestWindowsAppPackagesParserInstallScope(t *testing.T) {
+	const callingSid = "S-1-5-21-1111111111-2222222222-3333333333-1001"
+	const otherSid = "S-1-5-21-1111111111-2222222222-3333333333-1002"
+
+	jsonData := `[
+		{"DisplayName":"Machine App","DisplayVersion":"1.0","Publisher":"Test","UninstallString":"uninstall","InstallLocation":"C:\\Program Files\\MachineApp","PSPath":"Microsoft.PowerShell.Core\\Registry::HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{a}","InstallScope":"machine","InstallUser":""},
+		{"DisplayName":"Caller App","DisplayVersion":"2.0","Publisher":"Test","UninstallString":"uninstall","InstallLocation":"C:\\Users\\caller\\AppData\\Local\\Programs\\CallerApp","PSPath":"Microsoft.PowerShell.Core\\Registry::HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{b}","InstallScope":"user","InstallUser":"` + callingSid + `"},
+		{"DisplayName":"Other User App","DisplayVersion":"3.0","Publisher":"Test","UninstallString":"uninstall","InstallLocation":"C:\\Users\\other\\AppData\\Local\\Programs\\OtherApp","PSPath":"Microsoft.PowerShell.Core\\Registry::HKEY_USERS\\` + otherSid + `\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{c}","InstallScope":"user","InstallUser":"` + otherSid + `"},
+		{"DisplayName":"Caller App","DisplayVersion":"2.0","Publisher":"Test","UninstallString":"uninstall","InstallLocation":"C:\\Users\\caller\\AppData\\Local\\Programs\\CallerApp","PSPath":"Microsoft.PowerShell.Core\\Registry::HKEY_USERS\\` + callingSid + `\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{b}","InstallScope":"user","InstallUser":"` + callingSid + `"}
+	]`
+
+	pf := &inventory.Platform{
+		Name:    "windows",
+		Version: "10.0.17763",
+		Arch:    "amd64",
+		Family:  []string{"windows"},
+	}
+
+	pkgs, err := ParseWindowsAppPackages(pf, strings.NewReader(jsonData))
+	require.NoError(t, err)
+	require.Len(t, pkgs, 3, "the duplicate HKEY_USERS entry for the calling SID must be deduped against the HKCU entry")
+
+	// findPkg panics if the name isn't found, so reaching each assertion below
+	// already proves the entry is present.
+	machine := findPkg(pkgs, "Machine App")
+	assert.Equal(t, "machine", machine.InstallScope)
+	assert.Equal(t, "", machine.InstallUser)
+	require.Len(t, machine.Files, 1)
+	assert.Equal(t, `C:\Program Files\MachineApp`, machine.Files[0].Path)
+
+	caller := findPkg(pkgs, "Caller App")
+	assert.Equal(t, "user", caller.InstallScope)
+	assert.Equal(t, callingSid, caller.InstallUser)
+	require.Len(t, caller.Files, 1)
+	assert.Equal(t, `C:\Users\caller\AppData\Local\Programs\CallerApp`, caller.Files[0].Path)
+
+	other := findPkg(pkgs, "Other User App")
+	assert.Equal(t, "user", other.InstallScope)
+	assert.Equal(t, otherSid, other.InstallUser)
+	require.Len(t, other.Files, 1)
+	assert.Equal(t, `C:\Users\other\AppData\Local\Programs\OtherApp`, other.Files[0].Path)
 }
 
 // TestFsInstalledAppsArchAssignment validates that the exact registry path strings
