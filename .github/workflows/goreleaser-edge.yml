@@ -133,7 +133,7 @@ jobs:
         with:
           distribution: goreleaser
           # auto-update: source=github-releases repo=goreleaser/goreleaser updates=minor
-          version: v2.18.1
+          version: v2.18.2
           args: release -f .github/.goreleaser-edge.yml --clean --timeout 120m ${{ inputs.dry-run == true && '--skip=publish' || '' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
