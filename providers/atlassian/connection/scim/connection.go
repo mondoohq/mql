@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/ctreminiom/go-atlassian/v2/admin"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -28,10 +27,7 @@ type ScimConnection struct {
 }
 
 func NewConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*ScimConnection, error) {
-	token := conf.Options["scim-token"]
-	if token == "" {
-		token = os.Getenv("ATLASSIAN_SCIM_TOKEN")
-	}
+	token := shared.Secret(conf, "scim-token", "ATLASSIAN_SCIM_TOKEN")
 	if token == "" {
 		return nil, errors.New("you must provide an Atlassian SCIM token via the ATLASSIAN_SCIM_TOKEN env or via the --scim-token flag")
 	}

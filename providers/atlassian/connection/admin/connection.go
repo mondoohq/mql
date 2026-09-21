@@ -6,7 +6,6 @@ package admin
 import (
 	"context"
 	"errors"
-	"os"
 
 	"github.com/ctreminiom/go-atlassian/v2/admin"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -27,10 +26,9 @@ type AdminConnection struct {
 }
 
 func NewConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*AdminConnection, error) {
-	adminToken := conf.Options["admin-token"]
-	if adminToken == "" {
-		adminToken = os.Getenv("ATLASSIAN_ADMIN_TOKEN")
-	}
+	// A hosted scan delivers the token as an inventory vault credential; a CLI
+	// scan as --admin-token or the env var. See shared.Secret.
+	adminToken := shared.Secret(conf, "admin-token", "ATLASSIAN_ADMIN_TOKEN")
 	if adminToken == "" {
 		return nil, errors.New("you must provide an Atlassian admin token via the ATLASSIAN_ADMIN_TOKEN env or via the --admin-token flag")
 	}

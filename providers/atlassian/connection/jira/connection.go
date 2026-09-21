@@ -76,10 +76,9 @@ func NewConnection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*
 		return nil, errors.New("you must provide an Atlassian user e.g. via ATLASSIAN_USER env or via the --user flag")
 	}
 
-	token := conf.Options["user-token"]
-	if token == "" {
-		token = os.Getenv("ATLASSIAN_USER_TOKEN")
-	}
+	// A hosted scan delivers the token as an inventory vault credential; the host
+	// and user stay plain options either way — they are identifiers, not secrets.
+	token := shared.Secret(conf, "user-token", "ATLASSIAN_USER_TOKEN")
 	if token == "" {
 		return nil, errors.New("you must provide an Atlassian user token e.g. via ATLASSIAN_USER_TOKEN env or via the --user-token flag")
 	}
