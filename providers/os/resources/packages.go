@@ -19,19 +19,104 @@ import (
 
 var PKG_IDENTIFIER = regexp.MustCompile(`^(.*):\/\/(.*)\/(.*)\/(.*)$`)
 
+// packageID computes mqlPackage's cache/identity key: format://name/version/arch,
+// with "/user/<sid>" appended when installScope is "user". Two users can
+// install the identical app version into their own profile; without the SID,
+// the id would be the same for both, and the runtime resource cache
+// (CreateResource keys on __id) would silently return the FIRST user's
+// resource for the SECOND user's declaration. Machine-scope and non-Windows
+// ids are unaffected, since the suffix is only appended for installScope ==
+// "user".
+//
+// Shared by fillPackageArgs (list.go), which precomputes this and passes it
+// as args["__id"] because it has the SID as a plain string; by the time this
+// package's mqlPackage.id() method below could see it, that SID is reachable
+// only through the lazy installUser() accessor and its private
+// installUserSid backing field (see mqlPackageInternal), which is not
+// populated until AFTER CreateResource returns -- too late to influence the
+// id CreateResource caches under.
+func packageID(format, name, version, arch, installScope, installUser string) string {
+	id := format + "://" + name + "/" + version + "/" + arch
+	if installScope == "user" {
+		id += "/user/" + installUser
+	}
+	return id
+}
+
 // A system package cannot be installed twice but there are edge cases:
 // - the same package name could be installed for multiple archs
 // - linux-kernel package get extra treatment and can co-exist in multiple versions
 // We use identifiers similar to grafeas artifact identifier for packages
 // - deb://name/version/arch
 // - rpm://name/version/arch
+//
+// Only reached when a caller creates a "package" resource without going
+// through list()/fillPackageArgs (which always precomputes args["__id"] via
+// packageID above and so skips this method entirely -- see createPackage's
+// generated `if res.__id == ""` guard). Kept correct anyway for such callers
+// (e.g. tool_package.go), though none of them produce a user-scope package
+// today.
 func (x *mqlPackage) id() (string, error) {
-	return x.Format.Data + "://" + x.Name.Data + "/" + x.Version.Data + "/" + x.Arch.Data, nil
+	return packageID(x.Format.Data, x.Name.Data, x.Version.Data, x.Arch.Data, x.InstallScope.Data, x.installUserSid), nil
 }
 
 type mqlPackageInternal struct {
 	filesState   packages.PkgFilesAvailable
 	filesOnDisks []packages.FileRecord
+
+	// installUserSid is the raw SID installUser() resolves against the users
+	// collection. Kept off the .lr schema deliberately (see os.lr:
+	// installUser() user) -- a SID identifies the `user` resource, so it gets
+	// a typed accessor rather than a raw string field; this is that
+	// accessor's backing value, populated by list() from
+	// packages.Package.InstallUser (which stays the source of truth for the
+	// raw SID, see packages/packages.go).
+	installUserSid string
+}
+
+// installUser resolves the SID that reported this package (installScope ==
+// "user") to a local user account. Matched on SID only -- the same
+// precedent as windows.logonSession.user (windows_logonsession.go): an
+// account name is not unique across a machine and the domains it trusts.
+// Null when installUserSid is empty (machine-scope, or a backend with no
+// per-user concept) or when no current user matches it (a deleted profile).
+//
+// Resolution goes through the cached users collection rather than a lookup
+// per package, since `user` declares no init and a per-package lookup would
+// turn one enumeration into one per package.
+func (x *mqlPackage) installUser() (*mqlUser, error) {
+	sid := x.installUserSid
+	if sid == "" {
+		x.InstallUser.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	obj, err := CreateResource(x.MqlRuntime, "users", map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	users := obj.(*mqlUsers)
+
+	list := users.GetList()
+	if list.Error != nil {
+		return nil, list.Error
+	}
+
+	for _, entry := range list.Data {
+		usr, ok := entry.(*mqlUser)
+		if !ok {
+			continue
+		}
+		if usr.Sid.Data == sid {
+			return usr, nil
+		}
+	}
+
+	// No current user has this SID -- most commonly a deleted profile. The
+	// state has to be set explicitly, or the runtime does not know the field
+	// resolved and may re-fetch it.
+	x.InstallUser.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
 }
 
 // TODO: this is not accurate enough, we need to tie it to the package
@@ -188,7 +273,14 @@ func fillPackageArgs(args map[string]*llx.RawData, osPkg *packages.Package, avai
 	args["cpes"] = llx.ArrayData(cpes, types.Resource("cpe"))
 	args["vendor"] = llx.StringData(osPkg.Vendor)
 	args["installScope"] = llx.StringData(osPkg.InstallScope)
-	args["installUser"] = llx.StringData(osPkg.InstallUser)
+	// installUser is a lazy user accessor (os.lr), not a settable raw field --
+	// there is no args["installUser"] to fill. The raw SID a backend reported
+	// (osPkg.InstallUser) is threaded through separately, as __id (below, so
+	// two users' identical app version get distinct resources -- see
+	// packageID) and as mqlPackageInternal.installUserSid (set by list() on
+	// the resource this call builds, since that field cannot be reached via
+	// args at all).
+	args["__id"] = llx.StringData(packageID(osPkg.Format, osPkg.Name, osPkg.Version, osPkg.Arch, osPkg.InstallScope, osPkg.InstallUser))
 
 	// Only eagerly set license when the backend populated it (rpm, apk,
 	// pacman). dpkg leaves it empty here so the lazy `license()` method on
@@ -291,6 +383,10 @@ func (x *mqlPackages) list() ([]any, error) {
 		s := pkg.(*mqlPackage)
 		s.filesState = osPkg.FilesAvailable
 		s.filesOnDisks = osPkg.Files
+		// installUser() (the lazy user accessor) resolves against this SID.
+		// Not reachable via args (see fillPackageArgs), so it is set directly
+		// here, same as filesState/filesOnDisks above.
+		s.installUserSid = osPkg.InstallUser
 		pkgs[i] = s
 	}
 

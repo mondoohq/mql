@@ -1364,18 +1364,20 @@ package @defaults("name version") {
   // unattended or SYSTEM-run scan cannot see without reading that user's
   // registry hive directly. Populated for Windows packages read from the
   // Uninstall registry key: HKEY_LOCAL_MACHINE is "machine"; HKCU or a
-  // specific user's hive under HKEY_USERS is "user". Windows appx packages
-  // are always "machine", since `Get-AppxPackage -AllUsers` reports no
-  // per-user owner. Empty on platforms with no such concept. Query-only:
-  // not carried into the SBOM output.
+  // specific user's hive under HKEY_USERS is "user". Windows appx packages,
+  // the .NET Framework runtime, and hotfixes are always "machine", since
+  // none of those sources carry per-user attribution. Empty on platforms
+  // with no such concept. Query-only: not carried into the SBOM output.
   installScope string
 
   // User owning a user-scope install
   //
-  // Security identifier (SID) of the user whose registry hive reported this
-  // package, set only when `installScope` is "user". Empty for
-  // machine-scope installs and on platforms with no such concept.
-  installUser string
+  // Local user whose registry hive reported this package, resolved by
+  // matching the installing SID, set only when `installScope` is "user".
+  // Matched on SID only, so it resolves only for an account that still
+  // exists on this machine; null for a deleted profile and for
+  // machine-scope installs and platforms with no such concept.
+  installUser() user
 }
 
 // File recorded for a package

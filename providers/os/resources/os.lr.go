@@ -4016,7 +4016,7 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 		return (r.(*mqlPackage).GetInstallScope()).ToDataRes(types.String)
 	},
 	"package.installUser": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlPackage).GetInstallUser()).ToDataRes(types.String)
+		return (r.(*mqlPackage).GetInstallUser()).ToDataRes(types.Resource("user"))
 	},
 	"pkgFileInfo.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPkgFileInfo).GetPath()).ToDataRes(types.String)
@@ -18721,7 +18721,7 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		return
 	},
 	"package.installUser": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlPackage).InstallUser, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		r.(*mqlPackage).InstallUser, ok = plugin.RawToTValue[*mqlUser](v.Value, v.Error)
 		return
 	},
 	"pkgFileInfo.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -43246,7 +43246,7 @@ type mqlPackage struct {
 	License      plugin.TValue[string]
 	InstallDate  plugin.TValue[*time.Time]
 	InstallScope plugin.TValue[string]
-	InstallUser  plugin.TValue[string]
+	InstallUser  plugin.TValue[*mqlUser]
 }
 
 // createPackage creates a new instance of this resource
@@ -43382,8 +43382,20 @@ func (c *mqlPackage) GetInstallScope() *plugin.TValue[string] {
 	return &c.InstallScope
 }
 
-func (c *mqlPackage) GetInstallUser() *plugin.TValue[string] {
-	return &c.InstallUser
+func (c *mqlPackage) GetInstallUser() *plugin.TValue[*mqlUser] {
+	return plugin.GetOrCompute[*mqlUser](&c.InstallUser, func() (*mqlUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("package", c.__id, "installUser")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlUser), nil
+			}
+		}
+
+		return c.installUser()
+	})
 }
 
 // mqlPkgFileInfo for the pkgFileInfo resource
