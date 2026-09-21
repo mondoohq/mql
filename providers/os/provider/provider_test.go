@@ -14,6 +14,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/vault"
+	"go.mondoo.com/mql/providers/os/connection/device"
 	"go.mondoo.com/mql/providers/os/id/ids"
 )
 
@@ -179,4 +180,55 @@ func TestConnect_ContainerImage(t *testing.T) {
 	assert.Equal(t, "Alpine Linux v3.19", connectResp.Asset.Platform.Title)
 	assert.Equal(t, "container-image", connectResp.Asset.Platform.Kind)
 	assert.Equal(t, "docker-image", connectResp.Asset.Platform.Runtime)
+}
+
+func TestInjectedPlatformIDs(t *testing.T) {
+	tests := []struct {
+		name string
+		conf *inventory.Config
+		want []string
+	}{
+		{
+			name: "single id",
+			conf: &inventory.Config{Options: map[string]string{
+				device.PlatformIdInject: "//platformid.api.mondoo.app/runtime/aws/ec2/v1/accounts/959975882244/regions/eu-central-1/instances/i-0a8caeccfd813a595",
+			}},
+			want: []string{"//platformid.api.mondoo.app/runtime/aws/ec2/v1/accounts/959975882244/regions/eu-central-1/instances/i-0a8caeccfd813a595"},
+		},
+		{
+			name: "comma separated",
+			conf: &inventory.Config{Options: map[string]string{
+				device.PlatformIdInject: "//platformid.api.mondoo.app/a, //platformid.api.mondoo.app/b",
+			}},
+			want: []string{"//platformid.api.mondoo.app/a", "//platformid.api.mondoo.app/b"},
+		},
+		{
+			// The expected shape when a caller templates the value and the
+			// host has no such identity -- it must not become an identifier.
+			name: "empty value",
+			conf: &inventory.Config{Options: map[string]string{device.PlatformIdInject: ""}},
+			want: nil,
+		},
+		{
+			name: "only separators",
+			conf: &inventory.Config{Options: map[string]string{device.PlatformIdInject: " , "}},
+			want: nil,
+		},
+		{
+			name: "option absent",
+			conf: &inventory.Config{Options: map[string]string{"path": "/mnt/host"}},
+			want: nil,
+		},
+		{
+			name: "no options",
+			conf: &inventory.Config{},
+			want: nil,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, injectedPlatformIDs(test.conf))
+		})
+	}
 }

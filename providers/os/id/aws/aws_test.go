@@ -68,3 +68,68 @@ func TestDetectContainer(t *testing.T) {
 	require.Len(t, related, 1)
 	assert.Equal(t, "//platformid.api.mondoo.app/runtime/aws/accounts/172746783610", related[0])
 }
+
+func TestIsBottlerocketOnAWS(t *testing.T) {
+	tests := []struct {
+		name     string
+		platform *inventory.Platform
+		want     bool
+	}{
+		{
+			// The variant EKS nodes run, and the case this exists for: no
+			// cloud-init on disk, so nothing else marks the host as AWS.
+			name: "bottlerocket aws-k8s variant via labels",
+			platform: &inventory.Platform{
+				Name:   "bottlerocket",
+				Labels: map[string]string{"variant-id": "aws-k8s-1.34"},
+			},
+			want: true,
+		},
+		{
+			name: "bottlerocket aws-ecs variant via metadata",
+			platform: &inventory.Platform{
+				Name:     "bottlerocket",
+				Metadata: map[string]string{"variant-id": "aws-ecs-2-fips"},
+			},
+			want: true,
+		},
+		{
+			name: "bottlerocket vmware variant is not aws",
+			platform: &inventory.Platform{
+				Name:   "bottlerocket",
+				Labels: map[string]string{"variant-id": "vmware-k8s-1.34"},
+			},
+			want: false,
+		},
+		{
+			name: "bottlerocket metal variant is not aws",
+			platform: &inventory.Platform{
+				Name:   "bottlerocket",
+				Labels: map[string]string{"variant-id": "metal-k8s-1.34"},
+			},
+			want: false,
+		},
+		{
+			name:     "bottlerocket without a variant",
+			platform: &inventory.Platform{Name: "bottlerocket"},
+			want:     false,
+		},
+		{
+			// The aws- prefix only carries platform meaning under
+			// Bottlerocket's variant naming, so it must not be trusted
+			// anywhere else.
+			name: "non-bottlerocket platform with an aws- variant",
+			platform: &inventory.Platform{
+				Name:   "amazonlinux",
+				Labels: map[string]string{"variant-id": "aws-something"},
+			},
+			want: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, isBottlerocketOnAWS(test.platform))
+		})
+	}
+}
