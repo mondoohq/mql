@@ -2550,6 +2550,11 @@ func stringTrimV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*R
 // because it belongs to the os provider, which a terraform-plan connection
 // does not load. This is a builtin rather than a resource so it runs on every
 // asset and needs no connection.
+//
+// Declared experimental (resources.MaturityExperimental in mqlc/builtin.go).
+// The name collides with a dict key called `json` in dot form, and whether a
+// value that is already decoded should pass through rather than error is still
+// open, so the surface may change.
 func stringJsonV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
 	if bind.Value == nil {
 		return &RawData{Type: types.Dict}, 0, nil
