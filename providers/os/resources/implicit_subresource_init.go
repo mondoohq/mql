@@ -48,6 +48,22 @@ func hasStringArgs(args map[string]*llx.RawData, names ...string) bool {
 	return true
 }
 
+// hasIntArgs reports whether every named argument is present and holds an
+// integer. It covers the positional identity fields (a rule's line number or
+// handle) that complete a sub-resource's id alongside its string fields.
+func hasIntArgs(args map[string]*llx.RawData, names ...string) bool {
+	for _, name := range names {
+		raw, ok := args[name]
+		if !ok || raw == nil {
+			return false
+		}
+		if _, ok := raw.Value.(int64); !ok {
+			return false
+		}
+	}
+	return true
+}
+
 func initNftablesTable(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if hasStringArgs(args, "family", "name") {
 		return args, nil, nil
@@ -63,7 +79,7 @@ func initNftablesChain(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 }
 
 func initNftablesRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	if hasStringArgs(args, "family", "table", "chain") {
+	if hasStringArgs(args, "family", "table", "chain") && hasIntArgs(args, "handle") {
 		return args, nil, nil
 	}
 	return nil, nil, errSubResourceNeedsParent("nftables.rule", "nftables.rules")
@@ -91,7 +107,7 @@ func initIptablesChain(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 }
 
 func initIptablesEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	if hasStringArgs(args, "chain") {
+	if hasStringArgs(args, "chain") && hasIntArgs(args, "lineNumber") {
 		return args, nil, nil
 	}
 	return nil, nil, errSubResourceNeedsParent("iptables.entry", "iptables.input, iptables.output, iptables.forward, or iptables.tables")

@@ -55,6 +55,7 @@ var subResourceInits = []struct {
 			"family": llx.StringData("inet"),
 			"table":  llx.StringData("filter"),
 			"chain":  llx.StringData("input"),
+			"handle": llx.IntData(4),
 		},
 		partial: map[string]*llx.RawData{"family": llx.StringData("inet")},
 	},
@@ -214,6 +215,69 @@ func TestNewResourceRefusesStandaloneSubResource(t *testing.T) {
 			assert.Nil(t, res)
 		})
 	}
+}
+
+// The ids of iptables.entry and nftables.rule end in an integer position
+// (lineNumber, handle). Every string identity field without it still reads as
+// a partial identity: the id would collapse to position 0 and rules in the same
+// chain would share one cache entry.
+func TestSubResourceInitRefusesMissingPosition(t *testing.T) {
+	tests := []struct {
+		name string
+		init subResourceInit
+		args map[string]*llx.RawData
+	}{
+		{
+			name: "iptables.entry without lineNumber",
+			init: initIptablesEntry,
+			args: map[string]*llx.RawData{"chain": llx.StringData("filter/INPUT")},
+		},
+		{
+			name: "nftables.rule without handle",
+			init: initNftablesRule,
+			args: map[string]*llx.RawData{
+				"family": llx.StringData("inet"),
+				"table":  llx.StringData("filter"),
+				"chain":  llx.StringData("input"),
+			},
+		},
+		{
+			name: "nftables.rule with a null handle",
+			init: initNftablesRule,
+			args: map[string]*llx.RawData{
+				"family": llx.StringData("inet"),
+				"table":  llx.StringData("filter"),
+				"chain":  llx.StringData("input"),
+				"handle": llx.NilData,
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			args, res, err := tc.init(nil, tc.args)
+			require.Error(t, err)
+			assert.Nil(t, args)
+			assert.Nil(t, res)
+		})
+	}
+}
+
+func TestHasIntArgs(t *testing.T) {
+	args := map[string]*llx.RawData{
+		"handle": llx.IntData(4),
+		"zero":   llx.IntData(0),
+		"text":   llx.StringData("4"),
+		"null":   llx.NilData,
+		"absent": nil,
+	}
+
+	assert.True(t, hasIntArgs(args, "handle"))
+	assert.True(t, hasIntArgs(args, "zero"), "zero is a value; presence is what identifies")
+	assert.False(t, hasIntArgs(args, "text"), "a string is not an integer position")
+	assert.False(t, hasIntArgs(args, "null"))
+	assert.False(t, hasIntArgs(args, "absent"))
+	assert.False(t, hasIntArgs(args, "missing"))
+	assert.False(t, hasIntArgs(args, "handle", "missing"), "every named arg has to be present")
 }
 
 func TestHasStringArgs(t *testing.T) {
