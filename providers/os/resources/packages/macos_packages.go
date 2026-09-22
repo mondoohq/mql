@@ -93,7 +93,7 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 		// version. Some bundles (e.g. PWAs) ship a version only in
 		// CFBundleVersion, so fall back to the bundle's Info.plist when
 		// system_profiler reports no version, or a version we cannot use.
-		version := entry.Version
+		version := stripVersionLabel(entry.Version)
 		if !looksLikeVersion(version) {
 			// Plenty of directories genuinely end in .app without being
 			// applications: Firefox origin storage (https+++example.app),
@@ -108,6 +108,7 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 			// some real applications have no Contents/Info.plist. Wrapped iOS
 			// apps keep theirs under Wrapper/ and would otherwise be lost.
 			bundleVersion, isBundle := bundleVersionFromInfoPlist(conn, entry.Path)
+			bundleVersion = stripVersionLabel(bundleVersion)
 			if !isBundle {
 				log.Debug().
 					Str("name", entry.Name).
@@ -331,6 +332,32 @@ var versionShape = regexp.MustCompile(`^v?\d`)
 // "v" covers, and nothing else is rejected.
 func looksLikeVersion(version string) bool {
 	return versionShape.MatchString(version)
+}
+
+// versionLabel matches a version written behind a word that only says "this
+// is the version": OpenRA ships every game with CFBundleShortVersionString and
+// CFBundleVersion both set to its release tag, "release-20250330", and other
+// bundles report "Version 2.0". The label is followed by a space, hyphen or
+// underscore, and the rest is captured for looksLikeVersion to judge.
+//
+// Only these two words are recognised. A word in front of a number usually
+// names something else, and stripping it would invent a version: "Windows 11"
+// is a guest OS on a hypervisor launcher stub, "Build 2079" is a build number,
+// and "EAP GO-262.6228.35" is a channel. Those keep failing looksLikeVersion.
+var versionLabel = regexp.MustCompile(`(?i)^(?:release|version)[ _-]+(.+)$`)
+
+// stripVersionLabel removes a leading "release" or "version" label when what
+// follows is a version, and returns every other version unchanged.
+//
+// Without it, a bundle whose only version is a release tag fails
+// looksLikeVersion in both places a version can come from, and the whole
+// application is dropped from the inventory rather than reported.
+func stripVersionLabel(version string) string {
+	m := versionLabel.FindStringSubmatch(strings.TrimSpace(version))
+	if m == nil || !looksLikeVersion(m[1]) {
+		return version
+	}
+	return m[1]
 }
 
 // versionPaddedSeparators matches a version built only from numeric components

@@ -256,3 +256,28 @@ func keys(m map[string]packages.Package) []string {
 	}
 	return out
 }
+
+// A bundle whose only version is a release tag ("release-20250330") used to
+// fail the version check in both places a version can come from and drop out
+// of the inventory. The tag's label is stripped instead, wherever the version
+// came from.
+func TestMacOSPackagesKeepReleaseTaggedVersions(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/packages_macos_release_tag.toml"))
+	require.NoError(t, err)
+	c, err := conn.RunCommand("system_profiler SPApplicationsDataType -xml")
+	require.NoError(t, err)
+
+	pf := &inventory.Platform{Name: "macos", Version: "27.0", Arch: "arm64", Family: []string{"darwin", "bsd", "unix", "os"}}
+	pkgs, err := packages.ParseMacOSPackages(conn, pf, c.Stdout)
+	require.NoError(t, err)
+	require.Len(t, pkgs, 2)
+
+	// Reported by system_profiler.
+	assert.Equal(t, "OpenRA - Red Alert", pkgs[0].Name)
+	assert.Equal(t, "20250330", pkgs[0].Version)
+	assert.Equal(t, "pkg:macos/macos/OpenRA%20-%20Red%20Alert@20250330?arch=arm64", pkgs[0].PUrl)
+
+	// Recovered from the Info.plist.
+	assert.Equal(t, "OpenRA - Tiberian Dawn", pkgs[1].Name)
+	assert.Equal(t, "20250330", pkgs[1].Version)
+}

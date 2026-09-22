@@ -43,6 +43,43 @@ func TestLooksLikeVersion(t *testing.T) {
 	}
 }
 
+func TestStripVersionLabel(t *testing.T) {
+	tests := []struct {
+		name    string
+		version string
+		want    string
+	}{
+		// OpenRA ships all three games with both version keys set to the
+		// release tag, read off a real Mac.
+		{"release tag", "release-20250330", "20250330"},
+		{"version word", "Version 2.0", "2.0"},
+		{"label is case-insensitive", "RELEASE_1.4.2", "1.4.2"},
+		{"label before a v-prefixed version", "release-v2.0.6", "v2.0.6"},
+
+		// A word in front of a number that names something other than the
+		// version stays as it is, so looksLikeVersion still rejects it.
+		{"guest OS name", "Windows 11", "Windows 11"},
+		{"build number", "Build 2079", "Build 2079"},
+		{"channel prefix", "EAP GO-262.6228.35", "EAP GO-262.6228.35"},
+		{"OpenRA playtest channel", "playtest-20250302", "playtest-20250302"},
+
+		// The label alone, or followed by something that is not a version.
+		{"label without a version", "release", "release"},
+		{"label before a word", "Version unknown", "Version unknown"},
+		{"label fused to the word", "release20250330", "release20250330"},
+
+		// Already a version, so there is nothing to strip.
+		{"clean version", "1.2.6", "1.2.6"},
+		{"empty", "", ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, stripVersionLabel(test.version))
+		})
+	}
+}
+
 func TestNormalizeVersion(t *testing.T) {
 	tests := []struct {
 		name    string
