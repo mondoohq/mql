@@ -47,6 +47,7 @@ var (
 	TooManyRequests = llx.TooManyRequests
 	Unavailable     = llx.Unavailable
 	MalformedData   = llx.MalformedData
+	AssetVanished   = llx.AssetVanished
 
 	WithScope       = llx.WithScope
 	WithPermissions = llx.WithPermissions
