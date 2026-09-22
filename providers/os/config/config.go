@@ -15,7 +15,7 @@ import (
 var Config = plugin.Provider{
 	Name:    "os",
 	ID:      "go.mondoo.com/mql/providers/os",
-	Version: "14.0.0-rc.1",
+	Version: "14.0.0-rc.2",
 	Requires: []plugin.ProviderDep{
 		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
 		{ID: "go.mondoo.com/mql/providers/network", Name: "network", MinVersion: "13.0.0"},
