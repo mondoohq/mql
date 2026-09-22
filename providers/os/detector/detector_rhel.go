@@ -116,7 +116,12 @@ func getActivatedRhelSupportLevels(conn shared.Connection) []string {
 				supportLevel = "e4s"
 			case strings.Contains(section, "baseos-eus-"):
 				supportLevel = "eus"
-			case strings.Contains(section, "-server-els-"):
+			// ELS repo IDs differ by major version: RHEL 7 uses
+			// rhel-7-server-els-rpms, RHEL 8+ uses rhel-8-for-x86_64-baseos-els-rpms.
+			// Both share the "-els-" segment, as do their RHUI and debug/source
+			// variants. The trailing dash keeps "els" a whole segment so repo IDs
+			// that merely contain the letters (e.g. "-elsewhere-") don't match.
+			case strings.Contains(section, "-els-"):
 				supportLevel = "els"
 			}
 			if supportLevel == "" {
