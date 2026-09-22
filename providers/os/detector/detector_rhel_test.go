@@ -206,6 +206,16 @@ enabled=0`,
 			expected: []string{},
 		},
 		{
+			// "els" must be a whole dash-delimited segment, not a substring
+			name: "repo with els inside a longer word",
+			files: map[string]string{
+				"/etc/yum.repos.d/custom.repo": `[rhel-8-for-x86_64-elsewhere-rpms]
+name=Some unrelated repository
+enabled=1`,
+			},
+			expected: []string{},
+		},
+		{
 			name: "invalid content",
 			files: map[string]string{
 				"/etc/yum.repos.d/rhel.repo": `invalid content`,
