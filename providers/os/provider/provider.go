@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -43,12 +44,97 @@ import (
 
 type Service struct {
 	*plugin.Service
+
+	// deferredDetects tracks platform detection that Connect skipped, keyed by
+	// connection id. See ensurePlatformDetected.
+	deferredDetects sync.Map
 }
 
 func Init() *Service {
 	return &Service{
 		Service: plugin.NewService(),
 	}
+}
+
+// deferredDetect is one connection's postponed platform detection. The once
+// keeps concurrent field reads from detecting several times over, and holding
+// the error keeps a failure from being retried on every subsequent field.
+type deferredDetect struct {
+	once sync.Once
+	err  error
+}
+
+// GetData serves a resource field, after making sure the connection knows what
+// platform it is talking to.
+//
+// Connect skips detection for a connection that delays discovery, and for a
+// container image that is every connection: the image connection constructor
+// sets DelayDiscovery during Connect precisely so the layers are not downloaded
+// just to answer "what is this". Detection then happens in the second, post
+// discovery connect.
+//
+// Between those two points the connection is live and can be queried, and until
+// this guard existed it answered with no platform at all -- so every resource
+// that reads conn.Asset().Platform saw nil. That is not a clean failure:
+// Platform.IsFamily is nil-safe and returns false, so a chain like
+//
+//	platform.IsFamily("linux") || ... || platform.Name == "aix"
+//
+// short-circuits past the safe calls and dereferences nil on the last one. The
+// plugin layer recovers the panic and answers the query with an error, so the
+// scan completes, reports the check as "error", and exits 0.
+//
+// Detecting here rather than at Connect keeps what DelayDiscovery is for -- no
+// work until something actually asks -- while making the platform available to
+// whatever asked. A resource query is exactly the point at which the platform
+// is needed and the cost is warranted.
+func (s *Service) GetData(req *plugin.DataReq) (*plugin.DataRes, error) {
+	if err := s.ensurePlatformDetected(req.Connection); err != nil {
+		return nil, err
+	}
+	return s.Service.GetData(req)
+}
+
+// Disconnect drops the connection's detection state along with the connection.
+func (s *Service) Disconnect(req *plugin.DisconnectReq) (*plugin.DisconnectRes, error) {
+	s.deferredDetects.Delete(req.Connection)
+	return s.Service.Disconnect(req)
+}
+
+// ensurePlatformDetected runs detection for a connection that does not have a
+// platform yet, once.
+//
+// Everything it cannot answer for is left alone rather than treated as an
+// error: a connection this service does not own, a runtime that has already
+// gone, an asset that carries no connection config for detect to read. Those
+// are for GetData and the resource to report, and they have the better message
+// for it.
+func (s *Service) ensurePlatformDetected(connID uint32) error {
+	runtime, err := s.GetRuntime(connID)
+	if err != nil {
+		return nil
+	}
+	conn, ok := runtime.Connection.(shared.Connection)
+	if !ok {
+		return nil
+	}
+
+	asset := conn.Asset()
+	if asset == nil || len(asset.Connections) == 0 {
+		return nil
+	}
+	// The common path: detection already ran, at Connect or on an earlier field.
+	if asset.Platform != nil && asset.Platform.Name != "" {
+		return nil
+	}
+
+	entry, _ := s.deferredDetects.LoadOrStore(connID, &deferredDetect{})
+	d := entry.(*deferredDetect)
+	d.once.Do(func() {
+		log.Debug().Uint32("connection", connID).Msg("detecting platform on first resource access")
+		d.err = s.detect(asset, conn)
+	})
+	return d.err
 }
 
 func parseDiscover(flags map[string]*llx.Primitive) *inventory.Discovery {
