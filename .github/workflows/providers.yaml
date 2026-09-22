@@ -40,7 +40,11 @@ permissions:
 
 env:
   BUCKET: releases-us.mondoo.io
-  SKIP_PROVIDERS: "core"
+  # Builtin providers ship inside the binary, not through the registry. They
+  # have no main.go to build and their version is mql.GetVersion() rather than
+  # a quoted literal, so the version check below reads an empty string, never
+  # matches the published one, and would try to build them on every push.
+  SKIP_PROVIDERS: "core iac"
 
 jobs:
   scoping:
