@@ -503,6 +503,13 @@ func (w *WinPkgManager) getLocalInstalledApps() ([]Package, error) {
 	// under a root that knows the concrete SID HKCU could not attribute.
 	packages = mergeDedupedRegistryPackages(packages)
 
+	// Google Update (Omaha) tracks the authoritative version for the
+	// products it manages (Chrome, Drive, Earth, GCPW, ...) independently of
+	// Add/Remove Programs, whose DisplayVersion can go stale. See
+	// applyOmahaVersions.
+	omahaVersions := buildOmahaVersions(omahaClientsNativeRoots, registry.GetNativeRegistryKeyChildren, registry.GetNativeRegistryKeyItems)
+	applyOmahaVersions(packages, omahaVersions, w.platform)
+
 	applyM365ChannelQualifier(packages, w.platform, w.m365ChannelFromNativeRegistry)
 
 	// These are the .NET Framework packages
@@ -1001,6 +1008,17 @@ func (w *WinPkgManager) getInstalledApps() ([]Package, error) {
 		return nil, err
 	}
 
+	// Google Update (Omaha) tracks the authoritative version for the
+	// products it manages independently of Add/Remove Programs. See
+	// applyOmahaVersions. A read failure here is logged and skipped rather
+	// than failing the whole scan, the same policy readRegistryItems and
+	// getDotNetFramework use for an optional, best-effort registry probe.
+	if omahaVersions, err := w.getOmahaVersionsRemote(); err != nil {
+		log.Debug().Err(err).Msg("could not read Google Update (Omaha) product versions")
+	} else {
+		applyOmahaVersions(packages, omahaVersions, w.platform)
+	}
+
 	applyM365ChannelQualifier(packages, w.platform, w.m365ChannelFromPowershell)
 
 	// The .NET Framework runtimes don't appear in the Uninstall registry keys,
@@ -1089,6 +1107,20 @@ func (w *WinPkgManager) getFsInstalledApps() ([]Package, error) {
 			packages = append(packages, *p)
 		}
 	}
+
+	// Google Update (Omaha) tracks the authoritative version for the
+	// products it manages independently of Add/Remove Programs. See
+	// applyOmahaVersions. Read through the already-loaded SOFTWARE hive,
+	// same as the Uninstall keys above.
+	omahaVersions := buildOmahaVersions(omahaClientsOfflineSubpaths,
+		func(p string) ([]registry.RegistryKeyChild, error) {
+			return rh.GetNativeRegistryKeyChildren(registry.Software, p)
+		},
+		func(p string) ([]registry.RegistryKeyItem, error) {
+			return rh.GetNativeRegistryKeyItems(registry.Software, p)
+		},
+	)
+	applyOmahaVersions(packages, omahaVersions, w.platform)
 
 	applyM365ChannelQualifier(packages, w.platform, func() string {
 		return w.m365ChannelFromHive(rh)
@@ -1386,7 +1418,11 @@ func (w *WinPkgManager) List() ([]Package, error) {
 	canRunCmd := w.conn.Capabilities().Has(shared.Capability_RunCommand)
 	if !canRunCmd {
 		log.Debug().Msg("cannot run command on windows, skipping hotfixes list")
-		return pkgs, nil
+		// Collapse even on this early return: the .NET runtime's two
+		// Add/Remove-Programs entries per install (see collapsePackages)
+		// come from the app-listing path above, which ran regardless of
+		// RunCommand capability.
+		return collapsePackages(pkgs), nil
 	}
 
 	// hotfixes
@@ -1416,7 +1452,10 @@ func (w *WinPkgManager) List() ([]Package, error) {
 	}
 
 	pkgs = append(pkgs, hotfixAsPkgs...)
-	return pkgs, nil
+	// Collapse rows that every version normalization above (.NET's
+	// normalizeDotNetPackedVersion, Omaha's applyOmahaVersions) has made
+	// indistinguishable. See collapsePackages.
+	return collapsePackages(pkgs), nil
 }
 
 func ParseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]Package, error) {
@@ -1949,4 +1988,267 @@ func updateExchangePackage(pkgs []Package, latestExchangeCU Package) []Package {
 		}
 	}
 	return pkgs
+}
+
+// omahaClientsNativeRoots are the fully-qualified registry paths of Google
+// Update's ("Omaha") "Clients" key under both the 32-bit (Wow6432Node) and
+// native 64-bit views, for the native local registry path
+// (getLocalInstalledApps). See buildOmahaVersions for why an absent view is
+// expected rather than an error, and applyOmahaVersions for what the key is
+// used for.
+var omahaClientsNativeRoots = []string{
+	`HKLM\SOFTWARE\Wow6432Node\Google\Update\Clients`,
+	`HKLM\SOFTWARE\Google\Update\Clients`,
+}
+
+// omahaClientsOfflineSubpaths is the same key, relative to the SOFTWARE hive
+// root, for the offline/filesystem path (getFsInstalledApps), which reads
+// through an already-loaded RegistryHandler rather than a live registry
+// root.
+var omahaClientsOfflineSubpaths = []string{
+	`Wow6432Node\Google\Update\Clients`,
+	`Google\Update\Clients`,
+}
+
+// omahaClientsScript is the remote-connection (PowerShell) equivalent of
+// omahaClientsNativeRoots/omahaClientsOfflineSubpaths: it reads every Omaha
+// "Clients" subkey's "name" and "pv" values from both registry views. A
+// missing view (Test-Path false) is skipped rather than treated as an error
+// -- on every host verified so far only the Wow6432Node view exists.
+const omahaClientsScript = `
+$result = New-Object System.Collections.Generic.List[object]
+foreach ($p in @('HKLM:\SOFTWARE\WOW6432Node\Google\Update\Clients\*', 'HKLM:\SOFTWARE\Google\Update\Clients\*')) {
+  if (Test-Path $p) {
+    Get-ItemProperty $p -ErrorAction SilentlyContinue | Select-Object -Property name, pv | ForEach-Object { $result.Add($_) }
+  }
+}
+ConvertTo-Json -Compress -InputObject $result
+`
+
+// omahaChildrenFunc and omahaItemsFunc abstract over the two ways this file
+// reads a registry key outside a remote PowerShell connection (native
+// syscalls vs. an already-loaded offline hive through a RegistryHandler), so
+// buildOmahaVersions can serve both getLocalInstalledApps and
+// getFsInstalledApps.
+type omahaChildrenFunc func(path string) ([]registry.RegistryKeyChild, error)
+
+type omahaItemsFunc func(path string) ([]registry.RegistryKeyItem, error)
+
+// buildOmahaVersions reads every subkey under the given Google Update
+// ("Omaha") "Clients" roots and returns a map of Omaha's own product name
+// (lowercased, for case-insensitive matching against a package's Name) to
+// its authoritative "pv" version. See applyOmahaVersions for how the result
+// is used.
+//
+// A root that fails to enumerate (children returns an error) is skipped
+// silently, not treated as a failure: the native 64-bit
+// Google\Update\Clients view is legitimately absent on a host that only ever
+// installed the 32-bit Google Update service -- every host this was
+// verified against.
+//
+// A subkey with no "name" identifies nothing to match a package against, and
+// one whose "pv" is empty or not version-shaped -- observed on a real VM
+// where an MSI had registered an Add/Remove-Programs entry without ever
+// completing the product's deploy -- is dropped here so it can never reach
+// applyOmahaVersions and blank out a package's real DisplayVersion.
+func buildOmahaVersions(roots []string, children omahaChildrenFunc, items omahaItemsFunc) map[string]string {
+	versions := map[string]string{}
+	for _, root := range roots {
+		kids, err := children(root)
+		if err != nil {
+			continue
+		}
+		for _, c := range kids {
+			kidItems, err := items(c.Path + "\\" + c.Name)
+			if err != nil {
+				continue
+			}
+			var name, pv string
+			for _, it := range kidItems {
+				switch it.Key {
+				case "name":
+					name = it.Value.String
+				case "pv":
+					pv = it.Value.String
+				}
+			}
+			if name == "" || !looksLikeVersion(pv) {
+				continue
+			}
+			versions[strings.ToLower(name)] = pv
+		}
+	}
+	return versions
+}
+
+// omahaClientEntry is one row of omahaClientsScript's JSON output.
+type omahaClientEntry struct {
+	Name string `json:"name"`
+	PV   string `json:"pv"`
+}
+
+// parseOmahaClientsOutput turns omahaClientsScript's JSON into the same
+// name(lowercased)->pv map buildOmahaVersions produces from a native
+// registry read, so the remote and local paths feed applyOmahaVersions
+// identically.
+func parseOmahaClientsOutput(input io.Reader) (map[string]string, error) {
+	data, err := io.ReadAll(input)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(string(data)) == "" {
+		return map[string]string{}, nil
+	}
+
+	var entries []omahaClientEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		// ConvertTo-Json collapses a single-element collection to a bare
+		// object rather than a one-element array -- a well-known PowerShell
+		// quirk, and the live case on every VM this was verified against,
+		// which has exactly one Omaha-managed product installed (Chrome).
+		// Retry as a single entry before giving up.
+		var single omahaClientEntry
+		if err2 := json.Unmarshal(data, &single); err2 != nil {
+			return nil, err
+		}
+		entries = []omahaClientEntry{single}
+	}
+
+	versions := map[string]string{}
+	for _, e := range entries {
+		if e.Name == "" || !looksLikeVersion(e.PV) {
+			continue
+		}
+		versions[strings.ToLower(e.Name)] = e.PV
+	}
+	return versions, nil
+}
+
+// getOmahaVersionsRemote is the remote-connection counterpart of
+// buildOmahaVersions, run over the active connection via PowerShell rather
+// than native syscalls.
+func (w *WinPkgManager) getOmahaVersionsRemote() (map[string]string, error) {
+	cmd, err := w.conn.RunCommand(powershell.Encode(omahaClientsScript))
+	if err != nil {
+		return nil, err
+	}
+	if cmd.ExitStatus != 0 {
+		// No Google Update installed, or nothing under Clients: an absent
+		// key is a normal state here (see buildOmahaVersions), not a scan
+		// failure.
+		return nil, nil
+	}
+	return parseOmahaClientsOutput(cmd.Stdout)
+}
+
+// applyOmahaVersions rewrites the Version, PUrl and CPEs of every
+// "windows/app" package whose Name Google Update (Omaha) also manages, using
+// Omaha's own "pv" in place of Add/Remove Programs' DisplayVersion.
+//
+// Some Google-managed installers leave a second, stale Add/Remove-Programs
+// entry behind whose DisplayVersion never advances past the raw MSI
+// ProductVersion the installer originally shipped (observed on a real
+// Windows 11 ARM64 host: a Chrome entry frozen at "69.218.16502"), because
+// the post-install DisplayVersion rewrite that would normally correct it
+// never ran. That entry and the browser's real, correctly-versioned entry
+// then carry different DisplayVersions, hence different purls, hence one
+// browser install reported as two packages with two sets of findings -- and
+// because the frozen value is an opaque MSI ProductVersion, there is no way
+// to recover the real version from the stale entry alone.
+//
+// Google Update tracks the authoritative version independently, under
+// HKLM\SOFTWARE\[Wow6432Node\]Google\Update\Clients\<product GUID>: its "pv"
+// value IS the real, currently-installed version, and its "name" value
+// matches the ARP DisplayName exactly (verified live: "Google Chrome" /
+// "153.0.8010.53"). That is what this rewrites onto every matching package,
+// so a bundle/MSI-style duplicate this produces converges with its sibling
+// the same way normalizeDotNetPackedVersion converges the .NET runtime's two
+// entries -- collapsePackages then removes the now-identical row.
+//
+// Matches on exact, case-insensitive Name equality only, never fuzzy, and
+// only when omahaVersions carries a version-shaped, non-empty "pv" for that
+// name (see buildOmahaVersions): an app Omaha does not track is left alone,
+// and so is one whose Clients entry had an empty "pv" -- observed on the same
+// VM for an MSI that registered ARP without ever completing a deploy --
+// since blanking a good DisplayVersion would be strictly worse than leaving
+// it stale.
+func applyOmahaVersions(pkgs []Package, omahaVersions map[string]string, platform *inventory.Platform) {
+	if len(omahaVersions) == 0 {
+		return
+	}
+	for i := range pkgs {
+		pkg := &pkgs[i]
+		if pkg.Format != "windows/app" {
+			continue
+		}
+		pv, ok := omahaVersions[strings.ToLower(pkg.Name)]
+		if !ok || pv == pkg.Version {
+			continue
+		}
+		pkg.Version = pv
+		purlModifiers := []purl.Modifier{}
+		if pkg.Arch != "" {
+			purlModifiers = append(purlModifiers, purl.WithArch(pkg.Arch))
+		}
+		pkg.PUrl = purl.NewPackageURL(platform, purl.TypeWindows, pkg.Name, pv, purlModifiers...).String()
+		if cpeWfns, err := cpe.NewPackage2Cpe(pkg.Vendor, pkg.Name, pv, "", ""); err != nil {
+			log.Debug().Err(err).Str("name", pkg.Name).Str("version", pv).Msg("could not create cpe for omaha-versioned windows app package")
+		} else {
+			pkg.CPEs = cpeWfns
+		}
+	}
+}
+
+// collapsePackages collapses package rows that are indistinguishable to
+// every downstream consumer of the final list: same format, name, version,
+// arch and purl, found under the same install scope and user.
+//
+// The .NET runtime installers register two Add/Remove-Programs entries for
+// one runtime install (the bundle's own entry and the MSI's hidden
+// SystemComponent=1 entry) under two separate physical registry keys, which
+// registryDedupKey/mergeDedupedRegistryPackages deliberately keep apart --
+// that key is scoped to ONE physical registry entry by design (see its own
+// doc comment). normalizeDotNetPackedVersion (#10710) then rewrites BOTH
+// entries' DisplayVersion to the release their shared DisplayName carries,
+// and applyOmahaVersions above does the same for Omaha-managed products.
+// Once two rows agree on every field a consumer actually keys on -- and
+// every consumer keys on the purl -- keeping both is reporting one install
+// twice: two rows, two findings carrying the same CVEs for one thing.
+//
+// Runs last, after every version normalization (including
+// applyOmahaVersions), since normalization is what makes two originally
+// distinct rows converge in the first place.
+//
+// installScope and installUser are part of the key deliberately, even though
+// they are almost never what distinguishes two rows for the SAME install:
+// #10964 made mql report a package once per user profile it is installed
+// for, and two different users each having their own install of the same
+// app agree on every other field (name, version, arch, purl) while being
+// genuinely two separate installs. Leaving scope/user out of the key would
+// silently erase the per-user attribution this file otherwise goes out of
+// its way to compute (installScopeForRegistryPath, getPerProfileInstalledApps)
+// by collapsing them into one row.
+//
+// Format, name, version, arch and purl make up the rest of the key because
+// together they are exactly what identifies "the same package" everywhere
+// else in this file: createPackage builds the purl FROM name, version and
+// arch, so purl is redundant with those three in the ordinary case -- it is
+// kept in the key anyway because it is the field every actual downstream
+// consumer (SBOM export, vulnerability matching) keys on, so two rows that
+// somehow disagreed on purl while matching on name/version/arch would not be
+// safe to collapse.
+func collapsePackages(pkgs []Package) []Package {
+	out := make([]Package, 0, len(pkgs))
+	seen := map[string]struct{}{}
+	for _, p := range pkgs {
+		key := strings.Join([]string{
+			p.Format, p.Name, p.Version, p.Arch, p.PUrl, p.InstallScope, p.InstallUser,
+		}, "\x00")
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, p)
+	}
+	return out
 }
