@@ -5,7 +5,6 @@ package resources
 
 import (
 	"errors"
-	"regexp"
 	"sync"
 
 	"github.com/rs/zerolog/log"
@@ -16,8 +15,6 @@ import (
 	"go.mondoo.com/mql/types"
 	"go.mondoo.com/mql/utils/multierr"
 )
-
-var PKG_IDENTIFIER = regexp.MustCompile(`^(.*):\/\/(.*)\/(.*)\/(.*)$`)
 
 // packageID computes mqlPackage's cache/identity key: format://name/version/arch,
 // with "/user/<sid>" appended when installScope is "user". Two users can
