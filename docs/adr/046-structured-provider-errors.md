@@ -133,7 +133,7 @@ window, and everything after it is ordinary work at ordinary pace.
 
 ## Decision
 
-### 1. Eight kinds, named by their HTTP equivalent
+### 1. Nine kinds, named by their HTTP equivalent
 
 Every classified failure is one of these. **The HTTP column names the kinds; it
 is not implemented.** No status-to-kind table exists anywhere in the design, and
@@ -151,11 +151,25 @@ have never seen before — see §2.
 | too many requests | `ERROR_KIND_TOO_MANY_REQUESTS` | 429 | throttled. Carries `retry_after` when the API said so | handled in three providers (`github/connection/connection.go:297`, which folds it in with 403; `iru`; `ms365`), generic everywhere else |
 | unavailable | `ERROR_KIND_UNAVAILABLE` | 503 | the target is temporarily not answering: 5xx, connection refused, timeout, DNS failure | `isServiceUnavailable`, `httpNotReachable`, `isConnectionRefused` |
 | malformed data | `ERROR_KIND_MALFORMED_DATA` | — | the target answered and what it said cannot be read: config file that does not parse, JSON that does not decode, a field in a shape the API does not document | `auditd.go:97,103` ("failed to parse auditd config"), and every parse error in `providers/os` that today reaches the user as bare text |
+| asset vanished | `ERROR_KIND_ASSET_VANISHED` | — | the asset went away while we were scanning it | `mqlc/mqlc.go:1446`, read downstream by a string prefix (`nodes.go:506`) |
+
+**Asset vanished is the one kind no provider produces.** The other eight are a
+provider classifying its own target's answer; this one is raised by the compiler
+when `c.Schema.Lookup` finds nothing for a resource type, and cnspec already
+reads it — by matching the prefix `"could not find resource"` — to mean the asset
+disappeared mid-scan. It is in the taxonomy because it is the same anti-pattern
+in the same position, and because the alternative is a ninth vocabulary invented
+beside this one. It is also the single kind whose scoring differs; see the cnspec
+section.
 
 Everything else is **unclassified**: `ERROR_KIND_UNSPECIFIED`, which is also what
 an absent detail means. Unclassified is not a failure of the taxonomy, it is the
 honest default, and it renders and scores as a hard error. A kind is a claim; a
 provider that does not know makes no claim.
+
+`ERROR_KIND_ASSET_VANISHED` is built where the error is raised
+(`mqlc/mqlc.go:1446`) rather than by a classifier, so it needs no provider
+migration and can land with phase 1.
 
 `ERROR_KIND_NO_MATCH` (ADR 045) keeps value 1 and stays Connect-only. It is a
 statement about a *target*, not about a call, and nothing on the data path
@@ -201,7 +215,7 @@ in the tree:
   (`azureFeatureNotApplicable`).
 - **Pick the narrowest kind that is true.** gcp's `errors.go` already says this:
   the wider the classifier, the more real failures disappear into it. Not
-  applicable is the widest of the eight and the easiest to abuse; when a call
+  applicable is the widest of the nine and the easiest to abuse; when a call
   site cannot distinguish "not enabled" from "denied", it is denied.
 
 A provider that cannot tell leaves the error unclassified. That is strictly
@@ -282,6 +296,7 @@ enum ErrorKind {
   ERROR_KIND_TOO_MANY_REQUESTS = 7;
   ERROR_KIND_UNAVAILABLE       = 8;
   ERROR_KIND_MALFORMED_DATA    = 9;
+  ERROR_KIND_ASSET_VANISHED    = 10;
 }
 
 enum ErrorScope {
@@ -333,6 +348,9 @@ Three wire sites:
 - **gRPC statuses** keep ADR 045's detail mechanism unchanged, for errors that
   are statuses: `Connect`, and the transport failures `handlePluginError`
   inspects.
+
+Three in mql. cnspec adds two of its own, because a check's outcome travels as a
+`Score` rather than as a `Result` — see the cnspec section.
 
 **Not gRPC status codes as the vocabulary.** `codes.Unavailable` on the data path
 already means "the plugin process crashed" (`providers/runtime.go:749-756`), and
@@ -405,12 +423,12 @@ Errors also stop being anonymous in logs. Today a swallowed denial is a
 
 ## cnspec
 
-**Every kind still scores as an error.** Nothing in this ADR changes what counts
-toward a score: a check that ended in a classified failure is `ScoreType_Error`
-exactly as it is today, including `not applicable`. Remapping a kind onto
-`ScoreType_OutOfScope` or `ScoreType_Skip` would be a change to what compliance
-means, and that is a separate decision from being able to tell the failures
-apart. The taxonomy does not need it to pay off.
+**Scoring is unchanged.** A check that ended in a classified failure is
+`ScoreType_Error`, exactly as today, including `not applicable`; asset-vanished
+keeps the `ScoreType_Unscored` it already gets (`policy/executor/internal/
+nodes.go:549-557`). Remapping a kind onto `ScoreType_OutOfScope` or
+`ScoreType_Skip` would change what compliance means, which is a separate decision
+from being able to tell failures apart. The taxonomy does not need it to pay off.
 
 **What the kind buys is attribution, and that is the point.** Today a scan that
 could not read half of its subject reports the same shape of failure as a scan
@@ -427,21 +445,62 @@ with a list of grants attached, and it is what lets a user say *we are covering
 grouping answers it per fleet: 50 assets failing on one expired credential is one
 line, not 50.
 
-Three things make it possible, and all three are mql's side of the contract:
+### The kind has to reach the score
 
-- The kind reaches the report, because `Result.error_detail` (§5) travels with
-  the result rather than being rendered into the message.
-- The failures are groupable, because `scope`, `scope_id` and `permissions`
-  (§4) say what to group on: kind first, then the permission or partition.
-- Coverage is countable, because an error is an error — a check that could not
-  read its subject is in the denominator, not silently absent from it.
+Data queries are already covered: `StoreResultsReq.data` is a
+`map<string, mql.llx.Result>`, so `Result.error_detail` (§5) ships upstream the
+day phase 1 lands, with no cnspec change at all.
 
-Two concrete cleanups fall out immediately:
+**Checks are not**, and checks are what a policy is made of. A check's outcome
+travels as a `Score`, which carries a type and a `message` string, so the kind
+dies at `policy/executor/internal/nodes.go:556` — two lines after the loop at
+`:503-518` collected the typed errors. That is the same flattening as
+`errors.New(res.Error)`, one layer up. Two fields fix it:
+
+```proto
+// cnspec policy/cnspec_policy.proto
+message Score {
+  // … 1-14 in use
+  // Why this score could not be assessed. Empty on every score that ran.
+  repeated mql.llx.ErrorDetail error_details = 15;
+}
+
+message ReportCollection {
+  // …
+  // Asset-level failures, structured. Sibling of the errors map above.
+  map<string, mql.llx.ErrorDetail> error_details = 7;
+}
+```
+
+**Repeated, not a single kind.** A check whose three datapoints failed
+`forbidden`, `not applicable` and `unavailable` would otherwise have to pick one,
+and every ranking we could invent is wrong for somebody's report. Repeated needs
+no dominance rule and matches how the coverage sentence groups.
+
+The cost is bounded and was checked rather than assumed. An empty repeated field
+does not serialize, so every passing score costs zero. A realistic `forbidden`
+detail — kind, scope, `scope_id`, one permission — is about 40 bytes, and details
+dedupe within a score on `(kind, scope, scope_id, permissions)`, which `nodes.go`
+already does for the message via `err.Deduplicate()`. A 300-check policy with 60
+permission failures is 2.4 KB on an asset whose request also carries real query
+values in `data`. Results are batched per asset (`collector.go:320`, `:345`), so
+that is the whole payload, not a fleet-sized one. Interning the details into a
+per-request table and referencing them by index would cut a 1,000-asset scan from
+~2.4 MB to ~0.3 MB, changes no semantics, and is available if a measurement ever
+asks for it — building it now would be optimizing 2.4 KB.
+
+`ReportCollection.error_details` is local-output only: asset errors do not travel
+through `StoreResults`. It is what makes the fleet line one line, in the CLI and
+in JSON.
+
+### Two string matches this removes
 
 - `policy/scan/reporter_aggregate.go:80` stops matching `"TOOMANYREQUESTS"`
-  against rendered text and reads the kind.
-- `AddScanError` groups asset errors by kind instead of keeping one opaque
-  string per asset (`policy/scan/reporter_aggregate.go:78-104`).
+  against rendered text and reads the kind. `AddScanError` groups asset errors by
+  kind instead of keeping one opaque string per asset (`:78-104`).
+- `nodes.go:506` stops matching the prefix `"could not find resource"` and reads
+  `ERROR_KIND_ASSET_VANISHED`. The behavior it drives — `ScoreType_Unscored` — is
+  unchanged; only the detection stops being textual.
 
 The implementation is cnspec's. It is stated here because a taxonomy no consumer
 reads is dead weight, and because coverage reporting is the reason to build the
@@ -455,8 +514,9 @@ taxonomy at all.
 - **Retry behavior.** Nothing at all. `retry_after_ms` is carried and no part
   of this ADR consumes it. Whether a target's 429 is retried, by whom and where,
   is separate work that this only supplies the framework for.
-- **Score semantics.** Every kind scores as an error, as today. No kind moves a
-  check out of the denominator.
+- **Score semantics.** Every kind scores as it does today — an error for the
+  provider kinds, `Unscored` for asset-vanished. No kind moves a check out of the
+  denominator that is not already out of it.
 - **`.lr` schemas.** No resource, field, or annotation changes. A field that
   fails is the same field.
 - **Existing recordings.** They carry no detail and replay as unclassified,
@@ -476,8 +536,9 @@ taxonomy at all.
 3. **Permission attribution.** Call sites name their permission; the
    `permissions.json` fallback fills the rest.
 4. **Rendering and aggregation.** CLI grouping, structured logs.
-5. **cnspec coverage attribution.** Kind-grouped reporting, the
-   `TOOMANYREQUESTS` removal, asset-error grouping.
+5. **cnspec coverage attribution.** `Score.error_details` and
+   `ReportCollection.error_details`, kind-grouped reporting, and the two string
+   matches removed (`TOOMANYREQUESTS`, `could not find resource`).
 6. **The long tail.** The remaining providers, plus a lint that flags an error
    swallowed into `nil, nil` right after a classifier predicate — the shape that
    produced the current state.
@@ -525,7 +586,7 @@ honest. Phase 1 is the only one that has to make the v14 rc window.
   narrowest-true rule (§2) and the unclassified default are the mitigation, and
   the review burden lands on the provider mapping files.
 - **`not applicable` will be over-used**, exactly as gcp's `isInapplicable`
-  comment warns, because it is the widest of the eight and the easiest to reach
+  comment warns, because it is the widest of the nine and the easiest to reach
   for when a call site is hard to classify. It no longer changes a score, so the
   damage is a coverage report that blames the target for a gap we caused. It is
   the kind to watch in review.
@@ -533,9 +594,9 @@ honest. Phase 1 is the only one that has to make the v14 rc window.
   down to `llx` is a compatibility event, bounded by the v14 rc window and
   covered by `IsNoMatchError`'s text arm, but it is not free — and the window
   closes at GA.
-- **The kind has to be plumbed through five layers** — provider, `DataRes`,
-  executor, `Result`, upstream — and dropping it at any one of them fails
-  silently, degrading to today's behavior. That is a testable property and should
+- **The kind has to be plumbed through six hops** — provider, `DataRes`,
+  executor, `RawData`, `Result` or `Score`, upstream — and dropping it at any one
+  of them fails silently, degrading to today's behavior. That is a testable property and should
   have a round-trip test per layer rather than trust.
 
 ## Alternatives considered
