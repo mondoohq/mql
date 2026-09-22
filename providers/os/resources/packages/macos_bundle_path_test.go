@@ -37,6 +37,15 @@ func TestIsApplicationBundlePath(t *testing.T) {
 		{"login item helper", "/Applications/Docker.app.back/Contents/Library/LoginItems/DockerHelper.app", false},
 		{"Finder pseudo-application", "/System/Library/CoreServices/Finder.app/Contents/Applications/AirDrop.app", false},
 		{"framework XPC service", "/System/Library/Frameworks/PaperKit.framework/Contents/LinkedNotesUIService.app", false},
+
+		// Script Editor templates are copied from to start a new script, not
+		// run. Every path below was read off a real Mac except the per-user
+		// one, which is where Script Editor keeps a user's own templates.
+		{"Script Editor applet template", "/Library/Application Support/Script Editor/Templates/Cocoa-AppleScript Applet.app", false},
+		{"Script Editor droplet template", "/Library/Application Support/Script Editor/Templates/Droplets/Recursive File Processing Droplet.app", false},
+		{"per-user Script Editor template", "/Users/user/Library/Application Support/Script Editor/Templates/My Applet.app", false},
+		{"Script Editor itself", "/System/Applications/Utilities/Script Editor.app", true},
+		{"other Application Support app", "/Library/Application Support/Iru/Iru Menu/Iru Menu.app", true},
 	}
 
 	for _, test := range tests {

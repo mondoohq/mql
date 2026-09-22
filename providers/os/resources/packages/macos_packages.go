@@ -235,6 +235,10 @@ func (mpm *MacOSPkgManager) Files(name string, version string, arch string) ([]F
 // A third shape is a bundle sitting in a dependency or build cache, which is
 // build input or build output rather than installed software. See
 // dependencyCacheMarkers.
+//
+// A fourth is a template that an application copies from when the user creates
+// a new document, which is a starting point for something to build rather than
+// software to run. See templateMarkers.
 func isApplicationBundlePath(path string) bool {
 	if path == "" {
 		return false
@@ -258,6 +262,11 @@ func isApplicationBundlePath(path string) bool {
 	// extension check above is.
 	lower := strings.ToLower(path)
 	for _, marker := range dependencyCacheMarkers {
+		if strings.Contains(lower, marker) {
+			return false
+		}
+	}
+	for _, marker := range templateMarkers {
 		if strings.Contains(lower, marker) {
 			return false
 		}
@@ -295,6 +304,20 @@ var dependencyCacheMarkers = []string{
 	// Xcode build products, which are rebuilt from source and are not the
 	// copy a user launches even when the project builds a real application.
 	"/deriveddata/",
+}
+
+// templateMarkers are whole-segment path markers for folders of document
+// templates. Like dependencyCacheMarkers they are lowercase and ASCII, because
+// they are compared against a lowercased path.
+var templateMarkers = []string{
+	// Script Editor's File > New from Template. The system copy lives in
+	// /Library/Application Support/Script Editor/Templates and ships applet
+	// and droplet bundles (Cocoa-AppleScript Applet.app and, under Droplets/,
+	// Recursive File Processing Droplet.app and two more). They are .app
+	// bundles so that Script Editor can copy one out as a new script, and
+	// system_profiler reports each of them at version 1.0 as though it were
+	// installed. The same folder under ~/Library holds a user's own templates.
+	"/application support/script editor/templates/",
 }
 
 // versionShape matches a string that opens with a version number, optionally
