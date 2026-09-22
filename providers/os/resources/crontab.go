@@ -27,8 +27,14 @@ var systemCronDirs = []string{
 }
 
 // User crontab directories (without user field, filename is the user)
+//
+// SUSE keeps per-user crontabs one level below the RHEL location, in
+// /var/spool/cron/tabs. Both are listed: the /var/spool/cron walk skips
+// the tabs subdirectory (only regular files count as a user's crontab),
+// so a SLES host contributes each crontab exactly once.
 var userCrontabDirs = []string{
 	"/var/spool/cron/crontabs", // Debian/Ubuntu
+	"/var/spool/cron/tabs",     // SLES/openSUSE
 	"/var/spool/cron",          // RHEL/CentOS/Fedora
 	"/usr/lib/cron/tabs",       // macOS
 }
@@ -74,14 +80,17 @@ func (c *mqlCrontab) entries() ([]any, error) {
 		allFiles = append(allFiles, files...)
 	}
 
-	// Parse user crontabs
-	for _, dir := range userCrontabDirs {
-		entries, files, err := c.parseUserCrontabDir(afs, dir)
+	// Parse user crontabs. The filename is the user, so the entries carry
+	// that name as their default user.
+	for _, uc := range collectUserCrontabFiles(afs, userCrontabDirs) {
+		entries, fileRes, err := c.parseCrontabFile(afs, uc.path, false, uc.user)
 		if err != nil {
 			continue
 		}
 		allEntries = append(allEntries, entries...)
-		allFiles = append(allFiles, files...)
+		if fileRes != nil {
+			allFiles = append(allFiles, fileRes)
+		}
 	}
 
 	// Store files for the files() method
@@ -188,44 +197,50 @@ func (c *mqlCrontab) parseCronDir(afs *afero.Afero, dir string, hasUserField boo
 	return allEntries, allFiles, nil
 }
 
-// parseUserCrontabDir parses user crontabs where filename is the username
-func (c *mqlCrontab) parseUserCrontabDir(afs *afero.Afero, dir string) ([]any, []any, error) {
-	files, err := afs.ReadDir(dir)
-	if err != nil {
-		return nil, nil, err
-	}
+// userCrontabFile is one per-user crontab found in a spool directory: the
+// user it belongs to (the file name) and the path to read it from.
+type userCrontabFile struct {
+	user string
+	path string
+}
 
-	var allEntries []any
-	var allFiles []any
+// collectUserCrontabFiles walks the given spool directories and returns the
+// per-user crontabs they hold, in directory order. Missing directories are a
+// normal state (every distro ships only its own layout) and are skipped.
+//
+// Only regular files are user crontabs. Subdirectories are skipped, which is
+// what keeps SUSE's /var/spool/cron/tabs from being reported as a user named
+// "tabs" when the RHEL path /var/spool/cron above it is walked.
+func collectUserCrontabFiles(afs *afero.Afero, dirs []string) []userCrontabFile {
+	var out []userCrontabFile
 
-	for _, file := range files {
-		if file.IsDir() {
-			continue
-		}
-		// Skip hidden files and common backup files
-		name := file.Name()
-		if strings.HasPrefix(name, ".") ||
-			strings.HasSuffix(name, "~") ||
-			strings.HasSuffix(name, ".bak") {
-			continue
-		}
-
-		// The filename is the username for user crontabs
-		username := name
-		path := filepath.Join(dir, name)
-
-		// User crontabs don't have the user field - the filename is the user
-		entries, fileRes, err := c.parseCrontabFile(afs, path, false, username)
+	for _, dir := range dirs {
+		files, err := afs.ReadDir(dir)
 		if err != nil {
 			continue
 		}
-		allEntries = append(allEntries, entries...)
-		if fileRes != nil {
-			allFiles = append(allFiles, fileRes)
+
+		for _, file := range files {
+			if file.IsDir() {
+				continue
+			}
+			// Skip hidden files and common backup files
+			name := file.Name()
+			if strings.HasPrefix(name, ".") ||
+				strings.HasSuffix(name, "~") ||
+				strings.HasSuffix(name, ".bak") {
+				continue
+			}
+
+			// The filename is the username for user crontabs
+			out = append(out, userCrontabFile{
+				user: name,
+				path: filepath.Join(dir, name),
+			})
 		}
 	}
 
-	return allEntries, allFiles, nil
+	return out
 }
 
 func (e *mqlCrontabEntry) id() (string, error) {

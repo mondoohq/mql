@@ -60,6 +60,12 @@ var installBypassBins = map[string]bool{
 //   - alias, options, softdep, remove and anything else are ignored — they
 //     don't express "must not load" intent.
 //
+// Module names are normalized with normalizeModuleName, because modprobe
+// treats '-' and '_' as interchangeable: `blacklist firewire-core` and
+// `blacklist firewire_core` express the same rule, and CIS remediations
+// write the dashed spelling while lsmod reports the underscore one. Keying
+// on the underscore form lets either spelling resolve.
+//
 // The same module can appear in multiple files; the returned rule is the
 // per-field OR across every occurrence.
 func parseModprobeConfig(content string) map[string]modprobeRule {
@@ -79,7 +85,7 @@ func parseModprobeConfig(content string) map[string]modprobeRule {
 
 		switch fields[0] {
 		case "blacklist":
-			name := fields[1]
+			name := normalizeModuleName(fields[1])
 			rule := out[name]
 			rule.blacklisted = true
 			out[name] = rule
@@ -87,7 +93,7 @@ func parseModprobeConfig(content string) map[string]modprobeRule {
 			if len(fields) < 3 {
 				continue
 			}
-			name := fields[1]
+			name := normalizeModuleName(fields[1])
 			// modprobe accepts an optional leading `exec` before the
 			// command — `install foo exec /bin/false` is equivalent to
 			// `install foo /bin/false`. Strip it so the bypass check
@@ -211,9 +217,11 @@ func (k *mqlKernel) modprobeFilesIn(dir string) ([]any, error) {
 }
 
 // moduleRule resolves the parent kernel resource, triggers a one-shot
-// modprobe walk, and returns the rule for this module's name. A module
-// with no matching rule yields a zero-value modprobeRule (both fields
-// false), which is exactly what the accessors want.
+// modprobe walk, and returns the rule for this module's name. The name is
+// normalized the same way the rule keys are, so `kernel.module("firewire-core")`
+// and `kernel.module("firewire_core")` both find a rule written with either
+// spelling. A module with no matching rule yields a zero-value modprobeRule
+// (both fields false), which is exactly what the accessors want.
 func (m *mqlKernelModule) moduleRule() (modprobeRule, error) {
 	obj, err := CreateResource(m.MqlRuntime, "kernel", map[string]*llx.RawData{})
 	if err != nil {
@@ -224,7 +232,15 @@ func (m *mqlKernelModule) moduleRule() (modprobeRule, error) {
 	if err != nil {
 		return modprobeRule{}, err
 	}
-	return rules[m.Name.Data], nil
+	return lookupModprobeRule(rules, m.Name.Data), nil
+}
+
+// lookupModprobeRule finds the rule for a module name in a parsed rule set.
+// The name is normalized the same way parseModprobeConfig normalizes its
+// keys, so a config written with dashes answers a query written with
+// underscores and the other way round.
+func lookupModprobeRule(rules map[string]modprobeRule, name string) modprobeRule {
+	return rules[normalizeModuleName(name)]
 }
 
 func (m *mqlKernelModule) blacklisted() (bool, error) {

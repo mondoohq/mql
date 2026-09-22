@@ -77,6 +77,10 @@ func TestDebianImageKernelNameMatchesRunning(t *testing.T) {
 // to tolerate — `exec /bin/false`, leading whitespace, comments mid-line,
 // and unrelated directives (alias, options, softdep) that must be ignored
 // without poisoning a sibling module's rule.
+//
+// Rules are keyed on the normalized module name, so a config written with
+// dashes (which is what CIS remediations tell admins to write) is found by
+// a query spelling the module with underscores, and the other way round.
 func TestParseModprobeConfig(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -94,42 +98,42 @@ func TestParseModprobeConfig(t *testing.T) {
 			name:    "install short-circuit to /bin/true",
 			content: "install usb-storage /bin/true\n",
 			want: map[string]modprobeRule{
-				"usb-storage": {installBypass: true},
+				"usb_storage": {installBypass: true},
 			},
 		},
 		{
 			name:    "install short-circuit to /bin/false",
 			content: "install usb-storage /bin/false\n",
 			want: map[string]modprobeRule{
-				"usb-storage": {installBypass: true},
+				"usb_storage": {installBypass: true},
 			},
 		},
 		{
 			name:    "install short-circuit to /usr/bin/true",
 			content: "install usb-storage /usr/bin/true\n",
 			want: map[string]modprobeRule{
-				"usb-storage": {installBypass: true},
+				"usb_storage": {installBypass: true},
 			},
 		},
 		{
 			name:    "install short-circuit to /usr/bin/false",
 			content: "install usb-storage /usr/bin/false\n",
 			want: map[string]modprobeRule{
-				"usb-storage": {installBypass: true},
+				"usb_storage": {installBypass: true},
 			},
 		},
 		{
 			name:    "install via exec wrapper to /bin/false",
 			content: "install usb-storage exec /bin/false\n",
 			want: map[string]modprobeRule{
-				"usb-storage": {installBypass: true},
+				"usb_storage": {installBypass: true},
 			},
 		},
 		{
 			name:    "install via exec wrapper to /usr/bin/false",
 			content: "install usb-storage exec /usr/bin/false\n",
 			want: map[string]modprobeRule{
-				"usb-storage": {installBypass: true},
+				"usb_storage": {installBypass: true},
 			},
 		},
 		{
@@ -161,7 +165,7 @@ install jffs2 /bin/true
 `,
 			want: map[string]modprobeRule{
 				"cramfs":      {blacklisted: true},
-				"usb-storage": {installBypass: true},
+				"usb_storage": {installBypass: true},
 				"freevxfs":    {blacklisted: true},
 				"jffs2":       {installBypass: true},
 			},
@@ -172,7 +176,7 @@ install jffs2 /bin/true
 install usb-storage /bin/false
 `,
 			want: map[string]modprobeRule{
-				"usb-storage": {blacklisted: true, installBypass: true},
+				"usb_storage": {blacklisted: true, installBypass: true},
 			},
 		},
 		{
@@ -180,7 +184,7 @@ install usb-storage /bin/false
 			content: "  blacklist cramfs\n\tinstall usb-storage\t/bin/false\n  \t blacklist  freevxfs \n",
 			want: map[string]modprobeRule{
 				"cramfs":      {blacklisted: true},
-				"usb-storage": {installBypass: true},
+				"usb_storage": {installBypass: true},
 				"freevxfs":    {blacklisted: true},
 			},
 		},
@@ -210,6 +214,33 @@ blacklist cramfs
 			name:    "empty content yields empty map",
 			content: "",
 			want:    map[string]modprobeRule{},
+		},
+		{
+			// CIS 1.1.1.9 remediation writes the dashed spelling, while
+			// lsmod and /proc/modules report firewire_core.
+			name:    "dashed blacklist is keyed on the underscore name",
+			content: "blacklist firewire-core\n",
+			want: map[string]modprobeRule{
+				"firewire_core": {blacklisted: true},
+			},
+		},
+		{
+			name:    "dashed install bypass is keyed on the underscore name",
+			content: "install firewire-core /bin/false\n",
+			want: map[string]modprobeRule{
+				"firewire_core": {installBypass: true},
+			},
+		},
+		{
+			// The same module written both ways across files is one rule,
+			// not two half-populated ones.
+			name: "dashed and underscore spellings merge into one rule",
+			content: `blacklist firewire-core
+install firewire_core /bin/false
+`,
+			want: map[string]modprobeRule{
+				"firewire_core": {blacklisted: true, installBypass: true},
+			},
 		},
 	}
 
@@ -1223,6 +1254,35 @@ func TestSuseKernelNameWithRunningMatch(t *testing.T) {
 				return
 			}
 			assert.Equal(t, test.wantRunning, suseKernelMatchesRunning(test.version, name, running))
+		})
+	}
+}
+
+// TestLookupModprobeRule covers the query side of the dash/underscore
+// equivalence: whichever spelling the admin wrote in modprobe.d, a
+// `kernel.module("...")` query written with the other spelling must find
+// the rule. Dropping the normalization from the lookup makes the first two
+// subtests report an unrestricted module on a hardened host.
+func TestLookupModprobeRule(t *testing.T) {
+	rules := map[string]modprobeRule{
+		"firewire_core": {blacklisted: true, installBypass: true},
+		"usb_storage":   {blacklisted: true},
+	}
+
+	cases := []struct {
+		name string
+		want modprobeRule
+	}{
+		{"firewire-core", modprobeRule{blacklisted: true, installBypass: true}},
+		{"firewire_core", modprobeRule{blacklisted: true, installBypass: true}},
+		{"usb-storage", modprobeRule{blacklisted: true}},
+		{"cramfs", modprobeRule{}},
+		{"", modprobeRule{}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, lookupModprobeRule(rules, tc.name))
 		})
 	}
 }
