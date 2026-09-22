@@ -4,7 +4,6 @@
 package resources
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -77,7 +76,7 @@ func (r *mqlGemini) mcpServers() ([]interface{}, error) {
 	}
 
 	var config geminiMCPConfig
-	if err := json.Unmarshal(data, &config); err != nil {
+	if err := unmarshalJSONConfig(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse gemini mcp_config.json: %w", err)
 	}
 

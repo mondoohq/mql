@@ -4,7 +4,6 @@
 package resources
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,7 +37,7 @@ func (r *mqlGithubCopilot) accounts() ([]interface{}, error) {
 
 	// apps.json is a map of "host:appId" -> account info
 	var apps map[string]copilotApp
-	if err := json.Unmarshal(data, &apps); err != nil {
+	if err := unmarshalJSONConfig(data, &apps); err != nil {
 		return nil, fmt.Errorf("failed to parse github-copilot apps.json: %w", err)
 	}
 
@@ -78,7 +77,7 @@ func (r *mqlGithubCopilot) mcpServers() ([]interface{}, error) {
 		}
 
 		var config copilotMCPConfig
-		if err := json.Unmarshal(data, &config); err != nil {
+		if err := unmarshalJSONConfig(data, &config); err != nil {
 			continue // skip malformed files
 		}
 

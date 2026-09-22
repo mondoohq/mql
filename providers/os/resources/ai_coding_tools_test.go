@@ -336,3 +336,41 @@ func TestZedCandidatePath(t *testing.T) {
 	assert.Equal(t, "", zedCandidatePath("no-path-here"))
 	assert.Equal(t, "", zedCandidatePath("/"))
 }
+
+// An AI tool that has been installed but not configured can leave its JSON
+// config file present and empty: Antigravity writes a zero-byte
+// mcp_config.json. That is an empty config, and must read as no servers rather
+// than as a parse error, which would score every check reading it as errored.
+func TestUnmarshalJSONConfigEmptyFile(t *testing.T) {
+	for name, data := range map[string]string{
+		"empty":      "",
+		"whitespace": " \n\t\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			var config geminiMCPConfig
+			require.NoError(t, unmarshalJSONConfig([]byte(data), &config))
+			assert.Empty(t, config.McpServers)
+		})
+	}
+
+	t.Run("valid", func(t *testing.T) {
+		var config geminiMCPConfig
+		require.NoError(t, unmarshalJSONConfig([]byte(`{"mcpServers":{"a":{"command":"x"}}}`), &config))
+		assert.Len(t, config.McpServers, 1)
+	})
+
+	t.Run("malformed is still an error", func(t *testing.T) {
+		var config geminiMCPConfig
+		assert.Error(t, unmarshalJSONConfig([]byte(`{"mcpServers":`), &config))
+	})
+}
+
+func TestReadJSONFileAferoEmptyFile(t *testing.T) {
+	afs := testAfero()
+	dir := t.TempDir()
+	writeTestFile(t, dir, "settings.json", "")
+
+	var settings geminiSettings
+	require.NoError(t, readJSONFileAfero(afs, dir, "settings.json", &settings))
+	assert.Empty(t, settings.Theme)
+}

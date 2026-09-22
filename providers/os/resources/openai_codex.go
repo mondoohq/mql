@@ -284,7 +284,7 @@ func (r *mqlOpenaiCodex) mcpServers() ([]interface{}, error) {
 		if err != nil {
 			continue
 		}
-		if err := json.Unmarshal(data, &mcpConfig); err != nil {
+		if err := unmarshalJSONConfig(data, &mcpConfig); err != nil {
 			continue
 		}
 

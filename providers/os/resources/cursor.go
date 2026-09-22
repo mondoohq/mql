@@ -4,7 +4,6 @@
 package resources
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,7 +38,7 @@ func (r *mqlCursor) mcpServers() ([]interface{}, error) {
 	}
 
 	var mcpConfig cursorMCPConfig
-	if err := json.Unmarshal(data, &mcpConfig); err != nil {
+	if err := unmarshalJSONConfig(data, &mcpConfig); err != nil {
 		return nil, fmt.Errorf("failed to parse cursor mcp.json: %w", err)
 	}
 

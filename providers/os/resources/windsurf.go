@@ -4,7 +4,6 @@
 package resources
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -83,7 +82,7 @@ func (r *mqlWindsurf) mcpServers() ([]interface{}, error) {
 	}
 
 	var config windsurfMCPConfig
-	if err := json.Unmarshal(data, &config); err != nil {
+	if err := unmarshalJSONConfig(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse windsurf mcp_config.json: %w", err)
 	}
 

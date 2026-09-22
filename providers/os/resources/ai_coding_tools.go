@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -87,6 +88,18 @@ func readJSONFileAfero(afs *afero.Afero, baseDir string, relPath string, v inter
 	data, err := afs.ReadFile(filepath.Join(baseDir, relPath))
 	if err != nil {
 		return err
+	}
+	return unmarshalJSONConfig(data, v)
+}
+
+// unmarshalJSONConfig parses an AI tool's JSON config file. An empty or
+// whitespace-only file is an empty config, not a malformed one: tools create
+// the file before anything is configured (Antigravity writes a zero-byte
+// mcp_config.json), and json.Unmarshal rejects empty input with "unexpected end
+// of JSON input", which would turn "no MCP servers" into an error.
+func unmarshalJSONConfig(data []byte, v any) error {
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil
 	}
 	return json.Unmarshal(data, v)
 }
