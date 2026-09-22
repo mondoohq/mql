@@ -1116,9 +1116,15 @@ func (w *WinPkgManager) getFsInstalledApps() ([]Package, error) {
 		func(p string) ([]registry.RegistryKeyChild, error) {
 			return rh.GetNativeRegistryKeyChildren(registry.Software, p)
 		},
-		func(p string) ([]registry.RegistryKeyItem, error) {
-			return rh.GetNativeRegistryKeyItems(registry.Software, p)
-		},
+		// The children come back carrying a FULLY-QUALIFIED Path -- the
+		// handler resolved the hive root into it -- so the per-subkey read
+		// must go through the package-level reader, NOT back through the
+		// handler, which would resolve the root onto it a second time and
+		// produce HKLM\TmpReg_SOFTWARE\HKLM\TmpReg_SOFTWARE\... Every read
+		// would then miss, and buildOmahaVersions would silently return an
+		// empty map on every offline scan. getPackageFromRegistryKey reads
+		// the Uninstall subkeys the same way, for the same reason.
+		registry.GetNativeRegistryKeyItems,
 	)
 	applyOmahaVersions(packages, omahaVersions, w.platform)
 
@@ -2065,17 +2071,44 @@ func buildOmahaVersions(roots []string, children omahaChildrenFunc, items omahaI
 			}
 			var name, pv string
 			for _, it := range kidItems {
-				switch it.Key {
+				// Value names are compared case-insensitively on purpose.
+				// Both registry readers match value names case-sensitively
+				// (see RegistryHandler.GetNativeRegistryKeyItems), and a hive
+				// restored from a .reg export can carry "Name"/"PV". An exact
+				// match would leave both fields empty and silently disable
+				// the whole lookup on that host.
+				switch strings.ToLower(it.Key) {
 				case "name":
 					name = it.Value.String
 				case "pv":
 					pv = it.Value.String
 				}
 			}
-			if name == "" || !looksLikeVersion(pv) {
+			name = sanitizePackageField(name)
+			// The same sanitization every other registry-sourced field gets
+			// before it reaches a Package: a REG_SZ can carry trailing
+			// control characters, and pv reaches both Version and the purl,
+			// where a stray \r corrupts the identity (#7975, #8002).
+			pv = sanitizePackageField(pv)
+			if name == "" || !usableOmahaVersion(pv) {
 				continue
 			}
-			versions[strings.ToLower(name)] = pv
+			key := strings.ToLower(name)
+			// First root wins. The roots are ordered {Wow6432Node, native},
+			// and a host that has both views populated for one product is
+			// normally one that went through Google Update's 32->64-bit
+			// transition and left the older view behind. Letting the second
+			// root overwrite silently would pick by loop order, which is not
+			// a rule anyone could reason about; keeping the first is at
+			// least stable and is logged when the two disagree.
+			if existing, dup := versions[key]; dup {
+				if existing != pv {
+					log.Debug().Str("name", name).Str("kept", existing).Str("ignored", pv).
+						Msg("google update reports two versions for one product, keeping the first")
+				}
+				continue
+			}
+			versions[key] = pv
 		}
 	}
 	return versions
@@ -2116,12 +2149,103 @@ func parseOmahaClientsOutput(input io.Reader) (map[string]string, error) {
 
 	versions := map[string]string{}
 	for _, e := range entries {
-		if e.Name == "" || !looksLikeVersion(e.PV) {
+		name := sanitizePackageField(e.Name)
+		pv := sanitizePackageField(e.PV)
+		if name == "" || !usableOmahaVersion(pv) {
 			continue
 		}
-		versions[strings.ToLower(e.Name)] = e.PV
+		key := strings.ToLower(name)
+		if existing, dup := versions[key]; dup {
+			if existing != pv {
+				log.Debug().Str("name", name).Str("kept", existing).Str("ignored", pv).
+					Msg("google update reports two versions for one product, keeping the first")
+			}
+			continue
+		}
+		versions[key] = pv
 	}
 	return versions, nil
+}
+
+// convergeOmahaArch aligns the architecture of an Omaha-managed package that
+// is labelled x86 onto the host architecture, but ONLY when the same product
+// at the same version is also present at the host architecture.
+//
+// Google Update is a 32-bit program, so the Add/Remove-Programs entry it
+// registers lands under Wow6432Node and archForRegistryPath labels it x86,
+// while a 64-bit MSI's own entry for the same install lands in the native
+// view and is labelled with the host architecture. Once applyOmahaVersions
+// has given both rows the same version they still differ in arch, so their
+// purls differ, so collapsePackages keeps both -- and the duplicate this
+// whole change exists to remove survives.
+//
+// The sibling requirement is what keeps this honest. A genuinely 32-bit
+// install of a product on a 64-bit host is a real thing, and promoting its
+// arch would be inventing a fact about the machine. Requiring a row that
+// already claims the host architecture means the evidence for the 64-bit
+// install came from the registry, not from this function: all it does is
+// decide which of two labels for ONE install to keep. A lone x86 row is
+// never touched.
+//
+// normalizeDotNetInstallerArch repairs the same Wow6432Node mislabelling for
+// .NET, from the DisplayName rather than from a sibling, because .NET's
+// DisplayName states the architecture and Omaha's product names do not.
+func convergeOmahaArch(pkgs []Package, omahaVersions map[string]string, platform *inventory.Platform) {
+	if len(omahaVersions) == 0 || platform == nil || platform.Arch == "" || strings.EqualFold(platform.Arch, "x86") {
+		return
+	}
+
+	// Products that have a row at the host architecture, keyed by everything
+	// except arch, so a match is the same install and not merely the same name.
+	atHostArch := map[string]struct{}{}
+	for i := range pkgs {
+		p := &pkgs[i]
+		if p.Format != "windows/app" || !strings.EqualFold(p.Arch, platform.Arch) {
+			continue
+		}
+		if _, ok := omahaVersions[strings.ToLower(p.Name)]; !ok {
+			continue
+		}
+		atHostArch[strings.Join([]string{p.Name, p.Version, p.InstallScope, p.InstallUser}, "\x00")] = struct{}{}
+	}
+	if len(atHostArch) == 0 {
+		return
+	}
+
+	for i := range pkgs {
+		p := &pkgs[i]
+		if p.Format != "windows/app" || p.Arch != "x86" {
+			continue
+		}
+		if _, ok := atHostArch[strings.Join([]string{p.Name, p.Version, p.InstallScope, p.InstallUser}, "\x00")]; !ok {
+			continue
+		}
+		p.Arch = platform.Arch
+		p.PUrl = purl.NewPackageURL(platform, purl.TypeWindows, p.Name, p.Version, purl.WithArch(p.Arch)).String()
+	}
+}
+
+// usableOmahaVersion reports whether a Google Update "pv" can be trusted to
+// replace a package's DisplayVersion.
+//
+// Two states are rejected, and the reasoning is the same for both: overwriting
+// a real DisplayVersion with a value that identifies nothing is strictly worse
+// than leaving it stale, because the stale value at least came from the
+// product's own installer.
+//
+//   - Not version-shaped, including empty. Observed on a real VM where an MSI
+//     had registered an Add/Remove-Programs entry without ever completing the
+//     product's deploy: the Clients subkey existed with an empty pv.
+//   - All-zero ("0.0.0.0" and friends). Google Update registers a product
+//     before, and leaves it registered after, an install that never finished
+//     or was rolled back. A zero version is version-shaped, so the shape check
+//     alone lets it through, and it sorts below every advisory bound -- it
+//     would match every advisory for the product whatever is really installed.
+func usableOmahaVersion(pv string) bool {
+	if !looksLikeVersion(pv) {
+		return false
+	}
+	return strings.Trim(pv, "0.") != ""
 }
 
 // getOmahaVersionsRemote is the remote-connection counterpart of
@@ -2133,10 +2257,15 @@ func (w *WinPkgManager) getOmahaVersionsRemote() (map[string]string, error) {
 		return nil, err
 	}
 	if cmd.ExitStatus != 0 {
-		// No Google Update installed, or nothing under Clients: an absent
-		// key is a normal state here (see buildOmahaVersions), not a scan
-		// failure.
-		return nil, nil
+		// An absent key is NOT what gets us here: the script guards every
+		// root with Test-Path and exits 0 either way. A non-zero status means
+		// the script itself could not run -- a parse error, constrained
+		// language mode, a transport failure -- and that silently costs every
+		// Omaha-managed package on this host its real version. Surface the
+		// reason instead of returning an indistinguishable empty result.
+		stderr, _ := io.ReadAll(cmd.Stderr)
+		return nil, errors.Newf("google update lookup failed with exit status %d: %s",
+			cmd.ExitStatus, strings.TrimSpace(string(stderr)))
 	}
 	return parseOmahaClientsOutput(cmd.Stdout)
 }
@@ -2181,6 +2310,20 @@ func applyOmahaVersions(pkgs []Package, omahaVersions map[string]string, platfor
 		if pkg.Format != "windows/app" {
 			continue
 		}
+		// The versions come from HKLM, so they describe the machine-wide
+		// install and nothing else. A per-user install of the same product
+		// keeps its own Google Update state under HKCU, which is not read
+		// here, so stamping the machine version onto a user's row would
+		// report that user's browser as the version the MACHINE has.
+		//
+		// That failure is worse than the bug this function fixes. A host with
+		// machine-wide Chrome 153 and a user still on 140 would report 153 for
+		// both: a genuinely out-of-date browser, described as patched, with
+		// its findings silently cleared. Leaving a user row alone at worst
+		// leaves it as accurate as it was before.
+		if pkg.InstallScope != installScopeMachine {
+			continue
+		}
 		pv, ok := omahaVersions[strings.ToLower(pkg.Name)]
 		if !ok || pv == pkg.Version {
 			continue
@@ -2191,12 +2334,25 @@ func applyOmahaVersions(pkgs []Package, omahaVersions map[string]string, platfor
 			purlModifiers = append(purlModifiers, purl.WithArch(pkg.Arch))
 		}
 		pkg.PUrl = purl.NewPackageURL(platform, purl.TypeWindows, pkg.Name, pv, purlModifiers...).String()
-		if cpeWfns, err := cpe.NewPackage2Cpe(pkg.Vendor, pkg.Name, pv, "", ""); err != nil {
+		// On failure the OLD CPEs must go. They were built by createPackage
+		// from the version we just replaced, so keeping them leaves Version
+		// and PUrl saying one version while the CPEs claim another -- and CPE
+		// is what some vulnerability matching keys on, so the package would be
+		// evaluated against the stale version's advisories. createPackage has
+		// the same shape and is safe there only because the field starts empty.
+		cpeWfns, err := cpe.NewPackage2Cpe(pkg.Vendor, pkg.Name, pv, "", "")
+		if err != nil {
 			log.Debug().Err(err).Str("name", pkg.Name).Str("version", pv).Msg("could not create cpe for omaha-versioned windows app package")
-		} else {
-			pkg.CPEs = cpeWfns
+			pkg.CPEs = nil
+			continue
 		}
+		pkg.CPEs = cpeWfns
 	}
+
+	// Versions alone do not make the two rows collapse: the same install can
+	// be labelled x86 in one registry view and with the host architecture in
+	// the other. Run after the rewrite, since the sibling match is on version.
+	convergeOmahaArch(pkgs, omahaVersions, platform)
 }
 
 // collapsePackages collapses package rows that are indistinguishable to
@@ -2239,16 +2395,51 @@ func applyOmahaVersions(pkgs []Package, omahaVersions map[string]string, platfor
 // safe to collapse.
 func collapsePackages(pkgs []Package) []Package {
 	out := make([]Package, 0, len(pkgs))
-	seen := map[string]struct{}{}
+	seen := map[string]int{}
 	for _, p := range pkgs {
 		key := strings.Join([]string{
 			p.Format, p.Name, p.Version, p.Arch, p.PUrl, p.InstallScope, p.InstallUser,
 		}, "\x00")
-		if _, dup := seen[key]; dup {
+		if idx, dup := seen[key]; dup {
+			absorbPackageAttribution(&out[idx], p)
 			continue
 		}
-		seen[key] = struct{}{}
+		seen[key] = len(out)
 		out = append(out, p)
 	}
 	return out
+}
+
+// absorbPackageAttribution fills in fields the surviving package is missing
+// from a duplicate that is about to be dropped.
+//
+// The two rows describe one install but are not written from one registry
+// key, and the two keys carry different amounts of detail: the bundle's entry
+// typically has no InstallDate and no InstallLocation while the MSI's twin
+// does, or the reverse. Uninstall subkeys are enumerated in key order, which
+// is product-GUID order, so WHICH of the two arrives first is arbitrary --
+// dropping the later one wholesale would make a package's installDate and its
+// SBOM evidence path depend on a GUID.
+//
+// Only absent fields are filled, never populated ones, so this can add detail
+// but can never change an answer the surviving row already gave.
+// mergeDedupedRegistryPackages resolves its own collisions on the same
+// principle: prefer the better-attributed row over the emptier one.
+func absorbPackageAttribution(keep *Package, dup Package) {
+	if keep.InstallDate.IsZero() && !dup.InstallDate.IsZero() {
+		keep.InstallDate = dup.InstallDate
+	}
+	if len(keep.Files) == 0 && len(dup.Files) > 0 {
+		keep.Files = dup.Files
+		keep.FilesAvailable = dup.FilesAvailable
+	}
+	if keep.Vendor == "" {
+		keep.Vendor = dup.Vendor
+	}
+	if keep.Description == "" {
+		keep.Description = dup.Description
+	}
+	if len(keep.CPEs) == 0 && len(dup.CPEs) > 0 {
+		keep.CPEs = dup.CPEs
+	}
 }

@@ -5,6 +5,7 @@ package packages
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -138,4 +139,62 @@ func TestApplyOmahaVersionsThenCollapse_ChromeDuplicateResolvesToOneRow(t *testi
 	got := collapsePackages(pkgs)
 	require.Len(t, got, 1, "one browser install must report as one package, not two")
 	assert.Equal(t, "153.0.8010.53", got[0].Version)
+}
+
+// TestCollapsePackages_AbsorbsAttributionFromDroppedRow pins that collapsing
+// never costs detail that was actually read. The two rows describe one install
+// but come from two registry keys carrying different amounts of it: the
+// bundle's entry typically has no InstallDate and no InstallLocation while the
+// MSI's twin does, or the reverse. Uninstall subkeys enumerate in product-GUID
+// order, so which row arrives first is arbitrary -- dropping the later one
+// wholesale would make a package's installDate and its SBOM evidence path
+// depend on a GUID.
+func TestCollapsePackages_AbsorbsAttributionFromDroppedRow(t *testing.T) {
+	installed := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
+
+	poor := Package{
+		Name: "Microsoft .NET Runtime - 8.0.30 (arm64)", Version: "8.0.30", Arch: "arm64",
+		Format: "windows/app", PUrl: "pkg:windows/windows/dotnet@8.0.30?arch=arm64",
+		InstallScope: installScopeMachine,
+	}
+	rich := poor
+	rich.InstallDate = installed
+	rich.Files = []FileRecord{{Path: `C:\Program Files\dotnet\shared\Microsoft.NETCore.App\8.0.30`}}
+	rich.FilesAvailable = PkgFilesIncluded
+	rich.Vendor = "Microsoft Corporation"
+
+	// The poorer row sorts first, which is the case that used to lose data.
+	got := collapsePackages([]Package{poor, rich})
+
+	require.Len(t, got, 1)
+	assert.Equal(t, installed, got[0].InstallDate, "installDate was read; collapsing must not discard it")
+	assert.Equal(t, rich.Files, got[0].Files, "nor the evidence path the SBOM projection needs")
+	assert.Equal(t, PkgFilesIncluded, got[0].FilesAvailable)
+	assert.Equal(t, "Microsoft Corporation", got[0].Vendor)
+}
+
+// TestCollapsePackages_NeverOverwritesPopulatedFields pins the other half of
+// absorbPackageAttribution: it may only fill gaps. A surviving row that
+// already answered a question keeps its answer, so collapsing can add detail
+// but can never change one.
+func TestCollapsePackages_NeverOverwritesPopulatedFields(t *testing.T) {
+	first := Package{
+		Name: "Google Chrome", Version: "153.0.8010.53", Arch: "arm64",
+		Format: "windows/app", PUrl: "pkg:windows/windows/Google%20Chrome@153.0.8010.53?arch=arm64",
+		InstallScope: installScopeMachine,
+		InstallDate:  time.Date(2026, 9, 22, 0, 0, 0, 0, time.UTC),
+		Vendor:       "Google LLC",
+		Files:        []FileRecord{{Path: `C:\Program Files\Google\Chrome\Application`}},
+	}
+	second := first
+	second.InstallDate = time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)
+	second.Vendor = "Somebody Else"
+	second.Files = []FileRecord{{Path: `C:\Wrong`}}
+
+	got := collapsePackages([]Package{first, second})
+
+	require.Len(t, got, 1)
+	assert.Equal(t, first.InstallDate, got[0].InstallDate)
+	assert.Equal(t, "Google LLC", got[0].Vendor)
+	assert.Equal(t, first.Files, got[0].Files)
 }
