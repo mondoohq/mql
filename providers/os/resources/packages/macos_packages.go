@@ -126,6 +126,10 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 			version = bundleVersion
 		}
 
+		// Whatever the version came from, it is about to become an identity in
+		// two places, so take the padding off it first.
+		version = normalizeVersion(version)
+
 		// We need a special handling for Firefox to determine ESR installations
 		purlQualifiers := getPurlQualifiers(conn, entry)
 
@@ -320,6 +324,38 @@ var versionShape = regexp.MustCompile(`^v?\d`)
 // "v" covers, and nothing else is rejected.
 func looksLikeVersion(version string) bool {
 	return versionShape.MatchString(version)
+}
+
+// versionPaddedSeparators matches a version built only from numeric components
+// and dot separators, where the separators carry whitespace padding. Adobe ships
+// the Acrobat updater that way: CFBundleShortVersionString is literally
+// "1 . 2 . 6", and system_profiler reports it verbatim.
+//
+// The pattern is deliberately narrow, because whitespace in a
+// CFBundleShortVersionString is usually load-bearing and has to survive. Real
+// values pair a version with a build number or a channel ("7.1.5 (84650)",
+// "Build 2079", "Version 2.0", "EAP GO-262.6228.35"), and collapsing the space
+// in those would fuse two separate fields into one token. Anchoring the whole
+// string to digits, dots and padding keeps this to the case where the padding is
+// the only thing wrong with the value.
+var versionPaddedSeparators = regexp.MustCompile(`^\d+(?:[ \t]*\.[ \t]*\d+)+$`)
+
+// normalizeVersion removes the padding from a version whose dot separators are
+// padded with whitespace, and returns every other version unchanged.
+//
+// This is worth doing because the version is an identity here, not a label. It
+// is copied into Package.Version and into the purl, and percent-encoding turns
+// "1 . 2 . 6" into "1%20.%202%20.%206" -- a string that compares against no
+// advisory bound, for a product whose actual version is perfectly ordinary. A
+// consumer cannot repair it either, since by then the padding is indistinguishable
+// from a vendor that really does put spaces in its versions.
+func normalizeVersion(version string) string {
+	if !versionPaddedSeparators.MatchString(version) {
+		return version
+	}
+	// The pattern admits only digits, dots and padding, so dropping every run
+	// of whitespace leaves the version and nothing else.
+	return strings.Join(strings.Fields(version), "")
 }
 
 // bundleVersionFromInfoPlist recovers an app's version from its

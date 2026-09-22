@@ -343,6 +343,18 @@ stdout = """<?xml version="1.0" encoding="UTF-8"?>
 				<key>version</key>
 				<string>Windows 11</string>
 			</dict>
+			<dict>
+				<key>_name</key>
+				<string>Acrobat Update Helper</string>
+				<key>arch_kind</key>
+				<string>arch_arm_i64</string>
+				<key>obtained_from</key>
+				<string>identified_developer</string>
+				<key>path</key>
+				<string>/Library/Application Support/Adobe/ARMDC/Acrobat Update Helper.app</string>
+				<key>version</key>
+				<string>1 . 2 . 6</string>
+			</dict>
 		</array>
 		<key>_parentDataType</key>
 		<string>SPSoftwareDataType</string>
