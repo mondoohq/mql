@@ -6,11 +6,14 @@ package resources
 import (
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/plist"
 )
 
 // socketfilterfw is Apple's command line front end for the application
@@ -30,7 +33,73 @@ var globalStateRegex = regexp.MustCompile(`\(State\s*=\s*(\d+)\)`)
 // could not read the firewall" are different findings, and reporting the
 // second as the first is how a disabled firewall passes an audit.
 var errFirewallStateUnavailable = errors.New(
-	"cannot determine application firewall state: no ALF preferences file and socketfilterfw did not return a readable answer")
+	"cannot determine application firewall state: no ALF preferences file, socketfilterfw did not return a readable answer, and no configuration profile sets it")
+
+// managedFirewallPlist is where macOS materialises the firewall payload of an
+// installed configuration profile (payload type com.apple.security.firewall).
+// It is world-readable. On a Mac with such a profile, socketfilterfw refuses
+// some getters -- "Firewall settings cannot be modified from command line on
+// managed Mac computers" -- and the profile is what enforces the setting, so
+// it is the authoritative answer there.
+const managedFirewallPlist = "/Library/Managed Preferences/com.apple.security.firewall.plist"
+
+// firewallUnavailable keeps socketfilterfw's own error when it failed outright,
+// and otherwise reports that no source could answer.
+func firewallUnavailable(liveErr error) error {
+	if liveErr != nil {
+		return fmt.Errorf("%w: %v", errFirewallStateUnavailable, liveErr)
+	}
+	return errFirewallStateUnavailable
+}
+
+// fetchManaged returns the firewall settings of an installed configuration
+// profile, or nil if no profile sets any.
+func (m *mqlMacosFirewall) fetchManaged() (plist.Data, error) {
+	m.managedLock.Lock()
+	defer m.managedLock.Unlock()
+	if m.managedFetched {
+		return m.managed, nil
+	}
+
+	conn := m.MqlRuntime.Connection.(shared.Connection)
+	f, err := conn.FileSystem().Open(managedFirewallPlist)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			m.managedFetched = true
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer f.Close()
+
+	data, err := plist.Decode(f)
+	if err != nil {
+		return nil, err
+	}
+	m.managed = data
+	m.managedFetched = true
+	return data, nil
+}
+
+// liveOrManagedToggle answers an on/off firewall setting from socketfilterfw,
+// and from the configuration profile when socketfilterfw declines.
+func (m *mqlMacosFirewall) liveOrManagedToggle(flag string, managedKey string) (bool, error) {
+	stdout, liveErr := m.runSocketfilterfw(flag)
+	if liveErr == nil {
+		if v, ok := parseOnOff(stdout); ok {
+			return v, nil
+		}
+	}
+
+	managed, err := m.fetchManaged()
+	if err != nil {
+		return false, err
+	}
+	if v, ok := managed[managedKey].(bool); ok {
+		return v, nil
+	}
+	return false, firewallUnavailable(liveErr)
+}
 
 // runSocketfilterfw runs one socketfilterfw getter and returns its stdout.
 func (m *mqlMacosFirewall) runSocketfilterfw(flag string) (string, error) {
@@ -97,6 +166,43 @@ func parseOnOff(stdout string) (bool, bool) {
 		return false, true
 	}
 	return false, false
+}
+
+// listAppsStateRegex matches the rule line under each app in `socketfilterfw
+// --listapps`:
+//
+//	1 : /Applications/Example.app
+//	             (Allow incoming connections)
+var listAppsStateRegex = regexp.MustCompile(`^\(\s*(Allow|Block) incoming connections\s*\)$`)
+
+// listAppsEntryRegex matches the numbered path line of `socketfilterfw --listapps`.
+var listAppsEntryRegex = regexp.MustCompile(`^\d+\s*:\s*(.+?)\s*$`)
+
+// parseListApps reads `socketfilterfw --listapps` into per-app rules. The
+// state follows macos.firewall.app: 1 allows incoming connections, 0 blocks
+// them. socketfilterfw prints paths only, so bundleId stays empty.
+func parseListApps(stdout string) []firewallAppEntry {
+	var out []firewallAppEntry
+	var current string
+	for _, raw := range strings.Split(stdout, "\n") {
+		line := strings.TrimSpace(raw)
+		if m := listAppsEntryRegex.FindStringSubmatch(line); m != nil {
+			current = m[1]
+			continue
+		}
+		if current == "" {
+			continue
+		}
+		if m := listAppsStateRegex.FindStringSubmatch(line); m != nil {
+			state := int64(0)
+			if m[1] == "Allow" {
+				state = 1
+			}
+			out = append(out, firewallAppEntry{name: current, state: state})
+			current = ""
+		}
+	}
+	return out
 }
 
 // parseAllowSigned reads the two-line --getallowsigned reply:

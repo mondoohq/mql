@@ -7,6 +7,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 func TestParseGlobalState(t *testing.T) {
@@ -86,4 +91,121 @@ func TestParseAllowSigned(t *testing.T) {
 
 	_, _, ok = parseAllowSigned("Firewall settings cannot be modified from command line on managed Mac computers.\n")
 	assert.False(t, ok)
+}
+
+func TestParseListApps(t *testing.T) {
+	// socketfilterfw --listapps on macOS 26.5.
+	got := parseListApps(`Total number of apps = 3 
+
+1 : /opt/homebrew/Cellar/qemu/10.1.2/bin/qemu-system-x86_64 
+             (Block incoming connections)
+
+2 : /Applications/Example App.app 
+             (Allow incoming connections)
+
+3 : /usr/local/bin/tool 
+             ( Allow incoming connections )
+`)
+	assert.Equal(t, []firewallAppEntry{
+		{name: "/opt/homebrew/Cellar/qemu/10.1.2/bin/qemu-system-x86_64", state: 0},
+		{name: "/Applications/Example App.app", state: 1},
+		{name: "/usr/local/bin/tool", state: 1},
+	}, got)
+
+	assert.Empty(t, parseListApps("Total number of apps = 0 \n"))
+}
+
+const socketfilterfwManagedReply = "Firewall settings cannot be modified from command line on managed Mac computers.\n"
+
+func newFirewallTestRuntime(t *testing.T, data *mock.TomlData) *mqlMacosFirewall {
+	t.Helper()
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "macos", Family: []string{"darwin", "bsd", "unix", "os"}},
+	}, mock.WithData(data))
+	require.NoError(t, err)
+	return &mqlMacosFirewall{MqlRuntime: &plugin.Runtime{
+		Connection: conn,
+		Resources:  &syncx.Map[plugin.Resource]{},
+	}}
+}
+
+// TestFirewallManagedMac is shaped on a macOS 26.5 Mac with a firewall
+// configuration profile: no ALF preferences file, socketfilterfw answering
+// some getters and refusing others, and the profile's settings in Managed
+// Preferences.
+func TestFirewallManagedMac(t *testing.T) {
+	fw := newFirewallTestRuntime(t, &mock.TomlData{
+		Commands: map[string]*mock.Command{
+			socketfilterfwPath + " --getglobalstate": {Stdout: "Firewall is enabled. (State = 1)\n"},
+			socketfilterfwPath + " --getstealthmode": {Stdout: "Firewall stealth mode is on\n"},
+			socketfilterfwPath + " --getloggingmode": {Stdout: socketfilterfwManagedReply},
+			socketfilterfwPath + " --listapps": {Stdout: `Total number of apps = 1 
+
+1 : /Applications/Example.app 
+             (Allow incoming connections)
+`},
+		},
+		Files: map[string]*mock.MockFileData{
+			managedFirewallPlist: {Content: `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+	<key>EnableFirewall</key><true/>
+	<key>EnableLogging</key><true/>
+	<key>EnableStealthMode</key><true/>
+	<key>LoggingOption</key><string>detail</string>
+</dict></plist>
+`},
+		},
+	})
+
+	enabled, err := fw.enabled()
+	require.NoError(t, err)
+	assert.True(t, enabled)
+
+	stealth, err := fw.stealthEnabled()
+	require.NoError(t, err)
+	assert.True(t, stealth)
+
+	logging, err := fw.loggingEnabled()
+	require.NoError(t, err, "socketfilterfw refuses on a managed Mac; the profile answers")
+	assert.True(t, logging)
+
+	detail, err := fw.loggingDetail()
+	require.NoError(t, err)
+	assert.Equal(t, "detail", detail)
+
+	apps, err := fw.applications()
+	require.NoError(t, err)
+	require.Len(t, apps, 1)
+	app := apps[0].(*mqlMacosFirewallApp)
+	assert.Equal(t, "/Applications/Example.app", app.Name.Data)
+	assert.Equal(t, int64(1), app.State.Data)
+}
+
+// The live answer wins over the profile when socketfilterfw gives one.
+func TestFirewallLiveStateWinsOverProfile(t *testing.T) {
+	fw := newFirewallTestRuntime(t, &mock.TomlData{
+		Commands: map[string]*mock.Command{
+			socketfilterfwPath + " --getloggingmode": {Stdout: "Log mode is off\n"},
+		},
+		Files: map[string]*mock.MockFileData{
+			managedFirewallPlist: {Content: `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>EnableLogging</key><true/></dict></plist>
+`},
+		},
+	})
+	logging, err := fw.loggingEnabled()
+	require.NoError(t, err)
+	assert.False(t, logging)
+}
+
+// With no preferences file, no readable socketfilterfw answer and no profile,
+// the setting is an error, never a confident false.
+func TestFirewallNoSourceIsAnError(t *testing.T) {
+	fw := newFirewallTestRuntime(t, &mock.TomlData{
+		Commands: map[string]*mock.Command{
+			socketfilterfwPath + " --getloggingmode": {Stdout: socketfilterfwManagedReply},
+		},
+	})
+	_, err := fw.loggingEnabled()
+	assert.ErrorIs(t, err, errFirewallStateUnavailable)
 }

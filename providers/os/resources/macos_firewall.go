@@ -17,6 +17,10 @@ type mqlMacosFirewallInternal struct {
 	lock    sync.Mutex
 	fetched bool
 	config  plist.Data
+
+	managedLock    sync.Mutex
+	managedFetched bool
+	managed        plist.Data
 }
 
 func alfConfigFloat(config plist.Data, key string) (float64, error) {
@@ -101,14 +105,28 @@ func (m *mqlMacosFirewall) globalState() (int64, error) {
 		return int64(v), nil
 	}
 
-	stdout, err := m.runSocketfilterfw("--getglobalstate")
+	stdout, liveErr := m.runSocketfilterfw("--getglobalstate")
+	if liveErr == nil {
+		if v, ok := parseGlobalState(stdout); ok {
+			return v, nil
+		}
+	}
+
+	managed, err := m.fetchManaged()
 	if err != nil {
 		return 0, err
 	}
-	if v, ok := parseGlobalState(stdout); ok {
-		return v, nil
+	if enabled, ok := managed["EnableFirewall"].(bool); ok {
+		switch {
+		case !enabled:
+			return 0, nil
+		case managed["BlockAllIncoming"] == true:
+			return 2, nil
+		default:
+			return 1, nil
+		}
 	}
-	return 0, errFirewallStateUnavailable
+	return 0, firewallUnavailable(liveErr)
 }
 
 func (m *mqlMacosFirewall) enabled() (bool, error) {
@@ -136,14 +154,7 @@ func (m *mqlMacosFirewall) stealthEnabled() (bool, error) {
 		return int64(v) != 0, nil
 	}
 
-	stdout, err := m.runSocketfilterfw("--getstealthmode")
-	if err != nil {
-		return false, err
-	}
-	if v, ok := parseOnOff(stdout); ok {
-		return v, nil
-	}
-	return false, errFirewallStateUnavailable
+	return m.liveOrManagedToggle("--getstealthmode", "EnableStealthMode")
 }
 
 func (m *mqlMacosFirewall) loggingEnabled() (bool, error) {
@@ -155,14 +166,7 @@ func (m *mqlMacosFirewall) loggingEnabled() (bool, error) {
 		return int64(v) != 0, nil
 	}
 
-	stdout, err := m.runSocketfilterfw("--getloggingmode")
-	if err != nil {
-		return false, err
-	}
-	if v, ok := parseOnOff(stdout); ok {
-		return v, nil
-	}
-	return false, errFirewallStateUnavailable
+	return m.liveOrManagedToggle("--getloggingmode", "EnableLogging")
 }
 
 func (m *mqlMacosFirewall) loggingDetail() (string, error) {
@@ -172,6 +176,16 @@ func (m *mqlMacosFirewall) loggingDetail() (string, error) {
 	}
 	v, err := alfConfigFloat(config, "loggingoption")
 	if err != nil {
+		// No preferences file. A configuration profile states the option by
+		// name, with the same three values the preferences file numbers.
+		managed, merr := m.fetchManaged()
+		if merr != nil {
+			return "", merr
+		}
+		switch opt, _ := managed["LoggingOption"].(string); opt {
+		case "detail", "brief", "throttled":
+			return opt, nil
+		}
 		return "", err
 	}
 	switch int64(v) {
@@ -264,11 +278,21 @@ func (m *mqlMacosFirewall) applications() ([]any, error) {
 		return nil, err
 	}
 
+	if config == nil {
+		// No preferences file: modern macOS keeps the per-app rules out of
+		// it. socketfilterfw lists them without root.
+		stdout, err := m.runSocketfilterfw("--listapps")
+		if err != nil {
+			return nil, err
+		}
+		return m.createApps(parseListApps(stdout))
+	}
+
 	appsRaw, err := alfConfigSlice(config, "applications")
 	if err != nil {
 		return nil, err
 	}
-	apps := make([]any, 0, len(appsRaw))
+	entries := make([]firewallAppEntry, 0, len(appsRaw))
 	for i, raw := range appsRaw {
 		entry, ok := raw.(map[string]any)
 		if !ok {
@@ -287,19 +311,33 @@ func (m *mqlMacosFirewall) applications() ([]any, error) {
 		if s, ok := entry["state"].(float64); ok {
 			state = int64(s)
 		}
+		entries = append(entries, firewallAppEntry{name: name, bundleId: bundleId, state: state})
+	}
 
+	return m.createApps(entries)
+}
+
+// firewallAppEntry is one per-application rule, from either source.
+type firewallAppEntry struct {
+	name     string
+	bundleId string
+	state    int64
+}
+
+func (m *mqlMacosFirewall) createApps(entries []firewallAppEntry) ([]any, error) {
+	apps := make([]any, 0, len(entries))
+	for _, e := range entries {
 		app, err := CreateResource(m.MqlRuntime, "macos.firewall.app", map[string]*llx.RawData{
-			"__id":     llx.StringData("macos.firewall.app/" + name),
-			"name":     llx.StringData(name),
-			"bundleId": llx.StringData(bundleId),
-			"state":    llx.IntData(state),
+			"__id":     llx.StringData("macos.firewall.app/" + e.name),
+			"name":     llx.StringData(e.name),
+			"bundleId": llx.StringData(e.bundleId),
+			"state":    llx.IntData(e.state),
 		})
 		if err != nil {
 			return nil, err
 		}
 		apps = append(apps, app)
 	}
-
 	return apps, nil
 }
 
