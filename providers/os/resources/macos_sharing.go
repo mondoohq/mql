@@ -4,11 +4,11 @@
 package resources
 
 import (
-	"errors"
 	"strings"
 	"sync"
 
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 // systemProfilerSharingCmd populates the unified Sharing panel view —
@@ -22,6 +22,9 @@ type mqlMacosSharingInternal struct {
 	lock    sync.Mutex
 	fetched bool
 	state   map[string]bool
+
+	sourcesLock sync.Mutex
+	sources     *sharingSources
 }
 
 func (s *mqlMacosSharing) id() (string, error) {
@@ -33,9 +36,9 @@ func (s *mqlMacosSharing) id() (string, error) {
 //
 // An empty map means the Sharing panel could not be read, not that every
 // service is off. macOS 26 dropped SPSharingDataType altogether -- the
-// command exits 0 and prints nothing -- so treating an empty result as
-// fail-soft reported every sharing service as disabled on those releases,
-// whatever was actually running. Callers turn the empty map into an error.
+// command exits 0 and prints nothing -- so an empty result must never be
+// read as "everything is off". sharingFlag reads each toggle from its own
+// setting instead (see macos_sharing_sources.go).
 func (s *mqlMacosSharing) fetchState() (map[string]bool, error) {
 	if s.fetched {
 		return s.state, nil
@@ -102,28 +105,32 @@ func parseSharingOutput(stdout string) map[string]bool {
 	return out
 }
 
-// errSharingPanelUnavailable reports that the Sharing panel could not be read
-// at all. macOS 26 removed the SPSharingDataType reporter, and there is no
-// replacement in system_profiler, so this is the expected outcome there.
-var errSharingPanelUnavailable = errors.New(
-	"cannot read the Sharing panel: system_profiler has no SPSharingDataType reporter on this macOS release")
-
 // sharingFlag returns the bool for one Sharing panel entry.
 //
 // A panel that returned entries but not this one reads as `false`: some macOS
 // versions omit services that aren't installed (DVD or CD Sharing on Apple
-// Silicon), and "not present" is operationally the same as "off". A panel that
-// returned nothing at all is a different thing -- nothing was measured -- and
-// is reported as an error so it cannot be mistaken for "everything is off".
+// Silicon), and "not present" is operationally the same as "off".
+//
+// A panel that returned nothing at all is a different thing -- nothing was
+// measured. That is the normal outcome on macOS 26, which has no
+// SPSharingDataType reporter, so the toggle is read from the setting behind
+// it instead, never assumed off.
 func (s *mqlMacosSharing) sharingFlag(name string) (bool, error) {
 	state, err := s.fetchState()
 	if err != nil {
 		return false, err
 	}
-	if len(state) == 0 {
-		return false, errSharingPanelUnavailable
+	if len(state) > 0 {
+		return state[name], nil
 	}
-	return state[name], nil
+
+	s.sourcesLock.Lock()
+	if s.sources == nil {
+		s.sources = &sharingSources{conn: s.MqlRuntime.Connection.(shared.Connection)}
+	}
+	sources := s.sources
+	s.sourcesLock.Unlock()
+	return sources.flag(name)
 }
 
 func (s *mqlMacosSharing) screenSharing() (bool, error) {
