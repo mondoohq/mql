@@ -31,7 +31,7 @@ func TestMacOsXPackageParser(t *testing.T) {
 	}
 	m, err := packages.ParseMacOSPackages(mock, pf, c.Stdout)
 	assert.Nil(t, err)
-	assert.Equal(t, 9, len(m), "detected the right amount of packages")
+	assert.Equal(t, 10, len(m), "detected the right amount of packages")
 
 	assert.Equal(t, "Preview", m[0].Name, "pkg name detected")
 	assert.Equal(t, "10.0", m[0].Version, "pkg version detected")
@@ -150,6 +150,17 @@ func TestMacOsXPackageParser(t *testing.T) {
 	} {
 		assert.NotContains(t, names(m), dropped, "non-application entry dropped")
 	}
+
+	// Adobe ships the Acrobat updater's CFBundleShortVersionString with padding
+	// around the separators ("1 . 2 . 6"), and system_profiler reports it
+	// verbatim. The padding has to come off before the value is used as an
+	// identity: it reaches Package.Version and, percent-encoded, the purl
+	// ("...@1%20.%202%20.%206"), where it compares against no advisory bound
+	// even though the version it names is perfectly ordinary.
+	updater := findByName(m, "Acrobat Update Helper")
+	assert.Len(t, updater, 1, "the updater is reported")
+	assert.Equal(t, "1.2.6", updater[0].Version, "padding removed from the version")
+	assert.Equal(t, "pkg:macos/macos/Acrobat%20Update%20Helper@1.2.6?arch=x86_64", updater[0].PUrl)
 }
 
 func names(pkgs []packages.Package) []string {
