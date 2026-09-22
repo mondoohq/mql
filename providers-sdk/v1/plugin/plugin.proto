@@ -54,25 +54,11 @@ message ConnectRes {
   bool continue_exploration = 6;
 }
 
-// ErrorKind names a Connect outcome that a caller has to be able to tell apart
-// from a generic failure. It rides a gRPC status detail because an error value
-// does not survive the process boundary, and matching on the message text is
-// how IsUnsupportedProviderError already gets this wrong for a wrapped error.
-enum ErrorKind {
-  ERROR_KIND_UNSPECIFIED = 0;
-  // The connection type was right and the content was not: this target is not
-  // this provider's (ADR 045). A normal outcome, not a failure -- discovery
-  // drops the asset and every other error is retained and reported.
-  ERROR_KIND_NO_MATCH = 1;
-}
-
-// ErrorDetail is what carries an ErrorKind on a status. A message rather than
-// a bare enum because a status detail has to be one, and named for the general
-// case so ErrUnsupportedProvider and ErrProviderTypeDoesNotMatch can move onto
-// the same carrier later without a second message.
-message ErrorDetail {
-  ErrorKind kind = 1;
-}
+// ErrorKind and ErrorDetail moved to llx.proto in ADR 046, so that llx.Result
+// can carry them: plugin.proto imports llx.proto, so the shared vocabulary has
+// to live in the lower layer. The Go names stay available from this package as
+// aliases (errors.go), and the status-detail mechanism ADR 045 built is
+// unchanged apart from the detail's type URL.
 
 message ShutdownReq {
 }
@@ -93,6 +79,10 @@ message DataRes {
   string error = 2;
   // The ID uniquely identifies this request and all associated callbacks
   string id = 3;
+  // Why this field failed, when the provider could say (ADR 046). A field
+  // failure is not a gRPC status, so a status detail alone would never reach
+  // the executor; this is the carrier on the normal path.
+  mql.llx.ErrorDetail error_detail = 4;
 }
 
 message CollectRes {

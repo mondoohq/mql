@@ -247,10 +247,86 @@ message TranslationRef {
   uint64 block_ref = 4;
 }
 
+// ErrorKind classifies a failure so that a consumer can act on it without
+// parsing the message text (ADR 046). It lives here, in the lowest layer, so
+// that Result can carry it: plugin.proto imports llx.proto, not the other way
+// around.
+//
+// The HTTP status in each comment names the kind for a reader. Nothing maps a
+// status onto a kind: a provider reads whatever its SDK hands it and decides.
+// ERROR_KIND_UNSPECIFIED means unclassified, which is the honest default - a
+// kind is a claim, and a provider that does not know makes none.
+enum ErrorKind {
+  ERROR_KIND_UNSPECIFIED = 0;
+  // The connection type was right and the content was not: this target is not
+  // this provider's (ADR 045). Connect only.
+  ERROR_KIND_NO_MATCH = 1;
+  // 401. We are not who we need to be: no credentials, wrong credentials, an
+  // expired or revoked token.
+  ERROR_KIND_UNAUTHENTICATED = 2;
+  // 403. We are authenticated and not permitted. Includes an OS elevation
+  // failure: needing sudo and not having it is a permission we are asking for.
+  ERROR_KIND_FORBIDDEN = 3;
+  // 404. The provider could not answer because what it had to read is not
+  // there. A legitimate absence is a null value, not this kind.
+  ERROR_KIND_NOT_FOUND = 4;
+  // 501. The question does not apply to this target: API not enabled, resource
+  // provider not registered, feature not in this plan, service not offered in
+  // this region, resource not supported on this platform.
+  ERROR_KIND_NOT_APPLICABLE = 5;
+  // 410. The API we call existed and does not any more.
+  ERROR_KIND_GONE = 6;
+  // 429. Throttled. Carries retry_after_ms when the target said so.
+  ERROR_KIND_TOO_MANY_REQUESTS = 7;
+  // 503. The target is temporarily not answering: 5xx, connection refused,
+  // timeout, DNS failure.
+  ERROR_KIND_UNAVAILABLE = 8;
+  // The target answered and what it said cannot be read.
+  ERROR_KIND_MALFORMED_DATA = 9;
+  // The asset went away while we were scanning it.
+  ERROR_KIND_ASSET_VANISHED = 10;
+}
+
+// ErrorScope says how far a failure reaches, which is what lets a consumer
+// aggregate identical failures and decide whether continuing is worthwhile.
+enum ErrorScope {
+  ERROR_SCOPE_UNSPECIFIED = 0;
+  // This one field.
+  ERROR_SCOPE_FIELD = 1;
+  // This resource, including any listing it would have produced.
+  ERROR_SCOPE_RESOURCE = 2;
+  // Everything in one region, project, or subscription, named by scope_id.
+  ERROR_SCOPE_PARTITION = 3;
+  // Every remaining call on this asset, e.g. an expired credential.
+  ERROR_SCOPE_ASSET = 4;
+}
+
+// ErrorDetail carries a kind and what a consumer needs to act on it. It rides
+// beside the error message rather than replacing it: the message keeps the
+// target's own words verbatim, which is what a human reads when the kind is not
+// enough.
+message ErrorDetail {
+  ErrorKind kind = 1;
+  ErrorScope scope = 2;
+  // Names the partition for ERROR_SCOPE_PARTITION: a region, project, or
+  // subscription. Empty for every other scope.
+  string scope_id = 3;
+  // Permissions the refused call needed, e.g. "ec2:DescribeInstances", or the
+  // elevation an OS scan lacked. Possibly several, possibly none.
+  repeated string permissions = 4;
+  // Server-stated wait for 429 and 503. Zero means "no hint", not "retry now".
+  // Carried, not acted on: nothing in mql retries on it.
+  int64 retry_after_ms = 5;
+}
+
 message Result {
   Primitive data = 1;
   string error = 2;
   string code_id = 3;
+  // Why this result failed, when the provider or the runtime could say (ADR
+  // 046). Absent means unclassified, which is also what every result written
+  // before this field existed carries.
+  ErrorDetail error_detail = 4;
 }
 
 message ResourceRecording {

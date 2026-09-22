@@ -677,7 +677,10 @@ func (r *Runtime) watchAndUpdate(resource string, resourceID string, field strin
 
 	var raw *llx.RawData
 	if data.Error != "" {
-		raw = &llx.RawData{Error: errors.New(data.Error)}
+		// Rebuild the provider's classification rather than an anonymous
+		// error (ADR 046): this is the site where a kind would otherwise be
+		// flattened into a string for the rest of its life.
+		raw = &llx.RawData{Error: llx.ErrorFromDetail(data.Error, data.ErrorDetail)}
 	} else {
 		if data.Data == nil {
 			// The provider answered with neither data nor an error. This
@@ -936,8 +939,9 @@ func (p *providerCallbacks) GetData(req *plugin.DataReq) (*plugin.DataRes, error
 	}
 	res := raw.Result()
 	return &plugin.DataRes{
-		Data:  res.Data,
-		Error: res.Error,
+		Data:        res.Data,
+		Error:       res.Error,
+		ErrorDetail: res.ErrorDetail,
 	}, err
 }
 

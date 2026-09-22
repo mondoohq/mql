@@ -24,6 +24,166 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// ErrorKind classifies a failure so that a consumer can act on it without
+// parsing the message text (ADR 046). It lives here, in the lowest layer, so
+// that Result can carry it: plugin.proto imports llx.proto, not the other way
+// around.
+//
+// The HTTP status in each comment names the kind for a reader. Nothing maps a
+// status onto a kind: a provider reads whatever its SDK hands it and decides.
+// ERROR_KIND_UNSPECIFIED means unclassified, which is the honest default - a
+// kind is a claim, and a provider that does not know makes none.
+type ErrorKind int32
+
+const (
+	ErrorKind_ERROR_KIND_UNSPECIFIED ErrorKind = 0
+	// The connection type was right and the content was not: this target is not
+	// this provider's (ADR 045). Connect only.
+	ErrorKind_ERROR_KIND_NO_MATCH ErrorKind = 1
+	// 401. We are not who we need to be: no credentials, wrong credentials, an
+	// expired or revoked token.
+	ErrorKind_ERROR_KIND_UNAUTHENTICATED ErrorKind = 2
+	// 403. We are authenticated and not permitted. Includes an OS elevation
+	// failure: needing sudo and not having it is a permission we are asking for.
+	ErrorKind_ERROR_KIND_FORBIDDEN ErrorKind = 3
+	// 404. The provider could not answer because what it had to read is not
+	// there. A legitimate absence is a null value, not this kind.
+	ErrorKind_ERROR_KIND_NOT_FOUND ErrorKind = 4
+	// 501. The question does not apply to this target: API not enabled, resource
+	// provider not registered, feature not in this plan, service not offered in
+	// this region, resource not supported on this platform.
+	ErrorKind_ERROR_KIND_NOT_APPLICABLE ErrorKind = 5
+	// 410. The API we call existed and does not any more.
+	ErrorKind_ERROR_KIND_GONE ErrorKind = 6
+	// 429. Throttled. Carries retry_after_ms when the target said so.
+	ErrorKind_ERROR_KIND_TOO_MANY_REQUESTS ErrorKind = 7
+	// 503. The target is temporarily not answering: 5xx, connection refused,
+	// timeout, DNS failure.
+	ErrorKind_ERROR_KIND_UNAVAILABLE ErrorKind = 8
+	// The target answered and what it said cannot be read.
+	ErrorKind_ERROR_KIND_MALFORMED_DATA ErrorKind = 9
+	// The asset went away while we were scanning it.
+	ErrorKind_ERROR_KIND_ASSET_VANISHED ErrorKind = 10
+)
+
+// Enum value maps for ErrorKind.
+var (
+	ErrorKind_name = map[int32]string{
+		0:  "ERROR_KIND_UNSPECIFIED",
+		1:  "ERROR_KIND_NO_MATCH",
+		2:  "ERROR_KIND_UNAUTHENTICATED",
+		3:  "ERROR_KIND_FORBIDDEN",
+		4:  "ERROR_KIND_NOT_FOUND",
+		5:  "ERROR_KIND_NOT_APPLICABLE",
+		6:  "ERROR_KIND_GONE",
+		7:  "ERROR_KIND_TOO_MANY_REQUESTS",
+		8:  "ERROR_KIND_UNAVAILABLE",
+		9:  "ERROR_KIND_MALFORMED_DATA",
+		10: "ERROR_KIND_ASSET_VANISHED",
+	}
+	ErrorKind_value = map[string]int32{
+		"ERROR_KIND_UNSPECIFIED":       0,
+		"ERROR_KIND_NO_MATCH":          1,
+		"ERROR_KIND_UNAUTHENTICATED":   2,
+		"ERROR_KIND_FORBIDDEN":         3,
+		"ERROR_KIND_NOT_FOUND":         4,
+		"ERROR_KIND_NOT_APPLICABLE":    5,
+		"ERROR_KIND_GONE":              6,
+		"ERROR_KIND_TOO_MANY_REQUESTS": 7,
+		"ERROR_KIND_UNAVAILABLE":       8,
+		"ERROR_KIND_MALFORMED_DATA":    9,
+		"ERROR_KIND_ASSET_VANISHED":    10,
+	}
+)
+
+func (x ErrorKind) Enum() *ErrorKind {
+	p := new(ErrorKind)
+	*p = x
+	return p
+}
+
+func (x ErrorKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ErrorKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_llx_proto_enumTypes[0].Descriptor()
+}
+
+func (ErrorKind) Type() protoreflect.EnumType {
+	return &file_llx_proto_enumTypes[0]
+}
+
+func (x ErrorKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ErrorKind.Descriptor instead.
+func (ErrorKind) EnumDescriptor() ([]byte, []int) {
+	return file_llx_proto_rawDescGZIP(), []int{0}
+}
+
+// ErrorScope says how far a failure reaches, which is what lets a consumer
+// aggregate identical failures and decide whether continuing is worthwhile.
+type ErrorScope int32
+
+const (
+	ErrorScope_ERROR_SCOPE_UNSPECIFIED ErrorScope = 0
+	// This one field.
+	ErrorScope_ERROR_SCOPE_FIELD ErrorScope = 1
+	// This resource, including any listing it would have produced.
+	ErrorScope_ERROR_SCOPE_RESOURCE ErrorScope = 2
+	// Everything in one region, project, or subscription, named by scope_id.
+	ErrorScope_ERROR_SCOPE_PARTITION ErrorScope = 3
+	// Every remaining call on this asset, e.g. an expired credential.
+	ErrorScope_ERROR_SCOPE_ASSET ErrorScope = 4
+)
+
+// Enum value maps for ErrorScope.
+var (
+	ErrorScope_name = map[int32]string{
+		0: "ERROR_SCOPE_UNSPECIFIED",
+		1: "ERROR_SCOPE_FIELD",
+		2: "ERROR_SCOPE_RESOURCE",
+		3: "ERROR_SCOPE_PARTITION",
+		4: "ERROR_SCOPE_ASSET",
+	}
+	ErrorScope_value = map[string]int32{
+		"ERROR_SCOPE_UNSPECIFIED": 0,
+		"ERROR_SCOPE_FIELD":       1,
+		"ERROR_SCOPE_RESOURCE":    2,
+		"ERROR_SCOPE_PARTITION":   3,
+		"ERROR_SCOPE_ASSET":       4,
+	}
+)
+
+func (x ErrorScope) Enum() *ErrorScope {
+	p := new(ErrorScope)
+	*p = x
+	return p
+}
+
+func (x ErrorScope) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ErrorScope) Descriptor() protoreflect.EnumDescriptor {
+	return file_llx_proto_enumTypes[1].Descriptor()
+}
+
+func (ErrorScope) Type() protoreflect.EnumType {
+	return &file_llx_proto_enumTypes[1]
+}
+
+func (x ErrorScope) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ErrorScope.Descriptor instead.
+func (ErrorScope) EnumDescriptor() ([]byte, []int) {
+	return file_llx_proto_rawDescGZIP(), []int{1}
+}
+
 // How this call behaves when it cannot resolve. See ADR 043 (strict mode).
 // A link fails to resolve when its binding is null, or - for a map or dict -
 // when the key it names is absent.
@@ -66,11 +226,11 @@ func (x Function_Nullability) String() string {
 }
 
 func (Function_Nullability) Descriptor() protoreflect.EnumDescriptor {
-	return file_llx_proto_enumTypes[0].Descriptor()
+	return file_llx_proto_enumTypes[2].Descriptor()
 }
 
 func (Function_Nullability) Type() protoreflect.EnumType {
-	return &file_llx_proto_enumTypes[0]
+	return &file_llx_proto_enumTypes[2]
 }
 
 func (x Function_Nullability) Number() protoreflect.EnumNumber {
@@ -121,11 +281,11 @@ func (x Chunk_Call) String() string {
 }
 
 func (Chunk_Call) Descriptor() protoreflect.EnumDescriptor {
-	return file_llx_proto_enumTypes[1].Descriptor()
+	return file_llx_proto_enumTypes[3].Descriptor()
 }
 
 func (Chunk_Call) Type() protoreflect.EnumType {
-	return &file_llx_proto_enumTypes[1]
+	return &file_llx_proto_enumTypes[3]
 }
 
 func (x Chunk_Call) Number() protoreflect.EnumNumber {
@@ -1217,18 +1377,108 @@ func (x *TranslationRef) GetBlockRef() uint64 {
 	return 0
 }
 
+// ErrorDetail carries a kind and what a consumer needs to act on it. It rides
+// beside the error message rather than replacing it: the message keeps the
+// target's own words verbatim, which is what a human reads when the kind is not
+// enough.
+type ErrorDetail struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Kind  ErrorKind              `protobuf:"varint,1,opt,name=kind,proto3,enum=mql.llx.ErrorKind" json:"kind,omitempty"`
+	Scope ErrorScope             `protobuf:"varint,2,opt,name=scope,proto3,enum=mql.llx.ErrorScope" json:"scope,omitempty"`
+	// Names the partition for ERROR_SCOPE_PARTITION: a region, project, or
+	// subscription. Empty for every other scope.
+	ScopeId string `protobuf:"bytes,3,opt,name=scope_id,json=scopeId,proto3" json:"scope_id,omitempty"`
+	// Permissions the refused call needed, e.g. "ec2:DescribeInstances", or the
+	// elevation an OS scan lacked. Possibly several, possibly none.
+	Permissions []string `protobuf:"bytes,4,rep,name=permissions,proto3" json:"permissions,omitempty"`
+	// Server-stated wait for 429 and 503. Zero means "no hint", not "retry now".
+	// Carried, not acted on: nothing in mql retries on it.
+	RetryAfterMs  int64 `protobuf:"varint,5,opt,name=retry_after_ms,json=retryAfterMs,proto3" json:"retry_after_ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ErrorDetail) Reset() {
+	*x = ErrorDetail{}
+	mi := &file_llx_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ErrorDetail) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ErrorDetail) ProtoMessage() {}
+
+func (x *ErrorDetail) ProtoReflect() protoreflect.Message {
+	mi := &file_llx_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ErrorDetail.ProtoReflect.Descriptor instead.
+func (*ErrorDetail) Descriptor() ([]byte, []int) {
+	return file_llx_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ErrorDetail) GetKind() ErrorKind {
+	if x != nil {
+		return x.Kind
+	}
+	return ErrorKind_ERROR_KIND_UNSPECIFIED
+}
+
+func (x *ErrorDetail) GetScope() ErrorScope {
+	if x != nil {
+		return x.Scope
+	}
+	return ErrorScope_ERROR_SCOPE_UNSPECIFIED
+}
+
+func (x *ErrorDetail) GetScopeId() string {
+	if x != nil {
+		return x.ScopeId
+	}
+	return ""
+}
+
+func (x *ErrorDetail) GetPermissions() []string {
+	if x != nil {
+		return x.Permissions
+	}
+	return nil
+}
+
+func (x *ErrorDetail) GetRetryAfterMs() int64 {
+	if x != nil {
+		return x.RetryAfterMs
+	}
+	return 0
+}
+
 type Result struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Data          *Primitive             `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
-	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
-	CodeId        string                 `protobuf:"bytes,3,opt,name=code_id,json=codeId,proto3" json:"code_id,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Data   *Primitive             `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
+	Error  string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	CodeId string                 `protobuf:"bytes,3,opt,name=code_id,json=codeId,proto3" json:"code_id,omitempty"`
+	// Why this result failed, when the provider or the runtime could say (ADR
+	// 046). Absent means unclassified, which is also what every result written
+	// before this field existed carries.
+	ErrorDetail   *ErrorDetail `protobuf:"bytes,4,opt,name=error_detail,json=errorDetail,proto3" json:"error_detail,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Result) Reset() {
 	*x = Result{}
-	mi := &file_llx_proto_msgTypes[13]
+	mi := &file_llx_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1240,7 +1490,7 @@ func (x *Result) String() string {
 func (*Result) ProtoMessage() {}
 
 func (x *Result) ProtoReflect() protoreflect.Message {
-	mi := &file_llx_proto_msgTypes[13]
+	mi := &file_llx_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1253,7 +1503,7 @@ func (x *Result) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Result.ProtoReflect.Descriptor instead.
 func (*Result) Descriptor() ([]byte, []int) {
-	return file_llx_proto_rawDescGZIP(), []int{13}
+	return file_llx_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Result) GetData() *Primitive {
@@ -1277,6 +1527,13 @@ func (x *Result) GetCodeId() string {
 	return ""
 }
 
+func (x *Result) GetErrorDetail() *ErrorDetail {
+	if x != nil {
+		return x.ErrorDetail
+	}
+	return nil
+}
+
 type ResourceRecording struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Resource      string                 `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
@@ -1290,7 +1547,7 @@ type ResourceRecording struct {
 
 func (x *ResourceRecording) Reset() {
 	*x = ResourceRecording{}
-	mi := &file_llx_proto_msgTypes[14]
+	mi := &file_llx_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1302,7 +1559,7 @@ func (x *ResourceRecording) String() string {
 func (*ResourceRecording) ProtoMessage() {}
 
 func (x *ResourceRecording) ProtoReflect() protoreflect.Message {
-	mi := &file_llx_proto_msgTypes[14]
+	mi := &file_llx_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1315,7 +1572,7 @@ func (x *ResourceRecording) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceRecording.ProtoReflect.Descriptor instead.
 func (*ResourceRecording) Descriptor() ([]byte, []int) {
-	return file_llx_proto_rawDescGZIP(), []int{14}
+	return file_llx_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ResourceRecording) GetResource() string {
@@ -1367,7 +1624,7 @@ type Rating struct {
 
 func (x *Rating) Reset() {
 	*x = Rating{}
-	mi := &file_llx_proto_msgTypes[15]
+	mi := &file_llx_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1379,7 +1636,7 @@ func (x *Rating) String() string {
 func (*Rating) ProtoMessage() {}
 
 func (x *Rating) ProtoReflect() protoreflect.Message {
-	mi := &file_llx_proto_msgTypes[15]
+	mi := &file_llx_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1392,7 +1649,7 @@ func (x *Rating) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Rating.ProtoReflect.Descriptor instead.
 func (*Rating) Descriptor() ([]byte, []int) {
-	return file_llx_proto_rawDescGZIP(), []int{15}
+	return file_llx_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Rating) GetId() string {
@@ -1456,7 +1713,7 @@ type AssessmentItem struct {
 
 func (x *AssessmentItem) Reset() {
 	*x = AssessmentItem{}
-	mi := &file_llx_proto_msgTypes[16]
+	mi := &file_llx_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1468,7 +1725,7 @@ func (x *AssessmentItem) String() string {
 func (*AssessmentItem) ProtoMessage() {}
 
 func (x *AssessmentItem) ProtoReflect() protoreflect.Message {
-	mi := &file_llx_proto_msgTypes[16]
+	mi := &file_llx_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1481,7 +1738,7 @@ func (x *AssessmentItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssessmentItem.ProtoReflect.Descriptor instead.
 func (*AssessmentItem) Descriptor() ([]byte, []int) {
-	return file_llx_proto_rawDescGZIP(), []int{16}
+	return file_llx_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *AssessmentItem) GetSuccess() bool {
@@ -1573,7 +1830,7 @@ type Assessment struct {
 
 func (x *Assessment) Reset() {
 	*x = Assessment{}
-	mi := &file_llx_proto_msgTypes[17]
+	mi := &file_llx_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1585,7 +1842,7 @@ func (x *Assessment) String() string {
 func (*Assessment) ProtoMessage() {}
 
 func (x *Assessment) ProtoReflect() protoreflect.Message {
-	mi := &file_llx_proto_msgTypes[17]
+	mi := &file_llx_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1598,7 +1855,7 @@ func (x *Assessment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Assessment.ProtoReflect.Descriptor instead.
 func (*Assessment) Descriptor() ([]byte, []int) {
-	return file_llx_proto_rawDescGZIP(), []int{17}
+	return file_llx_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Assessment) GetChecksum() string {
@@ -1640,7 +1897,7 @@ type IP struct {
 
 func (x *IP) Reset() {
 	*x = IP{}
-	mi := &file_llx_proto_msgTypes[18]
+	mi := &file_llx_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1652,7 +1909,7 @@ func (x *IP) String() string {
 func (*IP) ProtoMessage() {}
 
 func (x *IP) ProtoReflect() protoreflect.Message {
-	mi := &file_llx_proto_msgTypes[18]
+	mi := &file_llx_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1665,7 +1922,7 @@ func (x *IP) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IP.ProtoReflect.Descriptor instead.
 func (*IP) Descriptor() ([]byte, []int) {
-	return file_llx_proto_rawDescGZIP(), []int{18}
+	return file_llx_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *IP) GetAddress() []byte {
@@ -1835,11 +2092,18 @@ const file_llx_proto_rawDesc = "" +
 	"\x03ref\x18\x01 \x01(\x04R\x03ref\x12\x1a\n" +
 	"\bprovider\x18\x02 \x01(\tR\bprovider\x12#\n" +
 	"\rbelow_version\x18\x03 \x01(\tR\fbelowVersion\x12\x1b\n" +
-	"\tblock_ref\x18\x04 \x01(\x04R\bblockRef\"_\n" +
+	"\tblock_ref\x18\x04 \x01(\x04R\bblockRef\"\xc3\x01\n" +
+	"\vErrorDetail\x12&\n" +
+	"\x04kind\x18\x01 \x01(\x0e2\x12.mql.llx.ErrorKindR\x04kind\x12)\n" +
+	"\x05scope\x18\x02 \x01(\x0e2\x13.mql.llx.ErrorScopeR\x05scope\x12\x19\n" +
+	"\bscope_id\x18\x03 \x01(\tR\ascopeId\x12 \n" +
+	"\vpermissions\x18\x04 \x03(\tR\vpermissions\x12$\n" +
+	"\x0eretry_after_ms\x18\x05 \x01(\x03R\fretryAfterMs\"\x98\x01\n" +
 	"\x06Result\x12&\n" +
 	"\x04data\x18\x01 \x01(\v2\x12.mql.llx.PrimitiveR\x04data\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x12\x17\n" +
-	"\acode_id\x18\x03 \x01(\tR\x06codeId\"\xff\x01\n" +
+	"\acode_id\x18\x03 \x01(\tR\x06codeId\x127\n" +
+	"\ferror_detail\x18\x04 \x01(\v2\x14.mql.llx.ErrorDetailR\verrorDetail\"\xff\x01\n" +
 	"\x11ResourceRecording\x12\x1a\n" +
 	"\bresource\x18\x01 \x01(\tR\bresource\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12>\n" +
@@ -1880,7 +2144,27 @@ const file_llx_proto_rawDesc = "" +
 	"\aaddress\x18\x01 \x01(\fR\aaddress\x12\x1d\n" +
 	"\n" +
 	"has_prefix\x18\x02 \x01(\bR\thasPrefix\x12#\n" +
-	"\rprefix_length\x18\x03 \x01(\x05R\fprefixLengthB\x17Z\x15go.mondoo.com/mql/llxb\x06proto3"
+	"\rprefix_length\x18\x03 \x01(\x05R\fprefixLength*\xc4\x02\n" +
+	"\tErrorKind\x12\x1a\n" +
+	"\x16ERROR_KIND_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13ERROR_KIND_NO_MATCH\x10\x01\x12\x1e\n" +
+	"\x1aERROR_KIND_UNAUTHENTICATED\x10\x02\x12\x18\n" +
+	"\x14ERROR_KIND_FORBIDDEN\x10\x03\x12\x18\n" +
+	"\x14ERROR_KIND_NOT_FOUND\x10\x04\x12\x1d\n" +
+	"\x19ERROR_KIND_NOT_APPLICABLE\x10\x05\x12\x13\n" +
+	"\x0fERROR_KIND_GONE\x10\x06\x12 \n" +
+	"\x1cERROR_KIND_TOO_MANY_REQUESTS\x10\a\x12\x1a\n" +
+	"\x16ERROR_KIND_UNAVAILABLE\x10\b\x12\x1d\n" +
+	"\x19ERROR_KIND_MALFORMED_DATA\x10\t\x12\x1d\n" +
+	"\x19ERROR_KIND_ASSET_VANISHED\x10\n" +
+	"*\x8c\x01\n" +
+	"\n" +
+	"ErrorScope\x12\x1b\n" +
+	"\x17ERROR_SCOPE_UNSPECIFIED\x10\x00\x12\x15\n" +
+	"\x11ERROR_SCOPE_FIELD\x10\x01\x12\x18\n" +
+	"\x14ERROR_SCOPE_RESOURCE\x10\x02\x12\x19\n" +
+	"\x15ERROR_SCOPE_PARTITION\x10\x03\x12\x15\n" +
+	"\x11ERROR_SCOPE_ASSET\x10\x04B\x17Z\x15go.mondoo.com/mql/llxb\x06proto3"
 
 var (
 	file_llx_proto_rawDescOnce sync.Once
@@ -1894,88 +2178,94 @@ func file_llx_proto_rawDescGZIP() []byte {
 	return file_llx_proto_rawDescData
 }
 
-var file_llx_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_llx_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
+var file_llx_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_llx_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
 var file_llx_proto_goTypes = []any{
-	(Function_Nullability)(0), // 0: mql.llx.Function.Nullability
-	(Chunk_Call)(0),           // 1: mql.llx.Chunk.Call
-	(*Primitive)(nil),         // 2: mql.llx.Primitive
-	(*AssetValue)(nil),        // 3: mql.llx.AssetValue
-	(*Function)(nil),          // 4: mql.llx.Function
-	(*Chunk)(nil),             // 5: mql.llx.Chunk
-	(*AssertionMessage)(nil),  // 6: mql.llx.AssertionMessage
-	(*CodeV1)(nil),            // 7: mql.llx.CodeV1
-	(*Block)(nil),             // 8: mql.llx.Block
-	(*CodeV2)(nil),            // 9: mql.llx.CodeV2
-	(*Labels)(nil),            // 10: mql.llx.Labels
-	(*Documentation)(nil),     // 11: mql.llx.Documentation
-	(*CodeBundle)(nil),        // 12: mql.llx.CodeBundle
-	(*DeprecatedUse)(nil),     // 13: mql.llx.DeprecatedUse
-	(*TranslationRef)(nil),    // 14: mql.llx.TranslationRef
-	(*Result)(nil),            // 15: mql.llx.Result
-	(*ResourceRecording)(nil), // 16: mql.llx.ResourceRecording
-	(*Rating)(nil),            // 17: mql.llx.Rating
-	(*AssessmentItem)(nil),    // 18: mql.llx.AssessmentItem
-	(*Assessment)(nil),        // 19: mql.llx.Assessment
-	(*IP)(nil),                // 20: mql.llx.IP
-	nil,                       // 21: mql.llx.Primitive.MapEntry
-	nil,                       // 22: mql.llx.CodeV1.ChecksumsEntry
-	nil,                       // 23: mql.llx.CodeV1.AssertionsEntry
-	nil,                       // 24: mql.llx.CodeV2.ChecksumsEntry
-	nil,                       // 25: mql.llx.CodeV2.AssertionsEntry
-	nil,                       // 26: mql.llx.Labels.LabelsEntry
-	nil,                       // 27: mql.llx.CodeBundle.PropsEntry
-	nil,                       // 28: mql.llx.CodeBundle.AssertionsEntry
-	nil,                       // 29: mql.llx.CodeBundle.AutoExpandEntry
-	nil,                       // 30: mql.llx.CodeBundle.VarsEntry
-	nil,                       // 31: mql.llx.CodeBundle.ProviderSchemasEntry
-	nil,                       // 32: mql.llx.CodeBundle.MinProviderVersionsEntry
-	nil,                       // 33: mql.llx.ResourceRecording.FieldsEntry
+	(ErrorKind)(0),            // 0: mql.llx.ErrorKind
+	(ErrorScope)(0),           // 1: mql.llx.ErrorScope
+	(Function_Nullability)(0), // 2: mql.llx.Function.Nullability
+	(Chunk_Call)(0),           // 3: mql.llx.Chunk.Call
+	(*Primitive)(nil),         // 4: mql.llx.Primitive
+	(*AssetValue)(nil),        // 5: mql.llx.AssetValue
+	(*Function)(nil),          // 6: mql.llx.Function
+	(*Chunk)(nil),             // 7: mql.llx.Chunk
+	(*AssertionMessage)(nil),  // 8: mql.llx.AssertionMessage
+	(*CodeV1)(nil),            // 9: mql.llx.CodeV1
+	(*Block)(nil),             // 10: mql.llx.Block
+	(*CodeV2)(nil),            // 11: mql.llx.CodeV2
+	(*Labels)(nil),            // 12: mql.llx.Labels
+	(*Documentation)(nil),     // 13: mql.llx.Documentation
+	(*CodeBundle)(nil),        // 14: mql.llx.CodeBundle
+	(*DeprecatedUse)(nil),     // 15: mql.llx.DeprecatedUse
+	(*TranslationRef)(nil),    // 16: mql.llx.TranslationRef
+	(*ErrorDetail)(nil),       // 17: mql.llx.ErrorDetail
+	(*Result)(nil),            // 18: mql.llx.Result
+	(*ResourceRecording)(nil), // 19: mql.llx.ResourceRecording
+	(*Rating)(nil),            // 20: mql.llx.Rating
+	(*AssessmentItem)(nil),    // 21: mql.llx.AssessmentItem
+	(*Assessment)(nil),        // 22: mql.llx.Assessment
+	(*IP)(nil),                // 23: mql.llx.IP
+	nil,                       // 24: mql.llx.Primitive.MapEntry
+	nil,                       // 25: mql.llx.CodeV1.ChecksumsEntry
+	nil,                       // 26: mql.llx.CodeV1.AssertionsEntry
+	nil,                       // 27: mql.llx.CodeV2.ChecksumsEntry
+	nil,                       // 28: mql.llx.CodeV2.AssertionsEntry
+	nil,                       // 29: mql.llx.Labels.LabelsEntry
+	nil,                       // 30: mql.llx.CodeBundle.PropsEntry
+	nil,                       // 31: mql.llx.CodeBundle.AssertionsEntry
+	nil,                       // 32: mql.llx.CodeBundle.AutoExpandEntry
+	nil,                       // 33: mql.llx.CodeBundle.VarsEntry
+	nil,                       // 34: mql.llx.CodeBundle.ProviderSchemasEntry
+	nil,                       // 35: mql.llx.CodeBundle.MinProviderVersionsEntry
+	nil,                       // 36: mql.llx.ResourceRecording.FieldsEntry
 }
 var file_llx_proto_depIdxs = []int32{
-	2,  // 0: mql.llx.Primitive.array:type_name -> mql.llx.Primitive
-	21, // 1: mql.llx.Primitive.map:type_name -> mql.llx.Primitive.MapEntry
-	2,  // 2: mql.llx.Function.args:type_name -> mql.llx.Primitive
-	0,  // 3: mql.llx.Function.nullability:type_name -> mql.llx.Function.Nullability
-	1,  // 4: mql.llx.Chunk.call:type_name -> mql.llx.Chunk.Call
-	2,  // 5: mql.llx.Chunk.primitive:type_name -> mql.llx.Primitive
-	4,  // 6: mql.llx.Chunk.function:type_name -> mql.llx.Function
-	5,  // 7: mql.llx.CodeV1.code:type_name -> mql.llx.Chunk
-	22, // 8: mql.llx.CodeV1.checksums:type_name -> mql.llx.CodeV1.ChecksumsEntry
-	7,  // 9: mql.llx.CodeV1.functions:type_name -> mql.llx.CodeV1
-	23, // 10: mql.llx.CodeV1.assertions:type_name -> mql.llx.CodeV1.AssertionsEntry
-	5,  // 11: mql.llx.Block.chunks:type_name -> mql.llx.Chunk
-	8,  // 12: mql.llx.CodeV2.blocks:type_name -> mql.llx.Block
-	24, // 13: mql.llx.CodeV2.checksums:type_name -> mql.llx.CodeV2.ChecksumsEntry
-	25, // 14: mql.llx.CodeV2.assertions:type_name -> mql.llx.CodeV2.AssertionsEntry
-	26, // 15: mql.llx.Labels.labels:type_name -> mql.llx.Labels.LabelsEntry
-	9,  // 16: mql.llx.CodeBundle.code_v2:type_name -> mql.llx.CodeV2
-	11, // 17: mql.llx.CodeBundle.suggestions:type_name -> mql.llx.Documentation
-	10, // 18: mql.llx.CodeBundle.labels:type_name -> mql.llx.Labels
-	27, // 19: mql.llx.CodeBundle.props:type_name -> mql.llx.CodeBundle.PropsEntry
-	28, // 20: mql.llx.CodeBundle.assertions:type_name -> mql.llx.CodeBundle.AssertionsEntry
-	29, // 21: mql.llx.CodeBundle.auto_expand:type_name -> mql.llx.CodeBundle.AutoExpandEntry
-	30, // 22: mql.llx.CodeBundle.vars:type_name -> mql.llx.CodeBundle.VarsEntry
-	31, // 23: mql.llx.CodeBundle.provider_schemas:type_name -> mql.llx.CodeBundle.ProviderSchemasEntry
-	32, // 24: mql.llx.CodeBundle.min_provider_versions:type_name -> mql.llx.CodeBundle.MinProviderVersionsEntry
-	14, // 25: mql.llx.CodeBundle.translations:type_name -> mql.llx.TranslationRef
-	13, // 26: mql.llx.CodeBundle.deprecated_uses:type_name -> mql.llx.DeprecatedUse
-	2,  // 27: mql.llx.Result.data:type_name -> mql.llx.Primitive
-	33, // 28: mql.llx.ResourceRecording.fields:type_name -> mql.llx.ResourceRecording.FieldsEntry
-	2,  // 29: mql.llx.AssessmentItem.expected:type_name -> mql.llx.Primitive
-	2,  // 30: mql.llx.AssessmentItem.actual:type_name -> mql.llx.Primitive
-	2,  // 31: mql.llx.AssessmentItem.data:type_name -> mql.llx.Primitive
-	18, // 32: mql.llx.Assessment.results:type_name -> mql.llx.AssessmentItem
-	2,  // 33: mql.llx.Primitive.MapEntry.value:type_name -> mql.llx.Primitive
-	6,  // 34: mql.llx.CodeV1.AssertionsEntry.value:type_name -> mql.llx.AssertionMessage
-	6,  // 35: mql.llx.CodeV2.AssertionsEntry.value:type_name -> mql.llx.AssertionMessage
-	6,  // 36: mql.llx.CodeBundle.AssertionsEntry.value:type_name -> mql.llx.AssertionMessage
-	15, // 37: mql.llx.ResourceRecording.FieldsEntry.value:type_name -> mql.llx.Result
-	38, // [38:38] is the sub-list for method output_type
-	38, // [38:38] is the sub-list for method input_type
-	38, // [38:38] is the sub-list for extension type_name
-	38, // [38:38] is the sub-list for extension extendee
-	0,  // [0:38] is the sub-list for field type_name
+	4,  // 0: mql.llx.Primitive.array:type_name -> mql.llx.Primitive
+	24, // 1: mql.llx.Primitive.map:type_name -> mql.llx.Primitive.MapEntry
+	4,  // 2: mql.llx.Function.args:type_name -> mql.llx.Primitive
+	2,  // 3: mql.llx.Function.nullability:type_name -> mql.llx.Function.Nullability
+	3,  // 4: mql.llx.Chunk.call:type_name -> mql.llx.Chunk.Call
+	4,  // 5: mql.llx.Chunk.primitive:type_name -> mql.llx.Primitive
+	6,  // 6: mql.llx.Chunk.function:type_name -> mql.llx.Function
+	7,  // 7: mql.llx.CodeV1.code:type_name -> mql.llx.Chunk
+	25, // 8: mql.llx.CodeV1.checksums:type_name -> mql.llx.CodeV1.ChecksumsEntry
+	9,  // 9: mql.llx.CodeV1.functions:type_name -> mql.llx.CodeV1
+	26, // 10: mql.llx.CodeV1.assertions:type_name -> mql.llx.CodeV1.AssertionsEntry
+	7,  // 11: mql.llx.Block.chunks:type_name -> mql.llx.Chunk
+	10, // 12: mql.llx.CodeV2.blocks:type_name -> mql.llx.Block
+	27, // 13: mql.llx.CodeV2.checksums:type_name -> mql.llx.CodeV2.ChecksumsEntry
+	28, // 14: mql.llx.CodeV2.assertions:type_name -> mql.llx.CodeV2.AssertionsEntry
+	29, // 15: mql.llx.Labels.labels:type_name -> mql.llx.Labels.LabelsEntry
+	11, // 16: mql.llx.CodeBundle.code_v2:type_name -> mql.llx.CodeV2
+	13, // 17: mql.llx.CodeBundle.suggestions:type_name -> mql.llx.Documentation
+	12, // 18: mql.llx.CodeBundle.labels:type_name -> mql.llx.Labels
+	30, // 19: mql.llx.CodeBundle.props:type_name -> mql.llx.CodeBundle.PropsEntry
+	31, // 20: mql.llx.CodeBundle.assertions:type_name -> mql.llx.CodeBundle.AssertionsEntry
+	32, // 21: mql.llx.CodeBundle.auto_expand:type_name -> mql.llx.CodeBundle.AutoExpandEntry
+	33, // 22: mql.llx.CodeBundle.vars:type_name -> mql.llx.CodeBundle.VarsEntry
+	34, // 23: mql.llx.CodeBundle.provider_schemas:type_name -> mql.llx.CodeBundle.ProviderSchemasEntry
+	35, // 24: mql.llx.CodeBundle.min_provider_versions:type_name -> mql.llx.CodeBundle.MinProviderVersionsEntry
+	16, // 25: mql.llx.CodeBundle.translations:type_name -> mql.llx.TranslationRef
+	15, // 26: mql.llx.CodeBundle.deprecated_uses:type_name -> mql.llx.DeprecatedUse
+	0,  // 27: mql.llx.ErrorDetail.kind:type_name -> mql.llx.ErrorKind
+	1,  // 28: mql.llx.ErrorDetail.scope:type_name -> mql.llx.ErrorScope
+	4,  // 29: mql.llx.Result.data:type_name -> mql.llx.Primitive
+	17, // 30: mql.llx.Result.error_detail:type_name -> mql.llx.ErrorDetail
+	36, // 31: mql.llx.ResourceRecording.fields:type_name -> mql.llx.ResourceRecording.FieldsEntry
+	4,  // 32: mql.llx.AssessmentItem.expected:type_name -> mql.llx.Primitive
+	4,  // 33: mql.llx.AssessmentItem.actual:type_name -> mql.llx.Primitive
+	4,  // 34: mql.llx.AssessmentItem.data:type_name -> mql.llx.Primitive
+	21, // 35: mql.llx.Assessment.results:type_name -> mql.llx.AssessmentItem
+	4,  // 36: mql.llx.Primitive.MapEntry.value:type_name -> mql.llx.Primitive
+	8,  // 37: mql.llx.CodeV1.AssertionsEntry.value:type_name -> mql.llx.AssertionMessage
+	8,  // 38: mql.llx.CodeV2.AssertionsEntry.value:type_name -> mql.llx.AssertionMessage
+	8,  // 39: mql.llx.CodeBundle.AssertionsEntry.value:type_name -> mql.llx.AssertionMessage
+	18, // 40: mql.llx.ResourceRecording.FieldsEntry.value:type_name -> mql.llx.Result
+	41, // [41:41] is the sub-list for method output_type
+	41, // [41:41] is the sub-list for method input_type
+	41, // [41:41] is the sub-list for extension type_name
+	41, // [41:41] is the sub-list for extension extendee
+	0,  // [0:41] is the sub-list for field type_name
 }
 
 func init() { file_llx_proto_init() }
@@ -1988,8 +2278,8 @@ func file_llx_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_llx_proto_rawDesc), len(file_llx_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   32,
+			NumEnums:      4,
+			NumMessages:   33,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

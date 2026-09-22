@@ -438,6 +438,10 @@ func raw2primitive(value any, typ types.Type) (*Primitive, error) {
 // into a []byte structure that is easily serializable
 func (r *RawData) Result() *Result {
 	errorMsg := ""
+	// The kind rides beside the message rather than inside it, so that a
+	// consumer reads a classification instead of parsing text (ADR 046). It is
+	// nil for every unclassified error, which is most of them today.
+	errorDetail := ErrorDetailOf(r.Error)
 
 	// In case we encounter an error we need to still construct the result object
 	// with the type information so it can be processed by the server
@@ -449,8 +453,9 @@ func (r *RawData) Result() *Result {
 		// type to nil
 		if r.Value == nil {
 			return &Result{
-				Data:  &Primitive{Type: string(r.Type)},
-				Error: errorMsg,
+				Data:        &Primitive{Type: string(r.Type)},
+				Error:       errorMsg,
+				ErrorDetail: errorDetail,
 			}
 		}
 	}
@@ -465,18 +470,21 @@ func (r *RawData) Result() *Result {
 			errorMsg = err.Error()
 		}
 		return &Result{
-			Data:  &Primitive{Type: string(r.Type)},
-			Error: errorMsg,
+			Data:        &Primitive{Type: string(r.Type)},
+			Error:       errorMsg,
+			ErrorDetail: errorDetail,
 		}
 	}
 	return &Result{
-		Data:  data,
-		Error: errorMsg,
+		Data:        data,
+		Error:       errorMsg,
+		ErrorDetail: errorDetail,
 	}
 }
 
 func (r *RawData) CastResult(t types.Type) (*Result, error) {
 	errorMsg := ""
+	errorDetail := ErrorDetailOf(r.Error)
 
 	// In case we encounter an error we need to still construct the result object
 	// with the type information so it can be processed by the server
@@ -487,8 +495,9 @@ func (r *RawData) CastResult(t types.Type) (*Result, error) {
 	// Allow any type to take on nil values
 	if r.Value == nil {
 		return &Result{
-			Data:  &Primitive{Type: string(t)},
-			Error: errorMsg,
+			Data:        &Primitive{Type: string(t)},
+			Error:       errorMsg,
+			ErrorDetail: errorDetail,
 		}, nil
 	}
 
@@ -498,8 +507,9 @@ func (r *RawData) CastResult(t types.Type) (*Result, error) {
 			return nil, fmt.Errorf("cannot cast from %s to %s", r.Type.Label(), t.Label())
 		}
 		return &Result{
-			Data:  BoolPrimitive(truthy),
-			Error: errorMsg,
+			Data:        BoolPrimitive(truthy),
+			Error:       errorMsg,
+			ErrorDetail: errorDetail,
 		}, nil
 	}
 
@@ -508,8 +518,9 @@ func (r *RawData) CastResult(t types.Type) (*Result, error) {
 		return nil, err
 	}
 	return &Result{
-		Data:  data,
-		Error: errorMsg,
+		Data:        data,
+		Error:       errorMsg,
+		ErrorDetail: errorDetail,
 	}, nil
 }
 
@@ -560,8 +571,11 @@ func (r *Result) RawData() *RawData {
 			data = r.Data.RawData()
 		}
 	}
-	if len(r.Error) > 0 {
-		data.Error = errors.New(r.Error)
+	// Rebuild the classified error rather than an anonymous one, so a kind
+	// survives a recording replay and a round trip through upstream storage
+	// (ADR 046). An unclassified error comes back exactly as before.
+	if err := ErrorFromDetail(r.Error, r.ErrorDetail); err != nil {
+		data.Error = err
 	}
 	return data
 }

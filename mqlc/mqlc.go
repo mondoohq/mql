@@ -1443,7 +1443,13 @@ func (c *compiler) compileBoundIdentifierWithMqlCtx(id string, binding *variable
 					if call != nil && len(call.Function) > 0 {
 						realResource := c.Schema.Lookup(typ.ResourceName())
 						if realResource == nil {
-							return true, types.Nil, errors.New("could not find resource " + typ.ResourceName())
+							// Classified rather than bare (ADR 046): downstream
+							// this means the asset went away mid-scan, and
+							// cnspec reads it today by matching the message
+							// prefix. The message is unchanged so that match
+							// keeps working until it reads the kind instead.
+							return true, types.Nil, llx.AssetVanished(
+								errors.New("could not find resource " + typ.ResourceName()))
 						}
 						args, err := c.resourceArgs(realResource, call.Function)
 						if err != nil {

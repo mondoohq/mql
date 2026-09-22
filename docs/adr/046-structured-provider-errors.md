@@ -558,6 +558,37 @@ Phases 1 and 2 are independently useful: a kind that only reaches the CLI is
 already better than a string, and phase 2 without phase 5 still makes `mql shell`
 honest. Phase 1 is the only one that has to make the v14 rc window.
 
+## Implementation status
+
+**Phase 1 landed.** Nothing is classified yet: every provider error is
+unclassified and behaves exactly as before, which is what makes the carrier
+verifiable on its own.
+
+- **Wire.** `ErrorKind`, `ErrorScope` and `ErrorDetail` in `llx/llx.proto`;
+  `Result.error_detail` and `DataRes.error_detail`. `plugin` keeps the old
+  spellings as Go aliases and re-exports the constructors, so ADR 045's code
+  compiles untouched and a provider needs one import.
+- **Type.** `llx/errors.go`: `*llx.Error`, one constructor per kind, the
+  `WithScope` / `WithPermissions` / `WithRetryAfter` options, `KindOf`,
+  `ErrorDetailOf` and `ErrorFromDetail`.
+- **Rehydration.** Four sites, not three. `providers/runtime.go:680` and
+  `plugin/runtime.go:164,184` were in the plan; `llx.Result.RawData()`
+  (`data_conversions.go`) is the fourth, and it is the one that carries a kind
+  back out of a recording and out of upstream storage. `providerCallbacks.GetData`
+  forwards the detail for the ADR 042 path.
+- **Asset vanished.** `mqlc/mqlc.go:1446` now returns `llx.AssetVanished(...)`.
+  The message is unchanged on purpose, so cnspec's existing prefix match keeps
+  working until it reads the kind instead.
+
+Two notes for whoever picks up phase 2:
+
+- The sentinel for `ERROR_KIND_UNAVAILABLE` is `llx.ErrTargetUnavailable`, not
+  `ErrUnavailable`: that name was already taken by version skew (`llx/skew.go`),
+  and the two absences are genuinely different.
+- Compatibility is confirmed in both directions by construction and by running a
+  client built from this tree against a provider binary built before the change:
+  an old provider sends no detail and reads as unclassified.
+
 ## Consequences
 
 **Good:**

@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/recording"
@@ -1037,4 +1038,82 @@ func TestCheckPeerVersion(t *testing.T) {
 	err := checkPeerVersion(peer("12.9.0"), "13.0.0")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "older than the required 13.0.0")
+}
+
+// ADR 046: the executor is where a provider's classification would otherwise be
+// rebuilt as an anonymous error, so the rehydration gets its own coverage.
+func TestRuntime_WatchAndUpdate_RehydratesTheErrorKind(t *testing.T) {
+	resName := "testResource"
+	fieldName := "testField"
+
+	newRuntime := func(t *testing.T, res *plugin.DataRes) *Runtime {
+		ctrl := gomock.NewController(t)
+		mockC := NewMockProvidersCoordinator(ctrl)
+		mockSchema := NewMockResourcesSchema(ctrl)
+		mockPlugin := NewMockProviderPlugin(ctrl)
+
+		p := &ConnectedProvider{
+			Instance: &RunningProvider{
+				ID:     BuiltinCoreID,
+				Name:   "test",
+				Plugin: mockPlugin,
+			},
+			Connection: &plugin.ConnectRes{Id: 1},
+		}
+
+		mockC.EXPECT().Schema().AnyTimes().Return(mockSchema)
+		mockSchema.EXPECT().Lookup(resName).AnyTimes().Return(&resources.ResourceInfo{
+			Name:     resName,
+			Provider: BuiltinCoreID,
+			Fields: map[string]*resources.Field{
+				fieldName: {Name: fieldName, Provider: BuiltinCoreID},
+			},
+		})
+		mockPlugin.EXPECT().GetData(gomock.Any()).Times(1).Return(res, nil)
+
+		return &Runtime{
+			coordinator: mockC,
+			recording:   recording.Null{},
+			providers:   map[string]*ConnectedProvider{BuiltinCoreID: p},
+			Provider:    p,
+		}
+	}
+
+	t.Run("a classified error arrives classified", func(t *testing.T) {
+		r := newRuntime(t, &plugin.DataRes{
+			Error: "AccessDenied: not authorized to perform ec2:DescribeInstances",
+			ErrorDetail: &llx.ErrorDetail{
+				Kind:        llx.ErrorKind_ERROR_KIND_FORBIDDEN,
+				Scope:       llx.ErrorScope_ERROR_SCOPE_PARTITION,
+				ScopeId:     "eu-west-1",
+				Permissions: []string{"ec2:DescribeInstances"},
+			},
+		})
+
+		raw, err := r.watchAndUpdate(resName, "id-1", fieldName, "")
+		require.NoError(t, err)
+		require.NotNil(t, raw)
+		require.Error(t, raw.Error)
+
+		assert.True(t, errors.Is(raw.Error, llx.ErrForbidden))
+		// The target's own words survive; the kind rides beside them.
+		assert.Equal(t, "AccessDenied: not authorized to perform ec2:DescribeInstances", raw.Error.Error())
+
+		var typed *llx.Error
+		require.True(t, errors.As(raw.Error, &typed))
+		assert.Equal(t, "eu-west-1", typed.ScopeID)
+		assert.Equal(t, []string{"ec2:DescribeInstances"}, typed.Permissions)
+	})
+
+	t.Run("an unclassified error stays unclassified", func(t *testing.T) {
+		// Every provider that has not been migrated yet takes this path, and
+		// has to behave exactly as it did before.
+		r := newRuntime(t, &plugin.DataRes{Error: "something broke"})
+
+		raw, err := r.watchAndUpdate(resName, "id-2", fieldName, "")
+		require.NoError(t, err)
+		require.Error(t, raw.Error)
+		assert.Equal(t, "something broke", raw.Error.Error())
+		assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(raw.Error))
+	})
 }

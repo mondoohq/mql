@@ -7,8 +7,52 @@ import (
 	"errors"
 	"strings"
 
+	"go.mondoo.com/mql/llx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+)
+
+// ErrorKind and ErrorDetail moved to llx in ADR 046, so that llx.Result could
+// carry them too - plugin imports llx, so the shared vocabulary has to live in
+// the lower layer. These aliases keep every existing spelling working, and keep
+// providers on one import for the classification helpers below.
+type (
+	ErrorKind   = llx.ErrorKind
+	ErrorDetail = llx.ErrorDetail
+	ErrorScope  = llx.ErrorScope
+)
+
+const (
+	ErrorKind_ERROR_KIND_UNSPECIFIED       = llx.ErrorKind_ERROR_KIND_UNSPECIFIED
+	ErrorKind_ERROR_KIND_NO_MATCH          = llx.ErrorKind_ERROR_KIND_NO_MATCH
+	ErrorKind_ERROR_KIND_UNAUTHENTICATED   = llx.ErrorKind_ERROR_KIND_UNAUTHENTICATED
+	ErrorKind_ERROR_KIND_FORBIDDEN         = llx.ErrorKind_ERROR_KIND_FORBIDDEN
+	ErrorKind_ERROR_KIND_NOT_FOUND         = llx.ErrorKind_ERROR_KIND_NOT_FOUND
+	ErrorKind_ERROR_KIND_NOT_APPLICABLE    = llx.ErrorKind_ERROR_KIND_NOT_APPLICABLE
+	ErrorKind_ERROR_KIND_GONE              = llx.ErrorKind_ERROR_KIND_GONE
+	ErrorKind_ERROR_KIND_TOO_MANY_REQUESTS = llx.ErrorKind_ERROR_KIND_TOO_MANY_REQUESTS
+	ErrorKind_ERROR_KIND_UNAVAILABLE       = llx.ErrorKind_ERROR_KIND_UNAVAILABLE
+	ErrorKind_ERROR_KIND_MALFORMED_DATA    = llx.ErrorKind_ERROR_KIND_MALFORMED_DATA
+	ErrorKind_ERROR_KIND_ASSET_VANISHED    = llx.ErrorKind_ERROR_KIND_ASSET_VANISHED
+)
+
+// The constructors a provider reaches for, re-exported so classifying an error
+// needs no second import. See llx/errors.go for the type itself.
+var (
+	Unauthenticated = llx.Unauthenticated
+	Forbidden       = llx.Forbidden
+	NotFound        = llx.NotFound
+	NotApplicable   = llx.NotApplicable
+	Gone            = llx.Gone
+	TooManyRequests = llx.TooManyRequests
+	Unavailable     = llx.Unavailable
+	MalformedData   = llx.MalformedData
+
+	WithScope       = llx.WithScope
+	WithPermissions = llx.WithPermissions
+	WithRetryAfter  = llx.WithRetryAfter
+
+	KindOf = llx.KindOf
 )
 
 var (

@@ -162,7 +162,7 @@ func (r *Runtime) CreateSharedResource(resource string, args map[string]*llx.Raw
 	}
 
 	if res.Error != "" {
-		return nil, errors.New(res.Error)
+		return nil, llx.ErrorFromDetail(res.Error, res.ErrorDetail)
 	}
 	raw := res.Data.RawData()
 	if !raw.Type.IsResource() {
@@ -182,7 +182,7 @@ func (r *Runtime) GetSharedData(resource string, resourceID string, field string
 	}
 
 	if res.Error != "" {
-		return nil, errors.New(res.Error)
+		return nil, llx.ErrorFromDetail(res.Error, res.ErrorDetail)
 	}
 	return res.Data.RawData(), nil
 }
@@ -200,8 +200,9 @@ func (x *TValue[T]) ToDataRes(typ types.Type) *DataRes {
 	if x.IsNull() {
 		if x.Error != nil {
 			return &DataRes{
-				Error: x.Error.Error(),
-				Data:  &llx.Primitive{Type: string(typ)},
+				Error:       x.Error.Error(),
+				ErrorDetail: llx.ErrorDetailOf(x.Error),
+				Data:        &llx.Primitive{Type: string(typ)},
 			}
 		}
 
@@ -211,7 +212,7 @@ func (x *TValue[T]) ToDataRes(typ types.Type) *DataRes {
 	}
 	raw := llx.RawData{Type: typ, Value: x.Data, Error: x.Error}
 	res := raw.Result()
-	return &DataRes{Data: res.Data, Error: res.Error}
+	return &DataRes{Data: res.Data, Error: res.Error, ErrorDetail: res.ErrorDetail}
 }
 
 func PrimitiveToTValue[T any](p *llx.Primitive) TValue[T] {

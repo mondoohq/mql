@@ -27,59 +27,6 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// ErrorKind names a Connect outcome that a caller has to be able to tell apart
-// from a generic failure. It rides a gRPC status detail because an error value
-// does not survive the process boundary, and matching on the message text is
-// how IsUnsupportedProviderError already gets this wrong for a wrapped error.
-type ErrorKind int32
-
-const (
-	ErrorKind_ERROR_KIND_UNSPECIFIED ErrorKind = 0
-	// The connection type was right and the content was not: this target is not
-	// this provider's (ADR 045). A normal outcome, not a failure -- discovery
-	// drops the asset and every other error is retained and reported.
-	ErrorKind_ERROR_KIND_NO_MATCH ErrorKind = 1
-)
-
-// Enum value maps for ErrorKind.
-var (
-	ErrorKind_name = map[int32]string{
-		0: "ERROR_KIND_UNSPECIFIED",
-		1: "ERROR_KIND_NO_MATCH",
-	}
-	ErrorKind_value = map[string]int32{
-		"ERROR_KIND_UNSPECIFIED": 0,
-		"ERROR_KIND_NO_MATCH":    1,
-	}
-)
-
-func (x ErrorKind) Enum() *ErrorKind {
-	p := new(ErrorKind)
-	*p = x
-	return p
-}
-
-func (x ErrorKind) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (ErrorKind) Descriptor() protoreflect.EnumDescriptor {
-	return file_plugin_proto_enumTypes[0].Descriptor()
-}
-
-func (ErrorKind) Type() protoreflect.EnumType {
-	return &file_plugin_proto_enumTypes[0]
-}
-
-func (x ErrorKind) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use ErrorKind.Descriptor instead.
-func (ErrorKind) EnumDescriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{0}
-}
-
 type ParseCLIReq struct {
 	state         protoimpl.MessageState    `protogen:"open.v1"`
 	Connector     string                    `protobuf:"bytes,1,opt,name=connector,proto3" json:"connector,omitempty"`
@@ -361,54 +308,6 @@ func (x *ConnectRes) GetContinueExploration() bool {
 	return false
 }
 
-// ErrorDetail is what carries an ErrorKind on a status. A message rather than
-// a bare enum because a status detail has to be one, and named for the general
-// case so ErrUnsupportedProvider and ErrProviderTypeDoesNotMatch can move onto
-// the same carrier later without a second message.
-type ErrorDetail struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Kind          ErrorKind              `protobuf:"varint,1,opt,name=kind,proto3,enum=cnquery.providers.v1.ErrorKind" json:"kind,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ErrorDetail) Reset() {
-	*x = ErrorDetail{}
-	mi := &file_plugin_proto_msgTypes[4]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ErrorDetail) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ErrorDetail) ProtoMessage() {}
-
-func (x *ErrorDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[4]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ErrorDetail.ProtoReflect.Descriptor instead.
-func (*ErrorDetail) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *ErrorDetail) GetKind() ErrorKind {
-	if x != nil {
-		return x.Kind
-	}
-	return ErrorKind_ERROR_KIND_UNSPECIFIED
-}
-
 type ShutdownReq struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -417,7 +316,7 @@ type ShutdownReq struct {
 
 func (x *ShutdownReq) Reset() {
 	*x = ShutdownReq{}
-	mi := &file_plugin_proto_msgTypes[5]
+	mi := &file_plugin_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -429,7 +328,7 @@ func (x *ShutdownReq) String() string {
 func (*ShutdownReq) ProtoMessage() {}
 
 func (x *ShutdownReq) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[5]
+	mi := &file_plugin_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -442,7 +341,7 @@ func (x *ShutdownReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShutdownReq.ProtoReflect.Descriptor instead.
 func (*ShutdownReq) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{5}
+	return file_plugin_proto_rawDescGZIP(), []int{4}
 }
 
 type ShutdownRes struct {
@@ -453,7 +352,7 @@ type ShutdownRes struct {
 
 func (x *ShutdownRes) Reset() {
 	*x = ShutdownRes{}
-	mi := &file_plugin_proto_msgTypes[6]
+	mi := &file_plugin_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -465,7 +364,7 @@ func (x *ShutdownRes) String() string {
 func (*ShutdownRes) ProtoMessage() {}
 
 func (x *ShutdownRes) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[6]
+	mi := &file_plugin_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -478,7 +377,7 @@ func (x *ShutdownRes) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShutdownRes.ProtoReflect.Descriptor instead.
 func (*ShutdownRes) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{6}
+	return file_plugin_proto_rawDescGZIP(), []int{5}
 }
 
 type DataReq struct {
@@ -494,7 +393,7 @@ type DataReq struct {
 
 func (x *DataReq) Reset() {
 	*x = DataReq{}
-	mi := &file_plugin_proto_msgTypes[7]
+	mi := &file_plugin_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -506,7 +405,7 @@ func (x *DataReq) String() string {
 func (*DataReq) ProtoMessage() {}
 
 func (x *DataReq) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[7]
+	mi := &file_plugin_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -519,7 +418,7 @@ func (x *DataReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataReq.ProtoReflect.Descriptor instead.
 func (*DataReq) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{7}
+	return file_plugin_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *DataReq) GetConnection() uint32 {
@@ -562,14 +461,18 @@ type DataRes struct {
 	Data  *llx.Primitive         `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
 	Error string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
 	// The ID uniquely identifies this request and all associated callbacks
-	Id            string `protobuf:"bytes,3,opt,name=id,proto3" json:"id,omitempty"`
+	Id string `protobuf:"bytes,3,opt,name=id,proto3" json:"id,omitempty"`
+	// Why this field failed, when the provider could say (ADR 046). A field
+	// failure is not a gRPC status, so a status detail alone would never reach
+	// the executor; this is the carrier on the normal path.
+	ErrorDetail   *llx.ErrorDetail `protobuf:"bytes,4,opt,name=error_detail,json=errorDetail,proto3" json:"error_detail,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DataRes) Reset() {
 	*x = DataRes{}
-	mi := &file_plugin_proto_msgTypes[8]
+	mi := &file_plugin_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -581,7 +484,7 @@ func (x *DataRes) String() string {
 func (*DataRes) ProtoMessage() {}
 
 func (x *DataRes) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[8]
+	mi := &file_plugin_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -594,7 +497,7 @@ func (x *DataRes) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataRes.ProtoReflect.Descriptor instead.
 func (*DataRes) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{8}
+	return file_plugin_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *DataRes) GetData() *llx.Primitive {
@@ -618,6 +521,13 @@ func (x *DataRes) GetId() string {
 	return ""
 }
 
+func (x *DataRes) GetErrorDetail() *llx.ErrorDetail {
+	if x != nil {
+		return x.ErrorDetail
+	}
+	return nil
+}
+
 type CollectRes struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -626,7 +536,7 @@ type CollectRes struct {
 
 func (x *CollectRes) Reset() {
 	*x = CollectRes{}
-	mi := &file_plugin_proto_msgTypes[9]
+	mi := &file_plugin_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -638,7 +548,7 @@ func (x *CollectRes) String() string {
 func (*CollectRes) ProtoMessage() {}
 
 func (x *CollectRes) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[9]
+	mi := &file_plugin_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -651,7 +561,7 @@ func (x *CollectRes) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollectRes.ProtoReflect.Descriptor instead.
 func (*CollectRes) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{9}
+	return file_plugin_proto_rawDescGZIP(), []int{8}
 }
 
 type StoreReq struct {
@@ -664,7 +574,7 @@ type StoreReq struct {
 
 func (x *StoreReq) Reset() {
 	*x = StoreReq{}
-	mi := &file_plugin_proto_msgTypes[10]
+	mi := &file_plugin_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -676,7 +586,7 @@ func (x *StoreReq) String() string {
 func (*StoreReq) ProtoMessage() {}
 
 func (x *StoreReq) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[10]
+	mi := &file_plugin_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -689,7 +599,7 @@ func (x *StoreReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoreReq.ProtoReflect.Descriptor instead.
 func (*StoreReq) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{10}
+	return file_plugin_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *StoreReq) GetConnection() uint32 {
@@ -717,7 +627,7 @@ type ResourceData struct {
 
 func (x *ResourceData) Reset() {
 	*x = ResourceData{}
-	mi := &file_plugin_proto_msgTypes[11]
+	mi := &file_plugin_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -729,7 +639,7 @@ func (x *ResourceData) String() string {
 func (*ResourceData) ProtoMessage() {}
 
 func (x *ResourceData) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[11]
+	mi := &file_plugin_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -742,7 +652,7 @@ func (x *ResourceData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceData.ProtoReflect.Descriptor instead.
 func (*ResourceData) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{11}
+	return file_plugin_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ResourceData) GetName() string {
@@ -774,7 +684,7 @@ type StoreRes struct {
 
 func (x *StoreRes) Reset() {
 	*x = StoreRes{}
-	mi := &file_plugin_proto_msgTypes[12]
+	mi := &file_plugin_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -786,7 +696,7 @@ func (x *StoreRes) String() string {
 func (*StoreRes) ProtoMessage() {}
 
 func (x *StoreRes) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[12]
+	mi := &file_plugin_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -799,7 +709,7 @@ func (x *StoreRes) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoreRes.ProtoReflect.Descriptor instead.
 func (*StoreRes) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{12}
+	return file_plugin_proto_rawDescGZIP(), []int{11}
 }
 
 type HeartbeatReq struct {
@@ -812,7 +722,7 @@ type HeartbeatReq struct {
 
 func (x *HeartbeatReq) Reset() {
 	*x = HeartbeatReq{}
-	mi := &file_plugin_proto_msgTypes[13]
+	mi := &file_plugin_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -824,7 +734,7 @@ func (x *HeartbeatReq) String() string {
 func (*HeartbeatReq) ProtoMessage() {}
 
 func (x *HeartbeatReq) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[13]
+	mi := &file_plugin_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -837,7 +747,7 @@ func (x *HeartbeatReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatReq.ProtoReflect.Descriptor instead.
 func (*HeartbeatReq) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{13}
+	return file_plugin_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *HeartbeatReq) GetInterval() uint64 {
@@ -855,7 +765,7 @@ type HeartbeatRes struct {
 
 func (x *HeartbeatRes) Reset() {
 	*x = HeartbeatRes{}
-	mi := &file_plugin_proto_msgTypes[14]
+	mi := &file_plugin_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -867,7 +777,7 @@ func (x *HeartbeatRes) String() string {
 func (*HeartbeatRes) ProtoMessage() {}
 
 func (x *HeartbeatRes) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[14]
+	mi := &file_plugin_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -880,7 +790,7 @@ func (x *HeartbeatRes) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatRes.ProtoReflect.Descriptor instead.
 func (*HeartbeatRes) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{14}
+	return file_plugin_proto_rawDescGZIP(), []int{13}
 }
 
 type DisconnectReq struct {
@@ -892,7 +802,7 @@ type DisconnectReq struct {
 
 func (x *DisconnectReq) Reset() {
 	*x = DisconnectReq{}
-	mi := &file_plugin_proto_msgTypes[15]
+	mi := &file_plugin_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -904,7 +814,7 @@ func (x *DisconnectReq) String() string {
 func (*DisconnectReq) ProtoMessage() {}
 
 func (x *DisconnectReq) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[15]
+	mi := &file_plugin_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -917,7 +827,7 @@ func (x *DisconnectReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisconnectReq.ProtoReflect.Descriptor instead.
 func (*DisconnectReq) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{15}
+	return file_plugin_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *DisconnectReq) GetConnection() uint32 {
@@ -935,7 +845,7 @@ type DisconnectRes struct {
 
 func (x *DisconnectRes) Reset() {
 	*x = DisconnectRes{}
-	mi := &file_plugin_proto_msgTypes[16]
+	mi := &file_plugin_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -947,7 +857,7 @@ func (x *DisconnectRes) String() string {
 func (*DisconnectRes) ProtoMessage() {}
 
 func (x *DisconnectRes) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[16]
+	mi := &file_plugin_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -960,7 +870,7 @@ func (x *DisconnectRes) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisconnectRes.ProtoReflect.Descriptor instead.
 func (*DisconnectRes) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{16}
+	return file_plugin_proto_rawDescGZIP(), []int{15}
 }
 
 // TranslationsReq asks a provider for its downgrade catalog. It carries no
@@ -974,7 +884,7 @@ type TranslationsReq struct {
 
 func (x *TranslationsReq) Reset() {
 	*x = TranslationsReq{}
-	mi := &file_plugin_proto_msgTypes[17]
+	mi := &file_plugin_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -986,7 +896,7 @@ func (x *TranslationsReq) String() string {
 func (*TranslationsReq) ProtoMessage() {}
 
 func (x *TranslationsReq) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[17]
+	mi := &file_plugin_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -999,7 +909,7 @@ func (x *TranslationsReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TranslationsReq.ProtoReflect.Descriptor instead.
 func (*TranslationsReq) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{17}
+	return file_plugin_proto_rawDescGZIP(), []int{16}
 }
 
 // TranslationsRes is everything this provider knows about expressing its newer
@@ -1013,7 +923,7 @@ type TranslationsRes struct {
 
 func (x *TranslationsRes) Reset() {
 	*x = TranslationsRes{}
-	mi := &file_plugin_proto_msgTypes[18]
+	mi := &file_plugin_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1025,7 +935,7 @@ func (x *TranslationsRes) String() string {
 func (*TranslationsRes) ProtoMessage() {}
 
 func (x *TranslationsRes) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[18]
+	mi := &file_plugin_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1038,7 +948,7 @@ func (x *TranslationsRes) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TranslationsRes.ProtoReflect.Descriptor instead.
 func (*TranslationsRes) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{18}
+	return file_plugin_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *TranslationsRes) GetTranslations() []*Translation {
@@ -1075,7 +985,7 @@ type Translation struct {
 
 func (x *Translation) Reset() {
 	*x = Translation{}
-	mi := &file_plugin_proto_msgTypes[19]
+	mi := &file_plugin_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1087,7 +997,7 @@ func (x *Translation) String() string {
 func (*Translation) ProtoMessage() {}
 
 func (x *Translation) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[19]
+	mi := &file_plugin_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1100,7 +1010,7 @@ func (x *Translation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Translation.ProtoReflect.Descriptor instead.
 func (*Translation) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{19}
+	return file_plugin_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Translation) GetResource() string {
@@ -1155,7 +1065,7 @@ type ResolveAssetReq struct {
 
 func (x *ResolveAssetReq) Reset() {
 	*x = ResolveAssetReq{}
-	mi := &file_plugin_proto_msgTypes[20]
+	mi := &file_plugin_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1167,7 +1077,7 @@ func (x *ResolveAssetReq) String() string {
 func (*ResolveAssetReq) ProtoMessage() {}
 
 func (x *ResolveAssetReq) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[20]
+	mi := &file_plugin_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1180,7 +1090,7 @@ func (x *ResolveAssetReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveAssetReq.ProtoReflect.Descriptor instead.
 func (*ResolveAssetReq) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{20}
+	return file_plugin_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ResolveAssetReq) GetConnection() uint32 {
@@ -1216,7 +1126,7 @@ type ResolveAssetRes struct {
 
 func (x *ResolveAssetRes) Reset() {
 	*x = ResolveAssetRes{}
-	mi := &file_plugin_proto_msgTypes[21]
+	mi := &file_plugin_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1228,7 +1138,7 @@ func (x *ResolveAssetRes) String() string {
 func (*ResolveAssetRes) ProtoMessage() {}
 
 func (x *ResolveAssetRes) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[21]
+	mi := &file_plugin_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1241,7 +1151,7 @@ func (x *ResolveAssetRes) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveAssetRes.ProtoReflect.Descriptor instead.
 func (*ResolveAssetRes) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{21}
+	return file_plugin_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ResolveAssetRes) GetAsset() *inventory.Asset {
@@ -1280,9 +1190,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\x05asset\x18\x03 \x01(\v2\x1b.cnquery.providers.v1.AssetR\x05asset\x12=\n" +
 	"\tinventory\x18\x04 \x01(\v2\x1f.cnquery.providers.v1.InventoryR\tinventory\x12\x12\n" +
 	"\x04root\x18\x05 \x01(\tR\x04root\x121\n" +
-	"\x14continue_exploration\x18\x06 \x01(\bR\x13continueExploration\"B\n" +
-	"\vErrorDetail\x123\n" +
-	"\x04kind\x18\x01 \x01(\x0e2\x1f.cnquery.providers.v1.ErrorKindR\x04kind\"\r\n" +
+	"\x14continue_exploration\x18\x06 \x01(\bR\x13continueExploration\"\r\n" +
 	"\vShutdownReq\"\r\n" +
 	"\vShutdownRes\"\x86\x02\n" +
 	"\aDataReq\x12\x1e\n" +
@@ -1296,11 +1204,12 @@ const file_plugin_proto_rawDesc = "" +
 	"\x04args\x18\x06 \x03(\v2'.cnquery.providers.v1.DataReq.ArgsEntryR\x04args\x1aK\n" +
 	"\tArgsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12(\n" +
-	"\x05value\x18\x02 \x01(\v2\x12.mql.llx.PrimitiveR\x05value:\x028\x01\"W\n" +
+	"\x05value\x18\x02 \x01(\v2\x12.mql.llx.PrimitiveR\x05value:\x028\x01\"\x90\x01\n" +
 	"\aDataRes\x12&\n" +
 	"\x04data\x18\x01 \x01(\v2\x12.mql.llx.PrimitiveR\x04data\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x12\x0e\n" +
-	"\x02id\x18\x03 \x01(\tR\x02id\"\f\n" +
+	"\x02id\x18\x03 \x01(\tR\x02id\x127\n" +
+	"\ferror_detail\x18\x04 \x01(\v2\x14.mql.llx.ErrorDetailR\verrorDetail\"\f\n" +
 	"\n" +
 	"CollectRes\"l\n" +
 	"\bStoreReq\x12\x1e\n" +
@@ -1342,10 +1251,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\vresource_id\x18\x03 \x01(\tR\n" +
 	"resourceId\"D\n" +
 	"\x0fResolveAssetRes\x121\n" +
-	"\x05asset\x18\x01 \x01(\v2\x1b.cnquery.providers.v1.AssetR\x05asset*@\n" +
-	"\tErrorKind\x12\x1a\n" +
-	"\x16ERROR_KIND_UNSPECIFIED\x10\x00\x12\x17\n" +
-	"\x13ERROR_KIND_NO_MATCH\x10\x012\xd5\x06\n" +
+	"\x05asset\x18\x01 \x01(\v2\x1b.cnquery.providers.v1.AssetR\x05asset2\xd5\x06\n" +
 	"\x0eProviderPlugin\x12S\n" +
 	"\tHeartbeat\x12\".cnquery.providers.v1.HeartbeatReq\x1a\".cnquery.providers.v1.HeartbeatRes\x12\\\n" +
 	"\fTranslations\x12%.cnquery.providers.v1.TranslationsReq\x1a%.cnquery.providers.v1.TranslationsRes\x12P\n" +
@@ -1375,86 +1281,84 @@ func file_plugin_proto_rawDescGZIP() []byte {
 	return file_plugin_proto_rawDescData
 }
 
-var file_plugin_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_plugin_proto_goTypes = []any{
-	(ErrorKind)(0),                  // 0: cnquery.providers.v1.ErrorKind
-	(*ParseCLIReq)(nil),             // 1: cnquery.providers.v1.ParseCLIReq
-	(*ParseCLIRes)(nil),             // 2: cnquery.providers.v1.ParseCLIRes
-	(*ConnectReq)(nil),              // 3: cnquery.providers.v1.ConnectReq
-	(*ConnectRes)(nil),              // 4: cnquery.providers.v1.ConnectRes
-	(*ErrorDetail)(nil),             // 5: cnquery.providers.v1.ErrorDetail
-	(*ShutdownReq)(nil),             // 6: cnquery.providers.v1.ShutdownReq
-	(*ShutdownRes)(nil),             // 7: cnquery.providers.v1.ShutdownRes
-	(*DataReq)(nil),                 // 8: cnquery.providers.v1.DataReq
-	(*DataRes)(nil),                 // 9: cnquery.providers.v1.DataRes
-	(*CollectRes)(nil),              // 10: cnquery.providers.v1.CollectRes
-	(*StoreReq)(nil),                // 11: cnquery.providers.v1.StoreReq
-	(*ResourceData)(nil),            // 12: cnquery.providers.v1.ResourceData
-	(*StoreRes)(nil),                // 13: cnquery.providers.v1.StoreRes
-	(*HeartbeatReq)(nil),            // 14: cnquery.providers.v1.HeartbeatReq
-	(*HeartbeatRes)(nil),            // 15: cnquery.providers.v1.HeartbeatRes
-	(*DisconnectReq)(nil),           // 16: cnquery.providers.v1.DisconnectReq
-	(*DisconnectRes)(nil),           // 17: cnquery.providers.v1.DisconnectRes
-	(*TranslationsReq)(nil),         // 18: cnquery.providers.v1.TranslationsReq
-	(*TranslationsRes)(nil),         // 19: cnquery.providers.v1.TranslationsRes
-	(*Translation)(nil),             // 20: cnquery.providers.v1.Translation
-	(*ResolveAssetReq)(nil),         // 21: cnquery.providers.v1.ResolveAssetReq
-	(*ResolveAssetRes)(nil),         // 22: cnquery.providers.v1.ResolveAssetRes
-	nil,                             // 23: cnquery.providers.v1.ParseCLIReq.FlagsEntry
-	nil,                             // 24: cnquery.providers.v1.DataReq.ArgsEntry
-	nil,                             // 25: cnquery.providers.v1.ResourceData.FieldsEntry
-	(*inventory.Asset)(nil),         // 26: cnquery.providers.v1.Asset
-	(*upstream.UpstreamConfig)(nil), // 27: mondoo.mql.upstream.v1.UpstreamConfig
-	(*inventory.Inventory)(nil),     // 28: cnquery.providers.v1.Inventory
-	(*llx.Primitive)(nil),           // 29: mql.llx.Primitive
-	(*llx.Block)(nil),               // 30: mql.llx.Block
-	(*llx.Result)(nil),              // 31: mql.llx.Result
+	(*ParseCLIReq)(nil),             // 0: cnquery.providers.v1.ParseCLIReq
+	(*ParseCLIRes)(nil),             // 1: cnquery.providers.v1.ParseCLIRes
+	(*ConnectReq)(nil),              // 2: cnquery.providers.v1.ConnectReq
+	(*ConnectRes)(nil),              // 3: cnquery.providers.v1.ConnectRes
+	(*ShutdownReq)(nil),             // 4: cnquery.providers.v1.ShutdownReq
+	(*ShutdownRes)(nil),             // 5: cnquery.providers.v1.ShutdownRes
+	(*DataReq)(nil),                 // 6: cnquery.providers.v1.DataReq
+	(*DataRes)(nil),                 // 7: cnquery.providers.v1.DataRes
+	(*CollectRes)(nil),              // 8: cnquery.providers.v1.CollectRes
+	(*StoreReq)(nil),                // 9: cnquery.providers.v1.StoreReq
+	(*ResourceData)(nil),            // 10: cnquery.providers.v1.ResourceData
+	(*StoreRes)(nil),                // 11: cnquery.providers.v1.StoreRes
+	(*HeartbeatReq)(nil),            // 12: cnquery.providers.v1.HeartbeatReq
+	(*HeartbeatRes)(nil),            // 13: cnquery.providers.v1.HeartbeatRes
+	(*DisconnectReq)(nil),           // 14: cnquery.providers.v1.DisconnectReq
+	(*DisconnectRes)(nil),           // 15: cnquery.providers.v1.DisconnectRes
+	(*TranslationsReq)(nil),         // 16: cnquery.providers.v1.TranslationsReq
+	(*TranslationsRes)(nil),         // 17: cnquery.providers.v1.TranslationsRes
+	(*Translation)(nil),             // 18: cnquery.providers.v1.Translation
+	(*ResolveAssetReq)(nil),         // 19: cnquery.providers.v1.ResolveAssetReq
+	(*ResolveAssetRes)(nil),         // 20: cnquery.providers.v1.ResolveAssetRes
+	nil,                             // 21: cnquery.providers.v1.ParseCLIReq.FlagsEntry
+	nil,                             // 22: cnquery.providers.v1.DataReq.ArgsEntry
+	nil,                             // 23: cnquery.providers.v1.ResourceData.FieldsEntry
+	(*inventory.Asset)(nil),         // 24: cnquery.providers.v1.Asset
+	(*upstream.UpstreamConfig)(nil), // 25: mondoo.mql.upstream.v1.UpstreamConfig
+	(*inventory.Inventory)(nil),     // 26: cnquery.providers.v1.Inventory
+	(*llx.Primitive)(nil),           // 27: mql.llx.Primitive
+	(*llx.ErrorDetail)(nil),         // 28: mql.llx.ErrorDetail
+	(*llx.Block)(nil),               // 29: mql.llx.Block
+	(*llx.Result)(nil),              // 30: mql.llx.Result
 }
 var file_plugin_proto_depIdxs = []int32{
-	23, // 0: cnquery.providers.v1.ParseCLIReq.flags:type_name -> cnquery.providers.v1.ParseCLIReq.FlagsEntry
-	26, // 1: cnquery.providers.v1.ParseCLIRes.asset:type_name -> cnquery.providers.v1.Asset
-	26, // 2: cnquery.providers.v1.ConnectReq.asset:type_name -> cnquery.providers.v1.Asset
-	27, // 3: cnquery.providers.v1.ConnectReq.upstream:type_name -> mondoo.mql.upstream.v1.UpstreamConfig
-	26, // 4: cnquery.providers.v1.ConnectRes.asset:type_name -> cnquery.providers.v1.Asset
-	28, // 5: cnquery.providers.v1.ConnectRes.inventory:type_name -> cnquery.providers.v1.Inventory
-	0,  // 6: cnquery.providers.v1.ErrorDetail.kind:type_name -> cnquery.providers.v1.ErrorKind
-	24, // 7: cnquery.providers.v1.DataReq.args:type_name -> cnquery.providers.v1.DataReq.ArgsEntry
-	29, // 8: cnquery.providers.v1.DataRes.data:type_name -> mql.llx.Primitive
-	12, // 9: cnquery.providers.v1.StoreReq.resources:type_name -> cnquery.providers.v1.ResourceData
-	25, // 10: cnquery.providers.v1.ResourceData.fields:type_name -> cnquery.providers.v1.ResourceData.FieldsEntry
-	20, // 11: cnquery.providers.v1.TranslationsRes.translations:type_name -> cnquery.providers.v1.Translation
-	30, // 12: cnquery.providers.v1.Translation.block:type_name -> mql.llx.Block
-	26, // 13: cnquery.providers.v1.ResolveAssetRes.asset:type_name -> cnquery.providers.v1.Asset
-	29, // 14: cnquery.providers.v1.ParseCLIReq.FlagsEntry.value:type_name -> mql.llx.Primitive
-	29, // 15: cnquery.providers.v1.DataReq.ArgsEntry.value:type_name -> mql.llx.Primitive
-	31, // 16: cnquery.providers.v1.ResourceData.FieldsEntry.value:type_name -> mql.llx.Result
-	14, // 17: cnquery.providers.v1.ProviderPlugin.Heartbeat:input_type -> cnquery.providers.v1.HeartbeatReq
-	18, // 18: cnquery.providers.v1.ProviderPlugin.Translations:input_type -> cnquery.providers.v1.TranslationsReq
-	1,  // 19: cnquery.providers.v1.ProviderPlugin.ParseCLI:input_type -> cnquery.providers.v1.ParseCLIReq
-	3,  // 20: cnquery.providers.v1.ProviderPlugin.Connect:input_type -> cnquery.providers.v1.ConnectReq
-	16, // 21: cnquery.providers.v1.ProviderPlugin.Disconnect:input_type -> cnquery.providers.v1.DisconnectReq
-	3,  // 22: cnquery.providers.v1.ProviderPlugin.MockConnect:input_type -> cnquery.providers.v1.ConnectReq
-	6,  // 23: cnquery.providers.v1.ProviderPlugin.Shutdown:input_type -> cnquery.providers.v1.ShutdownReq
-	8,  // 24: cnquery.providers.v1.ProviderPlugin.GetData:input_type -> cnquery.providers.v1.DataReq
-	11, // 25: cnquery.providers.v1.ProviderPlugin.StoreData:input_type -> cnquery.providers.v1.StoreReq
-	21, // 26: cnquery.providers.v1.ProviderPlugin.ResolveAsset:input_type -> cnquery.providers.v1.ResolveAssetReq
-	9,  // 27: cnquery.providers.v1.ProviderCallback.Collect:input_type -> cnquery.providers.v1.DataRes
-	8,  // 28: cnquery.providers.v1.ProviderCallback.GetRecording:input_type -> cnquery.providers.v1.DataReq
-	8,  // 29: cnquery.providers.v1.ProviderCallback.GetData:input_type -> cnquery.providers.v1.DataReq
-	15, // 30: cnquery.providers.v1.ProviderPlugin.Heartbeat:output_type -> cnquery.providers.v1.HeartbeatRes
-	19, // 31: cnquery.providers.v1.ProviderPlugin.Translations:output_type -> cnquery.providers.v1.TranslationsRes
-	2,  // 32: cnquery.providers.v1.ProviderPlugin.ParseCLI:output_type -> cnquery.providers.v1.ParseCLIRes
-	4,  // 33: cnquery.providers.v1.ProviderPlugin.Connect:output_type -> cnquery.providers.v1.ConnectRes
-	17, // 34: cnquery.providers.v1.ProviderPlugin.Disconnect:output_type -> cnquery.providers.v1.DisconnectRes
-	4,  // 35: cnquery.providers.v1.ProviderPlugin.MockConnect:output_type -> cnquery.providers.v1.ConnectRes
-	7,  // 36: cnquery.providers.v1.ProviderPlugin.Shutdown:output_type -> cnquery.providers.v1.ShutdownRes
-	9,  // 37: cnquery.providers.v1.ProviderPlugin.GetData:output_type -> cnquery.providers.v1.DataRes
-	13, // 38: cnquery.providers.v1.ProviderPlugin.StoreData:output_type -> cnquery.providers.v1.StoreRes
-	22, // 39: cnquery.providers.v1.ProviderPlugin.ResolveAsset:output_type -> cnquery.providers.v1.ResolveAssetRes
-	10, // 40: cnquery.providers.v1.ProviderCallback.Collect:output_type -> cnquery.providers.v1.CollectRes
-	12, // 41: cnquery.providers.v1.ProviderCallback.GetRecording:output_type -> cnquery.providers.v1.ResourceData
-	9,  // 42: cnquery.providers.v1.ProviderCallback.GetData:output_type -> cnquery.providers.v1.DataRes
+	21, // 0: cnquery.providers.v1.ParseCLIReq.flags:type_name -> cnquery.providers.v1.ParseCLIReq.FlagsEntry
+	24, // 1: cnquery.providers.v1.ParseCLIRes.asset:type_name -> cnquery.providers.v1.Asset
+	24, // 2: cnquery.providers.v1.ConnectReq.asset:type_name -> cnquery.providers.v1.Asset
+	25, // 3: cnquery.providers.v1.ConnectReq.upstream:type_name -> mondoo.mql.upstream.v1.UpstreamConfig
+	24, // 4: cnquery.providers.v1.ConnectRes.asset:type_name -> cnquery.providers.v1.Asset
+	26, // 5: cnquery.providers.v1.ConnectRes.inventory:type_name -> cnquery.providers.v1.Inventory
+	22, // 6: cnquery.providers.v1.DataReq.args:type_name -> cnquery.providers.v1.DataReq.ArgsEntry
+	27, // 7: cnquery.providers.v1.DataRes.data:type_name -> mql.llx.Primitive
+	28, // 8: cnquery.providers.v1.DataRes.error_detail:type_name -> mql.llx.ErrorDetail
+	10, // 9: cnquery.providers.v1.StoreReq.resources:type_name -> cnquery.providers.v1.ResourceData
+	23, // 10: cnquery.providers.v1.ResourceData.fields:type_name -> cnquery.providers.v1.ResourceData.FieldsEntry
+	18, // 11: cnquery.providers.v1.TranslationsRes.translations:type_name -> cnquery.providers.v1.Translation
+	29, // 12: cnquery.providers.v1.Translation.block:type_name -> mql.llx.Block
+	24, // 13: cnquery.providers.v1.ResolveAssetRes.asset:type_name -> cnquery.providers.v1.Asset
+	27, // 14: cnquery.providers.v1.ParseCLIReq.FlagsEntry.value:type_name -> mql.llx.Primitive
+	27, // 15: cnquery.providers.v1.DataReq.ArgsEntry.value:type_name -> mql.llx.Primitive
+	30, // 16: cnquery.providers.v1.ResourceData.FieldsEntry.value:type_name -> mql.llx.Result
+	12, // 17: cnquery.providers.v1.ProviderPlugin.Heartbeat:input_type -> cnquery.providers.v1.HeartbeatReq
+	16, // 18: cnquery.providers.v1.ProviderPlugin.Translations:input_type -> cnquery.providers.v1.TranslationsReq
+	0,  // 19: cnquery.providers.v1.ProviderPlugin.ParseCLI:input_type -> cnquery.providers.v1.ParseCLIReq
+	2,  // 20: cnquery.providers.v1.ProviderPlugin.Connect:input_type -> cnquery.providers.v1.ConnectReq
+	14, // 21: cnquery.providers.v1.ProviderPlugin.Disconnect:input_type -> cnquery.providers.v1.DisconnectReq
+	2,  // 22: cnquery.providers.v1.ProviderPlugin.MockConnect:input_type -> cnquery.providers.v1.ConnectReq
+	4,  // 23: cnquery.providers.v1.ProviderPlugin.Shutdown:input_type -> cnquery.providers.v1.ShutdownReq
+	6,  // 24: cnquery.providers.v1.ProviderPlugin.GetData:input_type -> cnquery.providers.v1.DataReq
+	9,  // 25: cnquery.providers.v1.ProviderPlugin.StoreData:input_type -> cnquery.providers.v1.StoreReq
+	19, // 26: cnquery.providers.v1.ProviderPlugin.ResolveAsset:input_type -> cnquery.providers.v1.ResolveAssetReq
+	7,  // 27: cnquery.providers.v1.ProviderCallback.Collect:input_type -> cnquery.providers.v1.DataRes
+	6,  // 28: cnquery.providers.v1.ProviderCallback.GetRecording:input_type -> cnquery.providers.v1.DataReq
+	6,  // 29: cnquery.providers.v1.ProviderCallback.GetData:input_type -> cnquery.providers.v1.DataReq
+	13, // 30: cnquery.providers.v1.ProviderPlugin.Heartbeat:output_type -> cnquery.providers.v1.HeartbeatRes
+	17, // 31: cnquery.providers.v1.ProviderPlugin.Translations:output_type -> cnquery.providers.v1.TranslationsRes
+	1,  // 32: cnquery.providers.v1.ProviderPlugin.ParseCLI:output_type -> cnquery.providers.v1.ParseCLIRes
+	3,  // 33: cnquery.providers.v1.ProviderPlugin.Connect:output_type -> cnquery.providers.v1.ConnectRes
+	15, // 34: cnquery.providers.v1.ProviderPlugin.Disconnect:output_type -> cnquery.providers.v1.DisconnectRes
+	3,  // 35: cnquery.providers.v1.ProviderPlugin.MockConnect:output_type -> cnquery.providers.v1.ConnectRes
+	5,  // 36: cnquery.providers.v1.ProviderPlugin.Shutdown:output_type -> cnquery.providers.v1.ShutdownRes
+	7,  // 37: cnquery.providers.v1.ProviderPlugin.GetData:output_type -> cnquery.providers.v1.DataRes
+	11, // 38: cnquery.providers.v1.ProviderPlugin.StoreData:output_type -> cnquery.providers.v1.StoreRes
+	20, // 39: cnquery.providers.v1.ProviderPlugin.ResolveAsset:output_type -> cnquery.providers.v1.ResolveAssetRes
+	8,  // 40: cnquery.providers.v1.ProviderCallback.Collect:output_type -> cnquery.providers.v1.CollectRes
+	10, // 41: cnquery.providers.v1.ProviderCallback.GetRecording:output_type -> cnquery.providers.v1.ResourceData
+	7,  // 42: cnquery.providers.v1.ProviderCallback.GetData:output_type -> cnquery.providers.v1.DataRes
 	30, // [30:43] is the sub-list for method output_type
 	17, // [17:30] is the sub-list for method input_type
 	17, // [17:17] is the sub-list for extension type_name
@@ -1472,14 +1376,13 @@ func file_plugin_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_proto_rawDesc), len(file_plugin_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   25,
+			NumEnums:      0,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   2,
 		},
 		GoTypes:           file_plugin_proto_goTypes,
 		DependencyIndexes: file_plugin_proto_depIdxs,
-		EnumInfos:         file_plugin_proto_enumTypes,
 		MessageInfos:      file_plugin_proto_msgTypes,
 	}.Build()
 	File_plugin_proto = out.File
