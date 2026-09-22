@@ -1,6 +1,6 @@
 # Implementation patterns for MQL resources
 
-The Go shapes behind the rules in the root `CLAUDE.md` §2 Step 3. Each pattern says when it applies and shows the code; the rules themselves (when `StateIsNull` is mandatory, why an `init` must not fall through) stay in `CLAUDE.md`.
+The Go shapes behind the rules in the root `AGENTS.md` §2 Step 3. Each pattern says when it applies and shows the code; the rules themselves (when `StateIsNull` is mandatory, why an `init` must not fall through) stay in `AGENTS.md`.
 
 ## Pattern A: immediate mapping with `CreateResource`
 

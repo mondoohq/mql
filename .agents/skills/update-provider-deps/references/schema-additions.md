@@ -1,7 +1,7 @@
 # Adding fields and resources from a new SDK version
 
 Read during Phase 5 (enum comments) and Phase 7 (implementing the user's selection). This
-covers only what an SDK upgrade specifically makes tricky; CLAUDE.md remains the authority
+covers only what an SDK upgrade specifically makes tricky; AGENTS.md remains the authority
 on `.lr` style, doc-comment shape, and the typed-reference gate.
 
 ## Contents
@@ -50,7 +50,7 @@ Do **not** bump `config.go`'s `Version` — that belongs to the release flow.
 
 ## Typed references
 
-CLAUDE.md's gate applies to every new field: a value that identifies another modeled
+AGENTS.md's gate applies to every new field: a value that identifies another modeled
 resource should be a typed accessor, not a raw ID string. Two SDK-upgrade-specific
 cautions:
 
@@ -70,7 +70,7 @@ than shipping something that returns empty.
 
 ## When a value earns a sub-resource
 
-CLAUDE.md's bar: a clear natural ID, or nested typed references. Otherwise flatten scalars
+AGENTS.md's bar: a clear natural ID, or nested typed references. Otherwise flatten scalars
 onto the parent with a disambiguating prefix, or use `map[string]string` / `[]dict`.
 
 The upgrade-specific hazard is **`__id` collisions on shared values**. A struct that is

@@ -379,7 +379,7 @@ they flag rather than enough to form an impression.
 `classify-inits.awk` sorts a provider's init functions into three buckets:
 
 ```bash
-awk -f .claude/skills/provider-api-call-dedup/classify-inits.awk providers/<name>/resources/*.go | sort
+awk -f .agents/skills/provider-api-call-dedup/classify-inits.awk providers/<name>/resources/*.go | sort
 ```
 
 | Bucket | Meaning |
@@ -432,7 +432,7 @@ Real counts, receiver-agnostic:
 k8s at zero is the shape to aim for. Everything else has some.
 
 ```bash
-awk -f .claude/skills/provider-api-call-dedup/classify-accessors.awk \
+awk -f .agents/skills/provider-api-call-dedup/classify-accessors.awk \
     providers/<name>/resources/*.go | cut -f1 | sort | uniq -c
 ```
 

@@ -398,7 +398,7 @@ ends up as an empty entry in the docs.
 
 The parser enforces the comment's shape: either a single title line, or a title, one blank `//` line, and a multi-line
 description. Titles are capped at 150 characters, may not start with "deprecated", and descriptions may not start with
-`Deprecated.` or `Deprecated:`. The full set of enforced and stylistic rules is in `CLAUDE.md` §2 Step 1.
+`Deprecated.` or `Deprecated:`. The full set of enforced and stylistic rules is in `AGENTS.md` §2 Step 1.
 
 Write the comment for someone who has never seen the provider's Go code:
 
@@ -412,7 +412,7 @@ Write the comment for someone who has never seen the provider's Go code:
   not "lifecycle entry on the bucket").
 - **For deprecated fields**, mark them `@maturity("deprecated")` and open the description with
   `Deprecated in favor of ...` or `Deprecated, please use ...`. The title stays a plain noun phrase; a title or
-  description that starts with "deprecated" is rejected at parse time (see `CLAUDE.md` §5).
+  description that starts with "deprecated" is rejected at parse time (see `AGENTS.md` §5).
 - **No em dashes** in `.lr` files. Use a period, comma, parentheses, or colon.
 
 ```lr

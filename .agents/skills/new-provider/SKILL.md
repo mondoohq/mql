@@ -79,8 +79,8 @@ Show the user:
 
 ## Important Reminders
 
-- Every source file must start with the copyright header (see CLAUDE.md)
-- Every resource and field in `.lr` files must have a doc-comment (see CLAUDE.md for format rules)
+- Every source file must start with the copyright header (see AGENTS.md)
+- Every resource and field in `.lr` files must have a doc-comment (see AGENTS.md for format rules)
 - All `.lr.versions` entries for a brand-new provider should use the same version as `config.go` `Version`
 - If you add `mql*Internal` structs, run `./mqlr generate` twice (second pass detects and embeds them)
 - Connection setup (API keys, OAuth, env vars) goes in `connection/connection.go`

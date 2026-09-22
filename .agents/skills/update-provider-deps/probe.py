@@ -11,7 +11,7 @@ paths, applies them across the source tree, and runs `go mod tidy && go build`.
 
 Run it from the mql root. Paths below assume the skill directory:
 
-  P=.claude/skills/update-provider-deps/probe.py
+  P=.agents/skills/update-provider-deps/probe.py
 
   python3 $P                            # probe every known provider's go.mod
   python3 $P --provider=aws,oci         # only these (providers/aws, providers/oci)

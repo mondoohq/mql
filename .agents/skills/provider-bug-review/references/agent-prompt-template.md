@@ -20,7 +20,7 @@ Audit ONLY these files (read each fully):
 - <file 2>
 - ...
 
-Read <REPO>/.claude/skills/provider-bug-review/references/bug-taxonomy.md first
+Read <REPO>/.agents/skills/provider-bug-review/references/bug-taxonomy.md first
 — it is the exact catalogue of bug classes to look for. [OR: paste the taxonomy
 inline if the agent can't read it.]
 

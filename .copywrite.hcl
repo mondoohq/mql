@@ -16,6 +16,7 @@ project {
     "**/*_string.go",
     ".git/**",
     "providers-sdk/v1/mqlr/lrcore/lr_test.go",
+    "AGENTS.md",
     "CLAUDE.md",
   ]
 }

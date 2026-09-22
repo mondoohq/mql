@@ -50,7 +50,7 @@ Patterns seen repeatedly across Azure, Atlas, Okta, Databricks and Nutanix upgra
 
 ## Decision table: what to do about a shipped field
 
-Once a change is kind 3, the rule from CLAUDE.md governs: **never change a shipped field's
+Once a change is kind 3, the rule from AGENTS.md governs: **never change a shipped field's
 type or meaning in place.** Customers have policies compiled against it.
 
 | Situation | Response |
@@ -84,7 +84,7 @@ would arrive unannounced, as a side effect of a call-site edit.)
 Either way, leave a comment at the call site saying which it is and why, so the next
 upgrade doesn't have to re-derive the reasoning.
 
-The same applies to *fields*: CLAUDE.md says to skip deprecated SDK fields when adding new
+The same applies to *fields*: AGENTS.md says to skip deprecated SDK fields when adding new
 schema. A deprecated field often returns empty on modern resources because the data moved,
 so modelling it adds dead schema.
 

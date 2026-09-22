@@ -6,7 +6,7 @@ argument-hint: "<provider>/<resource> (e.g. os/bind9, aws/aws.ec2.instance)"
 
 # Add a resource to an mql provider
 
-**CLAUDE.md is the rulebook** — doc-comment format, the typed-reference gate, `CreateResource` vs `NewResource`, `.lr.versions`, the sub-resource bar. Read it and follow it. This skill is the part that rulebooks do not carry: the traps that bite *even when you know the rule*, the commands that catch them mechanically, and the verification that proves the resource against a real target rather than against your reading of it.
+**AGENTS.md is the rulebook** — doc-comment format, the typed-reference gate, `CreateResource` vs `NewResource`, `.lr.versions`, the sub-resource bar. Read it and follow it. This skill is the part that rulebooks do not carry: the traps that bite *even when you know the rule*, the commands that catch them mechanically, and the verification that proves the resource against a real target rather than against your reading of it.
 
 The Go shapes behind the rules — `CreateResource`/`NewResource`/`init`, `Internal` structs and `securityGroupIdHandler`, null singular accessors, lazy detail fetches, the `command` resource, discovery filters, pagination — are in [references/implementation-patterns.md](references/implementation-patterns.md). Open it once the shape is decided (step 2) and you start writing Go.
 
@@ -30,7 +30,7 @@ Read the distribution's actual layout. Debian splits configuration across fragme
 
 ## 2. Decide the shape, then check it against the identity dimensions
 
-Follow CLAUDE.md's sub-resource bar (clear id, or nested typed refs — otherwise flatten). Then answer one more question the rulebook does not ask:
+Follow AGENTS.md's sub-resource bar (clear id, or nested typed refs — otherwise flatten). Then answer one more question the rulebook does not ask:
 
 **Along which dimensions can this thing repeat?** Write them down and build `__id` from all of them.
 
@@ -88,7 +88,7 @@ Declared in the `.lr` as `[]network.certificate(content, path)` for a list resou
 
 ## 3. Traps that bite even though they are documented
 
-Each of these is in CLAUDE.md. Each still gets walked into, because the failure looks like a bug in your Go code rather than a naming rule. Match the fingerprint:
+Each of these is in AGENTS.md. Each still gets walked into, because the failure looks like a bug in your Go code rather than a naming rule. Match the fingerprint:
 
 | symptom | cause | fix |
 |---|---|---|

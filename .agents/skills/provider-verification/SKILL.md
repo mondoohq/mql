@@ -45,8 +45,8 @@ Run the bundled script — it parses the diff and lists every added/changed
 resource and field, grouped by provider:
 
 ```bash
-python3 .claude/skills/provider-verification/extract_changes.py --pr 7701
-python3 .claude/skills/provider-verification/extract_changes.py --range A..B
+python3 .agents/skills/provider-verification/extract_changes.py --pr 7701
+python3 .agents/skills/provider-verification/extract_changes.py --range A..B
 ```
 
 It reports `.lr` schema changes (new resources, new fields) and flags the
@@ -242,12 +242,12 @@ If there are bugs with verifiable fixes, open **one combined PR** for all of
 them, across every provider:
 
 1. Work in a worktree branched from `main`.
-2. Apply the fixes. Match existing patterns in the provider (see CLAUDE.md).
+2. Apply the fixes. Match existing patterns in the provider (see AGENTS.md).
 3. `gofmt -w` changed files; rebuild the provider; **re-run the failing
    queries against the still-live infrastructure** to confirm each fix works.
 4. Commit `*.permissions.json` if a fix changed it. No `.lr.versions` change
    unless a fix adds a schema field.
-5. Commit (emoji-prefixed per CLAUDE.md — `🐛`), push, `gh pr create`.
+5. Commit (emoji-prefixed per AGENTS.md — `🐛`), push, `gh pr create`.
 
 Verify fixes **before** teardown — the infrastructure is needed to prove them.
 

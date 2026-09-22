@@ -17,7 +17,7 @@ handles that; the rest of this skill is about the parts that need judgment.
 All paths below assume you are at the mql root:
 
 ```bash
-P=.claude/skills/update-provider-deps
+P=.agents/skills/update-provider-deps
 ```
 
 ## Phase 0 — Scope
