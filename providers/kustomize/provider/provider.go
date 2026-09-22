@@ -150,7 +150,12 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.KustomizeConne
 			asset.Id = platformID
 			asset.Connections[0].PlatformId = platformID
 			asset.PlatformIds = []string{platformID}
-			asset.Name = "Kustomize file " + name
+			// Only name an asset that has no name. A caller who passed --asset-name
+			// has already named this asset, and detection running afterwards must not
+			// take that back; identity still comes from the platform ID above.
+			if asset.Name == "" {
+				asset.Name = "Kustomize file " + name
+			}
 			return nil
 		}
 	}
@@ -168,12 +173,16 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.KustomizeConne
 		asset.Id = platformID
 		asset.Connections[0].PlatformId = platformID
 		asset.PlatformIds = []string{platformID}
-		asset.Name = "Kustomize file " + parseNameFromPath(projectPath)
+		if asset.Name == "" {
+			asset.Name = "Kustomize file " + parseNameFromPath(projectPath)
+		}
 		return nil
 	}
 
 	asset.Id = conn.Conf.Type
-	asset.Name = conn.Conf.Host
+	if asset.Name == "" {
+		asset.Name = conn.Conf.Host
+	}
 	return nil
 }
 

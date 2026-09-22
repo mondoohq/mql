@@ -146,7 +146,9 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.AnsibleConnect
 
 	projectPath, ok := asset.Connections[0].Options["path"]
 	if !ok || projectPath == "" {
-		asset.Name = conn.Conf.Host
+		if asset.Name == "" {
+			asset.Name = conn.Conf.Host
+		}
 		return nil
 	}
 
@@ -159,7 +161,12 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.AnsibleConnect
 	platformID := "//platformid.api.mondoo.app/runtime/ansible/hash/" + hex.EncodeToString(h.Sum(nil))
 	asset.Connections[0].PlatformId = platformID
 	asset.PlatformIds = []string{platformID}
-	asset.Name = nameKind + parseNameFromPath(projectPath)
+	// Only name an asset that has no name. A caller who passed --asset-name has
+	// already named this asset, and detection running afterwards must not take
+	// that back; identity still comes from the platform ID above.
+	if asset.Name == "" {
+		asset.Name = nameKind + parseNameFromPath(projectPath)
+	}
 	return nil
 }
 

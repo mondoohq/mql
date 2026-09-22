@@ -66,7 +66,12 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.Connection) er
 			asset.PlatformIds = []string{platformID}
 		}
 		asset.Connections[0].PlatformId = asset.PlatformIds[0]
-		asset.Name = p.Title + " " + org + "/" + repo
+		// Only name an asset that has no name. A caller who passed --asset-name
+		// has already named this asset, and detection running afterwards must
+		// not take that back; the platform ID above guards for the same reason.
+		if asset.Name == "" {
+			asset.Name = p.Title + " " + org + "/" + repo
+		}
 		return nil
 	}
 
@@ -81,7 +86,9 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.Connection) er
 			asset.PlatformIds = []string{platformID}
 		}
 		asset.Connections[0].PlatformId = asset.PlatformIds[0]
-		asset.Name = p.Title + " " + parseNameFromPath(projectPath)
+		if asset.Name == "" {
+			asset.Name = p.Title + " " + parseNameFromPath(projectPath)
+		}
 		return nil
 	}
 

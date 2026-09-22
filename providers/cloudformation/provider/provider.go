@@ -135,7 +135,6 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 
 func (s *Service) detect(asset *inventory.Asset, conn *connection.CloudformationConnection) error {
 	asset.Id = conn.Conf.Type
-	asset.Name = conn.Conf.Host
 
 	asset.Platform = &inventory.Platform{
 		TechnologyUrlSegments: []string{"iac", "cloudformation", "template"},
@@ -160,7 +159,12 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.Cloudformation
 			asset.Id = platformID
 			asset.Connections[0].PlatformId = platformID
 			asset.PlatformIds = []string{platformID}
-			asset.Name = "CloudFormation template " + name
+			// Only name an asset that has no name. A caller who passed --asset-name
+			// has already named this asset, and detection running afterwards must not
+			// take that back; identity still comes from the platform ID above.
+			if asset.Name == "" {
+				asset.Name = "CloudFormation template " + name
+			}
 			return nil
 		}
 	}
@@ -174,10 +178,16 @@ func (s *Service) detect(asset *inventory.Asset, conn *connection.Cloudformation
 		platformID := "//platformid.api.mondoo.app/runtime/cloudformation/hash/" + hash
 		asset.Connections[0].PlatformId = platformID
 		asset.PlatformIds = []string{platformID}
-		asset.Name = "CloudFormation template " + parseNameFromPath(projectPath)
+		if asset.Name == "" {
+			asset.Name = "CloudFormation template " + parseNameFromPath(projectPath)
+		}
 		return nil
 	}
 
+	// Neither branch applied, so the connection host is all there is to go on.
+	if asset.Name == "" {
+		asset.Name = conn.Conf.Host
+	}
 	return nil
 }
 
