@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -43,12 +44,124 @@ import (
 
 type Service struct {
 	*plugin.Service
+
+	// deferredDetects tracks platform detection that Connect skipped, keyed by
+	// connection id. See ensurePlatformDetected.
+	deferredDetects sync.Map
 }
 
 func Init() *Service {
 	return &Service{
 		Service: plugin.NewService(),
 	}
+}
+
+// deferredDetect is one connection's postponed platform detection. The once
+// keeps concurrent field reads from detecting several times over, and holding
+// the error keeps a failure from being retried on every subsequent field.
+type deferredDetect struct {
+	once sync.Once
+	err  error
+}
+
+// GetData serves a resource field, after making sure the connection knows what
+// platform it is talking to.
+//
+// Connect skips detection for a connection that delays discovery, and for a
+// container image that is every connection: the image connection constructor
+// sets DelayDiscovery during Connect precisely so the layers are not downloaded
+// just to answer "what is this". Detection then happens in the second, post
+// discovery connect.
+//
+// Between those two points the connection is live and can be queried, and until
+// this guard existed it answered with no platform at all -- so every resource
+// that reads conn.Asset().Platform saw nil. That is not a clean failure:
+// Platform.IsFamily is nil-safe and returns false, so a chain like
+//
+//	platform.IsFamily("linux") || ... || platform.Name == "aix"
+//
+// short-circuits past the safe calls and dereferences nil on the last one. The
+// plugin layer recovers the panic and answers the query with an error, so the
+// scan completes, reports the check as "error", and exits 0.
+//
+// Detecting here rather than at Connect keeps what DelayDiscovery is for -- no
+// work until something actually asks -- while making the platform available to
+// whatever asked. A resource query is exactly the point at which the platform
+// is needed and the cost is warranted.
+func (s *Service) GetData(req *plugin.DataReq) (*plugin.DataRes, error) {
+	if err := s.ensurePlatformDetected(req.Connection); err != nil {
+		return nil, err
+	}
+	return s.Service.GetData(req)
+}
+
+// StoreData caches resources the caller already has, creating any that this
+// connection has not seen, and takes the same guard as GetData.
+//
+// Not because a path from here to a platform read is known -- CreateResource
+// reaches the generated create* constructors, which set fields rather than
+// consult the platform, so today it does not. It is here because the invariant
+// is about resources existing on this connection at all, not about which RPC
+// asked for them: there are 56 platform reads across this provider's resources,
+// and the one that makes a constructor consult the platform would otherwise
+// reintroduce the bug silently. Symmetry at the boundary costs one call.
+//
+// ResolveAsset needs no guard: it only looks up a resource that already exists.
+func (s *Service) StoreData(req *plugin.StoreReq) (*plugin.StoreRes, error) {
+	if err := s.ensurePlatformDetected(req.Connection); err != nil {
+		return nil, err
+	}
+	return s.Service.StoreData(req)
+}
+
+// Disconnect drops the connection's detection state along with the connection.
+func (s *Service) Disconnect(req *plugin.DisconnectReq) (*plugin.DisconnectRes, error) {
+	s.deferredDetects.Delete(req.Connection)
+	return s.Service.Disconnect(req)
+}
+
+// ensurePlatformDetected runs detection for a connection that does not have a
+// platform yet, once, and refuses the request when it cannot.
+//
+// Refusing is the point. Every resource in this provider reads
+// conn.Asset().Platform, and none of them can report a missing one cleanly:
+// the IsFamily chains dereference nil on their last term. So a connection this
+// cannot give a platform to must not have resources created on it at all --
+// an asset with no connection config for detect to read is an error here, not
+// something to wave through for the resource to deal with.
+//
+// Two cases are left for GetData, because they never reach a resource: a
+// connection this service has no runtime for (GetData fails on the same lookup
+// and returns its own error), and one that is not an os connection.
+func (s *Service) ensurePlatformDetected(connID uint32) error {
+	runtime, err := s.GetRuntime(connID)
+	if err != nil {
+		return nil
+	}
+	conn, ok := runtime.Connection.(shared.Connection)
+	if !ok {
+		return nil
+	}
+
+	asset := conn.Asset()
+	if asset == nil {
+		return errors.New("connection has no asset, so its platform cannot be determined")
+	}
+	// The common path: detection already ran, at Connect or on an earlier field.
+	if asset.Platform != nil && asset.Platform.Name != "" {
+		return nil
+	}
+	if len(asset.Connections) == 0 {
+		return errors.New("connection has no configuration to detect its platform from")
+	}
+
+	entry, _ := s.deferredDetects.LoadOrStore(connID, &deferredDetect{})
+	d := entry.(*deferredDetect)
+	d.once.Do(func() {
+		log.Debug().Uint32("connection", connID).Msg("detecting platform on first resource access")
+		d.err = s.detect(asset, conn)
+	})
+	return d.err
 }
 
 func parseDiscover(flags map[string]*llx.Primitive) *inventory.Discovery {
