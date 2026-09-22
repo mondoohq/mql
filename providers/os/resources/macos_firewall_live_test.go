@@ -229,3 +229,27 @@ func TestFirewallLoggingDetailUnavailable(t *testing.T) {
 	require.ErrorIs(t, err, errFirewallLoggingDetailUnavailable)
 	assert.Contains(t, err.Error(), `LoggingOption "verbose"`)
 }
+
+// With no ALF preferences file, no configuration profile, and socketfilterfw
+// declining, every fallback path reads the absent profile as a nil map. Reading
+// a nil map yields the zero value, so each path returns its "unavailable"
+// error rather than panicking or guessing.
+func TestFirewallNoProfileNoLiveAnswer(t *testing.T) {
+	fw := newFirewallTestRuntime(t, &mock.TomlData{
+		Commands: map[string]*mock.Command{
+			socketfilterfwPath + " --getglobalstate": {Stdout: socketfilterfwManagedReply},
+			socketfilterfwPath + " --getstealthmode": {Stdout: socketfilterfwManagedReply},
+		},
+	})
+
+	managed, err := fw.fetchManaged()
+	require.NoError(t, err)
+	require.Nil(t, managed, "no profile file")
+
+	_, err = fw.globalState()
+	assert.ErrorIs(t, err, errFirewallStateUnavailable)
+	_, err = fw.stealthEnabled()
+	assert.ErrorIs(t, err, errFirewallStateUnavailable)
+	_, err = fw.loggingDetail()
+	assert.ErrorIs(t, err, errFirewallLoggingDetailUnavailable)
+}
