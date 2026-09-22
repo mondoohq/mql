@@ -231,6 +231,10 @@ Strict mode governs **access chains only**. It does not touch:
   happens downstream of that null, not the decision to emit it — and by making the
   downstream consequence loud, it puts real pressure on the 771 AWS call sites to
   be revisited. That is intended, and it is the largest piece of follow-on work.
+  [ADR 046](046-structured-provider-errors.md) is that work, and it settles the
+  question in the direction this section anticipated: a refusal is reported as an
+  error carrying a kind, not as a null, so the nulls strict mode would otherwise
+  have to reason about are not produced in the first place.
 
 ### 4. Strictness is baked into the bytecode, per dereference
 

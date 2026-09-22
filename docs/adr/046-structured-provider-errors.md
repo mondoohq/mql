@@ -1,0 +1,569 @@
+# ADR 046: Structured provider errors
+
+## Status
+
+Proposed
+
+## Context
+
+A provider fails in many different ways, and mql can tell almost none of them
+apart. "I am not allowed to read this", "this does not exist", "this account
+never enabled the service", "slow down", and "the provider crashed" all arrive
+at the executor as the same thing: a string in a field, or a null.
+
+That matters most for **access errors** — the caller lacks the permission to read
+something. They are universal. An OS scan runs as a user who cannot read
+`/etc/shadow`; every cloud refuses a call the role was not granted; SaaS APIs
+answer 403 for a scope the token does not hold. A check that cannot read what it
+is asserting about has not passed, and today it frequently looks like it did.
+
+But access is one kind among several, and classifying it alone would leave the
+next author to invent their own vocabulary for the one beside it. This ADR
+defines the whole set, once.
+
+### The vocabulary already exists — it is just written 143 times
+
+There are 143 `func …(err error) bool` classifiers under `providers/`, written
+independently, converging on the same handful of meanings:
+
+| meaning | a few of the names in the tree |
+|---|---|
+| refused | `Is400AccessDeniedError`, `isAzureAccessDenied`, `IsForbidden` (×8), `IsPermissionError` (×3), `isNoPerm`, `isUnauthorized` |
+| absent | `IsNotFound` (×10), `efsPolicyNotFound`, `isAbsentKey`, `ossConfigAbsent`, `ociZprAbsent` |
+| does not apply here | `isServiceDisabled`, `isAzureFeatureUnavailable`, `isOrganizationsNotInUseError`, `IsMacieNotEnabledError`, `IsPlanRestricted`, `isOktaFeatureUnavailable`, `ociCloudGuardNotSubscribed` |
+| wrong region for the call | `IsServiceNotAvailableInRegionError`, `azureProviderNotInRegion`, `bigqueryLocationUnsupported`, `ociRegionServiceUnavailable`, `esRegionUnavailable` |
+| transient | `exchangeErrorIsTransient`, `httpNotReachable`, `isConnectionRefused`, `isServiceUnavailable` |
+| our code is stale | `isRemovedAPIEndpoint`, `azureClassicAdministratorsRetired`, `isUnknownCommandErr`, `isOperationNotSupportedError` |
+
+Two providers have already written this ADR's argument in comments.
+`providers/gcp/resources/errors.go` builds a three-level nesting and warns that
+"every code folded into a degrade-to-empty check is a real failure the user will
+never see". `providers/azure/resources/shared.go` keeps `isAzureAccessDenied`
+deliberately narrower than `isAzureFeatureUnavailable`, because on a collection
+that *is* the finding, "nothing is configured" and "not allowed to look" must not
+be the same answer.
+
+So the distinction is understood per provider. What is missing is a shared type,
+a wire format, and a consumer that acts on it.
+
+### Scale
+
+- 784 `Is400AccessDeniedError` call sites in aws, 187 gcp
+  `isSkippable`/`isInapplicable`/`isServiceDisabled`, 47 azure.
+- 4,124 explicit `StateIsNull` sites across all providers.
+
+Most of those call sites end in a null. A scan run without permissions therefore
+produces the same values as a scan of a system where the thing is genuinely
+absent — and an empty collection is the most dangerous wrong answer a posture
+check can receive, because assertions over it pass vacuously.
+
+### Structure dies at the process boundary, twice
+
+`TValue.ToDataRes` renders a field error to text
+(`providers-sdk/v1/plugin/runtime.go:193-214`), and the executor rebuilds an
+anonymous error from that text:
+
+```go
+// providers/runtime.go:680
+raw = &llx.RawData{Error: errors.New(data.Error)}
+
+// providers-sdk/v1/plugin/runtime.go:164, :184
+if res.Error != "" {
+    return nil, errors.New(res.Error)
+}
+```
+
+`DataRes.error` is a `string` (`providers-sdk/v1/plugin/plugin.proto:91-96`), and
+so is `llx.Result.error` (`llx/llx.proto:250-254`) — which is what recordings
+persist (`providers-sdk/v1/recording/recording.go:251-253`) and what ships
+upstream. Any type a provider builds is flattened on the way out and cannot be
+recovered on the way in.
+
+The consequence is visible downstream. cnspec detects throttling by matching the
+rendered text:
+
+```go
+// cnspec policy/scan/reporter_aggregate.go:80
+if err != nil && strings.Contains(strings.ToUpper(err.Error()), "TOOMANYREQUESTS") {
+```
+
+That is the same mistake `plugin.IsUnsupportedProviderError` makes on a wrapped
+error, and the reason [ADR 045](045-iac-meta-target.md) introduced a status
+detail instead.
+
+### Two precedents, both deliberate, both partial
+
+**[ADR 045](045-iac-meta-target.md) built the carrier.** `ErrorKind` and
+`ErrorDetail` (`providers-sdk/v1/plugin/plugin.proto:57-75`) exist because "an
+error value does not survive the process boundary", and `ErrorDetail` is named
+for the general case explicitly so more kinds can move onto it without a second
+message. `IsNoMatchError` reads three arms in order of authority — sentinel,
+detail, message text — so a provider built before the detail existed still
+classifies. That structure is what this ADR borrows; it applies it to the other
+relevant calls. Today it is Connect-only: nothing normalizes a kind on `GetData`.
+
+**`llx/skew.go` built the end-to-end path, for one kind.** A typed error
+(`errFieldUnavailable`) with an `Is` method folding onto a sentinel
+(`ErrUnavailable`), a predicate (`IsUnavailable`), a runtime decision point
+(`degradeUnavailableField`, `llx/builtin.go:949-990`), and distinct rendering —
+`print.Disabled` rather than `print.Error` (`cli/printer/mql.go:416`, `:509`).
+Version skew got exactly the treatment access errors need. Everything below
+generalizes that shape.
+
+### ADR 043 parked this work, pointing here
+
+[ADR 043](043-mql-strict-mode.md) §3 lists provider-side null production as out
+of scope and says why: strict mode "puts real pressure on the 771 AWS call sites
+to be revisited. That is intended, and it is the largest piece of follow-on
+work." This is that work. 043 governs what happens downstream of a null; this ADR
+governs whether the null should have been produced at all.
+
+### This is the v14 rc window
+
+v14 has not released. The last stable tag is v13, and everything that exists
+only in the rc is still ours to change without breaking anyone. Two pieces of
+this ADR need exactly that window: the `ErrorDetail` move (§5) and the two new
+proto fields on `DataRes` and `Result`. After GA the same changes are either
+breaking or have to be carried twice, forever, which is the position the
+taxonomy would inherit rather than fix.
+
+That is the reason to settle this now rather than after v14 ships. It is not a
+reason to rush the provider migration: phase 1 is the part that has to make the
+window, and everything after it is ordinary work at ordinary pace.
+
+## Decision
+
+### 1. Eight kinds, named by their HTTP equivalent
+
+Every classified failure is one of these. **The HTTP column names the kinds; it
+is not implemented.** No status-to-kind table exists anywhere in the design, and
+no status is carried on the wire (§4). It is here because "403" is the shortest
+way to say what `forbidden` means to a reader who has to classify an error they
+have never seen before — see §2.
+
+| kind | enum | HTTP | means | in the tree today |
+|---|---|---|---|---|
+| unauthenticated | `ERROR_KIND_UNAUTHENTICATED` | 401 | we are not who we need to be: no credentials, wrong credentials, expired or revoked token | `github/connection:220`, `keycloak/connection/client.go:90`, `notion` `isUnauthorized` |
+| forbidden | `ERROR_KIND_FORBIDDEN` | 403 | we are authenticated and not permitted. **The access error**, and it includes an OS elevation failure: needing `sudo` and not having it is a permission we are asking for | `Is400AccessDeniedError` (784 sites), `isAzureAccessDenied`, `isNoPerm`, `os.ErrPermission`, `sudo.go:329` |
+| not found | `ERROR_KIND_NOT_FOUND` | 404 | the provider could not answer because what it had to read is not there: no such bucket, no such file, no such key. A legitimate absence is a null value and not this kind (§3) | `IsNotFound` (×10), `isKmsNotFoundError`, `isRegistryKeyAbsent` |
+| not applicable | `ERROR_KIND_NOT_APPLICABLE` | 501 | the question does not apply to this target: API not enabled, resource provider not registered, feature not in this plan or edition, service not offered in this region, resource not supported on this platform | `isServiceDisabled`, `isOrganizationsNotInUseError`, `IsPlanRestricted`, `IsServiceNotAvailableInRegionError`, `kernel.go:27` |
+| gone | `ERROR_KIND_GONE` | 410 | the API we call existed and does not any more: retired endpoint, removed operation, command the target no longer has | `isRemovedAPIEndpoint`, `azureClassicAdministratorsRetired`, `isUnknownCommandErr` |
+| too many requests | `ERROR_KIND_TOO_MANY_REQUESTS` | 429 | throttled. Carries `retry_after` when the API said so | handled in three providers (`github/connection/connection.go:297`, which folds it in with 403; `iru`; `ms365`), generic everywhere else |
+| unavailable | `ERROR_KIND_UNAVAILABLE` | 503 | the target is temporarily not answering: 5xx, connection refused, timeout, DNS failure | `isServiceUnavailable`, `httpNotReachable`, `isConnectionRefused` |
+| malformed data | `ERROR_KIND_MALFORMED_DATA` | — | the target answered and what it said cannot be read: config file that does not parse, JSON that does not decode, a field in a shape the API does not document | `auditd.go:97,103` ("failed to parse auditd config"), and every parse error in `providers/os` that today reaches the user as bare text |
+
+Everything else is **unclassified**: `ERROR_KIND_UNSPECIFIED`, which is also what
+an absent detail means. Unclassified is not a failure of the taxonomy, it is the
+honest default, and it renders and scores as a hard error. A kind is a claim; a
+provider that does not know makes no claim.
+
+`ERROR_KIND_NO_MATCH` (ADR 045) keeps value 1 and stays Connect-only. It is a
+statement about a *target*, not about a call, and nothing on the data path
+produces it.
+
+#### The distinctions that will be argued about
+
+- **not found vs not applicable.** Not found is "this instance is not there",
+  not applicable is "this kind of thing does not exist here". A missing S3 bucket
+  policy is not found. A project that never enabled the Compute API, an account
+  that belongs to no organization, `kernel` on Windows, and a Zoom plan without
+  the audit endpoint are all not applicable. The test: would the thing exist if
+  someone created it? Then it is not found. Is the concept itself absent from
+  this target? Then it is not applicable.
+- **not applicable vs gone.** Not applicable is about the target; gone is about
+  us. A retired API is our code being out of date and the addressee is Mondoo,
+  not the user.
+- **unauthenticated vs forbidden.** Credentials versus grants. They have
+  different remediations and, usually, different scopes (§3): a 401 means every
+  subsequent call on this asset will fail too. Ten providers fold `401 || 403`
+  into one predicate today (`netlify`, `keycloak`, `artifactory`,
+  `clickhousecloud`, `elasticsearch`, …); those split.
+- **unavailable vs too many requests.** Both transient, both retriable, but a
+  429 carries a server-stated wait and a 503 does not. Keeping them apart is what
+  lets a scan back off correctly instead of hammering an API that just asked it
+  not to.
+- **malformed data vs unclassified.** Malformed data is a fact about the target
+  that the user can act on ("this file is not valid YAML"). A decode failure
+  caused by our own struct tags is a bug and stays unclassified.
+
+### 2. Classify by what the target said, not by the status alone
+
+A provider reads whatever its SDK hands it — an `azcore.ResponseError` status, a
+`codes.PermissionDenied`, an exit code, an `errno` — and decides a kind. The kind
+is the only thing recorded. Two rules follow, and both are already load-bearing
+in the tree:
+
+- **A status can be overruled by the body.** GCP answers 403 for an API that was
+  never enabled; `isServiceDisabled` reads the message for "has not been used" /
+  "not enabled" precisely because status alone would call it forbidden. That case
+  classifies as **not applicable**. Azure answers 400 with
+  `ResourceTypeNotSupported` for the same meaning
+  (`azureFeatureNotApplicable`).
+- **Pick the narrowest kind that is true.** gcp's `errors.go` already says this:
+  the wider the classifier, the more real failures disappear into it. Not
+  applicable is the widest of the eight and the easiest to abuse; when a call
+  site cannot distinguish "not enabled" from "denied", it is denied.
+
+A provider that cannot tell leaves the error unclassified. That is strictly
+better than a wrong kind, because a wrong kind is believed by everything
+downstream.
+
+### 3. A classified failure stays an error
+
+This is the decision ADR 043 anticipated. A classified error is an **error**,
+not a labeled null. Three consequences:
+
+- **The `Is400AccessDeniedError → return nil, nil` idiom ends.** A refusal is
+  reported as an error carrying `ERROR_KIND_FORBIDDEN`. The 784 aws sites, the 47
+  azure sites and the 187 gcp sites are the migration, and they are also the
+  entire point: under-permissioned scans stop resembling clean ones.
+- **This does not turn legitimate nulls into errors.** A field that is null
+  because the thing is genuinely absent stays null — an optional Azure
+  sub-resource that was never created is a *value*, and the provider is right to
+  report it. `ERROR_KIND_NOT_FOUND` is for when the provider cannot answer the
+  question, not for when the answer is "nothing". The rule is directional: a
+  **refusal must never be reported as a null**, an absence may be. So
+  `ERROR_KIND_NOT_FOUND` never labels a legitimate absence, and wherever it does
+  appear the provider could not answer — which is unambiguously an error.
+- **Strict mode does the rest.** Under ADR 043 an error propagates as itself and
+  names the link that broke, while a null is absorbed. Producing errors instead
+  of nulls is what makes strict mode reach access problems at all.
+
+### 4. What rides beside the kind
+
+An access error that says "forbidden" is a label. One that says "forbidden,
+`ec2:DescribeInstances`, region `eu-west-1`" is a fix. Four fields:
+
+- **`kind`** — §1.
+- **`permissions`** — the permission the call needed, e.g.
+  `iam:GetAccountPasswordPolicy`. Best supplied by the call site. Where it is
+  not, the provider's own `*.permissions.json` is the fallback:
+  `PermissionDetail` already carries `Permission`, `Service`, `Action` and
+  `SourceFile` (`providers-sdk/v1/util/permissions/permissions.go:33-44`), so a
+  failure in a known source file yields a candidate set. Repeated, because file
+  granularity is a set and some calls genuinely need several grants. Accuracy is
+  a quality-of-implementation matter, and an empty list is always allowed. On an
+  OS asset the same field names the elevation the scan lacked (`root`, a `sudo`
+  rule), which is the same sentence to the user: here is what to grant us.
+- **`scope` + `scope_id`** — how far the failure reaches: `FIELD`, `RESOURCE`,
+  `PARTITION` (a region, project, or subscription, named by `scope_id`), or
+  `ASSET`. This is what lets a consumer aggregate 784 identical denials into one
+  line, and what tells an unauthenticated failure apart from a field-level one:
+  a 401 is `ASSET` and there is no point continuing.
+- **`retry_after`** — milliseconds, from `Retry-After` or the SDK's own hint,
+  for 429 and 503. Carried, not acted on: nothing in this ADR retries anything.
+  `upstream.WithRetry` already takes this shape (`retryable bool, retryAfter
+  time.Duration`), so whatever eventually consumes the hint has a signature to
+  fit.
+
+Deliberately **not** included: a structured upstream error code (`AccessDenied`,
+`ResourceTypeNotSupported`) and the raw HTTP status. Both are already in the
+error message, which is kept verbatim and is what a human reads when a kind is
+not enough, and neither has a consumer that would branch on them — the kind is
+what consumers act on, by design. A machine-readable status would only earn its
+place if later translation work needs to reason about the original response
+rather than about the kind; that is the one thing that would reopen it. Adding a
+field then is cheap, and removing one that shipped is not.
+
+### 5. The carrier: ADR 045's, moved down a layer
+
+Same enum, same message, extended — not a second mechanism:
+
+```proto
+// llx/llx.proto
+enum ErrorKind {
+  ERROR_KIND_UNSPECIFIED       = 0;
+  ERROR_KIND_NO_MATCH          = 1;  // ADR 045, Connect only
+  ERROR_KIND_UNAUTHENTICATED   = 2;
+  ERROR_KIND_FORBIDDEN         = 3;
+  ERROR_KIND_NOT_FOUND         = 4;
+  ERROR_KIND_NOT_APPLICABLE    = 5;
+  ERROR_KIND_GONE              = 6;
+  ERROR_KIND_TOO_MANY_REQUESTS = 7;
+  ERROR_KIND_UNAVAILABLE       = 8;
+  ERROR_KIND_MALFORMED_DATA    = 9;
+}
+
+enum ErrorScope {
+  ERROR_SCOPE_UNSPECIFIED = 0;
+  ERROR_SCOPE_FIELD       = 1;
+  ERROR_SCOPE_RESOURCE    = 2;
+  ERROR_SCOPE_PARTITION   = 3;
+  ERROR_SCOPE_ASSET       = 4;
+}
+
+message ErrorDetail {
+  ErrorKind kind = 1;
+  ErrorScope scope = 2;
+  // Names the partition for ERROR_SCOPE_PARTITION: a region, project, or
+  // subscription. Empty for every other scope.
+  string scope_id = 3;
+  // Permissions the refused call needed. Possibly several, possibly none.
+  repeated string permissions = 4;
+  // Server-stated wait for 429 and 503. Zero means "no hint", not "retry now".
+  int64 retry_after_ms = 5;
+}
+```
+
+**It moves to `llx.proto`, and that is forced.** `plugin.proto` imports
+`llx/llx.proto`; `llx.proto` imports nothing. `llx.Result` has to carry the
+detail — it is what recordings persist and what ships upstream — so the message
+has to live at or below `llx`, or the import cycles. `plugin` keeps Go aliases so
+ADR 045's `plugin.ErrorDetail` and `plugin.ErrorKind_ERROR_KIND_NO_MATCH` keep
+compiling.
+
+Moving it changes the status-detail type URL from
+`cnquery.providers.v1.ErrorDetail` to `mql.llx.ErrorDetail`. That is a
+compatibility event for exactly one thing — `IsNoMatchError`'s detail arm against
+a provider binary built before the move — and its third arm, the message text,
+already covers that case. The rc window is what makes it free: v14 has not
+released (`providers/aws/config/config.go`: `14.0.0-rc.1`), the last stable tag
+is v13, and no released build carries the old type URL on this path. After GA
+the choice is two carriers forever, which is the outcome ADR 045's comment was
+written to avoid.
+
+Three wire sites:
+
+- **`DataRes`** gets `mql.llx.ErrorDetail error_detail = 4;`, beside the
+  existing `error` string. This is the normal path: a provider reporting a field
+  failure is not returning a gRPC status, so a status detail alone would never
+  reach the executor.
+- **`llx.Result`** gets `ErrorDetail error_detail = 4;`, so the kind survives
+  into recordings, into upstream storage, and into assessments.
+- **gRPC statuses** keep ADR 045's detail mechanism unchanged, for errors that
+  are statuses: `Connect`, and the transport failures `handlePluginError`
+  inspects.
+
+**Not gRPC status codes as the vocabulary.** `codes.Unavailable` on the data path
+already means "the plugin process crashed" (`providers/runtime.go:749-756`), and
+`codes.PermissionDenied` would then be ambiguous between "the target refused the
+provider" and "the runtime refused the provider". The status codes describe the
+plugin transport; the kinds describe the target. They are different subjects and
+need different words.
+
+### 6. In-process: one typed error, in `llx`
+
+Mirroring `llx/skew.go`, in a new `llx/errors.go`:
+
+```go
+// llx.Error carries a kind across the parts of the system that still hold a Go
+// error rather than a proto.
+type Error struct {
+    Kind        ErrorKind
+    Scope       ErrorScope
+    ScopeID     string
+    Permissions []string
+    RetryAfter  time.Duration
+    err         error // the upstream error, verbatim, for the message
+}
+
+func (e *Error) Error() string  { … }
+func (e *Error) Unwrap() error  { return e.err }
+func (e *Error) Is(target error) bool // folds onto the kind sentinel
+
+var ErrForbidden, ErrUnauthenticated, ErrNotFound, … error
+
+func Forbidden(err error, opts ...ErrorOption) error
+func KindOf(err error) ErrorKind // UNSPECIFIED for anything untyped, including nil
+```
+
+`llx` rather than `plugin` because `llx` cannot import `plugin` and the executor
+and the printer both need `KindOf`. Providers already import `llx` for
+`llx.BoolDataPtr` and friends, so `return nil, llx.Forbidden(err,
+llx.WithPermissions("ec2:DescribeInstances"))` adds no dependency. `plugin`
+re-exports the constructors for authors who prefer one import.
+
+The 143 existing classifiers keep their names and their per-provider knowledge.
+What changes is what a call site does with a true answer: instead of `return
+nil, nil`, it wraps. Five providers already have the right file to put the
+mapping in (`gcp/resources/errors.go`, `azure/resources/shared.go`,
+`databricks/resources/errors.go`, `ms365/resources/errors.go`,
+`snowflake/resources/errors.go`); the rest grow one.
+
+**Rehydration** is three sites, and missing any one of them silently drops the
+kind back to a string:
+
+- `providers/runtime.go:680` — the executor's own `GetData`.
+- `providers-sdk/v1/plugin/runtime.go:164,184` — `CreateSharedResource` and
+  `GetSharedData`.
+- `providers/runtime.go:918-942` — `providerCallbacks.GetData`, the
+  cross-provider path from [ADR 042](042-cross-provider-invocation.md), which
+  must forward the detail rather than rebuild it.
+
+`TValue.ToDataRes` is the matching site on the way out.
+
+### 7. Rendering: a kind is not a stack trace
+
+`cli/printer/mql.go` already proves the pattern by giving version skew
+`print.Disabled` instead of `print.Error` (`:416`, `:509`). Extend that to the
+kinds, and aggregate: a scan that hits 784 denials on one role should print one
+line naming the kind, the scope and the permission, not 784. The grouping key is
+`(kind, scope, scope_id, permissions)`, which is precisely why §4 carries them.
+
+Errors also stop being anonymous in logs. Today a swallowed denial is a
+`log.Debug` line in one of 784 shapes; with a kind it is one structured field.
+
+## cnspec
+
+**Every kind still scores as an error.** Nothing in this ADR changes what counts
+toward a score: a check that ended in a classified failure is `ScoreType_Error`
+exactly as it is today, including `not applicable`. Remapping a kind onto
+`ScoreType_OutOfScope` or `ScoreType_Skip` would be a change to what compliance
+means, and that is a separate decision from being able to tell the failures
+apart. The taxonomy does not need it to pay off.
+
+**What the kind buys is attribution, and that is the point.** Today a scan that
+could not read half of its subject reports the same shape of failure as a scan
+that hit one broken API, and the operator has no way to ask why. With the kind on
+the result, cnspec can answer it:
+
+> 62 of 154 checks could not be assessed. 58 were blocked by missing permissions
+> (12 permissions across ec2, iam and s3), 3 by APIs not enabled on this project,
+> 1 by throttling.
+
+That sentence is the deliverable. It turns "the scan is noisy" into a work item
+with a list of grants attached, and it is what lets a user say *we are covering
+40% of this policy and here is what we need to cover the rest*. The same
+grouping answers it per fleet: 50 assets failing on one expired credential is one
+line, not 50.
+
+Three things make it possible, and all three are mql's side of the contract:
+
+- The kind reaches the report, because `Result.error_detail` (§5) travels with
+  the result rather than being rendered into the message.
+- The failures are groupable, because `scope`, `scope_id` and `permissions`
+  (§4) say what to group on: kind first, then the permission or partition.
+- Coverage is countable, because an error is an error — a check that could not
+  read its subject is in the denominator, not silently absent from it.
+
+Two concrete cleanups fall out immediately:
+
+- `policy/scan/reporter_aggregate.go:80` stops matching `"TOOMANYREQUESTS"`
+  against rendered text and reads the kind.
+- `AddScanError` groups asset errors by kind instead of keeping one opaque
+  string per asset (`policy/scan/reporter_aggregate.go:78-104`).
+
+The implementation is cnspec's. It is stated here because a taxonomy no consumer
+reads is dead weight, and because coverage reporting is the reason to build the
+taxonomy at all.
+
+## What this does not change
+
+- **Null semantics.** ADR 043 owns what happens when a null is dereferenced, and
+  `?` is unaffected. This ADR only reduces how many nulls a provider invents.
+- **`ERROR_KIND_NO_MATCH`.** Connect-only, unchanged.
+- **Retry behavior.** Nothing at all. `retry_after_ms` is carried and no part
+  of this ADR consumes it. Whether a target's 429 is retried, by whom and where,
+  is separate work that this only supplies the framework for.
+- **Score semantics.** Every kind scores as an error, as today. No kind moves a
+  check out of the denominator.
+- **`.lr` schemas.** No resource, field, or annotation changes. A field that
+  fails is the same field.
+- **Existing recordings.** They carry no detail and replay as unclassified,
+  which is the safe direction.
+
+## Phases
+
+1. **Vocabulary and carrier.** `llx.proto` enums and message, `plugin` aliases,
+   `DataRes.error_detail`, `Result.error_detail`, `llx/errors.go`, rehydration at
+   the three sites. Nothing is classified yet: every error is unclassified and
+   behaves exactly as today. Verifiable on its own by round-tripping a kind
+   through a mock provider.
+2. **SDK classifiers and the three big clouds.** Shared helpers over HTTP status
+   and gRPC code, then aws, azure and gcp mapping files. The 1,018 call sites in
+   those three providers are the bulk of the migration and can land service by
+   service.
+3. **Permission attribution.** Call sites name their permission; the
+   `permissions.json` fallback fills the rest.
+4. **Rendering and aggregation.** CLI grouping, structured logs.
+5. **cnspec coverage attribution.** Kind-grouped reporting, the
+   `TOOMANYREQUESTS` removal, asset-error grouping.
+6. **The long tail.** The remaining providers, plus a lint that flags an error
+   swallowed into `nil, nil` right after a classifier predicate — the shape that
+   produced the current state.
+7. **The null audit.** §3 permits an absence to stay a null, and 4,124
+   `StateIsNull` sites currently claim to be absences. Which of them are genuine
+   and which are swallowed refusals is a per-site question that has to be asked
+   of every provider, and it is the work that actually finishes what this ADR
+   starts. Named as its own phase because it is large, mechanical, and easy to
+   declare done while most of it is untouched.
+8. **Asset-scoped short-circuit.** An `ASSET`-scoped failure — a 401, an expired
+   credential — means every remaining call on that asset fails the same way, so
+   the scan can stop early and report once. Purely an optimization: the results
+   are identical either way, which is why it lands after everything else rather
+   than competing with it.
+
+Phases 1 and 2 are independently useful: a kind that only reaches the CLI is
+already better than a string, and phase 2 without phase 5 still makes `mql shell`
+honest. Phase 1 is the only one that has to make the v14 rc window.
+
+## Consequences
+
+**Good:**
+
+- An under-permissioned scan stops looking like a clean one. This is the reason
+  the ADR exists, and it is the same win ADR 043 named as its largest.
+- "Not allowed to look" and "nothing is configured" become different answers,
+  everywhere, rather than in the two providers whose authors thought about it.
+- An access error can name the permission to grant, which turns a report into a
+  remediation.
+- Aggregation becomes possible: one line per (kind, scope, permission) instead of
+  hundreds of log-and-continue lines.
+- **Coverage becomes reportable.** "We assessed 40% of this policy, and here are
+  the grants that would cover the rest" is a sentence nobody can write today, at
+  any layer, because the reason a check failed is not recorded anywhere a
+  reporter can read.
+- The 143 classifiers stop being 143 private vocabularies and become mappings
+  onto one.
+
+**Costs and risks:**
+
+- **~1,000 call sites change behavior.** Scans that were quietly green go red.
+  That is correct and it will be reported as a regression, so phase 2 has to land
+  with the release notes written.
+- **A wrong kind is worse than none.** Everything downstream believes it. The
+  narrowest-true rule (§2) and the unclassified default are the mitigation, and
+  the review burden lands on the provider mapping files.
+- **`not applicable` will be over-used**, exactly as gcp's `isInapplicable`
+  comment warns, because it is the widest of the eight and the easiest to reach
+  for when a call site is hard to classify. It no longer changes a score, so the
+  damage is a coverage report that blames the target for a gap we caused. It is
+  the kind to watch in review.
+- **A proto message changes packages.** Moving `ErrorDetail` and `ErrorKind`
+  down to `llx` is a compatibility event, bounded by the v14 rc window and
+  covered by `IsNoMatchError`'s text arm, but it is not free — and the window
+  closes at GA.
+- **The kind has to be plumbed through five layers** — provider, `DataRes`,
+  executor, `Result`, upstream — and dropping it at any one of them fails
+  silently, degrading to today's behavior. That is a testable property and should
+  have a round-trip test per layer rather than trust.
+
+## Alternatives considered
+
+- **gRPC status codes as the vocabulary.** Free on the wire and already
+  understood. Rejected: `codes.Unavailable` on the data path already means the
+  plugin crashed (`providers/runtime.go:749`), and most field errors are not
+  statuses at all — they ride in `DataRes.error`, where there is no code to read.
+- **A null that carries the kind.** Keeps today's degrade behavior and labels it,
+  so nothing goes red on upgrade. Rejected: it reintroduces the question ADR 043
+  spent its length answering (what does `&&` do with a labeled null), and a
+  labeled null still passes a vacuous assertion. The label has to make the value
+  not exist, which is what an error does.
+- **Keep `ErrorKind` in `plugin.proto` and add a second carrier for `llx`.**
+  Avoids the type-URL move. Rejected: it is the "second message" ADR 045's
+  comment was written to prevent, and the two would drift within a release.
+- **One Go error type per kind.** `errors.As(err, &ForbiddenError{})` reads well.
+  Rejected: nine types, nine constructors, and every consumer needs a type switch
+  where a single `KindOf` would do — and the wire needs an enum regardless, so
+  the types would be a second representation of the same fact.
+- **Classify centrally in the SDK from HTTP status.** One implementation instead
+  of 143. Rejected: it is wrong exactly where it matters, because the body
+  overrules the status (§2) and only the provider knows its own API's dialect.
+  The SDK supplies the helpers; the provider supplies the judgment.
+- **Sentinel strings, matched downstream.** The status quo, and cnspec's
+  `TOOMANYREQUESTS` match is what it looks like at scale. Rejected for the reason
+  ADR 045 gave: message text is not a contract, and wrapping breaks it.
+- **Do access errors only, defer the rest.** The narrowest change, and it is what
+  was originally asked for. Rejected: the next author hits not-found the week
+  after and invents a second mechanism. The kinds are cheap once the carrier
+  exists; the carrier is the work.
