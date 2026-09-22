@@ -127,7 +127,11 @@ func (s *mqlMacosSharing) sharingFlag(name string) (bool, error) {
 
 	s.sourcesLock.Lock()
 	if s.sources == nil {
-		s.sources = &sharingSources{conn: conn}
+		runtime := s.MqlRuntime
+		s.sources = &sharingSources{
+			conn:      conn,
+			listUsers: func() ([]targetUser, error) { return targetUserHomes(runtime) },
+		}
 	}
 	sources := s.sources
 	s.sourcesLock.Unlock()

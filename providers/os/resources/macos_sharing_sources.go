@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/spf13/afero"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/plist"
 )
@@ -25,8 +26,12 @@ import (
 // toggle writes.
 //
 // The per-user toggles (Bluetooth Sharing, Media Sharing, AirPlay Receiver)
-// are read with `defaults` as the user running the scan, which is the same
-// view system_profiler gave on the releases that still have it.
+// are read from every real user's preference files, and a toggle is on when
+// any user has it on. Reading only the scanning user's settings would let a
+// root scan -- the usual agent deployment -- report root's untouched defaults
+// and pass a Mac where the logged-in user turned the sharing on. Where another
+// user's settings are not readable, the toggle is a permission error, never a
+// guess.
 
 // launchdOverridesCmd lists the enabled/disabled overrides launchd holds for
 // system services. Sharing toggles that start a daemon (Screen Sharing, File
@@ -75,19 +80,45 @@ func parseLaunchdOverrides(stdout string) map[string]bool {
 	return out
 }
 
-// errDefaultsKeyMissing reports that `defaults read` found no value for the
-// key. For the Sharing toggles that means the user never changed the setting,
-// so the caller substitutes the macOS default.
-var errDefaultsKeyMissing = errors.New("defaults key not set")
+// hardwareUUIDCmd prints the IOPlatformUUID, which names the ByHost
+// preference files of the current Mac.
+const hardwareUUIDCmd = "ioreg -rd1 -c IOPlatformExpertDevice"
+
+var hardwareUUIDRegex = regexp.MustCompile(`"IOPlatformUUID"\s*=\s*"([^"]+)"`)
+
+// userPref is one per-user Sharing setting.
+type userPref struct {
+	// domain is the preferences domain, e.g. com.apple.Bluetooth.
+	domain string
+	// byHost settings live in ByHost/<domain>.<hardware UUID>.plist.
+	byHost bool
+	// keys: the setting is on when any of them is on.
+	keys []string
+	// def is the macOS default, in effect while the user never changed it.
+	def bool
+}
+
+var (
+	bluetoothSharingPref = userPref{domain: "com.apple.Bluetooth", byHost: true, keys: []string{"PrefKeyServicesEnabled"}}
+	// Media Sharing is on when home sharing or sharing with guests is on.
+	mediaSharingPref = userPref{domain: "com.apple.amp.mediasharingd", keys: []string{"home-sharing-enabled", "public-sharing-enabled"}}
+	// AirPlay Receiver is on by default. (The key name's spelling is Apple's.)
+	airplayReceiverPref = userPref{domain: "com.apple.controlcenter", byHost: true, keys: []string{"AirplayRecieverEnabled"}, def: true}
+)
 
 // sharingSources reads individual Sharing panel toggles. One instance serves
 // all fields of a macos.sharing resource, so `launchctl print-disabled` runs
 // at most once per scan.
 type sharingSources struct {
 	conn shared.Connection
+	// listUsers enumerates the users whose per-user settings count.
+	listUsers func() ([]targetUser, error)
+	// fs overrides conn.FileSystem() in tests.
+	fs afero.Fs
 
 	lock      sync.Mutex
 	overrides map[string]bool
+	uuid      string
 }
 
 // flag returns the state of one Sharing panel toggle, keyed by the name the
@@ -109,29 +140,11 @@ func (s *sharingSources) flag(name string) (bool, error) {
 	case "Content Caching":
 		return s.plistFlag(assetCachePlist, "Activated")
 	case "Bluetooth Sharing":
-		// Off unless the user turned it on.
-		return s.defaultsFlag(false, "-currentHost", "com.apple.Bluetooth", "PrefKeyServicesEnabled")
+		return s.anyUser(bluetoothSharingPref)
 	case "Media Sharing":
-		// Media Sharing is on when either home sharing or sharing with guests
-		// is on. Both are off unless the user turned them on. One export
-		// reads both keys; a domain never written exports as an empty dict.
-		prefs, err := s.exportDefaults(mediaSharingDomain)
-		if err != nil {
-			return false, err
-		}
-		home, err := dataFlag(prefs, mediaSharingDomain, "home-sharing-enabled")
-		if err != nil {
-			return false, err
-		}
-		public, err := dataFlag(prefs, mediaSharingDomain, "public-sharing-enabled")
-		if err != nil {
-			return false, err
-		}
-		return home || public, nil
+		return s.anyUser(mediaSharingPref)
 	case "AirPlay Receiver":
-		// AirPlay Receiver is on by default; the key is written only once the
-		// user changes it. (The key name's spelling is Apple's.)
-		return s.defaultsFlag(true, "-currentHost", "com.apple.controlcenter", "AirplayRecieverEnabled")
+		return s.anyUser(airplayReceiverPref)
 	}
 	return false, fmt.Errorf("no source for Sharing panel entry %q", name)
 }
@@ -219,18 +232,88 @@ func (s *sharingSources) plistFlag(file string, keyPath ...string) (bool, error)
 	return dataFlag(data, file, keyPath...)
 }
 
-// mediaSharingDomain holds both Media Sharing toggles.
-const mediaSharingDomain = "com.apple.amp.mediasharingd"
-
-// exportDefaults reads a whole preferences domain with one `defaults export`,
-// as the user running the scan. A domain that was never written exports as
-// an empty dict, not an error.
-func (s *sharingSources) exportDefaults(domain string) (plist.Data, error) {
-	stdout, err := s.run("defaults export " + domain + " -")
+// anyUser reports whether any real user has the setting on. A user who never
+// changed it has the macOS default. A Mac with no real users has the default.
+func (s *sharingSources) anyUser(p userPref) (bool, error) {
+	users, err := s.listUsers()
 	if err != nil {
-		return nil, err
+		return false, err
 	}
-	return plist.Decode(strings.NewReader(stdout))
+	for _, u := range users {
+		on, err := s.userFlag(u, p)
+		if err != nil {
+			return false, err
+		}
+		if on {
+			return true, nil
+		}
+	}
+	if len(users) == 0 {
+		return p.def, nil
+	}
+	return false, nil
+}
+
+// userFlag reads one user's setting from their preference file.
+func (s *sharingSources) userFlag(u targetUser, p userPref) (bool, error) {
+	file := path.Join(u.home, "Library/Preferences", p.domain+".plist")
+	if p.byHost {
+		uuid, err := s.hardwareUUID()
+		if err != nil {
+			return false, err
+		}
+		file = path.Join(u.home, "Library/Preferences/ByHost", p.domain+"."+uuid+".plist")
+	}
+
+	data, err := s.readPlist(file)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return p.def, nil
+	case errors.Is(err, os.ErrPermission):
+		// Wrapped, not flattened, so the error stays recognisable as a
+		// permission failure to anything that classifies errors.
+		return false, fmt.Errorf("cannot read the Sharing settings of user %s: %w; reading every user's Sharing settings requires root", u.name, err)
+	case err != nil:
+		return false, err
+	}
+
+	set := false
+	for _, key := range p.keys {
+		if _, ok := data[key]; !ok {
+			continue
+		}
+		set = true
+		on, err := dataFlag(data, file, key)
+		if err != nil {
+			return false, err
+		}
+		if on {
+			return true, nil
+		}
+	}
+	if !set {
+		return p.def, nil
+	}
+	return false, nil
+}
+
+// hardwareUUID returns the IOPlatformUUID, read once.
+func (s *sharingSources) hardwareUUID() (string, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	if s.uuid != "" {
+		return s.uuid, nil
+	}
+	stdout, err := s.run(hardwareUUIDCmd)
+	if err != nil {
+		return "", err
+	}
+	m := hardwareUUIDRegex.FindStringSubmatch(stdout)
+	if m == nil {
+		return "", errors.New("ioreg did not report an IOPlatformUUID")
+	}
+	s.uuid = m[1]
+	return s.uuid, nil
 }
 
 // dataFlag reads a boolean or 0/1 value at keyPath. A missing key means the
@@ -256,33 +339,12 @@ func dataFlag(data plist.Data, source string, keyPath ...string) (bool, error) {
 	return false, fmt.Errorf("%s: %s is neither a boolean nor a number", source, strings.Join(keyPath, "."))
 }
 
-// defaultsFlag reads a 0/1 preference with `defaults read`, as the user
-// running the scan. A key that was never written yields def.
-func (s *sharingSources) defaultsFlag(def bool, hostFlag string, domain string, key string) (bool, error) {
-	cmd := "defaults "
-	if hostFlag != "" {
-		cmd += hostFlag + " "
-	}
-	cmd += "read " + domain + " " + key
-
-	stdout, err := s.run(cmd)
-	if errors.Is(err, errDefaultsKeyMissing) {
-		return def, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	switch strings.TrimSpace(stdout) {
-	case "1", "true", "YES":
-		return true, nil
-	case "0", "false", "NO":
-		return false, nil
-	}
-	return false, fmt.Errorf("%s: unexpected value %q", cmd, strings.TrimSpace(stdout))
-}
-
 func (s *sharingSources) readPlist(file string) (plist.Data, error) {
-	f, err := s.conn.FileSystem().Open(file)
+	fs := s.fs
+	if fs == nil {
+		fs = s.conn.FileSystem()
+	}
+	f, err := fs.Open(file)
 	if err != nil {
 		return nil, err
 	}
@@ -290,9 +352,7 @@ func (s *sharingSources) readPlist(file string) (plist.Data, error) {
 	return plist.Decode(f)
 }
 
-// run executes a command and returns its stdout. `defaults read` reports an
-// unset key with exit 1 and "does not exist" on stderr; that case comes back
-// as errDefaultsKeyMissing so callers can apply the default.
+// run executes a command and returns its stdout.
 func (s *sharingSources) run(command string) (string, error) {
 	cmd, err := s.conn.RunCommand(command)
 	if err != nil {
@@ -304,9 +364,6 @@ func (s *sharingSources) run(command string) (string, error) {
 	}
 	if cmd.ExitStatus != 0 {
 		stderr, _ := io.ReadAll(cmd.Stderr)
-		if strings.HasPrefix(command, "defaults ") && strings.Contains(string(stderr), "does not exist") {
-			return "", errDefaultsKeyMissing
-		}
 		return "", fmt.Errorf("%s failed (exit %d): %s", command, cmd.ExitStatus, strings.TrimSpace(string(stderr)))
 	}
 	return string(stdout), nil

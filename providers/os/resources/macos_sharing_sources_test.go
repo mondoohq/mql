@@ -5,6 +5,8 @@ package resources
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -53,14 +55,6 @@ const disabledDaemonPlist = `<?xml version="1.0" encoding="UTF-8"?>
 </plist>
 `
 
-// defaultsMissing is what `defaults read` prints for a key that was never set.
-func defaultsMissing(domain, key string) *mock.Command {
-	return &mock.Command{
-		Stderr:     "\nThe domain/default pair of (" + domain + ", " + key + ") does not exist\n",
-		ExitStatus: 1,
-	}
-}
-
 // TestSharingSourcesAllOff is shaped on macOS 26.5 with every Sharing toggle
 // off: no launchd overrides that enable anything, daemon plists that default
 // to Disabled, no Internet Sharing or Remote Management state files, and the
@@ -76,19 +70,19 @@ func TestSharingSourcesAllOff(t *testing.T) {
 		"com.apple.smbd" => disabled
 	}
 `},
-			"cupsctl": {Stdout: "_debug_logging=0\n_remote_admin=0\n_remote_any=0\n_share_printers=0\n_user_cancel_any=0\n"},
-			"defaults -currentHost read com.apple.Bluetooth PrefKeyServicesEnabled":     defaultsMissing("com.apple.Bluetooth", "PrefKeyServicesEnabled"),
-			"defaults export com.apple.amp.mediasharingd -":                             {Stdout: mediaSharingExport(0, 0)},
-			"defaults -currentHost read com.apple.controlcenter AirplayRecieverEnabled": defaultsMissing("com.apple.controlcenter", "AirplayRecieverEnabled"),
+			"cupsctl":       {Stdout: "_debug_logging=0\n_remote_admin=0\n_remote_any=0\n_share_printers=0\n_user_cancel_any=0\n"},
+			hardwareUUIDCmd: {Stdout: ioregOutput},
 		},
 		Files: map[string]*mock.MockFileData{
 			"/Library/Preferences/com.apple.AssetCache.plist": {Content: `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict><key>Activated</key><false/></dict></plist>
 `},
+			// Media Sharing written and off; Bluetooth and AirPlay never changed.
+			"/Users/alice/Library/Preferences/com.apple.amp.mediasharingd.plist": {Content: prefsPlist("home-sharing-enabled", "public-sharing-enabled")},
 		},
 	}))
 	require.NoError(t, err)
-	s := &sharingSources{conn: conn}
+	s := &sharingSources{conn: conn, listUsers: oneUser}
 
 	for name, want := range map[string]bool{
 		"Screen Sharing":    false,
@@ -118,10 +112,8 @@ func TestSharingSourcesAllOn(t *testing.T) {
 		"com.apple.smbd" => enabled
 	}
 `},
-			"cupsctl": {Stdout: "_share_printers=1\n"},
-			"defaults -currentHost read com.apple.Bluetooth PrefKeyServicesEnabled":     {Stdout: "1\n"},
-			"defaults export com.apple.amp.mediasharingd -":                             {Stdout: mediaSharingExport(0, 1)},
-			"defaults -currentHost read com.apple.controlcenter AirplayRecieverEnabled": {Stdout: "0\n"},
+			"cupsctl":       {Stdout: "_share_printers=1\n"},
+			hardwareUUIDCmd: {Stdout: ioregOutput},
 		},
 		Files: map[string]*mock.MockFileData{
 			// No override for ODSAgent: its daemon plist decides, and this one
@@ -136,10 +128,13 @@ func TestSharingSourcesAllOn(t *testing.T) {
 			"/Library/Preferences/com.apple.AssetCache.plist": {Content: `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict><key>Activated</key><true/></dict></plist>
 `},
+			"/Users/alice/Library/Preferences/ByHost/com.apple.Bluetooth." + testUUID + ".plist":     {Content: prefsPlist("PrefKeyServicesEnabled=1")},
+			"/Users/alice/Library/Preferences/com.apple.amp.mediasharingd.plist":                     {Content: prefsPlist("home-sharing-enabled", "public-sharing-enabled=1")},
+			"/Users/alice/Library/Preferences/ByHost/com.apple.controlcenter." + testUUID + ".plist": {Content: prefsPlist("AirplayRecieverEnabled")},
 		},
 	}))
 	require.NoError(t, err)
-	s := &sharingSources{conn: conn}
+	s := &sharingSources{conn: conn, listUsers: oneUser}
 
 	for name, want := range map[string]bool{
 		"Screen Sharing":    true,
@@ -187,42 +182,120 @@ func TestSharingSourcesUnreadableIsAnError(t *testing.T) {
 		Commands: map[string]*mock.Command{
 			"launchctl print-disabled system": {Stderr: "Could not find domain for system", ExitStatus: 113},
 			"cupsctl":                         {Stderr: "cupsctl: Unable to connect to server", ExitStatus: 1},
-			"defaults -currentHost read com.apple.Bluetooth PrefKeyServicesEnabled": {Stdout: "maybe\n"},
 		},
 	}))
 	require.NoError(t, err)
 	s := &sharingSources{conn: conn}
 
-	for _, name := range []string{"Screen Sharing", "Printer Sharing", "Bluetooth Sharing"} {
+	for _, name := range []string{"Screen Sharing", "Printer Sharing"} {
 		_, err := s.flag(name)
 		assert.Error(t, err, name)
 	}
 }
 
-// mediaSharingExport is `defaults export com.apple.amp.mediasharingd -` with
-// the two toggles set.
-func mediaSharingExport(home, public int) string {
-	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
-<plist version="1.0"><dict>
-	<key>home-sharing-enabled</key><integer>%d</integer>
-	<key>public-sharing-enabled</key><integer>%d</integer>
-</dict></plist>
-`, home, public)
+// testUUID is the hardware UUID the ioreg mock reports.
+const testUUID = "2BAFE075-9BBA-563A-9DB0-88C141EAB0E5"
+
+var ioregOutput = `+-o J316sAP  <class IOPlatformExpertDevice, id 0x100000200, registered, matched, active, busy 0 (0 ms), retain 30>
+    {
+      "IOPlatformUUID" = "` + testUUID + `"
+      "IOPlatformSerialNumber" = "XXXXXXXXXX"
+    }
+`
+
+func oneUser() ([]targetUser, error) {
+	return []targetUser{{name: "alice", home: "/Users/alice", uid: 501}}, nil
 }
 
-// A domain never written exports as an empty dict: Media Sharing is off.
-func TestSharingSourcesMediaSharingNeverConfigured(t *testing.T) {
+// prefsPlist writes a preferences plist. "key=1" sets key to 1, a bare
+// "key" sets it to 0.
+func prefsPlist(entries ...string) string {
+	body := ""
+	for _, e := range entries {
+		key, val, ok := strings.Cut(e, "=")
+		if !ok {
+			val = "0"
+		}
+		body += fmt.Sprintf("<key>%s</key><integer>%s</integer>", key, val)
+	}
+	return `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>` + body + `</dict></plist>
+`
+}
+
+// A per-user toggle is on when any user has it on, and a user who never
+// changed it has the macOS default.
+func TestSharingSourcesPerUserAnyUser(t *testing.T) {
 	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
-		Commands: map[string]*mock.Command{
-			"defaults export com.apple.amp.mediasharingd -": {Stdout: `<?xml version="1.0" encoding="UTF-8"?>
-<plist version="1.0"><dict/></plist>
-`},
+		Commands: map[string]*mock.Command{hardwareUUIDCmd: {Stdout: ioregOutput}},
+		Files: map[string]*mock.MockFileData{
+			// alice: everything off, AirPlay turned off.
+			"/Users/alice/Library/Preferences/ByHost/com.apple.Bluetooth." + testUUID + ".plist":     {Content: prefsPlist("PrefKeyServicesEnabled")},
+			"/Users/alice/Library/Preferences/ByHost/com.apple.controlcenter." + testUUID + ".plist": {Content: prefsPlist("AirplayRecieverEnabled")},
+			// bob: Bluetooth Sharing on; AirPlay never changed, so on.
+			"/Users/bob/Library/Preferences/ByHost/com.apple.Bluetooth." + testUUID + ".plist": {Content: prefsPlist("PrefKeyServicesEnabled=1")},
+			// A file for another Mac's UUID is not this Mac's setting.
+			"/Users/alice/Library/Preferences/ByHost/com.apple.Bluetooth.502DBD08-C9E0-5BB4-B954-323719633B51.plist": {Content: prefsPlist("PrefKeyServicesEnabled=1")},
 		},
 	}))
 	require.NoError(t, err)
-	got, err := (&sharingSources{conn: conn}).flag("Media Sharing")
+	twoUsers := func() ([]targetUser, error) {
+		return []targetUser{{name: "alice", home: "/Users/alice"}, {name: "bob", home: "/Users/bob"}}, nil
+	}
+	s := &sharingSources{conn: conn, listUsers: twoUsers}
+
+	for name, want := range map[string]bool{
+		"Bluetooth Sharing": true,  // bob
+		"Media Sharing":     false, // nobody wrote it
+		"AirPlay Receiver":  true,  // bob never changed it
+	} {
+		got, err := s.flag(name)
+		require.NoError(t, err, name)
+		assert.Equal(t, want, got, name)
+	}
+
+	// With alice alone, only her settings count.
+	s = &sharingSources{conn: conn, listUsers: oneUser}
+	for name, want := range map[string]bool{
+		"Bluetooth Sharing": false, // the other Mac's file is ignored
+		"AirPlay Receiver":  false,
+	} {
+		got, err := s.flag(name)
+		require.NoError(t, err, name)
+		assert.Equal(t, want, got, name)
+	}
+}
+
+// A Mac with no real users has the macOS defaults.
+func TestSharingSourcesPerUserNoUsers(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{}))
+	require.NoError(t, err)
+	s := &sharingSources{conn: conn, listUsers: func() ([]targetUser, error) { return nil, nil }}
+	got, err := s.flag("AirPlay Receiver")
+	require.NoError(t, err)
+	assert.True(t, got)
+	got, err = s.flag("Bluetooth Sharing")
 	require.NoError(t, err)
 	assert.False(t, got)
+}
+
+// A user whose settings cannot be read is a permission error, never a guess:
+// that user might have the sharing on.
+func TestSharingSourcesPerUserPermissionDenied(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{}))
+	require.NoError(t, err)
+	s := &sharingSources{
+		conn: conn,
+		fs:   &denyFs{Fs: conn.FileSystem(), deny: "/Users/bob/"},
+		listUsers: func() ([]targetUser, error) {
+			return []targetUser{{name: "alice", home: "/Users/alice"}, {name: "bob", home: "/Users/bob"}}, nil
+		},
+	}
+	_, err = s.flag("Media Sharing")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, os.ErrPermission)
+	assert.Contains(t, err.Error(), "user bob")
+	assert.Contains(t, err.Error(), "requires root")
 }
 
 func TestSharingPanelRemoved(t *testing.T) {
