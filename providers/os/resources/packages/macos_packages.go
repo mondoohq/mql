@@ -319,8 +319,35 @@ var versionShape = regexp.MustCompile(`^v?\d`)
 // version in the set does not begin with a digit ("v2.0.6"), which the leading
 // "v" covers, and nothing else is rejected.
 func looksLikeVersion(version string) bool {
-	return versionShape.MatchString(version)
+	if !versionShape.MatchString(version) {
+		return false
+	}
+
+	// A padded separator is not a version scheme any vendor uses, it is a
+	// malformed value, so it fails the check for the same reason a guest OS name
+	// does: there is no reading of it that yields a comparable version.
+	return !versionPaddedSeparator.MatchString(version)
 }
+
+// versionPaddedSeparator matches whitespace touching a dot separator, which is
+// how Adobe ships the Acrobat updater and its helper: CFBundleShortVersionString
+// is literally "1 . 2 . 6", in the bundle's own Info.plist as well as in
+// system_profiler's report of it.
+//
+// Whitespace elsewhere in a version is ordinary decoration following a complete
+// version and has to keep passing -- "1.0 (1234)", "7.1.5 (84650)",
+// "3.2 beta 4", "8.00 PL12" are all real CFBundleShortVersionString values, and
+// in each of them the leading number is already the version. Requiring the
+// whitespace to touch a separator is what separates a padded version from a
+// version with something written after it.
+//
+// The padding is not repaired into "1.2.6" on the way past. Doing that would
+// invent a version string the vendor does not publish and hand it the authority
+// of a measured value, and nothing downstream could tell it from a version read
+// cleanly off a bundle. A value this malformed is better dropped: the caller
+// falls back to the Info.plist and, finding the same padding there, reports
+// nothing for the bundle rather than something wrong.
+var versionPaddedSeparator = regexp.MustCompile(`\s\.|\.\s`)
 
 // bundleVersionFromInfoPlist recovers an app's version from its
 // Contents/Info.plist when system_profiler did not report one. It prefers

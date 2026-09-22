@@ -34,6 +34,23 @@ func TestLooksLikeVersion(t *testing.T) {
 		{"", false, "no version reported"},
 		{"unknown", false, "a word, not a version"},
 		{"Version 2.0", false, "the number is behind a word"},
+
+		// Adobe pads the separators in the Acrobat updater's
+		// CFBundleShortVersionString. The padding is not a version scheme, it
+		// is a malformed value, and it reaches the purl as
+		// "1%20.%202%20.%206" where it matches no advisory bound.
+		{"1 . 2 . 6", false, "Acrobat Update Helper, padded separators"},
+		{"26 . 001 . 21789", false, "Adobe Acrobat, padded separators"},
+		{"10.15 .3", false, "padding on one side of a separator"},
+		{"1\t.\t2", false, "tab-padded separator"},
+
+		// Whitespace that is not touching a separator is ordinary decoration
+		// after a complete version, and it must still be accepted. Every one of
+		// these was read off a real Mac.
+		{"1.0 (1234)", true, "build number in parentheses"},
+		{"7.1.5 (84650)", true, "Zoom build number"},
+		{"3.2 beta 4", true, "pre-release decoration"},
+		{"8.00 PL12", true, "patch level after a complete version"},
 	}
 
 	for _, test := range tests {

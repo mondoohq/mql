@@ -167,6 +167,15 @@ func TestMacOsXPackageParser(t *testing.T) {
 	assert.Equal(t, "154.0.8037.45", chrome[0].Version, "version of the installed browser")
 	assert.Equal(t, "pkg:macos/macos/Google%20Chrome@154.0.8037.45?arch=x86_64", chrome[0].PUrl)
 	assert.Equal(t, []packages.FileRecord{{Path: "/Applications/Google Chrome.app"}}, chrome[0].Files)
+
+	// Adobe pads the separators in the Acrobat updater's version, in
+	// system_profiler and in the bundle's own Info.plist: "1 . 2 . 6". That is
+	// not a version scheme, it is a malformed value, and there is nowhere left
+	// to read a usable one from. Reporting it anyway puts the padding in
+	// Package.Version and, percent-encoded, in the purl
+	// ("...@1%20.%202%20.%206"), an identity that compares against no advisory
+	// bound while sitting under the name of a real Adobe component.
+	assert.NotContains(t, names(m), "Acrobat Update Helper", "padded version is not a usable version")
 }
 
 func names(pkgs []packages.Package) []string {
