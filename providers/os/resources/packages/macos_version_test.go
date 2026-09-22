@@ -43,6 +43,12 @@ func TestLooksLikeVersion(t *testing.T) {
 		{"26 . 001 . 21789", false, "Adobe Acrobat, padded separators"},
 		{"10.15 .3", false, "padding on one side of a separator"},
 		{"1\t.\t2", false, "tab-padded separator"},
+		// Vertical whitespace is matched on purpose. A separator padded with a
+		// newline is more malformed than one padded with a space, not less, and
+		// narrowing the rule to horizontal whitespace would let it reach the
+		// purl.
+		{"1\n.2", false, "newline-padded separator"},
+		{"1.\r2", false, "carriage-return-padded separator"},
 
 		// Whitespace that is not touching a separator is ordinary decoration
 		// after a complete version, and it must still be accepted. Every one of

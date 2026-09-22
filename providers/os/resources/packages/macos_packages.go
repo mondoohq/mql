@@ -347,6 +347,11 @@ func looksLikeVersion(version string) bool {
 // cleanly off a bundle. A value this malformed is better dropped: the caller
 // falls back to the Info.plist and, finding the same padding there, reports
 // nothing for the bundle rather than something wrong.
+//
+// \s covers vertical whitespace as well, and that is deliberate rather than
+// incidental: a plist string can hold a newline, and a separator padded with one
+// is more malformed than a separator padded with a space, not less. Narrowing
+// this to [ \t] would let "1\n.2" through to the purl.
 var versionPaddedSeparator = regexp.MustCompile(`\s\.|\.\s`)
 
 // bundleVersionFromInfoPlist recovers an app's version from its
