@@ -26,6 +26,18 @@ func (s *OpenrcServiceManager) List() ([]*Service, error) {
 	// retrieve service list by retrieving all files
 	var services []*Service
 
+	// Without /etc/init.d there are no OpenRC services to list. That is the
+	// normal state of a minimal Alpine container, which ships no init system,
+	// and it matches what the systemd manager returns when systemd is absent:
+	// an empty list, not an error.
+	ok, err := afero.Exists(s.conn.FileSystem(), iniddPath)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return services, nil
+	}
+
 	f, err := s.conn.FileSystem().Open(iniddPath)
 	if err != nil {
 		return nil, err
