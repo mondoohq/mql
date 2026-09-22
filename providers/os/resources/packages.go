@@ -26,7 +26,38 @@ var PKG_IDENTIFIER = regexp.MustCompile(`^(.*):\/\/(.*)\/(.*)\/(.*)$`)
 // - deb://name/version/arch
 // - rpm://name/version/arch
 func (x *mqlPackage) id() (string, error) {
-	return x.Format.Data + "://" + x.Name.Data + "/" + x.Version.Data + "/" + x.Arch.Data, nil
+	return packageID(x.Format.Data, x.Name.Data, x.Version.Data, x.Arch.Data, x.filesOnDisks), nil
+}
+
+// packageID computes mqlPackage's cache/identity key: format://name/version/arch.
+//
+// macOS application bundles also carry their bundle path, with "/path" and the
+// path appended. A macOS package is a bundle on disk rather than a record in a
+// package database, so two bundles can share a name and version: Siri.app and
+// Siri AI.app both report "Siri" 1.0, and a game copied to the Desktop repeats
+// the one in ~/Applications. Keyed on name and version alone, the second
+// bundle got the first one's cached resource, so it listed as a duplicate row
+// pointing at the first bundle's path and its own path was never reported.
+//
+// fillPackageArgs precomputes this as args["__id"], because list() attaches
+// the file records only after CreateResource returns, too late for id() to see
+// them.
+func packageID(format, name, version, arch string, files []packages.FileRecord) string {
+	id := format + "://" + name + "/" + version + "/" + arch
+	if path := macosBundlePath(format, files); path != "" {
+		id += "/path" + path
+	}
+	return id
+}
+
+// macosBundlePath returns the bundle path of a macOS application package: its
+// one file record is the bundle itself. Empty for every other format, and for
+// a macOS package that came without its file record.
+func macosBundlePath(format string, files []packages.FileRecord) string {
+	if format != packages.MacosPkgFormat || len(files) != 1 {
+		return ""
+	}
+	return files[0].Path
 }
 
 type mqlPackageInternal struct {
@@ -187,6 +218,7 @@ func fillPackageArgs(args map[string]*llx.RawData, osPkg *packages.Package, avai
 	args["purl"] = llx.StringData(osPkg.PUrl)
 	args["cpes"] = llx.ArrayData(cpes, types.Resource("cpe"))
 	args["vendor"] = llx.StringData(osPkg.Vendor)
+	args["__id"] = llx.StringData(packageID(osPkg.Format, osPkg.Name, osPkg.Version, osPkg.Arch, osPkg.Files))
 
 	// Only eagerly set license when the backend populated it (rpm, apk,
 	// pacman). dpkg leaves it empty here so the lazy `license()` method on
