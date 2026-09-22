@@ -2393,6 +2393,29 @@ func applyOmahaVersions(pkgs []Package, omahaVersions map[string]string, platfor
 // consumer (SBOM export, vulnerability matching) keys on, so two rows that
 // somehow disagreed on purl while matching on name/version/arch would not be
 // safe to collapse.
+//
+// That last point is where this key deliberately disagrees with packageID
+// (resources/packages.go), which is what becomes a package resource's __id
+// and therefore its cache key. packageID is format://name/version/arch, plus
+// the SID only when installScope is "user"; it does not include the purl and
+// does not distinguish "machine" from "". So this key is strictly the
+// stricter of the two: anything it keeps apart, packageID also keeps apart,
+// and the reverse does not hold.
+//
+// Strictly-stricter is the safe direction and it is why nothing is wrong
+// today. Two rows that survive this collapse while sharing a packageID would
+// collide in the resource cache, and CreateResource returns the cached first
+// instance for a repeated id -- the second row would silently report the
+// first one's values, which is the very symptom this function exists to
+// remove. No current input produces that pair: the only purl qualifier any
+// Windows package gets is the Microsoft 365 channel, which is resolved once
+// per host and applied uniformly (applyM365ChannelQualifier), so two rows
+// agreeing on name/version/arch always agree on purl; and every path through
+// this file sets installScope, so it is never "".
+//
+// It stops being safe the day a purl qualifier is added that varies BETWEEN
+// packages on one host rather than being a property of the host. Whoever
+// adds one has to widen packageID to match, or narrow this key.
 func collapsePackages(pkgs []Package) []Package {
 	out := make([]Package, 0, len(pkgs))
 	seen := map[string]int{}
