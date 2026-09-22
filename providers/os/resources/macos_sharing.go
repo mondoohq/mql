@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"strconv"
 	"strings"
 	"sync"
 
@@ -40,9 +41,6 @@ func (s *mqlMacosSharing) id() (string, error) {
 // read as "everything is off". sharingFlag reads each toggle from its own
 // setting instead (see macos_sharing_sources.go).
 func (s *mqlMacosSharing) fetchState() (map[string]bool, error) {
-	if s.fetched {
-		return s.state, nil
-	}
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	if s.fetched {
@@ -116,21 +114,34 @@ func parseSharingOutput(stdout string) map[string]bool {
 // SPSharingDataType reporter, so the toggle is read from the setting behind
 // it instead, never assumed off.
 func (s *mqlMacosSharing) sharingFlag(name string) (bool, error) {
-	state, err := s.fetchState()
-	if err != nil {
-		return false, err
-	}
-	if len(state) > 0 {
-		return state[name], nil
+	conn := s.MqlRuntime.Connection.(shared.Connection)
+	if !sharingPanelRemoved(conn.Asset().GetPlatform().GetVersion()) {
+		state, err := s.fetchState()
+		if err != nil {
+			return false, err
+		}
+		if len(state) > 0 {
+			return state[name], nil
+		}
 	}
 
 	s.sourcesLock.Lock()
 	if s.sources == nil {
-		s.sources = &sharingSources{conn: s.MqlRuntime.Connection.(shared.Connection)}
+		s.sources = &sharingSources{conn: conn}
 	}
 	sources := s.sources
 	s.sourcesLock.Unlock()
 	return sources.flag(name)
+}
+
+// sharingPanelRemoved reports whether this macOS release has no
+// SPSharingDataType reporter: macOS 26 and later. There system_profiler
+// exits 0 with no output, and at 150-290ms it is the most expensive step of
+// reading the panel, so it is skipped. An unknown version still tries it.
+func sharingPanelRemoved(version string) bool {
+	major, _, _ := strings.Cut(version, ".")
+	n, err := strconv.Atoi(major)
+	return err == nil && n >= 26
 }
 
 func (s *mqlMacosSharing) screenSharing() (bool, error) {

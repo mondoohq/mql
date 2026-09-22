@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -77,8 +78,7 @@ func TestSharingSourcesAllOff(t *testing.T) {
 `},
 			"cupsctl": {Stdout: "_debug_logging=0\n_remote_admin=0\n_remote_any=0\n_share_printers=0\n_user_cancel_any=0\n"},
 			"defaults -currentHost read com.apple.Bluetooth PrefKeyServicesEnabled":     defaultsMissing("com.apple.Bluetooth", "PrefKeyServicesEnabled"),
-			"defaults read com.apple.amp.mediasharingd home-sharing-enabled":            {Stdout: "0\n"},
-			"defaults read com.apple.amp.mediasharingd public-sharing-enabled":          {Stdout: "0\n"},
+			"defaults export com.apple.amp.mediasharingd -":                             {Stdout: mediaSharingExport(0, 0)},
 			"defaults -currentHost read com.apple.controlcenter AirplayRecieverEnabled": defaultsMissing("com.apple.controlcenter", "AirplayRecieverEnabled"),
 		},
 		Files: map[string]*mock.MockFileData{
@@ -120,8 +120,7 @@ func TestSharingSourcesAllOn(t *testing.T) {
 `},
 			"cupsctl": {Stdout: "_share_printers=1\n"},
 			"defaults -currentHost read com.apple.Bluetooth PrefKeyServicesEnabled":     {Stdout: "1\n"},
-			"defaults read com.apple.amp.mediasharingd home-sharing-enabled":            {Stdout: "0\n"},
-			"defaults read com.apple.amp.mediasharingd public-sharing-enabled":          {Stdout: "1\n"},
+			"defaults export com.apple.amp.mediasharingd -":                             {Stdout: mediaSharingExport(0, 1)},
 			"defaults -currentHost read com.apple.controlcenter AirplayRecieverEnabled": {Stdout: "0\n"},
 		},
 		Files: map[string]*mock.MockFileData{
@@ -197,5 +196,44 @@ func TestSharingSourcesUnreadableIsAnError(t *testing.T) {
 	for _, name := range []string{"Screen Sharing", "Printer Sharing", "Bluetooth Sharing"} {
 		_, err := s.flag(name)
 		assert.Error(t, err, name)
+	}
+}
+
+// mediaSharingExport is `defaults export com.apple.amp.mediasharingd -` with
+// the two toggles set.
+func mediaSharingExport(home, public int) string {
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+	<key>home-sharing-enabled</key><integer>%d</integer>
+	<key>public-sharing-enabled</key><integer>%d</integer>
+</dict></plist>
+`, home, public)
+}
+
+// A domain never written exports as an empty dict: Media Sharing is off.
+func TestSharingSourcesMediaSharingNeverConfigured(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			"defaults export com.apple.amp.mediasharingd -": {Stdout: `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict/></plist>
+`},
+		},
+	}))
+	require.NoError(t, err)
+	got, err := (&sharingSources{conn: conn}).flag("Media Sharing")
+	require.NoError(t, err)
+	assert.False(t, got)
+}
+
+func TestSharingPanelRemoved(t *testing.T) {
+	for version, want := range map[string]bool{
+		"26.5": true,
+		"27.0": true,
+		"15.6": false,
+		"14":   false,
+		"":     false,
+		"beta": false,
+	} {
+		assert.Equal(t, want, sharingPanelRemoved(version), version)
 	}
 }

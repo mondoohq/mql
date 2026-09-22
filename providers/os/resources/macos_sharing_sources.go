@@ -113,12 +113,17 @@ func (s *sharingSources) flag(name string) (bool, error) {
 		return s.defaultsFlag(false, "-currentHost", "com.apple.Bluetooth", "PrefKeyServicesEnabled")
 	case "Media Sharing":
 		// Media Sharing is on when either home sharing or sharing with guests
-		// is on. Both are off unless the user turned them on.
-		home, err := s.defaultsFlag(false, "", "com.apple.amp.mediasharingd", "home-sharing-enabled")
+		// is on. Both are off unless the user turned them on. One export
+		// reads both keys; a domain never written exports as an empty dict.
+		prefs, err := s.exportDefaults(mediaSharingDomain)
 		if err != nil {
 			return false, err
 		}
-		public, err := s.defaultsFlag(false, "", "com.apple.amp.mediasharingd", "public-sharing-enabled")
+		home, err := dataFlag(prefs, mediaSharingDomain, "home-sharing-enabled")
+		if err != nil {
+			return false, err
+		}
+		public, err := dataFlag(prefs, mediaSharingDomain, "public-sharing-enabled")
 		if err != nil {
 			return false, err
 		}
@@ -211,7 +216,26 @@ func (s *sharingSources) plistFlag(file string, keyPath ...string) (bool, error)
 		}
 		return false, err
 	}
+	return dataFlag(data, file, keyPath...)
+}
 
+// mediaSharingDomain holds both Media Sharing toggles.
+const mediaSharingDomain = "com.apple.amp.mediasharingd"
+
+// exportDefaults reads a whole preferences domain with one `defaults export`,
+// as the user running the scan. A domain that was never written exports as
+// an empty dict, not an error.
+func (s *sharingSources) exportDefaults(domain string) (plist.Data, error) {
+	stdout, err := s.run("defaults export " + domain + " -")
+	if err != nil {
+		return nil, err
+	}
+	return plist.Decode(strings.NewReader(stdout))
+}
+
+// dataFlag reads a boolean or 0/1 value at keyPath. A missing key means the
+// setting was never turned on. source names the plist in the error.
+func dataFlag(data plist.Data, source string, keyPath ...string) (bool, error) {
 	var cur any = map[string]any(data)
 	for _, k := range keyPath {
 		m, ok := cur.(map[string]any)
@@ -229,7 +253,7 @@ func (s *sharingSources) plistFlag(file string, keyPath ...string) (bool, error)
 	case float64:
 		return v != 0, nil
 	}
-	return false, fmt.Errorf("%s: %s is neither a boolean nor a number", file, strings.Join(keyPath, "."))
+	return false, fmt.Errorf("%s: %s is neither a boolean nor a number", source, strings.Join(keyPath, "."))
 }
 
 // defaultsFlag reads a 0/1 preference with `defaults read`, as the user
