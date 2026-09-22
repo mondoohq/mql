@@ -234,7 +234,7 @@ func matchNamedServices(sig Signature, inv Inventory) (idx []int, namedFound boo
 	for _, name := range sig.Services {
 		found := false
 		for i := range inv.Services {
-			if sameServiceName(inv.Services[i].Name, name) {
+			if sameServiceName(inv.Platform, inv.Services[i].Name, name) {
 				idx = append(idx, i)
 				found = true
 				break
@@ -293,9 +293,14 @@ func anyExtension(inv Inventory, idx []int, pred func(SystemExtension) bool) boo
 
 // sameServiceName compares service names the way the service resource looks
 // them up: systemd's optional .service suffix is not part of the identity, and
-// Windows service names are not case sensitive.
-func sameServiceName(a, b string) bool {
-	return strings.EqualFold(normalizeServiceName(a), normalizeServiceName(b))
+// only Windows service names are case insensitive. systemd units and launchd
+// labels are case sensitive, so folding there could claim the wrong unit.
+func sameServiceName(platform, a, b string) bool {
+	a, b = normalizeServiceName(a), normalizeServiceName(b)
+	if platform == PlatformWindows {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
 
 // normalizeServiceName drops systemd's optional unit suffix, which the service

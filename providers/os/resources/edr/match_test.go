@@ -611,6 +611,19 @@ func TestWindowsServiceNamesAreNotCaseSensitive(t *testing.T) {
 	assert.True(t, d.Healthy)
 }
 
+func TestLinuxServiceNamesAreCaseSensitive(t *testing.T) {
+	// systemd unit names are case sensitive, so a unit spelled differently is
+	// not the sensor's unit and cannot prove it is running.
+	d := detectOne(t, Inventory{
+		Platform: PlatformLinux,
+		Packages: []Package{pkg("falcon-sensor", "7.20.0")},
+		Services: []Service{svc("Falcon-Sensor", true, true)},
+	}, "crowdstrike-falcon")
+
+	assert.False(t, d.Running)
+	assert.False(t, d.Healthy)
+}
+
 // --- platform isolation ---
 
 func TestWindowsSignalsAreIgnoredOnOtherPlatforms(t *testing.T) {

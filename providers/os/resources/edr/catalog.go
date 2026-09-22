@@ -92,7 +92,9 @@ type Product struct {
 }
 
 var (
-	cortexPackages   = regexp.MustCompile(`(?i)Cortex XDR`)
+	cortexPackages = regexp.MustCompile(`(?i)Cortex XDR`)
+	// Unanchored on purpose: it matches the agent's whole service family,
+	// SentinelAgent and SentinelAgentWatchdog alike.
 	sentinelServices = regexp.MustCompile(`SentinelAgent`)
 	esetServices     = regexp.MustCompile(`^com\.eset\.`)
 	malwarebytesProc = regexp.MustCompile(`Malwarebytes`)
