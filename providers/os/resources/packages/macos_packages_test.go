@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/mock"
 	"go.mondoo.com/mql/providers/os/resources/packages"
@@ -196,4 +197,62 @@ func findByName(pkgs []packages.Package, name string) []packages.Package {
 		}
 	}
 	return found
+}
+
+// system_profiler reports nothing that lives on a cryptex, which on macOS 13
+// and later includes Safari. Those bundles are found by listing the cryptexes
+// themselves.
+func TestMacOSPackagesIncludeCryptexApplications(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/packages_macos_cryptex.toml"))
+	require.NoError(t, err)
+	c, err := conn.RunCommand("system_profiler SPApplicationsDataType -xml")
+	require.NoError(t, err)
+
+	pf := &inventory.Platform{Name: "macos", Version: "27.0", Arch: "arm64", Family: []string{"darwin", "bsd", "unix", "os"}}
+	pkgs, err := packages.ParseMacOSPackages(conn, pf, c.Stdout)
+	require.NoError(t, err)
+
+	byPath := map[string]packages.Package{}
+	for _, p := range pkgs {
+		require.Len(t, p.Files, 1)
+		byPath[p.Files[0].Path] = p
+	}
+
+	// Finder and Tips from system_profiler, then the cryptex bundles in
+	// directory order. Tips is on the cryptex too, but system_profiler already
+	// reported it through /Applications, so it is not listed a second time.
+	// The .appex is not an application and Broken.app has no Info.plist.
+	assert.ElementsMatch(t, []string{
+		"/System/Library/CoreServices/Finder.app",
+		"/Applications/Tips.app",
+		"/System/Cryptexes/App/System/Applications/Safari.app",
+		"/System/Cryptexes/App/System/Library/CoreServices/PasswordManagerBrowserExtensionHelper.app",
+		"/System/Cryptexes/App/System/Library/CoreServices/Web App.app",
+	}, keys(byPath))
+
+	safari := byPath["/System/Cryptexes/App/System/Applications/Safari.app"]
+	assert.Equal(t, "Safari", safari.Name)
+	// CFBundleShortVersionString wins over CFBundleVersion.
+	assert.Equal(t, "27.0", safari.Version)
+	assert.Equal(t, "apple", safari.Origin)
+	assert.Equal(t, packages.MacosPkgFormat, safari.Format)
+	assert.Equal(t, "pkg:macos/macos/Safari@27.0?arch=arm64", safari.PUrl)
+
+	// Named like system_profiler names bundles: the display name first.
+	assert.Equal(t, "Passwords Extension Helper",
+		byPath["/System/Cryptexes/App/System/Library/CoreServices/PasswordManagerBrowserExtensionHelper.app"].Name)
+
+	// No name keys and only a build version: the directory name and
+	// CFBundleVersion stand in.
+	webApp := byPath["/System/Cryptexes/App/System/Library/CoreServices/Web App.app"]
+	assert.Equal(t, "Web App", webApp.Name)
+	assert.Equal(t, "22624.1.16", webApp.Version)
+}
+
+func keys(m map[string]packages.Package) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }

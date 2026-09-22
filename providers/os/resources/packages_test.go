@@ -293,3 +293,39 @@ func TestPackageIDMachineScopeUnaffected(t *testing.T) {
 
 	assert.Equal(t, "rpm://openssl/3.0.11-1/x86_64", res.(*mqlPackage).__id)
 }
+
+// Two macOS bundles can share a name and version (Siri.app and Siri AI.app
+// both report "Siri" 1.0). Their ids have to differ by bundle path, or the
+// resource cache hands the second bundle the first one's resource.
+func TestMacOSBundlesWithSameNameAndVersionStayDistinct(t *testing.T) {
+	runtime := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+	args := make(map[string]*llx.RawData, 15)
+
+	pkgs := []packages.Package{
+		{Name: "Siri", Version: "1.0", Arch: "arm64", Format: packages.MacosPkgFormat, Files: []packages.FileRecord{{Path: "/System/Applications/Siri.app"}}},
+		{Name: "Siri", Version: "1.0", Arch: "arm64", Format: packages.MacosPkgFormat, Files: []packages.FileRecord{{Path: "/System/Applications/Siri AI.app"}}},
+	}
+
+	created := make([]*mqlPackage, 0, len(pkgs))
+	for i := range pkgs {
+		fillPackageArgs(args, &pkgs[i], "", nil)
+		res, err := CreateResource(runtime, "package", args)
+		require.NoError(t, err)
+		created = append(created, res.(*mqlPackage))
+	}
+
+	assert.NotSame(t, created[0], created[1])
+	assert.Equal(t, "macos://Siri/1.0/arm64/path/System/Applications/Siri.app", created[0].__id)
+	assert.Equal(t, "macos://Siri/1.0/arm64/path/System/Applications/Siri AI.app", created[1].__id)
+}
+
+// Only macOS packages are keyed by path. A deb or rpm lists the files it
+// installs, and a package that happens to install exactly one file keeps the
+// id it always had.
+func TestPackageIDIgnoresFilesOutsideMacOS(t *testing.T) {
+	files := []packages.FileRecord{{Path: "/usr/bin/tool"}}
+	assert.Equal(t, "deb://tool/1.0/amd64", packageID("deb", "tool", "1.0", "amd64", "", "", files))
+
+	// A macOS package without its file record has no path to add.
+	assert.Equal(t, "macos://Safari/27.0/arm64", packageID(packages.MacosPkgFormat, "Safari", "27.0", "arm64", "", "", nil))
+}

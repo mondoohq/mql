@@ -28,6 +28,14 @@ var PKG_IDENTIFIER = regexp.MustCompile(`^(.*):\/\/(.*)\/(.*)\/(.*)$`)
 // ids are unaffected, since the suffix is only appended for installScope ==
 // "user".
 //
+// macOS application bundles also carry their bundle path, with "/path" and the
+// path appended. A macOS package is a bundle on disk rather than a record in a
+// package database, so two bundles can share a name and version: Siri.app and
+// Siri AI.app both report "Siri" 1.0, and a game copied to the Desktop repeats
+// the one in ~/Applications. Keyed on name and version alone, the second
+// bundle got the first one's cached resource, so it listed as a duplicate row
+// pointing at the first bundle's path and its own path was never reported.
+//
 // Shared by fillPackageArgs (list.go), which precomputes this and passes it
 // as args["__id"] because it has the SID as a plain string; by the time this
 // package's mqlPackage.id() method below could see it, that SID is reachable
@@ -35,12 +43,25 @@ var PKG_IDENTIFIER = regexp.MustCompile(`^(.*):\/\/(.*)\/(.*)\/(.*)$`)
 // installUserSid backing field (see mqlPackageInternal), which is not
 // populated until AFTER CreateResource returns -- too late to influence the
 // id CreateResource caches under.
-func packageID(format, name, version, arch, installScope, installUser string) string {
+func packageID(format, name, version, arch, installScope, installUser string, files []packages.FileRecord) string {
 	id := format + "://" + name + "/" + version + "/" + arch
 	if installScope == "user" {
 		id += "/user/" + installUser
 	}
+	if path := macosBundlePath(format, files); path != "" {
+		id += "/path" + path
+	}
 	return id
+}
+
+// macosBundlePath returns the bundle path of a macOS application package: its
+// one file record is the bundle itself. Empty for every other format, and for
+// a macOS package that came without its file record.
+func macosBundlePath(format string, files []packages.FileRecord) string {
+	if format != packages.MacosPkgFormat || len(files) != 1 {
+		return ""
+	}
+	return files[0].Path
 }
 
 // A system package cannot be installed twice but there are edge cases:
@@ -57,7 +78,7 @@ func packageID(format, name, version, arch, installScope, installUser string) st
 // (e.g. tool_package.go), though none of them produce a user-scope package
 // today.
 func (x *mqlPackage) id() (string, error) {
-	return packageID(x.Format.Data, x.Name.Data, x.Version.Data, x.Arch.Data, x.InstallScope.Data, x.installUserSid), nil
+	return packageID(x.Format.Data, x.Name.Data, x.Version.Data, x.Arch.Data, x.InstallScope.Data, x.installUserSid, x.filesOnDisks), nil
 }
 
 type mqlPackageInternal struct {
@@ -280,7 +301,7 @@ func fillPackageArgs(args map[string]*llx.RawData, osPkg *packages.Package, avai
 	// packageID) and as mqlPackageInternal.installUserSid (set by list() on
 	// the resource this call builds, since that field cannot be reached via
 	// args at all).
-	args["__id"] = llx.StringData(packageID(osPkg.Format, osPkg.Name, osPkg.Version, osPkg.Arch, osPkg.InstallScope, osPkg.InstallUser))
+	args["__id"] = llx.StringData(packageID(osPkg.Format, osPkg.Name, osPkg.Version, osPkg.Arch, osPkg.InstallScope, osPkg.InstallUser, osPkg.Files))
 
 	// Only eagerly set license when the backend populated it (rpm, apk,
 	// pacman). dpkg leaves it empty here so the lazy `license()` method on

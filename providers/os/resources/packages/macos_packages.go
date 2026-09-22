@@ -8,10 +8,12 @@ import (
 	"io"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/afero"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/parsers"
@@ -40,11 +42,13 @@ type sysProfiler struct {
 	Items []sysProfilerItem `plist:"_items"`
 }
 
-// infoPlist holds the version keys we care about from an app bundle's
+// infoPlist holds the keys we care about from an app bundle's
 // Contents/Info.plist.
 type infoPlist struct {
 	ShortVersion  string `plist:"CFBundleShortVersionString"`
 	BundleVersion string `plist:"CFBundleVersion"`
+	BundleName    string `plist:"CFBundleName"`
+	DisplayName   string `plist:"CFBundleDisplayName"`
 }
 
 // parse macos system version property list
@@ -72,8 +76,11 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 		return nil, errors.New("format not supported")
 	}
 
-	pkgs := make([]Package, 0, len(data[0].Items))
-	for _, entry := range data[0].Items {
+	items := data[0].Items
+	items = append(items, cryptexApplications(conn, items)...)
+
+	pkgs := make([]Package, 0, len(items))
+	for _, entry := range items {
 		if !isApplicationBundlePath(entry.Path) {
 			log.Debug().
 				Str("name", entry.Name).
@@ -369,36 +376,177 @@ func normalizeVersion(version string) string {
 // CoreServices apps ship neither version key) from a directory that merely has
 // a bundle-like extension.
 func bundleVersionFromInfoPlist(conn shared.Connection, path string) (string, bool) {
+	info, isBundle := readInfoPlist(conn, path)
+	if info.ShortVersion != "" {
+		return info.ShortVersion, isBundle
+	}
+	return info.BundleVersion, isBundle
+}
+
+// readInfoPlist reads an app bundle's Contents/Info.plist. The second return
+// value reports whether the file could be read at all, which is what makes a
+// path an application bundle; a plist that fails to parse still counts.
+func readInfoPlist(conn shared.Connection, path string) (infoPlist, bool) {
+	var info infoPlist
 	if path == "" {
-		return "", false
+		return info, false
 	}
 
 	infoPath := filepath.Join(path, "Contents", "Info.plist")
 	f, err := conn.FileSystem().Open(infoPath)
 	if err != nil {
 		log.Debug().Err(err).Str("path", infoPath).Msg("could not open Info.plist")
-		return "", false
+		return info, false
 	}
 	defer f.Close()
 
 	content, err := io.ReadAll(f)
 	if err != nil {
 		log.Debug().Err(err).Str("path", infoPath).Msg("could not read Info.plist")
-		return "", false
+		return info, false
 	}
 
 	// The Info.plist is there, so this is a bundle even if we cannot read a
 	// version out of it.
-	var info infoPlist
 	if _, err := plist.Unmarshal(content, &info); err != nil {
 		log.Debug().Err(err).Str("path", infoPath).Msg("could not parse Info.plist")
-		return "", true
+		return infoPlist{}, true
+	}
+	return info, true
+}
+
+// cryptexRoot is where macOS 13 and later mount its cryptexes, the sealed
+// images that let Apple patch parts of the OS outside a full OS update. Each
+// subdirectory is one cryptex ("App", "OS", ...) laid out like the system
+// volume.
+const cryptexRoot = "/System/Cryptexes"
+
+// cryptexPrebootRoot is the Preboot volume location the same cryptexes are
+// reachable under.
+const cryptexPrebootRoot = "/System/Volumes/Preboot/Cryptexes"
+
+// cryptexApplicationDirs are the directories inside a cryptex that hold
+// application bundles, the same ones system_profiler walks on the system
+// volume.
+var cryptexApplicationDirs = []string{
+	"System/Applications",
+	"System/Library/CoreServices",
+}
+
+// cryptexApplications lists the application bundles that live on a cryptex.
+//
+// system_profiler does not report them. Safari moved into the App cryptex so
+// it can be patched through Rapid Security Responses, and /Applications only
+// carries a symlink to it, so a host with Safari installed reports no Safari
+// at all. Anything else Apple ships in a cryptex drops out the same way.
+//
+// Each bundle is returned in system_profiler's shape so it goes through the
+// same checks as every other entry. A bundle is skipped when system_profiler
+// already reported it under one of the paths it is reachable at, so a macOS
+// release that starts reporting cryptex bundles does not double them.
+func cryptexApplications(conn shared.Connection, reported []sysProfilerItem) []sysProfilerItem {
+	if conn == nil {
+		return nil
+	}
+	fs := conn.FileSystem()
+
+	cryptexes, err := readDirNames(fs, cryptexRoot)
+	if err != nil {
+		log.Debug().Err(err).Str("path", cryptexRoot).Msg("no cryptexes to scan for applications")
+		return nil
 	}
 
-	if info.ShortVersion != "" {
-		return info.ShortVersion, true
+	seen := make(map[string]struct{}, len(reported))
+	for _, entry := range reported {
+		if entry.Path != "" {
+			seen[filepath.Clean(entry.Path)] = struct{}{}
+		}
 	}
-	return info.BundleVersion, true
+
+	var items []sysProfilerItem
+	for _, cryptex := range cryptexes {
+		for _, dir := range cryptexApplicationDirs {
+			base := filepath.Join(cryptexRoot, cryptex, dir)
+			names, err := readDirNames(fs, base)
+			if err != nil {
+				continue
+			}
+			for _, name := range names {
+				if !strings.EqualFold(filepath.Ext(name), ".app") {
+					continue
+				}
+				rel := filepath.Join(dir, name)
+				if isReportedCryptexBundle(seen, cryptex, rel) {
+					continue
+				}
+
+				path := filepath.Join(base, name)
+				info, isBundle := readInfoPlist(conn, path)
+				if !isBundle {
+					continue
+				}
+				version := info.ShortVersion
+				if version == "" {
+					version = info.BundleVersion
+				}
+				items = append(items, sysProfilerItem{
+					Name:    cryptexBundleName(info, name),
+					Version: version,
+					Path:    path,
+					// Only Apple can sign a cryptex.
+					ObtainedFrom: "apple",
+				})
+			}
+		}
+	}
+	return items
+}
+
+// isReportedCryptexBundle reports whether system_profiler already listed the
+// cryptex bundle at rel (relative to its cryptex) under any path it can be
+// reached at: the cryptex mount, the Preboot volume, the system volume path it
+// is firmlinked to, or the /Applications symlink for applications.
+func isReportedCryptexBundle(seen map[string]struct{}, cryptex, rel string) bool {
+	aliases := []string{
+		filepath.Join(cryptexRoot, cryptex, rel),
+		filepath.Join(cryptexPrebootRoot, cryptex, rel),
+		filepath.Join("/", rel),
+	}
+	if app, ok := strings.CutPrefix(rel, "System/Applications/"); ok {
+		aliases = append(aliases, filepath.Join("/Applications", app))
+	}
+	for _, alias := range aliases {
+		if _, ok := seen[alias]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// cryptexBundleName names a bundle the way system_profiler does: its display
+// name, then its bundle name, then the directory name without .app.
+func cryptexBundleName(info infoPlist, dirName string) string {
+	if info.DisplayName != "" {
+		return info.DisplayName
+	}
+	if info.BundleName != "" {
+		return info.BundleName
+	}
+	return strings.TrimSuffix(dirName, filepath.Ext(dirName))
+}
+
+func readDirNames(fs afero.Fs, dir string) ([]string, error) {
+	f, err := fs.Open(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	names, err := f.Readdirnames(-1)
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(names)
+	return names, nil
 }
 
 func getPurlQualifiers(conn shared.Connection, entry sysProfilerItem) map[string]string {
