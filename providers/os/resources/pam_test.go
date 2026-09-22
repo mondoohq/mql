@@ -109,7 +109,8 @@ func TestPamConfPrefersPamDirOverPamConf(t *testing.T) {
 			defaultPamConf:        {Path: defaultPamConf, Content: "login auth required pam_unix.so\n"},
 		},
 		Commands: map[string]*mock.Command{
-			findCmd: {Stdout: defaultPamDir + "/su\n"},
+			"find --version": {Stdout: "find (GNU findutils) 4.9.0\n"},
+			findCmd:          {Stdout: defaultPamDir + "/su\n"},
 		},
 	}))
 	require.NoError(t, err)
@@ -393,7 +394,8 @@ func newPamDirRuntime(t *testing.T) *plugin.Runtime {
 			defaultPamConf:        {Path: defaultPamConf, Content: "login auth required pam_unix.so\n"},
 		},
 		Commands: map[string]*mock.Command{
-			findCmd: {Stdout: defaultPamDir + "/su\n"},
+			"find --version": {Stdout: "find (GNU findutils) 4.9.0\n"},
+			findCmd:          {Stdout: defaultPamDir + "/su\n"},
 		},
 	}))
 	require.NoError(t, err)

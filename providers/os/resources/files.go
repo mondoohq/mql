@@ -142,11 +142,7 @@ func (l *mqlFilesFind) unixFilesFindCmd() ([]string, error) {
 		depth = &l.Depth.Data
 	}
 
-	conn := l.MqlRuntime.Connection.(shared.Connection)
-	pf := conn.Asset().Platform
-	hasGNUFind := pf != nil && pf.IsFamily("linux")
-
-	callCmd := filesfind.BuildFilesFindCmd(l.From.Data, l.Xdev.Data, l.Type.Data, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth, hasGNUFind)
+	callCmd := filesfind.BuildFilesFindCmd(l.From.Data, l.Xdev.Data, l.Type.Data, l.Regex.Data, l.Permissions.Data, l.Name.Data, depth, l.hasGNUFind())
 	rawCmd, err := CreateResource(l.MqlRuntime, "command", map[string]*llx.RawData{
 		"command": llx.StringData(callCmd),
 	})
@@ -168,6 +164,22 @@ func (l *mqlFilesFind) unixFilesFindCmd() ([]string, error) {
 		foundFiles = strings.Split(lines, "\n")
 	}
 	return foundFiles, nil
+}
+
+// hasGNUFind reports whether the target's find is GNU findutils, which has
+// -xtype. Linux alone doesn't imply it: BusyBox find (Alpine and many
+// containers) rejects -xtype, and because the find output is read from stdout
+// only, the search would silently come back empty. The command resource is
+// cached per connection, so the probe runs once per scan.
+func (l *mqlFilesFind) hasGNUFind() bool {
+	raw, err := CreateResource(l.MqlRuntime, "command", map[string]*llx.RawData{
+		"command": llx.StringData("find --version"),
+	})
+	if err != nil {
+		return false
+	}
+	out := raw.(*mqlCommand).GetStdout()
+	return out.Error == nil && strings.Contains(out.Data, "GNU findutils")
 }
 
 func (l *mqlFilesFind) windowsPowershellCmd() ([]string, error) {

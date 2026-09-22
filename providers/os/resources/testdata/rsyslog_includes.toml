@@ -69,26 +69,26 @@ content = """unrelated
 """
 
 # Include expansion: list the immediate directory.
-[commands."find \"/etc/rsyslog.d\" -xdev -type f -perm -0 -maxdepth 1"]
+[commands."find -L \"/etc/rsyslog.d\" -xdev -type f -perm -0 -maxdepth 1"]
 stdout = """/etc/rsyslog.d/50-default.conf
 """
 
-[commands."find \"/etc/rsyslog.extra\" -xdev -type f -perm -0 -maxdepth 1"]
+[commands."find -L \"/etc/rsyslog.extra\" -xdev -type f -perm -0 -maxdepth 1"]
 stdout = """/etc/rsyslog.extra/10-site.conf
 /etc/rsyslog.extra/notes.txt
 """
 
-[commands."find \"/etc/rsyslog.deep\" -xdev -type f -perm -0 -maxdepth 1"]
+[commands."find -L \"/etc/rsyslog.deep\" -xdev -type f -perm -0 -maxdepth 1"]
 stdout = """/etc/rsyslog.deep/90-deep.conf
 """
 
-[commands."find \"/etc\" -xdev -type f -perm -0 -maxdepth 1"]
+[commands."find -L \"/etc\" -xdev -type f -perm -0 -maxdepth 1"]
 stdout = """/etc/rsyslog.conf
 /etc/rsyslog.single.conf
 /etc/other.conf
 """
 
 # Legacy `<conf>.d` auto-discovery, which runs regardless of the includes.
-[commands."find \"/etc/rsyslog.d\" -xdev -type f -perm -0"]
+[commands."find -L \"/etc/rsyslog.d\" -xdev -type f -perm -0"]
 stdout = """/etc/rsyslog.d/50-default.conf
 """

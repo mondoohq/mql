@@ -36,12 +36,12 @@ content = """not a config fragment
 """
 
 # Legacy `<conf>.d` auto-discovery.
-[commands."find \"/etc/rsyslog.d\" -xdev -type f -perm -0"]
+[commands."find -L \"/etc/rsyslog.d\" -xdev -type f -perm -0"]
 stdout = """/etc/rsyslog.d/50-frag.conf
 """
 
 # Include expansion out of the auto-discovered fragment.
-[commands."find \"/etc/rsyslog.nested\" -xdev -type f -perm -0 -maxdepth 1"]
+[commands."find -L \"/etc/rsyslog.nested\" -xdev -type f -perm -0 -maxdepth 1"]
 stdout = """/etc/rsyslog.nested/90-nested.conf
 /etc/rsyslog.nested/notes.txt
 """
