@@ -16,7 +16,11 @@ type Reboot interface {
 }
 
 func New(conn shared.Connection) (Reboot, error) {
-	pf := conn.Asset().Platform
+	asset := conn.Asset()
+	if asset == nil || asset.Platform == nil {
+		return nil, errors.New("cannot find OS information for reboot detection")
+	}
+	pf := asset.Platform
 
 	switch {
 	// NixOS is in the linux family and none of the others, and it carries no

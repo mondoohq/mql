@@ -67,3 +67,21 @@ func TestRebootOnWindows(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, true, required)
 }
+
+// TestRebootWithoutAPlatform covers an asset whose platform was never detected.
+//
+// The switch below used to read pf.Name in its first case, and pf comes straight
+// off the asset. IsFamily is nil-safe and returns false, so a nil platform does
+// not stop at the family checks -- it reaches the bare .Name read and panics.
+// The plugin layer recovers that panic and answers the query with an error, so
+// every check touching the resource reports "error" while the scan still exits
+// 0: a wrong answer delivered confidently rather than a crash.
+func TestRebootWithoutAPlatform(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{})
+	require.NoError(t, err)
+
+	require.NotPanics(t, func() {
+		_, err := New(conn)
+		assert.Error(t, err, "an undetected platform is an error, not a reboot resolver")
+	})
+}

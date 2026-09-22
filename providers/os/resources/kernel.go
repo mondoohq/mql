@@ -20,7 +20,15 @@ import (
 func initKernel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	// this resource is only supported on linux
 	conn := runtime.Connection.(shared.Connection)
-	platform := conn.Asset().Platform
+	// Guarded the way ResolveSystemPkgManagers guards: an asset with no platform
+	// is a nil dereference here, not an unsupported platform. IsFamily is
+	// nil-safe and returns false, so the three calls below fall through to the
+	// bare .Name read -- which is exactly the case a nil platform reaches.
+	asset := conn.Asset()
+	if asset == nil || asset.Platform == nil {
+		return nil, nil, errors.New("cannot find OS information for kernel detection")
+	}
+	platform := asset.Platform
 
 	supported := platform.IsFamily("linux") || platform.IsFamily("darwin") || platform.IsFamily("bsd") || platform.Name == "aix"
 	if !supported {

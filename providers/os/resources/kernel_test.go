@@ -8,7 +8,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 )
 
 func TestDebianImageKernelName(t *testing.T) {
@@ -1283,6 +1286,40 @@ func TestLookupModprobeRule(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.want, lookupModprobeRule(rules, tc.name))
+		})
+	}
+}
+
+// TestInitResourcesWithoutAPlatform covers the resources that gate on the
+// platform before they will initialise at all.
+//
+// Each reads conn.Asset().Platform and then tests it with a chain of
+// IsFamily calls ending in a bare .Name read. IsFamily is nil-safe and returns
+// false, so a nil platform does not stop at the family checks -- the ||
+// short-circuit carries it to .Name and it panics there. That is not a crash the
+// user sees: the plugin layer recovers a panic in a provider method and answers
+// the query with an error, so every check touching the resource reports status
+// "error" while the scan still exits 0.
+//
+// Observed in the field on a container scan, where 12 of 22 checks in one policy
+// turned into errors this way.
+func TestInitResourcesWithoutAPlatform(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		init func(*plugin.Runtime, map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+	}{
+		{"kernel", initKernel},
+		{"openbsmaudit", initOpenBSMAudit},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			conn, err := mock.New(0, &inventory.Asset{})
+			require.NoError(t, err)
+			runtime := &plugin.Runtime{Connection: conn}
+
+			require.NotPanics(t, func() {
+				_, _, err := tc.init(runtime, map[string]*llx.RawData{})
+				assert.Error(t, err, "an undetected platform is an error, not a supported platform")
+			})
 		})
 	}
 }

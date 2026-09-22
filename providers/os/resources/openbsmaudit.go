@@ -19,7 +19,11 @@ const defaultAuditControlPath = "/etc/security/audit_control"
 func initOpenBSMAudit(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	// OpenBSM audit is only supported on macOS and FreeBSD
 	conn := runtime.Connection.(shared.Connection)
-	platform := conn.Asset().Platform
+	asset := conn.Asset()
+	if asset == nil || asset.Platform == nil {
+		return nil, nil, errors.New("cannot find OS information for openbsm audit detection")
+	}
+	platform := asset.Platform
 
 	supported := platform.IsFamily("darwin") || platform.Name == "freebsd"
 	if !supported {
