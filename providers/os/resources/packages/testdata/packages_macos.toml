@@ -317,11 +317,52 @@ stdout = """<?xml version="1.0" encoding="UTF-8"?>
 				<key>version</key>
 				<string>3.0</string>
 			</dict>
+			<dict>
+				<key>_name</key>
+				<string>Google Chrome</string>
+				<key>arch_kind</key>
+				<string>arch_arm_i64</string>
+				<key>info</key>
+				<string>Google Chrome 154.0.8037.45, Copyright 2026 Google LLC. All rights reserved.</string>
+				<key>obtained_from</key>
+				<string>identified_developer</string>
+				<key>path</key>
+				<string>/Applications/Google Chrome.app</string>
+				<key>version</key>
+				<string>154.0.8037.45</string>
+			</dict>
+			<dict>
+				<key>_name</key>
+				<string>Google Chrome</string>
+				<key>arch_kind</key>
+				<string>arch_arm_i64</string>
+				<key>obtained_from</key>
+				<string>unknown</string>
+				<key>path</key>
+				<string>/Users/user/Applications (Parallels)/Windows 11/Google Chrome.app</string>
+				<key>version</key>
+				<string>Windows 11</string>
+			</dict>
 		</array>
 		<key>_parentDataType</key>
 		<string>SPSoftwareDataType</string>
 	</dict>
 </array>
+</plist>
+"""
+
+[files."/Users/user/Applications (Parallels)/Windows 11/Google Chrome.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.parallels.winapp.b1f2c3d4.chrome.exe</string>
+	<key>CFBundleName</key>
+	<string>Google Chrome</string>
+	<key>CFBundleShortVersionString</key>
+	<string>Windows 11</string>
+</dict>
 </plist>
 """
 

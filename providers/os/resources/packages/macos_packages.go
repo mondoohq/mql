@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -84,9 +85,9 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 		// system_profiler only surfaces CFBundleShortVersionString as the
 		// version. Some bundles (e.g. PWAs) ship a version only in
 		// CFBundleVersion, so fall back to the bundle's Info.plist when
-		// system_profiler reports no version.
+		// system_profiler reports no version, or a version we cannot use.
 		version := entry.Version
-		if version == "" {
+		if !looksLikeVersion(version) {
 			// Plenty of directories genuinely end in .app without being
 			// applications: Firefox origin storage (https+++example.app),
 			// app-group script containers (group.is.workflow.my.app) and bare
@@ -96,15 +97,30 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 			// reporting it with a versionless purl that can never match
 			// advisory data.
 			//
-			// Entries that do report a version are never checked, because some
-			// real applications have no Contents/Info.plist. Wrapped iOS apps
-			// keep theirs under Wrapper/ and would otherwise be lost.
+			// Entries reporting a version we can use are never checked, because
+			// some real applications have no Contents/Info.plist. Wrapped iOS
+			// apps keep theirs under Wrapper/ and would otherwise be lost.
 			bundleVersion, isBundle := bundleVersionFromInfoPlist(conn, entry.Path)
 			if !isBundle {
 				log.Debug().
 					Str("name", entry.Name).
 					Str("path", entry.Path).
 					Msg("skipping entry that is not an application bundle")
+				continue
+			}
+			// system_profiler reported something, and it was not a version.
+			// CFBundleVersion is the one other place a version can come from,
+			// so a bundle that fails both has no version to report under a name
+			// that is reported as a product. Dropping it beats keeping it: the
+			// string reaches Package.Version AND the purl, where it becomes an
+			// identity no advisory bound can be compared against, sitting next
+			// to the real product under the same name.
+			if version != "" && !looksLikeVersion(bundleVersion) {
+				log.Debug().
+					Str("name", entry.Name).
+					Str("path", entry.Path).
+					Str("version", version).
+					Msg("skipping entry whose reported version is not a version")
 				continue
 			}
 			version = bundleVersion
@@ -267,6 +283,43 @@ var dependencyCacheMarkers = []string{
 	// Xcode build products, which are rebuilt from source and are not the
 	// copy a user launches even when the project builds a real application.
 	"/deriveddata/",
+}
+
+// versionShape matches a string that opens with a version number, optionally
+// behind the single leading "v" some vendors ship (Raspberry Pi Imager reports
+// "v2.0.6"). It deliberately anchors only the start: real
+// CFBundleShortVersionString values carry all kinds of trailing decoration
+// ("1.0 (1234)", "3.2 beta 4"), and that decoration never stops the leading
+// number from being the version.
+var versionShape = regexp.MustCompile(`^v?\d`)
+
+// looksLikeVersion reports whether a string can be used as a package version.
+//
+// The check exists because system_profiler enumerates whatever Launch Services
+// has registered, which is not limited to software installed on this Mac. A
+// hypervisor's guest-application launcher (Parallels Coherence, VMware Unity)
+// registers a stub bundle per guest application, under the guest
+// application's own display name, and those stubs have been seen carrying the
+// name of the guest OS where a version belongs -- a "Google Chrome" package
+// at version "Windows 11". The browser that string names is installed in the
+// virtual machine, which is scanned as its own asset.
+//
+// Nothing downstream can recover from that: the string lands in
+// Package.Version and, verbatim, in the purl, so the stub takes an identity
+// that looks like the product and compares against no advisory bound.
+//
+// The rule is a shape rule rather than a parse, because a parse is the wrong
+// instrument here. versionx.Parse accepts every string by design, and a strict
+// semver parse would reject real Mac versions ("1.0 (1234)") while accepting
+// the packed and wrong values this cannot see anyway. Requiring the version to
+// begin with a number is what separates a version from a sentence, and it is
+// the only distinction available without reading each bundle's identifier.
+//
+// Measured against a stock developer Mac with 331 registered applications: one
+// version in the set does not begin with a digit ("v2.0.6"), which the leading
+// "v" covers, and nothing else is rejected.
+func looksLikeVersion(version string) bool {
+	return versionShape.MatchString(version)
 }
 
 // bundleVersionFromInfoPlist recovers an app's version from its

@@ -31,7 +31,7 @@ func TestMacOsXPackageParser(t *testing.T) {
 	}
 	m, err := packages.ParseMacOSPackages(mock, pf, c.Stdout)
 	assert.Nil(t, err)
-	assert.Equal(t, 9, len(m), "detected the right amount of packages")
+	assert.Equal(t, 10, len(m), "detected the right amount of packages")
 
 	assert.Equal(t, "Preview", m[0].Name, "pkg name detected")
 	assert.Equal(t, "10.0", m[0].Version, "pkg version detected")
@@ -150,6 +150,23 @@ func TestMacOsXPackageParser(t *testing.T) {
 	} {
 		assert.NotContains(t, names(m), dropped, "non-application entry dropped")
 	}
+
+	// system_profiler enumerates what Launch Services has registered, which
+	// includes a hypervisor's per-guest-application launcher stubs. Such a stub
+	// carries the guest application's display name, so it arrives as a second
+	// "Google Chrome" alongside the browser installed on this Mac -- and the
+	// one seen in the field reports the guest OS name where a version belongs.
+	//
+	// Assert the surviving entry's version, not just the count: reporting
+	// "Windows 11" is the customer-visible bug, and it reaches the purl too,
+	// where the stub takes an identity that looks like the browser and matches
+	// no advisory bound. The browser the stub launches lives in the virtual
+	// machine, which is scanned as its own asset.
+	chrome := findByName(m, "Google Chrome")
+	assert.Len(t, chrome, 1, "only the browser installed on this Mac is reported")
+	assert.Equal(t, "154.0.8037.45", chrome[0].Version, "version of the installed browser")
+	assert.Equal(t, "pkg:macos/macos/Google%20Chrome@154.0.8037.45?arch=x86_64", chrome[0].PUrl)
+	assert.Equal(t, []packages.FileRecord{{Path: "/Applications/Google Chrome.app"}}, chrome[0].Files)
 }
 
 func names(pkgs []packages.Package) []string {
