@@ -17,6 +17,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/vault"
 	"go.mondoo.com/mql/providers/os/connection/mock"
 	"go.mondoo.com/mql/providers/os/id/ids"
+	"go.mondoo.com/mql/providers/os/resources"
 )
 
 func TestLocalConnectionIdDetectors(t *testing.T) {
@@ -251,6 +252,30 @@ func TestEnsurePlatformDetected(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, asset.Platform, "StoreData served a connection with no platform")
 		assert.NotEmpty(t, asset.Platform.Name)
+	})
+
+	t.Run("refuses through GetData when it cannot detect", func(t *testing.T) {
+		// An asset with no connection config and no platform, served through
+		// GetData with the provider's real resource functions, for a resource
+		// whose init reads the platform. Waving this through to the resource is
+		// what kept a nil platform reachable: initKernel dereferences it on the
+		// last term of its IsFamily chain.
+		asset := &inventory.Asset{}
+		conn, err := mock.New(7, asset)
+		require.NoError(t, err)
+
+		s := Init()
+		_, err = s.AddRuntime(&inventory.Config{Id: 7}, func(connId uint32) (*plugin.Runtime, error) {
+			return plugin.NewRuntime(conn, nil, false,
+				resources.CreateResource, resources.NewResource,
+				resources.GetData, resources.SetData, nil), nil
+		})
+		require.NoError(t, err)
+
+		require.NotPanics(t, func() {
+			_, err := s.GetData(&plugin.DataReq{Connection: 7, Resource: "kernel"})
+			assert.Error(t, err, "a connection with no platform must not serve a resource")
+		})
 	})
 
 	t.Run("leaves what it cannot answer for alone", func(t *testing.T) {

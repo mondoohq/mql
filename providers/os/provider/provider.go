@@ -121,13 +121,18 @@ func (s *Service) Disconnect(req *plugin.DisconnectReq) (*plugin.DisconnectRes, 
 }
 
 // ensurePlatformDetected runs detection for a connection that does not have a
-// platform yet, once.
+// platform yet, once, and refuses the request when it cannot.
 //
-// Everything it cannot answer for is left alone rather than treated as an
-// error: a connection this service does not own, a runtime that has already
-// gone, an asset that carries no connection config for detect to read. Those
-// are for GetData and the resource to report, and they have the better message
-// for it.
+// Refusing is the point. Every resource in this provider reads
+// conn.Asset().Platform, and none of them can report a missing one cleanly:
+// the IsFamily chains dereference nil on their last term. So a connection this
+// cannot give a platform to must not have resources created on it at all --
+// an asset with no connection config for detect to read is an error here, not
+// something to wave through for the resource to deal with.
+//
+// Two cases are left for GetData, because they never reach a resource: a
+// connection this service has no runtime for (GetData fails on the same lookup
+// and returns its own error), and one that is not an os connection.
 func (s *Service) ensurePlatformDetected(connID uint32) error {
 	runtime, err := s.GetRuntime(connID)
 	if err != nil {
@@ -139,12 +144,15 @@ func (s *Service) ensurePlatformDetected(connID uint32) error {
 	}
 
 	asset := conn.Asset()
-	if asset == nil || len(asset.Connections) == 0 {
-		return nil
+	if asset == nil {
+		return errors.New("connection has no asset, so its platform cannot be determined")
 	}
 	// The common path: detection already ran, at Connect or on an earlier field.
 	if asset.Platform != nil && asset.Platform.Name != "" {
 		return nil
+	}
+	if len(asset.Connections) == 0 {
+		return errors.New("connection has no configuration to detect its platform from")
 	}
 
 	entry, _ := s.deferredDetects.LoadOrStore(connID, &deferredDetect{})
