@@ -95,6 +95,25 @@ func (s *Service) GetData(req *plugin.DataReq) (*plugin.DataRes, error) {
 	return s.Service.GetData(req)
 }
 
+// StoreData caches resources the caller already has, creating any that this
+// connection has not seen, and takes the same guard as GetData.
+//
+// Not because a path from here to a platform read is known -- CreateResource
+// reaches the generated create* constructors, which set fields rather than
+// consult the platform, so today it does not. It is here because the invariant
+// is about resources existing on this connection at all, not about which RPC
+// asked for them: there are 56 platform reads across this provider's resources,
+// and the one that makes a constructor consult the platform would otherwise
+// reintroduce the bug silently. Symmetry at the boundary costs one call.
+//
+// ResolveAsset needs no guard: it only looks up a resource that already exists.
+func (s *Service) StoreData(req *plugin.StoreReq) (*plugin.StoreRes, error) {
+	if err := s.ensurePlatformDetected(req.Connection); err != nil {
+		return nil, err
+	}
+	return s.Service.StoreData(req)
+}
+
 // Disconnect drops the connection's detection state along with the connection.
 func (s *Service) Disconnect(req *plugin.DisconnectReq) (*plugin.DisconnectRes, error) {
 	s.deferredDetects.Delete(req.Connection)

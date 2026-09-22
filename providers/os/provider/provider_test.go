@@ -239,6 +239,20 @@ func TestEnsurePlatformDetected(t *testing.T) {
 		assert.Equal(t, first, asset.Platform.Name)
 	})
 
+	t.Run("storing detects too", func(t *testing.T) {
+		// StoreData creates any resource the connection has not seen, so it
+		// carries the same invariant as GetData even though no constructor
+		// consults the platform today.
+		asset := delayed()
+		s, id := newConn(t, asset)
+		require.Nil(t, asset.Platform)
+
+		_, err := s.StoreData(&plugin.StoreReq{Connection: id})
+		require.NoError(t, err)
+		require.NotNil(t, asset.Platform, "StoreData served a connection with no platform")
+		assert.NotEmpty(t, asset.Platform.Name)
+	})
+
 	t.Run("leaves what it cannot answer for alone", func(t *testing.T) {
 		s := Init()
 		// A connection this service does not own. GetData reports that, with a
