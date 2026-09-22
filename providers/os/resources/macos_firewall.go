@@ -182,11 +182,15 @@ func (m *mqlMacosFirewall) loggingDetail() (string, error) {
 		if merr != nil {
 			return "", merr
 		}
-		switch opt, _ := managed["LoggingOption"].(string); opt {
+		opt, _ := managed["LoggingOption"].(string)
+		switch opt {
 		case "detail", "brief", "throttled":
 			return opt, nil
+		case "":
+			return "", errFirewallLoggingDetailUnavailable
 		}
-		return "", err
+		return "", fmt.Errorf("%w: the configuration profile sets LoggingOption %q, which is not detail, brief, or throttled",
+			errFirewallLoggingDetailUnavailable, opt)
 	}
 	switch int64(v) {
 	case 0:

@@ -209,3 +209,23 @@ func TestFirewallNoSourceIsAnError(t *testing.T) {
 	_, err := fw.loggingEnabled()
 	assert.ErrorIs(t, err, errFirewallStateUnavailable)
 }
+
+// With no preferences file, loggingDetail's error names the sources it read,
+// not the ALF key lookup that failed first.
+func TestFirewallLoggingDetailUnavailable(t *testing.T) {
+	fw := newFirewallTestRuntime(t, &mock.TomlData{})
+	_, err := fw.loggingDetail()
+	require.ErrorIs(t, err, errFirewallLoggingDetailUnavailable)
+	assert.NotContains(t, err.Error(), "loggingoption")
+
+	fw = newFirewallTestRuntime(t, &mock.TomlData{
+		Files: map[string]*mock.MockFileData{
+			managedFirewallPlist: {Content: `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>LoggingOption</key><string>verbose</string></dict></plist>
+`},
+		},
+	})
+	_, err = fw.loggingDetail()
+	require.ErrorIs(t, err, errFirewallLoggingDetailUnavailable)
+	assert.Contains(t, err.Error(), `LoggingOption "verbose"`)
+}

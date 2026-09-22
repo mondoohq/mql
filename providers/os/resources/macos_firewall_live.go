@@ -43,6 +43,12 @@ var errFirewallStateUnavailable = errors.New(
 // it is the authoritative answer there.
 const managedFirewallPlist = "/Library/Managed Preferences/com.apple.security.firewall.plist"
 
+// errFirewallLoggingDetailUnavailable is loggingDetail's counterpart to
+// errFirewallStateUnavailable. socketfilterfw has no getter for the logging
+// detail, so it names only the two sources loggingDetail reads.
+var errFirewallLoggingDetailUnavailable = errors.New(
+	"cannot determine application firewall logging detail: no ALF preferences file, and no configuration profile sets LoggingOption")
+
 // firewallUnavailable keeps socketfilterfw's own error when it failed outright,
 // and otherwise reports that no source could answer.
 func firewallUnavailable(liveErr error) error {
