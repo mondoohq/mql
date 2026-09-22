@@ -45,6 +45,7 @@ alias os.base.kilocode = kilocode
 alias os.base.kiro = kiro
 alias os.base.kubelet = kubelet
 alias os.base.mariadb = mariadb
+alias os.base.mdm = mdm
 alias os.base.mongodb = mongodb
 alias os.base.mysql = mysql
 alias os.base.network = network
@@ -15624,6 +15625,31 @@ private edr.product @defaults("name vendor installed healthy") {
   processes() []process
   // System extensions the agent registered, empty off macOS
   systemExtensions() []macos.systemExtension
+}
+
+// Mobile device management enrollment
+//
+// MDM enrollment state for this asset on macOS and Windows. enrolled, vendor,
+// and serverUrl answer the fleet-wide questions without a per-platform query,
+// for example `mdm.enrolled && mdm.vendor == "intune"`, and method says how
+// the device was enrolled. On any other platform enrolled is false.
+mdm @defaults("enrolled vendor") @maturity("preview") {
+  // Whether the device is enrolled in an MDM service
+  enrolled() bool
+  // MDM vendor recognized from the enrollment server
+  //
+  // One of intune, jamf, kandji, mosyle, workspaceone, simplemdm, addigy,
+  // hexnode, or jumpcloud. Null when the device is not enrolled or the server
+  // is not one of these.
+  vendor() string
+  // URL of the MDM server, null when the device is not enrolled
+  serverUrl() string
+  // How the device was enrolled, null when it is not enrolled
+  //
+  // automated for Apple Automated Device Enrollment or Windows Autopilot,
+  // policy for Windows Group Policy auto-enrollment, and user for an
+  // enrollment a user started.
+  method() string
 }
 
 // Cloud-asset metadata

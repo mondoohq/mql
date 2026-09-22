@@ -2397,6 +2397,11 @@ mdadm.device 13.1.2
 mdadm.device.name 13.1.2
 mdadm.device.role 13.1.2
 mdadm.device.state 13.1.2
+mdm 14.0.0
+mdm.enrolled 14.0.0
+mdm.method 14.0.0
+mdm.serverUrl 14.0.0
+mdm.vendor 14.0.0
 mistral.vibe 13.13.1
 mistral.vibe.configPath 13.13.1
 mistral.vibe.package 13.31.1

@@ -526,6 +526,7 @@ const (
 	ResourceWindowsDefenderThreatDetection                string = "windows.defender.threatDetection"
 	ResourceEdr                                           string = "edr"
 	ResourceEdrProduct                                    string = "edr.product"
+	ResourceMdm                                           string = "mdm"
 	ResourceCloud                                         string = "cloud"
 	ResourceCloudInstance                                 string = "cloudInstance"
 	ResourceIpAddress                                     string = "ipAddress"
@@ -2692,6 +2693,10 @@ func init() {
 		"edr.product": {
 			// to override args, implement: initEdrProduct(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createEdrProduct,
+		},
+		"mdm": {
+			// to override args, implement: initMdm(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMdm,
 		},
 		"cloud": {
 			// to override args, implement: initCloud(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -14956,6 +14961,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"edr.product.systemExtensions": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlEdrProduct).GetSystemExtensions()).ToDataRes(types.Array(types.Resource("macos.systemExtension")))
+	},
+	"mdm.enrolled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMdm).GetEnrolled()).ToDataRes(types.Bool)
+	},
+	"mdm.vendor": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMdm).GetVendor()).ToDataRes(types.String)
+	},
+	"mdm.serverUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMdm).GetServerUrl()).ToDataRes(types.String)
+	},
+	"mdm.method": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMdm).GetMethod()).ToDataRes(types.String)
 	},
 	"cloud.provider": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloud).GetProvider()).ToDataRes(types.String)
@@ -35199,6 +35216,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"edr.product.systemExtensions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlEdrProduct).SystemExtensions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"mdm.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMdm).__id, ok = v.Value.(string)
+		return
+	},
+	"mdm.enrolled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMdm).Enrolled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"mdm.vendor": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMdm).Vendor, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mdm.serverUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMdm).ServerUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mdm.method": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMdm).Method, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"cloud.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -90403,6 +90440,78 @@ func (c *mqlEdrProduct) GetSystemExtensions() *plugin.TValue[[]any] {
 		}
 
 		return c.systemExtensions()
+	})
+}
+
+// mqlMdm for the mdm resource
+type mqlMdm struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMdmInternal
+	Enrolled  plugin.TValue[bool]
+	Vendor    plugin.TValue[string]
+	ServerUrl plugin.TValue[string]
+	Method    plugin.TValue[string]
+}
+
+// createMdm creates a new instance of this resource
+func createMdm(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMdm{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("mdm", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMdm) MqlName() string {
+	return "mdm"
+}
+
+func (c *mqlMdm) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMdm) GetEnrolled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Enrolled, func() (bool, error) {
+		return c.enrolled()
+	})
+}
+
+func (c *mqlMdm) GetVendor() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Vendor, func() (string, error) {
+		return c.vendor()
+	})
+}
+
+func (c *mqlMdm) GetServerUrl() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ServerUrl, func() (string, error) {
+		return c.serverUrl()
+	})
+}
+
+func (c *mqlMdm) GetMethod() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Method, func() (string, error) {
+		return c.method()
 	})
 }
 
