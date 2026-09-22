@@ -310,3 +310,28 @@ func TestSharingPanelRemoved(t *testing.T) {
 		assert.Equal(t, want, sharingPanelRemoved(version), version)
 	}
 }
+
+// A failed launchctl is not re-run for every field that reads the overrides.
+func TestSharingSourcesLaunchdFailureCached(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			"launchctl print-disabled system": {Stderr: "Could not find domain for system", ExitStatus: 113},
+		},
+	}))
+	require.NoError(t, err)
+	s := &sharingSources{conn: conn}
+	_, err1 := s.flag("Screen Sharing")
+	_, err2 := s.flag("File Sharing")
+	require.Error(t, err1)
+	assert.Same(t, err1, err2, "the second field gets the cached error, not a second run")
+}
+
+// Remote Management reads its state file through the same file access as
+// every other source, so the permission case applies to it too.
+func TestSharingSourcesRemoteManagementPermissionDenied(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{}))
+	require.NoError(t, err)
+	s := &sharingSources{conn: conn, fs: &denyFs{Fs: conn.FileSystem(), deny: "/Library/Application Support/Apple/Remote Desktop/"}}
+	_, err = s.flag("Remote Management")
+	assert.ErrorIs(t, err, os.ErrPermission)
+}

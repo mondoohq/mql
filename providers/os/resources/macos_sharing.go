@@ -115,6 +115,9 @@ func parseSharingOutput(stdout string) map[string]bool {
 // it instead, never assumed off.
 func (s *mqlMacosSharing) sharingFlag(name string) (bool, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
+	// Before macOS 26 the panel is tried first. An empty panel there falls
+	// through to the settings below instead of erroring: they exist on
+	// those releases too, so a read value beats "unavailable".
 	if !sharingPanelRemoved(conn.Asset().GetPlatform().GetVersion()) {
 		state, err := s.fetchState()
 		if err != nil {

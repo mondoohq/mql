@@ -116,9 +116,11 @@ type sharingSources struct {
 	// fs overrides conn.FileSystem() in tests.
 	fs afero.Fs
 
-	lock      sync.Mutex
-	overrides map[string]bool
-	uuid      string
+	lock        sync.Mutex
+	overrides   map[string]bool
+	overrideErr error
+	fetchedOvr  bool
+	uuid        string
 }
 
 // flag returns the state of one Sharing panel toggle, keyed by the name the
@@ -175,12 +177,16 @@ func (s *sharingSources) launchdService(label string) (bool, error) {
 func (s *sharingSources) launchdOverrides() (map[string]bool, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	if s.overrides != nil {
-		return s.overrides, nil
+	// A failure is cached too: three fields read the overrides, and a
+	// command that failed once is not retried for each of them.
+	if s.fetchedOvr {
+		return s.overrides, s.overrideErr
 	}
+	s.fetchedOvr = true
 
 	stdout, err := s.run(launchdOverridesCmd)
 	if err != nil {
+		s.overrideErr = err
 		return nil, err
 	}
 	s.overrides = parseLaunchdOverrides(stdout)
@@ -188,7 +194,7 @@ func (s *sharingSources) launchdOverrides() (map[string]bool, error) {
 }
 
 func (s *sharingSources) remoteManagement() (bool, error) {
-	f, err := s.conn.FileSystem().Open(remoteManagementStateFile)
+	f, err := s.open(remoteManagementStateFile)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return false, nil
@@ -339,12 +345,16 @@ func dataFlag(data plist.Data, source string, keyPath ...string) (bool, error) {
 	return false, fmt.Errorf("%s: %s is neither a boolean nor a number", source, strings.Join(keyPath, "."))
 }
 
-func (s *sharingSources) readPlist(file string) (plist.Data, error) {
-	fs := s.fs
-	if fs == nil {
-		fs = s.conn.FileSystem()
+// open opens a file on the target, through the test override when set.
+func (s *sharingSources) open(file string) (afero.File, error) {
+	if s.fs != nil {
+		return s.fs.Open(file)
 	}
-	f, err := fs.Open(file)
+	return s.conn.FileSystem().Open(file)
+}
+
+func (s *sharingSources) readPlist(file string) (plist.Data, error) {
+	f, err := s.open(file)
 	if err != nil {
 		return nil, err
 	}
