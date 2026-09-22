@@ -51,11 +51,11 @@ func TestLooksLikeVersion(t *testing.T) {
 		{"1.\r2", false, "carriage-return-padded separator"},
 
 		// Whitespace that is not touching a separator is ordinary decoration
-		// after a complete version, and it must still be accepted. Every one of
-		// these was read off a real Mac.
-		{"1.0 (1234)", true, "build number in parentheses"},
+		// after a complete version, so it must survive the rule above. The two
+		// decorated versions already covered near the top of this table make
+		// the same point; these add the shapes the rule is most likely to
+		// overreach on. Both were read off a real Mac.
 		{"7.1.5 (84650)", true, "Zoom build number"},
-		{"3.2 beta 4", true, "pre-release decoration"},
 		{"8.00 PL12", true, "patch level after a complete version"},
 	}
 
