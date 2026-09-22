@@ -44,11 +44,12 @@ func (l *mqlLuks) volumes() ([]any, error) {
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("lsblk failed: " + cmd.Stderr.Data)
+	stdout, err := commandOutput(cmd, "lsblk")
+	if err != nil {
+		return nil, err
 	}
 
-	parsed, err := parseBlockEntries([]byte(cmd.Stdout.Data))
+	parsed, err := parseBlockEntries([]byte(stdout))
 	if err != nil {
 		return nil, err
 	}
@@ -107,10 +108,11 @@ func runLuksDump(runtime *plugin.Runtime, device string) (luksDump, error) {
 		return luksDump{}, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return luksDump{}, errors.New("cryptsetup luksDump failed: " + cmd.Stderr.Data)
+	stdout, err := commandOutput(cmd, "cryptsetup luksDump")
+	if err != nil {
+		return luksDump{}, err
 	}
-	return parseLuksDump(cmd.Stdout.Data)
+	return parseLuksDump(stdout)
 }
 
 func newLuksVolume(runtime *plugin.Runtime, device string, dump luksDump) (*mqlLuksVolume, error) {

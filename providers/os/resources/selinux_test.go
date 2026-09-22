@@ -133,7 +133,8 @@ func TestReadSelinuxBooleansFromFS(t *testing.T) {
 		_ = afero.WriteFile(fs, "/sys/fs/selinux/booleans/httpd_enable_cgi", []byte("0"), 0o444)
 		_ = afero.WriteFile(fs, "/sys/fs/selinux/booleans/virt_sandbox_use_all_caps", []byte("0\n"), 0o444)
 
-		bools := readSelinuxBooleansFromFS(fs)
+		bools, read := readSelinuxBooleansFromFS(fs)
+		require.True(t, read)
 		require.Len(t, bools, 3)
 
 		// afero.ReadDir returns sorted entries
@@ -145,16 +146,22 @@ func TestReadSelinuxBooleansFromFS(t *testing.T) {
 		require.False(t, bools[2].Value)
 	})
 
-	t.Run("missing directory returns nil", func(t *testing.T) {
+	// A missing directory and an empty one are different answers: the first
+	// means selinuxfs was never readable, the second that it is mounted and
+	// reports no booleans. selinux.booleans turns the first into a null list
+	// and the second into an empty one, so the bool has to distinguish them.
+	t.Run("missing directory reports not read", func(t *testing.T) {
 		fs := afero.NewMemMapFs()
-		bools := readSelinuxBooleansFromFS(fs)
+		bools, read := readSelinuxBooleansFromFS(fs)
+		require.False(t, read)
 		require.Nil(t, bools)
 	})
 
-	t.Run("empty directory returns nil", func(t *testing.T) {
+	t.Run("empty directory reports read with no booleans", func(t *testing.T) {
 		fs := afero.NewMemMapFs()
 		_ = fs.MkdirAll("/sys/fs/selinux/booleans", 0o755)
-		bools := readSelinuxBooleansFromFS(fs)
-		require.Nil(t, bools)
+		bools, read := readSelinuxBooleansFromFS(fs)
+		require.True(t, read)
+		require.Empty(t, bools)
 	})
 }

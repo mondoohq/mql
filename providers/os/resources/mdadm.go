@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // validMdDevicePath matches standard md device paths like /dev/md0, /dev/md127, /dev/md/name
@@ -37,17 +38,28 @@ func (m *mqlMdadm) arrays() ([]any, error) {
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		// mdadm not installed or no arrays
-		return []any{}, nil
+	run, err := commandResult(cmd)
+	if err != nil {
+		return nil, err
+	}
+	if run.exitcode != 0 {
+		// mdadm is absent or refused to answer. That is not the same as a host
+		// with no RAID arrays: an empty list is vacuously true for
+		// `mdadm.arrays.none(...)` and `mdadm.arrays.all(...)`, so a scan that
+		// could not run would silently pass every array assertion. Report the
+		// arrays as unknown instead.
+		m.Arrays.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 
-	arrayNames := parseMdadmScan(cmd.Stdout.Data)
+	arrayNames := parseMdadmScan(run.stdout)
 	if len(arrayNames) == 0 {
+		// The scan ran and listed nothing. This one is a measured fact, so it
+		// stays an empty list.
 		return []any{}, nil
 	}
 
-	var results []any
+	results := make([]any, 0, len(arrayNames))
 	for _, name := range arrayNames {
 		if !validMdDevicePath.MatchString(name) {
 			continue
@@ -59,11 +71,15 @@ func (m *mqlMdadm) arrays() ([]any, error) {
 			return nil, err
 		}
 		detail := o.(*mqlCommand)
-		if detail.GetExitcode().Data != 0 {
+		detailRun, err := commandResult(detail)
+		if err != nil {
+			return nil, err
+		}
+		if detailRun.exitcode != 0 {
 			continue
 		}
 
-		arr := parseMdadmDetail(detail.Stdout.Data)
+		arr := parseMdadmDetail(detailRun.stdout)
 
 		mqlArray, err := CreateResource(m.MqlRuntime, "mdadm.array", map[string]*llx.RawData{
 			"name":           llx.StringData(name),
@@ -85,6 +101,13 @@ func (m *mqlMdadm) arrays() ([]any, error) {
 		mqlArr.cachedDevices = arr.devices
 
 		results = append(results, mqlArray)
+	}
+	if len(results) == 0 {
+		// The scan named arrays but `mdadm --detail` answered for none of them.
+		// Reporting that as "no arrays" would hide the very arrays the scan
+		// just found.
+		m.Arrays.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	return results, nil
 }

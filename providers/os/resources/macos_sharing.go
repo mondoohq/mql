@@ -53,13 +53,20 @@ func (s *mqlMacosSharing) fetchState() (map[string]bool, error) {
 		return nil, err
 	}
 	cmd := res.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
+	run, err := commandResult(cmd)
+	if err != nil {
+		return nil, err
+	}
+	if run.exitcode != 0 {
+		// system_profiler exits non-zero on releases that dropped
+		// SPSharingDataType; that is a genuine "no sharing services
+		// reported", unlike a command that never ran.
 		s.state = map[string]bool{}
 		s.fetched = true
 		return s.state, nil
 	}
 
-	s.state = parseSharingOutput(cmd.GetStdout().Data)
+	s.state = parseSharingOutput(run.stdout)
 	s.fetched = true
 	return s.state, nil
 }

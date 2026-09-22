@@ -5,7 +5,6 @@ package resources
 
 import (
 	"encoding/json"
-	"errors"
 	"slices"
 
 	"go.mondoo.com/mql/llx"
@@ -24,11 +23,12 @@ func (l *mqlLsblk) list() ([]any, error) {
 		return nil, err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("could not retrieve lsblk: " + cmd.Stderr.Data)
+	stdout, err := commandOutput(cmd, "lsblk")
+	if err != nil {
+		return nil, err
 	}
 
-	blockEntries, err := parseBlockEntries([]byte(cmd.Stdout.Data))
+	blockEntries, err := parseBlockEntries([]byte(stdout))
 	if err != nil {
 		return nil, err
 	}
