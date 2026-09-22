@@ -265,6 +265,15 @@ func TestPrinter_Assessment(t *testing.T) {
 			}, "\n"),
 		},
 		{
+			// same at the top level: the label carries the statement, and there
+			// is nothing measured to put around the operator
+			"mondoo.build == 1 || mondoo.version == 1",
+			strings.Join([]string{
+				"[failed] mondoo.build == 1 || <ref>",
+				"",
+			}, "\n"),
+		},
+		{
 			"sshd.config { params['test'] }",
 			strings.Join([]string{
 				"sshd.config: {",
@@ -568,6 +577,26 @@ func TestPrinter_Blocks(t *testing.T) {
 					"    [failed] x == \"a\"",
 					"      expected: == \"a\"",
 					"      actual:   \"b\"",
+					"  }",
+					"]",
+				}, "\n"),
+			},
+		},
+		{
+			// A combinator reports only its own value. Its operands are whole
+			// statements, and the right one may never have run, so there is no
+			// pair of values to put on either side of the operator. Reporting
+			// them used to cost the short circuit its guarantee (issue 10723).
+			"['a', 'b'] { x=_ \n x == 'a' || x == 'c' }",
+			"", // ignore
+			[]string{
+				strings.Join([]string{
+					"[",
+					"  0: {",
+					"    x == \"a\" || <ref>: true",
+					"  }",
+					"  1: {",
+					"    [failed] x == \"a\" || <ref>",
 					"  }",
 					"]",
 				}, "\n"),

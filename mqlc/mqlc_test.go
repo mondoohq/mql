@@ -2651,6 +2651,69 @@ func allCodepoints(code *llx.CodeV2) ([]uint64, []uint64) {
 	return entrypoints, datapoints
 }
 
+// A comparison has its operands collected as datapoints, so a failing assertion
+// can report the value it actually saw. A short-circuiting operator must not:
+// datapoints run unconditionally, so collecting them evaluates a right side that
+// the guard exists to skip, and `x == null || x.someCall()` calls someCall on a
+// null. Blocks used to be exempt from datapoint collection entirely, which hid
+// this until v14 made them collect (issue 10723).
+func TestCompiler_ShortCircuitOperandsAreNotDatapoints(t *testing.T) {
+	tests := []struct {
+		code        string
+		datapoints  []uint64
+		entrypoints []uint64
+	}{
+		{
+			`
+				mondoo {
+					version == "1"
+				}
+			`,
+			[]uint64{(2 << 32) | 2},
+			[]uint64{(1 << 32) | 2, (2 << 32) | 3},
+		},
+		{
+			`
+				mondoo {
+					version == "1" || build == "2"
+				}
+			`,
+			[]uint64{},
+			[]uint64{(1 << 32) | 2, (2 << 32) | 6},
+		},
+		{
+			`
+				mondoo {
+					version == "1" && build == "2"
+				}
+			`,
+			[]uint64{},
+			[]uint64{(1 << 32) | 2, (2 << 32) | 6},
+		},
+		{
+			`mondoo.version == "1" || mondoo.build == "2"`,
+			[]uint64{},
+			[]uint64{(1 << 32) | 7},
+		},
+		{
+			`mondoo.version == "1" && mondoo.build == "2"`,
+			[]uint64{},
+			[]uint64{(1 << 32) | 7},
+		},
+	}
+
+	for i := range tests {
+		test := tests[i]
+		t.Run(test.code, func(t *testing.T) {
+			compileT(t, test.code, func(res *llx.CodeBundle) {
+				entrypoints, datapoints := allCodepoints(res.CodeV2)
+				assert.ElementsMatch(t, test.entrypoints, entrypoints)
+				assert.ElementsMatch(t, test.datapoints, datapoints)
+			})
+		})
+	}
+}
+
 func TestCompiler_PrivateResourcePathPrefersField(t *testing.T) {
 	// A dotted path whose full name is also a resource used to always compile to
 	// that resource, skipping the owner's accessor. For private resources with

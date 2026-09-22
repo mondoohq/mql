@@ -142,11 +142,15 @@ func (print *Printer) assessment(assessment *llx.AssessmentItem, indent string, 
 			return print.Secondary("[ok] true")
 		}
 
+		// The operands are not reported for a combinator, so there is nothing to
+		// print on either side of the operator. This used to render them anyway,
+		// which cost every `a || b` statement the guarantee that its right side
+		// only runs when the left side does not decide the result.
 		var res strings.Builder
 		res.WriteString(print.Secondary("[failed] "))
-		res.WriteString(print.primitive(assessment.Actual, "", nextIndent, cache))
-		res.WriteString(" " + assessment.Operation + " ")
-		res.WriteString(print.primitive(assessment.Expected, "", nextIndent, cache))
+		if bundle != nil && bundle.Labels != nil {
+			res.WriteString(bundle.Labels.Labels[checksum])
+		}
 		return res.String()
 	}
 

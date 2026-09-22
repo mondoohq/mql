@@ -377,27 +377,27 @@ func TestDict_Methods_Contains(t *testing.T) {
 	x.TestSimple(t, []testutils.SimpleTest{
 		{
 			Code:        p + "params['hello'].contains('ll')",
-			ResultIndex: 2,
+			ResultIndex: 1,
 			Expectation: true,
 		},
 		{
 			Code:        p + "params['hello'].contains('lloo')",
-			ResultIndex: 2,
+			ResultIndex: 1,
 			Expectation: false,
 		},
 		{
 			Code:        p + "params['hello'].contains(['xx','he'])",
-			ResultIndex: 2,
+			ResultIndex: 1,
 			Expectation: true,
 		},
 		{
 			Code:        p + "params['hello'].contains(['xx'])",
-			ResultIndex: 2,
+			ResultIndex: 1,
 			Expectation: false,
 		},
 		{
 			Code:        p + "params['string-array'].contains('a')",
-			ResultIndex: 2,
+			ResultIndex: 1,
 			Expectation: true,
 		},
 		{
@@ -441,7 +441,7 @@ func TestDict_Methods_Contains(t *testing.T) {
 		},
 		{
 			Code:        p + "params['string-array'].contains(_ == 'a')",
-			ResultIndex: 2,
+			ResultIndex: 1,
 			Expectation: true,
 		},
 		{
@@ -451,7 +451,7 @@ func TestDict_Methods_Contains(t *testing.T) {
 		},
 		{
 			Code:        p + "params['string-array'].contains(value == 'a')",
-			ResultIndex: 2,
+			ResultIndex: 1,
 			Expectation: true,
 		},
 		{
@@ -460,6 +460,45 @@ func TestDict_Methods_Contains(t *testing.T) {
 			Expectation: false,
 		},
 	})
+}
+
+// A short-circuit guard has to hold inside a block. Statements in a block used
+// to be exempt from datapoint collection; once v14 made them collect, the
+// operands of `||` and `&&` became datapoints, and a datapoint runs whether or
+// not the guard decided the result. `x == null || x.find(...)` then called find
+// on a null and reported the error the guard was written to prevent, even though
+// the statement's own value was still true (issue 10723).
+func TestBlock_ShortCircuitGuardHolds(t *testing.T) {
+	x := testutils.InitTester(testutils.LinuxMock())
+	const j = `parse.json(content: '{"present": "AKIAIOSFODNN7EXAMPLE"}')`
+	const find = `.find(/AKIA[A-Z0-9]{16}/) != empty`
+
+	// The right side does not support `find` on the null that `absent` reads as,
+	// so it errors when it runs. That is what makes it a test and not a formality.
+	res := x.TestQuery(t, j+`.params["absent"]`+find)
+	require.Error(t, res[len(res)-1].Data.Error)
+
+	guarded := []struct {
+		code      string
+		statement any
+	}{
+		// the guard decides the result, so the right side must not run
+		{j + ` { params["absent"] == null || params["absent"]` + find + ` }`, true},
+		{j + ` { params["absent"] != null && params["absent"]` + find + ` }`, false},
+		// and where it does not decide, the right side must still run and answer
+		{j + ` { params["present"] == null || params["present"]` + find + ` }`, true},
+		{j + ` { params["present"] != null && params["present"]` + find + ` }`, true},
+	}
+
+	for _, cur := range guarded {
+		t.Run(cur.code, func(t *testing.T) {
+			res := x.TestQuery(t, cur.code)
+			for i := range res {
+				assert.NoError(t, res[i].Data.Error)
+			}
+			assert.Equal(t, cur.statement, res[len(res)-1].Data.Value)
+		})
+	}
 }
 
 func TestDict_Methods_Map(t *testing.T) {

@@ -225,7 +225,19 @@ func (l *CodeV2) RefDatapoints(ref uint64) []uint64 {
 		return []uint64{ref - 1}
 	}
 
-	if _, ok := ComparableLabel(chunk.Id); !ok {
+	label, ok := ComparableLabel(chunk.Id)
+	if !ok {
+		return nil
+	}
+
+	// A short-circuiting operator does not inform anything: its right side only
+	// runs when the left side fails to decide the result, and a datapoint runs
+	// unconditionally. Collecting the operands would evaluate a right side the
+	// guard exists to skip, which is what `x == null || x.someCall()` is written
+	// to prevent. Neither operand is worth the guarantee: `a || b` has no
+	// expected/actual to report, and the operands of the operands are not
+	// collected either, so the expansion could not render them anyway.
+	if isShortCircuit(label) {
 		return nil
 	}
 
@@ -465,6 +477,16 @@ func (l *CodeV2) Entrypoint2Assessment(bundle *CodeBundle, ref uint64, lookup fu
 
 	if label, found := ComparableLabel(chunk.Id); found {
 		res.Operation = label
+
+		// A boolean combinator has no pair of values to put on either side of the
+		// operator. Its operands are whole statements, and the right one may never
+		// have run, because that is what the short circuit is for. The statement's
+		// own value is the only thing that was measured; the label says the rest.
+		if isShortCircuit(label) {
+			res.IsAssertion = true
+			res.Actual = checksumRes.Result().Data
+			return &res
+		}
 	} else {
 		cRes := checksumRes.Result()
 
@@ -573,6 +595,12 @@ func ComparableLabel(label string) (string, bool) {
 	}
 
 	return "", false
+}
+
+// isShortCircuit reports whether a comparable label is one of the boolean
+// combinators, which evaluate their right side lazily.
+func isShortCircuit(label string) bool {
+	return label == "&&" || label == "||"
 }
 
 var comparableIndicators = []byte{'=', '!', '>', '<', '&', '|'}
