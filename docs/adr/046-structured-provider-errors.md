@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -104,7 +104,7 @@ relevant calls. Today it is Connect-only: nothing normalizes a kind on `GetData`
 
 **`llx/skew.go` built the end-to-end path, for one kind.** A typed error
 (`errFieldUnavailable`) with an `Is` method folding onto a sentinel
-(`ErrUnavailable`), a predicate (`IsUnavailable`), a runtime decision point
+(`ErrVersionSkew`), a predicate (`IsUnavailable`), a runtime decision point
 (`degradeUnavailableField`, `llx/builtin.go:949-990`), and distinct rendering —
 `print.Disabled` rather than `print.Error` (`cli/printer/mql.go:416`, `:509`).
 Version skew got exactly the treatment access errors need. Everything below
@@ -582,9 +582,9 @@ verifiable on its own.
 
 Two notes for whoever picks up phase 2:
 
-- The sentinel for `ERROR_KIND_UNAVAILABLE` is `llx.ErrTargetUnavailable`, not
-  `ErrUnavailable`: that name was already taken by version skew (`llx/skew.go`),
-  and the two absences are genuinely different.
+- The sentinel for `ERROR_KIND_UNAVAILABLE` is `llx.ErrTargetUnavailable`. The
+  version-skew sentinel in `llx/skew.go` is `llx.ErrVersionSkew` (message still
+  `"unavailable"`): the two absences are genuinely different.
 - Compatibility is confirmed in both directions by construction and by running a
   client built from this tree against a provider binary built before the change:
   an old provider sends no detail and reads as unclassified.

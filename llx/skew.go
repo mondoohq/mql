@@ -60,16 +60,18 @@ func (e *errFieldUnavailable) Error() string {
 	return what + " is unavailable: " + e.reason
 }
 
-func (e *errFieldUnavailable) Is(target error) bool { return target == ErrUnavailable }
+func (e *errFieldUnavailable) Is(target error) bool { return target == ErrVersionSkew }
 
-// ErrUnavailable identifies every value that is missing because of version
+// ErrVersionSkew identifies every value that is missing because of version
 // skew rather than because of a failure to read it. Match it with errors.Is to
 // report "your provider is too old for this content" apart from "this query is
 // broken".
-var ErrUnavailable = errors.New("unavailable")
+//
+// The message stays "unavailable": it is what renders and what has shipped.
+var ErrVersionSkew = errors.New("unavailable")
 
 // IsUnavailable reports whether a value is missing due to version skew.
-func IsUnavailable(err error) bool { return errors.Is(err, ErrUnavailable) }
+func IsUnavailable(err error) bool { return errors.Is(err, ErrVersionSkew) }
 
 // SkewPolicy says which providers the reader is behind on, and why.
 //

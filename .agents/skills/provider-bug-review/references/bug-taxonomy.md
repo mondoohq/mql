@@ -312,11 +312,15 @@ resource's `.lr` field list catches these fast.
 instead of degrading.
 
 **Fingerprints:**
-- A sub-accessor that returns the raw error on a 403/permission denial, where the
-  provider's convention is to degrade (`Is400AccessDeniedError(err)` → nil result;
-  region-not-available guards; resource-policy "operation not recognized" →
-  null). New region-looping accessors especially need the not-available guard or
-  they hard-fail whole accounts.
+- A refusal swallowed into a null (`Is400AccessDeniedError(err)` → `nil, nil`) on
+  a single call. Under ADR 046 a refusal is an error carrying its kind
+  (`llx.Forbidden(err, ...)`), never a null; the null makes an under-permissioned
+  scan look like a clean one.
+- A refusal inside a per-region (per-project, per-subscription) loop that fails
+  the whole list instead of skipping that partition. Until ADR 046 settles lists
+  that carry both data and an error, the denied partition is logged and skipped.
+  New region-looping accessors especially need the not-available guard or they
+  hard-fail whole accounts.
 - A "not configured" 404 (e.g. no billing contact) propagated as an error instead
   of a clean null via `StateIsSet | StateIsNull`.
 

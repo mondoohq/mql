@@ -84,8 +84,8 @@ var (
 	ErrNotApplicable   error = kindSentinel(ErrorKind_ERROR_KIND_NOT_APPLICABLE)
 	ErrGone            error = kindSentinel(ErrorKind_ERROR_KIND_GONE)
 	ErrTooManyRequests error = kindSentinel(ErrorKind_ERROR_KIND_TOO_MANY_REQUESTS)
-	// Named for the target rather than after its kind, because ErrUnavailable
-	// in skew.go already means "missing because of version skew". Two
+	// Named for the target rather than after its kind, to keep it apart from
+	// ErrVersionSkew in skew.go ("missing because of version skew"). Two
 	// different absences; one name each.
 	ErrTargetUnavailable error = kindSentinel(ErrorKind_ERROR_KIND_UNAVAILABLE)
 	ErrMalformedData     error = kindSentinel(ErrorKind_ERROR_KIND_MALFORMED_DATA)
