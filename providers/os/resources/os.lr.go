@@ -574,6 +574,8 @@ const (
 	ResourceClaudeCodeModelUsage                          string = "claude.code.modelUsage"
 	ResourceClaudeCodeRepo                                string = "claude.code.repo"
 	ResourceClaudeCodeMcpServer                           string = "claude.code.mcpServer"
+	ResourceClaudeDesktop                                 string = "claude.desktop"
+	ResourceClaudeDesktopMcpServer                        string = "claude.desktop.mcpServer"
 	ResourceOpenaiCodex                                   string = "openai.codex"
 	ResourceOpenaiCodexPlugin                             string = "openai.codex.plugin"
 	ResourceOpenaiCodexSkill                              string = "openai.codex.skill"
@@ -622,6 +624,7 @@ const (
 	ResourceAntigravitySkill                              string = "antigravity.skill"
 	ResourceIbmBob                                        string = "ibm.bob"
 	ResourceIbmBobSkill                                   string = "ibm.bob.skill"
+	ResourceAider                                         string = "aider"
 	ResourceOpenclaw                                      string = "openclaw"
 	ResourceOpenclawSkill                                 string = "openclaw.skill"
 	ResourceSnowflakeCortex                               string = "snowflake.cortex"
@@ -2886,6 +2889,14 @@ func init() {
 			// to override args, implement: initClaudeCodeMcpServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createClaudeCodeMcpServer,
 		},
+		"claude.desktop": {
+			Init:   initClaudeDesktop,
+			Create: createClaudeDesktop,
+		},
+		"claude.desktop.mcpServer": {
+			// to override args, implement: initClaudeDesktopMcpServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createClaudeDesktopMcpServer,
+		},
 		"openai.codex": {
 			Init:   initOpenaiCodex,
 			Create: createOpenaiCodex,
@@ -3077,6 +3088,10 @@ func init() {
 		"ibm.bob.skill": {
 			// to override args, implement: initIbmBobSkill(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createIbmBobSkill,
+		},
+		"aider": {
+			Init:   initAider,
+			Create: createAider,
 		},
 		"openclaw": {
 			Init:   initOpenclaw,
@@ -16060,6 +16075,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"claude.code.mcpServer.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeCodeMcpServer).GetName()).ToDataRes(types.String)
 	},
+	"claude.code.mcpServer.project": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeCodeMcpServer).GetProject()).ToDataRes(types.String)
+	},
 	"claude.code.mcpServer.type": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeCodeMcpServer).GetType()).ToDataRes(types.String)
 	},
@@ -16083,6 +16101,39 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"claude.code.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlClaudeCodeMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
+	},
+	"claude.desktop.configPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktop).GetConfigPath()).ToDataRes(types.String)
+	},
+	"claude.desktop.package": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktop).GetPackage()).ToDataRes(types.Resource("package"))
+	},
+	"claude.desktop.runtime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktop).GetRuntime()).ToDataRes(types.Resource("extensionRuntime"))
+	},
+	"claude.desktop.mcpServers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktop).GetMcpServers()).ToDataRes(types.Array(types.Resource("claude.desktop.mcpServer")))
+	},
+	"claude.desktop.mcpServer.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktopMcpServer).GetName()).ToDataRes(types.String)
+	},
+	"claude.desktop.mcpServer.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktopMcpServer).GetType()).ToDataRes(types.String)
+	},
+	"claude.desktop.mcpServer.command": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktopMcpServer).GetCommand()).ToDataRes(types.String)
+	},
+	"claude.desktop.mcpServer.args": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktopMcpServer).GetArgs()).ToDataRes(types.Array(types.String))
+	},
+	"claude.desktop.mcpServer.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktopMcpServer).GetUrl()).ToDataRes(types.String)
+	},
+	"claude.desktop.mcpServer.hasEnv": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktopMcpServer).GetHasEnv()).ToDataRes(types.Bool)
+	},
+	"claude.desktop.mcpServer.running": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlClaudeDesktopMcpServer).GetRunning()).ToDataRes(types.Asset("mcp"))
 	},
 	"openai.codex.configPath": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenaiCodex).GetConfigPath()).ToDataRes(types.String)
@@ -17016,6 +17067,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"ibm.bob.skill.purl": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIbmBobSkill).GetPurl()).ToDataRes(types.String)
+	},
+	"aider.configPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAider).GetConfigPath()).ToDataRes(types.String)
+	},
+	"aider.package": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAider).GetPackage()).ToDataRes(types.Resource("package"))
+	},
+	"aider.runtime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAider).GetRuntime()).ToDataRes(types.Resource("extensionRuntime"))
+	},
+	"aider.model": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAider).GetModel()).ToDataRes(types.String)
+	},
+	"aider.hasApiKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAider).GetHasApiKeys()).ToDataRes(types.Bool)
 	},
 	"openclaw.configPath": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenclaw).GetConfigPath()).ToDataRes(types.String)
@@ -36874,6 +36940,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlClaudeCodeMcpServer).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"claude.code.mcpServer.project": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeCodeMcpServer).Project, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"claude.code.mcpServer.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeCodeMcpServer).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -36904,6 +36974,58 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"claude.code.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlClaudeCodeMcpServer).Running, ok = plugin.RawToTValue[*llx.AssetValue](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktop).__id, ok = v.Value.(string)
+		return
+	},
+	"claude.desktop.configPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktop).ConfigPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.package": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktop).Package, ok = plugin.RawToTValue[*mqlPackage](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.runtime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktop).Runtime, ok = plugin.RawToTValue[*mqlExtensionRuntime](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.mcpServers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktop).McpServers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.mcpServer.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktopMcpServer).__id, ok = v.Value.(string)
+		return
+	},
+	"claude.desktop.mcpServer.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktopMcpServer).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.mcpServer.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktopMcpServer).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.mcpServer.command": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktopMcpServer).Command, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.mcpServer.args": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktopMcpServer).Args, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.mcpServer.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktopMcpServer).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.mcpServer.hasEnv": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktopMcpServer).HasEnv, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"claude.desktop.mcpServer.running": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlClaudeDesktopMcpServer).Running, ok = plugin.RawToTValue[*llx.AssetValue](v.Value, v.Error)
 		return
 	},
 	"openai.codex.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -38340,6 +38462,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"ibm.bob.skill.purl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIbmBobSkill).Purl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aider.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAider).__id, ok = v.Value.(string)
+		return
+	},
+	"aider.configPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAider).ConfigPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aider.package": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAider).Package, ok = plugin.RawToTValue[*mqlPackage](v.Value, v.Error)
+		return
+	},
+	"aider.runtime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAider).Runtime, ok = plugin.RawToTValue[*mqlExtensionRuntime](v.Value, v.Error)
+		return
+	},
+	"aider.model": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAider).Model, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aider.hasApiKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAider).HasApiKeys, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"openclaw.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -94971,6 +95117,7 @@ type mqlClaudeCodeMcpServer struct {
 	__id       string
 	// optional: if you define mqlClaudeCodeMcpServerInternal it will be used here
 	Name        plugin.TValue[string]
+	Project     plugin.TValue[string]
 	Type        plugin.TValue[string]
 	Command     plugin.TValue[string]
 	Args        plugin.TValue[[]any]
@@ -95022,6 +95169,10 @@ func (c *mqlClaudeCodeMcpServer) GetName() *plugin.TValue[string] {
 	return &c.Name
 }
 
+func (c *mqlClaudeCodeMcpServer) GetProject() *plugin.TValue[string] {
+	return &c.Project
+}
+
 func (c *mqlClaudeCodeMcpServer) GetType() *plugin.TValue[string] {
 	return &c.Type
 }
@@ -95051,6 +95202,187 @@ func (c *mqlClaudeCodeMcpServer) GetLastChecked() *plugin.TValue[string] {
 }
 
 func (c *mqlClaudeCodeMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
+	return plugin.GetOrCompute[*llx.AssetValue](&c.Running, func() (*llx.AssetValue, error) {
+		return c.running()
+	})
+}
+
+// mqlClaudeDesktop for the claude.desktop resource
+type mqlClaudeDesktop struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlClaudeDesktopInternal it will be used here
+	ConfigPath plugin.TValue[string]
+	Package    plugin.TValue[*mqlPackage]
+	Runtime    plugin.TValue[*mqlExtensionRuntime]
+	McpServers plugin.TValue[[]any]
+}
+
+// createClaudeDesktop creates a new instance of this resource
+func createClaudeDesktop(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlClaudeDesktop{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("claude.desktop", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlClaudeDesktop) MqlName() string {
+	return "claude.desktop"
+}
+
+func (c *mqlClaudeDesktop) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlClaudeDesktop) GetConfigPath() *plugin.TValue[string] {
+	return &c.ConfigPath
+}
+
+func (c *mqlClaudeDesktop) GetPackage() *plugin.TValue[*mqlPackage] {
+	return plugin.GetOrCompute[*mqlPackage](&c.Package, func() (*mqlPackage, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.desktop", c.__id, "package")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPackage), nil
+			}
+		}
+
+		return c.compute_package()
+	})
+}
+
+func (c *mqlClaudeDesktop) GetRuntime() *plugin.TValue[*mqlExtensionRuntime] {
+	return plugin.GetOrCompute[*mqlExtensionRuntime](&c.Runtime, func() (*mqlExtensionRuntime, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.desktop", c.__id, "runtime")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlExtensionRuntime), nil
+			}
+		}
+
+		return c.runtime()
+	})
+}
+
+func (c *mqlClaudeDesktop) GetMcpServers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.McpServers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("claude.desktop", c.__id, "mcpServers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.mcpServers()
+	})
+}
+
+// mqlClaudeDesktopMcpServer for the claude.desktop.mcpServer resource
+type mqlClaudeDesktopMcpServer struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlClaudeDesktopMcpServerInternal it will be used here
+	Name    plugin.TValue[string]
+	Type    plugin.TValue[string]
+	Command plugin.TValue[string]
+	Args    plugin.TValue[[]any]
+	Url     plugin.TValue[string]
+	HasEnv  plugin.TValue[bool]
+	Running plugin.TValue[*llx.AssetValue]
+}
+
+// createClaudeDesktopMcpServer creates a new instance of this resource
+func createClaudeDesktopMcpServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlClaudeDesktopMcpServer{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("claude.desktop.mcpServer", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlClaudeDesktopMcpServer) MqlName() string {
+	return "claude.desktop.mcpServer"
+}
+
+func (c *mqlClaudeDesktopMcpServer) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlClaudeDesktopMcpServer) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlClaudeDesktopMcpServer) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlClaudeDesktopMcpServer) GetCommand() *plugin.TValue[string] {
+	return &c.Command
+}
+
+func (c *mqlClaudeDesktopMcpServer) GetArgs() *plugin.TValue[[]any] {
+	return &c.Args
+}
+
+func (c *mqlClaudeDesktopMcpServer) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlClaudeDesktopMcpServer) GetHasEnv() *plugin.TValue[bool] {
+	return &c.HasEnv
+}
+
+func (c *mqlClaudeDesktopMcpServer) GetRunning() *plugin.TValue[*llx.AssetValue] {
 	return plugin.GetOrCompute[*llx.AssetValue](&c.Running, func() (*llx.AssetValue, error) {
 		return c.running()
 	})
@@ -99604,6 +99936,103 @@ func (c *mqlIbmBobSkill) GetSha256() *plugin.TValue[string] {
 func (c *mqlIbmBobSkill) GetPurl() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Purl, func() (string, error) {
 		return c.purl()
+	})
+}
+
+// mqlAider for the aider resource
+type mqlAider struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAiderInternal it will be used here
+	ConfigPath plugin.TValue[string]
+	Package    plugin.TValue[*mqlPackage]
+	Runtime    plugin.TValue[*mqlExtensionRuntime]
+	Model      plugin.TValue[string]
+	HasApiKeys plugin.TValue[bool]
+}
+
+// createAider creates a new instance of this resource
+func createAider(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAider{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aider", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAider) MqlName() string {
+	return "aider"
+}
+
+func (c *mqlAider) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAider) GetConfigPath() *plugin.TValue[string] {
+	return &c.ConfigPath
+}
+
+func (c *mqlAider) GetPackage() *plugin.TValue[*mqlPackage] {
+	return plugin.GetOrCompute[*mqlPackage](&c.Package, func() (*mqlPackage, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aider", c.__id, "package")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPackage), nil
+			}
+		}
+
+		return c.compute_package()
+	})
+}
+
+func (c *mqlAider) GetRuntime() *plugin.TValue[*mqlExtensionRuntime] {
+	return plugin.GetOrCompute[*mqlExtensionRuntime](&c.Runtime, func() (*mqlExtensionRuntime, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aider", c.__id, "runtime")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlExtensionRuntime), nil
+			}
+		}
+
+		return c.runtime()
+	})
+}
+
+func (c *mqlAider) GetModel() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Model, func() (string, error) {
+		return c.model()
+	})
+}
+
+func (c *mqlAider) GetHasApiKeys() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.HasApiKeys, func() (bool, error) {
+		return c.hasApiKeys()
 	})
 }
 

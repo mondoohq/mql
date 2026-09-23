@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/spf13/afero"
+
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -33,7 +35,7 @@ func (r *mqlGemini) authType() (string, error) {
 		}
 		return "", err
 	}
-	return settings.SelectedAuthType, nil
+	return settings.authType(), nil
 }
 
 func (r *mqlGemini) model() (string, error) {
@@ -63,25 +65,13 @@ func (r *mqlGemini) settings() (interface{}, error) {
 }
 
 func (r *mqlGemini) mcpServers() ([]interface{}, error) {
-	afs := connectionAfs(r.MqlRuntime)
-	configDir := r.ConfigPath.Data
-
-	// Gemini stores MCP config in antigravity/mcp_config.json
-	data, err := afs.ReadFile(filepath.Join(configDir, "antigravity", "mcp_config.json"))
+	servers, err := geminiMCPServers(connectionAfs(r.MqlRuntime), r.ConfigPath.Data)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
 
-	var config geminiMCPConfig
-	if err := unmarshalJSONConfig(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse gemini mcp_config.json: %w", err)
-	}
-
 	var result []interface{}
-	for name, server := range config.McpServers {
+	for name, server := range servers {
 		url := server.URL
 		if url == "" {
 			url = server.HTTPURL
@@ -137,14 +127,57 @@ func (r *mqlGeminiSkill) purl() (string, error) {
 	return skillPURL(connectionAfs(r.MqlRuntime), r.Source.Data), nil
 }
 
+// geminiMCPServers returns the MCP servers Gemini is configured with, keyed by
+// name. The Gemini CLI reads them from the `mcpServers` key of settings.json;
+// Antigravity keeps its own list in antigravity/mcp_config.json. Both are read,
+// and settings.json wins when both name the same server. A missing file is not
+// an error; a file that exists but does not parse is.
+func geminiMCPServers(afs *afero.Afero, configDir string) (map[string]geminiMCPServer, error) {
+	servers := map[string]geminiMCPServer{}
+	for _, rel := range []string{filepath.Join("antigravity", "mcp_config.json"), "settings.json"} {
+		data, err := afs.ReadFile(filepath.Join(configDir, rel))
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+		var config geminiMCPConfig
+		if err := unmarshalJSONConfig(data, &config); err != nil {
+			return nil, fmt.Errorf("failed to parse gemini %s: %w", rel, err)
+		}
+		for name, server := range config.McpServers {
+			servers[name] = server
+		}
+	}
+	return servers, nil
+}
+
 // Helper types
 
 type geminiSettings struct {
-	Theme            string `json:"theme"`
+	Theme string `json:"theme"`
+	// SelectedAuthType is the flat key older Gemini CLI releases wrote.
 	SelectedAuthType string `json:"selectedAuthType"`
-	Model            struct {
+	// Security.Auth.SelectedType is where current releases keep it.
+	Security struct {
+		Auth struct {
+			SelectedType string `json:"selectedType"`
+		} `json:"auth"`
+	} `json:"security"`
+	Model struct {
 		Name string `json:"name"`
 	} `json:"model"`
+}
+
+// authType returns the configured authentication type, preferring the nested
+// security.auth.selectedType key of current settings.json files and falling
+// back to the flat selectedAuthType key older releases wrote.
+func (s geminiSettings) authType() string {
+	if s.Security.Auth.SelectedType != "" {
+		return s.Security.Auth.SelectedType
+	}
+	return s.SelectedAuthType
 }
 
 type geminiMCPConfig struct {

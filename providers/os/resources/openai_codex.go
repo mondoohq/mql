@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -67,10 +68,22 @@ func (r *mqlOpenaiCodex) lastRefresh() (string, error) {
 	return auth.LastRefresh, nil
 }
 
-// codexConfig captures the top-level model settings from config.toml.
+// codexConfig captures the top-level model settings and the user-configured
+// MCP servers from config.toml.
 type codexConfig struct {
 	Model         string `toml:"model"`
 	ModelProvider string `toml:"model_provider"`
+	// McpServers are the `[mcp_servers.<name>]` tables. A stdio server sets
+	// command/args/env; a streamable HTTP server sets url.
+	McpServers map[string]codexTomlMcpServer `toml:"mcp_servers"`
+}
+
+// codexTomlMcpServer is one `[mcp_servers.<name>]` table in config.toml.
+type codexTomlMcpServer struct {
+	Command string            `toml:"command"`
+	Args    []string          `toml:"args"`
+	Env     map[string]string `toml:"env"`
+	URL     string            `toml:"url"`
 }
 
 // mqlOpenaiCodexInternal caches the parsed config.toml so that model() and
@@ -262,18 +275,49 @@ func (r *mqlOpenaiCodex) readCodexSkill(afs *afero.Afero, name, dirPath, plugin 
 }
 
 func (r *mqlOpenaiCodex) mcpServers() ([]interface{}, error) {
+	var result []interface{}
+
+	// Servers the user configured in config.toml. No plugin declared them, so
+	// `plugin` is empty.
+	cfg, err := r.loadConfig()
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(cfg.McpServers))
+	for name := range cfg.McpServers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		srv := cfg.McpServers[name]
+		res, err := NewResource(r.MqlRuntime, "openai.codex.mcpServer", map[string]*llx.RawData{
+			"__id":    llx.StringData("openai.codex.mcpServer//" + name),
+			"name":    llx.StringData(name),
+			"type":    llx.StringData(deriveMcpTransport("", srv.Command, srv.URL)),
+			"command": llx.StringData(srv.Command),
+			"args":    strSliceToArrayData(srv.Args),
+			"url":     llx.StringData(srv.URL),
+			"hasEnv":  llx.BoolData(len(srv.Env) > 0),
+			"note":    llx.StringData(""),
+			"plugin":  llx.StringData(""),
+		})
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, res)
+	}
+
+	// Servers declared by installed plugins.
 	afs := r.afs()
 	pluginsDir := filepath.Join(r.codexDir(), ".tmp", "plugins", "plugins")
-
 	subdirs, err := listSubdirsAfero(afs, pluginsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return result, nil
 		}
 		return nil, err
 	}
 
-	var result []interface{}
 	for _, dir := range subdirs {
 		mcpPath := filepath.Join(dir.path, ".mcp.json")
 

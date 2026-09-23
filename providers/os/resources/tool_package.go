@@ -4,7 +4,10 @@
 package resources
 
 import (
+	"path/filepath"
 	"strings"
+
+	"github.com/spf13/afero"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -73,6 +76,16 @@ type toolPackageSpec struct {
 	// the real host editor/browser package. Only consulted for runtimeIDE /
 	// runtimeBrowser; falls back to an abstract host package named runtimeHostName.
 	runtimeHostCandidates []string
+
+	// vscodeExtensionIDs are the marketplace ids ("publisher.name") of the VS
+	// Code extension that is the tool, for agents that ship as an editor
+	// plugin. An installed extension is a stronger presence signal than the
+	// config directory, which many of these plugins never create (they keep
+	// their state in the editor's globalStorage), and it carries the version.
+	vscodeExtensionIDs []string
+	// configIsFile marks a tool whose configPath names a file rather than a
+	// directory (Aider's .aider.conf.yml), so presence is the file existing.
+	configIsFile bool
 }
 
 // toolPackageSpecs is keyed by MQL resource name.
@@ -91,10 +104,10 @@ var toolPackageSpecs = map[string]toolPackageSpec{
 	"gemini":           {packageName: "gemini", managerCandidates: []string{"gemini-cli"}, vendor: "Google"},
 	"windsurf":         {packageName: "windsurf", binaryNames: []string{"windsurf"}, managerCandidates: []string{"windsurf"}},
 	"zed":              {packageName: "zed", binaryNames: []string{"zed"}, managerCandidates: []string{"zed"}, vendor: "Zed Industries"},
-	"roo":              {packageName: "roo", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates},
-	"cline":            {packageName: "cline", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates},
+	"roo":              {packageName: "roo", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"RooVeterinaryInc.roo-cline"}},
+	"cline":            {packageName: "cline", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"saoudrizwan.claude-dev"}},
 	"kiro":             {packageName: "kiro", binaryNames: []string{"kiro"}, managerCandidates: []string{"kiro"}},
-	"continuedev":      {packageName: "continuedev", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates},
+	"continuedev":      {packageName: "continuedev", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"Continue.continue"}},
 	"trae":             {packageName: "trae", managerCandidates: []string{"trae"}},
 	"opencode":         {packageName: "opencode", binaryNames: []string{"opencode"}, managerCandidates: []string{"opencode"}},
 	"pi":               {packageName: "pi"},
@@ -104,11 +117,17 @@ var toolPackageSpecs = map[string]toolPackageSpec{
 	"openclaw":         {packageName: "openclaw"},
 	"snowflake.cortex": {packageName: "snowflake-cortex", vendor: "Snowflake"},
 	"junie":            {packageName: "junie", managerCandidates: []string{"junie"}, vendor: "JetBrains", runtime: runtimeIDE, runtimeHostName: "JetBrains IDE"},
-	"augment":          {packageName: "augment", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates},
+	"augment":          {packageName: "augment", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"augment.vscode-augment"}},
 	"warp":             {packageName: "warp", vendor: "Warp"},
-	"kilocode":         {packageName: "kilocode", managerCandidates: []string{"kilocode"}, runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates},
+	"kilocode":         {packageName: "kilocode", managerCandidates: []string{"kilocode"}, runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"kilocode.Kilo-Code"}},
 	"openhands":        {packageName: "openhands", binaryNames: []string{"openhands"}, managerCandidates: []string{"openhands"}},
 	"qwen.code":        {packageName: "qwen-code", binaryNames: []string{"qwen"}, vendor: "Alibaba"},
+	// The desktop app installs per user (Windows, macOS), so no package manager
+	// owns it; presence is its configuration directory.
+	"claude.desktop": {packageName: "claude-desktop", vendor: "Anthropic"},
+	// Aider installs with pip/pipx/uv, which OS package managers do not track;
+	// "aider-chat" is its distribution name where one does (AUR, Homebrew).
+	"aider": {packageName: "aider", binaryNames: []string{"aider"}, managerCandidates: []string{"aider-chat"}, configIsFile: true},
 	// Ollama is a model server rather than a coding agent, but it is installed
 	// and versioned the same way, so it resolves through the same path.
 	"ollama": {packageName: "ollama", binaryNames: []string{"ollama"}, managerCandidates: []string{"ollama"}, vendor: "Ollama", inferVersion: inferOllamaVersion},
@@ -154,10 +173,23 @@ func resolveToolPackage(runtime *plugin.Runtime, configPath string, spec toolPac
 	}
 
 	// (c) Not attributable to any manager — detect presence and, where
-	// possible, a version, then synthesize an abstract package.
-	installed := configDirPresent(runtime, configPath)
+	// possible, a version, then synthesize an abstract package. An installed
+	// editor extension is both a presence signal and the version source.
+	installed := configPresent(runtime, configPath, spec.configIsFile)
 	version := ""
-	if installed && spec.inferVersion != nil {
+	if len(spec.vscodeExtensionIDs) > 0 {
+		if homes, err := targetUserHomes(runtime); err == nil {
+			dirs := make([]string, 0, len(homes))
+			for _, u := range homes {
+				dirs = append(dirs, u.home)
+			}
+			if v, ok := findVSCodeExtension(connectionAfs(runtime), dirs, spec.vscodeExtensionIDs); ok {
+				installed = true
+				version = v
+			}
+		}
+	}
+	if installed && version == "" && spec.inferVersion != nil {
 		v, err := spec.inferVersion(runtime, configPath)
 		if err != nil {
 			return nil, err
@@ -319,11 +351,84 @@ func lookupInstalledPackage(runtime *plugin.Runtime, name string) (*mqlPackage, 
 // the tool's configPath directory exists on the target. Best-effort — used only
 // when binary ownership and name candidates both come up empty.
 func configDirPresent(runtime *plugin.Runtime, configPath string) bool {
+	return configPresent(runtime, configPath, false)
+}
+
+// configPresent reports whether configPath exists on the target as a directory,
+// or as a regular file when isFile is set.
+func configPresent(runtime *plugin.Runtime, configPath string, isFile bool) bool {
 	if configPath == "" {
 		return false
 	}
 	info, err := connectionAfs(runtime).Stat(configPath)
-	return err == nil && info.IsDir()
+	if err != nil {
+		return false
+	}
+	if isFile {
+		return info.Mode().IsRegular()
+	}
+	return info.IsDir()
+}
+
+// findVSCodeExtension looks for an installed VS Code-family extension with one
+// of the given marketplace ids ("publisher.name") in the extension directories
+// of each home (vsCodeEditors), and returns the highest installed version.
+// Matching reads each candidate's package.json, since the directory name is
+// only "<id>-<version>" by convention and its case differs between editors.
+// Ids compare case-insensitively, as the marketplace does. ok is true when an
+// extension is found, even if its package.json carries no version.
+func findVSCodeExtension(afs *afero.Afero, homes []string, ids []string) (version string, ok bool) {
+	want := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		want[strings.ToLower(id)] = struct{}{}
+	}
+	for _, home := range homes {
+		for _, editor := range vsCodeEditors {
+			extensionsDir := filepath.Join(home, editor.dir)
+			entries, err := afs.ReadDir(extensionsDir)
+			if err != nil {
+				continue
+			}
+			for _, entry := range entries {
+				if !entry.IsDir() || !hasExtensionIDPrefix(entry.Name(), want) {
+					continue
+				}
+				pkg, err := readVSCodePackageJSON(afs, filepath.Join(extensionsDir, entry.Name(), "package.json"))
+				if err != nil {
+					continue
+				}
+				if _, match := want[strings.ToLower(pkg.Publisher+"."+pkg.Name)]; !match {
+					continue
+				}
+				ok = true
+				if pkg.Version != "" && (version == "" || semverLess(version, pkg.Version)) {
+					version = pkg.Version
+				}
+			}
+		}
+	}
+	return version, ok
+}
+
+// hasExtensionIDPrefix is a cheap pre-filter on an extension directory name
+// ("<publisher>.<name>-<version>") before its package.json is read.
+func hasExtensionIDPrefix(dirName string, want map[string]struct{}) bool {
+	lower := strings.ToLower(dirName)
+	for id := range want {
+		if lower == id || strings.HasPrefix(lower, id+"-") {
+			return true
+		}
+	}
+	return false
+}
+
+// semverLess reports whether a sorts before b by MQL's semver parser, falling
+// back to a string comparison when either does not parse.
+func semverLess(a, b string) bool {
+	if cmp, err := (semver.Parser{}).Compare(a, b); err == nil {
+		return cmp < 0
+	}
+	return a < b
 }
 
 // setStrOrNull sets a string field to val, or to a resolved-null state when val
@@ -503,6 +608,14 @@ func (r *mqlQwenCode) compute_package() (*mqlPackage, error) {
 	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["qwen.code"])
 }
 
+func (r *mqlClaudeDesktop) compute_package() (*mqlPackage, error) {
+	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["claude.desktop"])
+}
+
+func (r *mqlAider) compute_package() (*mqlPackage, error) {
+	return resolveToolPackage(r.MqlRuntime, r.ConfigPath.Data, toolPackageSpecs["aider"])
+}
+
 // runtime() accessors — one per tool resource — return the host the agent runs
 // inside (OS / IDE / browser) as an extensionRuntime, per each tool's spec.
 // `runtime` is not a Go keyword, so the generator emits a plain runtime()
@@ -610,6 +723,14 @@ func (r *mqlOpenhands) runtime() (*mqlExtensionRuntime, error) {
 
 func (r *mqlQwenCode) runtime() (*mqlExtensionRuntime, error) {
 	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["qwen.code"])
+}
+
+func (r *mqlClaudeDesktop) runtime() (*mqlExtensionRuntime, error) {
+	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["claude.desktop"])
+}
+
+func (r *mqlAider) runtime() (*mqlExtensionRuntime, error) {
+	return resolveRuntime(&r.Runtime, r.MqlRuntime, toolPackageSpecs["aider"])
 }
 
 // inferOllamaVersion runs `ollama --version` through the command resource, for

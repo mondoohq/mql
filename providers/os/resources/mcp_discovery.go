@@ -24,6 +24,7 @@ var mcpClientResources = []string{
 	"github.copilot",
 	"gemini",
 	"windsurf",
+	"claude.desktop",
 }
 
 // mcpClientLike is satisfied by every AI tool resource that lists MCP servers.
@@ -32,7 +33,7 @@ type mcpClientLike interface {
 }
 
 // mcpServerLike is satisfied by every *.mcpServer resource. The field names are
-// identical across tools, so one interface covers all six concrete types.
+// identical across tools, so one interface covers every concrete type.
 type mcpServerLike interface {
 	plugin.Resource
 	GetName() *plugin.TValue[string]

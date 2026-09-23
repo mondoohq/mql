@@ -17115,10 +17115,17 @@ private claude.code.repo @defaults("name branch") @maturity("preview") {
 // url. `type` reports the transport, `hasEnv` whether environment variables
 // (often API keys or tokens) are set, and `needsAuth` with `lastChecked`
 // track whether the server requires authentication and when that was last
-// verified.
+// verified. `project` names the project a server is scoped to: servers from
+// a project's .mcp.json and project-local servers in .claude.json carry the
+// project path, user-scope servers leave it empty.
 private claude.code.mcpServer @defaults("name") @maturity("preview") {
   // Server name
   name string
+  // Project the server is scoped to
+  //
+  // Path of the project whose .mcp.json or project-local settings configure
+  // the server. Empty for a user-scope server available in every project.
+  project string
   // Server transport type, for example "stdio" or "http"
   type string
   // Local command launched for stdio-type servers
@@ -17133,6 +17140,71 @@ private claude.code.mcpServer @defaults("name") @maturity("preview") {
   needsAuth bool
   // Timestamp of last authentication check
   lastChecked string
+  // Discovered MCP server asset
+  //
+  // Points at the asset discovered for this MCP server, anchored on this
+  // resource. The reference is typed to the `mcp` root: the resource that
+  // roots the MCP server's own tree. See ADR 030 and ADR 031.
+  running() asset<mcp>
+}
+
+// Claude desktop app instance
+//
+// Anthropic's Claude desktop application configured on the host. Queryable
+// through it are the MCP servers declared in claude_desktop_config.json,
+// along with the package that installed the app and the runtime it runs in.
+// The configuration directory is AppData\Roaming\Claude on Windows,
+// Library/Application Support/Claude on macOS, and .config/Claude elsewhere,
+// under the user's home; pass configPath to target another one. Useful for
+// auditing which local tools and services the desktop assistant can reach.
+// URL: https://claude.ai/download
+claude.desktop @defaults("configPath") @maturity("preview") {
+  init(configPath? string)
+  // Path to the Claude desktop configuration directory
+  configPath string
+
+  // Package that installed this tool
+  //
+  // Resolves to the system-package-manager entry that installed the tool
+  // when one can be identified; otherwise an abstract package (origin
+  // "unknown", empty format, absent from `packages`) that records the tool's
+  // presence and, where determinable, an inferred version. Read `.installed`
+  // for the install signal, or any package field (`version`, `purl`,
+  // `vendor`) for detail.
+  package() package
+
+  // Host the agent runs in
+  //
+  // The environment the agent runs inside: the operating system for a standalone
+  // agent, the IDE/editor for an editor plugin, or the browser for a browser
+  // extension. The runtime's `package` carries the host's software identity
+  // (version and purl where known) so its own version and vulnerabilities can be
+  // looked up like any other software. Optional, null when the host cannot be
+  // determined.
+  runtime() extensionRuntime
+  // MCP servers the app connects to
+  mcpServers() []claude.desktop.mcpServer
+}
+
+// Claude desktop MCP server
+//
+// Model Context Protocol server declared in claude_desktop_config.json.
+// Stdio servers launch a local command with args; http servers connect to a
+// url. `type` reports the transport and hasEnv whether environment
+// variables (often holding API keys or tokens) are configured for the server.
+private claude.desktop.mcpServer @defaults("name") @maturity("preview") {
+  // Server name
+  name string
+  // Server transport type, for example "stdio" or "http"
+  type string
+  // Local command launched for stdio-type servers
+  command string
+  // Command-line arguments passed to the server command
+  args []string
+  // Endpoint URL for http or sse servers
+  url string
+  // Whether environment variables (for example API keys) are configured
+  hasEnv bool
   // Discovered MCP server asset
   //
   // Points at the asset discovered for this MCP server, anchored on this
@@ -17265,12 +17337,13 @@ private openai.codex.skill @defaults("name") @maturity("preview") {
 
 // OpenAI Codex MCP server
 //
-// Model Context Protocol server a Codex plugin connects to, giving the
-// agent access to external tools and data. Stdio servers run a local
+// Model Context Protocol server Codex connects to, giving the agent access
+// to external tools and data. Servers come from the `[mcp_servers]` tables
+// in config.toml and from installed plugins. Stdio servers run a local
 // command with args; http servers connect to a url. `plugin` records which
-// plugin declared the server and `hasEnv` whether environment variables
-// (often API keys or tokens) are set, both relevant when auditing what
-// external services the agent can invoke.
+// plugin declared the server (empty for one configured in config.toml) and
+// `hasEnv` whether environment variables (often API keys or tokens) are set,
+// both relevant when auditing what external services the agent can invoke.
 private openai.codex.mcpServer @defaults("name") @maturity("preview") {
   // Server name
   name string
@@ -17287,6 +17360,8 @@ private openai.codex.mcpServer @defaults("name") @maturity("preview") {
   // Optional note describing the server
   note string
   // Plugin that provides this MCP server
+  //
+  // Empty for a server configured directly in config.toml.
   plugin string
   // Discovered MCP server asset
   //
@@ -17724,10 +17799,18 @@ gemini @defaults("configPath") @maturity("preview") {
   // determined.
   runtime() extensionRuntime
   // Authentication type configured for the assistant
+  //
+  // Read from `security.auth.selectedType` in settings.json, or from the
+  // flat `selectedAuthType` key older releases wrote, for example
+  // "oauth-personal" or "gemini-api-key".
   authType() string
   // Full settings dictionary parsed from the Gemini configuration
   settings() dict
   // MCP servers the tool connects to
+  //
+  // Read from the `mcpServers` key of settings.json and from
+  // antigravity/mcp_config.json. When both name the same server, the
+  // settings.json definition is reported.
   mcpServers() []gemini.mcpServer
   // Installed skills
   skills() []gemini.skill
@@ -18783,6 +18866,50 @@ private ibm.bob.skill @defaults("name") @maturity("preview") {
   sha256() string
   // Package URL identifying the skill's git origin
   purl() string
+}
+
+// Aider coding assistant instance
+//
+// Aider, a command-line AI pair-programming tool, configured on the host
+// through .aider.conf.yml in the user's home. Queryable through it are the
+// configured model and whether the configuration file stores provider API
+// keys, along with the package that installed the tool and the runtime it
+// runs in. Pass configPath to target another configuration file.
+// URL: https://aider.chat/
+aider @defaults("configPath") @maturity("preview") {
+  init(configPath? string)
+  // Path to the Aider configuration file
+  configPath string
+
+  // Package that installed this tool
+  //
+  // Resolves to the system-package-manager entry that installed the tool
+  // when one can be identified; otherwise an abstract package (origin
+  // "unknown", empty format, absent from `packages`) that records the tool's
+  // presence and, where determinable, an inferred version. Read `.installed`
+  // for the install signal, or any package field (`version`, `purl`,
+  // `vendor`) for detail.
+  package() package
+
+  // Host the agent runs in
+  //
+  // The environment the agent runs inside: the operating system for a standalone
+  // agent, the IDE/editor for an editor plugin, or the browser for a browser
+  // extension. The runtime's `package` carries the host's software identity
+  // (version and purl where known) so its own version and vulnerabilities can be
+  // looked up like any other software. Optional, null when the host cannot be
+  // determined.
+  runtime() extensionRuntime
+  // Configured default model
+  //
+  // The `model` key of the configuration file, for example
+  // "anthropic/claude-sonnet-4" or "ollama/qwen2.5-coder". Empty when unset.
+  model() string
+  // Whether the configuration file stores provider API keys
+  //
+  // True when `openai-api-key`, `anthropic-api-key`, or any `api-key` entry
+  // holds a value. The keys themselves are never returned.
+  hasApiKeys() bool
 }
 
 // OpenClaw AI agent instance

@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -470,4 +471,67 @@ func TestGitRepoInfoWorktree(t *testing.T) {
 	assert.Equal(t, "mondoohq/mql", info.name)
 	// HEAD is read per-worktree
 	assert.Equal(t, "dom/feature", info.branch)
+}
+
+// Claude Code has three MCP scopes: user (top-level mcpServers in .claude.json),
+// local (projects[<path>].mcpServers in .claude.json), and project (the
+// project's own .mcp.json). All three must be reported, each scoped server
+// carrying its project path.
+func TestClaudeMcpServersScopes(t *testing.T) {
+	afs := testAfero()
+	project := t.TempDir()
+	writeTestFile(t, project, ".mcp.json", `{"mcpServers":{
+		"filesystem": {"command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]},
+		"memory": {"command":"npx","args":["-y","@modelcontextprotocol/server-memory@0.5.0"]}
+	}}`)
+	other := t.TempDir() // a project without an .mcp.json
+
+	var state claudeBackupState
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"mcpServers": {
+			"filesystem": {"type":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/home/alice"]}
+		},
+		"projects": {
+			`+jsonString(project)+`: {
+				"hasTrustDialogAccepted": true,
+				"mcpServers": {
+					"memory": {"command":"npx","args":["-y","@modelcontextprotocol/server-memory"]}
+				}
+			},
+			`+jsonString(other)+`: {"hasTrustDialogAccepted": true}
+		}
+	}`), &state))
+
+	servers := claudeMcpServers(afs, &state)
+
+	type row struct{ project, name, lastArg string }
+	var got []row
+	for _, s := range servers {
+		got = append(got, row{s.project, s.name, s.entry.Args[len(s.entry.Args)-1]})
+	}
+	assert.Equal(t, []row{
+		{"", "filesystem", "/home/alice"},
+		{project, "filesystem", "."},
+		// local (.claude.json) takes precedence over the project's .mcp.json
+		{project, "memory", "@modelcontextprotocol/server-memory"},
+	}, got)
+}
+
+func TestClaudeMcpServerID(t *testing.T) {
+	assert.Equal(t, "claude.code.mcpServer/memory", claudeMcpServerID("", "memory"),
+		"user-scope ids must not change")
+	assert.Equal(t, "claude.code.mcpServer//home/alice/src/api/memory", claudeMcpServerID("/home/alice/src/api", "memory"))
+	assert.NotEqual(t, claudeMcpServerID("/a", "memory"), claudeMcpServerID("/b", "memory"))
+}
+
+func TestClaudeMcpServersMalformedProjectFile(t *testing.T) {
+	project := t.TempDir()
+	writeTestFile(t, project, ".mcp.json", `{"mcpServers": {`)
+	state := claudeBackupState{Projects: map[string]claudeProjectEntry{project: {}}}
+	assert.Empty(t, claudeMcpServers(testAfero(), &state), "an unparsable .mcp.json contributes nothing")
+}
+
+func jsonString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
 }

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/BurntSushi/toml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -336,4 +337,34 @@ func TestCodexSessionCwd(t *testing.T) {
 
 	// missing file -> empty
 	assert.Equal(t, "", codexSessionCwd(afs, filepath.Join(dir, "missing.jsonl")))
+}
+
+// Codex configures MCP servers as `[mcp_servers.<name>]` tables in config.toml.
+// Layout as Codex writes it on Windows, including a literal-string project key.
+func TestCodexConfigMcpServers(t *testing.T) {
+	var cfg codexConfig
+	_, err := toml.Decode(`model = "gpt-5-codex"
+model_provider = "openai"
+[projects.'C:\Users\alice\src\api-backend']
+trust_level = "trusted"
+[mcp_servers.memory]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-memory"]
+[mcp_servers.sequential-thinking]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+env = { DEBUG = "1" }
+[mcp_servers.docs]
+url = "https://mcp.example.com/mcp"
+`, &cfg)
+	require.NoError(t, err)
+
+	assert.Equal(t, "gpt-5-codex", cfg.Model)
+	require.Len(t, cfg.McpServers, 3)
+	assert.Equal(t, "npx", cfg.McpServers["memory"].Command)
+	assert.Equal(t, []string{"-y", "@modelcontextprotocol/server-memory"}, cfg.McpServers["memory"].Args)
+	assert.Empty(t, cfg.McpServers["memory"].Env)
+	assert.Equal(t, map[string]string{"DEBUG": "1"}, cfg.McpServers["sequential-thinking"].Env)
+	assert.Equal(t, "https://mcp.example.com/mcp", cfg.McpServers["docs"].URL)
+	assert.Equal(t, mcpTransportHTTP, deriveMcpTransport("", cfg.McpServers["docs"].Command, cfg.McpServers["docs"].URL))
 }
