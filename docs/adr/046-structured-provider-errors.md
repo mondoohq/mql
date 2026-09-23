@@ -562,29 +562,26 @@ across providers.
 §3 turns a refusal from a null into an error. That is the change that makes
 scans that were quietly green go red, so it sits behind a feature flag,
 `StructuredErrors`, and can be tried against real accounts throughout v14
-before anyone has to take it. `RootedNamespace` (ADR 031) is the precedent: a
-behavior change that is available early and is opt-in.
+before anyone has to take it. It becomes the default in v15. `RootedNamespace`
+(ADR 031) is the precedent: a v15 behavior that is available early and is
+opt-in during v14.
 
-**Providers always classify.** A provider does not read the flag. A migrated
-call site returns the classified error unconditionally, so each provider has
-one code path and its migration is written once.
+**The provider reads the flag.** The flag is all or nothing for a provider
+process, so the provider reads it once from the features it receives and holds
+it process-wide. Each migrated call site keeps its v13 branch behind it:
 
-**The SDK decides what leaves the provider.** With the flag off, the SDK turns a
-classified field error back into a null before it crosses the process boundary:
-the field is set and null, as it was before the migration. Unclassified errors
-are untouched, since they were errors before. With the flag on, the classified
-error goes out as itself. The SDK reads the flag from `ConnectReq.features`,
-the same way providers already read `SerialNumberAsID`.
+```go
+if err != nil {
+    if !structuredErrors && Is400AccessDeniedError(err) {
+        return []any{}, nil // v13 behavior
+    }
+    return nil, classifyAwsError(err, "organizations:ListAccounts")
+}
+```
 
-The check is in one place for every provider, and it restores the old
-behavior only approximately:
-
-- A site that used to return an empty list or a default value on a refusal
-  returns a null with the flag off.
-- An error that already reached the user as an error, and is now classified,
-  becomes a null with the flag off.
-- Inside the provider, a field that reads another field sees the error
-  whether the flag is on or off. Only what leaves the provider is gated.
+With the flag off the call site returns exactly what it returned in v13, and
+every other error behaves as in v13. With the flag on it returns the classified
+error. In v15 the `if !structuredErrors` branches are deleted.
 
 **Not behind the flag:** the carrier and the SDK mapping (phases 1 and 2),
 partial results and their coverage gaps (§8), rendering, and cnspec's coverage
@@ -719,8 +716,8 @@ have landed, and no machine phase waits for a migration.
    `providers/runtime.go` changes, executor propagation, and attaching the
    errors to scores. The shared region-loop helper that the provider loops move
    onto. Not behind the feature flag.
-4. **The `StructuredErrors` feature flag (§9).** The SDK turns a classified
-   field error back into a null unless the flag is on.
+4. **The `StructuredErrors` feature flag (§9).** The flag, and the way a
+   provider reads it.
 5. **Rendering and aggregation.** CLI grouping, coverage gaps in mql's output,
    structured logs.
 6. **cnspec coverage attribution.** `Score.error_details` and
@@ -802,8 +799,7 @@ Two notes from phase 1:
 `providers-sdk/v1/plugin/classify.go`.
 
 **Step 9 for aws is open** (#11012). It returns classified errors
-unconditionally, which is right under §9, but it should merge after phase 4 so
-the change stays opt-in.
+unconditionally; it gets the v13 branches of §9 and merges after phase 4.
 
 ## Consequences
 
@@ -828,11 +824,8 @@ the change stays opt-in.
 
 - **~1,000 call sites change behavior.** Scans that were quietly green go red.
   That is correct and it will be reported as a regression, which is why it is
-  opt-in through v14 (§9). Turning the flag on by default needs the release
-  notes written.
-- **With the flag off, the old behavior comes back only approximately** (§9).
-  A refusal that used to be an empty list or a default is a null, and an
-  error that is now classified is a null until the flag is on.
+  opt-in through v14 (§9) and the default in v15. The v15 release notes have to
+  say so.
 - **A wrong kind is worse than none.** Everything downstream believes it. The
   narrowest-true rule (§2) and the unclassified default are the mitigation, and
   the review burden lands on the provider mapping files.
