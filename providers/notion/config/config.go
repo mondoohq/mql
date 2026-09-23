@@ -14,7 +14,7 @@ import (
 var Config = plugin.Provider{
 	Name:    "notion",
 	ID:      "go.mondoo.com/mql/providers/notion",
-	Version: "14.0.0-rc.1",
+	Version: "14.0.0",
 	// Every kind this provider hands out as its own asset is a root (ADR 031).
 	Root: "notion",
 	// Every root carries `asset`, which core owns (ADR 042).

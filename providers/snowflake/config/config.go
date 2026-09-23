@@ -15,7 +15,7 @@ var Config = plugin.Provider{
 	// A connection reports the concrete kind through ConnectRes.Root.
 	Root:    "snowflake",
 	ID:      "go.mondoo.com/mql/providers/snowflake",
-	Version: "14.0.0-rc.1",
+	Version: "14.0.0",
 	// Every root carries `asset`, which core owns (ADR 042).
 	Requires: []plugin.ProviderDep{
 		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
