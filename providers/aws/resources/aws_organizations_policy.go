@@ -19,11 +19,13 @@ import (
 // rejects a list or describe call for a policy type that has not been enabled,
 // and every type has to be enabled explicitly, so this is the common case rather
 // than an edge case.
+//
+// A standalone account is not this: it has no organization at all, which makes
+// the question not applicable (classifyAwsError).
 func isPolicyTypeUnavailable(err error) bool {
 	var notEnabled *orgtypes.PolicyTypeNotEnabledException
 	var notAvailable *orgtypes.PolicyTypeNotAvailableForOrganizationException
-	var notInUse *orgtypes.AWSOrganizationsNotInUseException
-	return errors.As(err, &notEnabled) || errors.As(err, &notAvailable) || errors.As(err, &notInUse)
+	return errors.As(err, &notEnabled) || errors.As(err, &notAvailable)
 }
 
 func newOrganizationPolicyResource(runtime *plugin.Runtime, policy orgtypes.PolicySummary) (plugin.Resource, error) {
@@ -59,8 +61,10 @@ func listOrganizationPolicies(ctx context.Context, runtime *plugin.Runtime, clie
 func listOrganizationPoliciesOfType(ctx context.Context, runtime *plugin.Runtime, client *organizations.Client, targetId string, policyType orgtypes.PolicyType) ([]any, error) {
 	var hasMorePages func() bool
 	var nextPage func(context.Context) ([]orgtypes.PolicySummary, error)
+	permission := "organizations:ListPoliciesForTarget"
 
 	if targetId == "" {
+		permission = "organizations:ListPolicies"
 		paginator := organizations.NewListPoliciesPaginator(client, &organizations.ListPoliciesInput{
 			Filter: policyType,
 		})
@@ -94,7 +98,7 @@ func listOrganizationPoliciesOfType(ctx context.Context, runtime *plugin.Runtime
 			if isPolicyTypeUnavailable(err) || Is400AccessDeniedError(err) {
 				return res, nil
 			}
-			return nil, err
+			return nil, classifyAwsError(err, permission)
 		}
 		for i := range policies {
 			mqlPolicy, err := newOrganizationPolicyResource(runtime, policies[i])
@@ -111,10 +115,7 @@ func listOrganizationPoliciesOfType(ctx context.Context, runtime *plugin.Runtime
 func describePolicyContent(ctx context.Context, client *organizations.Client, policyId string) (string, error) {
 	resp, err := client.DescribePolicy(ctx, &organizations.DescribePolicyInput{PolicyId: &policyId})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return "", nil
-		}
-		return "", err
+		return "", classifyAwsError(err, "organizations:DescribePolicy")
 	}
 	if resp.Policy == nil || resp.Policy.Content == nil {
 		return "", nil
@@ -189,7 +190,7 @@ func (a *mqlAwsAccount) effectivePolicies() ([]any, error) {
 			if isEffectivePolicyAbsent(err) || Is400AccessDeniedError(err) {
 				continue
 			}
-			return nil, err
+			return nil, classifyAwsError(err, "organizations:DescribeEffectivePolicy")
 		}
 		if resp.EffectivePolicy == nil {
 			continue

@@ -303,16 +303,7 @@ func (a *mqlAwsSqsQueue) policyStatements() ([]any, error) {
 }
 
 func (a *mqlAwsEcrRepository) policyStatements() ([]any, error) {
-	// GetPolicy has to run first: it is what decides whether the policy was
-	// read at all, and policyUnreadable is only meaningful afterwards.
-	policy := a.GetPolicy()
-	if a.policyUnreadable {
-		// An empty statement list is an assertion that the policy grants
-		// nothing. A policy the scan could not read supports no such claim.
-		a.PolicyStatements.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
-	}
-	return policyStatementsFromDict(a.MqlRuntime, a.Arn.Data, policy)
+	return policyStatementsFromDict(a.MqlRuntime, a.Arn.Data, a.GetPolicy())
 }
 
 func (a *mqlAwsLambdaFunction) policyStatements() ([]any, error) {

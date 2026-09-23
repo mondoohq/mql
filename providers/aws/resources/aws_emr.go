@@ -615,11 +615,7 @@ func (a *mqlAwsEmrCluster) autoTerminationIdleTimeout() (int64, error) {
 	id := a.Id.Data
 	resp, err := svc.GetAutoTerminationPolicy(ctx, &emr.GetAutoTerminationPolicyInput{ClusterId: &id})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.autoTerminationFetched = true
-			return 0, nil
-		}
-		return 0, err
+		return 0, classifyAwsError(err, "elasticmapreduce:GetAutoTerminationPolicy")
 	}
 	if resp.AutoTerminationPolicy != nil && resp.AutoTerminationPolicy.IdleTimeout != nil {
 		a.cacheAutoTerminationIdleTimeout = *resp.AutoTerminationPolicy.IdleTimeout
@@ -849,10 +845,7 @@ func (a *mqlAwsEmr) blockPublicAccessConfiguration() (any, error) {
 	ctx := context.Background()
 	resp, err := svc.GetBlockPublicAccessConfiguration(ctx, &emr.GetBlockPublicAccessConfigurationInput{})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "elasticmapreduce:GetBlockPublicAccessConfiguration")
 	}
 	return convert.JsonToDict(resp.BlockPublicAccessConfiguration)
 }
@@ -883,10 +876,7 @@ func (a *mqlAwsEmrCluster) steps() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "elasticmapreduce:ListSteps")
 		}
 		for _, step := range page.Steps {
 			var status, stateChangeReason string
@@ -1002,11 +992,7 @@ func (a *mqlAwsEmrClusterStep) fetchExecutionRoleArn() error {
 	clusterId := a.cacheClusterId
 	resp, err := svc.DescribeStep(ctx, &emr.DescribeStepInput{ClusterId: &clusterId, StepId: &stepId})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.executionRoleFetched = true
-			return nil
-		}
-		return err
+		return classifyAwsError(err, "elasticmapreduce:DescribeStep")
 	}
 	if resp.Step != nil && resp.Step.ExecutionRoleArn != nil {
 		a.cacheExecutionRoleArn = *resp.Step.ExecutionRoleArn
@@ -1033,10 +1019,7 @@ func (a *mqlAwsEmrCluster) instanceGroups() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "elasticmapreduce:ListInstanceGroups")
 		}
 		for _, ig := range page.InstanceGroups {
 			var status string
@@ -1105,10 +1088,7 @@ func (a *mqlAwsEmrCluster) bootstrapActions() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "elasticmapreduce:ListBootstrapActions")
 		}
 		for _, cmd := range page.BootstrapActions {
 			args := make([]any, len(cmd.Args))
@@ -1248,11 +1228,7 @@ func (a *mqlAwsEmrSecurityConfiguration) configuration() (string, error) {
 	name := a.Name.Data
 	resp, err := svc.DescribeSecurityConfiguration(ctx, &emr.DescribeSecurityConfigurationInput{Name: &name})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.configurationLoaded = true
-			return "", nil
-		}
-		return "", err
+		return "", classifyAwsError(err, "elasticmapreduce:DescribeSecurityConfiguration")
 	}
 	if resp.SecurityConfiguration != nil {
 		a.cacheConfiguration = *resp.SecurityConfiguration

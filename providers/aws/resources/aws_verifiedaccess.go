@@ -146,12 +146,7 @@ func (a *mqlAwsVerifiedaccessInstance) loggingConfiguration() (*mqlAwsVerifiedac
 		VerifiedAccessInstanceIds: []string{instanceId},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Warn().Str("instanceId", instanceId).Msg("access denied fetching verified access logging configuration")
-			a.LoggingConfiguration.State = plugin.StateIsNull | plugin.StateIsSet
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "ec2:DescribeVerifiedAccessInstanceLoggingConfigurations")
 	}
 
 	if len(resp.LoggingConfigurations) == 0 {

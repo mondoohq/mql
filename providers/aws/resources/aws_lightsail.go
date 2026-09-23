@@ -871,13 +871,7 @@ func (a *mqlAwsLightsail) distributions() ([]any, error) {
 			PageToken: pageToken,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			if IsServiceNotAvailableInRegionError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "lightsail:GetDistributions")
 		}
 
 		for i := range resp.Distributions {

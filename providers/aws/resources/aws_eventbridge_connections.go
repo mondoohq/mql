@@ -124,11 +124,7 @@ func (a *mqlAwsEventbridgeConnection) fetchDescribe() (*eventbridge.DescribeConn
 		Name: &name,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.fetched = true
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "events:DescribeConnection")
 	}
 	a.fetched = true
 	a.desc = resp
@@ -443,11 +439,7 @@ func (a *mqlAwsEventbridgeApiDestination) fetchDescribe() (*eventbridge.Describe
 		Name: &name,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.fetched = true
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "events:DescribeApiDestination")
 	}
 	a.fetched = true
 	a.desc = resp
@@ -653,11 +645,7 @@ func (a *mqlAwsEventbridgeArchive) fetchDescribe() (*eventbridge.DescribeArchive
 		ArchiveName: &name,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.fetched = true
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "events:DescribeArchive")
 	}
 	a.fetched = true
 	a.desc = resp
@@ -838,11 +826,7 @@ func (a *mqlAwsEventbridgeReplay) fetchDescribe() (*eventbridge.DescribeReplayOu
 		ReplayName: &name,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.fetched = true
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "events:DescribeReplay")
 	}
 	a.fetched = true
 	a.desc = resp
@@ -967,11 +951,7 @@ func (a *mqlAwsEventbridge) endpoints() ([]any, error) {
 			NextToken: nextToken,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Msg("access denied listing eventbridge global endpoints")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "events:ListEndpoints")
 		}
 
 		for _, ep := range resp.Endpoints {

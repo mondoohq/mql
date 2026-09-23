@@ -45,19 +45,11 @@ func (a *mqlAwsControltower) landingZones() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Msg("error accessing control tower API")
-				return nil, nil
-			}
-			if IsServiceNotAvailableInRegionError(err) {
-				log.Debug().Msg("control tower is not available in the default region")
-				return nil, nil
-			}
 			if isControlTowerNotConfiguredError(err) {
 				log.Debug().Msg("control tower is not configured in this account")
 				return nil, nil
 			}
-			return nil, err
+			return nil, classifyAwsError(err, "controltower:ListLandingZones")
 		}
 
 		for _, lz := range page.LandingZones {

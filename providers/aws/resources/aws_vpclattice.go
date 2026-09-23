@@ -130,11 +130,7 @@ func (a *mqlAwsVpclatticeServiceNetwork) networkDetail() (*vpclattice.GetService
 			ServiceNetworkIdentifier: &a.Id.Data,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				a.detail = &vpclattice.GetServiceNetworkOutput{}
-				return
-			}
-			a.detailErr = err
+			a.detailErr = classifyAwsError(err, "vpc-lattice:GetServiceNetwork")
 			return
 		}
 		a.detail = resp
@@ -187,32 +183,26 @@ func vpcLatticeAuthPolicy(svc *vpclattice.Client, resourceArn string) (string, e
 	})
 	if err != nil {
 		var notFound *vpclatticetypes.ResourceNotFoundException
-		if errors.As(err, &notFound) || Is400AccessDeniedError(err) {
+		if errors.As(err, &notFound) {
 			return "", nil
 		}
-		return "", err
+		return "", classifyAwsError(err, "vpc-lattice:GetAuthPolicy")
 	}
 	return convert.ToValue(resp.Policy), nil
 }
 
 func (a *mqlAwsVpclatticeServiceNetwork) tags() (map[string]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	tags, err := vpcLatticeTags(conn.VpcLattice(a.Region.Data), a.Arn.Data)
-	return tagsOrUnreadable(&a.Tags, tags, err)
+	return vpcLatticeTags(conn.VpcLattice(a.Region.Data), a.Arn.Data)
 }
 
-// vpcLatticeTags lists the tags on a VPC Lattice resource. A denied call is
-// reported as errTagsUnreadable, which each caller turns into a null tags field
-// rather than an empty one.
+// vpcLatticeTags lists the tags on a VPC Lattice resource.
 func vpcLatticeTags(svc *vpclattice.Client, resourceArn string) (map[string]any, error) {
 	resp, err := svc.ListTagsForResource(context.Background(), &vpclattice.ListTagsForResourceInput{
 		ResourceArn: &resourceArn,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return nil, errTagsUnreadable
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "vpc-lattice:ListTagsForResource")
 	}
 	tags := map[string]any{}
 	for k, v := range resp.Tags {
@@ -232,10 +222,7 @@ func (a *mqlAwsVpclatticeServiceNetwork) vpcAssociations() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "vpc-lattice:ListServiceNetworkVpcAssociations")
 		}
 		for _, assoc := range page.Items {
 			mqlAssoc, err := CreateResource(a.MqlRuntime, ResourceAwsVpclatticeServiceNetworkVpcAssociation,
@@ -348,11 +335,7 @@ func (a *mqlAwsVpclatticeService) serviceDetail() (*vpclattice.GetServiceOutput,
 			ServiceIdentifier: &a.Id.Data,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				a.detail = &vpclattice.GetServiceOutput{}
-				return
-			}
-			a.detailErr = err
+			a.detailErr = classifyAwsError(err, "vpc-lattice:GetService")
 			return
 		}
 		a.detail = resp
@@ -432,8 +415,7 @@ func (a *mqlAwsVpclatticeService) hasWildcardAuthPolicy() (bool, error) {
 
 func (a *mqlAwsVpclatticeService) tags() (map[string]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	tags, err := vpcLatticeTags(conn.VpcLattice(a.Region.Data), a.Arn.Data)
-	return tagsOrUnreadable(&a.Tags, tags, err)
+	return vpcLatticeTags(conn.VpcLattice(a.Region.Data), a.Arn.Data)
 }
 
 func (a *mqlAwsVpclatticeService) listeners() ([]any, error) {
@@ -448,10 +430,7 @@ func (a *mqlAwsVpclatticeService) listeners() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "vpc-lattice:ListListeners")
 		}
 		for _, listener := range page.Items {
 			mqlListener, err := CreateResource(a.MqlRuntime, ResourceAwsVpclatticeListener,
@@ -546,8 +525,7 @@ type mqlAwsVpclatticeTargetGroupInternal struct {
 
 func (a *mqlAwsVpclatticeTargetGroup) tags() (map[string]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	tags, err := vpcLatticeTags(conn.VpcLattice(a.Region.Data), a.Arn.Data)
-	return tagsOrUnreadable(&a.Tags, tags, err)
+	return vpcLatticeTags(conn.VpcLattice(a.Region.Data), a.Arn.Data)
 }
 
 // mqlAwsVpclatticeListenerInternal carries the region of the service the
@@ -559,8 +537,7 @@ type mqlAwsVpclatticeListenerInternal struct {
 
 func (a *mqlAwsVpclatticeListener) tags() (map[string]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	tags, err := vpcLatticeTags(conn.VpcLattice(a.region), a.Arn.Data)
-	return tagsOrUnreadable(&a.Tags, tags, err)
+	return vpcLatticeTags(conn.VpcLattice(a.region), a.Arn.Data)
 }
 
 // services resolves the services routing traffic to this target group. A target

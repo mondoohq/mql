@@ -228,10 +228,7 @@ func (a *mqlAwsDsqlCluster) streams() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "dsql:ListStreams")
 		}
 		for _, stream := range page.Streams {
 			mqlStream, err := CreateResource(a.MqlRuntime, "aws.dsql.cluster.stream",

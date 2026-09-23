@@ -113,10 +113,7 @@ func (a *mqlAwsElasticbeanstalkApplication) tags() (map[string]any, error) {
 		ResourceArn: &arn,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "elasticbeanstalk:ListTagsForResource")
 	}
 	tags := make(map[string]any)
 	for _, t := range resp.ResourceTags {
@@ -265,10 +262,7 @@ func (a *mqlAwsElasticbeanstalkEnvironment) tags() (map[string]any, error) {
 		ResourceArn: &arn,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "elasticbeanstalk:ListTagsForResource")
 	}
 	tags := make(map[string]any)
 	for _, t := range resp.ResourceTags {
@@ -347,11 +341,7 @@ func (a *mqlAwsElasticbeanstalkApplication) applicationVersions() ([]any, error)
 			NextToken:       nextToken,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("region", region).Str("application", appName).Msg("error accessing application versions for AWS API")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "elasticbeanstalk:DescribeApplicationVersions")
 		}
 
 		for _, v := range resp.ApplicationVersions {
@@ -424,10 +414,7 @@ func (a *mqlAwsElasticbeanstalkApplicationVersion) tags() (map[string]any, error
 		ResourceArn: &arn,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "elasticbeanstalk:ListTagsForResource")
 	}
 	tags := make(map[string]any)
 	for _, t := range resp.ResourceTags {
@@ -464,10 +451,7 @@ func (a *mqlAwsElasticbeanstalkEnvironment) resourcesSummary() (any, error) {
 		EnvironmentId: &envId,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "elasticbeanstalk:DescribeEnvironmentResources")
 	}
 
 	return convert.JsonToDict(resp.EnvironmentResources)
@@ -487,10 +471,7 @@ func (a *mqlAwsElasticbeanstalkEnvironment) optionSettings() ([]any, error) {
 		EnvironmentName: &envName,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "elasticbeanstalk:DescribeConfigurationSettings")
 	}
 
 	res := []any{}

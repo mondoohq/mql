@@ -335,11 +335,7 @@ func (a *mqlAwsSfnStateMachine) versions() ([]any, error) {
 			NextToken:       nextToken,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("state_machine", smArn).Msg("error listing state machine versions")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "states:ListStateMachineVersions")
 		}
 		for _, v := range resp.StateMachineVersions {
 			mqlVersion, err := CreateResource(a.MqlRuntime, "aws.sfn.stateMachineVersion",

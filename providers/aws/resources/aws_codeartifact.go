@@ -247,10 +247,10 @@ func (a *mqlAwsCodeartifactDomain) policy() (any, error) {
 			DomainOwner: &a.cacheDomainOwner,
 		})
 		if err != nil {
-			if isCodeArtifactNotFound(err) || Is400AccessDeniedError(err) {
+			if isCodeArtifactNotFound(err) {
 				return
 			}
-			a.policyErr = err
+			a.policyErr = classifyAwsError(err, "codeartifact:GetDomainPermissionsPolicy")
 			return
 		}
 		if out.Policy == nil {
@@ -487,10 +487,10 @@ func (a *mqlAwsCodeartifactRepository) policy() (any, error) {
 			Repository:  &a.cacheRepoName,
 		})
 		if err != nil {
-			if isCodeArtifactNotFound(err) || Is400AccessDeniedError(err) {
+			if isCodeArtifactNotFound(err) {
 				return
 			}
-			a.policyErr = err
+			a.policyErr = classifyAwsError(err, "codeartifact:GetRepositoryPermissionsPolicy")
 			return
 		}
 		if out.Policy == nil {
@@ -522,10 +522,10 @@ func (a *mqlAwsCodeartifactRepository) endpoints() (map[string]any, error) {
 				Format:      pkgFormat,
 			})
 			if err != nil {
-				if isCodeArtifactNotFound(err) || isCodeArtifactValidation(err) || Is400AccessDeniedError(err) {
+				if isCodeArtifactNotFound(err) || isCodeArtifactValidation(err) {
 					continue
 				}
-				a.endpointsErr = err
+				a.endpointsErr = classifyAwsError(err, "codeartifact:GetRepositoryEndpoint")
 				return
 			}
 			if out.RepositoryEndpoint != nil && *out.RepositoryEndpoint != "" {

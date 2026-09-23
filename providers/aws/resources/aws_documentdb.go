@@ -1085,10 +1085,7 @@ func (a *mqlAwsDocumentdbSnapshot) fetchSnapshotAttributes() ([]docdb_types.DBCl
 			DBClusterSnapshotIdentifier: &id,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return
-			}
-			a.attributesErr = err
+			a.attributesErr = classifyAwsError(err, "rds:DescribeDBClusterSnapshotAttributes")
 			return
 		}
 		if resp.DBClusterSnapshotAttributesResult != nil {
@@ -1703,10 +1700,7 @@ func (a *mqlAwsDocumentdbElasticCluster) snapshots() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "docdb-elastic:ListClusterSnapshots")
 		}
 		for _, summary := range page.Snapshots {
 			if summary.SnapshotArn == nil {

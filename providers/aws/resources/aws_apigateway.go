@@ -308,11 +308,7 @@ func (a *mqlAwsApigatewayRestapi) authorizers() ([]any, error) {
 	for {
 		resp, err := svc.GetAuthorizers(ctx, &apigateway.GetAuthorizersInput{RestApiId: &restApiId, Position: position})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("region", region).Str("restApiId", restApiId).Msg("error accessing API gateway authorizers")
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not gather AWS API Gateway authorizers")
+			return nil, errors.Wrap(classifyAwsError(err, "apigateway:GET"), "could not gather AWS API Gateway authorizers")
 		}
 		for _, auth := range resp.Items {
 			providerArns := []any{}
@@ -361,11 +357,7 @@ func (a *mqlAwsApigatewayRestapi) deployments() ([]any, error) {
 	for {
 		resp, err := svc.GetDeployments(ctx, &apigateway.GetDeploymentsInput{RestApiId: &restApiId, Position: position})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("region", region).Str("restApiId", restApiId).Msg("error accessing API gateway deployments")
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not gather AWS API Gateway deployments")
+			return nil, errors.Wrap(classifyAwsError(err, "apigateway:GET"), "could not gather AWS API Gateway deployments")
 		}
 		for _, d := range resp.Items {
 			depId := convert.ToValue(d.Id)
@@ -479,11 +471,7 @@ func (a *mqlAwsApigatewayRestapi) requestValidators() ([]any, error) {
 	for {
 		resp, err := svc.GetRequestValidators(ctx, &apigateway.GetRequestValidatorsInput{RestApiId: &restApiId, Position: position})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("region", region).Str("restApiId", restApiId).Msg("error accessing API gateway request validators")
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not gather AWS API Gateway request validators")
+			return nil, errors.Wrap(classifyAwsError(err, "apigateway:GET"), "could not gather AWS API Gateway request validators")
 		}
 		for _, v := range resp.Items {
 			vid := convert.ToValue(v.Id)

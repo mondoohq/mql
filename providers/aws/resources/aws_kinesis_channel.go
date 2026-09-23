@@ -200,8 +200,7 @@ type mqlAwsKinesisChannelInternal struct {
 }
 
 // fetchDescription reads the channel configuration, which the list API does
-// not carry. An access denial leaves desc nil so the configuration fields
-// resolve to null rather than to a value nobody read.
+// not carry.
 func (a *mqlAwsKinesisChannel) fetchDescription() (*kinesis_types.ChannelDescription, error) {
 	a.descOnce.Do(func() {
 		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -212,11 +211,7 @@ func (a *mqlAwsKinesisChannel) fetchDescription() (*kinesis_types.ChannelDescrip
 			ChannelARN: &channelArn,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("channel", channelArn).Msg("access denied describing kinesis channel")
-				return
-			}
-			a.descErr = err
+			a.descErr = classifyAwsError(err, "kinesis:DescribeChannel")
 			return
 		}
 		a.desc = out.ChannelDescription

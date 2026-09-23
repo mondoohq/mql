@@ -10,7 +10,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	route53types "github.com/aws/aws-sdk-go-v2/service/route53/types"
-	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
@@ -33,11 +32,7 @@ func (a *mqlAwsRoute53) trafficPolicies() ([]any, error) {
 			TrafficPolicyIdMarker: marker,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Msg("access denied listing Route 53 traffic policies")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "route53:ListTrafficPolicies")
 		}
 		for _, summary := range resp.TrafficPolicySummaries {
 			summary := summary
@@ -125,10 +120,7 @@ func initAwsRoute53TrafficPolicy(runtime *plugin.Runtime, args map[string]*llx.R
 		v := int32(versionVal)
 		resp, err := svc.GetTrafficPolicy(ctx, &route53.GetTrafficPolicyInput{Id: &idVal, Version: &v})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return args, nil, nil
-			}
-			return nil, nil, err
+			return nil, nil, classifyAwsError(err, "route53:GetTrafficPolicy")
 		}
 		if resp == nil || resp.TrafficPolicy == nil {
 			return args, nil, nil
@@ -183,11 +175,7 @@ func (a *mqlAwsRoute53) trafficPolicyInstances() ([]any, error) {
 		}
 		resp, err := svc.ListTrafficPolicyInstances(ctx, input)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Msg("access denied listing Route 53 traffic policy instances")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "route53:ListTrafficPolicyInstances")
 		}
 		for _, inst := range resp.TrafficPolicyInstances {
 			inst := inst
@@ -289,11 +277,7 @@ func (a *mqlAwsRoute53) cidrCollections() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Msg("access denied listing Route 53 CIDR collections")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "route53:ListCidrCollections")
 		}
 		for _, summary := range page.CidrCollections {
 			summary := summary
@@ -343,10 +327,7 @@ func (a *mqlAwsRoute53CidrCollection) fetchLocations() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "route53:ListCidrLocations")
 		}
 		for _, loc := range page.CidrLocations {
 			locName := convert.ToValue(loc.LocationName)
@@ -372,10 +353,7 @@ func fetchCidrBlocks(ctx context.Context, svc *route53.Client, collectionId, loc
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return blocks, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "route53:ListCidrBlocks")
 		}
 		for _, b := range page.CidrBlocks {
 			blocks = append(blocks, convert.ToValue(b.CidrBlock))

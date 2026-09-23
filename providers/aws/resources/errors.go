@@ -51,6 +51,13 @@ func classifyAwsError(err error, permissions ...string) error {
 		return err
 	}
 
+	// A service the account never turned on answers with the vocabulary of a
+	// denial (Macie: 401/403 AccessDeniedException), so these run before any
+	// denial check.
+	if isOrganizationsNotInUseError(err) || IsMacieNotEnabledError(err) || IsSecurityLakeNotEnabledError(err) {
+		return llx.NotApplicable(err)
+	}
+
 	var apiErr smithy.APIError
 	if errors.As(err, &apiErr) {
 		code := apiErr.ErrorCode()

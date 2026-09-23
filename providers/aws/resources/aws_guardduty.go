@@ -474,10 +474,7 @@ func (a *mqlAwsGuarddutyDetector) publishingDestinations() ([]any, error) {
 		DetectorId: &detectorId,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "guardduty:ListPublishingDestinations")
 	}
 
 	// The list response already carries destinationId, destinationType, and
@@ -607,10 +604,7 @@ func (a *mqlAwsGuarddutyDetector) ipSets() ([]any, error) {
 	for paginator.HasMorePages() {
 		resp, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "guardduty:ListIPSets")
 		}
 		details := make([]*guardduty.GetIPSetOutput, len(resp.IpSetIds))
 		var wg sync.WaitGroup
@@ -672,10 +666,7 @@ func (a *mqlAwsGuarddutyDetector) threatIntelSets() ([]any, error) {
 	for paginator.HasMorePages() {
 		resp, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "guardduty:ListThreatIntelSets")
 		}
 		details := make([]*guardduty.GetThreatIntelSetOutput, len(resp.ThreatIntelSetIds))
 		var wg sync.WaitGroup
@@ -737,10 +728,7 @@ func (a *mqlAwsGuarddutyDetector) coverageStatistics() ([]any, error) {
 		},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "guardduty:GetCoverageStatistics")
 	}
 
 	res := []any{}
@@ -792,10 +780,7 @@ func (a *mqlAwsGuarddutyDetector) filters() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "guardduty:ListFilters")
 		}
 		for _, filterName := range page.FilterNames {
 			detail, err := svc.GetFilter(ctx, &guardduty.GetFilterInput{
@@ -858,10 +843,7 @@ func (a *mqlAwsGuarddutyDetector) members() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "guardduty:ListMembers")
 		}
 		for _, member := range page.Members {
 			invitedAt := parseGuardDutyTimestamp(member.InvitedAt)

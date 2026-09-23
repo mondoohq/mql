@@ -231,10 +231,7 @@ func initAwsAppstreamFleet(runtime *plugin.Runtime, args map[string]*llx.RawData
 		Names: []string{name},
 	})
 	if err != nil {
-		if isAppstreamRegionError(err) {
-			return args, nil, nil
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(fmt.Errorf("fetching aws.appstream.fleet %q in region %s: %w", name, region, err), "appstream:DescribeFleets")
 	}
 	if len(resp.Fleets) == 0 {
 		return args, nil, nil
@@ -483,10 +480,7 @@ func initAwsAppstreamStack(runtime *plugin.Runtime, args map[string]*llx.RawData
 		Names: []string{name},
 	})
 	if err != nil {
-		if isAppstreamRegionError(err) {
-			return args, nil, nil
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(fmt.Errorf("fetching aws.appstream.stack %q in region %s: %w", name, region, err), "appstream:DescribeStacks")
 	}
 	if len(resp.Stacks) == 0 {
 		return args, nil, nil
@@ -896,10 +890,7 @@ func initAwsAppstreamImage(runtime *plugin.Runtime, args map[string]*llx.RawData
 	}
 	resp, err := svc.DescribeImages(ctx, input)
 	if err != nil {
-		if isAppstreamRegionError(err) {
-			return args, nil, nil
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(fmt.Errorf("fetching aws.appstream.image %q in region %s: %w", name, region, err), "appstream:DescribeImages")
 	}
 	if len(resp.Images) == 0 {
 		return args, nil, nil
@@ -1047,10 +1038,7 @@ func (a *mqlAwsAppstreamStack) associatedFleets() ([]any, error) {
 		})
 		cancel()
 		if err != nil {
-			if isAppstreamRegionError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "appstream:ListAssociatedFleets")
 		}
 		for _, fleetName := range resp.Names {
 			fleetArn := buildAppstreamFleetArn(a.Region.Data, conn.AccountId(), fleetName)
@@ -1092,13 +1080,7 @@ func (a *mqlAwsAppstreamFleet) listAssociatedStackNames() ([]string, error) {
 		})
 		cancel()
 		if err != nil {
-			if isAppstreamRegionError(err) {
-				log.Debug().Str("region", a.Region.Data).Str("fleet", fleetName).Int("partial", len(names)).Msg("error accessing region for AWS AppStream associated stacks API; caching partial result")
-				a.stackNamesFetched = true
-				a.stackNames = names
-				return names, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "appstream:ListAssociatedStacks")
 		}
 		names = append(names, resp.Names...)
 		if resp.NextToken == nil {
@@ -1152,10 +1134,7 @@ func (a *mqlAwsAppstreamStack) entitlements() ([]any, error) {
 		})
 		cancel()
 		if err != nil {
-			if isAppstreamRegionError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "appstream:DescribeEntitlements")
 		}
 		for _, e := range resp.Entitlements {
 			attrs := map[string]any{}
@@ -1228,10 +1207,7 @@ func (a *mqlAwsAppstreamFleet) sessions() ([]any, error) {
 			})
 			cancel()
 			if err != nil {
-				if isAppstreamRegionError(err) {
-					break
-				}
-				return nil, err
+				return nil, classifyAwsError(err, "appstream:DescribeSessions")
 			}
 			for _, s := range sresp.Sessions {
 				sid := aws.ToString(s.Id)

@@ -761,15 +761,12 @@ func (a *mqlAwsElbListener) sniCertificates() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
 			// A listener that terminates no TLS has no certificate list at all.
 			var notFound *elbtypes.ListenerNotFoundException
 			if errors.As(err, &notFound) {
 				return res, nil
 			}
-			return nil, err
+			return nil, classifyAwsError(err, "elasticloadbalancing:DescribeListenerCertificates")
 		}
 		for _, cert := range page.Certificates {
 			certArn := convert.ToValue(cert.CertificateArn)
@@ -1013,11 +1010,7 @@ func (a *mqlAwsElbListener) sslPolicyRef() (*mqlAwsElbSslPolicy, error) {
 	ctx := context.Background()
 	resp, err := svc.DescribeSSLPolicies(ctx, &elasticloadbalancingv2.DescribeSSLPoliciesInput{Names: []string{name}})
 	if err != nil {
-		if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-			a.SslPolicyRef.State = plugin.StateIsNull | plugin.StateIsSet
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "elasticloadbalancing:DescribeSSLPolicies")
 	}
 	if len(resp.SslPolicies) == 0 {
 		a.SslPolicyRef.State = plugin.StateIsNull | plugin.StateIsSet
@@ -1064,9 +1057,9 @@ func (a *mqlAwsElbMutualAuthentication) trustStore() (*mqlAwsElbTruststore, erro
 }
 
 // resolveElbTrustStore looks up the trust store a listener verifies client
-// certificates against. An empty ARN, an access-denied read, or a trust store
-// that no longer exists all leave the field null: the listener names no store
-// this scan can see, which is not the same as it naming one.
+// certificates against. An empty ARN or a trust store that no longer exists
+// leaves the field null: the listener names no store this scan can see, which
+// is not the same as it naming one.
 func resolveElbTrustStore(runtime *plugin.Runtime, listenerArn, trustStoreArn string, state *plugin.State) (*mqlAwsElbTruststore, error) {
 	if trustStoreArn == "" {
 		*state = plugin.StateIsNull | plugin.StateIsSet
@@ -1081,11 +1074,7 @@ func resolveElbTrustStore(runtime *plugin.Runtime, listenerArn, trustStoreArn st
 	ctx := context.Background()
 	resp, err := svc.DescribeTrustStores(ctx, &elasticloadbalancingv2.DescribeTrustStoresInput{TrustStoreArns: []string{trustStoreArn}})
 	if err != nil {
-		if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-			*state = plugin.StateIsNull | plugin.StateIsSet
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "elasticloadbalancing:DescribeTrustStores")
 	}
 	if len(resp.TrustStores) == 0 {
 		*state = plugin.StateIsNull | plugin.StateIsSet
@@ -1108,11 +1097,7 @@ func (a *mqlAwsElbListener) rules() ([]any, error) {
 	for paginator.HasMorePages() {
 		resp, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-				log.Warn().Str("listener", arnVal).Msg("access denied listing listener rules")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "elasticloadbalancing:DescribeRules")
 		}
 		for _, r := range resp.Rules {
 			conditions, err := convert.JsonToDictSlice(r.Conditions)
@@ -1289,10 +1274,7 @@ func elbv2TagsForArn(runtime *plugin.Runtime, resourceArn string) (map[string]an
 		ResourceArns: []string{resourceArn},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return nil, errTagsUnreadable
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "elasticloadbalancing:DescribeTags")
 	}
 
 	for _, desc := range resp.TagDescriptions {
@@ -1331,11 +1313,7 @@ func (a *mqlAwsElbLoadbalancer) targetGroups() ([]any, error) {
 	for paginator.HasMorePages() {
 		tgs, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("region", regionVal).Msg("error accessing region for AWS API")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "elasticloadbalancing:DescribeTargetGroups")
 		}
 		for _, tg := range tgs.TargetGroups {
 			args := map[string]*llx.RawData{
@@ -1612,10 +1590,7 @@ func (a *mqlAwsElbTargetgroup) ec2Targets() ([]any, error) {
 		TargetGroupArn: aws.String(a.Arn.Data),
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "elasticloadbalancing:DescribeTargetHealth")
 	}
 
 	res := []any{}
@@ -1653,10 +1628,7 @@ func (a *mqlAwsElbTargetgroup) lambdaTargets() ([]any, error) {
 		TargetGroupArn: aws.String(a.Arn.Data),
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "elasticloadbalancing:DescribeTargetHealth")
 	}
 
 	res := []any{}
@@ -1689,10 +1661,7 @@ func (a *mqlAwsElbTargetgroup) ipTargets() ([]any, error) {
 		TargetGroupArn: aws.String(a.Arn.Data),
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "elasticloadbalancing:DescribeTargetHealth")
 	}
 
 	res := []any{}

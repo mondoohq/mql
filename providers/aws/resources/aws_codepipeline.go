@@ -399,11 +399,7 @@ func (a *mqlAwsCodepipelineWebhook) targetPipeline() (*mqlAwsCodepipelinePipelin
 	}
 	mqlPipeline, err := newMqlAwsCodepipelinePipeline(a.MqlRuntime, a.cacheRegion, a.cacheTargetPipeline)
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.TargetPipeline.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "codepipeline:GetPipeline")
 	}
 	if mqlPipeline == nil {
 		a.TargetPipeline.State = plugin.StateIsSet | plugin.StateIsNull

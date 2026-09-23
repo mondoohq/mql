@@ -56,8 +56,9 @@ type lazyTags struct {
 }
 
 // errTagsUnreadable reports that a tag lookup could not be performed at all, as
-// distinct from a resource that carries no tags. Access-denied is the usual
-// cause; Backup also raises it for resources it does not manage.
+// distinct from a resource that carries no tags: Backup raises it for resources
+// it does not manage. A denied lookup is not this; it is a classified error
+// (classifyAwsError), because a refusal is never a null.
 //
 // The distinction matters because an empty tag map is an assertion. A scan role
 // without the tag permission would otherwise report every resource as untagged,
@@ -65,30 +66,6 @@ type lazyTags struct {
 // vacuously over the whole account. An unreadable tag set cannot prove a match,
 // so we do not claim one. This mirrors the reasoning in fetchTagsConcurrently.
 var errTagsUnreadable = errors.New("tags could not be read")
-
-// markTagsUnreadable marks a computed tags field null and reports no tags, for
-// an accessor that reads its tags directly rather than caching them through
-// lazyTags.
-//
-// Setting the state is the one way to make a computed map field surface as
-// null: returning a nil map on its own is indistinguishable from a resource
-// that carries no tags, because the runtime normalizes it to an empty map.
-// GetOrCompute honors a state the accessor set itself.
-func markTagsUnreadable(field *plugin.TValue[map[string]any]) (map[string]any, error) {
-	field.State = plugin.StateIsSet | plugin.StateIsNull
-	return nil, nil
-}
-
-// tagsOrUnreadable adapts a shared tag helper that reports an unreadable tag
-// set as errTagsUnreadable to an accessor that must express it as a null field.
-// The helper cannot mark the field itself: it serves several resources and does
-// not know which one it is answering for.
-func tagsOrUnreadable(field *plugin.TValue[map[string]any], tags map[string]any, err error) (map[string]any, error) {
-	if errors.Is(err, errTagsUnreadable) {
-		return markTagsUnreadable(field)
-	}
-	return tags, err
-}
 
 // resolveTags runs fetch once and caches the result, and is the only place tag
 // nullness is decided.

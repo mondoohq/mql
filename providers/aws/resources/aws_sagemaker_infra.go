@@ -1220,10 +1220,7 @@ func (a *mqlAwsSagemakerImage) versions() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "sagemaker:ListImageVersions")
 		}
 		for _, v := range page.ImageVersions {
 			var versionNum int64

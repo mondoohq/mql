@@ -200,10 +200,7 @@ func (a *mqlAwsSsmDocument) permissions() ([]any, error) {
 		PermissionType: types.DocumentPermissionTypeShare,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "ssm:DescribeDocumentPermission")
 	}
 
 	res := []any{}
@@ -479,10 +476,7 @@ func (a *mqlAwsSsmPatchBaseline) tags() (map[string]any, error) {
 		ResourceId:   &baselineId,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "ssm:ListTagsForResource")
 	}
 	return toInterfaceMap(ssmTagsToMap(resp.TagList)), nil
 }
@@ -589,10 +583,7 @@ func (a *mqlAwsSsmMaintenanceWindow) tags() (map[string]any, error) {
 		ResourceId:   &windowId,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "ssm:ListTagsForResource")
 	}
 	return toInterfaceMap(ssmTagsToMap(resp.TagList)), nil
 }

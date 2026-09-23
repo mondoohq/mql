@@ -184,10 +184,7 @@ func (a *mqlAwsSsmMaintenanceWindow) tasks() ([]any, error) {
 	for paginator.HasMorePages() {
 		resp, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "ssm:DescribeMaintenanceWindowTasks")
 		}
 		for _, t := range resp.Tasks {
 			mqlTask, err := CreateResource(a.MqlRuntime, "aws.ssm.maintenanceWindow.task",
@@ -230,10 +227,7 @@ func (a *mqlAwsSsmMaintenanceWindow) targets() ([]any, error) {
 	for paginator.HasMorePages() {
 		resp, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "ssm:DescribeMaintenanceWindowTargets")
 		}
 		for _, t := range resp.Targets {
 			mqlTarget, err := CreateResource(a.MqlRuntime, "aws.ssm.maintenanceWindow.target",
@@ -309,13 +303,9 @@ func (a *mqlAwsSsmAssociation) fetchDetail() error {
 	})
 	if err != nil {
 		a.fetched = true
-		if Is400AccessDeniedError(err) {
-			a.populateEmptyDetail()
-			return nil
-		}
-		a.fetchErr = err
+		a.fetchErr = classifyAwsError(err, "ssm:DescribeAssociation")
 		a.populateEmptyDetail()
-		return err
+		return a.fetchErr
 	}
 
 	desc := resp.AssociationDescription
@@ -555,11 +545,7 @@ func (a *mqlAwsSsm) sessionManagerPreferences() (any, error) {
 		if isSsmDocumentNotFound(err) {
 			return nil, nil
 		}
-		if Is400AccessDeniedError(err) {
-			log.Warn().Str("region", region).Str("document", name).Msg("access denied reading SSM Session Manager preferences document")
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "ssm:GetDocument")
 	}
 	if resp == nil {
 		return nil, nil

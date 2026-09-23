@@ -301,10 +301,7 @@ func (a *mqlAwsS3Bucket) accessPoints() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "s3:ListAccessPoints")
 		}
 		for _, ap := range page.AccessPointList {
 			vpcId := ""
@@ -372,11 +369,7 @@ func (a *mqlAwsS3BucketAccessPoint) fetchPublicAccessBlock() (*s3controltypes.Pu
 			Name:      aws.String(name),
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Debug().Str("accessPoint", a.Arn.Data).Err(err).Msg("access denied reading s3 access point public access block")
-				return
-			}
-			a.publicAccessErr = err
+			a.publicAccessErr = classifyAwsError(err, "s3:GetAccessPoint")
 			return
 		}
 		if resp.PublicAccessBlockConfiguration == nil {
@@ -428,11 +421,7 @@ func (a *mqlAwsS3BucketAccessPoint) policy() (string, error) {
 		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "NoSuchAccessPointPolicy" {
 			return "", nil
 		}
-		if Is400AccessDeniedError(err) {
-			log.Debug().Str("accessPoint", a.Arn.Data).Err(err).Msg("access denied reading s3 access point policy")
-			return "", nil
-		}
-		return "", err
+		return "", classifyAwsError(err, "s3:GetAccessPointPolicy")
 	}
 	return convert.ToValue(resp.Policy), nil
 }
@@ -1421,10 +1410,7 @@ func (a *mqlAwsS3Bucket) metricsConfigurations() ([]any, error) {
 			ContinuationToken: token,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return []any{}, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "s3:GetMetricsConfiguration")
 		}
 
 		for _, mc := range resp.MetricsConfigurationList {
@@ -2036,10 +2022,7 @@ func (a *mqlAwsS3Bucket) intelligentTieringConfigurations() ([]any, error) {
 			ContinuationToken: token,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return []any{}, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "s3:GetIntelligentTieringConfiguration")
 		}
 		for _, c := range resp.IntelligentTieringConfigurationList {
 			d, err := convert.JsonToDict(c)
@@ -2077,10 +2060,7 @@ func (a *mqlAwsS3Bucket) inventoryConfigurations() ([]any, error) {
 			ContinuationToken: token,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return []any{}, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "s3:GetInventoryConfiguration")
 		}
 		for _, c := range resp.InventoryConfigurationList {
 			d, err := convert.JsonToDict(c)
@@ -2118,10 +2098,7 @@ func (a *mqlAwsS3Bucket) analyticsConfigurations() ([]any, error) {
 			ContinuationToken: token,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return []any{}, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "s3:GetAnalyticsConfiguration")
 		}
 		for _, c := range resp.AnalyticsConfigurationList {
 			d, err := convert.JsonToDict(c)
@@ -2153,10 +2130,7 @@ func (a *mqlAwsS3Bucket) requestPayment() (string, error) {
 
 	resp, err := svc.GetBucketRequestPayment(ctx, &s3.GetBucketRequestPaymentInput{Bucket: &bucketName})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return "", nil
-		}
-		return "", err
+		return "", classifyAwsError(err, "s3:GetBucketRequestPayment")
 	}
 	return string(resp.Payer), nil
 }
@@ -2176,10 +2150,7 @@ func (a *mqlAwsS3Bucket) transferAcceleration() (string, error) {
 
 	resp, err := svc.GetBucketAccelerateConfiguration(ctx, &s3.GetBucketAccelerateConfigurationInput{Bucket: &bucketName})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return "", nil
-		}
-		return "", err
+		return "", classifyAwsError(err, "s3:GetAccelerateConfiguration")
 	}
 	return string(resp.Status), nil
 }

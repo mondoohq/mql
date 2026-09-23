@@ -387,10 +387,7 @@ func (a *mqlAwsCloudtrailTrail) tags() (map[string]any, error) {
 		ResourceIdList: []string{arnValue},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "cloudtrail:ListTags")
 	}
 
 	tags := map[string]any{}
@@ -671,14 +668,11 @@ func (a *mqlAwsCloudtrailTrail) insightSelectorEntries() ([]any, error) {
 		TrailName: &arnValue,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return []any{}, nil
-		}
 		var insightErr *types.InsightNotEnabledException
 		if errors.As(err, &insightErr) {
 			return []any{}, nil
 		}
-		return nil, err
+		return nil, classifyAwsError(err, "cloudtrail:GetInsightSelectors")
 	}
 
 	res := []any{}
@@ -1039,10 +1033,7 @@ func (a *mqlAwsCloudtrailEventDataStore) tags() (map[string]any, error) {
 		ResourceIdList: []string{arn},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "cloudtrail:ListTags")
 	}
 
 	tags := map[string]any{}
@@ -1238,10 +1229,7 @@ func (a *mqlAwsCloudtrailChannel) tags() (map[string]any, error) {
 		ResourceIdList: []string{arn},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "cloudtrail:ListTags")
 	}
 
 	tags := map[string]any{}

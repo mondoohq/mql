@@ -1,7 +1,7 @@
 {
   "provider": "aws",
   "version": "14.0.0-rc.1",
-  "generated_at": "2026-09-14T15:48:55-07:00",
+  "generated_at": "2026-09-22T20:00:13-07:00",
   "permissions": [
     "access-analyzer:GetFindingV2",
     "access-analyzer:ListAnalyzers",
@@ -1013,15 +1013,15 @@
     "transfer:ListServers",
     "transfer:ListWebApps",
     "transfer:ListWorkflows",
-    "vpclattice:GetAuthPolicy",
-    "vpclattice:GetService",
-    "vpclattice:GetServiceNetwork",
-    "vpclattice:ListListeners",
-    "vpclattice:ListServiceNetworkVpcAssociations",
-    "vpclattice:ListServiceNetworks",
-    "vpclattice:ListServices",
-    "vpclattice:ListTagsForResource",
-    "vpclattice:ListTargetGroups",
+    "vpc-lattice:GetAuthPolicy",
+    "vpc-lattice:GetService",
+    "vpc-lattice:GetServiceNetwork",
+    "vpc-lattice:ListListeners",
+    "vpc-lattice:ListServiceNetworkVpcAssociations",
+    "vpc-lattice:ListServiceNetworks",
+    "vpc-lattice:ListServices",
+    "vpc-lattice:ListTagsForResource",
+    "vpc-lattice:ListTargetGroups",
     "wafv2:GetIPSet",
     "wafv2:GetLoggingConfiguration",
     "wafv2:GetRegexPatternSet",
@@ -7369,56 +7369,56 @@
       "source_file": "aws_transfer.go"
     },
     {
-      "permission": "vpclattice:GetAuthPolicy",
-      "service": "vpclattice",
+      "permission": "vpc-lattice:GetAuthPolicy",
+      "service": "vpc-lattice",
       "action": "GetAuthPolicy",
       "source_file": "aws_vpclattice.go"
     },
     {
-      "permission": "vpclattice:GetService",
-      "service": "vpclattice",
+      "permission": "vpc-lattice:GetService",
+      "service": "vpc-lattice",
       "action": "GetService",
       "source_file": "aws_vpclattice.go"
     },
     {
-      "permission": "vpclattice:GetServiceNetwork",
-      "service": "vpclattice",
+      "permission": "vpc-lattice:GetServiceNetwork",
+      "service": "vpc-lattice",
       "action": "GetServiceNetwork",
       "source_file": "aws_vpclattice.go"
     },
     {
-      "permission": "vpclattice:ListListeners",
-      "service": "vpclattice",
+      "permission": "vpc-lattice:ListListeners",
+      "service": "vpc-lattice",
       "action": "ListListeners",
       "source_file": "aws_vpclattice.go"
     },
     {
-      "permission": "vpclattice:ListServiceNetworkVpcAssociations",
-      "service": "vpclattice",
+      "permission": "vpc-lattice:ListServiceNetworkVpcAssociations",
+      "service": "vpc-lattice",
       "action": "ListServiceNetworkVpcAssociations",
       "source_file": "aws_vpclattice.go"
     },
     {
-      "permission": "vpclattice:ListServiceNetworks",
-      "service": "vpclattice",
+      "permission": "vpc-lattice:ListServiceNetworks",
+      "service": "vpc-lattice",
       "action": "ListServiceNetworks",
       "source_file": "aws_vpclattice.go"
     },
     {
-      "permission": "vpclattice:ListServices",
-      "service": "vpclattice",
+      "permission": "vpc-lattice:ListServices",
+      "service": "vpc-lattice",
       "action": "ListServices",
       "source_file": "aws_vpclattice.go"
     },
     {
-      "permission": "vpclattice:ListTagsForResource",
-      "service": "vpclattice",
+      "permission": "vpc-lattice:ListTagsForResource",
+      "service": "vpc-lattice",
       "action": "ListTagsForResource",
       "source_file": "aws_vpclattice.go"
     },
     {
-      "permission": "vpclattice:ListTargetGroups",
-      "service": "vpclattice",
+      "permission": "vpc-lattice:ListTargetGroups",
+      "service": "vpc-lattice",
       "action": "ListTargetGroups",
       "source_file": "aws_vpclattice.go"
     },

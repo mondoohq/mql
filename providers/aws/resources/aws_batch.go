@@ -1779,11 +1779,7 @@ func (a *mqlAwsBatchJobQueue) jobs() ([]any, error) {
 				NextToken: nextToken,
 			})
 			if err != nil {
-				if Is400AccessDeniedError(err) {
-					log.Warn().Str("queue", a.Arn.Data).Msg("error accessing job queue for AWS Batch ListJobs")
-					return res, nil
-				}
-				return nil, err
+				return nil, classifyAwsError(err, "batch:ListJobs")
 			}
 			for _, s := range resp.JobSummaryList {
 				if s.JobId != nil {

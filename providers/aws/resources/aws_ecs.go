@@ -1642,6 +1642,7 @@ type mqlAwsEcsTaskDefinitionInternal struct {
 	lock     sync.Mutex
 
 	cacheTags   map[string]any
+	tagsErr     error
 	tagsFetched bool
 	tagsLock    sync.Mutex
 }
@@ -1864,12 +1865,12 @@ func (a *mqlAwsEcsTaskDefinition) registeredAt() (*time.Time, error) {
 
 func (a *mqlAwsEcsTaskDefinition) tags() (map[string]any, error) {
 	if a.tagsFetched {
-		return a.cacheTags, nil
+		return a.cacheTags, a.tagsErr
 	}
 	a.tagsLock.Lock()
 	defer a.tagsLock.Unlock()
 	if a.tagsFetched {
-		return a.cacheTags, nil
+		return a.cacheTags, a.tagsErr
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -1881,11 +1882,9 @@ func (a *mqlAwsEcsTaskDefinition) tags() (map[string]any, error) {
 		ResourceArn: &arnVal,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.tagsFetched = true
-			return nil, nil
-		}
-		return nil, err
+		a.tagsFetched = true
+		a.tagsErr = classifyAwsError(err, "ecs:ListTagsForResource")
+		return nil, a.tagsErr
 	}
 	if tagsResp != nil && tagsResp.Tags != nil {
 		a.cacheTags = ecsTagsToMap(tagsResp.Tags)
@@ -2149,11 +2148,7 @@ func (a *mqlAwsEcsCluster) services() ([]any, error) {
 	for servicePaginator.HasMorePages() {
 		serviceResp, err := servicePaginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("region", region).Str("cluster", clusterArn).Msg("error accessing cluster for services")
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not gather ecs services information")
+			return nil, errors.Wrap(classifyAwsError(err, "ecs:ListServices"), "could not gather ecs services information")
 		}
 		serviceArns = append(serviceArns, serviceResp.ServiceArns...)
 	}
@@ -2573,16 +2568,12 @@ func (s *mqlAwsEcsService) taskSets() ([]any, error) {
 		Include: []ecstypes.TaskSetField{ecstypes.TaskSetFieldTags},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Warn().Str("service", serviceArn).Msg("error accessing task sets for service")
-			return []any{}, nil
-		}
 		// DescribeTaskSets returns InvalidParameterException for services that
 		// don't use EXTERNAL or CODE_DEPLOY deployment controllers
 		if strings.Contains(err.Error(), "InvalidParameterException") {
 			return []any{}, nil
 		}
-		return nil, errors.Wrap(err, "could not describe task sets")
+		return nil, errors.Wrap(classifyAwsError(err, "ecs:DescribeTaskSets"), "could not describe task sets")
 	}
 
 	res := []any{}

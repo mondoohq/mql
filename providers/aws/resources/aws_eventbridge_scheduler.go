@@ -147,12 +147,7 @@ func (a *mqlAwsEventbridgeSchedule) fetchDetails() error {
 
 	resp, err := svc.GetSchedule(ctx, input)
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Warn().Str("schedule", *a.cacheName).Msg("access denied getting schedule details")
-			a.fetched = true
-			return nil
-		}
-		return err
+		return classifyAwsError(err, "scheduler:GetSchedule")
 	}
 
 	if resp.ScheduleExpression != nil {
@@ -409,11 +404,7 @@ func (a *mqlAwsEventbridgeSchedule) tags() (map[string]any, error) {
 			ResourceArn: &arnVal,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				a.tagsResp = map[string]any{}
-				return
-			}
-			a.tagsErr = err
+			a.tagsErr = classifyAwsError(err, "scheduler:ListTagsForResource")
 			return
 		}
 		out := map[string]any{}
@@ -712,11 +703,7 @@ func (a *mqlAwsEventbridgeScheduleGroup) tags() (map[string]any, error) {
 			ResourceArn: &arnVal,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				a.tagsResp = map[string]any{}
-				return
-			}
-			a.tagsErr = err
+			a.tagsErr = classifyAwsError(err, "scheduler:ListTagsForResource")
 			return
 		}
 		out := map[string]any{}

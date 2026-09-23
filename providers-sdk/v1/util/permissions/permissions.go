@@ -341,6 +341,7 @@ var awsServiceNameOverrides = map[string]string{
 	"eventbridge":              "events",
 	"sfn":                      "states",
 	"ssoadmin":                 "sso",
+	"vpclattice":               "vpc-lattice",
 }
 
 // awsPermissionOverrides maps a generated "service:Action" permission to the

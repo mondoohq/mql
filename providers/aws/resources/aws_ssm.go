@@ -134,10 +134,7 @@ func (a *mqlAwsSsmParameter) tags() (map[string]any, error) {
 			ResourceType: types.ResourceTypeForTaggingParameter,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return nil, errTagsUnreadable
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "ssm:ListTagsForResource")
 		}
 		return tagsToMap(resp.TagList,
 			func(t types.Tag) *string { return t.Key },

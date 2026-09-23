@@ -179,10 +179,7 @@ func (a *mqlAwsPersonalizeDatasetGroup) datasets() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "personalize:ListDatasets")
 		}
 		for _, ds := range page.Datasets {
 			args := map[string]*llx.RawData{
@@ -222,11 +219,7 @@ func (a *mqlAwsPersonalizeDataset) schema() (*mqlAwsPersonalizeSchema, error) {
 	svc := conn.Personalize(a.region)
 	detail, err := svc.DescribeSchema(context.Background(), &personalize.DescribeSchemaInput{SchemaArn: a.cacheSchemaArn})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.Schema.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "personalize:DescribeSchema")
 	}
 	if detail.Schema == nil {
 		a.Schema.State = plugin.StateIsSet | plugin.StateIsNull
@@ -245,10 +238,7 @@ func (a *mqlAwsPersonalizeDatasetGroup) solutions() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "personalize:ListSolutions")
 		}
 		for _, s := range page.Solutions {
 			args := map[string]*llx.RawData{
@@ -297,10 +287,7 @@ func (a *mqlAwsPersonalizeSolution) campaigns() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "personalize:ListCampaigns")
 		}
 		for _, c := range page.Campaigns {
 			args := map[string]*llx.RawData{
@@ -341,10 +328,7 @@ func (a *mqlAwsPersonalizeDatasetGroup) recommenders() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "personalize:ListRecommenders")
 		}
 		for _, r := range page.Recommenders {
 			failureReason := ""
@@ -384,10 +368,7 @@ func (a *mqlAwsPersonalizeDatasetGroup) eventTrackers() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "personalize:ListEventTrackers")
 		}
 		for _, et := range page.EventTrackers {
 			trackingId := ""
@@ -429,10 +410,7 @@ func (a *mqlAwsPersonalizeDatasetGroup) filters() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "personalize:ListFilters")
 		}
 		for _, f := range page.Filters {
 			filterExpression := ""

@@ -9,7 +9,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/shield"
 	shieldtypes "github.com/aws/aws-sdk-go-v2/service/shield/types"
-	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/aws/connection"
@@ -27,11 +26,7 @@ func (a *mqlAwsShield) subscriptionState() (string, error) {
 
 	resp, err := svc.GetSubscriptionState(ctx, &shield.GetSubscriptionStateInput{})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Warn().Msg("access denied querying Shield subscription state; returning UNKNOWN")
-			return "UNKNOWN", nil
-		}
-		return "", err
+		return "", classifyAwsError(err, "shield:GetSubscriptionState")
 	}
 	return string(resp.SubscriptionState), nil
 }
@@ -43,16 +38,12 @@ func (a *mqlAwsShield) subscription() (*mqlAwsShieldSubscription, error) {
 
 	resp, err := svc.DescribeSubscription(ctx, &shield.DescribeSubscriptionInput{})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.Subscription.State = plugin.StateIsNull | plugin.StateIsSet
-			return nil, nil
-		}
 		var notFoundErr *shieldtypes.ResourceNotFoundException
 		if errors.As(err, &notFoundErr) {
 			a.Subscription.State = plugin.StateIsNull | plugin.StateIsSet
 			return nil, nil
 		}
-		return nil, err
+		return nil, classifyAwsError(err, "shield:DescribeSubscription")
 	}
 
 	sub := resp.Subscription
@@ -111,14 +102,11 @@ func (a *mqlAwsShield) protections() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
 			var notFoundErr *shieldtypes.ResourceNotFoundException
 			if errors.As(err, &notFoundErr) {
 				return res, nil
 			}
-			return nil, err
+			return nil, classifyAwsError(err, "shield:ListProtections")
 		}
 		for _, p := range page.Protections {
 			appLayerEnabled := false
@@ -167,14 +155,11 @@ func (a *mqlAwsShield) protectionGroups() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
 			var notFoundErr *shieldtypes.ResourceNotFoundException
 			if errors.As(err, &notFoundErr) {
 				return res, nil
 			}
-			return nil, err
+			return nil, classifyAwsError(err, "shield:ListProtectionGroups")
 		}
 		for _, pg := range page.ProtectionGroups {
 			mqlGroup, err := CreateResource(a.MqlRuntime, "aws.shield.protectionGroup",
@@ -212,16 +197,12 @@ func (a *mqlAwsShield) drtAccess() (*mqlAwsShieldDrtAccess, error) {
 
 	resp, err := svc.DescribeDRTAccess(ctx, &shield.DescribeDRTAccessInput{})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.DrtAccess.State = plugin.StateIsNull | plugin.StateIsSet
-			return nil, nil
-		}
 		var notFoundErr *shieldtypes.ResourceNotFoundException
 		if errors.As(err, &notFoundErr) {
 			a.DrtAccess.State = plugin.StateIsNull | plugin.StateIsSet
 			return nil, nil
 		}
-		return nil, err
+		return nil, classifyAwsError(err, "shield:DescribeDRTAccess")
 	}
 
 	mqlDrt, err := CreateResource(a.MqlRuntime, "aws.shield.drtAccess",
@@ -264,14 +245,11 @@ func (a *mqlAwsShield) emergencyContacts() ([]any, error) {
 
 	resp, err := svc.DescribeEmergencyContactSettings(ctx, &shield.DescribeEmergencyContactSettingsInput{})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return []any{}, nil
-		}
 		var notFoundErr *shieldtypes.ResourceNotFoundException
 		if errors.As(err, &notFoundErr) {
 			return []any{}, nil
 		}
-		return nil, err
+		return nil, classifyAwsError(err, "shield:DescribeEmergencyContactSettings")
 	}
 
 	res := []any{}

@@ -123,10 +123,7 @@ func (a *mqlAwsQBusinessApplication) listIndices() ([]qbusinesstypes.Index, erro
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				break
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "qbusiness:ListIndices")
 		}
 		indices = append(indices, page.Indices...)
 	}
@@ -279,10 +276,7 @@ func (a *mqlAwsQBusinessApplication) dataSources() ([]any, error) {
 		for dsPaginator.HasMorePages() {
 			dsPage, err := dsPaginator.NextPage(ctx)
 			if err != nil {
-				if Is400AccessDeniedError(err) {
-					return res, nil
-				}
-				return nil, err
+				return nil, classifyAwsError(err, "qbusiness:ListDataSources")
 			}
 			for _, ds := range dsPage.DataSources {
 				dataSourceId := convert.ToValue(ds.DataSourceId)
@@ -321,10 +315,7 @@ func (a *mqlAwsQBusinessApplication) retrievers() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "qbusiness:ListRetrievers")
 		}
 		for _, r := range page.Retrievers {
 			retrieverId := convert.ToValue(r.RetrieverId)
@@ -359,10 +350,7 @@ func (a *mqlAwsQBusinessApplication) plugins() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "qbusiness:ListPlugins")
 		}
 		for _, p := range page.Plugins {
 			pluginId := convert.ToValue(p.PluginId)
@@ -399,10 +387,7 @@ func (a *mqlAwsQBusinessApplication) webExperiences() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "qbusiness:ListWebExperiences")
 		}
 		for _, w := range page.WebExperiences {
 			webExperienceId := convert.ToValue(w.WebExperienceId)

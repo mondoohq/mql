@@ -33,10 +33,7 @@ func (a *mqlAwsCloudfront) originAccessControls() ([]any, error) {
 			Marker: marker,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not gather aws cloudfront origin access controls")
+			return nil, errors.Wrap(classifyAwsError(err, "cloudfront:ListOriginAccessControls"), "could not gather aws cloudfront origin access controls")
 		}
 		if resp.OriginAccessControlList == nil {
 			break
@@ -82,10 +79,7 @@ func (a *mqlAwsCloudfront) keyValueStores() ([]any, error) {
 			Marker: marker,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not gather aws cloudfront key value stores")
+			return nil, errors.Wrap(classifyAwsError(err, "cloudfront:ListKeyValueStores"), "could not gather aws cloudfront key value stores")
 		}
 		if resp.KeyValueStoreList == nil {
 			break
@@ -131,10 +125,7 @@ func (a *mqlAwsCloudfront) publicKeys() ([]any, error) {
 			Marker: marker,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not gather aws cloudfront public keys")
+			return nil, errors.Wrap(classifyAwsError(err, "cloudfront:ListPublicKeys"), "could not gather aws cloudfront public keys")
 		}
 		if resp.PublicKeyList == nil {
 			break
@@ -212,10 +203,7 @@ func (a *mqlAwsCloudfront) keyGroups() ([]any, error) {
 			Marker: marker,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not gather aws cloudfront key groups")
+			return nil, errors.Wrap(classifyAwsError(err, "cloudfront:ListKeyGroups"), "could not gather aws cloudfront key groups")
 		}
 		if resp.KeyGroupList == nil {
 			break
@@ -290,10 +278,7 @@ func (a *mqlAwsCloudfront) fieldLevelEncryptionConfigs() ([]any, error) {
 			Marker: marker,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not gather aws cloudfront field level encryption configs")
+			return nil, errors.Wrap(classifyAwsError(err, "cloudfront:ListFieldLevelEncryptionConfigs"), "could not gather aws cloudfront field level encryption configs")
 		}
 		if resp.FieldLevelEncryptionList == nil {
 			break
@@ -389,10 +374,7 @@ func (a *mqlAwsCloudfront) fieldLevelEncryptionProfiles() ([]any, error) {
 			Marker: marker,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not gather aws cloudfront field level encryption profiles")
+			return nil, errors.Wrap(classifyAwsError(err, "cloudfront:ListFieldLevelEncryptionProfiles"), "could not gather aws cloudfront field level encryption profiles")
 		}
 		if resp.FieldLevelEncryptionProfileList == nil {
 			break

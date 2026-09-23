@@ -191,18 +191,19 @@ func initAwsCognitoUserPool(runtime *plugin.Runtime, args map[string]*llx.RawDat
 type mqlAwsCognitoUserPoolInternal struct {
 	descFetched bool
 	descData    *cognitoidentityprovider.DescribeUserPoolOutput
+	descErr     error
 	descLock    sync.Mutex
 }
 
 func (a *mqlAwsCognitoUserPool) fetchDescribeUserPool() (*cognitoidentityprovider.DescribeUserPoolOutput, error) {
 	if a.descFetched {
-		return a.descData, nil
+		return a.descData, a.descErr
 	}
 	a.descLock.Lock()
 	defer a.descLock.Unlock()
 
 	if a.descFetched {
-		return a.descData, nil
+		return a.descData, a.descErr
 	}
 
 	poolId := a.Id.Data
@@ -216,13 +217,9 @@ func (a *mqlAwsCognitoUserPool) fetchDescribeUserPool() (*cognitoidentityprovide
 		UserPoolId: &poolId,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Warn().Str("userPoolId", poolId).Err(err).Msg("access denied describing Cognito user pool")
-			a.descFetched = true
-			a.descData = nil
-			return nil, nil
-		}
-		return nil, err
+		a.descFetched = true
+		a.descErr = classifyAwsError(err, "cognito-idp:DescribeUserPool")
+		return nil, a.descErr
 	}
 
 	a.descFetched = true
@@ -448,9 +445,6 @@ func (a *mqlAwsCognitoUserPool) riskConfiguration() (any, error) {
 		UserPoolId: &poolId,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return nil, nil
-		}
 		// Pools without advanced security return ResourceNotFoundException
 		// or UserPoolAddOnNotEnabledException — surface as null. Any other
 		// error (rate limit, transient 5xx, etc.) propagates so the runtime
@@ -461,7 +455,7 @@ func (a *mqlAwsCognitoUserPool) riskConfiguration() (any, error) {
 			log.Debug().Str("userPoolId", poolId).Err(err).Msg("cognito risk configuration not available for user pool")
 			return nil, nil
 		}
-		return nil, err
+		return nil, classifyAwsError(err, "cognito-idp:DescribeRiskConfiguration")
 	}
 	if resp == nil || resp.RiskConfiguration == nil {
 		return nil, nil
@@ -552,6 +546,7 @@ func (a *mqlAwsCognito) getIdentityPools(conn *connection.AwsConnection) []*jobp
 
 type mqlAwsCognitoIdentityPoolInternal struct {
 	descCache *cognitoidentity.DescribeIdentityPoolOutput
+	descErr   error
 	descDone  bool
 	descLock  sync.Mutex
 }
@@ -565,13 +560,13 @@ func (a *mqlAwsCognitoIdentityPool) arn() (string, error) {
 
 func (a *mqlAwsCognitoIdentityPool) describe() (*cognitoidentity.DescribeIdentityPoolOutput, error) {
 	if a.descDone {
-		return a.descCache, nil
+		return a.descCache, a.descErr
 	}
 	a.descLock.Lock()
 	defer a.descLock.Unlock()
 
 	if a.descDone {
-		return a.descCache, nil
+		return a.descCache, a.descErr
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -583,11 +578,9 @@ func (a *mqlAwsCognitoIdentityPool) describe() (*cognitoidentity.DescribeIdentit
 		IdentityPoolId: &poolId,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.descDone = true
-			return nil, nil
-		}
-		return nil, err
+		a.descDone = true
+		a.descErr = classifyAwsError(err, "cognito-identity:DescribeIdentityPool")
+		return nil, a.descErr
 	}
 
 	a.descCache = resp
@@ -692,10 +685,7 @@ func (a *mqlAwsCognitoIdentityPool) roles() (any, error) {
 		IdentityPoolId: &poolId,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "cognito-identity:GetIdentityPoolRoles")
 	}
 	if resp == nil {
 		return nil, nil
@@ -737,10 +727,7 @@ func (a *mqlAwsCognitoUserPool) clients() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "cognito-idp:ListUserPoolClients")
 		}
 		for _, c := range page.UserPoolClients {
 			detail, err := svc.DescribeUserPoolClient(ctx, &cognitoidentityprovider.DescribeUserPoolClientInput{
@@ -892,11 +879,7 @@ func (a *mqlAwsCognitoUserPool) domain() (*mqlAwsCognitoUserPoolDomain, error) {
 		Domain: &name,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.Domain.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "cognito-idp:DescribeUserPoolDomain")
 	}
 	if detail.DomainDescription == nil || aws.ToString(detail.DomainDescription.UserPoolId) == "" {
 		a.Domain.State = plugin.StateIsSet | plugin.StateIsNull
@@ -952,10 +935,7 @@ func (a *mqlAwsCognitoUserPool) identityProviders() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "cognito-idp:ListIdentityProviders")
 		}
 		for _, p := range page.Providers {
 			detail, err := svc.DescribeIdentityProvider(ctx, &cognitoidentityprovider.DescribeIdentityProviderInput{

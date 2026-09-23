@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
+	orgtypes "github.com/aws/aws-sdk-go-v2/service/organizations/types"
 	smithy "github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/stretchr/testify/assert"
@@ -53,6 +55,11 @@ func TestClassifyAwsError(t *testing.T) {
 		{"not found on 404", awsAPIError(404, "NotFound", "not found"), llx.ErrorKind_ERROR_KIND_NOT_FOUND},
 		{"api not in region", awsAPIError(400, "InvalidAction", "The action DescribeVerifiedAccessInstances is not valid for this web service."), llx.ErrorKind_ERROR_KIND_NOT_APPLICABLE},
 		{"endpoint not in region", errors.New("dial tcp: lookup ec2.xx-east-9.amazonaws.com: no such host"), llx.ErrorKind_ERROR_KIND_NOT_APPLICABLE},
+		// A service the account never turned on is not a denial, even when it
+		// answers like one.
+		{"macie not enabled on 403", awsAPIError(403, "AccessDeniedException", "Macie is not enabled"), llx.ErrorKind_ERROR_KIND_NOT_APPLICABLE},
+		{"security lake not enabled", awsAPIError(404, "ResourceNotFoundException", "Security Lake isn't enabled for your account in any Regions"), llx.ErrorKind_ERROR_KIND_NOT_APPLICABLE},
+		{"standalone account", &orgtypes.AWSOrganizationsNotInUseException{Message: aws.String("Your account is not a member of an organization.")}, llx.ErrorKind_ERROR_KIND_NOT_APPLICABLE},
 		// Nothing for the user to do, so no claim.
 		{"internal error on 500", awsAPIError(500, "InternalError", "An internal error has occurred."), llx.ErrorKind_ERROR_KIND_UNSPECIFIED},
 		{"bad parameter on 400", awsAPIError(400, "InvalidParameterValue", "Value for parameter is invalid."), llx.ErrorKind_ERROR_KIND_UNSPECIFIED},

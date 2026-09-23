@@ -60,9 +60,6 @@ func (a *mqlAwsWaf) id() (string, error) {
 }
 
 // wafTagsForArn lists the tags on a WAF resource in the region that holds it.
-// A missing wafv2:ListTagsForResource permission is reported as
-// errTagsUnreadable, which each caller turns into a null tags field rather than
-// an empty one.
 func wafTagsForArn(runtime *plugin.Runtime, region, arn string) (map[string]any, error) {
 	conn := runtime.Connection.(*connection.AwsConnection)
 	svc := conn.Wafv2(region)
@@ -76,10 +73,7 @@ func wafTagsForArn(runtime *plugin.Runtime, region, arn string) (map[string]any,
 			NextMarker:  nextMarker,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return nil, errTagsUnreadable
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "wafv2:ListTagsForResource")
 		}
 		if resp.TagInfoForResource != nil {
 			for _, t := range resp.TagInfoForResource.TagList {
@@ -101,23 +95,19 @@ func wafTagsForArn(runtime *plugin.Runtime, region, arn string) (map[string]any,
 }
 
 func (a *mqlAwsWafAcl) tags() (map[string]any, error) {
-	tags, err := wafTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
-	return tagsOrUnreadable(&a.Tags, tags, err)
+	return wafTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
 }
 
 func (a *mqlAwsWafRulegroup) tags() (map[string]any, error) {
-	tags, err := wafTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
-	return tagsOrUnreadable(&a.Tags, tags, err)
+	return wafTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
 }
 
 func (a *mqlAwsWafIpset) tags() (map[string]any, error) {
-	tags, err := wafTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
-	return tagsOrUnreadable(&a.Tags, tags, err)
+	return wafTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
 }
 
 func (a *mqlAwsWafRegexPatternSet) tags() (map[string]any, error) {
-	tags, err := wafTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
-	return tagsOrUnreadable(&a.Tags, tags, err)
+	return wafTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
 }
 
 func (a *mqlAwsWafAcl) id() (string, error) {
@@ -1549,10 +1539,7 @@ func (a *mqlAwsWafAcl) associatedLoadBalancers() ([]any, error) {
 		ResourceType: waftypes.ResourceTypeApplicationLoadBalancer,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "wafv2:ListResourcesForWebACL")
 	}
 
 	res := []any{}
@@ -1587,11 +1574,7 @@ func (a *mqlAwsElbLoadbalancer) webAcl() (*mqlAwsWafAcl, error) {
 		ResourceArn: &arnVal,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.WebAcl.State = plugin.StateIsNull | plugin.StateIsSet
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "wafv2:GetWebACLForResource")
 	}
 	if resp.WebACL == nil || resp.WebACL.ARN == nil {
 		a.WebAcl.State = plugin.StateIsNull | plugin.StateIsSet

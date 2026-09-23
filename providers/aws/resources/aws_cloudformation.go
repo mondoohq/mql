@@ -179,14 +179,11 @@ func resolveStackById(runtime *plugin.Runtime, region string, stackID *string) (
 		StackName: stackID,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-			return nil, nil
-		}
 		var oe interface{ ErrorCode() string }
 		if errors.As(err, &oe) && oe.ErrorCode() == "ValidationError" {
 			return nil, nil
 		}
-		return nil, err
+		return nil, classifyAwsError(err, "cloudformation:DescribeStacks")
 	}
 	if len(resp.Stacks) == 0 {
 		return nil, nil
@@ -271,10 +268,7 @@ func (a *mqlAwsCloudformationStack) resources() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "cloudformation:ListStackResources")
 		}
 		for _, r := range page.StackResourceSummaries {
 			driftStatus := ""
@@ -452,12 +446,7 @@ func (a *mqlAwsCloudformationStackSet) fetchDetails() error {
 		StackSetName: &name,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-			log.Debug().Str("region", a.Region.Data).Str("stackSet", name).Msg("could not describe stack set")
-			a.detailsFetched = true
-			return nil
-		}
-		return err
+		return classifyAwsError(err, "cloudformation:DescribeStackSet")
 	}
 	if resp.StackSet != nil {
 		a.cacheTags = cfnTagsToMap(resp.StackSet.Tags)
@@ -617,16 +606,11 @@ func cloudformationStackForTags(runtime *plugin.Runtime, region string, tags map
 	if err != nil {
 		// A stale tag can reference a deleted stack; DescribeStacks returns a
 		// ValidationError ("Stack with id <name> does not exist") in that case.
-		// Treat any access/lookup failure as "no stack" rather than failing the
-		// whole scan.
-		if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-			return nil, nil
-		}
 		var oe interface{ ErrorCode() string }
 		if errors.As(err, &oe) && oe.ErrorCode() == "ValidationError" {
 			return nil, nil
 		}
-		return nil, err
+		return nil, classifyAwsError(err, "cloudformation:DescribeStacks")
 	}
 	if len(resp.Stacks) == 0 {
 		return nil, nil

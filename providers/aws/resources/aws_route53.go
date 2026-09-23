@@ -39,11 +39,7 @@ func (a *mqlAwsRoute53) hostedZones() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Msg("error accessing Route 53 API")
-				return []any{}, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "route53:ListHostedZones")
 		}
 		allZones = append(allZones, page.HostedZones...)
 	}
@@ -121,11 +117,7 @@ func (a *mqlAwsRoute53) healthChecks() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Msg("error accessing Route 53 health checks")
-				return []any{}, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "route53:ListHealthChecks")
 		}
 		allChecks = append(allChecks, page.HealthChecks...)
 	}
@@ -163,11 +155,7 @@ func (a *mqlAwsRoute53) queryLoggingConfigs() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Msg("error accessing Route 53 query logging configs")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "route53:ListQueryLoggingConfigs")
 		}
 
 		for _, qlc := range page.QueryLoggingConfigs {
@@ -253,9 +241,11 @@ func initAwsRoute53HostedZone(runtime *plugin.Runtime, args map[string]*llx.RawD
 
 type mqlAwsRoute53HostedZoneInternal struct {
 	getHostedZoneResp *route53.GetHostedZoneOutput
+	getHostedZoneErr  error
 	getHostedZoneDone bool
 	getHostedZoneLock sync.Mutex
 	getDNSSECResp     *route53.GetDNSSECOutput
+	getDNSSECErr      error
 	getDNSSECDone     bool
 	getDNSSECLock     sync.Mutex
 }
@@ -267,13 +257,10 @@ func (a *mqlAwsRoute53HostedZone) id() (string, error) {
 // getHostedZone fetches and caches the GetHostedZone response so that vpcs()
 // and nameServers() don't each make a separate API call for the same data.
 func (a *mqlAwsRoute53HostedZone) getHostedZone() (*route53.GetHostedZoneOutput, error) {
-	if a.getHostedZoneDone {
-		return a.getHostedZoneResp, nil
-	}
 	a.getHostedZoneLock.Lock()
 	defer a.getHostedZoneLock.Unlock()
 	if a.getHostedZoneDone {
-		return a.getHostedZoneResp, nil
+		return a.getHostedZoneResp, a.getHostedZoneErr
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -283,11 +270,9 @@ func (a *mqlAwsRoute53HostedZone) getHostedZone() (*route53.GetHostedZoneOutput,
 
 	resp, err := svc.GetHostedZone(ctx, &route53.GetHostedZoneInput{Id: &hostedZoneId})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.getHostedZoneDone = true
-			return nil, nil
-		}
-		return nil, err
+		a.getHostedZoneErr = classifyAwsError(err, "route53:GetHostedZone")
+		a.getHostedZoneDone = true
+		return nil, a.getHostedZoneErr
 	}
 
 	a.getHostedZoneResp = resp
@@ -298,13 +283,10 @@ func (a *mqlAwsRoute53HostedZone) getHostedZone() (*route53.GetHostedZoneOutput,
 // getDNSSEC fetches and caches the GetDNSSEC response so that dnssecStatus(),
 // dnssec(), and keySigningKeys() share a single API call per hosted zone.
 func (a *mqlAwsRoute53HostedZone) getDNSSEC() (*route53.GetDNSSECOutput, error) {
-	if a.getDNSSECDone {
-		return a.getDNSSECResp, nil
-	}
 	a.getDNSSECLock.Lock()
 	defer a.getDNSSECLock.Unlock()
 	if a.getDNSSECDone {
-		return a.getDNSSECResp, nil
+		return a.getDNSSECResp, a.getDNSSECErr
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -314,11 +296,9 @@ func (a *mqlAwsRoute53HostedZone) getDNSSEC() (*route53.GetDNSSECOutput, error) 
 
 	resp, err := svc.GetDNSSEC(ctx, &route53.GetDNSSECInput{HostedZoneId: &hostedZoneId})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.getDNSSECDone = true
-			return nil, nil
-		}
-		return nil, err
+		a.getDNSSECErr = classifyAwsError(err, "route53:GetDNSSEC")
+		a.getDNSSECDone = true
+		return nil, a.getDNSSECErr
 	}
 
 	a.getDNSSECResp = resp
@@ -405,11 +385,7 @@ func (a *mqlAwsRoute53HostedZone) queryLoggingConfig() (*mqlAwsRoute53QueryLoggi
 		HostedZoneId: &hostedZoneId,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.QueryLoggingConfig.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "route53:ListQueryLoggingConfigs")
 	}
 
 	if len(listResp.QueryLoggingConfigs) > 0 {
@@ -554,11 +530,7 @@ func (a *mqlAwsRoute53Record) healthCheck() (*mqlAwsRoute53HealthCheck, error) {
 		HealthCheckId: &healthCheckId,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.HealthCheck.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "route53:GetHealthCheck")
 	}
 	if resp == nil || resp.HealthCheck == nil {
 		a.HealthCheck.State = plugin.StateIsSet | plugin.StateIsNull
@@ -724,10 +696,7 @@ func (a *mqlAwsRoute53) domains() ([]any, error) {
 		}
 		resp, err := svc.ListDomains(ctx, input)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return nil, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "route53domains:ListDomains")
 		}
 		for _, domain := range resp.Domains {
 			domainName := convert.ToValue(domain.DomainName)
@@ -755,6 +724,7 @@ func (a *mqlAwsRoute53) domains() ([]any, error) {
 
 type mqlAwsRoute53DomainInternal struct {
 	detailCache *route53domains.GetDomainDetailOutput
+	detailErr   error
 	detailDone  bool
 }
 
@@ -764,7 +734,7 @@ func (a *mqlAwsRoute53Domain) id() (string, error) {
 
 func (a *mqlAwsRoute53Domain) getDetail() (*route53domains.GetDomainDetailOutput, error) {
 	if a.detailDone {
-		return a.detailCache, nil
+		return a.detailCache, a.detailErr
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -776,11 +746,9 @@ func (a *mqlAwsRoute53Domain) getDetail() (*route53domains.GetDomainDetailOutput
 		DomainName: &domainName,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.detailDone = true
-			return nil, nil
-		}
-		return nil, err
+		a.detailErr = classifyAwsError(err, "route53domains:GetDomainDetail")
+		a.detailDone = true
+		return nil, a.detailErr
 	}
 
 	a.detailCache = detail

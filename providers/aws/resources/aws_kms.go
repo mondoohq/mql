@@ -225,10 +225,10 @@ func (a *mqlAwsKms) keys() ([]any, error) {
 // kms:ListResourceTags and answer with an empty tag set, others refuse it, and
 // only the first is "this key has no tags". fetchTagsConcurrently leaves a key
 // whose read failed out of its result, so nothing is seeded onto the resource
-// and the lazy tags accessor still reports the refusal as null via
-// markTagsUnreadable. Returning an empty set here would publish "no tags" as fact
-// for a key whose tags could not be read, and would make the same key report {}
-// under a tag filter and null without one.
+// and the lazy tags accessor still reports the refusal as an error. Returning an
+// empty set here would publish "no tags" as fact for a key whose tags could not
+// be read, and would make the same key report {} under a tag filter and an error
+// without one.
 //
 // Filtering is unaffected: an absent entry yields a nil map, and both
 // MatchesIncludeTags and MatchesExcludeTags read a nil map exactly as they read
@@ -377,18 +377,13 @@ func (a *mqlAwsKmsKey) metadata() (any, error) {
 	return convert.JsonToDict(md)
 }
 
-// errKmsGrantsUnreadable marks a ListGrants call AWS refused. The grants a key
-// carries are then unknown, which is not the same as a key with no grants.
-var errKmsGrantsUnreadable = errors.New("kms: grants could not be listed")
-
-// markKmsUnreadable publishes a field whose backing read AWS refused as null,
-// the same way markTagsUnreadable does for tags.
+// markKmsUnreadable publishes a field AWS gave no answer for as null.
 //
-// The zero value of a bool, an int or a string cannot say "we were not allowed
-// to look": keyRotationEnabled:false is a claim that rotation is off, and
-// policy:"" a claim a key has no key policy, neither of which a denial
-// establishes. Setting the state before returning is what makes GetOrCompute
-// keep the null instead of caching the zero value it is handed.
+// The zero value of a bool, an int or a string cannot say "nothing was read":
+// keyRotationEnabled:false is a claim that rotation is off, and policy:"" a
+// claim a key has no key policy. Setting the state before returning is what
+// makes GetOrCompute keep the null instead of caching the zero value it is
+// handed.
 func markKmsUnreadable[T any](field *plugin.TValue[T]) (T, error) {
 	field.State = plugin.StateIsSet | plugin.StateIsNull
 	var zero T
@@ -397,7 +392,7 @@ func markKmsUnreadable[T any](field *plugin.TValue[T]) (T, error) {
 
 // kmsRotationReading is what the four rotation fields publish for one key.
 type kmsRotationReading struct {
-	// known is false when AWS refused GetKeyRotationStatus. Every rotation
+	// known is false when AWS returned no rotation status. Every rotation
 	// field then publishes null.
 	known bool
 	// enabled is meaningful only when known.
@@ -416,13 +411,10 @@ type kmsRotationReading struct {
 // it in IAM, and AWS-managed keys do exactly that: alias/aws/acm refuses the
 // call even to an account administrator, and it rotates. Folding that refusal
 // into keyRotationEnabled:false states the opposite of the truth about such a
-// key, so it is reported as unknown instead.
+// key, so it is returned as the error it is.
 func kmsRotationReadingFrom(resp *kms.GetKeyRotationStatusOutput, err error) (kmsRotationReading, error) {
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return kmsRotationReading{}, nil
-		}
-		return kmsRotationReading{}, err
+		return kmsRotationReading{}, classifyAwsError(err, "kms:GetKeyRotationStatus")
 	}
 	if resp == nil {
 		return kmsRotationReading{}, nil
@@ -443,12 +435,12 @@ func kmsRotationReadingFrom(resp *kms.GetKeyRotationStatusOutput, err error) (km
 
 func (a *mqlAwsKmsKey) getRotationStatus() (kmsRotationReading, error) {
 	if a.rotationStatusFetched {
-		return a.cachedRotationStatus, nil
+		return a.cachedRotationStatus, a.cachedRotationStatusErr
 	}
 	a.rotationStatusLock.Lock()
 	defer a.rotationStatusLock.Unlock()
 	if a.rotationStatusFetched {
-		return a.cachedRotationStatus, nil
+		return a.cachedRotationStatus, a.cachedRotationStatusErr
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -459,15 +451,10 @@ func (a *mqlAwsKmsKey) getRotationStatus() (kmsRotationReading, error) {
 
 	resp, err := svc.GetKeyRotationStatus(ctx, &kms.GetKeyRotationStatusInput{KeyId: &keyArn})
 	reading, err := kmsRotationReadingFrom(resp, err)
-	if err != nil {
-		return kmsRotationReading{}, err
-	}
-	if !reading.known {
-		log.Debug().Str("key", keyArn).Msg("access denied reading KMS key rotation status")
-	}
 	a.cachedRotationStatus = reading
+	a.cachedRotationStatusErr = err
 	a.rotationStatusFetched = true
-	return reading, nil
+	return reading, err
 }
 
 func (a *mqlAwsKmsKey) keyRotationEnabled() (bool, error) {
@@ -516,11 +503,11 @@ func (a *mqlAwsKmsKey) onDemandRotationStartedAt() (*time.Time, error) {
 
 // kmsLastUsageReading is what lastUsageOperation and lastUsedAt publish.
 //
-// Both fields are null when the key has never been used and when the read was
-// refused. The two reasons stay separate here so callers, and a future field
+// Both fields are null when the key has never been used and when AWS returned
+// no answer. The two reasons stay separate here so callers, and a future field
 // that wants to report them apart, can still tell them apart.
 type kmsLastUsageReading struct {
-	// known is false when AWS refused GetKeyLastUsage.
+	// known is false when AWS returned no last-usage answer.
 	known bool
 	// operation is nil when the key has not been used since KMS began tracking.
 	operation  *string
@@ -531,10 +518,7 @@ type kmsLastUsageReading struct {
 // last-usage fields publish.
 func kmsLastUsageReadingFrom(resp *kms.GetKeyLastUsageOutput, err error) (kmsLastUsageReading, error) {
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return kmsLastUsageReading{}, nil
-		}
-		return kmsLastUsageReading{}, err
+		return kmsLastUsageReading{}, classifyAwsError(err, "kms:GetKeyLastUsage")
 	}
 	if resp == nil {
 		return kmsLastUsageReading{}, nil
@@ -553,12 +537,12 @@ func kmsLastUsageReadingFrom(resp *kms.GetKeyLastUsageOutput, err error) (kmsLas
 
 func (a *mqlAwsKmsKey) getLastUsage() (kmsLastUsageReading, error) {
 	if a.lastUsageFetched {
-		return a.cachedLastUsage, nil
+		return a.cachedLastUsage, a.cachedLastUsageErr
 	}
 	a.lastUsageLock.Lock()
 	defer a.lastUsageLock.Unlock()
 	if a.lastUsageFetched {
-		return a.cachedLastUsage, nil
+		return a.cachedLastUsage, a.cachedLastUsageErr
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -569,15 +553,10 @@ func (a *mqlAwsKmsKey) getLastUsage() (kmsLastUsageReading, error) {
 
 	resp, err := svc.GetKeyLastUsage(ctx, &kms.GetKeyLastUsageInput{KeyId: &keyArn})
 	reading, err := kmsLastUsageReadingFrom(resp, err)
-	if err != nil {
-		return kmsLastUsageReading{}, err
-	}
-	if !reading.known {
-		log.Debug().Str("key", keyArn).Msg("access denied reading KMS key last usage")
-	}
 	a.cachedLastUsage = reading
+	a.cachedLastUsageErr = err
 	a.lastUsageFetched = true
-	return reading, nil
+	return reading, err
 }
 
 func (a *mqlAwsKmsKey) lastUsageOperation() (string, error) {
@@ -586,7 +565,6 @@ func (a *mqlAwsKmsKey) lastUsageOperation() (string, error) {
 		return "", err
 	}
 	if !reading.known {
-		// GetKeyLastUsage was refused, so the last operation is unknown.
 		return markKmsUnreadable(&a.LastUsageOperation)
 	}
 	if reading.operation == nil {
@@ -621,12 +599,7 @@ func (a *mqlAwsKmsKey) tags() (map[string]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			// AWS-managed keys reject ListResourceTags with AccessDenied;
-			// treat that as no tags rather than failing managedBy/tags.
-			if Is400AccessDeniedError(err) {
-				return markTagsUnreadable(&a.Tags)
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "kms:ListResourceTags")
 		}
 		for i := range page.Tags {
 			tag := page.Tags[i]
@@ -668,14 +641,16 @@ func (a *mqlAwsKmsKey) keyState() (string, error) {
 }
 
 type mqlAwsKmsKeyInternal struct {
-	cachedKeyMetadata     *types.KeyMetadata
-	metadataLock          sync.Mutex
-	cachedRotationStatus  kmsRotationReading
-	rotationStatusFetched bool
-	rotationStatusLock    sync.Mutex
-	cachedLastUsage       kmsLastUsageReading
-	lastUsageFetched      bool
-	lastUsageLock         sync.Mutex
+	cachedKeyMetadata       *types.KeyMetadata
+	metadataLock            sync.Mutex
+	cachedRotationStatus    kmsRotationReading
+	cachedRotationStatusErr error
+	rotationStatusFetched   bool
+	rotationStatusLock      sync.Mutex
+	cachedLastUsage         kmsLastUsageReading
+	cachedLastUsageErr      error
+	lastUsageFetched        bool
+	lastUsageLock           sync.Mutex
 }
 
 func (a *mqlAwsKmsKey) getKeyMetadata() (*types.KeyMetadata, error) {
@@ -954,19 +929,15 @@ func (a *mqlAwsKmsKey) policy() (string, error) {
 }
 
 // kmsPolicyOrUnreadable publishes a key policy document, or null when AWS
-// refused to disclose it.
+// returned none.
 //
 // Every KMS key has a key policy, so "" can never be a truthful reading of one:
 // it is indistinguishable from a key whose policy grants a wildcard principal,
-// and it collapses through an empty statement list into isPublic:false. Any
-// other failure is a failure, not an answer.
+// and it collapses through an empty statement list into isPublic:false. A
+// refusal is returned as the error it is.
 func kmsPolicyOrUnreadable(field *plugin.TValue[string], keyArn string, resp *kms.GetKeyPolicyOutput, err error) (string, error) {
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Debug().Str("key", keyArn).Msg("access denied when retrieving KMS key policy")
-			return markKmsUnreadable(field)
-		}
-		return "", err
+		return "", classifyAwsError(fmt.Errorf("reading key policy of %s: %w", keyArn, err), "kms:GetKeyPolicy")
 	}
 	if resp == nil {
 		return markKmsUnreadable(field)
@@ -980,34 +951,30 @@ func (a *mqlAwsKmsKey) id() (string, error) {
 
 func (a *mqlAwsKmsKey) grants() ([]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	grants, err := listKmsGrantsForKey(a.MqlRuntime, conn, a.Arn.Data, a.Region.Data)
-	return kmsGrantsOrUnreadable(&a.Grants, grants, err)
+	return listKmsGrantsForKey(a.MqlRuntime, conn, a.Arn.Data, a.Region.Data)
 }
 
-// kmsGrantsOrUnreadable publishes a grant list, or null when ListGrants was
-// refused for any key it covers.
+// kmsGrantsOrUnreadable publishes the account-wide grant list, or null when
+// ListGrants was refused for any key it covers.
 //
 // The grants such a key carries are unknown, and publishing the partial list
 // presents it as the complete one: a check reading "no grant allows X" would
 // pass on a key nobody was allowed to enumerate. Any other failure is returned
 // as the failure it is.
 func kmsGrantsOrUnreadable(field *plugin.TValue[[]any], grants []any, err error) ([]any, error) {
-	if errors.Is(err, errKmsGrantsUnreadable) {
+	if errors.Is(err, llx.ErrForbidden) {
 		return markKmsUnreadable(field)
 	}
 	return grants, err
 }
 
-// kmsListGrantsError classifies a ListGrants failure. A refusal becomes
-// errKmsGrantsUnreadable, which the grant accessors publish as null; anything
-// else stays the error it is, so a throttle or a network blip cannot be read as
-// a statement about the key.
+// kmsListGrantsError classifies a ListGrants failure, naming the key it was
+// for.
 func kmsListGrantsError(keyArn string, err error) error {
-	if Is400AccessDeniedError(err) {
-		log.Debug().Str("keyArn", keyArn).Msg("access denied listing KMS grants")
-		return fmt.Errorf("%w for key %s: %w", errKmsGrantsUnreadable, keyArn, err)
+	if err == nil {
+		return nil
 	}
-	return err
+	return classifyAwsError(fmt.Errorf("listing grants for key %s: %w", keyArn, err), "kms:ListGrants")
 }
 
 func listKmsGrantsForKey(runtime *plugin.Runtime, conn *connection.AwsConnection, keyArn, region string) ([]any, error) {
@@ -1389,13 +1356,7 @@ func (a *mqlAwsKmsKeyMultiRegionConfiguration) primaryKey() (*mqlAwsKmsKey, erro
 	}
 	mqlKey, err := NewResource(a.MqlRuntime, ResourceAwsKmsKey, args)
 	if err != nil {
-		// best-effort: the primary key may live in a region the caller doesn't have access to.
-		if Is400AccessDeniedError(err) {
-			log.Debug().Str("arn", *a.cachePrimary.Arn).Msg("access denied resolving primary KMS key")
-			a.PrimaryKey.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "kms:DescribeKey")
 	}
 	return mqlKey.(*mqlAwsKmsKey), nil
 }
@@ -1458,10 +1419,7 @@ func initAwsKmsCustomKeyStore(runtime *plugin.Runtime, args map[string]*llx.RawD
 	resp, err := svc.DescribeCustomKeyStores(context.Background(),
 		&kms.DescribeCustomKeyStoresInput{CustomKeyStoreId: &customKeyStoreId})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return args, nil, nil
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(fmt.Errorf("fetching aws.kms.customKeyStore %q in region %s: %w", customKeyStoreId, region, err), "kms:DescribeCustomKeyStores")
 	}
 	if len(resp.CustomKeyStores) == 0 {
 		return args, nil, nil

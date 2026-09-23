@@ -291,10 +291,7 @@ func (a *mqlAwsBedrockAgent) aliases() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "bedrock:ListAgentAliases")
 		}
 		for _, al := range page.AgentAliasSummaries {
 			aliasId := convert.ToValue(al.AgentAliasId)

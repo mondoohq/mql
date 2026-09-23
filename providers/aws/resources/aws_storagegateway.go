@@ -168,11 +168,7 @@ func (a *mqlAwsStoragegatewayGateway) fetchInfo() (*storagegateway.DescribeGatew
 		GatewayARN: &arn,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.fetched = true
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "storagegateway:DescribeGatewayInformation")
 	}
 	a.fetched = true
 	a.info = out
@@ -300,10 +296,7 @@ func (a *mqlAwsStoragegatewayGateway) fileShares() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "storagegateway:ListFileShares")
 		}
 
 		for _, fs := range page.FileShareInfoList {
@@ -339,10 +332,7 @@ func (a *mqlAwsStoragegatewayGateway) volumes() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "storagegateway:ListVolumes")
 		}
 
 		for _, vol := range page.VolumeInfos {
@@ -419,11 +409,7 @@ func (a *mqlAwsStoragegatewayFileShare) fetchDetail() (*sgwFileShareDetail, erro
 	case "SMB":
 		out, err := svc.DescribeSMBFileShares(ctx, &storagegateway.DescribeSMBFileSharesInput{FileShareARNList: arns})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				a.fetched = true
-				return nil, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "storagegateway:DescribeSMBFileShares")
 		}
 		if len(out.SMBFileShareInfoList) > 0 {
 			s := out.SMBFileShareInfoList[0]
@@ -446,11 +432,7 @@ func (a *mqlAwsStoragegatewayFileShare) fetchDetail() (*sgwFileShareDetail, erro
 	case "NFS":
 		out, err := svc.DescribeNFSFileShares(ctx, &storagegateway.DescribeNFSFileSharesInput{FileShareARNList: arns})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				a.fetched = true
-				return nil, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "storagegateway:DescribeNFSFileShares")
 		}
 		if len(out.NFSFileShareInfoList) > 0 {
 			s := out.NFSFileShareInfoList[0]
@@ -641,11 +623,7 @@ func (a *mqlAwsStoragegatewayVolume) fetchDetail() (*sgwVolumeDetail, error) {
 	if strings.HasPrefix(strings.ToUpper(a.Type.Data), "STORED") {
 		out, err := svc.DescribeStorediSCSIVolumes(ctx, &storagegateway.DescribeStorediSCSIVolumesInput{VolumeARNs: arns})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				a.fetched = true
-				return nil, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "storagegateway:DescribeStorediSCSIVolumes")
 		}
 		if len(out.StorediSCSIVolumes) > 0 {
 			v := out.StorediSCSIVolumes[0]
@@ -659,11 +637,7 @@ func (a *mqlAwsStoragegatewayVolume) fetchDetail() (*sgwVolumeDetail, error) {
 	} else {
 		out, err := svc.DescribeCachediSCSIVolumes(ctx, &storagegateway.DescribeCachediSCSIVolumesInput{VolumeARNs: arns})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				a.fetched = true
-				return nil, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "storagegateway:DescribeCachediSCSIVolumes")
 		}
 		if len(out.CachediSCSIVolumes) > 0 {
 			v := out.CachediSCSIVolumes[0]

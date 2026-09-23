@@ -1117,11 +1117,7 @@ func rdsPendingMaintenanceActions(runtime *plugin.Runtime, region string, resour
 	for paginator.HasMorePages() {
 		pendingMaintenanceList, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("region", region).Str("resource", resourceArn).Msg("error accessing RDS pending maintenance actions")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "rds:DescribePendingMaintenanceActions")
 		}
 		for _, resp := range pendingMaintenanceList.PendingMaintenanceActions {
 			if resp.ResourceIdentifier == nil {
@@ -1170,11 +1166,7 @@ func rdsRecommendations(runtime *plugin.Runtime, region string, parentArn string
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("region", region).Str("resource", parentArn).Msg("error accessing RDS recommendations")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "rds:DescribeDBRecommendations")
 		}
 		for _, recommendation := range page.DBRecommendations {
 			mqlRecommendation, err := newMqlAwsRdsRecommendation(runtime, parentArn, recommendationIndex, recommendation)
@@ -2091,12 +2083,7 @@ func (a *mqlAwsRdsProxy) id() (string, error) {
 }
 
 func (a *mqlAwsRdsProxy) tags() (map[string]any, error) {
-	tags, err := rdsTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
-	if errors.Is(err, errTagsUnreadable) {
-		a.Tags.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
-	}
-	return tags, err
+	return rdsTagsForArn(a.MqlRuntime, a.Region.Data, a.Arn.Data)
 }
 
 // rdsTagsForArn reads the tags of any RDS resource. RDS leaves tags out of most
@@ -2109,10 +2096,7 @@ func rdsTagsForArn(runtime *plugin.Runtime, region, resourceArn string) (map[str
 		ResourceName: &resourceArn,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return nil, errTagsUnreadable
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "rds:ListTagsForResource")
 	}
 	return rdsTagsToMap(resp.TagList), nil
 }
@@ -2347,11 +2331,7 @@ func (a *mqlAwsRdsDbcluster) globalCluster() (*mqlAwsRdsGlobalCluster, error) {
 		GlobalClusterIdentifier: &identifier,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.GlobalCluster.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "rds:DescribeGlobalClusters")
 	}
 	if len(resp.GlobalClusters) == 0 {
 		a.GlobalCluster.State = plugin.StateIsSet | plugin.StateIsNull

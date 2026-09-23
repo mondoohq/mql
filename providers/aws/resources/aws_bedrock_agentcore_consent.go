@@ -11,7 +11,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/bedrockagentcorecontrol"
 	agentcore_types "github.com/aws/aws-sdk-go-v2/service/bedrockagentcorecontrol/types"
-	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
@@ -106,9 +105,7 @@ type mqlAwsBedrockAgentCoreConsentPortalInternal struct {
 }
 
 // fetchDetail reads the identity-provider configuration and execution role,
-// which the list API does not carry. An access denial leaves detail nil so
-// those fields resolve to null rather than reporting an unread configuration
-// as absent.
+// which the list API does not carry.
 func (a *mqlAwsBedrockAgentCoreConsentPortal) fetchDetail() (*bedrockagentcorecontrol.GetConsentPortalOutput, error) {
 	a.detailOnce.Do(func() {
 		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -122,11 +119,7 @@ func (a *mqlAwsBedrockAgentCoreConsentPortal) fetchDetail() (*bedrockagentcoreco
 			ConsentPortalIdentifier: &identifier,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("portal", identifier).Msg("access denied getting agentcore consent portal")
-				return
-			}
-			a.detailErr = err
+			a.detailErr = classifyAwsError(err, "bedrock-agentcore:GetConsentPortal")
 			return
 		}
 		a.detail = out

@@ -32,10 +32,7 @@ func (a *mqlAwsCloudfront) responseHeadersPolicies() ([]any, error) {
 			Marker: marker,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not gather aws cloudfront response headers policies")
+			return nil, errors.Wrap(classifyAwsError(err, "cloudfront:ListResponseHeadersPolicies"), "could not gather aws cloudfront response headers policies")
 		}
 		if resp.ResponseHeadersPolicyList == nil {
 			break
@@ -268,10 +265,7 @@ func (a *mqlAwsCloudfront) cachePolicies() ([]any, error) {
 			Marker: marker,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not gather aws cloudfront cache policies")
+			return nil, errors.Wrap(classifyAwsError(err, "cloudfront:ListCachePolicies"), "could not gather aws cloudfront cache policies")
 		}
 		if resp.CachePolicyList == nil {
 			break
@@ -394,10 +388,7 @@ func (a *mqlAwsCloudfront) originRequestPolicies() ([]any, error) {
 			Marker: marker,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not gather aws cloudfront origin request policies")
+			return nil, errors.Wrap(classifyAwsError(err, "cloudfront:ListOriginRequestPolicies"), "could not gather aws cloudfront origin request policies")
 		}
 		if resp.OriginRequestPolicyList == nil {
 			break
@@ -504,10 +495,7 @@ func (a *mqlAwsCloudfront) continuousDeploymentPolicies() ([]any, error) {
 			Marker: marker,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not gather aws cloudfront continuous deployment policies")
+			return nil, errors.Wrap(classifyAwsError(err, "cloudfront:ListContinuousDeploymentPolicies"), "could not gather aws cloudfront continuous deployment policies")
 		}
 		if resp.ContinuousDeploymentPolicyList == nil {
 			break

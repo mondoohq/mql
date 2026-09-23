@@ -5,43 +5,38 @@ package resources
 
 import (
 	"errors"
-	"net/http"
 	"testing"
 	"time"
 
-	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	kmstypes "github.com/aws/aws-sdk-go-v2/service/kms/types"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 // kmsDeniedErr is the shape KMS answers with when a key policy withholds an
-// operation from the caller. Every test below routes through
-// Is400AccessDeniedError via this error rather than setting a "denied" flag by
-// hand, so a change to the classifier moves the tests with it.
+// operation from the caller. Every test below routes through the production
+// classifier via this error rather than building a classified error by hand,
+// so a change to the classifier moves the tests with it.
 func kmsDeniedErr(operation string) error {
-	return &awshttp.ResponseError{
-		ResponseError: &smithyhttp.ResponseError{
-			Response: &smithyhttp.Response{Response: &http.Response{StatusCode: 400}},
-			Err: errors.New("AccessDeniedException: User is not authorized to perform " +
-				operation + " on this resource because the resource-based policy does not allow it"),
-		},
-	}
+	return awsAPIError(400, "AccessDeniedException", "User is not authorized to perform "+
+		operation+" on this resource because the resource-based policy does not allow it")
 }
 
-// kmsThrottleErr is a failure that is not a denial: it must never resolve to a
-// null field, because nothing about the key was established.
+// kmsThrottleErr is a failure that is not a denial: it must never be reported
+// as one, because nothing about the key's permissions was established.
 func kmsThrottleErr() error {
-	return &awshttp.ResponseError{
-		ResponseError: &smithyhttp.ResponseError{
-			Response: &smithyhttp.Response{Response: &http.Response{StatusCode: 400}},
-			Err:      errors.New("ThrottlingException: Rate exceeded"),
-		},
-	}
+	return awsAPIError(400, "ThrottlingException", "Rate exceeded")
+}
+
+// requireKmsForbidden asserts err is a denial that names the grant it needed.
+func requireKmsForbidden(t *testing.T, err error, permission string) {
+	t.Helper()
+	require.ErrorIs(t, err, llx.ErrForbidden)
+	assert.Equal(t, []string{permission}, llx.ErrorDetailOf(err).GetPermissions())
 }
 
 func TestKmsDeniedErrIsClassifiedAsADenial(t *testing.T) {
@@ -52,14 +47,13 @@ func TestKmsDeniedErrIsClassifiedAsADenial(t *testing.T) {
 }
 
 func TestKmsRotationReadingFrom(t *testing.T) {
-	t.Run("a refused GetKeyRotationStatus is unknown, not rotation-off", func(t *testing.T) {
+	t.Run("a refused GetKeyRotationStatus is an error, not rotation-off", func(t *testing.T) {
 		// alias/aws/acm answers this way to an account administrator, and it
 		// rotates. Reporting keyRotationEnabled:false here states the opposite
 		// of the truth about that key.
 		got, err := kmsRotationReadingFrom(nil, kmsDeniedErr("kms:GetKeyRotationStatus"))
-		require.NoError(t, err)
+		requireKmsForbidden(t, err, "kms:GetKeyRotationStatus")
 		assert.False(t, got.known)
-		assert.Nil(t, got.periodDays)
 	})
 
 	t.Run("rotation on reports the period and the dates AWS gave", func(t *testing.T) {
@@ -98,37 +92,35 @@ func TestKmsRotationReadingFrom(t *testing.T) {
 	t.Run("a throttle is an error, not an answer", func(t *testing.T) {
 		_, err := kmsRotationReadingFrom(nil, kmsThrottleErr())
 		require.Error(t, err)
+		assert.NotErrorIs(t, err, llx.ErrForbidden)
 	})
 }
 
-func TestKmsRotationFieldsPublishNullWhenDenied(t *testing.T) {
-	denied, err := kmsRotationReadingFrom(nil, kmsDeniedErr("kms:GetKeyRotationStatus"))
-	require.NoError(t, err)
+func TestKmsRotationFieldsReturnTheDenial(t *testing.T) {
+	denied, deniedErr := kmsRotationReadingFrom(nil, kmsDeniedErr("kms:GetKeyRotationStatus"))
+	require.Error(t, deniedErr)
 
 	key := &mqlAwsKmsKey{}
 	key.cachedRotationStatus = denied
+	key.cachedRotationStatusErr = deniedErr
 	key.rotationStatusFetched = true
 
-	enabled, err := key.keyRotationEnabled()
-	require.NoError(t, err)
-	assert.False(t, enabled)
-	assert.True(t, key.KeyRotationEnabled.IsNull(),
-		"a denied rotation read must publish null, never a measured false")
+	_, err := key.keyRotationEnabled()
+	requireKmsForbidden(t, err, "kms:GetKeyRotationStatus")
+	assert.False(t, key.KeyRotationEnabled.IsSet(),
+		"a denied rotation read must surface the denial, never a null or a measured false")
 
-	period, err := key.rotationPeriodInDays()
-	require.NoError(t, err)
-	assert.Equal(t, int64(0), period)
-	assert.True(t, key.RotationPeriodInDays.IsNull())
+	_, err = key.rotationPeriodInDays()
+	requireKmsForbidden(t, err, "kms:GetKeyRotationStatus")
+	assert.False(t, key.RotationPeriodInDays.IsSet())
 
-	next, err := key.nextRotationAt()
-	require.NoError(t, err)
-	assert.Nil(t, next)
-	assert.True(t, key.NextRotationAt.IsNull())
+	_, err = key.nextRotationAt()
+	requireKmsForbidden(t, err, "kms:GetKeyRotationStatus")
+	assert.False(t, key.NextRotationAt.IsSet())
 
-	onDemand, err := key.onDemandRotationStartedAt()
-	require.NoError(t, err)
-	assert.Nil(t, onDemand)
-	assert.True(t, key.OnDemandRotationStartedAt.IsNull())
+	_, err = key.onDemandRotationStartedAt()
+	requireKmsForbidden(t, err, "kms:GetKeyRotationStatus")
+	assert.False(t, key.OnDemandRotationStartedAt.IsSet())
 }
 
 func TestKmsRotationDisabledPublishesRealFalse(t *testing.T) {
@@ -188,11 +180,10 @@ func TestKmsRotationEnabledPublishesTheReportedPeriod(t *testing.T) {
 }
 
 func TestKmsLastUsageReadingFrom(t *testing.T) {
-	t.Run("a refused GetKeyLastUsage is unknown", func(t *testing.T) {
+	t.Run("a refused GetKeyLastUsage is an error", func(t *testing.T) {
 		got, err := kmsLastUsageReadingFrom(nil, kmsDeniedErr("kms:GetKeyLastUsage"))
-		require.NoError(t, err)
+		requireKmsForbidden(t, err, "kms:GetKeyLastUsage")
 		assert.False(t, got.known)
-		assert.Nil(t, got.operation)
 	})
 
 	t.Run("a key that has never been used is known with no operation", func(t *testing.T) {
@@ -232,28 +223,28 @@ func TestKmsLastUsageReadingFrom(t *testing.T) {
 	t.Run("a throttle is an error, not an answer", func(t *testing.T) {
 		_, err := kmsLastUsageReadingFrom(nil, kmsThrottleErr())
 		require.Error(t, err)
+		assert.NotErrorIs(t, err, llx.ErrForbidden)
 	})
 }
 
-func TestKmsLastUsageFieldsPublishNull(t *testing.T) {
+func TestKmsLastUsageFields(t *testing.T) {
 	t.Run("denied", func(t *testing.T) {
-		denied, err := kmsLastUsageReadingFrom(nil, kmsDeniedErr("kms:GetKeyLastUsage"))
-		require.NoError(t, err)
+		denied, deniedErr := kmsLastUsageReadingFrom(nil, kmsDeniedErr("kms:GetKeyLastUsage"))
+		require.Error(t, deniedErr)
 
 		key := &mqlAwsKmsKey{}
 		key.cachedLastUsage = denied
+		key.cachedLastUsageErr = deniedErr
 		key.lastUsageFetched = true
 
-		op, err := key.lastUsageOperation()
-		require.NoError(t, err)
-		assert.Equal(t, "", op)
-		assert.True(t, key.LastUsageOperation.IsNull(),
-			`a denied last-usage read must not publish "", which is outside the operation value set`)
+		_, err := key.lastUsageOperation()
+		requireKmsForbidden(t, err, "kms:GetKeyLastUsage")
+		assert.False(t, key.LastUsageOperation.IsSet(),
+			"a denied last-usage read must surface the denial, not read like a key that was never used")
 
-		at, err := key.lastUsedAt()
-		require.NoError(t, err)
-		assert.Nil(t, at)
-		assert.True(t, key.LastUsedAt.IsNull())
+		_, err = key.lastUsedAt()
+		requireKmsForbidden(t, err, "kms:GetKeyLastUsage")
+		assert.False(t, key.LastUsedAt.IsSet())
 	})
 
 	t.Run("never used", func(t *testing.T) {
@@ -299,13 +290,21 @@ func TestKmsLastUsageFieldsPublishNull(t *testing.T) {
 func TestKmsPolicyOrUnreadable(t *testing.T) {
 	const keyArn = "arn:aws:kms:us-east-1:123456789012:key/7a4eb143-c07b-4e24-b0b7-f3abfdbbb2c2"
 
-	t.Run("a denied GetKeyPolicy publishes null", func(t *testing.T) {
+	t.Run("a denied GetKeyPolicy is an error", func(t *testing.T) {
 		key := &mqlAwsKmsKey{}
-		got, err := kmsPolicyOrUnreadable(&key.Policy, keyArn, nil, kmsDeniedErr("kms:GetKeyPolicy"))
+		_, err := kmsPolicyOrUnreadable(&key.Policy, keyArn, nil, kmsDeniedErr("kms:GetKeyPolicy"))
+		requireKmsForbidden(t, err, "kms:GetKeyPolicy")
+		assert.Contains(t, err.Error(), keyArn)
+		assert.False(t, key.Policy.IsSet(),
+			`every KMS key has a key policy, so neither "" nor null is a truthful reading of a refused one`)
+	})
+
+	t.Run("no policy in the answer publishes null", func(t *testing.T) {
+		key := &mqlAwsKmsKey{}
+		got, err := kmsPolicyOrUnreadable(&key.Policy, keyArn, nil, nil)
 		require.NoError(t, err)
 		assert.Equal(t, "", got)
-		assert.True(t, key.Policy.IsNull(),
-			`every KMS key has a key policy, so "" can never be a truthful reading of one`)
+		assert.True(t, key.Policy.IsNull())
 	})
 
 	t.Run("a policy that was read is published verbatim", func(t *testing.T) {
@@ -317,36 +316,34 @@ func TestKmsPolicyOrUnreadable(t *testing.T) {
 		assert.False(t, key.Policy.IsNull())
 	})
 
-	t.Run("a throttle is an error and leaves the field unset", func(t *testing.T) {
+	t.Run("a throttle is an error, not a denial", func(t *testing.T) {
 		key := &mqlAwsKmsKey{}
 		_, err := kmsPolicyOrUnreadable(&key.Policy, keyArn, nil, kmsThrottleErr())
 		require.Error(t, err)
-		assert.False(t, key.Policy.IsNull())
+		assert.NotErrorIs(t, err, llx.ErrForbidden)
+		assert.False(t, key.Policy.IsSet())
 	})
 }
 
-// TestKmsDeniedPolicyLeavesIsPublicUnknown walks the whole collapse the fix
-// breaks: a denied GetKeyPolicy used to publish policy:"", which parsed to an
-// empty statement list, which statementsAllowPublic answered "not public" for.
-// The key whose policy names "Principal": "*" reported isPublic:false.
-func TestKmsDeniedPolicyLeavesIsPublicUnknown(t *testing.T) {
+// TestKmsDeniedPolicyFailsIsPublic walks the whole collapse the fix breaks: a
+// denied GetKeyPolicy used to publish policy:"", which parsed to an empty
+// statement list, which statementsAllowPublic answered "not public" for. The
+// key whose policy names "Principal": "*" reported isPublic:false.
+func TestKmsDeniedPolicyFailsIsPublic(t *testing.T) {
 	const keyArn = "arn:aws:kms:us-east-1:123456789012:key/7a4eb143-c07b-4e24-b0b7-f3abfdbbb2c2"
-	key := &mqlAwsKmsKey{Arn: setString(keyArn)}
+	key := &mqlAwsKmsKey{MqlRuntime: &plugin.Runtime{}, Arn: setString(keyArn)}
 
-	_, err := kmsPolicyOrUnreadable(&key.Policy, keyArn, nil, kmsDeniedErr("kms:GetKeyPolicy"))
-	require.NoError(t, err)
-	require.True(t, key.Policy.IsNull())
+	_, deniedErr := kmsPolicyOrUnreadable(&key.Policy, keyArn, nil, kmsDeniedErr("kms:GetKeyPolicy"))
+	require.Error(t, deniedErr)
+	// What GetOrCompute stores for a policy accessor that returned deniedErr.
+	key.Policy = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull, Error: deniedErr}
 
-	stmts, err := key.policyStatements()
-	require.NoError(t, err)
-	assert.Nil(t, stmts)
-	assert.True(t, key.PolicyStatements.IsNull(),
-		"statements parsed from a policy nobody could read are unknown, not empty")
+	_, err := key.policyStatements()
+	requireKmsForbidden(t, err, "kms:GetKeyPolicy")
 
-	public, err := key.isPublic()
-	require.NoError(t, err)
-	assert.False(t, public)
-	assert.True(t, key.IsPublic.IsNull(),
+	_, err = key.isPublic()
+	requireKmsForbidden(t, err, "kms:GetKeyPolicy")
+	assert.False(t, key.IsPublic.IsSet(),
 		"a key whose policy could not be read must never be reported as not public")
 }
 
@@ -410,18 +407,17 @@ func TestResourceIsPublicOrUnknown(t *testing.T) {
 func TestKmsListGrantsError(t *testing.T) {
 	const keyArn = "arn:aws:kms:us-east-1:123456789012:key/7a4eb143-c07b-4e24-b0b7-f3abfdbbb2c2"
 
-	t.Run("a denial becomes the unreadable sentinel", func(t *testing.T) {
+	t.Run("a denial is forbidden and names the key", func(t *testing.T) {
 		err := kmsListGrantsError(keyArn, kmsDeniedErr("kms:ListGrants"))
-		require.Error(t, err)
-		assert.ErrorIs(t, err, errKmsGrantsUnreadable)
+		requireKmsForbidden(t, err, "kms:ListGrants")
 		assert.Contains(t, err.Error(), keyArn)
 	})
 
-	t.Run("a throttle stays a plain failure", func(t *testing.T) {
+	t.Run("a throttle is not a denial", func(t *testing.T) {
 		err := kmsListGrantsError(keyArn, kmsThrottleErr())
 		require.Error(t, err)
-		assert.NotErrorIs(t, err, errKmsGrantsUnreadable,
-			"only a refusal resolves to null; a throttle established nothing and must surface")
+		assert.NotErrorIs(t, err, llx.ErrForbidden,
+			"only a refusal is forbidden; a throttle established nothing about the grants")
 	})
 
 	t.Run("no error stays no error", func(t *testing.T) {
@@ -429,59 +425,12 @@ func TestKmsListGrantsError(t *testing.T) {
 	})
 }
 
+// TestKmsGrantsOrUnreadable covers the account-wide aws.kms.grants list, which
+// joins per-key failures. aws.kms.key.grants returns the classified error.
 func TestKmsGrantsOrUnreadable(t *testing.T) {
 	const keyArn = "arn:aws:kms:us-east-1:123456789012:key/7a4eb143-c07b-4e24-b0b7-f3abfdbbb2c2"
 
-	t.Run("a refused ListGrants publishes null, not a truncated list", func(t *testing.T) {
-		key := &mqlAwsKmsKey{}
-		got, err := kmsGrantsOrUnreadable(&key.Grants, nil,
-			kmsListGrantsError(keyArn, kmsDeniedErr("kms:ListGrants")))
-		require.NoError(t, err)
-		assert.Nil(t, got)
-		assert.True(t, key.Grants.IsNull(),
-			"a key with grants nobody may enumerate must not report an empty grant list")
-	})
-
-	t.Run("a partial page followed by a refusal is still null", func(t *testing.T) {
-		// The live shape: the first page listed grants, the second was refused.
-		// Publishing the first page presents it as the whole set.
-		key := &mqlAwsKmsKey{}
-		partial := []any{&mqlAwsKmsGrant{}, &mqlAwsKmsGrant{}}
-		got, err := kmsGrantsOrUnreadable(&key.Grants, partial,
-			kmsListGrantsError(keyArn, kmsDeniedErr("kms:ListGrants")))
-		require.NoError(t, err)
-		assert.Nil(t, got)
-		assert.True(t, key.Grants.IsNull())
-	})
-
-	t.Run("a list that was read is published", func(t *testing.T) {
-		key := &mqlAwsKmsKey{}
-		grants := []any{&mqlAwsKmsGrant{}, &mqlAwsKmsGrant{}}
-		got, err := kmsGrantsOrUnreadable(&key.Grants, grants, nil)
-		require.NoError(t, err)
-		assert.Len(t, got, 2)
-		assert.False(t, key.Grants.IsNull())
-	})
-
-	t.Run("a key with no grants is a real empty list", func(t *testing.T) {
-		key := &mqlAwsKmsKey{}
-		got, err := kmsGrantsOrUnreadable(&key.Grants, []any{}, nil)
-		require.NoError(t, err)
-		assert.Empty(t, got)
-		assert.False(t, key.Grants.IsNull(),
-			"a key that genuinely has no grants must stay an empty list, not become null")
-	})
-
-	t.Run("a throttle surfaces as an error", func(t *testing.T) {
-		key := &mqlAwsKmsKey{}
-		_, err := kmsGrantsOrUnreadable(&key.Grants, nil, kmsListGrantsError(keyArn, kmsThrottleErr()))
-		require.Error(t, err)
-		assert.False(t, key.Grants.IsNull())
-	})
-
 	t.Run("one refused key nulls the account-wide list", func(t *testing.T) {
-		// aws.kms.grants joins its per-key failures, which is how the sentinel
-		// reaches the aggregate.
 		agg := &mqlAwsKms{}
 		joined := errors.Join(
 			kmsListGrantsError(keyArn, kmsDeniedErr("kms:ListGrants")),
@@ -490,7 +439,32 @@ func TestKmsGrantsOrUnreadable(t *testing.T) {
 		got, err := kmsGrantsOrUnreadable(&agg.Grants, nil, joined)
 		require.NoError(t, err)
 		assert.Nil(t, got)
-		assert.True(t, agg.Grants.IsNull())
+		assert.True(t, agg.Grants.IsNull(),
+			"an account-wide list missing one key's grants must not report the rest as the whole")
+	})
+
+	t.Run("a list that was read is published", func(t *testing.T) {
+		agg := &mqlAwsKms{}
+		grants := []any{&mqlAwsKmsGrant{}, &mqlAwsKmsGrant{}}
+		got, err := kmsGrantsOrUnreadable(&agg.Grants, grants, nil)
+		require.NoError(t, err)
+		assert.Len(t, got, 2)
+		assert.False(t, agg.Grants.IsNull())
+	})
+
+	t.Run("an account with no grants is a real empty list", func(t *testing.T) {
+		agg := &mqlAwsKms{}
+		got, err := kmsGrantsOrUnreadable(&agg.Grants, []any{}, nil)
+		require.NoError(t, err)
+		assert.Empty(t, got)
+		assert.False(t, agg.Grants.IsNull())
+	})
+
+	t.Run("a throttle surfaces as an error", func(t *testing.T) {
+		agg := &mqlAwsKms{}
+		_, err := kmsGrantsOrUnreadable(&agg.Grants, nil, kmsListGrantsError(keyArn, kmsThrottleErr()))
+		require.Error(t, err)
+		assert.False(t, agg.Grants.IsNull())
 	})
 }
 

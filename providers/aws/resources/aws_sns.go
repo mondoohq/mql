@@ -638,10 +638,6 @@ func (a *mqlAwsSnsTopic) dataProtectionPolicy() (any, error) {
 		ResourceArn: &arnVal,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.DataProtectionPolicy.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
 		if isSnsOperationUnsupported(err) {
 			a.DataProtectionPolicy.State = plugin.StateIsSet | plugin.StateIsNull
 			return nil, nil
@@ -651,7 +647,7 @@ func (a *mqlAwsSnsTopic) dataProtectionPolicy() (any, error) {
 			a.DataProtectionPolicy.State = plugin.StateIsSet | plugin.StateIsNull
 			return nil, nil
 		}
-		return nil, err
+		return nil, classifyAwsError(err, "sns:GetDataProtectionPolicy")
 	}
 	if resp.DataProtectionPolicy == nil || *resp.DataProtectionPolicy == "" {
 		a.DataProtectionPolicy.State = plugin.StateIsSet | plugin.StateIsNull

@@ -110,10 +110,7 @@ func (a *mqlAwsSecurityhubHub) tags() (map[string]any, error) {
 			ResourceArn: &hubArn,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return nil, errTagsUnreadable
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "securityhub:ListTagsForResource")
 		}
 		tags := make(map[string]any, len(resp.Tags))
 		for k, v := range resp.Tags {
@@ -143,11 +140,7 @@ func (a *mqlAwsSecurityhubHub) getEnabledStandards() ([]types.StandardsSubscript
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				a.standardsFetched = true
-				return nil, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "securityhub:GetEnabledStandards")
 		}
 		all = append(all, page.StandardsSubscriptions...)
 	}
@@ -202,10 +195,7 @@ func (a *mqlAwsSecurityhubStandardSubscription) controls() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return []any{}, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "securityhub:ListSecurityControlDefinitions")
 		}
 		controlDefs = append(controlDefs, page.SecurityControlDefinitions...)
 	}
@@ -233,10 +223,7 @@ func (a *mqlAwsSecurityhubStandardSubscription) controls() ([]any, error) {
 			StandardsControlAssociationIds: ids,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return []any{}, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "securityhub:BatchGetStandardsControlAssociations")
 		}
 		for _, detail := range resp.StandardsControlAssociationDetails {
 			assocMap[convert.ToValue(detail.SecurityControlId)] = detail
@@ -313,10 +300,7 @@ func (a *mqlAwsSecurityhubHub) findings() ([]any, error) {
 	for paginator.HasMorePages() && len(res) < maxFindings {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "securityhub:GetFindings")
 		}
 		for i := range page.Findings {
 			if len(res) >= maxFindings {
@@ -418,10 +402,7 @@ func (a *mqlAwsSecurityhubHub) automationRules() ([]any, error) {
 			NextToken: nextToken,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "securityhub:ListAutomationRules")
 		}
 
 		for _, rule := range resp.AutomationRulesMetadata {
@@ -466,10 +447,7 @@ func (a *mqlAwsSecurityhubHub) insights() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "securityhub:GetInsights")
 		}
 		for _, insight := range page.Insights {
 			filters, err := convert.JsonToDict(insight.Filters)
@@ -513,10 +491,7 @@ func (a *mqlAwsSecurityhubInsight) results() ([]any, error) {
 		InsightArn: &insightArn,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "securityhub:GetInsightResults")
 	}
 
 	res := []any{}
@@ -558,11 +533,11 @@ func (a *mqlAwsSecurityhubHub) organizationConfiguration() (*mqlAwsSecurityhubOr
 	resp, err := svc.DescribeOrganizationConfiguration(ctx, &securityhub.DescribeOrganizationConfigurationInput{})
 	if err != nil {
 		var invalidAccess *types.InvalidAccessException
-		if Is400AccessDeniedError(err) || errors.As(err, &invalidAccess) {
+		if errors.As(err, &invalidAccess) {
 			a.OrganizationConfiguration.State = plugin.StateIsSet | plugin.StateIsNull
 			return nil, nil
 		}
-		return nil, err
+		return nil, classifyAwsError(err, "securityhub:DescribeOrganizationConfiguration")
 	}
 
 	var configurationType, status, statusMessage string
@@ -604,11 +579,11 @@ func (a *mqlAwsSecurityhubHub) findingAggregator() (*mqlAwsSecurityhubFindingAgg
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
 			var invalidAccess *types.InvalidAccessException
-			if Is400AccessDeniedError(err) || errors.As(err, &invalidAccess) {
+			if errors.As(err, &invalidAccess) {
 				a.FindingAggregator.State = plugin.StateIsSet | plugin.StateIsNull
 				return nil, nil
 			}
-			return nil, err
+			return nil, classifyAwsError(err, "securityhub:ListFindingAggregators")
 		}
 		for i := range page.FindingAggregators {
 			if arn := page.FindingAggregators[i].FindingAggregatorArn; arn != nil && *arn != "" {
@@ -626,11 +601,7 @@ func (a *mqlAwsSecurityhubHub) findingAggregator() (*mqlAwsSecurityhubFindingAgg
 		FindingAggregatorArn: aggregatorArn,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.FindingAggregator.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "securityhub:GetFindingAggregator")
 	}
 
 	regions := make([]any, 0, len(detail.Regions))
@@ -693,10 +664,7 @@ func (a *mqlAwsSecurityhubHub) members() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "securityhub:ListMembers")
 		}
 		for _, member := range page.Members {
 			mqlMember, err := CreateResource(a.MqlRuntime, "aws.securityhub.member",
@@ -735,10 +703,7 @@ func (a *mqlAwsSecurityhubHub) enabledProducts() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "securityhub:ListEnabledProductsForImport")
 		}
 		for _, productSubArn := range page.ProductSubscriptions {
 			// Extract product ARN from the subscription ARN
@@ -796,10 +761,7 @@ func (a *mqlAwsSecurityhubFinding) history() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "securityhub:GetFindingHistory")
 		}
 		for _, record := range page.Records {
 			d, err := convert.JsonToDict(record)

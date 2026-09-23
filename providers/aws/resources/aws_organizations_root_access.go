@@ -83,20 +83,10 @@ func (a *mqlAwsOrganization) trustedAccessServicePrincipals() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			// A standalone account has no organization, so it has no trusted
-			// access to report. That is the only error this operation models
-			// that establishes an answer rather than hiding one: the rest are
-			// AccessDenied, ConstraintViolation, InvalidInput, Service,
-			// TooManyRequests and UnsupportedAPIEndpoint, none of which say
-			// anything about which services are trusted.
-			//
-			// Note that a consolidated-billing organization is *not* an error
-			// here - it is a real organization and answers normally, with a
-			// list that is simply short.
-			if isOrganizationsNotInUseError(err) {
-				return res, nil
-			}
-			return nil, err
+			// A standalone account is not applicable. A consolidated-billing
+			// organization is not an error here: it is a real organization and
+			// answers normally, with a list that is simply short.
+			return nil, classifyAwsError(err, "organizations:ListAWSServiceAccessForOrganization")
 		}
 		for _, principal := range page.EnabledServicePrincipals {
 			if principal.ServicePrincipal == nil {

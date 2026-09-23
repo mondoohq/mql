@@ -602,11 +602,7 @@ func (a *mqlAwsEksCluster) nodeGroups() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("region", regionVal).Msg("error accessing region for AWS API")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "eks:ListNodegroups")
 		}
 
 		for i := range page.Nodegroups {
@@ -1054,11 +1050,7 @@ func (a *mqlAwsEksCluster) addons() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("region", regionVal).Msg("error accessing region for AWS API")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "eks:ListAddons")
 		}
 
 		for i := range page.Addons {
@@ -1234,10 +1226,7 @@ func (a *mqlAwsEksCluster) accessEntries() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "eks:ListAccessEntries")
 		}
 
 		for _, principalArn := range page.AccessEntries {
@@ -1365,10 +1354,7 @@ func (a *mqlAwsEksAccessEntry) accessPolicies() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "eks:ListAssociatedAccessPolicies")
 		}
 		for _, policy := range page.AssociatedAccessPolicies {
 			scopeType := ""
@@ -1417,10 +1403,7 @@ func (a *mqlAwsEksCluster) fargateProfiles() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "eks:ListFargateProfiles")
 		}
 
 		for _, profileName := range page.FargateProfileNames {
@@ -1592,10 +1575,7 @@ func (a *mqlAwsEksCluster) podIdentityAssociations() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "eks:ListPodIdentityAssociations")
 		}
 
 		for _, assoc := range page.Associations {
@@ -1733,10 +1713,7 @@ func (a *mqlAwsEksCluster) identityProviderConfigs() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "eks:ListIdentityProviderConfigs")
 		}
 
 		for _, config := range page.IdentityProviderConfigs {
@@ -1927,10 +1904,7 @@ func (a *mqlAwsEksCluster) insights() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "eks:ListInsights")
 		}
 		for _, summary := range page.Insights {
 			insightId := convert.ToValue(summary.Id)
@@ -2118,10 +2092,7 @@ func (a *mqlAwsEksCluster) availableAddonVersions() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "eks:DescribeAddonVersions")
 		}
 		for _, addonInfo := range page.Addons {
 			addonName := convert.ToValue(addonInfo.AddonName)

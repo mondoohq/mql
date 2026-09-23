@@ -163,10 +163,7 @@ func (a *mqlAwsNeptuneCluster) tags() (map[string]any, error) {
 	arnVal := a.Arn.Data
 	resp, err := svc.ListTagsForResource(ctx, &neptune.ListTagsForResourceInput{ResourceName: &arnVal})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "rds:ListTagsForResource")
 	}
 	tags := map[string]any{}
 	for _, t := range resp.TagList {

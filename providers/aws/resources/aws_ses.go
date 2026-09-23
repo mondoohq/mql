@@ -30,18 +30,14 @@ func (a *mqlAwsSes) id() (string, error) {
 
 // getAccount fetches account-level SES settings once. The pricing plan is
 // account-global, so a single GetAccount call against the connection's default
-// region serves every pricing field. Access-denied leaves the cached result
-// nil so the pricing fields resolve to an empty string rather than erroring.
+// region serves every pricing field.
 func (a *mqlAwsSes) getAccount() (*sesv2.GetAccountOutput, error) {
 	a.accountOnce.Do(func() {
 		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 		svc := conn.Sesv2(conn.Region())
 		out, err := svc.GetAccount(context.Background(), &sesv2.GetAccountInput{})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return
-			}
-			a.accountErr = err
+			a.accountErr = classifyAwsError(err, "ses:GetAccount")
 			return
 		}
 		a.account = out
@@ -179,6 +175,7 @@ type mqlAwsSesIdentityInternal struct {
 	region    string
 	cacheName string
 	fetched   bool
+	fetchErr  error
 	lock      sync.Mutex
 
 	// Certificates come from a separate API call, so they get their own
@@ -189,32 +186,14 @@ type mqlAwsSesIdentityInternal struct {
 	cachedCertificates  []any
 }
 
-// markIdentityDetailsNull marks every lazily fetched field as resolved-but-null
-// so the runtime treats them as known-unavailable (e.g. on access-denied)
-// rather than unresolved, which would otherwise re-trigger the accessor.
-func (a *mqlAwsSesIdentity) markIdentityDetailsNull() {
-	null := plugin.StateIsSet | plugin.StateIsNull
-	a.FeedbackForwardingEnabled = plugin.TValue[bool]{State: null}
-	a.DkimSigningEnabled = plugin.TValue[bool]{State: null}
-	a.DkimStatus = plugin.TValue[string]{State: null}
-	a.DkimSigningAttributesOrigin = plugin.TValue[string]{State: null}
-	a.DkimSigningKeyLength = plugin.TValue[string]{State: null}
-	a.DkimTokens = plugin.TValue[[]any]{State: null}
-	a.MailFromDomain = plugin.TValue[string]{State: null}
-	a.MailFromDomainStatus = plugin.TValue[string]{State: null}
-	a.MailFromBehaviorOnMxFailure = plugin.TValue[string]{State: null}
-	a.Policies = plugin.TValue[map[string]any]{State: null}
-	a.Tags = plugin.TValue[map[string]any]{State: null}
-}
-
 func (a *mqlAwsSesIdentity) fetchDetails() error {
 	if a.fetched {
-		return nil
+		return a.fetchErr
 	}
 	a.lock.Lock()
 	defer a.lock.Unlock()
 	if a.fetched {
-		return nil
+		return a.fetchErr
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -225,13 +204,9 @@ func (a *mqlAwsSesIdentity) fetchDetails() error {
 		EmailIdentity: &a.cacheName,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Warn().Str("identity", a.cacheName).Msg("access denied getting SES email identity")
-			a.markIdentityDetailsNull()
-			a.fetched = true
-			return nil
-		}
-		return err
+		a.fetched = true
+		a.fetchErr = classifyAwsError(err, "ses:GetEmailIdentity")
+		return a.fetchErr
 	}
 
 	a.FeedbackForwardingEnabled = plugin.TValue[bool]{Data: resp.FeedbackForwardingStatus, State: plugin.StateIsSet}
@@ -497,33 +472,18 @@ type mqlAwsSesConfigurationSetInternal struct {
 	region    string
 	cacheName string
 	fetched   bool
+	fetchErr  error
 	lock      sync.Mutex
-}
-
-// markConfigurationSetDetailsNull marks every lazily fetched field as
-// resolved-but-null so the runtime treats them as known-unavailable (e.g. on
-// access-denied) rather than unresolved, which would otherwise re-trigger the
-// accessor.
-func (a *mqlAwsSesConfigurationSet) markConfigurationSetDetailsNull() {
-	null := plugin.StateIsSet | plugin.StateIsNull
-	a.TlsPolicy = plugin.TValue[string]{State: null}
-	a.SendingPoolName = plugin.TValue[string]{State: null}
-	a.SendingEnabled = plugin.TValue[bool]{State: null}
-	a.ReputationMetricsEnabled = plugin.TValue[bool]{State: null}
-	a.SuppressedReasons = plugin.TValue[[]any]{State: null}
-	a.TrackingRedirectDomain = plugin.TValue[string]{State: null}
-	a.TrackingHttpsPolicy = plugin.TValue[string]{State: null}
-	a.Tags = plugin.TValue[map[string]any]{State: null}
 }
 
 func (a *mqlAwsSesConfigurationSet) fetchDetails() error {
 	if a.fetched {
-		return nil
+		return a.fetchErr
 	}
 	a.lock.Lock()
 	defer a.lock.Unlock()
 	if a.fetched {
-		return nil
+		return a.fetchErr
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -534,13 +494,9 @@ func (a *mqlAwsSesConfigurationSet) fetchDetails() error {
 		ConfigurationSetName: &a.cacheName,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Warn().Str("configurationSet", a.cacheName).Msg("access denied getting SES configuration set")
-			a.markConfigurationSetDetailsNull()
-			a.fetched = true
-			return nil
-		}
-		return err
+		a.fetched = true
+		a.fetchErr = classifyAwsError(err, "ses:GetConfigurationSet")
+		return a.fetchErr
 	}
 
 	tlsPolicy := ""

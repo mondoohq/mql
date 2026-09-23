@@ -333,10 +333,7 @@ func (a *mqlAwsCloudfrontDistribution) tags() (map[string]any, error) {
 		Resource: &a.Arn.Data,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "cloudfront:ListTagsForResource")
 	}
 	tags := make(map[string]any)
 	if resp.Tags != nil {
@@ -410,10 +407,7 @@ func (a *mqlAwsCloudfrontFunction) tags() (map[string]any, error) {
 		Resource: &a.Arn.Data,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "cloudfront:ListTagsForResource")
 	}
 	tags := make(map[string]any)
 	if resp.Tags != nil {
@@ -517,10 +511,7 @@ func (a *mqlAwsCloudfront) anycastIpLists() ([]any, error) {
 			MaxItems: aws.Int32(100),
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return []any{}, nil
-			}
-			return nil, errors.Wrap(err, "could not list cloudfront anycast ip lists")
+			return nil, errors.Wrap(classifyAwsError(err, "cloudfront:ListAnycastIpLists"), "could not list cloudfront anycast ip lists")
 		}
 
 		if resp.AnycastIpLists == nil {
@@ -691,10 +682,7 @@ func (a *mqlAwsCloudfront) trustStores() ([]any, error) {
 			Marker: marker,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not gather aws cloudfront trust stores")
+			return nil, errors.Wrap(classifyAwsError(err, "cloudfront:ListTrustStores"), "could not gather aws cloudfront trust stores")
 		}
 		for _, ts := range resp.TrustStoreList {
 			mqlTs, err := CreateResource(a.MqlRuntime, "aws.cloudfront.trustStore",

@@ -205,10 +205,7 @@ func (a *mqlAwsApigatewayv2Api) stages() ([]any, error) {
 	for {
 		out, err := svc.GetStages(ctx, &apigatewayv2.GetStagesInput{ApiId: &apiId, NextToken: nextToken})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "apigateway:GET")
 		}
 		for _, s := range out.Items {
 			mqlStage, err := newMqlAwsApigatewayv2Stage(a.MqlRuntime, region, apiId, s)
@@ -351,10 +348,7 @@ func (a *mqlAwsApigatewayv2Api) routes() ([]any, error) {
 	for {
 		out, err := svc.GetRoutes(ctx, &apigatewayv2.GetRoutesInput{ApiId: &apiId, NextToken: nextToken})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "apigateway:GET")
 		}
 		for _, r := range out.Items {
 			mqlRoute, err := newMqlAwsApigatewayv2Route(a.MqlRuntime, region, apiId, r)
@@ -428,10 +422,7 @@ func (a *mqlAwsApigatewayv2Api) authorizers() ([]any, error) {
 	for {
 		out, err := svc.GetAuthorizers(ctx, &apigatewayv2.GetAuthorizersInput{ApiId: &apiId, NextToken: nextToken})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "apigateway:GET")
 		}
 		for _, az := range out.Items {
 			mqlAuth, err := newMqlAwsApigatewayv2Authorizer(a.MqlRuntime, region, apiId, az)
