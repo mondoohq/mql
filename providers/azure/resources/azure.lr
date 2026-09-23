@@ -16621,9 +16621,10 @@ private azure.subscription.frontDoorService.profile.originGroup.origin @defaults
 // Azure Container Apps
 //
 // Azure Container Apps managed environments, the container apps running
-// in them, and Container Apps jobs across the subscription. Covers
-// ingress posture, image pinning, identity-vs-secret registry auth,
-// Easy Auth configuration, and revision history.
+// in them, Container Apps jobs, and sandbox groups across the
+// subscription. Covers ingress posture, image pinning,
+// identity-vs-secret registry auth, Easy Auth configuration, revision
+// history, and the networks code-execution sandboxes can reach.
 private azure.subscription.containerAppService {
   // Subscription identifier
   subscriptionId string
@@ -16633,6 +16634,8 @@ private azure.subscription.containerAppService {
   containerApps() []azure.subscription.containerAppService.containerApp
   // Container Apps jobs (run-to-completion workloads)
   jobs() []azure.subscription.containerAppService.job
+  // Sandbox groups (isolated code-execution sandboxes)
+  sandboxGroups() []azure.subscription.containerAppService.sandboxGroup
 }
 
 // Azure Container Apps managed environment
@@ -17099,6 +17102,67 @@ azure.subscription.containerAppService.job @defaults("name location triggerType 
   // job reaches out. Empty on an environment that does not report
   // them.
   outboundIpAddresses []string
+  // Creation and last-modification provenance recorded by Azure Resource Manager
+  systemMetadata() azure.subscription.systemData
+}
+
+// Azure Container Apps sandbox group
+//
+// Group of isolated sandboxes that run untrusted or generated code.
+// Exposes the region, tags, provisioning
+// state, the managed environment the group is linked to and the default
+// domain its sandbox endpoints are served under, and the VNet
+// connections that attach its sandboxes to customer subnets. A VNet
+// connection is where sandboxed code gains a path into a private
+// network, so auditing vnetConnections shows which subnets that code can
+// reach. Selected by ARM resource id, for example
+// azure.subscription.containerAppService.sandboxGroup(id: "/subscriptions/.../sandboxGroups/mygroup").
+azure.subscription.containerAppService.sandboxGroup @defaults("name location provisioningState") {
+  // ARM resource ID
+  id string
+  // Sandbox group name
+  name string
+  // Azure region
+  location string
+  // Resource tags
+  tags map[string]string
+  // Provisioning state
+  //
+  // One of Succeeded, Failed, Canceled, InProgress, Updating, or Deleting.
+  provisioningState string
+  // Managed environment the sandbox group is linked to
+  //
+  // Null when the group is not linked to an environment. Once linked,
+  // the link cannot be changed or removed.
+  managedEnvironment() azure.subscription.containerAppService.managedEnvironment
+  // Default domain of the linked environment
+  //
+  // Sandbox endpoints are served under subdomains of this domain. Null
+  // when no environment is linked.
+  defaultDomain string
+  // VNet connections attaching the group's sandboxes to subnets
+  vnetConnections() []azure.subscription.containerAppService.sandboxGroup.vnetConnection
+  // Creation and last-modification provenance recorded by Azure Resource Manager
+  systemMetadata() azure.subscription.systemData
+}
+
+// Azure Container Apps sandbox group VNet connection
+//
+// Connection that places the sandboxes of a sandbox group on a subnet,
+// giving the code they run network reach into that virtual network.
+private azure.subscription.containerAppService.sandboxGroup.vnetConnection @defaults("name provisioningState") {
+  // ARM resource ID
+  id string
+  // VNet connection name
+  name string
+  // Provisioning state
+  //
+  // One of Succeeded, Failed, Canceled, InProgress, Updating, or Deleting.
+  provisioningState string
+  // Subnet the sandboxes are connected to
+  //
+  // Null when the connection does not name a subnet.
+  subnet() azure.subscription.networkService.subnet
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
 }
