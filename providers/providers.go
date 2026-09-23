@@ -993,11 +993,17 @@ func InstallIO(reader io.ReadCloser, conf InstallConf) ([]*Provider, error) {
 }
 
 // syncDir flushes a directory's entries to disk so that renames into it
-// survive a crash. It is best-effort: directory fsync is not supported on
-// every platform (notably Windows), so failures are logged, not returned.
+// survive a crash. It is best-effort, so failures are logged, not returned.
 // Even when the directory sync is skipped, the per-file Sync in InstallIO
 // still prevents the renamed file from pointing at zeroed blocks.
+//
+// Windows does not support syncing a directory: opening one and calling Sync
+// fails with "Access is denied" every time, so every provider install logged
+// a warning about a step that cannot succeed there. It is skipped instead.
 func syncDir(path string) {
+	if runtime.GOOS == "windows" {
+		return
+	}
 	dir, err := os.Open(path)
 	if err != nil {
 		log.Warn().Err(err).Str("path", path).Msg("failed to open provider directory for sync")
