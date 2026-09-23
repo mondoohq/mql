@@ -533,9 +533,9 @@ What the attached errors buy is a measure of visibility. Aggregated over a
 scan, they say how many results rest on incomplete data and which grants would
 complete them, alongside the checks §3 turns into errors.
 
-**The planned behavior change, through the v14 lifetime.** There is no feature
-flag and no version split: the field is additive, and no score changes. What
-does change is the region loops. A denied region that is dropped silently today
+**The planned behavior change, through the v14 lifetime.** Partial results are
+not behind the feature flag (§9) and have no version split: the field is
+additive, and no score changes. What does change is the region loops. A denied region that is dropped silently today
 becomes the same result with the gap attached. A loop that fails the whole list
 today, because one region was throttled or failed, becomes a valid result
 with that region as a coverage gap: a pass or a failure on the data that was
@@ -556,6 +556,40 @@ The per-provider region loops move onto one shared helper as part of the same
 work, in v14. Converting every loop to `llx.Partial` touches each of them
 anyway, and a single helper is what keeps partition, kind and scope consistent
 across providers.
+
+### 9. The null-to-error change is opt-in through v14
+
+§3 turns a refusal from a null into an error. That is the change that makes
+scans that were quietly green go red, so it sits behind a feature flag,
+`StructuredErrors`, and can be tried against real accounts throughout v14
+before anyone has to take it. `RootedNamespace` (ADR 031) is the precedent: a
+behavior change that is available early and is opt-in.
+
+**Providers always classify.** A provider does not read the flag. A migrated
+call site returns the classified error unconditionally, so each provider has
+one code path and its migration is written once.
+
+**The SDK decides what leaves the provider.** With the flag off, the SDK turns a
+classified field error back into a null before it crosses the process boundary:
+the field is set and null, as it was before the migration. Unclassified errors
+are untouched, since they were errors before. With the flag on, the classified
+error goes out as itself. The SDK reads the flag from `ConnectReq.features`,
+the same way providers already read `SerialNumberAsID`.
+
+The check is in one place for every provider, and it restores the old
+behavior only approximately:
+
+- A site that used to return an empty list or a default value on a refusal
+  returns a null with the flag off.
+- An error that already reached the user as an error, and is now classified,
+  becomes a null with the flag off.
+- Inside the provider, a field that reads another field sees the error
+  whether the flag is on or off. Only what leaves the provider is gated.
+
+**Not behind the flag:** the carrier and the SDK mapping (phases 1 and 2),
+partial results and their coverage gaps (§8), rendering, and cnspec's coverage
+attribution. With the flag off they just have fewer classified errors to
+work with.
 
 ## cnspec
 
@@ -666,51 +700,72 @@ taxonomy at all.
 
 ## Phases
 
+The work runs in two tracks. **Building the machine** is core, SDK and cnspec
+work, and it lands in order. **Migrating providers** is per provider and runs
+on its own schedule: a migration step starts once the machine phases it needs
+have landed, and no machine phase waits for a migration.
+
+### Building the machine
+
 1. **Vocabulary and carrier.** `llx.proto` enums and message, `plugin` aliases,
    `DataRes.error_detail`, `Result.error_detail`, `llx/errors.go`, rehydration at
    the three sites. Nothing is classified yet: every error is unclassified and
    behaves exactly as today. Verifiable on its own by round-tripping a kind
    through a mock provider.
-2. **SDK classifiers and the three big clouds, part 1/2: single calls.** The
-   SDK's default mapping from HTTP status and gRPC status code to mql ErrorKind
-   (§1), then aws, azure and gcp mapping files for their single-call sites,
-   service by service. A refusal inside a region, project or subscription loop
-   is not phase 2: it is a partial result and waits for phase 3. In aws that is
-   about 340 of the 782 `Is400AccessDeniedError` sites, the ones inside a
-   per-region job; nearly all gcp and azure sites are single calls and stay
-   here.
-3. **Partial results (§8), and the three big clouds, part 2/2: loops.**
-   `CoverageGap`, `Result.coverage_gaps`, `DataRes.coverage_gaps`,
-   `llx.Partial`, the `GetOrCompute`, `ToDataRes` and `providers/runtime.go`
-   changes, executor propagation, and attaching the errors to scores. Region
-   loops convert, both the silent ones and the ones that fail a whole list
-   today, together with surfacing the gaps in mql and cnspec (§8); the server
-   follows on its own schedule. The per-provider region loops move onto one
-   shared helper in the same step.
-4. **Permission attribution.** Call sites name their permission; the
-   `permissions.json` fallback fills the rest.
-5. **Rendering and aggregation.** CLI grouping, structured logs.
+2. **SDK classifiers.** The SDK's default mapping from HTTP status and gRPC
+   status code to mql ErrorKind (§1).
+3. **Partial results (§8).** `CoverageGap`, `Result.coverage_gaps`,
+   `DataRes.coverage_gaps`, `llx.Partial`, the `GetOrCompute`, `ToDataRes` and
+   `providers/runtime.go` changes, executor propagation, and attaching the
+   errors to scores. The shared region-loop helper that the provider loops move
+   onto. Not behind the feature flag.
+4. **The `StructuredErrors` feature flag (§9).** The SDK turns a classified
+   field error back into a null unless the flag is on.
+5. **Rendering and aggregation.** CLI grouping, coverage gaps in mql's output,
+   structured logs.
 6. **cnspec coverage attribution.** `Score.error_details` and
-   `ReportCollection.error_details`, kind-grouped reporting, and the two string
-   matches removed (`TOOMANYREQUESTS`, `could not find resource`).
-7. **The long tail.** The remaining providers, plus a lint that flags an error
-   swallowed into `nil, nil` right after a classifier predicate — the shape that
-   produced the current state.
-8. **The null audit.** §3 permits an absence to stay a null, and 4,124
-   `StateIsNull` sites currently claim to be absences. Which of them are genuine
-   and which are swallowed refusals is a per-site question that has to be asked
-   of every provider, and it is the work that actually finishes what this ADR
-   starts. Named as its own phase because it is large, mechanical, and easy to
-   declare done while most of it is untouched.
-9. **Asset-scoped short-circuit.** An `ASSET`-scoped failure — a 401, an expired
-   credential — means every remaining call on that asset fails the same way, so
-   the scan can stop early and report once. Purely an optimization: the results
-   are identical either way, which is why it lands after everything else rather
-   than competing with it.
+   `ReportCollection.error_details`, kind-grouped reporting, coverage gaps in
+   cnspec's output, and the two string matches removed (`TOOMANYREQUESTS`,
+   `could not find resource`).
+7. **Permission fallback.** The `permissions.json` fallback for call sites that
+   do not name their permission (§4).
+8. **Asset-scoped short-circuit.** An `ASSET`-scoped failure, such as a 401 or
+   an expired credential, means every remaining call on that asset fails the
+   same way, so the scan can stop early and report once. Purely an
+   optimization: the results are identical either way, which is why it lands
+   last rather than competing with the rest.
+
+### Migrating providers
+
+Each step names the machine phases it needs.
+
+9. **aws, azure, gcp: single calls.** Needs 2 and 4. Each cloud's mapping
+   file, and every single-call site returns the classified error and names
+   its permission, service by service. A refusal inside a region, project or
+   subscription loop is not part of this step: it is a partial result. In aws
+   that is about 340 of the 782 `Is400AccessDeniedError` sites, the ones
+   inside a per-region job; nearly all gcp and azure sites are single calls
+   and belong here.
+10. **aws, azure, gcp: loops.** Needs 3, 5 and 6. Region, project and
+    subscription loops convert to `llx.Partial` on the shared helper, both the
+    silent ones and the ones that fail a whole list today, and so do per-item
+    refusals while building a list (one item's tags or details). The gaps must
+    already show in mql and cnspec (§8); the server follows on its own
+    schedule.
+11. **The long tail.** The remaining providers, plus a lint that flags an error
+    swallowed into `nil, nil` right after a classifier predicate, the shape that
+    produced the current state.
+12. **The null audit.** §3 permits an absence to stay a null, and 4,124
+    `StateIsNull` sites currently claim to be absences. Which of them are genuine
+    and which are swallowed refusals is a per-site question that has to be asked
+    of every provider, and it is the work that actually finishes what this ADR
+    starts. Named as its own step because it is large, mechanical, and easy to
+    declare done while most of it is untouched.
 
 Phases 1 and 2 are independently useful: a kind that only reaches the CLI is
-already better than a string, and phase 2 without phase 6 still makes `mql shell`
-honest. Phase 1 is the only one that has to make the v14 rc window.
+already better than a string, and step 9 without phase 6 still makes `mql shell`
+honest for anyone who turns the flag on. Phase 1 is the only one that has to
+make the v14 rc window.
 
 ## Implementation status
 
@@ -734,7 +789,7 @@ verifiable on its own.
   The message is unchanged on purpose, so cnspec's existing prefix match keeps
   working until it reads the kind instead.
 
-Two notes for whoever picks up phase 2:
+Two notes from phase 1:
 
 - The sentinel for `ERROR_KIND_UNAVAILABLE` is `llx.ErrTargetUnavailable`. The
   version-skew sentinel in `llx/skew.go` is `llx.ErrVersionSkew` (message still
@@ -742,6 +797,13 @@ Two notes for whoever picks up phase 2:
 - Compatibility is confirmed in both directions by construction and by running a
   client built from this tree against a provider binary built before the change:
   an old provider sends no detail and reads as unclassified.
+
+**Phase 2 landed** (#11011). The SDK's default mapping is in
+`providers-sdk/v1/plugin/classify.go`.
+
+**Step 9 for aws is open** (#11012). It returns classified errors
+unconditionally, which is right under §9, but it should merge after phase 4 so
+the change stays opt-in.
 
 ## Consequences
 
@@ -765,8 +827,12 @@ Two notes for whoever picks up phase 2:
 **Costs and risks:**
 
 - **~1,000 call sites change behavior.** Scans that were quietly green go red.
-  That is correct and it will be reported as a regression, so phase 2 has to land
-  with the release notes written.
+  That is correct and it will be reported as a regression, which is why it is
+  opt-in through v14 (§9). Turning the flag on by default needs the release
+  notes written.
+- **With the flag off, the old behavior comes back only approximately** (§9).
+  A refusal that used to be an empty list or a default is a null, and an
+  error that is now classified is a null until the flag is on.
 - **A wrong kind is worse than none.** Everything downstream believes it. The
   narrowest-true rule (§2) and the unclassified default are the mitigation, and
   the review burden lands on the provider mapping files.
