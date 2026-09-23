@@ -999,6 +999,28 @@ func (a *mqlAwsBedrockAgentCoreRuntime) authorizerType() (string, error) {
 	return "", nil
 }
 
+func (a *mqlAwsBedrockAgentCoreRuntime) platformVersion() (string, error) {
+	detail, err := a.fetchDetail()
+	if err != nil {
+		return "", err
+	}
+	v := agentRuntimePlatformVersion(detail)
+	if v == nil {
+		a.PlatformVersion.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *v, nil
+}
+
+// agentRuntimePlatformVersion returns the runtime platform version reported by
+// GetAgentRuntime, or nil when the response or the value is absent.
+func agentRuntimePlatformVersion(detail *bedrockagentcorecontrol.GetAgentRuntimeOutput) *string {
+	if detail == nil || detail.PlatformVersion == nil || *detail.PlatformVersion == "" {
+		return nil
+	}
+	return detail.PlatformVersion
+}
+
 func (a *mqlAwsBedrockAgentCoreRuntime) environmentVariables() (map[string]any, error) {
 	detail, err := a.fetchDetail()
 	if err != nil {

@@ -6,6 +6,7 @@ package resources
 import (
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/service/bedrockagentcorecontrol"
 	bacctypes "github.com/aws/aws-sdk-go-v2/service/bedrockagentcorecontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -81,4 +82,30 @@ func TestRateConfigsToDicts(t *testing.T) {
 		require.Len(t, got, 1)
 		assert.Equal(t, map[string]any{"rate": float64(0), "period": "second"}, got[0])
 	})
+}
+
+func TestAgentRuntimePlatformVersion(t *testing.T) {
+	v := "1.2.3"
+	empty := ""
+	tests := []struct {
+		name   string
+		detail *bedrockagentcorecontrol.GetAgentRuntimeOutput
+		want   *string
+	}{
+		{name: "nil response", detail: nil, want: nil},
+		{name: "absent value", detail: &bedrockagentcorecontrol.GetAgentRuntimeOutput{}, want: nil},
+		{name: "empty value", detail: &bedrockagentcorecontrol.GetAgentRuntimeOutput{PlatformVersion: &empty}, want: nil},
+		{name: "reported value", detail: &bedrockagentcorecontrol.GetAgentRuntimeOutput{PlatformVersion: &v}, want: &v},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := agentRuntimePlatformVersion(tc.detail)
+			if tc.want == nil {
+				assert.Nil(t, got)
+				return
+			}
+			require.NotNil(t, got)
+			assert.Equal(t, "1.2.3", *got)
+		})
+	}
 }

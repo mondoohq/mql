@@ -22660,6 +22660,10 @@ private aws.documentdb.cluster @defaults("arn name status") {
   clusterResourceId string
   // Whether the DB cluster has deletion protection enabled
   deletionProtection bool
+  // Whether tags are copied from the cluster to its snapshots
+  //
+  // The API default is not to copy them. Null when the API does not report the setting.
+  copyTagsToSnapshot bool
   // Earliest time to which a database can be restored
   earliestRestorableTime time
   // Latest time to which a database can be restored using point-in-time restore
@@ -31031,6 +31035,10 @@ private aws.bedrock.agentCore.runtime @defaults("name version status") {
   //
   // Null when the runtime runs on AWS-managed compute instead.
   capacityProvider() aws.bedrock.agentCore.capacityProvider
+  // Version of the runtime platform the agent runtime uses
+  //
+  // The version of the AgentCore runtime platform that hosts the agent code, distinct from the agent runtime `version`. Null when the API does not report one.
+  platformVersion() string
 }
 
 // Amazon Bedrock AgentCore runtime endpoint

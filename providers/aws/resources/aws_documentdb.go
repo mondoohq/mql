@@ -195,6 +195,7 @@ func newMqlAwsDocumentdbCluster(runtime *plugin.Runtime, region, accountID strin
 			"subnetGroup":                  llx.StringDataPtr(cluster.DBSubnetGroup),
 			"clusterResourceId":            llx.StringDataPtr(cluster.DbClusterResourceId),
 			"deletionProtection":           llx.BoolDataPtr(cluster.DeletionProtection),
+			"copyTagsToSnapshot":           llx.BoolDataPtr(cluster.CopyTagsToSnapshot),
 			"earliestRestorableTime":       llx.TimeDataPtr(cluster.EarliestRestorableTime),
 			"latestRestorableTime":         llx.TimeDataPtr(cluster.LatestRestorableTime),
 			"enabledCloudwatchLogsExports": llx.ArrayData(convert.SliceAnyToInterface(cluster.EnabledCloudwatchLogsExports), types.String),
