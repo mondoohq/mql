@@ -672,7 +672,10 @@ func (r *Runtime) watchAndUpdate(resource string, resourceID string, field strin
 		if !handled {
 			return nil, err
 		}
-		data = &plugin.DataRes{Error: err.Error()}
+		data = &plugin.DataRes{
+			Error:       err.Error(),
+			ErrorDetail: llx.ErrorDetailOf(err),
+		}
 	}
 
 	var raw *llx.RawData

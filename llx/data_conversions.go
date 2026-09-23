@@ -527,6 +527,8 @@ func (r *RawData) CastResult(t types.Type) (*Result, error) {
 func (r *RawResult) CastResult(t types.Type) *Result {
 	res, err := r.Data.CastResult(t)
 	if err != nil {
+		// No ErrorDetail: a failed cast is a type mismatch on our side, not a
+		// provider failure, so there is no kind to carry (ADR 046).
 		return &Result{
 			CodeId: r.CodeID,
 			Data:   &Primitive{Type: string(t)},
