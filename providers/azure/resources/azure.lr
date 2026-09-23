@@ -2652,6 +2652,10 @@ azure.subscription.networkService.firewall @defaults("id name location") {
   threatIntelMode string
   // Endpoint URL of the Azure Firewall control plane (AFC), empty when not configured
   afcServiceEndpoint string
+  // Whether the AI security add-on is enabled
+  //
+  // Null when Azure does not report the setting for this firewall.
+  aiSecurityAddOn bool
   // Policy associated with this firewall
   policy() azure.subscription.networkService.firewallPolicy
   // List of IP configurations for the firewall
@@ -13337,6 +13341,19 @@ private azure.subscription.policy.assignment @defaults("displayName enforcementM
   principalId string
   // Tenant of the assignment's system-assigned identity
   tenantId string
+  // Whether the assignment allows self-serve exemptions
+  //
+  // When true, exemptions from this assignment can be created in the
+  // UserSelfServe management mode (see the exemption's managementMode)
+  // rather than only by a policy administrator. Null when the assignment
+  // carries no self-serve exemption settings.
+  selfServeExemptionEnabled bool
+  // Definitions within the initiative that self-serve exemptions may cover
+  //
+  // Policy definition reference IDs inside the assigned initiative for
+  // which self-serve exemptions are allowed. Null when the assignment
+  // carries no self-serve exemption settings.
+  selfServeExemptionPolicyDefinitionReferenceIds []string
   // Policy definition the assignment applies
   //
   // Resolves the assigned definition so the rule, its effect, and its
@@ -13430,6 +13447,13 @@ private azure.subscription.policy.exemption @defaults("name exemptionCategory ex
   description string
   // Exemption category: Waiver or Mitigated
   exemptionCategory string
+  // How the exemption is managed
+  //
+  // One of Admin or UserSelfServe. UserSelfServe exemptions were created
+  // through an assignment that allows self-serve exemptions (see the
+  // assignment's selfServeExemptionEnabled) instead of by a policy
+  // administrator. Null when Azure does not report a mode.
+  managementMode string
   // Scope (resource, resource group, or subscription) the exemption applies to
   scope string
   // Policy assignment the exemption applies to
@@ -16882,6 +16906,11 @@ azure.subscription.containerAppService.containerApp @defaults("name location pro
   //   azureQueue: {queueName, queueLength}
   //   custom:     {type, metadata, identity}
   scaleRules []dict
+  // Whether custom scale rules can override the automatic scale rules
+  //
+  // Applies only to container apps of kind Functionapp. Null when the
+  // app does not set it.
+  allowScalingRuleOverride bool
   // Principal ID of the container app's system-assigned managed identity; empty when no system-assigned identity is enabled
   principalId string
   // System-assigned managed identity of the container app; null when no system-assigned identity is enabled
@@ -17026,6 +17055,11 @@ azure.subscription.containerAppService.job @defaults("name location triggerType 
   managedEnvironmentId string
   // Provisioning state
   provisioningState string
+  // Current running state of the job
+  //
+  // One of Progressing, Ready, or Suspended. A Suspended job does not
+  // start new executions. Null when Azure does not report a state.
+  runningState string
   // Eventstream endpoint URL for log streaming
   eventStreamEndpoint string
   // Trigger type ("Manual", "Schedule", "Event")

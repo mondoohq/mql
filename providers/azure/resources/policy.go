@@ -125,6 +125,14 @@ func initAzureSubscriptionPolicyAssignment(runtime *plugin.Runtime, args map[str
 	args["overrides"] = llx.ArrayData(overrides, types.Dict)
 	args["resourceSelectors"] = llx.ArrayData(resourceSelectors, types.Dict)
 	args["location"] = llx.StringDataPtr(resp.Location)
+	var selfServe *policySelfServeExemptionSettings
+	if props.SelfServeExemptionSettings != nil {
+		selfServe = &policySelfServeExemptionSettings{
+			Enabled:                      props.SelfServeExemptionSettings.Enabled,
+			PolicyDefinitionReferenceIDs: convert.SliceStrPtrToStr(nonNilStrPtrs(props.SelfServeExemptionSettings.PolicyDefinitionReferenceIDs)),
+		}
+	}
+	args["selfServeExemptionEnabled"], args["selfServeExemptionPolicyDefinitionReferenceIds"] = selfServeExemptionFields(selfServe)
 	if resp.Identity != nil {
 		args["identityType"] = llx.StringData(string(convert.ToValue(resp.Identity.Type)))
 		args["principalId"] = llx.StringDataPtr(resp.Identity.PrincipalID)
@@ -365,7 +373,12 @@ func policyAssignmentArgs(assignment PolicyAssignment) (map[string]*llx.RawData,
 		}
 	}
 
+	selfServeEnabled, selfServeRefIds := selfServeExemptionFields(assignment.Properties.SelfServeExemptionSettings)
+
 	return map[string]*llx.RawData{
+		"selfServeExemptionEnabled":                      selfServeEnabled,
+		"selfServeExemptionPolicyDefinitionReferenceIds": selfServeRefIds,
+
 		"id":              llx.StringData(assignment.Properties.PolicyDefinitionID),
 		"assignmentId":    llx.StringData(assignment.ID),
 		"name":            llx.StringData(assignment.Properties.DisplayName),
@@ -389,6 +402,36 @@ func policyAssignmentArgs(assignment PolicyAssignment) (map[string]*llx.RawData,
 		"principalId":                llx.StringData(assignment.Identity.PrincipalID),
 		"tenantId":                   llx.StringData(assignment.Identity.TenantID),
 	}, nil
+}
+
+// selfServeExemptionFields maps an assignment's self-serve exemption settings
+// to the enabled flag and the covered definition reference IDs. Both are null
+// when the assignment carries no settings; the ID list is also null when the
+// settings omit it, since an empty list would claim no definition is covered.
+func selfServeExemptionFields(settings *policySelfServeExemptionSettings) (enabled, refIds *llx.RawData) {
+	if settings == nil {
+		return llx.NilData, llx.NilData
+	}
+	refIds = llx.NilData
+	if settings.PolicyDefinitionReferenceIDs != nil {
+		refIds = llx.ArrayData(convert.SliceAnyToInterface(settings.PolicyDefinitionReferenceIDs), types.String)
+	}
+	return llx.BoolDataPtr(settings.Enabled), refIds
+}
+
+// nonNilStrPtrs drops nil elements so the slice can be dereferenced safely.
+// It keeps a nil input nil, preserving the difference between absent and empty.
+func nonNilStrPtrs(in []*string) []*string {
+	if in == nil {
+		return nil
+	}
+	out := make([]*string, 0, len(in))
+	for _, s := range in {
+		if s != nil {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // jsonToDictSlice converts a slice of open-ended API objects into the []dict
@@ -582,12 +625,18 @@ type azurePolicyExemption struct {
 		PolicyAssignmentID           string     `json:"policyAssignmentId"`
 		PolicyDefinitionReferenceIDs []string   `json:"policyDefinitionReferenceIds"`
 		ExemptionCategory            string     `json:"exemptionCategory"`
+		ExemptionManagementMode      *string    `json:"exemptionManagementMode"`
 		DisplayName                  string     `json:"displayName"`
 		Description                  string     `json:"description"`
 		ExpiresOn                    *time.Time `json:"expiresOn"`
 		Metadata                     any        `json:"metadata"`
 	} `json:"properties"`
 }
+
+// policyExemptionsAPIVersion is the first api-version that reports
+// exemptionManagementMode. Exemptions only ship preview api-versions, and no
+// Go SDK models them.
+const policyExemptionsAPIVersion = "2025-12-01-preview"
 
 type azurePolicyExemptionList struct {
 	Value    []azurePolicyExemption `json:"value"`
@@ -603,8 +652,8 @@ func (a *mqlAzureSubscriptionPolicy) exemptions() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	firstURL := fmt.Sprintf("%s/subscriptions/%s/providers/Microsoft.Authorization/policyExemptions?api-version=2022-07-01-preview",
-		armConn.host, subId)
+	firstURL := fmt.Sprintf("%s/subscriptions/%s/providers/Microsoft.Authorization/policyExemptions?api-version=%s",
+		armConn.host, subId, policyExemptionsAPIVersion)
 
 	res := []any{}
 	err = fetchArmPages(ctx, armConn.GetToken, firstURL, "policy exemptions", func(raw []byte) (string, error) {
@@ -647,6 +696,7 @@ func newMqlPolicyExemption(runtime *plugin.Runtime, exemption *azurePolicyExempt
 		"displayName":                  llx.StringData(exemption.Properties.DisplayName),
 		"description":                  llx.StringData(exemption.Properties.Description),
 		"exemptionCategory":            llx.StringData(exemption.Properties.ExemptionCategory),
+		"managementMode":               llx.StringDataPtr(exemption.Properties.ExemptionManagementMode),
 		"scope":                        llx.StringData(scope),
 		"policyDefinitionReferenceIds": llx.ArrayData(convert.SliceAnyToInterface(exemption.Properties.PolicyDefinitionReferenceIDs), types.String),
 		"expiresOn":                    llx.TimeDataPtr(exemption.Properties.ExpiresOn),

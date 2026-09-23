@@ -49,7 +49,11 @@ func getPolicyAssignments(ctx context.Context, conn armSecurityConn) (PolicyAssi
 		return PolicyAssignments{}, err
 	}
 	q := firstURL.Query()
-	q.Set("api-version", "2022-06-01")
+	// Pinned to the api-version the armpolicy SDK uses for the single-assignment
+	// lookup, so both paths return the same property set. Versions before
+	// 2023-04-01 omit the definition-version fields, before 2024-04-01 omit
+	// assignmentType, and before 2025-11-01 omit selfServeExemptionSettings.
+	q.Set("api-version", policyAssignmentsAPIVersion)
 	firstURL.RawQuery = q.Encode()
 
 	result := PolicyAssignments{}
@@ -169,7 +173,18 @@ type PolicyAssignment struct {
 		Parameters map[string]any `json:"parameters"`
 		Scope      string         `json:"scope"`
 		NotScopes  []any          `json:"notScopes"`
+		// Pointer so an assignment without self-serve settings stays
+		// distinguishable from one that explicitly disables them.
+		SelfServeExemptionSettings *policySelfServeExemptionSettings `json:"selfServeExemptionSettings"`
 	} `json:"properties"`
+}
+
+// policyAssignmentsAPIVersion matches the armpolicy SDK's api-version.
+const policyAssignmentsAPIVersion = "2026-06-01"
+
+type policySelfServeExemptionSettings struct {
+	Enabled                      *bool    `json:"enabled"`
+	PolicyDefinitionReferenceIDs []string `json:"policyDefinitionReferenceIds"`
 }
 
 type PolicyAssignments struct {
