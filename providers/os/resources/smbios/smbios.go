@@ -98,6 +98,8 @@ func ResolveManager(conn shared.Connection, pf *inventory.Platform) (SmBiosManag
 		return nil, errors.New("could not detect suitable smbios manager for platform: " + pf.Name)
 	}
 
-	mgr, _ := managerCache.LoadOrStore(connID, biosM)
+	// Wrap in the memo here rather than in each platform manager, so that every
+	// platform gets it and none can be added without it.
+	mgr, _ := managerCache.LoadOrStore(connID, &cachingManager{inner: biosM})
 	return mgr.(SmBiosManager), nil
 }
