@@ -5,6 +5,7 @@ package resources
 
 import (
 	"strconv"
+	"time"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -64,6 +65,8 @@ type roleAssignmentData struct {
 	ScopeType    string
 	OrgUnitID    string
 	Condition    string
+	// ExpiresAt is nil for a standing assignment with no expiry.
+	ExpiresAt *time.Time
 }
 
 // roleAssignmentToData projects a directory.RoleAssignment into the plain
@@ -79,7 +82,17 @@ func roleAssignmentToData(entry *directory.RoleAssignment) roleAssignmentData {
 		ScopeType:    entry.ScopeType,
 		OrgUnitID:    entry.OrgUnitId,
 		Condition:    entry.Condition,
+		ExpiresAt:    roleAssignmentExpiry(entry),
 	}
+}
+
+// roleAssignmentExpiry returns the RFC 3339 expireTime of a time-bound
+// assignment, or nil when the assignment has no expirationDetails.
+func roleAssignmentExpiry(entry *directory.RoleAssignment) *time.Time {
+	if entry.ExpirationDetails == nil {
+		return nil
+	}
+	return parseRFC3339(entry.ExpirationDetails.ExpireTime)
 }
 
 // isUserAssignee reports whether a role assignment's assignee is a user (as
@@ -99,6 +112,7 @@ func newMqlGoogleWorkspaceRoleAssignment(runtime *plugin.Runtime, entry *directo
 		"scopeType":    llx.StringData(d.ScopeType),
 		"orgUnitId":    llx.StringData(d.OrgUnitID),
 		"condition":    llx.StringData(d.Condition),
+		"expiresAt":    llx.TimeDataPtr(d.ExpiresAt),
 	})
 }
 

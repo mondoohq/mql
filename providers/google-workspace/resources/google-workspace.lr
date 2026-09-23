@@ -705,8 +705,13 @@ private googleworkspace.role.assignment @defaults("assignedTo assigneeType scope
   // The condition associated with this role assignment (empty when unconditional)
   //
   // When set, the role only takes effect when the accessed resource meets the
-  // condition — currently used to scope grants to or away from security groups.
+  // condition, currently used to scope grants to or away from security groups.
   condition string
+  // Time the role assignment expires
+  //
+  // Null for a standing assignment that does not expire. Set on a time-bound
+  // grant, which stops granting the role at this time.
+  expiresAt time
   // The user the role is assigned to (null when the assignee is a group)
   user() googleworkspace.user
   // The assigned role

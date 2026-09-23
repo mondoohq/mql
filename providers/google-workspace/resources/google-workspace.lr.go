@@ -827,6 +827,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"googleworkspace.role.assignment.condition": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGoogleworkspaceRoleAssignment).GetCondition()).ToDataRes(types.String)
 	},
+	"googleworkspace.role.assignment.expiresAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGoogleworkspaceRoleAssignment).GetExpiresAt()).ToDataRes(types.Time)
+	},
 	"googleworkspace.role.assignment.user": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGoogleworkspaceRoleAssignment).GetUser()).ToDataRes(types.Resource("googleworkspace.user"))
 	},
@@ -2125,6 +2128,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"googleworkspace.role.assignment.condition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGoogleworkspaceRoleAssignment).Condition, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"googleworkspace.role.assignment.expiresAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGoogleworkspaceRoleAssignment).ExpiresAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"googleworkspace.role.assignment.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -4816,6 +4823,7 @@ type mqlGoogleworkspaceRoleAssignment struct {
 	ScopeType    plugin.TValue[string]
 	OrgUnitId    plugin.TValue[string]
 	Condition    plugin.TValue[string]
+	ExpiresAt    plugin.TValue[*time.Time]
 	User         plugin.TValue[*mqlGoogleworkspaceUser]
 	Role         plugin.TValue[*mqlGoogleworkspaceRole]
 }
@@ -4883,6 +4891,10 @@ func (c *mqlGoogleworkspaceRoleAssignment) GetOrgUnitId() *plugin.TValue[string]
 
 func (c *mqlGoogleworkspaceRoleAssignment) GetCondition() *plugin.TValue[string] {
 	return &c.Condition
+}
+
+func (c *mqlGoogleworkspaceRoleAssignment) GetExpiresAt() *plugin.TValue[*time.Time] {
+	return &c.ExpiresAt
 }
 
 func (c *mqlGoogleworkspaceRoleAssignment) GetUser() *plugin.TValue[*mqlGoogleworkspaceUser] {
