@@ -2592,6 +2592,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gitlab.project.deployKey.canPush": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabProjectDeployKey).GetCanPush()).ToDataRes(types.Bool)
 	},
+	"gitlab.project.deployKey.lastUsedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabProjectDeployKey).GetLastUsedAt()).ToDataRes(types.Time)
+	},
+	"gitlab.project.deployKey.usageType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabProjectDeployKey).GetUsageType()).ToDataRes(types.String)
+	},
 	"gitlab.project.deployKey.daysOld": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabProjectDeployKey).GetDaysOld()).ToDataRes(types.Int)
 	},
@@ -3017,6 +3023,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gitlab.project.clusterAgent.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabProjectClusterAgent).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"gitlab.project.clusterAgent.isReceptive": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabProjectClusterAgent).GetIsReceptive()).ToDataRes(types.Bool)
 	},
 	"gitlab.project.clusterAgent.createdBy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabProjectClusterAgent).GetCreatedBy()).ToDataRes(types.Resource("gitlab.user"))
@@ -6329,6 +6338,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGitlabProjectDeployKey).CanPush, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"gitlab.project.deployKey.lastUsedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabProjectDeployKey).LastUsedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gitlab.project.deployKey.usageType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabProjectDeployKey).UsageType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"gitlab.project.deployKey.daysOld": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGitlabProjectDeployKey).DaysOld, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
@@ -6963,6 +6980,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gitlab.project.clusterAgent.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGitlabProjectClusterAgent).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gitlab.project.clusterAgent.isReceptive": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabProjectClusterAgent).IsReceptive, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"gitlab.project.clusterAgent.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -13954,6 +13975,8 @@ type mqlGitlabProjectDeployKey struct {
 	CreatedAt         plugin.TValue[*time.Time]
 	ExpiresAt         plugin.TValue[*time.Time]
 	CanPush           plugin.TValue[bool]
+	LastUsedAt        plugin.TValue[*time.Time]
+	UsageType         plugin.TValue[string]
 	DaysOld           plugin.TValue[int64]
 	Project           plugin.TValue[*mqlGitlabProject]
 }
@@ -14025,6 +14048,14 @@ func (c *mqlGitlabProjectDeployKey) GetExpiresAt() *plugin.TValue[*time.Time] {
 
 func (c *mqlGitlabProjectDeployKey) GetCanPush() *plugin.TValue[bool] {
 	return &c.CanPush
+}
+
+func (c *mqlGitlabProjectDeployKey) GetLastUsedAt() *plugin.TValue[*time.Time] {
+	return &c.LastUsedAt
+}
+
+func (c *mqlGitlabProjectDeployKey) GetUsageType() *plugin.TValue[string] {
+	return &c.UsageType
 }
 
 func (c *mqlGitlabProjectDeployKey) GetDaysOld() *plugin.TValue[int64] {
@@ -15578,6 +15609,7 @@ type mqlGitlabProjectClusterAgent struct {
 	Id            plugin.TValue[int64]
 	Name          plugin.TValue[string]
 	CreatedAt     plugin.TValue[*time.Time]
+	IsReceptive   plugin.TValue[bool]
 	CreatedBy     plugin.TValue[*mqlGitlabUser]
 	ConfigProject plugin.TValue[*mqlGitlabProject]
 	Tokens        plugin.TValue[[]any]
@@ -15630,6 +15662,10 @@ func (c *mqlGitlabProjectClusterAgent) GetName() *plugin.TValue[string] {
 
 func (c *mqlGitlabProjectClusterAgent) GetCreatedAt() *plugin.TValue[*time.Time] {
 	return &c.CreatedAt
+}
+
+func (c *mqlGitlabProjectClusterAgent) GetIsReceptive() *plugin.TValue[bool] {
+	return &c.IsReceptive
 }
 
 func (c *mqlGitlabProjectClusterAgent) GetCreatedBy() *plugin.TValue[*mqlGitlabUser] {
