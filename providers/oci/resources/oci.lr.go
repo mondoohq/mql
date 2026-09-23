@@ -8095,6 +8095,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"oci.functions.function.imageDigest": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciFunctionsFunction).GetImageDigest()).ToDataRes(types.String)
 	},
+	"oci.functions.function.sourceType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciFunctionsFunction).GetSourceType()).ToDataRes(types.String)
+	},
+	"oci.functions.function.runtime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciFunctionsFunction).GetRuntime()).ToDataRes(types.String)
+	},
+	"oci.functions.function.runtimeUpdateStrategy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciFunctionsFunction).GetRuntimeUpdateStrategy()).ToDataRes(types.String)
+	},
+	"oci.functions.function.handler": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciFunctionsFunction).GetHandler()).ToDataRes(types.String)
+	},
+	"oci.functions.function.sourceCodeSha256": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciFunctionsFunction).GetSourceCodeSha256()).ToDataRes(types.String)
+	},
+	"oci.functions.function.sourceBucket": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciFunctionsFunction).GetSourceBucket()).ToDataRes(types.Resource("oci.objectStorage.bucket"))
+	},
+	"oci.functions.function.sourceObjectName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOciFunctionsFunction).GetSourceObjectName()).ToDataRes(types.String)
+	},
 	"oci.functions.function.shape": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOciFunctionsFunction).GetShape()).ToDataRes(types.String)
 	},
@@ -21544,6 +21565,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"oci.functions.function.imageDigest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOciFunctionsFunction).ImageDigest, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.functions.function.sourceType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciFunctionsFunction).SourceType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.functions.function.runtime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciFunctionsFunction).Runtime, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.functions.function.runtimeUpdateStrategy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciFunctionsFunction).RuntimeUpdateStrategy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.functions.function.handler": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciFunctionsFunction).Handler, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.functions.function.sourceCodeSha256": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciFunctionsFunction).SourceCodeSha256, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"oci.functions.function.sourceBucket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciFunctionsFunction).SourceBucket, ok = plugin.RawToTValue[*mqlOciObjectStorageBucket](v.Value, v.Error)
+		return
+	},
+	"oci.functions.function.sourceObjectName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOciFunctionsFunction).SourceObjectName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"oci.functions.function.shape": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -51856,24 +51905,31 @@ type mqlOciFunctionsFunction struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlOciFunctionsFunctionInternal
-	Id               plugin.TValue[string]
-	Name             plugin.TValue[string]
-	Compartment      plugin.TValue[*mqlOciCompartment]
-	ApplicationId    plugin.TValue[string]
-	State            plugin.TValue[string]
-	Image            plugin.TValue[string]
-	ImageDigest      plugin.TValue[string]
-	Shape            plugin.TValue[string]
-	MemoryInMBs      plugin.TValue[int64]
-	TimeoutInSeconds plugin.TValue[int64]
-	InvokeEndpoint   plugin.TValue[string]
-	TraceConfig      plugin.TValue[any]
-	Tracing          plugin.TValue[*mqlOciFunctionsFunctionTraceConfig]
-	Created          plugin.TValue[*time.Time]
-	TimeUpdated      plugin.TValue[*time.Time]
-	FreeformTags     plugin.TValue[map[string]any]
-	DefinedTags      plugin.TValue[map[string]any]
-	Config           plugin.TValue[map[string]any]
+	Id                    plugin.TValue[string]
+	Name                  plugin.TValue[string]
+	Compartment           plugin.TValue[*mqlOciCompartment]
+	ApplicationId         plugin.TValue[string]
+	State                 plugin.TValue[string]
+	Image                 plugin.TValue[string]
+	ImageDigest           plugin.TValue[string]
+	SourceType            plugin.TValue[string]
+	Runtime               plugin.TValue[string]
+	RuntimeUpdateStrategy plugin.TValue[string]
+	Handler               plugin.TValue[string]
+	SourceCodeSha256      plugin.TValue[string]
+	SourceBucket          plugin.TValue[*mqlOciObjectStorageBucket]
+	SourceObjectName      plugin.TValue[string]
+	Shape                 plugin.TValue[string]
+	MemoryInMBs           plugin.TValue[int64]
+	TimeoutInSeconds      plugin.TValue[int64]
+	InvokeEndpoint        plugin.TValue[string]
+	TraceConfig           plugin.TValue[any]
+	Tracing               plugin.TValue[*mqlOciFunctionsFunctionTraceConfig]
+	Created               plugin.TValue[*time.Time]
+	TimeUpdated           plugin.TValue[*time.Time]
+	FreeformTags          plugin.TValue[map[string]any]
+	DefinedTags           plugin.TValue[map[string]any]
+	Config                plugin.TValue[map[string]any]
 }
 
 // createOciFunctionsFunction creates a new instance of this resource
@@ -51951,6 +52007,58 @@ func (c *mqlOciFunctionsFunction) GetImage() *plugin.TValue[string] {
 
 func (c *mqlOciFunctionsFunction) GetImageDigest() *plugin.TValue[string] {
 	return &c.ImageDigest
+}
+
+func (c *mqlOciFunctionsFunction) GetSourceType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SourceType, func() (string, error) {
+		return c.sourceType()
+	})
+}
+
+func (c *mqlOciFunctionsFunction) GetRuntime() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Runtime, func() (string, error) {
+		return c.runtime()
+	})
+}
+
+func (c *mqlOciFunctionsFunction) GetRuntimeUpdateStrategy() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.RuntimeUpdateStrategy, func() (string, error) {
+		return c.runtimeUpdateStrategy()
+	})
+}
+
+func (c *mqlOciFunctionsFunction) GetHandler() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Handler, func() (string, error) {
+		return c.handler()
+	})
+}
+
+func (c *mqlOciFunctionsFunction) GetSourceCodeSha256() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SourceCodeSha256, func() (string, error) {
+		return c.sourceCodeSha256()
+	})
+}
+
+func (c *mqlOciFunctionsFunction) GetSourceBucket() *plugin.TValue[*mqlOciObjectStorageBucket] {
+	return plugin.GetOrCompute[*mqlOciObjectStorageBucket](&c.SourceBucket, func() (*mqlOciObjectStorageBucket, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("oci.functions.function", c.__id, "sourceBucket")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlOciObjectStorageBucket), nil
+			}
+		}
+
+		return c.sourceBucket()
+	})
+}
+
+func (c *mqlOciFunctionsFunction) GetSourceObjectName() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SourceObjectName, func() (string, error) {
+		return c.sourceObjectName()
+	})
 }
 
 func (c *mqlOciFunctionsFunction) GetShape() *plugin.TValue[string] {
