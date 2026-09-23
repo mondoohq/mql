@@ -2013,6 +2013,9 @@ var azureMethodPermissionOverrides = map[string]string{
 	"NamedValue.NewListByServicePager": "Microsoft.ApiManagement/service/namedValues/read",
 	"Policy.Get":                       "Microsoft.ApiManagement/service/policies/read",
 	"Subscription.NewListPager":        "Microsoft.ApiManagement/service/subscriptions/read",
+
+	// Container Apps VNet connections are children of a sandbox group.
+	"VnetConnections.NewListBySandboxGroupPager": "Microsoft.App/sandboxGroups/vnetConnections/read",
 }
 
 // azurePermissionOverrides maps generated permission strings to the correct

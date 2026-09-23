@@ -51,6 +51,7 @@ func TestInitsReportAMissingID(t *testing.T) {
 		{"azure.subscription.networkService.firewall", initAzureSubscriptionNetworkServiceFirewall},
 		{"azure.subscription.networkService.applicationGateway", initAzureSubscriptionNetworkServiceApplicationGateway},
 		{"azure.subscription.containerAppService.containerApp", initAzureSubscriptionContainerAppServiceContainerApp},
+		{"azure.subscription.containerAppService.sandboxGroup", initAzureSubscriptionContainerAppServiceSandboxGroup},
 		{"azure.subscription.functionsService.functionApp", initAzureSubscriptionFunctionsServiceFunctionApp},
 		{"azure.subscription.computeService.vm", initAzureSubscriptionComputeServiceVm},
 		{"azure.subscription.keyVaultService.vault", initAzureSubscriptionKeyVaultServiceVault},

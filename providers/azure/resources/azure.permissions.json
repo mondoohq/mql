@@ -1,7 +1,7 @@
 {
   "provider": "azure",
-  "version": "14.0.0-rc.1",
-  "generated_at": "2026-09-14T15:48:55-07:00",
+  "version": "14.0.0",
+  "generated_at": "2026-09-23T15:11:21-07:00",
   "permissions": [
     "Microsoft.Advisor/recommendations/read",
     "Microsoft.ApiManagement/service/apis/policies/read",
@@ -22,6 +22,8 @@
     "Microsoft.App/managedEnvironments/maintenanceConfigurations/read",
     "Microsoft.App/managedEnvironments/privateEndpointConnections/read",
     "Microsoft.App/managedEnvironments/read",
+    "Microsoft.App/sandboxGroups/read",
+    "Microsoft.App/sandboxGroups/vnetConnections/read",
     "Microsoft.Appconfiguration/configurationStores/read",
     "Microsoft.Authorization/classicAdministrators/read",
     "Microsoft.Authorization/denyAssignments/read",
@@ -462,6 +464,18 @@
       "service": "Microsoft.App",
       "action": "Get",
       "source_file": "appcontainers.go"
+    },
+    {
+      "permission": "Microsoft.App/sandboxGroups/read",
+      "service": "Microsoft.App",
+      "action": "NewListBySubscriptionPager",
+      "source_file": "appcontainers_sandboxgroups.go"
+    },
+    {
+      "permission": "Microsoft.App/sandboxGroups/vnetConnections/read",
+      "service": "Microsoft.App",
+      "action": "NewListBySandboxGroupPager",
+      "source_file": "appcontainers_sandboxgroups.go"
     },
     {
       "permission": "Microsoft.Appconfiguration/configurationStores/read",
