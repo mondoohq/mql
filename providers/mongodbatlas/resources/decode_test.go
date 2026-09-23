@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mongodb.org/atlas-sdk/v20250312025/admin"
 )
 
@@ -589,4 +590,50 @@ func TestDecodeTeamRole(t *testing.T) {
 
 	assert.Equal(t, "60d1d0b0e1b2c3d4e5f60015", tr.GetTeamId())
 	assert.Equal(t, []string{"GROUP_OWNER"}, tr.GetRoleNames())
+}
+
+func TestDecodeMaintenanceWindowWaves(t *testing.T) {
+	var w admin.GroupMaintenanceWindow
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"autoDeferOnceEnabled": false,
+		"dayOfWeek": 1,
+		"hourOfDay": 3,
+		"numberOfDeferrals": 0,
+		"startASAP": false,
+		"timeZoneId": "UTC",
+		"waveAssignment": 3,
+		"effectiveWaveAssignment": 1
+	}`), &w))
+
+	// A project whose organization derives waves from environment tags reports
+	// a stored assignment that differs from the wave actually scheduled.
+	require.NotNil(t, w.WaveAssignment)
+	assert.Equal(t, 3, *w.WaveAssignment)
+	require.NotNil(t, w.EffectiveWaveAssignment)
+	assert.Equal(t, 1, *w.EffectiveWaveAssignment)
+
+	// dayOfWeek 1 is Sunday, a real value that must not be confused with unset.
+	require.NotNil(t, w.DayOfWeek)
+	assert.Equal(t, 1, *w.DayOfWeek)
+	require.NotNil(t, w.NumberOfDeferrals, "zero deferrals is a reading, not an absence")
+	assert.Equal(t, 0, *w.NumberOfDeferrals)
+}
+
+func TestDecodeMaintenanceWindowWithoutWavesOrDayStaysNull(t *testing.T) {
+	var w admin.GroupMaintenanceWindow
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"hourOfDay": 0,
+		"numberOfDeferrals": 0,
+		"timeZoneId": "UTC",
+		"waveAssignment": null
+	}`), &w))
+
+	assert.Nil(t, w.WaveAssignment, "a cleared or never-set wave stays null, not wave 0")
+	assert.Nil(t, w.EffectiveWaveAssignment)
+	assert.Nil(t, w.DayOfWeek, "a project without a configured window reports no day")
+	require.NotNil(t, w.HourOfDay)
+	assert.Equal(t, 0, *w.HourOfDay, "hour 0 is midnight, not an absence")
+
+	assert.Nil(t, llx.IntDataPtr(w.WaveAssignment).Value)
+	assert.Nil(t, llx.IntDataPtr(w.DayOfWeek).Value)
 }

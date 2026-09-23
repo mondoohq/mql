@@ -1354,6 +1354,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mongodbatlas.maintenanceWindowConfig.protectedHoursEndHourOfDay": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMongodbatlasMaintenanceWindowConfig).GetProtectedHoursEndHourOfDay()).ToDataRes(types.Int)
 	},
+	"mongodbatlas.maintenanceWindowConfig.waveAssignment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMongodbatlasMaintenanceWindowConfig).GetWaveAssignment()).ToDataRes(types.Int)
+	},
+	"mongodbatlas.maintenanceWindowConfig.effectiveWaveAssignment": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMongodbatlasMaintenanceWindowConfig).GetEffectiveWaveAssignment()).ToDataRes(types.Int)
+	},
 	"mongodbatlas.alertConfig.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMongodbatlasAlertConfig).GetId()).ToDataRes(types.String)
 	},
@@ -3216,6 +3222,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mongodbatlas.maintenanceWindowConfig.protectedHoursEndHourOfDay": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMongodbatlasMaintenanceWindowConfig).ProtectedHoursEndHourOfDay, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"mongodbatlas.maintenanceWindowConfig.waveAssignment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMongodbatlasMaintenanceWindowConfig).WaveAssignment, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"mongodbatlas.maintenanceWindowConfig.effectiveWaveAssignment": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMongodbatlasMaintenanceWindowConfig).EffectiveWaveAssignment, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"mongodbatlas.alertConfig.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -7411,6 +7425,8 @@ type mqlMongodbatlasMaintenanceWindowConfig struct {
 	TimeZoneId                   plugin.TValue[string]
 	ProtectedHoursStartHourOfDay plugin.TValue[int64]
 	ProtectedHoursEndHourOfDay   plugin.TValue[int64]
+	WaveAssignment               plugin.TValue[int64]
+	EffectiveWaveAssignment      plugin.TValue[int64]
 }
 
 // createMongodbatlasMaintenanceWindowConfig creates a new instance of this resource
@@ -7475,6 +7491,14 @@ func (c *mqlMongodbatlasMaintenanceWindowConfig) GetProtectedHoursStartHourOfDay
 
 func (c *mqlMongodbatlasMaintenanceWindowConfig) GetProtectedHoursEndHourOfDay() *plugin.TValue[int64] {
 	return &c.ProtectedHoursEndHourOfDay
+}
+
+func (c *mqlMongodbatlasMaintenanceWindowConfig) GetWaveAssignment() *plugin.TValue[int64] {
+	return &c.WaveAssignment
+}
+
+func (c *mqlMongodbatlasMaintenanceWindowConfig) GetEffectiveWaveAssignment() *plugin.TValue[int64] {
+	return &c.EffectiveWaveAssignment
 }
 
 // mqlMongodbatlasAlertConfig for the mongodbatlas.alertConfig resource

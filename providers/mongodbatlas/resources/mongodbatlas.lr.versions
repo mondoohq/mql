@@ -281,12 +281,14 @@ mongodbatlas.maintenanceWindow 13.4.1
 mongodbatlas.maintenanceWindowConfig 13.4.1
 mongodbatlas.maintenanceWindowConfig.autoDeferOnceEnabled 13.4.1
 mongodbatlas.maintenanceWindowConfig.dayOfWeek 13.4.1
+mongodbatlas.maintenanceWindowConfig.effectiveWaveAssignment 14.0.1
 mongodbatlas.maintenanceWindowConfig.hourOfDay 13.4.1
 mongodbatlas.maintenanceWindowConfig.numberOfDeferrals 13.4.1
 mongodbatlas.maintenanceWindowConfig.protectedHoursEndHourOfDay 13.4.1
 mongodbatlas.maintenanceWindowConfig.protectedHoursStartHourOfDay 13.4.1
 mongodbatlas.maintenanceWindowConfig.startAsap 13.4.1
 mongodbatlas.maintenanceWindowConfig.timeZoneId 13.4.1
+mongodbatlas.maintenanceWindowConfig.waveAssignment 14.0.1
 mongodbatlas.maxServiceAccountSecretValidityInHours 13.0.0
 mongodbatlas.mcpConfiguration 13.3.1
 mongodbatlas.mcpConfiguration.clientId 13.3.1
