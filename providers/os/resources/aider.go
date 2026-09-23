@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -37,7 +38,22 @@ type aiderConfig struct {
 	APIKey interface{} `json:"api-key"`
 }
 
+// mqlAiderInternal caches the parsed config, so model() and hasApiKeys() read
+// and parse the file once between them.
+type mqlAiderInternal struct {
+	configOnce      sync.Once
+	cachedConfig    *aiderConfig
+	cachedConfigErr error
+}
+
 func (r *mqlAider) loadConfig() (*aiderConfig, error) {
+	r.configOnce.Do(func() {
+		r.cachedConfig, r.cachedConfigErr = r.readConfig()
+	})
+	return r.cachedConfig, r.cachedConfigErr
+}
+
+func (r *mqlAider) readConfig() (*aiderConfig, error) {
 	data, err := connectionAfs(r.MqlRuntime).ReadFile(r.ConfigPath.Data)
 	if err != nil {
 		if os.IsNotExist(err) {

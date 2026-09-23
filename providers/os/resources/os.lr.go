@@ -99943,7 +99943,7 @@ func (c *mqlIbmBobSkill) GetPurl() *plugin.TValue[string] {
 type mqlAider struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlAiderInternal it will be used here
+	mqlAiderInternal
 	ConfigPath plugin.TValue[string]
 	Package    plugin.TValue[*mqlPackage]
 	Runtime    plugin.TValue[*mqlExtensionRuntime]

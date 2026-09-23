@@ -271,18 +271,11 @@ func (r *mqlClaudeCode) mcpServers() ([]interface{}, error) {
 	} else if state != nil {
 		servers = claudeMcpServers(r.afs(), state)
 	}
-	// Ensure any server present only in the auth cache is still reported.
-	userScope := map[string]struct{}{}
-	for _, srv := range servers {
-		if srv.project == "" {
-			userScope[srv.name] = struct{}{}
-		}
-	}
+	authNames := make([]string, 0, len(authCache))
 	for name := range authCache {
-		if _, ok := userScope[name]; !ok {
-			servers = append(servers, claudeScopedMcpServer{name: name})
-		}
+		authNames = append(authNames, name)
 	}
+	servers = withAuthCacheOnlyServers(servers, authNames)
 
 	var result []interface{}
 	for _, scoped := range servers {
@@ -508,6 +501,32 @@ func claudeMcpServers(afs *afero.Afero, state *claudeBackupState) []claudeScoped
 		return out[i].name < out[j].name
 	})
 	return out
+}
+
+// withAuthCacheOnlyServers appends a user-scope entry, without connection
+// details, for every needs-auth cache name that no scope defines, so a server
+// Claude Code only remembers from its auth cache is still reported. The cache is
+// keyed by server name alone, so a name any scope already defines (user, local
+// or project) is that server, not another one: adding it again would report a
+// project-scoped server twice, once under a phantom user scope. Added names are
+// sorted, so output and ids stay stable across runs.
+func withAuthCacheOnlyServers(servers []claudeScopedMcpServer, authNames []string) []claudeScopedMcpServer {
+	known := make(map[string]struct{}, len(servers))
+	for _, srv := range servers {
+		known[srv.name] = struct{}{}
+	}
+	var added []string
+	for _, name := range authNames {
+		if _, ok := known[name]; !ok {
+			known[name] = struct{}{}
+			added = append(added, name)
+		}
+	}
+	sort.Strings(added)
+	for _, name := range added {
+		servers = append(servers, claudeScopedMcpServer{name: name})
+	}
+	return servers
 }
 
 // claudeMcpServerID is the resource id of a Claude Code MCP server. A user-scope

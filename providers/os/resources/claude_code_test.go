@@ -517,6 +517,29 @@ func TestClaudeMcpServersScopes(t *testing.T) {
 	}, got)
 }
 
+// A name in the needs-auth cache that a project scope already defines is that
+// project's server: it must not come back a second time as a user-scope server.
+// Only a name no scope defines is added, once, without connection details.
+func TestWithAuthCacheOnlyServers(t *testing.T) {
+	servers := []claudeScopedMcpServer{
+		{name: "filesystem"},
+		{project: "/home/alice/src/api", name: "memory"},
+	}
+	got := withAuthCacheOnlyServers(servers, []string{"memory", "zeta", "filesystem", "alpha", "zeta"})
+
+	type row struct{ project, name string }
+	var rows []row
+	for _, s := range got {
+		rows = append(rows, row{s.project, s.name})
+	}
+	assert.Equal(t, []row{
+		{"", "filesystem"},
+		{"/home/alice/src/api", "memory"},
+		{"", "alpha"},
+		{"", "zeta"},
+	}, rows)
+}
+
 func TestClaudeMcpServerID(t *testing.T) {
 	assert.Equal(t, "claude.code.mcpServer/memory", claudeMcpServerID("", "memory"),
 		"user-scope ids must not change")
