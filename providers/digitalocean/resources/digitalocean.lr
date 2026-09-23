@@ -24,6 +24,12 @@ digitalocean @root {
   droplets() []digitalocean.droplet
   // MicroDroplets (container instances that pause when idle)
   microDroplets() []digitalocean.microDroplet
+  // MicroDroplet checkpoints (saved memory and disk state) held by the team
+  microDropletCheckpoints() []digitalocean.microDroplet.checkpoint
+  // Hosted agent configs (saved agent definitions) held by the team
+  hostedAgentConfigs() []digitalocean.hostedAgentConfig
+  // Hosted agent triggers (webhook and cron automations) held by the team
+  hostedAgentTriggers() []digitalocean.hostedAgentTrigger
   // Firewalls
   firewalls() []digitalocean.firewall
   // Managed databases
@@ -251,8 +257,10 @@ digitalocean.droplet @defaults("id name status") {
 // traffic arrives. The `networking` mode decides whether the instance
 // answers on an address reachable from the internet or only from inside
 // a VPC, and `isPublic` reduces that to the predicate an exposure audit
-// asks for. Also queryable are the `image` it runs, the `endpoint` it
-// serves on, the hardware `size`, the lifecycle `state`, and the
+// asks for. Also queryable are the `image` it runs, the `endpoint` and
+// `urls` it serves on, the `ports` it exposes, the allocated `vcpus`,
+// `memoryMib`, and `diskGb`, the lifecycle `state` and any
+// `failureReason`, the `tags` applied to it, and the
 // auto-pause and auto-resume settings that decide whether it keeps
 // running while unused. MicroDroplets are not covered by cloud
 // firewalls, so `networking` is the only ingress control there is.
@@ -271,9 +279,29 @@ digitalocean.microDroplet @defaults("id name region state networking") {
   state string
   // Size slug describing the allocated hardware
   //
-  // Always null. The API no longer reports a size slug; it reports the
-  // allocated CPU, memory, and disk as separate values instead.
+  // Deprecated in favor of vcpus, memoryMib, and diskGb. Always null: the
+  // API no longer reports a size slug.
   size @maturity("deprecated") string
+  // Number of virtual CPUs allocated to the instance; null when the API reports no size
+  vcpus int
+  // Memory allocated to the instance, in mebibytes; null when the API reports no size
+  memoryMib int
+  // Disk capacity allocated to the instance, in gigabytes; null when the API reports no size
+  diskGb int
+  // Container ports the instance exposes
+  ports []int
+  // Ingress URLs attached to the instance
+  //
+  // Each entry is a dict with keys: hostname, port (the instance port
+  // the URL routes to), default (whether it is the instance's primary
+  // URL), and status (PENDING or ACTIVE).
+  urls []dict
+  // HTTP protocol the instance serves on its URLs, http or http2
+  httpProtocol string
+  // Tags applied to the instance
+  tags []string
+  // Reason the instance failed, as reported by the API; empty when none is reported
+  failureReason string
   // Network placement of the instance
   //
   // Either public, meaning the instance answers on an address reachable
@@ -301,6 +329,132 @@ digitalocean.microDroplet @defaults("id name region state networking") {
   autoResumeEnabled bool
   // Time the resource was created
   createdAt time
+  // Checkpoints captured from this instance
+  checkpoints() []digitalocean.microDroplet.checkpoint
+}
+
+// MicroDroplet checkpoint
+//
+// Saved copy of a MicroDroplet's memory and disk state, from which a new
+// instance can be started. A checkpoint holds whatever the instance had in
+// memory when it was taken, including any credentials or data the
+// workload had loaded, and it stays in the account after the instance it
+// was taken from is deleted. `microDroplet` resolves the source instance
+// and is null when that instance is no longer listed, which makes an
+// orphaned checkpoint the query
+// `digitalocean.microDropletCheckpoints.where(microDroplet == null)`.
+// `microDropletName` keeps the source instance's name for that case. Also
+// queryable are the `status`, `region`, the captured `memoryBytes` and
+// `diskBytes`, and the `vcpus`, `memoryMib`, and `diskGb` a restore
+// starts with.
+private digitalocean.microDroplet.checkpoint @defaults("id name status microDropletName") {
+  // Checkpoint ID
+  id string
+  // Checkpoint name
+  name string
+  // Region slug the checkpoint is stored in
+  region string
+  // Checkpoint status
+  //
+  // One of CHECKPOINT_UNKNOWN, CHECKPOINT_CREATING, CHECKPOINT_AVAILABLE,
+  // CHECKPOINT_FAILED, CHECKPOINT_DELETED, or CHECKPOINT_DELETING.
+  status string
+  // MicroDroplet the checkpoint was captured from; null when that instance is no longer listed
+  microDroplet() digitalocean.microDroplet
+  // Name of the MicroDroplet the checkpoint was captured from, kept after that instance is deleted
+  microDropletName string
+  // Size of the captured memory state, in bytes
+  memoryBytes int
+  // Size of the captured disk state, in bytes
+  diskBytes int
+  // Number of virtual CPUs an instance restored from the checkpoint starts with; null when the checkpoint records no size
+  vcpus int
+  // Memory an instance restored from the checkpoint starts with, in mebibytes; null when the checkpoint records no size
+  memoryMib int
+  // Disk capacity an instance restored from the checkpoint starts with, in gigabytes; null when the checkpoint records no size
+  diskGb int
+  // Time the checkpoint was created
+  createdAt time
+}
+
+// Hosted agent config
+//
+// Saved, immutable definition of a hosted coding agent that sessions are
+// started from. Identifies the config by `id` and `name`, records who
+// created it in `createdBy`, the agent spec version it was written
+// against in `agentSpecSchemaVersion`, and a `contentHash` of its
+// manifest that changes whenever the definition does. `credentials` lists
+// the credential slots the agent is given (secret values are never
+// returned), which answers which agents hold a stored secret or an OAuth
+// grant for a given provider.
+private digitalocean.hostedAgentConfig @defaults("id name createdBy") {
+  // Config ID
+  id string
+  // Config name
+  name string
+  // Agent spec schema version the manifest was written against
+  agentSpecSchemaVersion string
+  // Hash of the config manifest
+  contentHash string
+  // Principal that created the config
+  createdBy string
+  // Time the config was created
+  createdAt time
+  // Time the config was last updated
+  updatedAt time
+  // Credential slots the agent is given
+  //
+  // Each entry is a dict with keys: name (the slot name), source (where
+  // the credential comes from, such as tenantSecret or oauth), and
+  // provider (the external service it authenticates to, when set). Secret
+  // values are never returned.
+  credentials() []dict
+}
+
+// Hosted agent trigger
+//
+// Webhook or cron automation that starts a hosted agent run. `kind` is
+// webhook or cron and `status` is active or paused. Webhook triggers name
+// the `webhookProvider` whose signature scheme authenticates deliveries;
+// cron triggers carry a `cronExpression`, `cronTimezone`, and
+// `nextRunAt`. `sessionMode` decides whether each firing starts a fresh
+// session or reuses a bound one, `agentKind` names the agent runtime that
+// runs, and the output fields report where run output is delivered.
+private digitalocean.hostedAgentTrigger @defaults("id name kind status") {
+  // Trigger ID
+  id string
+  // Trigger name
+  name string
+  // How the trigger fires, webhook or cron
+  kind string
+  // Trigger status, active or paused
+  status string
+  // Whether each firing starts a fresh session or reuses a bound session, fresh or reuse
+  sessionMode string
+  // Agent runtime the trigger runs, such as AGENT_KIND_CLAUDE_CODE or AGENT_KIND_CUSTOM
+  agentKind string
+  // Webhook provider whose signature scheme authenticates deliveries
+  //
+  // One of github, gitlab, or custom. Empty for cron triggers.
+  webhookProvider string
+  // Cron expression the trigger fires on; empty for webhook triggers
+  cronExpression string
+  // Time zone the cron expression is evaluated in; empty for webhook triggers
+  cronTimezone string
+  // Next scheduled firing; null for webhook triggers
+  nextRunAt time
+  // Where run output is delivered
+  //
+  // One of none, email, or slack.
+  outputMode string
+  // Whether an email destination is configured for run output
+  outputEmailConfigured bool
+  // Whether a Slack destination is configured for run output
+  outputSlackConfigured bool
+  // Time the trigger was created
+  createdAt time
+  // Time the trigger was last updated
+  updatedAt time
 }
 
 // DigitalOcean firewall
@@ -360,8 +514,9 @@ private digitalocean.firewall.pendingChange @defaults("status removing") {
 // Single ingress (inbound) rule controlling traffic that reaches the
 // droplets a firewall protects. `protocol` is tcp, udp, or icmp and
 // `ports` is the affected port or range (a single port like "3306", a
-// range like "8000-9000", or "0"/"all" for every port). `openToInternet`
-// is true when the rule admits traffic from any address, that is, when
+// range like "8000-9000", or "0"/"all" for every port). `action` is
+// allow or deny. `openToInternet` is true when the rule admits traffic
+// from any address, that is, when it is an allow rule and
 // `sourceAddresses` contains 0.0.0.0/0 or ::/0, which makes auditing
 // publicly reachable ports a single predicate. The source is otherwise
 // described by `sourceAddresses` (CIDRs), `sourceTags`, and the
@@ -375,7 +530,15 @@ private digitalocean.firewall.ingressRule @defaults("protocol ports openToIntern
   // A single port ("3306"), a range ("8000-9000"), or "0"/"all" for
   // every port.
   ports string
-  // Whether the rule admits traffic from any address (0.0.0.0/0 or ::/0)
+  // Action the rule takes on matching traffic
+  //
+  // Either allow or deny. Rules the API returns without an action are
+  // allow rules, the API default, and are reported as allow.
+  action string
+  // Whether the rule admits traffic from any address
+  //
+  // True for an allow rule whose source addresses include 0.0.0.0/0 or
+  // ::/0. A deny rule over those ranges blocks traffic and is not open.
   openToInternet bool
   // Source address CIDRs trusted by this rule
   sourceAddresses []string
@@ -411,8 +574,9 @@ private digitalocean.network.exposure @defaults("internetReachable hasPublicIp")
 // Single egress (outbound) rule controlling traffic that leaves the
 // droplets a firewall protects. `protocol` is tcp, udp, or icmp and
 // `ports` is the affected port or range (a single port like "3306", a
-// range like "8000-9000", or "0"/"all" for every port). `openToInternet`
-// is true when the rule permits traffic to any address, that is, when
+// range like "8000-9000", or "0"/"all" for every port). `action` is
+// allow or deny. `openToInternet` is true when the rule permits traffic
+// to any address, that is, when it is an allow rule and
 // `destinationAddresses` contains 0.0.0.0/0 or ::/0. The destination is
 // otherwise described by `destinationAddresses` (CIDRs), `destinationTags`,
 // and the `destinationDroplets`, `destinationLoadBalancers`, and
@@ -425,7 +589,15 @@ private digitalocean.firewall.egressRule @defaults("protocol ports openToInterne
   // A single port ("3306"), a range ("8000-9000"), or "0"/"all" for
   // every port.
   ports string
-  // Whether the rule permits traffic to any address (0.0.0.0/0 or ::/0)
+  // Action the rule takes on matching traffic
+  //
+  // Either allow or deny. Rules the API returns without an action are
+  // allow rules, the API default, and are reported as allow.
+  action string
+  // Whether the rule permits traffic to any address
+  //
+  // True for an allow rule whose destination addresses include 0.0.0.0/0
+  // or ::/0. A deny rule over those ranges blocks traffic and is not open.
   openToInternet bool
   // Destination address CIDRs allowed by this rule
   destinationAddresses []string
