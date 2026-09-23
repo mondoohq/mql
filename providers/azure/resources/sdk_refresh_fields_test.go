@@ -9,6 +9,7 @@ import (
 
 	apps "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/appcontainers/armappcontainers/v5"
 	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armpolicy/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/llx"
@@ -55,6 +56,25 @@ func TestPolicyAssignmentSelfServeExemptionSettings(t *testing.T) {
 		assert.Equal(t, llx.NilData, args["selfServeExemptionEnabled"])
 		assert.Equal(t, llx.NilData, args["selfServeExemptionPolicyDefinitionReferenceIds"])
 	})
+}
+
+// The single-assignment lookup decodes through the SDK. Its conversion must
+// keep an absent ID list null, like the list path, rather than empty.
+func TestSelfServeFromSDK(t *testing.T) {
+	assert.Nil(t, selfServeFromSDK(nil))
+
+	var noIDs armpolicy.SelfServeExemptionSettings
+	require.NoError(t, json.Unmarshal([]byte(`{"enabled":true}`), &noIDs))
+	enabled, refIds := selfServeExemptionFields(selfServeFromSDK(&noIDs))
+	assert.Equal(t, true, enabled.Value)
+	assert.Equal(t, llx.NilData, refIds)
+
+	var withIDs armpolicy.SelfServeExemptionSettings
+	require.NoError(t, json.Unmarshal([]byte(`{"enabled":false,"policyDefinitionReferenceIds":["ref-1"]}`), &withIDs))
+	withIDs.PolicyDefinitionReferenceIDs = append(withIDs.PolicyDefinitionReferenceIDs, nil)
+	enabled, refIds = selfServeExemptionFields(selfServeFromSDK(&withIDs))
+	assert.Equal(t, false, enabled.Value)
+	assert.Equal(t, []any{"ref-1"}, refIds.Value)
 }
 
 // The fields only arrive when the request names an api-version that carries

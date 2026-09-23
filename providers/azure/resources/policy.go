@@ -125,14 +125,7 @@ func initAzureSubscriptionPolicyAssignment(runtime *plugin.Runtime, args map[str
 	args["overrides"] = llx.ArrayData(overrides, types.Dict)
 	args["resourceSelectors"] = llx.ArrayData(resourceSelectors, types.Dict)
 	args["location"] = llx.StringDataPtr(resp.Location)
-	var selfServe *policySelfServeExemptionSettings
-	if props.SelfServeExemptionSettings != nil {
-		selfServe = &policySelfServeExemptionSettings{
-			Enabled:                      props.SelfServeExemptionSettings.Enabled,
-			PolicyDefinitionReferenceIDs: convert.SliceStrPtrToStr(nonNilStrPtrs(props.SelfServeExemptionSettings.PolicyDefinitionReferenceIDs)),
-		}
-	}
-	args["selfServeExemptionEnabled"], args["selfServeExemptionPolicyDefinitionReferenceIds"] = selfServeExemptionFields(selfServe)
+	args["selfServeExemptionEnabled"], args["selfServeExemptionPolicyDefinitionReferenceIds"] = selfServeExemptionFields(selfServeFromSDK(props.SelfServeExemptionSettings))
 	if resp.Identity != nil {
 		args["identityType"] = llx.StringData(string(convert.ToValue(resp.Identity.Type)))
 		args["principalId"] = llx.StringDataPtr(resp.Identity.PrincipalID)
@@ -419,16 +412,20 @@ func selfServeExemptionFields(settings *policySelfServeExemptionSettings) (enabl
 	return llx.BoolDataPtr(settings.Enabled), refIds
 }
 
-// nonNilStrPtrs drops nil elements so the slice can be dereferenced safely.
-// It keeps a nil input nil, preserving the difference between absent and empty.
-func nonNilStrPtrs(in []*string) []*string {
+// selfServeFromSDK converts the SDK's settings to the shape the list path
+// decodes, so both paths share selfServeExemptionFields. A nil ID list stays
+// nil (absent), an empty one stays empty, and nil elements are dropped.
+func selfServeFromSDK(in *armpolicy.SelfServeExemptionSettings) *policySelfServeExemptionSettings {
 	if in == nil {
 		return nil
 	}
-	out := make([]*string, 0, len(in))
-	for _, s := range in {
-		if s != nil {
-			out = append(out, s)
+	out := &policySelfServeExemptionSettings{Enabled: in.Enabled}
+	if in.PolicyDefinitionReferenceIDs != nil {
+		out.PolicyDefinitionReferenceIDs = make([]string, 0, len(in.PolicyDefinitionReferenceIDs))
+		for _, id := range in.PolicyDefinitionReferenceIDs {
+			if id != nil {
+				out.PolicyDefinitionReferenceIDs = append(out.PolicyDefinitionReferenceIDs, *id)
+			}
 		}
 	}
 	return out
