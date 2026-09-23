@@ -2126,6 +2126,16 @@ private gitlab.project.deployKey @defaults("id title canPush") {
   expiresAt time
   // Whether the key has push (write) access
   canPush bool
+  // Time the key was last used
+  //
+  // Null when the key has never been used. GitLab refreshes this at most once
+  // a day, so recent use can lag by up to a day. A key with push access that
+  // has never been used, or not used in months, is a candidate for removal.
+  lastUsedAt time
+  // What the key may be used for
+  //
+  // One of `auth_and_signing`, `auth`, or `signing`.
+  usageType string
   // Age of the deploy key in days since creation
   daysOld() int
   // The project this deploy key is registered against
@@ -2671,6 +2681,13 @@ private gitlab.project.clusterAgent @defaults("id name") {
   name string
   // Time the agent was registered
   createdAt time
+  // Whether the agent is receptive
+  //
+  // A receptive agent is one GitLab connects to, for clusters that cannot
+  // open a connection to the GitLab instance. It accepts inbound connections
+  // from GitLab, so the cluster exposes an endpoint reachable from GitLab. A
+  // non-receptive agent dials out from the cluster to GitLab.
+  isReceptive bool
   // User who registered the agent
   createdBy() gitlab.user
   // Project holding the agent configuration

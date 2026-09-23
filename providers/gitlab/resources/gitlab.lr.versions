@@ -363,6 +363,7 @@ gitlab.project.clusterAgent.configProject 13.5.6
 gitlab.project.clusterAgent.createdAt 13.5.6
 gitlab.project.clusterAgent.createdBy 13.5.6
 gitlab.project.clusterAgent.id 13.5.6
+gitlab.project.clusterAgent.isReceptive 14.0.1
 gitlab.project.clusterAgent.name 13.5.6
 gitlab.project.clusterAgent.token 13.5.6
 gitlab.project.clusterAgent.token.createdAt 13.5.6
@@ -435,8 +436,10 @@ gitlab.project.deployKey.fingerprint 11.1.138
 gitlab.project.deployKey.fingerprintSHA256 11.1.138
 gitlab.project.deployKey.id 11.1.138
 gitlab.project.deployKey.key 11.1.138
+gitlab.project.deployKey.lastUsedAt 14.0.1
 gitlab.project.deployKey.project 13.0.8
 gitlab.project.deployKey.title 11.1.138
+gitlab.project.deployKey.usageType 14.0.1
 gitlab.project.deployKeys 11.1.138
 gitlab.project.deployToken 11.1.138
 gitlab.project.deployToken.expired 11.1.138

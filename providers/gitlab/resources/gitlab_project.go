@@ -2409,6 +2409,8 @@ func (p *mqlGitlabProject) deployKeys() ([]any, error) {
 			"createdAt":         llx.TimeDataPtr(key.CreatedAt),
 			"expiresAt":         llx.TimeDataPtr(key.ExpiresAt),
 			"canPush":           llx.BoolData(key.CanPush),
+			"lastUsedAt":        llx.TimeDataPtr(key.LastUsedAt),
+			"usageType":         llx.StringData(key.UsageType),
 		}
 
 		mqlKey, err := CreateResource(p.MqlRuntime, "gitlab.project.deployKey", keyInfo)
