@@ -135,11 +135,14 @@ window, and everything after it is ordinary work at ordinary pace.
 
 ### 1. Nine kinds, named by their HTTP equivalent
 
-Every classified failure is one of these. **The HTTP column names the kinds; it
-is not implemented.** No status-to-kind table exists anywhere in the design, and
-no status is carried on the wire (§4). It is here because "403" is the shortest
-way to say what `forbidden` means to a reader who has to classify an error they
-have never seen before — see §2.
+Every classified failure is one of these. **The HTTP column names the
+ErrorKinds, and it is also the SDK's default mapping.** The SDK maps an HTTP
+status, or a gRPC status code for SDKs that speak gRPC, to its mql ErrorKind
+(phase 2). A provider calls that mapping only after its own checks, because the
+body can overrule the status (§2): the mapping is a starting point, never the
+whole answer. No status is carried on the wire (§4). The column is here because
+"403" is also the shortest way to say what `forbidden` means to a reader who has
+to classify an error they have never seen before.
 
 | kind | enum | HTTP | means | in the tree today |
 |---|---|---|---|---|
@@ -149,7 +152,7 @@ have never seen before — see §2.
 | not applicable | `ERROR_KIND_NOT_APPLICABLE` | 501 | the question does not apply to this target: API not enabled, resource provider not registered, feature not in this plan or edition, service not offered in this region, resource not supported on this platform | `isServiceDisabled`, `isOrganizationsNotInUseError`, `IsPlanRestricted`, `IsServiceNotAvailableInRegionError`, `kernel.go:27` |
 | gone | `ERROR_KIND_GONE` | 410 | the API we call existed and does not any more: retired endpoint, removed operation, command the target no longer has | `isRemovedAPIEndpoint`, `azureClassicAdministratorsRetired`, `isUnknownCommandErr` |
 | too many requests | `ERROR_KIND_TOO_MANY_REQUESTS` | 429 | throttled. Carries `retry_after` when the API said so | handled in three providers (`github/connection/connection.go:297`, which folds it in with 403; `iru`; `ms365`), generic everywhere else |
-| unavailable | `ERROR_KIND_UNAVAILABLE` | 503 | the target is temporarily not answering: 5xx, connection refused, timeout, DNS failure | `isServiceUnavailable`, `httpNotReachable`, `isConnectionRefused` |
+| unavailable | `ERROR_KIND_UNAVAILABLE` | 503 | the target is temporarily not answering: 503, connection refused, DNS failure. Other 5xx statuses and timeouts give the user nothing to act on and stay unclassified | `isServiceUnavailable`, `httpNotReachable`, `isConnectionRefused` |
 | malformed data | `ERROR_KIND_MALFORMED_DATA` | — | the target answered and what it said cannot be read: config file that does not parse, JSON that does not decode, a field in a shape the API does not document | `auditd.go:97,103` ("failed to parse auditd config"), and every parse error in `providers/os` that today reaches the user as bare text |
 | asset vanished | `ERROR_KIND_ASSET_VANISHED` | — | the asset went away while we were scanning it | `mqlc/mqlc.go:1446`, read downstream by a string prefix (`nodes.go:506`) |
 
@@ -166,6 +169,13 @@ Everything else is **unclassified**: `ERROR_KIND_UNSPECIFIED`, which is also wha
 an absent detail means. Unclassified is not a failure of the taxonomy, it is the
 honest default, and it renders and scores as a hard error. A kind is a claim; a
 provider that does not know makes no claim.
+
+**An ErrorKind exists because there is something for the user to do.**
+Unauthenticated and forbidden point at credentials and grants, not applicable
+at what the target offers, too many requests at pacing, unavailable at a target
+that is not answering. A failure that tells the user nothing to do, such as a
+500, a 504 or a timeout, stays unclassified. That is the test for a new
+mapping: name the user's action, or leave it out.
 
 `ERROR_KIND_ASSET_VANISHED` is built where the error is raised
 (`mqlc/mqlc.go:1446`) rather than by a classifier, so it needs no provider
@@ -527,15 +537,20 @@ complete them, alongside the checks §3 turns into errors.
 flag and no version split: the field is additive, and no score changes. What
 does change is the region loops. A denied region that is dropped silently today
 becomes the same result with the gap attached. A loop that fails the whole list
-today, because one region was throttled or answered 5xx, becomes a valid result
+today, because one region was throttled or failed, becomes a valid result
 with that region as a coverage gap: a pass or a failure on the data that was
 read, where today it is an error.
 
-That second change only holds up if the gap is visible wherever the result is.
-The rule, written and not enforced: providers convert their loops together with
-the rest of this ADR, including surfacing coverage gaps in mql's output, in
-cnspec's output, and upstream. A loop converted before its errors show up in
-all three turns a visible error into a result that looks complete.
+That second change only holds up if the gap is visible where the result is
+read. The rule, written and not enforced: providers convert their loops
+together with the rest of this ADR, including surfacing coverage gaps in mql's
+output and in cnspec's output. A loop converted before its gaps show up in both
+turns a visible error into a result that looks complete.
+
+The server is not part of the rule. It ignores `coverage_gaps` until it reads
+them and keeps receiving every value and score, so nothing breaks while it
+catches up. Until then a region that was throttled shows in the platform as the
+pass or failure it evaluated to, without the gap beside it.
 
 The per-provider region loops move onto one shared helper as part of the same
 work, in v14. Converting every loop to `llx.Partial` touches each of them
@@ -656,18 +671,22 @@ taxonomy at all.
    the three sites. Nothing is classified yet: every error is unclassified and
    behaves exactly as today. Verifiable on its own by round-tripping a kind
    through a mock provider.
-2. **SDK classifiers and the three big clouds.** Shared helpers over HTTP status
-   and gRPC code, then aws, azure and gcp mapping files. The 1,018 call sites in
-   those three providers are the bulk of the migration and can land service by
-   service. A refusal inside a region, project or subscription loop is not
-   phase 2: it is a partial result and waits for phase 3.
-3. **Partial results (§8).** `CoverageGap`, `Result.coverage_gaps`,
-   `DataRes.coverage_gaps`, `llx.Partial`, the `GetOrCompute`, `ToDataRes` and
-   `providers/runtime.go` changes, executor propagation, and attaching the
-   errors to scores. Region loops convert, both the silent ones and the ones
-   that fail a whole list today, together with surfacing the errors in mql,
-   cnspec and upstream (§8). The per-provider region loops move onto one shared
-   helper in the same step.
+2. **SDK classifiers and the three big clouds, part 1/2: single calls.** The
+   SDK's default mapping from HTTP status and gRPC status code to mql ErrorKind
+   (§1), then aws, azure and gcp mapping files for their single-call sites,
+   service by service. A refusal inside a region, project or subscription loop
+   is not phase 2: it is a partial result and waits for phase 3. In aws that is
+   about 340 of the 782 `Is400AccessDeniedError` sites, the ones inside a
+   per-region job; nearly all gcp and azure sites are single calls and stay
+   here.
+3. **Partial results (§8), and the three big clouds, part 2/2: loops.**
+   `CoverageGap`, `Result.coverage_gaps`, `DataRes.coverage_gaps`,
+   `llx.Partial`, the `GetOrCompute`, `ToDataRes` and `providers/runtime.go`
+   changes, executor propagation, and attaching the errors to scores. Region
+   loops convert, both the silent ones and the ones that fail a whole list
+   today, together with surfacing the gaps in mql and cnspec (§8); the server
+   follows on its own schedule. The per-provider region loops move onto one
+   shared helper in the same step.
 4. **Permission attribution.** Call sites name their permission; the
    `permissions.json` fallback fills the rest.
 5. **Rendering and aggregation.** CLI grouping, structured logs.
