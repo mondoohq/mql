@@ -64,12 +64,7 @@ func microDropletArgs(md *godo.MicroVM) (map[string]*llx.RawData, error) {
 		image = md.Source.OCIRef
 	}
 
-	vcpus, memoryMib, diskGb := llx.NilData, llx.NilData, llx.NilData
-	if md.Size != nil {
-		vcpus = llx.IntData(int64(md.Size.CPU))
-		memoryMib = llx.IntData(int64(md.Size.Memory))
-		diskGb = llx.IntData(int64(md.Size.Disk))
-	}
+	vcpus, memoryMib, diskGb := microVMSizeArgs(md.Size)
 
 	return map[string]*llx.RawData{
 		"__id":                 llx.StringData(id),
