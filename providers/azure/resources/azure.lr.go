@@ -5558,6 +5558,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.networkService.firewall.afcServiceEndpoint": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceFirewall).GetAfcServiceEndpoint()).ToDataRes(types.String)
 	},
+	"azure.subscription.networkService.firewall.aiSecurityAddOn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionNetworkServiceFirewall).GetAiSecurityAddOn()).ToDataRes(types.Bool)
+	},
 	"azure.subscription.networkService.firewall.policy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionNetworkServiceFirewall).GetPolicy()).ToDataRes(types.Resource("azure.subscription.networkService.firewallPolicy"))
 	},
@@ -15992,6 +15995,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.policy.assignment.tenantId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionPolicyAssignment).GetTenantId()).ToDataRes(types.String)
 	},
+	"azure.subscription.policy.assignment.selfServeExemptionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionPolicyAssignment).GetSelfServeExemptionEnabled()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.policy.assignment.selfServeExemptionPolicyDefinitionReferenceIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionPolicyAssignment).GetSelfServeExemptionPolicyDefinitionReferenceIds()).ToDataRes(types.Array(types.String))
+	},
 	"azure.subscription.policy.assignment.policyDefinition": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionPolicyAssignment).GetPolicyDefinition()).ToDataRes(types.Resource("azure.subscription.policy.definition"))
 	},
@@ -16075,6 +16084,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.policy.exemption.exemptionCategory": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionPolicyExemption).GetExemptionCategory()).ToDataRes(types.String)
+	},
+	"azure.subscription.policy.exemption.managementMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionPolicyExemption).GetManagementMode()).ToDataRes(types.String)
 	},
 	"azure.subscription.policy.exemption.scope": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionPolicyExemption).GetScope()).ToDataRes(types.String)
@@ -19361,6 +19373,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.containerAppService.containerApp.scaleRules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionContainerAppServiceContainerApp).GetScaleRules()).ToDataRes(types.Array(types.Dict))
 	},
+	"azure.subscription.containerAppService.containerApp.allowScalingRuleOverride": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionContainerAppServiceContainerApp).GetAllowScalingRuleOverride()).ToDataRes(types.Bool)
+	},
 	"azure.subscription.containerAppService.containerApp.principalId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionContainerAppServiceContainerApp).GetPrincipalId()).ToDataRes(types.String)
 	},
@@ -19519,6 +19534,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.containerAppService.job.provisioningState": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionContainerAppServiceJob).GetProvisioningState()).ToDataRes(types.String)
+	},
+	"azure.subscription.containerAppService.job.runningState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionContainerAppServiceJob).GetRunningState()).ToDataRes(types.String)
 	},
 	"azure.subscription.containerAppService.job.eventStreamEndpoint": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionContainerAppServiceJob).GetEventStreamEndpoint()).ToDataRes(types.String)
@@ -27273,6 +27291,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.networkService.firewall.afcServiceEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionNetworkServiceFirewall).AfcServiceEndpoint, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.networkService.firewall.aiSecurityAddOn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionNetworkServiceFirewall).AiSecurityAddOn, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.networkService.firewall.policy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -42427,6 +42449,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionPolicyAssignment).TenantId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.policy.assignment.selfServeExemptionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionPolicyAssignment).SelfServeExemptionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.policy.assignment.selfServeExemptionPolicyDefinitionReferenceIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionPolicyAssignment).SelfServeExemptionPolicyDefinitionReferenceIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.policy.assignment.policyDefinition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionPolicyAssignment).PolicyDefinition, ok = plugin.RawToTValue[*mqlAzureSubscriptionPolicyDefinition](v.Value, v.Error)
 		return
@@ -42549,6 +42579,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.policy.exemption.exemptionCategory": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionPolicyExemption).ExemptionCategory, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.policy.exemption.managementMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionPolicyExemption).ManagementMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.policy.exemption.scope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -47363,6 +47397,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionContainerAppServiceContainerApp).ScaleRules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.containerAppService.containerApp.allowScalingRuleOverride": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionContainerAppServiceContainerApp).AllowScalingRuleOverride, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.containerAppService.containerApp.principalId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionContainerAppServiceContainerApp).PrincipalId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -47593,6 +47631,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.containerAppService.job.provisioningState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionContainerAppServiceJob).ProvisioningState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.containerAppService.job.runningState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionContainerAppServiceJob).RunningState, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.containerAppService.job.eventStreamEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -62203,6 +62245,7 @@ type mqlAzureSubscriptionNetworkServiceFirewall struct {
 	SkuTier                   plugin.TValue[string]
 	ThreatIntelMode           plugin.TValue[string]
 	AfcServiceEndpoint        plugin.TValue[string]
+	AiSecurityAddOn           plugin.TValue[bool]
 	Policy                    plugin.TValue[*mqlAzureSubscriptionNetworkServiceFirewallPolicy]
 	IpConfigurations          plugin.TValue[[]any]
 	ManagementIpConfiguration plugin.TValue[*mqlAzureSubscriptionNetworkServiceFirewallIpConfig]
@@ -62294,6 +62337,10 @@ func (c *mqlAzureSubscriptionNetworkServiceFirewall) GetThreatIntelMode() *plugi
 
 func (c *mqlAzureSubscriptionNetworkServiceFirewall) GetAfcServiceEndpoint() *plugin.TValue[string] {
 	return &c.AfcServiceEndpoint
+}
+
+func (c *mqlAzureSubscriptionNetworkServiceFirewall) GetAiSecurityAddOn() *plugin.TValue[bool] {
+	return &c.AiSecurityAddOn
 }
 
 func (c *mqlAzureSubscriptionNetworkServiceFirewall) GetPolicy() *plugin.TValue[*mqlAzureSubscriptionNetworkServiceFirewallPolicy] {
@@ -98537,29 +98584,31 @@ type mqlAzureSubscriptionPolicyAssignment struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAzureSubscriptionPolicyAssignmentInternal
-	Id                         plugin.TValue[string]
-	AssignmentId               plugin.TValue[string]
-	Name                       plugin.TValue[string]
-	DisplayName                plugin.TValue[string]
-	Scope                      plugin.TValue[string]
-	NotScopes                  plugin.TValue[[]any]
-	Description                plugin.TValue[string]
-	EnforcementMode            plugin.TValue[string]
-	AssignmentType             plugin.TValue[string]
-	DefinitionVersion          plugin.TValue[string]
-	EffectiveDefinitionVersion plugin.TValue[string]
-	LatestDefinitionVersion    plugin.TValue[string]
-	Parameters                 plugin.TValue[any]
-	Metadata                   plugin.TValue[any]
-	NonComplianceMessages      plugin.TValue[[]any]
-	Overrides                  plugin.TValue[[]any]
-	ResourceSelectors          plugin.TValue[[]any]
-	Location                   plugin.TValue[string]
-	IdentityType               plugin.TValue[string]
-	PrincipalId                plugin.TValue[string]
-	TenantId                   plugin.TValue[string]
-	PolicyDefinition           plugin.TValue[*mqlAzureSubscriptionPolicyDefinition]
-	SystemMetadata             plugin.TValue[*mqlAzureSubscriptionSystemData]
+	Id                                             plugin.TValue[string]
+	AssignmentId                                   plugin.TValue[string]
+	Name                                           plugin.TValue[string]
+	DisplayName                                    plugin.TValue[string]
+	Scope                                          plugin.TValue[string]
+	NotScopes                                      plugin.TValue[[]any]
+	Description                                    plugin.TValue[string]
+	EnforcementMode                                plugin.TValue[string]
+	AssignmentType                                 plugin.TValue[string]
+	DefinitionVersion                              plugin.TValue[string]
+	EffectiveDefinitionVersion                     plugin.TValue[string]
+	LatestDefinitionVersion                        plugin.TValue[string]
+	Parameters                                     plugin.TValue[any]
+	Metadata                                       plugin.TValue[any]
+	NonComplianceMessages                          plugin.TValue[[]any]
+	Overrides                                      plugin.TValue[[]any]
+	ResourceSelectors                              plugin.TValue[[]any]
+	Location                                       plugin.TValue[string]
+	IdentityType                                   plugin.TValue[string]
+	PrincipalId                                    plugin.TValue[string]
+	TenantId                                       plugin.TValue[string]
+	SelfServeExemptionEnabled                      plugin.TValue[bool]
+	SelfServeExemptionPolicyDefinitionReferenceIds plugin.TValue[[]any]
+	PolicyDefinition                               plugin.TValue[*mqlAzureSubscriptionPolicyDefinition]
+	SystemMetadata                                 plugin.TValue[*mqlAzureSubscriptionSystemData]
 }
 
 // createAzureSubscriptionPolicyAssignment creates a new instance of this resource
@@ -98681,6 +98730,14 @@ func (c *mqlAzureSubscriptionPolicyAssignment) GetPrincipalId() *plugin.TValue[s
 
 func (c *mqlAzureSubscriptionPolicyAssignment) GetTenantId() *plugin.TValue[string] {
 	return &c.TenantId
+}
+
+func (c *mqlAzureSubscriptionPolicyAssignment) GetSelfServeExemptionEnabled() *plugin.TValue[bool] {
+	return &c.SelfServeExemptionEnabled
+}
+
+func (c *mqlAzureSubscriptionPolicyAssignment) GetSelfServeExemptionPolicyDefinitionReferenceIds() *plugin.TValue[[]any] {
+	return &c.SelfServeExemptionPolicyDefinitionReferenceIds
 }
 
 func (c *mqlAzureSubscriptionPolicyAssignment) GetPolicyDefinition() *plugin.TValue[*mqlAzureSubscriptionPolicyDefinition] {
@@ -98932,6 +98989,7 @@ type mqlAzureSubscriptionPolicyExemption struct {
 	DisplayName                  plugin.TValue[string]
 	Description                  plugin.TValue[string]
 	ExemptionCategory            plugin.TValue[string]
+	ManagementMode               plugin.TValue[string]
 	Scope                        plugin.TValue[string]
 	PolicyAssignment             plugin.TValue[*mqlAzureSubscriptionPolicyAssignment]
 	PolicyDefinitionReferenceIds plugin.TValue[[]any]
@@ -98991,6 +99049,10 @@ func (c *mqlAzureSubscriptionPolicyExemption) GetDescription() *plugin.TValue[st
 
 func (c *mqlAzureSubscriptionPolicyExemption) GetExemptionCategory() *plugin.TValue[string] {
 	return &c.ExemptionCategory
+}
+
+func (c *mqlAzureSubscriptionPolicyExemption) GetManagementMode() *plugin.TValue[string] {
+	return &c.ManagementMode
 }
 
 func (c *mqlAzureSubscriptionPolicyExemption) GetScope() *plugin.TValue[string] {
@@ -111188,6 +111250,7 @@ type mqlAzureSubscriptionContainerAppServiceContainerApp struct {
 	MinReplicas              plugin.TValue[int64]
 	MaxReplicas              plugin.TValue[int64]
 	ScaleRules               plugin.TValue[[]any]
+	AllowScalingRuleOverride plugin.TValue[bool]
 	PrincipalId              plugin.TValue[string]
 	SystemAssignedIdentity   plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
 	UserAssignedIdentities   plugin.TValue[[]any]
@@ -111361,6 +111424,10 @@ func (c *mqlAzureSubscriptionContainerAppServiceContainerApp) GetMaxReplicas() *
 
 func (c *mqlAzureSubscriptionContainerAppServiceContainerApp) GetScaleRules() *plugin.TValue[[]any] {
 	return &c.ScaleRules
+}
+
+func (c *mqlAzureSubscriptionContainerAppServiceContainerApp) GetAllowScalingRuleOverride() *plugin.TValue[bool] {
+	return &c.AllowScalingRuleOverride
 }
 
 func (c *mqlAzureSubscriptionContainerAppServiceContainerApp) GetPrincipalId() *plugin.TValue[string] {
@@ -111876,6 +111943,7 @@ type mqlAzureSubscriptionContainerAppServiceJob struct {
 	Tags                     plugin.TValue[map[string]any]
 	ManagedEnvironmentId     plugin.TValue[string]
 	ProvisioningState        plugin.TValue[string]
+	RunningState             plugin.TValue[string]
 	EventStreamEndpoint      plugin.TValue[string]
 	TriggerType              plugin.TValue[string]
 	CronExpression           plugin.TValue[string]
@@ -111952,6 +112020,10 @@ func (c *mqlAzureSubscriptionContainerAppServiceJob) GetManagedEnvironmentId() *
 
 func (c *mqlAzureSubscriptionContainerAppServiceJob) GetProvisioningState() *plugin.TValue[string] {
 	return &c.ProvisioningState
+}
+
+func (c *mqlAzureSubscriptionContainerAppServiceJob) GetRunningState() *plugin.TValue[string] {
+	return &c.RunningState
 }
 
 func (c *mqlAzureSubscriptionContainerAppServiceJob) GetEventStreamEndpoint() *plugin.TValue[string] {

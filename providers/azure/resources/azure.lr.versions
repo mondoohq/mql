@@ -1659,6 +1659,7 @@ azure.subscription.computeService.vms 9.0.1
 azure.subscription.containerApp 13.10.2
 azure.subscription.containerAppService 13.10.2
 azure.subscription.containerAppService.containerApp 13.10.2
+azure.subscription.containerAppService.containerApp.allowScalingRuleOverride 14.0.1
 azure.subscription.containerAppService.containerApp.authConfig 13.10.2
 azure.subscription.containerAppService.containerApp.authConfig.enabled 13.10.2
 azure.subscription.containerAppService.containerApp.authConfig.httpSettings 13.10.2
@@ -1756,6 +1757,7 @@ azure.subscription.containerAppService.job.registryAuthUsesIdentity 13.10.2
 azure.subscription.containerAppService.job.replicaRetryLimit 13.10.2
 azure.subscription.containerAppService.job.replicaTimeoutSeconds 13.10.2
 azure.subscription.containerAppService.job.resourceIdentity 13.36.1
+azure.subscription.containerAppService.job.runningState 14.0.1
 azure.subscription.containerAppService.job.secretNames 13.10.2
 azure.subscription.containerAppService.job.systemMetadata 13.22.1
 azure.subscription.containerAppService.job.tags 13.10.2
@@ -4539,6 +4541,7 @@ azure.subscription.networkService.expressRoutePort.type 13.25.1
 azure.subscription.networkService.expressRoutePorts 13.25.1
 azure.subscription.networkService.firewall 9.0.8
 azure.subscription.networkService.firewall.afcServiceEndpoint 13.25.1
+azure.subscription.networkService.firewall.aiSecurityAddOn 14.0.1
 azure.subscription.networkService.firewall.applicationRule 9.0.8
 azure.subscription.networkService.firewall.applicationRule.action 13.16.2
 azure.subscription.networkService.firewall.applicationRule.etag 9.0.8
@@ -5670,6 +5673,8 @@ azure.subscription.policy.assignment.policyDefinition 13.35.1
 azure.subscription.policy.assignment.principalId 13.35.1
 azure.subscription.policy.assignment.resourceSelectors 13.35.1
 azure.subscription.policy.assignment.scope 11.2.0
+azure.subscription.policy.assignment.selfServeExemptionEnabled 14.0.1
+azure.subscription.policy.assignment.selfServeExemptionPolicyDefinitionReferenceIds 14.0.1
 azure.subscription.policy.assignment.systemMetadata 13.22.1
 azure.subscription.policy.assignment.tenantId 13.35.1
 azure.subscription.policy.assignments 11.2.0
@@ -5700,6 +5705,7 @@ azure.subscription.policy.exemption.displayName 13.12.1
 azure.subscription.policy.exemption.exemptionCategory 13.12.1
 azure.subscription.policy.exemption.expiresOn 13.12.1
 azure.subscription.policy.exemption.id 13.12.1
+azure.subscription.policy.exemption.managementMode 14.0.1
 azure.subscription.policy.exemption.metadata 13.12.1
 azure.subscription.policy.exemption.name 13.12.1
 azure.subscription.policy.exemption.policyAssignment 13.12.1
