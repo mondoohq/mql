@@ -17,6 +17,7 @@ alias os.base.service = service
 alias os.base.services = services
 alias os.unix.sshd = sshd
 alias os.base.ai = ai
+alias os.base.aider = aider
 alias os.base.antigravity = antigravity
 alias os.base.apache2 = apache2
 alias os.base.apt = apt
