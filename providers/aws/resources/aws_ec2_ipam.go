@@ -169,10 +169,7 @@ func initAwsEc2Ipam(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 	ctx := context.Background()
 	resp, err := svc.DescribeIpams(ctx, &ec2.DescribeIpamsInput{IpamIds: []string{id}})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return nil, nil, fmt.Errorf("access denied fetching aws.ec2.ipam with id %q in region %s", id, region)
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(fmt.Errorf("fetching aws.ec2.ipam with id %q in region %s: %w", id, region, err), "ec2:DescribeIpams")
 	}
 	if len(resp.Ipams) == 0 {
 		return nil, nil, fmt.Errorf("aws.ec2.ipam with id %q not found", id)
@@ -202,10 +199,7 @@ func (a *mqlAwsEc2Ipam) scopes() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "ec2:DescribeIpamScopes")
 		}
 		for i := range page.IpamScopes {
 			scope := page.IpamScopes[i]
@@ -248,10 +242,7 @@ func (a *mqlAwsEc2Ipam) pools() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "ec2:DescribeIpamPools")
 		}
 		for i := range page.IpamPools {
 			pool := page.IpamPools[i]
@@ -323,10 +314,7 @@ func (a *mqlAwsEc2IpamPool) allocations() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "ec2:GetIpamPoolAllocations")
 		}
 		for i := range page.IpamPoolAllocations {
 			alloc := page.IpamPoolAllocations[i]

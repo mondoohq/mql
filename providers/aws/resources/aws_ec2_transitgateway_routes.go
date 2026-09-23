@@ -69,10 +69,7 @@ func initAwsEc2TransitgatewayAttachment(runtime *plugin.Runtime, args map[string
 		TransitGatewayAttachmentIds: []string{attachmentId},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return nil, nil, fmt.Errorf("access denied fetching aws.ec2.transitgateway.attachment with id %q in region %s", attachmentId, region)
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(fmt.Errorf("fetching aws.ec2.transitgateway.attachment with id %q in region %s: %w", attachmentId, region, err), "ec2:DescribeTransitGatewayAttachments")
 	}
 	if len(resp.TransitGatewayAttachments) == 0 {
 		return nil, nil, fmt.Errorf("aws.ec2.transitgateway.attachment with id %q not found in region %s", attachmentId, region)
@@ -159,10 +156,7 @@ func (a *mqlAwsEc2TransitgatewayRouteTable) routes() ([]any, error) {
 			NextToken: nextToken,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "ec2:SearchTransitGatewayRoutes")
 		}
 
 		for _, route := range resp.Routes {
@@ -245,10 +239,7 @@ func (a *mqlAwsEc2TransitgatewayRouteTable) associatedAttachments() ([]any, erro
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return []any{}, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "ec2:GetTransitGatewayRouteTableAssociations")
 		}
 		for _, assoc := range page.Associations {
 			attachmentIds = append(attachmentIds, convert.ToValue(assoc.TransitGatewayAttachmentId))
@@ -275,10 +266,7 @@ func (a *mqlAwsEc2TransitgatewayRouteTable) propagatingAttachments() ([]any, err
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return []any{}, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "ec2:GetTransitGatewayRouteTablePropagations")
 		}
 		for _, prop := range page.TransitGatewayRouteTablePropagations {
 			if prop.State != ec2types.TransitGatewayPropagationStateEnabled {

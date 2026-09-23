@@ -176,12 +176,7 @@ func (a *mqlAwsEc2ApplicationStatusCheck) statuses() ([]any, error) {
 			NextToken: nextToken,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				a.cachedStatusesFetched = true
-				a.cachedStatuses = res
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "ec2:DescribeApplicationStatus")
 		}
 		// a page can carry no statuses and still continue, so only the token
 		// decides whether there is more to read

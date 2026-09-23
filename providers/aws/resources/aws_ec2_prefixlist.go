@@ -63,12 +63,8 @@ func initAwsEc2ManagedPrefixList(runtime *plugin.Runtime, args map[string]*llx.R
 	if err != nil {
 		// Intentionally an error rather than the old (args, nil, nil)
 		// fallback: a partially-initialized resource surfaces as malformed
-		// nil data when its unset fields are queried. Access-denied gets a
-		// descriptive message instead of the raw SDK error.
-		if Is400AccessDeniedError(err) {
-			return nil, nil, fmt.Errorf("access denied fetching aws.ec2.managedPrefixList with id %q in region %s", plId, region)
-		}
-		return nil, nil, err
+		// nil data when its unset fields are queried.
+		return nil, nil, classifyAwsError(fmt.Errorf("fetching aws.ec2.managedPrefixList with id %q in region %s: %w", plId, region, err), "ec2:DescribeManagedPrefixLists")
 	}
 	// Returning (args, nil, nil) here would let the runtime create a resource
 	// whose fields are all unset, which surfaces as malformed nil data when
@@ -193,10 +189,7 @@ func (a *mqlAwsEc2ManagedPrefixList) entries() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return entries, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "ec2:GetManagedPrefixListEntries")
 		}
 		for _, entry := range page.Entries {
 			cidr := convert.ToValue(entry.Cidr)

@@ -210,10 +210,7 @@ func initAwsEc2CapacityReservation(runtime *plugin.Runtime, args map[string]*llx
 		CapacityReservationIds: []string{id},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-			return nil, nil, fmt.Errorf("cannot fetch aws.ec2.capacityReservation with id %q in region %s: %w", id, region, err)
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(fmt.Errorf("fetching aws.ec2.capacityReservation with id %q in region %s: %w", id, region, err), "ec2:DescribeCapacityReservations")
 	}
 	if len(resp.CapacityReservations) == 0 {
 		return nil, nil, fmt.Errorf("aws.ec2.capacityReservation with id %q not found", id)

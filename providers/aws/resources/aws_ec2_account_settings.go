@@ -240,10 +240,7 @@ func (a *mqlAwsEc2Instance) userData() (string, error) {
 			Attribute:  ec2types.InstanceAttributeNameUserData,
 		})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return "", nil
-		}
-		return "", err
+		return "", classifyAwsError(err, "ec2:DescribeInstanceAttribute")
 	}
 	if attribute.UserData == nil || attribute.UserData.Value == nil {
 		return "", nil
