@@ -1401,6 +1401,7 @@ aws.bedrock.agentCore.runtime.iamRole 13.31.2
 aws.bedrock.agentCore.runtime.id 13.31.2
 aws.bedrock.agentCore.runtime.name 13.31.2
 aws.bedrock.agentCore.runtime.networkMode 13.31.2
+aws.bedrock.agentCore.runtime.platformVersion 14.0.1
 aws.bedrock.agentCore.runtime.region 13.31.2
 aws.bedrock.agentCore.runtime.roleArn 13.31.2
 aws.bedrock.agentCore.runtime.status 13.31.2
@@ -2929,6 +2930,7 @@ aws.documentdb.cluster.cloudformationStack 13.39.2
 aws.documentdb.cluster.clusterIdentifier 11.16.1
 aws.documentdb.cluster.clusterParameterGroup 11.16.1
 aws.documentdb.cluster.clusterResourceId 11.16.1
+aws.documentdb.cluster.copyTagsToSnapshot 14.0.1
 aws.documentdb.cluster.createdAt 11.16.1
 aws.documentdb.cluster.deletionProtection 11.16.1
 aws.documentdb.cluster.earliestRestorableTime 11.16.1

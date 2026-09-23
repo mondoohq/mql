@@ -27408,6 +27408,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.documentdb.cluster.deletionProtection": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDocumentdbCluster).GetDeletionProtection()).ToDataRes(types.Bool)
 	},
+	"aws.documentdb.cluster.copyTagsToSnapshot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDocumentdbCluster).GetCopyTagsToSnapshot()).ToDataRes(types.Bool)
+	},
 	"aws.documentdb.cluster.earliestRestorableTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDocumentdbCluster).GetEarliestRestorableTime()).ToDataRes(types.Time)
 	},
@@ -35834,6 +35837,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.bedrock.agentCore.runtime.capacityProvider": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetCapacityProvider()).ToDataRes(types.Resource("aws.bedrock.agentCore.capacityProvider"))
+	},
+	"aws.bedrock.agentCore.runtime.platformVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBedrockAgentCoreRuntime).GetPlatformVersion()).ToDataRes(types.String)
 	},
 	"aws.bedrock.agentCore.runtimeEndpoint.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBedrockAgentCoreRuntimeEndpoint).GetId()).ToDataRes(types.String)
@@ -70208,6 +70214,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsDocumentdbCluster).DeletionProtection, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"aws.documentdb.cluster.copyTagsToSnapshot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDocumentdbCluster).CopyTagsToSnapshot, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"aws.documentdb.cluster.earliestRestorableTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsDocumentdbCluster).EarliestRestorableTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
@@ -82458,6 +82468,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.bedrock.agentCore.runtime.capacityProvider": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBedrockAgentCoreRuntime).CapacityProvider, ok = plugin.RawToTValue[*mqlAwsBedrockAgentCoreCapacityProvider](v.Value, v.Error)
+		return
+	},
+	"aws.bedrock.agentCore.runtime.platformVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBedrockAgentCoreRuntime).PlatformVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.bedrock.agentCore.runtimeEndpoint.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -170015,6 +170029,7 @@ type mqlAwsDocumentdbCluster struct {
 	Subnets                      plugin.TValue[[]any]
 	ClusterResourceId            plugin.TValue[string]
 	DeletionProtection           plugin.TValue[bool]
+	CopyTagsToSnapshot           plugin.TValue[bool]
 	EarliestRestorableTime       plugin.TValue[*time.Time]
 	LatestRestorableTime         plugin.TValue[*time.Time]
 	EnabledCloudwatchLogsExports plugin.TValue[[]any]
@@ -170196,6 +170211,10 @@ func (c *mqlAwsDocumentdbCluster) GetClusterResourceId() *plugin.TValue[string] 
 
 func (c *mqlAwsDocumentdbCluster) GetDeletionProtection() *plugin.TValue[bool] {
 	return &c.DeletionProtection
+}
+
+func (c *mqlAwsDocumentdbCluster) GetCopyTagsToSnapshot() *plugin.TValue[bool] {
+	return &c.CopyTagsToSnapshot
 }
 
 func (c *mqlAwsDocumentdbCluster) GetEarliestRestorableTime() *plugin.TValue[*time.Time] {
@@ -201459,6 +201478,7 @@ type mqlAwsBedrockAgentCoreRuntime struct {
 	EnvironmentVariables plugin.TValue[map[string]any]
 	Endpoints            plugin.TValue[[]any]
 	CapacityProvider     plugin.TValue[*mqlAwsBedrockAgentCoreCapacityProvider]
+	PlatformVersion      plugin.TValue[string]
 }
 
 // createAwsBedrockAgentCoreRuntime creates a new instance of this resource
@@ -201599,6 +201619,12 @@ func (c *mqlAwsBedrockAgentCoreRuntime) GetCapacityProvider() *plugin.TValue[*mq
 		}
 
 		return c.capacityProvider()
+	})
+}
+
+func (c *mqlAwsBedrockAgentCoreRuntime) GetPlatformVersion() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.PlatformVersion, func() (string, error) {
+		return c.platformVersion()
 	})
 }
 
