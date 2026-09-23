@@ -1192,9 +1192,13 @@ mongodbatlas.userSecurityConfig @defaults("ldapAuthenticationEnabled ldapHostnam
 // out of, whether the window auto-defers on first use, and how many times the
 // currently scheduled maintenance has been deferred. Repeated deferral is how a
 // cluster stays on an unpatched build, and numberOfDeferrals is what makes that
-// countable.
+// countable. The maintenance wave places the project in the organization's
+// rollout order, so a production project in an early wave receives maintenance
+// before it has been proven on the projects that should go first.
 mongodbatlas.maintenanceWindowConfig @defaults("dayOfWeek hourOfDay numberOfDeferrals") {
-  // Day of the week the window starts on, 1 for Sunday through 7 for Saturday
+  // Day of the week the window starts on
+  //
+  // 1 for Sunday through 7 for Saturday, null when no maintenance window is configured.
   dayOfWeek int
   // Hour of the day the window starts at, on a 24-hour clock
   hourOfDay int
@@ -1210,6 +1214,22 @@ mongodbatlas.maintenanceWindowConfig @defaults("dayOfWeek hourOfDay numberOfDefe
   protectedHoursStartHourOfDay int
   // Hour of the day the protected period ends at, null when none is set
   protectedHoursEndHourOfDay int
+  // Maintenance wave explicitly assigned to the project
+  //
+  // A value from 1 to 3. Atlas finishes maintenance on every project in a wave
+  // before it starts the next wave, beginning with wave 1. Null when no wave has
+  // been assigned. When the organization derives waves from environment tags, this
+  // stored value is kept but not used for scheduling; effectiveWaveAssignment is
+  // the wave Atlas actually uses.
+  waveAssignment int
+  // Maintenance wave Atlas uses when scheduling maintenance for the project
+  //
+  // Differs from waveAssignment when the organization derives waves from
+  // environment tags, or when the project's organization follows the maintenance
+  // sequencing of a linked paying organization. Without an explicit assignment,
+  // Atlas places projects that have no maintenance window configured in wave 1
+  // and projects that have one in wave 2. Null when Atlas does not report it.
+  effectiveWaveAssignment int
 }
 
 // MongoDB Atlas alert configuration

@@ -185,6 +185,8 @@ func (r *mqlMongodbatlas) maintenanceWindow() (*mqlMongodbatlasMaintenanceWindow
 		"timeZoneId":                   llx.StringDataPtr(w.TimeZoneId),
 		"protectedHoursStartHourOfDay": llx.IntDataPtr(protectedStart),
 		"protectedHoursEndHourOfDay":   llx.IntDataPtr(protectedEnd),
+		"waveAssignment":               llx.IntDataPtr(w.WaveAssignment),
+		"effectiveWaveAssignment":      llx.IntDataPtr(w.EffectiveWaveAssignment),
 	})
 	if err != nil {
 		return nil, err
