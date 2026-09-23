@@ -240,6 +240,7 @@ googleworkspace.role.assignment 13.1.5
 googleworkspace.role.assignment.assignedTo 13.1.5
 googleworkspace.role.assignment.assigneeType 13.1.5
 googleworkspace.role.assignment.condition 13.1.5
+googleworkspace.role.assignment.expiresAt 14.0.1
 googleworkspace.role.assignment.id 13.1.5
 googleworkspace.role.assignment.orgUnitId 13.1.5
 googleworkspace.role.assignment.role 13.1.5
