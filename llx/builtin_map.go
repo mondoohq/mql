@@ -388,7 +388,7 @@ func _mapWhereV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64, inve
 		i++
 	}
 
-	err = e.runFunctionBlocks(argsList, fref, func(results []arrayBlockCallResult, errs []error) {
+	err = e.runFunctionBlocks(argsList, fref, ref, func(results []arrayBlockCallResult, errs []error) {
 		resMap := map[string]any{}
 		for i, res := range results {
 			if res.isTruthy() == !invert {
@@ -998,7 +998,7 @@ func _dictArrayWhere(e *blockExecutor, list []any, chunk *Chunk, ref uint64, inv
 		}
 	}
 
-	err = e.runFunctionBlocks(argsList, fref, func(results []arrayBlockCallResult, errs []error) {
+	err = e.runFunctionBlocks(argsList, fref, ref, func(results []arrayBlockCallResult, errs []error) {
 		resList := []any{}
 		for i, res := range results {
 			if res.isTruthy() == !invert {
@@ -1093,7 +1093,7 @@ func _dictWhere(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64, inver
 		i++
 	}
 
-	err = e.runFunctionBlocks(argsList, fref, func(results []arrayBlockCallResult, errs []error) {
+	err = e.runFunctionBlocks(argsList, fref, ref, func(results []arrayBlockCallResult, errs []error) {
 		resMap := map[string]any{}
 		for i, res := range results {
 			if res.isTruthy() == !invert {
@@ -1180,7 +1180,7 @@ func filterList(e *blockExecutor, list []any, chunk *Chunk, ref uint64, invert b
 	}
 
 	var res []any
-	err = e.runFunctionBlocks(argsList, fref, func(results []arrayBlockCallResult, errs []error) {
+	err = e.runFunctionBlocks(argsList, fref, ref, func(results []arrayBlockCallResult, errs []error) {
 		resList := []any{}
 		for i, res := range results {
 			if res.isTruthy() == !invert {

@@ -319,6 +319,13 @@ message ErrorDetail {
   int64 retry_after_ms = 5;
 }
 
+// A part of a result that could not be read (ADR 046 §8). The message is the
+// upstream error, verbatim; the detail classifies it and names the partition.
+message CoverageGap {
+  string error = 1;
+  ErrorDetail detail = 2;
+}
+
 message Result {
   Primitive data = 1;
   string error = 2;
@@ -327,6 +334,9 @@ message Result {
   // 046). Absent means unclassified, which is also what every result written
   // before this field existed carries.
   ErrorDetail error_detail = 4;
+  // The value in data is incomplete: these parts could not be read. Empty on
+  // every complete result. It never means the result failed; that is error.
+  repeated CoverageGap coverage_gaps = 5;
 }
 
 message ResourceRecording {

@@ -83,6 +83,9 @@ message DataRes {
   // failure is not a gRPC status, so a status detail alone would never reach
   // the executor; this is the carrier on the normal path.
   mql.llx.ErrorDetail error_detail = 4;
+  // The data is incomplete: these parts could not be read (ADR 046 §8). The
+  // field is set, not failed; error stays empty.
+  repeated mql.llx.CoverageGap coverage_gaps = 5;
 }
 
 message CollectRes {

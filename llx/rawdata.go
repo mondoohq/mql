@@ -24,6 +24,11 @@ type RawData struct {
 	Type  types.Type `json:"type"`
 	Value any        `json:"value"`
 	Error error      `json:"-"`
+	// CoverageGaps are the parts of Value that could not be read (ADR 046 §8):
+	// a region that refused, a partition that timed out. Value is still the
+	// true answer for everything that was read. Unlike Error, a gap never
+	// means the result failed. Empty on every complete result.
+	CoverageGaps []*Error `json:"-"`
 	// ShortCircuited marks a null that an optional link (`?`) produced rather
 	// than a null that was genuinely read. Under ADR 043 strict mode a required
 	// link errors on a null binding, but passes a short-circuited one straight

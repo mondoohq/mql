@@ -866,6 +866,13 @@ func runResourceFunction(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint
 
 	// watch this field in the resource
 	err := rt.WatchAndUpdate(rr, chunk.Id, wid, func(fieldData any, fieldError error) {
+		// A partial field arrives as the error, the way a provider returns it
+		// (ADR 046 §8): the value stands and the gaps ride beside it.
+		coverageGaps, _ := CoverageGapsOf(fieldError)
+		if coverageGaps != nil {
+			fieldError = nil
+		}
+
 		// A field can be missing from the schema when the compiled bundle and
 		// the loaded provider disagree (e.g. the provider was updated at runtime
 		// independently of the bundle version). Fall back to Unset rather than
@@ -891,9 +898,10 @@ func runResourceFunction(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint
 		// A resource answered by a foreign runtime lives in that asset's tree,
 		// so the next chunk in the chain has to keep asking the same runtime.
 		data := shortCircuitNull(chunk, &RawData{
-			Type:  fieldType,
-			Value: bindResourceValues(fieldData, foreign),
-			Error: fieldError,
+			Type:         fieldType,
+			Value:        bindResourceValues(fieldData, foreign),
+			Error:        fieldError,
+			CoverageGaps: coverageGaps,
 		})
 		e.cache.Store(ref, &stepCache{
 			Result: data,
@@ -901,7 +909,7 @@ func runResourceFunction(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint
 
 		codeID, ok := e.callbackPoints[ref]
 		if ok {
-			e.callback(&RawResult{Data: data, CodeID: codeID})
+			e.callback(&RawResult{Data: e.resultWithCoverageGaps(ref, data), CodeID: codeID})
 		}
 
 		if fieldError != nil {
@@ -1116,7 +1124,7 @@ func shortCircuitNull(chunk *Chunk, res *RawData) *RawData {
 	if chunk.Function.GetNullability() != Function_NULLABILITY_OPTIONAL {
 		return res
 	}
-	return &RawData{Type: res.Type, ShortCircuited: true}
+	return &RawData{Type: res.Type, CoverageGaps: res.CoverageGaps, ShortCircuited: true}
 }
 
 // this is called for objects that call a function

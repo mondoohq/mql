@@ -145,7 +145,7 @@ func arrayBlockListV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64)
 		}
 	}
 
-	err = e.runFunctionBlocks(argList, fref, func(results []arrayBlockCallResult, errs []error) {
+	err = e.runFunctionBlocks(argList, fref, ref, func(results []arrayBlockCallResult, errs []error) {
 		// This is quite heavy handed. If any of the block calls have an error, the whole
 		// thing becomes errored. If we don't do this, then we can have more fine grained
 		// errors. For example, if only one item in the list has errors, the block for that
@@ -267,7 +267,7 @@ func _arrayWhereV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64, in
 			},
 		}
 	}
-	err = e.runFunctionBlocks(argsList, fref, func(results []arrayBlockCallResult, errors []error) {
+	err = e.runFunctionBlocks(argsList, fref, ref, func(results []arrayBlockCallResult, errors []error) {
 		resList := []any{}
 		for i, res := range results {
 			isTruthy := res.isTruthy()
@@ -446,7 +446,7 @@ func arrayMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*Raw
 		}
 	}
 
-	err = e.runFunctionBlocks(argsList, fref, func(results []arrayBlockCallResult, errs []error) {
+	err = e.runFunctionBlocks(argsList, fref, ref, func(results []arrayBlockCallResult, errs []error) {
 		var anyError multierr.Errors
 		anyError.Add(errs...)
 
@@ -686,7 +686,7 @@ func arrayFieldDuplicatesV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref u
 		}
 	}
 
-	err = e.runFunctionBlocks(argsList, fref, func(results []arrayBlockCallResult, errs []error) {
+	err = e.runFunctionBlocks(argsList, fref, ref, func(results []arrayBlockCallResult, errs []error) {
 		f := e.ctx.code.Block(fref)
 		epChecksum := e.ctx.code.Checksums[f.Entrypoints[0]]
 		filteredList := map[int]*RawData{}

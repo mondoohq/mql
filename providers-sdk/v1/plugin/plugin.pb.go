@@ -465,7 +465,10 @@ type DataRes struct {
 	// Why this field failed, when the provider could say (ADR 046). A field
 	// failure is not a gRPC status, so a status detail alone would never reach
 	// the executor; this is the carrier on the normal path.
-	ErrorDetail   *llx.ErrorDetail `protobuf:"bytes,4,opt,name=error_detail,json=errorDetail,proto3" json:"error_detail,omitempty"`
+	ErrorDetail *llx.ErrorDetail `protobuf:"bytes,4,opt,name=error_detail,json=errorDetail,proto3" json:"error_detail,omitempty"`
+	// The data is incomplete: these parts could not be read (ADR 046 §8). The
+	// field is set, not failed; error stays empty.
+	CoverageGaps  []*llx.CoverageGap `protobuf:"bytes,5,rep,name=coverage_gaps,json=coverageGaps,proto3" json:"coverage_gaps,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -524,6 +527,13 @@ func (x *DataRes) GetId() string {
 func (x *DataRes) GetErrorDetail() *llx.ErrorDetail {
 	if x != nil {
 		return x.ErrorDetail
+	}
+	return nil
+}
+
+func (x *DataRes) GetCoverageGaps() []*llx.CoverageGap {
+	if x != nil {
+		return x.CoverageGaps
 	}
 	return nil
 }
@@ -1204,12 +1214,13 @@ const file_plugin_proto_rawDesc = "" +
 	"\x04args\x18\x06 \x03(\v2'.cnquery.providers.v1.DataReq.ArgsEntryR\x04args\x1aK\n" +
 	"\tArgsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12(\n" +
-	"\x05value\x18\x02 \x01(\v2\x12.mql.llx.PrimitiveR\x05value:\x028\x01\"\x90\x01\n" +
+	"\x05value\x18\x02 \x01(\v2\x12.mql.llx.PrimitiveR\x05value:\x028\x01\"\xcb\x01\n" +
 	"\aDataRes\x12&\n" +
 	"\x04data\x18\x01 \x01(\v2\x12.mql.llx.PrimitiveR\x04data\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x12\x0e\n" +
 	"\x02id\x18\x03 \x01(\tR\x02id\x127\n" +
-	"\ferror_detail\x18\x04 \x01(\v2\x14.mql.llx.ErrorDetailR\verrorDetail\"\f\n" +
+	"\ferror_detail\x18\x04 \x01(\v2\x14.mql.llx.ErrorDetailR\verrorDetail\x129\n" +
+	"\rcoverage_gaps\x18\x05 \x03(\v2\x14.mql.llx.CoverageGapR\fcoverageGaps\"\f\n" +
 	"\n" +
 	"CollectRes\"l\n" +
 	"\bStoreReq\x12\x1e\n" +
@@ -1312,8 +1323,9 @@ var file_plugin_proto_goTypes = []any{
 	(*inventory.Inventory)(nil),     // 26: cnquery.providers.v1.Inventory
 	(*llx.Primitive)(nil),           // 27: mql.llx.Primitive
 	(*llx.ErrorDetail)(nil),         // 28: mql.llx.ErrorDetail
-	(*llx.Block)(nil),               // 29: mql.llx.Block
-	(*llx.Result)(nil),              // 30: mql.llx.Result
+	(*llx.CoverageGap)(nil),         // 29: mql.llx.CoverageGap
+	(*llx.Block)(nil),               // 30: mql.llx.Block
+	(*llx.Result)(nil),              // 31: mql.llx.Result
 }
 var file_plugin_proto_depIdxs = []int32{
 	21, // 0: cnquery.providers.v1.ParseCLIReq.flags:type_name -> cnquery.providers.v1.ParseCLIReq.FlagsEntry
@@ -1325,45 +1337,46 @@ var file_plugin_proto_depIdxs = []int32{
 	22, // 6: cnquery.providers.v1.DataReq.args:type_name -> cnquery.providers.v1.DataReq.ArgsEntry
 	27, // 7: cnquery.providers.v1.DataRes.data:type_name -> mql.llx.Primitive
 	28, // 8: cnquery.providers.v1.DataRes.error_detail:type_name -> mql.llx.ErrorDetail
-	10, // 9: cnquery.providers.v1.StoreReq.resources:type_name -> cnquery.providers.v1.ResourceData
-	23, // 10: cnquery.providers.v1.ResourceData.fields:type_name -> cnquery.providers.v1.ResourceData.FieldsEntry
-	18, // 11: cnquery.providers.v1.TranslationsRes.translations:type_name -> cnquery.providers.v1.Translation
-	29, // 12: cnquery.providers.v1.Translation.block:type_name -> mql.llx.Block
-	24, // 13: cnquery.providers.v1.ResolveAssetRes.asset:type_name -> cnquery.providers.v1.Asset
-	27, // 14: cnquery.providers.v1.ParseCLIReq.FlagsEntry.value:type_name -> mql.llx.Primitive
-	27, // 15: cnquery.providers.v1.DataReq.ArgsEntry.value:type_name -> mql.llx.Primitive
-	30, // 16: cnquery.providers.v1.ResourceData.FieldsEntry.value:type_name -> mql.llx.Result
-	12, // 17: cnquery.providers.v1.ProviderPlugin.Heartbeat:input_type -> cnquery.providers.v1.HeartbeatReq
-	16, // 18: cnquery.providers.v1.ProviderPlugin.Translations:input_type -> cnquery.providers.v1.TranslationsReq
-	0,  // 19: cnquery.providers.v1.ProviderPlugin.ParseCLI:input_type -> cnquery.providers.v1.ParseCLIReq
-	2,  // 20: cnquery.providers.v1.ProviderPlugin.Connect:input_type -> cnquery.providers.v1.ConnectReq
-	14, // 21: cnquery.providers.v1.ProviderPlugin.Disconnect:input_type -> cnquery.providers.v1.DisconnectReq
-	2,  // 22: cnquery.providers.v1.ProviderPlugin.MockConnect:input_type -> cnquery.providers.v1.ConnectReq
-	4,  // 23: cnquery.providers.v1.ProviderPlugin.Shutdown:input_type -> cnquery.providers.v1.ShutdownReq
-	6,  // 24: cnquery.providers.v1.ProviderPlugin.GetData:input_type -> cnquery.providers.v1.DataReq
-	9,  // 25: cnquery.providers.v1.ProviderPlugin.StoreData:input_type -> cnquery.providers.v1.StoreReq
-	19, // 26: cnquery.providers.v1.ProviderPlugin.ResolveAsset:input_type -> cnquery.providers.v1.ResolveAssetReq
-	7,  // 27: cnquery.providers.v1.ProviderCallback.Collect:input_type -> cnquery.providers.v1.DataRes
-	6,  // 28: cnquery.providers.v1.ProviderCallback.GetRecording:input_type -> cnquery.providers.v1.DataReq
-	6,  // 29: cnquery.providers.v1.ProviderCallback.GetData:input_type -> cnquery.providers.v1.DataReq
-	13, // 30: cnquery.providers.v1.ProviderPlugin.Heartbeat:output_type -> cnquery.providers.v1.HeartbeatRes
-	17, // 31: cnquery.providers.v1.ProviderPlugin.Translations:output_type -> cnquery.providers.v1.TranslationsRes
-	1,  // 32: cnquery.providers.v1.ProviderPlugin.ParseCLI:output_type -> cnquery.providers.v1.ParseCLIRes
-	3,  // 33: cnquery.providers.v1.ProviderPlugin.Connect:output_type -> cnquery.providers.v1.ConnectRes
-	15, // 34: cnquery.providers.v1.ProviderPlugin.Disconnect:output_type -> cnquery.providers.v1.DisconnectRes
-	3,  // 35: cnquery.providers.v1.ProviderPlugin.MockConnect:output_type -> cnquery.providers.v1.ConnectRes
-	5,  // 36: cnquery.providers.v1.ProviderPlugin.Shutdown:output_type -> cnquery.providers.v1.ShutdownRes
-	7,  // 37: cnquery.providers.v1.ProviderPlugin.GetData:output_type -> cnquery.providers.v1.DataRes
-	11, // 38: cnquery.providers.v1.ProviderPlugin.StoreData:output_type -> cnquery.providers.v1.StoreRes
-	20, // 39: cnquery.providers.v1.ProviderPlugin.ResolveAsset:output_type -> cnquery.providers.v1.ResolveAssetRes
-	8,  // 40: cnquery.providers.v1.ProviderCallback.Collect:output_type -> cnquery.providers.v1.CollectRes
-	10, // 41: cnquery.providers.v1.ProviderCallback.GetRecording:output_type -> cnquery.providers.v1.ResourceData
-	7,  // 42: cnquery.providers.v1.ProviderCallback.GetData:output_type -> cnquery.providers.v1.DataRes
-	30, // [30:43] is the sub-list for method output_type
-	17, // [17:30] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	29, // 9: cnquery.providers.v1.DataRes.coverage_gaps:type_name -> mql.llx.CoverageGap
+	10, // 10: cnquery.providers.v1.StoreReq.resources:type_name -> cnquery.providers.v1.ResourceData
+	23, // 11: cnquery.providers.v1.ResourceData.fields:type_name -> cnquery.providers.v1.ResourceData.FieldsEntry
+	18, // 12: cnquery.providers.v1.TranslationsRes.translations:type_name -> cnquery.providers.v1.Translation
+	30, // 13: cnquery.providers.v1.Translation.block:type_name -> mql.llx.Block
+	24, // 14: cnquery.providers.v1.ResolveAssetRes.asset:type_name -> cnquery.providers.v1.Asset
+	27, // 15: cnquery.providers.v1.ParseCLIReq.FlagsEntry.value:type_name -> mql.llx.Primitive
+	27, // 16: cnquery.providers.v1.DataReq.ArgsEntry.value:type_name -> mql.llx.Primitive
+	31, // 17: cnquery.providers.v1.ResourceData.FieldsEntry.value:type_name -> mql.llx.Result
+	12, // 18: cnquery.providers.v1.ProviderPlugin.Heartbeat:input_type -> cnquery.providers.v1.HeartbeatReq
+	16, // 19: cnquery.providers.v1.ProviderPlugin.Translations:input_type -> cnquery.providers.v1.TranslationsReq
+	0,  // 20: cnquery.providers.v1.ProviderPlugin.ParseCLI:input_type -> cnquery.providers.v1.ParseCLIReq
+	2,  // 21: cnquery.providers.v1.ProviderPlugin.Connect:input_type -> cnquery.providers.v1.ConnectReq
+	14, // 22: cnquery.providers.v1.ProviderPlugin.Disconnect:input_type -> cnquery.providers.v1.DisconnectReq
+	2,  // 23: cnquery.providers.v1.ProviderPlugin.MockConnect:input_type -> cnquery.providers.v1.ConnectReq
+	4,  // 24: cnquery.providers.v1.ProviderPlugin.Shutdown:input_type -> cnquery.providers.v1.ShutdownReq
+	6,  // 25: cnquery.providers.v1.ProviderPlugin.GetData:input_type -> cnquery.providers.v1.DataReq
+	9,  // 26: cnquery.providers.v1.ProviderPlugin.StoreData:input_type -> cnquery.providers.v1.StoreReq
+	19, // 27: cnquery.providers.v1.ProviderPlugin.ResolveAsset:input_type -> cnquery.providers.v1.ResolveAssetReq
+	7,  // 28: cnquery.providers.v1.ProviderCallback.Collect:input_type -> cnquery.providers.v1.DataRes
+	6,  // 29: cnquery.providers.v1.ProviderCallback.GetRecording:input_type -> cnquery.providers.v1.DataReq
+	6,  // 30: cnquery.providers.v1.ProviderCallback.GetData:input_type -> cnquery.providers.v1.DataReq
+	13, // 31: cnquery.providers.v1.ProviderPlugin.Heartbeat:output_type -> cnquery.providers.v1.HeartbeatRes
+	17, // 32: cnquery.providers.v1.ProviderPlugin.Translations:output_type -> cnquery.providers.v1.TranslationsRes
+	1,  // 33: cnquery.providers.v1.ProviderPlugin.ParseCLI:output_type -> cnquery.providers.v1.ParseCLIRes
+	3,  // 34: cnquery.providers.v1.ProviderPlugin.Connect:output_type -> cnquery.providers.v1.ConnectRes
+	15, // 35: cnquery.providers.v1.ProviderPlugin.Disconnect:output_type -> cnquery.providers.v1.DisconnectRes
+	3,  // 36: cnquery.providers.v1.ProviderPlugin.MockConnect:output_type -> cnquery.providers.v1.ConnectRes
+	5,  // 37: cnquery.providers.v1.ProviderPlugin.Shutdown:output_type -> cnquery.providers.v1.ShutdownRes
+	7,  // 38: cnquery.providers.v1.ProviderPlugin.GetData:output_type -> cnquery.providers.v1.DataRes
+	11, // 39: cnquery.providers.v1.ProviderPlugin.StoreData:output_type -> cnquery.providers.v1.StoreRes
+	20, // 40: cnquery.providers.v1.ProviderPlugin.ResolveAsset:output_type -> cnquery.providers.v1.ResolveAssetRes
+	8,  // 41: cnquery.providers.v1.ProviderCallback.Collect:output_type -> cnquery.providers.v1.CollectRes
+	10, // 42: cnquery.providers.v1.ProviderCallback.GetRecording:output_type -> cnquery.providers.v1.ResourceData
+	7,  // 43: cnquery.providers.v1.ProviderCallback.GetData:output_type -> cnquery.providers.v1.DataRes
+	31, // [31:44] is the sub-list for method output_type
+	18, // [18:31] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_plugin_proto_init() }

@@ -184,13 +184,18 @@ func (r *Runtime) GetSharedData(resource string, resourceID string, field string
 	if res.Error != "" {
 		return nil, llx.ErrorFromDetail(res.Error, res.ErrorDetail)
 	}
-	return res.Data.RawData(), nil
+	return res.Data.RawData().WithCoverageGaps(llx.CoverageGapsFromProto(res.CoverageGaps)), nil
 }
 
 type TValue[T any] struct {
 	Data  T
 	State State
 	Error error
+	// CoverageGaps are the parts of Data that could not be read (ADR 046 §8).
+	// The field is set and Error stays nil: code that reads a sibling field and
+	// checks Error keeps the data, which is what makes the result partial
+	// rather than failed.
+	CoverageGaps []*llx.Error
 }
 
 func (x *TValue[T]) ToDataRes(typ types.Type) *DataRes {
@@ -207,12 +212,13 @@ func (x *TValue[T]) ToDataRes(typ types.Type) *DataRes {
 		}
 
 		return &DataRes{
-			Data: &llx.Primitive{Type: string(types.Nil)},
+			Data:         &llx.Primitive{Type: string(types.Nil)},
+			CoverageGaps: llx.CoverageGapsToProto(x.CoverageGaps),
 		}
 	}
-	raw := llx.RawData{Type: typ, Value: x.Data, Error: x.Error}
+	raw := llx.RawData{Type: typ, Value: x.Data, Error: x.Error, CoverageGaps: x.CoverageGaps}
 	res := raw.Result()
-	return &DataRes{Data: res.Data, Error: res.Error, ErrorDetail: res.ErrorDetail}
+	return &DataRes{Data: res.Data, Error: res.Error, ErrorDetail: res.ErrorDetail, CoverageGaps: res.CoverageGaps}
 }
 
 func PrimitiveToTValue[T any](p *llx.Primitive) TValue[T] {
@@ -267,6 +273,14 @@ func GetOrCompute[T any](cached *TValue[T], compute func() (T, error)) *TValue[T
 	}
 
 	x, err := compute()
+
+	// A partial result is not a failure: the value is kept and the parts that
+	// could not be read ride beside it (ADR 046 §8).
+	gaps, partial := llx.CoverageGapsOf(err)
+	if partial {
+		err = nil
+	}
+
 	if err != nil {
 		res := &TValue[T]{Data: x, Error: err}
 		if err != NotReady {
@@ -279,10 +293,13 @@ func GetOrCompute[T any](cached *TValue[T], compute func() (T, error)) *TValue[T
 	// this only happens if the function set the field proactively, in which
 	// case we grab the value from the cached entry for consistency
 	if cached.IsSet() {
+		if partial {
+			cached.CoverageGaps = llx.UnionCoverageGaps(cached.CoverageGaps, gaps)
+		}
 		return cached
 	}
 
-	(*cached) = TValue[T]{Data: x, State: StateIsSet, Error: err}
+	(*cached) = TValue[T]{Data: x, State: StateIsSet, CoverageGaps: gaps}
 	return cached
 }
 

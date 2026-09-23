@@ -553,10 +553,11 @@ them and keeps receiving every value and score, so nothing breaks while it
 catches up. Until then a region that was throttled shows in the platform as the
 pass or failure it evaluated to, without the gap beside it.
 
-The per-provider region loops move onto one shared helper as part of the same
-work, in v14. Converting every loop to `llx.Partial` touches each of them
-anyway, and a single helper is what keeps partition, kind and scope consistent
-across providers.
+The SDK ships no region-loop helper. Loops differ per provider (regions,
+projects, subscriptions, each with its own pool), so a provider that wants a
+shared loop writes its own, on top of `llx.Partial`. What keeps partition, kind
+and scope consistent across providers is `llx.Partial` and the `WithScope`
+option, not a common loop.
 
 ### 9. The null-to-error change is opt-in through v14
 
@@ -714,16 +715,17 @@ have landed, and no machine phase waits for a migration.
    status code to mql ErrorKind (§1).
 3. **Partial results (§8).** `CoverageGap`, `Result.coverage_gaps`,
    `DataRes.coverage_gaps`, `llx.Partial`, the `GetOrCompute`, `ToDataRes` and
-   `providers/runtime.go` changes, executor propagation, and attaching the
-   errors to scores. The shared region-loop helper that the provider loops move
-   onto. Not behind the feature flag.
+   `providers/runtime.go` changes, and executor propagation. It ends at
+   `llx.Result`: attaching the gaps to scores is cnspec work, in phase 6. No
+   region-loop helper (§8). Not behind the feature flag.
 4. **The `StructuredErrors` feature flag (§9).** The flag, and the way a
    provider reads it.
 5. **Rendering and aggregation.** CLI grouping, coverage gaps in mql's output,
    structured logs.
 6. **cnspec coverage attribution.** `Score.error_details` and
-   `ReportCollection.error_details`, kind-grouped reporting, coverage gaps in
-   cnspec's output, and the two string matches removed (`TOOMANYREQUESTS`,
+   `ReportCollection.error_details`, kind-grouped reporting, attaching a
+   result's coverage gaps to its score (§8), coverage gaps in cnspec's output,
+   and the two string matches removed (`TOOMANYREQUESTS`,
    `could not find resource`).
 7. **Permission fallback.** The `permissions.json` fallback for call sites that
    do not name their permission (§4).
@@ -745,7 +747,7 @@ Each step names the machine phases it needs.
    inside a per-region job; nearly all gcp and azure sites are single calls
    and belong here.
 10. **aws, azure, gcp: loops.** Needs 3, 5 and 6. Region, project and
-    subscription loops convert to `llx.Partial` on the shared helper, both the
+    subscription loops convert to `llx.Partial`, both the
     silent ones and the ones that fail a whole list today, and so do per-item
     refusals while building a list (one item's tags or details). The gaps must
     already show in mql and cnspec (§8); the server follows on its own
@@ -798,6 +800,27 @@ Two notes from phase 1:
 
 **Phase 2 landed** (#11011). The SDK's default mapping is in
 `providers-sdk/v1/plugin/classify.go`.
+
+**Phase 3 landed.** Partial results reach `llx.Result`; nothing produces one
+yet, since loops convert in step 10.
+
+- **Wire.** `CoverageGap`, `Result.coverage_gaps` and `DataRes.coverage_gaps`.
+- **In memory.** `RawData.CoverageGaps` and `TValue.CoverageGaps`, both
+  `[]*llx.Error`. A partial field keeps `Error` nil on the `TValue` too, so
+  provider code that reads a sibling field and checks `Error` keeps the data.
+  An unclassified gap keeps its partition on the wire, where `ErrorDetailOf`
+  would drop it.
+- **Provider side.** `llx.Partial` and `llx.CoverageGapsOf`; `GetOrCompute`
+  unwraps a Partial, so a wrapped one still counts.
+- **Runtime.** `llx.Runtime.WatchAndUpdate` did not change: its callback has
+  no slot for gaps, so `providers.Runtime` hands a partial field over as an
+  `llx.Partial` in the error argument, and the executor unpacks it.
+- **Executor.** Gaps are never written onto computed values, because values
+  are shared through the step cache and the runtime's field cache. When a
+  result is delivered, the executor collects the gaps of everything it was
+  computed from: the chunk's own value, its binding, its arguments, and what
+  its block runs reported. `where`, `length`, `all`, `{ … }` and comparisons on
+  them need no change.
 
 **Step 9 for aws is open** (#11012). It returns classified errors
 unconditionally; it gets the v13 branches of §9 and merges after phase 4.

@@ -17,6 +17,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/recording"
 	"go.mondoo.com/mql/providers-sdk/v1/resources"
+	"go.mondoo.com/mql/types"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -1115,5 +1116,49 @@ func TestRuntime_WatchAndUpdate_RehydratesTheErrorKind(t *testing.T) {
 		require.Error(t, raw.Error)
 		assert.Equal(t, "something broke", raw.Error.Error())
 		assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(raw.Error))
+	})
+
+	// ADR 046 §8: a partial field keeps its value, and its gaps ride beside it
+	// rather than in the error slot.
+	partial := func() *plugin.DataRes {
+		return &plugin.DataRes{
+			Data: llx.ArrayPrimitive([]*llx.Primitive{llx.StringPrimitive("eip-1")}, types.String),
+			CoverageGaps: []*llx.CoverageGap{{
+				Error: "AccessDenied",
+				Detail: &llx.ErrorDetail{
+					Kind:    llx.ErrorKind_ERROR_KIND_FORBIDDEN,
+					Scope:   llx.ErrorScope_ERROR_SCOPE_PARTITION,
+					ScopeId: "eu-west-1",
+				},
+			}},
+		}
+	}
+
+	t.Run("a partial field keeps its value and its gaps", func(t *testing.T) {
+		r := newRuntime(t, partial())
+
+		raw, err := r.watchAndUpdate(resName, "id-3", fieldName, "")
+		require.NoError(t, err)
+		require.NoError(t, raw.Error)
+		assert.Equal(t, []any{"eip-1"}, raw.Value)
+		require.Len(t, raw.CoverageGaps, 1)
+		assert.True(t, errors.Is(raw.CoverageGaps[0], llx.ErrForbidden))
+		assert.Equal(t, "eu-west-1", raw.CoverageGaps[0].ScopeID)
+	})
+
+	t.Run("the executor's callback receives the gaps as a partial", func(t *testing.T) {
+		r := newRuntime(t, partial())
+
+		var gotValue any
+		var gotErr error
+		err := r.WatchAndUpdate(&llx.MockResource{Name: resName, ID: "id-4"}, fieldName, "", func(res any, err error) {
+			gotValue, gotErr = res, err
+		})
+		require.NoError(t, err)
+		assert.Equal(t, []any{"eip-1"}, gotValue)
+		gaps, ok := llx.CoverageGapsOf(gotErr)
+		require.True(t, ok, "a partial field must not reach the executor as a plain error")
+		require.Len(t, gaps, 1)
+		assert.Equal(t, "eu-west-1", gaps[0].ScopeID)
 	})
 }

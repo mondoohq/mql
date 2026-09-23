@@ -82,7 +82,7 @@ func _resourceWhereV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64,
 		}
 	}
 
-	err = e.runFunctionBlocks(argsList, blockRef, func(results []arrayBlockCallResult, errs []error) {
+	err = e.runFunctionBlocks(argsList, blockRef, ref, func(results []arrayBlockCallResult, errs []error) {
 		resList := []*Primitive{}
 		for i, res := range results {
 			isTruthy := res.isTruthy()
@@ -205,7 +205,7 @@ func resourceMapV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*
 		}
 	}
 
-	err = e.runFunctionBlocks(argsList, fref, func(results []arrayBlockCallResult, errs []error) {
+	err = e.runFunctionBlocks(argsList, fref, ref, func(results []arrayBlockCallResult, errs []error) {
 		mappedType := types.Unset
 		resList := []any{}
 		f := e.ctx.code.Block(fref)

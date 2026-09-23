@@ -1463,6 +1463,60 @@ func (x *ErrorDetail) GetRetryAfterMs() int64 {
 	return 0
 }
 
+// A part of a result that could not be read (ADR 046 §8). The message is the
+// upstream error, verbatim; the detail classifies it and names the partition.
+type CoverageGap struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Error         string                 `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+	Detail        *ErrorDetail           `protobuf:"bytes,2,opt,name=detail,proto3" json:"detail,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CoverageGap) Reset() {
+	*x = CoverageGap{}
+	mi := &file_llx_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CoverageGap) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CoverageGap) ProtoMessage() {}
+
+func (x *CoverageGap) ProtoReflect() protoreflect.Message {
+	mi := &file_llx_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CoverageGap.ProtoReflect.Descriptor instead.
+func (*CoverageGap) Descriptor() ([]byte, []int) {
+	return file_llx_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *CoverageGap) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *CoverageGap) GetDetail() *ErrorDetail {
+	if x != nil {
+		return x.Detail
+	}
+	return nil
+}
+
 type Result struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Data   *Primitive             `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
@@ -1471,14 +1525,17 @@ type Result struct {
 	// Why this result failed, when the provider or the runtime could say (ADR
 	// 046). Absent means unclassified, which is also what every result written
 	// before this field existed carries.
-	ErrorDetail   *ErrorDetail `protobuf:"bytes,4,opt,name=error_detail,json=errorDetail,proto3" json:"error_detail,omitempty"`
+	ErrorDetail *ErrorDetail `protobuf:"bytes,4,opt,name=error_detail,json=errorDetail,proto3" json:"error_detail,omitempty"`
+	// The value in data is incomplete: these parts could not be read. Empty on
+	// every complete result. It never means the result failed; that is error.
+	CoverageGaps  []*CoverageGap `protobuf:"bytes,5,rep,name=coverage_gaps,json=coverageGaps,proto3" json:"coverage_gaps,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Result) Reset() {
 	*x = Result{}
-	mi := &file_llx_proto_msgTypes[14]
+	mi := &file_llx_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1490,7 +1547,7 @@ func (x *Result) String() string {
 func (*Result) ProtoMessage() {}
 
 func (x *Result) ProtoReflect() protoreflect.Message {
-	mi := &file_llx_proto_msgTypes[14]
+	mi := &file_llx_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1503,7 +1560,7 @@ func (x *Result) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Result.ProtoReflect.Descriptor instead.
 func (*Result) Descriptor() ([]byte, []int) {
-	return file_llx_proto_rawDescGZIP(), []int{14}
+	return file_llx_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *Result) GetData() *Primitive {
@@ -1534,6 +1591,13 @@ func (x *Result) GetErrorDetail() *ErrorDetail {
 	return nil
 }
 
+func (x *Result) GetCoverageGaps() []*CoverageGap {
+	if x != nil {
+		return x.CoverageGaps
+	}
+	return nil
+}
+
 type ResourceRecording struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Resource      string                 `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
@@ -1547,7 +1611,7 @@ type ResourceRecording struct {
 
 func (x *ResourceRecording) Reset() {
 	*x = ResourceRecording{}
-	mi := &file_llx_proto_msgTypes[15]
+	mi := &file_llx_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1559,7 +1623,7 @@ func (x *ResourceRecording) String() string {
 func (*ResourceRecording) ProtoMessage() {}
 
 func (x *ResourceRecording) ProtoReflect() protoreflect.Message {
-	mi := &file_llx_proto_msgTypes[15]
+	mi := &file_llx_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1572,7 +1636,7 @@ func (x *ResourceRecording) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResourceRecording.ProtoReflect.Descriptor instead.
 func (*ResourceRecording) Descriptor() ([]byte, []int) {
-	return file_llx_proto_rawDescGZIP(), []int{15}
+	return file_llx_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ResourceRecording) GetResource() string {
@@ -1624,7 +1688,7 @@ type Rating struct {
 
 func (x *Rating) Reset() {
 	*x = Rating{}
-	mi := &file_llx_proto_msgTypes[16]
+	mi := &file_llx_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1636,7 +1700,7 @@ func (x *Rating) String() string {
 func (*Rating) ProtoMessage() {}
 
 func (x *Rating) ProtoReflect() protoreflect.Message {
-	mi := &file_llx_proto_msgTypes[16]
+	mi := &file_llx_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1649,7 +1713,7 @@ func (x *Rating) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Rating.ProtoReflect.Descriptor instead.
 func (*Rating) Descriptor() ([]byte, []int) {
-	return file_llx_proto_rawDescGZIP(), []int{16}
+	return file_llx_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *Rating) GetId() string {
@@ -1713,7 +1777,7 @@ type AssessmentItem struct {
 
 func (x *AssessmentItem) Reset() {
 	*x = AssessmentItem{}
-	mi := &file_llx_proto_msgTypes[17]
+	mi := &file_llx_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1725,7 +1789,7 @@ func (x *AssessmentItem) String() string {
 func (*AssessmentItem) ProtoMessage() {}
 
 func (x *AssessmentItem) ProtoReflect() protoreflect.Message {
-	mi := &file_llx_proto_msgTypes[17]
+	mi := &file_llx_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1738,7 +1802,7 @@ func (x *AssessmentItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AssessmentItem.ProtoReflect.Descriptor instead.
 func (*AssessmentItem) Descriptor() ([]byte, []int) {
-	return file_llx_proto_rawDescGZIP(), []int{17}
+	return file_llx_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *AssessmentItem) GetSuccess() bool {
@@ -1830,7 +1894,7 @@ type Assessment struct {
 
 func (x *Assessment) Reset() {
 	*x = Assessment{}
-	mi := &file_llx_proto_msgTypes[18]
+	mi := &file_llx_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1842,7 +1906,7 @@ func (x *Assessment) String() string {
 func (*Assessment) ProtoMessage() {}
 
 func (x *Assessment) ProtoReflect() protoreflect.Message {
-	mi := &file_llx_proto_msgTypes[18]
+	mi := &file_llx_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1855,7 +1919,7 @@ func (x *Assessment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Assessment.ProtoReflect.Descriptor instead.
 func (*Assessment) Descriptor() ([]byte, []int) {
-	return file_llx_proto_rawDescGZIP(), []int{18}
+	return file_llx_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *Assessment) GetChecksum() string {
@@ -1897,7 +1961,7 @@ type IP struct {
 
 func (x *IP) Reset() {
 	*x = IP{}
-	mi := &file_llx_proto_msgTypes[19]
+	mi := &file_llx_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1909,7 +1973,7 @@ func (x *IP) String() string {
 func (*IP) ProtoMessage() {}
 
 func (x *IP) ProtoReflect() protoreflect.Message {
-	mi := &file_llx_proto_msgTypes[19]
+	mi := &file_llx_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1922,7 +1986,7 @@ func (x *IP) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IP.ProtoReflect.Descriptor instead.
 func (*IP) Descriptor() ([]byte, []int) {
-	return file_llx_proto_rawDescGZIP(), []int{19}
+	return file_llx_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *IP) GetAddress() []byte {
@@ -2098,12 +2162,16 @@ const file_llx_proto_rawDesc = "" +
 	"\x05scope\x18\x02 \x01(\x0e2\x13.mql.llx.ErrorScopeR\x05scope\x12\x19\n" +
 	"\bscope_id\x18\x03 \x01(\tR\ascopeId\x12 \n" +
 	"\vpermissions\x18\x04 \x03(\tR\vpermissions\x12$\n" +
-	"\x0eretry_after_ms\x18\x05 \x01(\x03R\fretryAfterMs\"\x98\x01\n" +
+	"\x0eretry_after_ms\x18\x05 \x01(\x03R\fretryAfterMs\"Q\n" +
+	"\vCoverageGap\x12\x14\n" +
+	"\x05error\x18\x01 \x01(\tR\x05error\x12,\n" +
+	"\x06detail\x18\x02 \x01(\v2\x14.mql.llx.ErrorDetailR\x06detail\"\xd3\x01\n" +
 	"\x06Result\x12&\n" +
 	"\x04data\x18\x01 \x01(\v2\x12.mql.llx.PrimitiveR\x04data\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x12\x17\n" +
 	"\acode_id\x18\x03 \x01(\tR\x06codeId\x127\n" +
-	"\ferror_detail\x18\x04 \x01(\v2\x14.mql.llx.ErrorDetailR\verrorDetail\"\xff\x01\n" +
+	"\ferror_detail\x18\x04 \x01(\v2\x14.mql.llx.ErrorDetailR\verrorDetail\x129\n" +
+	"\rcoverage_gaps\x18\x05 \x03(\v2\x14.mql.llx.CoverageGapR\fcoverageGaps\"\xff\x01\n" +
 	"\x11ResourceRecording\x12\x1a\n" +
 	"\bresource\x18\x01 \x01(\tR\bresource\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12>\n" +
@@ -2179,7 +2247,7 @@ func file_llx_proto_rawDescGZIP() []byte {
 }
 
 var file_llx_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_llx_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
+var file_llx_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_llx_proto_goTypes = []any{
 	(ErrorKind)(0),            // 0: mql.llx.ErrorKind
 	(ErrorScope)(0),           // 1: mql.llx.ErrorScope
@@ -2199,73 +2267,76 @@ var file_llx_proto_goTypes = []any{
 	(*DeprecatedUse)(nil),     // 15: mql.llx.DeprecatedUse
 	(*TranslationRef)(nil),    // 16: mql.llx.TranslationRef
 	(*ErrorDetail)(nil),       // 17: mql.llx.ErrorDetail
-	(*Result)(nil),            // 18: mql.llx.Result
-	(*ResourceRecording)(nil), // 19: mql.llx.ResourceRecording
-	(*Rating)(nil),            // 20: mql.llx.Rating
-	(*AssessmentItem)(nil),    // 21: mql.llx.AssessmentItem
-	(*Assessment)(nil),        // 22: mql.llx.Assessment
-	(*IP)(nil),                // 23: mql.llx.IP
-	nil,                       // 24: mql.llx.Primitive.MapEntry
-	nil,                       // 25: mql.llx.CodeV1.ChecksumsEntry
-	nil,                       // 26: mql.llx.CodeV1.AssertionsEntry
-	nil,                       // 27: mql.llx.CodeV2.ChecksumsEntry
-	nil,                       // 28: mql.llx.CodeV2.AssertionsEntry
-	nil,                       // 29: mql.llx.Labels.LabelsEntry
-	nil,                       // 30: mql.llx.CodeBundle.PropsEntry
-	nil,                       // 31: mql.llx.CodeBundle.AssertionsEntry
-	nil,                       // 32: mql.llx.CodeBundle.AutoExpandEntry
-	nil,                       // 33: mql.llx.CodeBundle.VarsEntry
-	nil,                       // 34: mql.llx.CodeBundle.ProviderSchemasEntry
-	nil,                       // 35: mql.llx.CodeBundle.MinProviderVersionsEntry
-	nil,                       // 36: mql.llx.ResourceRecording.FieldsEntry
+	(*CoverageGap)(nil),       // 18: mql.llx.CoverageGap
+	(*Result)(nil),            // 19: mql.llx.Result
+	(*ResourceRecording)(nil), // 20: mql.llx.ResourceRecording
+	(*Rating)(nil),            // 21: mql.llx.Rating
+	(*AssessmentItem)(nil),    // 22: mql.llx.AssessmentItem
+	(*Assessment)(nil),        // 23: mql.llx.Assessment
+	(*IP)(nil),                // 24: mql.llx.IP
+	nil,                       // 25: mql.llx.Primitive.MapEntry
+	nil,                       // 26: mql.llx.CodeV1.ChecksumsEntry
+	nil,                       // 27: mql.llx.CodeV1.AssertionsEntry
+	nil,                       // 28: mql.llx.CodeV2.ChecksumsEntry
+	nil,                       // 29: mql.llx.CodeV2.AssertionsEntry
+	nil,                       // 30: mql.llx.Labels.LabelsEntry
+	nil,                       // 31: mql.llx.CodeBundle.PropsEntry
+	nil,                       // 32: mql.llx.CodeBundle.AssertionsEntry
+	nil,                       // 33: mql.llx.CodeBundle.AutoExpandEntry
+	nil,                       // 34: mql.llx.CodeBundle.VarsEntry
+	nil,                       // 35: mql.llx.CodeBundle.ProviderSchemasEntry
+	nil,                       // 36: mql.llx.CodeBundle.MinProviderVersionsEntry
+	nil,                       // 37: mql.llx.ResourceRecording.FieldsEntry
 }
 var file_llx_proto_depIdxs = []int32{
 	4,  // 0: mql.llx.Primitive.array:type_name -> mql.llx.Primitive
-	24, // 1: mql.llx.Primitive.map:type_name -> mql.llx.Primitive.MapEntry
+	25, // 1: mql.llx.Primitive.map:type_name -> mql.llx.Primitive.MapEntry
 	4,  // 2: mql.llx.Function.args:type_name -> mql.llx.Primitive
 	2,  // 3: mql.llx.Function.nullability:type_name -> mql.llx.Function.Nullability
 	3,  // 4: mql.llx.Chunk.call:type_name -> mql.llx.Chunk.Call
 	4,  // 5: mql.llx.Chunk.primitive:type_name -> mql.llx.Primitive
 	6,  // 6: mql.llx.Chunk.function:type_name -> mql.llx.Function
 	7,  // 7: mql.llx.CodeV1.code:type_name -> mql.llx.Chunk
-	25, // 8: mql.llx.CodeV1.checksums:type_name -> mql.llx.CodeV1.ChecksumsEntry
+	26, // 8: mql.llx.CodeV1.checksums:type_name -> mql.llx.CodeV1.ChecksumsEntry
 	9,  // 9: mql.llx.CodeV1.functions:type_name -> mql.llx.CodeV1
-	26, // 10: mql.llx.CodeV1.assertions:type_name -> mql.llx.CodeV1.AssertionsEntry
+	27, // 10: mql.llx.CodeV1.assertions:type_name -> mql.llx.CodeV1.AssertionsEntry
 	7,  // 11: mql.llx.Block.chunks:type_name -> mql.llx.Chunk
 	10, // 12: mql.llx.CodeV2.blocks:type_name -> mql.llx.Block
-	27, // 13: mql.llx.CodeV2.checksums:type_name -> mql.llx.CodeV2.ChecksumsEntry
-	28, // 14: mql.llx.CodeV2.assertions:type_name -> mql.llx.CodeV2.AssertionsEntry
-	29, // 15: mql.llx.Labels.labels:type_name -> mql.llx.Labels.LabelsEntry
+	28, // 13: mql.llx.CodeV2.checksums:type_name -> mql.llx.CodeV2.ChecksumsEntry
+	29, // 14: mql.llx.CodeV2.assertions:type_name -> mql.llx.CodeV2.AssertionsEntry
+	30, // 15: mql.llx.Labels.labels:type_name -> mql.llx.Labels.LabelsEntry
 	11, // 16: mql.llx.CodeBundle.code_v2:type_name -> mql.llx.CodeV2
 	13, // 17: mql.llx.CodeBundle.suggestions:type_name -> mql.llx.Documentation
 	12, // 18: mql.llx.CodeBundle.labels:type_name -> mql.llx.Labels
-	30, // 19: mql.llx.CodeBundle.props:type_name -> mql.llx.CodeBundle.PropsEntry
-	31, // 20: mql.llx.CodeBundle.assertions:type_name -> mql.llx.CodeBundle.AssertionsEntry
-	32, // 21: mql.llx.CodeBundle.auto_expand:type_name -> mql.llx.CodeBundle.AutoExpandEntry
-	33, // 22: mql.llx.CodeBundle.vars:type_name -> mql.llx.CodeBundle.VarsEntry
-	34, // 23: mql.llx.CodeBundle.provider_schemas:type_name -> mql.llx.CodeBundle.ProviderSchemasEntry
-	35, // 24: mql.llx.CodeBundle.min_provider_versions:type_name -> mql.llx.CodeBundle.MinProviderVersionsEntry
+	31, // 19: mql.llx.CodeBundle.props:type_name -> mql.llx.CodeBundle.PropsEntry
+	32, // 20: mql.llx.CodeBundle.assertions:type_name -> mql.llx.CodeBundle.AssertionsEntry
+	33, // 21: mql.llx.CodeBundle.auto_expand:type_name -> mql.llx.CodeBundle.AutoExpandEntry
+	34, // 22: mql.llx.CodeBundle.vars:type_name -> mql.llx.CodeBundle.VarsEntry
+	35, // 23: mql.llx.CodeBundle.provider_schemas:type_name -> mql.llx.CodeBundle.ProviderSchemasEntry
+	36, // 24: mql.llx.CodeBundle.min_provider_versions:type_name -> mql.llx.CodeBundle.MinProviderVersionsEntry
 	16, // 25: mql.llx.CodeBundle.translations:type_name -> mql.llx.TranslationRef
 	15, // 26: mql.llx.CodeBundle.deprecated_uses:type_name -> mql.llx.DeprecatedUse
 	0,  // 27: mql.llx.ErrorDetail.kind:type_name -> mql.llx.ErrorKind
 	1,  // 28: mql.llx.ErrorDetail.scope:type_name -> mql.llx.ErrorScope
-	4,  // 29: mql.llx.Result.data:type_name -> mql.llx.Primitive
-	17, // 30: mql.llx.Result.error_detail:type_name -> mql.llx.ErrorDetail
-	36, // 31: mql.llx.ResourceRecording.fields:type_name -> mql.llx.ResourceRecording.FieldsEntry
-	4,  // 32: mql.llx.AssessmentItem.expected:type_name -> mql.llx.Primitive
-	4,  // 33: mql.llx.AssessmentItem.actual:type_name -> mql.llx.Primitive
-	4,  // 34: mql.llx.AssessmentItem.data:type_name -> mql.llx.Primitive
-	21, // 35: mql.llx.Assessment.results:type_name -> mql.llx.AssessmentItem
-	4,  // 36: mql.llx.Primitive.MapEntry.value:type_name -> mql.llx.Primitive
-	8,  // 37: mql.llx.CodeV1.AssertionsEntry.value:type_name -> mql.llx.AssertionMessage
-	8,  // 38: mql.llx.CodeV2.AssertionsEntry.value:type_name -> mql.llx.AssertionMessage
-	8,  // 39: mql.llx.CodeBundle.AssertionsEntry.value:type_name -> mql.llx.AssertionMessage
-	18, // 40: mql.llx.ResourceRecording.FieldsEntry.value:type_name -> mql.llx.Result
-	41, // [41:41] is the sub-list for method output_type
-	41, // [41:41] is the sub-list for method input_type
-	41, // [41:41] is the sub-list for extension type_name
-	41, // [41:41] is the sub-list for extension extendee
-	0,  // [0:41] is the sub-list for field type_name
+	17, // 29: mql.llx.CoverageGap.detail:type_name -> mql.llx.ErrorDetail
+	4,  // 30: mql.llx.Result.data:type_name -> mql.llx.Primitive
+	17, // 31: mql.llx.Result.error_detail:type_name -> mql.llx.ErrorDetail
+	18, // 32: mql.llx.Result.coverage_gaps:type_name -> mql.llx.CoverageGap
+	37, // 33: mql.llx.ResourceRecording.fields:type_name -> mql.llx.ResourceRecording.FieldsEntry
+	4,  // 34: mql.llx.AssessmentItem.expected:type_name -> mql.llx.Primitive
+	4,  // 35: mql.llx.AssessmentItem.actual:type_name -> mql.llx.Primitive
+	4,  // 36: mql.llx.AssessmentItem.data:type_name -> mql.llx.Primitive
+	22, // 37: mql.llx.Assessment.results:type_name -> mql.llx.AssessmentItem
+	4,  // 38: mql.llx.Primitive.MapEntry.value:type_name -> mql.llx.Primitive
+	8,  // 39: mql.llx.CodeV1.AssertionsEntry.value:type_name -> mql.llx.AssertionMessage
+	8,  // 40: mql.llx.CodeV2.AssertionsEntry.value:type_name -> mql.llx.AssertionMessage
+	8,  // 41: mql.llx.CodeBundle.AssertionsEntry.value:type_name -> mql.llx.AssertionMessage
+	19, // 42: mql.llx.ResourceRecording.FieldsEntry.value:type_name -> mql.llx.Result
+	43, // [43:43] is the sub-list for method output_type
+	43, // [43:43] is the sub-list for method input_type
+	43, // [43:43] is the sub-list for extension type_name
+	43, // [43:43] is the sub-list for extension extendee
+	0,  // [0:43] is the sub-list for field type_name
 }
 
 func init() { file_llx_proto_init() }
@@ -2279,7 +2350,7 @@ func file_llx_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_llx_proto_rawDesc), len(file_llx_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   33,
+			NumMessages:   34,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

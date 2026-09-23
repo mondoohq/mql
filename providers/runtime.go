@@ -624,7 +624,18 @@ func (r *Runtime) Unregister(watcherUID string) error {
 func (r *Runtime) WatchAndUpdate(resource llx.Resource, field string, watcherUID string, callback func(res any, err error)) error {
 	raw, err := r.watchAndUpdate(resource.MqlName(), resource.MqlID(), field, watcherUID)
 	if raw != nil {
-		callback(raw.Value, raw.Error)
+		fieldErr := raw.Error
+		if fieldErr == nil && len(raw.CoverageGaps) != 0 {
+			// The callback has no slot for gaps, so a partial field travels
+			// the way a provider returns it (ADR 046 §8); the executor
+			// unpacks it.
+			gaps := make([]error, len(raw.CoverageGaps))
+			for i := range raw.CoverageGaps {
+				gaps[i] = raw.CoverageGaps[i]
+			}
+			fieldErr = llx.Partial(gaps...)
+		}
+		callback(raw.Value, fieldErr)
 	}
 	return err
 }
@@ -702,7 +713,9 @@ func (r *Runtime) watchAndUpdate(resource string, resourceID string, field strin
 				Str("field", field).
 				Msg("provider returned no data and no error for a field; the field was never set on the resource (provider bug)")
 		}
-		raw = data.Data.RawData()
+		// The parts the provider could not read ride beside the value, not in
+		// the error slot, which would mark the whole field failed (ADR 046 §8).
+		raw = data.Data.RawData().WithCoverageGaps(llx.CoverageGapsFromProto(data.CoverageGaps))
 	}
 
 	addDataReq := llx.AddDataReq{
@@ -942,9 +955,10 @@ func (p *providerCallbacks) GetData(req *plugin.DataReq) (*plugin.DataRes, error
 	}
 	res := raw.Result()
 	return &plugin.DataRes{
-		Data:        res.Data,
-		Error:       res.Error,
-		ErrorDetail: res.ErrorDetail,
+		Data:         res.Data,
+		Error:        res.Error,
+		ErrorDetail:  res.ErrorDetail,
+		CoverageGaps: res.CoverageGaps,
 	}, err
 }
 

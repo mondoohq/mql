@@ -442,6 +442,8 @@ func (r *RawData) Result() *Result {
 	// consumer reads a classification instead of parsing text (ADR 046). It is
 	// nil for every unclassified error, which is most of them today.
 	errorDetail := ErrorDetailOf(r.Error)
+	// Gaps ride beside the value, never in the error (ADR 046 §8).
+	coverageGaps := CoverageGapsToProto(r.CoverageGaps)
 
 	// In case we encounter an error we need to still construct the result object
 	// with the type information so it can be processed by the server
@@ -453,9 +455,10 @@ func (r *RawData) Result() *Result {
 		// type to nil
 		if r.Value == nil {
 			return &Result{
-				Data:        &Primitive{Type: string(r.Type)},
-				Error:       errorMsg,
-				ErrorDetail: errorDetail,
+				Data:         &Primitive{Type: string(r.Type)},
+				Error:        errorMsg,
+				ErrorDetail:  errorDetail,
+				CoverageGaps: coverageGaps,
 			}
 		}
 	}
@@ -470,21 +473,25 @@ func (r *RawData) Result() *Result {
 			errorMsg = err.Error()
 		}
 		return &Result{
-			Data:        &Primitive{Type: string(r.Type)},
-			Error:       errorMsg,
-			ErrorDetail: errorDetail,
+			Data:         &Primitive{Type: string(r.Type)},
+			Error:        errorMsg,
+			ErrorDetail:  errorDetail,
+			CoverageGaps: coverageGaps,
 		}
 	}
 	return &Result{
-		Data:        data,
-		Error:       errorMsg,
-		ErrorDetail: errorDetail,
+		Data:         data,
+		Error:        errorMsg,
+		ErrorDetail:  errorDetail,
+		CoverageGaps: coverageGaps,
 	}
 }
 
 func (r *RawData) CastResult(t types.Type) (*Result, error) {
 	errorMsg := ""
 	errorDetail := ErrorDetailOf(r.Error)
+	// Gaps ride beside the value, never in the error (ADR 046 §8).
+	coverageGaps := CoverageGapsToProto(r.CoverageGaps)
 
 	// In case we encounter an error we need to still construct the result object
 	// with the type information so it can be processed by the server
@@ -495,9 +502,10 @@ func (r *RawData) CastResult(t types.Type) (*Result, error) {
 	// Allow any type to take on nil values
 	if r.Value == nil {
 		return &Result{
-			Data:        &Primitive{Type: string(t)},
-			Error:       errorMsg,
-			ErrorDetail: errorDetail,
+			Data:         &Primitive{Type: string(t)},
+			Error:        errorMsg,
+			ErrorDetail:  errorDetail,
+			CoverageGaps: coverageGaps,
 		}, nil
 	}
 
@@ -507,9 +515,10 @@ func (r *RawData) CastResult(t types.Type) (*Result, error) {
 			return nil, fmt.Errorf("cannot cast from %s to %s", r.Type.Label(), t.Label())
 		}
 		return &Result{
-			Data:        BoolPrimitive(truthy),
-			Error:       errorMsg,
-			ErrorDetail: errorDetail,
+			Data:         BoolPrimitive(truthy),
+			Error:        errorMsg,
+			ErrorDetail:  errorDetail,
+			CoverageGaps: coverageGaps,
 		}, nil
 	}
 
@@ -518,9 +527,10 @@ func (r *RawData) CastResult(t types.Type) (*Result, error) {
 		return nil, err
 	}
 	return &Result{
-		Data:        data,
-		Error:       errorMsg,
-		ErrorDetail: errorDetail,
+		Data:         data,
+		Error:        errorMsg,
+		ErrorDetail:  errorDetail,
+		CoverageGaps: coverageGaps,
 	}, nil
 }
 
@@ -579,7 +589,7 @@ func (r *Result) RawData() *RawData {
 	if err := ErrorFromDetail(r.Error, r.ErrorDetail); err != nil {
 		data.Error = err
 	}
-	return data
+	return data.WithCoverageGaps(CoverageGapsFromProto(r.CoverageGaps))
 }
 
 func punset2raw(p *Primitive) *RawData {

@@ -204,6 +204,7 @@ func (e *blockExecutor) markTranslated(ref uint64, res *RawData) *RawData {
 		Type:           res.Type,
 		Value:          res.Value,
 		Error:          res.Error,
+		CoverageGaps:   res.CoverageGaps,
 		ShortCircuited: res.ShortCircuited,
 		Translated:     true,
 	}

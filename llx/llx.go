@@ -121,6 +121,10 @@ type blockExecutor struct {
 	// resolution (ADR 031) reads a field from another asset's runtime, and
 	// unregister has to take that watcher down where it was put.
 	foreignWatchers sync.Map
+	// blockCoverageGaps maps a ref to the coverage gaps its block calls
+	// reported (ADR 046 §8): the gaps of a `{ … }` over a list are in the
+	// results of each block run, not in the list itself.
+	blockCoverageGaps sync.Map
 }
 
 // MQLExecutorV2 is the runtime of MQL codestructure
@@ -401,7 +405,7 @@ func (b *blockExecutor) run() {
 			v := b.mustLookup(ref)
 			b.callback(&RawResult{
 				CodeID: codeID,
-				Data:   v,
+				Data:   b.resultWithCoverageGaps(ref, v),
 			})
 		}
 	}
@@ -455,6 +459,7 @@ type arrayBlockCallResults struct {
 	waiting              []int
 	unfinishedBlockCalls int
 	onComplete           func([]arrayBlockCallResult, []error)
+	coverageGaps         []*Error
 	entrypoints          map[string]struct{}
 	datapoints           map[string]struct{}
 }
@@ -560,6 +565,7 @@ func (a *arrayBlockCallResults) update(i int, res *RawResult) {
 	if res.Data.Error != nil {
 		a.errors = append(a.errors, res.Data.Error)
 	}
+	a.coverageGaps = UnionCoverageGaps(a.coverageGaps, res.Data.CoverageGaps)
 
 	if a.unfinishedBlockCalls == 0 {
 		a.onComplete(a.results, a.errors)
@@ -617,10 +623,21 @@ func newArrayBlockCallResultsV2(expectedBlockCalls int, code *CodeV2, blockRef u
 	}, true
 }
 
-func (c *blockExecutor) runFunctionBlocks(argList [][]*RawData, blockRef uint64,
+// runFunctionBlocks runs the block at blockRef once per entry in argList, on
+// behalf of the chunk at ref, and calls onComplete when all runs finished.
+func (c *blockExecutor) runFunctionBlocks(argList [][]*RawData, blockRef uint64, ref uint64,
 	onComplete func([]arrayBlockCallResult, []error),
 ) error {
-	callResults, shouldRun := newArrayBlockCallResultsV2(len(argList), c.ctx.code, blockRef, onComplete)
+	var callResults *arrayBlockCallResults
+	// Record what the block runs could not read before the result is stored
+	// and delivered, so its delivery picks the gaps up.
+	complete := func(results []arrayBlockCallResult, errs []error) {
+		if callResults != nil && len(callResults.coverageGaps) != 0 {
+			c.blockCoverageGaps.Store(ref, callResults.coverageGaps)
+		}
+		onComplete(results, errs)
+	}
+	callResults, shouldRun := newArrayBlockCallResultsV2(len(argList), c.ctx.code, blockRef, complete)
 	if !shouldRun {
 		return nil
 	}
@@ -692,7 +709,7 @@ func (b *blockExecutor) runBlock(bind *RawData, functionRef *Primitive, args []*
 		fargs = append(fargs, a)
 	}
 
-	err := b.runFunctionBlocks([][]*RawData{fargs}, fref, func(results []arrayBlockCallResult, errs []error) {
+	err := b.runFunctionBlocks([][]*RawData{fargs}, fref, ref, func(results []arrayBlockCallResult, errs []error) {
 		var err multierr.Errors
 		err.Add(errs...)
 
@@ -989,7 +1006,7 @@ func (e *blockExecutor) runChain(start uint64) {
 		// if this is a result for a callback (entry- or datapoint) send it
 		if res != nil {
 			if codeID, ok := e.callbackPoints[curRef]; ok {
-				e.callback(&RawResult{Data: e.markTranslated(curRef, res), CodeID: codeID})
+				e.callback(&RawResult{Data: e.resultWithCoverageGaps(curRef, e.markTranslated(curRef, res)), CodeID: codeID})
 			}
 		} else if err != nil {
 			if codeID, ok := e.callbackPoints[curRef]; ok {
@@ -1038,7 +1055,7 @@ func (e *blockExecutor) triggerChain(ref uint64, data *RawData) {
 	// before we do anything else, we may have to provide the value from
 	// this callback point
 	if codeID, ok := e.callbackPoints[ref]; ok {
-		e.callback(&RawResult{Data: e.markTranslated(ref, data), CodeID: codeID})
+		e.callback(&RawResult{Data: e.resultWithCoverageGaps(ref, e.markTranslated(ref, data)), CodeID: codeID})
 	}
 
 	nxt, ok := e.calls.Load(ref)
@@ -1060,7 +1077,7 @@ func (e *blockExecutor) triggerChain(ref uint64, data *RawData) {
 	}
 
 	log.Trace().Uint64("ref", ref).Msgf("exec> trigger callback")
-	e.callback(&RawResult{Data: e.markTranslated(ref, res.Result), CodeID: codeID})
+	e.callback(&RawResult{Data: e.resultWithCoverageGaps(ref, e.markTranslated(ref, res.Result)), CodeID: codeID})
 }
 
 func (e *blockExecutor) triggerChainError(ref uint64, err error) {

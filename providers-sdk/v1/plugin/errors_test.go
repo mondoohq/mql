@@ -126,7 +126,8 @@ func TestTValueCarriesTheKindOntoTheWire(t *testing.T) {
 
 func TestTValueWithAValueCarriesTheKind(t *testing.T) {
 	// The non-null path goes through RawData.Result() instead, so it needs its
-	// own coverage: a partial read that reports a value and an error.
+	// own coverage: a read that reports a value and an error. That still means
+	// failed; a partial result is a Partial (see coverage_test.go).
 	tv := TValue[string]{
 		State: StateIsSet,
 		Data:  "partial",
