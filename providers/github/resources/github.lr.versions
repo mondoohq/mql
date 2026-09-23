@@ -44,6 +44,16 @@ github.actionsVariable.selectedRepositoriesUrl 13.1.1
 github.actionsVariable.updatedAt 13.1.1
 github.actionsVariable.value 13.1.1
 github.actionsVariable.visibility 13.1.1
+github.agentSecret 14.0.1
+github.agentSecret.createdAt 14.0.1
+github.agentSecret.name 14.0.1
+github.agentSecret.organizationName 14.0.1
+github.agentSecret.repositoryName 14.0.1
+github.agentSecret.repositoryOwner 14.0.1
+github.agentSecret.scope 14.0.1
+github.agentSecret.selectedRepositories 14.0.1
+github.agentSecret.updatedAt 14.0.1
+github.agentSecret.visibility 14.0.1
 github.auditLogEntry 11.4.123
 github.auditLogEntry.action 11.4.123
 github.auditLogEntry.actor 11.4.123
@@ -343,6 +353,7 @@ github.milestone.url 11.4.122
 github.organization 9.0.0
 github.organization.actionsSettings 11.4.131
 github.organization.advancedSecurityEnabledForNewRepos 11.4.120
+github.organization.agentSecrets 14.0.1
 github.organization.auditLog 11.4.123
 github.organization.auditLogStreamConfig 13.0.8
 github.organization.auditLogStreamConfig.createdAt 13.0.8
@@ -613,6 +624,7 @@ github.repository 9.0.0
 github.repository.actionsSettings 11.4.131
 github.repository.adminCollaborators 11.4.14
 github.repository.advancedSecurityEnabled 11.4.131
+github.repository.agentSecrets 14.0.1
 github.repository.allFiles 13.8.4
 github.repository.allMergeRequests 9.1.12
 github.repository.allowAutoMerge 9.0.0

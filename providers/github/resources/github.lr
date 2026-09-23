@@ -270,6 +270,13 @@ github.organization @defaults("login name") @root {
   // values. A separate store from the GitHub Actions secrets that `secrets`
   // reports.
   dependabotSecrets() []github.dependabotSecret
+  // Copilot cloud agent secrets configured at the organization level
+  //
+  // Credentials passed to the Copilot cloud agent when it works in the
+  // organization's repositories. Names, visibility and timestamps only, never
+  // the values. A separate store from the GitHub Actions secrets that `secrets`
+  // reports and the Dependabot secrets that `dependabotSecrets` reports.
+  agentSecrets() []github.agentSecret
   // Immutable release enforcement across the organization's repositories
   //
   // Whether a published release's tag and assets can still be changed after
@@ -1212,6 +1219,12 @@ github.repository @defaults("fullName") @root {
   // only, never the values. A separate store from the GitHub Actions secrets
   // that `secrets` reports.
   dependabotSecrets() []github.dependabotSecret
+  // Copilot cloud agent secrets configured at the repository level
+  //
+  // Credentials passed to the Copilot cloud agent when it works in this
+  // repository. Names and timestamps only, never the values. Organization
+  // agent secrets shared with the repository are reported on the organization.
+  agentSecrets() []github.agentSecret
 }
 
 // Copilot coding agent configuration for a repository
@@ -2806,6 +2819,36 @@ private github.organization.immutableReleases @defaults("enforcedRepositories") 
 // and `selectedRepositories` resolves the allowed set when visibility is
 // selected.
 private github.dependabotSecret @defaults("name scope visibility") {
+  // Secret name
+  name string
+  // Scope of the secret (organization, repository)
+  scope string
+  // Owning organization login (set for organization scope)
+  organizationName string
+  // Owning repository name (set for repository scope)
+  repositoryName string
+  // Owning repository owner login (set for repository scope)
+  repositoryOwner string
+  // Secret create time
+  createdAt time
+  // Secret last update time
+  updatedAt time
+  // Visibility of an organization secret (all, private, selected); empty for repository scope
+  visibility string
+  // Repositories that have access to this organization secret (only when visibility is "selected")
+  selectedRepositories() []github.repository
+}
+
+// Copilot cloud agent secret
+//
+// Credential passed to the Copilot cloud agent as an environment variable while
+// it works in a repository, for example a token for a private package registry
+// or an internal service the agent calls. Only the name, scope, visibility and
+// timestamps are reported, never the value. The agent reads only this store,
+// not GitHub Actions, Codespaces or Dependabot secrets. For an organization
+// secret, `visibility` controls which repositories the agent can use it in and
+// `selectedRepositories` resolves the allowed set when visibility is selected.
+private github.agentSecret @defaults("name scope visibility") {
   // Secret name
   name string
   // Scope of the secret (organization, repository)
