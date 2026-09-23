@@ -15,7 +15,7 @@ var Config = plugin.Provider{
 	// Every kind this provider hands out as its own asset is a root (ADR 031).
 	Root:    "claude",
 	ID:      "go.mondoo.com/mql/providers/claude",
-	Version: "14.0.0-rc.1",
+	Version: "14.0.0-rc.2",
 	// Every root carries `asset`, which core owns (ADR 042).
 	Requires: []plugin.ProviderDep{
 		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
