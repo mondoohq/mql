@@ -7,19 +7,19 @@ go 1.26.8
 require (
 	github.com/rs/zerolog v1.35.1
 	github.com/stackitcloud/stackit-sdk-go/core v0.27.0
-	github.com/stackitcloud/stackit-sdk-go/services/alb v0.17.2
+	github.com/stackitcloud/stackit-sdk-go/services/alb v0.18.0
 	github.com/stackitcloud/stackit-sdk-go/services/albwaf v0.13.4
 	github.com/stackitcloud/stackit-sdk-go/services/authorization v0.15.4
 	github.com/stackitcloud/stackit-sdk-go/services/certificates v1.9.2
 	github.com/stackitcloud/stackit-sdk-go/services/dns v0.23.1
-	github.com/stackitcloud/stackit-sdk-go/services/iaas v1.14.3
+	github.com/stackitcloud/stackit-sdk-go/services/iaas v1.14.4
 	github.com/stackitcloud/stackit-sdk-go/services/kms v1.13.1
 	github.com/stackitcloud/stackit-sdk-go/services/loadbalancer v1.15.2
 	github.com/stackitcloud/stackit-sdk-go/services/logme v1.3.1
 	github.com/stackitcloud/stackit-sdk-go/services/mariadb v1.3.1
 	github.com/stackitcloud/stackit-sdk-go/services/modelserving v0.13.1
 	github.com/stackitcloud/stackit-sdk-go/services/mongodbflex v1.12.2
-	github.com/stackitcloud/stackit-sdk-go/services/objectstorage v1.9.2
+	github.com/stackitcloud/stackit-sdk-go/services/objectstorage v1.10.0
 	github.com/stackitcloud/stackit-sdk-go/services/observability v0.25.2
 	github.com/stackitcloud/stackit-sdk-go/services/opensearch v1.3.1
 	github.com/stackitcloud/stackit-sdk-go/services/postgresflex v1.15.0
@@ -33,8 +33,8 @@ require (
 	github.com/stackitcloud/stackit-sdk-go/services/sfs v0.11.2
 	github.com/stackitcloud/stackit-sdk-go/services/ske v1.21.2
 	github.com/stackitcloud/stackit-sdk-go/services/sqlserverflex v1.18.1
-	github.com/stackitcloud/stackit-sdk-go/services/telemetrylink v0.5.2
-	github.com/stackitcloud/stackit-sdk-go/services/telemetryrouter v0.5.2
+	github.com/stackitcloud/stackit-sdk-go/services/telemetrylink v0.6.0
+	github.com/stackitcloud/stackit-sdk-go/services/telemetryrouter v0.6.0
 	github.com/stackitcloud/stackit-sdk-go/services/vpn v0.15.2
 	github.com/stretchr/testify v1.12.1
 	go.mondoo.com/mql v0.0.0-20260913225403-92593e868bb9

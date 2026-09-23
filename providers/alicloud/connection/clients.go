@@ -31,7 +31,7 @@ import (
 	ramclient "github.com/alibabacloud-go/ram-20150501/v2/client"
 	rdsclient "github.com/alibabacloud-go/rds-20140815/v16/client"
 	rmclient "github.com/alibabacloud-go/resourcemanager-20200331/v3/client"
-	sasclient "github.com/alibabacloud-go/sas-20181203/v9/client"
+	sasclient "github.com/alibabacloud-go/sas-20181203/v10/client"
 	slbclient "github.com/alibabacloud-go/slb-20140515/v4/client"
 	slsclient "github.com/alibabacloud-go/sls-20201230/v6/client"
 	stsclient "github.com/alibabacloud-go/sts-20150401/v2/client"

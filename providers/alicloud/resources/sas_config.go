@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	sasclient "github.com/alibabacloud-go/sas-20181203/v9/client"
+	sasclient "github.com/alibabacloud-go/sas-20181203/v10/client"
 	"github.com/alibabacloud-go/tea/tea"
 	"github.com/rs/zerolog/log"
 
@@ -188,7 +188,7 @@ func (r *mqlAlicloudSasConfig) checkConfig() *sasclient.GetCheckConfigResponseBo
 	if r.client == nil {
 		return nil
 	}
-	resp, err := r.client.GetCheckConfig()
+	resp, err := r.client.GetCheckConfig(&sasclient.GetCheckConfigRequest{})
 	if err != nil || resp == nil || resp.Body == nil {
 		return nil
 	}

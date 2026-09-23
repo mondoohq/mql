@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"sync"
 
-	opensearch "github.com/opensearch-project/opensearch-go/v4"
+	opensearch "github.com/opensearch-project/opensearch-go/v5"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/vault"
@@ -156,7 +156,7 @@ func (c *OpensearchConnection) Get(path string, out any) error {
 	}
 	req.Header.Set("Accept", "application/json")
 
-	res, err := client.Perform(req)
+	res, err := client.Request(req)
 	if err != nil {
 		return err
 	}

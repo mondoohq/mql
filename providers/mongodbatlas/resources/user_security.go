@@ -10,7 +10,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/types"
-	"go.mongodb.org/atlas-sdk/v20250312024/admin"
+	"go.mongodb.org/atlas-sdk/v20250312025/admin"
 )
 
 // userSecurity reads the project's external authentication configuration. A
@@ -177,7 +177,7 @@ func (r *mqlMongodbatlas) maintenanceWindow() (*mqlMongodbatlasMaintenanceWindow
 
 	res, err := CreateResource(r.MqlRuntime, "mongodbatlas.maintenanceWindowConfig", map[string]*llx.RawData{
 		"__id":                         llx.StringData("mongodbatlas.maintenanceWindowConfig/" + pid),
-		"dayOfWeek":                    llx.IntData(w.GetDayOfWeek()),
+		"dayOfWeek":                    llx.IntDataPtr(w.DayOfWeek),
 		"hourOfDay":                    llx.IntDataPtr(w.HourOfDay),
 		"numberOfDeferrals":            llx.IntDataPtr(w.NumberOfDeferrals),
 		"autoDeferOnceEnabled":         llx.BoolDataPtr(w.AutoDeferOnceEnabled),

@@ -128,8 +128,8 @@ github.com/docker/go-connections v0.8.1 h1:JibmG5hULs5qXSr/cp/w3Pw5fZuStt4MOHMUE
 github.com/docker/go-connections v0.8.1/go.mod h1:no1qkHdjq7kLMGUXYAduOhYPSJxxvgWBh7ogVvptn3Q=
 github.com/docker/go-units v0.5.0 h1:69rxXcBk27SvSaaxTtLh/8llcHD8vYHT7WSdRZ/jvr4=
 github.com/docker/go-units v0.5.0/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
-github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.6.1 h1:NS9fm6KmJTN2J6YzF70QrZ0tMPYOrs+GL9uPVI0K9Ug=
-github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.6.1/go.mod h1:gDXhl0OElhzYoDsYWHr1RXjpxjGeLzEvjYzH7sZV73k=
+github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.6.2 h1:zRpx93GLA2IYx4z2NTW6uTJgQ2f0CJ93xIj+w6Aoy3U=
+github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.6.2/go.mod h1:M8nJfTVC7mxuxRSMHWbhg38bhkW63+3MoAGi/6R/umg=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/elazarl/goproxy v1.7.2 h1:Y2o6urb7Eule09PjlhQRGNsqRfPmYI3KKQLFpCAV3+o=

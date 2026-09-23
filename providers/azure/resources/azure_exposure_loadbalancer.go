@@ -6,7 +6,7 @@ package resources
 import (
 	"strings"
 
-	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v11"
+	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 )

@@ -5,10 +5,12 @@ replace go.mondoo.com/mql => ../..
 go 1.26.8
 
 require (
-	github.com/openai/openai-go/v3 v3.61.0
+	github.com/openai/openai-go/v3 v3.66.0
 	github.com/stretchr/testify v1.12.1
 	go.mondoo.com/mql v0.0.0-20260913225403-92593e868bb9
 )
+
+require github.com/coder/websocket v1.8.15 // indirect
 
 require (
 	dario.cat/mergo v1.0.2 // indirect

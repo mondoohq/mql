@@ -19,7 +19,7 @@ func (r *mqlDigitalocean) microDroplets() ([]interface{}, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	instances, err := paginate(context.Background(), client.MicroDroplets.List)
+	instances, err := paginate(context.Background(), client.MicroVMs.List)
 	if err != nil {
 		return nil, err
 	}
@@ -39,13 +39,14 @@ func (r *mqlDigitalocean) microDroplets() ([]interface{}, error) {
 	return all, nil
 }
 
-// microDropletArgs maps a MicroDroplet to its MQL fields.
+// microDropletArgs maps a MicroVM to its MQL fields. DigitalOcean renamed the
+// product from MicroDroplets to MicroVMs; the resource keeps its shipped name.
 //
 // The optional blocks are decoded to the reading that holds when they are
 // absent rather than to a null: a MicroDroplet with no auto-pause block does
 // not pause itself, and saying so as false keeps an assertion over these
 // fields from passing on an instance nothing was read from.
-func microDropletArgs(md *godo.MicroDroplet) (map[string]*llx.RawData, error) {
+func microDropletArgs(md *godo.MicroVM) (map[string]*llx.RawData, error) {
 	id, err := resourceID("digitalocean.microDroplet", md.ID)
 	if err != nil {
 		return nil, err
@@ -58,16 +59,21 @@ func microDropletArgs(md *godo.MicroDroplet) (map[string]*llx.RawData, error) {
 		autoPauseIdleTimeout = md.AutoPause.IdleTimeout
 	}
 
+	image := ""
+	if md.Source != nil {
+		image = md.Source.OCIRef
+	}
+
 	return map[string]*llx.RawData{
 		"__id":                 llx.StringData(id),
 		"id":                   llx.StringData(md.ID),
 		"name":                 llx.StringData(md.Name),
 		"region":               llx.StringData(md.Region),
 		"state":                llx.StringData(string(md.State)),
-		"size":                 llx.StringData(md.Size),
+		"size":                 llx.NilData,
 		"networking":           llx.StringData(string(md.Networking)),
-		"image":                llx.StringData(md.Image),
-		"endpoint":             llx.StringData(md.Endpoint),
+		"image":                llx.StringData(image),
+		"endpoint":             llx.StringData(microVMEndpoint(md.URLs)),
 		"autoPauseEnabled":     llx.BoolData(autoPauseEnabled),
 		"autoPauseIdleTimeout": llx.StringData(autoPauseIdleTimeout),
 		"autoResumeEnabled":    llx.BoolData(md.AutoResume != nil && *md.AutoResume),
@@ -84,7 +90,7 @@ func initDigitaloceanMicroDroplet(runtime *plugin.Runtime, args map[string]*llx.
 		return nil, nil, errors.New("digitalocean.microDroplet requires an id")
 	}
 	conn := runtime.Connection.(*connection.DigitaloceanConnection)
-	md, _, err := conn.Client().MicroDroplets.Get(context.Background(), id)
+	md, _, err := conn.Client().MicroVMs.Get(context.Background(), id)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -107,10 +113,24 @@ func initDigitaloceanMicroDroplet(runtime *plugin.Runtime, args map[string]*llx.
 // including a mode the API does not name, counts as reachable, so an
 // instance whose placement cannot be established is reported as exposed
 // rather than quietly passing an exposure check.
-func microDropletIsPublic(networking godo.MicroDropletNetworking) bool {
-	return !strings.EqualFold(string(networking), string(godo.MicroDropletNetworkingVPC))
+func microDropletIsPublic(networking godo.MicroVMNetworking) bool {
+	return !strings.EqualFold(string(networking), string(godo.MicroVMNetworkingVPC))
+}
+
+// microVMEndpoint returns the hostname the instance serves traffic on: the
+// URL marked default, or the first one when none is.
+func microVMEndpoint(urls []godo.MicroVMURL) string {
+	for _, u := range urls {
+		if u.Default {
+			return u.Hostname
+		}
+	}
+	if len(urls) > 0 {
+		return urls[0].Hostname
+	}
+	return ""
 }
 
 func (r *mqlDigitaloceanMicroDroplet) isPublic() (bool, error) {
-	return microDropletIsPublic(godo.MicroDropletNetworking(r.Networking.Data)), nil
+	return microDropletIsPublic(godo.MicroVMNetworking(r.Networking.Data)), nil
 }

@@ -270,7 +270,10 @@ digitalocean.microDroplet @defaults("id name region state networking") {
   // terminated, failed, or unknown.
   state string
   // Size slug describing the allocated hardware
-  size string
+  //
+  // Always null. The API no longer reports a size slug; it reports the
+  // allocated CPU, memory, and disk as separate values instead.
+  size @maturity("deprecated") string
   // Network placement of the instance
   //
   // Either public, meaning the instance answers on an address reachable
