@@ -17,6 +17,21 @@ import (
 	"go.mondoo.com/mql/types"
 )
 
+// functionContainerImage returns the image and digest of a container-image
+// function. Archive and pre-built functions run no customer image, so both
+// are nil for them.
+func functionContainerImage(src functions.FunctionSourceDetails) (image, digest *string) {
+	switch d := src.(type) {
+	case functions.ContainerImageFunctionSourceDetails:
+		return d.Image, d.ImageDigest
+	case *functions.ContainerImageFunctionSourceDetails:
+		if d != nil {
+			return d.Image, d.ImageDigest
+		}
+	}
+	return nil, nil
+}
+
 func (o *mqlOciFunctions) id() (string, error) {
 	return "oci.functions", nil
 }
@@ -303,14 +318,15 @@ func (o *mqlOciFunctionsApplication) functions() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		image, imageDigest := functionContainerImage(fn.SourceDetails)
 
 		mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.functions.function", stringValue(fn.CompartmentId), map[string]*llx.RawData{
 			"id":               llx.StringDataPtr(fn.Id),
 			"name":             llx.StringDataPtr(fn.DisplayName),
 			"applicationId":    llx.StringDataPtr(fn.ApplicationId),
 			"state":            llx.StringData(string(fn.LifecycleState)),
-			"image":            llx.StringDataPtr(fn.Image),
-			"imageDigest":      llx.StringDataPtr(fn.ImageDigest),
+			"image":            llx.StringDataPtr(image),
+			"imageDigest":      llx.StringDataPtr(imageDigest),
 			"shape":            llx.StringData(string(fn.Shape)),
 			"memoryInMBs":      llx.IntData(int64Value(fn.MemoryInMBs)),
 			"timeoutInSeconds": llx.IntData(intValue(fn.TimeoutInSeconds)),

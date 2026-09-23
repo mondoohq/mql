@@ -6,7 +6,7 @@ go 1.26.8
 
 require (
 	github.com/cockroachdb/errors v1.14.0
-	github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.6.1
+	github.com/dropbox/dropbox-sdk-go-unofficial/v6 v6.6.2
 	github.com/rs/zerolog v1.35.1
 	go.mondoo.com/mql v0.0.0-20260913225403-92593e868bb9
 )

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v11"
+	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

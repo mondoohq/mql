@@ -8,7 +8,7 @@ import (
 
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 
-	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v11"
+	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12"
 )
 
 // The load balancer's probes, rules, pools and frontends reference each other

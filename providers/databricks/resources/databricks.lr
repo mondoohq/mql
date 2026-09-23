@@ -1101,7 +1101,7 @@ databricks.connection @defaults("name connectionType credentialType owner") {
   // HTTP, HUBSPOT, JDBC, META_MARKETING, MYSQL, NETSUITE, ORACLE, OUTLOOK,
   // POSTGRESQL, POWER_BI, REDSHIFT, SALESFORCE, SALESFORCE_DATA_CLOUD,
   // SERVICENOW, SMARTSHEET, SNOWFLAKE, SQLDW, SQLSERVER, TERADATA,
-  // WORKDAY_RAAS, ZENDESK, or UNKNOWN_CONNECTION_TYPE.
+  // TIKTOK_ADS, WORKDAY_RAAS, ZENDESK, or UNKNOWN_CONNECTION_TYPE.
   connectionType string
   // Kind of credential the connection authenticates with
   //

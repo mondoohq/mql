@@ -432,8 +432,8 @@ go.mondoo.com/mondoo-go v0.0.0-20260912001156-c395844c0d2f h1:pgFoVgSHsYiYRyqyCg
 go.mondoo.com/mondoo-go v0.0.0-20260912001156-c395844c0d2f/go.mod h1:hESCStkuJqvuw0cWwVKrorQJJnGdxUnSdR4Zs1/W1W4=
 go.mondoo.com/ranger-rpc v0.8.1 h1:DynUWByDnxI4wMHbFpXUMw+lndYJ21BAHOxrhGyVCD4=
 go.mondoo.com/ranger-rpc v0.8.1/go.mod h1:HP3hjWjgRFxCFAnY86YLMiY0bU7eqhKuP8Qm+QlFBbI=
-go.mongodb.org/atlas-sdk/v20250312024 v20250312024.0.0 h1:VJ64FYnJqryrQ6Lx/upzn8ka3Pj9loiO1eB5JDT+t88=
-go.mongodb.org/atlas-sdk/v20250312024 v20250312024.0.0/go.mod h1:nbFTQgDnI90xUP4scIsFYvh48kuZtQBo2BIPBC60ifY=
+go.mongodb.org/atlas-sdk/v20250312025 v20250312025.0.0 h1:en+gq7TEixVJAQvvjYw2xtDuV/nqlgOj09fyh5VbOKg=
+go.mongodb.org/atlas-sdk/v20250312025 v20250312025.0.0/go.mod h1:zBPi1EIBUgr2wojZSfZaxUxPHf0Y2j1O1j/7pQi8JlQ=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
 go.opentelemetry.io/auto/sdk v1.2.1/go.mod h1:KRTj+aOaElaLi+wW1kO/DZRXwkF4C5xPbEe3ZiIhN7Y=
 go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0 h1:3g7B90UzBltIDKq1/5mrTGxTnOFDV0ICOhLoxiZ8jlg=

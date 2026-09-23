@@ -7,7 +7,7 @@ go 1.26.8
 require (
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1
-	gitlab.com/gitlab-org/api/client-go/v2 v2.64.0
+	gitlab.com/gitlab-org/api/client-go/v3 v3.13.0
 	go.mondoo.com/mql v0.0.0-20260913225403-92593e868bb9
 	golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba
 )

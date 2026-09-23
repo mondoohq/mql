@@ -8,7 +8,7 @@ import (
 	"errors"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
-	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v11"
+	network "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v12"
 	trafficmanager "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/trafficmanager/armtrafficmanager"
 
 	"go.mondoo.com/mql/llx"
@@ -807,10 +807,7 @@ func (a *mqlAzureSubscriptionNetworkServiceVirtualHub) vnetConnections() ([]any,
 			var enableOnlyIPv6Peering *bool
 			if c.Properties != nil {
 				enableInternetSecurity = c.Properties.EnableInternetSecurity
-				if c.Properties.EnableOnlyIPv6Peering != nil {
-					b := *c.Properties.EnableOnlyIPv6Peering == network.EnableOnlyIPv6PeeringStateEnabled
-					enableOnlyIPv6Peering = &b
-				}
+				enableOnlyIPv6Peering = c.Properties.EnableOnlyIPv6Peering
 				if c.Properties.RoutingConfiguration != nil {
 					d, err := convert.JsonToDict(c.Properties.RoutingConfiguration)
 					if err != nil {
