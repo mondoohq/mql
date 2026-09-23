@@ -54,6 +54,12 @@ jobs:
     outputs:
       providers: ${{ steps.providers.outputs.providers }}
       build_list: ${{ steps.providers.outputs.build_list }}
+      # Consumed only by `notify`. `blocked` is set on the major-promotion
+      # refusal and survives the step's own `exit 1`: a step's outputs are
+      # read from the file regardless of its exit code, which is what lets
+      # the refusal reach Slack instead of dying in a collapsed log.
+      blocked: ${{ steps.providers.outputs.blocked }}
+      promotions: ${{ steps.providers.outputs.promotions }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -145,12 +151,26 @@ jobs:
             # built for the next one, as a side effect of a routine bump. Refuse
             # it. Promoting a major is deliberate: re-run with
             # allow_major_promotion.
-            if [[ "$DIST_VERSION" != "unreleased" && "$ALLOW_MAJOR_PROMOTION" != "true" ]]; then
+            if [[ "$DIST_VERSION" != "unreleased" ]]; then
               REPO_MAJOR=${REPO_VERSION%%.*}
               DIST_MAJOR=${DIST_VERSION%%.*}
               if [[ "$REPO_VERSION" != *-* && "$REPO_MAJOR" -gt "$DIST_MAJOR" ]]; then
-                echo "::error::$p $REPO_VERSION would promote major $REPO_MAJOR to the stable channel, where $DIST_VERSION is serving every client on major $DIST_MAJOR. Give it a pre-release segment (e.g. ${REPO_MAJOR}.0.0-rc.1) to publish it to preview, or re-run with allow_major_promotion to promote it deliberately."
-                exit 1
+                if [[ "$ALLOW_MAJOR_PROMOTION" != "true" ]]; then
+                  # Record the refusal for `notify` before failing, so the reason
+                  # reaches the release channel and not just this log. Delimited
+                  # rather than `key=value`: a value carrying a newline would
+                  # otherwise truncate the file and swallow later outputs.
+                  {
+                    echo "blocked<<__MQL_EOF__"
+                    echo "$p $REPO_VERSION would promote major $REPO_MAJOR to stable, where $DIST_VERSION serves every client on major $DIST_MAJOR."
+                    echo "__MQL_EOF__"
+                  } >> $GITHUB_OUTPUT
+                  echo "::error::$p $REPO_VERSION would promote major $REPO_MAJOR to the stable channel, where $DIST_VERSION is serving every client on major $DIST_MAJOR. Give it a pre-release segment (e.g. ${REPO_MAJOR}.0.0-rc.1) to publish it to preview, or re-run with allow_major_promotion to promote it deliberately."
+                  exit 1
+                fi
+                # Deliberate promotion: worth naming in the release message,
+                # because it is the one change a reader must not miss.
+                promotions="${promotions:+$promotions, }$p $DIST_MAJOR to $REPO_MAJOR"
               fi
             fi
 
@@ -164,6 +184,11 @@ jobs:
           done
 
           echo "build_list=$(echo -n $build | jq -Rsc 'split(" ")')" >> $GITHUB_OUTPUT
+          {
+            echo "promotions<<__MQL_EOF__"
+            echo "${promotions:-}"
+            echo "__MQL_EOF__"
+          } >> $GITHUB_OUTPUT
 
           build_all=${{ github.event.inputs.build_all }}
           if [[ $build_all == true ]]; then
@@ -283,41 +308,6 @@ jobs:
             gsutil -m cp -c dist/${pkg}_provider.json gs://${BUCKET}/providers/${PROVIDER}/${VERSION}/provider.json
           done
 
-      - name: "Resolve published version"
-        id: published
-        if: ${{ ! inputs.skip_publish && steps.build-providers.outcome == 'success' }}
-        # Version comes from the dist filename (name_version_os_arch); uniq
-        # collapses to one value since the job builds a single provider. Guard
-        # against an empty result so we never post a versionless message.
-        run: |
-          VER=$(ls dist | cut -f1,2 -d_ | uniq | head -1 | cut -f2 -d_)
-          if [ -z "$VER" ]; then echo "::error::Could not resolve published version"; exit 1; fi
-          echo "version=$VER" >> $GITHUB_OUTPUT
-
-      - name: "Notify Slack on provider release"
-        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
-        # Only on a real publish that built successfully.
-        if: ${{ ! inputs.skip_publish && steps.build-providers.outcome == 'success' }}
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
-          # toJSON(format(...)) JSON-encodes the interpolated values so a stray
-          # quote/backslash can never break the payload.
-          payload: |
-            {
-              "channel": "C07QZDJFF89",
-              "text": ${{ toJSON(format('🎉 Provider released: {0} v{1}', matrix.provider, steps.published.outputs.version)) }},
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": ${{ toJSON(format(':tada: *Provider released:* `{0}` v{1}  <{2}/{3}/actions/runs/{4}|View GitHub Action Run>', matrix.provider, steps.published.outputs.version, github.server_url, github.repository, github.run_id)) }}
-                  }
-                }
-              ]
-            }
-
       - name: "Save Artifacts"
         if: ${{ inputs.skip_publish }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -325,26 +315,6 @@ jobs:
           name: ${{ matrix.provider }}
           path: dist
 
-      - name: Send Slack notification on failure
-        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
-        if: ${{ always() && steps.build-providers.outcome != 'success' }}
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.SLACK_BOT_TOKEN }}
-          payload: |
-            {
-              "channel": "C07QZDJFF89",
-              "text": "⚠️ Provider Build failed for ${{ matrix.provider }}",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": ":x: *Provider Build failed for ${{ matrix.provider }}*:  <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View GitHub Action Run>"
-                  }
-                }
-              ]
-            }
 
   provider-index:
     needs: [provider-build, scoping]
@@ -382,3 +352,161 @@ jobs:
               "mql_sha": "${{ github.sha }}",
               "run_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }'
+
+  # Reports the provider release to the release channel.
+  #
+  # One message per run, not one per provider: the notifier used to live inside
+  # the build matrix, so a full release posted 81 separate lines and the summary
+  # had to be reassembled by hand from the channel.
+  #
+  # Nothing depends on this job and the post is continue-on-error: a Slack
+  # outage, a rotated token or a renamed channel must never turn a good release
+  # red. It runs on failure too, because a release that did not happen is the
+  # case most worth announcing -- including the major-promotion refusal, which
+  # otherwise fails the run without saying why anywhere a person will look.
+  notify:
+    name: Report the provider release to Slack
+    if: ${{ always() && ! inputs.skip_publish }}
+    needs: [scoping, provider-build, provider-index]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Reading the run's own jobs is how per-provider outcomes are recovered.
+      # The matrix job is named `${{ matrix.provider }}`, so the job list is
+      # already a provider-to-result mapping and no artifact plumbing is needed.
+      actions: read
+    steps:
+      - name: Compose the message
+        id: meta
+        env:
+          # Through env rather than inline `${{ }}`: an expression is pasted in
+          # before bash parses the script, so a value carrying a quote or `$(…)`
+          # would be read as shell rather than as text.
+          BLOCKED: ${{ needs.scoping.outputs.blocked }}
+          PROMOTIONS: ${{ needs.scoping.outputs.promotions }}
+          BUILD_LIST: ${{ needs.scoping.outputs.build_list }}
+          SCOPING: ${{ needs.scoping.result }}
+          BUILD: ${{ needs.provider-build.result }}
+          INDEX: ${{ needs.provider-index.result }}
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # Composed values are pasted into the double-quoted YAML scalars of the
+          # payload below and then rendered as Slack mrkdwn, so escape for both:
+          # backslash and quote so a value cannot terminate the scalar (which
+          # fails the whole step, not just the rendering), then the three
+          # characters Slack reads as markup.
+          esc() {
+            printf '%s' "$1" \
+              | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' \
+                    -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+          }
+
+          # Values reach $GITHUB_OUTPUT through a delimiter rather than
+          # `key=value`: a newline in a value would otherwise truncate the file
+          # and silently swallow every output written after it.
+          emit() { printf '%s<<__MQL_EOF__\n%s\n__MQL_EOF__\n' "$1" "$2" >> "$GITHUB_OUTPUT"; }
+
+          planned=$(printf '%s' "${BUILD_LIST:-[]}" | jq -r 'length' 2>/dev/null || echo 0)
+
+          # Per-provider outcomes from the run's own job list. Anything that is
+          # not a matrix leg (scoping, provider-index, this job) is filtered out
+          # by intersecting with the planned build list.
+          gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs" \
+            --jq '.jobs[] | [.name, (.conclusion // "running")] | @tsv' > jobs.tsv || : > jobs.tsv
+          printf '%s' "${BUILD_LIST:-[]}" | jq -r '.[]' > planned.txt 2>/dev/null || : > planned.txt
+
+          ok=0; bad=0; failed=""
+          while IFS= read -r prov; do
+            [ -n "$prov" ] || continue
+            res=$(awk -F'\t' -v p="$prov" '$1==p{print $2; exit}' jobs.tsv)
+            case "$res" in
+              success|skipped) ok=$((ok+1)) ;;
+              "")              ;;
+              *)               bad=$((bad+1)); failed="${failed:+$failed, }$prov" ;;
+            esac
+          done < planned.txt
+
+          if [ -n "${BLOCKED:-}" ]; then
+            header=":no_entry: Provider release blocked"
+            mention="<!here> "
+            detail="$(esc "$BLOCKED")  _To proceed: re-run with *allow_major_promotion*, or give the version a pre-release segment (e.g. 14.0.0-rc.1) to publish it to preview._"
+          elif [ "$SCOPING" != "success" ]; then
+            header=":x: Provider release failed during scoping"
+            mention="<!here> "
+            detail="Scoping did not complete, so nothing was built."
+          elif [ "$planned" = "0" ]; then
+            header=":white_check_mark: No provider changes to release"
+            mention=""
+            detail="Every provider version already matches what the channel serves."
+          elif [ "$bad" -gt 0 ]; then
+            header=":x: Providers released - $ok of $planned, $bad failed"
+            mention="<!here> "
+            detail="*Failed:* $(esc "$failed")"
+          else
+            header=":rocket: Providers released - $ok of $planned"
+            mention=""
+            detail=":package: *stable* - this is what a default install gets"
+          fi
+
+          if [ -n "${PROMOTIONS:-}" ]; then
+            detail="$detail  :warning: *Major promotion:* $(esc "$PROMOTIONS")"
+          fi
+
+          # `skipped` is not `failed`: provider-index is skipped by design on a
+          # no-publish run, and reporting that red would train everyone to
+          # ignore the colour.
+          status() {
+            case "$1" in
+              success) echo ":white_check_mark: Done" ;;
+              skipped) echo ":double_vertical_bar: Skipped" ;;
+              "")      echo ":grey_question: Not run" ;;
+              *)       echo ":x: $1" ;;
+            esac
+          }
+
+          emit header "$header"
+          emit mention "$mention"
+          emit detail "$detail"
+          emit build_status "$(status "$BUILD")"
+          emit index_status "$(status "$INDEX")"
+          emit counts "$ok of $planned"
+
+      - name: Post to Slack
+        continue-on-error: true
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: "C07QZDJFF89"
+            text: "${{ steps.meta.outputs.mention }}${{ steps.meta.outputs.header }}"
+            blocks:
+              - type: "header"
+                text:
+                  type: "plain_text"
+                  text: "${{ steps.meta.outputs.header }}"
+                  emoji: true
+              - type: "section"
+                text:
+                  type: "mrkdwn"
+                  text: "${{ steps.meta.outputs.detail }}"
+              - type: "section"
+                fields:
+                  - type: "mrkdwn"
+                    text: "*Repository:*\n`${{ github.repository }}`"
+                  - type: "mrkdwn"
+                    text: "*Providers:*\n${{ steps.meta.outputs.counts }}"
+                  - type: "mrkdwn"
+                    text: "*Triggered by:*\n${{ github.actor }}"
+                  - type: "mrkdwn"
+                    text: "*Workflow run:*\n<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|Open run>"
+              - type: "section"
+                fields:
+                  - type: "mrkdwn"
+                    text: "*Build:*\n${{ steps.meta.outputs.build_status }}"
+                  - type: "mrkdwn"
+                    text: "*Index:*\n${{ steps.meta.outputs.index_status }}"
