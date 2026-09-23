@@ -37,20 +37,20 @@ import (
 // them nothing (ADR 046 §1). Malformed data and asset vanished have no status
 // and never come out of here.
 func ErrorKindFromHTTPStatus(code int) llx.ErrorKind {
-	switch {
-	case code == http.StatusUnauthorized:
+	switch code {
+	case http.StatusUnauthorized:
 		return llx.ErrorKind_ERROR_KIND_UNAUTHENTICATED
-	case code == http.StatusForbidden:
+	case http.StatusForbidden:
 		return llx.ErrorKind_ERROR_KIND_FORBIDDEN
-	case code == http.StatusNotFound:
+	case http.StatusNotFound:
 		return llx.ErrorKind_ERROR_KIND_NOT_FOUND
-	case code == http.StatusGone:
+	case http.StatusGone:
 		return llx.ErrorKind_ERROR_KIND_GONE
-	case code == http.StatusTooManyRequests:
+	case http.StatusTooManyRequests:
 		return llx.ErrorKind_ERROR_KIND_TOO_MANY_REQUESTS
-	case code == http.StatusNotImplemented:
+	case http.StatusNotImplemented:
 		return llx.ErrorKind_ERROR_KIND_NOT_APPLICABLE
-	case code == http.StatusServiceUnavailable:
+	case http.StatusServiceUnavailable:
 		return llx.ErrorKind_ERROR_KIND_UNAVAILABLE
 	default:
 		return llx.ErrorKind_ERROR_KIND_UNSPECIFIED
