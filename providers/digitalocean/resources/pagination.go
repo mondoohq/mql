@@ -67,3 +67,34 @@ func paginate[T any](ctx context.Context, list listFunc[T]) ([]T, error) {
 		opt.Page = next
 	}
 }
+
+// tokenListFunc fetches one page of a page-token list endpoint. It returns
+// the page's items and the token of the next page, empty on the last page.
+type tokenListFunc[T any] func(ctx context.Context, pageToken string) ([]T, string, error)
+
+// paginateToken walks a page-token list endpoint (the hosted agents APIs)
+// to completion and returns every item.
+//
+// A token the loop has already requested means the endpoint is handing back
+// a page it has served before; following it would never terminate, so it is
+// reported as an error rather than returning a truncated list as complete.
+func paginateToken[T any](ctx context.Context, list tokenListFunc[T]) ([]T, error) {
+	var all []T
+	seen := map[string]struct{}{}
+	token := ""
+	for {
+		page, next, err := list(ctx, token)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, page...)
+		if next == "" {
+			return all, nil
+		}
+		if _, ok := seen[next]; ok || next == token {
+			return nil, fmt.Errorf("pagination returned page token %q again, so the endpoint is repeating a page", next)
+		}
+		seen[token] = struct{}{}
+		token = next
+	}
+}
