@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"reflect"
 	"time"
 
 	"github.com/oracle/oci-go-sdk/v65/common"
@@ -30,6 +31,125 @@ func functionContainerImage(src functions.FunctionSourceDetails) (image, digest 
 		}
 	}
 	return nil, nil
+}
+
+// functionSource is what a function's source details say about the code it
+// runs. Every field is nil when it does not apply to the source type, so each
+// one reads as null rather than as an empty string.
+type functionSource struct {
+	sourceType            *string
+	runtime               *string
+	runtimeUpdateStrategy *string
+	handler               *string
+	sourceCodeSha256      *string
+	bucketNamespace       *string
+	bucketName            *string
+	objectName            *string
+}
+
+// decodeFunctionSource flattens the polymorphic source details of a function.
+// A source type this SDK does not know still reports its discriminator, so a
+// new kind of function shows up by name instead of as null.
+func decodeFunctionSource(src functions.FunctionSourceDetails) functionSource {
+	var res functionSource
+	switch d := src.(type) {
+	case functions.ContainerImageFunctionSourceDetails:
+		res.sourceType = common.String(string(functions.FunctionSourceDetailsSourceTypeContainerImage))
+	case *functions.ContainerImageFunctionSourceDetails:
+		if d != nil {
+			res.sourceType = common.String(string(functions.FunctionSourceDetailsSourceTypeContainerImage))
+		}
+	case functions.ArchiveFunctionSourceDetails:
+		res = decodeArchiveFunctionSource(d)
+	case *functions.ArchiveFunctionSourceDetails:
+		if d != nil {
+			res = decodeArchiveFunctionSource(*d)
+		}
+	case functions.PreBuiltFunctionSourceDetails:
+		res.sourceType = common.String(string(functions.FunctionSourceDetailsSourceTypePreBuiltFunctions))
+	case *functions.PreBuiltFunctionSourceDetails:
+		if d != nil {
+			res.sourceType = common.String(string(functions.FunctionSourceDetailsSourceTypePreBuiltFunctions))
+		}
+	default:
+		res.sourceType = unknownDiscriminator(src, "SourceType")
+	}
+	return res
+}
+
+func decodeArchiveFunctionSource(d functions.ArchiveFunctionSourceDetails) functionSource {
+	res := functionSource{
+		sourceType:       common.String(string(functions.FunctionSourceDetailsSourceTypeArchive)),
+		handler:          nonEmpty(d.Handler),
+		sourceCodeSha256: nonEmpty(d.SourceCodeSha256),
+	}
+
+	switch rc := d.RuntimeConfig.(type) {
+	case functions.FunctionUpdateRuntimeConfig:
+		res.runtime = nonEmpty(rc.FunctionsRuntimeName)
+		res.runtimeUpdateStrategy = common.String(string(functions.RuntimeConfigRuntimeConfigTypeFunctionUpdate))
+	case *functions.FunctionUpdateRuntimeConfig:
+		if rc != nil {
+			res.runtime = nonEmpty(rc.FunctionsRuntimeName)
+			res.runtimeUpdateStrategy = common.String(string(functions.RuntimeConfigRuntimeConfigTypeFunctionUpdate))
+		}
+	case functions.ManualRuntimeConfig:
+		res.runtime = nonEmpty(rc.FunctionsRuntimeName)
+		res.runtimeUpdateStrategy = common.String(string(functions.RuntimeConfigRuntimeConfigTypeManual))
+	case *functions.ManualRuntimeConfig:
+		if rc != nil {
+			res.runtime = nonEmpty(rc.FunctionsRuntimeName)
+			res.runtimeUpdateStrategy = common.String(string(functions.RuntimeConfigRuntimeConfigTypeManual))
+		}
+	default:
+		res.runtimeUpdateStrategy = unknownDiscriminator(rc, "RuntimeConfigType")
+	}
+
+	var obj *functions.ObjectStorageArchiveSourceDetails
+	switch a := d.ArchiveSourceDetails.(type) {
+	case functions.ObjectStorageArchiveSourceDetails:
+		obj = &a
+	case *functions.ObjectStorageArchiveSourceDetails:
+		obj = a
+	}
+	if obj != nil {
+		res.bucketNamespace = nonEmpty(obj.Namespace)
+		res.bucketName = nonEmpty(obj.BucketName)
+		res.objectName = nonEmpty(obj.ObjectName)
+	}
+	return res
+}
+
+// unknownDiscriminator reads the discriminator of a polymorphic value the SDK
+// could not map to a known variant. The SDK hands such values back as its own
+// unexported base struct, whose discriminator field is still exported.
+func unknownDiscriminator(v any, field string) *string {
+	if v == nil {
+		return nil
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return nil
+		}
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Struct {
+		return nil
+	}
+	f := rv.FieldByName(field)
+	if !f.IsValid() || f.Kind() != reflect.String || f.String() == "" {
+		return nil
+	}
+	return common.String(f.String())
+}
+
+// nonEmpty treats an empty string like an absent one.
+func nonEmpty(s *string) *string {
+	if s == nil || *s == "" {
+		return nil
+	}
+	return s
 }
 
 func (o *mqlOciFunctions) id() (string, error) {
@@ -343,6 +463,7 @@ func (o *mqlOciFunctionsApplication) functions() ([]any, error) {
 		mqlFn := mqlInstance.(*mqlOciFunctionsFunction)
 		mqlFn.cacheRegion = o.cacheRegion
 		mqlFn.cacheTraceConfig = fn.TraceConfig
+		mqlFn.cacheSourceDetails = fn.SourceDetails
 		res = append(res, mqlFn)
 	}
 
@@ -355,6 +476,113 @@ type mqlOciFunctionsFunctionInternal struct {
 	cacheRegion string
 
 	cacheTraceConfig *functions.FunctionTraceConfig
+	// cacheSourceDetails is the source as ListFunctions reported it. The
+	// summary marks it optional, so when it is absent the source is read from
+	// GetFunction, where it is mandatory.
+	cacheSourceDetails functions.FunctionSourceDetails
+	source             ociRetryLazy[functionSource]
+}
+
+// getSource decodes the function's source details once for every source
+// field.
+func (o *mqlOciFunctionsFunction) getSource() (functionSource, error) {
+	return o.source.get(func() (functionSource, error) {
+		if o.cacheSourceDetails != nil {
+			return decodeFunctionSource(o.cacheSourceDetails), nil
+		}
+		fn, err := o.fetchFunction()
+		if err != nil {
+			return functionSource{}, err
+		}
+		return decodeFunctionSource(fn.SourceDetails), nil
+	})
+}
+
+// sourceString resolves one string field of the function's source, setting
+// the field to null when the value does not apply.
+func (o *mqlOciFunctionsFunction) sourceString(field *plugin.TValue[string], pick func(functionSource) *string) (string, error) {
+	src, err := o.getSource()
+	if err != nil {
+		return "", err
+	}
+	v := pick(src)
+	if v == nil {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *v, nil
+}
+
+func (o *mqlOciFunctionsFunction) sourceType() (string, error) {
+	return o.sourceString(&o.SourceType, func(s functionSource) *string { return s.sourceType })
+}
+
+func (o *mqlOciFunctionsFunction) runtime() (string, error) {
+	return o.sourceString(&o.Runtime, func(s functionSource) *string { return s.runtime })
+}
+
+func (o *mqlOciFunctionsFunction) runtimeUpdateStrategy() (string, error) {
+	return o.sourceString(&o.RuntimeUpdateStrategy, func(s functionSource) *string { return s.runtimeUpdateStrategy })
+}
+
+func (o *mqlOciFunctionsFunction) handler() (string, error) {
+	return o.sourceString(&o.Handler, func(s functionSource) *string { return s.handler })
+}
+
+func (o *mqlOciFunctionsFunction) sourceCodeSha256() (string, error) {
+	return o.sourceString(&o.SourceCodeSha256, func(s functionSource) *string { return s.sourceCodeSha256 })
+}
+
+func (o *mqlOciFunctionsFunction) sourceObjectName() (string, error) {
+	return o.sourceString(&o.SourceObjectName, func(s functionSource) *string { return s.objectName })
+}
+
+// sourceBucket resolves the Object Storage bucket holding the function's code
+// archive.
+//
+// The archive details carry the bucket's namespace and name but no region,
+// so the function's own region is used for the bucket's detail call. A bucket
+// that does not answer there reads as null rather than failing the listing. The bucket is
+// resolved through its init rather than by scanning oci.objectStorage.buckets:
+// that listing reads only the tenancy's root compartment, so a bucket in any
+// other compartment would never match. Repeated references to one bucket
+// share a single cached resource and a single detail call.
+func (o *mqlOciFunctionsFunction) sourceBucket() (*mqlOciObjectStorageBucket, error) {
+	src, err := o.getSource()
+	if err != nil {
+		return nil, err
+	}
+	// Both parts are required: an empty namespace would build the cache key
+	// "oci.objectStorage.bucket//<name>", shared by every such bucket.
+	if src.bucketNamespace == nil || src.bucketName == nil || o.cacheRegion == "" {
+		o.SourceBucket.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	regionRes, err := NewResource(o.MqlRuntime, "oci.region", map[string]*llx.RawData{
+		"id": llx.StringData(o.cacheRegion),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := NewResource(o.MqlRuntime, "oci.objectStorage.bucket", map[string]*llx.RawData{
+		"namespace": llx.StringData(*src.bucketNamespace),
+		"name":      llx.StringData(*src.bucketName),
+		"region":    llx.ResourceData(regionRes, "oci.region"),
+	})
+	if err != nil {
+		// The bucket can be deleted after the function is deployed; the
+		// function keeps running the code it already pulled. That is a real
+		// state of the tenancy, so the reference reads as null.
+		if ociReferentGone(err) {
+			log.Debug().Str("bucket", *src.bucketName).Msg("function source bucket no longer exists")
+			o.SourceBucket.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, err
+	}
+	return res.(*mqlOciObjectStorageBucket), nil
 }
 
 // tracing builds the function's distributed tracing settings.

@@ -7861,11 +7861,13 @@ private oci.functions.imagePolicyConfig @defaults("isPolicyEnabled") {
 // Oracle Cloud Infrastructure (OCI) serverless function
 //
 // Single serverless function within an application, addressable by
-// its `invokeEndpoint`. Each function pins the Docker `image` and
-// `imageDigest` it runs, its `shape`, memory and timeout limits, and
-// its tracing configuration, so you can audit which image a function
-// executes and whether its resource limits and observability settings
-// meet policy.
+// its `invokeEndpoint`. Each function records where its code comes from
+// in `sourceType`: a Docker `image` and `imageDigest`, or a code archive
+// run on a managed `runtime` with its `handler` and `sourceBucket`. It
+// also carries its `shape`, memory and timeout limits, and its tracing
+// configuration, so you can audit what code a function executes, whether
+// its runtime is still supported, and whether its resource limits and
+// observability settings meet policy.
 private oci.functions.function @defaults("name") {
   // Function OCID
   id string
@@ -7881,6 +7883,47 @@ private oci.functions.function @defaults("name") {
   image string
   // Image digest (sha256)
   imageDigest string
+  // Source the function's code comes from
+  //
+  // One of CONTAINER_IMAGE (a customer image in a registry, see image and
+  // imageDigest), ARCHIVE (a code archive run on a managed runtime, see
+  // runtime and handler), or PRE_BUILT_FUNCTIONS (an Oracle pre-built
+  // function listing).
+  sourceType() string
+  // Managed runtime a code archive function runs on
+  //
+  // Name of the Functions runtime, such as a language and version pairing.
+  // Null unless sourceType is ARCHIVE. Comparing it against the runtimes the
+  // service has deprecated finds functions left on an end-of-life language.
+  runtime() string
+  // How the function's runtime version is updated
+  //
+  // One of FUNCTION_UPDATE (the latest runtime version is taken whenever the
+  // function is updated) or MANUAL (the version is pinned until changed by
+  // hand). Null unless sourceType is ARCHIVE.
+  runtimeUpdateStrategy() string
+  // Entry point invoked in a code archive function
+  //
+  // Its format depends on the runtime. Null unless sourceType is ARCHIVE, and
+  // null when no handler is set.
+  handler() string
+  // SHA256 hash of the function's code archive, base64-encoded
+  //
+  // Null unless sourceType is ARCHIVE, and null when the service reports no
+  // hash.
+  sourceCodeSha256() string
+  // Object Storage bucket holding the function's code archive
+  //
+  // Set when the archive is read from Object Storage, and null for archives
+  // uploaded directly and for other source types. The bucket's own posture,
+  // such as its public access type and versioning, decides who can replace
+  // the code the function runs.
+  sourceBucket() oci.objectStorage.bucket
+  // Name of the object holding the function's code archive
+  //
+  // Set when the archive is read from Object Storage in sourceBucket, and null
+  // otherwise.
+  sourceObjectName() string
   // Function shape (GENERIC_X86, GENERIC_ARM, GENERIC_X86_ARM)
   shape string
   // Maximum memory in MBs
