@@ -5,6 +5,8 @@ package resources
 
 import (
 	"errors"
+	"net/http"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	smithy "github.com/aws/smithy-go"
@@ -58,6 +60,13 @@ func classifyAwsError(err error, permissions ...string) error {
 		return llx.NotApplicable(err)
 	}
 
+	var header http.Header
+	var respErr *smithyhttp.ResponseError
+	hasResp := errors.As(err, &respErr) && respErr.Response != nil && respErr.Response.Response != nil
+	if hasResp {
+		header = respErr.Response.Header
+	}
+
 	var apiErr smithy.APIError
 	if errors.As(err, &apiErr) {
 		code := apiErr.ErrorCode()
@@ -66,7 +75,11 @@ func classifyAwsError(err error, permissions ...string) error {
 		}
 		// The SDK's own list, the one its retryer backs off on.
 		if _, ok := retry.DefaultThrottleErrorCodes[code]; ok {
-			return llx.TooManyRequests(err)
+			var opts []llx.ErrorOption
+			if d := plugin.RetryAfterFromHeader(header, time.Now()); d > 0 {
+				opts = append(opts, llx.WithRetryAfter(d))
+			}
+			return llx.TooManyRequests(err, opts...)
 		}
 	}
 
@@ -82,9 +95,8 @@ func classifyAwsError(err error, permissions ...string) error {
 		return llx.NotApplicable(err)
 	}
 
-	var respErr *smithyhttp.ResponseError
-	if errors.As(err, &respErr) && respErr.Response != nil && respErr.Response.Response != nil {
-		return plugin.ClassifyHTTPStatus(err, respErr.HTTPStatusCode(), respErr.Response.Header)
+	if hasResp {
+		return plugin.ClassifyHTTPStatus(err, respErr.HTTPStatusCode(), header)
 	}
 	return err
 }

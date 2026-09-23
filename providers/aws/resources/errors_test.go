@@ -67,8 +67,13 @@ func TestClassifyAwsError(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := classifyAwsError(tt.err)
+			got := classifyAwsError(tt.err, "ec2:DescribeInstances")
 			assert.Equal(t, tt.want, llx.KindOf(got))
+			if tt.want == llx.ErrorKind_ERROR_KIND_FORBIDDEN {
+				assert.Equal(t, []string{"ec2:DescribeInstances"}, llx.ErrorDetailOf(got).GetPermissions())
+			} else {
+				assert.Empty(t, llx.ErrorDetailOf(got).GetPermissions(), "a grant fixes only a denial")
+			}
 			assert.Equal(t, tt.err.Error(), got.Error(), "the target's own words are kept")
 			if tt.want == llx.ErrorKind_ERROR_KIND_UNSPECIFIED {
 				assert.Same(t, tt.err, got, "an unclassified error is returned untouched")
@@ -81,15 +86,6 @@ func TestClassifyAwsErrorNil(t *testing.T) {
 	assert.NoError(t, classifyAwsError(nil, "ec2:DescribeInstances"))
 }
 
-func TestClassifyAwsErrorPermissionsOnlyOnDenial(t *testing.T) {
-	denied := classifyAwsError(awsAPIError(400, "UnauthorizedOperation", "not authorized"), "ec2:DescribeSnapshotAttribute")
-	assert.Equal(t, []string{"ec2:DescribeSnapshotAttribute"}, llx.ErrorDetailOf(denied).GetPermissions())
-
-	throttled := classifyAwsError(awsAPIError(400, "Throttling", "Rate exceeded"), "ec2:DescribeSnapshotAttribute")
-	require.ErrorIs(t, throttled, llx.ErrTooManyRequests)
-	assert.Empty(t, llx.ErrorDetailOf(throttled).GetPermissions(), "a grant would not fix a throttle")
-}
-
 func TestClassifyAwsErrorUnauthenticatedIsAssetScoped(t *testing.T) {
 	err := classifyAwsError(awsAPIError(403, "InvalidClientTokenId", "The security token included in the request is invalid."))
 	assert.Equal(t, llx.ErrorScope_ERROR_SCOPE_ASSET, llx.ErrorDetailOf(err).GetScope())
@@ -97,9 +93,20 @@ func TestClassifyAwsErrorUnauthenticatedIsAssetScoped(t *testing.T) {
 
 func TestClassifyAwsErrorRetryAfter(t *testing.T) {
 	header := http.Header{"Retry-After": []string{"5"}}
-	err := classifyAwsError(awsAPIErrorWithHeader(503, header, "Unavailable", "try later"))
-	require.ErrorIs(t, err, llx.ErrTargetUnavailable)
-	assert.Equal(t, (5 * time.Second).Milliseconds(), llx.ErrorDetailOf(err).GetRetryAfterMs())
+
+	t.Run("unavailable", func(t *testing.T) {
+		err := classifyAwsError(awsAPIErrorWithHeader(503, header, "Unavailable", "try later"))
+		require.ErrorIs(t, err, llx.ErrTargetUnavailable)
+		assert.Equal(t, (5 * time.Second).Milliseconds(), llx.ErrorDetailOf(err).GetRetryAfterMs())
+	})
+
+	// A throttle recognized by its code, before the HTTP status mapping runs,
+	// keeps the server's hint too.
+	t.Run("throttle by error code", func(t *testing.T) {
+		err := classifyAwsError(awsAPIErrorWithHeader(503, header, "RequestLimitExceeded", "Request limit exceeded."))
+		require.ErrorIs(t, err, llx.ErrTooManyRequests)
+		assert.Equal(t, (5 * time.Second).Milliseconds(), llx.ErrorDetailOf(err).GetRetryAfterMs())
+	})
 }
 
 // Init lookups wrap the SDK error with the resource they were fetching; the
