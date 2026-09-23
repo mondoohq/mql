@@ -6585,6 +6585,13 @@ private gcp.project.kmsService.keyring.cryptokey.version.externalProtectionLevel
   externalKeyUri string
   // Path to the external key material on the EKM when using EKM connection
   ekmConnectionKeyPath string
+  // EKM connection that overrides the crypto key's backend
+  //
+  // The EKM connection holding this version's key material in place of the
+  // connection named by the crypto key's cryptoKeyBackend. Only set on
+  // EXTERNAL_VPC versions. Null when unset, in which case the crypto key's
+  // cryptoKeyBackend applies.
+  ekmConnectionBackendOverride() gcp.project.kmsService.ekmConnection
 }
 
 // Google Cloud (GCP) KMS EKM connection

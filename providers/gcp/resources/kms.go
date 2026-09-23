@@ -286,6 +286,54 @@ func (g *mqlGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOp
 	return fmt.Sprintf("%s/externalProtectionLevelOptions", name), nil
 }
 
+type mqlGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOptionsInternal struct {
+	cacheEkmConnectionBackendOverride string
+}
+
+// ekmConnectionBackendOverride resolves the version's EKM connection override
+// (projects/*/locations/*/ekmConnections/*) against the owning project's EKM
+// connection list.
+func (g *mqlGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOptions) ekmConnectionBackendOverride() (*mqlGcpProjectKmsServiceEkmConnection, error) {
+	path := g.cacheEkmConnectionBackendOverride
+	if path == "" {
+		g.EkmConnectionBackendOverride.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	projectId := parseProjectFromPath(path)
+	if projectId == "" {
+		return nil, fmt.Errorf("invalid EKM connection resource name %q", path)
+	}
+	svc, err := NewResource(g.MqlRuntime, "gcp.project.kmsService", map[string]*llx.RawData{
+		"projectId": llx.StringData(projectId),
+	})
+	if err != nil {
+		return nil, err
+	}
+	conns := svc.(*mqlGcpProjectKmsService).GetEkmConnections()
+	if conns.Error != nil {
+		return nil, conns.Error
+	}
+	if ec := ekmConnectionByResourcePath(conns.Data, path); ec != nil {
+		return ec, nil
+	}
+	return nil, fmt.Errorf("gcp.project.kmsService.ekmConnection %q not found", path)
+}
+
+// ekmConnectionByResourcePath returns the EKM connection whose full resource
+// path equals path, or nil when none matches.
+func ekmConnectionByResourcePath(conns []any, path string) *mqlGcpProjectKmsServiceEkmConnection {
+	for _, c := range conns {
+		ec, ok := c.(*mqlGcpProjectKmsServiceEkmConnection)
+		if !ok {
+			continue
+		}
+		if ec.ResourcePath.Data == path {
+			return ec
+		}
+	}
+	return nil
+}
+
 func (g *mqlGcpProjectKmsServiceKeyringCryptokeyVersionAttestationCertificatechains) id() (string, error) {
 	if g.CryptoKeyVersionName.Error != nil {
 		return "", g.CryptoKeyVersionName.Error
@@ -712,6 +760,7 @@ func cryptoKeyVersionToMql(runtime *plugin.Runtime, v *kmspb.CryptoKeyVersion) (
 		if err != nil {
 			return nil, err
 		}
+		mqlExtProtOpts.(*mqlGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOptions).cacheEkmConnectionBackendOverride = v.ExternalProtectionLevelOptions.EkmConnectionBackendOverride
 	}
 	return CreateResource(runtime, "gcp.project.kmsService.keyring.cryptokey.version", map[string]*llx.RawData{
 		"resourcePath":                     llx.StringData(v.Name),

@@ -8569,6 +8569,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.kmsService.keyring.cryptokey.version.externalProtectionLevelOptions.ekmConnectionKeyPath": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOptions).GetEkmConnectionKeyPath()).ToDataRes(types.String)
 	},
+	"gcp.project.kmsService.keyring.cryptokey.version.externalProtectionLevelOptions.ekmConnectionBackendOverride": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOptions).GetEkmConnectionBackendOverride()).ToDataRes(types.Resource("gcp.project.kmsService.ekmConnection"))
+	},
 	"gcp.project.kmsService.ekmConnection.projectId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectKmsServiceEkmConnection).GetProjectId()).ToDataRes(types.String)
 	},
@@ -28091,6 +28094,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.kmsService.keyring.cryptokey.version.externalProtectionLevelOptions.ekmConnectionKeyPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOptions).EkmConnectionKeyPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.kmsService.keyring.cryptokey.version.externalProtectionLevelOptions.ekmConnectionBackendOverride": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOptions).EkmConnectionBackendOverride, ok = plugin.RawToTValue[*mqlGcpProjectKmsServiceEkmConnection](v.Value, v.Error)
 		return
 	},
 	"gcp.project.kmsService.ekmConnection.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -65079,10 +65086,11 @@ func (c *mqlGcpProjectKmsServiceKeyringCryptokeyVersionAttestationCertificatecha
 type mqlGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOptions struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOptionsInternal it will be used here
-	CryptoKeyVersionName plugin.TValue[string]
-	ExternalKeyUri       plugin.TValue[string]
-	EkmConnectionKeyPath plugin.TValue[string]
+	mqlGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOptionsInternal
+	CryptoKeyVersionName         plugin.TValue[string]
+	ExternalKeyUri               plugin.TValue[string]
+	EkmConnectionKeyPath         plugin.TValue[string]
+	EkmConnectionBackendOverride plugin.TValue[*mqlGcpProjectKmsServiceEkmConnection]
 }
 
 // createGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOptions creates a new instance of this resource
@@ -65132,6 +65140,22 @@ func (c *mqlGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOp
 
 func (c *mqlGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOptions) GetEkmConnectionKeyPath() *plugin.TValue[string] {
 	return &c.EkmConnectionKeyPath
+}
+
+func (c *mqlGcpProjectKmsServiceKeyringCryptokeyVersionExternalProtectionLevelOptions) GetEkmConnectionBackendOverride() *plugin.TValue[*mqlGcpProjectKmsServiceEkmConnection] {
+	return plugin.GetOrCompute[*mqlGcpProjectKmsServiceEkmConnection](&c.EkmConnectionBackendOverride, func() (*mqlGcpProjectKmsServiceEkmConnection, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.kmsService.keyring.cryptokey.version.externalProtectionLevelOptions", c.__id, "ekmConnectionBackendOverride")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectKmsServiceEkmConnection), nil
+			}
+		}
+
+		return c.ekmConnectionBackendOverride()
+	})
 }
 
 // mqlGcpProjectKmsServiceEkmConnection for the gcp.project.kmsService.ekmConnection resource

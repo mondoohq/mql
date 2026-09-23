@@ -4121,6 +4121,7 @@ gcp.project.kmsService.keyring.cryptokey.version.destroyed 9.0.0
 gcp.project.kmsService.keyring.cryptokey.version.externalDestructionFailureReason 13.32.1
 gcp.project.kmsService.keyring.cryptokey.version.externalProtectionLevelOptions 9.0.0
 gcp.project.kmsService.keyring.cryptokey.version.externalProtectionLevelOptions.cryptoKeyVersionName 9.0.0
+gcp.project.kmsService.keyring.cryptokey.version.externalProtectionLevelOptions.ekmConnectionBackendOverride 14.0.1
 gcp.project.kmsService.keyring.cryptokey.version.externalProtectionLevelOptions.ekmConnectionKeyPath 9.0.0
 gcp.project.kmsService.keyring.cryptokey.version.externalProtectionLevelOptions.externalKeyUri 9.0.0
 gcp.project.kmsService.keyring.cryptokey.version.generated 9.0.0
