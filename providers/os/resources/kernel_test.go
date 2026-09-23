@@ -716,6 +716,34 @@ func TestArchKernelMatchesRunning(t *testing.T) {
 	}
 }
 
+func TestAlpineKernelMatchesRunning(t *testing.T) {
+	cases := []struct {
+		name           string
+		pkgVersion     string
+		pkgName        string
+		runningKernel  string
+		expectedResult bool
+	}{
+		{"lts package against the lts kernel it installs", "6.6.142-r0", "linux-lts", "6.6.142-0-lts", true},
+		{"virt package against the virt kernel it installs", "6.6.142-r0", "linux-virt", "6.6.142-0-virt", true},
+		{"same version, other flavor running", "6.6.142-r0", "linux-virt", "6.6.142-0-lts", false},
+		{"an older lts still running after an upgrade", "6.6.142-r0", "linux-lts", "6.6.139-0-lts", false},
+		{"apk revision must match the uname revision", "6.6.142-r1", "linux-lts", "6.6.142-0-lts", false},
+		{"a two-digit revision", "6.6.142-r12", "linux-lts", "6.6.142-12-lts", true},
+		{"edge flavor", "6.12.4-r0", "linux-edge", "6.12.4-0-edge", true},
+		{"a container reports the host kernel", "6.6.142-r0", "linux-lts", "7.0.12-linuxkit", false},
+		{"no revision in the package version", "6.6.142", "linux-lts", "6.6.142-0-lts", false},
+		{"running-kernel string is empty (kernel.info unavailable)", "6.6.142-r0", "linux-lts", "", false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := alpineKernelMatchesRunning(tc.pkgVersion, tc.pkgName, tc.runningKernel)
+			assert.Equal(t, tc.expectedResult, got)
+		})
+	}
+}
+
 // TestDpkgStatusIsInstalled locks down the dpkg status gate behind the
 // debian branch of kernel.installed. The case that motivated it was found
 // on Linux Mint: a kernel removed but not purged keeps its
@@ -818,6 +846,58 @@ func TestKernelFilters(t *testing.T) {
 			runningKernel: "6.6.67-1-lts",
 			wantOK:        true,
 			want:          KernelVersion{Name: "linux-lts", Version: "6.6.67-1", Running: true},
+		},
+
+		// --- alpine ---
+		// Shaped on alpine:3.20 (aarch64) with linux-lts and linux-virt installed:
+		// both at 6.6.142-r0, modules in /lib/modules/6.6.142-0-lts and
+		// /lib/modules/6.6.142-0-virt.
+		{
+			name:          "alpine: the booted lts kernel is marked running",
+			filter:        alpineKernelVersion,
+			pkg:           kernelPackage{Name: "linux-lts", Version: "6.6.142-r0"},
+			runningKernel: "6.6.142-0-lts",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux-lts", Version: "6.6.142-r0", Running: true},
+		},
+		{
+			name:          "alpine: another installed flavor at the same version is not running",
+			filter:        alpineKernelVersion,
+			pkg:           kernelPackage{Name: "linux-virt", Version: "6.6.142-r0"},
+			runningKernel: "6.6.142-0-lts",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux-virt", Version: "6.6.142-r0", Running: false},
+		},
+		{
+			// In a container uname reports the host kernel, so no installed
+			// package is the running one. That is the true answer, not a miss.
+			name:          "alpine: in a container the host kernel runs, not an installed one",
+			filter:        alpineKernelVersion,
+			pkg:           kernelPackage{Name: "linux-lts", Version: "6.6.142-r0"},
+			runningKernel: "7.0.12-linuxkit",
+			wantOK:        true,
+			want:          KernelVersion{Name: "linux-lts", Version: "6.6.142-r0", Running: false},
+		},
+		{
+			name:          "alpine: linux-lts-dev is not a kernel",
+			filter:        alpineKernelVersion,
+			pkg:           kernelPackage{Name: "linux-lts-dev", Version: "6.6.142-r0"},
+			runningKernel: "6.6.142-0-lts",
+			wantOK:        false,
+		},
+		{
+			name:          "alpine: linux-firmware-none is not a kernel",
+			filter:        alpineKernelVersion,
+			pkg:           kernelPackage{Name: "linux-firmware-none", Version: "20240811-r0"},
+			runningKernel: "6.6.142-0-lts",
+			wantOK:        false,
+		},
+		{
+			name:          "alpine: linux-headers is not a kernel",
+			filter:        alpineKernelVersion,
+			pkg:           kernelPackage{Name: "linux-headers", Version: "6.6-r0"},
+			runningKernel: "6.6.142-0-lts",
+			wantOK:        false,
 		},
 
 		// --- debian (status gate is new, naming is regression) ---
@@ -1059,9 +1139,9 @@ func TestKernelFilterForPlatform(t *testing.T) {
 			supported: true,
 		},
 		{
-			name:      "alpine has no kernel-package filter and must not answer with an empty list",
+			name:      "alpine",
 			platform:  &inventory.Platform{Name: "alpine", Family: []string{"linux", "unix", "os"}},
-			supported: false,
+			supported: true,
 		},
 		{
 			name:      "gentoo has no kernel-package filter and must not answer with an empty list",
@@ -1124,11 +1204,6 @@ func TestKernelInstalledFilterSeparatesUnsupportedFromNotLinux(t *testing.T) {
 		},
 		{
 			name:     "a linux with no filter is an error, not an empty answer",
-			platform: &inventory.Platform{Name: "alpine", Family: []string{"linux", "unix", "os"}},
-			wantErr:  true,
-		},
-		{
-			name:     "gentoo likewise",
 			platform: &inventory.Platform{Name: "gentoo", Family: []string{"linux", "unix", "os"}},
 			wantErr:  true,
 		},

@@ -423,6 +423,74 @@ func archKernelVersion(pkg kernelPackage, runningKernelVersion string) (KernelVe
 	}, true
 }
 
+// alpineKernelPackages is the set of Alpine packages that carry a kernel.
+//
+// An allowlist, like archKernelPackages: every flavor ships a -dev package
+// beside it, and linux-firmware-*, linux-headers and linux-pam are linux-
+// prefixed without being bootable. linux-stable is in edge; linux-rpi2 and
+// linux-rpi4 are the Raspberry Pi flavors of older releases.
+var alpineKernelPackages = map[string]bool{
+	"linux-lts":    true,
+	"linux-virt":   true,
+	"linux-edge":   true,
+	"linux-stable": true,
+	"linux-rpi":    true,
+	"linux-rpi2":   true,
+	"linux-rpi4":   true,
+}
+
+// alpineKernelVersion reads an apk kernel package.
+//
+//	apk list --installed
+//	linux-lts-6.6.142-r0 aarch64 {linux-lts} (GPL-2.0-only) [installed]
+//	linux-virt-6.6.142-r0 aarch64 {linux-lts} (GPL-2.0-only) [installed]
+//	ls /lib/modules
+//	6.6.142-0-lts
+//	6.6.142-0-virt
+func alpineKernelVersion(pkg kernelPackage, runningKernelVersion string) (KernelVersion, bool) {
+	if !alpineKernelPackages[pkg.Name] {
+		return KernelVersion{}, false
+	}
+
+	return KernelVersion{
+		Name:    pkg.Name,
+		Version: pkg.Version,
+		Running: alpineKernelMatchesRunning(pkg.Version, pkg.Name, runningKernelVersion),
+	}, true
+}
+
+// alpineKernelMatchesRunning reports whether the given apk kernel package
+// describes the currently running kernel.
+//
+// apk and uname spell the same kernel differently. The package version ends
+// in the apk revision "-r<N>", while the release uname reports carries that
+// revision as a plain "-<N>" followed by the flavor, which is the package
+// name without its "linux" prefix:
+//
+//	apk:   linux-lts 6.6.142-r0
+//	uname: 6.6.142-0-lts
+//
+// The flavor is trimmed from the running release first (the shape
+// archKernelMatchesRunning uses), and the apk revision is rewritten into the
+// uname form, which leaves the two strings directly comparable.
+func alpineKernelMatchesRunning(pkgVersion, pkgName, runningKernelVersion string) bool {
+	if runningKernelVersion == "" {
+		return false
+	}
+
+	flavor := strings.TrimPrefix(pkgName, "linux")
+	if flavor == "" || !strings.HasSuffix(runningKernelVersion, flavor) {
+		return false
+	}
+	running := strings.TrimSuffix(runningKernelVersion, flavor)
+
+	i := strings.LastIndex(pkgVersion, "-r")
+	if i < 0 {
+		return false
+	}
+	return running == pkgVersion[:i]+"-"+pkgVersion[i+2:]
+}
+
 // kernelFilterForPlatform picks the filter that knows how this platform's
 // package manager names and versions kernel packages. The second return is
 // false when no filter covers the platform; kernelInstalledFilter decides
@@ -447,6 +515,8 @@ func kernelFilterForPlatform(platform *inventory.Platform) (kernelFilter, bool) 
 		return suseKernelVersion, true
 	case platform.IsFamily("arch"):
 		return archKernelVersion, true
+	case platform.Name == "alpine":
+		return alpineKernelVersion, true
 	default:
 		return nil, false
 	}
