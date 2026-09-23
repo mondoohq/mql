@@ -535,8 +535,9 @@ complete them, alongside the checks §3 turns into errors.
 
 **The planned behavior change, through the v14 lifetime.** Partial results are
 not behind the feature flag (§9) and have no version split: the field is
-additive, and no score changes. What does change is the region loops. A denied region that is dropped silently today
-becomes the same result with the gap attached. A loop that fails the whole list
+additive, and no score changes. What does change is the region loops. A
+denied region that is dropped silently today becomes the same result with the
+gap attached. A loop that fails the whole list
 today, because one region was throttled or failed, becomes a valid result
 with that region as a coverage gap: a pass or a failure on the data that was
 read, where today it is an error.
