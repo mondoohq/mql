@@ -816,6 +816,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"digitalocean.microDroplet.size": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanMicroDroplet).GetSize()).ToDataRes(types.String)
 	},
+	"digitalocean.microDroplet.vcpus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanMicroDroplet).GetVcpus()).ToDataRes(types.Int)
+	},
+	"digitalocean.microDroplet.memoryMib": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanMicroDroplet).GetMemoryMib()).ToDataRes(types.Int)
+	},
+	"digitalocean.microDroplet.diskGb": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanMicroDroplet).GetDiskGb()).ToDataRes(types.Int)
+	},
+	"digitalocean.microDroplet.ports": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanMicroDroplet).GetPorts()).ToDataRes(types.Array(types.Int))
+	},
+	"digitalocean.microDroplet.urls": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanMicroDroplet).GetUrls()).ToDataRes(types.Array(types.Dict))
+	},
+	"digitalocean.microDroplet.httpProtocol": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanMicroDroplet).GetHttpProtocol()).ToDataRes(types.String)
+	},
+	"digitalocean.microDroplet.tags": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanMicroDroplet).GetTags()).ToDataRes(types.Array(types.String))
+	},
+	"digitalocean.microDroplet.failureReason": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanMicroDroplet).GetFailureReason()).ToDataRes(types.String)
+	},
 	"digitalocean.microDroplet.networking": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanMicroDroplet).GetNetworking()).ToDataRes(types.String)
 	},
@@ -882,6 +906,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"digitalocean.firewall.ingressRule.ports": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanFirewallIngressRule).GetPorts()).ToDataRes(types.String)
 	},
+	"digitalocean.firewall.ingressRule.action": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanFirewallIngressRule).GetAction()).ToDataRes(types.String)
+	},
 	"digitalocean.firewall.ingressRule.openToInternet": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanFirewallIngressRule).GetOpenToInternet()).ToDataRes(types.Bool)
 	},
@@ -917,6 +944,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"digitalocean.firewall.egressRule.ports": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanFirewallEgressRule).GetPorts()).ToDataRes(types.String)
+	},
+	"digitalocean.firewall.egressRule.action": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlDigitaloceanFirewallEgressRule).GetAction()).ToDataRes(types.String)
 	},
 	"digitalocean.firewall.egressRule.openToInternet": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlDigitaloceanFirewallEgressRule).GetOpenToInternet()).ToDataRes(types.Bool)
@@ -4112,6 +4142,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDigitaloceanMicroDroplet).Size, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"digitalocean.microDroplet.vcpus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanMicroDroplet).Vcpus, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"digitalocean.microDroplet.memoryMib": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanMicroDroplet).MemoryMib, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"digitalocean.microDroplet.diskGb": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanMicroDroplet).DiskGb, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"digitalocean.microDroplet.ports": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanMicroDroplet).Ports, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"digitalocean.microDroplet.urls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanMicroDroplet).Urls, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"digitalocean.microDroplet.httpProtocol": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanMicroDroplet).HttpProtocol, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"digitalocean.microDroplet.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanMicroDroplet).Tags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"digitalocean.microDroplet.failureReason": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanMicroDroplet).FailureReason, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"digitalocean.microDroplet.networking": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDigitaloceanMicroDroplet).Networking, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -4212,6 +4274,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlDigitaloceanFirewallIngressRule).Ports, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"digitalocean.firewall.ingressRule.action": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanFirewallIngressRule).Action, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"digitalocean.firewall.ingressRule.openToInternet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDigitaloceanFirewallIngressRule).OpenToInternet, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -4266,6 +4332,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"digitalocean.firewall.egressRule.ports": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlDigitaloceanFirewallEgressRule).Ports, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"digitalocean.firewall.egressRule.action": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlDigitaloceanFirewallEgressRule).Action, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"digitalocean.firewall.egressRule.openToInternet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -9524,6 +9594,14 @@ type mqlDigitaloceanMicroDroplet struct {
 	Region               plugin.TValue[string]
 	State                plugin.TValue[string]
 	Size                 plugin.TValue[string]
+	Vcpus                plugin.TValue[int64]
+	MemoryMib            plugin.TValue[int64]
+	DiskGb               plugin.TValue[int64]
+	Ports                plugin.TValue[[]any]
+	Urls                 plugin.TValue[[]any]
+	HttpProtocol         plugin.TValue[string]
+	Tags                 plugin.TValue[[]any]
+	FailureReason        plugin.TValue[string]
 	Networking           plugin.TValue[string]
 	Image                plugin.TValue[string]
 	Endpoint             plugin.TValue[string]
@@ -9584,6 +9662,38 @@ func (c *mqlDigitaloceanMicroDroplet) GetState() *plugin.TValue[string] {
 
 func (c *mqlDigitaloceanMicroDroplet) GetSize() *plugin.TValue[string] {
 	return &c.Size
+}
+
+func (c *mqlDigitaloceanMicroDroplet) GetVcpus() *plugin.TValue[int64] {
+	return &c.Vcpus
+}
+
+func (c *mqlDigitaloceanMicroDroplet) GetMemoryMib() *plugin.TValue[int64] {
+	return &c.MemoryMib
+}
+
+func (c *mqlDigitaloceanMicroDroplet) GetDiskGb() *plugin.TValue[int64] {
+	return &c.DiskGb
+}
+
+func (c *mqlDigitaloceanMicroDroplet) GetPorts() *plugin.TValue[[]any] {
+	return &c.Ports
+}
+
+func (c *mqlDigitaloceanMicroDroplet) GetUrls() *plugin.TValue[[]any] {
+	return &c.Urls
+}
+
+func (c *mqlDigitaloceanMicroDroplet) GetHttpProtocol() *plugin.TValue[string] {
+	return &c.HttpProtocol
+}
+
+func (c *mqlDigitaloceanMicroDroplet) GetTags() *plugin.TValue[[]any] {
+	return &c.Tags
+}
+
+func (c *mqlDigitaloceanMicroDroplet) GetFailureReason() *plugin.TValue[string] {
+	return &c.FailureReason
 }
 
 func (c *mqlDigitaloceanMicroDroplet) GetNetworking() *plugin.TValue[string] {
@@ -9818,6 +9928,7 @@ type mqlDigitaloceanFirewallIngressRule struct {
 	mqlDigitaloceanFirewallIngressRuleInternal
 	Protocol                 plugin.TValue[string]
 	Ports                    plugin.TValue[string]
+	Action                   plugin.TValue[string]
 	OpenToInternet           plugin.TValue[bool]
 	SourceAddresses          plugin.TValue[[]any]
 	SourceTags               plugin.TValue[[]any]
@@ -9864,6 +9975,10 @@ func (c *mqlDigitaloceanFirewallIngressRule) GetProtocol() *plugin.TValue[string
 
 func (c *mqlDigitaloceanFirewallIngressRule) GetPorts() *plugin.TValue[string] {
 	return &c.Ports
+}
+
+func (c *mqlDigitaloceanFirewallIngressRule) GetAction() *plugin.TValue[string] {
+	return &c.Action
 }
 
 func (c *mqlDigitaloceanFirewallIngressRule) GetOpenToInternet() *plugin.TValue[bool] {
@@ -9992,6 +10107,7 @@ type mqlDigitaloceanFirewallEgressRule struct {
 	mqlDigitaloceanFirewallEgressRuleInternal
 	Protocol                      plugin.TValue[string]
 	Ports                         plugin.TValue[string]
+	Action                        plugin.TValue[string]
 	OpenToInternet                plugin.TValue[bool]
 	DestinationAddresses          plugin.TValue[[]any]
 	DestinationTags               plugin.TValue[[]any]
@@ -10038,6 +10154,10 @@ func (c *mqlDigitaloceanFirewallEgressRule) GetProtocol() *plugin.TValue[string]
 
 func (c *mqlDigitaloceanFirewallEgressRule) GetPorts() *plugin.TValue[string] {
 	return &c.Ports
+}
+
+func (c *mqlDigitaloceanFirewallEgressRule) GetAction() *plugin.TValue[string] {
+	return &c.Action
 }
 
 func (c *mqlDigitaloceanFirewallEgressRule) GetOpenToInternet() *plugin.TValue[bool] {

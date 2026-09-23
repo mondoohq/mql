@@ -251,8 +251,10 @@ digitalocean.droplet @defaults("id name status") {
 // traffic arrives. The `networking` mode decides whether the instance
 // answers on an address reachable from the internet or only from inside
 // a VPC, and `isPublic` reduces that to the predicate an exposure audit
-// asks for. Also queryable are the `image` it runs, the `endpoint` it
-// serves on, the hardware `size`, the lifecycle `state`, and the
+// asks for. Also queryable are the `image` it runs, the `endpoint` and
+// `urls` it serves on, the `ports` it exposes, the allocated `vcpus`,
+// `memoryMib`, and `diskGb`, the lifecycle `state` and any
+// `failureReason`, the `tags` applied to it, and the
 // auto-pause and auto-resume settings that decide whether it keeps
 // running while unused. MicroDroplets are not covered by cloud
 // firewalls, so `networking` is the only ingress control there is.
@@ -271,9 +273,29 @@ digitalocean.microDroplet @defaults("id name region state networking") {
   state string
   // Size slug describing the allocated hardware
   //
-  // Always null. The API no longer reports a size slug; it reports the
-  // allocated CPU, memory, and disk as separate values instead.
+  // Deprecated in favor of vcpus, memoryMib, and diskGb. Always null: the
+  // API no longer reports a size slug.
   size @maturity("deprecated") string
+  // Number of virtual CPUs allocated to the instance; null when the API reports no size
+  vcpus int
+  // Memory allocated to the instance, in mebibytes; null when the API reports no size
+  memoryMib int
+  // Disk capacity allocated to the instance, in gigabytes; null when the API reports no size
+  diskGb int
+  // Container ports the instance exposes
+  ports []int
+  // Ingress URLs attached to the instance
+  //
+  // Each entry is a dict with keys: hostname, port (the instance port
+  // the URL routes to), default (whether it is the instance's primary
+  // URL), and status (PENDING or ACTIVE).
+  urls []dict
+  // HTTP protocol the instance serves on its URLs, http or http2
+  httpProtocol string
+  // Tags applied to the instance
+  tags []string
+  // Reason the instance failed, as reported by the API; empty when none is reported
+  failureReason string
   // Network placement of the instance
   //
   // Either public, meaning the instance answers on an address reachable
@@ -360,8 +382,9 @@ private digitalocean.firewall.pendingChange @defaults("status removing") {
 // Single ingress (inbound) rule controlling traffic that reaches the
 // droplets a firewall protects. `protocol` is tcp, udp, or icmp and
 // `ports` is the affected port or range (a single port like "3306", a
-// range like "8000-9000", or "0"/"all" for every port). `openToInternet`
-// is true when the rule admits traffic from any address, that is, when
+// range like "8000-9000", or "0"/"all" for every port). `action` is
+// allow or deny. `openToInternet` is true when the rule admits traffic
+// from any address, that is, when it is an allow rule and
 // `sourceAddresses` contains 0.0.0.0/0 or ::/0, which makes auditing
 // publicly reachable ports a single predicate. The source is otherwise
 // described by `sourceAddresses` (CIDRs), `sourceTags`, and the
@@ -375,7 +398,15 @@ private digitalocean.firewall.ingressRule @defaults("protocol ports openToIntern
   // A single port ("3306"), a range ("8000-9000"), or "0"/"all" for
   // every port.
   ports string
-  // Whether the rule admits traffic from any address (0.0.0.0/0 or ::/0)
+  // Action the rule takes on matching traffic
+  //
+  // Either allow or deny. Rules the API returns without an action are
+  // allow rules, the API default, and are reported as allow.
+  action string
+  // Whether the rule admits traffic from any address
+  //
+  // True for an allow rule whose source addresses include 0.0.0.0/0 or
+  // ::/0. A deny rule over those ranges blocks traffic and is not open.
   openToInternet bool
   // Source address CIDRs trusted by this rule
   sourceAddresses []string
@@ -411,8 +442,9 @@ private digitalocean.network.exposure @defaults("internetReachable hasPublicIp")
 // Single egress (outbound) rule controlling traffic that leaves the
 // droplets a firewall protects. `protocol` is tcp, udp, or icmp and
 // `ports` is the affected port or range (a single port like "3306", a
-// range like "8000-9000", or "0"/"all" for every port). `openToInternet`
-// is true when the rule permits traffic to any address, that is, when
+// range like "8000-9000", or "0"/"all" for every port). `action` is
+// allow or deny. `openToInternet` is true when the rule permits traffic
+// to any address, that is, when it is an allow rule and
 // `destinationAddresses` contains 0.0.0.0/0 or ::/0. The destination is
 // otherwise described by `destinationAddresses` (CIDRs), `destinationTags`,
 // and the `destinationDroplets`, `destinationLoadBalancers`, and
@@ -425,7 +457,15 @@ private digitalocean.firewall.egressRule @defaults("protocol ports openToInterne
   // A single port ("3306"), a range ("8000-9000"), or "0"/"all" for
   // every port.
   ports string
-  // Whether the rule permits traffic to any address (0.0.0.0/0 or ::/0)
+  // Action the rule takes on matching traffic
+  //
+  // Either allow or deny. Rules the API returns without an action are
+  // allow rules, the API default, and are reported as allow.
+  action string
+  // Whether the rule permits traffic to any address
+  //
+  // True for an allow rule whose destination addresses include 0.0.0.0/0
+  // or ::/0. A deny rule over those ranges blocks traffic and is not open.
   openToInternet bool
   // Destination address CIDRs allowed by this rule
   destinationAddresses []string

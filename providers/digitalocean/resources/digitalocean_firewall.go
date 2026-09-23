@@ -5,6 +5,7 @@ package resources
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/digitalocean/godo"
 	"go.mondoo.com/mql/llx"
@@ -36,10 +37,24 @@ type mqlDigitaloceanFirewallEgressRuleInternal struct {
 	destinationKubernetesIDs    []any
 }
 
-// openToInternet reports whether any of the given source/destination CIDRs
-// admit traffic from (or to) every address — the IPv4 or IPv6 "everything"
-// range.
-func openToInternet(addresses []string) bool {
+// firewallRuleAction returns the action a rule takes. The API omits the
+// action on rules created before deny rules existed and treats them as
+// allow rules, so an absent action reads as allow.
+func firewallRuleAction(action godo.FirewallRuleAction) string {
+	if action == "" {
+		return string(godo.FirewallRuleActionAllow)
+	}
+	return string(action)
+}
+
+// openToInternet reports whether a rule admits traffic from (or to) every
+// address: it allows traffic and one of its source/destination CIDRs is the
+// IPv4 or IPv6 "everything" range. A deny rule over that range blocks
+// traffic rather than admitting it.
+func openToInternet(action godo.FirewallRuleAction, addresses []string) bool {
+	if !strings.EqualFold(firewallRuleAction(action), string(godo.FirewallRuleActionAllow)) {
+		return false
+	}
 	for _, s := range addresses {
 		if s == "0.0.0.0/0" || s == "::/0" {
 			return true
@@ -65,7 +80,8 @@ func (r *mqlDigitaloceanFirewall) ingressRules() ([]any, error) {
 			"__id":            llx.StringData(fmt.Sprintf("%s/inbound/%d", r.Id.Data, i)),
 			"protocol":        llx.StringData(rule.Protocol),
 			"ports":           llx.StringData(rule.PortRange),
-			"openToInternet":  llx.BoolData(openToInternet(addresses)),
+			"action":          llx.StringData(firewallRuleAction(rule.Action)),
+			"openToInternet":  llx.BoolData(openToInternet(rule.Action, addresses)),
 			"sourceAddresses": llx.ArrayData(toStringSlice(addresses), "\x02"),
 			"sourceTags":      llx.ArrayData(toStringSlice(tags), "\x02"),
 		})
@@ -98,7 +114,8 @@ func (r *mqlDigitaloceanFirewall) egressRules() ([]any, error) {
 			"__id":                 llx.StringData(fmt.Sprintf("%s/outbound/%d", r.Id.Data, i)),
 			"protocol":             llx.StringData(rule.Protocol),
 			"ports":                llx.StringData(rule.PortRange),
-			"openToInternet":       llx.BoolData(openToInternet(addresses)),
+			"action":               llx.StringData(firewallRuleAction(rule.Action)),
+			"openToInternet":       llx.BoolData(openToInternet(rule.Action, addresses)),
 			"destinationAddresses": llx.ArrayData(toStringSlice(addresses), "\x02"),
 			"destinationTags":      llx.ArrayData(toStringSlice(tags), "\x02"),
 		})

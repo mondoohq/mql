@@ -64,6 +64,13 @@ func microDropletArgs(md *godo.MicroVM) (map[string]*llx.RawData, error) {
 		image = md.Source.OCIRef
 	}
 
+	vcpus, memoryMib, diskGb := llx.NilData, llx.NilData, llx.NilData
+	if md.Size != nil {
+		vcpus = llx.IntData(int64(md.Size.CPU))
+		memoryMib = llx.IntData(int64(md.Size.Memory))
+		diskGb = llx.IntData(int64(md.Size.Disk))
+	}
+
 	return map[string]*llx.RawData{
 		"__id":                 llx.StringData(id),
 		"id":                   llx.StringData(md.ID),
@@ -71,6 +78,14 @@ func microDropletArgs(md *godo.MicroVM) (map[string]*llx.RawData, error) {
 		"region":               llx.StringData(md.Region),
 		"state":                llx.StringData(string(md.State)),
 		"size":                 llx.NilData,
+		"vcpus":                vcpus,
+		"memoryMib":            memoryMib,
+		"diskGb":               diskGb,
+		"ports":                llx.ArrayData(microVMPorts(md.Ports), "\x05"),
+		"urls":                 llx.ArrayData(microVMURLs(md.URLs), "\x13"),
+		"httpProtocol":         llx.StringData(string(md.HTTPProtocol)),
+		"tags":                 llx.ArrayData(toStringSlice(md.Tags), "\x02"),
+		"failureReason":        llx.StringData(md.FailureReason),
 		"networking":           llx.StringData(string(md.Networking)),
 		"image":                llx.StringData(image),
 		"endpoint":             llx.StringData(microVMEndpoint(md.URLs)),
@@ -133,4 +148,27 @@ func microVMEndpoint(urls []godo.MicroVMURL) string {
 
 func (r *mqlDigitaloceanMicroDroplet) isPublic() (bool, error) {
 	return microDropletIsPublic(godo.MicroVMNetworking(r.Networking.Data)), nil
+}
+
+// microVMPorts converts the container ports an instance exposes.
+func microVMPorts(ports []uint32) []any {
+	out := make([]any, 0, len(ports))
+	for _, p := range ports {
+		out = append(out, int64(p))
+	}
+	return out
+}
+
+// microVMURLs converts the ingress URLs of an instance to dicts.
+func microVMURLs(urls []godo.MicroVMURL) []any {
+	out := make([]any, 0, len(urls))
+	for _, u := range urls {
+		out = append(out, map[string]any{
+			"hostname": u.Hostname,
+			"port":     int64(u.Port),
+			"default":  u.Default,
+			"status":   string(u.Status),
+		})
+	}
+	return out
 }
