@@ -421,6 +421,127 @@ line naming the kind, the scope and the permission, not 784. The grouping key is
 Errors also stop being anonymous in logs. Today a swallowed denial is a
 `log.Debug` line in one of 784 shapes; with a kind it is one structured field.
 
+### 8. Partial results: data and errors together
+
+A list assembled from several partitions can succeed in some and be refused in
+others. `aws.ec2.eips` queries every region; if one is denied, sixteen regions of
+answers are true and one is missing. Neither half is disposable. Dropping the
+data, reporting the list as an error, throws away what was read. Dropping the
+error, returning the list as if complete, is §3's null in another shape: an
+assertion over the list passes on data nobody collected.
+
+**Today it is both, depending on the failure.** A region job that hits
+`Is400AccessDeniedError` returns an empty slice and a `log.Warn`, so the denial
+vanishes and the list looks complete (`providers/aws/resources/aws_ec2.go:191`).
+Any other error in any region fails the whole list through
+`poolOfJobs.HasErrors()` (`:160`), discarding every region that answered.
+
+The carriers could hold both. `RawData`, `DataRes` and `Result` each have a
+value and an error slot. Three places keep only one:
+
+- `plugin.GetOrCompute` (`providers-sdk/v1/plugin/runtime.go:269-276`) marks
+  any errored field null, and `TValue.ToDataRes` (`:200-207`) then sends the
+  error with an empty value. The branch that would send both (`:213-215`) is
+  unreachable from generated code.
+- `providers/runtime.go:683-686` rebuilds a failed field as `RawData{Error: …}`
+  and drops `data.Data`.
+- Every consumer reads the error slot as "this failed", and ignores the value
+  beside it. The executor stops a chain at the first errored binding
+  (`llx/llx.go:885-902`), so `.where`, `.length` and `.all` all return the
+  error. `IsTruthy`, `IsSuccess` and `Score` report invalid
+  (`llx/rawdata.go:250-262`, `:448`). The printer prints only the error
+  (`cli/printer/mql.go:424`, `:517`), JSON drops the value (`rawdata.go:62`),
+  and cnspec scores it `ScoreType_Error` (`policy/executor/internal/
+  nodes.go:503`).
+
+So a value and an error in the existing slots already mean "failed",
+everywhere. The error slot cannot be where a partial rides.
+
+**A partial rides in its own field:**
+
+```proto
+// llx/llx.proto
+// A part of a result that could not be read. The message is the upstream
+// error, verbatim; the detail classifies it (§1-§4).
+message CoverageGap {
+  string error = 1;
+  ErrorDetail detail = 2;
+}
+
+message Result {
+  // … 1-4
+  // The value in data is incomplete: these parts could not be read. Empty on
+  // every complete result.
+  repeated CoverageGap coverage_gaps = 5;
+}
+
+// providers-sdk/v1/plugin/plugin.proto
+message DataRes {
+  // … 1-4
+  repeated mql.llx.CoverageGap coverage_gaps = 5;
+}
+```
+
+A separate field is what makes this non-breaking, and why it needs no feature
+flag. A consumer that does not read it (an older client, the server before it
+learns the field, a recording made before it existed) sees the value exactly as
+today and nothing else. Today's behavior is the fallback by construction, not by
+care at every site.
+
+**Provider side: one wrapper.** An accessor returns `res, llx.Partial(errs...)`.
+`GetOrCompute` recognizes it: the field is set, not null, the data is kept, and
+`ToDataRes` emits `coverage_gaps` instead of `error`. Generated code does not
+change. `llx.Partial()` with no errors is nil, so a loop can return it
+unconditionally. Each wrapped error is classified and names its partition:
+
+```go
+llx.Forbidden(err,
+    llx.WithScope(llx.ErrorScope_ERROR_SCOPE_PARTITION, region),
+    llx.WithPermissions("ec2:DescribeAddresses"))
+```
+
+The partition is what lets §7 print one line for a region that refused
+eighty lists, rather than eighty.
+
+**Consumer side: the result stands, the gaps ride along.** A partial does not
+change what a query or a check evaluates to. It adds what could not be read. A
+consumer that reads `coverage_gaps`:
+
+- The executor carries a result's coverage gaps to everything computed from
+  it. `eips.where(…)`, `eips.length` and `eips.all(…)` are partial when `eips`
+  is. Several inputs union their coverage gaps, deduplicated on `(kind, scope,
+  scope_id, permissions)`.
+- A check scores on the data it has, exactly as today: a pass stays a pass,
+  a failure stays a failure. The coverage gaps are attached to the score
+  either way.
+- A data query returns the value and its coverage gaps. The printer shows the
+  value, then one dimmed line per `(kind, scope_id)` group. JSON carries the
+  coverage gaps beside the value, never inside it, so the value's shape is
+  unchanged for anything parsing it today.
+
+What the attached errors buy is a measure of visibility. Aggregated over a
+scan, they say how many results rest on incomplete data and which grants would
+complete them, alongside the checks §3 turns into errors.
+
+**The planned behavior change, through the v14 lifetime.** There is no feature
+flag and no version split: the field is additive, and no score changes. What
+does change is the region loops. A denied region that is dropped silently today
+becomes the same result with the gap attached. A loop that fails the whole list
+today, because one region was throttled or answered 5xx, becomes a valid result
+with that region as a coverage gap: a pass or a failure on the data that was
+read, where today it is an error.
+
+That second change only holds up if the gap is visible wherever the result is.
+The rule, written and not enforced: providers convert their loops together with
+the rest of this ADR, including surfacing coverage gaps in mql's output, in
+cnspec's output, and upstream. A loop converted before its errors show up in
+all three turns a visible error into a result that looks complete.
+
+The per-provider region loops move onto one shared helper as part of the same
+work, in v14. Converting every loop to `llx.Partial` touches each of them
+anyway, and a single helper is what keeps partition, kind and scope consistent
+across providers.
+
 ## cnspec
 
 **Scoring is unchanged.** A check that ended in a classified failure is
@@ -489,6 +610,11 @@ per-request table and referencing them by index would cut a 1,000-asset scan fro
 ~2.4 MB to ~0.3 MB, changes no semantics, and is available if a measurement ever
 asks for it — building it now would be optimizing 2.4 KB.
 
+A check over a partial result (§8) fills the same field. Its score is the pass
+or failure it evaluated to, and `error_details` carries the coverage gaps, so a
+region that refused is counted in the coverage report without changing the
+check's outcome.
+
 `ReportCollection.error_details` is local-output only: asset errors do not travel
 through `StoreResults`. It is what makes the fleet line one line, in the CLI and
 in JSON.
@@ -516,7 +642,8 @@ taxonomy at all.
   is separate work that this only supplies the framework for.
 - **Score semantics.** Every kind scores as it does today — an error for the
   provider kinds, `Unscored` for asset-vanished. No kind moves a check out of the
-  denominator that is not already out of it.
+  denominator that is not already out of it. A partial result (§8) does not
+  change a score either; it only attaches the errors.
 - **`.lr` schemas.** No resource, field, or annotation changes. A field that
   fails is the same field.
 - **Existing recordings.** They carry no detail and replay as unclassified,
@@ -532,30 +659,38 @@ taxonomy at all.
 2. **SDK classifiers and the three big clouds.** Shared helpers over HTTP status
    and gRPC code, then aws, azure and gcp mapping files. The 1,018 call sites in
    those three providers are the bulk of the migration and can land service by
-   service.
-3. **Permission attribution.** Call sites name their permission; the
+   service. A refusal inside a region, project or subscription loop is not
+   phase 2: it is a partial result and waits for phase 3.
+3. **Partial results (§8).** `CoverageGap`, `Result.coverage_gaps`,
+   `DataRes.coverage_gaps`, `llx.Partial`, the `GetOrCompute`, `ToDataRes` and
+   `providers/runtime.go` changes, executor propagation, and attaching the
+   errors to scores. Region loops convert, both the silent ones and the ones
+   that fail a whole list today, together with surfacing the errors in mql,
+   cnspec and upstream (§8). The per-provider region loops move onto one shared
+   helper in the same step.
+4. **Permission attribution.** Call sites name their permission; the
    `permissions.json` fallback fills the rest.
-4. **Rendering and aggregation.** CLI grouping, structured logs.
-5. **cnspec coverage attribution.** `Score.error_details` and
+5. **Rendering and aggregation.** CLI grouping, structured logs.
+6. **cnspec coverage attribution.** `Score.error_details` and
    `ReportCollection.error_details`, kind-grouped reporting, and the two string
    matches removed (`TOOMANYREQUESTS`, `could not find resource`).
-6. **The long tail.** The remaining providers, plus a lint that flags an error
+7. **The long tail.** The remaining providers, plus a lint that flags an error
    swallowed into `nil, nil` right after a classifier predicate — the shape that
    produced the current state.
-7. **The null audit.** §3 permits an absence to stay a null, and 4,124
+8. **The null audit.** §3 permits an absence to stay a null, and 4,124
    `StateIsNull` sites currently claim to be absences. Which of them are genuine
    and which are swallowed refusals is a per-site question that has to be asked
    of every provider, and it is the work that actually finishes what this ADR
    starts. Named as its own phase because it is large, mechanical, and easy to
    declare done while most of it is untouched.
-8. **Asset-scoped short-circuit.** An `ASSET`-scoped failure — a 401, an expired
+9. **Asset-scoped short-circuit.** An `ASSET`-scoped failure — a 401, an expired
    credential — means every remaining call on that asset fails the same way, so
    the scan can stop early and report once. Purely an optimization: the results
    are identical either way, which is why it lands after everything else rather
    than competing with it.
 
 Phases 1 and 2 are independently useful: a kind that only reaches the CLI is
-already better than a string, and phase 2 without phase 5 still makes `mql shell`
+already better than a string, and phase 2 without phase 6 still makes `mql shell`
 honest. Phase 1 is the only one that has to make the v14 rc window.
 
 ## Implementation status
