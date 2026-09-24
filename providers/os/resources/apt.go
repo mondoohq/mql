@@ -124,7 +124,7 @@ func isAptSourceFile(path string) bool {
 }
 
 func (a *mqlApt) newRepo(file *mqlFile, repo aptRepo) (*mqlAptRepo, error) {
-	id := fmt.Sprintf("%s\x1f%s %s %s", repo.SourceFile, repo.Type, repo.URL, repo.Distribution)
+	id := repo.SourceFile + llx.IDSeparator + fmt.Sprintf("%s %s %s", repo.Type, repo.URL, repo.Distribution)
 
 	components := make([]any, len(repo.Components))
 	for i := range repo.Components {

@@ -60,8 +60,10 @@ func initGcpProjectEffectiveOrgPolicy(runtime *plugin.Runtime, args map[string]*
 
 	// Parameterized resource: the cache key must carry the constraint or every
 	// constraint queried in one scan resolves to the first one's answer.
-	args["__id"] = llx.StringData(fmt.Sprintf("%s\x1feffectiveOrgPolicy\x1f%s",
-		rawDataString(args["projectId"]), normalizeConstraintName(rawDataString(args["constraint"]))))
+	args["__id"] = llx.StringData(strings.Join([]string{
+		rawDataString(args["projectId"]), "effectiveOrgPolicy",
+		normalizeConstraintName(rawDataString(args["constraint"])),
+	}, llx.IDSeparator))
 
 	return args, nil, nil
 }

@@ -6,7 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
-	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -43,12 +43,13 @@ func initK8sAccessReview(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 		}
 		return ""
 	}
-	// Join with the ASCII unit separator (\x1f), which cannot appear in a
-	// Kubernetes identifier, so values containing "/" (or any other character)
-	// can't produce an ambiguous id. NUL is avoided because resource ids are
-	// stored and NUL is rejected by common storage backends.
-	args["__id"] = llx.StringData(fmt.Sprintf("k8s.accessReview\x1fsub=%s\x1fns=%s\x1fgrp=%s\x1fres=%s\x1fname=%s\x1fverb=%s",
-		str("subject"), str("namespace"), str("group"), str("resource"), str("name"), str("verb")))
+	// Join with llx.IDSeparator, which cannot appear in a Kubernetes identifier,
+	// so values containing "/" (or any other character) can't produce an
+	// ambiguous id.
+	args["__id"] = llx.StringData(strings.Join([]string{
+		"k8s.accessReview", "sub=" + str("subject"), "ns=" + str("namespace"), "grp=" + str("group"),
+		"res=" + str("resource"), "name=" + str("name"), "verb=" + str("verb"),
+	}, llx.IDSeparator))
 	return args, nil, nil
 }
 

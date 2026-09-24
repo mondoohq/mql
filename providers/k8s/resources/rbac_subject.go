@@ -5,7 +5,7 @@ package resources
 
 import (
 	"errors"
-	"fmt"
+	"strings"
 	"sync"
 
 	"go.mondoo.com/mql/llx"
@@ -23,12 +23,10 @@ type mqlK8sRbacSubjectInternal struct {
 }
 
 // subjectID builds the stable, unique cache key for an RBAC subject. The fields
-// are joined with the ASCII unit separator (\x1f), which cannot appear in a
-// Kubernetes identifier, so names containing other separators can never
-// collide. NUL is avoided because resource ids are stored and NUL is rejected
-// by common storage backends.
+// are joined with llx.IDSeparator, which cannot appear in a Kubernetes
+// identifier, so names containing other separators can never collide.
 func subjectID(kind, namespace, name string) string {
-	return fmt.Sprintf("k8s.rbac.subject\x1f%s\x1f%s\x1f%s", kind, namespace, name)
+	return strings.Join([]string{"k8s.rbac.subject", kind, namespace, name}, llx.IDSeparator)
 }
 
 // subjectNamespace resolves the effective namespace of a binding subject. For a
@@ -324,8 +322,10 @@ func initK8sRbacWhoCan(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 		}
 		return ""
 	}
-	args["__id"] = llx.StringData(fmt.Sprintf("k8s.rbac.whoCan\x1fverb=%s\x1fgrp=%s\x1fres=%s\x1fns=%s\x1fname=%s",
-		str("verb"), str("group"), str("resource"), str("namespace"), str("name")))
+	args["__id"] = llx.StringData(strings.Join([]string{
+		"k8s.rbac.whoCan", "verb=" + str("verb"), "grp=" + str("group"), "res=" + str("resource"),
+		"ns=" + str("namespace"), "name=" + str("name"),
+	}, llx.IDSeparator))
 	return args, nil, nil
 }
 

@@ -56,7 +56,7 @@ func (n *mqlNfs) exports() ([]any, error) {
 			options[i] = o
 		}
 		res, err := CreateResource(n.MqlRuntime, "nfs.export", map[string]*llx.RawData{
-			"__id":         llx.StringData(e.Path + "\x1f" + e.Client),
+			"__id":         llx.StringData(e.Path + llx.IDSeparator + e.Client),
 			"path":         llx.StringData(e.Path),
 			"client":       llx.StringData(e.Client),
 			"options":      llx.ArrayData(options, types.String),

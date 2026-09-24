@@ -26,13 +26,13 @@ func TestIpinfoID(t *testing.T) {
 	public := &mqlIpinfo{Requested_ip: nullIP()}
 	publicID, err := public.id()
 	require.NoError(t, err)
-	assert.Equal(t, "ipinfo\x1fself", publicID)
+	assert.Equal(t, "ipinfo"+llx.IDSeparator+"self", publicID)
 
 	// An explicit query keys on the requested address.
 	explicit := &mqlIpinfo{Requested_ip: setIP("8.8.8.8")}
 	explicitID, err := explicit.id()
 	require.NoError(t, err)
-	assert.Equal(t, "ipinfo\x1f"+(llx.RawIP{IP: net.ParseIP("8.8.8.8")}).String(), explicitID)
+	assert.Equal(t, "ipinfo"+llx.IDSeparator+(llx.RawIP{IP: net.ParseIP("8.8.8.8")}).String(), explicitID)
 
 	// Regression: the public query and an explicit query for that SAME address
 	// return the same IP but must be DISTINCT resources. Keying on the returned

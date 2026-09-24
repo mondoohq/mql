@@ -127,7 +127,7 @@ func (c *mqlIpinfo) id() (string, error) {
 	// on the returned IP collided them in the cache and crossed their
 	// requested_ip values. A null requested IP means "self".
 	if c.Requested_ip.IsNull() || c.Requested_ip.Data.IP == nil {
-		return "ipinfo\x1fself", nil
+		return "ipinfo" + llx.IDSeparator + "self", nil
 	}
-	return "ipinfo\x1f" + c.Requested_ip.Data.String(), nil
+	return "ipinfo" + llx.IDSeparator + c.Requested_ip.Data.String(), nil
 }
