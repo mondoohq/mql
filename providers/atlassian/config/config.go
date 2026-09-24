@@ -17,7 +17,7 @@ var Config = plugin.Provider{
 	// A connection reports the concrete kind through ConnectRes.Root.
 	Root:    "atlassian.admin.organization",
 	ID:      "go.mondoo.com/mql/providers/atlassian",
-	Version: "14.0.0",
+	Version: "14.1.0",
 	// Every root carries `asset`, which core owns (ADR 042).
 	Requires: []plugin.ProviderDep{
 		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
