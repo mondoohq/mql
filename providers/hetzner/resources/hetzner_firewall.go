@@ -138,7 +138,7 @@ func initHetznerFirewall(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 		// discovery step stamped on the connection options.
 		id, ok = connection.AssetID(conn(runtime).Conf, connection.OptionFirewall)
 		if !ok {
-			return args, nil, nil
+			return nil, nil, missingIDErr("firewall")
 		}
 	}
 	fw, _, err := conn(runtime).Client().Firewall.GetByID(ctx(), id)

@@ -191,9 +191,9 @@ func (m *mqlHetznerCertificate) loadBalancers() ([]any, error) {
 }
 
 func initHetznerCertificate(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "certificate")
+	if err != nil {
+		return nil, nil, err
 	}
 	cert, _, err := conn(runtime).Client().Certificate.GetByID(ctx(), id)
 	if err != nil {

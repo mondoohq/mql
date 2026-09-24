@@ -203,9 +203,9 @@ func newMqlHetznerServer(runtime *plugin.Runtime, s *hcloud.Server) (*mqlHetzner
 }
 
 func initHetznerServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "server")
+	if err != nil {
+		return nil, nil, err
 	}
 	s, _, err := conn(runtime).Client().Server.GetByID(ctx(), id)
 	if err != nil {

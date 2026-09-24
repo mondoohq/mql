@@ -99,9 +99,9 @@ func newMqlHetznerStorageBox(runtime *plugin.Runtime, sb *hcloud.StorageBox) (*m
 }
 
 func initHetznerStorageBox(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "storageBox")
+	if err != nil {
+		return nil, nil, err
 	}
 	sb, _, err := conn(runtime).Client().StorageBox.GetByID(ctx(), id)
 	if err != nil {

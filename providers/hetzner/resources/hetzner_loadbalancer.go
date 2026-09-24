@@ -86,7 +86,7 @@ func initHetznerLoadBalancer(runtime *plugin.Runtime, args map[string]*llx.RawDa
 		// the discovery step stamped on the connection options.
 		id, ok = connection.AssetID(conn(runtime).Conf, connection.OptionLoadBalancer)
 		if !ok {
-			return args, nil, nil
+			return nil, nil, missingIDErr("loadBalancer")
 		}
 	}
 	lb, _, err := conn(runtime).Client().LoadBalancer.GetByID(ctx(), id)

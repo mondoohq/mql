@@ -68,9 +68,9 @@ func newMqlHetznerDatacenter(runtime *plugin.Runtime, dc *hcloud.Datacenter) (*m
 }
 
 func initHetznerDatacenter(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "datacenter")
+	if err != nil {
+		return nil, nil, err
 	}
 	dc, _, err := conn(runtime).Client().Datacenter.GetByID(ctx(), id)
 	if err != nil {

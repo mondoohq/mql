@@ -71,6 +71,25 @@ func ctx() context.Context {
 	return context.Background()
 }
 
+// requireIDArg reads the numeric id an init looks its resource up by.
+//
+// Without one there is nothing to look up. Handing the args back unchanged
+// would have the runtime build the resource from them anyway: a blank
+// resource whose fields are all unset, which every query then reads as null
+// with no word of why. That covers a bare `hetzner.server`, a lookup keyed on
+// a field the init does not search by, like `hetzner.server(name: "web")`,
+// and an id of the wrong type.
+func requireIDArg(args map[string]*llx.RawData, resource string) (int64, error) {
+	if id, ok := idArg(args, "id"); ok {
+		return id, nil
+	}
+	return 0, missingIDErr(resource)
+}
+
+func missingIDErr(resource string) error {
+	return fmt.Errorf("hetzner.%s requires a numeric id, for example hetzner.%s(id: 12345)", resource, resource)
+}
+
 // paginate accumulates all pages of an hcloud list endpoint. It retries from
 // page 1 with PerPage=50 (hcloud's max). The list closure receives the per-page
 // ListOpts (Page/PerPage/LabelSelector) — the closure is responsible for wrapping

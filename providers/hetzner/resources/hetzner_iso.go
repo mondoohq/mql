@@ -56,9 +56,9 @@ func newMqlHetznerIso(runtime *plugin.Runtime, iso *hcloud.ISO) (*mqlHetznerIso,
 }
 
 func initHetznerIso(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "iso")
+	if err != nil {
+		return nil, nil, err
 	}
 	iso, _, err := conn(runtime).Client().ISO.GetByID(ctx(), id)
 	if err != nil {

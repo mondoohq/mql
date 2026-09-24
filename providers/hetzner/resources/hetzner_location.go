@@ -60,9 +60,9 @@ func (m *mqlHetznerLocation) servers() ([]any, error) {
 }
 
 func initHetznerLocation(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "location")
+	if err != nil {
+		return nil, nil, err
 	}
 	loc, _, err := conn(runtime).Client().Location.GetByID(ctx(), id)
 	if err != nil {

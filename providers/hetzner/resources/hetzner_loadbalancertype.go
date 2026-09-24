@@ -53,9 +53,9 @@ func newMqlHetznerLoadBalancerType(runtime *plugin.Runtime, t *hcloud.LoadBalanc
 }
 
 func initHetznerLoadBalancerType(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "loadBalancerType")
+	if err != nil {
+		return nil, nil, err
 	}
 	t, _, err := conn(runtime).Client().LoadBalancerType.GetByID(ctx(), id)
 	if err != nil {

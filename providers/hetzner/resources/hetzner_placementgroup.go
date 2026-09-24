@@ -56,9 +56,9 @@ func newMqlHetznerPlacementGroup(runtime *plugin.Runtime, pg *hcloud.PlacementGr
 }
 
 func initHetznerPlacementGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "placementGroup")
+	if err != nil {
+		return nil, nil, err
 	}
 	pg, _, err := conn(runtime).Client().PlacementGroup.GetByID(ctx(), id)
 	if err != nil {

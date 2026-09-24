@@ -74,9 +74,9 @@ func newMqlHetznerImage(runtime *plugin.Runtime, img *hcloud.Image) (*mqlHetzner
 }
 
 func initHetznerImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "image")
+	if err != nil {
+		return nil, nil, err
 	}
 	img, _, err := conn(runtime).Client().Image.GetByID(ctx(), id)
 	if err != nil {

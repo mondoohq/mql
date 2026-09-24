@@ -79,9 +79,9 @@ func newMqlHetznerZone(runtime *plugin.Runtime, z *hcloud.Zone) (*mqlHetznerZone
 }
 
 func initHetznerZone(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "zone")
+	if err != nil {
+		return nil, nil, err
 	}
 	z, _, err := conn(runtime).Client().Zone.GetByID(ctx(), id)
 	if err != nil {

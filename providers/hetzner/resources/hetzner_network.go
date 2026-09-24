@@ -85,9 +85,9 @@ func newMqlHetznerNetwork(runtime *plugin.Runtime, n *hcloud.Network) (*mqlHetzn
 }
 
 func initHetznerNetwork(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
-	id, ok := idArg(args, "id")
-	if !ok {
-		return args, nil, nil
+	id, err := requireIDArg(args, "network")
+	if err != nil {
+		return nil, nil, err
 	}
 	n, _, err := conn(runtime).Client().Network.GetByID(ctx(), id)
 	if err != nil {
