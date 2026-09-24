@@ -5,6 +5,7 @@ package resources
 
 import (
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers/os/resources/languages"
 )
 
 const testLock = `provider "registry.terraform.io/hashicorp/aws" {
@@ -49,7 +51,10 @@ func TestCollectTerraformPackagesWalksTree(t *testing.T) {
 		"/repo/envs/prod/.terraform.lock.hcl",
 		"/repo/envs/staging/.terraform.lock.hcl",
 	}, names(files))
-	assert.Equal(t, 3, len(deps))
+	// Three workspaces pinning the same provider is one component with three
+	// pieces of evidence, not three components.
+	require.Equal(t, 1, len(deps))
+	assert.Equal(t, 3, len(deps[0].EvidenceList))
 }
 
 func TestCollectTerraformPackagesSkipsDownloadedModules(t *testing.T) {
@@ -98,4 +103,74 @@ func TestCollectTerraformPackagesAcceptsFilePath(t *testing.T) {
 	deps, files = collectTerraformPackages(afs, "/repo/main.tf")
 	assert.Empty(t, deps)
 	assert.Empty(t, files)
+}
+
+const testConfig = `terraform {
+  required_providers {
+    aws    = { source = "hashicorp/aws", version = "~> 5.0" }
+    docker = { source = "kreuzwerker/docker" }
+  }
+}
+
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "5.1.2"
+}
+
+module "local" {
+  source = "./modules/networking"
+}
+`
+
+const testManifest = `{"Modules":[
+  {"Key":"","Source":"","Dir":"."},
+  {"Key":"vpc","Source":"terraform-aws-modules/vpc/aws","Version":"5.1.2","Dir":".terraform/modules/vpc"},
+  {"Key":"vpc.sg","Source":"terraform-aws-modules/security-group/aws","Version":"5.1.0","Dir":".terraform/modules/vpc.sg"}
+]}`
+
+func purls(pkgs []*languages.Package) []string {
+	out := make([]string, 0, len(pkgs))
+	for _, p := range pkgs {
+		out = append(out, p.Purl)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func TestCollectTerraformWorkspace(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+
+	writeLock(t, afs, "/repo/.terraform.lock.hcl")
+	require.NoError(t, afero.WriteFile(afs, "/repo/main.tf", []byte(testConfig), 0o644))
+	require.NoError(t, afero.WriteFile(afs, "/repo/.terraform/modules/modules.json", []byte(testManifest), 0o644))
+	// Module source Terraform downloaded. Its own .tf must never be read as
+	// this project's configuration.
+	require.NoError(t, afero.WriteFile(afs,
+		"/repo/.terraform/modules/vpc/main.tf",
+		[]byte(`module "someone_elses" {
+  source  = "evil/dependency/aws"
+  version = "1.0.0"
+}
+`), 0o644))
+
+	deps, _ := collectTerraformPackages(afs, "/repo")
+
+	assert.Equal(t, []string{
+		// The module the manifest says a dependency installed.
+		"pkg:terraform-module/terraform-aws-modules/security-group@5.1.0?target_system=aws",
+		// The module this configuration calls, declared and installed — one
+		// component, not two.
+		"pkg:terraform-module/terraform-aws-modules/vpc@5.1.2?target_system=aws",
+		// Declared with a constraint and locked at 5.31.0: only the resolved
+		// record survives.
+		"pkg:terraform/hashicorp/aws@5.31.0",
+		// Declared in required_providers and never locked: the version-less
+		// record survives because it is the only statement of it.
+		"pkg:terraform/kreuzwerker/docker",
+	}, purls(deps))
+
+	// The dependency's own module call is not ours.
+	for _, p := range deps {
+		assert.NotContains(t, p.Purl, "evil", "a downloaded module's configuration must not be read")
+	}
 }

@@ -176,6 +176,7 @@ func (l *terraformLock) Transitive() languages.Packages {
 
 		pkg := &languages.Package{
 			Name:    name,
+			Type:    terraform.PackageTypeProvider,
 			Version: p.Version,
 			Purl:    terraform.NewPackageUrl(host, namespace, providerType, p.Version),
 			// Origin carries the source address exactly as the lock file wrote
