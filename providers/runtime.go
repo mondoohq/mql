@@ -789,8 +789,8 @@ func (r *Runtime) handlePluginError(err error, provider *ConnectedProvider, reso
 		// the builtin/core provider and plugin mocks call straight into Go
 		// resource code and return its errors verbatim, e.g. "cannot find
 		// user with name 'notthere'" from a bad `user(name: ...)` lookup.
-		// Treating every such error as "the provider connection failed"
-		// mislabels an ordinary, per-call application error - and would be
+		// Treating every such error as "the provider crashed" mislabels an
+		// ordinary, per-call application error - and would be
 		// far worse if it also called recordCrash: one bad lookup would
 		// mark the whole provider permanently closed and hand its stored
 		// diagnostic to every unrelated field for the rest of the run.
@@ -837,7 +837,7 @@ func (r *Runtime) handlePluginError(err error, provider *ConnectedProvider, reso
 			// returns that same stored error, same as the
 			// Unavailable/Canceled branch below.
 			crashErr, first := provider.Instance.recordCrash(func() error {
-				base := "the '" + provider.Instance.Name + "' provider connection failed" + ctx + ": " + err.Error()
+				base := "the '" + provider.Instance.Name + "' provider crashed" + ctx + ": " + err.Error()
 				return errors.New(base + buildCrashDiagnostics(provider.Instance))
 			})
 			if first {

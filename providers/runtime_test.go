@@ -722,7 +722,7 @@ func TestRuntime_HandlePluginError_TransportErrorRecordsCriticalError(t *testing
 
 	critErrs := r.CriticalErrors()
 	require.Len(t, critErrs, 1)
-	assert.Contains(t, critErrs[0].Error(), "provider connection failed")
+	assert.Contains(t, critErrs[0].Error(), "provider crashed")
 	assert.Contains(t, critErrs[0].Error(), "resource=aws.ec2.instance")
 	assert.Contains(t, critErrs[0].Error(), "field=securityGroups")
 	// Same as the codes.Unavailable/codes.Canceled branch: a genuine
@@ -827,7 +827,7 @@ func TestRuntime_HandlePluginError_OutOfProcessTransportErrorRecordsCrash(t *tes
 
 			assert.False(t, handled)
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), "provider connection failed")
+			assert.Contains(t, err.Error(), "provider crashed")
 			assert.True(t, instance.isClosed)
 			require.Len(t, r.CriticalErrors(), 1)
 		})
