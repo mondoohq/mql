@@ -639,9 +639,10 @@ func TestRunningProvider_RecordCrash_DoesNotDeadlockOnHadHeartbeatFailure(t *tes
 	rp := &RunningProvider{Name: "os", heartbeatFailed: true}
 
 	done := make(chan struct{})
+	var crashErr error
 	go func() {
 		defer close(done)
-		rp.recordCrash(func() error {
+		crashErr, _ = rp.recordCrash(func() error {
 			return errors.New(buildCrashDiagnostics(rp))
 		})
 	}()
@@ -650,6 +651,9 @@ func TestRunningProvider_RecordCrash_DoesNotDeadlockOnHadHeartbeatFailure(t *tes
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("recordCrash deadlocked calling into a buildErr that also takes shutdownLock")
+	}
+	if crashErr == nil {
+		t.Fatal("recordCrash returned a nil crash error")
 	}
 }
 
