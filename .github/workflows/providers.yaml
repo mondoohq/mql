@@ -480,6 +480,11 @@ jobs:
         uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
           method: chat.postMessage
+          # The action's default, `errors: false`, discards a Slack API error
+          # without logging it, so a rejected post reads as a green step.
+          # `true` fails the step with Slack's error as an annotation;
+          # continue-on-error above still keeps the job and the run green.
+          errors: true
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: "C07QZDJFF89"
