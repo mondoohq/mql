@@ -89,7 +89,19 @@ func (r *mqlDigitaloceanDatabaseReplica) id() (string, error) {
 	return "digitalocean.database.replica/" + r.DatabaseId.Data + "/" + r.Name.Data, nil
 }
 
+// databaseEngineHasPools reports whether an engine supports connection pools.
+// DigitalOcean offers PgBouncer pools on PostgreSQL clusters only.
+func databaseEngineHasPools(engine string) bool {
+	return engine == "pg"
+}
+
 func (r *mqlDigitaloceanDatabase) pools() ([]interface{}, error) {
+	// No other engine can hold a pool, so it has none, and asking the pools
+	// endpoint for one would only turn that empty answer into a failure for
+	// this cluster.
+	if !databaseEngineHasPools(r.Engine.Data) {
+		return []interface{}{}, nil
+	}
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
@@ -426,21 +438,31 @@ func listRegistryRepositories(runtime *plugin.Runtime, client *godo.Client, regN
 	return all, nil
 }
 
+// registryRepositories lists the repositories of every registry on the
+// account.
+//
+// It walks the registries listing rather than the legacy single-registry
+// endpoint, which names only the default registry: reading that one alone
+// drops every repository held in any other registry, and the account-wide
+// list would then disagree with `registries { repositories }`.
 func (r *mqlDigitalocean) registryRepositories() ([]interface{}, error) {
-	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
-	client := conn.Client()
-
-	reg, _, err := client.Registry.Get(context.Background())
-	if err != nil {
-		// Same shape as initDigitaloceanRegistry: empty list for the
-		// "no registry configured" case (404), propagate everything
-		// else so transient failures aren't silently masked.
-		if isDoNotFound(err) {
-			return []interface{}{}, nil
-		}
-		return nil, err
+	regs := r.GetRegistries()
+	if regs.Error != nil {
+		return nil, regs.Error
 	}
-	return listRegistryRepositories(r.MqlRuntime, client, reg.Name)
+	all := []interface{}{}
+	for _, reg := range regs.Data {
+		mreg, ok := reg.(*mqlDigitaloceanRegistry)
+		if !ok {
+			continue
+		}
+		repos := mreg.GetRepositories()
+		if repos.Error != nil {
+			return nil, repos.Error
+		}
+		all = append(all, repos.Data...)
+	}
+	return all, nil
 }
 
 func (r *mqlDigitaloceanRegistryRepository) id() (string, error) {
