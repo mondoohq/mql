@@ -153,7 +153,13 @@ require (
 	k8s.io/client-go v0.37.0
 )
 
-require github.com/carabiner-dev/spdx3 v0.1.0 // indirect
+require (
+	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
+	github.com/carabiner-dev/spdx3 v0.1.0 // indirect
+	github.com/hashicorp/hcl/v2 v2.24.0 // indirect
+	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
+	github.com/zclconf/go-cty v1.16.3 // indirect
+)
 
 require (
 	dario.cat/mergo v1.0.2 // indirect

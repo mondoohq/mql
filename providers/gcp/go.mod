@@ -84,6 +84,7 @@ require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.62.0 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/anchore/go-struct-converter v0.1.0 // indirect
+	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.10.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -105,10 +106,12 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
 	github.com/glebarez/go-sqlite v1.23.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/hashicorp/hcl/v2 v2.24.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/knqyf263/go-rpmdb v0.1.1 // indirect
 	github.com/mattn/go-runewidth v0.0.30 // indirect
+	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/moby/buildkit v0.29.0 // indirect
 	github.com/moby/moby/api v1.56.0 // indirect
 	github.com/moby/moby/client v0.6.0 // indirect
@@ -141,6 +144,7 @@ require (
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f // indirect
 	github.com/tonistiigi/go-csvvalue v0.0.0-20240814133006-030d3b2625d0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
+	github.com/zclconf/go-cty v1.16.3 // indirect
 	go.mondoo.com/mondoo-go v0.0.0-20260912001156-c395844c0d2f // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.46.0 // indirect

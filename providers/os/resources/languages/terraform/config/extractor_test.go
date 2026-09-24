@@ -1,4 +1,4 @@
-// Copyright Mondoo, Inc. 2026
+// Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package config
@@ -77,7 +77,7 @@ func TestTerraformConfigExtractorToleratesBrokenFiles(t *testing.T) {
 	assert.Empty(t, bom.Direct())
 }
 
-type brokenReader struct{ done bool }
+type brokenReader struct{}
 
 func (b brokenReader) Read(p []byte) (int, error) {
 	n := copy(p, []byte("module \"x\" { source = \n"))
