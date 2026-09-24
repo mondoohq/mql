@@ -58,18 +58,10 @@ type mqlStackitServerInternal struct {
 // bootVolume resolves the volume that holds the server's root disk, so a
 // check can ask about the OS disk specifically (its encryption key, its
 // image, whether it is a clone) rather than about the undifferentiated set
-// in volumes. Null when the server boots straight from an image.
+// in volumes. Null when the server boots straight from an image, or when
+// the volume no longer exists.
 func (r *mqlStackitServer) bootVolume() (*mqlStackitVolume, error) {
-	if r.cacheBootVolumeID == "" {
-		return markNull[mqlStackitVolume](&r.BootVolume)
-	}
-	res, err := NewResource(r.MqlRuntime, "stackit.volume", map[string]*llx.RawData{
-		"id": llx.StringData(r.cacheBootVolumeID),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlStackitVolume), nil
+	return refByKey(r.MqlRuntime, "stackit.volume", "id", r.cacheBootVolumeID, &r.BootVolume)
 }
 
 // serverAgentProvisioned reports whether the STACKIT server agent is
@@ -214,47 +206,21 @@ func initStackitServer(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 }
 
 func (r *mqlStackitServer) image() (*mqlStackitImage, error) {
-	if r.ImageId.Data == "" {
-		return markNull[mqlStackitImage](&r.Image)
-	}
-	res, err := NewResource(r.MqlRuntime, "stackit.image", map[string]*llx.RawData{
-		"id": llx.StringData(r.ImageId.Data),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlStackitImage), nil
+	return refByKey(r.MqlRuntime, "stackit.image", "id", r.ImageId.Data, &r.Image)
 }
 
 func (r *mqlStackitServer) keyPair() (*mqlStackitKeyPair, error) {
-	if r.KeypairName.Data == "" {
-		return markNull[mqlStackitKeyPair](&r.KeyPair)
-	}
-	res, err := NewResource(r.MqlRuntime, "stackit.keyPair", map[string]*llx.RawData{
-		"name": llx.StringData(r.KeypairName.Data),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlStackitKeyPair), nil
+	return refByKey(r.MqlRuntime, "stackit.keyPair", "name", r.KeypairName.Data, &r.KeyPair)
 }
 
 func (r *mqlStackitServer) volumes() ([]any, error) {
-	out := make([]any, 0, len(r.VolumeIds.Data))
+	ids := make([]string, 0, len(r.VolumeIds.Data))
 	for _, raw := range r.VolumeIds.Data {
-		id, ok := raw.(string)
-		if !ok || id == "" {
-			continue
+		if id, ok := raw.(string); ok {
+			ids = append(ids, id)
 		}
-		v, err := NewResource(r.MqlRuntime, "stackit.volume", map[string]*llx.RawData{
-			"id": llx.StringData(id),
-		})
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, v)
 	}
-	return out, nil
+	return volumeRefs(r.MqlRuntime, ids)
 }
 
 func (r *mqlStackitServer) securityGroups() ([]any, error) {
@@ -496,16 +462,7 @@ func (r *mqlStackitVolume) id() (string, error) {
 }
 
 func (r *mqlStackitVolume) sourceVolume() (*mqlStackitVolume, error) {
-	if r.cacheSourceVolumeID == "" {
-		return markNull[mqlStackitVolume](&r.SourceVolume)
-	}
-	res, err := NewResource(r.MqlRuntime, "stackit.volume", map[string]*llx.RawData{
-		"id": llx.StringData(r.cacheSourceVolumeID),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlStackitVolume), nil
+	return refByKey(r.MqlRuntime, "stackit.volume", "id", r.cacheSourceVolumeID, &r.SourceVolume)
 }
 
 func initStackitVolume(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -530,55 +487,19 @@ func initStackitVolume(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 }
 
 func (r *mqlStackitVolume) image() (*mqlStackitImage, error) {
-	if r.ImageId.Data == "" {
-		return markNull[mqlStackitImage](&r.Image)
-	}
-	res, err := NewResource(r.MqlRuntime, "stackit.image", map[string]*llx.RawData{
-		"id": llx.StringData(r.ImageId.Data),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlStackitImage), nil
+	return refByKey(r.MqlRuntime, "stackit.image", "id", r.ImageId.Data, &r.Image)
 }
 
 func (r *mqlStackitVolume) server() (*mqlStackitServer, error) {
-	if r.ServerId.Data == "" {
-		return markNull[mqlStackitServer](&r.Server)
-	}
-	res, err := NewResource(r.MqlRuntime, "stackit.server", map[string]*llx.RawData{
-		"id": llx.StringData(r.ServerId.Data),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlStackitServer), nil
+	return refByKey(r.MqlRuntime, "stackit.server", "id", r.ServerId.Data, &r.Server)
 }
 
 func (r *mqlStackitVolume) sourceSnapshot() (*mqlStackitSnapshot, error) {
-	if r.SourceSnapshotId.Data == "" {
-		return markNull[mqlStackitSnapshot](&r.SourceSnapshot)
-	}
-	res, err := NewResource(r.MqlRuntime, "stackit.snapshot", map[string]*llx.RawData{
-		"id": llx.StringData(r.SourceSnapshotId.Data),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlStackitSnapshot), nil
+	return refByKey(r.MqlRuntime, "stackit.snapshot", "id", r.SourceSnapshotId.Data, &r.SourceSnapshot)
 }
 
 func (r *mqlStackitVolume) sourceBackup() (*mqlStackitBackup, error) {
-	if r.SourceBackupId.Data == "" {
-		return markNull[mqlStackitBackup](&r.SourceBackup)
-	}
-	res, err := NewResource(r.MqlRuntime, "stackit.backup", map[string]*llx.RawData{
-		"id": llx.StringData(r.SourceBackupId.Data),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlStackitBackup), nil
+	return refByKey(r.MqlRuntime, "stackit.backup", "id", r.SourceBackupId.Data, &r.SourceBackup)
 }
 
 // encryptionKey resolves the customer-managed key that wraps the volume's
@@ -690,16 +611,7 @@ func initStackitSnapshot(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 }
 
 func (r *mqlStackitSnapshot) volume() (*mqlStackitVolume, error) {
-	if r.VolumeId.Data == "" {
-		return markNull[mqlStackitVolume](&r.Volume)
-	}
-	res, err := NewResource(r.MqlRuntime, "stackit.volume", map[string]*llx.RawData{
-		"id": llx.StringData(r.VolumeId.Data),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlStackitVolume), nil
+	return refByKey(r.MqlRuntime, "stackit.volume", "id", r.VolumeId.Data, &r.Volume)
 }
 
 // ------------------------- images -------------------------

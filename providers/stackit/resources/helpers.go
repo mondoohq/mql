@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -327,35 +328,69 @@ func makeNamespace(runtime *plugin.Runtime, name string) (plugin.Resource, error
 	return CreateResource(runtime, name, map[string]*llx.RawData{})
 }
 
-// serverRef resolves a stackit.server by its UUID, marking the given field
-// null when the ID is empty. Shared by the server-scoped sub-resources
-// (backups, schedules, updates) that carry a back-reference to their server.
-func serverRef(runtime *plugin.Runtime, id string, field *plugin.TValue[*mqlStackitServer]) (*mqlStackitServer, error) {
-	if id == "" {
-		return markNull[mqlStackitServer](field)
+// refByKey resolves a reference to another resource through that resource's
+// init, keyed by one string argument (key: value). An empty value marks the
+// field null. So does a 404 from the lookup: the referencing record still
+// names an object the service no longer has (a backup whose volume was
+// deleted, a volume whose source image was retired, a server whose key pair
+// belongs to another user), and that is an absence, not a failure. Any other
+// error, a refusal included, is returned as is.
+func refByKey[T any](runtime *plugin.Runtime, resource, key, value string, field *plugin.TValue[*T]) (*T, error) {
+	if value == "" {
+		return markNull(field)
 	}
-	res, err := NewResource(runtime, "stackit.server", map[string]*llx.RawData{
-		"id": llx.StringData(id),
+	res, err := NewResource(runtime, resource, map[string]*llx.RawData{
+		key: llx.StringData(value),
 	})
 	if err != nil {
+		if isNotFound(err) {
+			return markNull(field)
+		}
 		return nil, err
 	}
-	return res.(*mqlStackitServer), nil
+	typed, ok := any(res).(*T)
+	if !ok {
+		return nil, fmt.Errorf("stackit: unexpected type %T for %s", res, resource)
+	}
+	return typed, nil
+}
+
+// refsByID resolves a list of references by id through the target
+// resource's init. Empty ids are skipped, and so are ids the service answers
+// 404 for, so one deleted object does not fail the whole list. Any other
+// error is returned as is.
+func refsByID(runtime *plugin.Runtime, resource string, ids []string) ([]any, error) {
+	out := make([]any, 0, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		res, err := NewResource(runtime, resource, map[string]*llx.RawData{
+			"id": llx.StringData(id),
+		})
+		if err != nil {
+			if isNotFound(err) {
+				continue
+			}
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
+}
+
+// serverRef resolves a stackit.server by its UUID, marking the given field
+// null when the ID is empty or the server no longer exists. Shared by the
+// server-scoped sub-resources (backups, schedules, updates) that carry a
+// back-reference to their server.
+func serverRef(runtime *plugin.Runtime, id string, field *plugin.TValue[*mqlStackitServer]) (*mqlStackitServer, error) {
+	return refByKey(runtime, "stackit.server", "id", id, field)
 }
 
 // volumeRef resolves a single stackit.volume by its UUID, marking the given
-// field null when the ID is empty.
+// field null when the ID is empty or the volume no longer exists.
 func volumeRef(runtime *plugin.Runtime, id string, field *plugin.TValue[*mqlStackitVolume]) (*mqlStackitVolume, error) {
-	if id == "" {
-		return markNull[mqlStackitVolume](field)
-	}
-	res, err := NewResource(runtime, "stackit.volume", map[string]*llx.RawData{
-		"id": llx.StringData(id),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlStackitVolume), nil
+	return refByKey(runtime, "stackit.volume", "id", id, field)
 }
 
 // kmsKeyRef resolves a Key Management Service key by its bare UUID, marking the
@@ -497,20 +532,7 @@ func iamRoleRef(runtime *plugin.Runtime, name string, field *plugin.TValue[*mqlS
 }
 
 // volumeRefs resolves a list of stackit.volume resources from their UUIDs,
-// skipping empty IDs.
+// skipping empty IDs and volumes that no longer exist.
 func volumeRefs(runtime *plugin.Runtime, ids []string) ([]any, error) {
-	out := make([]any, 0, len(ids))
-	for _, id := range ids {
-		if id == "" {
-			continue
-		}
-		v, err := NewResource(runtime, "stackit.volume", map[string]*llx.RawData{
-			"id": llx.StringData(id),
-		})
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, v)
-	}
-	return out, nil
+	return refsByID(runtime, "stackit.volume", ids)
 }

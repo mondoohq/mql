@@ -99,16 +99,7 @@ func (r *mqlStackitBackup) volume() (*mqlStackitVolume, error) {
 }
 
 func (r *mqlStackitBackup) snapshot() (*mqlStackitSnapshot, error) {
-	if r.cacheSnapshotId == "" {
-		return markNull[mqlStackitSnapshot](&r.Snapshot)
-	}
-	res, err := NewResource(r.MqlRuntime, "stackit.snapshot", map[string]*llx.RawData{
-		"id": llx.StringData(r.cacheSnapshotId),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return res.(*mqlStackitSnapshot), nil
+	return refByKey(r.MqlRuntime, "stackit.snapshot", "id", r.cacheSnapshotId, &r.Snapshot)
 }
 
 type mqlStackitAffinityGroupInternal struct {

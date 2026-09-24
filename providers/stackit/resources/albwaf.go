@@ -252,17 +252,7 @@ func (r *mqlStackitAlbLoadBalancer) wafs() ([]any, error) {
 		seen[name] = struct{}{}
 		names = append(names, name)
 	}
-	out := make([]any, 0, len(names))
-	for _, name := range names {
-		res, err := NewResource(r.MqlRuntime, "stackit.alb.waf", map[string]*llx.RawData{
-			"name": llx.StringData(name),
-		})
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, res)
-	}
-	return out, nil
+	return wafRefs(r.MqlRuntime, names)
 }
 
 // ------------------------- managed rule sets -------------------------
