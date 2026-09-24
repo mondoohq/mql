@@ -16,16 +16,17 @@ import (
 	"go.mondoo.com/mql/utils/syncx"
 )
 
-// TestWindowsHotfixes_NonZeroExitIsError is the regression test for one half
-// of the review finding on packages.GetHotfixQueryResult's shared hotfix
-// cache: windows.hotfixes has always treated a non-zero Get-HotFix exit
-// status as an error, even when stdout happens to contain valid JSON,
-// unlike packages.list (WinPkgManager.List) which ignores exit status and
-// parses stdout regardless (see
+// TestWindowsHotfixes_NonZeroExitIsError pins that windows.hotfixes always
+// treats a non-zero Get-HotFix exit status as an error, even when stdout
+// happens to contain valid JSON, unlike packages.list (WinPkgManager.List)
+// which ignores exit status and parses stdout regardless (see
 // TestWinPkgManagerList_IgnoresNonZeroHotfixExitStatus in the packages
-// package). Sharing the underlying command between the two must not make
-// this resource lenient too -- windows.hotfixes still needs to be able to
-// tell "the agent errored" from "this host has no hotfixes".
+// package). The two share Get-HotFix's outcome through windows.hotfixes'
+// own MQL field cache (see injectWindowsHotfixes in packages.go) whenever
+// packages.list can use it, but that sharing must not make this resource
+// lenient too -- windows.hotfixes still needs to be able to tell "the agent
+// errored" from "this host has no hotfixes", and packages.list falls back to
+// its own query exactly when this resource errors.
 func TestWindowsHotfixes_NonZeroExitIsError(t *testing.T) {
 	hotfixCmd := powershell.Encode(packages.WINDOWS_QUERY_HOTFIXES)
 

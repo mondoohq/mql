@@ -441,6 +441,28 @@ func HotFixesToPackages(hotfixes []PowershellWinHotFix) []Package {
 type WinPkgManager struct {
 	conn     shared.Connection
 	platform *inventory.Platform
+
+	// injectedHotfixes, when non-nil, is Get-HotFix's already-parsed outcome
+	// handed down by the resource layer (packages.go's list(), via
+	// SetHotfixes below), which reads it off windows.hotfixes's own MQL
+	// field cache. List() uses it instead of running Get-HotFix itself, so
+	// the query executes once per scan rather than twice when both
+	// packages.list and windows.hotfixes are resolved on the same
+	// connection. Left nil (the zero value, and always the case outside the
+	// resource layer, e.g. in tests that construct a WinPkgManager
+	// directly), List() behaves exactly as it always has: a fresh, lenient
+	// Get-HotFix run of its own.
+	//
+	// A pointer to the slice, not the slice itself, so an injected EMPTY
+	// result (a host with genuinely no hotfixes) is distinguishable from
+	// "nothing was injected."
+	injectedHotfixes *[]PowershellWinHotFix
+}
+
+// SetHotfixes injects Get-HotFix's already-parsed outcome, so List() reuses
+// it instead of running Get-HotFix itself. See injectedHotfixes.
+func (w *WinPkgManager) SetHotfixes(hotfixes []PowershellWinHotFix) {
+	w.injectedHotfixes = &hotfixes
 }
 
 func (w *WinPkgManager) Name() string {
@@ -1431,21 +1453,31 @@ func (w *WinPkgManager) List() ([]Package, error) {
 		return collapsePackages(pkgs), nil
 	}
 
-	// hotfixes. GetHotfixQueryResult is shared with windows.hotfixes and
-	// caches the raw Get-HotFix outcome per connection, so when both are
-	// resolved in the same scan the command only runs once. Exit status is
-	// deliberately ignored here, as it always has been: a single broken QFE
-	// entry that makes PowerShell exit non-zero while still printing valid
-	// JSON must not fail the whole package inventory, since an empty or
-	// failed package list closes vulnerability findings upstream.
-	hotfixResult, err := GetHotfixQueryResult(w.conn)
-	if err != nil {
-		return nil, errors.Wrap(err, "could not fetch hotfixes")
+	// hotfixes. When the resource layer already resolved windows.hotfixes on
+	// this connection, it hands the outcome down via SetHotfixes (see
+	// injectedHotfixes and packages.go's injectWindowsHotfixes), and that is
+	// reused here instead of a second Get-HotFix run -- not cheap, a fresh
+	// PowerShell process that walks the CBS package store. Absent an
+	// injection, this runs its own query exactly as it always has: exit
+	// status is deliberately ignored, since a single broken QFE entry that
+	// makes PowerShell exit non-zero while still printing valid JSON must
+	// not fail the whole package inventory (an empty or failed package list
+	// closes vulnerability findings upstream). windows.hotfixes is strict
+	// about exit status; this fallback path is not, and never has been.
+	var hotfixes []PowershellWinHotFix
+	if w.injectedHotfixes != nil {
+		hotfixes = *w.injectedHotfixes
+	} else {
+		cmd, err := w.conn.RunCommand(powershell.Wrap(WINDOWS_QUERY_HOTFIXES))
+		if err != nil {
+			return nil, errors.Wrap(err, "could not fetch hotfixes")
+		}
+		hotfixes, err = ParseWindowsHotfixes(cmd.Stdout)
+		if err != nil {
+			return nil, errors.Wrapf(err, "could not parse hotfix results")
+		}
 	}
-	if hotfixResult.ParseErr != nil {
-		return nil, errors.Wrapf(hotfixResult.ParseErr, "could not parse hotfix results")
-	}
-	hotfixAsPkgs := HotFixesToPackages(hotfixResult.Hotfixes)
+	hotfixAsPkgs := HotFixesToPackages(hotfixes)
 
 	msSqlHotfixes := findMsSqlHotfixes(appPkgs)
 	msSqlGdrPackages := findMsSqlGdrUpdates(appPkgs)

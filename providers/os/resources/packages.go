@@ -333,6 +333,12 @@ func (x *mqlPackages) list() ([]any, error) {
 		return nil, errors.New("could not detect suitable package manager for platform")
 	}
 
+	for _, pm := range pms {
+		if winPm, ok := pm.(*packages.WinPkgManager); ok {
+			injectWindowsHotfixes(x.MqlRuntime, winPm)
+		}
+	}
+
 	osPkgs := []packages.Package{}
 	osAvailablePkgs := map[string]packages.PackageUpdate{}
 	for _, pm := range pms {
@@ -409,6 +415,43 @@ func (x *mqlPackages) list() ([]any, error) {
 	}
 
 	return pkgs, x.refreshCache(pkgs)
+}
+
+// injectWindowsHotfixes shares Get-HotFix's outcome between packages.list and
+// windows.hotfixes through MQL's own per-runtime resource/field cache
+// (NewResource's runtime.Resources lookup plus GetHotfixes' plugin.GetOrCompute
+// memoization) instead of a bespoke connection-scoped cache: resolving both
+// in one scan runs Get-HotFix once instead of twice.
+//
+// Leaves pm to run its own query (WinPkgManager.List's lenient direct path)
+// in either case where there is nothing safe to inject:
+//   - GetHotfixes() errored. windows.hotfixes treats a non-zero Get-HotFix
+//     exit as an error; packages.list must not inherit that and fail the
+//     whole package inventory over a single broken QFE entry.
+//   - The raw slice was never populated by THIS runtime (rawHotfixes's
+//     second return is false). GetHotfixes()'s field can be answered from a
+//     recording without hotfixes() ever running (see createWindows), and an
+//     unpopulated slice must not be mistaken for "this host has zero
+//     hotfixes".
+func injectWindowsHotfixes(runtime *plugin.Runtime, pm *packages.WinPkgManager) {
+	obj, err := NewResource(runtime, "windows", nil)
+	if err != nil {
+		return
+	}
+	winResource, ok := obj.(*mqlWindows)
+	if !ok {
+		return
+	}
+
+	if hotfixes := winResource.GetHotfixes(); hotfixes.Error != nil {
+		return
+	}
+
+	raw, ok := winResource.rawHotfixes()
+	if !ok {
+		return
+	}
+	pm.SetHotfixes(raw)
 }
 
 func (x *mqlPackages) refreshCache(all []any) error {

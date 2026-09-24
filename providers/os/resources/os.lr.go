@@ -79796,7 +79796,7 @@ func (c *mqlOpenBSMAudit) GetMemberClearSflagsMask() *plugin.TValue[[]any] {
 type mqlWindows struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlWindowsInternal it will be used here
+	mqlWindowsInternal
 	ComputerInfo      plugin.TValue[any]
 	Hotfixes          plugin.TValue[[]any]
 	ServerFeatures    plugin.TValue[[]any]
