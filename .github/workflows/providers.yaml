@@ -432,6 +432,13 @@ jobs:
             esac
           done < planned.txt
 
+          # Most runs on providers/** touch provider code without bumping a
+          # version, so the "nothing to release" branch fired on 22 of 30
+          # consecutive runs. A channel that is mostly no-ops trains people to
+          # stop reading it, which costs exactly the messages this job exists to
+          # deliver. Each branch decides whether it is worth interrupting for.
+          post=true
+
           if [ -n "${BLOCKED:-}" ]; then
             header=":no_entry: Provider release blocked"
             mention="<!here> "
@@ -441,6 +448,9 @@ jobs:
             mention="<!here> "
             detail="Scoping did not complete, so nothing was built."
           elif [ "$planned" = "0" ]; then
+            # Nothing to release and nothing broke: the run is a no-op and the
+            # Actions tab already records it. Stay quiet.
+            post=false
             header=":white_check_mark: No provider changes to release"
             mention=""
             detail="Every provider version already matches what the channel serves."
@@ -470,6 +480,7 @@ jobs:
             esac
           }
 
+          emit post "$post"
           emit header "$header"
           emit mention "$mention"
           emit detail "$detail"
@@ -478,6 +489,9 @@ jobs:
           emit counts "$ok of $planned"
 
       - name: Post to Slack
+        # A no-op run composes a message but does not send it, so the branch
+        # stays covered by the compose step's tests either way.
+        if: ${{ steps.meta.outputs.post == 'true' }}
         continue-on-error: true
         uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
