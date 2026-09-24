@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/digitalocean/godo"
 	"go.mondoo.com/mql/llx"
@@ -67,6 +68,11 @@ func initDigitaloceanByoipPrefix(runtime *plugin.Runtime, args map[string]*llx.R
 	p, _, err := conn.Client().BYOIPPrefixes.Get(context.Background(), uuid)
 	if err != nil {
 		return nil, nil, err
+	}
+	// godo returns the decoded root's field directly, so a 200 whose body
+	// carries no prefix yields a nil object with a nil error.
+	if p == nil {
+		return nil, nil, fmt.Errorf("digitalocean.byoipPrefix with uuid %q not found", uuid)
 	}
 	return byoipPrefixArgs(p), nil, nil
 }
@@ -191,6 +197,11 @@ func initDigitaloceanPartnerAttachment(runtime *plugin.Runtime, args map[string]
 	p, _, err := conn.Client().PartnerAttachment.Get(context.Background(), id)
 	if err != nil {
 		return nil, nil, err
+	}
+	// godo returns the decoded root's field directly, so a 200 whose body
+	// carries no attachment yields a nil object with a nil error.
+	if p == nil {
+		return nil, nil, fmt.Errorf("digitalocean.partnerAttachment with id %q not found", id)
 	}
 	return partnerAttachmentArgs(p), nil, nil
 }

@@ -109,6 +109,11 @@ func (r *mqlDigitaloceanAppDeployment) previousDeployment() (*mqlDigitaloceanApp
 		}
 		return nil, err
 	}
+	// godo returns (nil, nil) on a 200 whose body carries no deployment.
+	if deployment == nil {
+		r.PreviousDeployment.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
 	return newAppDeployment(r.MqlRuntime, r.AppId.Data, deployment)
 }
 
@@ -236,6 +241,11 @@ func (r *mqlDigitaloceanApp) activeDeployment() (*mqlDigitaloceanAppDeployment, 
 			return nil, nil
 		}
 		return nil, err
+	}
+	// godo returns (nil, nil) on a 200 whose body carries no deployment.
+	if deployment == nil {
+		r.ActiveDeployment.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	return newAppDeployment(r.MqlRuntime, r.Id.Data, deployment)
 }

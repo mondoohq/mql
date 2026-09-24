@@ -159,6 +159,11 @@ func initDigitaloceanDatabase(runtime *plugin.Runtime, args map[string]*llx.RawD
 	if err != nil {
 		return nil, nil, err
 	}
+	// godo returns the decoded root's field directly, so a 200 whose body
+	// carries no database yields a nil object with a nil error.
+	if db == nil {
+		return nil, nil, fmt.Errorf("digitalocean.database with id %q not found", id)
+	}
 	return databaseArgs(db), nil, nil
 }
 

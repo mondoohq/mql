@@ -44,6 +44,10 @@ func initDigitaloceanAccount(runtime *plugin.Runtime, args map[string]*llx.RawDa
 	if err != nil {
 		return nil, nil, err
 	}
+	// godo returns (nil, nil) on a 200 whose body carries no "account" key.
+	if acct == nil {
+		return nil, nil, errors.New("the DigitalOcean API returned no account")
+	}
 	args["email"] = llx.StringData(acct.Email)
 	args["uuid"] = llx.StringData(acct.UUID)
 	args["dropletLimit"] = llx.IntData(int64(acct.DropletLimit))

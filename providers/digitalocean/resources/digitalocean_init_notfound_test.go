@@ -22,8 +22,8 @@ import (
 //
 // That is the shape these tests exist for. godo's Get methods end in
 // `return root.X, resp, err`, so a 200 whose body carries no "firewall" /
-// "load_balancer" / "kubernetes_cluster" / "agent" key decodes to a nil object
-// and a nil error. The caller sees success and a nil pointer.
+// "load_balancer" / "database" / "account" / "deployment" (or similar) key
+// decodes to a nil object and a nil error. The caller sees success and a nil pointer.
 func emptyBodyRuntime(t *testing.T) *plugin.Runtime {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -80,6 +80,30 @@ func TestInitReportsNotFoundInsteadOfPanicking(t *testing.T) {
 			want: `digitalocean.kubernetes.cluster with id "k8s-1" not found`,
 		},
 		{
+			name: "database",
+			init: initDigitaloceanDatabase,
+			args: map[string]*llx.RawData{"id": llx.StringData("db-1")},
+			want: `digitalocean.database with id "db-1" not found`,
+		},
+		{
+			name: "byoip prefix",
+			init: initDigitaloceanByoipPrefix,
+			args: map[string]*llx.RawData{"uuid": llx.StringData("prefix-1")},
+			want: `digitalocean.byoipPrefix with uuid "prefix-1" not found`,
+		},
+		{
+			name: "partner attachment",
+			init: initDigitaloceanPartnerAttachment,
+			args: map[string]*llx.RawData{"id": llx.StringData("pa-1")},
+			want: `digitalocean.partnerAttachment with id "pa-1" not found`,
+		},
+		{
+			name: "account",
+			init: initDigitaloceanAccount,
+			args: map[string]*llx.RawData{},
+			want: "the DigitalOcean API returned no account",
+		},
+		{
 			name: "gradientai agent",
 			init: initDigitaloceanGradientaiAgent,
 			args: map[string]*llx.RawData{"uuid": llx.StringData("agent-1")},
@@ -101,4 +125,38 @@ func TestInitReportsNotFoundInsteadOfPanicking(t *testing.T) {
 			})
 		})
 	}
+}
+
+// The app deployment accessors hand the fetched deployment to
+// newAppDeployment, which reads d.Progress straight away. A 200 with no
+// "deployment" key is a nil deployment with a nil error, so without a guard
+// the provider panics. Nothing was returned to describe, so the field is null.
+func TestAppDeploymentEmptyBodyIsNull(t *testing.T) {
+	t.Run("active deployment", func(t *testing.T) {
+		r := &mqlDigitaloceanApp{
+			MqlRuntime:         emptyBodyRuntime(t),
+			Id:                 plugin.TValue[string]{Data: "app-1", State: plugin.StateIsSet},
+			ActiveDeploymentId: plugin.TValue[string]{Data: "dep-1", State: plugin.StateIsSet},
+		}
+		require.NotPanics(t, func() {
+			res, err := r.activeDeployment()
+			require.NoError(t, err)
+			assert.Nil(t, res)
+		})
+		assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, r.ActiveDeployment.State)
+	})
+
+	t.Run("previous deployment", func(t *testing.T) {
+		r := &mqlDigitaloceanAppDeployment{
+			MqlRuntime:           emptyBodyRuntime(t),
+			AppId:                plugin.TValue[string]{Data: "app-1", State: plugin.StateIsSet},
+			PreviousDeploymentId: plugin.TValue[string]{Data: "dep-0", State: plugin.StateIsSet},
+		}
+		require.NotPanics(t, func() {
+			res, err := r.previousDeployment()
+			require.NoError(t, err)
+			assert.Nil(t, res)
+		})
+		assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, r.PreviousDeployment.State)
+	})
 }
