@@ -403,6 +403,7 @@ func (s *Service) heartbeatWatchdog() {
 
 		// re-read: the parent may have changed the window in the meantime
 		window = time.Duration(s.heartbeatWindow.Load())
+		poll = max(window/2, minHeartbeatPollInterval)
 		now := watchdogNow()
 		if overslept := now.Sub(lastPoll); overslept > poll+window {
 			// We did not get to run for longer than a whole window, so neither
