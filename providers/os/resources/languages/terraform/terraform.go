@@ -22,6 +22,11 @@ const (
 	PurlTypeProvider = "terraform"
 	// PurlTypeOpenTofuProvider identifies an OpenTofu provider.
 	PurlTypeOpenTofuProvider = "opentofu"
+
+	// PackageTypeProvider labels an inventoried provider.
+	PackageTypeProvider = "provider"
+	// PackageTypeModule labels an inventoried module.
+	PackageTypeModule = "module"
 )
 
 // NewPackageUrl creates a package URL for a provider served by host. An empty

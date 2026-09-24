@@ -17,7 +17,10 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/languages"
+	"go.mondoo.com/mql/providers/os/resources/languages/terraform"
+	"go.mondoo.com/mql/providers/os/resources/languages/terraform/config"
 	"go.mondoo.com/mql/providers/os/resources/languages/terraform/lockfile"
+	"go.mondoo.com/mql/providers/os/resources/languages/terraform/modules"
 	"go.mondoo.com/mql/types"
 )
 
@@ -93,6 +96,9 @@ func (r *mqlTerraformPackages) gatherData() error {
 // terraformLockFile is the file `terraform init` writes to pin provider versions.
 const terraformLockFile = ".terraform.lock.hcl"
 
+// terraformWorkDir is where `terraform init` installs modules and providers.
+const terraformWorkDir = ".terraform"
+
 // maxLockSearchDepth bounds how far below the search root a lock file is looked
 // for. Terraform workspaces nest a few levels at most (envs/prod, stacks/network);
 // the cap keeps the walk from descending an entire filesystem when the resource
@@ -153,6 +159,15 @@ func collectTerraformInTree(afs *afero.Afero, root string) ([]*languages.Package
 
 		if info.IsDir() {
 			if p != root && skipLockSearchDirs[info.Name()] {
+				// .terraform is skipped because it holds downloaded module
+				// source — but the manifest Terraform writes beside that
+				// source is the one authoritative statement of what was
+				// actually installed, so it is read on the way past.
+				if info.Name() == terraformWorkDir {
+					d, f := collectTerraformFile(afs, filepath.Join(p, "modules", "modules.json"), &modules.Extractor{})
+					deps = append(deps, d...)
+					files = append(files, f...)
+				}
 				return filepath.SkipDir
 			}
 			if strings.Count(filepath.ToSlash(p), "/")-rootDepth > maxLockSearchDepth {
@@ -161,38 +176,57 @@ func collectTerraformInTree(afs *afero.Afero, root string) ([]*languages.Package
 			return nil
 		}
 
-		if info.Name() != terraformLockFile {
+		var extractor languages.Extractor
+		switch {
+		case info.Name() == terraformLockFile:
+			extractor = &lockfile.Extractor{}
+		case strings.HasSuffix(info.Name(), ".tf"):
+			extractor = &config.Extractor{}
+		default:
 			return nil
 		}
 
-		d, f := collectTerraformFromFile(afs, p)
+		d, f := collectTerraformFile(afs, p, extractor)
 		deps = append(deps, d...)
 		files = append(files, f...)
 		return nil
 	})
 	if err != nil {
-		log.Debug().Err(err).Str("path", root).Msg("could not search for Terraform lock files")
+		log.Debug().Err(err).Str("path", root).Msg("could not search for Terraform files")
 	}
 
-	return deps, files
+	return terraform.Collapse(deps), files
 }
 
 func collectTerraformFromFile(afs *afero.Afero, path string) ([]*languages.Package, []string) {
+	return collectTerraformFile(afs, path, &lockfile.Extractor{})
+}
+
+// collectTerraformFile reads one file with the extractor that claims it. Both
+// the direct and the transitive set are reported: for a workspace they are
+// "what this configuration asks for" and "what those modules ask for in turn",
+// and both belong in the inventory.
+func collectTerraformFile(afs *afero.Afero, path string, extractor languages.Extractor) ([]*languages.Package, []string) {
 	f, err := afs.Open(path)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not open Terraform lock file")
+		log.Debug().Err(err).Str("path", path).Msg("could not open Terraform file")
 		return nil, nil
 	}
 	defer f.Close()
 
-	extractor := &lockfile.Extractor{}
 	bom, err := extractor.Parse(f, path)
 	if err != nil {
-		log.Debug().Err(err).Str("path", path).Msg("could not parse Terraform lock file")
+		log.Debug().Err(err).Str("path", path).Msg("could not parse Terraform file")
 		return nil, nil
 	}
 
-	return bom.Transitive(), []string{path}
+	packages := append(bom.Direct(), bom.Transitive()...)
+	if len(packages) == 0 {
+		// A .tf file that declares no dependency is not evidence of anything.
+		return nil, nil
+	}
+
+	return packages, []string{path}
 }
 
 func (r *mqlTerraformPackages) list() ([]any, error) {
@@ -250,6 +284,8 @@ func newTerraformPackage(runtime *plugin.Runtime, pkg *languages.Package) (*mqlT
 		"id":      llx.StringData(pkg.Name + "@" + pkg.Version + ":" + path),
 		"name":    llx.StringData(pkg.Name),
 		"version": llx.StringData(pkg.Version),
+		"type":    llx.StringData(pkg.Type),
+		"source":  llx.StringData(pkg.Origin),
 		"purl":    llx.StringData(pkg.Purl),
 		"cpes":    llx.ArrayData(cpes, types.Resource("cpe")),
 		"files":   llx.ArrayData(mqlFiles, types.Resource("pkgFileInfo")),
@@ -272,6 +308,14 @@ func (r *mqlTerraformPackage) version() (string, error) {
 	return "", r.populateData()
 }
 
+func (r *mqlTerraformPackage) compute_type() (string, error) {
+	return "", r.populateData()
+}
+
+func (r *mqlTerraformPackage) source() (string, error) {
+	return "", r.populateData()
+}
+
 func (r *mqlTerraformPackage) purl() (string, error) {
 	return "", r.populateData()
 }
@@ -289,6 +333,8 @@ func (r *mqlTerraformPackage) populateData() error {
 	// which pre-populates all fields at creation time.
 	r.Name = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
 	r.Version = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
+	r.Type = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
+	r.Source = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
 	r.Purl = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
 	r.Cpes = plugin.TValue[[]any]{State: plugin.StateIsSet | plugin.StateIsNull}
 	r.Files = plugin.TValue[[]any]{State: plugin.StateIsSet | plugin.StateIsNull}

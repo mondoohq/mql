@@ -11453,6 +11453,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"terraform.package.version": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTerraformPackage).GetVersion()).ToDataRes(types.String)
 	},
+	"terraform.package.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTerraformPackage).GetType()).ToDataRes(types.String)
+	},
+	"terraform.package.source": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTerraformPackage).GetSource()).ToDataRes(types.String)
+	},
 	"terraform.package.purl": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTerraformPackage).GetPurl()).ToDataRes(types.String)
 	},
@@ -30148,6 +30154,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"terraform.package.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTerraformPackage).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"terraform.package.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTerraformPackage).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"terraform.package.source": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTerraformPackage).Source, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"terraform.package.purl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -76473,6 +76487,8 @@ type mqlTerraformPackage struct {
 	Id      plugin.TValue[string]
 	Name    plugin.TValue[string]
 	Version plugin.TValue[string]
+	Type    plugin.TValue[string]
+	Source  plugin.TValue[string]
 	Purl    plugin.TValue[string]
 	Cpes    plugin.TValue[[]any]
 	Files   plugin.TValue[[]any]
@@ -76528,6 +76544,18 @@ func (c *mqlTerraformPackage) GetName() *plugin.TValue[string] {
 func (c *mqlTerraformPackage) GetVersion() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Version, func() (string, error) {
 		return c.version()
+	})
+}
+
+func (c *mqlTerraformPackage) GetType() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Type, func() (string, error) {
+		return c.compute_type()
+	})
+}
+
+func (c *mqlTerraformPackage) GetSource() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Source, func() (string, error) {
+		return c.source()
 	})
 }
 

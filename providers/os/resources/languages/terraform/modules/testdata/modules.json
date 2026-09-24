@@ -1,0 +1,10 @@
+{
+  "Modules": [
+    {"Key": "", "Source": "", "Dir": "."},
+    {"Key": "vpc", "Source": "terraform-aws-modules/vpc/aws", "Version": "5.1.2", "Dir": ".terraform/modules/vpc"},
+    {"Key": "vpc.subnets", "Source": "./modules/subnets", "Dir": ".terraform/modules/vpc/modules/subnets"},
+    {"Key": "vpc.sg", "Source": "terraform-aws-modules/security-group/aws", "Version": "5.1.0", "Dir": ".terraform/modules/vpc.sg"},
+    {"Key": "platform", "Source": "git::https://github.com/acme/terraform-platform.git?ref=v2.0.0", "Dir": ".terraform/modules/platform"},
+    {"Key": "shared", "Source": "./modules/shared", "Dir": "modules/shared"}
+  ]
+}
