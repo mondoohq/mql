@@ -820,6 +820,10 @@ func (s *mqlAuditdRuleSyscall) id() (string, error) {
 	return f.String(), nil
 }
 
+func (s *mqlAuditdStatus) id() (string, error) {
+	return "auditd.status", nil
+}
+
 func initAuditdStatus(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if len(args) > 0 {
 		return args, nil, nil
