@@ -694,8 +694,8 @@ func (s *mqlRsyslogConf) rules(files []any) ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if e.actionOffset > 0 {
-			backing := entries[i+e.actionOffset]
+		if j := i + e.actionOffset; e.actionOffset > 0 && j < len(entries) && entries[j].kind == rsyslogKindAction {
+			backing := entries[j]
 			mqlRule.(*mqlRsyslogRule).backingAction = &backing
 		}
 		out = append(out, mqlRule)
