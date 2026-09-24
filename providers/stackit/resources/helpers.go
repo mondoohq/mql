@@ -356,17 +356,24 @@ func refByKey[T any](runtime *plugin.Runtime, resource, key, value string, field
 }
 
 // refsByID resolves a list of references by id through the target
-// resource's init. Empty ids are skipped, and so are ids the service answers
-// 404 for, so one deleted object does not fail the whole list. Any other
-// error is returned as is.
+// resource's init. See refsByKey.
 func refsByID(runtime *plugin.Runtime, resource string, ids []string) ([]any, error) {
-	out := make([]any, 0, len(ids))
-	for _, id := range ids {
-		if id == "" {
+	return refsByKey(runtime, resource, "id", ids)
+}
+
+// refsByKey resolves a list of references through the target resource's
+// init, each keyed by one string argument. Empty values are skipped, and so
+// are values the service answers 404 for, so one deleted object does not
+// fail the whole list. Any other error, a refusal included, is returned as
+// is.
+func refsByKey(runtime *plugin.Runtime, resource, key string, values []string) ([]any, error) {
+	out := make([]any, 0, len(values))
+	for _, v := range values {
+		if v == "" {
 			continue
 		}
 		res, err := NewResource(runtime, resource, map[string]*llx.RawData{
-			"id": llx.StringData(id),
+			key: llx.StringData(v),
 		})
 		if err != nil {
 			if isNotFound(err) {

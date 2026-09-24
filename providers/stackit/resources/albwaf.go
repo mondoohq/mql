@@ -70,23 +70,7 @@ func wafUsageLoadBalancers(u *albwaf.WAFUsage) []string {
 // wafRefs resolves WAF configuration names into resources, skipping names
 // that no longer resolve so one deleted WAF does not fail the list.
 func wafRefs(runtime *plugin.Runtime, names []string) ([]any, error) {
-	out := make([]any, 0, len(names))
-	for _, name := range names {
-		if name == "" {
-			continue
-		}
-		res, err := NewResource(runtime, "stackit.alb.waf", map[string]*llx.RawData{
-			"name": llx.StringData(name),
-		})
-		if err != nil {
-			if isNotFound(err) || isAccessDenied(err) {
-				continue
-			}
-			return nil, err
-		}
-		out = append(out, res)
-	}
-	return out, nil
+	return refsByKey(runtime, "stackit.alb.waf", "name", names)
 }
 
 // ------------------------- WAF configurations -------------------------
@@ -154,20 +138,7 @@ func (r *mqlStackitAlbWaf) id() (string, error) {
 // that is configured but attached to nothing. A balancer that no longer
 // resolves is skipped rather than failing the list.
 func (r *mqlStackitAlbWaf) loadBalancers() ([]any, error) {
-	out := make([]any, 0, len(r.cacheUsageLoadBalancers))
-	for _, name := range r.cacheUsageLoadBalancers {
-		res, err := NewResource(r.MqlRuntime, "stackit.alb.loadBalancer", map[string]*llx.RawData{
-			"name": llx.StringData(name),
-		})
-		if err != nil {
-			if isNotFound(err) || isAccessDenied(err) {
-				continue
-			}
-			return nil, err
-		}
-		out = append(out, res)
-	}
-	return out, nil
+	return refsByKey(r.MqlRuntime, "stackit.alb.loadBalancer", "name", r.cacheUsageLoadBalancers)
 }
 
 func initStackitAlbWaf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {

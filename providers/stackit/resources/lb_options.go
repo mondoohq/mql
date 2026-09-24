@@ -8,7 +8,6 @@ import (
 
 	alb "github.com/stackitcloud/stackit-sdk-go/services/alb/v2api"
 	loadbalancer "github.com/stackitcloud/stackit-sdk-go/services/loadbalancer/v2api"
-	"go.mondoo.com/mql/llx"
 )
 
 // Posture accessors shared by the network and application load balancers.
@@ -194,21 +193,7 @@ func albInsecureTargetPools(pools []alb.TargetPool) []string {
 }
 
 func (r *mqlStackitAlbLoadBalancer) certificates() ([]any, error) {
-	ids := albCertificateIDs(r.rawListeners)
-	out := make([]any, 0, len(ids))
-	for _, id := range ids {
-		res, err := NewResource(r.MqlRuntime, "stackit.certificate", map[string]*llx.RawData{
-			"id": llx.StringData(id),
-		})
-		if err != nil {
-			if isNotFound(err) || isAccessDenied(err) {
-				continue
-			}
-			return nil, err
-		}
-		out = append(out, res)
-	}
-	return out, nil
+	return refsByID(r.MqlRuntime, "stackit.certificate", albCertificateIDs(r.rawListeners))
 }
 
 func (r *mqlStackitAlbLoadBalancer) plaintextListenerPorts() ([]any, error) {
