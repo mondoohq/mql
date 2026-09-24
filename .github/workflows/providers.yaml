@@ -45,6 +45,8 @@ env:
   # a quoted literal, so the version check below reads an empty string, never
   # matches the published one, and would try to build them on every push.
   SKIP_PROVIDERS: "core iac"
+  # C07QZDJFF89 == #release-coordination
+  SLACK_BOT_CHANNEL_ID: "C07QZDJFF89"
 
 jobs:
   scoping:
@@ -487,7 +489,7 @@ jobs:
           errors: true
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
-            channel: "C07QZDJFF89"
+            channel: "${{ env.SLACK_BOT_CHANNEL_ID }}"
             text: "${{ steps.meta.outputs.mention }}${{ steps.meta.outputs.header }}"
             blocks:
               - type: "header"

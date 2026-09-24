@@ -17,6 +17,10 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # C07QZDJFF89 == #release-coordination
+  SLACK_BOT_CHANNEL_ID: "C07QZDJFF89"
+
 jobs:
   release-providers:
     # Stable releases only, until pre-release providers are designed.
@@ -195,7 +199,7 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             {
-              "channel": "C07QZDJFF89",
+              "channel": "${{ env.SLACK_BOT_CHANNEL_ID }}",
               "text": "✨ Provider release PR created",
               "blocks": [
                 {
