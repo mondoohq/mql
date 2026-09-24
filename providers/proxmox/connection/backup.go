@@ -6,31 +6,41 @@ package connection
 import "fmt"
 
 // BackupJob describes a cluster-wide scheduled vzdump job from /cluster/backup.
-// Fields use json.RawMessage-friendly types where the Proxmox API is loose
-// (int vs string vs bool depending on version).
+//
+// Flags decode through PveBool, since Proxmox declares them boolean but writes
+// 1/0 (and a legacy vzdump.cron job reports a disabled schedule as ""). The
+// retention and fleecing settings decode through PveProps: the listing
+// returns them as objects, not the property strings they are written as.
 type BackupJob struct {
-	ID               string `json:"id"`
-	Enabled          int    `json:"enabled"`
-	Schedule         string `json:"schedule"`
-	Storage          string `json:"storage"`
-	Mode             string `json:"mode"`
-	Comment          string `json:"comment"`
-	VMID             string `json:"vmid"`
-	Pool             string `json:"pool"`
-	All              int    `json:"all"`
-	Exclude          string `json:"exclude"`
-	Compress         string `json:"compress"`
-	Mailto           string `json:"mailto"`
-	NotificationMode string `json:"notification-mode"`
-	Node             string `json:"node"`
-	Prune            string `json:"prune-backups"`
-	Fleecing         string `json:"fleecing"`
-	NotesTemplate    string `json:"notes-template"`
-	Protected        int    `json:"protected"`
-	NextRun          int64  `json:"next-run"`
-	Type             string `json:"type"`
-	Repeat           int    `json:"repeat-missed"`
-	Remove           int    `json:"remove"`
+	ID string `json:"id"`
+	// Enabled is a pointer because the key defaults to enabled when absent.
+	Enabled          *PveBool `json:"enabled"`
+	Schedule         string   `json:"schedule"`
+	Storage          string   `json:"storage"`
+	Mode             string   `json:"mode"`
+	Comment          string   `json:"comment"`
+	VMID             string   `json:"vmid"`
+	Pool             string   `json:"pool"`
+	All              PveBool  `json:"all"`
+	Exclude          string   `json:"exclude"`
+	Compress         string   `json:"compress"`
+	Mailto           string   `json:"mailto"`
+	NotificationMode string   `json:"notification-mode"`
+	Node             string   `json:"node"`
+	Prune            PveProps `json:"prune-backups"`
+	Fleecing         PveProps `json:"fleecing"`
+	NotesTemplate    string   `json:"notes-template"`
+	Protected        PveBool  `json:"protected"`
+	NextRun          int64    `json:"next-run"`
+	Type             string   `json:"type"`
+	Repeat           PveBool  `json:"repeat-missed"`
+	Remove           PveBool  `json:"remove"`
+}
+
+// IsEnabled reports whether the job runs. Proxmox treats a job without an
+// `enabled` key as enabled.
+func (j BackupJob) IsEnabled() bool {
+	return j.Enabled == nil || j.Enabled.Bool()
 }
 
 func (c *PveConnection) GetBackupJobs() ([]BackupJob, error) {

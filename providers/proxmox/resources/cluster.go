@@ -116,30 +116,60 @@ func (r *mqlProxmoxCluster) clusterOptionString(key string) (string, error) {
 	return fmt.Sprintf("%v", v), nil
 }
 
+// clusterOptionProps reads a structured setting out of cluster.options.
+//
+// /cluster/options hands back datacenter.cfg as Proxmox parsed it, and the
+// structured settings (`migration`, `ha`, `webauthn`, `u2f`, `crs`, ...)
+// arrive as JSON objects rather than the property strings they are written
+// as. Both shapes are accepted so a value is never flattened through `%v` into
+// `map[...]` text that no longer parses. found is false when the key is
+// absent.
+func (r *mqlProxmoxCluster) clusterOptionProps(key, defaultKey string) (map[string]string, bool, error) {
+	opts, err := r.ensureOptions()
+	if err != nil || opts == nil {
+		return nil, false, err
+	}
+	return optionProps(opts[key], defaultKey)
+}
+
+func optionProps(v any, defaultKey string) (map[string]string, bool, error) {
+	switch val := v.(type) {
+	case nil:
+		return nil, false, nil
+	case map[string]any:
+		out := make(map[string]string, len(val))
+		for k, item := range val {
+			if item == nil {
+				continue
+			}
+			out[k] = connection.PropertyValueString(item)
+		}
+		return out, true, nil
+	case string:
+		if val == "" {
+			return nil, false, nil
+		}
+		return connection.ParsePropertyString(val, defaultKey), true, nil
+	}
+	return nil, false, fmt.Errorf("unexpected cluster option value of type %T", v)
+}
+
 func (r *mqlProxmoxCluster) migrationPolicy() (string, error) {
-	// /cluster/options serializes the `migration` block as a comma-delimited
-	// string like `secure,network=10.0.0.0/24`. Split off the leading mode.
-	mig, err := r.clusterOptionString("migration")
-	if err != nil || mig == "" {
+	// `migration` is `type=secure,network=10.0.0.0/24`, with `type` as the
+	// positional default key.
+	props, found, err := r.clusterOptionProps("migration", "type")
+	if err != nil || !found {
 		return "", err
 	}
-	if idx := strings.Index(mig, ","); idx >= 0 {
-		return mig[:idx], nil
-	}
-	return mig, nil
+	return props["type"], nil
 }
 
 func (r *mqlProxmoxCluster) migrationNetwork() (string, error) {
-	mig, err := r.clusterOptionString("migration")
-	if err != nil || mig == "" {
+	props, found, err := r.clusterOptionProps("migration", "type")
+	if err != nil || !found {
 		return "", err
 	}
-	for _, part := range strings.Split(mig, ",") {
-		if kv := strings.SplitN(part, "=", 2); len(kv) == 2 && kv[0] == "network" {
-			return kv[1], nil
-		}
-	}
-	return "", nil
+	return props["network"], nil
 }
 
 func (r *mqlProxmoxCluster) consoleViewer() (string, error) {

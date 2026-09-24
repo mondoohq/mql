@@ -1881,7 +1881,10 @@ proxmox.container @defaults("id name status unprivileged") {
 
   // Current CPU usage (fraction)
   cpu float
-  // Number of configured vCPUs
+  // Number of CPUs the container may use
+  //
+  // Taken from `cores`, or from `cpulimit` rounded up when only a
+  // fractional CPU limit is set.
   maxcpu int
   // Current memory usage in bytes
   mem int
@@ -2358,6 +2361,8 @@ proxmox.replication.job @defaults("id schedule source target disabled") {
   // Job comment
   comment string
   // Bandwidth cap in MB/s; 0 = unlimited
+  //
+  // A fractional cap is rounded up to the next whole MB/s.
   rate int
   // Whether the job is currently disabled
   disabled bool

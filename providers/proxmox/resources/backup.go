@@ -37,23 +37,23 @@ func (r *mqlProxmox) backupJobs() ([]any, error) {
 	for i, j := range jobs {
 		res, err := CreateResource(r.MqlRuntime, "proxmox.backup.job", map[string]*llx.RawData{
 			"id":               llx.StringData(j.ID),
-			"enabled":          llx.BoolData(j.Enabled != 0),
+			"enabled":          llx.BoolData(j.IsEnabled()),
 			"schedule":         llx.StringData(j.Schedule),
 			"storage":          llx.StringData(j.Storage),
 			"mode":             llx.StringData(j.Mode),
 			"comment":          llx.StringData(j.Comment),
 			"vmids":            llx.StringData(j.VMID),
 			"pool":             llx.StringData(j.Pool),
-			"all":              llx.BoolData(j.All != 0),
+			"all":              llx.BoolData(j.All.Bool()),
 			"exclude":          llx.StringData(j.Exclude),
 			"compress":         llx.StringData(j.Compress),
 			"mailto":           llx.StringData(j.Mailto),
 			"notificationMode": llx.StringData(j.NotificationMode),
 			"node":             llx.StringData(j.Node),
-			"prune":            llx.StringData(j.Prune),
-			"fleecing":         llx.StringData(j.Fleecing),
+			"prune":            llx.StringData(string(j.Prune)),
+			"fleecing":         llx.StringData(string(j.Fleecing)),
 			"notesTemplate":    llx.StringData(j.NotesTemplate),
-			"protected":        llx.BoolData(j.Protected != 0),
+			"protected":        llx.BoolData(j.Protected.Bool()),
 			"nextRun":          llx.IntData(j.NextRun),
 		})
 		if err != nil {

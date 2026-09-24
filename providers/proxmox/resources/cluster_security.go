@@ -22,11 +22,11 @@ func (r *mqlProxmoxCluster) fencingMode() (string, error) {
 func (r *mqlProxmoxCluster) haShutdownPolicy() (string, error) {
 	// /cluster/options serializes the `ha` block as a property string whose
 	// only member is shutdown_policy.
-	raw, err := r.clusterOptionString("ha")
-	if err != nil || raw == "" {
+	props, found, err := r.clusterOptionProps("ha", "")
+	if err != nil || !found {
 		return "", err
 	}
-	return connection.ParsePropertyString(raw, "")["shutdown_policy"], nil
+	return props["shutdown_policy"], nil
 }
 
 // ---------------------------------------------------------------------------
@@ -37,11 +37,7 @@ func (r *mqlProxmoxCluster) haShutdownPolicy() (string, error) {
 // WebAuthn has no relying party at all, which is why the sub-settings report
 // empty rather than a guessed hostname.
 func (r *mqlProxmoxCluster) webauthnProps() (map[string]string, bool, error) {
-	raw, err := r.clusterOptionString("webauthn")
-	if err != nil || raw == "" {
-		return nil, false, err
-	}
-	return connection.ParsePropertyString(raw, ""), true, nil
+	return r.clusterOptionProps("webauthn", "")
 }
 
 func (r *mqlProxmoxCluster) webauthnRelyingParty() (string, error) {
@@ -86,19 +82,19 @@ func (r *mqlProxmoxCluster) webauthnAllowSubdomains() (bool, error) {
 }
 
 func (r *mqlProxmoxCluster) u2fAppId() (string, error) {
-	raw, err := r.clusterOptionString("u2f")
-	if err != nil || raw == "" {
+	props, found, err := r.clusterOptionProps("u2f", "")
+	if err != nil || !found {
 		return "", err
 	}
-	return connection.ParsePropertyString(raw, "")["appid"], nil
+	return props["appid"], nil
 }
 
 func (r *mqlProxmoxCluster) u2fOrigin() (string, error) {
-	raw, err := r.clusterOptionString("u2f")
-	if err != nil || raw == "" {
+	props, found, err := r.clusterOptionProps("u2f", "")
+	if err != nil || !found {
 		return "", err
 	}
-	return connection.ParsePropertyString(raw, "")["origin"], nil
+	return props["origin"], nil
 }
 
 // ---------------------------------------------------------------------------

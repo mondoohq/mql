@@ -333,7 +333,7 @@ func initProxmoxVm(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[s
 		args["node"] = llx.StringData(vm.Node)
 		args["status"] = llx.StringData(vm.Status)
 		args["cpu"] = llx.FloatData(vm.CPU)
-		args["maxcpu"] = llx.IntData(int64(vm.MaxCPU))
+		args["maxcpu"] = llx.IntData(vm.MaxCPU.Ceil())
 		args["mem"] = llx.IntData(vm.Mem)
 		args["maxmem"] = llx.IntData(vm.MaxMem)
 		args["disk"] = llx.IntData(vm.Disk)
@@ -343,7 +343,7 @@ func initProxmoxVm(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[s
 		args["netin"] = llx.IntData(vm.NetIn)
 		args["netout"] = llx.IntData(vm.NetOut)
 		args["uptime"] = llx.IntData(vm.Uptime)
-		args["template"] = llx.BoolData(vm.Template == 1)
+		args["template"] = llx.BoolData(vm.Template.Bool())
 		return args, nil, nil
 	}
 	// cluster.haResources reaches this path whenever an HA entry names a
@@ -374,7 +374,7 @@ func initProxmoxContainer(runtime *plugin.Runtime, args map[string]*llx.RawData)
 		args["node"] = llx.StringData(ct.Node)
 		args["status"] = llx.StringData(ct.Status)
 		args["cpu"] = llx.FloatData(ct.CPU)
-		args["maxcpu"] = llx.IntData(int64(ct.MaxCPU))
+		args["maxcpu"] = llx.IntData(ct.MaxCPU.Ceil())
 		args["mem"] = llx.IntData(ct.Mem)
 		args["maxmem"] = llx.IntData(ct.MaxMem)
 		args["disk"] = llx.IntData(ct.Disk)
@@ -384,7 +384,7 @@ func initProxmoxContainer(runtime *plugin.Runtime, args map[string]*llx.RawData)
 		args["netin"] = llx.IntData(ct.NetIn)
 		args["netout"] = llx.IntData(ct.NetOut)
 		args["uptime"] = llx.IntData(ct.Uptime)
-		args["template"] = llx.BoolData(ct.Template == 1)
+		args["template"] = llx.BoolData(ct.Template.Bool())
 		return args, nil, nil
 	}
 	return nil, nil, fmt.Errorf("proxmox.container with vmid %d not found", want)

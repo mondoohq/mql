@@ -22,7 +22,7 @@ func vmInfoToResources(runtime *plugin.Runtime, vms []connection.VMInfo) ([]any,
 			"node":      llx.StringData(vm.Node),
 			"status":    llx.StringData(vm.Status),
 			"cpu":       llx.FloatData(vm.CPU),
-			"maxcpu":    llx.IntData(int64(vm.MaxCPU)),
+			"maxcpu":    llx.IntData(vm.MaxCPU.Ceil()),
 			"mem":       llx.IntData(vm.Mem),
 			"maxmem":    llx.IntData(vm.MaxMem),
 			"disk":      llx.IntData(vm.Disk),
@@ -32,7 +32,7 @@ func vmInfoToResources(runtime *plugin.Runtime, vms []connection.VMInfo) ([]any,
 			"netin":     llx.IntData(vm.NetIn),
 			"netout":    llx.IntData(vm.NetOut),
 			"uptime":    llx.IntData(vm.Uptime),
-			"template":  llx.BoolData(vm.Template == 1),
+			"template":  llx.BoolData(vm.Template.Bool()),
 		})
 		if err != nil {
 			return nil, err
