@@ -50,7 +50,7 @@ func Secret(conf *inventory.Config, option, envVar string) string {
 			return cred.Password
 		}
 	}
-	if v := conf.Options[option]; v != "" {
+	if v := conf.GetOptions()[option]; v != "" {
 		return v
 	}
 	return os.Getenv(envVar)

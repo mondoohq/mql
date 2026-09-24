@@ -82,4 +82,9 @@ func TestSecret(t *testing.T) {
 	t.Run("returns empty when nothing supplies it", func(t *testing.T) {
 		assert.Empty(t, Secret(&inventory.Config{}, option, envVar))
 	})
+
+	t.Run("tolerates a nil config", func(t *testing.T) {
+		t.Setenv(envVar, "from-env")
+		assert.Equal(t, "from-env", Secret(nil, option, envVar))
+	})
 }
