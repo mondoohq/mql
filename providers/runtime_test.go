@@ -702,7 +702,14 @@ func fakeDialRefusedErr(port int) *net.OpError {
 
 func TestRuntime_HandlePluginError_TransportErrorRecordsCriticalError(t *testing.T) {
 	r := &Runtime{}
-	instance := &RunningProvider{Name: "aws"}
+	// proc set: this simulates an out-of-process (subprocess-backed)
+	// provider, the same signal coordinator.go's subprocess-launching path
+	// sets on a real plugin. Only for such a provider does a transport-
+	// shaped error mean the plugin's own connection died.
+	instance := &RunningProvider{Name: "aws", proc: &processTracker{}}
+	// Skip awaitExit's 2s grace wait for an exit this bare tracker will
+	// never report -- same trick exit_status_unix_test.go uses.
+	instance.exitGraceExpired.Store(true)
 	provider := &ConnectedProvider{Instance: instance}
 
 	// A genuine transport failure (no gRPC status): a real *net.OpError, the
@@ -760,6 +767,73 @@ func TestRuntime_HandlePluginError_NonTransportBareErrorPassesThroughUnchanged(t
 	assert.False(t, instance.isClosed)
 }
 
+// TestRuntime_HandlePluginError_BuiltinProviderTransportShapedErrorPassesThrough
+// is the narrower follow-up to the regression above: a *net.OpError, an
+// ECONNREFUSED, or an io.EOF are exactly as ordinary for a BUILTIN/
+// in-process provider as any other Go error. A builtin `port`/`http.get`
+// check against a closed port genuinely returns *net.OpError/ECONNREFUSED,
+// and a file read past its end genuinely returns io.EOF -- from a call that
+// never went through a plugin RPC at all, since RunningProvider.proc (nil
+// here, exactly as for every entry in builtin.go's builtinProviders map) is
+// what the rest of this file already uses to know whether there is a
+// subprocess in the first place (see awaitExit). Even though these errors
+// match isTransportFailure's shapes, they must be returned unchanged,
+// unrecorded, and must not mark the provider closed.
+func TestRuntime_HandlePluginError_BuiltinProviderTransportShapedErrorPassesThrough(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"net.OpError/ECONNREFUSED", fakeDialRefusedErr(80)},
+		{"io.EOF", io.EOF},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &Runtime{}
+			instance := &RunningProvider{Name: "os"} // proc == nil: builtin/in-process
+			provider := &ConnectedProvider{Instance: instance}
+
+			handled, err := r.handlePluginError(tc.err, provider, "os.port", "")
+
+			assert.False(t, handled)
+			require.Error(t, err)
+			assert.Same(t, tc.err, err)
+			assert.Empty(t, r.CriticalErrors())
+			assert.False(t, instance.isClosed)
+		})
+	}
+}
+
+// TestRuntime_HandlePluginError_OutOfProcessTransportErrorRecordsCrash mirrors
+// the test above for a provider that DOES run out of process (proc set):
+// the very same error shapes now mean the plugin's own connection died, so
+// they must be recorded as a crash, once.
+func TestRuntime_HandlePluginError_OutOfProcessTransportErrorRecordsCrash(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"net.OpError/ECONNREFUSED", fakeDialRefusedErr(80)},
+		{"io.EOF", io.EOF},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &Runtime{}
+			instance := &RunningProvider{Name: "aws", proc: &processTracker{}}
+			instance.exitGraceExpired.Store(true)
+			provider := &ConnectedProvider{Instance: instance}
+
+			handled, err := r.handlePluginError(tc.err, provider, "aws.ec2.instance", "")
+
+			assert.False(t, handled)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "provider connection failed")
+			assert.True(t, instance.isClosed)
+			require.Len(t, r.CriticalErrors(), 1)
+		})
+	}
+}
+
 // TestRuntime_HandlePluginError_RepeatedTransportErrorsDedupe reproduces a
 // provider that keeps failing every remaining field with a genuine
 // transport error (no gRPC status) after it dies -- e.g. every later call
@@ -771,7 +845,8 @@ func TestRuntime_HandlePluginError_NonTransportBareErrorPassesThroughUnchanged(t
 // guarantee the codes.Unavailable/codes.Canceled branch already has.
 func TestRuntime_HandlePluginError_RepeatedTransportErrorsDedupe(t *testing.T) {
 	r := &Runtime{}
-	instance := &RunningProvider{Name: "os"}
+	instance := &RunningProvider{Name: "os", proc: &processTracker{}}
+	instance.exitGraceExpired.Store(true)
 	provider := &ConnectedProvider{Instance: instance}
 
 	transportErr := fakeDialRefusedErr(52487)

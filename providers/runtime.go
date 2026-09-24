@@ -803,7 +803,28 @@ func (r *Runtime) handlePluginError(err error, provider *ConnectedProvider, reso
 		// ("use of closed network connection"). Anything else is returned
 		// unchanged, unrecorded - exactly as if handlePluginError had not
 		// been in the call chain at all.
-		if isTransportFailure(err) {
+		//
+		// That classification alone is still not enough: a *net.OpError or
+		// io.EOF is exactly as ordinary for a provider that makes its own
+		// network/file calls as part of answering a query - a builtin
+		// `port`/`http.get` check against a closed port returns a real
+		// *net.OpError with ECONNREFUSED, and a file read past EOF returns
+		// io.EOF, neither of which says anything about whether the plugin
+		// serving the RPC is still alive. That distinction only means
+		// something for an out-of-process provider, where GetData/StoreData/
+		// Connect themselves ARE the RPC to the plugin, so a transport error
+		// on that call is about the plugin's own connection. For a builtin/
+		// in-process provider there is no RPC underneath the call at all -
+		// GetData is a direct Go call into resource code - so the same error
+		// shapes are just whatever the resource implementation happened to
+		// return. Gate on provider.Instance.proc: it is nil for builtin
+		// providers and any provider constructed without a subprocess
+		// (see its doc comment, and awaitExit's identical nil check), and
+		// set to the real process tracker only by the subprocess-launching
+		// path in coordinator.go - the same signal the rest of this file
+		// already trusts to know whether there is a plugin process to be
+		// dead in the first place.
+		if provider.Instance.proc != nil && isTransportFailure(err) {
 			// This means the same thing a codes.Unavailable does: the
 			// provider process is not there to answer the RPC. There is no
 			// reconnect/restart path (see the TODO below) that could make a
