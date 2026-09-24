@@ -99,12 +99,21 @@ const terraformLockFile = ".terraform.lock.hcl"
 // terraformWorkDir is where `terraform init` installs modules and providers.
 const terraformWorkDir = ".terraform"
 
-// maxLockSearchDepth bounds how far below the search root a lock file is looked
-// for. Terraform workspaces nest a few levels at most (envs/prod, stacks/network);
-// the cap keeps the walk from descending an entire filesystem when the resource
-// runs against an OS or container connection, where the root is / and there is
-// usually no lock file at all.
+// maxLockSearchDepth bounds how far below the search root the walk descends.
+// Terraform workspaces nest a few levels at most (envs/prod, stacks/network).
 const maxLockSearchDepth = 8
+
+// maxLockSearchDirs bounds how many directories the walk visits.
+//
+// The depth cap alone is not a bound: it limits depth, not breadth. Measured on
+// a developer machine, a depth-8 walk of a Go source tree visits 3.6 million
+// directories and takes over a minute — the resource runs against whatever the
+// connection is rooted at, and for an OS or container connection that is /.
+//
+// 50k is far more than any repository holds and costs about a second. Exceeding
+// it means the root is not a project tree, so the walk stops and says so rather
+// than reporting a partial inventory as if it were complete.
+const maxLockSearchDirs = 50000
 
 // skipLockSearchDirs never hold the project's own lock file. `.terraform` is the
 // one that matters for correctness: it holds downloaded modules, each of which
@@ -148,6 +157,8 @@ func collectTerraformInTree(afs *afero.Afero, root string) ([]*languages.Package
 	var files []string
 
 	rootDepth := strings.Count(filepath.ToSlash(filepath.Clean(root)), "/")
+	visited := 0
+	budgetSpent := false
 
 	err := afero.Walk(afs, root, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -158,6 +169,17 @@ func collectTerraformInTree(afs *afero.Afero, root string) ([]*languages.Package
 		}
 
 		if info.IsDir() {
+			visited++
+			if visited > maxLockSearchDirs {
+				if !budgetSpent {
+					budgetSpent = true
+					log.Warn().
+						Str("path", root).
+						Int("directories", maxLockSearchDirs).
+						Msg("stopped searching for Terraform files: the search root is too large to be a project tree; pass a path to scan a specific workspace")
+				}
+				return filepath.SkipDir
+			}
 			if p != root && skipLockSearchDirs[info.Name()] {
 				// .terraform is skipped because it holds downloaded module
 				// source — but the manifest Terraform writes beside that
