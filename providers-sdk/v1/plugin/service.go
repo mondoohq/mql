@@ -71,6 +71,10 @@ const (
 // so tests can observe the decision without ending the test binary.
 var watchdogExit = os.Exit
 
+// watchdogNow is the watchdog's clock. It is a variable so tests can simulate
+// the whole process tree being frozen (sleep, standby, VM pause, SIGSTOP).
+var watchdogNow = time.Now
+
 var (
 	cacheExpirationTime = 3 * time.Hour
 	cacheCleanupTime    = 6 * time.Hour
@@ -387,6 +391,7 @@ func (s *Service) TrackRequest() func() {
 // provider — the parent kills us for that, and it has the context to decide.
 func (s *Service) heartbeatWatchdog() {
 	late := false
+	lastPoll := watchdogNow()
 	for {
 		window := time.Duration(s.heartbeatWindow.Load())
 		poll := max(window/2, minHeartbeatPollInterval)
@@ -398,7 +403,21 @@ func (s *Service) heartbeatWatchdog() {
 
 		// re-read: the parent may have changed the window in the meantime
 		window = time.Duration(s.heartbeatWindow.Load())
-		silence := time.Since(time.Unix(0, s.lastHeartbeat.Load()))
+		now := watchdogNow()
+		if overslept := now.Sub(lastPoll); overslept > poll+window {
+			// We did not get to run for longer than a whole window, so neither
+			// did anything else on this host: the machine slept, the VM was
+			// paused, or we were stopped together with the parent. That silence
+			// says nothing about the parent. Give it a fresh window instead of
+			// exiting before it had a chance to send the next beat.
+			log.Warn().
+				Str("overslept", overslept.String()).
+				Str("window", window.String()).
+				Msg("heartbeat watchdog was suspended, re-arming")
+			s.lastHeartbeat.Store(now.UnixNano())
+		}
+		lastPoll = now
+		silence := now.Sub(time.Unix(0, s.lastHeartbeat.Load()))
 		inflight := s.inflightRequests.Load()
 
 		if silence <= window {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -487,6 +488,44 @@ func TestHeartbeatWatchdog_HoldsOutWhileServingRequests(t *testing.T) {
 		assert.Equal(t, 4, code)
 	case <-time.After(5 * time.Second):
 		t.Fatal("watchdog did not reap an abandoned provider")
+	}
+}
+
+func TestHeartbeatWatchdog_SurvivesSuspend(t *testing.T) {
+	exited := captureWatchdogExit(t)
+
+	// the whole process tree freezes: when the watchdog next runs, an hour has
+	// passed for it just as much as for the heartbeat it last saw
+	var frozen atomic.Int64
+	armed := make(chan struct{})
+	var armedOnce sync.Once
+	original := watchdogNow
+	watchdogNow = func() time.Time {
+		armedOnce.Do(func() { close(armed) })
+		return time.Now().Add(time.Duration(frozen.Load()))
+	}
+	t.Cleanup(func() { watchdogNow = original })
+
+	s := NewService()
+	t.Cleanup(s.stopWatchdog)
+	// idle tolerance is heartbeatMissesBeforeExit * 100ms, polled every 250ms
+	_, err := s.Heartbeat(&HeartbeatReq{Interval: uint64(100 * time.Millisecond)})
+	require.NoError(t, err)
+	<-armed // the watchdog has taken its first reading, now freeze
+	frozen.Store(int64(time.Hour))
+
+	select {
+	case <-exited:
+		t.Fatal("watchdog reaped a provider for silence it slept through itself")
+	case <-time.After(minHeartbeatPollInterval + 150*time.Millisecond):
+	}
+
+	// after waking up, a parent that stays silent is still gone
+	select {
+	case code := <-exited:
+		assert.Equal(t, 4, code)
+	case <-time.After(5 * time.Second):
+		t.Fatal("watchdog did not reap an abandoned provider after a suspend")
 	}
 }
 
