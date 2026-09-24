@@ -47,6 +47,15 @@ type hotfixCacheTestConnection struct {
 	// hotfixBlock, when non-nil, holds the hotfix RunCommand until it is
 	// closed, so a test can get several callers in flight at once.
 	hotfixBlock chan struct{}
+
+	// callersInFlight, when hotfixBlock is in use, is maintained by the test
+	// itself: incremented just before a goroutine calls GetHotfixQueryResult
+	// and decremented once that call returns. waitersAtUnblock captures its
+	// value the instant the blocked Get-HotFix run is released, so a test
+	// can prove other callers were genuinely queued up behind this one
+	// in-flight command rather than serialized one at a time.
+	callersInFlight  atomic.Int32
+	waitersAtUnblock atomic.Int32
 }
 
 func newHotfixCacheTestConnection(id uint32, hotfixStdout string) *hotfixCacheTestConnection {
@@ -64,6 +73,13 @@ func (c *hotfixCacheTestConnection) RunCommand(command string) (*shared.Command,
 		c.hotfixCalls.Add(1)
 		if c.hotfixBlock != nil {
 			<-c.hotfixBlock
+			// The channel only unblocks once the test's readiness barrier
+			// has confirmed every intended caller registered as in flight,
+			// so this snapshot -- taken before any of them can possibly
+			// have returned (they're all still queued behind this single
+			// call's lock) -- reflects how many were genuinely waiting
+			// together, not serialized.
+			c.waitersAtUnblock.Store(c.callersInFlight.Load())
 		}
 		if c.hotfixErr != nil {
 			return nil, c.hotfixErr
@@ -276,6 +292,16 @@ func TestWinPkgManagerList_IgnoresNonZeroHotfixExitStatus(t *testing.T) {
 // both: they can arrive at GetHotfixQueryResult together, before either has
 // a cached answer to read. Without the lock held across the command they
 // would each start their own Get-HotFix.
+//
+// A start barrier (the ready WaitGroup) makes this deterministic: closing
+// hotfixBlock right after launching the goroutines, with no synchronization,
+// races the scheduler -- on a slow runner every goroutine but the first can
+// still be unstarted when the channel closes, so each one calls
+// GetHotfixQueryResult, finds the cache already populated, and returns
+// without ever contending for it. That degrades the test into asserting a
+// cache hit, not concurrent collapsing. Waiting for every goroutine to
+// register as in flight before releasing the block guarantees at least one
+// caller is genuinely holding the others behind it when hotfixCalls is read.
 func TestGetHotfixQueryResult_CollapsesConcurrentCallers(t *testing.T) {
 	resetHotfixCache()
 	t.Cleanup(resetHotfixCache)
@@ -284,21 +310,33 @@ func TestGetHotfixQueryResult_CollapsesConcurrentCallers(t *testing.T) {
 	conn := newHotfixCacheTestConnection(30, oneHotfixJSON)
 	conn.hotfixBlock = make(chan struct{})
 
+	var ready sync.WaitGroup
+	ready.Add(callers)
+
 	var wg sync.WaitGroup
 	wg.Add(callers)
 	for i := 0; i < callers; i++ {
 		go func() {
 			defer wg.Done()
+			conn.callersInFlight.Add(1)
+			defer conn.callersInFlight.Add(-1)
+			// Signal readiness only once this goroutine is about to make
+			// the call, so ready.Wait() below cannot return until every
+			// goroutine has actually reached GetHotfixQueryResult.
+			ready.Done()
 			result, err := GetHotfixQueryResult(conn)
 			assert.NoError(t, err)
 			assert.Len(t, result.Hotfixes, 1)
 		}()
 	}
 
-	// let the first query finish only once every caller has had a chance to
-	// arrive, so this fails if they are not being collapsed
+	// Only release the blocked Get-HotFix run once every caller has had a
+	// chance to arrive, so this fails if they are not being collapsed.
+	ready.Wait()
 	close(conn.hotfixBlock)
 	wg.Wait()
 
 	assert.Equal(t, int32(1), conn.hotfixCalls.Load(), "concurrent callers each started their own Get-HotFix")
+	assert.GreaterOrEqual(t, conn.waitersAtUnblock.Load(), int32(2),
+		"expected at least 2 callers to be genuinely queued behind the single Get-HotFix run, not serialized one at a time")
 }
