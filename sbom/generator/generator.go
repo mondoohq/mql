@@ -113,7 +113,20 @@ func GenerateBom(r *reporter.Report) []*sbom.Sbom {
 		// generator (internal/aibom/generator/generator.go), which treats
 		// the same per-data-point decode failure as PARTIALLY_SUCCEEDED
 		// rather than FAILED.
+		//
+		// decodedCount tracks how many data points decoded successfully, so
+		// "everything failed" can be told apart from "everything decoded but
+		// legitimately produced zero packages" (e.g. an asset with no
+		// installed software). Using len(bom.Packages) == 0 for that instead
+		// would be wrong on both sides: it would call a BOM with zero
+		// packages "failed" even though every data point decoded fine, and
+		// it would call a BOM with some packages "partially succeeded" even
+		// if every data point failed to decode but happened to still leave
+		// packages from a still-standing field (see PrinterDrivers below,
+		// which can append before an error on a later key). Basing it on
+		// decode success -- not package count -- is correct either way.
 		var fieldErrors []string
+		var decodedCount int
 		for _, k := range keys {
 			dataValue := dataPoints.Values[k]
 			jsondata, err := reporter.JsonValue(dataValue.Content)
@@ -127,6 +140,7 @@ func GenerateBom(r *reporter.Report) []*sbom.Sbom {
 				fieldErrors = append(fieldErrors, k+": "+errors.Wrap(err, "failed to parse bom fields json data").Error())
 				continue
 			}
+			decodedCount++
 			if rb.Asset != nil {
 				bom.Asset.Name = rb.Asset.Name
 				bom.Asset.Platform.Name = rb.Asset.Platform
@@ -285,7 +299,14 @@ func GenerateBom(r *reporter.Report) []*sbom.Sbom {
 		}
 
 		if len(fieldErrors) > 0 {
-			bom.Status = sbom.Status_STATUS_PARTIALLY_SUCCEEDED
+			if decodedCount == 0 {
+				// Every data point failed to decode: nothing usable was
+				// produced for this asset, so a BOM with zero packages here
+				// is a genuine failure, not a partial success.
+				bom.Status = sbom.Status_STATUS_FAILED
+			} else {
+				bom.Status = sbom.Status_STATUS_PARTIALLY_SUCCEEDED
+			}
 			bom.ErrorMessage = strings.Join(fieldErrors, "; ")
 		}
 

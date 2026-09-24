@@ -6,8 +6,11 @@ package providers
 import (
 	"errors"
 	"io"
+	"net"
+	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -683,14 +686,28 @@ func TestRuntime_HandlePluginError_CrashRecordsCriticalError(t *testing.T) {
 	assert.Contains(t, critErrs[0].Error(), "provider crashed")
 }
 
+// fakeDialRefusedErr builds a *net.OpError shaped exactly like what a real
+// failed TCP dial to a dead loopback port returns -- its Error() renders as
+// "dial tcp 127.0.0.1:<port>: connect: connection refused", the same text
+// production observed, but constructed so the test doesn't depend on actual
+// OS networking behavior (which can vary or be sandboxed in CI).
+func fakeDialRefusedErr(port int) *net.OpError {
+	return &net.OpError{
+		Op:   "dial",
+		Net:  "tcp",
+		Addr: &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: port},
+		Err:  os.NewSyscallError("connect", syscall.ECONNREFUSED),
+	}
+}
+
 func TestRuntime_HandlePluginError_TransportErrorRecordsCriticalError(t *testing.T) {
 	r := &Runtime{}
-	provider := &ConnectedProvider{
-		Instance: &RunningProvider{Name: "aws"},
-	}
+	instance := &RunningProvider{Name: "aws"}
+	provider := &ConnectedProvider{Instance: instance}
 
-	// Raw transport errors (e.g. "dial tcp") don't carry a gRPC status.
-	transportErr := errors.New("connection error: desc = transport: error while dialing: dial tcp 127.0.0.1:1234: connect: connection refused")
+	// A genuine transport failure (no gRPC status): a real *net.OpError, the
+	// shape a failed dial to a dead loopback port actually takes.
+	transportErr := fakeDialRefusedErr(1234)
 	handled, err := r.handlePluginError(transportErr, provider, "aws.ec2.instance", "securityGroups")
 
 	assert.False(t, handled)
@@ -701,6 +718,86 @@ func TestRuntime_HandlePluginError_TransportErrorRecordsCriticalError(t *testing
 	assert.Contains(t, critErrs[0].Error(), "provider connection failed")
 	assert.Contains(t, critErrs[0].Error(), "resource=aws.ec2.instance")
 	assert.Contains(t, critErrs[0].Error(), "field=securityGroups")
+	// Same as the codes.Unavailable/codes.Canceled branch: a genuine
+	// transport error means the provider process is gone, so it's recorded
+	// via recordCrash and the provider is marked closed.
+	assert.True(t, instance.isClosed)
+}
+
+// TestRuntime_HandlePluginError_NonTransportBareErrorPassesThroughUnchanged
+// is the regression test for the misclassification that broke
+// cli/printer's TestPrinter_Assessment: an ordinary application error (e.g.
+// "cannot find user with name 'notthere'" from a bad `user(name: ...)`
+// lookup) never carries a gRPC status either -- the builtin/core provider
+// and plugin mocks return Go errors straight from resource code, with no
+// gRPC involved at all. Such an error must come back completely unchanged,
+// must not be recorded as a critical error, and must not mark the provider
+// crashed (which would poison every later field for the rest of the run
+// with this one lookup's error, as it did before this fix).
+func TestRuntime_HandlePluginError_NonTransportBareErrorPassesThroughUnchanged(t *testing.T) {
+	r := &Runtime{}
+	instance := &RunningProvider{Name: "os"}
+	provider := &ConnectedProvider{Instance: instance}
+
+	appErr := errors.New("cannot find user with name 'notthere'")
+	handled, err := r.handlePluginError(appErr, provider, "user", "")
+
+	assert.False(t, handled)
+	require.Error(t, err)
+	assert.Same(t, appErr, err)
+	assert.Equal(t, "cannot find user with name 'notthere'", err.Error())
+
+	assert.Empty(t, r.CriticalErrors())
+	assert.False(t, instance.isClosed)
+
+	// A second, unrelated ordinary error on the same provider must also
+	// pass through untouched -- proving the first one didn't leave the
+	// provider in some half-crashed state.
+	otherErr := errors.New("cannot find group with name 'admins'")
+	_, err2 := r.handlePluginError(otherErr, provider, "group", "")
+	assert.Same(t, otherErr, err2)
+	assert.Empty(t, r.CriticalErrors())
+	assert.False(t, instance.isClosed)
+}
+
+// TestRuntime_HandlePluginError_RepeatedTransportErrorsDedupe reproduces a
+// provider that keeps failing every remaining field with a genuine
+// transport error (no gRPC status) after it dies -- e.g. every later call
+// redials the same dead loopback port and observes the same
+// "connection refused" failure. Before routing the !ok branch's genuine
+// transport failures through recordCrash, each of these calls built and
+// recorded its own critical error, one per field. It must instead collapse
+// into a single stored diagnostic and a single critical error, the same
+// guarantee the codes.Unavailable/codes.Canceled branch already has.
+func TestRuntime_HandlePluginError_RepeatedTransportErrorsDedupe(t *testing.T) {
+	r := &Runtime{}
+	instance := &RunningProvider{Name: "os"}
+	provider := &ConnectedProvider{Instance: instance}
+
+	transportErr := fakeDialRefusedErr(52487)
+
+	_, firstErr := r.handlePluginError(transportErr, provider, "os.file", "content")
+	require.Error(t, firstErr)
+
+	_, secondErr := r.handlePluginError(transportErr, provider, "os.file", "permissions")
+	require.Error(t, secondErr)
+
+	_, thirdErr := r.handlePluginError(transportErr, provider, "os.file", "owner")
+	require.Error(t, thirdErr)
+
+	// The exact same diagnostic every time, not a freshly rebuilt one per
+	// field (the second/third calls also don't carry that field's own
+	// resource/field context, proving they short-circuited via crashError()
+	// rather than reclassifying).
+	assert.Equal(t, firstErr.Error(), secondErr.Error())
+	assert.Equal(t, firstErr.Error(), thirdErr.Error())
+	assert.Contains(t, firstErr.Error(), "field=content")
+	assert.NotContains(t, secondErr.Error(), "field=permissions")
+	assert.NotContains(t, thirdErr.Error(), "field=owner")
+
+	critErrs := r.CriticalErrors()
+	require.Len(t, critErrs, 1)
+	assert.True(t, instance.isClosed)
 }
 
 func TestRuntime_HandlePluginError_NonPanicInternalDoesNotRecordCriticalError(t *testing.T) {

@@ -5,11 +5,14 @@ package providers
 
 import (
 	"errors"
+	"io"
+	"net"
 	"path"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -776,13 +779,52 @@ func (r *Runtime) handlePluginError(err error, provider *ConnectedProvider, reso
 
 	st, ok := status.FromError(err)
 	if !ok {
-		// Transport-level errors (e.g. "dial tcp" connection failures) don't
-		// carry a gRPC status code. Record them as critical so they reach
-		// error reporting (Sentry) via runtime.CriticalErrors().
-		base := "the '" + provider.Instance.Name + "' provider connection failed" + ctx + ": " + err.Error()
-		transportErr := errors.New(base + buildCrashDiagnostics(provider.Instance))
-		r.addCriticalError(transportErr)
-		return false, transportErr
+		// An error without a gRPC status is NOT reliably a transport
+		// failure. status.FromError only returns ok=true when the error
+		// implements (or wraps) grpc's status interface, which every error a
+		// live gRPC call produces does - grpc-go converts dial/stream/
+		// transport failures into status errors (typically Unavailable)
+		// before handing them back to the caller. So in practice this
+		// branch is reached for errors that never went through gRPC at all:
+		// the builtin/core provider and plugin mocks call straight into Go
+		// resource code and return its errors verbatim, e.g. "cannot find
+		// user with name 'notthere'" from a bad `user(name: ...)` lookup.
+		// Treating every such error as "the provider connection failed"
+		// mislabels an ordinary, per-call application error - and would be
+		// far worse if it also called recordCrash: one bad lookup would
+		// mark the whole provider permanently closed and hand its stored
+		// diagnostic to every unrelated field for the rest of the run.
+		//
+		// So only the errors that are genuinely transport-level are treated
+		// as a crash here: a *net.OpError (dial/read/write network
+		// failures - what "dial tcp ...: connect: connection refused"
+		// actually is), the connection-refused/reset/broken-pipe syscall
+		// errnos, a stream ending in EOF/ErrUnexpectedEOF, or net.ErrClosed
+		// ("use of closed network connection"). Anything else is returned
+		// unchanged, unrecorded - exactly as if handlePluginError had not
+		// been in the call chain at all.
+		if isTransportFailure(err) {
+			// This means the same thing a codes.Unavailable does: the
+			// provider process is not there to answer the RPC. There is no
+			// reconnect/restart path (see the TODO below) that could make a
+			// second attempt succeed, so there is nothing to gain by not
+			// marking it crashed - and every remaining field would
+			// otherwise redial the same dead port, get the same error, and
+			// (absent dedup) add its own critical error, risking the
+			// 100-entry cap for one crash. recordCrash stores the
+			// diagnostic once and every later call - of any error shape -
+			// returns that same stored error, same as the
+			// Unavailable/Canceled branch below.
+			crashErr, first := provider.Instance.recordCrash(func() error {
+				base := "the '" + provider.Instance.Name + "' provider connection failed" + ctx + ": " + err.Error()
+				return errors.New(base + buildCrashDiagnostics(provider.Instance))
+			})
+			if first {
+				r.addCriticalError(crashErr)
+			}
+			return false, crashErr
+		}
+		return false, err
 	}
 
 	switch st.Code() {
@@ -816,6 +858,27 @@ func (r *Runtime) handlePluginError(err error, provider *ConnectedProvider, reso
 		return false, crashErr
 	}
 	return false, err
+}
+
+// isTransportFailure reports whether err is a genuine network/transport
+// failure rather than an ordinary application error that merely lacks a
+// gRPC status. Kept deliberately narrow (type/sentinel checks only, no
+// substring matching on err.Error()) so a resource-level error that happens
+// to mention "connection" in its message is never misclassified.
+func isTransportFailure(err error) bool {
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		// Covers "dial tcp ...", "read tcp ...", "write tcp ..." failures -
+		// the shape a real dial/connection failure takes.
+		return true
+	}
+	return errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, io.EOF) ||
+		errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, io.ErrClosedPipe) ||
+		errors.Is(err, net.ErrClosed)
 }
 
 // buildCrashDiagnostics returns a multi-line suffix to append to a crash error

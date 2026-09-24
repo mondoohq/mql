@@ -629,6 +629,41 @@ func TestRunningProvider_RecordCrash_StoresOnceAndMarksClosed(t *testing.T) {
 	assert.Equal(t, stored, rp.crashError())
 }
 
+// TestRunningProvider_RecordCrash_BuildErrPanicIsRecovered covers a panic
+// inside buildErr (e.g. a nil crashLog or an unexpected nil somewhere in
+// buildCrashDiagnostics): recordCrash must still leave the provider marked
+// crashed with a non-nil, non-panicking diagnostic stored, rather than the
+// panic unwinding out of recordCrash with the provider left neither
+// known-crashed nor able to record one on retry.
+func TestRunningProvider_RecordCrash_BuildErrPanicIsRecovered(t *testing.T) {
+	rp := &RunningProvider{Name: "os"}
+
+	var stored error
+	var first bool
+	require.NotPanics(t, func() {
+		stored, first = rp.recordCrash(func() error {
+			panic("boom: nil pointer in buildCrashDiagnostics")
+		})
+	})
+
+	require.Error(t, stored)
+	assert.True(t, first)
+	assert.Contains(t, stored.Error(), "os")
+	assert.Contains(t, stored.Error(), "boom: nil pointer in buildCrashDiagnostics")
+	assert.True(t, rp.isClosed)
+	// The recovered diagnostic is what every later caller gets back too.
+	assert.Equal(t, stored, rp.crashError())
+
+	// A later call must not panic or rebuild -- it gets the same stored
+	// diagnostic back, same as the non-panicking path.
+	second, secondFirst := rp.recordCrash(func() error {
+		t.Fatal("buildErr must not be called again once a diagnostic is stored")
+		return nil
+	})
+	assert.False(t, secondFirst)
+	assert.Equal(t, stored, second)
+}
+
 // TestRunningProvider_RecordCrash_DoesNotDeadlockOnHadHeartbeatFailure is the
 // regression test for a deadlock this PR introduced and then fixed:
 // recordCrash used to hold shutdownLock while calling buildErr(), and

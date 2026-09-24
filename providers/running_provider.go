@@ -765,6 +765,18 @@ func (p *RunningProvider) crashError() error {
 // a diagnostic concurrently for the same crash; the loser's error is
 // discarded and it returns the winner's instead, so exactly one diagnostic
 // ever gets stored.
+//
+// buildErr runs outside the lock and is caller-supplied (buildCrashDiagnostics
+// today, but recordCrash doesn't know that), so it's treated as fallible: a
+// panic inside it (e.g. a nil crashLog, an unexpected nil somewhere in the
+// diagnostic assembly) is recovered by callBuildErr below and turned into a
+// plain error carrying the panic value. Without that, the panic would
+// unwind straight out of recordCrash with shutdownLock already released from
+// the first check above but isClosed/err never set — the provider would be
+// left neither known-crashed nor able to record one on retry, and the panic
+// itself would propagate to whatever called handlePluginError instead of
+// producing a crash diagnostic. Recovering keeps the guarantee this function
+// exists for: a crash is always recorded, exactly once.
 func (p *RunningProvider) recordCrash(buildErr func() error) (crashErr error, first bool) {
 	p.shutdownLock.Lock()
 	if p.isClosed && p.err != nil {
@@ -773,7 +785,7 @@ func (p *RunningProvider) recordCrash(buildErr func() error) (crashErr error, fi
 	}
 	p.shutdownLock.Unlock()
 
-	built := buildErr()
+	built := callBuildErr(p.Name, buildErr)
 
 	p.shutdownLock.Lock()
 	defer p.shutdownLock.Unlock()
@@ -783,4 +795,17 @@ func (p *RunningProvider) recordCrash(buildErr func() error) (crashErr error, fi
 	p.isClosed = true
 	p.err = built
 	return p.err, true
+}
+
+// callBuildErr runs buildErr and recovers a panic inside it, falling back to
+// a plain error that includes the panic value so recordCrash's caller still
+// gets a non-nil diagnostic (and the provider still ends up marked crashed)
+// even when assembling the "real" diagnostic itself failed.
+func callBuildErr(providerName string, buildErr func() error) (result error) {
+	defer func() {
+		if r := recover(); r != nil {
+			result = fmt.Errorf("the '%s' provider crashed, but building its crash diagnostic panicked: %v", providerName, r)
+		}
+	}()
+	return buildErr()
 }
