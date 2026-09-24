@@ -288,6 +288,7 @@ const (
 	ResourceRsyslogModule                                 string = "rsyslog.module"
 	ResourceRsyslogInput                                  string = "rsyslog.input"
 	ResourceRsyslogAction                                 string = "rsyslog.action"
+	ResourceRsyslogRuleset                                string = "rsyslog.ruleset"
 	ResourceRsyslogRule                                   string = "rsyslog.rule"
 	ResourceLogindefs                                     string = "logindefs"
 	ResourceLimits                                        string = "limits"
@@ -1744,6 +1745,10 @@ func init() {
 		"rsyslog.action": {
 			// to override args, implement: initRsyslogAction(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createRsyslogAction,
+		},
+		"rsyslog.ruleset": {
+			// to override args, implement: initRsyslogRuleset(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createRsyslogRuleset,
 		},
 		"rsyslog.rule": {
 			// to override args, implement: initRsyslogRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -9895,6 +9900,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"rsyslog.conf.rules": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRsyslogConf).GetRules()).ToDataRes(types.Array(types.Resource("rsyslog.rule")))
 	},
+	"rsyslog.conf.globals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogConf).GetGlobals()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"rsyslog.conf.rulesets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogConf).GetRulesets()).ToDataRes(types.Array(types.Resource("rsyslog.ruleset")))
+	},
 	"rsyslog.module.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRsyslogModule).GetName()).ToDataRes(types.String)
 	},
@@ -9931,6 +9942,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"rsyslog.input.sourceLine": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRsyslogInput).GetSourceLine()).ToDataRes(types.Int)
 	},
+	"rsyslog.input.boundRuleset": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogInput).GetBoundRuleset()).ToDataRes(types.Resource("rsyslog.ruleset"))
+	},
 	"rsyslog.action.type": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRsyslogAction).GetType()).ToDataRes(types.String)
 	},
@@ -9957,6 +9971,54 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"rsyslog.action.sourceLine": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRsyslogAction).GetSourceLine()).ToDataRes(types.Int)
+	},
+	"rsyslog.action.port": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogAction).GetPort()).ToDataRes(types.Int)
+	},
+	"rsyslog.action.resumeRetryCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogAction).GetResumeRetryCount()).ToDataRes(types.Int)
+	},
+	"rsyslog.action.streamDriver": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogAction).GetStreamDriver()).ToDataRes(types.String)
+	},
+	"rsyslog.action.streamDriverAuthMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogAction).GetStreamDriverAuthMode()).ToDataRes(types.String)
+	},
+	"rsyslog.action.fileCreateMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogAction).GetFileCreateMode()).ToDataRes(types.String)
+	},
+	"rsyslog.action.fileOwner": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogAction).GetFileOwner()).ToDataRes(types.String)
+	},
+	"rsyslog.action.fileGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogAction).GetFileGroup()).ToDataRes(types.String)
+	},
+	"rsyslog.action.condition": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogAction).GetCondition()).ToDataRes(types.String)
+	},
+	"rsyslog.action.isRemote": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogAction).GetIsRemote()).ToDataRes(types.Bool)
+	},
+	"rsyslog.action.rules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogAction).GetRules()).ToDataRes(types.Array(types.Resource("rsyslog.rule")))
+	},
+	"rsyslog.ruleset.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogRuleset).GetName()).ToDataRes(types.String)
+	},
+	"rsyslog.ruleset.parameters": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogRuleset).GetParameters()).ToDataRes(types.Dict)
+	},
+	"rsyslog.ruleset.sourceFile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogRuleset).GetSourceFile()).ToDataRes(types.String)
+	},
+	"rsyslog.ruleset.sourceLine": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogRuleset).GetSourceLine()).ToDataRes(types.Int)
+	},
+	"rsyslog.ruleset.actions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogRuleset).GetActions()).ToDataRes(types.Array(types.Resource("rsyslog.action")))
+	},
+	"rsyslog.ruleset.inputs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRsyslogRuleset).GetInputs()).ToDataRes(types.Array(types.Resource("rsyslog.input")))
 	},
 	"rsyslog.rule.facilities": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlRsyslogRule).GetFacilities()).ToDataRes(types.Array(types.String))
@@ -27544,6 +27606,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlRsyslogConf).Rules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"rsyslog.conf.globals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogConf).Globals, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"rsyslog.conf.rulesets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogConf).Rulesets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"rsyslog.module.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlRsyslogModule).__id, ok = v.Value.(string)
 		return
@@ -27600,6 +27670,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlRsyslogInput).SourceLine, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
+	"rsyslog.input.boundRuleset": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogInput).BoundRuleset, ok = plugin.RawToTValue[*mqlRsyslogRuleset](v.Value, v.Error)
+		return
+	},
 	"rsyslog.action.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlRsyslogAction).__id, ok = v.Value.(string)
 		return
@@ -27638,6 +27712,74 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"rsyslog.action.sourceLine": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlRsyslogAction).SourceLine, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"rsyslog.action.port": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogAction).Port, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"rsyslog.action.resumeRetryCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogAction).ResumeRetryCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"rsyslog.action.streamDriver": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogAction).StreamDriver, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"rsyslog.action.streamDriverAuthMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogAction).StreamDriverAuthMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"rsyslog.action.fileCreateMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogAction).FileCreateMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"rsyslog.action.fileOwner": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogAction).FileOwner, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"rsyslog.action.fileGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogAction).FileGroup, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"rsyslog.action.condition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogAction).Condition, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"rsyslog.action.isRemote": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogAction).IsRemote, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"rsyslog.action.rules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogAction).Rules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"rsyslog.ruleset.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogRuleset).__id, ok = v.Value.(string)
+		return
+	},
+	"rsyslog.ruleset.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogRuleset).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"rsyslog.ruleset.parameters": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogRuleset).Parameters, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"rsyslog.ruleset.sourceFile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogRuleset).SourceFile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"rsyslog.ruleset.sourceLine": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogRuleset).SourceLine, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"rsyslog.ruleset.actions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogRuleset).Actions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"rsyslog.ruleset.inputs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRsyslogRuleset).Inputs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"rsyslog.rule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -67898,6 +68040,8 @@ type mqlRsyslogConf struct {
 	Inputs   plugin.TValue[[]any]
 	Actions  plugin.TValue[[]any]
 	Rules    plugin.TValue[[]any]
+	Globals  plugin.TValue[map[string]any]
+	Rulesets plugin.TValue[[]any]
 }
 
 // createRsyslogConf creates a new instance of this resource
@@ -68081,6 +68225,38 @@ func (c *mqlRsyslogConf) GetRules() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlRsyslogConf) GetGlobals() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Globals, func() (map[string]any, error) {
+		vargFiles := c.GetFiles()
+		if vargFiles.Error != nil {
+			return nil, vargFiles.Error
+		}
+
+		return c.globals(vargFiles.Data)
+	})
+}
+
+func (c *mqlRsyslogConf) GetRulesets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Rulesets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("rsyslog.conf", c.__id, "rulesets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		vargFiles := c.GetFiles()
+		if vargFiles.Error != nil {
+			return nil, vargFiles.Error
+		}
+
+		return c.rulesets(vargFiles.Data)
+	})
+}
+
 // mqlRsyslogModule for the rsyslog.module resource
 type mqlRsyslogModule struct {
 	MqlRuntime *plugin.Runtime
@@ -68149,7 +68325,7 @@ func (c *mqlRsyslogModule) GetSourceLine() *plugin.TValue[int64] {
 type mqlRsyslogInput struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlRsyslogInputInternal it will be used here
+	mqlRsyslogInputInternal
 	Type             plugin.TValue[string]
 	Port             plugin.TValue[int64]
 	Address          plugin.TValue[string]
@@ -68158,6 +68334,7 @@ type mqlRsyslogInput struct {
 	Parameters       plugin.TValue[any]
 	SourceFile       plugin.TValue[string]
 	SourceLine       plugin.TValue[int64]
+	BoundRuleset     plugin.TValue[*mqlRsyslogRuleset]
 }
 
 // createRsyslogInput creates a new instance of this resource
@@ -68229,20 +68406,46 @@ func (c *mqlRsyslogInput) GetSourceLine() *plugin.TValue[int64] {
 	return &c.SourceLine
 }
 
+func (c *mqlRsyslogInput) GetBoundRuleset() *plugin.TValue[*mqlRsyslogRuleset] {
+	return plugin.GetOrCompute[*mqlRsyslogRuleset](&c.BoundRuleset, func() (*mqlRsyslogRuleset, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("rsyslog.input", c.__id, "boundRuleset")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlRsyslogRuleset), nil
+			}
+		}
+
+		return c.boundRuleset()
+	})
+}
+
 // mqlRsyslogAction for the rsyslog.action resource
 type mqlRsyslogAction struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlRsyslogActionInternal it will be used here
-	Type       plugin.TValue[string]
-	Target     plugin.TValue[string]
-	Protocol   plugin.TValue[string]
-	TlsEnabled plugin.TValue[bool]
-	Template   plugin.TValue[string]
-	Queue      plugin.TValue[any]
-	Parameters plugin.TValue[any]
-	SourceFile plugin.TValue[string]
-	SourceLine plugin.TValue[int64]
+	mqlRsyslogActionInternal
+	Type                 plugin.TValue[string]
+	Target               plugin.TValue[string]
+	Protocol             plugin.TValue[string]
+	TlsEnabled           plugin.TValue[bool]
+	Template             plugin.TValue[string]
+	Queue                plugin.TValue[any]
+	Parameters           plugin.TValue[any]
+	SourceFile           plugin.TValue[string]
+	SourceLine           plugin.TValue[int64]
+	Port                 plugin.TValue[int64]
+	ResumeRetryCount     plugin.TValue[int64]
+	StreamDriver         plugin.TValue[string]
+	StreamDriverAuthMode plugin.TValue[string]
+	FileCreateMode       plugin.TValue[string]
+	FileOwner            plugin.TValue[string]
+	FileGroup            plugin.TValue[string]
+	Condition            plugin.TValue[string]
+	IsRemote             plugin.TValue[bool]
+	Rules                plugin.TValue[[]any]
 }
 
 // createRsyslogAction creates a new instance of this resource
@@ -68316,6 +68519,156 @@ func (c *mqlRsyslogAction) GetSourceFile() *plugin.TValue[string] {
 
 func (c *mqlRsyslogAction) GetSourceLine() *plugin.TValue[int64] {
 	return &c.SourceLine
+}
+
+func (c *mqlRsyslogAction) GetPort() *plugin.TValue[int64] {
+	return &c.Port
+}
+
+func (c *mqlRsyslogAction) GetResumeRetryCount() *plugin.TValue[int64] {
+	return &c.ResumeRetryCount
+}
+
+func (c *mqlRsyslogAction) GetStreamDriver() *plugin.TValue[string] {
+	return &c.StreamDriver
+}
+
+func (c *mqlRsyslogAction) GetStreamDriverAuthMode() *plugin.TValue[string] {
+	return &c.StreamDriverAuthMode
+}
+
+func (c *mqlRsyslogAction) GetFileCreateMode() *plugin.TValue[string] {
+	return &c.FileCreateMode
+}
+
+func (c *mqlRsyslogAction) GetFileOwner() *plugin.TValue[string] {
+	return &c.FileOwner
+}
+
+func (c *mqlRsyslogAction) GetFileGroup() *plugin.TValue[string] {
+	return &c.FileGroup
+}
+
+func (c *mqlRsyslogAction) GetCondition() *plugin.TValue[string] {
+	return &c.Condition
+}
+
+func (c *mqlRsyslogAction) GetIsRemote() *plugin.TValue[bool] {
+	return &c.IsRemote
+}
+
+func (c *mqlRsyslogAction) GetRules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Rules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("rsyslog.action", c.__id, "rules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.rules()
+	})
+}
+
+// mqlRsyslogRuleset for the rsyslog.ruleset resource
+type mqlRsyslogRuleset struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlRsyslogRulesetInternal
+	Name       plugin.TValue[string]
+	Parameters plugin.TValue[any]
+	SourceFile plugin.TValue[string]
+	SourceLine plugin.TValue[int64]
+	Actions    plugin.TValue[[]any]
+	Inputs     plugin.TValue[[]any]
+}
+
+// createRsyslogRuleset creates a new instance of this resource
+func createRsyslogRuleset(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlRsyslogRuleset{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("rsyslog.ruleset", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlRsyslogRuleset) MqlName() string {
+	return "rsyslog.ruleset"
+}
+
+func (c *mqlRsyslogRuleset) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlRsyslogRuleset) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlRsyslogRuleset) GetParameters() *plugin.TValue[any] {
+	return &c.Parameters
+}
+
+func (c *mqlRsyslogRuleset) GetSourceFile() *plugin.TValue[string] {
+	return &c.SourceFile
+}
+
+func (c *mqlRsyslogRuleset) GetSourceLine() *plugin.TValue[int64] {
+	return &c.SourceLine
+}
+
+func (c *mqlRsyslogRuleset) GetActions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Actions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("rsyslog.ruleset", c.__id, "actions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.actions()
+	})
+}
+
+func (c *mqlRsyslogRuleset) GetInputs() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Inputs, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("rsyslog.ruleset", c.__id, "inputs")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.inputs()
+	})
 }
 
 // mqlRsyslogRule for the rsyslog.rule resource

@@ -22,6 +22,12 @@ const (
 	// legacy directive (`$InputTCPServerStreamDriverMode 1`). It is never
 	// surfaced as a resource; inputs of that module inherit its parameters.
 	rsyslogKindModuleDefaults
+	// rsyslogKindGlobal carries `global(...)` parameters or one legacy global
+	// directive, keyed by the `global()` parameter name.
+	rsyslogKindGlobal
+	// rsyslogKindRuleset is a `ruleset(name=...)` declaration or the first
+	// `$RuleSet <name>` for a name. The name is in `ruleset`.
+	rsyslogKindRuleset
 )
 
 // rsyslogEntry is the unified intermediate representation produced by the
@@ -57,6 +63,27 @@ type rsyslogEntry struct {
 	// not be parsed into an action.
 	actionOffset int
 
+	// action context
+	condition string
+	// legacy is set for an action built from a legacy target token rather
+	// than an `action(...)` statement.
+	legacy bool
+	// inheritedStreamDriver and inheritedAuthMode are the legacy
+	// `$ActionSendStreamDriver` / `...AuthMode` in effect for a modern omfwd
+	// action, which rsyslog applies when the action sets neither.
+	inheritedStreamDriver string
+	inheritedAuthMode     string
+	// fileSettings are the legacy `$File*` settings in effect for a legacy
+	// file target, keyed filecreatemode / fileowner / filegroup.
+	fileSettings map[string]string
+
+	// effective action settings, filled once every file is parsed
+	fileCreateMode       string
+	fileOwner            string
+	fileGroup            string
+	streamDriver         string
+	streamDriverAuthMode string
+
 	// id is the resource cache key, assigned once all files are parsed.
 	id string
 }
@@ -72,13 +99,15 @@ type rsyslogLine struct {
 
 // rsyslogBlockKeywords names the modern RainerScript top-level keywords
 // whose `keyword(...)` form may span multiple lines and needs coalescing
-// before the per-keyword parser runs. The set is intentionally narrow —
-// every keyword listed here participates in module/input/action parsing.
+// before the per-keyword parser runs. The set is intentionally narrow:
+// every keyword listed here is parsed as a statement or an include.
 var rsyslogBlockKeywords = map[string]bool{
-	"module": true,
-	"input":  true,
-	"action": true,
-	"global": true,
+	"module":  true,
+	"input":   true,
+	"action":  true,
+	"global":  true,
+	"ruleset": true,
+	"include": true,
 }
 
 // coalesceRsyslogLines walks a single file's content, strips comments,
@@ -264,8 +293,19 @@ var rsyslogPropertyFilter = regexp.MustCompile(`^:([A-Za-z0-9_$!.\-]+)\s*,\s*(!?
 // runs for the same filter as the statement above it.
 var rsyslogContinuation = regexp.MustCompile(`^&\s*(.*)$`)
 
+// rsyslogRulesetStmt matches a coalesced `ruleset(...)` declaration and
+// whatever follows it on the same line (usually the opening `{`).
+var rsyslogRulesetStmt = regexp.MustCompile(`^ruleset\s*\((.*)\)\s*(.*)$`)
+
+// rsyslogUDPServerRun matches imudp's legacy `$UDPServerRun <port>`.
+var rsyslogUDPServerRun = regexp.MustCompile(`(?i)^\$UDPServerRun\s+(\d+)\s*$`)
+
 // rsyslogLegacyDirective splits a legacy `$Directive value` line.
 var rsyslogLegacyDirective = regexp.MustCompile(`^\$(\w+)(?:\s+(.*))?$`)
+
+// rsyslogDefaultRuleset is the ruleset that statements outside any
+// `ruleset()` block, and inputs without a `ruleset=` binding, belong to.
+const rsyslogDefaultRuleset = "RSYSLOG_DefaultRuleset"
 
 // rsyslogSendStreamDriverKeys maps the legacy `$ActionSendStreamDriver*`
 // directives onto the omfwd action parameter names they stand for.
@@ -285,47 +325,167 @@ var rsyslogInputStreamDriverKeys = map[string]string{
 	"inputtcpserverstreamdriverpermittedpeer": "permittedpeer",
 }
 
-// rsyslogFileParser carries the legacy directive state that rsyslog applies
-// to later statements in the same file:
+// rsyslogInputBindRulesetKeys maps the legacy `$Input*ServerBindRuleset`
+// directives onto the input module whose later listeners they bind.
+var rsyslogInputBindRulesetKeys = map[string]string{
+	"inputtcpserverbindruleset":  "imtcp",
+	"inputptcpserverbindruleset": "imptcp",
+	"inputudpserverbindruleset":  "imudp",
+	"inputrelpserverbindruleset": "imrelp",
+}
+
+// rsyslogLegacyGlobalKeys maps legacy global directives onto the `global()`
+// parameter each one sets, so both forms land under one key in
+// `rsyslog.conf.globals`.
+var rsyslogLegacyGlobalKeys = map[string]string{
+	"workdirectory":                      "workdirectory",
+	"defaultnetstreamdriver":             "defaultnetstreamdriver",
+	"defaultnetstreamdrivercafile":       "defaultnetstreamdrivercafile",
+	"defaultnetstreamdrivercrlfile":      "defaultnetstreamdrivercrlfile",
+	"defaultnetstreamdrivercertfile":     "defaultnetstreamdrivercertfile",
+	"defaultnetstreamdriverkeyfile":      "defaultnetstreamdriverkeyfile",
+	"netstreamdrivercaextrafiles":        "netstreamdrivercaextrafiles",
+	"defaultopensslengine":               "defaultopensslengine",
+	"localhostname":                      "localhostname",
+	"preservefqdn":                       "preservefqdn",
+	"maxmessagesize":                     "maxmessagesize",
+	"dropmsgswithmaliciousdnsptrrecords": "dropmsgswithmaliciousdnsptrrecords",
+	"umask":                              "umask",
+	"privdroptouser":                     "privdrop.user.name",
+	"privdroptouserid":                   "privdrop.user.id",
+	"privdroptogroup":                    "privdrop.group.name",
+	"privdroptogroupid":                  "privdrop.group.id",
+	"controlcharacterescapeprefix":       "parser.controlcharacterescapeprefix",
+	"droptrailinglfonreception":          "parser.droptrailinglfonreception",
+	"escapecontrolcharactersonreceive":   "parser.escapecontrolcharactersonreceive",
+	"escape8bitcharactersonreceive":      "parser.escape8bitcharactersonreceive",
+	"escapecontrolcharactertab":          "parser.escapecontrolcharactertab",
+	"spacelfonreceive":                   "parser.spacelfonreceive",
+}
+
+// rsyslogBlock is one open `{` scope: an `if`/`else` branch, a `ruleset()`
+// body, or a brace pair the parser does not interpret.
+type rsyslogBlock struct {
+	condition string
+	ruleset   string
+}
+
+// rsyslogParser carries the state rsyslog applies to later statements while
+// it reads a configuration top to bottom, following includes where they
+// appear:
 //
 //   - `$ActionQueue*` and `$ActionResumeRetryCount` apply to the next action
 //     only. rsyslog resets them once any action is defined.
-//   - `$ActionSendStreamDriver*` apply to every later legacy TCP forward
-//     (`@@host`) until `$ResetConfigVariables`.
-//
-// State does not carry across files. rsyslog reads an included fragment at
-// the point of its include, which the flat file list does not preserve, so a
-// directive set in one file is not applied to actions in another.
-type rsyslogFileParser struct {
+//   - `$ActionSendStreamDriver*` apply to every later TCP forward until
+//     `$ResetConfigVariables`. A modern omfwd action picks up the driver
+//     name and auth mode, but not the mode.
+//   - `$FileCreateMode`, `$FileOwner`, and `$FileGroup` apply to every later
+//     legacy file target until `$ResetConfigVariables`. Modern omfile
+//     actions ignore them.
+//   - `$RuleSet` and `ruleset() { }` blocks place later statements in a
+//     ruleset, and `if ... then { }` blocks give them a condition.
+//   - `$Input*ServerBindRuleset` binds later legacy listeners of a module.
+type rsyslogParser struct {
 	nextQueue        map[string]any
 	nextParams       map[string]any
 	sendStreamDriver map[string]any
+	legacyFile       map[string]string
+	legacyRuleset    string
+	bindRuleset      map[string]string
+	udpServerAddress string
+	blocks           []rsyslogBlock
+	// pendingBlock is opened by the next `{` line, for a `ruleset(...)` or
+	// `if ... then` whose brace sits on the following line.
+	pendingBlock  *rsyslogBlock
+	lastCondition string
+
+	// include, when set, is called for every include directive with the
+	// pattern and the file it appears in; it parses the matched files in
+	// place through parseFile.
+	include func(pattern, sourceFile string)
+	out     []rsyslogEntry
 }
 
-func newRsyslogFileParser() *rsyslogFileParser {
-	p := &rsyslogFileParser{sendStreamDriver: map[string]any{}}
-	p.resetPerAction()
+func newRsyslogParser() *rsyslogParser {
+	p := &rsyslogParser{}
+	p.resetConfigVariables()
+	p.bindRuleset = map[string]string{}
 	return p
 }
 
+// resetConfigVariables mirrors `$ResetConfigVariables`.
+func (p *rsyslogParser) resetConfigVariables() {
+	p.sendStreamDriver = map[string]any{}
+	p.legacyFile = map[string]string{}
+	p.resetPerAction()
+}
+
 // resetPerAction drops the settings that apply to the next action only.
-func (p *rsyslogFileParser) resetPerAction() {
+func (p *rsyslogParser) resetPerAction() {
 	p.nextQueue = map[string]any{}
 	p.nextParams = map[string]any{}
 }
 
 // parseRsyslogFile produces a unified list of typed entries from one
-// rsyslog config fragment. Source attribution (file path + 1-indexed
-// line number) is preserved on every entry so callers can build
-// rsyslog.module / .input / .action / .rule resources that point back
-// at the originating fragment.
+// rsyslog config fragment, without following its includes. Source
+// attribution (file path + 1-indexed line number) is preserved on every
+// entry so callers can build rsyslog.module / .input / .action / .rule
+// resources that point back at the originating fragment.
 func parseRsyslogFile(sourceFile, content string) []rsyslogEntry {
-	p := newRsyslogFileParser()
-	var out []rsyslogEntry
+	p := newRsyslogParser()
+	p.parseFile(sourceFile, content)
+	return p.out
+}
+
+// parseFile parses one file into p.out, handing include directives to
+// p.include so the included files are read at the point of their include.
+func (p *rsyslogParser) parseFile(sourceFile, content string) {
 	for _, l := range coalesceRsyslogLines(sourceFile, content) {
-		out = append(out, p.statement(l)...)
+		if p.include != nil {
+			if patterns := parseRsyslogIncludes(l.text); len(patterns) > 0 {
+				for _, pattern := range patterns {
+					p.include(pattern, sourceFile)
+				}
+				continue
+			}
+		}
+		p.out = append(p.out, p.statement(l)...)
 	}
-	return out
+}
+
+// currentRuleset is the ruleset a statement at this point belongs to: the
+// innermost `ruleset()` block, else the last `$RuleSet`, else the default.
+func (p *rsyslogParser) currentRuleset() string {
+	for i := len(p.blocks) - 1; i >= 0; i-- {
+		if p.blocks[i].ruleset != "" {
+			return p.blocks[i].ruleset
+		}
+	}
+	if p.legacyRuleset != "" {
+		return p.legacyRuleset
+	}
+	return rsyslogDefaultRuleset
+}
+
+// withBlockConditions prefixes a statement's own filter with the conditions
+// of the `if` blocks enclosing it.
+func (p *rsyslogParser) withBlockConditions(own string) string {
+	var parts []string
+	for _, b := range p.blocks {
+		if b.condition != "" {
+			parts = append(parts, b.condition)
+		}
+	}
+	if own != "" {
+		parts = append(parts, own)
+	}
+	switch len(parts) {
+	case 0:
+		return ""
+	case 1:
+		return parts[0]
+	}
+	return "(" + strings.Join(parts, ") and (") + ")"
 }
 
 // statement classifies a single (already coalesced) logical line and emits
@@ -333,8 +493,21 @@ func parseRsyslogFile(sourceFile, content string) []rsyslogEntry {
 // multi-selector rules ("*.info;mail.none /path") fan out to one entry per
 // selector so each `facility.severity → target` pair is independently
 // queryable.
-func (p *rsyslogFileParser) statement(l rsyslogLine) []rsyslogEntry {
+func (p *rsyslogParser) statement(l rsyslogLine) []rsyslogEntry {
 	line := l.text
+
+	// Block structure first: a closing brace may carry an `else` branch.
+	if strings.HasPrefix(line, "}") {
+		return p.closeBlock(l)
+	}
+	if strings.HasPrefix(line, "{") {
+		b := rsyslogBlock{}
+		if p.pendingBlock != nil {
+			b = *p.pendingBlock
+			p.pendingBlock = nil
+		}
+		return p.openBlock(l, b, strings.TrimSpace(line[1:]))
+	}
 
 	// Legacy $ModLoad first — cheapest and most common.
 	if m := rsyslogModLoad.FindStringSubmatch(line); m != nil {
@@ -349,18 +522,38 @@ func (p *rsyslogFileParser) statement(l rsyslogLine) []rsyslogEntry {
 
 	// Legacy $InputXxxRun network listeners. These come in pairs in real
 	// configs ($InputTCPServerRun 514, $InputUDPServerBindRuleset name).
-	// We surface the *Run directives as inputs; supporting directives
-	// (BindRuleset, etc.) are not modeled standalone.
+	// We surface the *Run directives as inputs; the supporting directives
+	// feed the listener's settings.
 	if m := rsyslogInputDirectiveLegacy.FindStringSubmatch(line); m != nil {
 		if input, ok := legacyInputFromDirective(m[1], strings.TrimSpace(m[2])); ok {
 			input.sourceFile = l.sourceFile
 			input.sourceLine = l.sourceLine
+			input.ruleset = p.bindRuleset[input.moduleType]
 			return []rsyslogEntry{input}
 		}
 	}
 
+	// imudp's legacy listener has no `$Input` prefix.
+	if m := rsyslogUDPServerRun.FindStringSubmatch(line); m != nil {
+		port, _ := strconv.ParseInt(m[1], 10, 64)
+		return []rsyslogEntry{{
+			kind:       rsyslogKindInput,
+			sourceFile: l.sourceFile,
+			sourceLine: l.sourceLine,
+			moduleType: "imudp",
+			port:       port,
+			address:    p.udpServerAddress,
+			ruleset:    p.bindRuleset["imudp"],
+			parameters: map[string]any{},
+		}}
+	}
+
 	if m := rsyslogLegacyDirective.FindStringSubmatch(line); m != nil {
 		return p.legacyDirective(l, strings.ToLower(m[1]), strings.TrimSpace(m[2]))
+	}
+
+	if m := rsyslogRulesetStmt.FindStringSubmatch(line); m != nil {
+		return p.rulesetDecl(l, parseKVArgs(m[1]), strings.TrimSpace(m[2]))
 	}
 
 	// Modern keyword(...) statements: module / input / action / global.
@@ -373,22 +566,30 @@ func (p *rsyslogFileParser) statement(l rsyslogLine) []rsyslogEntry {
 		case "input":
 			return []rsyslogEntry{inputFromModern(l, params)}
 		case "action":
-			p.resetPerAction()
-			return []rsyslogEntry{actionFromModern(l, params)}
-			// `global` is parsed elsewhere; nothing to emit as a typed entry here.
+			p.lastCondition = p.withBlockConditions("")
+			return p.stampAction(actionFromModern(l, params), p.lastCondition, false)
+		case "global":
+			return []rsyslogEntry{{
+				kind:       rsyslogKindGlobal,
+				sourceFile: l.sourceFile,
+				sourceLine: l.sourceLine,
+				parameters: params,
+			}}
 		}
 	}
 
 	// Filters without a selector: the action is surfaced, but there is no
 	// facility/severity rule to attach it to.
 	if m := rsyslogIfThen.FindStringSubmatch(line); m != nil {
-		return p.actionsFor(l, m[2])
+		return p.ifThen(l, strings.TrimSpace(m[1]), strings.TrimSpace(m[2]))
 	}
 	if m := rsyslogPropertyFilter.FindStringSubmatch(line); m != nil {
-		return p.actionsFor(l, m[3])
+		cond := strings.TrimSpace(strings.TrimSuffix(line, m[3]))
+		p.lastCondition = p.withBlockConditions(cond)
+		return p.actionsFor(l, m[3], p.lastCondition)
 	}
 	if m := rsyslogContinuation.FindStringSubmatch(line); m != nil {
-		return p.actionsFor(l, m[1])
+		return p.actionsFor(l, m[1], p.lastCondition)
 	}
 
 	// Legacy selector rule: "<facility>.<severity>[;...] <target>".
@@ -411,8 +612,12 @@ func (p *rsyslogFileParser) statement(l rsyslogLine) []rsyslogEntry {
 		for i := range rules {
 			rules[i].sourceFile = l.sourceFile
 			rules[i].sourceLine = l.sourceLine
+			rules[i].ruleset = p.currentRuleset()
 		}
-		actions := p.actionsFor(l, target)
+		// The selector is the rule's own filter; enclosing `if` blocks
+		// still narrow what reaches it.
+		p.lastCondition = p.withBlockConditions("")
+		actions := p.actionsFor(l, target, p.lastCondition)
 		if len(actions) > 0 {
 			// The action follows the rules in the returned list.
 			for i := range rules {
@@ -425,14 +630,104 @@ func (p *rsyslogFileParser) statement(l rsyslogLine) []rsyslogEntry {
 	return nil
 }
 
+// openBlock pushes a `{` scope. Text after the brace on the same line is
+// parsed as a statement inside the block.
+func (p *rsyslogParser) openBlock(l rsyslogLine, b rsyslogBlock, rest string) []rsyslogEntry {
+	p.blocks = append(p.blocks, b)
+	if rest == "" {
+		return nil
+	}
+	return p.statement(rsyslogLine{text: rest, sourceFile: l.sourceFile, sourceLine: l.sourceLine})
+}
+
+// closeBlock pops the innermost `{` scope. `} else {`, `} else if ... then`,
+// and `} else <action>` continue with the opposite branch.
+func (p *rsyslogParser) closeBlock(l rsyslogLine) []rsyslogEntry {
+	var closed rsyslogBlock
+	if n := len(p.blocks); n > 0 {
+		closed = p.blocks[n-1]
+		p.blocks = p.blocks[:n-1]
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(l.text, "}"))
+	if !strings.HasPrefix(rest, "else") {
+		if rest == "" {
+			return nil
+		}
+		return p.statement(rsyslogLine{text: rest, sourceFile: l.sourceFile, sourceLine: l.sourceLine})
+	}
+
+	rest = strings.TrimSpace(strings.TrimPrefix(rest, "else"))
+	elseCond := ""
+	if closed.condition != "" {
+		elseCond = "not (" + closed.condition + ")"
+	}
+	switch {
+	case rsyslogIfThen.MatchString(rest):
+		m := rsyslogIfThen.FindStringSubmatch(rest)
+		return p.ifThen(l, joinRsyslogConditions(elseCond, strings.TrimSpace(m[1])), strings.TrimSpace(m[2]))
+	case strings.HasPrefix(rest, "{"):
+		return p.openBlock(l, rsyslogBlock{condition: elseCond}, strings.TrimSpace(rest[1:]))
+	case rest == "":
+		p.pendingBlock = &rsyslogBlock{condition: elseCond}
+		return nil
+	default:
+		p.lastCondition = p.withBlockConditions(elseCond)
+		return p.actionsFor(l, rest, p.lastCondition)
+	}
+}
+
+// ifThen handles `if <cond> then <rest>`: an action on the same line, a
+// block opening on this line or the next, or a one-line `{ ... }` block.
+func (p *rsyslogParser) ifThen(l rsyslogLine, cond, rest string) []rsyslogEntry {
+	if rest == "" {
+		p.pendingBlock = &rsyslogBlock{condition: cond}
+		return nil
+	}
+	if strings.HasPrefix(rest, "{") && !strings.HasSuffix(rest, "}") {
+		return p.openBlock(l, rsyslogBlock{condition: cond}, strings.TrimSpace(rest[1:]))
+	}
+	p.lastCondition = p.withBlockConditions(cond)
+	return p.actionsFor(l, rest, p.lastCondition)
+}
+
+func joinRsyslogConditions(a, b string) string {
+	switch {
+	case a == "":
+		return b
+	case b == "":
+		return a
+	}
+	return "(" + a + ") and (" + b + ")"
+}
+
+// rulesetDecl records a `ruleset(name="...")` declaration and opens its
+// block when the brace is on the same line.
+func (p *rsyslogParser) rulesetDecl(l rsyslogLine, params map[string]any, rest string) []rsyslogEntry {
+	name, _ := params["name"].(string)
+	decl := rsyslogEntry{
+		kind:       rsyslogKindRuleset,
+		sourceFile: l.sourceFile,
+		sourceLine: l.sourceLine,
+		ruleset:    name,
+		parameters: copyParamsWithout(params, "name"),
+	}
+	b := rsyslogBlock{ruleset: name}
+	switch {
+	case strings.HasPrefix(rest, "{"):
+		return append([]rsyslogEntry{decl}, p.openBlock(l, b, strings.TrimSpace(rest[1:]))...)
+	case rest == "":
+		p.pendingBlock = &b
+	}
+	return []rsyslogEntry{decl}
+}
+
 // legacyDirective records the `$Directive value` lines that change how later
 // statements behave. Directives that only matter at the configuration level
 // are left to `rsyslog.conf.params`.
-func (p *rsyslogFileParser) legacyDirective(l rsyslogLine, name, value string) []rsyslogEntry {
+func (p *rsyslogParser) legacyDirective(l rsyslogLine, name, value string) []rsyslogEntry {
 	switch {
 	case name == "resetconfigvariables":
-		p.sendStreamDriver = map[string]any{}
-		p.resetPerAction()
+		p.resetConfigVariables()
 	case name == "actionresumeretrycount":
 		p.nextParams["action.resumeretrycount"] = value
 	case strings.HasPrefix(name, "actionqueue"):
@@ -440,6 +735,25 @@ func (p *rsyslogFileParser) legacyDirective(l rsyslogLine, name, value string) [
 		p.nextQueue[strings.TrimPrefix(name, "actionqueue")] = value
 	case rsyslogSendStreamDriverKeys[name] != "":
 		p.sendStreamDriver[rsyslogSendStreamDriverKeys[name]] = value
+	case name == "filecreatemode" || name == "fileowner" || name == "fileownernum" ||
+		name == "filegroup" || name == "filegroupnum":
+		p.legacyFile[strings.TrimSuffix(name, "num")] = value
+	case name == "ruleset":
+		p.legacyRuleset = value
+		if value == "" || value == rsyslogDefaultRuleset {
+			return nil
+		}
+		return []rsyslogEntry{{
+			kind:       rsyslogKindRuleset,
+			sourceFile: l.sourceFile,
+			sourceLine: l.sourceLine,
+			ruleset:    value,
+			parameters: map[string]any{},
+		}}
+	case name == "udpserveraddress":
+		p.udpServerAddress = value
+	case rsyslogInputBindRulesetKeys[name] != "":
+		p.bindRuleset[rsyslogInputBindRulesetKeys[name]] = value
 	case rsyslogInputStreamDriverKeys[name] != "":
 		return []rsyslogEntry{{
 			kind:       rsyslogKindModuleDefaults,
@@ -447,6 +761,13 @@ func (p *rsyslogFileParser) legacyDirective(l rsyslogLine, name, value string) [
 			sourceLine: l.sourceLine,
 			moduleName: "imtcp",
 			parameters: map[string]any{rsyslogInputStreamDriverKeys[name]: value},
+		}}
+	case rsyslogLegacyGlobalKeys[name] != "":
+		return []rsyslogEntry{{
+			kind:       rsyslogKindGlobal,
+			sourceFile: l.sourceFile,
+			sourceLine: l.sourceLine,
+			parameters: map[string]any{rsyslogLegacyGlobalKeys[name]: value},
 		}}
 	}
 	return nil
@@ -456,30 +777,43 @@ func (p *rsyslogFileParser) legacyDirective(l rsyslogLine, name, value string) [
 // `action(...)` statement, a legacy target token (`/var/log/x`, `@@host:514`,
 // `:omusrmsg:*`, `~`, `stop`), or a `{ ... }` block holding one of those on
 // the same line. Anything else yields no action rather than a guessed one.
-func (p *rsyslogFileParser) actionsFor(l rsyslogLine, text string) []rsyslogEntry {
+func (p *rsyslogParser) actionsFor(l rsyslogLine, text, condition string) []rsyslogEntry {
 	text = strings.TrimSpace(text)
 	if strings.HasPrefix(text, "{") {
 		text = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(text[1:]), "}"))
 	}
 
-	var e rsyslogEntry
 	switch m := rsyslogActionStmt.FindStringSubmatch(text); {
 	case m != nil:
-		e = actionFromModern(l, parseKVArgs(m[1]))
+		return p.stampAction(actionFromModern(l, parseKVArgs(m[1])), condition, false)
 	case text != "" && !strings.ContainsAny(text, " \t"):
-		e = p.legacyAction(text)
+		e := p.legacyAction(text)
 		e.sourceFile = l.sourceFile
 		e.sourceLine = l.sourceLine
+		return p.stampAction(e, condition, true)
 	default:
 		return nil
+	}
+}
+
+// stampAction attaches the parser's context to an action: its ruleset and
+// condition, and for a modern omfwd action the legacy stream driver name and
+// auth mode it inherits. It consumes the next-action settings.
+func (p *rsyslogParser) stampAction(e rsyslogEntry, condition string, legacy bool) []rsyslogEntry {
+	e.condition = condition
+	e.ruleset = p.currentRuleset()
+	e.legacy = legacy
+	if !legacy && e.moduleType == "omfwd" {
+		e.inheritedStreamDriver, _ = p.sendStreamDriver["streamdriver"].(string)
+		e.inheritedAuthMode, _ = p.sendStreamDriver["streamdriverauthmode"].(string)
 	}
 	p.resetPerAction()
 	return []rsyslogEntry{e}
 }
 
 // legacyAction builds the action behind a legacy target token, applying the
-// `$Action*` directive state that precedes it.
-func (p *rsyslogFileParser) legacyAction(token string) rsyslogEntry {
+// `$Action*` and `$File*` directive state that precedes it.
+func (p *rsyslogParser) legacyAction(token string) rsyslogEntry {
 	target, template, _ := strings.Cut(token, ";")
 	moduleType, protocol := classifySelectorTarget(target)
 
@@ -499,16 +833,24 @@ func (p *rsyslogFileParser) legacyAction(token string) rsyslogEntry {
 		}
 		tlsEnabled = p.sendStreamDriver["streamdrivermode"] == "1"
 	}
+	var fileSettings map[string]string
+	if moduleType == "omfile" {
+		fileSettings = map[string]string{}
+		for k, v := range p.legacyFile {
+			fileSettings[k] = v
+		}
+	}
 
 	return rsyslogEntry{
-		kind:       rsyslogKindAction,
-		moduleType: moduleType,
-		target:     legacyTargetValue(moduleType, target),
-		protocol:   protocol,
-		tlsEnabled: tlsEnabled,
-		template:   strings.TrimSpace(template),
-		queue:      queue,
-		parameters: params,
+		kind:         rsyslogKindAction,
+		moduleType:   moduleType,
+		target:       legacyTargetValue(moduleType, target),
+		protocol:     protocol,
+		tlsEnabled:   tlsEnabled,
+		template:     strings.TrimSpace(template),
+		queue:        queue,
+		parameters:   params,
+		fileSettings: fileSettings,
 	}
 }
 
@@ -544,54 +886,194 @@ func legacyTargetValue(moduleType, target string) string {
 	}
 }
 
-// applyModuleDefaults copies module-wide stream driver settings onto the
-// inputs of that module that don't set their own. An imtcp listener takes
-// its TLS mode from `module(load="imtcp" StreamDriver.Mode="1")` or the
-// legacy `$InputTCPServerStreamDriverMode 1` unless the input overrides it.
-// Module settings are configuration-wide in rsyslog, so this runs across
-// every parsed file rather than per file.
-func applyModuleDefaults(entries []rsyslogEntry) {
-	defaults := map[string]map[string]any{}
+// rsyslogOmfileModules names the module that holds omfile's module-wide
+// defaults in `module(load=...)`.
+var rsyslogOmfileModules = map[string]bool{"builtin:omfile": true, "omfile": true}
+
+// resolveConfigDefaults applies the configuration-wide settings that rsyslog
+// resolves regardless of where they appear:
+//
+//   - imtcp inputs take `StreamDriver.*` and `PermittedPeer` from
+//     `module(load="imtcp")` or `$InputTCPServerStreamDriver*` unless the
+//     input sets its own.
+//   - modern omfile actions take `fileCreateMode`, `fileOwner`, and
+//     `fileGroup` from `module(load="builtin:omfile")`.
+//   - TCP forwards without a stream driver of their own use the global
+//     `DefaultNetstreamDriver`.
+func resolveConfigDefaults(entries []rsyslogEntry) {
+	moduleParams := map[string]map[string]any{}
+	globals := map[string]any{}
 	for _, e := range entries {
-		if e.kind != rsyslogKindModule && e.kind != rsyslogKindModuleDefaults {
-			continue
-		}
-		name := strings.ToLower(e.moduleName)
-		for k, v := range e.parameters {
-			if !strings.HasPrefix(k, "streamdriver.") && k != "permittedpeer" {
-				continue
+		switch e.kind {
+		case rsyslogKindModule, rsyslogKindModuleDefaults:
+			name := strings.ToLower(e.moduleName)
+			if moduleParams[name] == nil {
+				moduleParams[name] = map[string]any{}
 			}
-			if defaults[name] == nil {
-				defaults[name] = map[string]any{}
+			for k, v := range e.parameters {
+				moduleParams[name][k] = v
 			}
-			defaults[name][k] = v
+		case rsyslogKindGlobal:
+			for k, v := range e.parameters {
+				globals[k] = v
+			}
 		}
 	}
-	if len(defaults) == 0 {
-		return
+	omfileDefaults := map[string]any{}
+	for name := range rsyslogOmfileModules {
+		for k, v := range moduleParams[name] {
+			omfileDefaults[k] = v
+		}
 	}
+	defaultDriver, _ := globals["defaultnetstreamdriver"].(string)
 
 	for i := range entries {
 		e := &entries[i]
-		if e.kind != rsyslogKindInput {
-			continue
-		}
-		d := defaults[strings.ToLower(e.moduleType)]
-		if len(d) == 0 {
-			continue
-		}
-		if e.parameters == nil {
-			e.parameters = map[string]any{}
-		}
-		for k, v := range d {
-			if _, ok := e.parameters[k]; !ok {
-				e.parameters[k] = v
-			}
-		}
-		if e.streamDriverMode == "" {
-			e.streamDriverMode = paramString(e.parameters, "streamdriver.mode", "streamdrivermode")
+		switch e.kind {
+		case rsyslogKindInput:
+			inheritInputStreamDriver(e, moduleParams[strings.ToLower(e.moduleType)])
+		case rsyslogKindAction:
+			resolveActionDefaults(e, omfileDefaults, defaultDriver)
 		}
 	}
+}
+
+func inheritInputStreamDriver(e *rsyslogEntry, module map[string]any) {
+	if len(module) == 0 {
+		return
+	}
+	if e.parameters == nil {
+		e.parameters = map[string]any{}
+	}
+	for k, v := range module {
+		if !strings.HasPrefix(k, "streamdriver.") && k != "permittedpeer" {
+			continue
+		}
+		if _, ok := e.parameters[k]; !ok {
+			e.parameters[k] = v
+		}
+	}
+	if e.streamDriverMode == "" {
+		e.streamDriverMode = paramString(e.parameters, "streamdriver.mode", "streamdrivermode")
+	}
+}
+
+// rsyslogDefaultFileCreateMode is omfile's file creation mode when nothing
+// sets one.
+const rsyslogDefaultFileCreateMode = "0644"
+
+func resolveActionDefaults(e *rsyslogEntry, omfileDefaults map[string]any, defaultDriver string) {
+	switch e.moduleType {
+	case "omfile":
+		settings := map[string]string{}
+		if e.legacy {
+			settings = e.fileSettings
+		} else {
+			for _, k := range []string{"filecreatemode", "fileowner", "filegroup"} {
+				if v := paramString(e.parameters, k, k+"num"); v != "" {
+					settings[k] = v
+				} else if v := paramString(omfileDefaults, k, k+"num"); v != "" {
+					settings[k] = v
+				}
+			}
+		}
+		e.fileCreateMode = settings["filecreatemode"]
+		if e.fileCreateMode == "" {
+			e.fileCreateMode = rsyslogDefaultFileCreateMode
+		}
+		e.fileOwner = settings["fileowner"]
+		e.fileGroup = settings["filegroup"]
+	case "omfwd":
+		if e.protocol != "tcp" {
+			return
+		}
+		e.streamDriver = paramString(e.parameters, "streamdriver", "streamdriver.name")
+		if e.streamDriver == "" {
+			e.streamDriver = e.inheritedStreamDriver
+		}
+		if e.streamDriver == "" {
+			e.streamDriver = defaultDriver
+		}
+		e.streamDriverAuthMode = paramString(e.parameters, "streamdriverauthmode", "streamdriver.authmode")
+		if e.streamDriverAuthMode == "" {
+			e.streamDriverAuthMode = e.inheritedAuthMode
+		}
+	}
+}
+
+// rsyslogRemoteOutputs names the output modules that deliver messages to
+// another host over the network.
+var rsyslogRemoteOutputs = map[string]bool{
+	"omfwd":            true,
+	"omrelp":           true,
+	"omhttp":           true,
+	"omkafka":          true,
+	"omelasticsearch":  true,
+	"omgssapi":         true,
+	"omudpspoof":       true,
+	"omamqp1":          true,
+	"omrabbitmq":       true,
+	"omazureeventhubs": true,
+	"omclickhouse":     true,
+	"omhiredis":        true,
+	"ommongodb":        true,
+	"ommysql":          true,
+	"ompgsql":          true,
+	"omlibdbi":         true,
+	"omsnmp":           true,
+	"ommail":           true,
+}
+
+// rsyslogActionPort is the port a network action connects to. omfwd and
+// omrelp default to 514; an action that is not a network action reports 0.
+func rsyslogActionPort(e rsyslogEntry) int64 {
+	if _, ok := e.parameters["port"]; ok {
+		return parseIntParam(e.parameters, "port")
+	}
+	if e.legacy {
+		if _, port, ok := splitRsyslogHostPort(e.target); ok {
+			n, err := strconv.ParseInt(port, 10, 64)
+			if err == nil {
+				return n
+			}
+		}
+	}
+	if e.moduleType == "omfwd" || e.moduleType == "omrelp" {
+		return 514
+	}
+	return 0
+}
+
+// splitRsyslogHostPort splits `host:port` or `[v6addr]:port`. A bare IPv6
+// address without brackets has no port.
+func splitRsyslogHostPort(s string) (host, port string, ok bool) {
+	if strings.HasPrefix(s, "[") {
+		end := strings.Index(s, "]")
+		if end < 0 || !strings.HasPrefix(s[end+1:], ":") {
+			return s, "", false
+		}
+		return s[1:end], s[end+2:], true
+	}
+	if strings.Count(s, ":") != 1 {
+		return s, "", false
+	}
+	host, port, _ = strings.Cut(s, ":")
+	return host, port, port != ""
+}
+
+// rsyslogResumeRetryCount is the action's configured retry count, or nil
+// when the action does not set one (rsyslog then retries 0 times).
+func rsyslogResumeRetryCount(e rsyslogEntry) *int64 {
+	v, ok := e.parameters["action.resumeretrycount"]
+	if !ok {
+		return nil
+	}
+	s, _ := v.(string)
+	n, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	if err != nil {
+		return nil
+	}
+	return &n
 }
 
 // moduleFromModern builds a module entry from a coalesced `module(...)` call.
@@ -642,11 +1124,11 @@ func inputFromModern(l rsyslogLine, params map[string]any) rsyslogEntry {
 // into a separate dict so audits can `.where(queue["type"] == "linkedlist")`.
 func actionFromModern(l rsyslogLine, params map[string]any) rsyslogEntry {
 	typ, _ := params["type"].(string)
-	target, _ := params["target"].(string)
-	if target == "" {
-		target, _ = params["file"].(string) // omfile uses `file=`
+	target := paramString(params, "target", "file", "users") // omfile uses `file=`, omusrmsg `users=`
+	protocol := strings.ToLower(paramString(params, "protocol"))
+	if protocol == "" && typ == "omfwd" {
+		protocol = "udp" // omfwd's default transport
 	}
-	protocol, _ := params["protocol"].(string)
 	template, _ := params["template"].(string)
 	streamDriverMode := paramString(params, "streamdriver.mode", "streamdrivermode")
 	queue := collectPrefix(params, "queue.")

@@ -666,3 +666,151 @@ func TestRsyslogConf_SelectorModernAction(t *testing.T) {
 		assert.Empty(t, udp.StreamDriverMode.Data)
 	})
 }
+
+// actionsByTarget indexes rsyslog.conf.actions by target.
+func actionsByTarget(t *testing.T, conf *mqlRsyslogConf) map[string]*mqlRsyslogAction {
+	t.Helper()
+	actions := conf.GetActions()
+	require.NoError(t, actions.Error)
+	out := map[string]*mqlRsyslogAction{}
+	for _, a := range actions.Data {
+		act := a.(*mqlRsyslogAction)
+		out[act.Target.Data] = act
+	}
+	return out
+}
+
+func TestRsyslogConf_IncludeOrderAndRulesets(t *testing.T) {
+	conf := rsyslogFixtureConf(t, "testdata/rsyslog_rulesets.toml")
+	byTarget := actionsByTarget(t, conf)
+
+	t.Run("fragments are read in sorted order at the include", func(t *testing.T) {
+		actions := conf.GetActions()
+		require.NoError(t, actions.Error)
+		var targets []string
+		for _, a := range actions.Data {
+			targets = append(targets, a.(*mqlRsyslogAction).Target.Data)
+		}
+		// The listing returns 60-receive.conf first; rsyslog sorts glob
+		// matches, so 50-default.conf is read first. emerg.log follows the
+		// include in rsyslog.conf.
+		assert.Equal(t, []string{
+			"/var/log/auth.log", "/var/log/syslog",
+			"/var/log/remote.log", "central.example.com",
+			"/var/log/emerg.log",
+		}, targets)
+	})
+
+	t.Run("an included file takes the directives in effect at its include", func(t *testing.T) {
+		auth := byTarget["/var/log/auth.log"]
+		require.NotNil(t, auth)
+		assert.Equal(t, "0640", auth.FileCreateMode.Data)
+		assert.Equal(t, "syslog", auth.FileOwner.Data)
+		assert.Equal(t, "adm", auth.FileGroup.Data)
+		assert.Equal(t, "/etc/rsyslog.d/50-default.conf", auth.SourceFile.Data)
+
+		emerg := byTarget["/var/log/emerg.log"]
+		require.NotNil(t, emerg)
+		assert.Equal(t, "0600", emerg.FileCreateMode.Data, "the directive after the include")
+	})
+
+	t.Run("a modern omfile action ignores $FileCreateMode", func(t *testing.T) {
+		remote := byTarget["/var/log/remote.log"]
+		require.NotNil(t, remote)
+		assert.Equal(t, "0644", remote.FileCreateMode.Data)
+		assert.Empty(t, remote.FileGroup.Data)
+	})
+
+	t.Run("the forward inside the ruleset", func(t *testing.T) {
+		fwd := byTarget["central.example.com"]
+		require.NotNil(t, fwd)
+		assert.Equal(t, 6514, int(fwd.Port.Data))
+		assert.True(t, fwd.IsRemote.Data)
+		assert.True(t, fwd.TlsEnabled.Data)
+		assert.Equal(t, "gtls", fwd.StreamDriver.Data)
+		assert.Equal(t, "x509/name", fwd.StreamDriverAuthMode.Data)
+		assert.Equal(t, "$fromhost-ip startswith '10.'", fwd.Condition.Data)
+		assert.True(t, fwd.ResumeRetryCount.IsNull())
+		assert.False(t, byTarget["/var/log/auth.log"].IsRemote.Data)
+	})
+
+	t.Run("action.rules is the reverse of rule.action", func(t *testing.T) {
+		rules := byTarget["/var/log/syslog"].GetRules()
+		require.NoError(t, rules.Error)
+		require.Len(t, rules.Data, 2, "*.* and auth,authpriv.none")
+		for _, r := range rules.Data {
+			act := r.(*mqlRsyslogRule).GetAction()
+			require.NoError(t, act.Error)
+			assert.Same(t, byTarget["/var/log/syslog"], act.Data)
+		}
+		none := byTarget["/var/log/remote.log"].GetRules()
+		require.NoError(t, none.Error)
+		assert.Empty(t, none.Data)
+	})
+
+	rulesets := conf.GetRulesets()
+	require.NoError(t, rulesets.Error)
+	require.Len(t, rulesets.Data, 2)
+	def := rulesets.Data[0].(*mqlRsyslogRuleset)
+	remote := rulesets.Data[1].(*mqlRsyslogRuleset)
+	assert.Equal(t, "RSYSLOG_DefaultRuleset", def.Name.Data)
+	assert.Equal(t, "remote", remote.Name.Data)
+	assert.Equal(t, "/etc/rsyslog.d/60-receive.conf", remote.SourceFile.Data)
+
+	t.Run("a ruleset lists its actions and inputs", func(t *testing.T) {
+		actions := remote.GetActions()
+		require.NoError(t, actions.Error)
+		var targets []string
+		for _, a := range actions.Data {
+			targets = append(targets, a.(*mqlRsyslogAction).Target.Data)
+		}
+		assert.Equal(t, []string{"/var/log/remote.log", "central.example.com"}, targets)
+
+		inputs := remote.GetInputs()
+		require.NoError(t, inputs.Error)
+		require.Len(t, inputs.Data, 1)
+		assert.Equal(t, int64(514), inputs.Data[0].(*mqlRsyslogInput).Port.Data)
+
+		defInputs := def.GetInputs()
+		require.NoError(t, defInputs.Error)
+		require.Len(t, defInputs.Data, 2, "the dangling imudp binding and imuxsock")
+		assert.Equal(t, "imudp", defInputs.Data[0].(*mqlRsyslogInput).Type.Data)
+		assert.Equal(t, "imuxsock", defInputs.Data[1].(*mqlRsyslogInput).Type.Data)
+
+		defActions := def.GetActions()
+		require.NoError(t, defActions.Error)
+		assert.Len(t, defActions.Data, 3, "auth.log, syslog, emerg.log")
+	})
+
+	t.Run("input.boundRuleset", func(t *testing.T) {
+		inputs := conf.GetInputs()
+		require.NoError(t, inputs.Error)
+		require.Len(t, inputs.Data, 3)
+
+		tcp := inputs.Data[0].(*mqlRsyslogInput).GetBoundRuleset()
+		require.NoError(t, tcp.Error)
+		assert.Same(t, remote, tcp.Data)
+
+		// rsyslogd -N1: "ruleset 'missing' for *:514 not found - using
+		// default ruleset instead".
+		missing := inputs.Data[1].(*mqlRsyslogInput)
+		assert.Equal(t, "missing", missing.Ruleset.Data)
+		bound := missing.GetBoundRuleset()
+		require.NoError(t, bound.Error)
+		assert.Same(t, def, bound.Data)
+
+		uxsock := inputs.Data[2].(*mqlRsyslogInput).GetBoundRuleset()
+		require.NoError(t, uxsock.Error)
+		assert.Same(t, def, uxsock.Data)
+	})
+
+	t.Run("globals merge the legacy and modern forms", func(t *testing.T) {
+		globals := conf.GetGlobals()
+		require.NoError(t, globals.Error)
+		assert.Equal(t, map[string]any{
+			"privdrop.user.name":     "syslog",
+			"workdirectory":          "/var/spool/rsyslog",
+			"defaultnetstreamdriver": "gtls",
+		}, globals.Data)
+	})
+}

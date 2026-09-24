@@ -1,0 +1,55 @@
+# Ubuntu's layout: the $File* directives sit in rsyslog.conf above
+# $IncludeConfig, and every rule lives in a fragment. rsyslog reads the
+# fragment at the point of the include, so its file targets take those
+# settings. A directive after the include applies only to what follows it.
+#
+# The fragments add a log receiver: an imtcp listener bound to a ruleset
+# that writes to a file, and a listener bound to a ruleset nobody declares.
+
+[files."/etc/rsyslog.conf"]
+path = "/etc/rsyslog.conf"
+content = """module(load="imuxsock")
+module(load="imtcp")
+module(load="imudp")
+$FileOwner syslog
+$FileGroup adm
+$FileCreateMode 0640
+$PrivDropToUser syslog
+$WorkDirectory /var/spool/rsyslog
+$IncludeConfig /etc/rsyslog.d/*.conf
+$FileCreateMode 0600
+*.emerg /var/log/emerg.log
+"""
+
+[files."/etc/rsyslog.d/50-default.conf"]
+path = "/etc/rsyslog.d/50-default.conf"
+content = """auth,authpriv.*			/var/log/auth.log
+*.*;auth,authpriv.none		-/var/log/syslog
+"""
+
+[files."/etc/rsyslog.d/60-receive.conf"]
+path = "/etc/rsyslog.d/60-receive.conf"
+content = """global(DefaultNetstreamDriver="gtls")
+ruleset(name="remote") {
+  action(type="omfile" file="/var/log/remote.log")
+  if $fromhost-ip startswith '10.' then {
+    action(type="omfwd" target="central.example.com" port="6514" protocol="tcp"
+           StreamDriverMode="1" StreamDriverAuthMode="x509/name")
+  }
+}
+input(type="imtcp" port="514" ruleset="remote")
+input(type="imudp" port="514" ruleset="missing")
+input(type="imuxsock" Socket="/run/app/log.sock")
+"""
+
+# $IncludeConfig expansion.
+[commands."find -L \"/etc/rsyslog.d\" -xdev -type f -perm -0 -maxdepth 1"]
+stdout = """/etc/rsyslog.d/60-receive.conf
+/etc/rsyslog.d/50-default.conf
+"""
+
+# Legacy `<conf>.d` auto-discovery.
+[commands."find -L \"/etc/rsyslog.d\" -xdev -type f -perm -0"]
+stdout = """/etc/rsyslog.d/60-receive.conf
+/etc/rsyslog.d/50-default.conf
+"""

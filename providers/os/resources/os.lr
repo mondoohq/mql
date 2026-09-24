@@ -8432,6 +8432,21 @@ rsyslog.conf {
   actions(files) []rsyslog.action
   // Legacy selector-based routing rules (facility.severity → target)
   rules(files) []rsyslog.rule
+  // Global settings from global() and the legacy global directives
+  //
+  // Keyed by the lowercase `global()` parameter name, so the legacy form
+  // lands under the same key: `$DefaultNetstreamDriver gtls` and
+  // `global(DefaultNetstreamDriver="gtls")` both set
+  // `globals["defaultnetstreamdriver"]`. Legacy privilege-drop directives map
+  // to `privdrop.user.name` and `privdrop.group.name`. When a setting appears
+  // more than once, the last one wins.
+  globals(files) map[string]string
+  // Rulesets, including the default ruleset `RSYSLOG_DefaultRuleset`
+  //
+  // Declared with `ruleset(name="...")` or the legacy `$RuleSet`. Each lists
+  // the actions it runs and the inputs bound to it, so an audit can follow
+  // messages from a network listener to where they are written or forwarded.
+  rulesets(files) []rsyslog.ruleset
 }
 
 // rsyslog loaded module
@@ -8472,6 +8487,9 @@ private rsyslog.input @defaults("type port sourceFile") {
   // Listen address for network inputs, empty when not applicable
   address string
   // Ruleset this input feeds into, empty for the default ruleset
+  //
+  // Name as written in `ruleset=` or `$Input*ServerBindRuleset`. See
+  // boundRuleset for the ruleset itself.
   ruleset string
   // TLS stream-driver mode reported by the input
   //
@@ -8490,6 +8508,12 @@ private rsyslog.input @defaults("type port sourceFile") {
   sourceFile string
   // 1-indexed line number within sourceFile
   sourceLine int
+  // Ruleset that processes messages from this input
+  //
+  // The default ruleset when the input names none, or names one the
+  // configuration does not declare (rsyslog warns and falls back to the
+  // default). Compare with `ruleset` to find such a binding.
+  boundRuleset() rsyslog.ruleset
 }
 
 // rsyslog output action
@@ -8517,8 +8541,9 @@ private rsyslog.action @defaults("type target sourceFile") {
   // Whether TLS is configured for this action
   //
   // True when the modern form sets `StreamDriverMode="1"`, or when a legacy
-  // TCP forward (`@@host`) follows `$ActionSendStreamDriverMode 1` in the
-  // same file with no `$ResetConfigVariables` in between.
+  // TCP forward (`@@host`) follows `$ActionSendStreamDriverMode 1` with no
+  // `$ResetConfigVariables` in between. Included files count at the point
+  // of their include.
   tlsEnabled bool
   // Template name applied to messages, empty when the default is used
   template string
@@ -8541,6 +8566,90 @@ private rsyslog.action @defaults("type target sourceFile") {
   sourceFile string
   // 1-indexed line number within sourceFile
   sourceLine int
+  // Port a network action connects to
+  //
+  // From `port=` or the legacy `@@host:port`. omfwd and omrelp default to
+  // 514 when no port is given; 0 for actions that are not network actions.
+  port int
+  // Number of times a suspended action is retried before messages are dropped
+  //
+  // From `action.resumeRetryCount` or the legacy `$ActionResumeRetryCount`.
+  // `-1` retries forever. Null when not configured, in which case rsyslog
+  // does not retry.
+  resumeRetryCount int
+  // Stream driver a TCP forward uses, for example `gtls` or `ossl`
+  //
+  // From the action's `StreamDriver`, the legacy `$ActionSendStreamDriver`,
+  // or the global `DefaultNetstreamDriver`, in that order. Empty for UDP
+  // forwards, other action types, and when none of these is set (plain TCP).
+  streamDriver string
+  // Peer authentication mode a TCP forward's stream driver uses
+  //
+  // For example `x509/name`, `x509/fingerprint`, `x509/certvalid`, or
+  // `anon`. From the action's `StreamDriverAuthMode` or the legacy
+  // `$ActionSendStreamDriverAuthMode`. Empty when not set, in which case
+  // the stream driver applies its own default.
+  streamDriverAuthMode string
+  // File creation mode for an omfile action, for example `0640`
+  //
+  // From the action's `fileCreateMode`, else `module(load="builtin:omfile"
+  // fileCreateMode=...)`. A legacy file target uses the most recent
+  // `$FileCreateMode` instead, since rsyslog applies that directive to
+  // legacy targets only. `0644` when nothing sets it. The mode as
+  // configured, before the process umask is applied. Empty for other
+  // action types.
+  fileCreateMode string
+  // Owner of files an omfile action creates
+  //
+  // From `fileOwner` (or `fileOwnerNum`), resolved like fileCreateMode.
+  // Empty when not set, in which case files are owned by the user rsyslogd
+  // runs as.
+  fileOwner string
+  // Group of files an omfile action creates
+  //
+  // From `fileGroup` (or `fileGroupNum`), resolved like fileCreateMode.
+  // Empty when not set.
+  fileGroup string
+  // Filter expression that must match for this action to run
+  //
+  // The `if` expression or property filter (`:msg, contains, "error"`) as
+  // written, joined with the conditions of any enclosing `if` blocks, and
+  // negated for an `else` branch. Empty when the action runs for every
+  // message that reaches it, or when a selector is its only filter (see
+  // rules).
+  condition string
+  // Whether this action delivers messages to another host
+  //
+  // True for network output modules: omfwd, omrelp, omhttp, omkafka,
+  // omelasticsearch, omgssapi, omudpspoof, omamqp1, omrabbitmq,
+  // omazureeventhubs, omclickhouse, omhiredis, ommongodb, ommysql, ompgsql,
+  // omlibdbi, omsnmp, and ommail.
+  isRemote bool
+  // Selector rules that route messages to this action
+  rules() []rsyslog.rule
+}
+
+// rsyslog ruleset
+//
+// A named set of rules and actions that processes messages from the inputs
+// bound to it. Statements outside any `ruleset()` block belong to the default
+// ruleset `RSYSLOG_DefaultRuleset`, which also serves every input without a
+// `ruleset=` binding. The `actions` and `inputs` fields connect listeners to
+// destinations, for example to find where messages received on a network
+// port end up.
+private rsyslog.ruleset @defaults("name") {
+  // Ruleset name
+  name string
+  // Declaration parameters other than `name`, such as `queue.*` settings
+  parameters dict
+  // Absolute path of the file that declares the ruleset, empty for the default ruleset
+  sourceFile string
+  // 1-indexed line number of the declaration, 0 for the default ruleset
+  sourceLine int
+  // Actions this ruleset runs
+  actions() []rsyslog.action
+  // Inputs whose messages this ruleset processes
+  inputs() []rsyslog.input
 }
 
 // rsyslog selector rule
