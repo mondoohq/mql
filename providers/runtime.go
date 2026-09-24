@@ -426,6 +426,9 @@ func (r *Runtime) Connect(req *plugin.ConnectReq) error {
 	// }
 
 	conn, err := r.Provider.Instance.Plugin.Connect(req, &callbacks)
+	if err != nil {
+		_, err = r.handlePluginError(err, r.Provider, "", "")
+	}
 	r.setProviderConnection(conn, err)
 	if err != nil {
 		return err
@@ -455,6 +458,9 @@ func (r *Runtime) Connect(req *plugin.ConnectReq) error {
 		}
 
 		conn, err := r.Provider.Instance.Plugin.Connect(req, &callbacks)
+		if err != nil {
+			_, err = r.handlePluginError(err, r.Provider, "", "")
+		}
 		r.setProviderConnection(conn, err)
 		if err != nil {
 			return err
@@ -541,6 +547,10 @@ func (r *Runtime) CreateResource(name string, args map[string]*llx.Primitive) (l
 		return nil, errors.New("no connection to provider")
 	}
 
+	if crashErr := provider.Instance.crashError(); crashErr != nil {
+		return nil, crashErr
+	}
+
 	req := &plugin.DataReq{
 		Connection: provider.Connection.Id,
 		Resource:   name,
@@ -548,6 +558,7 @@ func (r *Runtime) CreateResource(name string, args map[string]*llx.Primitive) (l
 	}
 	res, err := provider.Instance.Plugin.GetData(req)
 	if err != nil {
+		_, err = r.handlePluginError(err, provider, name, "")
 		return nil, err
 	}
 
@@ -584,6 +595,10 @@ func (r *Runtime) CloneResource(src llx.Resource, id string, fields []string, ar
 		return nil, err
 	}
 
+	if crashErr := provider.Instance.crashError(); crashErr != nil {
+		return nil, crashErr
+	}
+
 	for i := range fields {
 		field := fields[i]
 		data, err := provider.Instance.Plugin.GetData(&plugin.DataReq{
@@ -593,6 +608,7 @@ func (r *Runtime) CloneResource(src llx.Resource, id string, fields []string, ar
 			Field:      field,
 		})
 		if err != nil {
+			_, err = r.handlePluginError(err, provider, name, field)
 			return nil, err
 		}
 		args[field] = data.Data
@@ -609,6 +625,7 @@ func (r *Runtime) CloneResource(src llx.Resource, id string, fields []string, ar
 		}},
 	})
 	if err != nil {
+		_, err = r.handlePluginError(err, provider, name, "")
 		return nil, err
 	}
 
@@ -649,6 +666,10 @@ func (r *Runtime) watchAndUpdate(resource string, resourceID string, field strin
 		return nil, errors.New("cannot get field '" + field + "' for resource '" + resource + "'")
 	}
 
+	if crashErr := provider.Instance.crashError(); crashErr != nil {
+		return nil, crashErr
+	}
+
 	if info.Provider != fieldInfo.Provider {
 		// technically we don't need to look up the resource provider, since
 		// it had to have been called beforehand to get here
@@ -660,7 +681,8 @@ func (r *Runtime) watchAndUpdate(resource string, resourceID string, field strin
 			}},
 		})
 		if err != nil {
-			return nil, multierr.Wrap(err, "failed to create reference resource "+resource+" in provider "+provider.Instance.Name)
+			_, handledErr := r.handlePluginError(err, provider, resource, field)
+			return nil, multierr.Wrap(handledErr, "failed to create reference resource "+resource+" in provider "+provider.Instance.Name)
 		}
 	}
 
@@ -742,6 +764,16 @@ func (r *Runtime) handlePluginError(err error, provider *ConnectedProvider, reso
 		ctx += ")"
 	}
 
+	// A provider already known dead answers every further RPC with some shape
+	// of "the connection is gone" - codes.Canceled ("grpc: the client
+	// connection is closing"), codes.Unavailable, or even a bare transport
+	// error, depending on exactly when the caller raced the teardown. Once we
+	// have a diagnostic for this provider, fold every later failure into it
+	// instead of reclassifying and re-recording a critical error per field.
+	if crashErr := provider.Instance.crashError(); crashErr != nil {
+		return false, crashErr
+	}
+
 	st, ok := status.FromError(err)
 	if !ok {
 		// Transport-level errors (e.g. "dial tcp" connection failures) don't
@@ -765,14 +797,23 @@ func (r *Runtime) handlePluginError(err error, provider *ConnectedProvider, reso
 			return true, panicErr
 		}
 
-	case codes.Unavailable:
-		// Happens when the plugin crashes or the gRPC connection drops.
+	case codes.Unavailable, codes.Canceled:
+		// Unavailable is the plugin crashing or the gRPC connection dropping;
+		// Canceled ("grpc: the client connection is closing") is go-plugin
+		// tearing the client down right after. Both mean this provider is
+		// gone. recordCrash stores the diagnostic once (on whichever call
+		// observes the crash first) and every later call - regardless of
+		// which of the two codes it happens to see - returns that same
+		// stored error instead of building and recording its own.
 		// TODO: try to restart the plugin and reset its connections
-		provider.Instance.isClosed = true
-		base := "the '" + provider.Instance.Name + "' provider crashed" + ctx + ": " + err.Error()
-		provider.Instance.err = errors.New(base + buildCrashDiagnostics(provider.Instance))
-		r.addCriticalError(provider.Instance.err)
-		return false, provider.Instance.err
+		crashErr, first := provider.Instance.recordCrash(func() error {
+			base := "the '" + provider.Instance.Name + "' provider crashed" + ctx + ": " + err.Error()
+			return errors.New(base + buildCrashDiagnostics(provider.Instance))
+		})
+		if first {
+			r.addCriticalError(crashErr)
+		}
+		return false, crashErr
 	}
 	return false, err
 }

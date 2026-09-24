@@ -735,3 +735,52 @@ func (p *RunningProvider) hadHeartbeatFailure() bool {
 	defer p.shutdownLock.Unlock()
 	return p.heartbeatFailed
 }
+
+// crashError returns the diagnostic error already recorded for this provider
+// if it is known dead, or nil while it is still considered alive. Callers use
+// it to short-circuit before making an RPC to a plugin process that is not
+// coming back — e.g. a dead loopback port on Windows just answers "connection
+// refused" for every further call, so there is nothing to gain by dialing it
+// again for each remaining field.
+func (p *RunningProvider) crashError() error {
+	p.shutdownLock.Lock()
+	defer p.shutdownLock.Unlock()
+	if p.isClosed && p.err != nil {
+		return p.err
+	}
+	return nil
+}
+
+// recordCrash marks the provider closed and stores buildErr() as its crash
+// diagnostic, unless a diagnostic is already stored for it — in which case
+// the existing one is returned unchanged and first is false. This collapses
+// every field that fails after a single crash into the one diagnostic (and
+// one critical-error entry) recorded for the failure that discovered it,
+// instead of rebuilding buildCrashDiagnostics and adding a fresh critical
+// error per field.
+//
+// buildErr is called without shutdownLock held: it is normally
+// buildCrashDiagnostics, which itself calls hadHeartbeatFailure and would
+// deadlock on a non-reentrant lock. That means two callers can race to build
+// a diagnostic concurrently for the same crash; the loser's error is
+// discarded and it returns the winner's instead, so exactly one diagnostic
+// ever gets stored.
+func (p *RunningProvider) recordCrash(buildErr func() error) (crashErr error, first bool) {
+	p.shutdownLock.Lock()
+	if p.isClosed && p.err != nil {
+		defer p.shutdownLock.Unlock()
+		return p.err, false
+	}
+	p.shutdownLock.Unlock()
+
+	built := buildErr()
+
+	p.shutdownLock.Lock()
+	defer p.shutdownLock.Unlock()
+	if p.isClosed && p.err != nil {
+		return p.err, false
+	}
+	p.isClosed = true
+	p.err = built
+	return p.err, true
+}

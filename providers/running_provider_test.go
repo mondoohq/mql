@@ -5,6 +5,7 @@ package providers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -598,4 +599,92 @@ func TestHeartbeat_DeadProviderFailsImmediately(t *testing.T) {
 	require.Eventually(t, rp.isCloseOrShutdown, 5*time.Second, 5*time.Millisecond)
 	assert.True(t, rp.hadHeartbeatFailure())
 	assert.Equal(t, 2, mock.callCount(), "a dead provider is not retried")
+}
+
+// TestRunningProvider_CrashErrorBeforeCrash covers the alive state: nothing
+// is recorded yet, so crashError must return nil rather than a zero-value
+// error, and every RPC call site treats a nil return as "still worth trying".
+func TestRunningProvider_CrashErrorBeforeCrash(t *testing.T) {
+	rp := &RunningProvider{Name: "os"}
+	assert.NoError(t, rp.crashError())
+}
+
+// TestRunningProvider_RecordCrash_StoresOnceAndMarksClosed covers the
+// single-caller path: the first recordCrash call builds and stores the
+// diagnostic and marks the provider closed; crashError then returns that
+// same error to every later caller.
+func TestRunningProvider_RecordCrash_StoresOnceAndMarksClosed(t *testing.T) {
+	rp := &RunningProvider{Name: "os"}
+	built := 0
+
+	stored, first := rp.recordCrash(func() error {
+		built++
+		return errors.New("the 'os' provider crashed: connection refused")
+	})
+
+	require.Error(t, stored)
+	assert.True(t, first)
+	assert.Equal(t, 1, built)
+	assert.True(t, rp.isClosed)
+	assert.Equal(t, stored, rp.crashError())
+}
+
+// TestRunningProvider_RecordCrash_DoesNotDeadlockOnHadHeartbeatFailure is the
+// regression test for a deadlock this PR introduced and then fixed:
+// recordCrash used to hold shutdownLock while calling buildErr(), and
+// buildCrashDiagnostics (a realistic buildErr) calls hadHeartbeatFailure,
+// which takes the same non-reentrant lock. Run under `go test -timeout` so a
+// reintroduced deadlock fails the test instead of hanging the suite.
+func TestRunningProvider_RecordCrash_DoesNotDeadlockOnHadHeartbeatFailure(t *testing.T) {
+	rp := &RunningProvider{Name: "os", heartbeatFailed: true}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		rp.recordCrash(func() error {
+			return errors.New(buildCrashDiagnostics(rp))
+		})
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("recordCrash deadlocked calling into a buildErr that also takes shutdownLock")
+	}
+}
+
+// TestRunningProvider_RecordCrash_ConcurrentCallersAgreeOnOneDiagnostic
+// exercises the double-checked-locking race window directly: several
+// goroutines race to be the one that records the crash. Exactly one must see
+// first=true, and every goroutine must get back the same stored error even
+// though each built its own candidate concurrently.
+func TestRunningProvider_RecordCrash_ConcurrentCallersAgreeOnOneDiagnostic(t *testing.T) {
+	rp := &RunningProvider{Name: "os"}
+
+	const n = 20
+	var wg sync.WaitGroup
+	results := make([]error, n)
+	firsts := make([]bool, n)
+	for i := range n {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			results[i], firsts[i] = rp.recordCrash(func() error {
+				return fmt.Errorf("candidate diagnostic %d", i)
+			})
+		}(i)
+	}
+	wg.Wait()
+
+	firstCount := 0
+	for _, f := range firsts {
+		if f {
+			firstCount++
+		}
+	}
+	assert.Equal(t, 1, firstCount, "exactly one caller records the crash")
+
+	for i := 1; i < n; i++ {
+		assert.Equal(t, results[0].Error(), results[i].Error(), "every caller sees the same stored diagnostic")
+	}
 }
