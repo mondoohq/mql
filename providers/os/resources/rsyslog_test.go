@@ -572,3 +572,97 @@ func TestResolveRsyslogInclude(t *testing.T) {
 		})
 	}
 }
+
+// rsyslogFixtureConf resolves rsyslog.conf against a mock fixture.
+func rsyslogFixtureConf(t *testing.T, fixture string) *mqlRsyslogConf {
+	t.Helper()
+
+	fixturePath, err := filepath.Abs(fixture)
+	require.NoError(t, err)
+
+	asset := &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:   "arch",
+			Family: []string{"linux", "unix"},
+		},
+	}
+	conn, err := mock.New(0, asset, mock.WithPath(fixturePath))
+	require.NoError(t, err)
+
+	runtime := &plugin.Runtime{
+		Connection: conn,
+		Resources:  &syncx.Map[plugin.Resource]{},
+	}
+
+	raw, err := CreateResource(runtime, "rsyslog.conf", map[string]*llx.RawData{
+		"path": llx.StringData("/etc/rsyslog.conf"),
+	})
+	require.NoError(t, err)
+	return raw.(*mqlRsyslogConf)
+}
+
+func TestRsyslogConf_SelectorModernAction(t *testing.T) {
+	conf := rsyslogFixtureConf(t, "testdata/rsyslog_forwarding.toml")
+
+	actions := conf.GetActions()
+	require.NoError(t, actions.Error)
+	var fwd *mqlRsyslogAction
+	for _, a := range actions.Data {
+		act := a.(*mqlRsyslogAction)
+		assert.NotContains(t, act.Target.Data, "action(", "the action() text must not become a target")
+		if act.Type.Data == "omfwd" {
+			fwd = act
+		}
+	}
+	require.NotNil(t, fwd, "the *.* action(type=\"omfwd\") statement must surface as an omfwd action")
+	assert.Equal(t, "logs.example.com", fwd.Target.Data)
+	assert.Equal(t, "tcp", fwd.Protocol.Data)
+	assert.Equal(t, "100", fwd.Parameters.Data.(map[string]any)["action.resumeretrycount"])
+	assert.Equal(t, "LinkedList", fwd.Queue.Data.(map[string]any)["type"])
+	assert.Equal(t, "1000", fwd.Queue.Data.(map[string]any)["size"])
+	assert.Equal(t, 3, int(fwd.SourceLine.Data))
+
+	rules := conf.GetRules()
+	require.NoError(t, rules.Error)
+	require.Len(t, rules.Data, 3, "*.*, auth+authpriv, local7")
+
+	t.Run("the selector's rule resolves to the same action resource", func(t *testing.T) {
+		all := rules.Data[0].(*mqlRsyslogRule)
+		assert.Equal(t, []any{"*"}, all.Facilities.Data)
+		act := all.GetAction()
+		require.NoError(t, act.Error)
+		require.NotNil(t, act.Data)
+		assert.Same(t, fwd, act.Data)
+	})
+
+	t.Run("a legacy rule resolves to its parsed action", func(t *testing.T) {
+		auth := rules.Data[1].(*mqlRsyslogRule)
+		act := auth.GetAction()
+		require.NoError(t, act.Error)
+		require.NotNil(t, act.Data)
+		assert.Equal(t, "omfile", act.Data.Type.Data)
+		assert.Equal(t, "/var/log/auth.log", act.Data.Target.Data)
+	})
+
+	t.Run("a target that is not an action yields a null action", func(t *testing.T) {
+		local7 := rules.Data[2].(*mqlRsyslogRule)
+		assert.Equal(t, "foo bar", local7.Target.Data)
+		act := local7.GetAction()
+		require.NoError(t, act.Error)
+		assert.Nil(t, act.Data)
+		assert.True(t, act.IsNull())
+	})
+
+	t.Run("an imtcp input inherits the module's TLS settings from another file", func(t *testing.T) {
+		inputs := conf.GetInputs()
+		require.NoError(t, inputs.Error)
+		require.Len(t, inputs.Data, 2)
+		tcp := inputs.Data[0].(*mqlRsyslogInput)
+		assert.Equal(t, "imtcp", tcp.Type.Data)
+		assert.Equal(t, "1", tcp.StreamDriverMode.Data)
+		assert.Equal(t, "x509/name", tcp.Parameters.Data.(map[string]any)["streamdriver.authmode"])
+		udp := inputs.Data[1].(*mqlRsyslogInput)
+		assert.Equal(t, "imudp", udp.Type.Data)
+		assert.Empty(t, udp.StreamDriverMode.Data)
+	})
+}

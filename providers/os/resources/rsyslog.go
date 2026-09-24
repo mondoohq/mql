@@ -13,6 +13,7 @@ import (
 
 	"go.mondoo.com/mql/checksums"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/resources"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/types"
@@ -536,6 +537,8 @@ func (s *mqlRsyslogConf) parsedEntries(files []any) ([]rsyslogEntry, error) {
 		}
 		all = append(all, parseRsyslogFile(path, c.Data)...)
 	}
+	applyModuleDefaults(all)
+	assignRsyslogEntryIDs(all)
 
 	s.parsedCache = all
 	s.parsedDone = true
@@ -550,19 +553,42 @@ func rsyslogEntryID(kind string, e rsyslogEntry, idx int) string {
 	return fmt.Sprintf("%s/%s:%d/%d", kind, e.sourceFile, e.sourceLine, idx)
 }
 
+// assignRsyslogEntryIDs numbers the entries of each kind in order, so a rule
+// and the `actions` list resolve its backing action to the same resource.
+func assignRsyslogEntryIDs(entries []rsyslogEntry) {
+	counts := map[rsyslogEntryKind]int{}
+	for i := range entries {
+		e := &entries[i]
+		var kind string
+		switch e.kind {
+		case rsyslogKindModule:
+			kind = "module"
+		case rsyslogKindInput:
+			kind = "input"
+		case rsyslogKindAction:
+			kind = "action"
+		case rsyslogKindRule:
+			kind = "rule"
+		default:
+			continue
+		}
+		e.id = rsyslogEntryID(kind, *e, counts[e.kind])
+		counts[e.kind]++
+	}
+}
+
 func (s *mqlRsyslogConf) modules(files []any) ([]any, error) {
 	entries, err := s.parsedEntries(files)
 	if err != nil {
 		return nil, err
 	}
 	out := []any{}
-	idx := 0
 	for _, e := range entries {
 		if e.kind != rsyslogKindModule {
 			continue
 		}
 		res, err := CreateResource(s.MqlRuntime, "rsyslog.module", map[string]*llx.RawData{
-			"__id":       llx.StringData(rsyslogEntryID("module", e, idx)),
+			"__id":       llx.StringData(e.id),
 			"name":       llx.StringData(e.moduleName),
 			"parameters": llx.DictData(anyMap(e.parameters)),
 			"sourceFile": llx.StringData(e.sourceFile),
@@ -572,7 +598,6 @@ func (s *mqlRsyslogConf) modules(files []any) ([]any, error) {
 			return nil, err
 		}
 		out = append(out, res)
-		idx++
 	}
 	return out, nil
 }
@@ -583,13 +608,12 @@ func (s *mqlRsyslogConf) inputs(files []any) ([]any, error) {
 		return nil, err
 	}
 	out := []any{}
-	idx := 0
 	for _, e := range entries {
 		if e.kind != rsyslogKindInput {
 			continue
 		}
 		res, err := CreateResource(s.MqlRuntime, "rsyslog.input", map[string]*llx.RawData{
-			"__id":             llx.StringData(rsyslogEntryID("input", e, idx)),
+			"__id":             llx.StringData(e.id),
 			"type":             llx.StringData(e.moduleType),
 			"port":             llx.IntData(e.port),
 			"address":          llx.StringData(e.address),
@@ -603,7 +627,6 @@ func (s *mqlRsyslogConf) inputs(files []any) ([]any, error) {
 			return nil, err
 		}
 		out = append(out, res)
-		idx++
 	}
 	return out, nil
 }
@@ -614,30 +637,39 @@ func (s *mqlRsyslogConf) actions(files []any) ([]any, error) {
 		return nil, err
 	}
 	out := []any{}
-	idx := 0
 	for _, e := range entries {
 		if e.kind != rsyslogKindAction {
 			continue
 		}
-		res, err := CreateResource(s.MqlRuntime, "rsyslog.action", map[string]*llx.RawData{
-			"__id":       llx.StringData(rsyslogEntryID("action", e, idx)),
-			"type":       llx.StringData(e.moduleType),
-			"target":     llx.StringData(e.target),
-			"protocol":   llx.StringData(e.protocol),
-			"tlsEnabled": llx.BoolData(e.tlsEnabled),
-			"template":   llx.StringData(e.template),
-			"queue":      llx.DictData(anyMap(e.queue)),
-			"parameters": llx.DictData(anyMap(e.parameters)),
-			"sourceFile": llx.StringData(e.sourceFile),
-			"sourceLine": llx.IntData(int64(e.sourceLine)),
-		})
+		res, err := newRsyslogAction(s.MqlRuntime, e)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, res)
-		idx++
 	}
 	return out, nil
+}
+
+// newRsyslogAction creates the rsyslog.action resource for a parsed entry.
+// `actions` and `rsyslog.rule.action` both go through here with the entry's
+// id, so they share one cached resource.
+func newRsyslogAction(runtime *plugin.Runtime, e rsyslogEntry) (*mqlRsyslogAction, error) {
+	res, err := CreateResource(runtime, "rsyslog.action", map[string]*llx.RawData{
+		"__id":       llx.StringData(e.id),
+		"type":       llx.StringData(e.moduleType),
+		"target":     llx.StringData(e.target),
+		"protocol":   llx.StringData(e.protocol),
+		"tlsEnabled": llx.BoolData(e.tlsEnabled),
+		"template":   llx.StringData(e.template),
+		"queue":      llx.DictData(anyMap(e.queue)),
+		"parameters": llx.DictData(anyMap(e.parameters)),
+		"sourceFile": llx.StringData(e.sourceFile),
+		"sourceLine": llx.IntData(int64(e.sourceLine)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlRsyslogAction), nil
 }
 
 func (s *mqlRsyslogConf) rules(files []any) ([]any, error) {
@@ -646,13 +678,12 @@ func (s *mqlRsyslogConf) rules(files []any) ([]any, error) {
 		return nil, err
 	}
 	out := []any{}
-	idx := 0
-	for _, e := range entries {
+	for i, e := range entries {
 		if e.kind != rsyslogKindRule {
 			continue
 		}
 		mqlRule, err := CreateResource(s.MqlRuntime, "rsyslog.rule", map[string]*llx.RawData{
-			"__id":       llx.StringData(rsyslogEntryID("rule", e, idx)),
+			"__id":       llx.StringData(e.id),
 			"facilities": llx.ArrayData(stringsToAny(e.facilities), types.String),
 			"severities": llx.ArrayData(stringsToAny(e.severities), types.String),
 			"target":     llx.StringData(e.target),
@@ -663,43 +694,24 @@ func (s *mqlRsyslogConf) rules(files []any) ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		rr := mqlRule.(*mqlRsyslogRule)
-		rr.target = e.target
-		rr.sourceFile = e.sourceFile
-		rr.sourceLine = e.sourceLine
+		if e.actionOffset > 0 {
+			backing := entries[i+e.actionOffset]
+			mqlRule.(*mqlRsyslogRule).backingAction = &backing
+		}
 		out = append(out, mqlRule)
-		idx++
 	}
 	return out, nil
 }
 
-// action resolves the typed `rsyslog.rule.action()` accessor. The action
-// is synthesized from the rule's target — the same `selectorActionEntries`
-// path the unified parser uses — so the returned object matches what would
-// appear in `rsyslog.conf.actions()` for that target.
-//
-// We build a fresh action resource scoped by `(target, sourceFile,
-// sourceLine)` rather than reusing one from `actions()` so the runtime
-// caches the rule and its action consistently even when `actions()` has
-// not been resolved yet.
+// action returns the action this rule routes matching messages to: the
+// legacy target or the `action(...)` statement that follows the selector.
+// A target that could not be parsed into an action yields null.
 func (r *mqlRsyslogRule) action() (*mqlRsyslogAction, error) {
-	moduleType, protocol := classifySelectorTarget(r.target)
-	res, err := CreateResource(r.MqlRuntime, "rsyslog.action", map[string]*llx.RawData{
-		"__id":       llx.StringData(fmt.Sprintf("rule-action/%s:%d/%s", r.sourceFile, r.sourceLine, r.target)),
-		"type":       llx.StringData(moduleType),
-		"target":     llx.StringData(r.target),
-		"protocol":   llx.StringData(protocol),
-		"tlsEnabled": llx.BoolData(false),
-		"template":   llx.StringData(""),
-		"queue":      llx.DictData(map[string]any{}),
-		"parameters": llx.DictData(map[string]any{}),
-		"sourceFile": llx.StringData(r.sourceFile),
-		"sourceLine": llx.IntData(int64(r.sourceLine)),
-	})
-	if err != nil {
-		return nil, err
+	if r.backingAction == nil {
+		r.Action.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
-	return res.(*mqlRsyslogAction), nil
+	return newRsyslogAction(r.MqlRuntime, *r.backingAction)
 }
 
 // id methods for the typed sub-resources. The __id is set in the creator
@@ -727,11 +739,8 @@ type mqlRsyslogConfInternal struct {
 	parsedCache []rsyslogEntry
 }
 
-// mqlRsyslogRuleInternal stores the data needed to lazy-build the
-// rule's typed action() accessor without re-parsing or relying on
-// the resource's exposed fields.
+// mqlRsyslogRuleInternal holds the parsed action entry behind the rule, so
+// action resolves without re-parsing the configuration.
 type mqlRsyslogRuleInternal struct {
-	target     string
-	sourceFile string
-	sourceLine int
+	backingAction *rsyslogEntry
 }

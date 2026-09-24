@@ -1,0 +1,26 @@
+# Remote forwarding as the CIS benchmarks write it: a `*.*` selector followed
+# by a multi-line action(). The imtcp module turns on TLS for every imtcp
+# listener, and the listener itself lives in a fragment.
+
+[files."/etc/rsyslog.conf"]
+path = "/etc/rsyslog.conf"
+content = """module(load="imtcp" StreamDriver.Name="gtls" StreamDriver.Mode="1" StreamDriver.AuthMode="x509/name")
+
+*.* action(type="omfwd" target="logs.example.com" port="514" protocol="tcp"
+           action.resumeRetryCount="100"
+           queue.type="LinkedList" queue.size="1000")
+
+auth,authpriv.* /var/log/auth.log
+local7.* foo bar
+"""
+
+[files."/etc/rsyslog.d/10-listen.conf"]
+path = "/etc/rsyslog.d/10-listen.conf"
+content = """input(type="imtcp" port="6514")
+input(type="imudp" port="514")
+"""
+
+# Legacy `<conf>.d` auto-discovery.
+[commands."find -L \"/etc/rsyslog.d\" -xdev -type f -perm -0"]
+stdout = """/etc/rsyslog.d/10-listen.conf
+"""

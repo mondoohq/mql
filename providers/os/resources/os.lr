@@ -8476,10 +8476,15 @@ private rsyslog.input @defaults("type port sourceFile") {
   // TLS stream-driver mode reported by the input
   //
   // `"1"` indicates the input accepts TLS connections (paired with a
-  // `$DefaultNetstreamDriver gtls` global or per-input `StreamDriverMode="1"`).
-  // `"0"` or empty indicates plaintext.
+  // `$DefaultNetstreamDriver gtls` global). Set per input with
+  // `StreamDriver.Mode="1"`, or for every listener of the module with
+  // `module(load="imtcp" StreamDriver.Mode="1")` or the legacy
+  // `$InputTCPServerStreamDriverMode 1`. `"0"` or empty indicates plaintext.
   streamDriverMode string
   // All parameters as a dict, in source representation
+  //
+  // Includes the module's `StreamDriver.*` and `PermittedPeer` settings when
+  // the input doesn't set its own.
   parameters dict
   // Absolute path of the file this directive was read from
   sourceFile string
@@ -8489,13 +8494,14 @@ private rsyslog.input @defaults("type port sourceFile") {
 
 // rsyslog output action
 //
-// Destination where rsyslog ships matched log lines. Surfaces both modern
-// `action(type="omfwd" target="…" …)` statements and the legacy
-// selector-with-target form (e.g. `*.* @@host:514`). When this action came
-// from a legacy selector, the `parameters` dict is empty and `target` /
-// `protocol` / `tlsEnabled` are derived from the target token's syntax.
-// Use it to confirm that remote forwarding uses TCP with TLS rather than
-// plaintext UDP.
+// Destination where rsyslog ships matched log lines. Surfaces modern
+// `action(type="omfwd" target="…" …)` statements, alone or after a filter
+// (`*.* action(…)`, `if … then action(…)`, `& action(…)`), and legacy
+// targets such as `*.* @@host:514` or `:msg, contains, "x" /var/log/x.log`.
+// For a legacy target, `type`, `target`, `protocol`, and `template` come
+// from the token's syntax, and the `$Action*` directives that precede it
+// fill `queue`, `parameters`, and `tlsEnabled`. Use it to confirm that
+// remote forwarding uses TCP with TLS rather than plaintext UDP.
 private rsyslog.action @defaults("type target sourceFile") {
   // Action module type (e.g. omfwd, omfile, omusrmsg, omhttp, omkafka)
   type string
@@ -8503,27 +8509,33 @@ private rsyslog.action @defaults("type target sourceFile") {
   //
   // For omfile a filesystem path; for omfwd a `host` or `host:port`; for
   // omusrmsg a comma-separated user list (or `*` for wall); for omhttp /
-  // omkafka the relevant URL or broker list.
+  // omkafka the relevant URL or broker list. Legacy prefixes such as `@@`,
+  // `-`, `|`, and `:omrelp:` are removed.
   target string
   // Transport protocol for network actions: `"tcp"`, `"udp"`, or empty
   protocol string
   // Whether TLS is configured for this action
   //
-  // True when the modern form sets `StreamDriverMode="1"` (or equivalent
-  // per-driver settings). False for legacy selector forms, which rely on
-  // the `$DefaultNetstreamDriver` / `$ActionSendStreamDriverMode` globals.
+  // True when the modern form sets `StreamDriverMode="1"`, or when a legacy
+  // TCP forward (`@@host`) follows `$ActionSendStreamDriverMode 1` in the
+  // same file with no `$ResetConfigVariables` in between.
   tlsEnabled bool
   // Template name applied to messages, empty when the default is used
   template string
   // Action-level queue configuration, empty when no queue is configured
   //
   // Carries the modern `queue.*` parameters as `{type, filename, size,
-  // saveOnShutdown, ...}` (the exact key set depends on the queue type).
+  // saveonshutdown, ...}` (the exact key set depends on the queue type).
+  // For a legacy target, the `$ActionQueue*` directives just before it
+  // (`$ActionQueueType LinkedList` becomes `type`).
   queue dict
   // All parameters as a dict
   //
-  // Modern actions carry every key/value pair other than `type` and
-  // `target` here. Legacy selector-derived actions carry an empty dict.
+  // Modern actions carry every key/value pair other than `type` and the
+  // `queue.*` settings, with lowercase keys. Legacy targets carry
+  // `action.resumeretrycount` from `$ActionResumeRetryCount`, and TCP
+  // forwards the `$ActionSendStreamDriver*` settings in effect
+  // (`streamdrivermode`, `streamdriverauthmode`, ...).
   parameters dict
   // Absolute path of the file this directive was read from
   sourceFile string
@@ -8533,10 +8545,10 @@ private rsyslog.action @defaults("type target sourceFile") {
 
 // rsyslog selector rule
 //
-// Legacy `<facility>.<severity> <target>` routing rule, the form that ships
-// in every default rsyslog config. Modern `if … then … { action(…) }`
-// conditionals are not surfaced here; their actions are available via
-// `rsyslog.conf.actions` only.
+// Selector-based `<facility>.<severity> <target>` routing rule, the form
+// that ships in every default rsyslog config. The target is a legacy token
+// or an `action(…)` statement. Filters without a selector (`if … then …`,
+// `:property, …`) have no rule; their actions are in `rsyslog.conf.actions`.
 //
 // Selector grammar covered:
 //   - Simple: `auth.info /var/log/auth.log`
@@ -8555,16 +8567,16 @@ private rsyslog.rule @defaults("facilities severities target sourceFile") {
   // Raw target token from the rule
   //
   // File path, `@host`, `@@host:port`, `:omusrmsg:user`, `~` (discard),
-  // `|fifo`, etc.
+  // `|fifo`, or the `action(…)` statement as written.
   target string
   // Whether the severity is the negation marker (`.none`)
   negate bool
-  // Resolved action for this rule
+  // Action this rule routes matching messages to
   //
-  // Constructed from `target`: file-path → omfile, `@host` → omfwd/udp,
-  // `@@host` → omfwd/tcp, `:omusrmsg:*` → omusrmsg, `~` → discard,
-  // `|name` → ompipe. Legacy rules have no TLS information, so the action's
-  // `tlsEnabled` is always false.
+  // The same action listed in `rsyslog.conf.actions`. For a legacy target:
+  // file path → omfile, `@host` → omfwd/udp, `@@host` → omfwd/tcp,
+  // `:omusrmsg:*` → omusrmsg, `~` or `stop` → discard, `|name` → ompipe.
+  // Null when the target is not a recognizable action.
   action() rsyslog.action
   // Absolute path of the file this directive was read from
   sourceFile string
