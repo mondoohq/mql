@@ -1431,14 +1431,21 @@ func (w *WinPkgManager) List() ([]Package, error) {
 		return collapsePackages(pkgs), nil
 	}
 
-	// hotfixes. GetHotfixes is shared with windows.hotfixes and caches its
-	// result per connection, so when both are resolved in the same scan
-	// Get-HotFix only runs once.
-	hotfixes, err := GetHotfixes(w.conn)
+	// hotfixes. GetHotfixQueryResult is shared with windows.hotfixes and
+	// caches the raw Get-HotFix outcome per connection, so when both are
+	// resolved in the same scan the command only runs once. Exit status is
+	// deliberately ignored here, as it always has been: a single broken QFE
+	// entry that makes PowerShell exit non-zero while still printing valid
+	// JSON must not fail the whole package inventory, since an empty or
+	// failed package list closes vulnerability findings upstream.
+	hotfixResult, err := GetHotfixQueryResult(w.conn)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "could not fetch hotfixes")
 	}
-	hotfixAsPkgs := HotFixesToPackages(hotfixes)
+	if hotfixResult.ParseErr != nil {
+		return nil, errors.Wrapf(hotfixResult.ParseErr, "could not parse hotfix results")
+	}
+	hotfixAsPkgs := HotFixesToPackages(hotfixResult.Hotfixes)
 
 	msSqlHotfixes := findMsSqlHotfixes(appPkgs)
 	msSqlGdrPackages := findMsSqlGdrUpdates(appPkgs)

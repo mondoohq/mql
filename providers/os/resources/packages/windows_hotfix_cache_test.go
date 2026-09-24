@@ -110,30 +110,33 @@ func hotfixCacheTestPlatform() *inventory.Platform {
 	return &inventory.Platform{Name: "windows", Arch: "amd64", Family: []string{"windows"}, Version: "9600"}
 }
 
-// TestGetHotfixes_CachesPerConnection is the core guarantee: repeated callers
-// on the same connection get the same answer for one Get-HotFix run.
-func TestGetHotfixes_CachesPerConnection(t *testing.T) {
+// TestGetHotfixQueryResult_CachesPerConnection is the core guarantee:
+// repeated callers on the same connection get the same answer for one
+// Get-HotFix run.
+func TestGetHotfixQueryResult_CachesPerConnection(t *testing.T) {
 	resetHotfixCache()
 	t.Cleanup(resetHotfixCache)
 
 	conn := newHotfixCacheTestConnection(1, oneHotfixJSON)
 
 	for i := 0; i < 3; i++ {
-		hotfixes, err := GetHotfixes(conn)
+		result, err := GetHotfixQueryResult(conn)
 		require.NoError(t, err)
-		require.Len(t, hotfixes, 1)
-		assert.Equal(t, "KB5034441", hotfixes[0].HotFixId)
+		require.NoError(t, result.ParseErr)
+		require.Len(t, result.Hotfixes, 1)
+		assert.Equal(t, "KB5034441", result.Hotfixes[0].HotFixId)
 	}
 
 	assert.Equal(t, int32(1), conn.hotfixCalls.Load(), "Get-HotFix ran more than once for the same connection")
 }
 
-// TestGetHotfixes_SharedByListAndWindowsHotfixes is the regression test for
-// the point of this cache: packages.list (WinPkgManager.List) and
-// windows.hotfixes both need the installed-hotfix list, and windows.hotfixes
-// asks for it by calling this same GetHotfixes function. Resolving both on
-// one connection must run Get-HotFix once, not twice.
-func TestGetHotfixes_SharedByListAndWindowsHotfixes(t *testing.T) {
+// TestGetHotfixQueryResult_SharedByListAndWindowsHotfixes is the regression
+// test for the point of this cache: packages.list (WinPkgManager.List) and
+// windows.hotfixes both need the installed-hotfix outcome, and
+// windows.hotfixes asks for it by calling this same GetHotfixQueryResult
+// function. Resolving both on one connection must run Get-HotFix once, not
+// twice.
+func TestGetHotfixQueryResult_SharedByListAndWindowsHotfixes(t *testing.T) {
 	resetHotfixCache()
 	t.Cleanup(resetHotfixCache)
 
@@ -144,75 +147,136 @@ func TestGetHotfixes_SharedByListAndWindowsHotfixes(t *testing.T) {
 	_, err := mgr.List()
 	require.NoError(t, err)
 
-	// windows.hotfixes' resolution path, post-refactor: it calls GetHotfixes
-	// directly (see providers/os/resources/windows.go, mqlWindows.hotfixes)
-	hotfixes, err := GetHotfixes(conn)
+	// windows.hotfixes' resolution path, post-refactor: it calls
+	// GetHotfixQueryResult directly (see providers/os/resources/windows.go,
+	// mqlWindows.hotfixes)
+	result, err := GetHotfixQueryResult(conn)
 	require.NoError(t, err)
-	require.Len(t, hotfixes, 1)
+	require.NoError(t, result.ParseErr)
+	require.Len(t, result.Hotfixes, 1)
 
 	assert.Equal(t, int32(1), conn.hotfixCalls.Load(),
 		"Get-HotFix ran once per resolver instead of once for the connection")
 }
 
-// TestGetHotfixes_ScopedPerConnection guards against a cache that is global
-// instead of per-connection: two different assets/scans must each get their
-// own Get-HotFix answer and their own call count, never one served from the
-// other's cache entry.
-func TestGetHotfixes_ScopedPerConnection(t *testing.T) {
+// TestGetHotfixQueryResult_ScopedPerConnection guards against a cache that
+// is global instead of per-connection: two different assets/scans must each
+// get their own Get-HotFix answer and their own call count, never one
+// served from the other's cache entry.
+func TestGetHotfixQueryResult_ScopedPerConnection(t *testing.T) {
 	resetHotfixCache()
 	t.Cleanup(resetHotfixCache)
 
 	connA := newHotfixCacheTestConnection(10, oneHotfixJSON)
 	connB := newHotfixCacheTestConnection(11, `[{"Status":"Installed","Description":"Update","HotFixId":"KB9999999","Caption":"","InstalledOn":{},"InstalledBy":""}]`)
 
-	hfA, err := GetHotfixes(connA)
+	resultA, err := GetHotfixQueryResult(connA)
 	require.NoError(t, err)
-	hfB, err := GetHotfixes(connB)
+	resultB, err := GetHotfixQueryResult(connB)
 	require.NoError(t, err)
 
-	require.Len(t, hfA, 1)
-	require.Len(t, hfB, 1)
-	assert.Equal(t, "KB5034441", hfA[0].HotFixId)
-	assert.Equal(t, "KB9999999", hfB[0].HotFixId)
+	require.Len(t, resultA.Hotfixes, 1)
+	require.Len(t, resultB.Hotfixes, 1)
+	assert.Equal(t, "KB5034441", resultA.Hotfixes[0].HotFixId)
+	assert.Equal(t, "KB9999999", resultB.Hotfixes[0].HotFixId)
 
 	// asking again on each connection must not cross-contaminate or re-fetch
-	hfA2, err := GetHotfixes(connA)
+	resultA2, err := GetHotfixQueryResult(connA)
 	require.NoError(t, err)
-	assert.Equal(t, hfA, hfA2)
+	assert.Equal(t, resultA, resultA2)
 
 	assert.Equal(t, int32(1), connA.hotfixCalls.Load())
 	assert.Equal(t, int32(1), connB.hotfixCalls.Load())
 }
 
-// TestGetHotfixes_DoesNotCacheFailures keeps a transient failure (the agent
-// busy, a momentary WMI hiccup) from becoming a permanently empty hotfix list
-// for the rest of the scan.
-func TestGetHotfixes_DoesNotCacheFailures(t *testing.T) {
+// TestGetHotfixQueryResult_DoesNotCacheTransportFailures keeps a transient
+// failure to even run the command (the agent busy, a momentary WMI hiccup,
+// RunCommand itself erroring) from becoming a permanently empty hotfix list
+// for the rest of the scan. This is distinct from a non-zero exit status:
+// the command running and exiting non-zero IS memoized (see
+// TestWinPkgManagerList_IgnoresNonZeroHotfixExitStatus and
+// TestGetHotfixQueryResult_NonZeroExitIsMemoized below) because the outcome
+// is deterministic within a scan; only a RunCommand transport error means we
+// never captured a usable outcome to cache.
+func TestGetHotfixQueryResult_DoesNotCacheTransportFailures(t *testing.T) {
 	resetHotfixCache()
 	t.Cleanup(resetHotfixCache)
 
 	conn := newHotfixCacheTestConnection(20, "")
-	conn.hotfixExit = 1
+	conn.hotfixErr = assert.AnError
 
-	_, err := GetHotfixes(conn)
+	_, err := GetHotfixQueryResult(conn)
 	require.Error(t, err)
 
-	// the query now succeeds; the cache must not be stuck on the failure
-	conn.hotfixExit = 0
+	// the command now runs successfully; the cache must not be stuck on the
+	// earlier transport failure
+	conn.hotfixErr = nil
 	conn.hotfixStdout = oneHotfixJSON
 
-	hotfixes, err := GetHotfixes(conn)
+	result, err := GetHotfixQueryResult(conn)
 	require.NoError(t, err)
-	require.Len(t, hotfixes, 1)
-	assert.Equal(t, int32(2), conn.hotfixCalls.Load(), "a failed query was cached instead of retried")
+	require.Len(t, result.Hotfixes, 1)
+	assert.Equal(t, int32(2), conn.hotfixCalls.Load(), "a transport failure was cached instead of retried")
 }
 
-// TestGetHotfixes_CollapsesConcurrentCallers covers the shape packages.list
-// and windows.hotfixes actually have when a scan resolves both: they can
-// arrive at GetHotfixes together, before either has a cached answer to read.
-// Without the lock held across the command they would each start their own
-// Get-HotFix.
-func TestGetHotfixes_CollapsesConcurrentCallers(t *testing.T) {
+// TestGetHotfixQueryResult_NonZeroExitIsMemoized is the counterpart to
+// TestGetHotfixQueryResult_DoesNotCacheTransportFailures: once RunCommand
+// itself succeeds, the outcome (including a non-zero exit status) IS cached,
+// so a second caller reading the same connection doesn't re-run Get-HotFix
+// just because the first caller saw ExitStatus != 0.
+func TestGetHotfixQueryResult_NonZeroExitIsMemoized(t *testing.T) {
+	resetHotfixCache()
+	t.Cleanup(resetHotfixCache)
+
+	conn := newHotfixCacheTestConnection(21, oneHotfixJSON)
+	conn.hotfixExit = 1
+
+	first, err := GetHotfixQueryResult(conn)
+	require.NoError(t, err) // RunCommand succeeded; a non-zero exit is not a transport error
+	assert.Equal(t, 1, first.ExitStatus)
+	require.Len(t, first.Hotfixes, 1, "stdout still parses even though the exit status is non-zero")
+
+	second, err := GetHotfixQueryResult(conn)
+	require.NoError(t, err)
+	assert.Equal(t, first, second)
+	assert.Equal(t, int32(1), conn.hotfixCalls.Load(), "a non-zero-exit outcome was re-fetched instead of memoized")
+}
+
+// TestWinPkgManagerList_IgnoresNonZeroHotfixExitStatus is the regression
+// test for the review finding on this cache: WinPkgManager.List has always
+// parsed Get-HotFix's stdout regardless of exit status, because a single
+// broken QFE entry that makes PowerShell exit non-zero while still printing
+// valid JSON must not fail the whole package inventory -- an empty or
+// failed package list closes vulnerability findings upstream. Sharing the
+// command with windows.hotfixes (which IS strict about exit status, see
+// TestWindowsHotfixes_NonZeroExitIsError in the resources package) must not
+// change that.
+func TestWinPkgManagerList_IgnoresNonZeroHotfixExitStatus(t *testing.T) {
+	resetHotfixCache()
+	t.Cleanup(resetHotfixCache)
+
+	conn := newHotfixCacheTestConnection(40, oneHotfixJSON)
+	conn.hotfixExit = 1 // PowerShell exited non-zero, but stdout is still valid JSON
+
+	mgr := &WinPkgManager{conn: conn, platform: hotfixCacheTestPlatform()}
+	pkgs, err := mgr.List()
+	require.NoError(t, err, "a non-zero hotfix exit status must not fail the whole package list")
+
+	found := false
+	for _, p := range pkgs {
+		if p.Format == "windows/hotfix" && p.Name == "KB5034441" {
+			found = true
+		}
+	}
+	assert.True(t, found, "the hotfix parsed from stdout despite the non-zero exit status should still be reported")
+}
+
+// TestGetHotfixQueryResult_CollapsesConcurrentCallers covers the shape
+// packages.list and windows.hotfixes actually have when a scan resolves
+// both: they can arrive at GetHotfixQueryResult together, before either has
+// a cached answer to read. Without the lock held across the command they
+// would each start their own Get-HotFix.
+func TestGetHotfixQueryResult_CollapsesConcurrentCallers(t *testing.T) {
 	resetHotfixCache()
 	t.Cleanup(resetHotfixCache)
 
@@ -225,9 +289,9 @@ func TestGetHotfixes_CollapsesConcurrentCallers(t *testing.T) {
 	for i := 0; i < callers; i++ {
 		go func() {
 			defer wg.Done()
-			hotfixes, err := GetHotfixes(conn)
+			result, err := GetHotfixQueryResult(conn)
 			assert.NoError(t, err)
-			assert.Len(t, hotfixes, 1)
+			assert.Len(t, result.Hotfixes, 1)
 		}()
 	}
 

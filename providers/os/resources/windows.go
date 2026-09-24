@@ -181,13 +181,23 @@ func initWindowsHotfix(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 func (w *mqlWindows) hotfixes() ([]any, error) {
 	conn := w.MqlRuntime.Connection.(shared.Connection)
 
-	// packages.GetHotfixes caches Get-HotFix's result per connection:
-	// packages.list (WinPkgManager.List) asks for the same data, and without
-	// sharing this call Get-HotFix's COM enumeration would run twice per scan.
-	hotfixes, err := packages.GetHotfixes(conn)
+	// packages.GetHotfixQueryResult caches Get-HotFix's raw outcome per
+	// connection: packages.list (WinPkgManager.List) asks for the same data,
+	// and without sharing this call Get-HotFix's COM enumeration would run
+	// twice per scan. Exit status and the parse error are handled here,
+	// exactly as before this cache existed: a non-zero exit is always an
+	// error for this resource, unlike packages.list which ignores it.
+	result, err := packages.GetHotfixQueryResult(conn)
 	if err != nil {
 		return nil, err
 	}
+	if result.ExitStatus != 0 {
+		return nil, errors.New("failed to retrieve hotfixes: " + result.Stderr)
+	}
+	if result.ParseErr != nil {
+		return nil, result.ParseErr
+	}
+	hotfixes := result.Hotfixes
 
 	// convert hotfixes to MQL resource
 	mqlHotFixes := make([]any, len(hotfixes))

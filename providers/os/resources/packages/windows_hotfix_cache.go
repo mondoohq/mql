@@ -7,17 +7,16 @@ import (
 	"io"
 	"sync"
 
-	"github.com/cockroachdb/errors"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
-// hotfixQueryCache memoizes Get-HotFix's parsed result per connection, keyed
-// by conn.ID(), so that packages.list (WinPkgManager.List, below) and
+// hotfixQueryCache memoizes Get-HotFix's raw outcome per connection, keyed by
+// conn.ID(), so that packages.list (WinPkgManager.List, below) and
 // windows.hotfixes (providers/os/resources/windows.go, which calls
-// GetHotfixes too) run the COM enumeration once per scan instead of twice.
-// Both resolve independently and Get-HotFix is not cheap: it is a fresh
-// PowerShell process that walks the CBS package store.
+// GetHotfixQueryResult too) run the COM enumeration once per scan instead of
+// twice. Both resolve independently and Get-HotFix is not cheap: it is a
+// fresh PowerShell process that walks the CBS package store.
 //
 // Modeled on smbios.managerCache: the cache lives for the process lifetime.
 // Entries are not evicted on disconnect because the os provider has no
@@ -25,16 +24,39 @@ import (
 // short-lived (one per scan) and the process exits after.
 var hotfixQueryCache sync.Map // map[uint32]*cachingHotfixQuery
 
-// GetHotfixes returns the host's installed hotfixes (Get-HotFix), running the
-// query at most once per connection no matter how many callers ask.
-func GetHotfixes(conn shared.Connection) ([]PowershellWinHotFix, error) {
+// HotfixQueryResult is the raw outcome of one Get-HotFix run: the exit
+// status and captured stderr, and the parsed stdout (best-effort — parsing
+// does not require a zero exit status, and ParseErr carries a JSON failure
+// instead of being folded into the returned error).
+//
+// The two existing callers read a non-zero exit differently.
+// WinPkgManager.List (below) has always parsed stdout regardless of exit
+// status: a single broken QFE entry that makes PowerShell exit non-zero
+// while still printing valid JSON must not fail the whole package
+// inventory, since an empty or failed package list closes vulnerability
+// findings upstream. windows.hotfixes (providers/os/resources/windows.go)
+// has always treated a non-zero exit as an error outright. Sharing one
+// underlying command means the cache cannot pick one interpretation for
+// both, so it hands back the raw outcome and leaves that choice to each
+// caller, exactly as it was before this cache existed.
+type HotfixQueryResult struct {
+	Hotfixes   []PowershellWinHotFix
+	ParseErr   error
+	ExitStatus int
+	Stderr     string
+}
+
+// GetHotfixQueryResult returns the host's Get-HotFix outcome, running the
+// query at most once per connection no matter how many callers ask. See
+// HotfixQueryResult for how to interpret ExitStatus/ParseErr.
+func GetHotfixQueryResult(conn shared.Connection) (HotfixQueryResult, error) {
 	connID := conn.ID()
 
 	c, _ := hotfixQueryCache.LoadOrStore(connID, &cachingHotfixQuery{conn: conn})
 	return c.(*cachingHotfixQuery).get()
 }
 
-// cachingHotfixQuery memoizes a single connection's Get-HotFix result.
+// cachingHotfixQuery memoizes a single connection's Get-HotFix outcome.
 //
 // The lock is held across the underlying command on purpose, mirroring
 // smbios.cachingManager: releasing it first would let packages.list and
@@ -42,23 +64,28 @@ func GetHotfixes(conn shared.Connection) ([]PowershellWinHotFix, error) {
 // the empty cache and run Get-HotFix on their own, which is exactly the
 // duplicate work this cache exists to remove.
 //
-// Only a successful result is memoized, so a transient failure (the agent
-// busy, a momentary WMI hiccup) is retried by the next caller instead of
-// turning one bad moment into an empty hotfix list for the rest of the scan.
+// A result is memoized only once RunCommand itself succeeds (a transport
+// error is not cached), so a transient failure to even run the command (the
+// agent busy, a momentary WMI hiccup) is retried by the next caller instead
+// of turning one bad moment into an empty hotfix list for the rest of the
+// scan. A non-zero exit status or a JSON parse failure, on the other hand,
+// IS memoized: the command did run, its outcome is deterministic within a
+// scan, and each caller's own ExitStatus/ParseErr handling decides what
+// that outcome means for them.
 type cachingHotfixQuery struct {
 	conn shared.Connection
 
-	lock     sync.Mutex
-	fetched  bool
-	hotfixes []PowershellWinHotFix
+	lock    sync.Mutex
+	fetched bool
+	result  HotfixQueryResult
 }
 
-func (c *cachingHotfixQuery) get() ([]PowershellWinHotFix, error) {
+func (c *cachingHotfixQuery) get() (HotfixQueryResult, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	if c.fetched {
-		return c.hotfixes, nil
+		return c.result, nil
 	}
 
 	// Encode (rather than Wrap) so the script travels as a base64-encoded
@@ -67,22 +94,28 @@ func (c *cachingHotfixQuery) get() ([]PowershellWinHotFix, error) {
 	// provider uses.
 	cmd, err := c.conn.RunCommand(powershell.Encode(WINDOWS_QUERY_HOTFIXES))
 	if err != nil {
-		return nil, errors.Wrap(err, "could not fetch hotfixes")
-	}
-	if cmd.ExitStatus != 0 {
-		stderr, err := io.ReadAll(cmd.Stderr)
-		if err != nil {
-			return nil, err
-		}
-		return nil, errors.New("failed to retrieve hotfixes: " + string(stderr))
+		// RunCommand itself failed: nothing to memoize, so the next caller
+		// gets a fresh attempt instead of being stuck on this failure.
+		return HotfixQueryResult{}, err
 	}
 
-	hotfixes, err := ParseWindowsHotfixes(cmd.Stdout)
+	stderr, err := io.ReadAll(cmd.Stderr)
 	if err != nil {
-		return nil, errors.Wrap(err, "could not parse hotfix results")
+		// Same reasoning: we never captured a usable outcome, so don't cache one.
+		return HotfixQueryResult{}, err
 	}
 
-	c.hotfixes = hotfixes
+	// Parsed regardless of exit status: WinPkgManager.List has always done
+	// this, and a caller that wants to be strict about ExitStatus can still
+	// check it below without this cache making that decision for them.
+	hotfixes, parseErr := ParseWindowsHotfixes(cmd.Stdout)
+
+	c.result = HotfixQueryResult{
+		Hotfixes:   hotfixes,
+		ParseErr:   parseErr,
+		ExitStatus: cmd.ExitStatus,
+		Stderr:     string(stderr),
+	}
 	c.fetched = true
-	return c.hotfixes, nil
+	return c.result, nil
 }
