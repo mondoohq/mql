@@ -23,10 +23,12 @@ type mqlK8sRbacSubjectInternal struct {
 }
 
 // subjectID builds the stable, unique cache key for an RBAC subject. The fields
-// are NUL-joined because a NUL byte cannot appear in a Kubernetes identifier, so
-// names containing other separators can never collide.
+// are joined with the ASCII unit separator (\x1f), which cannot appear in a
+// Kubernetes identifier, so names containing other separators can never
+// collide. NUL is avoided because resource ids are stored and NUL is rejected
+// by common storage backends.
 func subjectID(kind, namespace, name string) string {
-	return fmt.Sprintf("k8s.rbac.subject\x00%s\x00%s\x00%s", kind, namespace, name)
+	return fmt.Sprintf("k8s.rbac.subject\x1f%s\x1f%s\x1f%s", kind, namespace, name)
 }
 
 // subjectNamespace resolves the effective namespace of a binding subject. For a
@@ -322,7 +324,7 @@ func initK8sRbacWhoCan(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 		}
 		return ""
 	}
-	args["__id"] = llx.StringData(fmt.Sprintf("k8s.rbac.whoCan\x00verb=%s\x00grp=%s\x00res=%s\x00ns=%s\x00name=%s",
+	args["__id"] = llx.StringData(fmt.Sprintf("k8s.rbac.whoCan\x1fverb=%s\x1fgrp=%s\x1fres=%s\x1fns=%s\x1fname=%s",
 		str("verb"), str("group"), str("resource"), str("namespace"), str("name")))
 	return args, nil, nil
 }

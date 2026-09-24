@@ -548,7 +548,7 @@ func (a *mqlAwsBackupPlan) resourceSelections() ([]any, error) {
 }
 
 func newMqlBackupPlanSelection(runtime *plugin.Runtime, planArn, selectionId string, creationDate *time.Time, sel backuptypes.BackupSelection) (*mqlAwsBackupPlanSelection, error) {
-	uniqueId := planArn + "\x00" + selectionId
+	uniqueId := planArn + "\x1f" + selectionId
 
 	resources := make([]any, 0, len(sel.Resources))
 	for _, r := range sel.Resources {
@@ -735,7 +735,7 @@ func newMqlBackupScanJob(runtime *plugin.Runtime, region string, sj backuptypes.
 
 func newMqlBackupPlanRule(runtime *plugin.Runtime, planArn string, rule backuptypes.BackupRule) (*mqlAwsBackupPlanRule, error) {
 	ruleId := convert.ToValue(rule.RuleId)
-	uniqueId := planArn + "\x00" + ruleId
+	uniqueId := planArn + "\x1f" + ruleId
 
 	// Build lifecycle resource
 	var lifecycle *mqlAwsBackupLifecycle
@@ -818,7 +818,7 @@ func newMqlBackupLifecycle(runtime *plugin.Runtime, id string, lc *backuptypes.L
 
 func newMqlBackupCopyAction(runtime *plugin.Runtime, ruleId string, ca backuptypes.CopyAction) (*mqlAwsBackupPlanRuleCopyAction, error) {
 	destArn := convert.ToValue(ca.DestinationBackupVaultArn)
-	uniqueId := ruleId + "\x00copyAction\x00" + destArn
+	uniqueId := ruleId + "\x1fcopyAction\x1f" + destArn
 
 	var deleteAfterDays, moveToColdStorageDays int64
 	var optInToArchive bool
@@ -849,7 +849,7 @@ func newMqlBackupAdvancedSettings(runtime *plugin.Runtime, planArn string, setti
 	res := []any{}
 	for _, s := range settings {
 		resourceType := convert.ToValue(s.ResourceType)
-		uniqueId := planArn + "\x00advSetting\x00" + resourceType
+		uniqueId := planArn + "\x1fadvSetting\x1f" + resourceType
 
 		mqlSetting, err := CreateResource(runtime, ResourceAwsBackupPlanAdvancedBackupSetting,
 			map[string]*llx.RawData{

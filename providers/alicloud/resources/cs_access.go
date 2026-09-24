@@ -44,11 +44,13 @@ func csParseTime(s *string) *time.Time {
 // two real grants share a key, and the second would be reported with the
 // first one's values.
 //
-// The separator is NUL rather than a slash because resourceID legitimately
-// contains slashes ("<clusterId>/<namespace>"). No component can contain a NUL,
-// so the joined key cannot be read two ways whatever the components hold.
+// The separator is the ASCII unit separator (\x1f) rather than a slash because
+// resourceID legitimately contains slashes ("<clusterId>/<namespace>"). No
+// component can contain a \x1f, so the joined key cannot be read two ways
+// whatever the components hold. It is not NUL because resource ids are stored,
+// and NUL is rejected by common storage backends (e.g. PostgreSQL text/jsonb).
 func csGrantID(uid, resourceType, resourceID, roleType, roleName string) string {
-	return strings.Join([]string{uid, resourceType, resourceID, roleType, roleName}, "\x00")
+	return strings.Join([]string{uid, resourceType, resourceID, roleType, roleName}, "\x1f")
 }
 
 // csGrantCoversCluster reports whether a grant reaches the given cluster. A

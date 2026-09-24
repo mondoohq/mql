@@ -256,3 +256,9 @@ func TestRbacWhoCan_ResourceName(t *testing.T) {
 			"name":     llx.StringData("other-secret"),
 		}))
 }
+
+func TestSubjectIDContainsNoNUL(t *testing.T) {
+	id := subjectID("ServiceAccount", "kube-system", "default")
+	assert.NotContains(t, id, "\x00")
+	assert.NotEqual(t, id, subjectID("ServiceAccount", "kube-system", "other"))
+}

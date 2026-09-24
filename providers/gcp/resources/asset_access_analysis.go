@@ -65,7 +65,7 @@ func initGcpProjectAssetServiceWhoCan(runtime *plugin.Runtime, args map[string]*
 	// resource is parameterized: without a key derived from the arguments every
 	// instance collides on the same cache entry and the first question answered
 	// is returned for all later ones.
-	args["__id"] = llx.StringData(fmt.Sprintf("%s\x00whoCan\x00perm=%s\x00res=%s",
+	args["__id"] = llx.StringData(fmt.Sprintf("%s\x1fwhoCan\x1fperm=%s\x1fres=%s",
 		rawDataString(args["projectId"]), rawDataString(args["permission"]), rawDataString(args["resource"])))
 
 	return args, nil, nil

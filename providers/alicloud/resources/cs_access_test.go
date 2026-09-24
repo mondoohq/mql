@@ -72,6 +72,9 @@ func TestCsGrantID(t *testing.T) {
 	t.Run("same grant is stable", func(t *testing.T) {
 		assert.Equal(t, base, csGrantID("281", "cluster", "c1a2b3", "admin", ""))
 	})
+	t.Run("contains no NUL byte", func(t *testing.T) {
+		assert.NotContains(t, base, "\x00")
+	})
 
 	t.Run("two namespaces of one cluster do not collide", func(t *testing.T) {
 		a := csGrantID("281", "namespace", "c1a2b3/kube-system", "admin", "")
