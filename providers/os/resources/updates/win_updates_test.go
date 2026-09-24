@@ -118,9 +118,44 @@ func TestWindowsUpdateSearchQueryStopsOnError(t *testing.T) {
 	// Without this the COM failure is a non-terminating error, powershell.exe
 	// exits 0, the ExitStatus check never fires, and a host that could not be
 	// reached reports itself fully patched.
-	q := windowsUpdateSearchQuery(WindowsUpdateCriteriaAvailable)
+	q := windowsUpdateSearchQuery(WindowsUpdateCriteriaAvailable, true)
 	assert.Contains(t, q, "$ErrorActionPreference='Stop'")
 	assert.Contains(t, q, WindowsUpdateCriteriaAvailable)
+}
+
+// TestWindowsUpdateSearchQueryOnlineFlag pins that the online/offline switch
+// only ever changes $searcher.Online, and that it is always set before
+// Search() runs -- setting IUpdateSearcher.Online after the search has
+// already started has no effect.
+func TestWindowsUpdateSearchQueryOnlineFlag(t *testing.T) {
+	online := windowsUpdateSearchQuery(WindowsUpdateCriteriaSoftware, true)
+	assert.Contains(t, online, "$searcher.Online = $true")
+	assert.NotContains(t, online, "$searcher.Online = $false")
+
+	offline := windowsUpdateSearchQuery(WindowsUpdateCriteriaAvailable, false)
+	assert.Contains(t, offline, "$searcher.Online = $false")
+	assert.NotContains(t, offline, "$searcher.Online = $true")
+
+	onlineIdx := strings.Index(offline, "$searcher.Online")
+	searchIdx := strings.Index(offline, ".Search(")
+	require.GreaterOrEqual(t, onlineIdx, 0)
+	require.GreaterOrEqual(t, searchIdx, 0)
+	assert.Less(t, onlineIdx, searchIdx, "Online must be set on the searcher before Search() runs")
+}
+
+// TestWindowsUpdateSearchQueryUsesForeachNotPipeline pins the
+// performance-motivated rewrite away from ForEach-Object/New-Object psobject
+// for the per-update record, and confirms the output field names used by
+// ParseWindowsUpdates did not move.
+func TestWindowsUpdateSearchQueryUsesForeachNotPipeline(t *testing.T) {
+	q := windowsUpdateSearchQuery(WindowsUpdateCriteriaAvailable, false)
+	assert.Contains(t, q, "foreach (")
+	assert.Contains(t, q, "[pscustomobject]@{")
+	assert.NotContains(t, q, "New-Object psobject")
+
+	for _, field := range []string{`"UpdateID"`, `"Title"`, `"MsrcSeverity"`, `"SupportUrl"`, `"RebootRequired"`, `"KBArticleIDs"`, `"CveIDs"`, `"Categories"`} {
+		assert.Contains(t, q, field)
+	}
 }
 
 func TestDropEmptyWindowsUpdatesKeepsTheInputWhenNothingIsBlank(t *testing.T) {

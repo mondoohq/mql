@@ -14,15 +14,44 @@ import (
 )
 
 // TestUpdateHistoryQueryFilterMatchesGo guards that the PowerShell-side
-// Where-Object pre-filter uses the same Operation/ResultCode codes that the
+// per-entry pre-filter uses the same Operation/ResultCode codes that the
 // Go-side FilterInstalledHistory enforces. If the constants change, the
 // embedded query must change with them or installed updates would silently
 // disappear.
 func TestUpdateHistoryQueryFilterMatchesGo(t *testing.T) {
-	want := fmt.Sprintf("$_.Operation -eq %d -and $_.ResultCode -eq %d",
+	want := fmt.Sprintf("$entry.Operation -eq %d -and $entry.ResultCode -eq %d",
 		UpdateOperationInstallation, UpdateResultSucceeded)
 	assert.Contains(t, WINDOWS_QUERY_UPDATE_HISTORY, want,
 		"PowerShell pre-filter must match the Go install/succeeded predicate")
+}
+
+// TestUpdateHistoryQueryCapsCount guards that the embedded query caps
+// QueryHistory at windowsUpdateHistoryMaxEntries rather than asking for the
+// whole history every time. QueryHistory returns records newest-first, so
+// the cap bounds how much history-older-than-any-still-useful-KB the query
+// pays to enumerate, not which updates are found.
+func TestUpdateHistoryQueryCapsCount(t *testing.T) {
+	want := fmt.Sprintf("[Math]::Min($count, %d)", windowsUpdateHistoryMaxEntries)
+	assert.Contains(t, WINDOWS_QUERY_UPDATE_HISTORY, want)
+	assert.Equal(t, 1000, windowsUpdateHistoryMaxEntries)
+}
+
+// TestUpdateHistoryQueryUsesForeachNotPipeline pins the performance-motivated
+// rewrite away from Where-Object/ForEach-Object/New-Object psobject: those
+// pipeline cmdlets are markedly slower than a foreach statement building
+// [pscustomobject] records, and history can run into the thousands of
+// entries on a long-lived host.
+func TestUpdateHistoryQueryUsesForeachNotPipeline(t *testing.T) {
+	assert.Contains(t, WINDOWS_QUERY_UPDATE_HISTORY, "foreach (")
+	assert.Contains(t, WINDOWS_QUERY_UPDATE_HISTORY, "[pscustomobject]@{")
+	assert.NotContains(t, WINDOWS_QUERY_UPDATE_HISTORY, "Where-Object")
+	assert.NotContains(t, WINDOWS_QUERY_UPDATE_HISTORY, "New-Object psobject")
+
+	// the output field names must not move: ParseWindowsUpdateHistory and
+	// downstream consumers both depend on them
+	for _, field := range []string{`"Title"`, `"Date"`, `"Operation"`, `"ResultCode"`, `"SupportUrl"`, `"UpdateID"`, `"Categories"`} {
+		assert.Contains(t, WINDOWS_QUERY_UPDATE_HISTORY, field)
+	}
 }
 
 func TestParseWindowsUpdateHistory(t *testing.T) {

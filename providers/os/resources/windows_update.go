@@ -477,7 +477,18 @@ func (w *mqlWindowsUpdate) available() ([]any, error) {
 
 	// reuse the shared Windows Update Agent search behind os.update, but with
 	// the broader "available" criteria (drivers included, hidden excluded).
-	wuUpdates, err := updates.SearchWindowsUpdates(conn, updates.WindowsUpdateCriteriaAvailable)
+	//
+	// Searched offline (online=false): the search answers from the cache of
+	// the agent's last detection instead of running a new one against
+	// Windows Update/WSUS, which can take minutes. That makes the result only
+	// as fresh as the last detection; windows.update.config.lastDetectionSuccess
+	// is the freshness signal, and callers that need a guaranteed-current
+	// answer must check it (or trigger a detection themselves) rather than
+	// assume this call just performed one. os.update (WindowsUpdateManager,
+	// same query builder) stays online because it drives patch-state
+	// reporting, where a stale cache would under- or over-report what is
+	// actually outstanding.
+	wuUpdates, err := updates.SearchWindowsUpdates(conn, updates.WindowsUpdateCriteriaAvailable, false)
 	if err != nil {
 		return nil, err
 	}

@@ -5,6 +5,7 @@ package windows
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"regexp"
 	"strings"
@@ -41,21 +42,39 @@ func ParseKBID(s string) string {
 	return "KB" + strings.TrimPrefix(strings.ToUpper(m), "KB")
 }
 
+// windowsUpdateHistoryMaxEntries caps how many history records
+// WINDOWS_QUERY_UPDATE_HISTORY asks the Windows Update Agent for.
+// IUpdateSearcher.QueryHistory returns records in descending chronological
+// order (newest first: see IUpdateSearcher::QueryHistory on Microsoft Learn),
+// so the cap keeps the newest entries and only drops history older than that.
+// Both consumers (os.lastUpdate and windows.update.installed) only care about
+// the newest install per KB, so a host that has accumulated more than this
+// many history events over its lifetime loses nothing they read; on a host
+// with years of updates, unbounded QueryHistory is the expensive part of this
+// query, run over records nothing downstream can still use once a newer
+// install for the same KB has already been seen.
+const windowsUpdateHistoryMaxEntries = 1000
+
 // WINDOWS_QUERY_UPDATE_HISTORY enumerates the Windows Update Agent install
-// history via the COM API, pre-filtering in PowerShell to succeeded
-// installations (Operation == Installation, ResultCode == Succeeded) so that
-// only those entries are turned into objects and serialized — uninstalls,
-// failures, and aborted/in-progress entries are dropped before the expensive
-// per-entry work. Go's FilterInstalledHistory re-applies the same predicate
-// (and de-duplicates by KB), so the two must stay in sync; see
-// TestUpdateHistoryQueryFilterMatchesGo. Dates serialize as PowerShell
+// history via the COM API, capped to the most recent windowsUpdateHistoryMaxEntries
+// records and pre-filtered in PowerShell to succeeded installations
+// (Operation == Installation, ResultCode == Succeeded) so that only those
+// entries are turned into objects and serialized — uninstalls, failures, and
+// aborted/in-progress entries are dropped before the expensive per-entry
+// work. The per-entry loop is a `foreach` building `[pscustomobject]`
+// records rather than `Where-Object` / `ForEach-Object` / `New-Object
+// psobject`: the pipeline cmdlets are markedly slower in PowerShell,
+// which matters here because history can run into the thousands of
+// entries on a long-lived host. Go's FilterInstalledHistory re-applies the
+// same predicate (and de-duplicates by KB), so the two must stay in sync;
+// see TestUpdateHistoryQueryFilterMatchesGo. Dates serialize as PowerShell
 // "/Date(ms)/" strings.
 //
 // $ErrorActionPreference is Stop so a failed COM call exits non-zero. Without
 // it GetTotalHistoryCount failing leaves $count null, the $count -gt 0 guard is
 // false, and the caller is handed an empty history: a host whose update agent
 // could not be reached reports that nothing has ever been installed.
-var WINDOWS_QUERY_UPDATE_HISTORY = `
+var WINDOWS_QUERY_UPDATE_HISTORY = fmt.Sprintf(`
 $ErrorActionPreference='Stop';
 $ProgressPreference='SilentlyContinue';
 $session = New-Object -ComObject Microsoft.Update.Session
@@ -63,21 +82,22 @@ $searcher = $session.CreateUpdateSearcher()
 $count = $searcher.GetTotalHistoryCount()
 $history = @()
 if ($count -gt 0) {
-  $history = $searcher.QueryHistory(0, $count) |
-    Where-Object { $_.Operation -eq 1 -and $_.ResultCode -eq 2 } |
-    ForEach-Object {
-    New-Object psobject -Property @{
-      "Title" = $_.Title
-      "Date" = $_.Date
-      "Operation" = [int]$_.Operation
-      "ResultCode" = [int]$_.ResultCode
-      "SupportUrl" = $_.SupportUrl
-      "UpdateID" = $_.UpdateIdentity.UpdateID
-      "Categories" = @($_.Categories | ForEach-Object { $_.Name })
+  $take = [Math]::Min($count, %d)
+  $history = foreach ($entry in $searcher.QueryHistory(0, $take)) {
+    if ($entry.Operation -eq %d -and $entry.ResultCode -eq %d) {
+      [pscustomobject]@{
+        "Title" = $entry.Title
+        "Date" = $entry.Date
+        "Operation" = [int]$entry.Operation
+        "ResultCode" = [int]$entry.ResultCode
+        "SupportUrl" = $entry.SupportUrl
+        "UpdateID" = $entry.UpdateIdentity.UpdateID
+        "Categories" = @($entry.Categories | ForEach-Object { $_.Name })
+      }
     }
   }
 }
-@($history) | ConvertTo-Json -Depth 3`
+@($history) | ConvertTo-Json -Depth 3`, windowsUpdateHistoryMaxEntries, UpdateOperationInstallation, UpdateResultSucceeded)
 
 // WindowsUpdateHistoryEntry is a single Windows Update Agent history record.
 type WindowsUpdateHistoryEntry struct {

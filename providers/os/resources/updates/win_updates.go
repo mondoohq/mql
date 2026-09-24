@@ -33,23 +33,45 @@ const (
 //
 // IMPORTANT: criteria is concatenated into the script verbatim, so it must be
 // a trusted constant (e.g. WindowsUpdateCriteria*), never user input.
-func windowsUpdateSearchQuery(criteria string) string {
+//
+// online sets IUpdateSearcher.Online on the searcher object BEFORE Search()
+// runs (the property has no effect set afterwards: WUA reads it when the
+// search starts, not when it returns). os.update always searches online —
+// it is what reports current patch state, and answering it from a stale
+// cache would under- or over-report what is actually outstanding.
+// windows.update.available may search offline instead, answering from the
+// cache of the agent's last detection rather than running a new one against
+// Windows Update or WSUS, which can take minutes; an offline result is only
+// as fresh as that last detection, exposed as
+// windows.update.config.lastDetectionSuccess, and callers must use it to
+// judge whether the answer is current.
+func windowsUpdateSearchQuery(criteria string, online bool) string {
+	onlineValue := "$true"
+	if !online {
+		onlineValue = "$false"
+	}
 	// $ErrorActionPreference is Stop so a failed search is a terminating error
 	// and powershell.exe exits non-zero. Without it the COM failure is a
-	// non-terminating error: the exit status stays 0, $searcher stays null,
-	// and $searcher.Updates piped to ForEach-Object still runs the block once
-	// with a null input, so the caller is handed one empty update and reads it
-	// as a host with nothing outstanding. A host whose update agent could not
-	// be reached must fail the check, not report itself fully patched.
+	// non-terminating error: the exit status stays 0, $result stays null, and
+	// $result.Updates iterated still runs once with a null input, so the
+	// caller is handed one empty update and reads it as a host with nothing
+	// outstanding. A host whose update agent could not be reached must fail
+	// the check, not report itself fully patched.
+	//
+	// The per-update loop is a `foreach` building `[pscustomobject]` records
+	// rather than `ForEach-Object` / `New-Object psobject`: the pipeline
+	// cmdlets are markedly slower in PowerShell, and both the "installed"
+	// and "available" criteria can return large result sets.
 	return `
 $ErrorActionPreference='Stop';
 $ProgressPreference='SilentlyContinue';
 $updateSession = new-object -com "Microsoft.Update.Session"
-$searcher = $updateSession.CreateupdateSearcher().Search("` + criteria + `")
-$updates = $searcher.Updates | ForEach-Object {
-	$update = $_
-	New-Object psobject -Property @{
-		"UpdateID" = $update.Identity.UpdateID;
+$searcher = $updateSession.CreateupdateSearcher()
+$searcher.Online = ` + onlineValue + `
+$result = $searcher.Search("` + criteria + `")
+$updates = foreach ($update in $result.Updates) {
+	[pscustomobject]@{
+		"UpdateID" = $update.Identity.UpdateID
 		"Title" = $update.Title
 		"MsrcSeverity" = $update.MsrcSeverity
 		"SupportUrl" = $update.SupportUrl
@@ -89,7 +111,10 @@ func (um *WindowsUpdateManager) Format() string {
 }
 
 func (um *WindowsUpdateManager) List() ([]OperatingSystemUpdate, error) {
-	updates, err := SearchWindowsUpdates(um.conn, WindowsUpdateCriteriaSoftware)
+	// os.update must stay online: it is what reports current patch state, and
+	// this is the only WindowsUpdateManager caller, so there is no offline
+	// variant to keep in sync with.
+	updates, err := SearchWindowsUpdates(um.conn, WindowsUpdateCriteriaSoftware, true)
 	if err != nil {
 		return nil, err
 	}
@@ -124,9 +149,10 @@ func (u WindowsUpdate) toOperatingSystemUpdate() (OperatingSystemUpdate, bool) {
 }
 
 // SearchWindowsUpdates runs a Windows Update Agent search with the given
-// criteria and returns the parsed updates.
-func SearchWindowsUpdates(conn shared.Connection, criteria string) ([]WindowsUpdate, error) {
-	cmd := powershell.Encode(windowsUpdateSearchQuery(criteria))
+// criteria and returns the parsed updates. See windowsUpdateSearchQuery for
+// what online controls and the trade-off of setting it to false.
+func SearchWindowsUpdates(conn shared.Connection, criteria string, online bool) ([]WindowsUpdate, error) {
+	cmd := powershell.Encode(windowsUpdateSearchQuery(criteria, online))
 	c, err := conn.RunCommand(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("could not search for windows updates: %w", err)

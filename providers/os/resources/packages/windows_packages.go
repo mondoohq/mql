@@ -1431,14 +1431,12 @@ func (w *WinPkgManager) List() ([]Package, error) {
 		return collapsePackages(pkgs), nil
 	}
 
-	// hotfixes
-	cmd, err := w.conn.RunCommand(powershell.Wrap(WINDOWS_QUERY_HOTFIXES))
+	// hotfixes. GetHotfixes is shared with windows.hotfixes and caches its
+	// result per connection, so when both are resolved in the same scan
+	// Get-HotFix only runs once.
+	hotfixes, err := GetHotfixes(w.conn)
 	if err != nil {
-		return nil, errors.Wrap(err, "could not fetch hotfixes")
-	}
-	hotfixes, err := ParseWindowsHotfixes(cmd.Stdout)
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not parse hotfix results")
+		return nil, err
 	}
 	hotfixAsPkgs := HotFixesToPackages(hotfixes)
 

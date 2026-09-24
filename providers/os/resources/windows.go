@@ -181,22 +181,10 @@ func initWindowsHotfix(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 func (w *mqlWindows) hotfixes() ([]any, error) {
 	conn := w.MqlRuntime.Connection.(shared.Connection)
 
-	// query hotfixes
-	encodedCmd := powershell.Encode(packages.WINDOWS_QUERY_HOTFIXES)
-	executedCmd, err := conn.RunCommand(encodedCmd)
-	if err != nil {
-		return nil, err
-	}
-
-	if executedCmd.ExitStatus != 0 {
-		stderr, err := io.ReadAll(executedCmd.Stderr)
-		if err != nil {
-			return nil, err
-		}
-		return nil, errors.New("failed to retrieve hotfixes: " + string(stderr))
-	}
-
-	hotfixes, err := packages.ParseWindowsHotfixes(executedCmd.Stdout)
+	// packages.GetHotfixes caches Get-HotFix's result per connection:
+	// packages.list (WinPkgManager.List) asks for the same data, and without
+	// sharing this call Get-HotFix's COM enumeration would run twice per scan.
+	hotfixes, err := packages.GetHotfixes(conn)
 	if err != nil {
 		return nil, err
 	}

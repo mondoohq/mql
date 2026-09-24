@@ -12032,10 +12032,11 @@ windows.hotfix {
 // the last successful detection / download / install times, and whether a
 // reboot is pending). `installed` lists the updates the agent has applied
 // (the installed-KB history), and `available` lists updates the agent has
-// found but not yet installed. Configuration is read from the registry and
-// works even on connections that cannot run commands; the installed and
-// available collections fall back to the Windows Update Agent COM API when
-// commands are available.
+// found but not yet installed, answered from the cache of its last
+// detection rather than a live scan. Configuration is read from the
+// registry and works even on connections that cannot run commands; the
+// installed and available collections fall back to the Windows Update
+// Agent COM API when commands are available.
 windows.update {
   // Windows Update Agent configuration and freshness
   config() windows.update.config
@@ -12047,6 +12048,11 @@ windows.update {
   // Updates that have been installed (Windows Update Agent history)
   installed() []windows.update.entry
   // Updates that are available but not yet installed
+  //
+  // Answered from the Windows Update Agent's last detection rather than a
+  // live scan, so it returns in seconds instead of the minutes an online
+  // search against Windows Update or WSUS can take. Check
+  // `config.lastDetectionSuccess` for how recent that detection is.
   available() []windows.update.entry
 }
 
