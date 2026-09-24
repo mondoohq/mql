@@ -87,7 +87,9 @@ const (
 	ResourceAuditdRule                                    string = "auditd.rule"
 	ResourceAuditdRuleControl                             string = "auditd.rule.control"
 	ResourceAuditdRuleFile                                string = "auditd.rule.file"
+	ResourceAuditdRuleWatch                               string = "auditd.rule.watch"
 	ResourceAuditdRuleSyscall                             string = "auditd.rule.syscall"
+	ResourceAuditdStatus                                  string = "auditd.status"
 	ResourceApache2                                       string = "apache2"
 	ResourceApache2Conf                                   string = "apache2.conf"
 	ResourceApache2ConfEnvvars                            string = "apache2.conf.envvars"
@@ -942,9 +944,17 @@ func init() {
 			// to override args, implement: initAuditdRuleFile(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAuditdRuleFile,
 		},
+		"auditd.rule.watch": {
+			// to override args, implement: initAuditdRuleWatch(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAuditdRuleWatch,
+		},
 		"auditd.rule.syscall": {
 			// to override args, implement: initAuditdRuleSyscall(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAuditdRuleSyscall,
+		},
+		"auditd.status": {
+			Init:   initAuditdStatus,
+			Create: createAuditdStatus,
 		},
 		"apache2": {
 			// to override args, implement: initApache2(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -4260,6 +4270,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"auditd.config.params": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuditdConfig).GetParams()).ToDataRes(types.Map(types.String, types.String))
 	},
+	"auditd.config.maxLogFile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdConfig).GetMaxLogFile()).ToDataRes(types.Int)
+	},
+	"auditd.config.numLogs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdConfig).GetNumLogs()).ToDataRes(types.Int)
+	},
+	"auditd.config.maxLogFileAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdConfig).GetMaxLogFileAction()).ToDataRes(types.String)
+	},
+	"auditd.config.spaceLeftAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdConfig).GetSpaceLeftAction()).ToDataRes(types.String)
+	},
+	"auditd.config.adminSpaceLeftAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdConfig).GetAdminSpaceLeftAction()).ToDataRes(types.String)
+	},
+	"auditd.config.diskFullAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdConfig).GetDiskFullAction()).ToDataRes(types.String)
+	},
+	"auditd.config.diskErrorAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdConfig).GetDiskErrorAction()).ToDataRes(types.String)
+	},
+	"auditd.config.actionMailAcct": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdConfig).GetActionMailAcct()).ToDataRes(types.String)
+	},
 	"auditd.rules.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuditdRules).GetPath()).ToDataRes(types.String)
 	},
@@ -4271,6 +4305,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"auditd.rules.syscalls": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuditdRules).GetSyscalls()).ToDataRes(types.Array(types.Resource("auditd.rule.syscall")))
+	},
+	"auditd.rules.exists": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdRules).GetExists()).ToDataRes(types.Bool)
+	},
+	"auditd.rules.watches": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdRules).GetWatches()).ToDataRes(types.Array(types.Resource("auditd.rule.watch")))
+	},
+	"auditd.rules.immutable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdRules).GetImmutable()).ToDataRes(types.Bool)
 	},
 	"auditd.rule.control.flag": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuditdRuleControl).GetFlag()).ToDataRes(types.String)
@@ -4286,6 +4329,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"auditd.rule.file.keyname": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuditdRuleFile).GetKeyname()).ToDataRes(types.String)
+	},
+	"auditd.rule.watch.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdRuleWatch).GetPath()).ToDataRes(types.String)
+	},
+	"auditd.rule.watch.permissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdRuleWatch).GetPermissions()).ToDataRes(types.Array(types.String))
+	},
+	"auditd.rule.watch.keyname": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdRuleWatch).GetKeyname()).ToDataRes(types.String)
+	},
+	"auditd.rule.watch.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdRuleWatch).GetType()).ToDataRes(types.String)
 	},
 	"auditd.rule.syscall.action": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuditdRuleSyscall).GetAction()).ToDataRes(types.String)
@@ -4313,6 +4368,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"auditd.rule.syscall.excludesUnsetAuid": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuditdRuleSyscall).GetExcludesUnsetAuid()).ToDataRes(types.Bool)
+	},
+	"auditd.status.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdStatus).GetEnabled()).ToDataRes(types.Int)
+	},
+	"auditd.status.failure": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdStatus).GetFailure()).ToDataRes(types.Int)
+	},
+	"auditd.status.pid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdStatus).GetPid()).ToDataRes(types.Int)
+	},
+	"auditd.status.rateLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdStatus).GetRateLimit()).ToDataRes(types.Int)
+	},
+	"auditd.status.backlogLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdStatus).GetBacklogLimit()).ToDataRes(types.Int)
+	},
+	"auditd.status.lost": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdStatus).GetLost()).ToDataRes(types.Int)
+	},
+	"auditd.status.backlog": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditdStatus).GetBacklog()).ToDataRes(types.Int)
 	},
 	"apache2.version": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlApache2).GetVersion()).ToDataRes(types.String)
@@ -19281,6 +19357,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAuditdConfig).Params, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
 		return
 	},
+	"auditd.config.maxLogFile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdConfig).MaxLogFile, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"auditd.config.numLogs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdConfig).NumLogs, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"auditd.config.maxLogFileAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdConfig).MaxLogFileAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"auditd.config.spaceLeftAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdConfig).SpaceLeftAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"auditd.config.adminSpaceLeftAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdConfig).AdminSpaceLeftAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"auditd.config.diskFullAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdConfig).DiskFullAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"auditd.config.diskErrorAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdConfig).DiskErrorAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"auditd.config.actionMailAcct": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdConfig).ActionMailAcct, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"auditd.rules.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAuditdRules).__id, ok = v.Value.(string)
 		return
@@ -19299,6 +19407,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"auditd.rules.syscalls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAuditdRules).Syscalls, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"auditd.rules.exists": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdRules).Exists, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"auditd.rules.watches": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdRules).Watches, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"auditd.rules.immutable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdRules).Immutable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"auditd.rule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -19331,6 +19451,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"auditd.rule.file.keyname": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAuditdRuleFile).Keyname, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"auditd.rule.watch.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdRuleWatch).__id, ok = v.Value.(string)
+		return
+	},
+	"auditd.rule.watch.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdRuleWatch).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"auditd.rule.watch.permissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdRuleWatch).Permissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"auditd.rule.watch.keyname": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdRuleWatch).Keyname, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"auditd.rule.watch.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdRuleWatch).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"auditd.rule.syscall.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -19371,6 +19511,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"auditd.rule.syscall.excludesUnsetAuid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAuditdRuleSyscall).ExcludesUnsetAuid, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"auditd.status.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdStatus).__id, ok = v.Value.(string)
+		return
+	},
+	"auditd.status.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdStatus).Enabled, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"auditd.status.failure": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdStatus).Failure, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"auditd.status.pid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdStatus).Pid, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"auditd.status.rateLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdStatus).RateLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"auditd.status.backlogLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdStatus).BacklogLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"auditd.status.lost": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdStatus).Lost, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"auditd.status.backlog": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditdStatus).Backlog, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"apache2.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -45212,8 +45384,16 @@ type mqlAuditdConfig struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAuditdConfigInternal
-	File   plugin.TValue[*mqlFile]
-	Params plugin.TValue[map[string]any]
+	File                 plugin.TValue[*mqlFile]
+	Params               plugin.TValue[map[string]any]
+	MaxLogFile           plugin.TValue[int64]
+	NumLogs              plugin.TValue[int64]
+	MaxLogFileAction     plugin.TValue[string]
+	SpaceLeftAction      plugin.TValue[string]
+	AdminSpaceLeftAction plugin.TValue[string]
+	DiskFullAction       plugin.TValue[string]
+	DiskErrorAction      plugin.TValue[string]
+	ActionMailAcct       plugin.TValue[string]
 }
 
 // createAuditdConfig creates a new instance of this resource
@@ -45280,15 +45460,106 @@ func (c *mqlAuditdConfig) GetParams() *plugin.TValue[map[string]any] {
 	})
 }
 
+func (c *mqlAuditdConfig) GetMaxLogFile() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MaxLogFile, func() (int64, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return 0, vargParams.Error
+		}
+
+		return c.maxLogFile(vargParams.Data)
+	})
+}
+
+func (c *mqlAuditdConfig) GetNumLogs() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.NumLogs, func() (int64, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return 0, vargParams.Error
+		}
+
+		return c.numLogs(vargParams.Data)
+	})
+}
+
+func (c *mqlAuditdConfig) GetMaxLogFileAction() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.MaxLogFileAction, func() (string, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return "", vargParams.Error
+		}
+
+		return c.maxLogFileAction(vargParams.Data)
+	})
+}
+
+func (c *mqlAuditdConfig) GetSpaceLeftAction() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.SpaceLeftAction, func() (string, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return "", vargParams.Error
+		}
+
+		return c.spaceLeftAction(vargParams.Data)
+	})
+}
+
+func (c *mqlAuditdConfig) GetAdminSpaceLeftAction() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AdminSpaceLeftAction, func() (string, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return "", vargParams.Error
+		}
+
+		return c.adminSpaceLeftAction(vargParams.Data)
+	})
+}
+
+func (c *mqlAuditdConfig) GetDiskFullAction() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DiskFullAction, func() (string, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return "", vargParams.Error
+		}
+
+		return c.diskFullAction(vargParams.Data)
+	})
+}
+
+func (c *mqlAuditdConfig) GetDiskErrorAction() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DiskErrorAction, func() (string, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return "", vargParams.Error
+		}
+
+		return c.diskErrorAction(vargParams.Data)
+	})
+}
+
+func (c *mqlAuditdConfig) GetActionMailAcct() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ActionMailAcct, func() (string, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return "", vargParams.Error
+		}
+
+		return c.actionMailAcct(vargParams.Data)
+	})
+}
+
 // mqlAuditdRules for the auditd.rules resource
 type mqlAuditdRules struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAuditdRulesInternal
-	Path     plugin.TValue[string]
-	Controls plugin.TValue[[]any]
-	Files    plugin.TValue[[]any]
-	Syscalls plugin.TValue[[]any]
+	Path      plugin.TValue[string]
+	Controls  plugin.TValue[[]any]
+	Files     plugin.TValue[[]any]
+	Syscalls  plugin.TValue[[]any]
+	Exists    plugin.TValue[bool]
+	Watches   plugin.TValue[[]any]
+	Immutable plugin.TValue[bool]
 }
 
 // createAuditdRules creates a new instance of this resource
@@ -45394,6 +45665,49 @@ func (c *mqlAuditdRules) GetSyscalls() *plugin.TValue[[]any] {
 		}
 
 		return c.syscalls(vargPath.Data)
+	})
+}
+
+func (c *mqlAuditdRules) GetExists() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Exists, func() (bool, error) {
+		vargPath := c.GetPath()
+		if vargPath.Error != nil {
+			return false, vargPath.Error
+		}
+
+		return c.exists(vargPath.Data)
+	})
+}
+
+func (c *mqlAuditdRules) GetWatches() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Watches, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("auditd.rules", c.__id, "watches")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		vargPath := c.GetPath()
+		if vargPath.Error != nil {
+			return nil, vargPath.Error
+		}
+
+		return c.watches(vargPath.Data)
+	})
+}
+
+func (c *mqlAuditdRules) GetImmutable() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Immutable, func() (bool, error) {
+		vargPath := c.GetPath()
+		if vargPath.Error != nil {
+			return false, vargPath.Error
+		}
+
+		return c.immutable(vargPath.Data)
 	})
 }
 
@@ -45549,6 +45863,70 @@ func (c *mqlAuditdRuleFile) GetKeyname() *plugin.TValue[string] {
 	return &c.Keyname
 }
 
+// mqlAuditdRuleWatch for the auditd.rule.watch resource
+type mqlAuditdRuleWatch struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAuditdRuleWatchInternal it will be used here
+	Path        plugin.TValue[string]
+	Permissions plugin.TValue[[]any]
+	Keyname     plugin.TValue[string]
+	Type        plugin.TValue[string]
+}
+
+// createAuditdRuleWatch creates a new instance of this resource
+func createAuditdRuleWatch(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAuditdRuleWatch{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("auditd.rule.watch", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAuditdRuleWatch) MqlName() string {
+	return "auditd.rule.watch"
+}
+
+func (c *mqlAuditdRuleWatch) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAuditdRuleWatch) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlAuditdRuleWatch) GetPermissions() *plugin.TValue[[]any] {
+	return &c.Permissions
+}
+
+func (c *mqlAuditdRuleWatch) GetKeyname() *plugin.TValue[string] {
+	return &c.Keyname
+}
+
+func (c *mqlAuditdRuleWatch) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
 // mqlAuditdRuleSyscall for the auditd.rule.syscall resource
 type mqlAuditdRuleSyscall struct {
 	MqlRuntime *plugin.Runtime
@@ -45636,6 +46014,80 @@ func (c *mqlAuditdRuleSyscall) GetAuidMin() *plugin.TValue[int64] {
 
 func (c *mqlAuditdRuleSyscall) GetExcludesUnsetAuid() *plugin.TValue[bool] {
 	return &c.ExcludesUnsetAuid
+}
+
+// mqlAuditdStatus for the auditd.status resource
+type mqlAuditdStatus struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAuditdStatusInternal it will be used here
+	Enabled      plugin.TValue[int64]
+	Failure      plugin.TValue[int64]
+	Pid          plugin.TValue[int64]
+	RateLimit    plugin.TValue[int64]
+	BacklogLimit plugin.TValue[int64]
+	Lost         plugin.TValue[int64]
+	Backlog      plugin.TValue[int64]
+}
+
+// createAuditdStatus creates a new instance of this resource
+func createAuditdStatus(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAuditdStatus{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("auditd.status", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAuditdStatus) MqlName() string {
+	return "auditd.status"
+}
+
+func (c *mqlAuditdStatus) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAuditdStatus) GetEnabled() *plugin.TValue[int64] {
+	return &c.Enabled
+}
+
+func (c *mqlAuditdStatus) GetFailure() *plugin.TValue[int64] {
+	return &c.Failure
+}
+
+func (c *mqlAuditdStatus) GetPid() *plugin.TValue[int64] {
+	return &c.Pid
+}
+
+func (c *mqlAuditdStatus) GetRateLimit() *plugin.TValue[int64] {
+	return &c.RateLimit
+}
+
+func (c *mqlAuditdStatus) GetBacklogLimit() *plugin.TValue[int64] {
+	return &c.BacklogLimit
+}
+
+func (c *mqlAuditdStatus) GetLost() *plugin.TValue[int64] {
+	return &c.Lost
+}
+
+func (c *mqlAuditdStatus) GetBacklog() *plugin.TValue[int64] {
+	return &c.Backlog
 }
 
 // mqlApache2 for the apache2 resource

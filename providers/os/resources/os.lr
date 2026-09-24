@@ -1709,26 +1709,91 @@ auditd.config {
   file() file
   // Configuration values of this config
   params(file) map[string]string
+  // Maximum size of a log file in megabytes (max_log_file)
+  //
+  // auditd's built-in default of 0 (no limit) when the key is absent. This is
+  // the daemon's fallback, not the value in the auditd.conf distributions ship.
+  maxLogFile(params) int
+  // Number of log files to keep when rotating (num_logs)
+  //
+  // auditd's built-in default of 0 when the key is absent.
+  numLogs(params) int
+  // Action taken when a log file reaches max_log_file (max_log_file_action)
+  //
+  // Lowercased, for example "rotate" or "keep_logs". auditd's built-in
+  // default of "ignore" when the key is absent.
+  maxLogFileAction(params) string
+  // Action taken when free disk space falls below space_left (space_left_action)
+  //
+  // Lowercased, for example "email" or "single". auditd's built-in default of
+  // "ignore" when the key is absent.
+  spaceLeftAction(params) string
+  // Action taken when free disk space falls below admin_space_left (admin_space_left_action)
+  //
+  // Lowercased, for example "single" or "halt". auditd's built-in default of
+  // "ignore" when the key is absent.
+  adminSpaceLeftAction(params) string
+  // Action taken when the disk holding the logs is full (disk_full_action)
+  //
+  // Lowercased. auditd's built-in default of "ignore" when the key is absent.
+  diskFullAction(params) string
+  // Action taken when writing a log file fails (disk_error_action)
+  //
+  // Lowercased. auditd's built-in default of "syslog" when the key is absent.
+  diskErrorAction(params) string
+  // Account that receives email for space_left_action "email" (action_mail_acct)
+  //
+  // auditd's built-in default of "root" when the key is absent.
+  actionMailAcct(params) string
 }
 
 // auditd (Linux Audit Daemon) ruleset on disk
 //
 // Kernel audit ruleset as loaded from the on-disk rule files, broken
 // out into three families: controls (daemon and buffer settings), file
-// watches, and syscall rules. By default the rule files under
-// /etc/audit/rules.d are read and merged in filename order; pass a path
-// to point at a different file or directory. Use this to confirm that
-// required watches (for example on /etc/shadow or /etc/sudoers) and
+// watches, and syscall rules. By default the rules are read the way
+// augenrules assembles them: the top-level *.rules files in
+// /etc/audit/rules.d in natural sort order, falling back to
+// /etc/audit/audit.rules when that directory has none. Pass a path to
+// point at a different file or directory. When no rules are found the
+// rule lists are empty and `exists` is false, so a check can tell a
+// missing ruleset apart from one that lacks a rule. Use this to confirm
+// that required watches (for example on /etc/shadow or /etc/sudoers) and
 // syscall audits mandated by a hardening baseline are present.
 auditd.rules {
-  // Directory or file the rules are read from (defaults to /etc/audit/rules.d)
+  // Directory or file the rules are read from
+  //
+  // /etc/audit/rules.d when it holds *.rules files, otherwise
+  // /etc/audit/audit.rules when that file exists, otherwise
+  // /etc/audit/rules.d.
   path() string
   // Control rules (buffer size, failure mode, and other daemon settings)
   controls(path) []auditd.rule.control
   // File watch rules (-w entries)
   files(path) []auditd.rule.file
-  // Syscall audit rules (-a entries)
+  // Syscall audit rules (-a and -A entries)
   syscalls(path) []auditd.rule.syscall
+  // Whether any rule file was found at path
+  //
+  // False when neither /etc/audit/rules.d holds *.rules files nor
+  // /etc/audit/audit.rules exists. Guard checks with
+  // `auditd.rules.exists && ...` on the same line to fail, rather than pass
+  // on an empty list, when no ruleset is present.
+  exists(path) bool
+  // File watches in both syntaxes, normalized
+  //
+  // Combines -w rules with the equivalent syscall form
+  // `-a always,exit -F path=... -F perm=...` (or `-F dir=`), which auditctl -l
+  // prints and several hardening guides prescribe. Paths lose any trailing
+  // slash and permissions become a set, so `-p aw` and `-p wa` compare equal.
+  watches(path) []auditd.rule.watch
+  // Whether the ruleset locks the audit configuration (-e 2)
+  //
+  // For a rules directory, augenrules keeps only the last -e control, so this
+  // is true when that last one is `-e 2`. For a single rules file, auditctl
+  // applies rules in order and ignores changes after `-e 2`, so any `-e 2`
+  // makes it true. False when there is no -e control.
+  immutable(path) bool
 }
 
 // auditd (Linux Audit Daemon) rule
@@ -1759,8 +1824,27 @@ private auditd.rule.file @defaults("path permissions") {
   path string
   // Access types that trigger the watch (from -p): any of r, w, x, a
   permissions string
-  // Key tagging records this rule produces (from -k), for filtering audit logs
+  // Key tagging records this rule produces (from -k or -F key=), for filtering audit logs
   keyname string
+}
+
+// auditd (Linux Audit Daemon) file watch, in either syntax
+//
+// Normalized form of a watch rule. `-w /etc/shadow -p wa -k identity` and
+// `-a always,exit -F path=/etc/shadow -F perm=aw -k identity` both become
+// {path: "/etc/shadow", permissions: ["w", "a"], keyname: "identity"}.
+private auditd.rule.watch @defaults("path permissions") {
+  // Watched path, without a trailing slash
+  path string
+  // Access types that trigger the watch, a set ordered r, w, x, a
+  //
+  // From -p or -F perm=. A -w rule without -p watches all four, as auditctl
+  // does.
+  permissions []string
+  // Key tagging records this rule produces (from -k or -F key=)
+  keyname string
+  // Syntax the watch was written in: "watch" for -w, "path" or "dir" for a syscall rule with -F path= or -F dir=
+  type string
 }
 
 // auditd (Linux Audit Daemon) rule for a syscall
@@ -1780,7 +1864,7 @@ private auditd.rule.file @defaults("path permissions") {
 //    keyname: nil,
 // }
 private auditd.rule.syscall @defaults("action list") {
-  // Action taken when the rule matches (from -a): "always" or "never"
+  // Action taken when the rule matches (from -a or -A): "always" or "never"
   action string
   // Rule list the action applies to (second value of -a): exit, task, user, exclude, or filesystem
   list string
@@ -1790,7 +1874,7 @@ private auditd.rule.syscall @defaults("action list") {
   fields []dict
   // Inter-field comparisons (from -C), each entry a {key, op, value} dict
   comparisons []dict
-  // Key tagging records this rule produces (from -k), for filtering audit logs
+  // Key tagging records this rule produces (from -k or -F key=), for filtering audit logs
   keyname string
   // CPU architecture this rule is restricted to
   //
@@ -1810,6 +1894,30 @@ private auditd.rule.syscall @defaults("action list") {
   // raw sentinels `4294967295` and `-1`), which drops events from daemons
   // and other processes that never had a login UID assigned.
   excludesUnsetAuid bool
+}
+
+// auditd (Linux Audit Daemon) kernel audit status
+//
+// State of the kernel audit subsystem as reported by `auditctl -s`: whether
+// auditing is enabled or locked, the failure mode, and backlog and loss
+// counters. This is the loaded state, which can differ from the rules on
+// disk. Requires running commands as root; the fields error rather than
+// report zeros when auditctl cannot run.
+auditd.status @defaults("enabled failure") {
+  // Audit state: 0 disabled, 1 enabled, 2 enabled and locked against changes (immutable)
+  enabled int
+  // Action on a critical audit error: 0 silent, 1 printk, 2 panic
+  failure int
+  // PID of the audit daemon receiving events, 0 when none is registered
+  pid int
+  // Maximum audit messages per second, 0 for no limit
+  rateLimit int
+  // Maximum number of outstanding audit buffers
+  backlogLimit int
+  // Audit records lost since boot
+  lost int
+  // Audit buffers currently queued
+  backlog int
 }
 
 // Apache2 HTTP Server
