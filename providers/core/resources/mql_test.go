@@ -778,6 +778,28 @@ func TestArray(t *testing.T) {
 			Code:        "[3,1,3,4,2] - [3,4,5]",
 			Expectation: []any{int64(1), int64(2)},
 		},
+		// Regression: removing an empty array must keep the left operand's
+		// items, whether the empty array is a literal or computed.
+		{
+			Code:        "[1,2,3] - []",
+			Expectation: []any{int64(1), int64(2), int64(3)},
+		},
+		{
+			Code:        "x = ['a','b']; x - []",
+			Expectation: []any{"a", "b"},
+		},
+		{
+			Code:        "[1,2,3] - [1].where(_ > 5)",
+			Expectation: []any{int64(1), int64(2), int64(3)},
+		},
+		{
+			Code:        "(['a','b'] - []).containsNone(['a'])",
+			ResultIndex: 1, Expectation: false,
+		},
+		{
+			Code:        "[] - [1]",
+			Expectation: []any{},
+		},
 		// Regression: array-valued builtins must return empty, not null, when no
 		// items remain, so downstream concatenation does not fail with
 		// "cannot add arrays to null".

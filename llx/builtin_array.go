@@ -1172,9 +1172,11 @@ func tarrayDeleteTarrayV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uin
 		return nil, 0, errors.New("cannot add arrays to null")
 	}
 
+	// Removing no items leaves the left operand unchanged. Returning the empty
+	// right operand here turned `list - []` into `[]`.
 	list := items.Value.([]any)
 	if len(list) == 0 {
-		return items, 0, nil
+		return bind, 0, nil
 	}
 
 	// TODO: We can optimize the way the deletion works, but need to map to
