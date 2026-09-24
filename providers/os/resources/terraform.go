@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -59,20 +60,11 @@ func (r *mqlTerraformPackages) gatherData() error {
 	afs := &afero.Afero{Fs: fs}
 
 	path := r.Path.Data
-
-	var allDeps []*languages.Package
-	var filePaths []string
-
-	if path != "" {
-		deps, files := collectTerraformPackages(afs, path)
-		allDeps = append(allDeps, deps...)
-		filePaths = append(filePaths, files...)
-	} else {
-		// Search for .terraform.lock.hcl in current directory
-		deps, files := collectTerraformFromFile(afs, ".terraform.lock.hcl")
-		allDeps = append(allDeps, deps...)
-		filePaths = append(filePaths, files...)
+	if path == "" {
+		path = "."
 	}
+
+	allDeps, filePaths := collectTerraformPackages(afs, path)
 
 	slices.SortFunc(allDeps, languages.SortFn)
 
@@ -98,6 +90,32 @@ func (r *mqlTerraformPackages) gatherData() error {
 	return nil
 }
 
+// terraformLockFile is the file `terraform init` writes to pin provider versions.
+const terraformLockFile = ".terraform.lock.hcl"
+
+// maxLockSearchDepth bounds how far below the search root a lock file is looked
+// for. Terraform workspaces nest a few levels at most (envs/prod, stacks/network);
+// the cap keeps the walk from descending an entire filesystem when the resource
+// runs against an OS or container connection, where the root is / and there is
+// usually no lock file at all.
+const maxLockSearchDepth = 8
+
+// skipLockSearchDirs never hold the project's own lock file. `.terraform` is the
+// one that matters for correctness: it holds downloaded modules, each of which
+// may ship a lock file of its own, and reporting those would attribute a
+// dependency's providers to this project.
+var skipLockSearchDirs = map[string]bool{
+	".git":         true,
+	".hg":          true,
+	".svn":         true,
+	".terraform":   true,
+	"node_modules": true,
+	"vendor":       true,
+	"proc":         true,
+	"sys":          true,
+	"dev":          true,
+}
+
 func collectTerraformPackages(afs *afero.Afero, path string) ([]*languages.Package, []string) {
 	isDir, err := afs.IsDir(path)
 	if err != nil {
@@ -105,16 +123,58 @@ func collectTerraformPackages(afs *afero.Afero, path string) ([]*languages.Packa
 		return nil, nil
 	}
 
-	if isDir {
-		lockPath := filepath.Join(path, ".terraform.lock.hcl")
-		return collectTerraformFromFile(afs, lockPath)
+	if !isDir {
+		if strings.HasSuffix(path, terraformLockFile) {
+			return collectTerraformFromFile(afs, path)
+		}
+		return nil, nil
 	}
 
-	if strings.HasSuffix(path, ".terraform.lock.hcl") {
-		return collectTerraformFromFile(afs, path)
+	return collectTerraformInTree(afs, path)
+}
+
+// collectTerraformInTree searches a directory tree for lock files. A repository
+// commonly holds more than one — a workspace per environment, each with its own
+// pinned provider set — and before this walk only a lock file sitting exactly at
+// the search root was ever found.
+func collectTerraformInTree(afs *afero.Afero, root string) ([]*languages.Package, []string) {
+	var deps []*languages.Package
+	var files []string
+
+	rootDepth := strings.Count(filepath.ToSlash(filepath.Clean(root)), "/")
+
+	err := afero.Walk(afs, root, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			// An unreadable subtree is skipped rather than failing the walk:
+			// a permission error deep in a tree must not cost us the lock
+			// files we already found.
+			return nil //nolint:nilerr
+		}
+
+		if info.IsDir() {
+			if p != root && skipLockSearchDirs[info.Name()] {
+				return filepath.SkipDir
+			}
+			if strings.Count(filepath.ToSlash(p), "/")-rootDepth > maxLockSearchDepth {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		if info.Name() != terraformLockFile {
+			return nil
+		}
+
+		d, f := collectTerraformFromFile(afs, p)
+		deps = append(deps, d...)
+		files = append(files, f...)
+		return nil
+	})
+	if err != nil {
+		log.Debug().Err(err).Str("path", root).Msg("could not search for Terraform lock files")
 	}
 
-	return nil, nil
+	return deps, files
 }
 
 func collectTerraformFromFile(afs *afero.Afero, path string) ([]*languages.Package, []string) {
