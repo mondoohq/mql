@@ -105,19 +105,26 @@ func GenerateBom(r *reporter.Report) []*sbom.Sbom {
 		}
 		// ensure deterministic order of enumeration
 		keys := sortx.Keys(dataPoints.Values)
+		// fieldErrors collects one message per data point that could not be
+		// consumed (e.g. a provider crashed mid-scan and left that field's
+		// content an error rather than the expected shape). The BOM still
+		// builds from whatever other data points did decode, so this is a
+		// partial result, not a failed one -- matching cnspec's aibom
+		// generator (internal/aibom/generator/generator.go), which treats
+		// the same per-data-point decode failure as PARTIALLY_SUCCEEDED
+		// rather than FAILED.
+		var fieldErrors []string
 		for _, k := range keys {
 			dataValue := dataPoints.Values[k]
 			jsondata, err := reporter.JsonValue(dataValue.Content)
 			if err != nil {
-				bom.Status = sbom.Status_STATUS_FAILED
-				bom.ErrorMessage = errors.Wrap(err, "failed to parse json data").Error()
+				fieldErrors = append(fieldErrors, k+": "+errors.Wrap(err, "failed to parse json data").Error())
 				continue
 			}
 			rb := BomFields{}
 			err = json.Unmarshal(jsondata, &rb)
 			if err != nil {
-				bom.Status = sbom.Status_STATUS_FAILED
-				bom.ErrorMessage = errors.Wrap(err, "failed to parse bom fields json data").Error()
+				fieldErrors = append(fieldErrors, k+": "+errors.Wrap(err, "failed to parse bom fields json data").Error())
 				continue
 			}
 			if rb.Asset != nil {
@@ -275,6 +282,11 @@ func GenerateBom(r *reporter.Report) []*sbom.Sbom {
 			if pkg.BomRef == "" {
 				pkg.BomRef = sbom.BomRefFor(pkg)
 			}
+		}
+
+		if len(fieldErrors) > 0 {
+			bom.Status = sbom.Status_STATUS_PARTIALLY_SUCCEEDED
+			bom.ErrorMessage = strings.Join(fieldErrors, "; ")
 		}
 
 		boms = append(boms, bom)

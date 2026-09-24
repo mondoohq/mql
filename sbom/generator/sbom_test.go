@@ -4,12 +4,15 @@
 package generator
 
 import (
+	"strings"
 	"testing"
 
+	"go.mondoo.com/mql/cli/reporter"
 	"go.mondoo.com/mql/sbom"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func TestSbomGeneration(t *testing.T) {
@@ -61,7 +64,7 @@ func TestSbomGeneration(t *testing.T) {
 		sboms := GenerateBom(report)
 
 		selectedBom := sboms[0]
-		assert.Equal(t, sbom.Status_STATUS_FAILED, selectedBom.Status)
+		assert.Equal(t, sbom.Status_STATUS_PARTIALLY_SUCCEEDED, selectedBom.Status)
 		assert.Contains(t, selectedBom.ErrorMessage, "failed to parse bom fields json data")
 		assert.Len(t, selectedBom.Packages, 2)
 
@@ -109,7 +112,7 @@ func TestSbomGeneration(t *testing.T) {
 		sboms := GenerateBom(report)
 
 		selectedBom := sboms[0]
-		assert.Equal(t, sbom.Status_STATUS_FAILED, selectedBom.Status)
+		assert.Equal(t, sbom.Status_STATUS_PARTIALLY_SUCCEEDED, selectedBom.Status)
 		assert.Contains(t, selectedBom.ErrorMessage, "failed to parse bom fields json data")
 		assert.Len(t, selectedBom.Packages, 2)
 
@@ -161,7 +164,7 @@ func TestSbomGeneration(t *testing.T) {
 		sboms := GenerateBom(report)
 
 		selectedBom := sboms[0]
-		assert.Equal(t, sbom.Status_STATUS_FAILED, selectedBom.Status)
+		assert.Equal(t, sbom.Status_STATUS_PARTIALLY_SUCCEEDED, selectedBom.Status)
 		assert.Contains(t, selectedBom.ErrorMessage, "failed to parse bom fields json data")
 		assert.Len(t, selectedBom.Packages, 2)
 
@@ -204,6 +207,53 @@ func TestSbomGeneration(t *testing.T) {
 			BomRef:  "pkg:npm/npm@10.2.4",
 			Version: "10.2.4",
 		}, pkg)
+	})
+
+	// STATUS_FAILED semantics are unchanged by the PARTIALLY_SUCCEEDED work
+	// above: an asset with no data points at all produced nothing to build a
+	// BOM from, which is still a failure, not a partial result.
+	t.Run("no data points at all is still STATUS_FAILED", func(t *testing.T) {
+		report := &reporter.Report{
+			Assets: map[string]*reporter.Asset{
+				"asset-1": {Mrn: "asset-1", Name: "no-data-asset"},
+			},
+			Data: map[string]*reporter.DataValues{},
+		}
+
+		sboms := GenerateBom(report)
+		require.Len(t, sboms, 1)
+		assert.Equal(t, sbom.Status_STATUS_FAILED, sboms[0].Status)
+		assert.Equal(t, "no data points found", sboms[0].ErrorMessage)
+		assert.Empty(t, sboms[0].Packages)
+	})
+
+	// Two data points that each fail to decode must both show up in
+	// ErrorMessage, not just whichever one happened to be handled last -- the
+	// previous implementation overwrote ErrorMessage per failing data point
+	// instead of accumulating.
+	t.Run("multiple failed data points accumulate into ErrorMessage", func(t *testing.T) {
+		report := &reporter.Report{
+			Assets: map[string]*reporter.Asset{
+				"asset-1": {Mrn: "asset-1", Name: "multi-error-asset"},
+			},
+			Data: map[string]*reporter.DataValues{
+				"asset-1": {
+					Values: map[string]*reporter.DataValue{
+						"query-a": {Content: structpb.NewStringValue("the 'os' provider crashed: connection refused")},
+						"query-b": {Content: structpb.NewStringValue("the 'os' provider crashed: connection refused")},
+					},
+				},
+			},
+		}
+
+		sboms := GenerateBom(report)
+		require.Len(t, sboms, 1)
+		selectedBom := sboms[0]
+		assert.Equal(t, sbom.Status_STATUS_PARTIALLY_SUCCEEDED, selectedBom.Status)
+		assert.Contains(t, selectedBom.ErrorMessage, "query-a: ")
+		assert.Contains(t, selectedBom.ErrorMessage, "query-b: ")
+		// Two independent messages, not one overwriting the other.
+		assert.Equal(t, 2, strings.Count(selectedBom.ErrorMessage, "failed to parse bom fields json data"))
 	})
 }
 
