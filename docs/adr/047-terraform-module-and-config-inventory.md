@@ -160,8 +160,20 @@ overlap. IaC code reaches the OS cataloger through a filesystem connection.
 ## Walk safety
 
 The walk skips `.git`, `.hg`, `.svn`, `node_modules`, `vendor`, `proc`, `sys`,
-`dev` and `.terraform`, and stops eight levels below the root so a scan against
-an OS or container connection cannot descend without bound.
+`dev` and `.terraform`, stops eight levels below the root, and visits at most
+50,000 directories.
+
+Both bounds are needed, and the second was found by measuring rather than by
+reasoning. A depth cap bounds depth and nothing else: `/usr` walks in 0.18s and
+3,900 directories, which made depth alone look sufficient, while a depth-8 walk
+of a Go source tree on the same machine visits **3.6 million** directories and
+takes over a minute. The resource walks whatever the connection is rooted at,
+and for an OS or container connection that is `/`.
+
+50,000 is far more than any repository holds and costs about a second.
+Exceeding it means the root is not a project tree, so the walk stops and logs a
+warning naming the path rather than reporting a partial inventory as though it
+were complete.
 
 `.terraform` is the one that matters for correctness: it holds downloaded module
 *source*, each with its own `*.tf` declaring its own modules and providers.
