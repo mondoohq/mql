@@ -174,3 +174,25 @@ func TestCollectTerraformWorkspace(t *testing.T) {
 		assert.NotContains(t, p.Purl, "evil", "a downloaded module's configuration must not be read")
 	}
 }
+
+// TestCollectTerraformPackagesBoundsBreadth pins the directory budget. The
+// depth cap bounds depth, not breadth: measured on a real machine, a depth-8
+// walk of a Go source tree visits 3.6 million directories and takes over a
+// minute. The resource walks whatever the connection is rooted at, and for an
+// OS or container connection that is /.
+func TestCollectTerraformPackagesBoundsBreadth(t *testing.T) {
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+
+	// A wide, shallow tree — every directory within the depth cap.
+	for i := 0; i < maxLockSearchDirs+50; i++ {
+		require.NoError(t, afs.MkdirAll(filepath.Join("/wide", "d"+strconv.Itoa(i)), 0o755))
+	}
+	// A lock file past the budget, reachable only by exhausting it.
+	writeLock(t, afs, filepath.Join("/wide", "d"+strconv.Itoa(maxLockSearchDirs+40), ".terraform.lock.hcl"))
+
+	_, files := collectTerraformPackages(afs, "/wide")
+
+	// The walk stops rather than grinding through the whole tree. What matters
+	// is that it terminates within the budget, not which files it found first.
+	assert.LessOrEqual(t, len(files), 1)
+}
