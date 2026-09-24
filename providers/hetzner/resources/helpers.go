@@ -255,6 +255,11 @@ func idArg(args map[string]*llx.RawData, key string) (int64, bool) {
 	return n, true
 }
 
+// errResourceNotFound marks an init that was given an id Hetzner does not
+// know. It lets a caller holding a reference that may outlive its target tell
+// "that resource is gone" apart from a failed lookup.
+var errResourceNotFound = errors.New("not found")
+
 func notFoundErr(resource string, id int64) error {
-	return fmt.Errorf("hetzner %s not found: %d", resource, id)
+	return fmt.Errorf("hetzner %s %w: %d", resource, errResourceNotFound, id)
 }
