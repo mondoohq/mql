@@ -2152,6 +2152,7 @@ machine.chassis.version 9.0.0
 machine.cpu 13.2.3
 machine.cpu.coreCount 13.2.3
 machine.cpu.manufacturer 13.2.3
+machine.cpu.maxClockSpeed 14.0.2
 machine.cpu.model 13.2.3
 machine.cpu.processorCount 13.2.3
 machine.secureboot 13.6.2

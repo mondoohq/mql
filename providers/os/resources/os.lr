@@ -463,6 +463,8 @@ machine.cpu @defaults("manufacturer model processorCount coreCount") {
   processorCount int
   // Total number of physical CPU cores
   coreCount int
+  // Maximum rated clock speed in MHz, null where the platform does not report it
+  maxClockSpeed int
 }
 
 // Secure Boot status

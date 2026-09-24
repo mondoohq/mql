@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 func TestGetCpuInfoLinuxX64(t *testing.T) {
@@ -23,6 +24,53 @@ func TestGetCpuInfoLinuxX64(t *testing.T) {
 	assert.Equal(t, "Intel(R) Core(TM) i7-6700K CPU @ 4.00GHz", info.Model)
 	assert.Equal(t, int64(2), info.ProcessorCount)
 	assert.Equal(t, int64(2), info.Cores)
+	// no cpufreq in the fixture, and "cpu MHz" is the current speed, not the maximum
+	assert.Equal(t, int64(0), info.MaxClockSpeed)
+}
+
+func TestGetCpuInfoLinuxMaxClockSpeed(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+		Files: map[string]*mock.MockFileData{
+			"/proc/cpuinfo": {
+				Content: "processor\t: 0\n" +
+					"vendor_id\t: GenuineIntel\n" +
+					"model name\t: Intel(R) Core(TM) i7-6700K CPU @ 4.00GHz\n" +
+					"cpu MHz\t\t: 800.000\n" +
+					"physical id\t: 0\n" +
+					"core id\t\t: 0\n" +
+					"cpu cores\t: 1\n",
+			},
+			"/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq": {
+				Content: "4200000\n",
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	info, err := getCpuInfoLinux(conn)
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(4200), info.MaxClockSpeed)
+}
+
+func TestGetCpuInfoWindows(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			powershell.Encode(cpuWindowsScript): {
+				Stdout: `{"Name":"Intel(R) Core(TM) i7-8700 CPU @ 3.20GHz  ","Manufacturer":"GenuineIntel","NumberOfCores":6,"ProcessorCount":1,"MaxClockSpeed":3192}`,
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	info, err := getCpuInfoWindows(conn)
+	require.NoError(t, err)
+
+	assert.Equal(t, "Intel", info.Manufacturer)
+	assert.Equal(t, "Intel(R) Core(TM) i7-8700 CPU @ 3.20GHz", info.Model)
+	assert.Equal(t, int64(1), info.ProcessorCount)
+	assert.Equal(t, int64(6), info.Cores)
+	assert.Equal(t, int64(3192), info.MaxClockSpeed)
 }
 
 func TestGetCpuInfoMacosAppleSilicon(t *testing.T) {

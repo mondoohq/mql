@@ -3507,6 +3507,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"machine.cpu.coreCount": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMachineCpu).GetCoreCount()).ToDataRes(types.Int)
 	},
+	"machine.cpu.maxClockSpeed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMachineCpu).GetMaxClockSpeed()).ToDataRes(types.Int)
+	},
 	"machine.secureboot.efi": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMachineSecureboot).GetEfi()).ToDataRes(types.Bool)
 	},
@@ -18080,6 +18083,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"machine.cpu.coreCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMachineCpu).CoreCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"machine.cpu.maxClockSpeed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMachineCpu).MaxClockSpeed, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"machine.secureboot.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -40705,6 +40712,7 @@ type mqlMachineCpu struct {
 	Model          plugin.TValue[string]
 	ProcessorCount plugin.TValue[int64]
 	CoreCount      plugin.TValue[int64]
+	MaxClockSpeed  plugin.TValue[int64]
 }
 
 // createMachineCpu creates a new instance of this resource
@@ -40753,6 +40761,10 @@ func (c *mqlMachineCpu) GetProcessorCount() *plugin.TValue[int64] {
 
 func (c *mqlMachineCpu) GetCoreCount() *plugin.TValue[int64] {
 	return &c.CoreCount
+}
+
+func (c *mqlMachineCpu) GetMaxClockSpeed() *plugin.TValue[int64] {
+	return &c.MaxClockSpeed
 }
 
 // mqlMachineSecureboot for the machine.secureboot resource

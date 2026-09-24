@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -25,6 +26,8 @@ type cpuInfo struct {
 	Manufacturer   string
 	Model          string
 	ProcessorCount int64
+	// MaxClockSpeed is in MHz; 0 means unknown.
+	MaxClockSpeed int64
 }
 
 func initMachineCpu(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -58,11 +61,17 @@ func initMachineCpu(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 		return nil, nil, err
 	}
 
+	maxClockSpeed := llx.NilData
+	if info.MaxClockSpeed > 0 {
+		maxClockSpeed = llx.IntData(info.MaxClockSpeed)
+	}
+
 	return map[string]*llx.RawData{
 		"coreCount":      llx.IntData(info.Cores),
 		"manufacturer":   llx.StringData(info.Manufacturer),
 		"model":          llx.StringData(info.Model),
 		"processorCount": llx.IntData(info.ProcessorCount),
+		"maxClockSpeed":  maxClockSpeed,
 	}, nil, nil
 }
 
@@ -115,6 +124,8 @@ func getCpuInfoLinux(conn shared.Connection) (*cpuInfo, error) {
 		info.ProcessorCount = 1
 	}
 
+	info.MaxClockSpeed = linuxCpuMaxClockSpeed(conn)
+
 	// On some ARM systems (e.g. Raspberry Pi), /proc/cpuinfo doesn't include
 	// vendor or model name. Fall back to lscpu which typically has this info.
 	if (info.Manufacturer == "" || info.Model == "") && conn.Capabilities().Has(shared.Capability_RunCommand) {
@@ -129,6 +140,20 @@ func getCpuInfoLinux(conn shared.Connection) (*cpuInfo, error) {
 	}
 
 	return info, nil
+}
+
+// linuxCpuMaxClockSpeed reads the cpufreq maximum, which most VMs and
+// containers do not expose. /proc/cpuinfo only has the current frequency.
+func linuxCpuMaxClockSpeed(conn shared.Connection) int64 {
+	data, err := afero.ReadFile(conn.FileSystem(), "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq")
+	if err != nil {
+		return 0
+	}
+	khz, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return khz / 1000
 }
 
 func getCpuInfoMacos(conn shared.Connection) (*cpuInfo, error) {
@@ -180,6 +205,7 @@ $cpu = @(Get-CimInstance -ClassName Win32_Processor)
 $result = @{
     Name = $cpu[0].Name
     Manufacturer = $cpu[0].Manufacturer
+    MaxClockSpeed = $cpu[0].MaxClockSpeed
     NumberOfCores = ($cpu | Measure-Object -Property NumberOfCores -Sum).Sum
     ProcessorCount = $cpu.Count
 }
@@ -201,6 +227,7 @@ func getCpuInfoWindows(conn shared.Connection) (*cpuInfo, error) {
 		Manufacturer   string `json:"Manufacturer"`
 		NumberOfCores  int64  `json:"NumberOfCores"`
 		ProcessorCount int64  `json:"ProcessorCount"`
+		MaxClockSpeed  int64  `json:"MaxClockSpeed"`
 	}
 
 	data, err := io.ReadAll(cmd.Stdout)
@@ -217,6 +244,7 @@ func getCpuInfoWindows(conn shared.Connection) (*cpuInfo, error) {
 		Manufacturer:   normalizeManufacturer(strings.TrimSpace(result.Manufacturer)),
 		Cores:          result.NumberOfCores,
 		ProcessorCount: result.ProcessorCount,
+		MaxClockSpeed:  result.MaxClockSpeed,
 	}, nil
 }
 
