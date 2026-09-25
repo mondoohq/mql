@@ -6,6 +6,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -145,6 +146,15 @@ func TestMigrateProvidersURLNothingToDo(t *testing.T) {
 // A read-only config -- the normal state for a file owned by configuration
 // management -- reports the error rather than pretending it migrated.
 func TestMigrateProvidersURLReportsAnUnwritableConfig(t *testing.T) {
+	// Chmod on Windows toggles the read-only attribute of a file, and that
+	// attribute does not stop a directory being written into -- the migration
+	// succeeds and there is no error to report. The behaviour being pinned here
+	// is not platform-specific; the way of provoking it is, so the portable case
+	// below carries the contract on every platform.
+	if runtime.GOOS == "windows" {
+		t.Skip("a directory cannot be made unwritable with chmod on Windows")
+	}
+
 	path := writeConfig(t, "mondoo.yml", "providers_url: https://mirror.example.de/providers\n")
 	require.NoError(t, os.Chmod(filepath.Dir(path), 0o500))
 	t.Cleanup(func() { _ = os.Chmod(filepath.Dir(path), 0o700) })
@@ -152,6 +162,19 @@ func TestMigrateProvidersURLReportsAnUnwritableConfig(t *testing.T) {
 	res, err := MigrateProvidersURL()
 	require.Error(t, err)
 	assert.False(t, res.Migrated)
+}
+
+// A write that cannot happen has to be reported, not reported as a migration
+// that did. This provokes it portably -- the config is gone by the time the
+// write is attempted -- so the contract is covered on Windows too, where a
+// directory cannot be made unwritable with chmod.
+func TestMigrateProvidersURLReportsAFailedWrite(t *testing.T) {
+	path := writeConfig(t, "mondoo.yml", "providers_url: https://mirror.example.de/providers\n")
+	require.NoError(t, os.Remove(path))
+
+	res, err := MigrateProvidersURL()
+	require.Error(t, err)
+	assert.False(t, res.Migrated, "a failed write must not be reported as a migration")
 }
 
 // The migration replaces the file rather than editing in place, so the
@@ -184,4 +207,37 @@ func TestMigrateProvidersURLPreservesModeAndOwner(t *testing.T) {
 	afterUID, afterGID := ownerOf(t, after)
 	assert.Equal(t, beforeUID, afterUID, "owner was not preserved")
 	assert.Equal(t, beforeGID, afterGID, "group was not preserved")
+}
+
+// A symlinked config must stay a symlink, and the file it points at must be the
+// one that gets the new key. Renaming over a symlink replaces the link with a
+// regular file: the config would carry the new content while the file it pointed
+// at -- the one configuration management writes -- silently kept the old, and the
+// two would diverge from then on.
+func TestMigrateProvidersURLFollowsASymlinkedConfig(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "mondoo.real.yml")
+	link := filepath.Join(dir, "mondoo.yml")
+	require.NoError(t, os.WriteFile(target, []byte("providers_url: https://mirror.example.de/providers\n"), 0o600))
+	if err := os.Symlink(target, link); err != nil {
+		t.Skip("symlinks are not available here")
+	}
+
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.SetConfigFile(link)
+	require.NoError(t, viper.ReadInConfig())
+
+	res, err := MigrateProvidersURL()
+	require.NoError(t, err)
+	require.True(t, res.Migrated)
+
+	info, err := os.Lstat(link)
+	require.NoError(t, err)
+	assert.NotZero(t, info.Mode()&os.ModeSymlink, "the symlink was replaced by a regular file")
+
+	got, err := os.ReadFile(target)
+	require.NoError(t, err)
+	assert.Contains(t, string(got), "updates_url: https://mirror.example.de",
+		"the file the link points at did not get the key")
 }
