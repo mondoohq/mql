@@ -30,7 +30,23 @@ const (
 	OPTION_OBJECT_KIND              = "object-kind"
 	OPTION_CONTEXT                  = "context"
 	OPTION_KUBELOGIN                = "kubelogin"
-	IdPrefix                        = "//platformid.api.mondoo.app/runtime/k8s/uid/"
+
+	OPTION_KYVERNO_DEFAULT_MAPPINGS                    = "kyverno-default-mappings"
+	OPTION_KYVERNO_MAPPING_ANNOTATION_CHECK_UIDS       = "kyverno-mapping-annotation-check-uids"
+	OPTION_KYVERNO_MAPPING_ANNOTATION_CHECK_MRNS       = "kyverno-mapping-annotation-check-mrns"
+	OPTION_KYVERNO_MAPPING_ANNOTATION_POLICY_UIDS      = "kyverno-mapping-annotation-policy-uids"
+	OPTION_KYVERNO_MAPPING_ANNOTATION_REASONS          = "kyverno-mapping-annotation-reasons"
+	OPTION_KYVERNO_EXCEPTION_ANNOTATION_VALID_UNTIL    = "kyverno-exception-annotation-valid-until"
+	OPTION_KYVERNO_EXCEPTION_ANNOTATION_JUSTIFICATIONS = "kyverno-exception-annotation-justifications"
+	OPTION_KYVERNO_EXCEPTION_ANNOTATION_OWNERS         = "kyverno-exception-annotation-owners"
+	OPTION_KYVERNO_EXCEPTION_ANNOTATION_TICKETS        = "kyverno-exception-annotation-tickets"
+	OPTION_KYVERNO_MIRROR_POLICY_EXCEPTIONS            = "kyverno-mirror-policy-exceptions"
+	OPTION_KYVERNO_MIRRORED_EXCEPTION_APPROVAL         = "kyverno-mirrored-exception-approval"
+	OPTION_KYVERNO_MIRRORED_EXCEPTION_ACTION           = "kyverno-mirrored-exception-action"
+	OPTION_KYVERNO_FAIL_EXPIRED_POLICY_EXCEPTIONS      = "kyverno-fail-expired-policy-exceptions"
+	OPTION_KYVERNO_REPORT_UNMAPPED_POLICY_EXCEPTIONS   = "kyverno-report-unmapped-policy-exceptions"
+	OPTION_KYVERNO_REPORT_UNMAPPED_POLICY_RESULTS      = "kyverno-report-unmapped-policy-results"
+	IdPrefix                                           = "//platformid.api.mondoo.app/runtime/k8s/uid/"
 )
 
 type ConnectionType string
