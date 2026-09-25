@@ -114,15 +114,17 @@ func TestCoverageGapsJSONfield(t *testing.T) {
 		r := &RawData{Type: types.Array(types.String), CoverageGaps: []*Error{
 			Forbidden(errors.New("AccessDenied"),
 				WithScope(ErrorScope_ERROR_SCOPE_PARTITION, "eu-west-1"),
-				WithPermissions("ec2:DescribeAddresses")),
+				WithPermissions("ec2:DescribeVolumes", "ec2:DescribeAddresses")),
 			TooManyRequests(nil, WithRetryAfter(1500*time.Millisecond)),
 			{err: errors.New("boom")},
 		}}
 		got := r.CoverageGapsJSONfield("abc", bundle)
 		assert.JSONEq(t, `{"aws.ec2.eips":[
-			{"kind":"forbidden","scope":"partition","scopeId":"eu-west-1","permissions":["ec2:DescribeAddresses"],"error":"AccessDenied"},
+			{"kind":"forbidden","scope":"partition","scopeId":"eu-west-1","permissions":["ec2:DescribeAddresses","ec2:DescribeVolumes"],"error":"AccessDenied"},
 			{"kind":"too_many_requests","retryAfterMs":1500},
 			{"kind":"unspecified","error":"boom"}
 		]}`, "{"+string(got)+"}")
+		assert.Equal(t, []string{"ec2:DescribeVolumes", "ec2:DescribeAddresses"}, r.CoverageGaps[0].Permissions,
+			"rendering must not reorder the shared gap")
 	})
 }

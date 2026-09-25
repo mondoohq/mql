@@ -47,6 +47,11 @@ func TestFieldError(t *testing.T) {
 		err := llx.Unavailable(nil, llx.WithScope(llx.ErrorScope_ERROR_SCOPE_PARTITION, "eu-west-1"))
 		assert.Equal(t, "E(unavailable in eu-west-1)", p.fieldError(err))
 	})
+	t.Run("permissions are sorted, the error is not touched", func(t *testing.T) {
+		e := llx.Forbidden(nil, llx.WithPermissions("s3:GetObject", "ec2:DescribeTags"))
+		assert.Equal(t, "E(access denied (ec2:DescribeTags, s3:GetObject))", p.fieldError(e))
+		assert.Equal(t, []string{"s3:GetObject", "ec2:DescribeTags"}, e.Permissions)
+	})
 	t.Run("unclassified stays as it was", func(t *testing.T) {
 		assert.Equal(t, "E(boom)", p.fieldError(errors.New(" boom\n")))
 	})

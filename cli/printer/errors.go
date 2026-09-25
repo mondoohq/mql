@@ -65,8 +65,12 @@ func describeError(e *llx.Error, count int) string {
 		res.WriteString(strconv.Itoa(count))
 	}
 	if len(e.Permissions) != 0 {
+		// Sorted, so the same grants read the same whatever order the call
+		// site named them in. A copy: the error is shared.
+		perms := append([]string(nil), e.Permissions...)
+		sort.Strings(perms)
 		res.WriteString(" (")
-		res.WriteString(strings.Join(e.Permissions, ", "))
+		res.WriteString(strings.Join(perms, ", "))
 		res.WriteString(")")
 	}
 	return res.String()

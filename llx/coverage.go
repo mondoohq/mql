@@ -178,6 +178,18 @@ type coverageGapJSON struct {
 	Error        string   `json:"error,omitempty"`
 }
 
+// sortedPermissions returns a sorted copy, so output names the same grants in
+// the same order whatever order the call site used. The gap itself is shared
+// and keeps its order.
+func sortedPermissions(perms []string) []string {
+	if len(perms) == 0 {
+		return nil
+	}
+	res := slices.Clone(perms)
+	slices.Sort(res)
+	return res
+}
+
 // CoverageGapsJSONfield renders r's coverage gaps as a JSON field, keyed by
 // the same label JSONfield gives the value, or nil when r is complete. JSON
 // output writes it beside the value, never inside it, so the value keeps the
@@ -191,7 +203,7 @@ func (r *RawData) CoverageGapsJSONfield(codeID string, bundle *CodeBundle) []byt
 		cur := coverageGapJSON{
 			Kind:         gap.Kind.Name(),
 			ScopeID:      gap.ScopeID,
-			Permissions:  gap.Permissions,
+			Permissions:  sortedPermissions(gap.Permissions),
 			RetryAfterMs: gap.RetryAfter.Milliseconds(),
 		}
 		if gap.Scope != ErrorScope_ERROR_SCOPE_UNSPECIFIED {
