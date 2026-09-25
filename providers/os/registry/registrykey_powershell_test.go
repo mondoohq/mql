@@ -26,6 +26,64 @@ func TestWindowsRegistryKeyItemParser(t *testing.T) {
 	assert.Equal(t, "5", items[0].String())
 }
 
+func TestWindowsRegistryKeyQwordParser(t *testing.T) {
+	// kind 11 == REG_QWORD; PowerShell emits the value as a JSON number
+	const data = `[{
+		"key": "LowMemoryThreshold",
+		"value": { "kind": 11, "data": 4294967296 }
+	}]`
+
+	items, err := ParsePowershellRegistryKeyItems(strings.NewReader(data))
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, 11, items[0].Value.Kind)
+	// a QWORD must surface as the integer value, not the float bit-pattern
+	assert.Equal(t, int64(4294967296), items[0].Value.Number)
+	assert.Equal(t, int64(4294967296), items[0].GetRawValue())
+	assert.Equal(t, "4294967296", items[0].String())
+}
+
+// A REG_QWORD above 2^53 must survive parsing exactly. Decoding through float64
+// silently rounds these: 9007199254740993 lands on 9007199254740992, and a
+// FILETIME-shaped value loses its low digits. PowerShell types REG_QWORD as
+// System.Int64, so the whole int64 range has to round trip.
+func TestWindowsRegistryKeyQwordPrecision(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		raw  string
+		want int64
+	}{
+		{"2^53 + 1, the first integer float64 cannot hold", "9007199254740993", 9007199254740993},
+		{"FILETIME with significant low digits", "133712345678901234", 133712345678901234},
+		{"int64 max", "9223372036854775807", 9223372036854775807},
+		{"int64 min", "-9223372036854775808", -9223372036854775808},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := `[{"key":"T","value":{"kind":11,"data":` + tc.raw + `}}]`
+
+			items, err := ParsePowershellRegistryKeyItems(strings.NewReader(data))
+			require.NoError(t, err)
+			require.Len(t, items, 1)
+
+			assert.Equal(t, tc.want, items[0].Value.Number)
+			assert.Equal(t, tc.want, items[0].GetRawValue())
+			// the string fallback must agree with the number, digit for digit
+			assert.Equal(t, tc.raw, items[0].String())
+		})
+	}
+}
+
+// A REG_BINARY still parses once numbers arrive as json.Number rather than
+// float64, since its elements are decoded through the same path.
+func TestWindowsRegistryKeyBinaryStillParses(t *testing.T) {
+	const data = `[{"key":"B","value":{"kind":3,"data":[0,1,127,255]}}]`
+
+	items, err := ParsePowershellRegistryKeyItems(strings.NewReader(data))
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, []byte{0, 1, 127, 255}, items[0].Value.Binary)
+}
+
 func TestWindowsRegistryKeyChildParser(t *testing.T) {
 	r, err := os.Open("./testdata/registrykey-children.json")
 	require.NoError(t, err)
