@@ -13266,6 +13266,111 @@ private windows.lsa.secureChannel {
   vulnerableChannelAllowList string
 }
 
+// Windows User Account Control (UAC) policy
+//
+// User Account Control settings that back the "User Account Control" security
+// options, read from
+// HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System, together with
+// the LocalAccountTokenFilterPolicy value in the same key that governs UAC
+// remote restrictions for local accounts. These control whether Admin Approval
+// Mode is on, how administrators and standard users are prompted for
+// elevation, whether prompts use the secure desktop, installer detection,
+// UIAccess restrictions, file and registry virtualization, and whether remote
+// connections by local administrators receive a filtered token. On/off settings
+// are exposed as booleans, with any non-zero DWORD reading true, and the two
+// prompt behaviors as integers. Values are nullable: an absent value resolves
+// to null so it is distinguishable from an explicit false or 0, and each field
+// names the Windows default that applies when it is absent. Checks on a setting
+// whose secure state is the default should therefore accept null, for example
+// `windows.uac.localAccountTokenFilterPolicy != true`.
+windows.uac {
+  // Whether Admin Approval Mode is turned on for all administrators (EnableLUA)
+  //
+  // Backs "User Account Control: Run all administrators in Admin Approval
+  // Mode". When false, Admin Approval Mode and every other UAC policy setting
+  // are disabled. Null when the value is absent, in which case the Windows
+  // default of enabled applies. A change takes effect after a restart.
+  enableLua() bool
+  // Elevation prompt behavior for administrators in Admin Approval Mode (ConsentPromptBehaviorAdmin)
+  //
+  // Backs "User Account Control: Behavior of the elevation prompt for
+  // administrators in Admin Approval Mode": 0 elevate without prompting,
+  // 1 prompt for credentials on the secure desktop, 2 prompt for consent on the
+  // secure desktop, 3 prompt for credentials, 4 prompt for consent, 5 prompt
+  // for consent for non-Windows binaries. 0 is the insecure setting. A value
+  // outside 0 to 5 is reported as read, since Windows defines no meaning for
+  // it. Null when the value is absent, in which case the Windows default of 5
+  // applies.
+  consentPromptBehaviorAdmin() int
+  // Elevation prompt behavior for standard users (ConsentPromptBehaviorUser)
+  //
+  // Backs "User Account Control: Behavior of the elevation prompt for standard
+  // users": 0 automatically deny elevation requests, 1 prompt for credentials
+  // on the secure desktop, 3 prompt for credentials. Windows defines no
+  // meaning for 2 or for any other value, which is reported as read. Null when
+  // the value is absent, in which case the Windows default of 3 applies.
+  consentPromptBehaviorUser() int
+  // Whether Admin Approval Mode applies to the built-in Administrator account (FilterAdministratorToken)
+  //
+  // Backs "User Account Control: Admin Approval Mode for the built-in
+  // Administrator account". When false, the built-in Administrator runs every
+  // application with full administrative privilege. Null when the value is
+  // absent, in which case the Windows default of disabled applies.
+  filterAdministratorToken() bool
+  // Whether application installations are detected and prompted for elevation (EnableInstallerDetection)
+  //
+  // Backs "User Account Control: Detect application installations and prompt
+  // for elevation". Null when the value is absent, in which case the Windows
+  // default depends on the edition: enabled on Home editions, disabled on
+  // enterprise editions. Windows Server 2016 and 2022 write the value as 1.
+  enableInstallerDetection() bool
+  // Whether only UIAccess applications installed in secure locations are elevated (EnableSecureUIAPaths)
+  //
+  // Backs "User Account Control: Only elevate UIAccess applications that are
+  // installed in secure locations". The secure locations are Program Files,
+  // Program Files (x86), and Windows\system32. Null when the value is absent,
+  // in which case the Windows default of enabled applies.
+  enableSecureUiaPaths() bool
+  // Whether UIAccess applications may prompt for elevation without the secure desktop (EnableUIADesktopToggle)
+  //
+  // Backs "User Account Control: Allow UIAccess applications to prompt for
+  // elevation without using the secure desktop". When true, UIAccess programs
+  // such as Remote Assistance can disable the secure desktop for elevation
+  // prompts. Null when the value is absent, in which case the Windows default
+  // of disabled applies.
+  enableUiaDesktopToggle() bool
+  // Whether file and registry write failures are virtualized to per-user locations (EnableVirtualization)
+  //
+  // Backs "User Account Control: Virtualize file and registry write failures
+  // to per-user locations". Null when the value is absent, in which case the
+  // Windows default of enabled applies.
+  enableVirtualization() bool
+  // Whether remote connections by local administrators receive an elevated token (LocalAccountTokenFilterPolicy)
+  //
+  // Controls UAC remote restrictions for local (SAM) accounts. False builds a
+  // filtered token, so a local administrator connecting over the network has
+  // no administrative rights. True builds an elevated token and disables the
+  // remote restrictions, which is the insecure setting. Domain accounts are not
+  // affected. Null when the value is absent, in which case the Windows default
+  // of a filtered token applies, so a check for the secure state is written
+  // `localAccountTokenFilterPolicy != true`.
+  localAccountTokenFilterPolicy() bool
+  // Whether elevation prompts are shown on the secure desktop (PromptOnSecureDesktop)
+  //
+  // Backs "User Account Control: Switch to the secure desktop when prompting
+  // for elevation". When false, prompts appear on the interactive user's
+  // desktop. Null when the value is absent, in which case the Windows default
+  // of enabled applies.
+  promptOnSecureDesktop() bool
+  // Whether only signed and validated executables are elevated (ValidateAdminCodeSignatures)
+  //
+  // Backs "User Account Control: Only elevate executables that are signed and
+  // validated", which enforces certificate path validation on any interactive
+  // application that requests elevation. Null when the value is absent, in
+  // which case the Windows default of disabled applies.
+  validateAdminCodeSignatures() bool
+}
+
 // Windows Schannel TLS configuration
 //
 // Schannel (Secure Channel) TLS cipher-suite, supported-group, and
