@@ -8562,19 +8562,27 @@ func (c *mqlProxmoxNode) GetIp() *plugin.TValue[string] {
 }
 
 func (c *mqlProxmoxNode) GetCpuModel() *plugin.TValue[string] {
-	return &c.CpuModel
+	return plugin.GetOrCompute[string](&c.CpuModel, func() (string, error) {
+		return c.cpuModel()
+	})
 }
 
 func (c *mqlProxmoxNode) GetCpuSockets() *plugin.TValue[int64] {
-	return &c.CpuSockets
+	return plugin.GetOrCompute[int64](&c.CpuSockets, func() (int64, error) {
+		return c.cpuSockets()
+	})
 }
 
 func (c *mqlProxmoxNode) GetCpuCores() *plugin.TValue[int64] {
-	return &c.CpuCores
+	return plugin.GetOrCompute[int64](&c.CpuCores, func() (int64, error) {
+		return c.cpuCores()
+	})
 }
 
 func (c *mqlProxmoxNode) GetCpuUsage() *plugin.TValue[float64] {
-	return &c.CpuUsage
+	return plugin.GetOrCompute[float64](&c.CpuUsage, func() (float64, error) {
+		return c.cpuUsage()
+	})
 }
 
 func (c *mqlProxmoxNode) GetCpuFlags() *plugin.TValue[string] {
@@ -8584,35 +8592,51 @@ func (c *mqlProxmoxNode) GetCpuFlags() *plugin.TValue[string] {
 }
 
 func (c *mqlProxmoxNode) GetMemTotal() *plugin.TValue[int64] {
-	return &c.MemTotal
+	return plugin.GetOrCompute[int64](&c.MemTotal, func() (int64, error) {
+		return c.memTotal()
+	})
 }
 
 func (c *mqlProxmoxNode) GetMemUsed() *plugin.TValue[int64] {
-	return &c.MemUsed
+	return plugin.GetOrCompute[int64](&c.MemUsed, func() (int64, error) {
+		return c.memUsed()
+	})
 }
 
 func (c *mqlProxmoxNode) GetMemFree() *plugin.TValue[int64] {
-	return &c.MemFree
+	return plugin.GetOrCompute[int64](&c.MemFree, func() (int64, error) {
+		return c.memFree()
+	})
 }
 
 func (c *mqlProxmoxNode) GetSwapTotal() *plugin.TValue[int64] {
-	return &c.SwapTotal
+	return plugin.GetOrCompute[int64](&c.SwapTotal, func() (int64, error) {
+		return c.swapTotal()
+	})
 }
 
 func (c *mqlProxmoxNode) GetSwapUsed() *plugin.TValue[int64] {
-	return &c.SwapUsed
+	return plugin.GetOrCompute[int64](&c.SwapUsed, func() (int64, error) {
+		return c.swapUsed()
+	})
 }
 
 func (c *mqlProxmoxNode) GetKernelVersion() *plugin.TValue[string] {
-	return &c.KernelVersion
+	return plugin.GetOrCompute[string](&c.KernelVersion, func() (string, error) {
+		return c.kernelVersion()
+	})
 }
 
 func (c *mqlProxmoxNode) GetPveVersion() *plugin.TValue[string] {
-	return &c.PveVersion
+	return plugin.GetOrCompute[string](&c.PveVersion, func() (string, error) {
+		return c.pveVersion()
+	})
 }
 
 func (c *mqlProxmoxNode) GetUptime() *plugin.TValue[int64] {
-	return &c.Uptime
+	return plugin.GetOrCompute[int64](&c.Uptime, func() (int64, error) {
+		return c.uptime()
+	})
 }
 
 func (c *mqlProxmoxNode) GetBootKernel() *plugin.TValue[string] {
@@ -8682,7 +8706,9 @@ func (c *mqlProxmoxNode) GetServices() *plugin.TValue[[]any] {
 }
 
 func (c *mqlProxmoxNode) GetTimezone() *plugin.TValue[string] {
-	return &c.Timezone
+	return plugin.GetOrCompute[string](&c.Timezone, func() (string, error) {
+		return c.timezone()
+	})
 }
 
 func (c *mqlProxmoxNode) GetStorages() *plugin.TValue[[]any] {

@@ -66,6 +66,8 @@ type PveConnection struct {
 	// realmSync memoizes the realm-sync job listing, which both the
 	// cluster-wide accessor and the per-realm reverse edge read from.
 	realmSync realmSyncIndex
+	// guestPools memoizes which pool each guest belongs to.
+	guestPools guestPoolIndex
 	// realms memoizes the realm listing so a fleet of sync jobs resolving
 	// their realm costs one listing rather than one per job.
 	realms realmIndex

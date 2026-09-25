@@ -211,8 +211,10 @@ func (r *mqlProxmoxVm) tags() ([]any, error) {
 	return result, nil
 }
 
+// pool resolves the guest's resource pool. Membership is recorded on the pool,
+// not in the guest config, so it is read from the cluster resource listing.
 func (r *mqlProxmoxVm) pool() (*mqlProxmoxPool, error) {
-	id, err := r.cfgStr("pool")
+	id, err := vmConn(r).GuestPool(int(r.Id.Data))
 	if err != nil {
 		return nil, err
 	}

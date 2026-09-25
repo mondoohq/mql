@@ -108,7 +108,7 @@ func (r *mqlProxmox) storages() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return storageInfoToResources(r.MqlRuntime, storages)
+	return storageInfoToResources(r.MqlRuntime, storages, "")
 }
 
 func (r *mqlProxmox) pools() ([]any, error) {

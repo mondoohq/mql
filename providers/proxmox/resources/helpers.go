@@ -43,7 +43,15 @@ func vmInfoToResources(runtime *plugin.Runtime, vms []connection.VMInfo) ([]any,
 }
 
 // storageInfoToResources converts a slice of StorageInfo to MQL resources.
-func storageInfoToResources(runtime *plugin.Runtime, storages []connection.StorageInfo) ([]any, error) {
+//
+// node is empty for the cluster-wide /storage listing and names the node for
+// /nodes/<n>/storage. The two views of one storage are different records: the
+// node view carries that node's usage and activity, the cluster view carries
+// the configuration (path, node restriction, encryption key). A local storage
+// such as `local-lvm` also exists once per node with independent usage. Keying
+// every view on the storage name alone made them share one cache entry, so
+// whichever listing ran first answered for all of them.
+func storageInfoToResources(runtime *plugin.Runtime, storages []connection.StorageInfo, node string) ([]any, error) {
 	list := make([]any, len(storages))
 	for i, s := range storages {
 		var usagePct float64
@@ -53,7 +61,7 @@ func storageInfoToResources(runtime *plugin.Runtime, storages []connection.Stora
 		} else if s.Total > 0 {
 			usagePct = float64(s.Used) / float64(s.Total) * 100.0
 		}
-		res, err := CreateResource(runtime, "proxmox.storage", map[string]*llx.RawData{
+		args := map[string]*llx.RawData{
 			"id":            llx.StringData(s.Storage),
 			"type":          llx.StringData(s.Type),
 			"content":       llx.StringData(s.Content),
@@ -67,13 +75,24 @@ func storageInfoToResources(runtime *plugin.Runtime, storages []connection.Stora
 			"usagePercent":  llx.FloatData(usagePct),
 			"encrypted":     llx.BoolData(s.EncryptionKey != ""),
 			"encryptionKey": llx.StringData(s.EncryptionKey),
-		})
+		}
+		if node != "" {
+			args["__id"] = llx.StringData(nodeStorageCacheKey(node, s.Storage))
+		}
+		res, err := CreateResource(runtime, "proxmox.storage", args)
 		if err != nil {
 			return nil, err
 		}
 		list[i] = res
 	}
 	return list, nil
+}
+
+// nodeStorageCacheKey is the cache key of a storage as one node reports it.
+// The cluster-wide view keeps the `proxmox.storage/<name>` key from id(), which
+// is also what references to a storage by name resolve to.
+func nodeStorageCacheKey(node, storage string) string {
+	return "proxmox.storage/node/" + node + "/" + storage
 }
 
 // firewallRulesToResources converts firewall rules to MQL resources.

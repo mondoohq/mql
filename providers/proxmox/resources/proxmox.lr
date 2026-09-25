@@ -672,13 +672,13 @@ proxmox.node @defaults("name status") {
   // --- Hardware ---
 
   // CPU model name
-  cpuModel string
+  cpuModel() string
   // Number of CPU sockets
-  cpuSockets int
+  cpuSockets() int
   // Number of CPU cores
-  cpuCores int
+  cpuCores() int
   // Current CPU usage (fraction 0.0-1.0)
-  cpuUsage float
+  cpuUsage() float
   // CPU feature flags reported by /proc/cpuinfo
   //
   // Space-separated when set, empty on older PVE versions that don't
@@ -687,34 +687,32 @@ proxmox.node @defaults("name status") {
   // `md_clear`, `pti`, etc.
   cpuFlags() string
   // Total memory in bytes
-  memTotal int
+  memTotal() int
   // Used memory in bytes
-  memUsed int
+  memUsed() int
   // Free memory in bytes
-  memFree int
+  memFree() int
   // Total swap in bytes
-  swapTotal int
+  swapTotal() int
   // Used swap in bytes
-  swapUsed int
+  swapUsed() int
 
   // --- System ---
 
   // Running kernel version
-  kernelVersion string
+  kernelVersion() string
   // PVE manager version
-  pveVersion string
+  pveVersion() string
   // Uptime in seconds
-  uptime int
+  uptime() int
   // Kernel image that would boot on next reboot
   //
-  // When this differs from `kernelVersion` a kernel package has been
-  // installed but the host hasn't been rebooted to pick it up. Empty
-  // on older PVE versions that don't report `boot-info`.
+  // Always null: the Proxmox API reports the running kernel and the boot
+  // mode, but not which kernel the node boots next.
   bootKernel() string
   // Whether a kernel upgrade is pending a reboot
   //
-  // True when `kernelVersion` and `bootKernel` disagree. False when
-  // either value is empty so older PVE versions don't false-positive.
+  // Always null, since the kernel the node boots next is not reported.
   pendingReboot() bool
   // UEFI Secure Boot status: true when enforcing, false when disabled or on BIOS-only platforms
   secureBoot() bool
@@ -734,7 +732,7 @@ proxmox.node @defaults("name status") {
   // --- Time ---
 
   // Configured timezone
-  timezone string
+  timezone() string
 
   // --- Storage ---
 
@@ -2139,9 +2137,11 @@ proxmox.backup.job @defaults("id schedule storage enabled") {
   targetStorage() proxmox.storage
   // VMs this job targets
   //
-  // Resolved from `vmids` and `all` against the current cluster
-  // inventory. When `all` is true this returns every VM and `vmids`
-  // is ignored. Pool-scoped jobs (`pool` set, `vmids` empty) return
+  // Resolved from `vmids`, `all`, `exclude`, and `node` against the
+  // current cluster inventory. When `all` is true this returns every VM
+  // not listed in `exclude`, and `vmids` is ignored. When `node` is set
+  // only guests placed on that node are returned, since the job runs
+  // nowhere else. Pool-scoped jobs (`pool` set, `vmids` empty) return
   // an empty list. Query `pool` for those instead.
   targetVms() []proxmox.vm
   // Containers this job targets, resolved the same way as `targetVms`

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/proxmox/connection"
 )
 
@@ -137,28 +138,19 @@ func (r *mqlProxmoxNode) cpuFlags() (string, error) {
 	return r.nodeStatus.CPUInfo.Flags, nil
 }
 
+// bootKernel and pendingReboot report null. /nodes/<n>/status carries the
+// running kernel and the boot mode, but nothing names the kernel the node
+// boots next, so there is no second value to compare. Reading a key the API
+// never sends left these as an empty string and a confident false, which an
+// audit for pending reboots passed on every node.
 func (r *mqlProxmoxNode) bootKernel() (string, error) {
-	r.ensureStatus()
-	if r.statusErr != nil {
-		return "", r.statusErr
-	}
-	return r.nodeStatus.BootInfo.BootKernel, nil
+	r.BootKernel.State = plugin.StateIsSet | plugin.StateIsNull
+	return "", nil
 }
 
-// pendingReboot returns true only when both kernels are known and
-// they disagree — older PVE versions don't populate boot-info at all
-// and we don't want them to false-positive every node.
 func (r *mqlProxmoxNode) pendingReboot() (bool, error) {
-	r.ensureStatus()
-	if r.statusErr != nil {
-		return false, r.statusErr
-	}
-	cur := r.nodeStatus.BootInfo.CurrentKernel
-	boot := r.nodeStatus.BootInfo.BootKernel
-	if cur == "" || boot == "" {
-		return false, nil
-	}
-	return cur != boot, nil
+	r.PendingReboot.State = plugin.StateIsSet | plugin.StateIsNull
+	return false, nil
 }
 
 func (r *mqlProxmoxNode) secureBoot() (bool, error) {
@@ -166,7 +158,7 @@ func (r *mqlProxmoxNode) secureBoot() (bool, error) {
 	if r.statusErr != nil {
 		return false, r.statusErr
 	}
-	return r.nodeStatus.BootInfo.SecureBoot == 1, nil
+	return r.nodeStatus.BootInfo.SecureBoot.Bool(), nil
 }
 
 func (r *mqlProxmoxNode) networks() ([]any, error) {
@@ -256,7 +248,7 @@ func (r *mqlProxmoxNode) storages() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return storageInfoToResources(r.MqlRuntime, storages)
+	return storageInfoToResources(r.MqlRuntime, storages, r.Name.Data)
 }
 
 func (r *mqlProxmoxNode) certificates() ([]any, error) {

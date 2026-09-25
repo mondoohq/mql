@@ -116,14 +116,12 @@ type NodeStatus struct {
 	PVEVer   string   `json:"pveversion"`
 	Uptime   int64    `json:"uptime"`
 	LoadAvg  []string `json:"loadavg"`
-	// BootInfo reports the running kernel image and what would boot
-	// on the next reboot. When the two differ a kernel package has
-	// been installed but the host hasn't picked it up yet.
+	// BootInfo reports the firmware the node booted through and, on EFI,
+	// whether Secure Boot is on. It does not name the kernel the node boots
+	// next; no status field does.
 	BootInfo struct {
-		Mode          string `json:"mode"`
-		SecureBoot    int    `json:"secureboot"`
-		CurrentKernel string `json:"current-kernel"`
-		BootKernel    string `json:"boot-kernel"`
+		Mode       string  `json:"mode"`
+		SecureBoot PveBool `json:"secureboot"`
 	} `json:"boot-info"`
 }
 
