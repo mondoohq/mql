@@ -17,8 +17,14 @@ payload sat in the provider's own Go source and executed during plan and apply.
 Both were still downloadable from registry.terraform.io a day after disclosure.
 
 That attack is the reason this work exists, so it is worth being precise about
-what it says. A workspace pinning the malicious provider **already appeared in
-our inventory**, at an exact version, from the lock file. Wider module coverage
+what it says — and it is not that we were exposed. No repository in this
+organization references any of the malicious packages; we do use the correctly
+spelled `kreuzwerker/docker`, the legitimate provider being impersonated, which
+is the population a typosquat targets but is not the attack.
+
+The point is about detection. Had a scanned workspace pinned the malicious
+provider, it would **already have appeared in the SBOM this cataloger generates
+for it**, at an exact version, read from the lock file. Wider module coverage
 would not have caught it. What was missing is a verdict on the coordinate — and
 that verdict is produced by vulnerability intelligence, not here.
 
