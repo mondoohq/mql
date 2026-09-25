@@ -11871,7 +11871,7 @@ openBSMAudit @defaults("path") {
 //
 // Windows host settings not covered by the cross-platform resources:
 // consolidated `computerInfo`, installed `hotfixes`, Server roles and
-// features, image `optionalFeatures`, scheduled tasks, and hardening
+// features, image `optionalFeatures`, attached `disks`, scheduled tasks, and hardening
 // controls (Device Guard, Exploit Protection, SmartScreen). A
 // starting point for Windows-specific audits.
 windows {
@@ -11902,6 +11902,14 @@ windows {
 
   // Microsoft Defender SmartScreen policy
   smartScreen() windows.smartScreen
+
+  // Disks attached to this computer, as reported by Windows Storage Management
+  //
+  // Physical and virtual disks from the MSFT_Disk class, the same set that
+  // Get-Disk lists: size, bus type, partition style, and whether the disk holds
+  // the boot or system partition. `windows.disks.where(isBoot)` selects the
+  // disk that holds the running Windows installation.
+  disks() []windows.disk
 }
 
 // Windows Exploit Protection
@@ -13747,6 +13755,60 @@ private windows.powershell.moduleLogging @defaults("enabled") {
   // exists but names no module, in which case module logging records nothing
   // even while `enabled` is true.
   moduleNames() []string
+}
+
+// Disk attached to a Windows computer
+//
+// A physical or virtual disk as Windows Storage Management reports it through
+// the MSFT_Disk class. Covers identity (`number`, `friendlyName`,
+// `serialNumber`, `uniqueId`), capacity (`size` in bytes), how the disk is
+// attached (`busType`), how it is laid out (`partitionStyle`), whether it holds
+// the boot or system partition, and its offline, read-only, operational, and
+// health state. For example, `windows.disks.where(isBoot).all(size >= 64 * 1024 * 1024 * 1024)`
+// checks the capacity of the disk Windows runs from.
+private windows.disk @defaults("number friendlyName size isBoot") {
+  // Disk number the operating system assigned
+  //
+  // Disk 0 is typically the boot device. The number can change across restarts,
+  // so match a specific disk on `uniqueId` or `serialNumber` instead.
+  number int
+  // Display name of the disk, usually the vendor and model
+  friendlyName string
+  // Serial number the disk reports, with surrounding whitespace removed
+  serialNumber string
+  // Disk identifier from the device identification (VPD page 0x83) data
+  uniqueId string
+  // Total size of the disk in bytes
+  size int
+  // Bus the disk is attached through
+  //
+  // For example SCSI, ATA, USB, iSCSI, SAS, SATA, Virtual, File Backed Virtual,
+  // Storage Spaces, NVMe, or Unknown. Windows adds bus types over time, so a
+  // value this resource does not recognize is reported as its decimal code.
+  busType string
+  // Partition style of the disk: GPT, MBR, or RAW
+  //
+  // RAW is an uninitialized disk with no partition table, which Windows
+  // reports as partition style 0 (Unknown).
+  partitionStyle string
+  // Whether the disk holds the boot partition, the one with the running Windows installation
+  isBoot bool
+  // Whether the disk holds the system partition, the one with the boot loader
+  isSystem bool
+  // Whether the disk is offline
+  isOffline bool
+  // Whether the disk is read-only
+  isReadOnly bool
+  // Operational status of the disk
+  //
+  // One entry per status Windows reports, for example "OK", "Online",
+  // "Offline", "Degraded", "Predictive Failure", "No Media", or "Failed". A
+  // status this resource does not recognize is reported as its decimal code.
+  operationalStatus []string
+  // Health status of the disk: Healthy, Warning, or Unhealthy
+  //
+  // A value this resource does not recognize is reported as its decimal code.
+  healthStatus string
 }
 
 // Windows Trusted Platform Module (TPM)

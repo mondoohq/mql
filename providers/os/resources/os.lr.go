@@ -470,6 +470,7 @@ const (
 	ResourceWindowsPowershellScriptBlockLogging           string = "windows.powershell.scriptBlockLogging"
 	ResourceWindowsPowershellTranscription                string = "windows.powershell.transcription"
 	ResourceWindowsPowershellModuleLogging                string = "windows.powershell.moduleLogging"
+	ResourceWindowsDisk                                   string = "windows.disk"
 	ResourceWindowsTpm                                    string = "windows.tpm"
 	ResourceWindowsAuditPolicy                            string = "windows.auditPolicy"
 	ResourceWindowsAuditPolicySubcategory                 string = "windows.auditPolicy.subcategory"
@@ -2477,6 +2478,10 @@ func init() {
 		"windows.powershell.moduleLogging": {
 			Init:   initWindowsPowershellModuleLogging,
 			Create: createWindowsPowershellModuleLogging,
+		},
+		"windows.disk": {
+			// to override args, implement: initWindowsDisk(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWindowsDisk,
 		},
 		"windows.tpm": {
 			// to override args, implement: initWindowsTpm(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -12353,6 +12358,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"windows.smartScreen": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindows).GetSmartScreen()).ToDataRes(types.Resource("windows.smartScreen"))
 	},
+	"windows.disks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindows).GetDisks()).ToDataRes(types.Array(types.Resource("windows.disk")))
+	},
 	"windows.exploitProtection.available": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsExploitProtection).GetAvailable()).ToDataRes(types.Bool)
 	},
@@ -13507,6 +13515,45 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"windows.powershell.moduleLogging.moduleNames": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsPowershellModuleLogging).GetModuleNames()).ToDataRes(types.Array(types.String))
+	},
+	"windows.disk.number": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDisk).GetNumber()).ToDataRes(types.Int)
+	},
+	"windows.disk.friendlyName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDisk).GetFriendlyName()).ToDataRes(types.String)
+	},
+	"windows.disk.serialNumber": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDisk).GetSerialNumber()).ToDataRes(types.String)
+	},
+	"windows.disk.uniqueId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDisk).GetUniqueId()).ToDataRes(types.String)
+	},
+	"windows.disk.size": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDisk).GetSize()).ToDataRes(types.Int)
+	},
+	"windows.disk.busType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDisk).GetBusType()).ToDataRes(types.String)
+	},
+	"windows.disk.partitionStyle": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDisk).GetPartitionStyle()).ToDataRes(types.String)
+	},
+	"windows.disk.isBoot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDisk).GetIsBoot()).ToDataRes(types.Bool)
+	},
+	"windows.disk.isSystem": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDisk).GetIsSystem()).ToDataRes(types.Bool)
+	},
+	"windows.disk.isOffline": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDisk).GetIsOffline()).ToDataRes(types.Bool)
+	},
+	"windows.disk.isReadOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDisk).GetIsReadOnly()).ToDataRes(types.Bool)
+	},
+	"windows.disk.operationalStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDisk).GetOperationalStatus()).ToDataRes(types.Array(types.String))
+	},
+	"windows.disk.healthStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsDisk).GetHealthStatus()).ToDataRes(types.String)
 	},
 	"windows.tpm.present": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsTpm).GetPresent()).ToDataRes(types.Bool)
@@ -31558,6 +31605,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlWindows).SmartScreen, ok = plugin.RawToTValue[*mqlWindowsSmartScreen](v.Value, v.Error)
 		return
 	},
+	"windows.disks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindows).Disks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"windows.exploitProtection.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindowsExploitProtection).__id, ok = v.Value.(string)
 		return
@@ -33292,6 +33343,62 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"windows.powershell.moduleLogging.moduleNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindowsPowershellModuleLogging).ModuleNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"windows.disk.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDisk).__id, ok = v.Value.(string)
+		return
+	},
+	"windows.disk.number": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDisk).Number, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"windows.disk.friendlyName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDisk).FriendlyName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.disk.serialNumber": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDisk).SerialNumber, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.disk.uniqueId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDisk).UniqueId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.disk.size": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDisk).Size, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"windows.disk.busType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDisk).BusType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.disk.partitionStyle": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDisk).PartitionStyle, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.disk.isBoot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDisk).IsBoot, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.disk.isSystem": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDisk).IsSystem, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.disk.isOffline": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDisk).IsOffline, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.disk.isReadOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDisk).IsReadOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.disk.operationalStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDisk).OperationalStatus, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"windows.disk.healthStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsDisk).HealthStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"windows.tpm.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -81139,6 +81246,7 @@ type mqlWindows struct {
 	DeviceGuard       plugin.TValue[*mqlWindowsDeviceGuard]
 	ExploitProtection plugin.TValue[*mqlWindowsExploitProtection]
 	SmartScreen       plugin.TValue[*mqlWindowsSmartScreen]
+	Disks             plugin.TValue[[]any]
 }
 
 // createWindows creates a new instance of this resource
@@ -81304,6 +81412,22 @@ func (c *mqlWindows) GetSmartScreen() *plugin.TValue[*mqlWindowsSmartScreen] {
 		}
 
 		return c.smartScreen()
+	})
+}
+
+func (c *mqlWindows) GetDisks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Disks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("windows", c.__id, "disks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.disks()
 	})
 }
 
@@ -85925,6 +86049,110 @@ func (c *mqlWindowsPowershellModuleLogging) GetModuleNames() *plugin.TValue[[]an
 	return plugin.GetOrCompute[[]any](&c.ModuleNames, func() ([]any, error) {
 		return c.moduleNames()
 	})
+}
+
+// mqlWindowsDisk for the windows.disk resource
+type mqlWindowsDisk struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlWindowsDiskInternal it will be used here
+	Number            plugin.TValue[int64]
+	FriendlyName      plugin.TValue[string]
+	SerialNumber      plugin.TValue[string]
+	UniqueId          plugin.TValue[string]
+	Size              plugin.TValue[int64]
+	BusType           plugin.TValue[string]
+	PartitionStyle    plugin.TValue[string]
+	IsBoot            plugin.TValue[bool]
+	IsSystem          plugin.TValue[bool]
+	IsOffline         plugin.TValue[bool]
+	IsReadOnly        plugin.TValue[bool]
+	OperationalStatus plugin.TValue[[]any]
+	HealthStatus      plugin.TValue[string]
+}
+
+// createWindowsDisk creates a new instance of this resource
+func createWindowsDisk(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWindowsDisk{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("windows.disk", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWindowsDisk) MqlName() string {
+	return "windows.disk"
+}
+
+func (c *mqlWindowsDisk) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWindowsDisk) GetNumber() *plugin.TValue[int64] {
+	return &c.Number
+}
+
+func (c *mqlWindowsDisk) GetFriendlyName() *plugin.TValue[string] {
+	return &c.FriendlyName
+}
+
+func (c *mqlWindowsDisk) GetSerialNumber() *plugin.TValue[string] {
+	return &c.SerialNumber
+}
+
+func (c *mqlWindowsDisk) GetUniqueId() *plugin.TValue[string] {
+	return &c.UniqueId
+}
+
+func (c *mqlWindowsDisk) GetSize() *plugin.TValue[int64] {
+	return &c.Size
+}
+
+func (c *mqlWindowsDisk) GetBusType() *plugin.TValue[string] {
+	return &c.BusType
+}
+
+func (c *mqlWindowsDisk) GetPartitionStyle() *plugin.TValue[string] {
+	return &c.PartitionStyle
+}
+
+func (c *mqlWindowsDisk) GetIsBoot() *plugin.TValue[bool] {
+	return &c.IsBoot
+}
+
+func (c *mqlWindowsDisk) GetIsSystem() *plugin.TValue[bool] {
+	return &c.IsSystem
+}
+
+func (c *mqlWindowsDisk) GetIsOffline() *plugin.TValue[bool] {
+	return &c.IsOffline
+}
+
+func (c *mqlWindowsDisk) GetIsReadOnly() *plugin.TValue[bool] {
+	return &c.IsReadOnly
+}
+
+func (c *mqlWindowsDisk) GetOperationalStatus() *plugin.TValue[[]any] {
+	return &c.OperationalStatus
+}
+
+func (c *mqlWindowsDisk) GetHealthStatus() *plugin.TValue[string] {
+	return &c.HealthStatus
 }
 
 // mqlWindowsTpm for the windows.tpm resource
