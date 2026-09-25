@@ -8,9 +8,7 @@ package resources
 import (
 	"errors"
 	"fmt"
-	"path"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 
@@ -50,13 +48,6 @@ func initJournaldConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 
 const defaultJournaldConfig = "/etc/systemd/journald.conf"
 
-var journaldConfigSearchDirs = []string{
-	"/etc/systemd",
-	"/run/systemd",
-	"/usr/local/lib/systemd",
-	"/usr/lib/systemd",
-}
-
 type journaldConfigSection struct {
 	name       string
 	params     map[string]string
@@ -76,16 +67,12 @@ func (s *mqlJournaldConfig) file() (*mqlFile, error) {
 	configPath := defaultJournaldConfig
 	conn, ok := s.MqlRuntime.Connection.(shared.Connection)
 	if ok {
-		for _, dir := range journaldConfigSearchDirs {
-			candidate := path.Join(dir, "journald.conf")
-			exists, err := afero.Exists(conn.FileSystem(), candidate)
-			if err != nil {
-				return nil, err
-			}
-			if exists {
-				configPath = candidate
-				break
-			}
+		found, err := findSystemdMainConfig(conn.FileSystem(), "journald.conf")
+		if err != nil {
+			return nil, err
+		}
+		if found != "" {
+			configPath = found
 		}
 	}
 
@@ -181,12 +168,19 @@ func (s *mqlJournaldConfig) configFiles(file *mqlFile) ([]*mqlFile, error) {
 		return files, nil
 	}
 
-	if isDefaultJournaldConfigPath(filePath.Data) {
-		dropinFiles, err := s.defaultConfigDropinFiles(conn.FileSystem())
+	if isSystemdConfigMainPath(filePath.Data, "journald.conf") {
+		dropins, err := findSystemdConfigDropins(conn.FileSystem(), "journald.conf")
 		if err != nil {
 			return nil, err
 		}
-		return append(files, dropinFiles...), nil
+		for _, dropin := range dropins {
+			dropinFile, err := newFile(s.MqlRuntime, dropin)
+			if err != nil {
+				return nil, err
+			}
+			files = append(files, dropinFile)
+		}
+		return files, nil
 	}
 
 	matches, err := afero.Glob(conn.FileSystem(), filePath.Data+".d/*.conf")
@@ -196,65 +190,6 @@ func (s *mqlJournaldConfig) configFiles(file *mqlFile) ([]*mqlFile, error) {
 
 	for _, match := range matches {
 		dropinFile, err := newFile(s.MqlRuntime, match)
-		if err != nil {
-			return nil, err
-		}
-		files = append(files, dropinFile)
-	}
-
-	return files, nil
-}
-
-func isDefaultJournaldConfigPath(configPath string) bool {
-	for _, dir := range journaldConfigSearchDirs {
-		if configPath == path.Join(dir, "journald.conf") {
-			return true
-		}
-	}
-	return false
-}
-
-type journaldDropinFile struct {
-	basename string
-	path     string
-	priority int
-}
-
-func (s *mqlJournaldConfig) defaultConfigDropinFiles(fs afero.Fs) ([]*mqlFile, error) {
-	dropinsByName := map[string]journaldDropinFile{}
-
-	for priority, dir := range journaldConfigSearchDirs {
-		matches, err := afero.Glob(fs, path.Join(dir, "journald.conf.d", "*.conf"))
-		if err != nil {
-			return nil, err
-		}
-
-		for _, match := range matches {
-			name := path.Base(match)
-			selected, ok := dropinsByName[name]
-			if ok && selected.priority < priority {
-				continue
-			}
-			dropinsByName[name] = journaldDropinFile{
-				basename: name,
-				path:     match,
-				priority: priority,
-			}
-		}
-	}
-
-	dropins := make([]journaldDropinFile, 0, len(dropinsByName))
-	for _, dropin := range dropinsByName {
-		dropins = append(dropins, dropin)
-	}
-
-	sort.Slice(dropins, func(i, j int) bool {
-		return dropins[i].basename < dropins[j].basename
-	})
-
-	files := make([]*mqlFile, 0, len(dropins))
-	for _, dropin := range dropins {
-		dropinFile, err := newFile(s.MqlRuntime, dropin.path)
 		if err != nil {
 			return nil, err
 		}

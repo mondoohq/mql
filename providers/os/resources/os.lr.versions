@@ -3960,6 +3960,13 @@ systemd.boot.espPath 14.0.0
 systemd.boot.installed 14.0.0
 systemd.boot.selectedEntry 14.0.0
 systemd.boot.version 14.0.0
+systemd.coredump 14.2.1
+systemd.coredump.active 14.2.1
+systemd.coredump.externalSizeMax 14.2.1
+systemd.coredump.files 14.2.1
+systemd.coredump.params 14.2.1
+systemd.coredump.processSizeMax 14.2.1
+systemd.coredump.storage 14.2.1
 systemd.resolved 13.16.10
 systemd.resolved.active 13.16.10
 systemd.resolved.cache 13.16.10

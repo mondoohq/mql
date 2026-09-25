@@ -6297,6 +6297,63 @@ systemd.timesyncd @defaults("active synchronized serverName") {
   leapStatus() string
 }
 
+// systemd-coredump core dump handling
+//
+// Core dump handling by systemd-coredump: whether it is `active`, meaning the
+// kernel hands core dumps to it, and the effective `storage`,
+// `processSizeMax` and `externalSizeMax` settings merged the way systemd
+// merges them from coredump.conf and every coredump.conf.d drop-in under
+// /etc, /run, /usr/local/lib and /usr/lib. The contributing `files` and the
+// merged raw `params` are exposed too. Useful for asserting that core dumps
+// are neither stored nor processed, for example
+// `systemd.coredump.storage == "none" && systemd.coredump.processSizeMax == 0`.
+systemd.coredump @defaults("active storage processSizeMax") {
+  // Whether systemd-coredump receives the kernel's core dumps
+  //
+  // True when the kernel core pattern (/proc/sys/kernel/core_pattern) pipes
+  // core dumps to a systemd-coredump binary, false when it names anything
+  // else. Null when the core pattern cannot be read, such as on a container
+  // image. Inside a container this reflects the host kernel's pattern.
+  active() bool
+  // Configuration files that contribute to the effective settings
+  //
+  // In the order systemd applies them: the main coredump.conf (the first found
+  // in /etc/systemd, /run/systemd, /usr/local/lib/systemd, /usr/lib/systemd),
+  // then the coredump.conf.d/*.conf drop-ins from those directories sorted by
+  // file name. A drop-in in a higher-priority directory masks one with the
+  // same name in a lower-priority directory. Empty when no file exists.
+  files() []file
+  // Merged settings of the [Coredump] section
+  //
+  // Raw values as written, where the last assignment across `files` wins.
+  // Values systemd would reject still appear here; the typed fields apply
+  // systemd's parsing.
+  params() map[string]string
+  // Where core dumps are stored
+  //
+  // One of `none`, `external` (files in /var/lib/systemd/coredump) or
+  // `journal`. The last valid Storage assignment wins; systemd matches the
+  // value case-sensitively and ignores anything else. When no file sets it,
+  // this is systemd's default, `external`, if systemd-coredump is installed,
+  // and null if it is not.
+  storage() string
+  // Maximum size of a core dump that is processed, in bytes
+  //
+  // Core dumps above this size get no stack trace, so 0 means none is
+  // processed. Sizes accept systemd's base-1024 suffixes (K, M, G, T, P, E);
+  // systemd does not accept `infinity` here, and a size of 8E or more reads
+  // as -1. Null when no file sets a valid value, in which case systemd
+  // applies its compiled default: 32G on 64-bit systems (1G on 32-bit) since
+  // systemd 251, 2G on earlier versions.
+  processSizeMax() int
+  // Maximum size of a core dump saved to disk with external storage, in bytes
+  //
+  // -1 when set to `infinity` or to a size of 8E or more. Null when no file
+  // sets a valid value, in which case systemd applies its compiled default,
+  // the same as for `processSizeMax`.
+  externalSizeMax() int
+}
+
 // systemd-boot bootloader state
 //
 // State of the systemd-boot bootloader: whether it is `installed` on the EFI

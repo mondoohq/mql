@@ -210,6 +210,7 @@ const (
 	ResourceSystemdUnits                                  string = "systemd.units"
 	ResourceSystemdResolved                               string = "systemd.resolved"
 	ResourceSystemdTimesyncd                              string = "systemd.timesyncd"
+	ResourceSystemdCoredump                               string = "systemd.coredump"
 	ResourceSystemdBoot                                   string = "systemd.boot"
 	ResourceSystemdBootEntry                              string = "systemd.boot.entry"
 	ResourceKernel                                        string = "kernel"
@@ -1435,6 +1436,10 @@ func init() {
 		"systemd.timesyncd": {
 			// to override args, implement: initSystemdTimesyncd(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createSystemdTimesyncd,
+		},
+		"systemd.coredump": {
+			// to override args, implement: initSystemdCoredump(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createSystemdCoredump,
 		},
 		"systemd.boot": {
 			// to override args, implement: initSystemdBoot(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -8319,6 +8324,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"systemd.timesyncd.leapStatus": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSystemdTimesyncd).GetLeapStatus()).ToDataRes(types.String)
+	},
+	"systemd.coredump.active": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdCoredump).GetActive()).ToDataRes(types.Bool)
+	},
+	"systemd.coredump.files": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdCoredump).GetFiles()).ToDataRes(types.Array(types.Resource("file")))
+	},
+	"systemd.coredump.params": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdCoredump).GetParams()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"systemd.coredump.storage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdCoredump).GetStorage()).ToDataRes(types.String)
+	},
+	"systemd.coredump.processSizeMax": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdCoredump).GetProcessSizeMax()).ToDataRes(types.Int)
+	},
+	"systemd.coredump.externalSizeMax": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdCoredump).GetExternalSizeMax()).ToDataRes(types.Int)
 	},
 	"systemd.boot.active": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSystemdBoot).GetActive()).ToDataRes(types.Bool)
@@ -25263,6 +25286,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"systemd.timesyncd.leapStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlSystemdTimesyncd).LeapStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"systemd.coredump.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdCoredump).__id, ok = v.Value.(string)
+		return
+	},
+	"systemd.coredump.active": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdCoredump).Active, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"systemd.coredump.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdCoredump).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"systemd.coredump.params": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdCoredump).Params, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"systemd.coredump.storage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdCoredump).Storage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"systemd.coredump.processSizeMax": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdCoredump).ProcessSizeMax, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"systemd.coredump.externalSizeMax": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdCoredump).ExternalSizeMax, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"systemd.boot.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -61350,6 +61401,102 @@ func (c *mqlSystemdTimesyncd) GetPollIntervalUSec() *plugin.TValue[int64] {
 func (c *mqlSystemdTimesyncd) GetLeapStatus() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.LeapStatus, func() (string, error) {
 		return c.leapStatus()
+	})
+}
+
+// mqlSystemdCoredump for the systemd.coredump resource
+type mqlSystemdCoredump struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlSystemdCoredumpInternal
+	Active          plugin.TValue[bool]
+	Files           plugin.TValue[[]any]
+	Params          plugin.TValue[map[string]any]
+	Storage         plugin.TValue[string]
+	ProcessSizeMax  plugin.TValue[int64]
+	ExternalSizeMax plugin.TValue[int64]
+}
+
+// createSystemdCoredump creates a new instance of this resource
+func createSystemdCoredump(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSystemdCoredump{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("systemd.coredump", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSystemdCoredump) MqlName() string {
+	return "systemd.coredump"
+}
+
+func (c *mqlSystemdCoredump) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSystemdCoredump) GetActive() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Active, func() (bool, error) {
+		return c.active()
+	})
+}
+
+func (c *mqlSystemdCoredump) GetFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Files, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("systemd.coredump", c.__id, "files")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.files()
+	})
+}
+
+func (c *mqlSystemdCoredump) GetParams() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Params, func() (map[string]any, error) {
+		return c.params()
+	})
+}
+
+func (c *mqlSystemdCoredump) GetStorage() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Storage, func() (string, error) {
+		return c.storage()
+	})
+}
+
+func (c *mqlSystemdCoredump) GetProcessSizeMax() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ProcessSizeMax, func() (int64, error) {
+		return c.processSizeMax()
+	})
+}
+
+func (c *mqlSystemdCoredump) GetExternalSizeMax() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ExternalSizeMax, func() (int64, error) {
+		return c.externalSizeMax()
 	})
 }
 
