@@ -82,6 +82,7 @@ const (
 	ResourceInetdConfigEntry                              string = "inetd.config.entry"
 	ResourceSnmpd                                         string = "snmpd"
 	ResourceSnmpdConfig                                   string = "snmpd.config"
+	ResourceSnmpdConfigUser                               string = "snmpd.config.user"
 	ResourceAuditdConfig                                  string = "auditd.config"
 	ResourceAuditdRules                                   string = "auditd.rules"
 	ResourceAuditdRule                                    string = "auditd.rule"
@@ -923,6 +924,10 @@ func init() {
 		"snmpd.config": {
 			Init:   initSnmpdConfig,
 			Create: createSnmpdConfig,
+		},
+		"snmpd.config.user": {
+			// to override args, implement: initSnmpdConfigUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createSnmpdConfigUser,
 		},
 		"auditd.config": {
 			Init:   initAuditdConfig,
@@ -4263,6 +4268,39 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"snmpd.config.agentAddresses": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSnmpdConfig).GetAgentAddresses()).ToDataRes(types.Array(types.String))
+	},
+	"snmpd.config.users": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnmpdConfig).GetUsers()).ToDataRes(types.Array(types.Resource("snmpd.config.user")))
+	},
+	"snmpd.config.user.directive": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnmpdConfigUser).GetDirective()).ToDataRes(types.String)
+	},
+	"snmpd.config.user.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnmpdConfigUser).GetName()).ToDataRes(types.String)
+	},
+	"snmpd.config.user.access": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnmpdConfigUser).GetAccess()).ToDataRes(types.String)
+	},
+	"snmpd.config.user.accessTypes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnmpdConfigUser).GetAccessTypes()).ToDataRes(types.Array(types.String))
+	},
+	"snmpd.config.user.securityLevel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnmpdConfigUser).GetSecurityLevel()).ToDataRes(types.String)
+	},
+	"snmpd.config.user.securityModel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnmpdConfigUser).GetSecurityModel()).ToDataRes(types.String)
+	},
+	"snmpd.config.user.oid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnmpdConfigUser).GetOid()).ToDataRes(types.String)
+	},
+	"snmpd.config.user.view": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnmpdConfigUser).GetView()).ToDataRes(types.String)
+	},
+	"snmpd.config.user.contextName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnmpdConfigUser).GetContextName()).ToDataRes(types.String)
+	},
+	"snmpd.config.user.context": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSnmpdConfigUser).GetContext()).ToDataRes(types.Resource("file.context"))
 	},
 	"auditd.config.file": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuditdConfig).GetFile()).ToDataRes(types.Resource("file"))
@@ -19343,6 +19381,54 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"snmpd.config.agentAddresses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlSnmpdConfig).AgentAddresses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"snmpd.config.users": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnmpdConfig).Users, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"snmpd.config.user.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnmpdConfigUser).__id, ok = v.Value.(string)
+		return
+	},
+	"snmpd.config.user.directive": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnmpdConfigUser).Directive, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"snmpd.config.user.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnmpdConfigUser).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"snmpd.config.user.access": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnmpdConfigUser).Access, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"snmpd.config.user.accessTypes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnmpdConfigUser).AccessTypes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"snmpd.config.user.securityLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnmpdConfigUser).SecurityLevel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"snmpd.config.user.securityModel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnmpdConfigUser).SecurityModel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"snmpd.config.user.oid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnmpdConfigUser).Oid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"snmpd.config.user.view": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnmpdConfigUser).View, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"snmpd.config.user.contextName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnmpdConfigUser).ContextName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"snmpd.config.user.context": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSnmpdConfigUser).Context, ok = plugin.RawToTValue[*mqlFileContext](v.Value, v.Error)
 		return
 	},
 	"auditd.config.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -45237,6 +45323,7 @@ type mqlSnmpdConfig struct {
 	RoUsers        plugin.TValue[[]any]
 	RwUsers        plugin.TValue[[]any]
 	AgentAddresses plugin.TValue[[]any]
+	Users          plugin.TValue[[]any]
 }
 
 // createSnmpdConfig creates a new instance of this resource
@@ -45376,6 +45463,128 @@ func (c *mqlSnmpdConfig) GetAgentAddresses() *plugin.TValue[[]any] {
 		}
 
 		return c.agentAddresses(vargContent.Data)
+	})
+}
+
+func (c *mqlSnmpdConfig) GetUsers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Users, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("snmpd.config", c.__id, "users")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		vargFiles := c.GetFiles()
+		if vargFiles.Error != nil {
+			return nil, vargFiles.Error
+		}
+
+		return c.users(vargFiles.Data)
+	})
+}
+
+// mqlSnmpdConfigUser for the snmpd.config.user resource
+type mqlSnmpdConfigUser struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlSnmpdConfigUserInternal it will be used here
+	Directive     plugin.TValue[string]
+	Name          plugin.TValue[string]
+	Access        plugin.TValue[string]
+	AccessTypes   plugin.TValue[[]any]
+	SecurityLevel plugin.TValue[string]
+	SecurityModel plugin.TValue[string]
+	Oid           plugin.TValue[string]
+	View          plugin.TValue[string]
+	ContextName   plugin.TValue[string]
+	Context       plugin.TValue[*mqlFileContext]
+}
+
+// createSnmpdConfigUser creates a new instance of this resource
+func createSnmpdConfigUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlSnmpdConfigUser{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("snmpd.config.user", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlSnmpdConfigUser) MqlName() string {
+	return "snmpd.config.user"
+}
+
+func (c *mqlSnmpdConfigUser) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlSnmpdConfigUser) GetDirective() *plugin.TValue[string] {
+	return &c.Directive
+}
+
+func (c *mqlSnmpdConfigUser) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlSnmpdConfigUser) GetAccess() *plugin.TValue[string] {
+	return &c.Access
+}
+
+func (c *mqlSnmpdConfigUser) GetAccessTypes() *plugin.TValue[[]any] {
+	return &c.AccessTypes
+}
+
+func (c *mqlSnmpdConfigUser) GetSecurityLevel() *plugin.TValue[string] {
+	return &c.SecurityLevel
+}
+
+func (c *mqlSnmpdConfigUser) GetSecurityModel() *plugin.TValue[string] {
+	return &c.SecurityModel
+}
+
+func (c *mqlSnmpdConfigUser) GetOid() *plugin.TValue[string] {
+	return &c.Oid
+}
+
+func (c *mqlSnmpdConfigUser) GetView() *plugin.TValue[string] {
+	return &c.View
+}
+
+func (c *mqlSnmpdConfigUser) GetContextName() *plugin.TValue[string] {
+	return &c.ContextName
+}
+
+func (c *mqlSnmpdConfigUser) GetContext() *plugin.TValue[*mqlFileContext] {
+	return plugin.GetOrCompute[*mqlFileContext](&c.Context, func() (*mqlFileContext, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("snmpd.config.user", c.__id, "context")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlFileContext), nil
+			}
+		}
+
+		return c.context()
 	})
 }
 

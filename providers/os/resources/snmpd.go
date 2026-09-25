@@ -5,12 +5,14 @@ package resources
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/resources/snmpd"
+	"go.mondoo.com/mql/types"
 )
 
 const (
@@ -244,6 +246,63 @@ func (s *mqlSnmpdConfig) roUsers(content string) ([]any, error) {
 
 func (s *mqlSnmpdConfig) rwUsers(content string) ([]any, error) {
 	return firstArgsByKeyword(content, "rwuser"), nil
+}
+
+// users parses the VACM user directives file by file, so each entry keeps the
+// file and line it was declared on.
+func (s *mqlSnmpdConfig) users(files []any) ([]any, error) {
+	res := []any{}
+	for i := range files {
+		file := files[i].(*mqlFile)
+
+		content, err := snmpdFileContent(file)
+		if err != nil {
+			return nil, err
+		}
+		if content == "" {
+			continue
+		}
+
+		for _, u := range snmpd.Users(content) {
+			ctx, err := CreateResource(s.MqlRuntime, "file.context", map[string]*llx.RawData{
+				"file":  llx.ResourceData(file, "file"),
+				"range": llx.RangeData(llx.NewRange().AddLine(uint32(u.Line))),
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			accessTypes := make([]any, 0, len(u.AccessTypes))
+			for _, t := range u.AccessTypes {
+				accessTypes = append(accessTypes, t)
+			}
+
+			obj, err := CreateResource(s.MqlRuntime, "snmpd.config.user", map[string]*llx.RawData{
+				// A user can be declared more than once and in several files,
+				// so the file and line keep each declaration distinct.
+				"__id":          llx.StringData(fmt.Sprintf("snmpd.config.user/%s/%d", file.Path.Data, u.Line)),
+				"directive":     llx.StringData(u.Directive),
+				"name":          llx.StringData(u.Name),
+				"access":        llx.StringData(u.Access),
+				"accessTypes":   llx.ArrayData(accessTypes, types.String),
+				"securityLevel": llx.StringData(u.SecurityLevel),
+				"securityModel": llx.StringData(u.SecurityModel),
+				"oid":           llx.StringData(u.OID),
+				"view":          llx.StringData(u.View),
+				"contextName":   llx.StringData(u.ContextName),
+				"context":       llx.ResourceData(ctx, "file.context"),
+			})
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, obj)
+		}
+	}
+	return res, nil
+}
+
+func (s *mqlSnmpdConfigUser) context() (*mqlFileContext, error) {
+	return nil, errors.New("context was not provided for snmpd.config.user")
 }
 
 func (s *mqlSnmpdConfig) agentAddresses(content string) ([]any, error) {

@@ -1695,6 +1695,61 @@ snmpd.config {
   rwUsers(content) []string
   // Addresses snmpd listens on, from agentAddress directives
   agentAddresses(content) []string
+  // VACM users granted access, from rouser, rwuser, and authuser directives
+  //
+  // Each entry carries the access the directive grants and the minimum
+  // security level it requires, so audits such as
+  // users.none(access == "rw" && securityLevel == "noauth") hold only when no
+  // user can write without authentication. Lines snmpd rejects when loading
+  // the configuration, such as an unknown security level, grant nothing and
+  // are not listed.
+  users(files) []snmpd.config.user
+}
+
+// VACM user directive in the snmpd configuration
+//
+// A single rouser, rwuser, or authuser line. The name field selects the
+// user, for example snmpd.config.users.where(name == "admin").
+private snmpd.config.user @defaults("name access securityLevel") @context("file.context") {
+  // Directive that declares the user: rouser, rwuser, or authuser
+  directive string
+  // Security name the directive grants access to
+  name string
+  // Access granted: ro, rw, or none
+  //
+  // rw when the directive grants write access (rwuser, or authuser with the
+  // write type), ro when it grants read access without write, and none when
+  // it grants neither (authuser with only notify, log, execute, or net).
+  access string
+  // Access types the directive declares
+  //
+  // Any of read, write, notify, log, and execute or net. rouser declares read,
+  // rwuser declares read and write, and authuser declares the types it lists.
+  accessTypes []string
+  // Minimum security level required: noauth, auth, or priv
+  //
+  // The long spellings noauthnopriv, authnopriv, and authpriv are reported
+  // as noauth, auth, and priv. snmpd requires auth when the directive omits
+  // the level.
+  securityLevel string
+  // Security model, from the -s option
+  //
+  // usm when the directive has no -s option.
+  securityModel string
+  // OID subtree the access is restricted to
+  //
+  // Empty when the directive names no OID or view, which grants the whole
+  // tree, or when it restricts access with view instead.
+  oid string
+  // View the access is restricted to, from the -V option
+  //
+  // Empty when the directive has no -V option.
+  view string
+  // SNMP context the access is restricted to
+  //
+  // Empty when the directive names no context, which matches all contexts. A
+  // trailing * makes it a prefix match.
+  contextName string
 }
 
 // auditd (Linux Audit Daemon) global configuration
