@@ -103,7 +103,7 @@ func (s *mqlJournaldConfig) resolveSettings(file *mqlFile) (*journaldSettings, e
 	// Without an explicit path, the answer is about the journald running on
 	// this system, so a system without journald has no settings. An
 	// explicitly requested file is read as it is.
-	defaultSearch := isDefaultJournaldConfigPath(filePath.Data)
+	defaultSearch := isSystemdConfigMainPath(filePath.Data, "journald.conf")
 	if defaultSearch {
 		installed, err := s.journaldInstalled()
 		if err != nil {
