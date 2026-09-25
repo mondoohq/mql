@@ -41,6 +41,7 @@ func TestSpeed(t *testing.T) {
 	assert.Equal(t, "0.5 bps", dataunits.Speed(0.5))
 	assert.Equal(t, "1.3 Mbps", dataunits.Speed(1300000))
 	assert.Equal(t, "10.0 Gbps", dataunits.Speed(float32(1e10)))
+	// negative values that round to zero drop the sign instead of printing "-0.0"
 	assert.Equal(t, "0.0 bps", dataunits.Speed(-0.01))
 }
 

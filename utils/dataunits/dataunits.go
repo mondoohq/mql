@@ -8,6 +8,7 @@
 package dataunits
 
 import (
+	"math"
 	"strconv"
 )
 
@@ -115,7 +116,7 @@ func (f Format) appendFormat(dst []byte, v float64, base float64, units []string
 // appendNumber prints whole values of the base unit without decimals
 // ("512 B", not "512.0 B"), everything else with the given decimals.
 func appendNumber(dst []byte, v float64, unit int, decimals int) []byte {
-	if unit == 0 && v == float64(int64(v)) {
+	if unit == 0 && v == math.Trunc(v) {
 		return strconv.AppendFloat(dst, v, 'f', 0, 64)
 	}
 	return strconv.AppendFloat(dst, v, 'f', decimals, 64)
