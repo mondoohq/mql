@@ -11833,6 +11833,10 @@ macos.systemsetup {
 // location). Exposes the audit event `flags`, log retention
 // (`expireAfter`, `filesz`, `minfree`), and policy parameters that
 // govern which security-relevant events the kernel records.
+// `expireAfter` is also parsed the way auditd reads it: its age and
+// size thresholds (`expireAfterAge`, `expireAfterBytes`), how they
+// combine (`expireAfterOperator`), and what that guarantees about how
+// long trail files survive (`minRetentionAge`, `minRetentionBytes`).
 openBSMAudit @defaults("path") {
   init(path? string)
   // Path to the audit_control file
@@ -11857,6 +11861,47 @@ openBSMAudit @defaults("path") {
   filesz(params) string
   // Expiration criteria for audit logs
   expireAfter(params) string
+  // Age threshold from expire-after
+  //
+  // Age since a trail file was last written after which auditd may remove it,
+  // as a duration. Converted as auditd converts it: `s` seconds, `h` hours,
+  // `d` days, and `y` years of 364 days plus one day for every fourth year.
+  // Read from the first expire-after line, as auditd does. Null when
+  // expire-after is absent, empty, has no age term, or is a value auditd
+  // rejects.
+  expireAfterAge(content) time
+  // Size threshold from expire-after, in bytes
+  //
+  // Aggregate size of all trail files after which auditd may remove the oldest,
+  // in bytes. `B` or no suffix is bytes, `K`, `M` and `G` are powers of 1024.
+  // Read from the first expire-after line, as auditd does. Null when
+  // expire-after is absent, empty, has no size term, or is a value auditd
+  // rejects.
+  expireAfterBytes(content) int
+  // How the two expire-after thresholds combine
+  //
+  // `AND` when a trail file is removed only once both thresholds are exceeded,
+  // `OR` when either one is enough. Null for a single threshold, and when
+  // expire-after is absent, empty, or a value auditd rejects.
+  expireAfterOperator(content) string
+  // Minimum age trail files reach before auditd can remove them
+  //
+  // Age a trail file is guaranteed to reach before expire-after lets auditd
+  // remove it, whatever the size of the trail, as a duration. Set for an age
+  // threshold on its own or joined with `AND`. Null when the size threshold
+  // alone can remove files (a size on its own, or joined with `OR`), and when
+  // expire-after is absent, empty, sets no nonzero threshold, or is a value
+  // auditd rejects. A zero threshold is one auditd ignores.
+  minRetentionAge(content) time
+  // Minimum aggregate trail size kept before auditd can remove a file, in bytes
+  //
+  // Aggregate size the trail files are guaranteed to reach before expire-after
+  // lets auditd remove one, whatever their age, in bytes. Set for a size
+  // threshold on its own or joined with `AND`. Null when the age threshold
+  // alone can remove files (an age on its own, or joined with `OR`), and when
+  // expire-after is absent, empty, sets no nonzero threshold, or is a value
+  // auditd rejects. A zero threshold is one auditd ignores.
+  minRetentionBytes(content) int
   // Flags that superusers can set on their processes
   superuserSetSflagsMask(params) []string
   // Flags that superusers can clear on their processes

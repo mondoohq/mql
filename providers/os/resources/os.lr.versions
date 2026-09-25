@@ -2910,11 +2910,16 @@ openBSMAudit 11.4.84
 openBSMAudit.content 11.4.84
 openBSMAudit.dir 11.4.84
 openBSMAudit.expireAfter 11.4.84
+openBSMAudit.expireAfterAge 14.2.1
+openBSMAudit.expireAfterBytes 14.2.1
+openBSMAudit.expireAfterOperator 14.2.1
 openBSMAudit.file 11.4.84
 openBSMAudit.filesz 11.4.84
 openBSMAudit.flags 11.4.84
 openBSMAudit.memberClearSflagsMask 11.4.84
 openBSMAudit.memberSetSflagsMask 11.4.84
+openBSMAudit.minRetentionAge 14.2.1
+openBSMAudit.minRetentionBytes 14.2.1
 openBSMAudit.minfree 11.4.84
 openBSMAudit.naflags 11.4.84
 openBSMAudit.params 11.4.84

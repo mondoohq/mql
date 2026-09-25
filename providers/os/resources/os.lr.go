@@ -12314,6 +12314,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"openBSMAudit.expireAfter": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenBSMAudit).GetExpireAfter()).ToDataRes(types.String)
 	},
+	"openBSMAudit.expireAfterAge": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenBSMAudit).GetExpireAfterAge()).ToDataRes(types.Time)
+	},
+	"openBSMAudit.expireAfterBytes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenBSMAudit).GetExpireAfterBytes()).ToDataRes(types.Int)
+	},
+	"openBSMAudit.expireAfterOperator": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenBSMAudit).GetExpireAfterOperator()).ToDataRes(types.String)
+	},
+	"openBSMAudit.minRetentionAge": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenBSMAudit).GetMinRetentionAge()).ToDataRes(types.Time)
+	},
+	"openBSMAudit.minRetentionBytes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenBSMAudit).GetMinRetentionBytes()).ToDataRes(types.Int)
+	},
 	"openBSMAudit.superuserSetSflagsMask": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenBSMAudit).GetSuperuserSetSflagsMask()).ToDataRes(types.Array(types.String))
 	},
@@ -31500,6 +31515,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"openBSMAudit.expireAfter": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenBSMAudit).ExpireAfter, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openBSMAudit.expireAfterAge": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenBSMAudit).ExpireAfterAge, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"openBSMAudit.expireAfterBytes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenBSMAudit).ExpireAfterBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"openBSMAudit.expireAfterOperator": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenBSMAudit).ExpireAfterOperator, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openBSMAudit.minRetentionAge": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenBSMAudit).MinRetentionAge, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"openBSMAudit.minRetentionBytes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenBSMAudit).MinRetentionBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"openBSMAudit.superuserSetSflagsMask": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -80919,6 +80954,11 @@ type mqlOpenBSMAudit struct {
 	Policy                   plugin.TValue[[]any]
 	Filesz                   plugin.TValue[string]
 	ExpireAfter              plugin.TValue[string]
+	ExpireAfterAge           plugin.TValue[*time.Time]
+	ExpireAfterBytes         plugin.TValue[int64]
+	ExpireAfterOperator      plugin.TValue[string]
+	MinRetentionAge          plugin.TValue[*time.Time]
+	MinRetentionBytes        plugin.TValue[int64]
 	SuperuserSetSflagsMask   plugin.TValue[[]any]
 	SuperuserClearSflagsMask plugin.TValue[[]any]
 	MemberSetSflagsMask      plugin.TValue[[]any]
@@ -81078,6 +81118,61 @@ func (c *mqlOpenBSMAudit) GetExpireAfter() *plugin.TValue[string] {
 		}
 
 		return c.expireAfter(vargParams.Data)
+	})
+}
+
+func (c *mqlOpenBSMAudit) GetExpireAfterAge() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.ExpireAfterAge, func() (*time.Time, error) {
+		vargContent := c.GetContent()
+		if vargContent.Error != nil {
+			return nil, vargContent.Error
+		}
+
+		return c.expireAfterAge(vargContent.Data)
+	})
+}
+
+func (c *mqlOpenBSMAudit) GetExpireAfterBytes() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ExpireAfterBytes, func() (int64, error) {
+		vargContent := c.GetContent()
+		if vargContent.Error != nil {
+			return 0, vargContent.Error
+		}
+
+		return c.expireAfterBytes(vargContent.Data)
+	})
+}
+
+func (c *mqlOpenBSMAudit) GetExpireAfterOperator() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ExpireAfterOperator, func() (string, error) {
+		vargContent := c.GetContent()
+		if vargContent.Error != nil {
+			return "", vargContent.Error
+		}
+
+		return c.expireAfterOperator(vargContent.Data)
+	})
+}
+
+func (c *mqlOpenBSMAudit) GetMinRetentionAge() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.MinRetentionAge, func() (*time.Time, error) {
+		vargContent := c.GetContent()
+		if vargContent.Error != nil {
+			return nil, vargContent.Error
+		}
+
+		return c.minRetentionAge(vargContent.Data)
+	})
+}
+
+func (c *mqlOpenBSMAudit) GetMinRetentionBytes() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MinRetentionBytes, func() (int64, error) {
+		vargContent := c.GetContent()
+		if vargContent.Error != nil {
+			return 0, vargContent.Error
+		}
+
+		return c.minRetentionBytes(vargContent.Data)
 	})
 }
 
