@@ -4141,3 +4141,16 @@ func TestApparmorAbsent(t *testing.T) {
 		assert.False(t, truthy, "AppArmor is not installed, so the gate is false")
 	})
 }
+
+// The Linux mock records login.defs with UID_MIN 1000 and the users root (0),
+// bin (1), chris (1000) and christopher (1001), so UID_MIN itself is the first
+// account that is not a system account.
+func TestUserSystem(t *testing.T) {
+	x := testutils.InitTester(testutils.LinuxMock())
+	x.TestSimple(t, []testutils.SimpleTest{
+		{
+			Code:        "users.where(system).map(name)",
+			Expectation: []any{"root", "bin"},
+		},
+	})
+}

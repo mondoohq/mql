@@ -124,6 +124,10 @@ type mqlUsersInternal struct {
 	lock        sync.Mutex
 	usersByID   map[int64]*mqlUser
 	usersByName map[string]*mqlUser
+
+	uidRangeOnce sync.Once
+	uidRange     uidRange
+	uidRangeErr  error
 }
 
 func (x *mqlUsers) list() ([]any, error) {

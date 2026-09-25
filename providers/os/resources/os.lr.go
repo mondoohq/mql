@@ -3974,6 +3974,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"user.ntuserDat": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlUser).GetNtuserDat()).ToDataRes(types.String)
 	},
+	"user.system": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlUser).GetSystem()).ToDataRes(types.Bool)
+	},
+	"user.loginShell": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlUser).GetLoginShell()).ToDataRes(types.Bool)
+	},
 	"privatekey.pem": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPrivatekey).GetPem()).ToDataRes(types.String)
 	},
@@ -19051,6 +19057,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"user.ntuserDat": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlUser).NtuserDat, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"user.system": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlUser).System, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"user.loginShell": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlUser).LoginShell, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"privatekey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -43860,6 +43874,8 @@ type mqlUser struct {
 	Group          plugin.TValue[*mqlGroup]
 	LoggedIn       plugin.TValue[bool]
 	NtuserDat      plugin.TValue[string]
+	System         plugin.TValue[bool]
+	LoginShell     plugin.TValue[bool]
 }
 
 // createUser creates a new instance of this resource
@@ -43999,6 +44015,18 @@ func (c *mqlUser) GetNtuserDat() *plugin.TValue[string] {
 		}
 
 		return c.ntuserDat(vargHome.Data)
+	})
+}
+
+func (c *mqlUser) GetSystem() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.System, func() (bool, error) {
+		return c.system()
+	})
+}
+
+func (c *mqlUser) GetLoginShell() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.LoginShell, func() (bool, error) {
+		return c.loginShell()
 	})
 }
 

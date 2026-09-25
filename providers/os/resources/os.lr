@@ -1162,6 +1162,31 @@ user @defaults("name uid gid") {
   // SYSTEM scan running with no interactive session. Empty on non-Windows
   // platforms or when the home directory is unknown.
   ntuserDat(home) string
+  // Whether this is a system account rather than an interactive user
+  //
+  // On Linux, true when uid is below UID_MIN, or above UID_MAX and at most
+  // 65535 outside the systemd-homed range 60001 to 60513. The upper band
+  // holds `nobody` (65534), Debian's static allocations (60000 to 64999) and
+  // systemd dynamic service users; uids above 65535 are container and
+  // directory-service ranges and count as regular users. UID_MIN and UID_MAX
+  // come from /etc/login.defs (or /usr/etc/login.defs when /etc has none),
+  // defaulting to 1000 and 60000 when the file is absent or a value is unset
+  // or unparsable. Root (uid 0) counts as a system
+  // account. On macOS, true when uid is below 500, which covers root, the
+  // `_`-prefixed service accounts, and `nobody` (-2). Null on Windows and on
+  // other Unix platforms, which have no common convention. Combine with
+  // loginShell to find service accounts that can log in, for example
+  // `users.where(system && name != "root").none(loginShell)`.
+  system() bool
+  // Whether the account's shell starts an interactive session
+  //
+  // False when shell is `nologin`, `false`, or `true` in /bin, /sbin,
+  // /usr/bin, or /usr/sbin (so both /sbin/nologin and /usr/sbin/nologin, and
+  // both /bin/false and /usr/bin/false, count). True for every other shell,
+  // including an empty one, which means /bin/sh. /etc/shells is not
+  // consulted: login and sshd do not read it, and some distributions list
+  // /bin/false in it. Null on Windows.
+  loginShell() bool
 }
 
 // Private key on disk
