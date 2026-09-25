@@ -36,7 +36,7 @@ func (r *mqlProxmox) replicationJobs() ([]any, error) {
 			"target":    llx.StringData(j.Target),
 			"type":      llx.StringData(j.Type),
 			"comment":   llx.StringData(j.Comment),
-			"rate":      llx.IntData(int64(j.Rate)),
+			"rate":      llx.IntData(j.Rate.Ceil()),
 			"disabled":  llx.BoolData(j.Disable == 1),
 			"removeJob": llx.StringData(j.RemoveJob),
 		})

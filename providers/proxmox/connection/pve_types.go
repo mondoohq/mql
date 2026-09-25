@@ -4,7 +4,10 @@
 package connection
 
 import (
+	"encoding/json"
 	"fmt"
+	"math"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -46,6 +49,119 @@ func (b *PveBool) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 	return fmt.Errorf("cannot decode %q as a proxmox boolean", s)
+}
+
+// PveNumber decodes a Proxmox numeric value.
+//
+// Values Proxmox reads out of a guest config keep the Perl scalar they were
+// parsed into, so the same key arrives as a JSON number on one endpoint and as
+// a quoted string on another: an LXC container's `cpus` is `"1.5"` when it
+// comes from a fractional `cpulimit`. Keys the schema declares as `number`
+// can also be fractional where the Go side wants a whole count. A plain `int`
+// field rejects both forms, and because the error propagates out of apiGet a
+// single such guest takes the whole listing down with it.
+type PveNumber float64
+
+// Float returns the decoded value.
+func (n PveNumber) Float() float64 { return float64(n) }
+
+// Int returns the value rounded to the nearest whole number.
+func (n PveNumber) Int() int64 { return int64(math.Round(float64(n))) }
+
+// Ceil returns the value rounded up, for counts where rounding down would
+// under-report, such as the CPUs a guest may use.
+func (n PveNumber) Ceil() int64 { return int64(math.Ceil(float64(n))) }
+
+func (n *PveNumber) UnmarshalJSON(data []byte) error {
+	s := strings.Trim(strings.TrimSpace(string(data)), `"`)
+	if s == "" || s == "null" {
+		*n = 0
+		return nil
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return fmt.Errorf("cannot decode %q as a proxmox number", s)
+	}
+	*n = PveNumber(f)
+	return nil
+}
+
+// PveProps decodes a setting that Proxmox serializes either as a property
+// string (`keep-last=3,keep-daily=7`) or as the object that string parses
+// into (`{"keep-last":3,"keep-daily":7}`).
+//
+// Which form arrives depends on the endpoint and release: backup jobs return
+// `prune-backups` and `fleecing` as objects, while the same keys are property
+// strings when written. Decoding the object form into a Go string fails, and
+// the failure takes the whole job listing with it. Both forms are normalized
+// to the property-string form, with keys sorted so the value is stable.
+type PveProps string
+
+func (p *PveProps) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		*p = ""
+		return nil
+	}
+	if strings.HasPrefix(trimmed, "{") {
+		var obj map[string]any
+		if err := json.Unmarshal(data, &obj); err != nil {
+			return err
+		}
+		*p = PveProps(FormatPropertyString(obj))
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	*p = PveProps(s)
+	return nil
+}
+
+// FormatPropertyString renders a decoded property-string object back into
+// its `key=value,...` form, keys sorted. Numbers print without an exponent or
+// a trailing `.0`, so `{"keep-last":3}` becomes `keep-last=3`, and a JSON
+// boolean prints as the `1`/`0` Proxmox itself writes.
+func FormatPropertyString(obj map[string]any) string {
+	keys := make([]string, 0, len(obj))
+	for k := range obj {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		v := obj[k]
+		if v == nil {
+			continue
+		}
+		parts = append(parts, k+"="+PropertyValueString(v))
+	}
+	return strings.Join(parts, ",")
+}
+
+// PropertyValueString renders one decoded property value the way it would
+// appear in a property string.
+func PropertyValueString(v any) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	case float64:
+		return strconv.FormatFloat(val, 'f', -1, 64)
+	case bool:
+		if val {
+			return "1"
+		}
+		return "0"
+	case []any:
+		// list members inside a property string are `;`-separated
+		items := make([]string, 0, len(val))
+		for _, item := range val {
+			items = append(items, PropertyValueString(item))
+		}
+		return strings.Join(items, ";")
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 // ParsePropertyString splits a Proxmox property string into its key/value

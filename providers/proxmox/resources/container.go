@@ -37,7 +37,7 @@ func containerInfoToResources(runtime *plugin.Runtime, cts []connection.Containe
 			"node":      llx.StringData(ct.Node),
 			"status":    llx.StringData(ct.Status),
 			"cpu":       llx.FloatData(ct.CPU),
-			"maxcpu":    llx.IntData(int64(ct.MaxCPU)),
+			"maxcpu":    llx.IntData(ct.MaxCPU.Ceil()),
 			"mem":       llx.IntData(ct.Mem),
 			"maxmem":    llx.IntData(ct.MaxMem),
 			"disk":      llx.IntData(ct.Disk),
@@ -47,7 +47,7 @@ func containerInfoToResources(runtime *plugin.Runtime, cts []connection.Containe
 			"netin":     llx.IntData(ct.NetIn),
 			"netout":    llx.IntData(ct.NetOut),
 			"uptime":    llx.IntData(ct.Uptime),
-			"template":  llx.BoolData(ct.Template == 1),
+			"template":  llx.BoolData(ct.Template.Bool()),
 		})
 		if err != nil {
 			return nil, err
@@ -181,23 +181,55 @@ func (r *mqlProxmoxContainer) cpuUnits() (int64, error) {
 	return units, nil
 }
 
-// rawLxc surfaces the user-injected `lxc.<key>: <value>` lines. PVE
-// stores the field as one logical newline-delimited string; split it
-// and trim so audits can iterate one override at a time.
+// rawLxc surfaces the user-injected `lxc.<key>: <value>` lines.
+//
+// The config endpoint returns them as an array of `[key, value]` pairs, not
+// as a string, so each pair is rendered back into the line it came from.
+// Formatting the array with `%v` would collapse every override into one
+// `[[lxc.apparmor.profile unconfined] ...]` entry that no line-oriented audit
+// can match.
 func (r *mqlProxmoxContainer) rawLxc() ([]any, error) {
-	val, err := r.cfgStr("lxc")
-	if err != nil {
-		return nil, err
+	r.ensureConfig()
+	if r.configErr != nil {
+		return nil, r.configErr
 	}
-	if val == "" {
-		return []any{}, nil
-	}
-	lines := parseRawLxcLines(val)
+	lines := rawLxcLines(r.ctConfig["lxc"])
 	out := make([]any, len(lines))
 	for i, line := range lines {
 		out[i] = line
 	}
 	return out, nil
+}
+
+// rawLxcLines renders the `lxc` config value as `key: value` lines. It takes
+// the `[[key, value], ...]` shape the API returns and, for older responses, a
+// newline-delimited string.
+func rawLxcLines(v any) []string {
+	switch val := v.(type) {
+	case nil:
+		return []string{}
+	case string:
+		return parseRawLxcLines(val)
+	case []any:
+		out := []string{}
+		for _, entry := range val {
+			pair, ok := entry.([]any)
+			if !ok || len(pair) == 0 {
+				continue
+			}
+			key := strings.TrimSpace(fmt.Sprintf("%v", pair[0]))
+			if key == "" {
+				continue
+			}
+			value := ""
+			if len(pair) > 1 && pair[1] != nil {
+				value = strings.TrimSpace(fmt.Sprintf("%v", pair[1]))
+			}
+			out = append(out, key+": "+value)
+		}
+		return out
+	}
+	return []string{}
 }
 
 // parseRawLxcLines splits a multi-line `lxc` config value into its

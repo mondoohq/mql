@@ -191,7 +191,7 @@ type ServiceInfo struct {
 	Name          string `json:"name"`
 	State         string `json:"state"`
 	Description   string `json:"desc"`
-	UnitFileState string `json:"unit-file-state"`
+	UnitFileState string `json:"unit-state"`
 }
 
 func (c *PveConnection) GetNodeServices(node string) ([]ServiceInfo, error) {

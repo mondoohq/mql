@@ -98,8 +98,23 @@ func (r *mqlProxmoxVm) bios() (string, error) {
 	return b, nil
 }
 
-func (r *mqlProxmoxVm) bootOrder() (string, error)   { return r.cfgStr("boot") }
-func (r *mqlProxmoxVm) agent() (bool, error)         { return r.cfgBool("agent") }
+func (r *mqlProxmoxVm) bootOrder() (string, error) { return r.cfgStr("boot") }
+
+// agent reads the `agent` line, which is a property string whose positional
+// value is `enabled`: `1`, `enabled=1`, and `1,fstrim_cloned_disks=1` all
+// mean the agent is on. Comparing the whole line against "1" reports every
+// agent configured with an option as disabled.
+func (r *mqlProxmoxVm) agent() (bool, error) {
+	props, found, err := r.cfgProps("agent", "enabled")
+	if err != nil || !found {
+		return false, err
+	}
+	if v := connection.PropBool(props, "enabled"); v != nil {
+		return *v, nil
+	}
+	return false, nil
+}
+
 func (r *mqlProxmoxVm) protection() (bool, error)    { return r.cfgBool("protection") }
 func (r *mqlProxmoxVm) description() (string, error) { return r.cfgStr("description") }
 func (r *mqlProxmoxVm) lock() (string, error)        { return r.cfgStr("lock") }
