@@ -252,6 +252,16 @@ func (p *mqlPorts) processesBySocket() (map[int64]*mqlProcess, error) {
 	return processes.BySocketID, err
 }
 
+// portUser is a port's user, or null when the socket's uid has no user entry,
+// for example a systemd DynamicUser service or a deleted user. That leaves
+// port.user null, as file.user does, instead of failing the whole port list.
+func portUser(user *mqlUser) *llx.RawData {
+	if user == nil {
+		return llx.ResourceData(nil, "user")
+	}
+	return llx.ResourceData(user, "user")
+}
+
 // parseProcNet parses the proc filesystem
 // See socket/address parsing: https://wiki.christophchamp.com/index.php?title=Unix_sockets
 func (p *mqlPorts) parseProcNet(path string, protocol string, users map[int64]*mqlUser) ([]any, error) {
@@ -287,16 +297,11 @@ func (p *mqlPorts) parseProcNet(path string, protocol string, users map[int64]*m
 			continue
 		}
 
-		user, ok := users[port.Uid]
-		if !ok {
-			return nil, errors.New("cannot find user for uid " + strconv.Itoa(int(port.Uid)))
-		}
-
 		obj, err := CreateResource(p.MqlRuntime, "port", map[string]*llx.RawData{
 			"protocol":      llx.StringData(protocol),
 			"port":          llx.IntData(port.Port),
 			"address":       llx.StringData(port.Address),
-			"user":          llx.ResourceData(user, "user"),
+			"user":          portUser(users[port.Uid]),
 			"state":         llx.StringData(port.State),
 			"remoteAddress": llx.StringData(port.RemoteAddress),
 			"remotePort":    llx.IntData(port.RemotePort),
@@ -612,10 +617,7 @@ func (p *mqlPorts) listMacos() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
-			user, ok := users[int64(uid)]
-			if !ok {
-				return nil, errors.New("cannot find user for uid " + process.UID)
-			}
+			user := users[int64(uid)]
 
 			pid, err := strconv.Atoi(process.PID)
 			if err != nil {
@@ -645,7 +647,7 @@ func (p *mqlPorts) listMacos() ([]any, error) {
 				"protocol":      llx.StringData(protocol),
 				"port":          llx.IntData(localPort),
 				"address":       llx.StringData(localAddress),
-				"user":          llx.ResourceData(user, "user"),
+				"user":          portUser(user),
 				"process":       llx.ResourceData(mqlProcess, "process"),
 				"state":         llx.StringData(state),
 				"remoteAddress": llx.StringData(remoteAddress),

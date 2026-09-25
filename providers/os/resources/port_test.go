@@ -6,10 +6,16 @@ package resources
 import (
 	"bufio"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 func TestParseLinuxProcNetIPv4(t *testing.T) {
@@ -162,4 +168,39 @@ func TestFreebsdPortState(t *testing.T) {
 	// a state FreeBSD adds later must stay visible rather than read as "no
 	// state", which is what a bare map lookup would have produced
 	assert.Equal(t, "SOME_FUTURE_STATE", freebsdPortState("SOME_FUTURE_STATE"))
+}
+
+// A socket owned by a uid with no passwd entry leaves port.user null instead
+// of failing the whole port list.
+func TestParseProcNet_UnknownUid(t *testing.T) {
+	fixturePath, err := filepath.Abs("testdata/port_unknown_uid.toml")
+	require.NoError(t, err)
+	asset := &inventory.Asset{
+		Platform: &inventory.Platform{Name: "ubuntu", Family: []string{"linux", "unix"}},
+	}
+	conn, err := mock.New(0, asset, mock.WithPath(fixturePath))
+	require.NoError(t, err)
+	runtime := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+
+	root, err := CreateResource(runtime, "user", map[string]*llx.RawData{
+		"name": llx.StringData("root"),
+		"uid":  llx.IntData(0),
+	})
+	require.NoError(t, err)
+	raw, err := CreateResource(runtime, "ports", map[string]*llx.RawData{})
+	require.NoError(t, err)
+
+	ports, err := raw.(*mqlPorts).parseProcNet("/proc/net/tcp", "tcp4",
+		map[int64]*mqlUser{0: root.(*mqlUser)})
+	require.NoError(t, err, "an unknown uid must not fail the port list")
+	require.Len(t, ports, 2)
+
+	known := ports[0].(*mqlPort)
+	assert.Equal(t, int64(53), known.Port.Data)
+	require.NotNil(t, known.User.Data)
+	assert.Equal(t, "root", known.User.Data.Name.Data)
+
+	unknown := ports[1].(*mqlPort)
+	assert.Equal(t, int64(8765), unknown.Port.Data)
+	assert.Nil(t, unknown.User.Data, "port.user should be null for an unknown uid")
 }
