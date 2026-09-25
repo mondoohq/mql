@@ -194,6 +194,7 @@ func (r *Runtime) UseBuiltinProvider(id string, features []byte) error {
 		return err
 	}
 	r.features = features
+	plugin.ReadFeatures(features)
 
 	callbacks := &providerCallbacks{runtime: r}
 	conn, err := r.Provider.Instance.Plugin.Connect(&plugin.ConnectReq{
@@ -235,6 +236,7 @@ func (r *Runtime) UseInProcessProvider(config plugin.Provider, schema resources.
 	if r.features == nil {
 		r.features = features
 	}
+	plugin.ReadFeatures(features)
 
 	running := &RunningProvider{
 		Name:     config.Name,
@@ -419,6 +421,9 @@ func (r *Runtime) Connect(req *plugin.ConnectReq) error {
 	}
 
 	r.features = req.Features
+	// A builtin provider runs in this process, where no SDK gRPC server reads
+	// the features for it (ADR 046 §9).
+	plugin.ReadFeatures(req.Features)
 	callbacks := providerCallbacks{
 		runtime: r,
 	}
