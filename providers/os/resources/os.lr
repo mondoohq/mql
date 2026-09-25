@@ -491,32 +491,43 @@ machine.secureboot @defaults("enabled") {
 // Installed physical memory, the physical memory still available, and the
 // committed virtual memory against its commit limit, all in bytes and read in
 // one snapshot. Used for operational inventory and for usage checks such as
+// `memory.available * 100 / memory.total > 10` and
 // `memory.committed * 100 / memory.commitLimit < 80`. Supported on Windows,
-// where the values are the ones Task Manager shows as Available and
-// Committed. Asset types that do not run a live system, such as container
-// images and disk snapshots, report the fields as not applicable.
+// Linux, macOS, FreeBSD, and Solaris. A value the platform does not keep reads
+// as null: macOS has no commit accounting, and FreeBSD reports no commit
+// limit. Asset types that do not run a live system, such as container images
+// and disk snapshots, report the fields as not applicable.
 memory @defaults("total available") {
   // Physical memory visible to the operating system, in bytes
   //
   // Installed memory minus what firmware and hardware reserve. On Windows,
-  // TotalVisibleMemorySize of Win32_OperatingSystem.
+  // TotalVisibleMemorySize of Win32_OperatingSystem. On Linux, MemTotal in
+  // /proc/meminfo. On macOS, hw.memsize. On FreeBSD, hw.physmem. On Solaris,
+  // the physmem page count.
   total() int
   // Physical memory available for new allocations without paging, in bytes
   //
-  // Free, zeroed, and standby pages. On Windows, the Memory\Available Bytes
-  // performance counter.
+  // Free memory plus memory the system can reclaim at once, such as clean file
+  // cache. On Windows, the Memory\Available Bytes performance counter (free,
+  // zeroed, and standby pages). On Linux, MemAvailable, which kernels before
+  // 3.14 do not report. On macOS, free, file-backed, and purgeable pages. On
+  // FreeBSD, free and inactive pages. On Solaris, the freemem page count.
   available() int
   // Committed virtual memory, in bytes
   //
   // Virtual memory the system has promised to back with physical memory or
-  // the paging file. On Windows, the Memory\Committed Bytes performance
-  // counter.
+  // swap. On Windows, the Memory\Committed Bytes performance counter. On
+  // Linux, Committed_AS. On FreeBSD, vm.swap_reserved. On Solaris, the used
+  // total of swap -s (allocated plus reserved). Null on macOS.
   committed() int
   // Maximum committed virtual memory, in bytes
   //
-  // Physical memory plus the current size of all paging files. The limit
-  // rises if a paging file is allowed to grow. On Windows, the
-  // Memory\Commit Limit performance counter.
+  // On Windows, the Memory\Commit Limit performance counter: physical memory
+  // plus the current size of all paging files, rising if a paging file is
+  // allowed to grow. On Linux, CommitLimit, which the kernel enforces only
+  // with vm.overcommit_memory set to 2. On Solaris, the used plus available
+  // totals of swap -s, a limit Solaris always enforces. Null on macOS and
+  // FreeBSD.
   commitLimit() int
 }
 
