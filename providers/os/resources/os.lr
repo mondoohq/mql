@@ -10812,43 +10812,51 @@ swift.package @defaults("name version purl") {
   files() []pkgFileInfo
 }
 
-// Terraform provider inventory (SBOM cataloger)
+// Terraform dependency inventory (SBOM cataloger)
 //
-// Terraform provider versions pinned in `.terraform.lock.hcl`, useful for
-// auditing which provider versions an infrastructure workspace depends on.
-// Note: the terraform.* namespace is also used by the dedicated Terraform provider
-// for IaC resource scanning. These SBOM resources focus on provider version inventory
-// from .terraform.lock.hcl, not Terraform configuration analysis.
+// The providers and modules a Terraform workspace depends on. Three sources are
+// read and merged: `.terraform.lock.hcl` for the provider versions `terraform
+// init` resolved, the `*.tf` files for the modules the configuration calls and
+// the providers it requires, and `.terraform/modules/modules.json` for what
+// init actually installed. A dependency stated in more than one of them is
+// reported once, at the most precise version available.
+//
+// Note: the terraform.* namespace is also used by the dedicated Terraform
+// provider for IaC resource scanning. These SBOM resources inventory
+// dependencies; they do not analyze Terraform configuration.
 terraform.packages {
   []terraform.package
 
   init(path? string)
 
-  // Path to search for .terraform.lock.hcl
+  // Path to search for Terraform files
   path string
 
   // Files used to determine the packages
   files() []pkgFileInfo
 }
 
-// Terraform provider dependency
+// Terraform dependency
 //
-// Single Terraform provider pinned in `.terraform.lock.hcl`, exposing its
-// unique `id`, `name` in `namespace/type` form, `version`, `purl`
-// identifier, CPE identifiers for vulnerability matching, and the lock
-// files that reference it.
-terraform.package @defaults("name version purl") {
-  // Unique identifier for the provider within the inventory
+// A single provider or module a Terraform workspace depends on, exposing its
+// unique `id`, `name`, `version`, `purl` identifier, the `source` address as
+// written, and the files that reference it.
+terraform.package @defaults("name version type purl") {
+  // Unique identifier for the dependency within the inventory
   id string
-  // Name of the provider in namespace/type form
+  // Name: namespace/type for a provider, namespace/name/target-system for a registry module, host/owner/repo for a repository module
   name() string
-  // Pinned provider version
+  // Resolved version, empty when only a version constraint was stated (a provider with no lock file committed, or a module on a mutable reference)
   version() string
-  // Package URL (purl), a standardized identifier for the provider
+  // Kind of dependency: "provider" or "module"
+  type() string
+  // Source address as written, the only place a private registry host survives (such a provider shares its purl coordinate with the public registry)
+  source() string
+  // Package URL (purl), a standardized identifier for the dependency
   purl() string
   // Common Platform Enumeration (CPE) identifiers for matching against vulnerability advisories
   cpes() []core.cpe
-  // Lock files that reference this provider
+  // Files that reference this dependency
   files() []pkgFileInfo
 }
 

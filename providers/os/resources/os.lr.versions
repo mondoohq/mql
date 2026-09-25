@@ -4110,6 +4110,8 @@ terraform.package.files 13.10.1
 terraform.package.id 13.10.1
 terraform.package.name 13.10.1
 terraform.package.purl 13.10.1
+terraform.package.source 14.1.1
+terraform.package.type 14.1.1
 terraform.package.version 13.10.1
 terraform.packages 13.10.1
 terraform.packages.files 13.10.1
