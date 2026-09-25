@@ -25,6 +25,11 @@ import (
 
 type mqlJournaldConfigInternal struct {
 	lock sync.Mutex
+
+	settingsLock     sync.Mutex
+	settingsResolved bool
+	settings         *journaldSettings
+	settingsErr      error
 }
 
 func initJournaldConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {

@@ -5881,7 +5881,13 @@ cassandra.rackdc @defaults("dc rack") {
 // Configuration for the systemd journal daemon parsed from
 // journald.conf. Exposes the [Journal] and other sections, letting you
 // audit settings such as log Storage, Compress, retention limits, and
-// forwarding. Access the parsed content through `sections`.
+// forwarding. Access the parsed content through `sections`, or the
+// effective values journald applies after drop-ins and defaults through
+// `storage`, `compress`, and `forwardToSyslog`. Without an argument, the
+// main file and drop-ins are read from /etc/systemd, /run/systemd,
+// /usr/local/lib/systemd, and /usr/lib/systemd. With a path, for example
+// `journald.config("/srv/journald.conf")`, that file and its `.d` drop-in
+// directory are read instead.
 journald.config {
   init(path? string)
   // File of this journald configuration
@@ -5892,6 +5898,38 @@ journald.config {
   params(file) @maturity("deprecated") map[string]string
   // All sections in this journald configuration
   sections(file) []journald.config.section
+  // Effective journal storage mode
+  //
+  // One of `volatile`, `persistent`, `auto`, or `none`: the last valid
+  // Storage assignment in the [Journal] section across journald.conf and its
+  // journald.conf.d drop-ins, read in the order journald applies them.
+  // Values journald rejects (including other spellings such as `Persistent`)
+  // are skipped, as journald skips them. `auto` when no file sets Storage.
+  // systemd 259 and later can be built with a different default, so an
+  // unset Storage on those versions may store logs persistently while this
+  // field still reports `auto`. Null when the system has no systemd-journald
+  // binary (for example Alpine or a container image without systemd).
+  storage(file) string
+  // Whether journald compresses large journal entries
+  //
+  // The last valid Compress assignment in the [Journal] section across
+  // journald.conf and its drop-ins. Accepts the boolean spellings journald
+  // accepts (yes, no, true, false, on, off, 1, 0, in any case); a size
+  // threshold such as `512K` also enables compression, and an empty
+  // assignment restores the default. `true` when no file sets Compress. Null
+  // when the system has no systemd-journald binary.
+  compress(file) bool
+  // Whether journald forwards messages to a syslog daemon
+  //
+  // The last valid ForwardToSyslog assignment in the [Journal] section
+  // across journald.conf and its drop-ins, including vendor drop-ins such as
+  // Debian's /usr/lib/systemd/journald.conf.d/syslog.conf. Accepts the
+  // boolean spellings journald accepts, in any case. `false` when no file
+  // sets ForwardToSyslog, the default since systemd 216. The
+  // `systemd.journald.forward_to_syslog` kernel command line option, which
+  // overrides the files at boot, is not considered. Null when the system has
+  // no systemd-journald binary.
+  forwardToSyslog(file) bool
 }
 
 // journald configuration section

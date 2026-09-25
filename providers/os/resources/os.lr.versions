@@ -1919,7 +1919,9 @@ jetbrains.plugin.vendor 14.0.0
 jetbrains.plugin.version 14.0.0
 jetbrains.plugins 14.0.0
 journald.config 11.4.51
+journald.config.compress 14.2.1
 journald.config.file 11.4.51
+journald.config.forwardToSyslog 14.2.1
 journald.config.params 11.4.51
 journald.config.section 11.4.69
 journald.config.section.name 11.4.69
@@ -1928,6 +1930,7 @@ journald.config.section.param.name 11.4.69
 journald.config.section.param.value 11.4.69
 journald.config.section.params 11.4.69
 journald.config.sections 11.4.51
+journald.config.storage 14.2.1
 julia.package 13.13.1
 julia.package.files 13.13.1
 julia.package.id 13.13.1

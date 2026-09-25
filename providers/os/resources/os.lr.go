@@ -7990,6 +7990,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"journald.config.sections": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlJournaldConfig).GetSections()).ToDataRes(types.Array(types.Resource("journald.config.section")))
 	},
+	"journald.config.storage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJournaldConfig).GetStorage()).ToDataRes(types.String)
+	},
+	"journald.config.compress": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJournaldConfig).GetCompress()).ToDataRes(types.Bool)
+	},
+	"journald.config.forwardToSyslog": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlJournaldConfig).GetForwardToSyslog()).ToDataRes(types.Bool)
+	},
 	"journald.config.section.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlJournaldConfigSection).GetName()).ToDataRes(types.String)
 	},
@@ -24767,6 +24776,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"journald.config.sections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlJournaldConfig).Sections, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"journald.config.storage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJournaldConfig).Storage, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"journald.config.compress": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJournaldConfig).Compress, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"journald.config.forwardToSyslog": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlJournaldConfig).ForwardToSyslog, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"journald.config.section.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -60002,9 +60023,12 @@ type mqlJournaldConfig struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlJournaldConfigInternal
-	File     plugin.TValue[*mqlFile]
-	Params   plugin.TValue[map[string]any]
-	Sections plugin.TValue[[]any]
+	File            plugin.TValue[*mqlFile]
+	Params          plugin.TValue[map[string]any]
+	Sections        plugin.TValue[[]any]
+	Storage         plugin.TValue[string]
+	Compress        plugin.TValue[bool]
+	ForwardToSyslog plugin.TValue[bool]
 }
 
 // createJournaldConfig creates a new instance of this resource
@@ -60089,6 +60113,39 @@ func (c *mqlJournaldConfig) GetSections() *plugin.TValue[[]any] {
 		}
 
 		return c.sections(vargFile.Data)
+	})
+}
+
+func (c *mqlJournaldConfig) GetStorage() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Storage, func() (string, error) {
+		vargFile := c.GetFile()
+		if vargFile.Error != nil {
+			return "", vargFile.Error
+		}
+
+		return c.storage(vargFile.Data)
+	})
+}
+
+func (c *mqlJournaldConfig) GetCompress() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Compress, func() (bool, error) {
+		vargFile := c.GetFile()
+		if vargFile.Error != nil {
+			return false, vargFile.Error
+		}
+
+		return c.compress(vargFile.Data)
+	})
+}
+
+func (c *mqlJournaldConfig) GetForwardToSyslog() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ForwardToSyslog, func() (bool, error) {
+		vargFile := c.GetFile()
+		if vargFile.Error != nil {
+			return false, vargFile.Error
+		}
+
+		return c.forwardToSyslog(vargFile.Data)
 	})
 }
 
