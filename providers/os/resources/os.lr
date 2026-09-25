@@ -47,6 +47,7 @@ alias os.base.kiro = kiro
 alias os.base.kubelet = kubelet
 alias os.base.mariadb = mariadb
 alias os.base.mdm = mdm
+alias os.base.memory = memory
 alias os.base.mongodb = mongodb
 alias os.base.mysql = mysql
 alias os.base.network = network
