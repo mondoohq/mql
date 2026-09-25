@@ -81,7 +81,11 @@ func (s *UnixUserManager) List() ([]*User, error) {
 	if err == nil && len(users) != 0 {
 		return users, nil
 	}
-	// fallback to /etc/passwd
+	// getent is missing on busybox style images and fails when NSS is
+	// misconfigured. Record why we dropped to /etc/passwd, otherwise a host that
+	// should have resolved through NSS looks indistinguishable from one that
+	// never had getent at all.
+	log.Debug().Err(err).Int("users", len(users)).Msg("getent passwd did not return users, falling back to /etc/passwd")
 	return s.listEtcPasswd()
 }
 
