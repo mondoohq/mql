@@ -4,6 +4,7 @@
 package llx
 
 import (
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -164,6 +165,54 @@ func CoverageGapsFromProto(gaps []*CoverageGap) []*Error {
 		})
 	}
 	return res
+}
+
+// coverageGapJSON is a coverage gap as JSON output writes it. Kind and scope
+// use their machine names; an unclassified gap has kind "unspecified".
+type coverageGapJSON struct {
+	Kind         string   `json:"kind"`
+	Scope        string   `json:"scope,omitempty"`
+	ScopeID      string   `json:"scopeId,omitempty"`
+	Permissions  []string `json:"permissions,omitempty"`
+	RetryAfterMs int64    `json:"retryAfterMs,omitempty"`
+	Error        string   `json:"error,omitempty"`
+}
+
+// CoverageGapsJSONfield renders r's coverage gaps as a JSON field, keyed by
+// the same label JSONfield gives the value, or nil when r is complete. JSON
+// output writes it beside the value, never inside it, so the value keeps the
+// shape anything parsing it relies on (ADR 046 §8).
+func (r *RawData) CoverageGapsJSONfield(codeID string, bundle *CodeBundle) []byte {
+	if r == nil || len(r.CoverageGaps) == 0 {
+		return nil
+	}
+	gaps := make([]coverageGapJSON, len(r.CoverageGaps))
+	for i, gap := range r.CoverageGaps {
+		cur := coverageGapJSON{
+			Kind:         gap.Kind.Name(),
+			ScopeID:      gap.ScopeID,
+			Permissions:  gap.Permissions,
+			RetryAfterMs: gap.RetryAfter.Milliseconds(),
+		}
+		if gap.Scope != ErrorScope_ERROR_SCOPE_UNSPECIFIED {
+			cur.Scope = gap.Scope.Name()
+		}
+		// A classified gap without an upstream error has only its kind's label
+		// as a message, which the kind already says.
+		if msg := gap.Error(); msg != gap.Kind.Label() || gap.Kind == ErrorKind_ERROR_KIND_UNSPECIFIED {
+			cur.Error = msg
+		}
+		gaps[i] = cur
+	}
+	value, err := json.Marshal(gaps)
+	if err != nil {
+		return JSONerror(err)
+	}
+	key, err := string2json(label(codeID, bundle, true))
+	if err != nil {
+		return JSONerror(err)
+	}
+	return []byte(key + ":" + string(value))
 }
 
 // WithCoverageGaps returns r with gaps added to the ones it already carries.

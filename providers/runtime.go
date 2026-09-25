@@ -725,6 +725,17 @@ func (r *Runtime) watchAndUpdate(resource string, resourceID string, field strin
 		// error (ADR 046): this is the site where a kind would otherwise be
 		// flattened into a string for the rest of its life.
 		raw = &llx.RawData{Error: llx.ErrorFromDetail(data.Error, data.ErrorDetail)}
+		var classified *llx.Error
+		if errors.As(raw.Error, &classified) {
+			log.Debug().
+				Str("provider", provider.Instance.Name).
+				Str("resource", resource).
+				Str("id", resourceID).
+				Str("field", field).
+				Err(raw.Error).
+				EmbedObject(classified).
+				Msg("provider field failed")
+		}
 	} else {
 		if data.Data == nil {
 			// The provider answered with neither data nor an error. This
@@ -746,6 +757,16 @@ func (r *Runtime) watchAndUpdate(resource string, resourceID string, field strin
 		// The parts the provider could not read ride beside the value, not in
 		// the error slot, which would mark the whole field failed (ADR 046 §8).
 		raw = data.Data.RawData().WithCoverageGaps(llx.CoverageGapsFromProto(data.CoverageGaps))
+		for _, gap := range raw.CoverageGaps {
+			log.Debug().
+				Str("provider", provider.Instance.Name).
+				Str("resource", resource).
+				Str("id", resourceID).
+				Str("field", field).
+				Err(gap).
+				EmbedObject(gap).
+				Msg("provider field is incomplete")
+		}
 	}
 
 	addDataReq := llx.AddDataReq{

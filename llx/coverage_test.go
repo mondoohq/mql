@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -98,4 +99,30 @@ func TestCoverageGapKeepsItsPartitionWhenUnclassified(t *testing.T) {
 	require.Len(t, back.CoverageGaps, 1)
 	assert.Equal(t, "eu-west-1", back.CoverageGaps[0].ScopeID)
 	assert.Equal(t, "internal error", back.CoverageGaps[0].Error())
+}
+
+func TestCoverageGapsJSONfield(t *testing.T) {
+	bundle := &CodeBundle{Labels: &Labels{Labels: map[string]string{"abc": "aws.ec2.eips"}}}
+
+	t.Run("a complete result writes nothing", func(t *testing.T) {
+		assert.Nil(t, (&RawData{Type: types.Int, Value: int64(1)}).CoverageGapsJSONfield("abc", bundle))
+		var r *RawData
+		assert.Nil(t, r.CoverageGapsJSONfield("abc", bundle))
+	})
+
+	t.Run("gaps are keyed by the value's label", func(t *testing.T) {
+		r := &RawData{Type: types.Array(types.String), CoverageGaps: []*Error{
+			Forbidden(errors.New("AccessDenied"),
+				WithScope(ErrorScope_ERROR_SCOPE_PARTITION, "eu-west-1"),
+				WithPermissions("ec2:DescribeAddresses")),
+			TooManyRequests(nil, WithRetryAfter(1500*time.Millisecond)),
+			{err: errors.New("boom")},
+		}}
+		got := r.CoverageGapsJSONfield("abc", bundle)
+		assert.JSONEq(t, `{"aws.ec2.eips":[
+			{"kind":"forbidden","scope":"partition","scopeId":"eu-west-1","permissions":["ec2:DescribeAddresses"],"error":"AccessDenied"},
+			{"kind":"too_many_requests","retryAfterMs":1500},
+			{"kind":"unspecified","error":"boom"}
+		]}`, "{"+string(got)+"}")
+	})
 }

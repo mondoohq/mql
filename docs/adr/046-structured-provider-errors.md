@@ -843,6 +843,35 @@ StructuredErrors`, `MONDOO_FEATURES`, or the server).
   (`cnspec serve`) picks up the flag being turned off again, which reading it
   only once would not.
 
+**Phase 5 landed.** mql's text and JSON output read the kind and the coverage
+gaps. Nothing produces a classified error by default yet, so with the flag off
+the output is what it was.
+
+- **A failed field** leads with its kind, its partition and its permissions,
+  then the target's message: `access denied (ec2:DescribeTags): User … is not
+  authorized`. Not applicable is dimmed, like version skew; every other kind
+  stays an error. Unclassified errors print as before
+  (`cli/printer/errors.go`).
+- **Grouping.** Below a result, one line per `(kind, scope, scope_id,
+  permissions)` group that occurs more than once, with its count: `access
+  denied x784 (ec2:DescribeTags)`. Each field still shows its own error; a
+  group seen once is already fully written where it is.
+- **Coverage gaps in text** follow the value, one dimmed line per
+  `(kind, scope_id)` group, with the permissions of the group merged:
+  `coverage gap: access denied in eu-west-1 (ec2:DescribeAddresses)`.
+  Unclassified gaps print their message and sort last.
+- **Coverage gaps in JSON** sit beside the values under one reserved key,
+  `_coverageGaps`, mapping each query label to its gaps (`kind`, `scope`,
+  `scopeId`, `permissions`, `retryAfterMs`, `error`). A complete result writes
+  no key, so the output of every run today is byte-for-byte the same. Kind and
+  scope use `ErrorKind.Name()` / `ErrorScope.Name()`, the proto name without
+  its prefix, lowercased (`forbidden`, `too_many_requests`, `partition`).
+- **Structured logs.** `*llx.Error` implements `zerolog.LogObjectMarshaler`
+  (`kind`, `scope`, `scope_id`, `permissions`, `retry_after`; the message
+  stays with `Err`). `providers.Runtime` writes one debug line per classified
+  field error and one per coverage gap, with provider, resource, id and field,
+  so no provider needs its own logging for it.
+
 **Step 9 for aws is open** (#11012). It returns classified errors
 unconditionally; it gets the v13 branches of §9 and can merge now that phase 4
 has landed.

@@ -4,11 +4,14 @@
 package llx
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/types"
@@ -147,4 +150,50 @@ func TestResultRoundTripWithoutAKind(t *testing.T) {
 	require.Error(t, back.Error)
 	assert.Equal(t, "plain failure", back.Error.Error())
 	assert.Equal(t, ErrorKind_ERROR_KIND_UNSPECIFIED, KindOf(back.Error))
+}
+
+func TestErrorNames(t *testing.T) {
+	assert.Equal(t, "forbidden", ErrorKind_ERROR_KIND_FORBIDDEN.Name())
+	assert.Equal(t, "too_many_requests", ErrorKind_ERROR_KIND_TOO_MANY_REQUESTS.Name())
+	assert.Equal(t, "unspecified", ErrorKind_ERROR_KIND_UNSPECIFIED.Name())
+	assert.Equal(t, "partition", ErrorScope_ERROR_SCOPE_PARTITION.Name())
+}
+
+func TestErrorMarshalZerologObject(t *testing.T) {
+	t.Run("writes the classification", func(t *testing.T) {
+		var buf bytes.Buffer
+		e := Forbidden(errors.New("AccessDenied"),
+			WithScope(ErrorScope_ERROR_SCOPE_PARTITION, "eu-west-1"),
+			WithPermissions("ec2:DescribeAddresses"),
+			WithRetryAfter(2*time.Second))
+		logTo(&buf).EmbedObject(e).Send()
+
+		var got map[string]any
+		require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+		assert.Equal(t, "forbidden", got["kind"])
+		assert.Equal(t, "partition", got["scope"])
+		assert.Equal(t, "eu-west-1", got["scope_id"])
+		assert.Equal(t, []any{"ec2:DescribeAddresses"}, got["permissions"])
+		assert.Contains(t, got, "retry_after")
+		// the message is the caller's Err, not written twice
+		assert.NotContains(t, got, "error")
+	})
+
+	t.Run("leaves out what is not set", func(t *testing.T) {
+		var buf bytes.Buffer
+		logTo(&buf).EmbedObject(NotFound(nil)).Send()
+		assert.JSONEq(t, `{"kind":"not_found"}`, buf.String())
+	})
+
+	t.Run("a nil error writes nothing", func(t *testing.T) {
+		var buf bytes.Buffer
+		var e *Error
+		logTo(&buf).EmbedObject(e).Send()
+		assert.JSONEq(t, `{}`, buf.String())
+	})
+}
+
+func logTo(buf *bytes.Buffer) *zerolog.Event {
+	l := zerolog.New(buf)
+	return l.Log()
 }

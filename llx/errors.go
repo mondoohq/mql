@@ -5,7 +5,10 @@ package llx
 
 import (
 	"errors"
+	"strings"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
 // Structured provider errors (ADR 046).
@@ -118,6 +121,43 @@ func (k ErrorKind) Label() string {
 		return "asset vanished"
 	default:
 		return "error"
+	}
+}
+
+// Name is the kind's stable machine spelling, e.g. "forbidden" or
+// "too_many_requests": the proto name without its prefix, lowercased. Used
+// where a kind is written for a program rather than a person (JSON, logs).
+func (k ErrorKind) Name() string {
+	return strings.ToLower(strings.TrimPrefix(k.String(), "ERROR_KIND_"))
+}
+
+// Name is the scope's stable machine spelling, e.g. "partition".
+func (s ErrorScope) Name() string {
+	return strings.ToLower(strings.TrimPrefix(s.String(), "ERROR_SCOPE_"))
+}
+
+// MarshalZerologObject writes the classification as structured log fields, so
+// a denial is one queryable field in a log rather than one of many message
+// shapes (ADR 046 §7). The message is left to the caller's Err, which keeps it
+// from being written twice:
+//
+//	log.Debug().Err(err).EmbedObject(e).Msg("...")
+func (e *Error) MarshalZerologObject(ev *zerolog.Event) {
+	if e == nil {
+		return
+	}
+	ev.Str("kind", e.Kind.Name())
+	if e.Scope != ErrorScope_ERROR_SCOPE_UNSPECIFIED {
+		ev.Str("scope", e.Scope.Name())
+	}
+	if e.ScopeID != "" {
+		ev.Str("scope_id", e.ScopeID)
+	}
+	if len(e.Permissions) != 0 {
+		ev.Strs("permissions", e.Permissions)
+	}
+	if e.RetryAfter != 0 {
+		ev.Dur("retry_after", e.RetryAfter)
 	}
 }
 

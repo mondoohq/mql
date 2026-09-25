@@ -63,11 +63,16 @@ func (print *Printer) Datas(bundle *llx.CodeBundle, results map[string]*llx.RawR
 func (print *Printer) Results(bundle *llx.CodeBundle, results map[string]*llx.RawResult) string {
 	assessment := llx.Results2Assessment(bundle, results)
 
+	var body string
 	if assessment != nil {
-		return print.Assessment(bundle, assessment)
+		body = print.Assessment(bundle, assessment)
+	} else {
+		body = print.Datas(bundle, results)
 	}
 
-	return print.Datas(bundle, results)
+	// What could not be read, then what failed more than once (ADR 046).
+	body = appendLines(body, print.coverageGapLines(results))
+	return appendLines(body, print.errorSummary(results))
 }
 
 // Assessment prints a complete comparable assessment
@@ -422,7 +427,7 @@ func (print *Printer) refMap(data map[string]any, checksum string, indent string
 			continue
 		}
 		if val.Error != nil {
-			res.WriteString("  " + label + print.Error(val.Error.Error()) + " ")
+			res.WriteString("  " + label + print.fieldError(val.Error) + " ")
 			continue
 		}
 
@@ -515,7 +520,7 @@ func (print *Printer) refMap(data map[string]any, checksum string, indent string
 				continue
 			}
 			if val.Error != nil {
-				res.WriteString(indent + "  " + label + print.Error(val.Error.Error()) + "\n")
+				res.WriteString(indent + "  " + label + print.fieldError(val.Error) + "\n")
 				continue
 			}
 
@@ -959,7 +964,7 @@ func (print *Printer) DataWithLabel(r *llx.RawData, checksum string, bundle *llx
 	b := strings.Builder{}
 	errs := filterErrors(r.Error)
 	if errs != nil {
-		b.WriteString(print.Error(strings.TrimSpace(errs.Error())))
+		b.WriteString(print.fieldError(errs))
 		b.WriteByte('\n')
 	}
 
