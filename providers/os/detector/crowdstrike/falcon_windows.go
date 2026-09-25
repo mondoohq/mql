@@ -7,7 +7,6 @@ package crowdstrike
 
 import (
 	"errors"
-	"runtime"
 
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -16,7 +15,7 @@ import (
 
 func detectWindows(conn shared.Connection) *Identity {
 	// Locally, read the registry directly instead of starting powershell.
-	if conn.Type() == shared.Type_Local && runtime.GOOS == "windows" {
+	if conn.Type() == shared.Type_Local {
 		return detectWindowsFromRegistry()
 	}
 	return powershellDetectWindows(conn)
@@ -24,25 +23,33 @@ func detectWindows(conn shared.Connection) *Identity {
 
 func detectWindowsFromRegistry() *Identity {
 	for _, path := range windowsSensorKeys {
-		key, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.QUERY_VALUE)
-		if err != nil {
-			// absent sensor, or not running with administrative privileges
-			if !errors.Is(err, registry.ErrNotExist) {
-				log.Debug().Err(err).Str("key", path).Msg("could not open CrowdStrike Falcon sensor key")
-			}
-			continue
+		if id := readSensorKey(path); id != nil {
+			return id
 		}
-		aid, _, err := key.GetBinaryValue(windowsAIDValue)
-		if err != nil {
-			key.Close()
-			continue
-		}
-		id := &Identity{AID: binaryToID(aid)}
-		if cid, _, err := key.GetBinaryValue(windowsCIDValue); err == nil {
-			id.CID = binaryToID(cid)
-		}
-		key.Close()
-		return id
 	}
 	return nil
+}
+
+// readSensorKey reads the sensor identity from one registry key, or returns nil
+// when the key or its AID value is absent or unreadable.
+func readSensorKey(path string) *Identity {
+	key, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.QUERY_VALUE)
+	if err != nil {
+		// absent sensor, or not running with administrative privileges
+		if !errors.Is(err, registry.ErrNotExist) {
+			log.Debug().Err(err).Str("key", path).Msg("could not open CrowdStrike Falcon sensor key")
+		}
+		return nil
+	}
+	defer key.Close()
+
+	aid, _, err := key.GetBinaryValue(windowsAIDValue)
+	if err != nil {
+		return nil
+	}
+	id := &Identity{AID: binaryToID(aid)}
+	if cid, _, err := key.GetBinaryValue(windowsCIDValue); err == nil {
+		id.CID = binaryToID(cid)
+	}
+	return id
 }
