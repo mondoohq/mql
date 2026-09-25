@@ -13059,17 +13059,30 @@ private windows.deviceGuard @defaults("virtualizationBasedSecurityEnabled hyperv
 // "Network security", and related security options under
 // HKLM\SYSTEM\CurrentControlSet\Control\Lsa. These values control anonymous
 // access restrictions, blank-password use, LAN Manager authentication level,
-// NTLM hashing, LSA protection (RunAsPPL), and audit behavior. On/off settings
+// NTLM hashing, LSA protection (RunAsPPL), and audit behavior, including
+// whether the system halts when it cannot write security audits. On/off settings
 // are exposed as booleans and graded settings (such as the LAN Manager
 // authentication level) as integers. NTLM (MSV1_0 and WDigest) settings are
 // grouped under `ntlm` and the Netlogon secure-channel settings under
 // `secureChannel`. The FIPS algorithm policy, the Kerberos supported
-// encryption types, and the LDAP signing and channel-binding requirements are
-// read from their own keys and exposed directly on this resource. Values are
+// encryption types, the LDAP signing and channel-binding requirements, and the
+// Security Accounts Manager (SAM) minimum password length limit are read from
+// their own keys and exposed directly on this resource. Values are
 // nullable: an absent value resolves to null so it is distinguishable from an
 // explicit false or 0, letting checks assert on configured-vs-default
 // precisely.
 windows.lsa {
+  // Behavior when security audits cannot be logged (Lsa\CrashOnAuditFail)
+  //
+  // Backs the "Audit: Shut down system immediately if unable to log security
+  // audits" security option: 0 off, the system keeps running when it cannot
+  // write to the Security log; 1 on, the system halts with a Stop error when an
+  // event cannot be written to the Security log; 2 set by Windows after such a
+  // halt, in which case only members of the Administrators group can log on
+  // until an administrator clears the Security log and resets the value. Null
+  // when the value is absent, in which case the Windows default of 0 (off)
+  // applies rather than a configured 0.
+  crashOnAuditFail() int
   // Whether storing network authentication credentials is disabled (Lsa\DisableDomainCreds)
   disableDomainCreds() bool
   // Whether the Everyone permissions apply to anonymous users (Lsa\EveryoneIncludesAnonymous)
@@ -13173,6 +13186,16 @@ windows.lsa {
   lmCompatibilityLevel() int
   // Whether the LAN Manager (LM) hash of new passwords is not stored (Lsa\NoLMHash)
   noLmHash() bool
+  // Whether a minimum password length above 14 characters may be configured (Control\SAM\RelaxMinimumPasswordLengthLimits)
+  //
+  // Backs the "Relax minimum password length limits" password policy setting,
+  // read from HKLM\SYSTEM\CurrentControlSet\Control\SAM. When enabled, the
+  // Minimum password length policy accepts values greater than 14 characters;
+  // when disabled or absent, it is capped at 14. Honored on Windows 10 version 2004,
+  // Windows Server version 2004, Windows Server 2022, and later; older
+  // releases ignore the value. Null when the value is absent, in which case the
+  // Windows default of disabled applies rather than a configured false.
+  relaxMinimumPasswordLengthLimits() bool
   // Restrictions on anonymous (null session) connections (Lsa\RestrictAnonymous; higher is more restrictive)
   restrictAnonymous() int
   // Whether anonymous enumeration of SAM accounts is disallowed (Lsa\RestrictAnonymousSAM)

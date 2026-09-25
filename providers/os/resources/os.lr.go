@@ -13157,6 +13157,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"windows.deviceGuard.virtualizationBasedSecurityStatus": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsDeviceGuard).GetVirtualizationBasedSecurityStatus()).ToDataRes(types.Int)
 	},
+	"windows.lsa.crashOnAuditFail": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLsa).GetCrashOnAuditFail()).ToDataRes(types.Int)
+	},
 	"windows.lsa.disableDomainCreds": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsLsa).GetDisableDomainCreds()).ToDataRes(types.Bool)
 	},
@@ -13204,6 +13207,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"windows.lsa.noLmHash": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsLsa).GetNoLmHash()).ToDataRes(types.Bool)
+	},
+	"windows.lsa.relaxMinimumPasswordLengthLimits": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLsa).GetRelaxMinimumPasswordLengthLimits()).ToDataRes(types.Bool)
 	},
 	"windows.lsa.restrictAnonymous": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsLsa).GetRestrictAnonymous()).ToDataRes(types.Int)
@@ -32762,6 +32768,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlWindowsLsa).__id, ok = v.Value.(string)
 		return
 	},
+	"windows.lsa.crashOnAuditFail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLsa).CrashOnAuditFail, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"windows.lsa.disableDomainCreds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindowsLsa).DisableDomainCreds, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -32824,6 +32834,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"windows.lsa.noLmHash": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindowsLsa).NoLmHash, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.lsa.relaxMinimumPasswordLengthLimits": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLsa).RelaxMinimumPasswordLengthLimits, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"windows.lsa.restrictAnonymous": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -84353,6 +84367,7 @@ type mqlWindowsLsa struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlWindowsLsaInternal it will be used here
+	CrashOnAuditFail                 plugin.TValue[int64]
 	DisableDomainCreds               plugin.TValue[bool]
 	EveryoneIncludesAnonymous        plugin.TValue[bool]
 	FipsAlgorithmPolicyEnabled       plugin.TValue[bool]
@@ -84369,6 +84384,7 @@ type mqlWindowsLsa struct {
 	LimitBlankPasswordUse            plugin.TValue[bool]
 	LmCompatibilityLevel             plugin.TValue[int64]
 	NoLmHash                         plugin.TValue[bool]
+	RelaxMinimumPasswordLengthLimits plugin.TValue[bool]
 	RestrictAnonymous                plugin.TValue[int64]
 	RestrictAnonymousSam             plugin.TValue[bool]
 	RestrictRemoteSam                plugin.TValue[string]
@@ -84415,6 +84431,12 @@ func (c *mqlWindowsLsa) MqlName() string {
 
 func (c *mqlWindowsLsa) MqlID() string {
 	return c.__id
+}
+
+func (c *mqlWindowsLsa) GetCrashOnAuditFail() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.CrashOnAuditFail, func() (int64, error) {
+		return c.crashOnAuditFail()
+	})
 }
 
 func (c *mqlWindowsLsa) GetDisableDomainCreds() *plugin.TValue[bool] {
@@ -84510,6 +84532,12 @@ func (c *mqlWindowsLsa) GetLmCompatibilityLevel() *plugin.TValue[int64] {
 func (c *mqlWindowsLsa) GetNoLmHash() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.NoLmHash, func() (bool, error) {
 		return c.noLmHash()
+	})
+}
+
+func (c *mqlWindowsLsa) GetRelaxMinimumPasswordLengthLimits() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RelaxMinimumPasswordLengthLimits, func() (bool, error) {
+		return c.relaxMinimumPasswordLengthLimits()
 	})
 }
 

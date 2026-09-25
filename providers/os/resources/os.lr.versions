@@ -4907,6 +4907,7 @@ windows.logonSession.startTime 13.40.10
 windows.logonSession.user 13.40.10
 windows.logonSessions 13.40.10
 windows.lsa 13.29.1
+windows.lsa.crashOnAuditFail 14.2.1
 windows.lsa.disableDomainCreds 13.29.1
 windows.lsa.everyoneIncludesAnonymous 13.29.1
 windows.lsa.fipsAlgorithmPolicyEnabled 13.40.10
@@ -4931,6 +4932,7 @@ windows.lsa.ntlm.ntlmMinClientSec 13.29.1
 windows.lsa.ntlm.ntlmMinServerSec 13.29.1
 windows.lsa.ntlm.restrictSendingNtlmTraffic 13.29.1
 windows.lsa.ntlm.useLogonCredential 13.29.1
+windows.lsa.relaxMinimumPasswordLengthLimits 14.2.1
 windows.lsa.restrictAnonymous 13.29.1
 windows.lsa.restrictAnonymousSam 13.29.1
 windows.lsa.restrictRemoteSam 13.29.1
