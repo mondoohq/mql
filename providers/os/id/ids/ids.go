@@ -11,6 +11,9 @@ const (
 	IdDetector_CloudDetect  = "cloud-detect"
 	IdDetector_AwsEcs       = "aws-ecs"
 	IdDetector_WindowsADSID = "windows-ad-sid"
+	// IdDetector_CrowdStrikeAID identifies a host by the agent ID of its
+	// CrowdStrike Falcon sensor. Opt-in: it is never part of the defaults.
+	IdDetector_CrowdStrikeAID = "crowdstrike-aid"
 
 	// IdDetector_PlatformID = "transport-platform-id" // TODO: how does this work?
 )

@@ -9,6 +9,7 @@ import (
 
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/detector/crowdstrike"
 )
 
 func DetectOS(conn shared.Connection) (*inventory.Platform, bool) {
@@ -34,6 +35,7 @@ func DetectOS(conn shared.Connection) (*inventory.Platform, bool) {
 	addTechnologyUrl(res)
 	if ok {
 		DetectDeviceType(res, conn)
+		crowdstrike.ApplyLabels(conn, res)
 	}
 	return res, ok
 }
