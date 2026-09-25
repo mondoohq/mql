@@ -966,6 +966,25 @@ the flag off cnspec's output is what it was.
   column by column and does not store `error_details`; the SARIF, JUnit, OCSF
   and HDF formats print the message only.
 
+**Phase 7 landed.** `plugin.PermissionIndex`
+(`providers-sdk/v1/plugin/permissions.go`) is the fallback for a refusal whose
+call site names no permission. Nothing calls it yet: each cloud's classifier
+picks it up in its migration step.
+
+- **Reading the manifest.** A provider embeds its own `*.permissions.json` and
+  wraps it with `plugin.NewPermissionIndex`. The manifest is parsed on the
+  first lookup, so a scan without refusals never pays for it. `Err()` reports
+  a manifest that could not be read; lookups on one return nothing.
+- **Finding the file.** The provider's classifier asks for the file it was
+  called from, `LookupCaller(1, operation)`, so the call site needs no code of
+  its own. A call made from a helper in another file gets that file's set.
+- **Narrowing.** When the error names the API operation (AWS always does, as
+  `smithy.OperationError.Operation()`), only the entries whose `action` is that
+  operation are returned. When nothing matches, or no operation is known, the
+  whole file's set is, sorted and deduplicated. An unknown file gives nothing.
+- **Precedence.** Permissions the call site names always win; the index is
+  asked only when there are none.
+
 **Step 10 for aws is open** (#11012). It returns classified errors
 unconditionally; it gets the v13 branches of §9 and can merge now that phase 4
 has landed.
