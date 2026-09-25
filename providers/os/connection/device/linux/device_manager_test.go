@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"go.mondoo.com/mql/providers/os/connection/snapshot"
-	"go.mondoo.com/mql/providers/os/resources"
+	"go.mondoo.com/mql/providers/os/resources/fstab"
 	"go.uber.org/mock/gomock"
 )
 
@@ -53,7 +53,7 @@ func TestMountWithFstab(t *testing.T) {
 				Label:  "data-label",
 			},
 		}
-		entries := []resources.FstabEntry{
+		entries := []fstab.Entry{
 			{
 				Device:     "UUID=sdf1-uuid",
 				Mountpoint: "/",
@@ -122,7 +122,7 @@ func TestMountWithFstab(t *testing.T) {
 				Label:  "data-label",
 			},
 		}
-		entries := []resources.FstabEntry{
+		entries := []fstab.Entry{
 			{
 				Device:     "UUID=sdf1-uuid",
 				Mountpoint: "/",
@@ -205,7 +205,7 @@ func TestMountWithFstab(t *testing.T) {
 				Label:  "data-label",
 			},
 		}
-		entries := []resources.FstabEntry{
+		entries := []fstab.Entry{
 			{
 				Device:     "UUID=sdf1-wrong-uuid",
 				Mountpoint: "/",
@@ -249,7 +249,7 @@ func TestMountWithFstab(t *testing.T) {
 				Label:  "data-label",
 			},
 		}
-		entries := []resources.FstabEntry{
+		entries := []fstab.Entry{
 			{
 				Device:     "UUID=sdf1-wrong-uuid",
 				Mountpoint: "/",
@@ -310,7 +310,7 @@ func TestMountWithFstab(t *testing.T) {
 				Label:  "data-label",
 			},
 		}
-		entries := []resources.FstabEntry{
+		entries := []fstab.Entry{
 			{
 				Device:     "UUID=sdf1-uuid",
 				Mountpoint: "/",
