@@ -101,6 +101,46 @@ func NoMatchStatus(err error) error {
 	return st.Err()
 }
 
+// classifiedStatus is the wire form of a classified Connect failure (ADR 046):
+// the provider's message as the status message and its ErrorDetail as a status
+// detail. The code is codes.Unknown, which is what gRPC sends for any plain
+// error, so a caller that does not read the detail sees what it always saw.
+func classifiedStatus(err error, detail *ErrorDetail) error {
+	st, derr := status.New(codes.Unknown, err.Error()).WithDetails(detail)
+	if derr != nil {
+		return err
+	}
+	return st.Err()
+}
+
+// connectErrorFromStatus rebuilds a classified Connect failure on the caller's
+// side of the process boundary, so an expired credential or a throttled
+// target reaches the scan as an *llx.Error and not as a bare status. A no-match
+// stays a status: IsNoMatchError reads it there. An error without a detail,
+// from a provider built before classifiedStatus existed or one that did not
+// classify, is returned unchanged.
+func connectErrorFromStatus(err error) error {
+	if err == nil {
+		return nil
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		return err
+	}
+	for _, detail := range st.Details() {
+		d, ok := detail.(*ErrorDetail)
+		if !ok {
+			continue
+		}
+		switch d.GetKind() {
+		case ErrorKind_ERROR_KIND_UNSPECIFIED, ErrorKind_ERROR_KIND_NO_MATCH:
+			continue
+		}
+		return llx.ErrorFromDetail(st.Message(), d)
+	}
+	return err
+}
+
 // IsNoMatchError reports whether e is a provider saying the target is not its
 // own. Three forms, in order of authority:
 //

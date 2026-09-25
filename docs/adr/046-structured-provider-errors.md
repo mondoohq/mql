@@ -672,7 +672,12 @@ in JSON.
 
 - `policy/scan/reporter_aggregate.go:80` stops matching `"TOOMANYREQUESTS"`
   against rendered text and reads the kind. `AddScanError` groups asset errors by
-  kind instead of keeping one opaque string per asset (`:78-104`).
+  kind instead of keeping one opaque string per asset (`:78-104`). The Docker
+  rate-limit advice stays, printed for a too-many-requests failure on an asset
+  that pulls from a container registry; any other asset gets the kind-grouped
+  summary. Asset errors come from `Connect`, so this needs a classified Connect
+  failure to cross the process boundary with its detail, which only no-match
+  did (phase 6).
 - `nodes.go:506` stops matching the prefix `"could not find resource"` and reads
   `ERROR_KIND_ASSET_VANISHED`. The behavior it drives — `ScoreType_Unscored` — is
   unchanged; only the detection stops being textual.
@@ -727,7 +732,9 @@ have landed, and no machine phase waits for a migration.
    `ReportCollection.error_details`, kind-grouped reporting, attaching a
    result's coverage gaps to its score (§8), coverage gaps in cnspec's output,
    and the two string matches removed (`TOOMANYREQUESTS`,
-   `could not find resource`).
+   `could not find resource`). On the mql side, a classified `Connect` failure
+   crosses the process boundary with its detail, so asset errors reach cnspec
+   classified.
 7. **Permission fallback.** The `permissions.json` fallback for call sites that
    do not name their permission (§4).
 8. **Asset-scoped short-circuit.** An `ASSET`-scoped failure, such as a 401 or
@@ -753,10 +760,17 @@ Each step names the machine phases it needs.
     refusals while building a list (one item's tags or details). The gaps must
     already show in mql and cnspec (§8); the server follows on its own
     schedule.
-11. **The long tail.** The remaining providers, plus a lint that flags an error
+11. **os: classify errors and nulls.** Needs 2 and 4. The os provider on its
+    own, because it is the largest outside the clouds and its failures are
+    shaped differently: a missing `sudo`, a command that is not installed, a
+    file that cannot be read, a registry that refused an image pull. Every
+    error is classified, and every null that may be hiding a refusal is
+    revisited in the same pass. The registry pull's 429 at `Connect` is one of
+    them; cnspec's Docker rate-limit advice waits on it (phase 6).
+12. **The long tail.** The remaining providers, plus a lint that flags an error
     swallowed into `nil, nil` right after a classifier predicate, the shape that
     produced the current state.
-12. **The null audit.** §3 permits an absence to stay a null, and 4,124
+13. **The null audit.** §3 permits an absence to stay a null, and 4,124
     `StateIsNull` sites currently claim to be absences. Which of them are genuine
     and which are swallowed refusals is a per-site question that has to be asked
     of every provider, and it is the work that actually finishes what this ADR
@@ -871,6 +885,42 @@ the output is what it was.
   stays with `Err`). `providers.Runtime` writes one debug line per classified
   field error and one per coverage gap, with provider, resource, id and field,
   so no provider needs its own logging for it.
+
+**Phase 6 landed.** The kind reaches the score, and cnspec reports what a scan
+could not assess. Nothing produces a classified error by default yet, so with
+the flag off cnspec's output is what it was.
+
+- **Connect (mql).** `GRPCServer.Connect` and `MockConnect` send a classified
+  failure as a status with its `ErrorDetail` attached, under `codes.Unknown`,
+  the code gRPC gives any plain error, so an older caller sees what it always
+  saw. `GRPCClient.Connect` and `MockConnect` rebuild it as an `*llx.Error`.
+  A no-match stays the status `IsNoMatchError` reads.
+- **Scores.** `Score.error_details` (15) holds the classification of each
+  error that made a check an error, and the coverage gaps of the data it was
+  computed from, deduplicated on `(kind, scope, scope_id, permissions)` in
+  the order the results were read. An unclassified error adds no detail; an
+  unclassified gap does, since its partition is still worth knowing. A check
+  over partial data keeps its pass or failure. Policy scores are computed
+  from their children and carry no details.
+- **Asset vanished** is read by kind (`llx.ErrAssetVanished`), no longer by the
+  message prefix.
+- **Asset errors.** `ReportCollection.error_details` (7) has an entry for each
+  asset error that was classified; `errors` keeps every message.
+- **Text output.** A check assessed on incomplete data is followed by one
+  dimmed `coverage gap:` line per `(kind, scope_id)`, as in mql. A classified
+  asset error leads with its kind. The summary adds the coverage lines, and
+  only when something was classified: `4 of 8 checks could not be assessed:
+  2 access denied, 1 not applicable, 1 unclassified.`, the same for checks
+  assessed on incomplete data and for assets that could not be scanned, and
+  `Missing permissions (3 across compute, ec2, iam): …`. A check or asset with
+  several kinds counts once for each.
+- **JSON output.** A score with details gets `errorDetails`, a list of `kind`,
+  `scope`, `scopeId`, `permissions`, `retryAfterMs` in the spelling of mql's
+  `_coverageGaps`. Classified asset errors are listed under a top-level
+  `errorDetails` beside `errors`. Neither key is written when empty.
+- **Not covered:** the scan data store (`policy/scandb`) persists scores
+  column by column and does not store `error_details`; the SARIF, JUnit, OCSF
+  and HDF formats print the message only.
 
 **Step 9 for aws is open** (#11012). It returns classified errors
 unconditionally; it gets the v13 branches of §9 and can merge now that phase 4

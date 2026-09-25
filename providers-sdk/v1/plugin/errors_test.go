@@ -157,3 +157,44 @@ func TestNoMatchStatusStillCarriesItsKind(t *testing.T) {
 	err := NoMatchStatus(fmt.Errorf("no Helm charts found at /x: %w", ErrNoMatch))
 	assert.True(t, IsNoMatchError(err))
 }
+
+func TestClassifiedConnectErrorCrossesTheBoundary(t *testing.T) {
+	// A provider refusing Connect with a classified error: the server side
+	// encodes it, the client side rebuilds it.
+	sent := llx.TooManyRequests(errors.New("TOOMANYREQUESTS: pull rate limit reached"),
+		llx.WithScope(llx.ErrorScope_ERROR_SCOPE_ASSET, "index.docker.io"),
+		llx.WithRetryAfter(30*time.Second))
+
+	wire := normalizeConnectError(fmt.Errorf("pulling image: %w", sent))
+	st, ok := status.FromError(wire)
+	require.True(t, ok)
+	// The code a plain error gets, so a caller that ignores the detail sees
+	// what it saw before.
+	assert.Equal(t, codes.Unknown, st.Code())
+	assert.False(t, IsNoMatchError(wire))
+
+	got := connectErrorFromStatus(wire)
+	var e *llx.Error
+	require.True(t, errors.As(got, &e))
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_TOO_MANY_REQUESTS, e.Kind)
+	assert.Equal(t, llx.ErrorScope_ERROR_SCOPE_ASSET, e.Scope)
+	assert.Equal(t, "index.docker.io", e.ScopeID)
+	assert.Equal(t, 30*time.Second, e.RetryAfter)
+	assert.Equal(t, "pulling image: TOOMANYREQUESTS: pull rate limit reached", got.Error())
+}
+
+func TestConnectErrorFromStatusLeavesTheRestAlone(t *testing.T) {
+	assert.Nil(t, connectErrorFromStatus(nil))
+
+	// Unclassified, as from every provider built before this or not migrated.
+	plain := status.Error(codes.Unknown, "permission denied")
+	assert.Same(t, plain, connectErrorFromStatus(plain))
+
+	notStatus := errors.New("dial tcp: connection refused")
+	assert.Same(t, notStatus, connectErrorFromStatus(notStatus))
+
+	// A no-match stays the status IsNoMatchError reads.
+	noMatch := normalizeConnectError(fmt.Errorf("nope: %w", ErrNoMatch))
+	assert.Same(t, noMatch, connectErrorFromStatus(noMatch))
+	assert.True(t, IsNoMatchError(connectErrorFromStatus(noMatch)))
+}

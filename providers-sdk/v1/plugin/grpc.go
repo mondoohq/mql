@@ -13,6 +13,7 @@ import (
 
 	plugin "github.com/hashicorp/go-plugin"
 	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/encoding"
@@ -76,7 +77,8 @@ func (m *GRPCClient) connect(req *ConnectReq, callback ProviderCallback) {
 
 func (m *GRPCClient) Connect(req *ConnectReq, callback ProviderCallback) (*ConnectRes, error) {
 	m.connect(req, callback)
-	return m.client.Connect(context.Background(), req)
+	res, err := m.client.Connect(context.Background(), req)
+	return res, connectErrorFromStatus(err)
 }
 
 func (m *GRPCClient) Disconnect(req *DisconnectReq) (*DisconnectRes, error) {
@@ -85,7 +87,8 @@ func (m *GRPCClient) Disconnect(req *DisconnectReq) (*DisconnectRes, error) {
 
 func (m *GRPCClient) MockConnect(req *ConnectReq, callback ProviderCallback) (*ConnectRes, error) {
 	m.connect(req, callback)
-	return m.client.MockConnect(context.Background(), req)
+	res, err := m.client.MockConnect(context.Background(), req)
+	return res, connectErrorFromStatus(err)
 }
 
 func (m *GRPCClient) Shutdown(req *ShutdownReq) (*ShutdownRes, error) {
@@ -319,11 +322,15 @@ func sanitizeUtf8(s string) string {
 	return buf.String()
 }
 
-// normalizeConnectError puts a Connect outcome the caller has to recognize into
-// its wire form, and leaves every other error exactly as the provider wrote it.
+// normalizeConnectError puts a Connect outcome the caller has to recognize, a
+// no-match (ADR 045) or a classified failure (ADR 046), into its wire form, and
+// leaves every other error exactly as the provider wrote it.
 func normalizeConnectError(err error) error {
 	if errors.Is(err, ErrNoMatch) {
 		return NoMatchStatus(err)
+	}
+	if detail := llx.ErrorDetailOf(err); detail != nil {
+		return classifiedStatus(err, detail)
 	}
 	return err
 }
