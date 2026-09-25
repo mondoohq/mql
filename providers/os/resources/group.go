@@ -183,8 +183,15 @@ func (x *mqlGroups) refreshCache(all []any) error {
 
 	for i := range all {
 		g := all[i].(*mqlGroup)
-		x.groupsByID[g.Gid.Data] = g
-		x.groupsByName[g.Name.Data] = g
+		// The first entry wins, as in getpw*/getgr*: an alias that shares an ID
+		// or name with an earlier entry (a second UID 0 account) must not
+		// rename the owner of every file with that ID.
+		if _, ok := x.groupsByID[g.Gid.Data]; !ok {
+			x.groupsByID[g.Gid.Data] = g
+		}
+		if _, ok := x.groupsByName[g.Name.Data]; !ok {
+			x.groupsByName[g.Name.Data] = g
+		}
 	}
 
 	return nil

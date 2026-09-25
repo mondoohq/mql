@@ -191,8 +191,15 @@ func (x *mqlUsers) refreshCache(all []any) error {
 
 	for i := range all {
 		u := all[i].(*mqlUser)
-		x.usersByID[u.Uid.Data] = u
-		x.usersByName[u.Name.Data] = u
+		// The first entry wins, as in getpw*/getgr*: an alias that shares an ID
+		// or name with an earlier entry (a second UID 0 account) must not
+		// rename the owner of every file with that ID.
+		if _, ok := x.usersByID[u.Uid.Data]; !ok {
+			x.usersByID[u.Uid.Data] = u
+		}
+		if _, ok := x.usersByName[u.Name.Data]; !ok {
+			x.usersByName[u.Name.Data] = u
+		}
 	}
 
 	return nil
