@@ -14,6 +14,12 @@ type MountPoint struct {
 	MountPoint string
 	FSType     string
 	Options    map[string]string
+	// Unmounted is true for an access path that carries no file system, such
+	// as a Windows drive letter assigned to an empty optical drive.
+	Unmounted bool
+	// Usage is the capacity of the mount when the listing itself carries it
+	// (Windows). It is nil where capacity comes from df, or was not measured.
+	Usage *DfEntry
 }
 
 type OperatingSystemMountManager interface {
@@ -29,7 +35,9 @@ func ResolveManager(conn shared.Connection) (OperatingSystemMountManager, error)
 		return nil, errors.New("missing platform information")
 	}
 
-	if pf.IsFamily("linux") {
+	if pf.IsFamily("windows") {
+		mm = &WindowsMountManager{conn: conn}
+	} else if pf.IsFamily("linux") {
 		mm = &LinuxMountManager{conn: conn}
 	} else if pf.IsFamily("unix") {
 		mm = &UnixMountManager{conn: conn}

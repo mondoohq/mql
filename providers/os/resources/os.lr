@@ -103,6 +103,7 @@ alias os.linux.shadow = shadow
 alias os.linux.sriov = sriov
 alias os.windows.auditpol = auditpol
 alias os.windows.iis = iis
+alias os.windows.mount = mount
 alias os.windows.powershell = powershell
 alias os.windows.registrykey = registrykey
 alias os.windows.secpol = secpol
@@ -9795,13 +9796,17 @@ private modprobe.softdep @defaults("module") {
   post []string
 }
 
-// Unix mount table
+// Mount table
 //
 // Every mounted filesystem on the host as a list of `mount.point`
 // entries, each with its backing device, mount path, filesystem type,
 // options, and capacity. Filter it to surface findings such as
 // temporary or removable-media mounts missing `nosuid`, `nodev`, or
-// `noexec` options.
+// `noexec` options. On Windows each volume access path is one entry:
+// drive letters (`C:\`), volumes mounted into an NTFS folder
+// (`C:\mnt\data`), and volumes with no access path at their volume GUID
+// path (`\\?\Volume{...}\`), read from the running system. The Windows
+// volume table cannot be read from an image or a mounted disk.
 mount {
   []mount.point
 }
@@ -9879,25 +9884,50 @@ private nfs.mount @defaults("server remotePath mountpoint version") {
   options []string
 }
 
-// Unix mount point
+// Mount point
 //
 // A single mounted filesystem: the backing `device`, the `path` where
 // it is attached, the `fstype`, mount `options`, whether it is
 // currently `mounted`, and the total, used, and available bytes. Select
-// a mount by path, for example `mount.point(path: "/var")`.
+// a mount by path, for example `mount.point(path: "/var")`. On Windows
+// the path matches without regard to case or a trailing backslash, so
+// `mount.point(path: "C:")`, `mount.point(path: "c:\\")` and
+// `mount.point(path: os.base.env["SystemDrive"])` all select the `C:\`
+// volume.
 mount.point @defaults("device path fstype") {
   init(path string)
-  // Block device or filesystem source backing the mount (e.g., /dev/sda1)
+  // Block device or filesystem source backing the mount
+  //
+  // For example /dev/sda1. On Windows, the volume GUID path
+  // (`\\?\Volume{...}\`).
   device string
-  // Mount point path where the filesystem is attached (e.g., /var)
+  // Mount point path where the filesystem is attached
+  //
+  // For example /var. On Windows, a drive root keeps its backslash (`C:\`),
+  // a folder mount has none (`C:\mnt\data`), and a volume with no drive
+  // letter or folder is reported at its volume GUID path.
   path string
-  // File system type (e.g., ext4, xfs, tmpfs, nfs)
+  // File system type
+  //
+  // For example ext4, xfs, tmpfs, or nfs. On Windows, the file system as
+  // Windows reports it (NTFS, ReFS, FAT32, exFAT, CDFS, UDF), empty for a
+  // drive with no media.
   fstype string
   // Mount options as a name-to-value map (flag-only options map to an empty value)
+  //
+  // On Windows: `driveType` (Fixed, Removable, CDRom, Network, RAMDisk,
+  // NoRootDirectory, or Unknown), `label` when the volume has one, and the
+  // flags `bootVolume` (holds the running Windows), `systemVolume` (holds the
+  // boot files), `pageFile`, and `compressed`, present only when true.
   options map[string]string
   // Whether the mount point is currently mounted
+  //
+  // On Windows, false for a drive letter with no file system behind it, such
+  // as an empty optical or removable drive.
   mounted bool
   // Total size in bytes
+  //
+  // Null when the size was not measured, such as a drive with no media.
   size() int
   // Used space in bytes
   used() int
@@ -9907,7 +9937,8 @@ mount.point @defaults("device path fstype") {
   //
   // The `lsblk.entry` for the mount's `device`, for example to check
   // `mount.point(path: "/").blockDevice.encrypted`. Null for mounts that no
-  // block device backs, such as tmpfs, proc, overlay, or network filesystems.
+  // block device backs, such as tmpfs, proc, overlay, or network filesystems,
+  // and for Windows volumes.
   blockDevice() lsblk.entry
 }
 
