@@ -1172,6 +1172,41 @@ private gcp.project.tagBinding @defaults("tagValueNamespacedName resource") {
   resource string
 }
 
+// Google Cloud Resource Manager effective tag
+//
+// Resource Manager tag value that applies to a resource, whether it is bound
+// to the resource directly or reaches it from the project, folder, or
+// organization above it. The `inherited` field separates the two, so an audit
+// can tell a resource that was deliberately tagged from one that only sits
+// beneath a tagged parent. Tags drive conditional IAM grants and organization
+// policy enforcement, so the effective set is what decides whether those rules
+// reach a given resource. The `namespacedTagValue` field carries the readable
+// key and value path, for example `123456789/environment/production`.
+private gcp.effectiveTag @defaults("namespacedTagValue inherited") {
+  // Permanent ID of the tag key (tagKeys/123)
+  tagKey string
+  // Permanent ID of the tag value (tagValues/456)
+  tagValue string
+  // Namespaced name of the tag key
+  //
+  // Formatted as `{organizationId}/{shortName}` or `{projectId}/{shortName}`,
+  // for example `123456789/environment`.
+  namespacedTagKey string
+  // Namespaced name of the tag value
+  //
+  // Formatted as `{organizationId}/{keyShortName}/{valueShortName}`, for
+  // example `123456789/environment/production`.
+  namespacedTagValue string
+  // Whether the tag value reaches this resource through the resource hierarchy
+  //
+  // True when the value is set on an ancestor project, folder, or organization
+  // and applies by inheritance. False when it is bound to this resource
+  // directly.
+  inherited bool
+  // Parent of the tag key, as organizations/{organizationId} or projects/{projectNumber}
+  tagKeyParent string
+}
+
 // Google Cloud service API
 //
 // Single Google Cloud service API, such as compute.googleapis.com or
@@ -1906,6 +1941,12 @@ gcp.project.computeService.instance @defaults("name id") {
   // discarded when the instance stops, so the local SSD contents cannot be
   // recovered afterwards.
   localSsdEncryptionMode string
+  // Resource Manager tags that apply to the resource, including inherited ones
+  //
+  // Covers both tag values bound to the resource directly and those set on an
+  // ancestor project, folder, or organization. Each entry reports which of the
+  // two it is through its `inherited` field.
+  effectiveTags() []gcp.effectiveTag
 }
 
 // Compute instance internet-exposure breakdown
@@ -2325,6 +2366,12 @@ private gcp.project.computeService.disk @defaults("name") {
   // tools apply: "terraform", "config-connector", or "cloud-composer". Empty
   // when the resource carries no management signal.
   managedBy() string
+  // Resource Manager tags that apply to the resource, including inherited ones
+  //
+  // Covers both tag values bound to the resource directly and those set on an
+  // ancestor project, folder, or organization. Each entry reports which of the
+  // two it is through its `inherited` field.
+  effectiveTags() []gcp.effectiveTag
 }
 
 // Google Cloud (GCP) Compute attached disk
@@ -2621,6 +2668,12 @@ private gcp.project.computeService.firewall @defaults("name") {
   logConfigMetadata string
   // Network resource for this firewall rule
   network() gcp.project.computeService.network
+  // Resource Manager tags that apply to the resource, including inherited ones
+  //
+  // Covers both tag values bound to the resource directly and those set on an
+  // ancestor project, folder, or organization. Each entry reports which of the
+  // two it is through its `inherited` field.
+  effectiveTags() []gcp.effectiveTag
 }
 
 // Google Cloud VPC network
@@ -2687,6 +2740,12 @@ gcp.project.computeService.network @defaults("name") {
   firewallPolicyRef() gcp.project.computeService.firewallPolicy
   // URL of the network profile applied to this network
   networkProfile string
+  // Resource Manager tags that apply to the resource, including inherited ones
+  //
+  // Covers both tag values bound to the resource directly and those set on an
+  // ancestor project, folder, or organization. Each entry reports which of the
+  // two it is through its `inherited` field.
+  effectiveTags() []gcp.effectiveTag
 }
 
 // Google Cloud VPC subnetwork
@@ -2774,6 +2833,12 @@ gcp.project.computeService.subnetwork @defaults("name") {
   // Keys: `internalIpv6Utilization` and `externalIpv6Utilization`, each with
   // the assigned and free address counts for that family.
   utilizationDetails dict
+  // Resource Manager tags that apply to the resource, including inherited ones
+  //
+  // Covers both tag values bound to the resource directly and those set on an
+  // ancestor project, folder, or organization. Each entry reports which of the
+  // two it is through its `inherited` field.
+  effectiveTags() []gcp.effectiveTag
 }
 
 // Google Cloud (GCP) Compute VPC network partitioning log configuration
@@ -3247,6 +3312,12 @@ private gcp.project.storageService.bucket @defaults("id") {
   // `softDeletePolicy` which configures object-level soft-delete retention.
   // Null on live buckets.
   softDeleteTime time
+  // Resource Manager tags that apply to the resource, including inherited ones
+  //
+  // Covers both tag values bound to the resource directly and those set on an
+  // ancestor project, folder, or organization. Each entry reports which of the
+  // two it is through its `inherited` field.
+  effectiveTags() []gcp.effectiveTag
 }
 
 // Legacy access control entry on a Cloud Storage bucket
@@ -3590,6 +3661,12 @@ private gcp.project.sqlService.instance @defaults("name") {
   // tools apply: "terraform", "config-connector", or "cloud-composer". Empty
   // when the resource carries no management signal.
   managedBy() string
+  // Resource Manager tags that apply to the resource, including inherited ones
+  //
+  // Covers both tag values bound to the resource directly and those set on an
+  // ancestor project, folder, or organization. Each entry reports which of the
+  // two it is through its `inherited` field.
+  effectiveTags() []gcp.effectiveTag
 }
 
 // External primary server a Cloud SQL instance replicates from
@@ -4172,6 +4249,12 @@ private gcp.project.bigqueryService.dataset @defaults("id name") {
   // in the form `projects/{project_id}/locations/{location_id}/connections/{connection_id}`.
   // Null for datasets stored natively in BigQuery.
   externalDatasetReference dict
+  // Resource Manager tags that apply to the resource, including inherited ones
+  //
+  // Covers both tag values bound to the resource directly and those set on an
+  // ancestor project, folder, or organization. Each entry reports which of the
+  // two it is through its `inherited` field.
+  effectiveTags() []gcp.effectiveTag
 }
 
 // Google Cloud (GCP) BigQuery dataset access entry
@@ -4319,6 +4402,12 @@ private gcp.project.bigqueryService.table @defaults("id") {
   foreignKeys []gcp.project.bigqueryService.table.foreignKey
   // Storage and connection settings for a BigLake managed table
   bigLakeConfiguration gcp.project.bigqueryService.table.bigLakeConfig
+  // Resource Manager tags that apply to the resource, including inherited ones
+  //
+  // Covers both tag values bound to the resource directly and those set on an
+  // ancestor project, folder, or organization. Each entry reports which of the
+  // two it is through its `inherited` field.
+  effectiveTags() []gcp.effectiveTag
 }
 
 // BigLake configuration of a BigQuery table
@@ -4715,6 +4804,12 @@ private gcp.project.dnsService.managedzone @defaults("name") {
   // tools apply: "terraform", "config-connector", or "cloud-composer". Empty
   // when the resource carries no management signal.
   managedBy() string
+  // Resource Manager tags that apply to the resource, including inherited ones
+  //
+  // Covers both tag values bound to the resource directly and those set on an
+  // ancestor project, folder, or organization. Each entry reports which of the
+  // two it is through its `inherited` field.
+  effectiveTags() []gcp.effectiveTag
 }
 
 // Google Cloud DNS zone signing key
@@ -5207,6 +5302,12 @@ private gcp.project.gkeService.cluster @defaults("name description location stat
   nodePoolAutoConfig dict
   // Node auto-provisioning settings, and the defaults applied to the nodes it creates
   nodeAutoprovisioning gcp.project.gkeService.cluster.nodeAutoprovisioningConfig
+  // Resource Manager tags that apply to the resource, including inherited ones
+  //
+  // Covers both tag values bound to the resource directly and those set on an
+  // ancestor project, folder, or organization. Each entry reports which of the
+  // two it is through its `inherited` field.
+  effectiveTags() []gcp.effectiveTag
 }
 
 // Node auto-provisioning settings of a GKE cluster
@@ -8892,6 +8993,12 @@ private gcp.project.cloudRunService.service @defaults("name") {
   urls []string
   // Source build the service was deployed from, when Cloud Run built the image itself
   buildConfig gcp.project.cloudRunService.service.buildSettings
+  // Resource Manager tags that apply to the resource, including inherited ones
+  //
+  // Covers both tag values bound to the resource directly and those set on an
+  // ancestor project, folder, or organization. Each entry reports which of the
+  // two it is through its `inherited` field.
+  effectiveTags() []gcp.effectiveTag
 }
 
 // Source build behind a Cloud Run service
@@ -9754,6 +9861,12 @@ private gcp.project.secretmanagerService.secret @defaults("name createTime") {
   // tools apply: "terraform", "config-connector", or "cloud-composer". Empty
   // when the resource carries no management signal.
   managedBy() string
+  // Resource Manager tags that apply to the resource, including inherited ones
+  //
+  // Covers both tag values bound to the resource directly and those set on an
+  // ancestor project, folder, or organization. Each entry reports which of the
+  // two it is through its `inherited` field.
+  effectiveTags() []gcp.effectiveTag
 }
 
 // Google Cloud (GCP) Secret Manager secret version
@@ -11195,8 +11308,19 @@ private gcp.project.computeService.vpnGateway @defaults("name") {
   region() gcp.project.computeService.region
   // VPN interfaces associated with this VPN gateway
   vpnInterfaces []dict
-  // Resource manager tags bound to this VPN gateway
-  resourceManagerTags map[string]string
+  // Resource Manager tags supplied when this VPN gateway was created
+  //
+  // Deprecated in favor of effectiveTags, which also covers tag values
+  // inherited from the project, folder, or organization. This field reports
+  // only the tags passed at creation time, so a check written against it
+  // passes on a gateway that carries the tag by inheritance.
+  resourceManagerTags @maturity("deprecated") map[string]string
+  // Resource Manager tags that apply to the resource, including inherited ones
+  //
+  // Covers both tag values bound to the resource directly and those set on an
+  // ancestor project, folder, or organization. Each entry reports which of the
+  // two it is through its `inherited` field.
+  effectiveTags() []gcp.effectiveTag
 }
 
 // Google Cloud (GCP) Compute VPN tunnel
@@ -11248,10 +11372,21 @@ private gcp.project.computeService.vpnTunnel @defaults("name status") {
   vpnGateway() gcp.project.computeService.vpnGateway
   // Interface ID of the VPN gateway
   vpnGatewayInterface int
-  // Resource manager tags bound to this VPN tunnel
-  resourceManagerTags map[string]string
+  // Resource Manager tags supplied when this VPN tunnel was created
+  //
+  // Deprecated in favor of effectiveTags, which also covers tag values
+  // inherited from the project, folder, or organization. This field reports
+  // only the tags passed at creation time, so a check written against it
+  // passes on a tunnel that carries the tag by inheritance.
+  resourceManagerTags @maturity("deprecated") map[string]string
   // Server-defined self-link URL for the VPN tunnel
   selfLink string
+  // Resource Manager tags that apply to the resource, including inherited ones
+  //
+  // Covers both tag values bound to the resource directly and those set on an
+  // ancestor project, folder, or organization. Each entry reports which of the
+  // two it is through its `inherited` field.
+  effectiveTags() []gcp.effectiveTag
 }
 
 // Google Cloud (GCP) Compute storage pool

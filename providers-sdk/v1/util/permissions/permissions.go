@@ -771,7 +771,59 @@ func extractGCPPermissions(root string) []PermissionDetail {
 		details = append(details, extractGCPgRPCCalls(f, gcpImports, fileName)...)
 	}
 
-	return details
+	return expandGCPPermissions(details)
+}
+
+// expandGCPPermissions rewrites any derived permission that stands for a set of
+// real ones. See gcpPermissionExpansions for why a single call site can require
+// more than one permission.
+func expandGCPPermissions(details []PermissionDetail) []PermissionDetail {
+	out := make([]PermissionDetail, 0, len(details))
+	for _, d := range details {
+		expanded, ok := gcpPermissionExpansions[d.Permission]
+		if !ok {
+			out = append(out, d)
+			continue
+		}
+		for _, perm := range expanded {
+			e := d
+			e.Permission = perm
+			e.overridden = true
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// gcpPermissionExpansions maps a derived permission onto the full set of IAM
+// permissions the call actually requires.
+//
+// cloudresourcemanager's effectiveTags.list is authorized against the *target*
+// resource's own permission rather than a resourcemanager one: the API docs
+// state it "utilizes the existing resource-specific <resource>.listEffectiveTags
+// IAM permission". The auto-derived "resourcemanager.effectiveTags.list" is not
+// a real permission, and because one call site in effective_tags.go serves every
+// taggable resource, it maps to one permission per resource type rather than to
+// a single replacement. This is the same trap already documented for
+// EffectiveTagBindingCollections.Get in gcpPermissionOverrides.
+var gcpPermissionExpansions = map[string][]string{
+	"resourcemanager.effectiveTags.list": {
+		"bigquery.datasets.listEffectiveTags",
+		"bigquery.tables.listEffectiveTags",
+		"cloudsql.instances.listEffectiveTags",
+		"compute.disks.listEffectiveTags",
+		"compute.firewalls.listEffectiveTags",
+		"compute.instances.listEffectiveTags",
+		"compute.networks.listEffectiveTags",
+		"compute.subnetworks.listEffectiveTags",
+		"compute.vpnGateways.listEffectiveTags",
+		"compute.vpnTunnels.listEffectiveTags",
+		"container.clusters.listEffectiveTags",
+		"dns.managedZones.listEffectiveTags",
+		"run.services.listEffectiveTags",
+		"secretmanager.secrets.listEffectiveTags",
+		"storage.buckets.listEffectiveTags",
+	},
 }
 
 // gcpImportInfo holds information about a GCP import.
