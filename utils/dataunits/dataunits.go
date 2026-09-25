@@ -18,25 +18,18 @@ type Number interface {
 		~float32 | ~float64
 }
 
-// Option changes how a value is formatted.
-type Option func(*config)
-
-type config struct {
-	decimals int
-	space    bool
+// Format controls how values are printed. Its zero value prints no decimal
+// places and a space before the unit. The package-level Bytes, Bits and
+// Speed use one decimal place.
+type Format struct {
+	// Decimals is the number of decimal places printed for scaled units.
+	// Negative values are treated as 0.
+	Decimals int
+	// NoSpace removes the space between the number and the unit.
+	NoSpace bool
 }
 
-// WithDecimals sets the number of decimal places printed for scaled units
-// (default 1). Negative values are treated as 0.
-func WithDecimals(n int) Option {
-	return func(c *config) { c.decimals = max(n, 0) }
-}
-
-// WithSpace sets whether a space separates the number and the unit
-// (default true).
-func WithSpace(space bool) Option {
-	return func(c *config) { c.space = space }
-}
+var defaultFormat = Format{Decimals: 1}
 
 var (
 	byteUnits  = []string{"B", "KB", "MB", "GB", "TB", "PB", "EB"}
@@ -44,31 +37,55 @@ var (
 	speedUnits = []string{"bps", "Kbps", "Mbps", "Gbps", "Tbps", "Pbps", "Ebps"}
 )
 
-// Bytes formats a number of bytes on base 1024, e.g. 13421772800 => "12.5 GB".
-func Bytes[T Number](n T, opts ...Option) string {
-	return format(float64(n), 1024, byteUnits, opts)
+// Bytes formats a number of bytes on base 1024 with one decimal place,
+// e.g. 13421772800 => "12.5 GB".
+func Bytes[T Number](n T) string {
+	return defaultFormat.Bytes(float64(n))
 }
 
-// Bits formats a number of bits on base 1000, e.g. 1500000 => "1.5 Mb".
-func Bits[T Number](n T, opts ...Option) string {
-	return format(float64(n), 1000, bitUnits, opts)
+// Bits formats a number of bits on base 1000 with one decimal place,
+// e.g. 1500000 => "1.5 Mb".
+func Bits[T Number](n T) string {
+	return defaultFormat.Bits(float64(n))
 }
 
-// Speed formats a rate in bits per second on base 1000, e.g. 1300000 => "1.3 Mbps".
-func Speed[T Number](bitsPerSecond T, opts ...Option) string {
-	return format(float64(bitsPerSecond), 1000, speedUnits, opts)
+// Speed formats a rate in bits per second on base 1000 with one decimal
+// place, e.g. 1300000 => "1.3 Mbps".
+func Speed[T Number](bitsPerSecond T) string {
+	return defaultFormat.Speed(float64(bitsPerSecond))
 }
 
-func format(v float64, base float64, units []string, opts []Option) string {
-	cfg := config{decimals: 1, space: true}
-	for _, opt := range opts {
-		opt(&cfg)
-	}
+// Bytes formats a number of bytes on base 1024.
+func (f Format) Bytes(n float64) string {
+	return f.format(n, 1024, byteUnits)
+}
 
-	negative := v < 0
-	if negative {
+// Bits formats a number of bits on base 1000.
+func (f Format) Bits(n float64) string {
+	return f.format(n, 1000, bitUnits)
+}
+
+// Speed formats a rate in bits per second on base 1000.
+func (f Format) Speed(bitsPerSecond float64) string {
+	return f.format(bitsPerSecond, 1000, speedUnits)
+}
+
+func (f Format) format(v float64, base float64, units []string) string {
+	// Fits every value below the largest unit at a sane number of decimals,
+	// so the only allocation is the final string.
+	var buf [32]byte
+	return string(f.appendFormat(buf[:0], v, base, units))
+}
+
+func (f Format) appendFormat(dst []byte, v float64, base float64, units []string) []byte {
+	decimals := max(f.Decimals, 0)
+
+	start := len(dst)
+	if v < 0 {
+		dst = append(dst, '-')
 		v = -v
 	}
+	numStart := len(dst)
 
 	unit := 0
 	for v >= base && unit < len(units)-1 {
@@ -76,34 +93,52 @@ func format(v float64, base float64, units []string, opts []Option) string {
 		unit++
 	}
 
-	num := formatNumber(v, unit, cfg.decimals)
+	dst = appendNumber(dst, v, unit, decimals)
 	// Rounding can carry into the next unit: 1023.96 KB would print as "1024.0 KB".
-	if unit < len(units)-1 {
-		if rounded, _ := strconv.ParseFloat(num, 64); rounded >= base {
-			v /= base
-			unit++
-			num = formatNumber(v, unit, cfg.decimals)
-		}
+	if unit < len(units)-1 && integerPart(dst[numStart:]) >= int(base) {
+		v /= base
+		unit++
+		dst = appendNumber(dst[:numStart], v, unit, decimals)
 	}
 
 	// Don't print "-0.0" for values that round to zero.
-	if negative {
-		if rounded, _ := strconv.ParseFloat(num, 64); rounded != 0 {
-			num = "-" + num
-		}
+	if numStart > start && isZero(dst[numStart:]) {
+		dst = append(dst[:start], dst[numStart:]...)
 	}
 
-	if cfg.space {
-		return num + " " + units[unit]
+	if !f.NoSpace {
+		dst = append(dst, ' ')
 	}
-	return num + units[unit]
+	return append(dst, units[unit]...)
 }
 
-// formatNumber prints whole values of the base unit without decimals
-// ("512 B", not "512.0 B"), everything else with the configured decimals.
-func formatNumber(v float64, unit int, decimals int) string {
+// appendNumber prints whole values of the base unit without decimals
+// ("512 B", not "512.0 B"), everything else with the given decimals.
+func appendNumber(dst []byte, v float64, unit int, decimals int) []byte {
 	if unit == 0 && v == float64(int64(v)) {
-		return strconv.FormatFloat(v, 'f', 0, 64)
+		return strconv.AppendFloat(dst, v, 'f', 0, 64)
 	}
-	return strconv.FormatFloat(v, 'f', decimals, 64)
+	return strconv.AppendFloat(dst, v, 'f', decimals, 64)
+}
+
+// integerPart reads the digits before the decimal point of a formatted
+// number. Only called below the largest unit, where it has at most 4 digits.
+func integerPart(num []byte) int {
+	n := 0
+	for _, c := range num {
+		if c < '0' || c > '9' {
+			break
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n
+}
+
+func isZero(num []byte) bool {
+	for _, c := range num {
+		if c != '0' && c != '.' {
+			return false
+		}
+	}
+	return true
 }

@@ -5,6 +5,7 @@ package dataunits_test
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -43,14 +44,38 @@ func TestSpeed(t *testing.T) {
 	assert.Equal(t, "0.0 bps", dataunits.Speed(-0.01))
 }
 
-func TestOptions(t *testing.T) {
-	assert.Equal(t, "12.5GB", dataunits.Bytes(13421772800, dataunits.WithSpace(false)))
-	assert.Equal(t, "1.3Mbps", dataunits.Speed(1300000, dataunits.WithSpace(false)))
-	assert.Equal(t, "1.46 KB", dataunits.Bytes(1500, dataunits.WithDecimals(2)))
-	assert.Equal(t, "2 KB", dataunits.Bytes(1536, dataunits.WithDecimals(0)))
-	assert.Equal(t, "2 KB", dataunits.Bytes(1536, dataunits.WithDecimals(-3)))
-	assert.Equal(t, "512 B", dataunits.Bytes(512, dataunits.WithDecimals(3)))
-	assert.Equal(t, "1.235Mb", dataunits.Bits(1234567, dataunits.WithDecimals(3), dataunits.WithSpace(false)))
+func TestFormat(t *testing.T) {
+	assert.Equal(t, "12.5GB", dataunits.Format{Decimals: 1, NoSpace: true}.Bytes(13421772800))
+	assert.Equal(t, "1.3Mbps", dataunits.Format{Decimals: 1, NoSpace: true}.Speed(1300000))
+	assert.Equal(t, "1.46 KB", dataunits.Format{Decimals: 2}.Bytes(1500))
+	assert.Equal(t, "2 KB", dataunits.Format{}.Bytes(1536))
+	assert.Equal(t, "2 KB", dataunits.Format{Decimals: -3}.Bytes(1536))
+	assert.Equal(t, "512 B", dataunits.Format{Decimals: 3}.Bytes(512))
+	assert.Equal(t, "1.235Mb", dataunits.Format{Decimals: 3, NoSpace: true}.Bits(1234567))
+	assert.Equal(t, "-2.00 KB", dataunits.Format{Decimals: 2}.Bytes(-2047.99))
 	// with no decimals, 1023.6 KB rounds to "1024" and carries into MB
-	assert.Equal(t, "1 MB", dataunits.Bytes(1023.6*1024, dataunits.WithDecimals(0)))
+	assert.Equal(t, "1 MB", dataunits.Format{}.Bytes(1023.6*1024))
+	// more decimals than the stack buffer holds still works
+	assert.Equal(t, "1."+strings.Repeat("0", 40)+" KB", dataunits.Format{Decimals: 40}.Bytes(1024))
+}
+
+func TestAllocs(t *testing.T) {
+	f := dataunits.Format{Decimals: 2, NoSpace: true}
+	assert.Equal(t, 1.0, testing.AllocsPerRun(100, func() { sink = dataunits.Bytes(13421772800) }))
+	assert.Equal(t, 1.0, testing.AllocsPerRun(100, func() { sink = f.Speed(-1300000) }))
+}
+
+var sink string
+
+func BenchmarkBytes(b *testing.B) {
+	for b.Loop() {
+		sink = dataunits.Bytes(13421772800)
+	}
+}
+
+func BenchmarkFormatBytes(b *testing.B) {
+	f := dataunits.Format{Decimals: 2, NoSpace: true}
+	for b.Loop() {
+		sink = f.Bytes(13421772800)
+	}
 }
