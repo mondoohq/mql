@@ -10312,6 +10312,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"lsblk.entry.mountpoints": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlLsblkEntry).GetMountpoints()).ToDataRes(types.Array(types.String))
 	},
+	"lsblk.entry.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlLsblkEntry).GetType()).ToDataRes(types.String)
+	},
+	"lsblk.entry.parents": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlLsblkEntry).GetParents()).ToDataRes(types.Array(types.Resource("lsblk.entry")))
+	},
+	"lsblk.entry.children": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlLsblkEntry).GetChildren()).ToDataRes(types.Array(types.Resource("lsblk.entry")))
+	},
+	"lsblk.entry.encrypted": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlLsblkEntry).GetEncrypted()).ToDataRes(types.Bool)
+	},
 	"luks.volumes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlLuks).GetVolumes()).ToDataRes(types.Array(types.Resource("luks.volume")))
 	},
@@ -10758,6 +10770,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"mount.point.available": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMountPoint).GetAvailable()).ToDataRes(types.Int)
+	},
+	"mount.point.blockDevice": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMountPoint).GetBlockDevice()).ToDataRes(types.Resource("lsblk.entry"))
 	},
 	"shadow.list": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlShadow).GetList()).ToDataRes(types.Array(types.Resource("shadow.entry")))
@@ -28301,6 +28316,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlLsblkEntry).Mountpoints, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"lsblk.entry.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlLsblkEntry).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"lsblk.entry.parents": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlLsblkEntry).Parents, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"lsblk.entry.children": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlLsblkEntry).Children, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"lsblk.entry.encrypted": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlLsblkEntry).Encrypted, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"luks.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlLuks).__id, ok = v.Value.(string)
 		return
@@ -29007,6 +29038,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mount.point.available": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMountPoint).Available, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"mount.point.blockDevice": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMountPoint).BlockDevice, ok = plugin.RawToTValue[*mqlLsblkEntry](v.Value, v.Error)
 		return
 	},
 	"shadow.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -70246,7 +70281,7 @@ func (c *mqlSudoersAlias) GetMembers() *plugin.TValue[[]any] {
 type mqlLsblk struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlLsblkInternal it will be used here
+	mqlLsblkInternal
 	List plugin.TValue[[]any]
 }
 
@@ -70307,12 +70342,16 @@ func (c *mqlLsblk) GetList() *plugin.TValue[[]any] {
 type mqlLsblkEntry struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlLsblkEntryInternal it will be used here
+	mqlLsblkEntryInternal
 	Name        plugin.TValue[string]
 	Fstype      plugin.TValue[string]
 	Label       plugin.TValue[string]
 	Uuid        plugin.TValue[string]
 	Mountpoints plugin.TValue[[]any]
+	Type        plugin.TValue[string]
+	Parents     plugin.TValue[[]any]
+	Children    plugin.TValue[[]any]
+	Encrypted   plugin.TValue[bool]
 }
 
 // createLsblkEntry creates a new instance of this resource
@@ -70370,6 +70409,48 @@ func (c *mqlLsblkEntry) GetUuid() *plugin.TValue[string] {
 
 func (c *mqlLsblkEntry) GetMountpoints() *plugin.TValue[[]any] {
 	return &c.Mountpoints
+}
+
+func (c *mqlLsblkEntry) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlLsblkEntry) GetParents() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Parents, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("lsblk.entry", c.__id, "parents")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.parents()
+	})
+}
+
+func (c *mqlLsblkEntry) GetChildren() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Children, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("lsblk.entry", c.__id, "children")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.children()
+	})
+}
+
+func (c *mqlLsblkEntry) GetEncrypted() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Encrypted, func() (bool, error) {
+		return c.encrypted()
+	})
 }
 
 // mqlLuks for the luks resource
@@ -72600,14 +72681,15 @@ type mqlMountPoint struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlMountPointInternal it will be used here
-	Device    plugin.TValue[string]
-	Path      plugin.TValue[string]
-	Fstype    plugin.TValue[string]
-	Options   plugin.TValue[map[string]any]
-	Mounted   plugin.TValue[bool]
-	Size      plugin.TValue[int64]
-	Used      plugin.TValue[int64]
-	Available plugin.TValue[int64]
+	Device      plugin.TValue[string]
+	Path        plugin.TValue[string]
+	Fstype      plugin.TValue[string]
+	Options     plugin.TValue[map[string]any]
+	Mounted     plugin.TValue[bool]
+	Size        plugin.TValue[int64]
+	Used        plugin.TValue[int64]
+	Available   plugin.TValue[int64]
+	BlockDevice plugin.TValue[*mqlLsblkEntry]
 }
 
 // createMountPoint creates a new instance of this resource
@@ -72682,6 +72764,22 @@ func (c *mqlMountPoint) GetUsed() *plugin.TValue[int64] {
 func (c *mqlMountPoint) GetAvailable() *plugin.TValue[int64] {
 	return plugin.GetOrCompute[int64](&c.Available, func() (int64, error) {
 		return c.available()
+	})
+}
+
+func (c *mqlMountPoint) GetBlockDevice() *plugin.TValue[*mqlLsblkEntry] {
+	return plugin.GetOrCompute[*mqlLsblkEntry](&c.BlockDevice, func() (*mqlLsblkEntry, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("mount.point", c.__id, "blockDevice")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlLsblkEntry), nil
+			}
+		}
+
+		return c.blockDevice()
 	})
 }
 

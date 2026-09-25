@@ -9032,9 +9032,12 @@ lsblk {
 // Unix block device
 //
 // Single block device reported by `lsblk`: its device `name`, filesystem
-// type (`fstype`), `label`, UUID, and `mountpoints` list. Filter to audit
-// disk layout and mount configuration, e.g.
-// `lsblk.where(mountpoints.contains("/"))`.
+// type (`fstype`), `label`, UUID, `mountpoints` list, and device `type`.
+// `parents` and `children` walk the device stack (disk, partition, dm-crypt
+// mapping, LVM volume), and `encrypted` reports whether the data on the
+// device passes through a dm-crypt mapping. Filter to audit disk layout and
+// mount configuration, e.g. `lsblk.where(mountpoints.contains("/"))`, or
+// reach the device behind a mount with `mount.point(path: "/").blockDevice`.
 lsblk.entry {
   // Device name
   name string
@@ -9046,6 +9049,30 @@ lsblk.entry {
   uuid string
   // Mount points for the device
   mountpoints  []string
+  // Device type
+  //
+  // Device type as the kernel reports it, for example disk, part, crypt,
+  // lvm, raid1, loop, or rom.
+  type string
+  // Devices this device is built on
+  //
+  // For example, the partition that holds a dm-crypt mapping, or every
+  // physical volume under an LVM logical volume. Empty for a whole disk.
+  parents() []lsblk.entry
+  // Devices built on this device
+  //
+  // For example, the partitions of a disk, or the dm-crypt mapping opened
+  // on a LUKS partition.
+  children() []lsblk.entry
+  // Whether the data on this device is encrypted by dm-crypt
+  //
+  // True when this device is a dm-crypt mapping, or when every device it is
+  // built on is encrypted, so an LVM volume on a LUKS mapping is encrypted
+  // and an LVM volume that spans an encrypted and an unencrypted physical
+  // volume is not. A LUKS partition itself holds ciphertext and reports
+  // false, the mapping opened on it reports true. Null when the device type
+  // is unknown.
+  encrypted() bool
 }
 
 // LUKS-encrypted volumes on the host
@@ -9726,6 +9753,12 @@ mount.point @defaults("device path fstype") {
   used() int
   // Available space in bytes
   available() int
+  // Block device backing this mount
+  //
+  // The `lsblk.entry` for the mount's `device`, for example to check
+  // `mount.point(path: "/").blockDevice.encrypted`. Null for mounts that no
+  // block device backs, such as tmpfs, proc, overlay, or network filesystems.
+  blockDevice() lsblk.entry
 }
 
 // Shadow password file (/etc/shadow)

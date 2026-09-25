@@ -165,25 +165,19 @@ func (v *mqlLuksVolume) id() (string, error) {
 }
 
 func (v *mqlLuksVolume) blockDevice() (*mqlLsblkEntry, error) {
-	// Best-effort lookup against the `lsblk` resource. For LUKS volumes
-	// that don't appear in its list, we report a null reference rather
-	// than fabricating one.
-	lsblkRes, err := CreateResource(v.MqlRuntime, "lsblk", map[string]*llx.RawData{})
+	// The volume name is the path lsblk --paths printed, which resolves the
+	// same way a mount source does. The plain lsblk names never carry the
+	// /dev/ prefix, so comparing names directly never matched. A LUKS volume
+	// lsblk does not report is a null reference rather than a fabricated one.
+	entry, err := lookupBlockDevice(v.MqlRuntime, v.Name.Data, "")
 	if err != nil {
 		return nil, err
 	}
-	list := lsblkRes.(*mqlLsblk).GetList()
-	if list.Error != nil {
-		return nil, list.Error
+	if entry == nil {
+		v.BlockDevice.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
-	for _, raw := range list.Data {
-		entry := raw.(*mqlLsblkEntry)
-		if entry.Name.Data == v.Name.Data {
-			return entry, nil
-		}
-	}
-	v.BlockDevice.State = plugin.StateIsSet | plugin.StateIsNull
-	return nil, nil
+	return entry, nil
 }
 
 func (v *mqlLuksVolume) cipher() (*mqlLuksVolumeCipher, error) {

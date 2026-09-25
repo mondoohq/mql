@@ -2080,10 +2080,14 @@ logrotate.files 11.8.14
 logrotate.globalConfig 11.8.14
 lsblk 9.0.1
 lsblk.entry 9.0.1
+lsblk.entry.children 14.2.1
+lsblk.entry.encrypted 14.2.1
 lsblk.entry.fstype 9.0.1
 lsblk.entry.label 9.0.1
 lsblk.entry.mountpoints 9.0.1
 lsblk.entry.name 9.0.1
+lsblk.entry.parents 14.2.1
+lsblk.entry.type 14.2.1
 lsblk.entry.uuid 9.0.1
 lsblk.list 9.0.1
 lua.package 13.15.2
@@ -2570,6 +2574,7 @@ mount 9.0.1
 mount.list 9.0.1
 mount.point 9.0.1
 mount.point.available 13.2.8
+mount.point.blockDevice 14.2.1
 mount.point.device 9.0.1
 mount.point.fstype 9.0.1
 mount.point.mounted 9.0.1

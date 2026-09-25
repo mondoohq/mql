@@ -172,7 +172,7 @@ func TestParseBlockEntriesEmpty(t *testing.T) {
 	devices, err := parseBlockEntries([]byte(`{"blockdevices": []}`))
 	assert.Nil(t, err)
 	assert.Empty(t, devices.Blockdevices)
-	assert.Empty(t, filesystemDevices(devices.Blockdevices))
+	assert.Empty(t, buildBlockTopology(devices.Blockdevices).filesystemNodes())
 }
 
 func TestFilesystemDevices(t *testing.T) {
@@ -231,8 +231,8 @@ func TestFilesystemDevices(t *testing.T) {
 			assert.Nil(t, err)
 
 			names := []string{}
-			for _, d := range filesystemDevices(devices.Blockdevices) {
-				names = append(names, d.Name)
+			for _, n := range buildBlockTopology(devices.Blockdevices).filesystemNodes() {
+				names = append(names, n.dev.Name)
 			}
 			assert.Equal(t, test.expected, names)
 		})
@@ -245,10 +245,10 @@ func TestFilesystemDevicesWholeDiskMountpoint(t *testing.T) {
 	devices, err := parseBlockEntries([]byte(data))
 	assert.Nil(t, err)
 
-	entries := filesystemDevices(devices.Blockdevices)
+	entries := buildBlockTopology(devices.Blockdevices).filesystemNodes()
 	assert.Equal(t, 1, len(entries))
-	assert.Equal(t, "nvme0n1", entries[0].Name)
-	assert.Equal(t, []any{"/"}, entries[0].Mountpoints)
+	assert.Equal(t, "nvme0n1", entries[0].dev.Name)
+	assert.Equal(t, []any{"/"}, entries[0].dev.Mountpoints)
 }
 
 func TestFilesystemDevicesMixedTopLevel(t *testing.T) {
@@ -268,8 +268,8 @@ func TestFilesystemDevicesMixedTopLevel(t *testing.T) {
 	assert.Nil(t, err)
 
 	names := []string{}
-	for _, d := range filesystemDevices(devices.Blockdevices) {
-		names = append(names, d.Name)
+	for _, n := range buildBlockTopology(devices.Blockdevices).filesystemNodes() {
+		names = append(names, n.dev.Name)
 	}
 	assert.Equal(t, []string{"loop0", "sda", "sdb", "sdc1", "sdc2"}, names)
 }

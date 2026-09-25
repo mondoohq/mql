@@ -196,3 +196,24 @@ func (m *mqlMountPoint) available() (int64, error) {
 	}
 	return entry.Available, nil
 }
+
+func (m *mqlMountPoint) blockDevice() (*mqlLsblkEntry, error) {
+	// Only a device path can name a block device. Pseudo and network
+	// filesystems (tmpfs, proc, overlay, server:/export) are not backed by
+	// one, and asking lsblk about them would turn a plain absence into an
+	// error on hosts that have no lsblk.
+	if !strings.HasPrefix(m.Device.Data, "/dev/") {
+		m.BlockDevice.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	entry, err := lookupBlockDevice(m.MqlRuntime, m.Device.Data, m.Path.Data)
+	if err != nil {
+		return nil, err
+	}
+	if entry == nil {
+		m.BlockDevice.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return entry, nil
+}
