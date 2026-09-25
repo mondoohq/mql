@@ -248,6 +248,10 @@ func gatherPlatformInfo(conn shared.Connection, pf *inventory.Platform, idDetect
 		if falcon == nil {
 			falcon = crowdstrike.Detect(conn, pf)
 		}
+		if falcon == nil {
+			// no sensor on this host
+			return &platformInfo{}, nil
+		}
 		if identifier := falcon.PlatformID(); identifier != "" {
 			return &platformInfo{
 				IDs:                []string{identifier},
