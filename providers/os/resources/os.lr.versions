@@ -4281,15 +4281,15 @@ user.authorizedkeys 9.0.0
 user.enabled 9.0.0
 user.gid 9.0.0
 user.group 9.0.0
+user.hasLoginShell 14.4.1
 user.home 9.0.0
 user.loggedIn 13.7.1
-user.loginShell 14.2.1
 user.name 9.0.0
 user.ntuserDat 13.29.1
 user.shell 9.0.0
 user.sid 9.0.0
 user.sshkeys 9.0.0
-user.system 14.2.1
+user.system 14.4.1
 user.uid 9.0.0
 users 9.0.0
 users.list 9.0.0

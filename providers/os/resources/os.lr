@@ -1175,8 +1175,8 @@ user @defaults("name uid gid") {
   // account. On macOS, true when uid is below 500, which covers root, the
   // `_`-prefixed service accounts, and `nobody` (-2). Null on Windows and on
   // other Unix platforms, which have no common convention. Combine with
-  // loginShell to find service accounts that can log in, for example
-  // `users.where(system && name != "root").none(loginShell)`.
+  // hasLoginShell to find service accounts that can log in, for example
+  // `users.where(system && name != "root").none(hasLoginShell)`.
   system() bool
   // Whether the account's shell starts an interactive session
   //
@@ -1186,7 +1186,7 @@ user @defaults("name uid gid") {
   // including an empty one, which means /bin/sh. /etc/shells is not
   // consulted: login and sshd do not read it, and some distributions list
   // /bin/false in it. Null on Windows.
-  loginShell() bool
+  hasLoginShell() bool
 }
 
 // Private key on disk

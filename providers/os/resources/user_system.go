@@ -222,17 +222,17 @@ func (u *mqlUser) system() (bool, error) {
 }
 
 // loginShellApplies reports whether the passwd shell field decides login on
-// this platform. Windows accounts have no shell, so loginShell is null there.
+// this platform. Windows accounts have no shell, so hasLoginShell is null there.
 func loginShellApplies(pf *inventory.Platform) bool {
 	return pf.IsFamily("unix")
 }
 
-func (u *mqlUser) loginShell() (bool, error) {
+func (u *mqlUser) hasLoginShell() (bool, error) {
 	if u.Shell.Error != nil {
 		return false, u.Shell.Error
 	}
 	if !loginShellApplies(u.assetPlatform()) {
-		u.LoginShell.State = plugin.StateIsSet | plugin.StateIsNull
+		u.HasLoginShell.State = plugin.StateIsSet | plugin.StateIsNull
 		return false, nil
 	}
 	return isLoginShell(u.Shell.Data), nil
