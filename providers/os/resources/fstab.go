@@ -3,15 +3,13 @@
 package resources
 
 import (
-	"bufio"
 	"errors"
-	"io"
-	"strconv"
 	"strings"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/fstab"
 )
 
 func initFstab(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -59,7 +57,7 @@ func (f *mqlFstab) entries() ([]any, error) {
 	}
 	defer fstabFile.Close()
 
-	entries, err := ParseFstab(fstabFile)
+	entries, err := fstab.Parse(fstabFile)
 	if err != nil {
 		return nil, err
 	}
@@ -81,66 +79,6 @@ func (f *mqlFstab) entries() ([]any, error) {
 	}
 
 	return resources, nil
-}
-
-type FstabEntry struct {
-	Device     string
-	Mountpoint string
-	Fstype     string
-	Options    []string
-	Dump       *int
-	Fsck       *int
-}
-
-func ParseFstab(file io.Reader) ([]FstabEntry, error) {
-	scanner := bufio.NewScanner(file)
-	scanner.Split(bufio.ScanLines)
-
-	var entries []FstabEntry
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		// Skip comments and empty lines, including indented comments and
-		// whitespace-only lines (both are valid in /etc/fstab).
-		if line == "" || line[0] == '#' {
-			continue
-		}
-
-		record := strings.Fields(line)
-		if len(record) < 4 {
-			return nil, errors.New("invalid fstab entry")
-		}
-
-		var dump *int
-		if len(record) >= 5 {
-			_dump, err := strconv.Atoi(record[4])
-			if err != nil {
-				return nil, err
-			}
-			dump = &_dump
-		}
-
-		var fsck *int
-		if len(record) >= 6 {
-			_fsck, err := strconv.Atoi(record[5])
-			if err != nil {
-				return nil, err
-			}
-			fsck = &_fsck
-		}
-
-		entry := FstabEntry{
-			Device:     record[0],
-			Mountpoint: record[1],
-			Fstype:     record[2],
-			Options:    strings.Split(record[3], ","),
-			Dump:       dump,
-			Fsck:       fsck,
-		}
-
-		entries = append(entries, entry)
-	}
-
-	return entries, nil
 }
 
 func (e *mqlFstabEntry) id() (string, error) {

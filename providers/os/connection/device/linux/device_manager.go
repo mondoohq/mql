@@ -20,7 +20,7 @@ import (
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/providers/os/connection/snapshot"
 	"go.mondoo.com/mql/providers/os/mountedfs"
-	"go.mondoo.com/mql/providers/os/resources"
+	"go.mondoo.com/mql/providers/os/resources/fstab"
 )
 
 const (
@@ -131,7 +131,7 @@ func (d *LinuxDeviceManager) attemptExpandAndMountPartitions(partitions []*snaps
 	return mounted, true, nil
 }
 
-func (d *LinuxDeviceManager) hintFsTypes(partitions []*snapshot.Partition) ([]resources.FstabEntry, error) {
+func (d *LinuxDeviceManager) hintFsTypes(partitions []*snapshot.Partition) ([]fstab.Entry, error) {
 	for _, partition := range partitions {
 		entries, ostree, err := d.hintPartitionFsType(partition)
 		if err != nil {
@@ -149,7 +149,7 @@ func (d *LinuxDeviceManager) hintFsTypes(partitions []*snapshot.Partition) ([]re
 	return nil, nil
 }
 
-func (d *LinuxDeviceManager) hintPartitionFsType(partition *snapshot.Partition) ([]resources.FstabEntry, string, error) {
+func (d *LinuxDeviceManager) hintPartitionFsType(partition *snapshot.Partition) ([]fstab.Entry, string, error) {
 	mounted, err := d.volumeMounter.Mount(partition.ToDefaultMountInput())
 	if err != nil {
 		return nil, "", err
@@ -178,7 +178,7 @@ func (d *LinuxDeviceManager) hintPartitionFsType(partition *snapshot.Partition) 
 	return nil, "", nil
 }
 
-func (d *LinuxDeviceManager) attemptFindFstab(dir string) ([]resources.FstabEntry, error) {
+func (d *LinuxDeviceManager) attemptFindFstab(dir string) ([]fstab.Entry, error) {
 	cmd, err := d.cmdRunner.RunCommand(fmt.Sprintf("find %s -type f -wholename '*/etc/fstab'", dir))
 	if err != nil {
 		log.Error().Err(err).Msg("error searching for fstab")
@@ -199,16 +199,16 @@ func (d *LinuxDeviceManager) attemptFindFstab(dir string) ([]resources.FstabEntr
 		return nil, nil
 	}
 
-	mnt, fstab := path.Split(strings.TrimSpace(string(out)))
+	mnt, fstabPath := path.Split(strings.TrimSpace(string(out)))
 	fstabFile, err := afero.ReadFile(
 		mountedfs.NewMountedFs(mnt),
-		path.Base(fstab))
+		path.Base(fstabPath))
 	if err != nil {
 		log.Error().Err(err).Msg("error reading fstab")
 		return nil, nil
 	}
 
-	return resources.ParseFstab(bytes.NewReader(fstabFile))
+	return fstab.Parse(bytes.NewReader(fstabFile))
 }
 
 func (d *LinuxDeviceManager) attemptFindOSTreeRoot(dir string, partitionName string) string {
@@ -287,7 +287,7 @@ func (d *LinuxDeviceManager) attemptFindOSTreeRoot(dir string, partitionName str
 }
 
 // mountWithFstab mounts partitions adjusting the mountpoint and mount options according to the discovered fstab entries
-func (d *LinuxDeviceManager) mountWithFstab(partitions []*snapshot.Partition, entries []resources.FstabEntry) ([]*snapshot.MountedPartition, error) {
+func (d *LinuxDeviceManager) mountWithFstab(partitions []*snapshot.Partition, entries []fstab.Entry) ([]*snapshot.MountedPartition, error) {
 	// sort the entries by the length of the mountpoint, so we can mount the top level partitions first
 	sort.Slice(entries, func(i, j int) bool {
 		return snapshot.PathDepth(entries[i].Mountpoint) < snapshot.PathDepth(entries[j].Mountpoint)
@@ -330,7 +330,7 @@ func (d *LinuxDeviceManager) mountWithFstab(partitions []*snapshot.Partition, en
 	return mps, nil
 }
 
-func getPartitionForFsTab(partitions []*snapshot.Partition, entry resources.FstabEntry) *snapshot.Partition {
+func getPartitionForFsTab(partitions []*snapshot.Partition, entry fstab.Entry) *snapshot.Partition {
 	for _, partition := range partitions {
 		if cmpPartition2Fstab(partition, entry) {
 			log.Debug().Str("device", partition.Name).Msg("found partition for fstab entry")
@@ -340,7 +340,7 @@ func getPartitionForFsTab(partitions []*snapshot.Partition, entry resources.Fsta
 	return nil
 }
 
-func cmpPartition2Fstab(partition *snapshot.Partition, entry resources.FstabEntry) bool {
+func cmpPartition2Fstab(partition *snapshot.Partition, entry fstab.Entry) bool {
 	// Edge case: fstab entry is a symlink to a device mapper device (LVM2)
 	if strings.HasPrefix(entry.Device, "/dev/mapper/") {
 		return entry.Device == partition.Name
