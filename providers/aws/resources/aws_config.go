@@ -46,10 +46,7 @@ func configTagsForArn(runtime *plugin.Runtime, region, resourceArn string) (map[
 			NextToken:   nextToken,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return nil, errTagsUnreadable
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "config:ListTagsForResource")
 		}
 		for k, v := range configTagsToMap(resp.Tags) {
 			tags[k] = v
@@ -369,10 +366,7 @@ func (a *mqlAwsConfigRule) complianceStatus() (string, error) {
 		ConfigRuleNames: []string{ruleName},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return "", nil
-		}
-		return "", err
+		return "", classifyAwsError(err, "config:DescribeComplianceByConfigRule")
 	}
 	if len(resp.ComplianceByConfigRules) > 0 && resp.ComplianceByConfigRules[0].Compliance != nil {
 		return string(resp.ComplianceByConfigRules[0].Compliance.ComplianceType), nil
@@ -601,11 +595,7 @@ func (a *mqlAwsConfigDeliverychannel) getDeliveryStatus() (*cstypes.DeliveryChan
 		DeliveryChannelNames: []string{channelName},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.deliveryStatusFetched = true
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "config:DescribeDeliveryChannelStatus")
 	}
 	if len(resp.DeliveryChannelsStatus) > 0 {
 		a.cachedDeliveryStatus = &resp.DeliveryChannelsStatus[0]
@@ -695,10 +685,7 @@ func (a *mqlAwsConfigRule) complianceDetails() ([]any, error) {
 			NextToken:      nextToken,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return []any{}, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "config:GetComplianceDetailsByConfigRule")
 		}
 
 		for _, eval := range resp.EvaluationResults {
@@ -747,11 +734,7 @@ func (a *mqlAwsConfigRule) remediation() (*mqlAwsConfigRuleRemediation, error) {
 		ConfigRuleNames: []string{ruleName},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.Remediation.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "config:DescribeRemediationConfigurations")
 	}
 
 	if len(resp.RemediationConfigurations) == 0 {
@@ -890,10 +873,7 @@ func (a *mqlAwsConfigConformancePack) complianceStatus() (string, error) {
 		ConformancePackNames: []string{packName},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return "INSUFFICIENT_DATA", nil
-		}
-		return "", err
+		return "", classifyAwsError(err, "config:GetConformancePackComplianceSummary")
 	}
 	if len(resp.ConformancePackComplianceSummaryList) > 0 {
 		return string(resp.ConformancePackComplianceSummaryList[0].ConformancePackComplianceStatus), nil
@@ -915,10 +895,7 @@ func (a *mqlAwsConfigConformancePack) ruleCompliance() ([]any, error) {
 			NextToken:           nextToken,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return []any{}, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "config:DescribeConformancePackCompliance")
 		}
 
 		for _, rule := range resp.ConformancePackRuleComplianceList {

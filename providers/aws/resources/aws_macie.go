@@ -623,10 +623,7 @@ func describeMacieBucket(runtime *plugin.Runtime, conn *connection.AwsConnection
 		},
 	})
 	if err != nil {
-		if IsMacieNotEnabledError(err) {
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "macie2:DescribeBuckets")
 	}
 	for _, bm := range resp.Buckets {
 		if bm.BucketName == nil || *bm.BucketName != bucketName {
@@ -1427,6 +1424,7 @@ func (a *mqlAwsMacieRevealConfiguration) kmsKey() (*mqlAwsKmsKey, error) {
 type mqlAwsMacieSessionInternal struct {
 	publicationFetched                 bool
 	publicationLock                    sync.Mutex
+	publicationErr                     error
 	cachePublishClassificationFindings bool
 	cachePublishPolicyFindings         bool
 	publicationClassificationIsKnown   bool
@@ -1435,13 +1433,10 @@ type mqlAwsMacieSessionInternal struct {
 // fetchFindingsPublication reads whether Macie forwards its findings to
 // Security Hub. Both flags come from one call, so the two fields share it.
 func (a *mqlAwsMacieSession) fetchFindingsPublication() error {
-	if a.publicationFetched {
-		return nil
-	}
 	a.publicationLock.Lock()
 	defer a.publicationLock.Unlock()
 	if a.publicationFetched {
-		return nil
+		return a.publicationErr
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -1449,13 +1444,9 @@ func (a *mqlAwsMacieSession) fetchFindingsPublication() error {
 	resp, err := svc.GetFindingsPublicationConfiguration(context.Background(),
 		&macie2.GetFindingsPublicationConfigurationInput{})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Warn().Str("region", a.Region.Data).
-				Msg("no permission to read macie findings publication configuration")
-			a.publicationFetched = true
-			return nil
-		}
-		return err
+		a.publicationErr = classifyAwsError(err, "macie2:GetFindingsPublicationConfiguration")
+		a.publicationFetched = true
+		return a.publicationErr
 	}
 
 	if shc := resp.SecurityHubConfiguration; shc != nil {

@@ -120,10 +120,7 @@ func (a *mqlAwsTimestreamLiveanalyticsDatabase) tags() (map[string]any, error) {
 		ResourceARN: &arnVal,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "timestream:ListTagsForResource")
 	}
 	tags := make(map[string]any)
 	for _, t := range resp.Tags {

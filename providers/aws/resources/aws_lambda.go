@@ -552,8 +552,8 @@ func nullOnEmpty(field *plugin.TValue[string], value string) (string, error) {
 
 // fetchStatus resolves the lifecycle values a ListFunctions summary omits,
 // with one GetFunctionConfiguration call shared by every field derived from
-// it. A 404 or an access denial leaves the status absent, so those fields read
-// as null rather than as an empty string.
+// it. A 404 leaves the status absent, so those fields read as null rather than
+// as an empty string.
 func (a *mqlAwsLambdaFunction) fetchStatus() (*lambdaFunctionStatus, error) {
 	if a.statusFetched.Load() {
 		return a.status, nil
@@ -576,11 +576,7 @@ func (a *mqlAwsLambdaFunction) fetchStatus() (*lambdaFunctionStatus, error) {
 			a.statusFetched.Store(true)
 			return nil, nil
 		}
-		if Is400AccessDeniedError(err) {
-			a.statusFetched.Store(true)
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "lambda:GetFunctionConfiguration")
 	}
 
 	a.status = lambdaStatusFromConfigurationOutput(resp)
@@ -640,11 +636,7 @@ func (a *mqlAwsLambdaFunction) fetchImageData() error {
 	funcName := a.Name.Data
 	resp, err := svc.GetFunction(ctx, &lambda.GetFunctionInput{FunctionName: &funcName})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.imageDataFetched = true
-			return nil
-		}
-		return err
+		return classifyAwsError(err, "lambda:GetFunction")
 	}
 	if resp.Code != nil {
 		a.cacheImageUri = resp.Code.ImageUri
@@ -738,11 +730,7 @@ func (a *mqlAwsLambdaFunction) tags() (map[string]any, error) {
 	funcArn := a.Arn.Data
 	tagsResp, err := svc.ListTags(ctx, &lambda.ListTagsInput{Resource: &funcArn})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.tagsFetched = true
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "lambda:ListTags")
 	}
 	a.cacheTags = tagsResp.Tags
 	a.tagsFetched = true
@@ -808,10 +796,7 @@ func (a *mqlAwsLambdaFunction) recursiveLoop() (string, error) {
 
 	cfg, err := svc.GetFunctionRecursionConfig(ctx, &lambda.GetFunctionRecursionConfigInput{FunctionName: &funcName})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return "", nil
-		}
-		return "", errors.Wrap(err, "could not gather aws lambda function recursion config")
+		return "", errors.Wrap(classifyAwsError(err, "lambda:GetFunctionRecursionConfig"), "could not gather aws lambda function recursion config")
 	}
 	return string(cfg.RecursiveLoop), nil
 }
@@ -827,11 +812,7 @@ func (a *mqlAwsLambdaFunction) concurrency() (int64, error) {
 	// no pagination required
 	functionConcurrency, err := svc.GetFunctionConcurrency(ctx, &lambda.GetFunctionConcurrencyInput{FunctionName: &funcName})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.Concurrency.State = plugin.StateIsSet | plugin.StateIsNull
-			return 0, nil
-		}
-		return 0, errors.Wrap(err, "could not gather aws lambda function concurrency")
+		return 0, errors.Wrap(classifyAwsError(err, "lambda:GetFunctionConcurrency"), "could not gather aws lambda function concurrency")
 	}
 	return reservedConcurrency(&a.Concurrency, functionConcurrency.ReservedConcurrentExecutions)
 }
@@ -1377,10 +1358,7 @@ func (a *mqlAwsLambdaFunction) eventSourceMappings() ([]any, error) {
 	for paginator.HasMorePages() {
 		resp, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not gather lambda event source mappings")
+			return nil, errors.Wrap(classifyAwsError(err, "lambda:ListEventSourceMappings"), "could not gather lambda event source mappings")
 		}
 		for _, esm := range resp.EventSourceMappings {
 			mqlEsm, err := createEventSourceMappingResource(a.MqlRuntime, esm, region)
@@ -1409,10 +1387,7 @@ func (a *mqlAwsLambdaFunction) aliases() ([]any, error) {
 	for paginator.HasMorePages() {
 		resp, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not gather lambda aliases")
+			return nil, errors.Wrap(classifyAwsError(err, "lambda:ListAliases"), "could not gather lambda aliases")
 		}
 		for _, alias := range resp.Aliases {
 			var routingWeights map[string]any
@@ -1462,10 +1437,7 @@ func (a *mqlAwsLambdaFunction) provisionedConcurrencyConfigs() ([]any, error) {
 	for paginator.HasMorePages() {
 		resp, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not gather lambda provisioned concurrency configs")
+			return nil, errors.Wrap(classifyAwsError(err, "lambda:ListProvisionedConcurrencyConfigs"), "could not gather lambda provisioned concurrency configs")
 		}
 		for _, pcc := range resp.ProvisionedConcurrencyConfigs {
 			mqlPcc, err := CreateResource(a.MqlRuntime, "aws.lambda.function.provisionedConcurrencyConfig",
@@ -1584,10 +1556,7 @@ func (a *mqlAwsLambdaFunction) eventInvokeConfig() (any, error) {
 		if errors.As(err, &respErr) && respErr.HTTPStatusCode() == 404 {
 			return map[string]any{}, nil
 		}
-		if Is400AccessDeniedError(err) {
-			return map[string]any{}, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "lambda:GetFunctionEventInvokeConfig")
 	}
 
 	result := map[string]any{}
@@ -1643,10 +1612,7 @@ func (a *mqlAwsLambdaFunction) runtimeManagementConfig() (any, error) {
 		if errors.As(err, &respErr) && respErr.HTTPStatusCode() == 404 {
 			return map[string]any{}, nil
 		}
-		if Is400AccessDeniedError(err) {
-			return map[string]any{}, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "lambda:GetRuntimeManagementConfig")
 	}
 
 	result := map[string]any{
@@ -1659,9 +1625,8 @@ func (a *mqlAwsLambdaFunction) runtimeManagementConfig() (any, error) {
 }
 
 // fetchRuntimeManagementConfig reads the function's runtime management
-// configuration once and hands it to every field derived from it. A 404 or an
-// access denial leaves it absent rather than failing, matching what the
-// deprecated dict already did.
+// configuration once and hands it to every field derived from it. A 404 leaves
+// it absent rather than failing, matching what the deprecated dict already did.
 func (a *mqlAwsLambdaFunction) fetchRuntimeManagementConfig() (*lambda.GetRuntimeManagementConfigOutput, error) {
 	a.runtimeMgmtOnce.Do(func() {
 		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -1675,10 +1640,7 @@ func (a *mqlAwsLambdaFunction) fetchRuntimeManagementConfig() (*lambda.GetRuntim
 			if errors.As(err, &respErr) && respErr.HTTPStatusCode() == 404 {
 				return
 			}
-			if Is400AccessDeniedError(err) {
-				return
-			}
-			a.runtimeMgmtErr = err
+			a.runtimeMgmtErr = classifyAwsError(err, "lambda:GetRuntimeManagementConfig")
 			return
 		}
 		a.runtimeMgmtResp = resp
@@ -1733,10 +1695,7 @@ func (a *mqlAwsLambdaFunction) versions() ([]any, error) {
 	for paginator.HasMorePages() {
 		resp, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not list lambda function versions")
+			return nil, errors.Wrap(classifyAwsError(err, "lambda:ListVersionsByFunction"), "could not list lambda function versions")
 		}
 		for _, v := range resp.Versions {
 			var lastModifiedAt *time.Time
@@ -1808,11 +1767,7 @@ func (a *mqlAwsLambdaFunctionVersion) state() (string, error) {
 			a.State.State = plugin.StateIsSet | plugin.StateIsNull
 			return "", nil
 		}
-		if Is400AccessDeniedError(err) {
-			a.State.State = plugin.StateIsSet | plugin.StateIsNull
-			return "", nil
-		}
-		return "", err
+		return "", classifyAwsError(err, "lambda:GetFunctionConfiguration")
 	}
 	return nullOnEmpty(&a.State, string(resp.State))
 }
@@ -1838,10 +1793,7 @@ func (a *mqlAwsLambdaLayer) versions() ([]any, error) {
 	for paginator.HasMorePages() {
 		resp, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, errors.Wrap(err, "could not list lambda layer versions")
+			return nil, errors.Wrap(classifyAwsError(err, "lambda:ListLayerVersions"), "could not list lambda layer versions")
 		}
 		for _, lv := range resp.LayerVersions {
 			compatRuntimes := make([]any, len(lv.CompatibleRuntimes))

@@ -81,7 +81,7 @@ func backupResolveTags(runtime *plugin.Runtime, cache *lazyTags, field *plugin.T
 
 // backupTagsForArn reads the tags of a Backup-managed resource, reporting
 // errTagsUnreadable for a resource Backup does not manage (see
-// backupManagedArn) or when the call is denied.
+// backupManagedArn).
 func backupTagsForArn(runtime *plugin.Runtime, region, resourceArn string) (map[string]any, error) {
 	arnRegion, ok := backupManagedArn(resourceArn)
 	if !ok {
@@ -103,10 +103,7 @@ func backupTagsForArn(runtime *plugin.Runtime, region, resourceArn string) (map[
 			NextToken:   nextToken,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return nil, errTagsUnreadable
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "backup:ListTags")
 		}
 		for k, v := range resp.Tags {
 			tags[k] = v
@@ -468,10 +465,7 @@ func (a *mqlAwsBackupPlan) rules() ([]any, error) {
 		BackupPlanId: &planId,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "backup:GetBackupPlan")
 	}
 
 	if resp.BackupPlan == nil {
@@ -514,10 +508,7 @@ func (a *mqlAwsBackupPlan) resourceSelections() ([]any, error) {
 			NextToken:    nextToken,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return nil, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "backup:ListBackupSelections")
 		}
 		for _, sel := range resp.BackupSelectionsList {
 			detail, err := svc.GetBackupSelection(ctx, &backup.GetBackupSelectionInput{
@@ -1141,10 +1132,7 @@ func (a *mqlAwsBackupVaultRecoveryPoint) accessPoints() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "backup:ListBackupAccessPointsByRecoveryPoint")
 		}
 		for _, ap := range page.BackupAccessPoints {
 			mqlAp, err := newMqlBackupAccessPoint(a.MqlRuntime, region, ap)

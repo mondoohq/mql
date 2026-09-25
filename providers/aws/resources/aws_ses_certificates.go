@@ -9,7 +9,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/sesv2"
 	sesv2_types "github.com/aws/aws-sdk-go-v2/service/sesv2/types"
-	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/aws/connection"
@@ -58,15 +57,7 @@ func (a *mqlAwsSesIdentity) certificates() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("identity", identityName).Msg("access denied listing SES email identity certificates")
-				break
-			}
-			if IsServiceNotAvailableInRegionError(err) {
-				log.Debug().Str("region", a.region).Msg("SES email identity certificates are not available in region")
-				break
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "ses:ListEmailIdentityCertificates")
 		}
 		for _, cert := range page.Certificates {
 			mqlCert, err := newMqlAwsSesIdentityCertificate(a.MqlRuntime, identityArn, cert)

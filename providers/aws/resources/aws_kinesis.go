@@ -122,11 +122,7 @@ func initAwsKinesisStream(runtime *plugin.Runtime, args map[string]*llx.RawData)
 		StreamARN: &arnVal,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			args["__id"] = llx.StringData(arnVal)
-			return args, nil, nil
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(err, "kinesis:DescribeStreamSummary")
 	}
 	if out.StreamDescriptionSummary == nil {
 		args["__id"] = llx.StringData(arnVal)
@@ -181,6 +177,7 @@ func newMqlAwsKinesisStream(runtime *plugin.Runtime, region string, summary *kin
 
 type mqlAwsKinesisStreamInternal struct {
 	fetched          bool
+	fetchErr         error
 	cachedEncType    string
 	cachedKeyId      string
 	cachedRetention  int64
@@ -192,12 +189,12 @@ type mqlAwsKinesisStreamInternal struct {
 
 func (a *mqlAwsKinesisStream) fetchStreamDetails() error {
 	if a.fetched {
-		return nil
+		return a.fetchErr
 	}
 	a.lock.Lock()
 	defer a.lock.Unlock()
 	if a.fetched {
-		return nil
+		return a.fetchErr
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -209,12 +206,9 @@ func (a *mqlAwsKinesisStream) fetchStreamDetails() error {
 		StreamARN: &arnVal,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Warn().Str("stream", arnVal).Msg("access denied describing kinesis stream, using defaults")
-			a.fetched = true
-			return nil
-		}
-		return err
+		a.fetched = true
+		a.fetchErr = classifyAwsError(err, "kinesis:DescribeStreamSummary")
+		return a.fetchErr
 	}
 	if descResp.StreamDescriptionSummary != nil {
 		desc := descResp.StreamDescriptionSummary
@@ -553,10 +547,7 @@ func (a *mqlAwsKinesisVideoStream) tags() (map[string]any, error) {
 			NextToken: nextToken,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return tags, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "kinesisvideo:ListTagsForStream")
 		}
 		for k, v := range resp.Tags {
 			tags[k] = v
@@ -841,11 +832,7 @@ func initAwsKinesisFirehoseDeliveryStream(runtime *plugin.Runtime, args map[stri
 		DeliveryStreamName: &name,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			args["__id"] = llx.StringData(arnVal)
-			return args, nil, nil
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(err, "firehose:DescribeDeliveryStream")
 	}
 	if out.DeliveryStreamDescription == nil {
 		args["__id"] = llx.StringData(arnVal)

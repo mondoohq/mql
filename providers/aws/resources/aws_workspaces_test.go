@@ -17,8 +17,8 @@ import (
 
 // ===== client properties are absent =====
 
-// A directory the caller cannot read client properties for reports the defaults
-// rather than an error, so a fleet-wide query is not lost to one directory.
+// A directory with no client properties reports the defaults rather than an
+// error, so a fleet-wide query is not lost to one directory.
 func TestDirectoryClientPropertiesAbsent(t *testing.T) {
 	d := &mqlAwsWorkspacesDirectory{}
 	d.clientPropsFetched.Store(true) // fetched, but nothing came back

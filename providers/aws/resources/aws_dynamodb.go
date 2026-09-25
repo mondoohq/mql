@@ -54,6 +54,7 @@ func (a *mqlAwsDynamodbExport) id() (string, error) {
 
 type mqlAwsDynamodbExportInternal struct {
 	exportCache *ddtypes.ExportDescription
+	exportErr   error
 	fetched     bool
 	region      string
 	arn         string
@@ -62,23 +63,21 @@ type mqlAwsDynamodbExportInternal struct {
 
 func (a *mqlAwsDynamodbExport) fetchExport() (*ddtypes.ExportDescription, error) {
 	if a.fetched {
-		return a.exportCache, nil
+		return a.exportCache, a.exportErr
 	}
 	a.lock.Lock()
 	defer a.lock.Unlock()
 	if a.fetched {
-		return a.exportCache, nil
+		return a.exportCache, a.exportErr
 	}
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	ctx := context.Background()
 	svc := conn.Dynamodb(a.region)
 	desc, err := svc.DescribeExport(ctx, &dynamodb.DescribeExportInput{ExportArn: aws.String(a.arn)})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.fetched = true
-			return nil, nil
-		}
-		return nil, err
+		a.fetched = true
+		a.exportErr = classifyAwsError(err, "dynamodb:DescribeExport")
+		return nil, a.exportErr
 	}
 	a.exportCache = desc.ExportDescription
 	a.fetched = true
@@ -834,10 +833,7 @@ func (a *mqlAwsDynamodbTable) autoScalingEnabled() (bool, error) {
 		ResourceIds:      []string{"table/" + tableName},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return false, nil
-		}
-		return false, err
+		return false, classifyAwsError(err, "application-autoscaling:DescribeScalableTargets")
 	}
 
 	var hasRead, hasWrite bool

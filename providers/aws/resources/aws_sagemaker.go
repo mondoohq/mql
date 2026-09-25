@@ -2925,11 +2925,7 @@ func (a *mqlAwsSagemakerCluster) nodes() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-				log.Warn().Str("cluster", clusterName).Msg("error accessing AWS SageMaker cluster nodes")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "sagemaker:ListClusterNodes")
 		}
 		for _, node := range page.ClusterNodeSummaries {
 			var status, statusMsg string
@@ -3125,18 +3121,19 @@ func (a *mqlAwsSagemakerClusterInstanceGroupInstanceTypeDetail) id() (string, er
 type mqlAwsSagemakerClusterNodeInternal struct {
 	cacheClusterName string
 	fetched          bool
+	fetchErr         error
 	fetchLock        sync.Mutex
 	cacheDescribe    *sagemakerTypes.ClusterNodeDetails
 }
 
 func (a *mqlAwsSagemakerClusterNode) fetchDetails() (*sagemakerTypes.ClusterNodeDetails, error) {
 	if a.fetched {
-		return a.cacheDescribe, nil
+		return a.cacheDescribe, a.fetchErr
 	}
 	a.fetchLock.Lock()
 	defer a.fetchLock.Unlock()
 	if a.fetched {
-		return a.cacheDescribe, nil
+		return a.cacheDescribe, a.fetchErr
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -3150,11 +3147,9 @@ func (a *mqlAwsSagemakerClusterNode) fetchDetails() (*sagemakerTypes.ClusterNode
 		NodeId:      &nodeId,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.fetched = true
-			return nil, nil
-		}
-		return nil, err
+		a.fetched = true
+		a.fetchErr = classifyAwsError(err, "sagemaker:DescribeClusterNode")
+		return nil, a.fetchErr
 	}
 	a.cacheDescribe = resp.NodeDetails
 	a.fetched = true
@@ -3841,11 +3836,11 @@ func (a *mqlAwsSagemakerModelPackageGroup) resourcePolicy() (string, error) {
 	resp, err := svc.GetModelPackageGroupPolicy(context.Background(), &sagemaker.GetModelPackageGroupPolicyInput{ModelPackageGroupName: &name})
 	if err != nil {
 		// A group with no resource policy attached returns a validation error;
-		// treat that (and access-denied) as "no policy" rather than failing.
-		if Is400AccessDeniedError(err) || isSagemakerNoPolicyError(err) {
+		// treat that as "no policy" rather than failing.
+		if isSagemakerNoPolicyError(err) {
 			return "", nil
 		}
-		return "", err
+		return "", classifyAwsError(err, "sagemaker:GetModelPackageGroupPolicy")
 	}
 	return convert.ToValue(resp.ResourcePolicy), nil
 }

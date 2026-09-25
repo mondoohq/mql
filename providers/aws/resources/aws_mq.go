@@ -301,12 +301,7 @@ func (a *mqlAwsMqBroker) fetchDetails() error {
 		BrokerId: &a.cacheBrokerId,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Warn().Str("brokerId", a.cacheBrokerId).Msg("access denied describing MQ broker")
-			a.fetched = true
-			return nil
-		}
-		return err
+		return classifyAwsError(err, "mq:DescribeBroker")
 	}
 
 	// Cache security groups.

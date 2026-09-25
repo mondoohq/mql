@@ -154,6 +154,7 @@ func (a *mqlAwsWorkspacesDirectory) arn() (string, error) {
 type mqlAwsWorkspacesDirectoryInternal struct {
 	clientPropsFetched atomic.Bool
 	clientProps        *workspacestypes.ClientProperties
+	clientPropsErr     error
 	clientPropsLock    sync.Mutex
 	cacheSubnetIds     []any
 }
@@ -163,12 +164,12 @@ type mqlAwsWorkspacesDirectoryInternal struct {
 // clientLogUploadEnabled, which all come from the same call.
 func (a *mqlAwsWorkspacesDirectory) fetchClientProperties() (*workspacestypes.ClientProperties, error) {
 	if a.clientPropsFetched.Load() {
-		return a.clientProps, nil
+		return a.clientProps, a.clientPropsErr
 	}
 	a.clientPropsLock.Lock()
 	defer a.clientPropsLock.Unlock()
 	if a.clientPropsFetched.Load() {
-		return a.clientProps, nil
+		return a.clientProps, a.clientPropsErr
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -177,11 +178,9 @@ func (a *mqlAwsWorkspacesDirectory) fetchClientProperties() (*workspacestypes.Cl
 		ResourceIds: []string{a.DirectoryId.Data},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.clientPropsFetched.Store(true)
-			return nil, nil
-		}
-		return nil, err
+		a.clientPropsErr = classifyAwsError(err, "workspaces:DescribeClientProperties")
+		a.clientPropsFetched.Store(true)
+		return nil, a.clientPropsErr
 	}
 	for _, r := range resp.ClientPropertiesList {
 		if r.ClientProperties != nil {
@@ -226,10 +225,7 @@ func (a *mqlAwsWorkspacesDirectory) tags() (map[string]any, error) {
 		ResourceId: &a.DirectoryId.Data,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "workspaces:DescribeTags")
 	}
 	tags := make(map[string]any)
 	for _, tag := range resp.TagList {
@@ -363,10 +359,7 @@ func (a *mqlAwsWorkspacesWorkspace) tags() (map[string]any, error) {
 		ResourceId: &a.WorkspaceId.Data,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "workspaces:DescribeTags")
 	}
 	tags := make(map[string]any)
 	for _, tag := range resp.TagList {
@@ -677,7 +670,7 @@ func (a *mqlAwsWorkspacesBundle) id() (string, error) {
 	return "aws.workspaces.bundle/" + a.Region.Data + "/" + a.BundleId.Data, nil
 }
 
-// errWorkspacesBundleUnresolved marks a bundle reference that names no readable
+// errWorkspacesBundleUnresolved marks a bundle reference that names no existing
 // bundle. Returning it beats handing back a half-populated resource: a resource
 // built from the reference args alone leaves every other field *unset*, and an
 // unset field encodes to a primitive with no type, which llx logs as malformed
@@ -731,11 +724,7 @@ func initAwsWorkspacesBundle(runtime *plugin.Runtime, args map[string]*llx.RawDa
 		BundleIds: []string{bundleId},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-			log.Debug().Str("region", region).Msg("error accessing region for AWS WorkSpaces bundles API")
-			return nil, nil, fmt.Errorf("%w: %q in %s is not readable", errWorkspacesBundleUnresolved, bundleId, region)
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(fmt.Errorf("fetching aws.workspaces.bundle with id %q in region %s: %w", bundleId, region, err), "workspaces:DescribeWorkspaceBundles")
 	}
 	// a bundle deleted after the WorkSpace was built no longer resolves
 	if len(resp.Bundles) == 0 {
@@ -884,9 +873,9 @@ func (a *mqlAwsWorkspacesWorkspace) bundle() (*mqlAwsWorkspacesBundle, error) {
 		"region":   llx.StringData(a.Region.Data),
 	})
 	if err != nil {
-		// a bundle that names nothing readable is this WorkSpace having no
-		// bundle to report, not a failure: one deleted or unreadable bundle
-		// must not take down a fleet-wide query
+		// a bundle that no longer exists is this WorkSpace having no bundle
+		// to report, not a failure: one deleted bundle must not take down a
+		// fleet-wide query
 		if errors.Is(err, errWorkspacesBundleUnresolved) {
 			log.Debug().Str("bundleId", bundleId).Str("region", a.Region.Data).Msg("workspaces>bundle>unresolved")
 			a.Bundle.State = plugin.StateIsSet | plugin.StateIsNull

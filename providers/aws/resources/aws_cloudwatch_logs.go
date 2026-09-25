@@ -199,10 +199,7 @@ func (a *mqlAwsCloudwatchLoggroup) dataProtectionPolicy() (any, error) {
 		LogGroupIdentifier: &arnVal,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return nil, nil
-		}
-		return nil, errors.Wrap(err, "could not gather data protection policy")
+		return nil, errors.Wrap(classifyAwsError(err, "logs:GetDataProtectionPolicy"), "could not gather data protection policy")
 	}
 	if resp.PolicyDocument == nil || *resp.PolicyDocument == "" {
 		return nil, nil

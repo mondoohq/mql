@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -65,12 +66,12 @@ func (a *mqlAwsFms) fetchAdminAccount() (string, string, error) {
 	svc := conn.Fms(fmsRegion)
 	resp, err := svc.GetAdminAccount(context.Background(), &fms.GetAdminAccountInput{})
 	if err != nil {
-		if Is400AccessDeniedError(err) || isFmsNotAdminError(err) {
+		if isFmsNotAdminError(err) {
 			a.adminFetched = true
 			a.adminStatus = "UNKNOWN"
 			return "", "UNKNOWN", nil
 		}
-		return "", "", err
+		return "", "", classifyAwsError(err, "fms:GetAdminAccount")
 	}
 	account := ""
 	if resp.AdminAccount != nil {
@@ -101,10 +102,10 @@ func (a *mqlAwsFms) adminAccounts() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) || isFmsNotAdminError(err) {
+			if isFmsNotAdminError(err) {
 				return res, nil
 			}
-			return nil, err
+			return nil, classifyAwsError(err, "fms:ListAdminAccountsForOrganization")
 		}
 		for _, admin := range page.AdminAccounts {
 			mqlAdmin, err := CreateResource(a.MqlRuntime, "aws.fms.adminAccount",
@@ -136,10 +137,10 @@ func (a *mqlAwsFms) policies() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) || isFmsNotAdminError(err) {
+			if isFmsNotAdminError(err) {
 				return res, nil
 			}
-			return nil, err
+			return nil, classifyAwsError(err, "fms:ListPolicies")
 		}
 		for _, summary := range page.PolicyList {
 			detail, err := svc.GetPolicy(ctx, &fms.GetPolicyInput{PolicyId: summary.PolicyId})
@@ -285,14 +286,11 @@ func (a *mqlAwsFmsPolicy) complianceStatuses() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
 			var notFound *fmstypes.ResourceNotFoundException
 			if errors.As(err, &notFound) {
 				return res, nil
 			}
-			return nil, err
+			return nil, classifyAwsError(err, "fms:ListComplianceStatus")
 		}
 		for _, s := range page.PolicyComplianceStatusList {
 			entry := map[string]any{
@@ -336,11 +334,11 @@ func (a *mqlAwsFms) notificationChannel() (*mqlAwsFmsNotificationChannel, error)
 	svc := conn.Fms(fmsRegion)
 	resp, err := svc.GetNotificationChannel(context.Background(), &fms.GetNotificationChannelInput{})
 	if err != nil {
-		if Is400AccessDeniedError(err) || isFmsNotAdminError(err) {
+		if isFmsNotAdminError(err) {
 			a.NotificationChannel.State = plugin.StateIsSet | plugin.StateIsNull
 			return nil, nil
 		}
-		return nil, err
+		return nil, classifyAwsError(err, "fms:GetNotificationChannel")
 	}
 	if resp.SnsTopicArn == nil && resp.SnsRoleName == nil {
 		a.NotificationChannel.State = plugin.StateIsSet | plugin.StateIsNull
@@ -390,10 +388,10 @@ func (a *mqlAwsFms) appsLists() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) || isFmsNotAdminError(err) {
+			if isFmsNotAdminError(err) {
 				return res, nil
 			}
-			return nil, err
+			return nil, classifyAwsError(err, "fms:ListAppsLists")
 		}
 		for _, list := range page.AppsLists {
 			apps := make([]any, 0, len(list.AppsList))
@@ -446,10 +444,10 @@ func (a *mqlAwsFms) protocolsLists() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) || isFmsNotAdminError(err) {
+			if isFmsNotAdminError(err) {
 				return res, nil
 			}
-			return nil, err
+			return nil, classifyAwsError(err, "fms:ListProtocolsLists")
 		}
 		for _, list := range page.ProtocolsLists {
 			mqlList, err := CreateResource(a.MqlRuntime, "aws.fms.protocolsList",
@@ -488,10 +486,10 @@ func (a *mqlAwsFms) resourceSets() ([]any, error) {
 	for {
 		page, err := svc.ListResourceSets(ctx, &fms.ListResourceSetsInput{NextToken: nextToken})
 		if err != nil {
-			if Is400AccessDeniedError(err) || isFmsNotAdminError(err) {
+			if isFmsNotAdminError(err) {
 				return res, nil
 			}
-			return nil, err
+			return nil, classifyAwsError(err, "fms:ListResourceSets")
 		}
 		for _, summary := range page.ResourceSets {
 			detail, err := svc.GetResourceSet(ctx, &fms.GetResourceSetInput{Identifier: summary.Id})
@@ -559,14 +557,14 @@ func initAwsFmsResourceSet(runtime *plugin.Runtime, args map[string]*llx.RawData
 	svc := conn.Fms(fmsRegion)
 	resp, err := svc.GetResourceSet(context.Background(), &fms.GetResourceSetInput{Identifier: &id})
 	if err != nil {
-		if Is400AccessDeniedError(err) || isFmsNotAdminError(err) {
+		if isFmsNotAdminError(err) {
 			return args, nil, nil
 		}
 		var notFound *fmstypes.ResourceNotFoundException
 		if errors.As(err, &notFound) {
 			return args, nil, nil
 		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(fmt.Errorf("fetching aws.fms.resourceSet with id %q: %w", id, err), "fms:GetResourceSet")
 	}
 	var (
 		name             *string

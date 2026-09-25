@@ -25,31 +25,32 @@ import (
 
 type mqlAwsBillingInternal struct {
 	// month-to-date GetCostAndUsage(GroupBy=SERVICE)
-	mtdLock        sync.Mutex
-	mtdFetched     bool
-	mtdTotal       float64
-	mtdByService   map[string]any
-	mtdCurrency    string
-	mtdUnavailable bool
+	mtdLock      sync.Mutex
+	mtdFetched   bool
+	mtdTotal     float64
+	mtdByService map[string]any
+	mtdCurrency  string
+	mtdErr       error
 
 	// previous full calendar month GetCostAndUsage(GroupBy=SERVICE)
-	lastMonthLock        sync.Mutex
-	lastMonthFetched     bool
-	lastMonthTotal       float64
-	lastMonthByService   map[string]any
-	lastMonthUnavailable bool
+	lastMonthLock      sync.Mutex
+	lastMonthFetched   bool
+	lastMonthTotal     float64
+	lastMonthByService map[string]any
+	lastMonthErr       error
 
 	// trailing 30 days GetCostAndUsage (no GroupBy)
-	last30Lock        sync.Mutex
-	last30Fetched     bool
-	last30Total       float64
-	last30Unavailable bool
+	last30Lock    sync.Mutex
+	last30Fetched bool
+	last30Total   float64
+	last30Err     error
 
 	// month-end forecast = mtdTotal + GetCostForecast(tomorrow..first-of-next-month)
 	forecastLock        sync.Mutex
 	forecastFetched     bool
 	forecastAmount      float64
 	forecastUnavailable bool
+	forecastErr         error
 }
 
 func (a *mqlAwsBilling) id() (string, error) {
@@ -114,8 +115,8 @@ type costByServiceResult struct {
 
 // fetchCostByService runs GetCostAndUsage(GroupBy=SERVICE) for the given
 // window, paginating via NextPageToken so accounts with many services
-// don't get truncated. The label is used in log messages.
-func fetchCostByService(svc *costexplorer.Client, label, start, end string) (*costByServiceResult, bool, error) {
+// don't get truncated.
+func fetchCostByService(svc *costexplorer.Client, start, end string) (*costByServiceResult, error) {
 	out := &costByServiceResult{byService: map[string]any{}}
 
 	var pageToken *string
@@ -128,11 +129,7 @@ func fetchCostByService(svc *costexplorer.Client, label, start, end string) (*co
 			NextPageToken: pageToken,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Debug().Msgf("aws.billing: Cost Explorer access denied for %s", label)
-				return nil, true, nil
-			}
-			return nil, false, err
+			return nil, classifyAwsError(err, "ce:GetCostAndUsage")
 		}
 
 		for _, r := range resp.ResultsByTime {
@@ -167,31 +164,24 @@ func fetchCostByService(svc *costexplorer.Client, label, start, end string) (*co
 		pageToken = resp.NextPageToken
 	}
 
-	return out, false, nil
+	return out, nil
 }
 
 // fetchMonthToDate populates the mtd* fields. Safe to call repeatedly.
 func (a *mqlAwsBilling) fetchMonthToDate() error {
-	if a.mtdFetched {
-		return nil
-	}
 	a.mtdLock.Lock()
 	defer a.mtdLock.Unlock()
 	if a.mtdFetched {
-		return nil
+		return a.mtdErr
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	start, end := monthRange(time.Now())
-	res, denied, err := fetchCostByService(conn.CostExplorer(), "month-to-date", start, end)
+	res, err := fetchCostByService(conn.CostExplorer(), start, end)
 	if err != nil {
-		return err
-	}
-	if denied {
-		a.mtdByService = map[string]any{}
-		a.mtdUnavailable = true
+		a.mtdErr = err
 		a.mtdFetched = true
-		return nil
+		return err
 	}
 	a.mtdTotal = res.total
 	a.mtdByService = res.byService
@@ -201,26 +191,19 @@ func (a *mqlAwsBilling) fetchMonthToDate() error {
 }
 
 func (a *mqlAwsBilling) fetchLastMonth() error {
-	if a.lastMonthFetched {
-		return nil
-	}
 	a.lastMonthLock.Lock()
 	defer a.lastMonthLock.Unlock()
 	if a.lastMonthFetched {
-		return nil
+		return a.lastMonthErr
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	start, end := lastMonthRange(time.Now())
-	res, denied, err := fetchCostByService(conn.CostExplorer(), "last month", start, end)
+	res, err := fetchCostByService(conn.CostExplorer(), start, end)
 	if err != nil {
-		return err
-	}
-	if denied {
-		a.lastMonthByService = map[string]any{}
-		a.lastMonthUnavailable = true
+		a.lastMonthErr = err
 		a.lastMonthFetched = true
-		return nil
+		return err
 	}
 	a.lastMonthTotal = res.total
 	a.lastMonthByService = res.byService
@@ -229,13 +212,10 @@ func (a *mqlAwsBilling) fetchLastMonth() error {
 }
 
 func (a *mqlAwsBilling) fetchLast30Days() error {
-	if a.last30Fetched {
-		return nil
-	}
 	a.last30Lock.Lock()
 	defer a.last30Lock.Unlock()
 	if a.last30Fetched {
-		return nil
+		return a.last30Err
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -248,13 +228,9 @@ func (a *mqlAwsBilling) fetchLast30Days() error {
 		Metrics:     []string{"UnblendedCost"},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Debug().Msg("aws.billing: Cost Explorer access denied for last 30 days")
-			a.last30Unavailable = true
-			a.last30Fetched = true
-			return nil
-		}
-		return err
+		a.last30Err = classifyAwsError(err, "ce:GetCostAndUsage")
+		a.last30Fetched = true
+		return a.last30Err
 	}
 
 	for _, r := range resp.ResultsByTime {
@@ -269,13 +245,10 @@ func (a *mqlAwsBilling) fetchLast30Days() error {
 
 // fetchForecast populates forecastAmount as mtdTotal + future-forecast.
 func (a *mqlAwsBilling) fetchForecast() error {
-	if a.forecastFetched {
-		return nil
-	}
 	a.forecastLock.Lock()
 	defer a.forecastLock.Unlock()
 	if a.forecastFetched {
-		return nil
+		return a.forecastErr
 	}
 
 	if err := a.fetchMonthToDate(); err != nil {
@@ -297,11 +270,10 @@ func (a *mqlAwsBilling) fetchForecast() error {
 		Granularity: cetypes.GranularityMonthly,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Debug().Msg("aws.billing: Cost Explorer access denied for forecast")
-			a.forecastUnavailable = true
+		if classified := classifyAwsError(err, "ce:GetCostForecast"); llx.KindOf(classified) != llx.ErrorKind_ERROR_KIND_UNSPECIFIED {
+			a.forecastErr = classified
 			a.forecastFetched = true
-			return nil
+			return classified
 		}
 		// CE returns "unable to produce a meaningful forecast" for accounts
 		// with little history; treat as zero future-forecast.
@@ -335,13 +307,6 @@ func (a *mqlAwsBilling) monthToDateCost() (float64, error) {
 	if err := a.fetchMonthToDate(); err != nil {
 		return 0, err
 	}
-	// Cost Explorer is denied by default for member accounts and any role
-	// without ce:*. Reporting 0.0 there is indistinguishable from a genuinely
-	// idle account and makes spend thresholds pass vacuously.
-	if a.mtdUnavailable {
-		a.MonthToDateCost.State = plugin.StateIsSet | plugin.StateIsNull
-		return 0, nil
-	}
 	return a.mtdTotal, nil
 }
 
@@ -359,10 +324,6 @@ func (a *mqlAwsBilling) lastMonthCost() (float64, error) {
 	if err := a.fetchLastMonth(); err != nil {
 		return 0, err
 	}
-	if a.lastMonthUnavailable {
-		a.LastMonthCost.State = plugin.StateIsSet | plugin.StateIsNull
-		return 0, nil
-	}
 	return a.lastMonthTotal, nil
 }
 
@@ -379,10 +340,6 @@ func (a *mqlAwsBilling) costsByServiceLastMonth() (map[string]any, error) {
 func (a *mqlAwsBilling) last30DaysCost() (float64, error) {
 	if err := a.fetchLast30Days(); err != nil {
 		return 0, err
-	}
-	if a.last30Unavailable {
-		a.Last30DaysCost.State = plugin.StateIsSet | plugin.StateIsNull
-		return 0, nil
 	}
 	return a.last30Total, nil
 }
@@ -412,11 +369,7 @@ func (a *mqlAwsBilling) budgets() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(context.TODO())
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Debug().Msg("aws.billing: Budgets access denied")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "budgets:ViewBudget")
 		}
 		for i := range page.Budgets {
 			b := page.Budgets[i]
@@ -520,10 +473,7 @@ func (a *mqlAwsBillingBudget) notifications() ([]any, error) {
 	for notifPaginator.HasMorePages() {
 		page, err := notifPaginator.NextPage(context.TODO())
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "budgets:ViewBudget")
 		}
 		for _, n := range page.Notifications {
 			entry := map[string]any{

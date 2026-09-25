@@ -210,10 +210,7 @@ func (a *mqlAwsElasticacheCluster) tags() (map[string]any, error) {
 		ResourceName: &arnVal,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "elasticache:ListTagsForResource")
 	}
 	tags := make(map[string]any)
 	for _, t := range resp.TagList {
@@ -239,10 +236,7 @@ func elasticacheTagsForArn(runtime *plugin.Runtime, region, resourceArn string) 
 		ResourceName: &resourceArn,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return nil, errTagsUnreadable
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "elasticache:ListTagsForResource")
 	}
 	return elasticacheTagsToMap(resp.TagList), nil
 }
@@ -1029,11 +1023,7 @@ func (a *mqlAwsElasticache) serviceUpdates() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-				log.Warn().Str("region", region).Msg("error accessing region for AWS API")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "elasticache:DescribeServiceUpdates")
 		}
 		for _, su := range page.ServiceUpdates {
 			mqlSu, err := CreateResource(a.MqlRuntime, ResourceAwsElasticacheServiceUpdate,

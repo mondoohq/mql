@@ -30,15 +30,11 @@ func (a *mqlAwsOrganization) resourcePolicy() (*mqlAwsOrganizationResourcePolicy
 
 	resp, err := client.DescribeResourcePolicy(context.Background(), &organizations.DescribeResourcePolicyInput{})
 	if err != nil {
-		// A member account that is not a delegated administrator cannot read
-		// this, which is a permissions answer rather than "no policy exists".
-		// Both resolve to null so a check can be written once, but only the
-		// absent case is a statement about the organization.
-		if isResourcePolicyAbsent(err) || Is400AccessDeniedError(err) {
+		if isResourcePolicyAbsent(err) {
 			a.ResourcePolicy.State = plugin.StateIsSet | plugin.StateIsNull
 			return nil, nil
 		}
-		return nil, err
+		return nil, classifyAwsError(err, "organizations:DescribeResourcePolicy")
 	}
 	if resp == nil || resp.ResourcePolicy == nil {
 		a.ResourcePolicy.State = plugin.StateIsSet | plugin.StateIsNull

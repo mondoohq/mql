@@ -1597,14 +1597,8 @@ func (i *mqlAwsEc2Instance) instanceTypeHypervisor() (string, error) {
 		InstanceTypes: []ec2types.InstanceType{ec2types.InstanceType(instanceType)},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			// Don't mask the missing permission behind an empty "not Nitro"
-			// answer; surface it so it can be granted.
-			log.Warn().Str("instanceType", instanceType).Str("instance", i.InstanceId.Data).
-				Msg("no permission for ec2:DescribeInstanceTypes; cannot determine instance-type hypervisor")
-			return "", nil
-		}
-		return "", err
+		// Don't mask a missing permission behind an empty "not Nitro" answer.
+		return "", classifyAwsError(err, "ec2:DescribeInstanceTypes")
 	}
 
 	// A running instance's type always exists in its own region, so an empty
@@ -3092,17 +3086,20 @@ func (a *mqlAwsEc2) getSnapshots(conn *connection.AwsConnection) []*jobpool.Job 
 type mqlAwsEc2SnapshotInternal struct {
 	cacheKmsKeyId *string
 
-	cvpOnce   sync.Once
-	cvp       []ec2types.CreateVolumePermission
-	cvpErr    error
-	cvpDenied bool
+	cvpOnce sync.Once
+	cvp     []ec2types.CreateVolumePermission
+	cvpErr  error
 }
 
 // fetchCreateVolumePermissions reads the snapshot's createVolumePermission
 // attribute once. Four fields answer from it (the deprecated dict, the two
 // typed lists, and isPublic), and without memoizing, a query touching more
 // than one of them repeats DescribeSnapshotAttribute per field per snapshot.
-func (a *mqlAwsEc2Snapshot) fetchCreateVolumePermissions() ([]ec2types.CreateVolumePermission, bool, error) {
+//
+// A denied read is an error, never an empty permission list: "no accounts" and
+// "not public" out of a call that was refused would report the snapshot as
+// unshared when its permissions were never read.
+func (a *mqlAwsEc2Snapshot) fetchCreateVolumePermissions() ([]ec2types.CreateVolumePermission, error) {
 	a.cvpOnce.Do(func() {
 		id := a.Id.Data
 		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -3112,17 +3109,12 @@ func (a *mqlAwsEc2Snapshot) fetchCreateVolumePermissions() ([]ec2types.CreateVol
 			Attribute:  ec2types.SnapshotAttributeNameCreateVolumePermission,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Debug().Str("snapshot", id).Msg("access denied when retrieving snapshot volume permissions")
-				a.cvpDenied = true
-				return
-			}
-			a.cvpErr = err
+			a.cvpErr = classifyAwsError(err, "ec2:DescribeSnapshotAttribute")
 			return
 		}
 		a.cvp = attribute.CreateVolumePermissions
 	})
-	return a.cvp, a.cvpDenied, a.cvpErr
+	return a.cvp, a.cvpErr
 }
 
 // sourceVolume resolves the volume the snapshot was created from when it is
@@ -3162,15 +3154,9 @@ func (a *mqlAwsEc2Snapshot) kmsKey() (*mqlAwsKmsKey, error) {
 }
 
 func (a *mqlAwsEc2Snapshot) isPublic() (bool, error) {
-	perms, denied, err := a.fetchCreateVolumePermissions()
+	perms, err := a.fetchCreateVolumePermissions()
 	if err != nil {
 		return false, err
-	}
-	if denied {
-		// Reading false out of a denied call would assert the snapshot is
-		// definitively not public when its permissions were never read.
-		a.IsPublic.State = plugin.StateIsSet | plugin.StateIsNull
-		return false, nil
 	}
 	for _, p := range perms {
 		if p.Group == ec2types.PermissionGroupAll {
@@ -3181,15 +3167,9 @@ func (a *mqlAwsEc2Snapshot) isPublic() (bool, error) {
 }
 
 func (a *mqlAwsEc2Snapshot) createVolumePermissionUserIds() ([]any, error) {
-	perms, denied, err := a.fetchCreateVolumePermissions()
+	perms, err := a.fetchCreateVolumePermissions()
 	if err != nil {
 		return nil, err
-	}
-	if denied {
-		// Reading "no accounts" out of a denied call would report the snapshot
-		// as unshared when it may not be.
-		a.CreateVolumePermissionUserIds.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
 	}
 	res := []any{}
 	for _, p := range perms {
@@ -3201,13 +3181,9 @@ func (a *mqlAwsEc2Snapshot) createVolumePermissionUserIds() ([]any, error) {
 }
 
 func (a *mqlAwsEc2Snapshot) createVolumePermissionGroups() ([]any, error) {
-	perms, denied, err := a.fetchCreateVolumePermissions()
+	perms, err := a.fetchCreateVolumePermissions()
 	if err != nil {
 		return nil, err
-	}
-	if denied {
-		a.CreateVolumePermissionGroups.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
 	}
 	res := []any{}
 	for _, p := range perms {
@@ -3219,13 +3195,9 @@ func (a *mqlAwsEc2Snapshot) createVolumePermissionGroups() ([]any, error) {
 }
 
 func (a *mqlAwsEc2Snapshot) createVolumePermission() ([]any, error) {
-	perms, denied, err := a.fetchCreateVolumePermissions()
+	perms, err := a.fetchCreateVolumePermissions()
 	if err != nil {
 		return nil, err
-	}
-	if denied {
-		a.CreateVolumePermission.State = plugin.StateIsSet | plugin.StateIsNull
-		return nil, nil
 	}
 	return convert.JsonToDictSlice(perms)
 }
@@ -3355,10 +3327,7 @@ func initAwsEc2Internetgateway(runtime *plugin.Runtime, args map[string]*llx.Raw
 		InternetGatewayIds: []string{igwID},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return nil, nil, fmt.Errorf("access denied fetching aws.ec2.internetGateway with id %q in region %s", igwID, region)
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(fmt.Errorf("fetching aws.ec2.internetGateway with id %q in region %s: %w", igwID, region, err), "ec2:DescribeInternetGateways")
 	}
 	if len(resp.InternetGateways) == 0 {
 		return nil, nil, fmt.Errorf("aws.ec2.internetGateway with id %q not found", igwID)
@@ -3475,10 +3444,7 @@ func initAwsEc2Transitgateway(runtime *plugin.Runtime, args map[string]*llx.RawD
 		TransitGatewayIds: []string{tgwID},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return nil, nil, fmt.Errorf("access denied fetching aws.ec2.transitGateway with id %q in region %s", tgwID, region)
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(fmt.Errorf("fetching aws.ec2.transitGateway with id %q in region %s: %w", tgwID, region, err), "ec2:DescribeTransitGateways")
 	}
 	if len(resp.TransitGateways) == 0 {
 		return nil, nil, fmt.Errorf("aws.ec2.transitGateway with id %q not found", tgwID)
@@ -3585,10 +3551,7 @@ func (a *mqlAwsEc2Transitgateway) attachments() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return attachments, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "ec2:DescribeTransitGatewayAttachments")
 		}
 		for _, att := range page.TransitGatewayAttachments {
 			if conn.Filters.General.MatchesExcludeTags(ec2TagsToMap(att.Tags)) {
@@ -3618,10 +3581,7 @@ func (a *mqlAwsEc2Transitgateway) routeTables() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return routeTables, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "ec2:DescribeTransitGatewayRouteTables")
 		}
 		for _, rt := range page.TransitGatewayRouteTables {
 			if conn.Filters.General.MatchesExcludeTags(ec2TagsToMap(rt.Tags)) {
@@ -4030,10 +3990,7 @@ func initAwsEc2EgressOnlyInternetGateway(runtime *plugin.Runtime, args map[strin
 		EgressOnlyInternetGatewayIds: []string{eigwID},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return nil, nil, fmt.Errorf("access denied fetching aws.ec2.egressOnlyInternetGateway with id %q in region %s", eigwID, region)
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(fmt.Errorf("fetching aws.ec2.egressOnlyInternetGateway with id %q in region %s: %w", eigwID, region, err), "ec2:DescribeEgressOnlyInternetGateways")
 	}
 	if len(resp.EgressOnlyInternetGateways) == 0 {
 		return nil, nil, fmt.Errorf("aws.ec2.egressOnlyInternetGateway with id %q not found", eigwID)
@@ -4121,10 +4078,7 @@ func (a *mqlAwsEc2Transitgateway) peeringAttachments() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return attachments, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "ec2:DescribeTransitGatewayPeeringAttachments")
 		}
 		for _, pa := range page.TransitGatewayPeeringAttachments {
 			if conn.Filters.General.MatchesExcludeTags(ec2TagsToMap(pa.Tags)) {
@@ -4286,10 +4240,7 @@ func initAwsEc2Launchtemplate(runtime *plugin.Runtime, args map[string]*llx.RawD
 		// region plus id/name, arn is never set, so id() returned "" and every
 		// unresolvable launch template shared the empty cache key while its
 		// other fields stayed unset (not null).
-		if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-			return nil, nil, errors.Wrap(err, "could not access aws ec2 launch template")
-		}
-		return nil, nil, err
+		return nil, nil, errors.Wrap(classifyAwsError(err, "ec2:DescribeLaunchTemplates"), "could not access aws ec2 launch template")
 	}
 	if len(resp.LaunchTemplates) == 0 {
 		return nil, nil, errors.New("aws ec2 launch template does not exist")
@@ -4317,10 +4268,7 @@ func (a *mqlAwsEc2Launchtemplate) fetchLaunchTemplateData() (*ec2types.ResponseL
 			Versions:         []string{"$Default"},
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return
-			}
-			a.ltDataErr = err
+			a.ltDataErr = classifyAwsError(err, "ec2:DescribeLaunchTemplateVersions")
 			return
 		}
 		if len(resp.LaunchTemplateVersions) > 0 {
@@ -4465,11 +4413,7 @@ func networkInterfacesByFilter(runtime *plugin.Runtime, region, filterName, filt
 	for paginator.HasMorePages() {
 		nis, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("region", region).Msg("access denied for DescribeNetworkInterfaces")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "ec2:DescribeNetworkInterfaces")
 		}
 		for _, ni := range nis.NetworkInterfaces {
 			if conn.Filters.General.MatchesExcludeTags(ec2TagsToMap(ni.TagSet)) {

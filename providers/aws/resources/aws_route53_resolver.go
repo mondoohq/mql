@@ -175,10 +175,7 @@ func (a *mqlAwsRoute53ResolverEndpoint) ipAddresses() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "route53resolver:ListResolverEndpointIpAddresses")
 		}
 		for _, ip := range page.IpAddresses {
 			res = append(res, map[string]any{
@@ -818,10 +815,7 @@ func (a *mqlAwsRoute53ResolverFirewallRuleGroup) firewallRules() ([]any, error) 
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "route53resolver:ListFirewallRules")
 		}
 		for i := range page.FirewallRules {
 			mqlRule, err := newMqlAwsRoute53ResolverFirewallRule(a.MqlRuntime, a.region, &page.FirewallRules[i])
@@ -906,7 +900,16 @@ func (a *mqlAwsRoute53ResolverFirewallRule) firewallDomainList() (*mqlAwsRoute53
 		return nil, nil
 	}
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-	return fetchAndCreateFirewallDomainList(a.MqlRuntime, conn, a.region, &resolvertypes.FirewallDomainListMetadata{Id: &domainListID})
+	resp, err := conn.Route53Resolver(a.region).GetFirewallDomainList(context.TODO(), &route53resolver.GetFirewallDomainListInput{
+		FirewallDomainListId: &domainListID,
+	})
+	if err != nil {
+		return nil, classifyAwsError(err, "route53resolver:GetFirewallDomainList")
+	}
+	if resp == nil || resp.FirewallDomainList == nil {
+		return newMqlAwsRoute53ResolverFirewallDomainListFromMeta(a.MqlRuntime, a.region, &resolvertypes.FirewallDomainListMetadata{Id: &domainListID})
+	}
+	return newMqlAwsRoute53ResolverFirewallDomainList(a.MqlRuntime, a.region, resp.FirewallDomainList)
 }
 
 // ----- DNS Firewall rule group associations -----
@@ -1171,10 +1174,7 @@ func (a *mqlAwsRoute53ResolverFirewallDomainList) domains() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "route53resolver:ListFirewallDomains")
 		}
 		for _, domain := range page.Domains {
 			res = append(res, domain)

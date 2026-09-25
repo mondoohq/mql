@@ -473,10 +473,7 @@ func (a *mqlAwsIamUser) tags() (map[string]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return markTagsUnreadable(&a.Tags)
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "iam:ListUserTags")
 		}
 		res = append(res, page.Tags...)
 	}
@@ -494,10 +491,7 @@ func (a *mqlAwsIamRole) tags() (map[string]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return markTagsUnreadable(&a.Tags)
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "iam:ListRoleTags")
 		}
 		res = append(res, page.Tags...)
 	}
@@ -515,10 +509,7 @@ func (a *mqlAwsIamInstanceProfile) tags() (map[string]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return markTagsUnreadable(&a.Tags)
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "iam:ListInstanceProfileTags")
 		}
 		res = append(res, page.Tags...)
 	}
@@ -657,9 +648,7 @@ func (a *mqlAwsIamUser) permissionsBoundary() (*mqlAwsIamPolicy, error) {
 
 // fetchMfaDevices pages ListMFADevices once for the user. Both mfaDevices and
 // assignedMfaDevices answer from it, so querying the deprecated dict alongside
-// its typed replacement costs one call per user rather than two. An
-// access-denied response yields whatever pages were read, matching what the
-// individual accessors did before they shared this fetch.
+// its typed replacement costs one call per user rather than two.
 func (a *mqlAwsIamUser) fetchMfaDevices() ([]iamtypes.MFADevice, error) {
 	if a.mfaDevicesFetched.Load() {
 		return a.mfaDevicesCache, nil
@@ -680,10 +669,7 @@ func (a *mqlAwsIamUser) fetchMfaDevices() ([]iamtypes.MFADevice, error) {
 	for paginator.HasMorePages() {
 		devices, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				break
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "iam:ListMFADevices")
 		}
 		res = append(res, devices.MFADevices...)
 	}
@@ -1450,11 +1436,7 @@ func (a *mqlAwsIamUser) serviceSpecificCredentials() ([]any, error) {
 			Marker:   marker,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("user", username).Msg("no permission to list service-specific credentials")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "iam:ListServiceSpecificCredentials")
 		}
 
 		for _, cred := range resp.ServiceSpecificCredentials {
@@ -1500,11 +1482,7 @@ func (a *mqlAwsIamUser) sshPublicKeys() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("user", username).Msg("no permission to list ssh public keys")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "iam:ListSSHPublicKeys")
 		}
 		for _, key := range page.SSHPublicKeys {
 			mqlKey, err := CreateResource(a.MqlRuntime, "aws.iam.user.sshPublicKey",

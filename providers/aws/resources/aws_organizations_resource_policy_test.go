@@ -31,10 +31,10 @@ func TestIsResourcePolicyAbsent(t *testing.T) {
 			fmt.Errorf("describing resource policy: %w", noResourcePolicyErr())))
 	})
 
-	// A standalone account has no organization at all, so it certainly has no
-	// delegation policy. Same answer, arrived at one step earlier.
-	t.Run("a standalone account is also absence", func(t *testing.T) {
-		assert.True(t, isResourcePolicyAbsent(notInUseErr()))
+	// A standalone account has no organization at all, so the question does
+	// not apply; that is classifyAwsError's answer, not absence.
+	t.Run("a standalone account is not absence", func(t *testing.T) {
+		assert.False(t, isResourcePolicyAbsent(notInUseErr()))
 	})
 
 	// Everything below leaves the question open. Reporting absence for any of

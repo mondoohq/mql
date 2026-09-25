@@ -217,6 +217,7 @@ type mqlAwsBedrockModelCustomizationJobInternal struct {
 	fetchLock           sync.Mutex
 	fetched             bool
 	detail              *bedrock.GetModelCustomizationJobOutput
+	detailErr           error
 }
 
 func (a *mqlAwsBedrockModelCustomizationJob) id() (string, error) {
@@ -225,12 +226,12 @@ func (a *mqlAwsBedrockModelCustomizationJob) id() (string, error) {
 
 func (a *mqlAwsBedrockModelCustomizationJob) fetchDetail() (*bedrock.GetModelCustomizationJobOutput, error) {
 	if a.fetched {
-		return a.detail, nil
+		return a.detail, a.detailErr
 	}
 	a.fetchLock.Lock()
 	defer a.fetchLock.Unlock()
 	if a.fetched {
-		return a.detail, nil
+		return a.detail, a.detailErr
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -240,11 +241,9 @@ func (a *mqlAwsBedrockModelCustomizationJob) fetchDetail() (*bedrock.GetModelCus
 		JobIdentifier: &jobId,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.fetched = true
-			return nil, nil
-		}
-		return nil, err
+		a.fetched = true
+		a.detailErr = classifyAwsError(err, "bedrock:GetModelCustomizationJob")
+		return nil, a.detailErr
 	}
 	a.detail = detail
 	a.fetched = true
@@ -555,6 +554,7 @@ type mqlAwsBedrockMarketplaceModelEndpointInternal struct {
 	fetchLock   sync.Mutex
 	fetched     bool
 	detail      *bedrocktypes.MarketplaceModelEndpoint
+	detailErr   error
 }
 
 func (a *mqlAwsBedrockMarketplaceModelEndpoint) id() (string, error) {
@@ -563,12 +563,12 @@ func (a *mqlAwsBedrockMarketplaceModelEndpoint) id() (string, error) {
 
 func (a *mqlAwsBedrockMarketplaceModelEndpoint) fetchDetail() (*bedrocktypes.MarketplaceModelEndpoint, error) {
 	if a.fetched {
-		return a.detail, nil
+		return a.detail, a.detailErr
 	}
 	a.fetchLock.Lock()
 	defer a.fetchLock.Unlock()
 	if a.fetched {
-		return a.detail, nil
+		return a.detail, a.detailErr
 	}
 
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -578,11 +578,9 @@ func (a *mqlAwsBedrockMarketplaceModelEndpoint) fetchDetail() (*bedrocktypes.Mar
 		EndpointArn: &endpointArn,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.fetched = true
-			return nil, nil
-		}
-		return nil, err
+		a.fetched = true
+		a.detailErr = classifyAwsError(err, "bedrock:GetMarketplaceModelEndpoint")
+		return nil, a.detailErr
 	}
 	if resp != nil {
 		a.detail = resp.MarketplaceModelEndpoint

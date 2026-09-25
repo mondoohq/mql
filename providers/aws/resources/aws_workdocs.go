@@ -238,8 +238,8 @@ func (a *mqlAwsWorkdocsUser) recycleBinFolder() (*mqlAwsWorkdocsFolder, error) {
 }
 
 // fetchWorkdocsFolder calls GetFolder and converts the result to an mql folder.
-// On access denied it returns a shell with only id/region/organizationId set so
-// callers can still see the reference.
+// When GetFolder answers without metadata it returns a shell with only
+// id/region/organizationId set so callers can still see the reference.
 func fetchWorkdocsFolder(runtime *plugin.Runtime, region, organizationId, folderId string) (*mqlAwsWorkdocsFolder, error) {
 	conn := runtime.Connection.(*connection.AwsConnection)
 	svc := conn.WorkDocs(region)
@@ -247,10 +247,7 @@ func fetchWorkdocsFolder(runtime *plugin.Runtime, region, organizationId, folder
 		FolderId: aws.String(folderId),
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return newWorkdocsFolderShell(runtime, region, organizationId, folderId)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "workdocs:GetFolder")
 	}
 	if out == nil || out.Metadata == nil {
 		return newWorkdocsFolderShell(runtime, region, organizationId, folderId)
@@ -259,8 +256,8 @@ func fetchWorkdocsFolder(runtime *plugin.Runtime, region, organizationId, folder
 }
 
 // newWorkdocsFolderShell creates a folder resource with only the id/region/
-// organizationId populated. It's used as a fallback when GetFolder is denied,
-// so the caller still sees something queryable instead of a hard error.
+// organizationId populated. It's used as a fallback when GetFolder returns no
+// metadata, so the caller still sees something queryable.
 func newWorkdocsFolderShell(runtime *plugin.Runtime, region, organizationId, folderId string) (*mqlAwsWorkdocsFolder, error) {
 	resource, err := CreateResource(runtime, "aws.workdocs.folder", map[string]*llx.RawData{
 		"id":                llx.StringData(folderId),

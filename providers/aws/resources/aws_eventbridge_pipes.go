@@ -138,12 +138,7 @@ func (a *mqlAwsEventbridgePipe) fetchDetails() error {
 		Name: a.cacheName,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Warn().Str("pipe", *a.cacheName).Msg("access denied describing pipe")
-			a.fetched = true
-			return nil
-		}
-		return err
+		return classifyAwsError(err, "pipes:DescribePipe")
 	}
 
 	a.cacheRoleArn = resp.RoleArn

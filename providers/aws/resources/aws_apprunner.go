@@ -144,13 +144,9 @@ func (a *mqlAwsApprunnerService) fetchDetail() (*apprunnertypes.Service, error) 
 	arn := a.Arn.Data
 	resp, err := svc.DescribeService(ctx, &apprunner.DescribeServiceInput{ServiceArn: &arn})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.detailFetched = true
-			return nil, nil
-		}
 		a.detailFetched = true
-		a.detailErr = err
-		return nil, err
+		a.detailErr = classifyAwsError(err, "apprunner:DescribeService")
+		return nil, a.detailErr
 	}
 	a.detailFetched = true
 	a.detail = resp.Service
@@ -375,10 +371,7 @@ func (a *mqlAwsApprunnerService) tags() (map[string]any, error) {
 	ctx := context.Background()
 	resp, err := svc.ListTagsForResource(ctx, &apprunner.ListTagsForResourceInput{ResourceArn: aws.String(a.Arn.Data)})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "apprunner:ListTagsForResource")
 	}
 	out := map[string]any{}
 	for _, tag := range resp.Tags {
@@ -411,10 +404,7 @@ func initAwsApprunnerService(runtime *plugin.Runtime, args map[string]*llx.RawDa
 	ctx := context.Background()
 	resp, err := svc.DescribeService(ctx, &apprunner.DescribeServiceInput{ServiceArn: &arnVal})
 	if err != nil {
-		if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-			return args, nil, nil
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(err, "apprunner:DescribeService")
 	}
 	if resp.Service == nil {
 		return args, nil, nil
@@ -575,13 +565,9 @@ func (a *mqlAwsApprunnerAutoScalingConfiguration) fetchDetail() (*apprunnertypes
 	arn := a.Arn.Data
 	resp, err := svc.DescribeAutoScalingConfiguration(ctx, &apprunner.DescribeAutoScalingConfigurationInput{AutoScalingConfigurationArn: &arn})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.detailFetched = true
-			return nil, nil
-		}
 		a.detailFetched = true
-		a.detailErr = err
-		return nil, err
+		a.detailErr = classifyAwsError(err, "apprunner:DescribeAutoScalingConfiguration")
+		return nil, a.detailErr
 	}
 	a.detailFetched = true
 	a.detail = resp.AutoScalingConfiguration
@@ -665,10 +651,7 @@ func initAwsApprunnerAutoScalingConfiguration(runtime *plugin.Runtime, args map[
 	ctx := context.Background()
 	resp, err := svc.DescribeAutoScalingConfiguration(ctx, &apprunner.DescribeAutoScalingConfigurationInput{AutoScalingConfigurationArn: &arnVal})
 	if err != nil {
-		if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-			return args, nil, nil
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(err, "apprunner:DescribeAutoScalingConfiguration")
 	}
 	if resp.AutoScalingConfiguration == nil {
 		return args, nil, nil
@@ -926,10 +909,7 @@ func initAwsApprunnerVpcConnector(runtime *plugin.Runtime, args map[string]*llx.
 	ctx := context.Background()
 	resp, err := svc.DescribeVpcConnector(ctx, &apprunner.DescribeVpcConnectorInput{VpcConnectorArn: &arnVal})
 	if err != nil {
-		if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-			return args, nil, nil
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(err, "apprunner:DescribeVpcConnector")
 	}
 	if resp.VpcConnector == nil {
 		return args, nil, nil
@@ -1053,13 +1033,9 @@ func (a *mqlAwsApprunnerObservabilityConfiguration) fetchDetail() (*apprunnertyp
 	arn := a.Arn.Data
 	resp, err := svc.DescribeObservabilityConfiguration(ctx, &apprunner.DescribeObservabilityConfigurationInput{ObservabilityConfigurationArn: &arn})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.detailFetched = true
-			return nil, nil
-		}
 		a.detailFetched = true
-		a.detailErr = err
-		return nil, err
+		a.detailErr = classifyAwsError(err, "apprunner:DescribeObservabilityConfiguration")
+		return nil, a.detailErr
 	}
 	a.detailFetched = true
 	a.detail = resp.ObservabilityConfiguration
@@ -1143,10 +1119,7 @@ func initAwsApprunnerObservabilityConfiguration(runtime *plugin.Runtime, args ma
 	ctx := context.Background()
 	resp, err := svc.DescribeObservabilityConfiguration(ctx, &apprunner.DescribeObservabilityConfigurationInput{ObservabilityConfigurationArn: &arnVal})
 	if err != nil {
-		if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-			return args, nil, nil
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(err, "apprunner:DescribeObservabilityConfiguration")
 	}
 	if resp.ObservabilityConfiguration == nil {
 		return args, nil, nil
@@ -1277,13 +1250,9 @@ func (a *mqlAwsApprunnerVpcIngressConnection) fetchDetail() (*apprunnertypes.Vpc
 	arn := a.Arn.Data
 	resp, err := svc.DescribeVpcIngressConnection(ctx, &apprunner.DescribeVpcIngressConnectionInput{VpcIngressConnectionArn: &arn})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.detailFetched = true
-			return nil, nil
-		}
 		a.detailFetched = true
-		a.detailErr = err
-		return nil, err
+		a.detailErr = classifyAwsError(err, "apprunner:DescribeVpcIngressConnection")
+		return nil, a.detailErr
 	}
 	a.detailFetched = true
 	a.detail = resp.VpcIngressConnection
@@ -1408,10 +1377,7 @@ func initAwsApprunnerVpcIngressConnection(runtime *plugin.Runtime, args map[stri
 	ctx := context.Background()
 	resp, err := svc.DescribeVpcIngressConnection(ctx, &apprunner.DescribeVpcIngressConnectionInput{VpcIngressConnectionArn: &arnVal})
 	if err != nil {
-		if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-			return args, nil, nil
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(err, "apprunner:DescribeVpcIngressConnection")
 	}
 	if resp.VpcIngressConnection == nil {
 		return args, nil, nil

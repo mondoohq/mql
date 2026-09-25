@@ -462,11 +462,7 @@ func initAwsMskCluster(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 	svc := conn.Kafka(parsed.Region)
 	out, err := svc.DescribeClusterV2(context.Background(), &kafka.DescribeClusterV2Input{ClusterArn: &arnVal})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			args["__id"] = llx.StringData(arnVal)
-			return args, nil, nil
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(fmt.Errorf("fetching aws.msk.cluster with arn %q: %w", arnVal, err), "kafka:DescribeClusterV2")
 	}
 	if out.ClusterInfo == nil {
 		args["__id"] = llx.StringData(arnVal)
@@ -485,11 +481,7 @@ func (a *mqlAwsMskCluster) fetchDescribe() (*kafka.DescribeClusterV2Output, erro
 		svc := conn.Kafka(a.region)
 		out, err := svc.DescribeClusterV2(context.Background(), &kafka.DescribeClusterV2Input{ClusterArn: &a.Arn.Data})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				a.describeErr = nil
-				return
-			}
-			a.describeErr = err
+			a.describeErr = classifyAwsError(err, "kafka:DescribeClusterV2")
 			return
 		}
 		a.describeResp = out
@@ -503,11 +495,7 @@ func (a *mqlAwsMskCluster) fetchBootstrap() (*kafka.GetBootstrapBrokersOutput, e
 		svc := conn.Kafka(a.region)
 		out, err := svc.GetBootstrapBrokers(context.Background(), &kafka.GetBootstrapBrokersInput{ClusterArn: &a.Arn.Data})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				a.bootstrapErr = nil
-				return
-			}
-			a.bootstrapErr = err
+			a.bootstrapErr = classifyAwsError(err, "kafka:GetBootstrapBrokers")
 			return
 		}
 		a.bootstrapResp = out
@@ -526,11 +514,7 @@ func (a *mqlAwsMskCluster) fetchPolicy() (*kafka.GetClusterPolicyOutput, error) 
 				a.policyErr = nil
 				return
 			}
-			if Is400AccessDeniedError(err) {
-				a.policyErr = nil
-				return
-			}
-			a.policyErr = err
+			a.policyErr = classifyAwsError(err, "kafka:GetClusterPolicy")
 			return
 		}
 		a.policyResp = out
@@ -548,11 +532,7 @@ func (a *mqlAwsMskCluster) fetchScramSecrets() ([]string, error) {
 		for paginator.HasMorePages() {
 			page, err := paginator.NextPage(ctx)
 			if err != nil {
-				if Is400AccessDeniedError(err) {
-					a.scramErr = nil
-					return
-				}
-				a.scramErr = err
+				a.scramErr = classifyAwsError(err, "kafka:ListScramSecrets")
 				return
 			}
 			secrets = append(secrets, page.SecretArnList...)
@@ -572,11 +552,7 @@ func (a *mqlAwsMskCluster) fetchNodes() ([]kafka_types.NodeInfo, error) {
 		for paginator.HasMorePages() {
 			page, err := paginator.NextPage(ctx)
 			if err != nil {
-				if Is400AccessDeniedError(err) {
-					a.nodesErr = nil
-					return
-				}
-				a.nodesErr = err
+				a.nodesErr = classifyAwsError(err, "kafka:ListNodes")
 				return
 			}
 			nodes = append(nodes, page.NodeInfoList...)
@@ -596,11 +572,7 @@ func (a *mqlAwsMskCluster) fetchOperations() ([]kafka_types.ClusterOperationV2Su
 		for paginator.HasMorePages() {
 			page, err := paginator.NextPage(ctx)
 			if err != nil {
-				if Is400AccessDeniedError(err) {
-					a.opsErr = nil
-					return
-				}
-				a.opsErr = err
+				a.opsErr = classifyAwsError(err, "kafka:ListClusterOperationsV2")
 				return
 			}
 			ops = append(ops, page.ClusterOperationInfoList...)
@@ -620,11 +592,7 @@ func (a *mqlAwsMskCluster) fetchClientVpcConnections() ([]kafka_types.ClientVpcC
 		for paginator.HasMorePages() {
 			page, err := paginator.NextPage(ctx)
 			if err != nil {
-				if Is400AccessDeniedError(err) {
-					a.clientVpcsErr = nil
-					return
-				}
-				a.clientVpcsErr = err
+				a.clientVpcsErr = classifyAwsError(err, "kafka:ListClientVpcConnections")
 				return
 			}
 			cvs = append(cvs, page.ClientVpcConnections...)
@@ -2007,18 +1975,7 @@ func initAwsMskConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawDa
 	svc := conn.Kafka(parsed.Region)
 	out, err := svc.DescribeConfiguration(context.Background(), &kafka.DescribeConfigurationInput{Arn: &arnVal})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			args["__id"] = llx.StringData(arnVal)
-			args["region"] = llx.StringData(parsed.Region)
-			args["name"] = llx.StringData("")
-			args["description"] = llx.StringData("")
-			args["state"] = llx.StringData("")
-			args["kafkaVersions"] = llx.ArrayData([]any{}, types.String)
-			args["latestRevision"] = llx.IntData(0)
-			args["createdAt"] = llx.NilData
-			return args, nil, nil
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(fmt.Errorf("fetching aws.msk.configuration with arn %q: %w", arnVal, err), "kafka:DescribeConfiguration")
 	}
 	mqlCfg, err := newMqlAwsMskConfiguration(runtime, parsed.Region, kafka_types.Configuration{
 		Arn:            out.Arn,
@@ -2050,11 +2007,7 @@ func (a *mqlAwsMskConfiguration) serverProperties() (string, error) {
 			Revision: &rev,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				a.propsErr = nil
-				return
-			}
-			a.propsErr = err
+			a.propsErr = classifyAwsError(err, "kafka:DescribeConfigurationRevision")
 			return
 		}
 		if out != nil {
@@ -2103,11 +2056,7 @@ func (a *mqlAwsMskReplicator) fetchDescribe() (*kafka.DescribeReplicatorOutput, 
 		svc := conn.Kafka(a.region)
 		out, err := svc.DescribeReplicator(context.Background(), &kafka.DescribeReplicatorInput{ReplicatorArn: &a.Arn.Data})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				a.describeErr = nil
-				return
-			}
-			a.describeErr = err
+			a.describeErr = classifyAwsError(err, "kafka:DescribeReplicator")
 			return
 		}
 		a.describeResp = out

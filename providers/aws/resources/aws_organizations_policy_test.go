@@ -20,7 +20,8 @@ func TestIsPolicyTypeUnavailable(t *testing.T) {
 	}{
 		{"policy type not enabled", &orgtypes.PolicyTypeNotEnabledException{}, true},
 		{"policy type not available", &orgtypes.PolicyTypeNotAvailableForOrganizationException{}, true},
-		{"organizations not in use", &orgtypes.AWSOrganizationsNotInUseException{}, true},
+		// A standalone account is not applicable, not an unused policy type.
+		{"organizations not in use", &orgtypes.AWSOrganizationsNotInUseException{}, false},
 		{"wrapped not enabled", errors.Join(errors.New("call failed"), &orgtypes.PolicyTypeNotEnabledException{}), true},
 		{"effective policy not found", &orgtypes.EffectivePolicyNotFoundException{}, false},
 		{"unrelated error", errors.New("throttled"), false},

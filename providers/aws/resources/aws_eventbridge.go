@@ -122,10 +122,7 @@ func (a *mqlAwsEventbridgeEventBus) policy() (string, error) {
 		Name: &a.Name.Data,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return "", nil
-		}
-		return "", err
+		return "", classifyAwsError(err, "events:DescribeEventBus")
 	}
 	if resp.Policy == nil {
 		return "", nil
@@ -145,10 +142,7 @@ func (a *mqlAwsEventbridgeEventBus) tags() (map[string]any, error) {
 		ResourceARN: &arn,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "events:ListTagsForResource")
 	}
 	tags := make(map[string]any)
 	for _, t := range resp.Tags {
@@ -175,10 +169,7 @@ func (a *mqlAwsEventbridgeEventBus) rules() ([]any, error) {
 			NextToken:    nextToken,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "events:ListRules")
 		}
 
 		for _, rule := range resp.Rules {
@@ -239,10 +230,7 @@ func (a *mqlAwsEventbridgeRule) tags() (map[string]any, error) {
 		ResourceARN: &arn,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "events:ListTagsForResource")
 	}
 	tags := make(map[string]any)
 	for _, t := range resp.Tags {

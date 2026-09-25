@@ -155,12 +155,12 @@ func TestLambdaStatusFromConfigurationOutput(t *testing.T) {
 }
 
 // TestLambdaFunctionStatusAccessorsReportNullWhenUnread covers the branch the
-// 404 and access-denied paths land in: the lookup ran and returned nothing, so
-// every field derived from it has to read null rather than "".
+// 404 path lands in: the lookup ran and returned nothing, so every field
+// derived from it has to read null rather than "".
 func TestLambdaFunctionStatusAccessorsReportNullWhenUnread(t *testing.T) {
 	newUnread := func() *mqlAwsLambdaFunction {
 		fn := &mqlAwsLambdaFunction{}
-		// What fetchStatus leaves behind on a 404 or an access denial.
+		// What fetchStatus leaves behind on a 404.
 		fn.statusFetched.Store(true)
 		return fn
 	}

@@ -40,15 +40,7 @@ func (a *mqlAwsBedrock) foundationModels() ([]any, error) {
 
 	resp, err := svc.ListFoundationModels(ctx, &bedrock.ListFoundationModelsInput{})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Warn().Msg("error accessing bedrock API")
-			return nil, nil
-		}
-		if IsServiceNotAvailableInRegionError(err) {
-			log.Debug().Msg("bedrock is not available in the default region")
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "bedrock:ListFoundationModels")
 	}
 
 	res := []any{}
@@ -1207,10 +1199,7 @@ func (a *mqlAwsBedrockAgent) actionGroups() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "bedrock:ListAgentActionGroups")
 		}
 		summaries, err := convert.JsonToDictSlice(page.ActionGroupSummaries)
 		if err != nil {
@@ -1235,10 +1224,7 @@ func (a *mqlAwsBedrockAgent) knowledgeBases() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "bedrock:ListAgentKnowledgeBases")
 		}
 		summaries, err := convert.JsonToDictSlice(page.AgentKnowledgeBaseSummaries)
 		if err != nil {
@@ -1511,10 +1497,7 @@ func (a *mqlAwsBedrockKnowledgeBase) dataSources() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "bedrock:ListDataSources")
 		}
 		summaries, err := convert.JsonToDictSlice(page.DataSourceSummaries)
 		if err != nil {
@@ -2131,9 +2114,8 @@ func (a *mqlAwsBedrockBatchInferenceJob) iamRole() (*mqlAwsIamRole, error) {
 
 // bedrockResourcePolicyJSON fetches the resource-based policy document for a
 // Bedrock resource identified by its ARN. Bedrock returns an empty policy for
-// resources with no policy attached; access-denied is treated as "no policy"
-// so a scan without bedrock:GetResourcePolicy degrades gracefully. Shared by
-// the resourcePolicy() accessors on the cross-account-shareable resources.
+// resources with no policy attached. Shared by the resourcePolicy() accessors
+// on the cross-account-shareable resources.
 func bedrockResourcePolicyJSON(runtime *plugin.Runtime, region, arn string) (string, error) {
 	conn := runtime.Connection.(*connection.AwsConnection)
 	svc := conn.Bedrock(region)
@@ -2144,10 +2126,10 @@ func bedrockResourcePolicyJSON(runtime *plugin.Runtime, region, arn string) (str
 		// profiles return ValidationException "operation is not recognized"),
 		// simply has no policy to report - degrade to empty rather than failing
 		// the whole collection.
-		if Is400AccessDeniedError(err) || isResourceNotFoundError(err) || isOperationNotSupportedError(err) {
+		if isResourceNotFoundError(err) || isOperationNotSupportedError(err) {
 			return "", nil
 		}
-		return "", err
+		return "", classifyAwsError(err, "bedrock:GetResourcePolicy")
 	}
 	return convert.ToValue(resp.ResourcePolicy), nil
 }

@@ -16,6 +16,7 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
@@ -218,28 +219,23 @@ func TestEcrReplicationConfigurationToDict(t *testing.T) {
 	})
 }
 
-// A denied policy read must not be reported as "grants nothing". These pin the
-// two halves of that: policyStatements keeps the unread case null instead of
-// collapsing it to an empty list, and isPublic keeps it null instead of false.
+// A denied policy read must not be reported as "grants nothing":
+// policyStatements carries the denial instead of collapsing it to an empty
+// list.
 func TestEcrRepositoryPolicyStatementsUnreadable(t *testing.T) {
-	t.Run("unread policy yields a null statement list", func(t *testing.T) {
+	t.Run("denied policy yields the denial", func(t *testing.T) {
 		repo := &mqlAwsEcrRepository{}
-		// policy() already ran and reported the read as denied.
-		repo.Policy = plugin.TValue[any]{State: plugin.StateIsSet | plugin.StateIsNull}
-		repo.policyUnreadable = true
+		denied := classifyAwsError(awsAPIError(400, "AccessDeniedException", "not authorized to perform ecr:GetRepositoryPolicy"), "ecr:GetRepositoryPolicy")
+		repo.Policy = plugin.TValue[any]{Error: denied, State: plugin.StateIsSet}
 
-		got, err := repo.policyStatements()
-		require.NoError(t, err)
-		assert.Nil(t, got)
-		assert.True(t, repo.PolicyStatements.IsNull(),
-			"an unread policy must leave policyStatements null, not an empty list")
+		_, err := repo.policyStatements()
+		require.ErrorIs(t, err, llx.ErrForbidden)
 	})
 
 	t.Run("policy read and absent yields an empty statement list", func(t *testing.T) {
 		repo := &mqlAwsEcrRepository{}
 		// The repository genuinely carries no policy: the read succeeded.
 		repo.Policy = plugin.TValue[any]{State: plugin.StateIsSet | plugin.StateIsNull}
-		repo.policyUnreadable = false
 
 		got, err := repo.policyStatements()
 		require.NoError(t, err)
@@ -301,16 +297,18 @@ func ecrDeniedErr() error {
 func TestClassifyEcrPolicyError(t *testing.T) {
 	msg := "policy not found"
 
-	t.Run("a denied read is unreadable, not absent", func(t *testing.T) {
+	t.Run("a denied read is a failure, not absent", func(t *testing.T) {
 		// This is the classification the whole fix turns on: reading it as
 		// absent lets isPublic report false on a policy nobody ever saw.
-		assert.Equal(t, ecrPolicyOutcomeUnreadable, classifyEcrPolicyError(ecrDeniedErr(), false))
-		assert.Equal(t, ecrPolicyOutcomeUnreadable, classifyEcrPolicyError(ecrDeniedErr(), true))
+		assert.Equal(t, ecrPolicyOutcomeFailed, classifyEcrPolicyError(ecrDeniedErr(), false))
+		assert.Equal(t, ecrPolicyOutcomeFailed, classifyEcrPolicyError(ecrDeniedErr(), true))
 	})
 
-	t.Run("a denial wrapped by the SDK is still unreadable", func(t *testing.T) {
+	t.Run("a denied read surfaces as forbidden", func(t *testing.T) {
 		wrapped := fmt.Errorf("operation error ECR: GetRepositoryPolicy: %w", ecrDeniedErr())
-		assert.Equal(t, ecrPolicyOutcomeUnreadable, classifyEcrPolicyError(wrapped, false))
+		err := classifyAwsError(wrapped, "ecr:GetRepositoryPolicy")
+		require.ErrorIs(t, err, llx.ErrForbidden)
+		assert.Equal(t, []string{"ecr:GetRepositoryPolicy"}, llx.ErrorDetailOf(err).GetPermissions())
 	})
 
 	t.Run("private RepositoryPolicyNotFoundException is absent", func(t *testing.T) {

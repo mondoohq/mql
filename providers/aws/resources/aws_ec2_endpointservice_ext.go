@@ -62,10 +62,7 @@ func (a *mqlAwsEc2VpcEndpointServiceConfiguration) allowedPrincipals() ([]any, e
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return nil, nil
-			}
-			return nil, errors.Wrap(err, "could not get vpc endpoint service permissions")
+			return nil, errors.Wrap(classifyAwsError(err, "ec2:DescribeVpcEndpointServicePermissions"), "could not get vpc endpoint service permissions")
 		}
 		for _, p := range page.AllowedPrincipals {
 			res = append(res, convert.ToValue(p.Principal))
@@ -92,10 +89,7 @@ func (a *mqlAwsEc2VpcEndpointServiceConfiguration) connections() ([]any, error) 
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return nil, nil
-			}
-			return nil, errors.Wrap(err, "could not get vpc endpoint connections")
+			return nil, errors.Wrap(classifyAwsError(err, "ec2:DescribeVpcEndpointConnections"), "could not get vpc endpoint connections")
 		}
 		for _, c := range page.VpcEndpointConnections {
 			dnsEntries := make([]any, 0, len(c.DnsEntries))

@@ -114,11 +114,7 @@ func (a *mqlAwsDetectiveGraph) members() ([]any, error) {
 			NextToken: nextToken,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("graphArn", graphArn).Msg("access denied listing Detective members")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "detective:ListMembers")
 		}
 
 		for _, m := range resp.MemberDetails {
@@ -197,11 +193,7 @@ func (a *mqlAwsDetectiveGraph) datasourcePackages() (map[string]any, error) {
 			NextToken: nextToken,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("graphArn", graphArn).Msg("access denied listing Detective data-source packages")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "detective:ListDatasourcePackages")
 		}
 		for pkg, info := range resp.DatasourcePackages {
 			res[string(pkg)] = string(info.DatasourcePackageIngestState)
@@ -223,11 +215,7 @@ func (a *mqlAwsDetectiveGraph) tags() (map[string]any, error) {
 
 	resp, err := svc.ListTagsForResource(ctx, &detective.ListTagsForResourceInput{ResourceArn: &graphArn})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Warn().Str("graphArn", graphArn).Msg("access denied listing Detective tags")
-			return map[string]any{}, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "detective:ListTagsForResource")
 	}
 	return convert.MapToInterfaceMap(resp.Tags), nil
 }

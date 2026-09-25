@@ -239,13 +239,7 @@ func (a *mqlAwsEcrRepository) scanningFrequency() (string, error) {
 		RepositoryNames: []string{name},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			// The null state above is the answer; this empty string is only
-			// the zero value Go requires and the runtime discards it.
-			a.ScanningFrequency.State = plugin.StateIsSet | plugin.StateIsNull
-			return "", nil
-		}
-		return "", err
+		return "", classifyAwsError(err, "ecr:BatchGetRepositoryScanningConfiguration")
 	}
 
 	if len(resp.ScanningConfigurations) > 0 {
@@ -274,11 +268,7 @@ func (a *mqlAwsEcrRepository) images() ([]any, error) {
 		for paginator.HasMorePages() {
 			res, err := paginator.NextPage(ctx, withEcrPublicDescribeRetries)
 			if err != nil {
-				if Is400AccessDeniedError(err) {
-					log.Warn().Str("region", region).Msg("error accessing region for AWS API")
-					return nil, nil
-				}
-				return nil, err
+				return nil, classifyAwsError(err, "ecr-public:DescribeImages")
 			}
 			for _, image := range res.ImageDetails {
 				if conn.Filters.Ecr.IsFilteredOutByTags(image.ImageTags) {
@@ -325,11 +315,7 @@ func (a *mqlAwsEcrRepository) images() ([]any, error) {
 	for paginator.HasMorePages() {
 		res, err := paginator.NextPage(ctx, withEcrDescribeRetries)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("region", region).Msg("error accessing region for AWS API")
-				return nil, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "ecr:DescribeImages")
 		}
 		for _, image := range res.ImageDetails {
 			if conn.Filters.Ecr.IsFilteredOutByTags(image.ImageTags) {
@@ -403,26 +389,20 @@ type ecrPolicyOutcome int
 const (
 	// ecrPolicyOutcomeFailed is an error worth surfacing to the caller.
 	ecrPolicyOutcomeFailed ecrPolicyOutcome = iota
-	// ecrPolicyOutcomeUnreadable is a denial: the repository may well have a
-	// policy, we were simply not allowed to look.
-	ecrPolicyOutcomeUnreadable
 	// ecrPolicyOutcomeAbsent is a successful read of a repository that carries
 	// no policy at all.
 	ecrPolicyOutcomeAbsent
 )
 
-// classifyEcrPolicyError separates the two failures that both leave the policy
-// field null. Only the absent case is a measurement, so only it may let
-// isPublic report false; conflating them is how a scan role missing
+// classifyEcrPolicyError separates a repository that carries no policy from a
+// read that failed. Only the absent case is a measurement, so only it may let
+// isPublic report false; a denial read as absent is how a scan role missing
 // GetRepositoryPolicy reports a world-pullable repository as private.
 //
 // err must be non-nil: the caller establishes that the call failed before
 // asking what kind of failure it was. There is no outcome that describes a
 // successful read, so a nil error has no meaningful classification here.
 func classifyEcrPolicyError(err error, public bool) ecrPolicyOutcome {
-	if Is400AccessDeniedError(err) {
-		return ecrPolicyOutcomeUnreadable
-	}
 	if public {
 		var notFoundErr *ecrpublic_types.RepositoryPolicyNotFoundException
 		if errors.As(err, &notFoundErr) {
@@ -456,14 +436,10 @@ func (a *mqlAwsEcrRepository) policy() (any, error) {
 			RepositoryName: &name,
 		})
 		if err != nil {
-			switch classifyEcrPolicyError(err, true) {
-			case ecrPolicyOutcomeUnreadable:
-				return a.markPolicyUnreadable()
-			case ecrPolicyOutcomeAbsent:
+			if classifyEcrPolicyError(err, true) == ecrPolicyOutcomeAbsent {
 				return a.markPolicyAbsent()
-			default:
-				return nil, err
 			}
+			return nil, classifyAwsError(err, "ecr-public:GetRepositoryPolicy")
 		}
 		policyText = resp.PolicyText
 	} else {
@@ -472,14 +448,10 @@ func (a *mqlAwsEcrRepository) policy() (any, error) {
 			RepositoryName: &name,
 		})
 		if err != nil {
-			switch classifyEcrPolicyError(err, false) {
-			case ecrPolicyOutcomeUnreadable:
-				return a.markPolicyUnreadable()
-			case ecrPolicyOutcomeAbsent:
+			if classifyEcrPolicyError(err, false) == ecrPolicyOutcomeAbsent {
 				return a.markPolicyAbsent()
-			default:
-				return nil, err
 			}
+			return nil, classifyAwsError(err, "ecr:GetRepositoryPolicy")
 		}
 		policyText = resp.PolicyText
 	}
@@ -512,10 +484,6 @@ func (a *mqlAwsEcrRepository) lifecyclePolicy() (*mqlAwsEcrLifecyclePolicy, erro
 		RepositoryName: &name,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.LifecyclePolicy.State = plugin.StateIsNull | plugin.StateIsSet
-			return nil, nil
-		}
 		// LifecyclePolicyNotFoundException means no policy is set
 		var notFoundErr *ecrtypes.LifecyclePolicyNotFoundException
 		if errors.As(err, &notFoundErr) {
@@ -764,20 +732,6 @@ type mqlAwsEcrRepositoryInternal struct {
 	catalogData    *ecrpublic_types.RepositoryCatalogData
 	catalogLock    sync.Mutex
 	cacheKmsKeyArn *string
-	// policyUnreadable separates a policy that could not be read from one that
-	// was read and found absent. Both leave the policy field null, but only the
-	// first must stop policyStatements and isPublic from reporting that the
-	// repository grants nothing.
-	policyUnreadable bool
-}
-
-// markPolicyUnreadable records a repository policy the scan was not allowed to
-// read. Nothing is known about what it grants, so downstream fields report null
-// rather than an empty statement list.
-func (a *mqlAwsEcrRepository) markPolicyUnreadable() (any, error) {
-	a.policyUnreadable = true
-	a.Policy.State = plugin.StateIsNull | plugin.StateIsSet
-	return nil, nil
 }
 
 // markPolicyAbsent records a repository that genuinely carries no policy. The
@@ -891,10 +845,7 @@ func (a *mqlAwsEcrRepository) tags() (map[string]any, error) {
 			ResourceArn: &arnVal,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return markTagsUnreadable(&a.Tags)
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "ecr-public:ListTagsForResource")
 		}
 		for _, t := range resp.Tags {
 			if t.Key != nil && t.Value != nil {
@@ -909,10 +860,7 @@ func (a *mqlAwsEcrRepository) tags() (map[string]any, error) {
 		ResourceArn: &arnVal,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return markTagsUnreadable(&a.Tags)
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "ecr:ListTagsForResource")
 	}
 	for _, t := range resp.Tags {
 		if t.Key != nil && t.Value != nil {
@@ -972,12 +920,7 @@ func (a *mqlAwsEcrImage) fetchScanFindings() error {
 				a.scanStatusCache = "NOT_SCANNED"
 				return nil
 			}
-			if Is400AccessDeniedError(err) {
-				a.scanFetched = true
-				a.scanStatusCache = ""
-				return nil
-			}
-			return err
+			return classifyAwsError(err, "ecr:DescribeImageScanFindings")
 		}
 		if resp.ImageScanStatus != nil {
 			a.scanStatusCache = string(resp.ImageScanStatus.Status)
@@ -1064,11 +1007,7 @@ func (a *mqlAwsEcr) scanningConfiguration() (*mqlAwsEcrScanningConfiguration, er
 
 	resp, err := svc.GetRegistryScanningConfiguration(ctx, &ecr.GetRegistryScanningConfigurationInput{})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.ScanningConfiguration.State = plugin.StateIsNull | plugin.StateIsSet
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "ecr:GetRegistryScanningConfiguration")
 	}
 	if resp.ScanningConfiguration == nil {
 		a.ScanningConfiguration.State = plugin.StateIsNull | plugin.StateIsSet

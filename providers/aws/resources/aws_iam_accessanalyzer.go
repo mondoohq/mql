@@ -63,13 +63,7 @@ func (a *mqlAwsIamAccessAnalyzerFinding) fetchUnusedAccessDetails() error {
 		Id:          aws.String(a.Id.Data),
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			log.Warn().Str("finding", a.Id.Data).Str("region", a.Region.Data).
-				Msg("no permission to read access analyzer finding detail")
-			a.unusedFetched.Store(true)
-			return nil
-		}
-		return err
+		return classifyAwsError(err, "access-analyzer:GetFindingV2")
 	}
 
 	detail := parseUnusedAccessDetails(finding.FindingDetails)
@@ -355,11 +349,6 @@ func (a *mqlAwsIamAccessAnalyzerAnalyzer) archiveRules() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("analyzer", analyzerName).Str("region", a.Region.Data).
-					Msg("no permission to list access analyzer archive rules")
-				return res, nil
-			}
 			var notFound *aatypes.ResourceNotFoundException
 			if errors.As(err, &notFound) {
 				return res, nil
@@ -375,7 +364,7 @@ func (a *mqlAwsIamAccessAnalyzerAnalyzer) archiveRules() ([]any, error) {
 					Msg("archive rules are not available for this analyzer")
 				return res, nil
 			}
-			return nil, err
+			return nil, classifyAwsError(err, "access-analyzer:ListArchiveRules")
 		}
 		for _, rule := range page.ArchiveRules {
 			filter, err := archiveRuleFilterToDict(rule.Filter)

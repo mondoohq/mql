@@ -58,15 +58,7 @@ func (a *mqlAwsIdentitycenter) getInstances(conn *connection.AwsConnection) []*j
 		for paginator.HasMorePages() {
 			page, err := paginator.NextPage(ctx)
 			if err != nil {
-				if Is400AccessDeniedError(err) {
-					log.Warn().Msg("error accessing Identity Center API")
-					return res, nil
-				}
-				if IsServiceNotAvailableInRegionError(err) {
-					log.Warn().Msg("Identity Center is not available")
-					return res, nil
-				}
-				return nil, err
+				return nil, classifyAwsError(err, "sso:ListInstances")
 			}
 
 			for _, instance := range page.Instances {
@@ -482,10 +474,10 @@ func (a *mqlAwsIdentitycenterPermissionSet) permissionsBoundary() (map[string]an
 	if err != nil {
 		// No permissions boundary attached returns a ResourceNotFoundException
 		var notFoundErr *ssotypes.ResourceNotFoundException
-		if Is400AccessDeniedError(err) || errors.As(err, &notFoundErr) {
+		if errors.As(err, &notFoundErr) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, classifyAwsError(err, "sso:GetPermissionsBoundaryForPermissionSet")
 	}
 	if resp.PermissionsBoundary == nil {
 		return nil, nil
@@ -534,10 +526,7 @@ func (a *mqlAwsIdentitycenterInstance) groups() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "identitystore:ListGroups")
 		}
 		for _, group := range page.Groups {
 			mqlGroup, err := CreateResource(a.MqlRuntime, "aws.identitycenter.group",
@@ -595,10 +584,7 @@ func (a *mqlAwsIdentitycenterInstance) users() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "identitystore:ListUsers")
 		}
 		for _, user := range page.Users {
 			mqlUser, err := CreateResource(a.MqlRuntime, "aws.identitycenter.user",
@@ -662,10 +648,7 @@ func (a *mqlAwsIdentitycenterInstance) applications() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "sso:ListApplications")
 		}
 		for _, app := range page.Applications {
 			portalVisibility := ""

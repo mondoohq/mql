@@ -199,10 +199,7 @@ func (a *mqlAwsBedrockKnowledgeBase) dataSourceDetails() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "bedrock:ListDataSources")
 		}
 		for _, ds := range page.DataSourceSummaries {
 			dsId := convert.ToValue(ds.DataSourceId)
@@ -252,10 +249,7 @@ func (a *mqlAwsBedrockKnowledgeBaseDataSource) fetchDetail() (*bedrockagenttypes
 				DataSourceId:    &dsId,
 			})
 			if err != nil {
-				if !Is400AccessDeniedError(err) {
-					return nil, err
-				}
-				detail = nil
+				return nil, classifyAwsError(err, "bedrock:GetDataSource")
 			}
 			a.detail = detail
 			a.fetched = true

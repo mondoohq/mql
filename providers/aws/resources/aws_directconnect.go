@@ -291,10 +291,7 @@ func (a *mqlAwsDirectconnect) gateways() ([]any, error) {
 			NextToken: nextToken,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "directconnect:DescribeDirectConnectGateways")
 		}
 		for _, gw := range resp.DirectConnectGateways {
 			mqlGw, err := CreateResource(a.MqlRuntime, ResourceAwsDirectconnectGateway,

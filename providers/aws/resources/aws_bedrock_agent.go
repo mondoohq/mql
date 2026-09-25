@@ -229,10 +229,7 @@ func (a *mqlAwsBedrockAgent) attachedKnowledgeBases() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "bedrock:ListAgentKnowledgeBases")
 		}
 		for _, kb := range page.AgentKnowledgeBaseSummaries {
 			kbId := convert.ToValue(kb.KnowledgeBaseId)
@@ -271,10 +268,7 @@ func (a *mqlAwsBedrockAgent) actionGroupDetails() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "bedrock:ListAgentActionGroups")
 		}
 		for _, ag := range page.ActionGroupSummaries {
 			actionGroupId := convert.ToValue(ag.ActionGroupId)
@@ -331,11 +325,7 @@ func (a *mqlAwsBedrockAgentActionGroup) fetchDetail() (*bedrockagent.GetAgentAct
 		ActionGroupId: &actionGroupId,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.fetched = true
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "bedrock:GetAgentActionGroup")
 	}
 	a.detail = detail
 	a.fetched = true
@@ -457,10 +447,7 @@ func (a *mqlAwsBedrockAgent) collaborators() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "bedrock:ListAgentCollaborators")
 		}
 		for _, c := range page.AgentCollaboratorSummaries {
 			collaboratorId := convert.ToValue(c.CollaboratorId)

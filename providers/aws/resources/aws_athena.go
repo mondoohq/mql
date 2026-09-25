@@ -929,11 +929,7 @@ func (a *mqlAwsAthenaDataCatalog) databases() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("catalog", catalogName).Msg("error listing Athena databases")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "athena:ListDatabases")
 		}
 		for _, db := range page.DatabaseList {
 			mqlDb, err := newMqlAwsAthenaDatabase(a.MqlRuntime, a.Region.Data, catalogName, db)
@@ -979,11 +975,7 @@ func (a *mqlAwsAthenaDatabase) tables() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("catalog", catalogName).Str("database", dbName).Msg("error listing Athena table metadata")
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "athena:ListTableMetadata")
 		}
 		for _, tbl := range page.TableMetadataList {
 			mqlTbl, err := newMqlAwsAthenaTable(a.MqlRuntime, a.Region.Data, catalogName, dbName, tbl)

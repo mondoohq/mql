@@ -50,11 +50,6 @@ func initAwsVpcEncryptionControl(runtime *plugin.Runtime, args map[string]*llx.R
 	if ec.Error != nil {
 		return nil, nil, ec.Error
 	}
-	if vpc.encryptionControlAccessDenied {
-		// Do NOT fabricate an "absent" control here: that would score
-		// security checks as "no encryption" when the truth is unknown.
-		return nil, nil, errors.New("access denied reading the VPC encryption control")
-	}
 	if ec.Data == nil {
 		// No encryption control on this VPC: represent it explicitly so
 		// checks fail (instead of erroring) on the absent case.
@@ -85,12 +80,7 @@ func (a *mqlAwsVpc) encryptionControl() (*mqlAwsVpcEncryptionControl, error) {
 		VpcIds: []string{a.Id.Data},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.encryptionControlAccessDenied = true
-			a.EncryptionControl.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "ec2:DescribeVpcEncryptionControls")
 	}
 	if resp == nil || len(resp.VpcEncryptionControls) == 0 {
 		a.EncryptionControl.State = plugin.StateIsSet | plugin.StateIsNull
@@ -241,9 +231,6 @@ func (a *mqlAws) getVpcs(conn *connection.AwsConnection) []*jobpool.Job {
 type mqlAwsVpcInternal struct {
 	cacheCidrBlockAssociations     []vpctypes.VpcCidrBlockAssociation
 	cacheIpv6CidrBlockAssociations []vpctypes.VpcIpv6CidrBlockAssociation
-	// set when DescribeVpcEncryptionControls was denied, so callers can tell
-	// "unknown" apart from "no encryption control" (both yield a null field)
-	encryptionControlAccessDenied bool
 }
 
 func (a *mqlAwsVpc) cidrBlockAssociations() ([]any, error) {
@@ -862,10 +849,7 @@ func initAwsVpcPeeringConnection(runtime *plugin.Runtime, args map[string]*llx.R
 		VpcPeeringConnectionIds: []string{pcxID},
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return nil, nil, fmt.Errorf("access denied fetching aws.vpc.peeringConnection with id %q in region %s", pcxID, region)
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(fmt.Errorf("fetching aws.vpc.peeringConnection with id %q in region %s: %w", pcxID, region, err), "ec2:DescribeVpcPeeringConnections")
 	}
 	if len(resp.VpcPeeringConnections) == 0 {
 		return nil, nil, fmt.Errorf("aws.vpc.peeringConnection with id %q not found", pcxID)
@@ -1878,11 +1862,7 @@ func (a *mqlAwsVpc) fetchBlockPublicAccessOptions() (*vpctypes.VpcBlockPublicAcc
 	svc := conn.Ec2(region)
 	resp, err := svc.DescribeVpcBlockPublicAccessOptions(context.Background(), &ec2.DescribeVpcBlockPublicAccessOptionsInput{})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			conn.SetCachedValue(cacheKey, (*vpctypes.VpcBlockPublicAccessOptions)(nil))
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "ec2:DescribeVpcBlockPublicAccessOptions")
 	}
 	conn.SetCachedValue(cacheKey, resp.VpcBlockPublicAccessOptions)
 	return resp.VpcBlockPublicAccessOptions, nil

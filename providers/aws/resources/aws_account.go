@@ -28,8 +28,7 @@ type mqlAwsAccountInternal struct {
 }
 
 // fetchOrgAccountDescription retrieves and caches the AWS Organizations
-// DescribeAccount response. Returns (nil, nil) when the call is denied — the
-// caller is not in the management or a delegated administrator account.
+// DescribeAccount response. Returns (nil, nil) for a standalone account.
 func (a *mqlAwsAccount) fetchOrgAccountDescription() (*orgtypes.Account, error) {
 	if a.descFetched.Load() {
 		return a.descAccount, nil
@@ -47,14 +46,8 @@ func (a *mqlAwsAccount) fetchOrgAccountDescription() (*orgtypes.Account, error) 
 		AccountId: &accountId,
 	})
 	if err != nil {
-		// A denial leaves the description unknown; a standalone account has no
-		// description to read. Both mean there is nothing to report, and
-		// neither is a reason to fail the field.
-		if Is400AccessDeniedError(err) || isOrganizationsNotInUseError(err) {
-			a.descFetched.Store(true)
-			return nil, nil
-		}
-		return nil, err
+		// A standalone account has no description to read: not applicable.
+		return nil, classifyAwsError(err, "organizations:DescribeAccount")
 	}
 	// set descAccount before the flag so the lock-free fast path can't observe
 	// descFetched == true with descAccount still unwritten.
@@ -94,12 +87,8 @@ func fetchOrganization(runtime *plugin.Runtime) (*mqlAwsOrganization, error) {
 
 	org, err := client.DescribeOrganization(context.TODO(), &organizations.DescribeOrganizationInput{})
 	if err != nil {
-		// A standalone account has no organization to describe. Report that as
-		// absence, so callers can tell it apart from a read that failed.
-		if isOrganizationsNotInUseError(err) {
-			return nil, nil
-		}
-		return nil, err
+		// A standalone account has no organization to describe: not applicable.
+		return nil, classifyAwsError(err, "organizations:DescribeOrganization")
 	}
 	if org == nil {
 		return nil, nil
@@ -129,9 +118,6 @@ func (a *mqlAwsAccount) organization() (*mqlAwsOrganization, error) {
 		return nil, err
 	}
 	if org == nil {
-		// Null rather than an error, so `organization == null` is a usable
-		// signal for scoping a check to multi-account environments instead of
-		// something that fails on the accounts it means to exclude.
 		a.Organization.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
@@ -141,12 +127,15 @@ func (a *mqlAwsAccount) organization() (*mqlAwsOrganization, error) {
 // isOrganizationMember reports whether the account belongs to an AWS
 // organization.
 //
-// The same fact as `organization != null`, as a plain bool. A filter is where
-// this gets used, and MQL's three-valued logic makes a null awkward to test
-// safely, so the boolean keeps the scoping predicate unambiguous.
+// A standalone account makes organization not applicable, but it answers this
+// question: false. A filter is where this gets used, to scope a check to
+// multi-account environments without failing on the accounts it excludes.
 func (a *mqlAwsAccount) isOrganizationMember() (bool, error) {
 	org, err := fetchOrganization(a.MqlRuntime)
 	if err != nil {
+		if isOrganizationsNotInUseError(err) {
+			return false, nil
+		}
 		return false, err
 	}
 	return org != nil, nil
@@ -166,12 +155,7 @@ func initAwsOrganization(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 		return nil, nil, err
 	}
 	if res == nil {
-		// An init has to produce a resource or an error, so unlike the accessor
-		// it cannot report absence as null. Name the condition and point at the
-		// form that can, rather than surfacing a bare SDK exception.
-		return nil, nil, errors.New("this account is not part of an AWS organization; " +
-			"use aws.account.organization, which is null for a standalone account, " +
-			"or aws.account.isOrganizationMember")
+		return nil, nil, errors.New("aws.organization: no organization returned for this account")
 	}
 	return args, res, nil
 }
@@ -186,10 +170,7 @@ func (a *mqlAwsOrganization) accounts() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return []any{}, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "organizations:ListAccounts")
 		}
 		for _, account := range page.Accounts {
 			res, err := CreateResource(a.MqlRuntime, ResourceAwsAccount,
@@ -457,10 +438,7 @@ func (a *mqlAwsOrganization) delegatedAdministrators() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return []any{}, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "organizations:ListDelegatedAdministrators")
 		}
 		for _, da := range page.DelegatedAdministrators {
 			mqlDA, err := CreateResource(a.MqlRuntime, "aws.organization.delegatedAdministrator",
@@ -502,10 +480,7 @@ func (a *mqlAwsOrganizationDelegatedAdministrator) delegatedServices() ([]any, e
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return []any{}, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "organizations:ListDelegatedServicesForAccount")
 		}
 		for _, ds := range page.DelegatedServices {
 			mqlDS, err := CreateResource(a.MqlRuntime, "aws.organization.delegatedService",
@@ -546,10 +521,7 @@ func (a *mqlAwsAccount) paths() ([]any, error) {
 		AccountId: &accountId,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return []any{}, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "organizations:DescribeAccount")
 	}
 	if resp.Account == nil {
 		return []any{}, nil
@@ -573,10 +545,7 @@ func (a *mqlAwsOrganization) organizationalUnits() ([]any, error) {
 		for paginator.HasMorePages() {
 			page, err := paginator.NextPage(ctx)
 			if err != nil {
-				if Is400AccessDeniedError(err) {
-					return nil
-				}
-				return err
+				return classifyAwsError(err, "organizations:ListOrganizationalUnitsForParent")
 			}
 			for _, ou := range page.OrganizationalUnits {
 				mqlOU, err := CreateResource(a.MqlRuntime, "aws.organization.organizationalUnit",
@@ -604,10 +573,7 @@ func (a *mqlAwsOrganization) organizationalUnits() ([]any, error) {
 	for rootsPaginator.HasMorePages() {
 		page, err := rootsPaginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return []any{}, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "organizations:ListRoots")
 		}
 		for _, root := range page.Roots {
 			if err := listOUs(aws.ToString(root.Id)); err != nil {
@@ -647,10 +613,7 @@ func (a *mqlAwsOrganization) serviceControlPolicies() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return []any{}, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "organizations:ListPolicies")
 		}
 		for i := range page.Policies {
 			mqlPolicy, err := newServiceControlPolicyResource(a.MqlRuntime, page.Policies[i])
@@ -677,10 +640,7 @@ func (a *mqlAwsOrganizationOrganizationalUnit) serviceControlPolicies() ([]any, 
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return []any{}, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "organizations:ListPoliciesForTarget")
 		}
 		for i := range page.Policies {
 			mqlPolicy, err := newServiceControlPolicyResource(a.MqlRuntime, page.Policies[i])
@@ -723,10 +683,7 @@ func (a *mqlAwsAccount) regionOptInStatus() (map[string]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "account:ListRegions")
 		}
 		for _, r := range page.Regions {
 			if r.RegionName == nil {

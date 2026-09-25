@@ -151,10 +151,6 @@ type mqlAwsGuarddutyCustomDetectionRuleInternal struct {
 }
 
 // fetchDetail reads the rule body, which the list API does not carry.
-//
-// A failure to read leaves detail nil rather than erroring, so the expression
-// resolves to null. Reporting an empty expression instead would say the rule
-// matches nothing, which is the opposite of unknown.
 func (a *mqlAwsGuarddutyCustomDetectionRule) fetchDetail() (*types.RuleDetail, error) {
 	a.detailOnce.Do(func() {
 		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
@@ -165,11 +161,7 @@ func (a *mqlAwsGuarddutyCustomDetectionRule) fetchDetail() (*types.RuleDetail, e
 			RuleId: &ruleID,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("rule", ruleID).Msg("access denied getting guardduty custom detection rule")
-				return
-			}
-			a.detailErr = err
+			a.detailErr = classifyAwsError(err, "guardduty:GetCustomDetectionRule")
 			return
 		}
 		a.detail = out.Rule
@@ -205,13 +197,7 @@ func (a *mqlAwsGuarddutyCustomDetectionRule) associations() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			if IsServiceNotAvailableInRegionError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "guardduty:ListCustomDetectionRuleAssociations")
 		}
 		for _, assoc := range page.RuleAssociations {
 			mqlAssoc, err := CreateResource(a.MqlRuntime, "aws.guardduty.customDetectionRule.association", map[string]*llx.RawData{
@@ -262,11 +248,7 @@ func (a *mqlAwsGuarddutyCustomDetectionRuleAssociation) fetchDetail() (*types.As
 			RuleId:        &ruleID,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("association", associationID).Msg("access denied getting guardduty custom detection rule association")
-				return
-			}
-			a.detailErr = err
+			a.detailErr = classifyAwsError(err, "guardduty:GetCustomDetectionRuleAssociation")
 			return
 		}
 		a.detail = out.RuleAssociation
@@ -391,11 +373,7 @@ func (a *mqlAwsGuarddutyCustomDetectionRuleOrganizationConfiguration) fetchDetai
 			Mode:   types.AssociationMode(a.Mode.Data),
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				log.Warn().Str("rule", ruleID).Msg("access denied getting guardduty custom detection rule org configuration")
-				return
-			}
-			a.detailErr = err
+			a.detailErr = classifyAwsError(err, "guardduty:GetCustomDetectionRuleOrgConfiguration")
 			return
 		}
 		a.detail = out.Configuration

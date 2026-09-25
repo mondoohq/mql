@@ -268,10 +268,7 @@ func (a *mqlAwsBedrockAgentCoreGateway) targets() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "bedrock-agentcore:ListGatewayTargets")
 		}
 		for _, t := range page.Items {
 			mqlTarget, err := CreateResource(a.MqlRuntime, "aws.bedrock.agentCore.gatewayTarget", map[string]*llx.RawData{
@@ -325,10 +322,7 @@ func (a *mqlAwsBedrockAgentCoreGateway) rateLimits() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "bedrock-agentcore:ListGatewayRateLimits")
 		}
 		for _, rl := range page.RateLimits {
 			dimensionKeys := make([]any, 0, len(rl.DimensionKeys))
@@ -1045,10 +1039,7 @@ func (a *mqlAwsBedrockAgentCoreRuntime) endpoints() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "bedrock-agentcore:ListAgentRuntimeEndpoints")
 		}
 		for _, ep := range page.RuntimeEndpoints {
 			mqlEp, err := CreateResource(a.MqlRuntime, "aws.bedrock.agentCore.runtimeEndpoint", map[string]*llx.RawData{

@@ -400,10 +400,7 @@ func (a *mqlAwsSecretsmanagerSecret) versions() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "secretsmanager:ListSecretVersionIds")
 		}
 		for _, v := range page.Versions {
 			stages := []any{}

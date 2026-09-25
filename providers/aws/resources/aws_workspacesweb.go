@@ -144,8 +144,7 @@ type mqlAwsWorkspaceswebPortalInternal struct {
 }
 
 // fetchDetail calls GetPortal once to populate fields that ListPortals doesn't
-// return (currently: customerManagedKey). Errors that look like "service
-// unavailable in this region" are swallowed so the portal still renders.
+// return (currently: customerManagedKey).
 func (a *mqlAwsWorkspaceswebPortal) fetchDetail() error {
 	if a.detailFetched {
 		return nil
@@ -162,11 +161,7 @@ func (a *mqlAwsWorkspaceswebPortal) fetchDetail() error {
 	arn := a.PortalArn.Data
 	resp, err := svc.GetPortal(ctx, &workspacesweb.GetPortalInput{PortalArn: &arn})
 	if err != nil {
-		if isWorkspacesWebRegionError(err) {
-			a.detailFetched = true
-			return nil
-		}
-		return err
+		return classifyAwsError(err, "workspaces-web:GetPortal")
 	}
 	if resp.Portal != nil {
 		a.cacheCustomerManagedKey = convert.ToValue(resp.Portal.CustomerManagedKey)
@@ -410,11 +405,7 @@ func (a *mqlAwsWorkspaceswebIpAccessSetting) fetchDetail() error {
 	arn := a.IpAccessSettingsArn.Data
 	resp, err := svc.GetIpAccessSettings(ctx, &workspacesweb.GetIpAccessSettingsInput{IpAccessSettingsArn: &arn})
 	if err != nil {
-		if isWorkspacesWebRegionError(err) {
-			a.detailFetched = true
-			return nil
-		}
-		return err
+		return classifyAwsError(err, "workspaces-web:GetIpAccessSettings")
 	}
 	if resp.IpAccessSettings != nil {
 		a.associatedArns = append([]string(nil), resp.IpAccessSettings.AssociatedPortalArns...)
@@ -616,11 +607,7 @@ func (a *mqlAwsWorkspaceswebTrustStore) associatedPortals() ([]any, error) {
 			arn := a.TrustStoreArn.Data
 			resp, err := svc.GetTrustStore(ctx, &workspacesweb.GetTrustStoreInput{TrustStoreArn: &arn})
 			if err != nil {
-				if isWorkspacesWebRegionError(err) {
-					a.associatedFetched = true
-					return []any{}, nil
-				}
-				return nil, err
+				return nil, classifyAwsError(err, "workspaces-web:GetTrustStore")
 			}
 			if resp.TrustStore != nil {
 				a.associatedArns = append([]string(nil), resp.TrustStore.AssociatedPortalArns...)
@@ -727,11 +714,7 @@ func (a *mqlAwsWorkspaceswebUserSetting) fetchDetail() error {
 	arn := a.UserSettingsArn.Data
 	resp, err := svc.GetUserSettings(ctx, &workspacesweb.GetUserSettingsInput{UserSettingsArn: &arn})
 	if err != nil {
-		if isWorkspacesWebRegionError(err) {
-			a.detailFetched = true
-			return nil
-		}
-		return err
+		return classifyAwsError(err, "workspaces-web:GetUserSettings")
 	}
 	if resp.UserSettings != nil {
 		a.associatedArns = append([]string(nil), resp.UserSettings.AssociatedPortalArns...)
@@ -834,11 +817,7 @@ func (a *mqlAwsWorkspaceswebPortal) ipAccessSettings() (*mqlAwsWorkspaceswebIpAc
 	defer cancel()
 	resp, err := svc.GetIpAccessSettings(ctx, &workspacesweb.GetIpAccessSettingsInput{IpAccessSettingsArn: &arnVal})
 	if err != nil {
-		if isWorkspacesWebRegionError(err) {
-			a.IpAccessSettings.State = plugin.StateIsNull | plugin.StateIsSet
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "workspaces-web:GetIpAccessSettings")
 	}
 	return newMqlAwsWorkspaceswebIpAccessSettingsFromDetail(a.MqlRuntime, region, resp.IpAccessSettings)
 }
@@ -856,11 +835,7 @@ func (a *mqlAwsWorkspaceswebPortal) trustStore() (*mqlAwsWorkspaceswebTrustStore
 	defer cancel()
 	resp, err := svc.GetTrustStore(ctx, &workspacesweb.GetTrustStoreInput{TrustStoreArn: &arnVal})
 	if err != nil {
-		if isWorkspacesWebRegionError(err) {
-			a.TrustStore.State = plugin.StateIsNull | plugin.StateIsSet
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "workspaces-web:GetTrustStore")
 	}
 	return newMqlAwsWorkspaceswebTrustStoreFromDetail(a.MqlRuntime, region, resp.TrustStore)
 }
@@ -878,11 +853,7 @@ func (a *mqlAwsWorkspaceswebPortal) userSettings() (*mqlAwsWorkspaceswebUserSett
 	defer cancel()
 	resp, err := svc.GetUserSettings(ctx, &workspacesweb.GetUserSettingsInput{UserSettingsArn: &arnVal})
 	if err != nil {
-		if isWorkspacesWebRegionError(err) {
-			a.UserSettings.State = plugin.StateIsNull | plugin.StateIsSet
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "workspaces-web:GetUserSettings")
 	}
 	return newMqlAwsWorkspaceswebUserSettingsFromDetail(a.MqlRuntime, region, resp.UserSettings)
 }

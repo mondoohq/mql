@@ -902,11 +902,7 @@ func (a *mqlAwsCloudwatchLoggroup) tags() (map[string]any, error) {
 	arnVal := strings.TrimSuffix(a.Arn.Data, ":*")
 	tagsResp, err := svc.ListTagsForResource(ctx, &cloudwatchlogs.ListTagsForResourceInput{ResourceArn: &arnVal})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.tagsFetched = true
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "logs:ListTagsForResource")
 	}
 	a.cacheTags = tagsResp.Tags
 	a.tagsFetched = true
@@ -1033,10 +1029,7 @@ func (a *mqlAwsCloudwatchMetricsalarm) tags() (map[string]any, error) {
 			ResourceARN: &alarmArn,
 		})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return nil, errTagsUnreadable
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "cloudwatch:ListTagsForResource")
 		}
 		return tagsToMap(resp.Tags,
 			func(t cloudwatchtypes.Tag) *string { return t.Key },
@@ -1097,10 +1090,7 @@ func (a *mqlAwsCloudwatchLoggroup) subscriptionFilters() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return nil, nil
-			}
-			return nil, errors.Wrap(err, "could not gather subscription filters")
+			return nil, errors.Wrap(classifyAwsError(err, "logs:DescribeSubscriptionFilters"), "could not gather subscription filters")
 		}
 		for _, sf := range page.SubscriptionFilters {
 			mqlSF, err := CreateResource(a.MqlRuntime, "aws.cloudwatch.loggroup.subscriptionfilter",
@@ -1209,10 +1199,7 @@ func (a *mqlAwsCloudwatchLoggroup) logStreams() ([]any, error) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return nil, nil
-			}
-			return nil, errors.Wrap(err, "could not gather log streams")
+			return nil, errors.Wrap(classifyAwsError(err, "logs:DescribeLogStreams"), "could not gather log streams")
 		}
 		for _, ls := range page.LogStreams {
 			mqlLS, err := CreateResource(a.MqlRuntime, "aws.cloudwatch.loggroup.logstream",

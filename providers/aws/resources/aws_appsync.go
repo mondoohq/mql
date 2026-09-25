@@ -220,11 +220,11 @@ func (a *mqlAwsAppsyncGraphqlApi) fetchCache() (*appsynctypes.ApiCache, error) {
 	out, err := svc.GetApiCache(context.Background(), &appsync.GetApiCacheInput{ApiId: &apiId})
 	if err != nil {
 		var notFound *appsynctypes.NotFoundException
-		if errors.As(err, &notFound) || Is400AccessDeniedError(err) {
+		if errors.As(err, &notFound) {
 			a.cacheFetched = true
 			return nil, nil
 		}
-		return nil, err
+		return nil, classifyAwsError(err, "appsync:GetApiCache")
 	}
 	a.cacheFetched = true
 	a.cacheData = out.ApiCache
@@ -316,10 +316,7 @@ func (a *mqlAwsAppsyncGraphqlApi) apiKeys() ([]any, error) {
 	for {
 		out, err := svc.ListApiKeys(ctx, &appsync.ListApiKeysInput{ApiId: &apiId, NextToken: nextToken})
 		if err != nil {
-			if Is400AccessDeniedError(err) {
-				return res, nil
-			}
-			return nil, err
+			return nil, classifyAwsError(err, "appsync:ListApiKeys")
 		}
 		for _, key := range out.ApiKeys {
 			keyId := convert.ToValue(key.Id)

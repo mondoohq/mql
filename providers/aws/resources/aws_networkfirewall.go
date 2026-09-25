@@ -397,11 +397,7 @@ func (a *mqlAwsNetworkfirewallFirewall) fetchLoggingConfig() (*nftypes.LoggingCo
 		FirewallArn: &arn,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.cacheLogFetched = true
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "network-firewall:DescribeLoggingConfiguration")
 	}
 	a.cacheLogConfig = resp.LoggingConfiguration
 	a.cacheLogFetched = true
@@ -675,11 +671,7 @@ func (a *mqlAwsNetworkfirewallPolicy) tlsInspectionConfiguration() (*mqlAwsNetwo
 		TLSInspectionConfigurationArn: &tlsArn,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			a.TlsInspectionConfiguration.State = plugin.StateIsSet | plugin.StateIsNull
-			return nil, nil
-		}
-		return nil, err
+		return nil, classifyAwsError(err, "network-firewall:DescribeTLSInspectionConfiguration")
 	}
 	return networkfirewallTLSInspectionConfigToMql(a.MqlRuntime, resp.TLSInspectionConfigurationResponse, resp.TLSInspectionConfiguration, region)
 }
@@ -806,10 +798,7 @@ func initAwsNetworkfirewallRulegroup(runtime *plugin.Runtime, args map[string]*l
 		RuleGroupArn: &arnValue,
 	})
 	if err != nil {
-		if Is400AccessDeniedError(err) {
-			return args, nil, nil
-		}
-		return nil, nil, err
+		return nil, nil, classifyAwsError(fmt.Errorf("fetching aws.networkfirewall.rulegroup with arn %q: %w", arnValue, err), "network-firewall:DescribeRuleGroup")
 	}
 	mqlRG, err := networkfirewallRuleGroupToMql(runtime, resp.RuleGroupResponse, resp.RuleGroup, region)
 	if err != nil {

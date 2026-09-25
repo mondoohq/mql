@@ -233,10 +233,7 @@ func (a *mqlAwsSagemakerHub) contents() ([]any, error) {
 				NextToken:      nextToken,
 			})
 			if err != nil {
-				if Is400AccessDeniedError(err) || IsServiceNotAvailableInRegionError(err) {
-					return res, nil
-				}
-				return nil, err
+				return nil, classifyAwsError(err, "sagemaker:ListHubContents")
 			}
 
 			for _, c := range out.HubContentSummaries {

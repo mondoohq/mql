@@ -9,15 +9,19 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
-// denied builds a snapshot whose createVolumePermission read was refused,
-// without touching the API: it consumes the sync.Once so fetch returns the
-// seeded state.
+// deniedSnapshot builds a snapshot whose createVolumePermission read was
+// refused, without touching the API: it consumes the sync.Once with the error
+// the fetch records for a real EC2 denial.
 func deniedSnapshot() *mqlAwsEc2Snapshot {
 	a := &mqlAwsEc2Snapshot{}
-	a.cvpOnce.Do(func() { a.cvpDenied = true })
+	a.cvpOnce.Do(func() {
+		a.cvpErr = classifyAwsError(awsAPIError(400, "UnauthorizedOperation",
+			"You are not authorized to perform this operation."), "ec2:DescribeSnapshotAttribute")
+	})
 	return a
 }
 
@@ -27,18 +31,16 @@ func readableSnapshot(perms ...ec2types.CreateVolumePermission) *mqlAwsEc2Snapsh
 	return a
 }
 
-// An access-denied permission read must leave isPublic null, not false.
+// An access-denied permission read must be a forbidden error, never false.
 // Returning false asserts the snapshot is definitively not shared when its
 // permissions were never read, and a policy looking for public snapshots
 // would record that as a clean result.
-func TestSnapshotIsPublicIsNullWhenAccessDenied(t *testing.T) {
+func TestSnapshotIsPublicIsForbiddenWhenAccessDenied(t *testing.T) {
 	a := deniedSnapshot()
 
-	got, err := a.isPublic()
-	require.NoError(t, err)
-	assert.False(t, got)
-	assert.NotZero(t, a.IsPublic.State&plugin.StateIsNull,
-		"a denied permission read must read null, never a confident false")
+	_, err := a.isPublic()
+	require.ErrorIs(t, err, llx.ErrForbidden)
+	assert.Equal(t, []string{"ec2:DescribeSnapshotAttribute"}, llx.ErrorDetailOf(err).GetPermissions())
 }
 
 func TestSnapshotIsPublicTrueOnPermissionGroupAll(t *testing.T) {
@@ -60,14 +62,15 @@ func TestSnapshotIsPublicFalseWhenSharedWithNamedAccountsOnly(t *testing.T) {
 	assert.Zero(t, a.IsPublic.State&plugin.StateIsNull)
 }
 
-// The deprecated dict answers from the same fetch and must not report an
-// empty permission list when the read was refused.
-func TestSnapshotCreateVolumePermissionIsNullWhenAccessDenied(t *testing.T) {
+// The deprecated dict and the typed lists answer from the same fetch and must
+// not report an empty permission list when the read was refused.
+func TestSnapshotPermissionListsAreForbiddenWhenAccessDenied(t *testing.T) {
 	a := deniedSnapshot()
 
-	got, err := a.createVolumePermission()
-	require.NoError(t, err)
-	assert.Nil(t, got)
-	assert.NotZero(t, a.CreateVolumePermission.State&plugin.StateIsNull,
-		"a denied read must not read as an empty permission list")
+	_, err := a.createVolumePermission()
+	assert.ErrorIs(t, err, llx.ErrForbidden)
+	_, err = a.createVolumePermissionUserIds()
+	assert.ErrorIs(t, err, llx.ErrForbidden)
+	_, err = a.createVolumePermissionGroups()
+	assert.ErrorIs(t, err, llx.ErrForbidden)
 }
