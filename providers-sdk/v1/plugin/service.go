@@ -29,8 +29,12 @@ type Service struct {
 	lastConnectionID uint32
 	runtimesLock     sync.RWMutex
 
-	// lastHeartbeat is the wall clock time (unix nanos) at which we last saw a
-	// heartbeat from the parent process.
+	// clockBase anchors the watchdog's clock. lastHeartbeat is an offset from
+	// it, so every silence is measured on the monotonic clock: a wall-clock
+	// step (NTP, guest time sync after a VM resume) must not read as silence.
+	clockBase time.Time
+	// lastHeartbeat is when we last saw a heartbeat from the parent process,
+	// in nanoseconds since clockBase.
 	lastHeartbeat atomic.Int64
 	// heartbeatWindow is the tolerance (in nanos) the parent asked us to apply,
 	// i.e. how long it intends to let pass between two heartbeats at most.
@@ -82,6 +86,7 @@ var (
 
 func NewService() *Service {
 	return &Service{
+		clockBase:    watchdogNow(),
 		runtimes:     make(map[uint32]*Runtime),
 		watchdogStop: make(chan struct{}),
 		Memoizer:     memoize.New(cacheExpirationTime, cacheCleanupTime),
@@ -366,12 +371,17 @@ func (s *Service) Heartbeat(req *HeartbeatReq) (*HeartbeatRes, error) {
 	}
 
 	s.heartbeatWindow.Store(int64(req.Interval))
-	s.lastHeartbeat.Store(time.Now().UnixNano())
+	s.lastHeartbeat.Store(int64(s.sinceClockBase(watchdogNow())))
 	s.watchdogOnce.Do(func() {
 		go s.heartbeatWatchdog()
 	})
 
 	return &heartbeatRes, nil
+}
+
+// sinceClockBase is t on the watchdog's monotonic clock.
+func (s *Service) sinceClockBase(t time.Time) time.Duration {
+	return t.Sub(s.clockBase)
 }
 
 // TrackRequest marks the beginning of a request served for the parent process
@@ -415,10 +425,10 @@ func (s *Service) heartbeatWatchdog() {
 				Str("overslept", overslept.String()).
 				Str("window", window.String()).
 				Msg("heartbeat watchdog was suspended, re-arming")
-			s.lastHeartbeat.Store(now.UnixNano())
+			s.lastHeartbeat.Store(int64(s.sinceClockBase(now)))
 		}
 		lastPoll = now
-		silence := now.Sub(time.Unix(0, s.lastHeartbeat.Load()))
+		silence := s.sinceClockBase(now) - time.Duration(s.lastHeartbeat.Load())
 		inflight := s.inflightRequests.Load()
 
 		if silence <= window {

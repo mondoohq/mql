@@ -407,7 +407,7 @@ func TestHeartbeat(t *testing.T) {
 	_, err := s.Heartbeat(&HeartbeatReq{})
 	require.Error(t, err, "an interval of 0 has no tolerance to apply")
 
-	before := time.Now().UnixNano()
+	before := int64(s.sinceClockBase(time.Now()))
 	_, err = s.Heartbeat(&HeartbeatReq{Interval: uint64(time.Hour)})
 	require.NoError(t, err)
 	assert.Equal(t, int64(time.Hour), s.heartbeatWindow.Load())
@@ -496,12 +496,15 @@ func TestHeartbeatWatchdog_SurvivesSuspend(t *testing.T) {
 
 	// the whole process tree freezes: when the watchdog next runs, an hour has
 	// passed for it just as much as for the heartbeat it last saw
-	var frozen atomic.Int64
+	var frozen, calls atomic.Int64
 	armed := make(chan struct{})
-	var armedOnce sync.Once
 	original := watchdogNow
 	watchdogNow = func() time.Time {
-		armedOnce.Do(func() { close(armed) })
+		// NewService reads the clock, then Heartbeat, then the watchdog it
+		// starts: the third read is the watchdog's own first reading
+		if calls.Add(1) == 3 {
+			close(armed)
+		}
 		return time.Now().Add(time.Duration(frozen.Load()))
 	}
 	t.Cleanup(func() { watchdogNow = original })
