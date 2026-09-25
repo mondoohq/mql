@@ -29,6 +29,7 @@ func (lpm *LinuxProcManager) List() ([]*OSProcess, error) {
 	if err != nil {
 		return nil, errors.WithMessage(err, "failed to access /proc")
 	}
+	defer f.Close()
 
 	dirs, err := f.Readdirnames(-1)
 	if err != nil {
@@ -51,8 +52,6 @@ func (lpm *LinuxProcManager) List() ([]*OSProcess, error) {
 			log.Warn().Err(err).Int64("pid", pid).Msg("mql[processes]> could not retrieve process information")
 			continue
 		}
-
-		proc.SocketInodes, proc.SocketInodesError = lpm.procSocketInods(pid, pidPath)
 
 		res = append(res, proc)
 	}
@@ -136,11 +135,36 @@ func (lpm *LinuxProcManager) Process(pid int64) (*OSProcess, error) {
 		return nil, err
 	}
 
-	proc.SocketInodes, proc.SocketInodesError = lpm.procSocketInods(pid, pidPath)
-
 	return proc, nil
 }
 
 func (lpm *LinuxProcManager) ListSocketInodesByProcess() (map[int64]plugin.TValue[[]int64], error) {
-	return nil, nil
+	// get all subdirectories of /proc, filter by numbers
+	f, err := lpm.conn.FileSystem().Open("/proc")
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to access /proc")
+	}
+	defer f.Close()
+
+	dirs, err := f.Readdirnames(-1)
+	if err != nil {
+		return nil, err
+	}
+
+	res := map[int64]plugin.TValue[[]int64]{}
+	for i := range dirs {
+		pid, err := strconv.ParseInt(dirs[i], 10, 64)
+		if err != nil {
+			continue
+		}
+
+		pidPath := filepath.Join("/proc", dirs[i])
+		socketInodes, socketInodesErr := lpm.procSocketInods(pid, pidPath)
+		res[pid] = plugin.TValue[[]int64]{
+			Data:  socketInodes,
+			Error: socketInodesErr,
+		}
+	}
+
+	return res, nil
 }
