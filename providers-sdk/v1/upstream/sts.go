@@ -17,12 +17,11 @@ import (
 
 	"go.mondoo.com/mql/providers-sdk/v1/upstream/tokenauth"
 	"go.mondoo.com/mql/providers/os/connection/ssh/signers"
-	"go.mondoo.com/ranger-rpc"
 	"golang.org/x/crypto/ssh"
 )
 
 func ExchangeSSHKey(apiEndpoint string, identityMrn string, resourceMrn string) (*ServiceAccountCredentials, error) {
-	stsClient, err := NewSecureTokenServiceClient(apiEndpoint, ranger.DefaultHttpClient())
+	stsClient, err := NewSecureTokenServiceClient(apiEndpoint, DefaultHttpClient())
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +82,7 @@ func ExchangeExternalToken(apiEndpoint, audience, issuerURI, jwtToken string, to
 		return nil, fmt.Errorf("no identity token to use for an external exchange")
 	}
 
-	stsClient, err := NewSecureTokenServiceClient(apiEndpoint, ranger.DefaultHttpClient())
+	stsClient, err := NewSecureTokenServiceClient(apiEndpoint, DefaultHttpClient())
 	if err != nil {
 		return nil, err
 	}

@@ -170,6 +170,7 @@ func (m *GRPCServer) ParseCLI(ctx context.Context, req *ParseCLIReq) (resp *Pars
 func (m *GRPCServer) Connect(ctx context.Context, req *ConnectReq) (resp *ConnectRes, err error) {
 	defer m.trackRequest()()
 	defer recoverPanic("Connect", &err)
+	ReadFeatures(req.Features)
 	conn, err := m.broker.Dial(req.CallbackServer)
 	if err != nil {
 		return nil, err
@@ -198,6 +199,7 @@ func (m *GRPCServer) Disconnect(ctx context.Context, req *DisconnectReq) (resp *
 func (m *GRPCServer) MockConnect(ctx context.Context, req *ConnectReq) (resp *ConnectRes, err error) {
 	defer m.trackRequest()()
 	defer recoverPanic("MockConnect", &err)
+	ReadFeatures(req.Features)
 	conn, err := m.broker.Dial(req.CallbackServer)
 	if err != nil {
 		return nil, err

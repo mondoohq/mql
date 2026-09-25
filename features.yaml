@@ -129,3 +129,8 @@ Features:
   idx: 23
   start: v14.x
   status: new
+- id: StructuredErrors
+  desc: "Providers return a refusal (access denied, service not enabled, ...) as a classified error instead of the null or empty value they returned in v13 (ADR 046). Checks that could not read what they assert about stop passing silently and error instead. Partial results and their coverage gaps are not behind this flag. This is the v15 behavior, available early so it can be tried against real accounts before it becomes the default."
+  idx: 24
+  start: v14.x
+  status: new

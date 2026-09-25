@@ -8,10 +8,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -281,15 +281,11 @@ var (
 )
 
 func httpClientWithRetry() (*http.Client, error) {
-	var proxyFn func(*http.Request) (*url.URL, error)
-
-	proxy, err := config.GetAPIProxy()
+	// api_proxy, the environment or the operating system's settings, in that
+	// order; see cli/config/proxy.go.
+	proxyFn, err := config.ProxyFunc()
 	if err != nil {
-		log.Fatal().Err(err).Msg("could not parse proxy URL")
-	}
-
-	if proxy != nil {
-		proxyFn = http.ProxyURL(proxy)
+		return nil, fmt.Errorf("could not parse proxy URL: %w", err)
 	}
 
 	retryClient := retryablehttp.NewClient()

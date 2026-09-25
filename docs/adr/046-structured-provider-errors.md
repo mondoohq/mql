@@ -569,12 +569,13 @@ before anyone has to take it. It becomes the default in v15. `RootedNamespace`
 opt-in during v14.
 
 **The provider reads the flag.** The flag is all or nothing for a provider
-process, so the provider reads it once from the features it receives and holds
-it process-wide. Each migrated call site keeps its v13 branch behind it:
+process, so it is read from the features a Connect receives and held
+process-wide; a call site asks `plugin.StructuredErrors()`. Each migrated call
+site keeps its v13 branch behind it:
 
 ```go
 if err != nil {
-    if !structuredErrors && Is400AccessDeniedError(err) {
+    if !plugin.StructuredErrors() && Is400AccessDeniedError(err) {
         return []any{}, nil // v13 behavior
     }
     return nil, classifyAwsError(err, "organizations:ListAccounts")
@@ -583,7 +584,7 @@ if err != nil {
 
 With the flag off the call site returns exactly what it returned in v13, and
 every other error behaves as in v13. With the flag on it returns the classified
-error. In v15 the `if !structuredErrors` branches are deleted.
+error. In v15 the `if !plugin.StructuredErrors()` branches are deleted.
 
 **Not behind the flag:** the carrier and the SDK mapping (phases 1 and 2),
 partial results and their coverage gaps (§8), rendering, and cnspec's coverage
@@ -822,8 +823,29 @@ yet, since loops convert in step 10.
   its block runs reported. `where`, `length`, `all`, `{ … }` and comparisons on
   them need no change.
 
+**Phase 4 landed.** `StructuredErrors` is feature 24 in `features.yaml`,
+status `new`, so it is off unless a client turns it on (`--features
+StructuredErrors`, `MONDOO_FEATURES`, or the server).
+
+- **Reading it.** `plugin.ReadFeatures` stores the flag in a process-wide
+  `atomic.Bool` (`providers-sdk/v1/plugin/features.go`), and
+  `plugin.StructuredErrors()` reads it. A provider has no code of its own for
+  this: the SDK's gRPC server reads the features on every `Connect` and
+  `MockConnect` before handing the request to the provider. A builtin or
+  in-process provider never passes through that server, so
+  `providers.Runtime` reads them in `Connect`, `UseBuiltinProvider` and
+  `UseInProcessProvider`.
+- **A Connect without features leaves the flag alone.** Not every Connect
+  forwards the scan's features: delayed discovery connects with the asset
+  alone (`discovery/delayed.go`). Letting such a request turn the flag off
+  would switch a provider back to v13 behavior halfway through a scan. A
+  request that carries features always decides, so a long-running process
+  (`cnspec serve`) picks up the flag being turned off again, which reading it
+  only once would not.
+
 **Step 9 for aws is open** (#11012). It returns classified errors
-unconditionally; it gets the v13 branches of §9 and merges after phase 4.
+unconditionally; it gets the v13 branches of §9 and can merge now that phase 4
+has landed.
 
 ## Consequences
 

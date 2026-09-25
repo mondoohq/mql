@@ -8,8 +8,8 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -56,15 +56,11 @@ func DownloadTimeout() time.Duration {
 // lifecycle including body reads. Callers should wrap the response body with
 // NewIdleTimeoutReader to detect stalled transfers.
 func ClientForDownload() (*http.Client, error) {
-	var proxyFn func(*http.Request) (*url.URL, error)
-
-	proxy, err := config.GetAPIProxy()
+	// api_proxy, the environment or the operating system's settings, in that
+	// order; see cli/config/proxy.go.
+	proxyFn, err := config.ProxyFunc()
 	if err != nil {
-		log.Fatal().Err(err).Msg("could not parse proxy URL")
-	}
-
-	if proxy != nil {
-		proxyFn = http.ProxyURL(proxy)
+		return nil, fmt.Errorf("could not parse proxy URL: %w", err)
 	}
 
 	retryClient := retryablehttp.NewClient()
@@ -94,6 +90,11 @@ type IdleTimeoutReader struct {
 	timeout  time.Duration
 	timer    *time.Timer
 	timedOut atomic.Bool
+	// closeOnce guards body.Close: the timer callback and Close can race, and
+	// a Read that still returns data after the timer fired must not re-arm it
+	// into a second close.
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // NewIdleTimeoutReader wraps body with an idle timeout. The timer starts
@@ -105,14 +106,25 @@ func NewIdleTimeoutReader(body io.ReadCloser, timeout time.Duration) *IdleTimeou
 	}
 	itr.timer = time.AfterFunc(timeout, func() {
 		itr.timedOut.Store(true)
-		body.Close()
+		// The close error has no reader here; the blocked Read reports the
+		// stall itself.
+		_ = itr.closeBody()
 	})
 	return itr
 }
 
+// closeBody closes the underlying body exactly once, whichever of the timer
+// callback and Close gets there first.
+func (itr *IdleTimeoutReader) closeBody() error {
+	itr.closeOnce.Do(func() {
+		itr.closeErr = itr.body.Close()
+	})
+	return itr.closeErr
+}
+
 func (itr *IdleTimeoutReader) Read(p []byte) (int, error) {
 	n, err := itr.body.Read(p)
-	if n > 0 {
+	if n > 0 && !itr.timedOut.Load() {
 		itr.timer.Reset(itr.timeout)
 	}
 	if err != nil && itr.timedOut.Load() {
@@ -124,7 +136,7 @@ func (itr *IdleTimeoutReader) Read(p []byte) (int, error) {
 func (itr *IdleTimeoutReader) Close() error {
 	itr.timer.Stop()
 	if itr.timedOut.Load() {
-		return nil // body already closed by timer callback
+		return nil // body already closed by the timer callback
 	}
-	return itr.body.Close()
+	return itr.closeBody()
 }

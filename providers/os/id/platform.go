@@ -13,6 +13,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/detector"
+	"go.mondoo.com/mql/providers/os/detector/crowdstrike"
 	"go.mondoo.com/mql/providers/os/id/awsec2"
 	"go.mondoo.com/mql/providers/os/id/awsecs"
 	"go.mondoo.com/mql/providers/os/id/biosuuid"
@@ -235,6 +236,23 @@ func gatherPlatformInfo(conn shared.Connection, pf *inventory.Platform, idDetect
 		}
 		if len(sid) > 0 {
 			identifier = "//platformid.api.mondoo.app/windows-ad-sid/" + sid
+			return &platformInfo{
+				IDs:                []string{identifier},
+				Name:               "",
+				RelatedPlatformIDs: []string{},
+			}, nil
+		}
+		return &platformInfo{}, nil
+	case ids.IdDetector_CrowdStrikeAID:
+		falcon := crowdstrike.FromLabels(pf)
+		if falcon == nil {
+			falcon = crowdstrike.Detect(conn, pf)
+		}
+		if falcon == nil {
+			// no sensor on this host
+			return &platformInfo{}, nil
+		}
+		if identifier := falcon.PlatformID(); identifier != "" {
 			return &platformInfo{
 				IDs:                []string{identifier},
 				Name:               "",

@@ -457,6 +457,7 @@ const (
 	ResourceWindowsLsa                                    string = "windows.lsa"
 	ResourceWindowsLsaNtlm                                string = "windows.lsa.ntlm"
 	ResourceWindowsLsaSecureChannel                       string = "windows.lsa.secureChannel"
+	ResourceWindowsUac                                    string = "windows.uac"
 	ResourceWindowsSchannel                               string = "windows.schannel"
 	ResourceWindowsSchannelProtocol                       string = "windows.schannel.protocol"
 	ResourceWindowsSchannelCipher                         string = "windows.schannel.cipher"
@@ -2426,6 +2427,10 @@ func init() {
 		"windows.lsa.secureChannel": {
 			Init:   initWindowsLsaSecureChannel,
 			Create: createWindowsLsaSecureChannel,
+		},
+		"windows.uac": {
+			// to override args, implement: initWindowsUac(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWindowsUac,
 		},
 		"windows.schannel": {
 			// to override args, implement: initWindowsSchannel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -12331,6 +12336,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"openBSMAudit.expireAfter": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenBSMAudit).GetExpireAfter()).ToDataRes(types.String)
 	},
+	"openBSMAudit.expireAfterAge": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenBSMAudit).GetExpireAfterAge()).ToDataRes(types.Time)
+	},
+	"openBSMAudit.expireAfterBytes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenBSMAudit).GetExpireAfterBytes()).ToDataRes(types.Int)
+	},
+	"openBSMAudit.expireAfterOperator": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenBSMAudit).GetExpireAfterOperator()).ToDataRes(types.String)
+	},
+	"openBSMAudit.minRetentionAge": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenBSMAudit).GetMinRetentionAge()).ToDataRes(types.Time)
+	},
+	"openBSMAudit.minRetentionBytes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlOpenBSMAudit).GetMinRetentionBytes()).ToDataRes(types.Int)
+	},
 	"openBSMAudit.superuserSetSflagsMask": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOpenBSMAudit).GetSuperuserSetSflagsMask()).ToDataRes(types.Array(types.String))
 	},
@@ -13174,6 +13194,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"windows.deviceGuard.virtualizationBasedSecurityStatus": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsDeviceGuard).GetVirtualizationBasedSecurityStatus()).ToDataRes(types.Int)
 	},
+	"windows.lsa.crashOnAuditFail": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLsa).GetCrashOnAuditFail()).ToDataRes(types.Int)
+	},
 	"windows.lsa.disableDomainCreds": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsLsa).GetDisableDomainCreds()).ToDataRes(types.Bool)
 	},
@@ -13221,6 +13244,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"windows.lsa.noLmHash": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsLsa).GetNoLmHash()).ToDataRes(types.Bool)
+	},
+	"windows.lsa.relaxMinimumPasswordLengthLimits": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsLsa).GetRelaxMinimumPasswordLengthLimits()).ToDataRes(types.Bool)
 	},
 	"windows.lsa.restrictAnonymous": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsLsa).GetRestrictAnonymous()).ToDataRes(types.Int)
@@ -13299,6 +13325,39 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"windows.lsa.secureChannel.vulnerableChannelAllowList": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsLsaSecureChannel).GetVulnerableChannelAllowList()).ToDataRes(types.String)
+	},
+	"windows.uac.enableLua": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsUac).GetEnableLua()).ToDataRes(types.Bool)
+	},
+	"windows.uac.consentPromptBehaviorAdmin": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsUac).GetConsentPromptBehaviorAdmin()).ToDataRes(types.Int)
+	},
+	"windows.uac.consentPromptBehaviorUser": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsUac).GetConsentPromptBehaviorUser()).ToDataRes(types.Int)
+	},
+	"windows.uac.filterAdministratorToken": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsUac).GetFilterAdministratorToken()).ToDataRes(types.Bool)
+	},
+	"windows.uac.enableInstallerDetection": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsUac).GetEnableInstallerDetection()).ToDataRes(types.Bool)
+	},
+	"windows.uac.enableSecureUiaPaths": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsUac).GetEnableSecureUiaPaths()).ToDataRes(types.Bool)
+	},
+	"windows.uac.enableUiaDesktopToggle": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsUac).GetEnableUiaDesktopToggle()).ToDataRes(types.Bool)
+	},
+	"windows.uac.enableVirtualization": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsUac).GetEnableVirtualization()).ToDataRes(types.Bool)
+	},
+	"windows.uac.localAccountTokenFilterPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsUac).GetLocalAccountTokenFilterPolicy()).ToDataRes(types.Bool)
+	},
+	"windows.uac.promptOnSecureDesktop": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsUac).GetPromptOnSecureDesktop()).ToDataRes(types.Bool)
+	},
+	"windows.uac.validateAdminCodeSignatures": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsUac).GetValidateAdminCodeSignatures()).ToDataRes(types.Bool)
 	},
 	"windows.schannel.cipherSuites": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsSchannel).GetCipherSuites()).ToDataRes(types.Array(types.String))
@@ -31539,6 +31598,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlOpenBSMAudit).ExpireAfter, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"openBSMAudit.expireAfterAge": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenBSMAudit).ExpireAfterAge, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"openBSMAudit.expireAfterBytes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenBSMAudit).ExpireAfterBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"openBSMAudit.expireAfterOperator": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenBSMAudit).ExpireAfterOperator, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"openBSMAudit.minRetentionAge": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenBSMAudit).MinRetentionAge, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"openBSMAudit.minRetentionBytes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlOpenBSMAudit).MinRetentionBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"openBSMAudit.superuserSetSflagsMask": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlOpenBSMAudit).SuperuserSetSflagsMask, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -32799,6 +32878,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlWindowsLsa).__id, ok = v.Value.(string)
 		return
 	},
+	"windows.lsa.crashOnAuditFail": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLsa).CrashOnAuditFail, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"windows.lsa.disableDomainCreds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindowsLsa).DisableDomainCreds, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -32861,6 +32944,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"windows.lsa.noLmHash": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindowsLsa).NoLmHash, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.lsa.relaxMinimumPasswordLengthLimits": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsLsa).RelaxMinimumPasswordLengthLimits, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"windows.lsa.restrictAnonymous": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -32973,6 +33060,54 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"windows.lsa.secureChannel.vulnerableChannelAllowList": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindowsLsaSecureChannel).VulnerableChannelAllowList, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"windows.uac.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsUac).__id, ok = v.Value.(string)
+		return
+	},
+	"windows.uac.enableLua": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsUac).EnableLua, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.uac.consentPromptBehaviorAdmin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsUac).ConsentPromptBehaviorAdmin, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"windows.uac.consentPromptBehaviorUser": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsUac).ConsentPromptBehaviorUser, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"windows.uac.filterAdministratorToken": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsUac).FilterAdministratorToken, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.uac.enableInstallerDetection": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsUac).EnableInstallerDetection, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.uac.enableSecureUiaPaths": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsUac).EnableSecureUiaPaths, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.uac.enableUiaDesktopToggle": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsUac).EnableUiaDesktopToggle, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.uac.enableVirtualization": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsUac).EnableVirtualization, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.uac.localAccountTokenFilterPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsUac).LocalAccountTokenFilterPolicy, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.uac.promptOnSecureDesktop": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsUac).PromptOnSecureDesktop, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.uac.validateAdminCodeSignatures": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsUac).ValidateAdminCodeSignatures, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"windows.schannel.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -81028,6 +81163,11 @@ type mqlOpenBSMAudit struct {
 	Policy                   plugin.TValue[[]any]
 	Filesz                   plugin.TValue[string]
 	ExpireAfter              plugin.TValue[string]
+	ExpireAfterAge           plugin.TValue[*time.Time]
+	ExpireAfterBytes         plugin.TValue[int64]
+	ExpireAfterOperator      plugin.TValue[string]
+	MinRetentionAge          plugin.TValue[*time.Time]
+	MinRetentionBytes        plugin.TValue[int64]
 	SuperuserSetSflagsMask   plugin.TValue[[]any]
 	SuperuserClearSflagsMask plugin.TValue[[]any]
 	MemberSetSflagsMask      plugin.TValue[[]any]
@@ -81187,6 +81327,61 @@ func (c *mqlOpenBSMAudit) GetExpireAfter() *plugin.TValue[string] {
 		}
 
 		return c.expireAfter(vargParams.Data)
+	})
+}
+
+func (c *mqlOpenBSMAudit) GetExpireAfterAge() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.ExpireAfterAge, func() (*time.Time, error) {
+		vargContent := c.GetContent()
+		if vargContent.Error != nil {
+			return nil, vargContent.Error
+		}
+
+		return c.expireAfterAge(vargContent.Data)
+	})
+}
+
+func (c *mqlOpenBSMAudit) GetExpireAfterBytes() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ExpireAfterBytes, func() (int64, error) {
+		vargContent := c.GetContent()
+		if vargContent.Error != nil {
+			return 0, vargContent.Error
+		}
+
+		return c.expireAfterBytes(vargContent.Data)
+	})
+}
+
+func (c *mqlOpenBSMAudit) GetExpireAfterOperator() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ExpireAfterOperator, func() (string, error) {
+		vargContent := c.GetContent()
+		if vargContent.Error != nil {
+			return "", vargContent.Error
+		}
+
+		return c.expireAfterOperator(vargContent.Data)
+	})
+}
+
+func (c *mqlOpenBSMAudit) GetMinRetentionAge() *plugin.TValue[*time.Time] {
+	return plugin.GetOrCompute[*time.Time](&c.MinRetentionAge, func() (*time.Time, error) {
+		vargContent := c.GetContent()
+		if vargContent.Error != nil {
+			return nil, vargContent.Error
+		}
+
+		return c.minRetentionAge(vargContent.Data)
+	})
+}
+
+func (c *mqlOpenBSMAudit) GetMinRetentionBytes() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MinRetentionBytes, func() (int64, error) {
+		vargContent := c.GetContent()
+		if vargContent.Error != nil {
+			return 0, vargContent.Error
+		}
+
+		return c.minRetentionBytes(vargContent.Data)
 	})
 }
 
@@ -84462,6 +84657,7 @@ type mqlWindowsLsa struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlWindowsLsaInternal it will be used here
+	CrashOnAuditFail                 plugin.TValue[int64]
 	DisableDomainCreds               plugin.TValue[bool]
 	EveryoneIncludesAnonymous        plugin.TValue[bool]
 	FipsAlgorithmPolicyEnabled       plugin.TValue[bool]
@@ -84478,6 +84674,7 @@ type mqlWindowsLsa struct {
 	LimitBlankPasswordUse            plugin.TValue[bool]
 	LmCompatibilityLevel             plugin.TValue[int64]
 	NoLmHash                         plugin.TValue[bool]
+	RelaxMinimumPasswordLengthLimits plugin.TValue[bool]
 	RestrictAnonymous                plugin.TValue[int64]
 	RestrictAnonymousSam             plugin.TValue[bool]
 	RestrictRemoteSam                plugin.TValue[string]
@@ -84524,6 +84721,12 @@ func (c *mqlWindowsLsa) MqlName() string {
 
 func (c *mqlWindowsLsa) MqlID() string {
 	return c.__id
+}
+
+func (c *mqlWindowsLsa) GetCrashOnAuditFail() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.CrashOnAuditFail, func() (int64, error) {
+		return c.crashOnAuditFail()
+	})
 }
 
 func (c *mqlWindowsLsa) GetDisableDomainCreds() *plugin.TValue[bool] {
@@ -84619,6 +84822,12 @@ func (c *mqlWindowsLsa) GetLmCompatibilityLevel() *plugin.TValue[int64] {
 func (c *mqlWindowsLsa) GetNoLmHash() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.NoLmHash, func() (bool, error) {
 		return c.noLmHash()
+	})
+}
+
+func (c *mqlWindowsLsa) GetRelaxMinimumPasswordLengthLimits() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.RelaxMinimumPasswordLengthLimits, func() (bool, error) {
+		return c.relaxMinimumPasswordLengthLimits()
 	})
 }
 
@@ -84867,6 +85076,127 @@ func (c *mqlWindowsLsaSecureChannel) GetSignSecureChannel() *plugin.TValue[bool]
 
 func (c *mqlWindowsLsaSecureChannel) GetVulnerableChannelAllowList() *plugin.TValue[string] {
 	return &c.VulnerableChannelAllowList
+}
+
+// mqlWindowsUac for the windows.uac resource
+type mqlWindowsUac struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlWindowsUacInternal it will be used here
+	EnableLua                     plugin.TValue[bool]
+	ConsentPromptBehaviorAdmin    plugin.TValue[int64]
+	ConsentPromptBehaviorUser     plugin.TValue[int64]
+	FilterAdministratorToken      plugin.TValue[bool]
+	EnableInstallerDetection      plugin.TValue[bool]
+	EnableSecureUiaPaths          plugin.TValue[bool]
+	EnableUiaDesktopToggle        plugin.TValue[bool]
+	EnableVirtualization          plugin.TValue[bool]
+	LocalAccountTokenFilterPolicy plugin.TValue[bool]
+	PromptOnSecureDesktop         plugin.TValue[bool]
+	ValidateAdminCodeSignatures   plugin.TValue[bool]
+}
+
+// createWindowsUac creates a new instance of this resource
+func createWindowsUac(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWindowsUac{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("windows.uac", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWindowsUac) MqlName() string {
+	return "windows.uac"
+}
+
+func (c *mqlWindowsUac) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWindowsUac) GetEnableLua() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnableLua, func() (bool, error) {
+		return c.enableLua()
+	})
+}
+
+func (c *mqlWindowsUac) GetConsentPromptBehaviorAdmin() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ConsentPromptBehaviorAdmin, func() (int64, error) {
+		return c.consentPromptBehaviorAdmin()
+	})
+}
+
+func (c *mqlWindowsUac) GetConsentPromptBehaviorUser() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.ConsentPromptBehaviorUser, func() (int64, error) {
+		return c.consentPromptBehaviorUser()
+	})
+}
+
+func (c *mqlWindowsUac) GetFilterAdministratorToken() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.FilterAdministratorToken, func() (bool, error) {
+		return c.filterAdministratorToken()
+	})
+}
+
+func (c *mqlWindowsUac) GetEnableInstallerDetection() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnableInstallerDetection, func() (bool, error) {
+		return c.enableInstallerDetection()
+	})
+}
+
+func (c *mqlWindowsUac) GetEnableSecureUiaPaths() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnableSecureUiaPaths, func() (bool, error) {
+		return c.enableSecureUiaPaths()
+	})
+}
+
+func (c *mqlWindowsUac) GetEnableUiaDesktopToggle() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnableUiaDesktopToggle, func() (bool, error) {
+		return c.enableUiaDesktopToggle()
+	})
+}
+
+func (c *mqlWindowsUac) GetEnableVirtualization() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnableVirtualization, func() (bool, error) {
+		return c.enableVirtualization()
+	})
+}
+
+func (c *mqlWindowsUac) GetLocalAccountTokenFilterPolicy() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.LocalAccountTokenFilterPolicy, func() (bool, error) {
+		return c.localAccountTokenFilterPolicy()
+	})
+}
+
+func (c *mqlWindowsUac) GetPromptOnSecureDesktop() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.PromptOnSecureDesktop, func() (bool, error) {
+		return c.promptOnSecureDesktop()
+	})
+}
+
+func (c *mqlWindowsUac) GetValidateAdminCodeSignatures() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.ValidateAdminCodeSignatures, func() (bool, error) {
+		return c.validateAdminCodeSignatures()
+	})
 }
 
 // mqlWindowsSchannel for the windows.schannel resource

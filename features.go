@@ -128,9 +128,14 @@ const (
 	// status: new
 	RootedNamespace Feature = 23
 
+	// Providers return a refusal (access denied, service not enabled, ...) as a classified error instead of the null or empty value they returned in v13 (ADR 046). Checks that could not read what they assert about stop passing silently and error instead. Partial results and their coverage gaps are not behind this flag. This is the v15 behavior, available early so it can be tried against real accounts before it becomes the default.
+	// start:  v14.x
+	// status: new
+	StructuredErrors Feature = 24
+
 	// Placeholder to indicate how many feature flags exist. This number
 	// is changing with every new feature and cannot be used as a featureflag itself.
-	MAX_FEATURES byte = 24
+	MAX_FEATURES byte = 25
 )
 
 var FeaturesValue = map[string]Feature{
@@ -157,6 +162,7 @@ var FeaturesValue = map[string]Feature{
 	"ScanContentModeNoCompare":     ScanContentModeNoCompare,
 	"UploadResourcesData":          UploadResourcesData,
 	"RootedNamespace":              RootedNamespace,
+	"StructuredErrors":             StructuredErrors,
 }
 
 // DefaultFeatures are a set of default flags that are active
@@ -180,4 +186,5 @@ var AvailableFeatures = Features{
 	byte(ScanContentModeNoCompare),
 	byte(UploadResourcesData),
 	byte(RootedNamespace),
+	byte(StructuredErrors),
 }

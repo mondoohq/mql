@@ -188,6 +188,20 @@ func checkStatus(ctx context.Context) (Status, error) {
 		return s, cli_errors.NewCommandError(errors.Wrap(err, "failed to set up Mondoo API client"), 1)
 	}
 
+	// Report the proxy the platform calls below go through. Resolving it here
+	// also runs the operating system's setup script, if any, before the checks
+	// start, so the result is cached by the time they need it.
+	if proxy, source, err := opts.EffectiveProxy(opts.UpstreamApiEndpoint()); err != nil {
+		log.Warn().Err(err).Msg("could not determine the proxy for Mondoo Platform")
+	} else if proxy != nil {
+		s.Client.Proxy = proxy.Redacted()
+		s.Client.ProxySource = string(source)
+	} else {
+		// Resolving the proxy above ran the probe of a system proxy, so a
+		// failed verdict for the API endpoint is on record by now.
+		s.Client.ProxyNote = config.ProxyFallbackNote(opts.UpstreamApiEndpoint())
+	}
+
 	// Probe the ingest endpoint alongside the checks below rather than in
 	// series. Uploads go to a different host than the API on a different static
 	// IP, so a firewall can allow the API and blackhole ingest — and a
@@ -339,7 +353,18 @@ type ClientStatus struct {
 	UpdateChannel  string              `json:"updateChannel,omitempty"`
 	ProvidersURL   string              `json:"providersUrl,omitempty"`
 	ConfigFile     string              `json:"configFile,omitempty"`
-	Providers      []ProviderStatus    `json:"-"`
+	// Proxy is the proxy that platform traffic to the API endpoint goes
+	// through, with credentials redacted, and ProxySource says where it came
+	// from (api_proxy, environment, system). Both are empty for a direct
+	// connection. A proxied Windows machine that cannot reach the platform
+	// is diagnosed from these two fields.
+	Proxy       string `json:"proxy,omitempty"`
+	ProxySource string `json:"proxySource,omitempty"`
+	// ProxyNote explains a direct connection on a machine whose operating
+	// system names a proxy that failed the probe, for example "system proxy
+	// http://proxy:3128 not usable: proxy answered CONNECT with 407".
+	ProxyNote string           `json:"proxyNote,omitempty"`
+	Providers []ProviderStatus `json:"-"`
 }
 
 // ProviderStatus captures the installed and latest available version of a

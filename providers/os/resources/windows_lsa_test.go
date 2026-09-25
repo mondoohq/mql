@@ -108,6 +108,7 @@ func TestLsaRegStringPtr(t *testing.T) {
 func TestComputeLsa(t *testing.T) {
 	t.Run("empty key yields all-null values", func(t *testing.T) {
 		v := computeLsa(map[string]registry.RegistryKeyItem{})
+		assert.Nil(t, v.CrashOnAuditFail)
 		assert.Nil(t, v.DisableDomainCreds)
 		assert.Nil(t, v.EveryoneIncludesAnonymous)
 		assert.Nil(t, v.ForceGuest)
@@ -174,6 +175,66 @@ func TestComputeLsa(t *testing.T) {
 		assert.Equal(t, int64(1), *v.RestrictAnonymous)
 		assert.Nil(t, v.ForceGuest)
 		assert.Nil(t, v.RestrictRemoteSam)
+	})
+}
+
+// TestComputeLsaCrashOnAuditFail covers each value Windows defines for
+// CrashOnAuditFail. The value is reported verbatim rather than collapsed into a
+// bool: 2 means the system already halted and is admitting only
+// administrators, which a bool would fold into the same answer as 1.
+func TestComputeLsaCrashOnAuditFail(t *testing.T) {
+	t.Run("absent value is null, not the off state", func(t *testing.T) {
+		v := computeLsa(items(d("NoLMHash", 1)))
+		assert.Nil(t, v.CrashOnAuditFail)
+	})
+
+	for _, tc := range []struct {
+		name string
+		raw  int64
+	}{
+		{"0 off", 0},
+		{"1 halts when the Security log cannot be written", 1},
+		{"2 halted, only administrators can log on", 2},
+		// not a value Windows defines; reported as read, never clamped or coerced
+		{"out of range value is reported as read", 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := computeLsa(items(d("CrashOnAuditFail", tc.raw)))
+			require.NotNil(t, v.CrashOnAuditFail)
+			assert.Equal(t, tc.raw, *v.CrashOnAuditFail)
+		})
+	}
+
+	t.Run("lower-case value name as a stock host writes it", func(t *testing.T) {
+		v := computeLsa(items(d("crashonauditfail", 2)))
+		require.NotNil(t, v.CrashOnAuditFail)
+		assert.Equal(t, int64(2), *v.CrashOnAuditFail)
+	})
+}
+
+func TestComputeLsaSam(t *testing.T) {
+	t.Run("absent value yields null, not a fabricated false", func(t *testing.T) {
+		assert.Nil(t, computeLsaSam(map[string]registry.RegistryKeyItem{}))
+		assert.Nil(t, computeLsaSam(items(d("SomethingElse", 1))))
+	})
+
+	t.Run("explicit 0 is false and distinguishable from absent", func(t *testing.T) {
+		p := computeLsaSam(items(d("RelaxMinimumPasswordLengthLimits", 0)))
+		require.NotNil(t, p)
+		assert.False(t, *p)
+	})
+
+	t.Run("1 enables the relaxed limit", func(t *testing.T) {
+		p := computeLsaSam(items(d("RelaxMinimumPasswordLengthLimits", 1)))
+		require.NotNil(t, p)
+		assert.True(t, *p)
+	})
+
+	t.Run("out of range non-zero value reads as enabled", func(t *testing.T) {
+		// matches every other on/off LSA value: any non-zero DWORD is on
+		p := computeLsaSam(items(d("RelaxMinimumPasswordLengthLimits", 2)))
+		require.NotNil(t, p)
+		assert.True(t, *p)
 	})
 }
 
@@ -624,6 +685,8 @@ func TestComputeLsaFromLiveCaptures(t *testing.T) {
 			assert.False(t, *lsa.ForceGuest)
 			require.NotNil(t, lsa.RestrictAnonymous)
 			assert.Equal(t, int64(0), *lsa.RestrictAnonymous)
+			require.NotNil(t, lsa.CrashOnAuditFail)
+			assert.Equal(t, int64(0), *lsa.CrashOnAuditFail)
 
 			// values a stock host leaves unset: null, never a zero value
 			assert.Nil(t, lsa.LmCompatibilityLevel)

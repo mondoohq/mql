@@ -58,6 +58,11 @@ const (
 	lsaLdapClientPath     = `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LDAP`
 )
 
+// lsaSamPath is the Security Accounts Manager key. The SAM runs inside the LSA
+// process (lsass.exe), and its password-policy switches such as
+// RelaxMinimumPasswordLengthLimits live here rather than under Lsa.
+const lsaSamPath = `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\SAM`
+
 // Bits of the Kerberos SupportedEncryptionTypes bitmask. Only the well-known
 // encryption types are decoded; the remaining high bits are reserved for future
 // encryption types and are deliberately ignored, so a value that sets them
@@ -137,6 +142,7 @@ func regBoolPtr(items map[string]registry.RegistryKeyItem, name string) *bool {
 // lsaValues holds the extracted top-level Lsa values as nullable pointers.
 // On/off settings are bools; graded settings are int64s.
 type lsaValues struct {
+	CrashOnAuditFail            *int64
 	DisableDomainCreds          *bool
 	EveryoneIncludesAnonymous   *bool
 	ForceGuest                  *bool
@@ -156,6 +162,7 @@ type lsaValues struct {
 // Pure function for unit testing.
 func computeLsa(items map[string]registry.RegistryKeyItem) lsaValues {
 	return lsaValues{
+		CrashOnAuditFail:            regIntPtr(items, "CrashOnAuditFail"),
 		DisableDomainCreds:          regBoolPtr(items, "DisableDomainCreds"),
 		EveryoneIncludesAnonymous:   regBoolPtr(items, "EveryoneIncludesAnonymous"),
 		ForceGuest:                  regBoolPtr(items, "ForceGuest"),
@@ -232,6 +239,7 @@ func computeLsaSecureChannel(netlogon, netlogonPolicy map[string]registry.Regist
 	}
 }
 
+func (r *mqlWindowsLsa) crashOnAuditFail() (int64, error)           { return 0, r.populate() }
 func (r *mqlWindowsLsa) disableDomainCreds() (bool, error)          { return false, r.populate() }
 func (r *mqlWindowsLsa) everyoneIncludesAnonymous() (bool, error)   { return false, r.populate() }
 func (r *mqlWindowsLsa) forceGuest() (bool, error)                  { return false, r.populate() }
@@ -256,6 +264,7 @@ func (r *mqlWindowsLsa) populate() error {
 	}
 	v := computeLsa(items)
 
+	r.CrashOnAuditFail = intFieldPtr(v.CrashOnAuditFail)
 	r.DisableDomainCreds = boolFieldPtr(v.DisableDomainCreds)
 	r.EveryoneIncludesAnonymous = boolFieldPtr(v.EveryoneIncludesAnonymous)
 	r.ForceGuest = boolFieldPtr(v.ForceGuest)
@@ -424,6 +433,23 @@ func (r *mqlWindowsLsa) fipsAlgorithmPolicyEnabled() (bool, error) {
 		return false, err
 	}
 	r.FipsAlgorithmPolicyEnabled = boolFieldPtr(computeLsaFips(items))
+	return false, nil
+}
+
+// computeLsaSam extracts the RelaxMinimumPasswordLengthLimits switch from the
+// Control\SAM key. Nil when the value is absent, which is the state of a host
+// that never enabled the setting, so the 14-character cap applies. Pure
+// function for unit testing.
+func computeLsaSam(sam map[string]registry.RegistryKeyItem) *bool {
+	return regBoolPtr(sam, "RelaxMinimumPasswordLengthLimits")
+}
+
+func (r *mqlWindowsLsa) relaxMinimumPasswordLengthLimits() (bool, error) {
+	items, err := r.readLsaKey(lsaSamPath)
+	if err != nil {
+		return false, err
+	}
+	r.RelaxMinimumPasswordLengthLimits = boolFieldPtr(computeLsaSam(items))
 	return false, nil
 }
 
