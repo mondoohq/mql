@@ -632,10 +632,17 @@ func (s *Service) connect(req *plugin.ConnectReq, callback plugin.ProviderCallba
 			if err != nil {
 				fingerprint, p, err := id.IdentifyPlatform(conn, req, asset.Platform, asset.IdDetector)
 				if err == nil {
-					asset.Name = fingerprint.Name
+					// A filesystem can be identified by something that carries no
+					// name, such as a machine id, so an existing name is kept
+					// rather than blanked.
+					if fingerprint.Name != "" {
+						asset.Name = fingerprint.Name
+					}
 					asset.PlatformIds = fingerprint.PlatformIDs
 					asset.IdDetector = fingerprint.ActiveIdDetectors
 					asset.MergePlatform(p)
+				} else {
+					log.Error().Err(err).Msg("could not identify the filesystem, it has no platform id and will not be scanned")
 				}
 			} else {
 				// In this case asset.Name should already be set via the inventory
