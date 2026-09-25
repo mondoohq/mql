@@ -495,8 +495,8 @@ machine.secureboot @defaults("enabled") {
 // `memory.committed * 100 / memory.commitLimit < 80`. Supported on Windows,
 // Linux, macOS, FreeBSD, NetBSD, and Solaris. A value the platform does not
 // keep reads as null: macOS and NetBSD have no commit accounting, and FreeBSD
-// reports no commit limit. Asset types that do not run a live system, such as container images
-// and disk snapshots, report the fields as not applicable.
+// reports no commit limit. Asset types that do not run a live system, such as
+// container images and disk snapshots, report the fields as not applicable.
 memory @defaults("total available") {
   // Physical memory visible to the operating system, in bytes
   //
