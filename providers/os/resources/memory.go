@@ -103,6 +103,12 @@ func readMemoryInfo(conn shared.Connection) (*memoryInfo, error) {
 			return nil, err
 		}
 		return parseFreebsdMemory(out)
+	case pf.Name == "netbsd":
+		out, err := runMemoryCommand(conn, netbsdMemoryCommand)
+		if err != nil {
+			return nil, err
+		}
+		return parseNetbsdMemory(out)
 	case pf.IsFamily("linux"):
 		data, err := afero.ReadFile(conn.FileSystem(), "/proc/meminfo")
 		if err != nil {
@@ -274,6 +280,58 @@ func parseFreebsdMemory(data []byte) (*memoryInfo, error) {
 	pageSize, free, inactive := values["hw.pagesize"], values["vm.stats.vm.v_free_count"], values["vm.stats.vm.v_inactive_count"]
 	if pageSize != nil && free != nil && inactive != nil {
 		info.Available = int64Ptr((*free + *inactive) * *pageSize)
+	}
+	return info, nil
+}
+
+// netbsdMemoryCommand prints the physical memory and the UVM page counts.
+// sysctl lives in /sbin, which is not on an unprivileged user's PATH.
+const netbsdMemoryCommand = "/sbin/sysctl hw.physmem64 && vmstat -s"
+
+// parseNetbsdMemory reads sysctl and vmstat -s output. Available is free plus
+// cached file pages, the Free and File totals top shows: a file page returns
+// to the free list by being dropped or written to its file, never to swap.
+// Inactive pages are excluded, since NetBSD keeps dirty anonymous pages on the
+// same queue. hw.physmem64 rather than hw.physmem, which is 32-bit on 32-bit
+// ports. NetBSD keeps no commit accounting, so committed and commitLimit stay
+// null.
+func parseNetbsdMemory(data []byte) (*memoryInfo, error) {
+	var total *int64
+	counts := map[string]int64{}
+	for _, line := range strings.Split(string(data), "\n") {
+		if key, val, ok := strings.Cut(line, "="); ok {
+			if strings.TrimSpace(key) != "hw.physmem64" {
+				continue
+			}
+			n, err := strconv.ParseInt(strings.TrimSpace(val), 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("memory: failed to parse sysctl hw.physmem64: %w", err)
+			}
+			total = int64Ptr(n)
+			continue
+		}
+		// vmstat -s prints a count, then what it counts. Lines that do not
+		// start with a count, such as the name cache summary, are skipped.
+		count, label, ok := strings.Cut(strings.TrimSpace(line), " ")
+		if !ok {
+			continue
+		}
+		n, err := strconv.ParseInt(count, 10, 64)
+		if err != nil {
+			continue
+		}
+		counts[strings.TrimSpace(label)] = n
+	}
+
+	if total == nil {
+		return nil, errors.New("memory: sysctl did not report hw.physmem64")
+	}
+	info := &memoryInfo{Total: total}
+	pageSize, okSize := counts["bytes per page"]
+	free, okFree := counts["pages free"]
+	file, okFile := counts["cached file pages"]
+	if okSize && pageSize > 0 && okFree && okFile {
+		info.Available = int64Ptr((free + file) * pageSize)
 	}
 	return info, nil
 }

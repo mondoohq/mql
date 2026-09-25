@@ -384,6 +384,76 @@ func TestMemoryFreebsd(t *testing.T) {
 	assert.True(t, limit.IsNull())
 }
 
+// Output of netbsdMemoryCommand recorded on NetBSD 11.0 (EC2 t3.small, 2 GiB),
+// cut after the swap counts plus the name cache summary that closes the real
+// output. top on the same host reported 88M File and 1729M Free.
+const netbsdMemoryOutput = `hw.physmem64 = 2107146240
+     4096 bytes per page
+       16 page colors
+   491910 pages managed
+   442785 pages free
+    30341 pages active
+      688 pages inactive
+        0 pages paging
+     4841 pages wired
+     9015 anonymous pages
+    22672 cached file pages
+     4254 cached executable pages
+        1 swap devices
+    65535 swap pages
+        0 swap pages in use
+        0 access denied
+          cache hits (76% pos + 2% neg) system 0% per-process
+          deletions 0%, falsehits 0%, toolong 0%
+`
+
+var netbsdPlatform = &inventory.Platform{Name: "netbsd", Family: []string{"bsd", "unix", "os"}}
+
+func TestParseNetbsdMemory(t *testing.T) {
+	info, err := parseNetbsdMemory([]byte(netbsdMemoryOutput))
+	require.NoError(t, err)
+	require.NotNil(t, info.Total)
+	assert.Equal(t, int64(2107146240), *info.Total)
+	// (442785 free + 22672 cached file) * 4096; inactive and executable pages
+	// are not counted.
+	require.NotNil(t, info.Available)
+	assert.Equal(t, int64(1906511872), *info.Available)
+	assert.Nil(t, info.Committed, "NetBSD keeps no commit accounting")
+	assert.Nil(t, info.CommitLimit, "NetBSD keeps no commit accounting")
+}
+
+func TestParseNetbsdMemoryPartial(t *testing.T) {
+	// A count vmstat did not print leaves available unknown, not 0.
+	info, err := parseNetbsdMemory([]byte("hw.physmem64 = 2107146240\n     4096 bytes per page\n   442785 pages free\n"))
+	require.NoError(t, err)
+	require.NotNil(t, info.Total)
+	assert.Nil(t, info.Available)
+
+	info, err = parseNetbsdMemory([]byte("hw.physmem64 = 2107146240\n        0 bytes per page\n   442785 pages free\n    22672 cached file pages\n"))
+	require.NoError(t, err)
+	assert.Nil(t, info.Available, "zero page size")
+
+	_, err = parseNetbsdMemory([]byte("     4096 bytes per page\n   442785 pages free\n    22672 cached file pages\n"))
+	assert.Error(t, err, "no hw.physmem64")
+
+	_, err = parseNetbsdMemory([]byte("hw.physmem64 = lots\n"))
+	assert.Error(t, err, "bad number")
+}
+
+func TestMemoryNetbsd(t *testing.T) {
+	m := newMemoryResource(t, newMemoryMockData(t, netbsdPlatform, &mock.TomlData{
+		Commands: map[string]*mock.Command{netbsdMemoryCommand: {Stdout: netbsdMemoryOutput}},
+	}))
+
+	available := m.GetAvailable()
+	require.NoError(t, available.Error)
+	assert.Equal(t, int64(1906511872), available.Data)
+
+	committed := m.GetCommitted()
+	require.NoError(t, committed.Error)
+	assert.True(t, committed.IsNull())
+}
+
 // Output of solarisMemoryCommand recorded on Oracle Solaris 11.4 SRU 86 (OCI
 // VM.Standard.E5.Flex, 8 GB). kstat separates name and value with a tab.
 // prtconf on the same host reported 8187 Megabytes.
