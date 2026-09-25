@@ -2454,6 +2454,11 @@ mdm.enrolled 14.0.0
 mdm.method 14.0.0
 mdm.serverUrl 14.0.0
 mdm.vendor 14.0.0
+memory 14.2.1
+memory.available 14.2.1
+memory.commitLimit 14.2.1
+memory.committed 14.2.1
+memory.total 14.2.1
 mistral.vibe 13.13.1
 mistral.vibe.configPath 13.13.1
 mistral.vibe.package 13.31.1

@@ -485,6 +485,40 @@ machine.secureboot @defaults("enabled") {
   setupMode() bool
 }
 
+// Physical and virtual memory of the running system
+//
+// Installed physical memory, the physical memory still available, and the
+// committed virtual memory against its commit limit, all in bytes and read in
+// one snapshot. Used for operational inventory and for usage checks such as
+// `memory.committed * 100 / memory.commitLimit < 80`. Supported on Windows,
+// where the values are the ones Task Manager shows as Available and
+// Committed. Asset types that do not run a live system, such as container
+// images and disk snapshots, report the fields as not applicable.
+memory @defaults("total available") {
+  // Physical memory visible to the operating system, in bytes
+  //
+  // Installed memory minus what firmware and hardware reserve. On Windows,
+  // TotalVisibleMemorySize of Win32_OperatingSystem.
+  total() int
+  // Physical memory available for new allocations without paging, in bytes
+  //
+  // Free, zeroed, and standby pages. On Windows, the Memory\Available Bytes
+  // performance counter.
+  available() int
+  // Committed virtual memory, in bytes
+  //
+  // Virtual memory the system has promised to back with physical memory or
+  // the paging file. On Windows, the Memory\Committed Bytes performance
+  // counter.
+  committed() int
+  // Maximum committed virtual memory, in bytes
+  //
+  // Physical memory plus the current size of all paging files. The limit
+  // rises if a paging file is allowed to grow. On Windows, the
+  // Memory\Commit Limit performance counter.
+  commitLimit() int
+}
+
 // Operating system information
 //
 // Deprecated in favor of the OS roots. Every field on this resource now lives on

@@ -36,6 +36,7 @@ const (
 	ResourceMachineChassis                                string = "machine.chassis"
 	ResourceMachineCpu                                    string = "machine.cpu"
 	ResourceMachineSecureboot                             string = "machine.secureboot"
+	ResourceMemory                                        string = "memory"
 	ResourceOs                                            string = "os"
 	ResourceOsDate                                        string = "os.date"
 	ResourceOsUpdate                                      string = "os.update"
@@ -741,6 +742,10 @@ func init() {
 		"machine.secureboot": {
 			// to override args, implement: initMachineSecureboot(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMachineSecureboot,
+		},
+		"memory": {
+			// to override args, implement: initMemory(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMemory,
 		},
 		"os": {
 			// to override args, implement: initOs(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -3538,6 +3543,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"machine.secureboot.setupMode": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMachineSecureboot).GetSetupMode()).ToDataRes(types.Bool)
+	},
+	"memory.total": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMemory).GetTotal()).ToDataRes(types.Int)
+	},
+	"memory.available": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMemory).GetAvailable()).ToDataRes(types.Int)
+	},
+	"memory.committed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMemory).GetCommitted()).ToDataRes(types.Int)
+	},
+	"memory.commitLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMemory).GetCommitLimit()).ToDataRes(types.Int)
 	},
 	"os.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlOs).GetName()).ToDataRes(types.String)
@@ -18264,6 +18281,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"machine.secureboot.setupMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMachineSecureboot).SetupMode, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"memory.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMemory).__id, ok = v.Value.(string)
+		return
+	},
+	"memory.total": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMemory).Total, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"memory.available": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMemory).Available, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"memory.committed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMemory).Committed, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"memory.commitLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMemory).CommitLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
 		return
 	},
 	"os.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -41194,6 +41231,78 @@ func (c *mqlMachineSecureboot) GetEnabled() *plugin.TValue[bool] {
 func (c *mqlMachineSecureboot) GetSetupMode() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.SetupMode, func() (bool, error) {
 		return c.setupMode()
+	})
+}
+
+// mqlMemory for the memory resource
+type mqlMemory struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMemoryInternal
+	Total       plugin.TValue[int64]
+	Available   plugin.TValue[int64]
+	Committed   plugin.TValue[int64]
+	CommitLimit plugin.TValue[int64]
+}
+
+// createMemory creates a new instance of this resource
+func createMemory(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMemory{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("memory", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMemory) MqlName() string {
+	return "memory"
+}
+
+func (c *mqlMemory) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMemory) GetTotal() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Total, func() (int64, error) {
+		return c.total()
+	})
+}
+
+func (c *mqlMemory) GetAvailable() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Available, func() (int64, error) {
+		return c.available()
+	})
+}
+
+func (c *mqlMemory) GetCommitted() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.Committed, func() (int64, error) {
+		return c.committed()
+	})
+}
+
+func (c *mqlMemory) GetCommitLimit() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.CommitLimit, func() (int64, error) {
+		return c.commitLimit()
 	})
 }
 
