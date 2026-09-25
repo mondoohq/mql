@@ -664,9 +664,44 @@ or failure it evaluated to, and `error_details` carries the coverage gaps, so a
 region that refused is counted in the coverage report without changing the
 check's outcome.
 
-`ReportCollection.error_details` is local-output only: asset errors do not travel
-through `StoreResults`. It is what makes the fleet line one line, in the CLI and
-in JSON.
+`ReportCollection.error_details` is local output. It is what makes the fleet
+line one line, in the CLI and in JSON.
+
+### Asset errors upstream
+
+Until phase 6 an asset error never left the machine that scanned it. Both
+upstream paths are per asset and keyed by its MRN: `StoreResults`, and the scan
+database upload that ends in `ReportUploadCompleted`. Neither had an error slot,
+and a failed asset sent nothing.
+
+A synced asset whose scan fails is reported with its own RPC:
+
+```proto
+// cnspec policy/cnspec_policy.proto, service PolicyResolver
+rpc ReportAssetScanFailed(ReportAssetScanFailedReq) returns (Empty) {}
+
+message ReportAssetScanFailedReq {
+  string asset_mrn = 1;
+  string error = 2;
+  mql.llx.ErrorDetail error_detail = 3;
+}
+```
+
+**Not a field on `StoreResultsReq`**, because it would only cover the inline
+path. The upload path is where scans go today, and there any uploaded scan
+database is ingested as a completed scan: it stamps the asset's cnspec scan time
+and starts scoring. A file uploaded for a failed asset would make it look freshly
+scanned, the opposite of what it says. A separate call is also what makes it safe
+before the server knows it: a server that predates it answers `NotFound`, and the
+client ignores any error here.
+
+**It does not count as a scan.** It is sent instead of results, never beside
+them, so an asset's last successful scan stays where it was. What the server
+records it as is the server's decision; its per-asset scan outcome (server
+ADR-106) is where it would naturally land.
+
+**Only synced assets.** An asset whose `Connect`, discovery, or sync failed has
+no MRN, so nothing upstream can name it. Those failures stay local until phase 9.
 
 ### Two string matches this removes
 
@@ -742,35 +777,40 @@ have landed, and no machine phase waits for a migration.
    same way, so the scan can stop early and report once. Purely an
    optimization: the results are identical either way, which is why it lands
    last rather than competing with the rest.
+9. **Asset errors before sync.** An asset whose `Connect`, discovery, or sync
+   failed never received an MRN, so `ReportAssetScanFailed` cannot name it.
+   Open: which asset upstream it is reported against (the root the scan
+   started from, or the asset itself synced as failed), how an asset without
+   platform IDs is identified, and what the server records. Needs 6.
 
 ### Migrating providers
 
 Each step names the machine phases it needs.
 
-9. **aws, azure, gcp: single calls.** Needs 2 and 4. Each cloud's mapping
-   file, and every single-call site returns the classified error and names
-   its permission, service by service. A refusal inside a region, project or
-   subscription loop is not part of this step: it is a partial result. In aws
-   that is about 340 of the 782 `Is400AccessDeniedError` sites, the ones
-   inside a per-region job; nearly all gcp and azure sites are single calls
-   and belong here.
-10. **aws, azure, gcp: loops.** Needs 3, 5 and 6. Region, project and
+10. **aws, azure, gcp: single calls.** Needs 2 and 4. Each cloud's mapping
+    file, and every single-call site returns the classified error and names
+    its permission, service by service. A refusal inside a region, project or
+    subscription loop is not part of this step: it is a partial result. In aws
+    that is about 340 of the 782 `Is400AccessDeniedError` sites, the ones
+    inside a per-region job; nearly all gcp and azure sites are single calls
+    and belong here.
+11. **aws, azure, gcp: loops.** Needs 3, 5 and 6. Region, project and
     subscription loops convert to `llx.Partial`, both the
     silent ones and the ones that fail a whole list today, and so do per-item
     refusals while building a list (one item's tags or details). The gaps must
     already show in mql and cnspec (§8); the server follows on its own
     schedule.
-11. **os: classify errors and nulls.** Needs 2 and 4. The os provider on its
+12. **os: classify errors and nulls.** Needs 2 and 4. The os provider on its
     own, because it is the largest outside the clouds and its failures are
     shaped differently: a missing `sudo`, a command that is not installed, a
     file that cannot be read, a registry that refused an image pull. Every
     error is classified, and every null that may be hiding a refusal is
     revisited in the same pass. The registry pull's 429 at `Connect` is one of
     them; cnspec's Docker rate-limit advice waits on it (phase 6).
-12. **The long tail.** The remaining providers, plus a lint that flags an error
+13. **The long tail.** The remaining providers, plus a lint that flags an error
     swallowed into `nil, nil` right after a classifier predicate, the shape that
     produced the current state.
-13. **The null audit.** §3 permits an absence to stay a null, and 4,124
+14. **The null audit.** §3 permits an absence to stay a null, and 4,124
     `StateIsNull` sites currently claim to be absences. Which of them are genuine
     and which are swallowed refusals is a per-site question that has to be asked
     of every provider, and it is the work that actually finishes what this ADR
@@ -778,7 +818,7 @@ Each step names the machine phases it needs.
     declare done while most of it is untouched.
 
 Phases 1 and 2 are independently useful: a kind that only reaches the CLI is
-already better than a string, and step 9 without phase 6 still makes `mql shell`
+already better than a string, and step 10 without phase 6 still makes `mql shell`
 honest for anyone who turns the flag on. Phase 1 is the only one that has to
 make the v14 rc window.
 
@@ -817,7 +857,7 @@ Two notes from phase 1:
 `providers-sdk/v1/plugin/classify.go`.
 
 **Phase 3 landed.** Partial results reach `llx.Result`; nothing produces one
-yet, since loops convert in step 10.
+yet, since loops convert in step 11.
 
 - **Wire.** `CoverageGap`, `Result.coverage_gaps` and `DataRes.coverage_gaps`.
 - **In memory.** `RawData.CoverageGaps` and `TValue.CoverageGaps`, both
@@ -906,6 +946,10 @@ the flag off cnspec's output is what it was.
   message prefix.
 - **Asset errors.** `ReportCollection.error_details` (7) has an entry for each
   asset error that was classified; `errors` keeps every message.
+- **Asset errors upstream.** A synced asset whose scan fails is reported with
+  `ReportAssetScanFailed` (message and detail), from the scan's services, so it
+  goes upstream in both upload modes and nowhere when incognito. Errors from
+  that call are logged at debug and dropped.
 - **Text output.** A check assessed on incomplete data is followed by one
   dimmed `coverage gap:` line per `(kind, scope_id)`, as in mql. A classified
   asset error leads with its kind. The summary adds the coverage lines, and
@@ -922,7 +966,7 @@ the flag off cnspec's output is what it was.
   column by column and does not store `error_details`; the SARIF, JUnit, OCSF
   and HDF formats print the message only.
 
-**Step 9 for aws is open** (#11012). It returns classified errors
+**Step 10 for aws is open** (#11012). It returns classified errors
 unconditionally; it gets the v13 branches of §9 and can merge now that phase 4
 has landed.
 
