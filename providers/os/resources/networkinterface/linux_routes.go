@@ -109,6 +109,12 @@ func (l *linuxRouteDetector) convertJSONRouteToRoute(jsonRoute ipRouteJSON) *Rou
 	route := &Route{
 		Interface: jsonRoute.Dev,
 		Gateway:   jsonRoute.Gateway,
+		Table:     jsonRoute.Table,
+		Protocol:  jsonRoute.Protocol,
+		Scope:     jsonRoute.Scope,
+		Metric:    int64(jsonRoute.Metric),
+		Source:    jsonRoute.Prefsrc,
+		Type:      jsonRoute.Type,
 	}
 
 	dest := jsonRoute.Dst
@@ -210,11 +216,20 @@ func (l *linuxRouteDetector) parseLinuxRoutesFromProc(output string) ([]Route, e
 			gatewayStr = ""
 		}
 
+		// /proc/net/route only holds the main table, and it reports the
+		// metric as a decimal in the seventh column.
+		metric, err := strconv.ParseInt(line[6], 10, 64)
+		if err != nil {
+			metric = 0
+		}
+
 		routes = append(routes, Route{
 			Destination: destStr,
 			Gateway:     gatewayStr,
 			Flags:       flags,
 			Interface:   iface,
+			Table:       "main",
+			Metric:      metric,
 		})
 	}
 
@@ -291,11 +306,20 @@ func (l *linuxRouteDetector) parseLinuxIPv6RoutesFromProc(output string) ([]Rout
 			continue
 		}
 
+		// The metric sits in the sixth column as a hex value.
+		var metric int64
+		if v, err := strconv.ParseInt(fields[5], 16, 64); err == nil {
+			metric = v
+		}
+
+		// /proc/net/ipv6_route holds the routes of every table and names
+		// none of them, so the table stays empty rather than claiming main.
 		routes = append(routes, Route{
 			Destination: destStr,
 			Gateway:     gatewayStr,
 			Flags:       flags,
 			Interface:   device,
+			Metric:      metric,
 		})
 	}
 

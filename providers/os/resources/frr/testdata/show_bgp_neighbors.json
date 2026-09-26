@@ -1,0 +1,52 @@
+{
+  "swp1": {
+    "remoteAs": 65000,
+    "localAs": 65100,
+    "nbrExternalLink": true,
+    "hostname": "leaf1",
+    "bgpVersion": 4,
+    "remoteRouterId": "192.0.2.10",
+    "localRouterId": "192.0.2.30",
+    "bgpState": "Established",
+    "bgpTimerUpMsec": 4365000,
+    "bgpTimerUpString": "01:12:45",
+    "addressFamilyInfo": {
+      "ipv4Unicast": {
+        "updateGroupId": 1,
+        "subGroupId": 1,
+        "packetQueueLength": 0,
+        "commAttriSentToNbr": "extendedAndStandard",
+        "routeMapForIncomingAdvertisements": "TAG-FABRIC-IN",
+        "routeMapForOutgoingAdvertisements": "DENY-TAG-FABRIC-OUT",
+        "acceptedPrefixCounter": 5,
+        "announcedPrefixCounter": 9,
+        "sentPrefixCounter": 3
+      },
+      "l2VpnEvpn": {
+        "updateGroupId": 2,
+        "subGroupId": 2,
+        "acceptedPrefixCounter": 24,
+        "sentPrefixCounter": 9
+      }
+    },
+    "connectionsEstablished": 1,
+    "connectionsDropped": 0
+  },
+  "swp2": {
+    "remoteAs": 65000,
+    "localAs": 65100,
+    "hostname": "leaf2",
+    "bgpState": "Idle",
+    "addressFamilyInfo": {
+      "ipv4Unicast": {
+        "updateGroupId": 1,
+        "subGroupId": 1,
+        "incomingUpdatePrefixFilterList": "pl_fabric_in",
+        "acceptedPrefixCounter": 0,
+        "sentPrefixCounter": 0
+      }
+    },
+    "connectionsEstablished": 0,
+    "connectionsDropped": 3
+  }
+}
