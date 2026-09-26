@@ -329,3 +329,55 @@ func TestPackageIDIgnoresFilesOutsideMacOS(t *testing.T) {
 	// A macOS package without its file record has no path to add.
 	assert.Equal(t, "macos://Safari/27.0/arm64", packageID(packages.MacosPkgFormat, "Safari", "27.0", "arm64", "", "", nil))
 }
+
+// A macOS application in a home directory belongs to that account. macOS
+// accounts carry no SID, so installUser() matches the account name, and the
+// identity fields read from the bundle reach the resource.
+func TestMacOSApplicationSurface(t *testing.T) {
+	args := make(map[string]*llx.RawData, 20)
+
+	t.Run("user-scope bundle resolves installUser by account name", func(t *testing.T) {
+		runtime := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+		// A Windows-style SID match must not be what resolves this: the macOS
+		// user has none, and a second account with an empty SID is present.
+		seedUsersCache(t, runtime, newTestUser(runtime, "root", ""), newTestUser(runtime, "alice", ""))
+
+		pkg := packages.Package{
+			Name: "Claude Code URL Handler", Version: "1.0", Arch: "arm64", Format: packages.MacosPkgFormat,
+			Files:        []packages.FileRecord{{Path: "/Users/alice/Applications/Claude Code URL Handler.app"}},
+			InstallScope: "user", InstallUser: "alice",
+			BundleID: "com.anthropic.claude-code-url-handler",
+		}
+		got := createTestPackage(t, runtime, args, &pkg)
+
+		assert.Equal(t, "user", got.InstallScope.Data)
+		assert.Equal(t, "com.anthropic.claude-code-url-handler", got.BundleId.Data)
+		resolved := got.GetInstallUser()
+		require.NoError(t, resolved.Error)
+		require.NotNil(t, resolved.Data)
+		assert.Equal(t, "alice", resolved.Data.Name.Data)
+	})
+
+	t.Run("signer, team and App Store flag", func(t *testing.T) {
+		runtime := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+		pkg := packages.Package{
+			Name: "Microsoft Edge", Version: "154.0.4258.37", Arch: "arm64", Format: packages.MacosPkgFormat,
+			Files:        []packages.FileRecord{{Path: "/Applications/Microsoft Edge.app"}},
+			InstallScope: "machine",
+			BundleID:     "com.microsoft.edgemac",
+			Signer:       "Developer ID Application: Microsoft Corporation (UBF8T346G9)",
+			TeamID:       "UBF8T346G9",
+		}
+		got := createTestPackage(t, runtime, args, &pkg)
+		assert.Equal(t, "Developer ID Application: Microsoft Corporation (UBF8T346G9)", got.Signer.Data)
+		assert.Equal(t, "UBF8T346G9", got.TeamId.Data)
+		assert.False(t, got.AppStoreManaged.Data)
+
+		monodraw := packages.Package{
+			Name: "Monodraw", Version: "1.7.1", Arch: "universal", Format: packages.MacosPkgFormat,
+			Files:           []packages.FileRecord{{Path: "/Applications/Monodraw.app"}},
+			AppStoreManaged: true,
+		}
+		assert.True(t, createTestPackage(t, runtime, args, &monodraw).AppStoreManaged.Data)
+	})
+}

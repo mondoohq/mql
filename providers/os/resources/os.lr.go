@@ -4109,6 +4109,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"package.installUser": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPackage).GetInstallUser()).ToDataRes(types.Resource("user"))
 	},
+	"package.bundleId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackage).GetBundleId()).ToDataRes(types.String)
+	},
+	"package.signer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackage).GetSigner()).ToDataRes(types.String)
+	},
+	"package.teamId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackage).GetTeamId()).ToDataRes(types.String)
+	},
+	"package.appStoreManaged": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackage).GetAppStoreManaged()).ToDataRes(types.Bool)
+	},
 	"pkgFileInfo.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPkgFileInfo).GetPath()).ToDataRes(types.String)
 	},
@@ -19265,6 +19277,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"package.installUser": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlPackage).InstallUser, ok = plugin.RawToTValue[*mqlUser](v.Value, v.Error)
+		return
+	},
+	"package.bundleId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackage).BundleId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"package.signer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackage).Signer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"package.teamId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackage).TeamId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"package.appStoreManaged": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackage).AppStoreManaged, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"pkgFileInfo.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -44473,26 +44501,30 @@ type mqlPackage struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlPackageInternal
-	Name         plugin.TValue[string]
-	Description  plugin.TValue[string]
-	Version      plugin.TValue[string]
-	Arch         plugin.TValue[string]
-	Epoch        plugin.TValue[string]
-	Format       plugin.TValue[string]
-	Status       plugin.TValue[string]
-	Pinned       plugin.TValue[bool]
-	Purl         plugin.TValue[string]
-	Cpes         plugin.TValue[[]any]
-	Origin       plugin.TValue[string]
-	Available    plugin.TValue[string]
-	Installed    plugin.TValue[bool]
-	Outdated     plugin.TValue[bool]
-	Files        plugin.TValue[[]any]
-	Vendor       plugin.TValue[string]
-	License      plugin.TValue[string]
-	InstallDate  plugin.TValue[*time.Time]
-	InstallScope plugin.TValue[string]
-	InstallUser  plugin.TValue[*mqlUser]
+	Name            plugin.TValue[string]
+	Description     plugin.TValue[string]
+	Version         plugin.TValue[string]
+	Arch            plugin.TValue[string]
+	Epoch           plugin.TValue[string]
+	Format          plugin.TValue[string]
+	Status          plugin.TValue[string]
+	Pinned          plugin.TValue[bool]
+	Purl            plugin.TValue[string]
+	Cpes            plugin.TValue[[]any]
+	Origin          plugin.TValue[string]
+	Available       plugin.TValue[string]
+	Installed       plugin.TValue[bool]
+	Outdated        plugin.TValue[bool]
+	Files           plugin.TValue[[]any]
+	Vendor          plugin.TValue[string]
+	License         plugin.TValue[string]
+	InstallDate     plugin.TValue[*time.Time]
+	InstallScope    plugin.TValue[string]
+	InstallUser     plugin.TValue[*mqlUser]
+	BundleId        plugin.TValue[string]
+	Signer          plugin.TValue[string]
+	TeamId          plugin.TValue[string]
+	AppStoreManaged plugin.TValue[bool]
 }
 
 // createPackage creates a new instance of this resource
@@ -44642,6 +44674,22 @@ func (c *mqlPackage) GetInstallUser() *plugin.TValue[*mqlUser] {
 
 		return c.installUser()
 	})
+}
+
+func (c *mqlPackage) GetBundleId() *plugin.TValue[string] {
+	return &c.BundleId
+}
+
+func (c *mqlPackage) GetSigner() *plugin.TValue[string] {
+	return &c.Signer
+}
+
+func (c *mqlPackage) GetTeamId() *plugin.TValue[string] {
+	return &c.TeamId
+}
+
+func (c *mqlPackage) GetAppStoreManaged() *plugin.TValue[bool] {
+	return &c.AppStoreManaged
 }
 
 // mqlPkgFileInfo for the pkgFileInfo resource

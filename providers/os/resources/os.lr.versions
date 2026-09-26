@@ -3132,8 +3132,10 @@ ovs.port.vlanTag 13.40.8
 ovs.ports 13.40.8
 ovs.version 13.40.8
 package 9.0.0
+package.appStoreManaged 14.5.1
 package.arch 9.0.0
 package.available 9.0.0
+package.bundleId 14.5.1
 package.cpes 9.1.8
 package.description 9.0.0
 package.epoch 9.0.0
@@ -3149,7 +3151,9 @@ package.origin 9.0.0
 package.outdated 9.0.0
 package.pinned 13.40.10
 package.purl 9.1.6
+package.signer 14.5.1
 package.status 9.0.0
+package.teamId 14.5.1
 package.vendor 11.2.18
 package.version 9.0.0
 packages 9.0.0

@@ -36,6 +36,18 @@ type sysProfilerItem struct {
 	// Surfaced as the package origin — see the assignment in
 	// ParseMacOSPackages for why.
 	ObtainedFrom string `plist:"obtained_from"`
+	// Architectures of the bundle's main executable. See appArch.
+	ArchKind string `plist:"arch_kind"`
+	// Certificate chain that signed the bundle, leaf first, for example
+	// ["Developer ID Application: Microsoft Corporation (UBF8T346G9)",
+	// "Developer ID Certification Authority", "Apple Root CA"]. Absent for
+	// unsigned bundles.
+	SignedBy []string `plist:"signed_by"`
+
+	// info caches the bundle's Contents/Info.plist once it has been read, so
+	// entries found by listing the application folders are not read twice.
+	info     *infoPlist
+	isBundle bool
 }
 
 type sysProfiler struct {
@@ -45,6 +57,7 @@ type sysProfiler struct {
 // infoPlist holds the keys we care about from an app bundle's
 // Contents/Info.plist.
 type infoPlist struct {
+	BundleID      string `plist:"CFBundleIdentifier"`
 	ShortVersion  string `plist:"CFBundleShortVersionString"`
 	BundleVersion string `plist:"CFBundleVersion"`
 	BundleName    string `plist:"CFBundleName"`
@@ -78,9 +91,11 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 
 	items := data[0].Items
 	items = append(items, cryptexApplications(conn, items)...)
+	items = append(items, folderApplications(conn, items)...)
 
 	pkgs := make([]Package, 0, len(items))
-	for _, entry := range items {
+	for i := range items {
+		entry := &items[i]
 		if !isApplicationBundlePath(entry.Path) {
 			log.Debug().
 				Str("name", entry.Name).
@@ -88,6 +103,12 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 				Msg("skipping entry that is not an installed application bundle")
 			continue
 		}
+
+		// The Info.plist is read for every application, not only when the
+		// version needs recovering: it is the only source of the bundle
+		// identifier. A missing or unreadable one is not an error here, the
+		// version checks below decide what its absence means.
+		info, isBundle := entryInfoPlist(conn, entry)
 
 		// system_profiler only surfaces CFBundleShortVersionString as the
 		// version. Some bundles (e.g. PWAs) ship a version only in
@@ -107,8 +128,7 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 			// Entries reporting a version we can use are never checked, because
 			// some real applications have no Contents/Info.plist. Wrapped iOS
 			// apps keep theirs under Wrapper/ and would otherwise be lost.
-			bundleVersion, isBundle := bundleVersionFromInfoPlist(conn, entry.Path)
-			bundleVersion = stripVersionLabel(bundleVersion)
+			bundleVersion := stripVersionLabel(bundleVersionOf(info))
 			if !isBundle {
 				log.Debug().
 					Str("name", entry.Name).
@@ -139,7 +159,14 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 		version = normalizeVersion(version)
 
 		// We need a special handling for Firefox to determine ESR installations
-		purlQualifiers := getPurlQualifiers(conn, entry)
+		purlQualifiers := getPurlQualifiers(conn, *entry)
+
+		arch := appArch(entry.ArchKind, platform.Arch)
+		signer := ""
+		if len(entry.SignedBy) > 0 {
+			signer = entry.SignedBy[0]
+		}
+		scope, user := appInstallScope(entry.Path)
 
 		pkg := Package{
 			Name:    entry.Name,
@@ -158,10 +185,17 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 			Origin:         entry.ObtainedFrom,
 			Format:         MacosPkgFormat,
 			FilesAvailable: PkgFilesIncluded,
-			Arch:           platform.Arch,
+			Arch:           arch,
 			PUrl: purl.NewPackageURL(
-				platform, purl.TypeMacos, entry.Name, version, purl.WithQualifiers(purlQualifiers),
+				platform, purl.TypeMacos, entry.Name, version,
+				purl.WithArch(arch), purl.WithQualifiers(purlQualifiers),
 			).String(),
+			BundleID:        info.BundleID,
+			Signer:          signer,
+			TeamID:          teamIDFromSigner(signer),
+			AppStoreManaged: isAppStoreManaged(conn, entry.Path, signer),
+			InstallScope:    scope,
+			InstallUser:     user,
 		}
 		if entry.Path != "" {
 			pkg.Files = []FileRecord{
@@ -415,22 +449,31 @@ func normalizeVersion(version string) string {
 	return strings.Join(strings.Fields(version), "")
 }
 
-// bundleVersionFromInfoPlist recovers an app's version from its
-// Contents/Info.plist when system_profiler did not report one. It prefers
-// CFBundleShortVersionString (the user-facing version) and falls back to
-// CFBundleVersion (the build version).
-//
-// The second return value reports whether the path is an application bundle at
-// all, which is true whenever a Contents/Info.plist could be read. Callers use
-// it to tell a real application that simply carries no version (some Apple
-// CoreServices apps ship neither version key) from a directory that merely has
-// a bundle-like extension.
-func bundleVersionFromInfoPlist(conn shared.Connection, path string) (string, bool) {
-	info, isBundle := readInfoPlist(conn, path)
+// bundleVersionOf returns an app's version as its Info.plist states it. It
+// prefers CFBundleShortVersionString (the user-facing version) and falls back
+// to CFBundleVersion (the build version). system_profiler surfaces only the
+// former, so this recovers a version for bundles, such as PWAs, that ship only
+// the latter.
+func bundleVersionOf(info infoPlist) string {
 	if info.ShortVersion != "" {
-		return info.ShortVersion, isBundle
+		return info.ShortVersion
 	}
-	return info.BundleVersion, isBundle
+	return info.BundleVersion
+}
+
+// entryInfoPlist returns the entry's Contents/Info.plist, reading it on first
+// use. The second return value reports whether the path is an application
+// bundle at all, which is true whenever a Contents/Info.plist could be read.
+// Callers use it to tell a real application that simply carries no version
+// (some Apple CoreServices apps ship neither version key) from a directory
+// that merely has a bundle-like extension.
+func entryInfoPlist(conn shared.Connection, entry *sysProfilerItem) (infoPlist, bool) {
+	if entry.info == nil {
+		info, isBundle := readInfoPlist(conn, entry.Path)
+		entry.info = &info
+		entry.isBundle = isBundle
+	}
+	return *entry.info, entry.isBundle
 }
 
 // readInfoPlist reads an app bundle's Contents/Info.plist. The second return
@@ -438,7 +481,7 @@ func bundleVersionFromInfoPlist(conn shared.Connection, path string) (string, bo
 // path an application bundle; a plist that fails to parse still counts.
 func readInfoPlist(conn shared.Connection, path string) (infoPlist, bool) {
 	var info infoPlist
-	if path == "" {
+	if path == "" || conn == nil {
 		return info, false
 	}
 
@@ -535,16 +578,14 @@ func cryptexApplications(conn shared.Connection, reported []sysProfilerItem) []s
 				if !isBundle {
 					continue
 				}
-				version := info.ShortVersion
-				if version == "" {
-					version = info.BundleVersion
-				}
 				items = append(items, sysProfilerItem{
 					Name:    cryptexBundleName(info, name),
-					Version: version,
+					Version: bundleVersionOf(info),
 					Path:    path,
 					// Only Apple can sign a cryptex.
 					ObtainedFrom: "apple",
+					info:         &info,
+					isBundle:     true,
 				})
 			}
 		}

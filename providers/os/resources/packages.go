@@ -88,12 +88,14 @@ type mqlPackageInternal struct {
 	// a typed accessor rather than a raw string field; this is that
 	// accessor's backing value, populated by list() from
 	// packages.Package.InstallUser (which stays the source of truth for the
-	// raw SID, see packages/packages.go).
+	// raw SID, see packages/packages.go). For a macOS application it holds
+	// the account name instead, see installUser().
 	installUserSid string
 }
 
 // installUser resolves the SID that reported this package (installScope ==
-// "user") to a local user account. Matched on SID only -- the same
+// "user") to a local user account, or on macOS the account name whose home
+// directory holds the application bundle. Matched on SID only -- the same
 // precedent as windows.logonSession.user (windows_logonsession.go): an
 // account name is not unique across a machine and the domains it trusts.
 // Null when installUserSid is empty (machine-scope, or a backend with no
@@ -120,12 +122,19 @@ func (x *mqlPackage) installUser() (*mqlUser, error) {
 		return nil, list.Error
 	}
 
+	// A macOS bundle is attributed to the home directory it is in, so its
+	// backing value is an account name rather than a SID; macOS accounts
+	// carry no SID to match on.
+	byName := x.Format.Data == packages.MacosPkgFormat
 	for _, entry := range list.Data {
 		usr, ok := entry.(*mqlUser)
 		if !ok {
 			continue
 		}
-		if usr.Sid.Data == sid {
+		if byName && usr.Name.Data == sid {
+			return usr, nil
+		}
+		if !byName && usr.Sid.Data == sid {
 			return usr, nil
 		}
 	}
@@ -186,6 +195,10 @@ func initPackage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[str
 	res.Files.State = plugin.StateIsSet | plugin.StateIsNull
 	res.License.State = plugin.StateIsSet | plugin.StateIsNull
 	res.InstallDate.State = plugin.StateIsSet | plugin.StateIsNull
+	res.BundleId.State = plugin.StateIsSet | plugin.StateIsNull
+	res.Signer.State = plugin.StateIsSet | plugin.StateIsNull
+	res.TeamId.State = plugin.StateIsSet | plugin.StateIsNull
+	res.AppStoreManaged = plugin.TValue[bool]{Data: false, State: plugin.StateIsSet}
 	res.__id, _ = res.id()
 	return nil, res, nil
 }
@@ -291,6 +304,10 @@ func fillPackageArgs(args map[string]*llx.RawData, osPkg *packages.Package, avai
 	args["cpes"] = llx.ArrayData(cpes, types.Resource("cpe"))
 	args["vendor"] = llx.StringData(osPkg.Vendor)
 	args["installScope"] = llx.StringData(osPkg.InstallScope)
+	args["bundleId"] = llx.StringData(osPkg.BundleID)
+	args["signer"] = llx.StringData(osPkg.Signer)
+	args["teamId"] = llx.StringData(osPkg.TeamID)
+	args["appStoreManaged"] = llx.BoolData(osPkg.AppStoreManaged)
 	// installUser is a lazy user accessor (os.lr), not a settable raw field --
 	// there is no args["installUser"] to fill. The raw SID a backend reported
 	// (osPkg.InstallUser) is threaded through separately, as __id (below, so

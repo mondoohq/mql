@@ -1324,6 +1324,13 @@ package @defaults("name version") {
   // Currently installed version of the package
   version string
   // Architecture of this package (e.g., x86_64, arm64, noarch)
+  //
+  // On macOS, the architecture of the application's main executable: arm64,
+  // x86_64, or universal for a universal binary that runs natively on both.
+  // An x86_64 application on an Apple Silicon Mac runs under Rosetta. When
+  // the executable's architecture is unknown, such as for a script launcher
+  // or an application found only by listing the application folders, the
+  // host architecture is reported.
   arch string
   // Epoch of this package (version-comparison tiebreaker; empty when unset)
   epoch string
@@ -1376,7 +1383,9 @@ package @defaults("name version") {
   //
   // On macOS this distinguishes App Store installs from everything else, which
   // matters when choosing an update path: an App Store app cannot be upgraded
-  // with `brew upgrade`.
+  // with `brew upgrade`. It is empty for an application found only by listing
+  // the application folders, where `appStoreManaged` still answers that
+  // question.
   origin() string
 
   // Latest version the package manager reports as available
@@ -1444,18 +1453,63 @@ package @defaults("name version") {
   // Uninstall registry key: HKEY_LOCAL_MACHINE is "machine"; HKCU or a
   // specific user's hive under HKEY_USERS is "user". Windows appx packages,
   // the .NET Framework runtime, and hotfixes are always "machine", since
-  // none of those sources carry per-user attribution. Empty on platforms
-  // with no such concept. Query-only: not carried into the SBOM output.
+  // none of those sources carry per-user attribution. macOS application
+  // bundles are "user" when they are inside a user's home directory (for
+  // example ~/Applications) and "machine" everywhere else, including
+  // /Users/Shared. Empty on platforms with no such concept. Query-only: not
+  // carried into the SBOM output.
   installScope string
 
   // User owning a user-scope install
   //
-  // Local user whose registry hive reported this package, resolved by
-  // matching the installing SID, set only when `installScope` is "user".
-  // Matched on SID only, so it resolves only for an account that still
-  // exists on this machine; null for a deleted profile and for
-  // machine-scope installs and platforms with no such concept.
+  // Local user a package with `installScope` "user" belongs to. On Windows,
+  // the user whose registry hive reported the package, matched on the
+  // installing SID. On macOS, the user whose home directory holds the
+  // application bundle, matched on the account name. Resolves only for an
+  // account that still exists on this machine; null for a deleted profile
+  // and for machine-scope installs and platforms with no such concept.
   installUser() user
+
+  // Bundle identifier of a macOS application
+  //
+  // The CFBundleIdentifier from the application's Contents/Info.plist, for
+  // example "com.tinyspeck.slackmacgap". Unlike `name`, which is the bundle's
+  // display name, it stays the same across versions, renames and
+  // localizations, so it is the stable key for allow and deny lists. Empty
+  // for other package formats and for bundles without a Contents/Info.plist,
+  // such as wrapped iPhone and iPad apps.
+  bundleId string
+
+  // Code-signing certificate of a macOS application
+  //
+  // Name of the leaf certificate the application is signed with, as
+  // reported by the system application inventory. "Software Signing" for
+  // applications that ship with macOS, "Apple Mac OS Application Signing"
+  // for Mac App Store applications, and "Developer ID Application: <name>
+  // (<team ID>)" for applications distributed outside the App Store. Empty
+  // for unsigned applications, for other package formats, and for
+  // applications found only by listing the application folders.
+  signer string
+
+  // Apple Developer Team ID of a macOS application's signer
+  //
+  // Ten-character identifier of the developer team that signed the
+  // application, for example "UBF8T346G9" for Microsoft, read from a
+  // Developer ID Application `signer`. It identifies the publisher
+  // independently of the application's name. Empty for other signers,
+  // including Apple's own and the Mac App Store's, and for other package
+  // formats.
+  teamId string
+
+  // Whether a macOS application is installed and updated by the Mac App Store
+  //
+  // True when the bundle carries an App Store receipt
+  // (Contents/_MASReceipt/receipt) or is signed with the App Store
+  // certificate. Such an application is updated by the App Store, not by
+  // its own updater or a third-party package manager. Unlike `origin`, it
+  // is also set for applications found only by listing the application
+  // folders. False for other package formats.
+  appStoreManaged bool
 }
 
 // File recorded for a package

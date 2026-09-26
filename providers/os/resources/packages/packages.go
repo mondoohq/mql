@@ -72,14 +72,31 @@ type Package struct {
 	// Windows registry-derived packages set "machine" or "user" (HKLM is
 	// "machine", HKCU or a specific user's registry hive is "user"). Windows
 	// appx packages, the .NET Framework runtime, and hotfixes are always
-	// "machine": none of those sources carry per-user attribution. Empty for
-	// every other package manager.
+	// "machine": none of those sources carry per-user attribution. macOS
+	// application bundles are "user" when they sit in a user's home directory
+	// and "machine" otherwise. Empty for every other package manager.
 	InstallScope string `json:"install_scope,omitempty"`
 
-	// InstallUser is the SID of the user whose registry hive reported this
-	// package, set only when InstallScope is "user". Empty for
-	// machine-scope installs and for backends with no per-user concept.
+	// InstallUser identifies the user a "user" InstallScope package belongs
+	// to: on Windows the SID of the user whose registry hive reported it, on
+	// macOS the account name of the home directory the bundle is in. Empty
+	// for machine-scope installs and for backends with no per-user concept.
 	InstallUser string `json:"install_user,omitempty"`
+
+	// BundleID is a macOS application's CFBundleIdentifier, e.g.
+	// "com.tinyspeck.slackmacgap". Empty for every other package manager.
+	BundleID string `json:"bundle_id,omitempty"`
+
+	// Signer is the leaf certificate a macOS application is signed with, as
+	// system_profiler reports it, e.g. "Developer ID Application: Microsoft
+	// Corporation (UBF8T346G9)". TeamID is the Apple Developer Team ID parsed
+	// from a Developer ID signer. Both empty for every other package manager.
+	Signer string `json:"signer,omitempty"`
+	TeamID string `json:"team_id,omitempty"`
+
+	// AppStoreManaged reports a macOS application installed and updated by
+	// the Mac App Store.
+	AppStoreManaged bool `json:"app_store_managed,omitempty"`
 
 	// regDedupKey identifies the physical Windows registry key this package
 	// was read from (see windows_packages.go: registryDedupKey,
