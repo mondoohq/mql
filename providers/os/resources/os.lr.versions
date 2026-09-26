@@ -483,6 +483,7 @@ chrony.conf.bindCmdAddresses 13.22.2
 chrony.conf.content 13.22.2
 chrony.conf.deny 13.22.2
 chrony.conf.file 13.22.2
+chrony.conf.files 14.5.1
 chrony.conf.keyFile 13.22.2
 chrony.conf.makeStep 13.22.2
 chrony.conf.peers 13.22.2

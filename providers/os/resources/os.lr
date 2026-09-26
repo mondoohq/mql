@@ -8650,17 +8650,35 @@ ntp.conf {
 // the daemon does not answer client requests); `bindCmdAddresses` reports
 // where the control socket listens; and `keyFile`, `makeStep`, and
 // `rtcSync` cover the authentication key file, clock-stepping policy, and
-// real-time-clock synchronization. Select an alternate file with
+// real-time-clock synchronization. Settings from files pulled in by
+// `include`, `confdir`, and `sourcedir` directives are part of the parsed
+// fields, the same files chronyd reads. Select an alternate file with
 // `chrony.conf("...")`; the default resolves to `/etc/chrony.conf`
-// (RHEL family) or `/etc/chrony/chrony.conf` (Debian family).
+// (RHEL family), `/etc/chrony/chrony.conf` (Debian family), or
+// `/usr/etc/chrony.conf` when the distribution ships its default there and
+// `/etc/chrony.conf` does not exist (openSUSE Leap 16).
 chrony.conf {
   init(path string)
-  // File backing the chrony configuration
+  // Main file of the chrony configuration
   file() file
-  // Raw contents of the chrony configuration
+  // Files that make up the chrony configuration
+  //
+  // The main file first, then every file read through `include`, `confdir`,
+  // and `sourcedir` directives, in the order chronyd reads them. For a file
+  // name present in several `confdir` or `sourcedir` directories, only the
+  // copy from the directory listed first is included.
+  files(file) []file
+  // Raw contents of the main chrony configuration file
+  //
+  // Only the main file. Included files are listed in `files`, and their
+  // directives are part of `settings`.
   content(file) string
   // Effective settings with comments and blank lines removed
-  settings(content) []string
+  //
+  // Directives from the main file and every included file, in the order
+  // chronyd reads them. Each include directive is followed by the settings of
+  // the files it pulls in.
+  settings(file) []string
   // Time sources from `server` directives (host plus any options)
   servers(settings) []string
   // Time-source pools from `pool` directives (host plus any options)

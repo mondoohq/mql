@@ -10009,6 +10009,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"chrony.conf.file": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlChronyConf).GetFile()).ToDataRes(types.Resource("file"))
 	},
+	"chrony.conf.files": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlChronyConf).GetFiles()).ToDataRes(types.Array(types.Resource("file")))
+	},
 	"chrony.conf.content": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlChronyConf).GetContent()).ToDataRes(types.String)
 	},
@@ -28042,6 +28045,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"chrony.conf.file": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlChronyConf).File, ok = plugin.RawToTValue[*mqlFile](v.Value, v.Error)
+		return
+	},
+	"chrony.conf.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlChronyConf).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"chrony.conf.content": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -69112,8 +69119,9 @@ func (c *mqlNtpConf) GetFudge() *plugin.TValue[[]any] {
 type mqlChronyConf struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlChronyConfInternal it will be used here
+	mqlChronyConfInternal
 	File             plugin.TValue[*mqlFile]
+	Files            plugin.TValue[[]any]
 	Content          plugin.TValue[string]
 	Settings         plugin.TValue[[]any]
 	Servers          plugin.TValue[[]any]
@@ -69180,6 +69188,27 @@ func (c *mqlChronyConf) GetFile() *plugin.TValue[*mqlFile] {
 	})
 }
 
+func (c *mqlChronyConf) GetFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Files, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("chrony.conf", c.__id, "files")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		vargFile := c.GetFile()
+		if vargFile.Error != nil {
+			return nil, vargFile.Error
+		}
+
+		return c.files(vargFile.Data)
+	})
+}
+
 func (c *mqlChronyConf) GetContent() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Content, func() (string, error) {
 		vargFile := c.GetFile()
@@ -69193,12 +69222,12 @@ func (c *mqlChronyConf) GetContent() *plugin.TValue[string] {
 
 func (c *mqlChronyConf) GetSettings() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Settings, func() ([]any, error) {
-		vargContent := c.GetContent()
-		if vargContent.Error != nil {
-			return nil, vargContent.Error
+		vargFile := c.GetFile()
+		if vargFile.Error != nil {
+			return nil, vargFile.Error
 		}
 
-		return c.settings(vargContent.Data)
+		return c.settings(vargFile.Data)
 	})
 }
 
