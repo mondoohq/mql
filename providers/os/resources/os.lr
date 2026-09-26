@@ -1934,8 +1934,15 @@ auditd.rules {
   // Control rules (buffer size, failure mode, and other daemon settings)
   controls(path) []auditd.rule.control
   // File watch rules (-w entries)
+  //
+  // A watch removed by a later matching -W rule, in the same file or a later
+  // one, is not listed.
   files(path) []auditd.rule.file
   // Syscall audit rules (-a and -A entries)
+  //
+  // A rule removed by a later matching -d rule is not listed. The match is
+  // the one the kernel makes: the same list, action, syscalls, fields in
+  // order, and key.
   syscalls(path) []auditd.rule.syscall
   // Whether any rule file was found at path
   //
@@ -1950,6 +1957,7 @@ auditd.rules {
   // `-a always,exit -F path=... -F perm=...` (or `-F dir=`), which auditctl -l
   // prints and several hardening guides prescribe. Paths lose any trailing
   // slash and permissions become a set, so `-p aw` and `-p wa` compare equal.
+  // A watch removed by a later matching -W or -d rule is not listed.
   watches(path) []auditd.rule.watch
   // Whether the ruleset locks the audit configuration (-e 2)
   //

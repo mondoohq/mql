@@ -629,3 +629,111 @@ func TestInitAuditdStatus(t *testing.T) {
 		assert.Contains(t, err.Error(), "Operation not permitted")
 	})
 }
+
+func watchPaths(t *testing.T, rules *mqlAuditdRules) []string {
+	t.Helper()
+	watches := rules.GetWatches()
+	require.NoError(t, watches.Error)
+	res := []string{}
+	for _, raw := range watches.Data {
+		w := raw.(*mqlAuditdRuleWatch)
+		res = append(res, w.Type.Data+":"+w.Path.Data)
+	}
+	return res
+}
+
+func TestAuditdRulesDeleteWatchAcrossFiles(t *testing.T) {
+	// A watch added in one rules file and removed in a later one (#11063).
+	runtime := newAuditdFilesTestRuntime(t, map[string]string{
+		"/etc/audit/rules.d/30-identity.rules": "-w /etc/shadow -p wa -k identity\n-w /etc/passwd -p wa -k identity\n",
+		"/etc/audit/rules.d/99-local.rules":    "-W /etc/shadow -p wa -k identity\n",
+	}, "/etc/audit/rules.d")
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	files := rules.GetFiles()
+	require.NoError(t, files.Error)
+	require.Len(t, files.Data, 1)
+	assert.Equal(t, "/etc/passwd", files.Data[0].(*mqlAuditdRuleFile).Path.Data)
+	assert.Equal(t, []string{"watch:/etc/passwd"}, watchPaths(t, rules))
+	assert.Empty(t, controlValues(t, rules, "-W"), "a deletion is not a control")
+}
+
+func TestAuditdRulesDeleteWatchMustMatch(t *testing.T) {
+	runtime := newAuditdRulesTestRuntime(t)
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	var errs multierr.Errors
+	rules.parse(`
+-W /etc/group -p wa -k identity
+-w /etc/group -p wa -k identity
+-w /etc/shadow -p wa -k identity
+-w /etc/passwd
+-w /etc/sudoers.d/ -p wa -k scope
+-W /etc/shadow -p wa -k other
+-W /etc/shadow -p w -k identity
+-W /etc/passwd -p rwxa
+-W /etc/sudoers.d -p aw -k scope
+`, &errs)
+	require.NoError(t, errs.Deduplicate())
+	rules.Controls.State = plugin.StateIsSet
+	rules.Watches.State = plugin.StateIsSet
+
+	// the -W before its -w removes nothing; a different key or permission set
+	// is a different rule; a -w without -p is the same rule as -p rwxa; the
+	// trailing slash and permission order do not matter
+	assert.Equal(t, []string{"watch:/etc/group", "watch:/etc/shadow"}, watchPaths(t, rules))
+	assert.Empty(t, rules.Controls.Data)
+}
+
+func TestAuditdRulesDeleteSyscallRule(t *testing.T) {
+	runtime := newAuditdRulesTestRuntime(t)
+	rules := &mqlAuditdRules{MqlRuntime: runtime}
+
+	var errs multierr.Errors
+	rules.parse(`
+-a always,exit -F arch=b64 -S chmod,fchmod -F auid>=1000 -F auid!=unset -k perm_mod
+-a always,exit -F arch=b32 -S chmod,fchmod -F auid>=1000 -F auid!=unset -k perm_mod
+-a always,exit -F arch=b64 -S mount -F auid>=1000 -k mounts
+-a always,exit -F path=/etc/shadow -F perm=aw -k identity
+-d exit,always -F arch=b64 -S fchmod -S chmod -F auid>=1000 -F auid!=unset -k perm_mod
+-d always,exit -F auid>=1000 -F arch=b64 -S mount -k mounts
+-W /etc/shadow -p wa -k identity
+`, &errs)
+	require.NoError(t, errs.Deduplicate())
+	rules.Syscalls.State = plugin.StateIsSet
+	rules.Watches.State = plugin.StateIsSet
+	rules.Controls.State = plugin.StateIsSet
+
+	type rule struct{ arch, key string }
+	got := []rule{}
+	for _, raw := range rules.Syscalls.Data {
+		r := raw.(*mqlAuditdRuleSyscall)
+		got = append(got, rule{r.Arch.Data, r.Keyname.Data})
+	}
+	// the b64 perm_mod rule is deleted (action order and syscall order do not
+	// matter), the mount rule is not (the kernel compares fields in order), and
+	// -W removes the equivalent -F path= rule together with its watch
+	assert.Equal(t, []rule{{"b32", "perm_mod"}, {"b64", "mounts"}}, got)
+	assert.Empty(t, watchPaths(t, rules))
+	assert.Empty(t, rules.Controls.Data)
+}
+
+func TestAuditdRuleIdentity(t *testing.T) {
+	watch := func(path, perm string) string {
+		return auditdRuleIdentity(true, "", "", nil, []string{"key=k"}, nil, path, perm)
+	}
+	assert.Equal(t, watch("/etc/audit/", "wa"), watch("/etc/audit", "aw"))
+	assert.Equal(t, watch("/etc/passwd", ""), watch("/etc/passwd", "RWXA"))
+	assert.NotEqual(t, watch("/", "wa"), watch("/etc", "wa"))
+
+	syscall := func(syscalls ...any) string {
+		return auditdRuleIdentity(false, "always", "exit", syscalls, []string{"path=/etc/shadow", "perm=wa", "key=k"}, nil, "", "")
+	}
+	assert.Equal(t, watch("/etc/shadow", "aw"), syscall(), "-w and -F path= describe the same kernel rule")
+	assert.Equal(t, syscall(), syscall("all"))
+	assert.Equal(t, syscall("open", "chmod"), syscall("chmod", "open", "chmod"))
+	assert.NotEqual(t, syscall(), syscall("chmod"))
+
+	withComparison := auditdRuleIdentity(false, "always", "exit", nil, nil, []string{"uid!=euid"}, "", "")
+	assert.NotEqual(t, withComparison, auditdRuleIdentity(false, "always", "exit", nil, nil, nil, "", ""))
+}

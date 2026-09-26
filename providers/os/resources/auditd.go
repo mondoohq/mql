@@ -217,6 +217,15 @@ type mqlAuditdRulesInternal struct {
 	lock      sync.Mutex
 	loaded    bool
 	loadError error
+	// rules added so far in load order, so a later -d or -W can remove them
+	loadedRules      []auditdLoadedRule
+	lastRuleIdentity string
+}
+
+// auditdLoadedRule is one added rule line and the resources it produced.
+type auditdLoadedRule struct {
+	identity  string
+	resources []plugin.Resource
 }
 
 const (
@@ -502,6 +511,7 @@ func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
 		}
 
 		resourceName := "auditd.rule.control"
+		deleteRule := false
 		args := map[string]*llx.RawData{}
 		rawFields := []string{}
 		rawComparisons := []string{}
@@ -513,9 +523,11 @@ func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
 			line = line[idx:]
 
 			switch k {
-			case "-a", "-A":
-				// -A prepends the rule instead of appending it
+			case "-a", "-A", "-d":
+				// -A prepends the rule instead of appending it, and -d deletes
+				// the matching rule added earlier
 				resourceName = "auditd.rule.syscall"
+				deleteRule = k == "-d"
 				action, list := splitAuditdRuleAction(v)
 				args["action"] = llx.StringData(action)
 				args["list"] = llx.StringData(list)
@@ -530,8 +542,10 @@ func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
 			case "-C":
 				rawComparisons = append(rawComparisons, v)
 
-			case "-w":
+			case "-w", "-W":
+				// -W removes the matching watch added earlier
 				resourceName = "auditd.rule.file"
+				deleteRule = k == "-W"
 				args["path"] = llx.StringData(v)
 
 			case "-k":
@@ -558,6 +572,18 @@ func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
 			}
 		}
 
+		if resourceName != "auditd.rule.control" {
+			identity := auditdRuleIdentity(resourceName == "auditd.rule.file",
+				auditdArgString(args, "action"), auditdArgString(args, "list"),
+				syscalls, rawFields, rawComparisons,
+				auditdArgString(args, "path"), auditdArgString(args, "permissions"))
+			if deleteRule {
+				s.deleteRule(identity)
+				continue
+			}
+			s.lastRuleIdentity = identity
+		}
+
 		switch resourceName {
 		case "auditd.rule.file":
 			if _, ok := args["keyname"]; !ok {
@@ -578,7 +604,8 @@ func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
 			}
 			path, _ := args["path"].Value.(string)
 			keyname, _ := args["keyname"].Value.(string)
-			s.addWatch("watch", path, perm, keyname, errors)
+			w := s.addWatch("watch", path, perm, keyname, errors)
+			s.recordRule(r, w)
 
 		case "auditd.rule.syscall":
 			args["syscalls"] = llx.ArrayData(syscalls, types.String)
@@ -683,10 +710,12 @@ func (s *mqlAuditdRules) parse(content string, errors *multierr.Errors) {
 			// `-a always,exit -F path=X -F perm=P` is the syscall form of `-w X -p P`
 			action, _ := args["action"].Value.(string)
 			list, _ := args["list"].Value.(string)
+			var w plugin.Resource
 			if action == "always" && list == "exit" && watchPath != "" && watchPerm != "" {
 				keyname, _ := args["keyname"].Value.(string)
-				s.addWatch(watchType, watchPath, watchPerm, keyname, errors)
+				w = s.addWatch(watchType, watchPath, watchPerm, keyname, errors)
 			}
+			s.recordRule(r, w)
 
 		default:
 			for io := range other {
@@ -717,7 +746,7 @@ func splitAuditdRuleAction(v string) (string, string) {
 	return first, second
 }
 
-func (s *mqlAuditdRules) addWatch(watchType string, path string, perm string, keyname string, errors *multierr.Errors) {
+func (s *mqlAuditdRules) addWatch(watchType string, path string, perm string, keyname string, errors *multierr.Errors) plugin.Resource {
 	if trimmed := strings.TrimRight(path, "/"); trimmed != "" {
 		path = trimmed
 	}
@@ -737,9 +766,136 @@ func (s *mqlAuditdRules) addWatch(watchType string, path string, perm string, ke
 	})
 	if err != nil {
 		errors.Add(err)
-		return
+		return nil
 	}
 	s.Watches.Data = append(s.Watches.Data, r)
+	return r
+}
+
+// auditdArgString returns the string argument named key, or "" when unset.
+func auditdArgString(args map[string]*llx.RawData, key string) string {
+	if raw, ok := args[key]; ok && raw != nil {
+		v, _ := raw.Value.(string)
+		return v
+	}
+	return ""
+}
+
+// recordRule remembers the resources the last added rule line produced, so a
+// later -d or -W that matches it can remove them.
+func (s *mqlAuditdRules) recordRule(resources ...plugin.Resource) {
+	rule := auditdLoadedRule{identity: s.lastRuleIdentity}
+	for _, r := range resources {
+		if r != nil {
+			rule.resources = append(rule.resources, r)
+		}
+	}
+	s.loadedRules = append(s.loadedRules, rule)
+}
+
+// deleteRule applies a -d or -W line: the kernel removes the rule that matches
+// it exactly, so every earlier rule with the same identity is dropped from the
+// reported lists. A deletion that matches nothing is rejected by the kernel and
+// changes nothing.
+func (s *mqlAuditdRules) deleteRule(identity string) {
+	removed := map[plugin.Resource]bool{}
+	s.loadedRules = slices.DeleteFunc(s.loadedRules, func(r auditdLoadedRule) bool {
+		if r.identity != identity {
+			return false
+		}
+		for _, res := range r.resources {
+			removed[res] = true
+		}
+		return true
+	})
+	if len(removed) == 0 {
+		return
+	}
+	drop := func(x any) bool {
+		r, ok := x.(plugin.Resource)
+		return ok && removed[r]
+	}
+	s.Files.Data = slices.DeleteFunc(s.Files.Data, drop)
+	s.Syscalls.Data = slices.DeleteFunc(s.Syscalls.Data, drop)
+	s.Watches.Data = slices.DeleteFunc(s.Watches.Data, drop)
+}
+
+// auditdRuleIdentity describes a rule the way the kernel compares rules when
+// deleting one: list, action, syscalls, and fields in order. auditctl turns
+// `-w X` into an exit-list rule on all syscalls with a path field and a perm
+// field that defaults to all permissions, so `-w X -p wa` and
+// `-a always,exit -F path=X -F perm=aw` are the same rule. Keys are compared as
+// the list they were given in, after the other fields.
+func auditdRuleIdentity(watch bool, action, list string, syscalls []any, rawFields, rawComparisons []string, path, perm string) string {
+	fields := []string{}
+	keys := []string{}
+	if watch {
+		action, list = "always", "exit"
+		// auditctl trims trailing slashes from a -w path longer than two bytes
+		if len(path) > 2 {
+			if trimmed := strings.TrimRight(path, "/"); trimmed != "" {
+				path = trimmed
+			}
+		}
+		if perm == "" {
+			perm = "rwxa"
+		}
+		fields = append(fields, "watch="+path, "perm="+auditdPermSet(perm))
+		syscalls = nil
+	}
+
+	for _, raw := range rawFields {
+		if key, ok := strings.CutPrefix(raw, "key="); ok {
+			keys = append(keys, key)
+			continue
+		}
+		op := reOperator.FindString(raw)
+		if op == "=" {
+			name, value, _ := strings.Cut(raw, op)
+			switch name {
+			case "path", "dir":
+				fields = append(fields, "watch="+value)
+				continue
+			case "perm":
+				fields = append(fields, "perm="+auditdPermSet(value))
+				continue
+			}
+		}
+		fields = append(fields, raw)
+	}
+
+	// No -S on a non-task list means every syscall, the same as -S all.
+	calls := []string{}
+	for _, sc := range syscalls {
+		if name, ok := sc.(string); ok && name != "all" {
+			calls = append(calls, name)
+		}
+	}
+	slices.Sort(calls)
+	calls = slices.Compact(calls)
+
+	// Rule tokens never contain whitespace (the parser splits on it), so a
+	// space and " | " separate them unambiguously.
+	return strings.Join([]string{
+		action, list,
+		strings.Join(calls, ","),
+		strings.Join(fields, " "),
+		strings.Join(rawComparisons, " "),
+		strings.Join(keys, " "),
+	}, " | ")
+}
+
+// auditdPermSet orders watch permissions as the set r, w, x, a, so `aw` and
+// `wa` compare equal, as they do in the kernel's permission bitmask.
+func auditdPermSet(perm string) string {
+	perm = strings.ToLower(perm)
+	var b strings.Builder
+	for _, p := range "rwxa" {
+		if strings.ContainsRune(perm, p) {
+			b.WriteRune(p)
+		}
+	}
+	return b.String()
 }
 
 func (s *mqlAuditdRules) exists(path string) (bool, error) {
