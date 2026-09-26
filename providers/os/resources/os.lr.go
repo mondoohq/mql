@@ -220,6 +220,8 @@ const (
 	ResourceKernelModule                                  string = "kernel.module"
 	ResourceKernelCmdline                                 string = "kernel.cmdline"
 	ResourceKernelTaint                                   string = "kernel.taint"
+	ResourceKernelLivepatch                               string = "kernel.livepatch"
+	ResourceKernelLivepatchPatch                          string = "kernel.livepatch.patch"
 	ResourceKernelLockdown                                string = "kernel.lockdown"
 	ResourceKernelAslr                                    string = "kernel.aslr"
 	ResourceCgroups                                       string = "cgroups"
@@ -1484,6 +1486,14 @@ func init() {
 		"kernel.taint": {
 			// to override args, implement: initKernelTaint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createKernelTaint,
+		},
+		"kernel.livepatch": {
+			Init:   initKernelLivepatch,
+			Create: createKernelLivepatch,
+		},
+		"kernel.livepatch.patch": {
+			// to override args, implement: initKernelLivepatchPatch(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createKernelLivepatchPatch,
 		},
 		"kernel.lockdown": {
 			// to override args, implement: initKernelLockdown(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -8536,6 +8546,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"kernel.aslr": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlKernel).GetAslr()).ToDataRes(types.Resource("kernel.aslr"))
 	},
+	"kernel.livepatch": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernel).GetLivepatch()).ToDataRes(types.Resource("kernel.livepatch"))
+	},
 	"kernel.module.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlKernelModule).GetName()).ToDataRes(types.String)
 	},
@@ -8577,6 +8590,36 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"kernel.taint.reasons": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlKernelTaint).GetReasons()).ToDataRes(types.Array(types.String))
+	},
+	"kernel.livepatch.active": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelLivepatch).GetActive()).ToDataRes(types.Bool)
+	},
+	"kernel.livepatch.provider": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelLivepatch).GetProvider()).ToDataRes(types.String)
+	},
+	"kernel.livepatch.patches": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelLivepatch).GetPatches()).ToDataRes(types.Array(types.Resource("kernel.livepatch.patch")))
+	},
+	"kernel.livepatch.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelLivepatch).GetVersion()).ToDataRes(types.String)
+	},
+	"kernel.livepatch.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelLivepatch).GetState()).ToDataRes(types.String)
+	},
+	"kernel.livepatch.cves": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelLivepatch).GetCves()).ToDataRes(types.Array(types.String))
+	},
+	"kernel.livepatch.patch.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelLivepatchPatch).GetName()).ToDataRes(types.String)
+	},
+	"kernel.livepatch.patch.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelLivepatchPatch).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"kernel.livepatch.patch.transition": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelLivepatchPatch).GetTransition()).ToDataRes(types.Bool)
+	},
+	"kernel.livepatch.patch.objects": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlKernelLivepatchPatch).GetObjects()).ToDataRes(types.Array(types.String))
 	},
 	"kernel.lockdown.mode": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlKernelLockdown).GetMode()).ToDataRes(types.String)
@@ -25803,6 +25846,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlKernel).Aslr, ok = plugin.RawToTValue[*mqlKernelAslr](v.Value, v.Error)
 		return
 	},
+	"kernel.livepatch": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernel).Livepatch, ok = plugin.RawToTValue[*mqlKernelLivepatch](v.Value, v.Error)
+		return
+	},
 	"kernel.module.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlKernelModule).__id, ok = v.Value.(string)
 		return
@@ -25869,6 +25916,54 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"kernel.taint.reasons": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlKernelTaint).Reasons, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"kernel.livepatch.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelLivepatch).__id, ok = v.Value.(string)
+		return
+	},
+	"kernel.livepatch.active": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelLivepatch).Active, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"kernel.livepatch.provider": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelLivepatch).Provider, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"kernel.livepatch.patches": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelLivepatch).Patches, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"kernel.livepatch.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelLivepatch).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"kernel.livepatch.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelLivepatch).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"kernel.livepatch.cves": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelLivepatch).Cves, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"kernel.livepatch.patch.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelLivepatchPatch).__id, ok = v.Value.(string)
+		return
+	},
+	"kernel.livepatch.patch.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelLivepatchPatch).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"kernel.livepatch.patch.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelLivepatchPatch).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"kernel.livepatch.patch.transition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelLivepatchPatch).Transition, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"kernel.livepatch.patch.objects": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlKernelLivepatchPatch).Objects, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"kernel.lockdown.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -62619,6 +62714,7 @@ type mqlKernel struct {
 	Taint      plugin.TValue[*mqlKernelTaint]
 	Lockdown   plugin.TValue[*mqlKernelLockdown]
 	Aslr       plugin.TValue[*mqlKernelAslr]
+	Livepatch  plugin.TValue[*mqlKernelLivepatch]
 }
 
 // createKernel creates a new instance of this resource
@@ -62748,6 +62844,22 @@ func (c *mqlKernel) GetAslr() *plugin.TValue[*mqlKernelAslr] {
 		}
 
 		return c.aslr()
+	})
+}
+
+func (c *mqlKernel) GetLivepatch() *plugin.TValue[*mqlKernelLivepatch] {
+	return plugin.GetOrCompute[*mqlKernelLivepatch](&c.Livepatch, func() (*mqlKernelLivepatch, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("kernel", c.__id, "livepatch")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlKernelLivepatch), nil
+			}
+		}
+
+		return c.livepatch()
 	})
 }
 
@@ -62961,6 +63073,150 @@ func (c *mqlKernelTaint) GetTainted() *plugin.TValue[bool] {
 
 func (c *mqlKernelTaint) GetReasons() *plugin.TValue[[]any] {
 	return &c.Reasons
+}
+
+// mqlKernelLivepatch for the kernel.livepatch resource
+type mqlKernelLivepatch struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlKernelLivepatchInternal
+	Active   plugin.TValue[bool]
+	Provider plugin.TValue[string]
+	Patches  plugin.TValue[[]any]
+	Version  plugin.TValue[string]
+	State    plugin.TValue[string]
+	Cves     plugin.TValue[[]any]
+}
+
+// createKernelLivepatch creates a new instance of this resource
+func createKernelLivepatch(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlKernelLivepatch{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("kernel.livepatch", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlKernelLivepatch) MqlName() string {
+	return "kernel.livepatch"
+}
+
+func (c *mqlKernelLivepatch) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlKernelLivepatch) GetActive() *plugin.TValue[bool] {
+	return &c.Active
+}
+
+func (c *mqlKernelLivepatch) GetProvider() *plugin.TValue[string] {
+	return &c.Provider
+}
+
+func (c *mqlKernelLivepatch) GetPatches() *plugin.TValue[[]any] {
+	return &c.Patches
+}
+
+func (c *mqlKernelLivepatch) GetVersion() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Version, func() (string, error) {
+		return c.version()
+	})
+}
+
+func (c *mqlKernelLivepatch) GetState() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.State, func() (string, error) {
+		return c.state()
+	})
+}
+
+func (c *mqlKernelLivepatch) GetCves() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Cves, func() ([]any, error) {
+		return c.cves()
+	})
+}
+
+// mqlKernelLivepatchPatch for the kernel.livepatch.patch resource
+type mqlKernelLivepatchPatch struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlKernelLivepatchPatchInternal it will be used here
+	Name       plugin.TValue[string]
+	Enabled    plugin.TValue[bool]
+	Transition plugin.TValue[bool]
+	Objects    plugin.TValue[[]any]
+}
+
+// createKernelLivepatchPatch creates a new instance of this resource
+func createKernelLivepatchPatch(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlKernelLivepatchPatch{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("kernel.livepatch.patch", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlKernelLivepatchPatch) MqlName() string {
+	return "kernel.livepatch.patch"
+}
+
+func (c *mqlKernelLivepatchPatch) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlKernelLivepatchPatch) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlKernelLivepatchPatch) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlKernelLivepatchPatch) GetTransition() *plugin.TValue[bool] {
+	return &c.Transition
+}
+
+func (c *mqlKernelLivepatchPatch) GetObjects() *plugin.TValue[[]any] {
+	return &c.Objects
 }
 
 // mqlKernelLockdown for the kernel.lockdown resource

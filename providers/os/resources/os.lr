@@ -6695,7 +6695,8 @@ private systemd.boot.entry @defaults("title kind") {
 //
 // Running kernel and its configuration surface. Exposes kernel version
 // info, sysctl `parameters`, `modules`, installed kernel versions, and,
-// on Linux, hardening state (`cmdline`, `taint`, `lockdown`, `aslr`).
+// on Linux, hardening state (`cmdline`, `taint`, `lockdown`, `aslr`) and
+// the live patches applied in memory (`livepatch`).
 kernel @defaults("info") {
   // Active kernel information (version, path, device, arguments)
   info() dict
@@ -6713,6 +6714,8 @@ kernel @defaults("info") {
   lockdown() kernel.lockdown
   // Address Space Layout Randomization (ASLR) state (Linux only)
   aslr() kernel.aslr
+  // Live patches applied to the running kernel (Linux only)
+  livepatch() kernel.livepatch
 }
 
 // System kernel module information
@@ -6819,6 +6822,67 @@ private kernel.taint @defaults("tainted reasons") {
   // list of bit meanings (proprietary module, out-of-tree module,
   // unsigned module, oops, soft lockup, live-patched, etc.).
   reasons []string
+}
+
+// Kernel live patching
+//
+// Live patches applied to the running kernel in memory. A live patch fixes
+// the kernel without a reboot, so it changes neither `kernel.info` nor
+// `kernel.installed`. `active`, `provider`, and `patches` come from the
+// kernel's livepatch interface in /sys/kernel/livepatch, whichever tool loaded
+// the patch. `version`, `state`, and `cves` come from the Canonical Livepatch
+// client on Ubuntu, so an audit can ask whether the running kernel carries a
+// fix, for example `kernel.livepatch.cves.contains("CVE-2026-31431")`.
+// Patches applied by KernelCare or Oracle Ksplice are not reported.
+private kernel.livepatch @defaults("active provider version") {
+  // Whether a live patch is applied to the running kernel
+  //
+  // True when a patch in /sys/kernel/livepatch is enabled. Unlike the
+  // "kernel was live-patched" reason in `kernel.taint`, which stays set once
+  // any patch was ever loaded, this reflects the patches applied now. Null
+  // when the running kernel's state cannot be read, such as in an image scan.
+  active bool
+  // Tool that applied the live patches
+  //
+  // `canonical-livepatch` when the Canonical Livepatch client is installed or
+  // one of its patches is loaded, `klp` for patches from another source, and
+  // empty when neither a client nor a patch is present. Null when the running
+  // kernel's state cannot be read.
+  provider string
+  // Live patches loaded into the running kernel
+  //
+  // Null when the running kernel's state cannot be read.
+  patches []kernel.livepatch.patch
+  // Patch version reported by the live patch client, such as `121.4`
+  //
+  // Null when no client reports on the running kernel, including a Canonical
+  // Livepatch client that is installed but not enabled.
+  version() string
+  // Patch state reported by the live patch client
+  //
+  // For Canonical Livepatch, for example `applied` or `nothing-to-apply`.
+  // Null when no client reports on the running kernel.
+  state() string
+  // CVEs the live patch client reports as fixed in the running kernel
+  //
+  // Upper-case CVE IDs such as `CVE-2026-31431`. Empty when the client
+  // reports no fixes, and null when no client reports on the running kernel.
+  cves() []string
+}
+
+// Kernel live patch
+//
+// A single live patch loaded into the running kernel, from
+// /sys/kernel/livepatch/<name>.
+private kernel.livepatch.patch @defaults("name enabled") {
+  // Patch name, which is also the name of the kernel module that carries it
+  name string
+  // Whether the patch is enabled
+  enabled bool
+  // Whether tasks are still moving to or from the patched code
+  transition bool
+  // Kernel objects the patch changes: `vmlinux` for the core kernel, or a module name
+  objects []string
 }
 
 // Linux kernel lockdown mode

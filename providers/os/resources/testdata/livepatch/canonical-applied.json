@@ -1,0 +1,316 @@
+{
+  "Client-Version": "v11.0.2",
+  "Machine-Id": "0000000000000000000000000000000",
+  "Architecture": "amd64",
+  "CPU-Model": "Intel(R) Xeon(R) Platinum 8259CL CPU @ 2.50GHz",
+  "Last-Check": "2026-09-26T18:53:27Z",
+  "Boot-Time": "2026-09-26T18:52:51Z",
+  "Uptime": "46",
+  "Status": [
+    {
+      "Kernel": "6.8.0-1047.50-aws",
+      "Running": true,
+      "Livepatch": {
+        "CheckState": "checked",
+        "State": "applied",
+        "Version": "121.4",
+        "Fixes": [
+          {
+            "Name": "cve-2025-68263",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-22984",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-23111",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-23112",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-23172",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-23231",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-23268",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-23269",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-31431",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-31607",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-31637",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-31657",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-31659",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-31676",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-31705",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-43011",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-43037",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-43038",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-43185",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-43284",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-43341",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-43406",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-43407",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-43493",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-43500",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-43501",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-45988",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-46043",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-46119",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-46135",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-46185",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-46195",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-46274",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-46300",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-46304",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-46319",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-47331",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          },
+          {
+            "Name": "cve-2026-47333",
+            "Description": "",
+            "Bug": "",
+            "Patched": true
+          }
+        ]
+      },
+      "Supported": "supported",
+      "UpgradeRequiredDate": "2027-03-19"
+    }
+  ],
+  "tier": "stable",
+  "Fixed-CVEs": {
+    "Timestamp": "2026-09-26T18:53:06Z",
+    "Kernel-Package-Fixes": [
+      {
+        "Package": "linux-image-6.8.0-1047-aws",
+        "Fixed-CVEs": []
+      },
+      {
+        "Package": "linux-image-6.8.0-1060-aws",
+        "Fixed-CVEs": []
+      },
+      {
+        "Package": "linux-image-7.0.0-1013-aws",
+        "Fixed-CVEs": []
+      }
+    ],
+    "Installed-Kernels": [
+      "linux-image-6.8.0-1047-aws",
+      "linux-image-6.8.0-1060-aws",
+      "linux-image-7.0.0-1013-aws"
+    ],
+    "Patched-CVEs": [
+      "UBUNTU-CVE-2025-68263",
+      "UBUNTU-CVE-2026-22984",
+      "UBUNTU-CVE-2026-23111",
+      "UBUNTU-CVE-2026-23112",
+      "UBUNTU-CVE-2026-23172",
+      "UBUNTU-CVE-2026-23231",
+      "UBUNTU-CVE-2026-23268",
+      "UBUNTU-CVE-2026-23269",
+      "UBUNTU-CVE-2026-31431",
+      "UBUNTU-CVE-2026-31607",
+      "UBUNTU-CVE-2026-31637",
+      "UBUNTU-CVE-2026-31657",
+      "UBUNTU-CVE-2026-31659",
+      "UBUNTU-CVE-2026-31676",
+      "UBUNTU-CVE-2026-31705",
+      "UBUNTU-CVE-2026-43011",
+      "UBUNTU-CVE-2026-43037",
+      "UBUNTU-CVE-2026-43038",
+      "UBUNTU-CVE-2026-43185",
+      "UBUNTU-CVE-2026-43284",
+      "UBUNTU-CVE-2026-43341",
+      "UBUNTU-CVE-2026-43406",
+      "UBUNTU-CVE-2026-43407",
+      "UBUNTU-CVE-2026-43493",
+      "UBUNTU-CVE-2026-43500",
+      "UBUNTU-CVE-2026-43501",
+      "UBUNTU-CVE-2026-45988",
+      "UBUNTU-CVE-2026-46043",
+      "UBUNTU-CVE-2026-46119",
+      "UBUNTU-CVE-2026-46135",
+      "UBUNTU-CVE-2026-46185",
+      "UBUNTU-CVE-2026-46195",
+      "UBUNTU-CVE-2026-46274",
+      "UBUNTU-CVE-2026-46300",
+      "UBUNTU-CVE-2026-46304",
+      "UBUNTU-CVE-2026-46319",
+      "UBUNTU-CVE-2026-47331",
+      "UBUNTU-CVE-2026-47333"
+    ],
+    "Digest": "redacted"
+  }
+}
