@@ -1384,7 +1384,7 @@ package @defaults("name version") {
   // On macOS this distinguishes App Store installs from everything else, which
   // matters when choosing an update path: an App Store app cannot be upgraded
   // with `brew upgrade`. It is empty for an application found only by listing
-  // the application folders, where `appStoreManaged` still answers that
+  // the application folders, where `macos.appStore` still answers that
   // question.
   origin() string
 
@@ -1470,46 +1470,61 @@ package @defaults("name version") {
   // and for machine-scope installs and platforms with no such concept.
   installUser() user
 
-  // Bundle identifier of a macOS application
+  // macOS application details
+  //
+  // Bundle identifier, code signer, developer Team ID and App Store state of
+  // a macOS application bundle. Null for anything that is not a macOS
+  // application, including packages of other formats.
+  macos() package.macos
+}
+
+// macOS application details of a package
+//
+// What identifies a macOS application beyond its package name and version:
+// the `bundleId` from its Info.plist, the `signer` certificate and developer
+// `teamId` it is signed with, and whether the Mac App Store manages it
+// (`appStore`). Used to allow or deny applications by bundle identifier or
+// publisher, and to pick the update path for an application.
+private package.macos @defaults("bundleId teamId appStore") {
+  // Bundle identifier of the application
   //
   // The CFBundleIdentifier from the application's Contents/Info.plist, for
-  // example "com.tinyspeck.slackmacgap". Unlike `name`, which is the bundle's
-  // display name, it stays the same across versions, renames and
+  // example "com.tinyspeck.slackmacgap". Unlike the package `name`, which is
+  // the bundle's display name, it stays the same across versions, renames and
   // localizations, so it is the stable key for allow and deny lists. Empty
-  // for other package formats and for bundles without a Contents/Info.plist,
-  // such as wrapped iPhone and iPad apps.
+  // for bundles without a Contents/Info.plist, such as wrapped iPhone and iPad
+  // apps.
   bundleId string
 
-  // Code-signing certificate of a macOS application
+  // Code-signing certificate of the application
   //
   // Name of the leaf certificate the application is signed with, as
   // reported by the system application inventory. "Software Signing" for
   // applications that ship with macOS, "Apple Mac OS Application Signing"
   // for Mac App Store applications, and "Developer ID Application: <name>
   // (<team ID>)" for applications distributed outside the App Store. Empty
-  // for unsigned applications, for other package formats, and for
-  // applications found only by listing the application folders.
+  // for unsigned applications and for applications found only by listing
+  // the application folders.
   signer string
 
-  // Apple Developer Team ID of a macOS application's signer
+  // Apple Developer Team ID of the application's signer
   //
   // Ten-character identifier of the developer team that signed the
   // application, for example "UBF8T346G9" for Microsoft, read from a
   // Developer ID Application `signer`. It identifies the publisher
   // independently of the application's name. Empty for other signers,
-  // including Apple's own and the Mac App Store's, and for other package
-  // formats.
+  // including Apple's own and the Mac App Store's.
   teamId string
 
-  // Whether a macOS application is installed and updated by the Mac App Store
+  // Whether the Mac App Store installs and updates the application
   //
   // True when the bundle carries an App Store receipt
   // (Contents/_MASReceipt/receipt) or is signed with the App Store
   // certificate. Such an application is updated by the App Store, not by
-  // its own updater or a third-party package manager. Unlike `origin`, it
-  // is also set for applications found only by listing the application
-  // folders. False for other package formats.
-  appStoreManaged bool
+  // its own updater or a third-party package manager. Unlike the package
+  // `origin`, it is also set for applications found only by listing the
+  // application folders.
+  appStore bool
 }
 
 // File recorded for a package

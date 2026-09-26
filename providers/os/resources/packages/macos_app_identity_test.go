@@ -103,6 +103,7 @@ func TestMacOSAppIdentity(t *testing.T) {
 	byPath := map[string]Package{}
 	for _, p := range pkgs {
 		require.Len(t, p.Files, 1)
+		require.NotNil(t, p.MacOS, "every application carries its macOS details: %s", p.Files[0].Path)
 		_, dup := byPath[p.Files[0].Path]
 		require.False(t, dup, "bundle reported twice: %s", p.Files[0].Path)
 		byPath[p.Files[0].Path] = p
@@ -113,10 +114,10 @@ func TestMacOSAppIdentity(t *testing.T) {
 		edge := byPath["/Applications/Microsoft Edge.app"]
 		assert.Equal(t, "Microsoft Edge", edge.Name)
 		assert.Equal(t, "154.0.4258.37", edge.Version)
-		assert.Equal(t, "com.microsoft.edgemac", edge.BundleID)
-		assert.Equal(t, "Developer ID Application: Microsoft Corporation (UBF8T346G9)", edge.Signer)
-		assert.Equal(t, "UBF8T346G9", edge.TeamID)
-		assert.False(t, edge.AppStoreManaged)
+		assert.Equal(t, "com.microsoft.edgemac", edge.MacOS.BundleID)
+		assert.Equal(t, "Developer ID Application: Microsoft Corporation (UBF8T346G9)", edge.MacOS.Signer)
+		assert.Equal(t, "UBF8T346G9", edge.MacOS.TeamID)
+		assert.False(t, edge.MacOS.AppStore)
 		assert.Equal(t, "identified_developer", edge.Origin)
 		assert.Equal(t, "arm64", edge.Arch)
 		assert.Equal(t, "pkg:macos/macos/Microsoft%20Edge@154.0.4258.37?arch=arm64", edge.PUrl)
@@ -126,10 +127,10 @@ func TestMacOSAppIdentity(t *testing.T) {
 
 	t.Run("Mac App Store application", func(t *testing.T) {
 		monodraw := byPath["/Applications/Monodraw.app"]
-		assert.Equal(t, "com.helftone.monodraw", monodraw.BundleID)
-		assert.Equal(t, "Apple Mac OS Application Signing", monodraw.Signer)
-		assert.Empty(t, monodraw.TeamID, "Apple re-signs App Store apps, no team in the certificate")
-		assert.True(t, monodraw.AppStoreManaged)
+		assert.Equal(t, "com.helftone.monodraw", monodraw.MacOS.BundleID)
+		assert.Equal(t, "Apple Mac OS Application Signing", monodraw.MacOS.Signer)
+		assert.Empty(t, monodraw.MacOS.TeamID, "Apple re-signs App Store apps, no team in the certificate")
+		assert.True(t, monodraw.MacOS.AppStore)
 		assert.Equal(t, "mac_app_store", monodraw.Origin)
 		assert.Equal(t, "universal", monodraw.Arch)
 		assert.Equal(t, "pkg:macos/macos/Monodraw@1.7.1?arch=universal", monodraw.PUrl)
@@ -137,10 +138,10 @@ func TestMacOSAppIdentity(t *testing.T) {
 
 	t.Run("application shipped with macOS", func(t *testing.T) {
 		textEdit := byPath["/System/Applications/TextEdit.app"]
-		assert.Equal(t, "com.apple.TextEdit", textEdit.BundleID)
-		assert.Equal(t, "Software Signing", textEdit.Signer)
-		assert.Empty(t, textEdit.TeamID)
-		assert.False(t, textEdit.AppStoreManaged)
+		assert.Equal(t, "com.apple.TextEdit", textEdit.MacOS.BundleID)
+		assert.Equal(t, "Software Signing", textEdit.MacOS.Signer)
+		assert.Empty(t, textEdit.MacOS.TeamID)
+		assert.False(t, textEdit.MacOS.AppStore)
 		assert.Equal(t, "universal", textEdit.Arch)
 	})
 
@@ -164,34 +165,34 @@ func TestMacOSAppIdentity(t *testing.T) {
 		slack := byPath["/Applications/Slack.app"]
 		assert.Equal(t, "Slack", slack.Name)
 		assert.Equal(t, "4.52.162", slack.Version)
-		assert.Equal(t, "com.tinyspeck.slackmacgap", slack.BundleID)
-		assert.False(t, slack.AppStoreManaged)
+		assert.Equal(t, "com.tinyspeck.slackmacgap", slack.MacOS.BundleID)
+		assert.False(t, slack.MacOS.AppStore)
 		assert.Equal(t, "machine", slack.InstallScope)
 		// Nothing but the bundle's own files is available: no signer and no
 		// Gatekeeper origin, and the host architecture.
-		assert.Empty(t, slack.Signer)
+		assert.Empty(t, slack.MacOS.Signer)
 		assert.Empty(t, slack.Origin)
 		assert.Equal(t, "arm64", slack.Arch)
 		assert.Equal(t, "pkg:macos/macos/Slack@4.52.162?arch=arm64", slack.PUrl)
 
 		// The receipt alone identifies an App Store app.
 		telegram := byPath["/Applications/Telegram.app"]
-		assert.Equal(t, "ru.keepcoder.Telegram", telegram.BundleID)
-		assert.True(t, telegram.AppStoreManaged)
+		assert.Equal(t, "ru.keepcoder.Telegram", telegram.MacOS.BundleID)
+		assert.True(t, telegram.MacOS.AppStore)
 
 		// Found one level down, in a vendor folder.
 		whatsapp := byPath["/Applications/WhatsApp.localized/WhatsApp.app"]
 		assert.Equal(t, "WhatsApp", whatsapp.Name)
-		assert.Equal(t, "net.whatsapp.WhatsApp", whatsapp.BundleID)
-		assert.True(t, whatsapp.AppStoreManaged)
+		assert.Equal(t, "net.whatsapp.WhatsApp", whatsapp.MacOS.BundleID)
+		assert.True(t, whatsapp.MacOS.AppStore)
 
 		// Named after the directory, which is what system_profiler reports.
 		zoom := byPath["/Applications/zoom.us.app"]
 		assert.Equal(t, "zoom.us", zoom.Name)
-		assert.Equal(t, "us.zoom.xos", zoom.BundleID)
+		assert.Equal(t, "us.zoom.xos", zoom.MacOS.BundleID)
 
 		news := byPath["/System/Applications/News.app"]
 		assert.Equal(t, "News", news.Name)
-		assert.Equal(t, "com.apple.news", news.BundleID)
+		assert.Equal(t, "com.apple.news", news.MacOS.BundleID)
 	})
 }

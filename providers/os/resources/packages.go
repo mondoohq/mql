@@ -91,6 +91,42 @@ type mqlPackageInternal struct {
 	// raw SID, see packages/packages.go). For a macOS application it holds
 	// the account name instead, see installUser().
 	installUserSid string
+
+	// macosApp backs the macos() accessor. Nil for every package that is not
+	// a macOS application bundle.
+	macosApp *packages.MacOSApp
+}
+
+// initPackageMacos keeps `package.macos` from resolving on its own. The
+// details belong to one package, so the dotted form has nothing to delegate
+// to; without this it would report null for every field, which reads like an
+// application that is neither signed nor from the App Store.
+func initPackageMacos(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+	if _, ok := args["__id"]; ok {
+		return args, nil, nil
+	}
+	return nil, nil, errors.New("package.macos belongs to a package and cannot be queried on its own, read the macos field of a package instead")
+}
+
+// macos returns the macOS application details of a macOS application bundle,
+// and null for every other package.
+func (x *mqlPackage) macos() (*mqlPackageMacos, error) {
+	app := x.macosApp
+	if app == nil {
+		x.Macos.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := CreateResource(x.MqlRuntime, ResourcePackageMacos, map[string]*llx.RawData{
+		"__id":     llx.StringData(x.__id + "/macos"),
+		"bundleId": llx.StringData(app.BundleID),
+		"signer":   llx.StringData(app.Signer),
+		"teamId":   llx.StringData(app.TeamID),
+		"appStore": llx.BoolData(app.AppStore),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlPackageMacos), nil
 }
 
 // installUser resolves the SID that reported this package (installScope ==
@@ -195,10 +231,7 @@ func initPackage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[str
 	res.Files.State = plugin.StateIsSet | plugin.StateIsNull
 	res.License.State = plugin.StateIsSet | plugin.StateIsNull
 	res.InstallDate.State = plugin.StateIsSet | plugin.StateIsNull
-	res.BundleId.State = plugin.StateIsSet | plugin.StateIsNull
-	res.Signer.State = plugin.StateIsSet | plugin.StateIsNull
-	res.TeamId.State = plugin.StateIsSet | plugin.StateIsNull
-	res.AppStoreManaged = plugin.TValue[bool]{Data: false, State: plugin.StateIsSet}
+	res.Macos.State = plugin.StateIsSet | plugin.StateIsNull
 	res.__id, _ = res.id()
 	return nil, res, nil
 }
@@ -304,10 +337,6 @@ func fillPackageArgs(args map[string]*llx.RawData, osPkg *packages.Package, avai
 	args["cpes"] = llx.ArrayData(cpes, types.Resource("cpe"))
 	args["vendor"] = llx.StringData(osPkg.Vendor)
 	args["installScope"] = llx.StringData(osPkg.InstallScope)
-	args["bundleId"] = llx.StringData(osPkg.BundleID)
-	args["signer"] = llx.StringData(osPkg.Signer)
-	args["teamId"] = llx.StringData(osPkg.TeamID)
-	args["appStoreManaged"] = llx.BoolData(osPkg.AppStoreManaged)
 	// installUser is a lazy user accessor (os.lr), not a settable raw field --
 	// there is no args["installUser"] to fill. The raw SID a backend reported
 	// (osPkg.InstallUser) is threaded through separately, as __id (below, so
@@ -428,6 +457,7 @@ func (x *mqlPackages) list() ([]any, error) {
 		// Not reachable via args (see fillPackageArgs), so it is set directly
 		// here, same as filesState/filesOnDisks above.
 		s.installUserSid = osPkg.InstallUser
+		s.macosApp = osPkg.MacOS
 		pkgs[i] = s
 	}
 

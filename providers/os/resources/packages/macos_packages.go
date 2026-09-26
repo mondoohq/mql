@@ -190,12 +190,14 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 				platform, purl.TypeMacos, entry.Name, version,
 				purl.WithArch(arch), purl.WithQualifiers(purlQualifiers),
 			).String(),
-			BundleID:        info.BundleID,
-			Signer:          signer,
-			TeamID:          teamIDFromSigner(signer),
-			AppStoreManaged: isAppStoreManaged(conn, entry.Path, signer),
-			InstallScope:    scope,
-			InstallUser:     user,
+			MacOS: &MacOSApp{
+				BundleID: info.BundleID,
+				Signer:   signer,
+				TeamID:   teamIDFromSigner(signer),
+				AppStore: isAppStoreManaged(conn, entry.Path, signer),
+			},
+			InstallScope: scope,
+			InstallUser:  user,
 		}
 		if entry.Path != "" {
 			pkg.Files = []FileRecord{

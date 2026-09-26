@@ -83,20 +83,9 @@ type Package struct {
 	// for machine-scope installs and for backends with no per-user concept.
 	InstallUser string `json:"install_user,omitempty"`
 
-	// BundleID is a macOS application's CFBundleIdentifier, e.g.
-	// "com.tinyspeck.slackmacgap". Empty for every other package manager.
-	BundleID string `json:"bundle_id,omitempty"`
-
-	// Signer is the leaf certificate a macOS application is signed with, as
-	// system_profiler reports it, e.g. "Developer ID Application: Microsoft
-	// Corporation (UBF8T346G9)". TeamID is the Apple Developer Team ID parsed
-	// from a Developer ID signer. Both empty for every other package manager.
-	Signer string `json:"signer,omitempty"`
-	TeamID string `json:"team_id,omitempty"`
-
-	// AppStoreManaged reports a macOS application installed and updated by
-	// the Mac App Store.
-	AppStoreManaged bool `json:"app_store_managed,omitempty"`
+	// MacOS holds what is known about a macOS application bundle beyond the
+	// generic package fields. Nil for every other package.
+	MacOS *MacOSApp `json:"macos,omitempty"`
 
 	// regDedupKey identifies the physical Windows registry key this package
 	// was read from (see windows_packages.go: registryDedupKey,
@@ -105,6 +94,21 @@ type Package struct {
 	// two different roots, never serialized and never reaches the mql
 	// schema.
 	regDedupKey string
+}
+
+// MacOSApp describes a macOS application bundle.
+type MacOSApp struct {
+	// BundleID is the CFBundleIdentifier, e.g. "com.tinyspeck.slackmacgap".
+	BundleID string `json:"bundle_id,omitempty"`
+	// Signer is the leaf certificate the application is signed with, as
+	// system_profiler reports it, e.g. "Developer ID Application: Microsoft
+	// Corporation (UBF8T346G9)".
+	Signer string `json:"signer,omitempty"`
+	// TeamID is the Apple Developer Team ID parsed from a Developer ID signer.
+	TeamID string `json:"team_id,omitempty"`
+	// AppStore reports an application installed and updated by the Mac App
+	// Store.
+	AppStore bool `json:"app_store,omitempty"`
 }
 
 type FileRecord struct {

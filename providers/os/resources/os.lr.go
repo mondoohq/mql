@@ -69,6 +69,7 @@ const (
 	ResourceGroup                                         string = "group"
 	ResourceGroups                                        string = "groups"
 	ResourcePackage                                       string = "package"
+	ResourcePackageMacos                                  string = "package.macos"
 	ResourcePkgFileInfo                                   string = "pkgFileInfo"
 	ResourcePackages                                      string = "packages"
 	ResourcePamConf                                       string = "pam.conf"
@@ -876,6 +877,10 @@ func init() {
 		"package": {
 			Init:   initPackage,
 			Create: createPackage,
+		},
+		"package.macos": {
+			Init:   initPackageMacos,
+			Create: createPackageMacos,
 		},
 		"pkgFileInfo": {
 			// to override args, implement: initPkgFileInfo(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -4109,17 +4114,20 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"package.installUser": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPackage).GetInstallUser()).ToDataRes(types.Resource("user"))
 	},
-	"package.bundleId": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlPackage).GetBundleId()).ToDataRes(types.String)
+	"package.macos": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackage).GetMacos()).ToDataRes(types.Resource("package.macos"))
 	},
-	"package.signer": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlPackage).GetSigner()).ToDataRes(types.String)
+	"package.macos.bundleId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackageMacos).GetBundleId()).ToDataRes(types.String)
 	},
-	"package.teamId": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlPackage).GetTeamId()).ToDataRes(types.String)
+	"package.macos.signer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackageMacos).GetSigner()).ToDataRes(types.String)
 	},
-	"package.appStoreManaged": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlPackage).GetAppStoreManaged()).ToDataRes(types.Bool)
+	"package.macos.teamId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackageMacos).GetTeamId()).ToDataRes(types.String)
+	},
+	"package.macos.appStore": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlPackageMacos).GetAppStore()).ToDataRes(types.Bool)
 	},
 	"pkgFileInfo.path": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlPkgFileInfo).GetPath()).ToDataRes(types.String)
@@ -19279,20 +19287,28 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlPackage).InstallUser, ok = plugin.RawToTValue[*mqlUser](v.Value, v.Error)
 		return
 	},
-	"package.bundleId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlPackage).BundleId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"package.macos": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackage).Macos, ok = plugin.RawToTValue[*mqlPackageMacos](v.Value, v.Error)
 		return
 	},
-	"package.signer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlPackage).Signer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"package.macos.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackageMacos).__id, ok = v.Value.(string)
 		return
 	},
-	"package.teamId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlPackage).TeamId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+	"package.macos.bundleId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackageMacos).BundleId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
-	"package.appStoreManaged": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlPackage).AppStoreManaged, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+	"package.macos.signer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackageMacos).Signer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"package.macos.teamId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackageMacos).TeamId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"package.macos.appStore": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlPackageMacos).AppStore, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"pkgFileInfo.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -44501,30 +44517,27 @@ type mqlPackage struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlPackageInternal
-	Name            plugin.TValue[string]
-	Description     plugin.TValue[string]
-	Version         plugin.TValue[string]
-	Arch            plugin.TValue[string]
-	Epoch           plugin.TValue[string]
-	Format          plugin.TValue[string]
-	Status          plugin.TValue[string]
-	Pinned          plugin.TValue[bool]
-	Purl            plugin.TValue[string]
-	Cpes            plugin.TValue[[]any]
-	Origin          plugin.TValue[string]
-	Available       plugin.TValue[string]
-	Installed       plugin.TValue[bool]
-	Outdated        plugin.TValue[bool]
-	Files           plugin.TValue[[]any]
-	Vendor          plugin.TValue[string]
-	License         plugin.TValue[string]
-	InstallDate     plugin.TValue[*time.Time]
-	InstallScope    plugin.TValue[string]
-	InstallUser     plugin.TValue[*mqlUser]
-	BundleId        plugin.TValue[string]
-	Signer          plugin.TValue[string]
-	TeamId          plugin.TValue[string]
-	AppStoreManaged plugin.TValue[bool]
+	Name         plugin.TValue[string]
+	Description  plugin.TValue[string]
+	Version      plugin.TValue[string]
+	Arch         plugin.TValue[string]
+	Epoch        plugin.TValue[string]
+	Format       plugin.TValue[string]
+	Status       plugin.TValue[string]
+	Pinned       plugin.TValue[bool]
+	Purl         plugin.TValue[string]
+	Cpes         plugin.TValue[[]any]
+	Origin       plugin.TValue[string]
+	Available    plugin.TValue[string]
+	Installed    plugin.TValue[bool]
+	Outdated     plugin.TValue[bool]
+	Files        plugin.TValue[[]any]
+	Vendor       plugin.TValue[string]
+	License      plugin.TValue[string]
+	InstallDate  plugin.TValue[*time.Time]
+	InstallScope plugin.TValue[string]
+	InstallUser  plugin.TValue[*mqlUser]
+	Macos        plugin.TValue[*mqlPackageMacos]
 }
 
 // createPackage creates a new instance of this resource
@@ -44676,20 +44689,79 @@ func (c *mqlPackage) GetInstallUser() *plugin.TValue[*mqlUser] {
 	})
 }
 
-func (c *mqlPackage) GetBundleId() *plugin.TValue[string] {
+func (c *mqlPackage) GetMacos() *plugin.TValue[*mqlPackageMacos] {
+	return plugin.GetOrCompute[*mqlPackageMacos](&c.Macos, func() (*mqlPackageMacos, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("package", c.__id, "macos")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlPackageMacos), nil
+			}
+		}
+
+		return c.macos()
+	})
+}
+
+// mqlPackageMacos for the package.macos resource
+type mqlPackageMacos struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlPackageMacosInternal it will be used here
+	BundleId plugin.TValue[string]
+	Signer   plugin.TValue[string]
+	TeamId   plugin.TValue[string]
+	AppStore plugin.TValue[bool]
+}
+
+// createPackageMacos creates a new instance of this resource
+func createPackageMacos(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlPackageMacos{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("package.macos", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlPackageMacos) MqlName() string {
+	return "package.macos"
+}
+
+func (c *mqlPackageMacos) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlPackageMacos) GetBundleId() *plugin.TValue[string] {
 	return &c.BundleId
 }
 
-func (c *mqlPackage) GetSigner() *plugin.TValue[string] {
+func (c *mqlPackageMacos) GetSigner() *plugin.TValue[string] {
 	return &c.Signer
 }
 
-func (c *mqlPackage) GetTeamId() *plugin.TValue[string] {
+func (c *mqlPackageMacos) GetTeamId() *plugin.TValue[string] {
 	return &c.TeamId
 }
 
-func (c *mqlPackage) GetAppStoreManaged() *plugin.TValue[bool] {
-	return &c.AppStoreManaged
+func (c *mqlPackageMacos) GetAppStore() *plugin.TValue[bool] {
+	return &c.AppStore
 }
 
 // mqlPkgFileInfo for the pkgFileInfo resource
