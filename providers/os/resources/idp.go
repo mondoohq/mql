@@ -45,15 +45,31 @@ func (e entraMembership) member() bool { return e.deviceID != "" }
 
 // idpResult holds every membership detected for the device. Each identity
 // provider is its own field, because a device can belong to several.
+//
+// detected records whether any identity-provider detection ran at all. It is
+// the difference between "this device belongs to none" and "nobody looked", and
+// only the first of those is a fact joined may report.
 type idpResult struct {
-	entra entraMembership
+	detected bool
+	entra    entraMembership
 }
 
 func (r idpResult) set(i *mqlIdp) error {
+	null := plugin.StateIsSet | plugin.StateIsNull
+
+	// Nothing was read on this platform, so there is no membership to report
+	// either way. A measured false here would claim the device belongs to no
+	// identity provider on the strength of a lookup that never happened.
+	if !r.detected {
+		i.Joined = plugin.TValue[bool]{State: null}
+		i.Entra = plugin.TValue[*mqlIdpEntra]{State: null}
+		return nil
+	}
+
 	i.Joined = plugin.TValue[bool]{Data: r.entra.member(), State: plugin.StateIsSet}
 
 	if !r.entra.member() {
-		i.Entra = plugin.TValue[*mqlIdpEntra]{State: plugin.StateIsSet | plugin.StateIsNull}
+		i.Entra = plugin.TValue[*mqlIdpEntra]{State: null}
 		return nil
 	}
 	raw, err := CreateResource(i.MqlRuntime, "idp.entra", map[string]*llx.RawData{
@@ -85,8 +101,13 @@ func (i *mqlIdp) populate() error {
 	}
 	platform := conn.Asset().Platform
 
+	// Only Windows client editions are asked for their device certificates, so
+	// on anything else the absence of identity labels says nothing. Ask the
+	// detector which platforms it read rather than inferring it from empty
+	// labels, so the two cannot drift apart.
 	var res idpResult
-	if platform != nil && platform.IsFamily(inventory.FAMILY_WINDOWS) {
+	if platform != nil && platform.IsFamily(inventory.FAMILY_WINDOWS) && detwin.IdentityDetectable(platform) {
+		res.detected = true
 		res.entra = entraFromIdentity(detwin.DeviceIdentityFromLabels(platform))
 	}
 	if err := res.set(i); err != nil {

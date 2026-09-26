@@ -16473,12 +16473,16 @@ private mdm.intune @defaults("deviceId tenantId") {
 // when the device does not belong to it. Independent of MDM enrollment: a
 // device can belong to an identity provider without being enrolled in an MDM
 // service, and the other way round. Microsoft Entra ID is detected on Windows
-// today; others (for example Active Directory, FreeIPA,
+// client editions today; others (for example Active Directory, FreeIPA,
 // LDAP/Kerberos realms, or JumpCloud) can be added as fields later. This is
 // the device's own identity, not the user-facing federation an `idp` resource
 // describes in the SaaS providers.
 idp @defaults("joined") @maturity("preview") {
   // Whether the device belongs to any recognized identity provider
+  //
+  // False when detection ran and found no membership. Null where no identity
+  // provider is detected at all, such as Linux, macOS, and Windows Server: no
+  // lookup happened there, so the device may well be a member.
   joined() bool
   // Microsoft Entra ID membership, null when the device has no Entra device identity
   entra() idp.entra

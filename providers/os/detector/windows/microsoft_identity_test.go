@@ -234,3 +234,23 @@ func TestDeviceIdentityLabelsAndPlatformID(t *testing.T) {
 	assert.Equal(t, map[string]string{"other": "x", LabelEntraDeviceID: testEntraDeviceID}, partial.Labels)
 	assert.True(t, DeviceIdentityFromLabels(nil).Empty())
 }
+
+// IdentityDetectable gates the certificate read, so consumers use it to tell
+// "not a member" from "never looked". A server answering true would spend a
+// round trip per scan; answering false for a workstation would report every
+// Entra-joined client as unknown.
+func TestIdentityDetectable(t *testing.T) {
+	pf := func(productType, title string) *inventory.Platform {
+		return &inventory.Platform{
+			Title:  title,
+			Labels: map[string]string{"windows.mondoo.com/product-type": productType},
+		}
+	}
+
+	assert.True(t, IdentityDetectable(pf("1", "Windows 11 Enterprise")))
+	assert.True(t, IdentityDetectable(pf("3", "Windows 11 Enterprise Multi-Session")))
+	assert.False(t, IdentityDetectable(pf("3", "Windows Server 2022 Datacenter")))
+	assert.False(t, IdentityDetectable(pf("2", "Windows Server 2022 Datacenter")), "domain controller")
+	assert.False(t, IdentityDetectable(pf("", "Windows")), "product type unknown")
+	assert.False(t, IdentityDetectable(nil))
+}

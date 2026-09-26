@@ -81,6 +81,25 @@ func (d DeviceIdentity) IntunePlatformID() string {
 	return "//platformid.api.mondoo.app/runtime/intune/tenants/" + d.EntraTenantID + "/devices/" + d.IntuneDeviceID
 }
 
+// IdentityDetectable reports whether the Microsoft device identity is read on
+// this Windows edition: workstations (product-type "1") and Windows 11
+// Enterprise Multi-Session, which reports product-type "3".
+//
+// Callers need this to tell "not a member" from "never looked". A server is not
+// asked for its certificates, so absent identity labels there say nothing about
+// whether the device is Entra-joined, and a consumer must report null rather
+// than a measured false.
+func IdentityDetectable(pf *inventory.Platform) bool {
+	if pf == nil {
+		return false
+	}
+	isWorkstation := pf.Labels["windows.mondoo.com/product-type"] == "1"
+	isWindows11MultiSession := pf.Labels["windows.mondoo.com/product-type"] == "3" &&
+		strings.Contains(pf.Title, "Windows 11") &&
+		strings.Contains(pf.Title, "Multi-Session")
+	return isWorkstation || isWindows11MultiSession
+}
+
 // DeviceIdentityFromLabels reads a previously detected identity from the
 // platform labels.
 func DeviceIdentityFromLabels(pf *inventory.Platform) DeviceIdentity {

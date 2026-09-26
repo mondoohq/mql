@@ -280,10 +280,6 @@ func TestStaticIntuneInfo(t *testing.T) {
 		assert.Nil(t, staticIntuneInfo(fakeHive{}))
 	})
 
-	t.Run("servers are not Intune-manageable", func(t *testing.T) {
-		assert.False(t, intuneManageable(&inventory.Platform{Labels: map[string]string{"windows.mondoo.com/product-type": "3"}, Title: "Windows Server 2022"}))
-		assert.True(t, intuneManageable(&inventory.Platform{Labels: map[string]string{"windows.mondoo.com/product-type": "3"}, Title: "Windows 11 Enterprise Multi-Session"}))
-	})
 }
 
 // selectHive answers only Select\Current, the way a SYSTEM hive loaded from a

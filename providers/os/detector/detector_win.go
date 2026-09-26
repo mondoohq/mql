@@ -164,7 +164,7 @@ func staticWindowsDetector(pf *inventory.Platform, conn shared.Connection) (bool
 	}
 	pf.Labels["windows.mondoo.com/hotpatch"] = strconv.FormatBool(hotpatchEnabled)
 
-	if intuneManageable(pf) {
+	if win.IdentityDetectable(pf) {
 		applyIntuneInfo(pf, staticIntuneInfo(rh))
 	}
 
@@ -230,7 +230,7 @@ func staticServerHotpatch(rh *registry.RegistryHandler, arch string) bool {
 // This includes workstations (product-type "1") and Windows 11 Enterprise Multi-Session
 // systems which report as product-type "3" but are manageable via Intune.
 func detectIntuneDeviceID(pf *inventory.Platform, conn shared.Connection) {
-	if !intuneManageable(pf) {
+	if !win.IdentityDetectable(pf) {
 		return
 	}
 
@@ -240,17 +240,6 @@ func detectIntuneDeviceID(pf *inventory.Platform, conn shared.Connection) {
 		return
 	}
 	applyIntuneInfo(pf, info)
-}
-
-// intuneManageable reports whether the platform is a Windows client that can be
-// Intune-enrolled: workstations (product-type "1") and Windows 11 Enterprise
-// Multi-Session, which reports product-type "3".
-func intuneManageable(pf *inventory.Platform) bool {
-	isWorkstation := pf.Labels["windows.mondoo.com/product-type"] == "1"
-	isWindows11MultiSession := pf.Labels["windows.mondoo.com/product-type"] == "3" &&
-		strings.Contains(pf.Title, "Windows 11") &&
-		strings.Contains(pf.Title, "Multi-Session")
-	return isWorkstation || isWindows11MultiSession
 }
 
 // applyIntuneInfo sets the labels every detection path derives from the same
