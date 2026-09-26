@@ -292,6 +292,18 @@ func TestParseDefaultsLine_CommandScope(t *testing.T) {
 	assert.True(t, negated)
 }
 
+func TestParseDefaultsLine_NegatedGlobal(t *testing.T) {
+	// "!" after whitespace negates a global parameter; it is not a command scope.
+	for _, line := range []string{"Defaults !authenticate", "Defaults\t!visiblepw"} {
+		scope, target, parameter, _, _, negated := sudoers.ParseDefaultsLine(line)
+
+		assert.Equal(t, "global", scope, line)
+		assert.Equal(t, "", target, line)
+		assert.NotEmpty(t, parameter, line)
+		assert.True(t, negated, line)
+	}
+}
+
 func TestSmartSplit_BasicSplit(t *testing.T) {
 	result := sudoers.SmartSplit("user host command")
 	assert.Equal(t, []string{"user", "host", "command"}, result)

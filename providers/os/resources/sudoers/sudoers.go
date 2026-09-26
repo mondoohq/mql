@@ -238,8 +238,10 @@ func ParseAliases(filePath string, content string) []Alias {
 // ParseDefaultsLine parses a Defaults line and extracts its components
 // Returns: scope, target, parameter, value, operation, negated
 func ParseDefaultsLine(line string) (string, string, string, string, string, bool) {
-	// Strip "Defaults" prefix
-	line = strings.TrimSpace(strings.TrimPrefix(line, "Defaults"))
+	// Strip "Defaults" prefix. A scope specifier follows it directly
+	// ("Defaults!/usr/bin/su"); after whitespace, "!" negates a global
+	// parameter ("Defaults !authenticate").
+	line = strings.TrimPrefix(line, "Defaults")
 
 	scope := "global"
 	target := ""
