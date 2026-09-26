@@ -1,0 +1,4 @@
+vrf cluster id 5 table 1005
+vrf t-blue id 7 table 1007
+vrf t-green id 8 table 1008
+vrf vr.mgmt id 6 table 1006
