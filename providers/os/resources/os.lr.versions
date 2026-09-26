@@ -706,6 +706,11 @@ dart.packages.files 13.13.1
 dart.packages.list 13.13.1
 dart.packages.path 13.13.1
 dart.packages.root 13.13.1
+directory 14.5.1
+directory.entra 14.5.1
+directory.entra.deviceId 14.5.1
+directory.entra.tenantId 14.5.1
+directory.joined 14.5.1
 docker 9.0.0
 docker.container 9.0.0
 docker.container.command 9.0.0
@@ -918,10 +923,6 @@ elixir.packages 13.13.1
 elixir.packages.files 13.13.1
 elixir.packages.list 13.13.1
 elixir.packages.path 13.13.1
-entra 14.5.1
-entra.deviceId 14.5.1
-entra.joined 14.5.1
-entra.tenantId 14.5.1
 erlang.package 13.13.1
 erlang.package.files 13.13.1
 erlang.package.id 13.13.1

@@ -16463,22 +16463,35 @@ private mdm.intune @defaults("deviceId tenantId") {
   tenantId string
 }
 
-// Microsoft Entra device identity
+// Directory membership of this device
 //
-// Whether this device has a device identity in Microsoft Entra ID, and the
-// identity of its device object. This is independent of MDM: a device can be
-// Entra-joined without being enrolled in an MDM service, and a device managed
-// by another MDM is usually not Entra-joined at all. Detected on Windows from
-// the device's Entra device certificate; on other platforms joined is false
-// until their detection is added. How the device joined (for example hybrid
-// join or registration) may be added as a separate field later.
-entra @defaults("joined tenantId") @maturity("preview") {
-  // Whether the device has a Microsoft Entra device identity
+// Which directories the device is joined to, bound to, or registered with. A
+// device can be a member of several at once (for example a hybrid join to
+// Active Directory and Microsoft Entra ID), so each directory is its own field
+// and is null when the device is not a member. Independent of MDM enrollment:
+// a device can be a directory member without being enrolled in an MDM
+// service, and the other way round. Microsoft Entra ID is detected on Windows
+// today; other directories (for example Active Directory, FreeIPA,
+// LDAP/Kerberos realms, or JumpCloud) can be added as fields later.
+directory @defaults("joined") @maturity("preview") {
+  // Whether the device is a member of any recognized directory
   joined() bool
-  // ID of the device object in Microsoft Entra ID, null when not joined
-  deviceId() string
-  // Entra tenant the device belongs to, null when not joined
-  tenantId() string
+  // Microsoft Entra ID membership, null when the device has no Entra device identity
+  entra() directory.entra
+}
+
+// Microsoft Entra ID membership
+//
+// The device's identity in Microsoft Entra ID, read on Windows from the
+// device's Entra device certificate. The resource is only returned for a
+// member, so directory.entra not being null means the device has an Entra
+// device identity. How the device joined (for example hybrid join or
+// registration) may be added as a field later.
+private directory.entra @defaults("deviceId tenantId") {
+  // ID of the device object in Microsoft Entra ID
+  deviceId string
+  // Entra tenant the device belongs to
+  tenantId string
 }
 
 // Cloud-asset metadata

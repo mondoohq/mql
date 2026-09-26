@@ -89,7 +89,7 @@ func TestMdmResultSet_UnknownVendorIsNull(t *testing.T) {
 	assert.Equal(t, "user", m.Method.Data)
 }
 
-func TestMdmAndEntra_DeviceKinds(t *testing.T) {
+func TestMdmAndDirectory_DeviceKinds(t *testing.T) {
 	// Made-up identifiers.
 	full := detwin.DeviceIdentity{
 		IntuneDeviceID: "0a1b2c3d-4e5f-4061-8273-a4b5c6d7e8f9",
@@ -104,6 +104,21 @@ func TestMdmAndEntra_DeviceKinds(t *testing.T) {
 	newMdm := func() *mqlMdm {
 		return &mqlMdm{MqlRuntime: &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}}
 	}
+	newDirectory := func() *mqlDirectory {
+		return &mqlDirectory{MqlRuntime: &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}}
+	}
+	assertMember := func(t *testing.T, d *mqlDirectory, id detwin.DeviceIdentity) {
+		t.Helper()
+		assert.True(t, d.Joined.Data)
+		require.NotNil(t, d.Entra.Data)
+		assert.Equal(t, id.EntraDeviceID, d.Entra.Data.DeviceId.Data)
+		assert.Equal(t, id.EntraTenantID, d.Entra.Data.TenantId.Data)
+	}
+	assertNotMember := func(t *testing.T, d *mqlDirectory) {
+		t.Helper()
+		assert.False(t, d.Joined.Data)
+		assert.Equal(t, null, d.Entra.State)
+	}
 
 	t.Run("Intune-enrolled and Entra-joined", func(t *testing.T) {
 		m := newMdm()
@@ -114,11 +129,9 @@ func TestMdmAndEntra_DeviceKinds(t *testing.T) {
 		assert.Equal(t, full.IntuneDeviceID, m.Intune.Data.DeviceId.Data)
 		assert.Equal(t, full.EntraTenantID, m.Intune.Data.TenantId.Data)
 
-		e := &mqlEntra{}
-		entraFromIdentity(full).set(e)
-		assert.True(t, e.Joined.Data)
-		assert.Equal(t, full.EntraDeviceID, e.DeviceId.Data)
-		assert.Equal(t, full.EntraTenantID, e.TenantId.Data)
+		d := newDirectory()
+		require.NoError(t, directoryResult{entra: entraFromIdentity(full)}.set(d))
+		assertMember(t, d, full)
 	})
 
 	t.Run("Entra-joined without MDM", func(t *testing.T) {
@@ -128,11 +141,9 @@ func TestMdmAndEntra_DeviceKinds(t *testing.T) {
 		assert.Equal(t, null, m.DeviceId.State)
 		assert.Equal(t, null, m.Intune.State)
 
-		e := &mqlEntra{}
-		entraFromIdentity(entraOnly).set(e)
-		assert.True(t, e.Joined.Data)
-		assert.Equal(t, full.EntraDeviceID, e.DeviceId.Data)
-		assert.Equal(t, full.EntraTenantID, e.TenantId.Data)
+		d := newDirectory()
+		require.NoError(t, directoryResult{entra: entraFromIdentity(entraOnly)}.set(d))
+		assertMember(t, d, entraOnly)
 	})
 
 	t.Run("managed by another MDM", func(t *testing.T) {
@@ -142,12 +153,10 @@ func TestMdmAndEntra_DeviceKinds(t *testing.T) {
 		assert.Equal(t, null, m.DeviceId.State)
 		assert.Equal(t, null, m.Intune.State)
 
-		// No Entra detection ran (e.g. macOS): not joined.
-		e := &mqlEntra{}
-		entraResult{}.set(e)
-		assert.False(t, e.Joined.Data)
-		assert.Equal(t, null, e.DeviceId.State)
-		assert.Equal(t, null, e.TenantId.State)
+		// No directory detection ran (e.g. macOS): no membership.
+		d := newDirectory()
+		require.NoError(t, directoryResult{}.set(d))
+		assertNotMember(t, d)
 	})
 
 	t.Run("unmanaged", func(t *testing.T) {
@@ -157,11 +166,9 @@ func TestMdmAndEntra_DeviceKinds(t *testing.T) {
 		assert.Equal(t, null, m.DeviceId.State)
 		assert.Equal(t, null, m.Intune.State)
 
-		e := &mqlEntra{}
-		entraFromIdentity(detwin.DeviceIdentity{}).set(e)
-		assert.False(t, e.Joined.Data)
-		assert.Equal(t, null, e.DeviceId.State)
-		assert.Equal(t, null, e.TenantId.State)
+		d := newDirectory()
+		require.NoError(t, directoryResult{entra: entraFromIdentity(detwin.DeviceIdentity{})}.set(d))
+		assertNotMember(t, d)
 	})
 
 	t.Run("a leftover Intune certificate on an unenrolled device is ignored", func(t *testing.T) {
@@ -171,11 +178,10 @@ func TestMdmAndEntra_DeviceKinds(t *testing.T) {
 		assert.Equal(t, null, m.Intune.State)
 	})
 
-	t.Run("an Intune tenant without an Entra device ID is not a join", func(t *testing.T) {
-		e := &mqlEntra{}
-		entraFromIdentity(detwin.DeviceIdentity{IntuneDeviceID: full.IntuneDeviceID, EntraTenantID: full.EntraTenantID}).set(e)
-		assert.False(t, e.Joined.Data)
-		assert.Equal(t, null, e.TenantId.State)
+	t.Run("an Intune tenant without an Entra device ID is not a membership", func(t *testing.T) {
+		d := newDirectory()
+		require.NoError(t, directoryResult{entra: entraFromIdentity(detwin.DeviceIdentity{IntuneDeviceID: full.IntuneDeviceID, EntraTenantID: full.EntraTenantID})}.set(d))
+		assertNotMember(t, d)
 	})
 
 	t.Run("enrolled in Intune with an unreadable certificate", func(t *testing.T) {
