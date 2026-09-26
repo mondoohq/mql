@@ -70,9 +70,8 @@ func TestMachoArch(t *testing.T) {
 	})
 }
 
-// Bundle paths from an Apple Silicon Mac. system_profiler names some of them
-// differently ("Zoom", and "Digital Colour Meter" on a British English
-// system); the package is named after the directory either way.
+// Bundle paths from an Apple Silicon Mac. The directory name is the fallback
+// name of an application no other source names.
 func TestBundleName(t *testing.T) {
 	cases := []struct {
 		path string
@@ -283,4 +282,48 @@ func TestAppArchitecturePrefersTheExecutable(t *testing.T) {
 
 	// Neither: no architecture rather than the host's.
 	assert.Equal(t, "", appArchitecture(conn, &sysProfilerItem{Path: "/Applications/Missing.app"}, infoPlist{Executable: "Missing"}))
+}
+
+// Applications only the folder listing finds are named the way Finder and
+// system_profiler name them: the localized name when the bundle sets
+// LSHasLocalizedDisplayName, read in the bundle's development language,
+// otherwise the directory name. The fixture covers each file format a
+// localized name comes in.
+func TestAppDisplayName(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/packages_macos_display_name.toml"))
+	require.NoError(t, err)
+
+	cases := []struct {
+		path   string
+		want   string
+		format string
+	}{
+		{"/Applications/Cisco WebEx Start.app", "Webex", "text .strings, UTF-8"},
+		{"/Applications/Meeting Center.app", "Cisco Webex Meetings", "text .strings, UTF-16, English.lproj"},
+		{"/Applications/Iru Self Service.app", "Iru Self Service", "XML .strings, UTF-16"},
+		{"/Applications/Microsoft Word.app", "Microsoft Word", "binary .strings"},
+		{"/Applications/logioptionsplus.app", "Logi Options+", "text .strings, Base.lproj"},
+		// The development language's spelling, not the user's: system_profiler
+		// shows "Notification Centre" on a British English system.
+		{"/System/Applications/NotificationCenter.app", "Notification Center", "InfoPlist.loctable"},
+		// No LSHasLocalizedDisplayName: Finder shows the directory name, not the
+		// Info.plist display name "Code".
+		{"/Applications/Visual Studio Code.app", "Visual Studio Code", "no localized name"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.format, func(t *testing.T) {
+			info, isBundle := readInfoPlist(conn, tc.path)
+			require.True(t, isBundle)
+			assert.Equal(t, tc.want, appDisplayName(conn, tc.path, info))
+		})
+	}
+}
+
+func TestIsTruthy(t *testing.T) {
+	for _, v := range []any{true, uint64(1), int64(1), "1", "YES", "true"} {
+		assert.True(t, isTruthy(v), "%v", v)
+	}
+	for _, v := range []any{nil, false, uint64(0), "", "0", "NO"} {
+		assert.False(t, isTruthy(v), "%v", v)
+	}
 }

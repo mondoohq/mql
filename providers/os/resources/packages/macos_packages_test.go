@@ -243,9 +243,9 @@ func TestMacOSPackagesIncludeCryptexApplications(t *testing.T) {
 	assert.Equal(t, packages.MacosPkgFormat, safari.Format)
 	assert.Equal(t, "pkg:macos/macos/Safari@27.0?arch=arm64", safari.PUrl)
 
-	// Named after the bundle directory, like every other application, whatever
-	// display name its Info.plist carries.
-	assert.Equal(t, "PasswordManagerBrowserExtensionHelper",
+	// Named the way system_profiler names bundles: display name, then bundle
+	// name, then the directory name.
+	assert.Equal(t, "Passwords Extension Helper",
 		byPath["/System/Cryptexes/App/System/Library/CoreServices/PasswordManagerBrowserExtensionHelper.app"].Name)
 
 	// No name keys and only a build version: the directory name and

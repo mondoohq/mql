@@ -1319,7 +1319,7 @@ package @defaults("name version") {
 
   // Name of the package
   //
-  // On macOS, the application bundle's directory name without ".app".
+  // On macOS, the application's display name as Finder shows it.
   name string
   // Package description
   description string

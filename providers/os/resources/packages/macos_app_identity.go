@@ -11,12 +11,15 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
+	"unicode/utf16"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	plist "howett.net/plist"
 )
 
 // MacosArchUniversal is the architecture reported for an application whose
@@ -366,7 +369,7 @@ func folderApplications(conn shared.Connection, reported []sysProfilerItem) []sy
 			return
 		}
 		items = append(items, sysProfilerItem{
-			Name:     bundleName(path),
+			Name:     appDisplayName(conn, path, info),
 			Version:  bundleVersionOf(info),
 			Path:     path,
 			info:     &info,
@@ -425,4 +428,151 @@ func readDirEntries(fs afero.Fs, dir string) ([]os.FileInfo, error) {
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 	return entries, nil
+}
+
+// appDisplayName names an application bundle the way Finder and
+// system_profiler do, for an application only the folder listing found.
+//
+// A bundle that sets LSHasLocalizedDisplayName is shown by its localized name
+// ("Webex" for "Cisco WebEx Start.app", "Logi Options+" for
+// "logioptionsplus.app"); every other bundle by its directory name without
+// .app. The localized name is read in the bundle's own development language,
+// not the user's, so the same application gets the same name on every Mac.
+func appDisplayName(conn shared.Connection, path string, info infoPlist) string {
+	folder := bundleName(path)
+	if !isTruthy(info.HasLocalizedDisplayName) {
+		return folder
+	}
+	loc := localizedInfoStrings(conn, path, info.DevelopmentRegion)
+	for _, name := range []string{loc["CFBundleDisplayName"], loc["CFBundleName"], info.DisplayName, info.BundleName} {
+		if name = cleanDisplayName(name); name != "" {
+			return name
+		}
+	}
+	return folder
+}
+
+// isTruthy reads a plist flag that bundles store as a boolean, a number or a
+// string ("1", "YES", "true").
+func isTruthy(v any) bool {
+	switch x := v.(type) {
+	case bool:
+		return x
+	case uint64:
+		return x != 0
+	case int64:
+		return x != 0
+	case string:
+		switch strings.ToLower(strings.TrimSpace(x)) {
+		case "1", "yes", "true":
+			return true
+		}
+	}
+	return false
+}
+
+// cleanDisplayName drops the invisible direction marks some bundles wrap
+// their names in.
+func cleanDisplayName(name string) string {
+	return strings.TrimSpace(strings.NewReplacer("\u200e", "", "\u200f", "").Replace(name))
+}
+
+// maxInfoStringsSize bounds how much of a localization file is read.
+const maxInfoStringsSize = 1 << 20
+
+// localizedInfoStrings returns a bundle's localized Info.plist strings in its
+// development language, falling back to English. Apple's own bundles keep
+// them in Contents/Resources/InfoPlist.loctable, every other bundle in
+// Contents/Resources/<language>.lproj/InfoPlist.strings.
+func localizedInfoStrings(conn shared.Connection, path string, devRegion string) map[string]string {
+	var langs []string
+	for _, l := range []string{devRegion, "en", "English", "Base", "en_US"} {
+		if l != "" && !slices.Contains(langs, l) {
+			langs = append(langs, l)
+		}
+	}
+	resources := filepath.Join(path, "Contents", "Resources")
+
+	if raw, ok := readBoundedFile(conn, filepath.Join(resources, "InfoPlist.loctable")); ok {
+		var table map[string]map[string]any
+		if _, err := plist.Unmarshal(raw, &table); err == nil {
+			for _, l := range langs {
+				if m := stringValues(table[l]); len(m) > 0 {
+					return m
+				}
+			}
+		}
+	}
+	for _, l := range langs {
+		if raw, ok := readBoundedFile(conn, filepath.Join(resources, l+".lproj", "InfoPlist.strings")); ok {
+			if m := parseStringsFile(raw); len(m) > 0 {
+				return m
+			}
+		}
+	}
+	return nil
+}
+
+// parseStringsFile reads an InfoPlist.strings file. It is a binary or XML
+// property list, or the old text format of "key" = "value"; pairs, in UTF-8 or
+// UTF-16. The text format is a property list dictionary without its braces.
+func parseStringsFile(raw []byte) map[string]string {
+	content := decodeUTF16(raw)
+	var m map[string]any
+	if _, err := plist.Unmarshal(content, &m); err == nil && len(m) > 0 {
+		return stringValues(m)
+	}
+	wrapped := append(append([]byte("{"), content...), '}')
+	m = nil
+	if _, err := plist.Unmarshal(wrapped, &m); err == nil {
+		return stringValues(m)
+	}
+	return nil
+}
+
+// decodeUTF16 converts UTF-16 content with a byte order mark to UTF-8 and
+// drops a UTF-8 byte order mark; anything else is returned as is.
+func decodeUTF16(b []byte) []byte {
+	var order binary.ByteOrder
+	switch {
+	case len(b) >= 2 && b[0] == 0xff && b[1] == 0xfe:
+		order = binary.LittleEndian
+	case len(b) >= 2 && b[0] == 0xfe && b[1] == 0xff:
+		order = binary.BigEndian
+	case len(b) >= 3 && b[0] == 0xef && b[1] == 0xbb && b[2] == 0xbf:
+		return b[3:]
+	default:
+		return b
+	}
+	u := make([]uint16, 0, len(b)/2)
+	for i := 2; i+1 < len(b); i += 2 {
+		u = append(u, order.Uint16(b[i:]))
+	}
+	return []byte(string(utf16.Decode(u)))
+}
+
+func stringValues(m map[string]any) map[string]string {
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		if s, ok := v.(string); ok {
+			out[k] = s
+		}
+	}
+	return out
+}
+
+func readBoundedFile(conn shared.Connection, path string) ([]byte, bool) {
+	if conn == nil {
+		return nil, false
+	}
+	f, err := conn.FileSystem().Open(path)
+	if err != nil {
+		return nil, false
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(io.LimitReader(f, maxInfoStringsSize))
+	if err != nil {
+		return nil, false
+	}
+	return raw, true
 }

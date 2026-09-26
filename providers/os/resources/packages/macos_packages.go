@@ -61,6 +61,13 @@ type infoPlist struct {
 	Executable    string `plist:"CFBundleExecutable"`
 	ShortVersion  string `plist:"CFBundleShortVersionString"`
 	BundleVersion string `plist:"CFBundleVersion"`
+	BundleName    string `plist:"CFBundleName"`
+	DisplayName   string `plist:"CFBundleDisplayName"`
+	// DevelopmentRegion is the bundle's own language, e.g. "en" or "English".
+	DevelopmentRegion string `plist:"CFBundleDevelopmentRegion"`
+	// HasLocalizedDisplayName is LSHasLocalizedDisplayName. Bundles store it as
+	// a boolean, a number or a string, so it is decoded loosely.
+	HasLocalizedDisplayName any `plist:"LSHasLocalizedDisplayName"`
 }
 
 // parse macos system version property list
@@ -157,16 +164,13 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 		// two places, so take the padding off it first.
 		version = normalizeVersion(version)
 
-		// The package is named after the bundle directory, whichever source
-		// found it. system_profiler reports the Finder display name, which is
-		// the same for nearly every application but follows the user's
-		// language for a few of Apple's ("Digital Colour Meter" on a British
-		// English system), and would name the same bundle differently when
-		// it is found by listing the application folders. A copy saved next
-		// to the original ("Signal 2.app") keeps its own name, which is also
-		// what Finder and system_profiler show for it.
-		name := bundleName(entry.Path)
-		entry.Name = name
+		// The package keeps the name system_profiler reports, the display name
+		// Finder shows. An application only the folder listing found is named
+		// the same way from its bundle (see appDisplayName).
+		name := entry.Name
+		if name == "" {
+			name = bundleName(entry.Path)
+		}
 
 		// We need a special handling for Firefox to determine ESR installations
 		purlQualifiers := getPurlQualifiers(conn, *entry)
@@ -602,7 +606,7 @@ func cryptexApplications(conn shared.Connection, reported []sysProfilerItem) []s
 					continue
 				}
 				items = append(items, sysProfilerItem{
-					Name:    bundleName(name),
+					Name:    cryptexBundleName(info, name),
 					Version: bundleVersionOf(info),
 					Path:    path,
 					// Only Apple can sign a cryptex.
@@ -635,6 +639,18 @@ func isReportedCryptexBundle(seen map[string]struct{}, cryptex, rel string) bool
 		}
 	}
 	return false
+}
+
+// cryptexBundleName names a bundle the way system_profiler does: its display
+// name, then its bundle name, then the directory name without .app.
+func cryptexBundleName(info infoPlist, dirName string) string {
+	if info.DisplayName != "" {
+		return info.DisplayName
+	}
+	if info.BundleName != "" {
+		return info.BundleName
+	}
+	return strings.TrimSuffix(dirName, filepath.Ext(dirName))
 }
 
 func readDirNames(fs afero.Fs, dir string) ([]string, error) {
