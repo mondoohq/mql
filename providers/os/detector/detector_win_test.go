@@ -285,3 +285,25 @@ func TestStaticIntuneInfo(t *testing.T) {
 		assert.True(t, intuneManageable(&inventory.Platform{Labels: map[string]string{"windows.mondoo.com/product-type": "3"}, Title: "Windows 11 Enterprise Multi-Session"}))
 	})
 }
+
+// selectHive answers only Select\Current, the way a SYSTEM hive loaded from a
+// file does; it has no CurrentControlSet.
+type selectHive struct {
+	current int64
+	missing bool
+}
+
+func (h selectHive) GetRegistryItemValue(registryId string, path, key string) (registry.RegistryKeyItem, error) {
+	if h.missing || registryId != registry.System || path != "Select" || key != "Current" {
+		return registry.RegistryKeyItem{}, errors.New("not found")
+	}
+	return registry.RegistryKeyItem{Key: key, Value: registry.RegistryKeyValue{Number: h.current}}, nil
+}
+
+func TestStaticControlSet(t *testing.T) {
+	assert.Equal(t, "ControlSet001", staticControlSet(selectHive{current: 1}))
+	assert.Equal(t, "ControlSet002", staticControlSet(selectHive{current: 2}))
+	// No Select key, or a value out of range: the first control set.
+	assert.Equal(t, "ControlSet001", staticControlSet(selectHive{missing: true}))
+	assert.Equal(t, "ControlSet001", staticControlSet(selectHive{current: 0}))
+}
