@@ -526,7 +526,12 @@ const (
 	// candidate. LC_ALL=C keeps the "[upgradable from: ...]" marker
 	// untranslated.
 	aptListUpgradableCmd = "LC_ALL=C apt list --upgradable"
-	aptUpgradeDryRunCmd  = "DEBIAN_FRONTEND=noninteractive apt-get upgrade --dry-run"
+	// aptUpgradeDryRunCmd simulates the upgrade. Even a dry run makes libapt
+	// write its solver log, /var/log/apt/eipp.log.xz, with mode 0644, so a
+	// scan would loosen the permissions of a log it is often asked to check.
+	// Pointing Dir::Log::Planner at /dev/null skips that write and leaves the
+	// output unchanged.
+	aptUpgradeDryRunCmd = "DEBIAN_FRONTEND=noninteractive apt-get -o Dir::Log::Planner=/dev/null upgrade --dry-run"
 	// aptPolicyCmd lists the package files apt has read into its cache.
 	aptPolicyCmd = "LC_ALL=C apt-cache policy"
 )
