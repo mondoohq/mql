@@ -918,6 +918,10 @@ elixir.packages 13.13.1
 elixir.packages.files 13.13.1
 elixir.packages.list 13.13.1
 elixir.packages.path 13.13.1
+entra 14.5.1
+entra.deviceId 14.5.1
+entra.joined 14.5.1
+entra.tenantId 14.5.1
 erlang.package 13.13.1
 erlang.package.files 13.13.1
 erlang.package.id 13.13.1
@@ -2454,10 +2458,11 @@ mdadm.device.state 13.1.2
 mdm 14.0.0
 mdm.deviceId 14.5.1
 mdm.enrolled 14.0.0
-mdm.entraDeviceId 14.5.1
+mdm.intune 14.5.1
+mdm.intune.deviceId 14.5.1
+mdm.intune.tenantId 14.5.1
 mdm.method 14.0.0
 mdm.serverUrl 14.0.0
-mdm.tenantId 14.5.1
 mdm.vendor 14.0.0
 memory 14.3.1
 memory.available 14.3.1

@@ -16396,13 +16396,13 @@ private edr.product @defaults("name vendor installed healthy") {
   signatureVersion string
   // ID the vendor's console uses for this agent
   //
-  // The agent ID (AID) for CrowdStrike Falcon. Null for agents whose ID is not
-  // detected yet; more vendors will follow.
+  // For example the CrowdStrike Falcon agent ID (AID). Null when the agent's
+  // ID is not detected yet; more vendors will follow.
   agentId string
-  // ID of the vendor customer or tenant the agent reports to
+  // Customer, tenant, or account the agent reports to
   //
-  // The customer ID (CID) for CrowdStrike Falcon. Null for agents whose tenant
-  // is not detected yet.
+  // For example the CrowdStrike Falcon customer ID (CID). Null when it is not
+  // detected yet.
   tenantId string
   // Signals that identified the agent
   //
@@ -16442,26 +16442,43 @@ mdm @defaults("enrolled vendor") @maturity("preview") {
   // policy for Windows Group Policy auto-enrollment, and user for an
   // enrollment a user started.
   method() string
-  // Device ID the MDM service assigned to this device
+  // ID the MDM service uses for this device
   //
-  // The Intune managed device ID for a device enrolled in Intune, read from the
-  // device's Intune MDM certificate. Null when the device is not enrolled, when
-  // the vendor's ID is not detected yet, or when the certificate is not
-  // readable.
+  // The vendor's own identifier for the enrolled device, for example the
+  // Intune managed device ID. Null when the device is not enrolled or the
+  // vendor's ID is not detected yet.
   deviceId() string
-  // Tenant the MDM service manages the device for
-  //
-  // The Microsoft Entra tenant ID for a device enrolled in Intune. Null when the
-  // device is not enrolled or the tenant is not detected.
+  // Intune details, null unless the device is enrolled in Microsoft Intune
+  intune() mdm.intune
+}
+
+// Microsoft Intune enrollment details
+//
+// Facts only Intune has. They are read from the device's Intune MDM
+// certificate, so each is null when that certificate cannot be read.
+private mdm.intune @defaults("deviceId tenantId") {
+  // Intune managed device ID
+  deviceId string
+  // Microsoft Entra tenant the device is enrolled in
+  tenantId string
+}
+
+// Microsoft Entra device identity
+//
+// Whether this device has a device identity in Microsoft Entra ID, and the
+// identity of its device object. This is independent of MDM: a device can be
+// Entra-joined without being enrolled in an MDM service, and a device managed
+// by another MDM is usually not Entra-joined at all. Detected on Windows from
+// the device's Entra device certificate; on other platforms joined is false
+// until their detection is added. How the device joined (for example hybrid
+// join or registration) may be added as a separate field later.
+entra @defaults("joined tenantId") @maturity("preview") {
+  // Whether the device has a Microsoft Entra device identity
+  joined() bool
+  // ID of the device object in Microsoft Entra ID, null when not joined
+  deviceId() string
+  // Entra tenant the device belongs to, null when not joined
   tenantId() string
-  // Microsoft Entra device ID
-  //
-  // The ID of the device object in Microsoft Entra ID, read from the device's
-  // Entra device certificate. A device can be Entra-joined without being
-  // enrolled in an MDM service, so this can be set while enrolled is false.
-  // Null when the device is not Entra-joined or the certificate is not
-  // readable.
-  entraDeviceId() string
 }
 
 // Cloud-asset metadata

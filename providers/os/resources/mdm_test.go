@@ -11,6 +11,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	detwin "go.mondoo.com/mql/providers/os/detector/windows"
 	"go.mondoo.com/mql/providers/os/resources/windows"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 func TestMdmVendor(t *testing.T) {
@@ -72,7 +73,7 @@ func TestWindowsMdmResult(t *testing.T) {
 // null, never an empty string a check could compare against.
 func TestMdmResultSet_NotEnrolledIsNull(t *testing.T) {
 	m := &mqlMdm{}
-	mdmResult{}.set(m)
+	require.NoError(t, mdmResult{}.set(m))
 	assert.Equal(t, plugin.StateIsSet, m.Enrolled.State)
 	assert.False(t, m.Enrolled.Data)
 	for _, f := range []plugin.TValue[string]{m.Vendor, m.ServerUrl, m.Method} {
@@ -82,50 +83,107 @@ func TestMdmResultSet_NotEnrolledIsNull(t *testing.T) {
 
 func TestMdmResultSet_UnknownVendorIsNull(t *testing.T) {
 	m := &mqlMdm{}
-	mdmResult{enrolled: true, serverURL: "https://mdm.example.com/x", method: "user"}.set(m)
+	require.NoError(t, mdmResult{enrolled: true, serverURL: "https://mdm.example.com/x", method: "user"}.set(m))
 	assert.Equal(t, "https://mdm.example.com/x", m.ServerUrl.Data)
 	assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, m.Vendor.State)
 	assert.Equal(t, "user", m.Method.Data)
 }
 
-func TestMdmResultSet_DeviceIdentity(t *testing.T) {
+func TestMdmAndEntra_DeviceKinds(t *testing.T) {
 	// Made-up identifiers.
-	id := detwin.DeviceIdentity{
+	full := detwin.DeviceIdentity{
 		IntuneDeviceID: "0a1b2c3d-4e5f-4061-8273-a4b5c6d7e8f9",
 		EntraTenantID:  "11223344-5566-7788-99aa-bbccddeeff00",
 		EntraDeviceID:  "c0ffee00-1234-4abc-8def-0123456789ab",
 	}
+	entraOnly := detwin.DeviceIdentity{
+		EntraTenantID: full.EntraTenantID,
+		EntraDeviceID: full.EntraDeviceID,
+	}
 	null := plugin.StateIsSet | plugin.StateIsNull
+	newMdm := func() *mqlMdm {
+		return &mqlMdm{MqlRuntime: &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}}
+	}
 
-	t.Run("enrolled in Intune reports the device and tenant", func(t *testing.T) {
-		m := &mqlMdm{}
-		mdmResult{enrolled: true, serverURL: "https://r.manage.microsoft.com/EnrollmentServer", identity: id}.set(m)
-		assert.Equal(t, id.IntuneDeviceID, m.DeviceId.Data)
-		assert.Equal(t, id.EntraTenantID, m.TenantId.Data)
-		assert.Equal(t, id.EntraDeviceID, m.EntraDeviceId.Data)
+	t.Run("Intune-enrolled and Entra-joined", func(t *testing.T) {
+		m := newMdm()
+		require.NoError(t, mdmResult{enrolled: true, serverURL: "https://r.manage.microsoft.com/EnrollmentServer", identity: full}.set(m))
+		assert.Equal(t, "intune", m.Vendor.Data)
+		assert.Equal(t, full.IntuneDeviceID, m.DeviceId.Data)
+		require.NotNil(t, m.Intune.Data)
+		assert.Equal(t, full.IntuneDeviceID, m.Intune.Data.DeviceId.Data)
+		assert.Equal(t, full.EntraTenantID, m.Intune.Data.TenantId.Data)
+
+		e := &mqlEntra{}
+		entraFromIdentity(full).set(e)
+		assert.True(t, e.Joined.Data)
+		assert.Equal(t, full.EntraDeviceID, e.DeviceId.Data)
+		assert.Equal(t, full.EntraTenantID, e.TenantId.Data)
 	})
 
-	t.Run("enrolled elsewhere does not report Intune IDs", func(t *testing.T) {
-		m := &mqlMdm{}
-		mdmResult{enrolled: true, serverURL: "https://acme.jamfcloud.com/mdm", identity: id}.set(m)
+	t.Run("Entra-joined without MDM", func(t *testing.T) {
+		m := newMdm()
+		require.NoError(t, mdmResult{identity: entraOnly}.set(m))
+		assert.False(t, m.Enrolled.Data)
 		assert.Equal(t, null, m.DeviceId.State)
-		assert.Equal(t, null, m.TenantId.State)
-		assert.Equal(t, id.EntraDeviceID, m.EntraDeviceId.Data, "Entra join is independent of the MDM")
+		assert.Equal(t, null, m.Intune.State)
+
+		e := &mqlEntra{}
+		entraFromIdentity(entraOnly).set(e)
+		assert.True(t, e.Joined.Data)
+		assert.Equal(t, full.EntraDeviceID, e.DeviceId.Data)
+		assert.Equal(t, full.EntraTenantID, e.TenantId.Data)
 	})
 
-	t.Run("not enrolled ignores a leftover Intune certificate", func(t *testing.T) {
-		m := &mqlMdm{}
-		mdmResult{identity: id}.set(m)
+	t.Run("managed by another MDM", func(t *testing.T) {
+		m := newMdm()
+		require.NoError(t, mdmResult{enrolled: true, serverURL: "https://acme.jamfcloud.com/mdm"}.set(m))
+		assert.Equal(t, "jamf", m.Vendor.Data)
 		assert.Equal(t, null, m.DeviceId.State)
-		assert.Equal(t, null, m.TenantId.State)
-		assert.Equal(t, id.EntraDeviceID, m.EntraDeviceId.Data)
+		assert.Equal(t, null, m.Intune.State)
+
+		// No Entra detection ran (e.g. macOS): not joined.
+		e := &mqlEntra{}
+		entraResult{}.set(e)
+		assert.False(t, e.Joined.Data)
+		assert.Equal(t, null, e.DeviceId.State)
+		assert.Equal(t, null, e.TenantId.State)
 	})
 
-	t.Run("nothing detected is null", func(t *testing.T) {
-		m := &mqlMdm{}
-		mdmResult{enrolled: true, serverURL: "https://r.manage.microsoft.com/x"}.set(m)
-		for _, f := range []plugin.TValue[string]{m.DeviceId, m.TenantId, m.EntraDeviceId} {
-			assert.Equal(t, null, f.State)
-		}
+	t.Run("unmanaged", func(t *testing.T) {
+		m := newMdm()
+		require.NoError(t, mdmResult{}.set(m))
+		assert.False(t, m.Enrolled.Data)
+		assert.Equal(t, null, m.DeviceId.State)
+		assert.Equal(t, null, m.Intune.State)
+
+		e := &mqlEntra{}
+		entraFromIdentity(detwin.DeviceIdentity{}).set(e)
+		assert.False(t, e.Joined.Data)
+		assert.Equal(t, null, e.DeviceId.State)
+		assert.Equal(t, null, e.TenantId.State)
+	})
+
+	t.Run("a leftover Intune certificate on an unenrolled device is ignored", func(t *testing.T) {
+		m := newMdm()
+		require.NoError(t, mdmResult{identity: full}.set(m))
+		assert.Equal(t, null, m.DeviceId.State)
+		assert.Equal(t, null, m.Intune.State)
+	})
+
+	t.Run("an Intune tenant without an Entra device ID is not a join", func(t *testing.T) {
+		e := &mqlEntra{}
+		entraFromIdentity(detwin.DeviceIdentity{IntuneDeviceID: full.IntuneDeviceID, EntraTenantID: full.EntraTenantID}).set(e)
+		assert.False(t, e.Joined.Data)
+		assert.Equal(t, null, e.TenantId.State)
+	})
+
+	t.Run("enrolled in Intune with an unreadable certificate", func(t *testing.T) {
+		m := newMdm()
+		require.NoError(t, mdmResult{enrolled: true, serverURL: "https://r.manage.microsoft.com/x"}.set(m))
+		assert.Equal(t, null, m.DeviceId.State)
+		require.NotNil(t, m.Intune.Data)
+		assert.Equal(t, null, m.Intune.Data.DeviceId.State)
+		assert.Equal(t, null, m.Intune.Data.TenantId.State)
 	})
 }
