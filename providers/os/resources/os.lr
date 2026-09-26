@@ -1318,6 +1318,11 @@ package @defaults("name version") {
   init(name string)
 
   // Name of the package
+  //
+  // On macOS, the name of the application bundle directory without its .app
+  // extension, for example "Microsoft Edge" for /Applications/Microsoft
+  // Edge.app. It does not follow the system language and does not depend on
+  // how the application was found.
   name string
   // Package description
   description string
@@ -1325,12 +1330,13 @@ package @defaults("name version") {
   version string
   // Architecture of this package (e.g., x86_64, arm64, noarch)
   //
-  // On macOS, the architecture of the application's main executable: arm64,
-  // x86_64, or universal for a universal binary that runs natively on both.
-  // An x86_64 application on an Apple Silicon Mac runs under Rosetta. When
-  // the executable's architecture is unknown, such as for a script launcher
-  // or an application found only by listing the application folders, the
-  // host architecture is reported.
+  // On macOS, the architecture of the application's main executable, read
+  // from its Mach-O header: arm64, x86_64, or universal for a universal
+  // binary that runs natively on both. An x86_64 application on an Apple
+  // Silicon Mac runs under Rosetta. When the executable cannot be read, the
+  // system application inventory's architecture stands in. Empty when
+  // neither answers or the executable is not a Mach-O binary, such as a
+  // script launcher; it is never the host's architecture.
   arch string
   // Epoch of this package (version-comparison tiebreaker; empty when unset)
   epoch string
@@ -1359,6 +1365,13 @@ package @defaults("name version") {
   pinned bool
 
   // Package URL (purl) identifier for this package
+  //
+  // On macOS, `pkg:macos/macos/<name>@<version>` with these qualifiers, each
+  // present only when it says something: `arch` (see `arch`), `bundle-id`
+  // (the bundle identifier), `team-id` (the Apple Developer Team ID of a
+  // Developer ID signer), `app-store=true` (installed and updated by the Mac
+  // App Store), `install-scope=user` (installed in a user's home directory),
+  // and `remoting-name` for Firefox, which tells ESR from release builds.
   purl string
 
   // Common Platform Enumeration (CPE) for the package

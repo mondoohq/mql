@@ -58,10 +58,9 @@ type sysProfiler struct {
 // Contents/Info.plist.
 type infoPlist struct {
 	BundleID      string `plist:"CFBundleIdentifier"`
+	Executable    string `plist:"CFBundleExecutable"`
 	ShortVersion  string `plist:"CFBundleShortVersionString"`
 	BundleVersion string `plist:"CFBundleVersion"`
-	BundleName    string `plist:"CFBundleName"`
-	DisplayName   string `plist:"CFBundleDisplayName"`
 }
 
 // parse macos system version property list
@@ -158,18 +157,39 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 		// two places, so take the padding off it first.
 		version = normalizeVersion(version)
 
+		// The package is named after the bundle directory, whichever source
+		// found it. system_profiler reports the Finder display name, which is
+		// the same for nearly every application but follows the user's
+		// language for a few of Apple's ("Digital Colour Meter" on a British
+		// English system), and would name the same bundle differently when
+		// it is found by listing the application folders. A copy saved next
+		// to the original ("Signal 2.app") keeps its own name, which is also
+		// what Finder and system_profiler show for it.
+		name := bundleName(entry.Path)
+		entry.Name = name
+
 		// We need a special handling for Firefox to determine ESR installations
 		purlQualifiers := getPurlQualifiers(conn, *entry)
+		if purlQualifiers == nil {
+			purlQualifiers = map[string]string{}
+		}
 
-		arch := appArch(entry.ArchKind, platform.Arch)
+		arch := appArchitecture(conn, entry, info)
 		signer := ""
 		if len(entry.SignedBy) > 0 {
 			signer = entry.SignedBy[0]
 		}
 		scope, user := appInstallScope(entry.Path)
+		app := &MacOSApp{
+			BundleID: info.BundleID,
+			Signer:   signer,
+			TeamID:   teamIDFromSigner(signer),
+			AppStore: isAppStoreManaged(conn, entry.Path, signer),
+		}
+		addMacOSPurlQualifiers(purlQualifiers, app, scope)
 
 		pkg := Package{
-			Name:    entry.Name,
+			Name:    name,
 			Version: version,
 			// system_profiler is the only macOS source that says where a
 			// bundle came from, and Origin is where the other backends already
@@ -187,15 +207,10 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 			FilesAvailable: PkgFilesIncluded,
 			Arch:           arch,
 			PUrl: purl.NewPackageURL(
-				platform, purl.TypeMacos, entry.Name, version,
+				platform, purl.TypeMacos, name, version,
 				purl.WithArch(arch), purl.WithQualifiers(purlQualifiers),
 			).String(),
-			MacOS: &MacOSApp{
-				BundleID: info.BundleID,
-				Signer:   signer,
-				TeamID:   teamIDFromSigner(signer),
-				AppStore: isAppStoreManaged(conn, entry.Path, signer),
-			},
+			MacOS:        app,
 			InstallScope: scope,
 			InstallUser:  user,
 		}
@@ -581,7 +596,7 @@ func cryptexApplications(conn shared.Connection, reported []sysProfilerItem) []s
 					continue
 				}
 				items = append(items, sysProfilerItem{
-					Name:    cryptexBundleName(info, name),
+					Name:    bundleName(name),
 					Version: bundleVersionOf(info),
 					Path:    path,
 					// Only Apple can sign a cryptex.
@@ -614,18 +629,6 @@ func isReportedCryptexBundle(seen map[string]struct{}, cryptex, rel string) bool
 		}
 	}
 	return false
-}
-
-// cryptexBundleName names a bundle the way system_profiler does: its display
-// name, then its bundle name, then the directory name without .app.
-func cryptexBundleName(info infoPlist, dirName string) string {
-	if info.DisplayName != "" {
-		return info.DisplayName
-	}
-	if info.BundleName != "" {
-		return info.BundleName
-	}
-	return strings.TrimSuffix(dirName, filepath.Ext(dirName))
 }
 
 func readDirNames(fs afero.Fs, dir string) ([]string, error) {

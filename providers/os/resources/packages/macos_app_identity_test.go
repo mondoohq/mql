@@ -4,6 +4,8 @@
 package packages
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,7 +16,9 @@ import (
 
 // The arch_kind values and the architectures they stand for were checked
 // against `lipo -archs` on the bundles' executables on an Apple Silicon Mac.
-func TestAppArch(t *testing.T) {
+// arch_kind is only the fallback for an executable that cannot be read, and
+// it never falls back to the host's architecture.
+func TestArchFromArchKind(t *testing.T) {
 	cases := []struct {
 		archKind string
 		want     string
@@ -23,12 +27,67 @@ func TestAppArch(t *testing.T) {
 		{"arch_arm", "arm64"},         // Microsoft Edge: arm64
 		{"arch_ios", "arm64"},         // VLC: arm64, printed as "Kind: iOS"
 		{"arch_i64", "x86_64"},        // Oracle Secure Global Desktop Client: x86_64
-		{"arch_other", "arm64"},       // ZAP: a shell script launcher
-		{"", "arm64"},                 // no arch_kind at all
+		{"arch_other", ""},            // ZAP: a shell script launcher
+		{"", ""},                      // no arch_kind at all
 	}
 	for _, tc := range cases {
 		t.Run(tc.archKind, func(t *testing.T) {
-			assert.Equal(t, tc.want, appArch(tc.archKind, "arm64"))
+			assert.Equal(t, tc.want, archFromArchKind(tc.archKind))
+		})
+	}
+}
+
+// Each fixture is the first 512 bytes of a real application executable,
+// checked with `lipo -archs`.
+func TestMachoArch(t *testing.T) {
+	cases := []struct {
+		file string
+		want string
+	}{
+		{"universal.bin", "universal"}, // TextEdit: x86_64 arm64e
+		{"arm64.bin", "arm64"},         // Microsoft Edge: arm64
+		{"arm64e.bin", "arm64"},        // Image Playground: arm64e
+		{"x86_64.bin", "x86_64"},       // Oracle Secure Global Desktop Client: x86_64
+		{"script.bin", ""},             // ZAP: a bash launcher script
+	}
+	for _, tc := range cases {
+		t.Run(tc.file, func(t *testing.T) {
+			header, err := os.ReadFile(filepath.Join("testdata", "macho", tc.file))
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, machoArch(header))
+		})
+	}
+
+	t.Run("truncated universal header", func(t *testing.T) {
+		header, err := os.ReadFile(filepath.Join("testdata", "macho", "universal.bin"))
+		require.NoError(t, err)
+		// Two slices need 8+2*20 bytes; one byte short is not a header.
+		assert.Equal(t, "", machoArch(header[:47]))
+		assert.Equal(t, "universal", machoArch(header[:48]))
+	})
+	t.Run("empty", func(t *testing.T) {
+		assert.Equal(t, "", machoArch(nil))
+	})
+}
+
+// Bundle paths from an Apple Silicon Mac. system_profiler names some of them
+// differently ("Zoom", and "Digital Colour Meter" on a British English
+// system); the package is named after the directory either way.
+func TestBundleName(t *testing.T) {
+	cases := []struct {
+		path string
+		want string
+	}{
+		{"/Applications/zoom.us.app", "zoom.us"},
+		{"/System/Applications/Utilities/Digital Color Meter.app", "Digital Color Meter"},
+		{"/Applications/iTerm 2.app", "iTerm 2"},
+		{"/Applications/pgAdmin 4.app", "pgAdmin 4"},
+		{"/Applications/WhatsApp.localized/WhatsApp.app", "WhatsApp"},
+		{"/Applications/Slack.app/", "Slack"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			assert.Equal(t, tc.want, bundleName(tc.path))
 		})
 	}
 }
@@ -120,7 +179,7 @@ func TestMacOSAppIdentity(t *testing.T) {
 		assert.False(t, edge.MacOS.AppStore)
 		assert.Equal(t, "identified_developer", edge.Origin)
 		assert.Equal(t, "arm64", edge.Arch)
-		assert.Equal(t, "pkg:macos/macos/Microsoft%20Edge@154.0.4258.37?arch=arm64", edge.PUrl)
+		assert.Equal(t, "pkg:macos/macos/Microsoft%20Edge@154.0.4258.37?arch=arm64&bundle-id=com.microsoft.edgemac&team-id=UBF8T346G9", edge.PUrl)
 		assert.Equal(t, "machine", edge.InstallScope)
 		assert.Empty(t, edge.InstallUser)
 	})
@@ -133,7 +192,7 @@ func TestMacOSAppIdentity(t *testing.T) {
 		assert.True(t, monodraw.MacOS.AppStore)
 		assert.Equal(t, "mac_app_store", monodraw.Origin)
 		assert.Equal(t, "universal", monodraw.Arch)
-		assert.Equal(t, "pkg:macos/macos/Monodraw@1.7.1?arch=universal", monodraw.PUrl)
+		assert.Equal(t, "pkg:macos/macos/Monodraw@1.7.1?app-store=true&arch=universal&bundle-id=com.helftone.monodraw", monodraw.PUrl)
 	})
 
 	t.Run("application shipped with macOS", func(t *testing.T) {
@@ -143,15 +202,19 @@ func TestMacOSAppIdentity(t *testing.T) {
 		assert.Empty(t, textEdit.MacOS.TeamID)
 		assert.False(t, textEdit.MacOS.AppStore)
 		assert.Equal(t, "universal", textEdit.Arch)
+		assert.Equal(t, "pkg:macos/macos/TextEdit@1.20?arch=universal&bundle-id=com.apple.TextEdit", textEdit.PUrl)
 	})
 
 	t.Run("architectures", func(t *testing.T) {
 		assert.Equal(t, "arm64", byPath["/Applications/VLC.app"].Arch)
 		assert.Equal(t, "x86_64", byPath["/Applications/Oracle Secure Global Desktop Client.app"].Arch)
-		assert.Equal(t, "pkg:macos/macos/Oracle%20Secure%20Global%20Desktop%20Client@5.60.567?arch=x86_64",
+		assert.Equal(t, "pkg:macos/macos/Oracle%20Secure%20Global%20Desktop%20Client@5.60.567?arch=x86_64&bundle-id=com.oracle.sgd.ttatcc&team-id=VB5E2TV963",
 			byPath["/Applications/Oracle Secure Global Desktop Client.app"].PUrl)
-		// A shell script launcher has no Mach-O architecture: the host's.
-		assert.Equal(t, "arm64", byPath["/Applications/ZAP.app"].Arch)
+		// A shell script launcher has no Mach-O architecture, and the host's
+		// would be wrong: no arch, and no arch qualifier.
+		zap := byPath["/Applications/ZAP.app"]
+		assert.Empty(t, zap.Arch)
+		assert.Equal(t, "pkg:macos/macos/ZAP@2.15.0?bundle-id=org.zaproxy.zap.ZAP", zap.PUrl)
 	})
 
 	t.Run("application in a home directory", func(t *testing.T) {
@@ -159,6 +222,7 @@ func TestMacOSAppIdentity(t *testing.T) {
 		assert.Equal(t, "Claude Code URL Handler", handler.Name)
 		assert.Equal(t, "user", handler.InstallScope)
 		assert.Equal(t, "alice", handler.InstallUser)
+		assert.Equal(t, "pkg:macos/macos/Claude%20Code%20URL%20Handler@1.0?arch=arm64&bundle-id=com.anthropic.claude-code-url-handler&install-scope=user&team-id=Q6L2SF6YDW", handler.PUrl)
 	})
 
 	t.Run("applications system_profiler missed", func(t *testing.T) {
@@ -169,16 +233,20 @@ func TestMacOSAppIdentity(t *testing.T) {
 		assert.False(t, slack.MacOS.AppStore)
 		assert.Equal(t, "machine", slack.InstallScope)
 		// Nothing but the bundle's own files is available: no signer and no
-		// Gatekeeper origin, and the host architecture.
+		// Gatekeeper origin. The architecture comes from the executable, as
+		// for every other application.
 		assert.Empty(t, slack.MacOS.Signer)
 		assert.Empty(t, slack.Origin)
 		assert.Equal(t, "arm64", slack.Arch)
-		assert.Equal(t, "pkg:macos/macos/Slack@4.52.162?arch=arm64", slack.PUrl)
+		assert.Equal(t, "pkg:macos/macos/Slack@4.52.162?arch=arm64&bundle-id=com.tinyspeck.slackmacgap", slack.PUrl)
 
 		// The receipt alone identifies an App Store app.
 		telegram := byPath["/Applications/Telegram.app"]
 		assert.Equal(t, "ru.keepcoder.Telegram", telegram.MacOS.BundleID)
 		assert.True(t, telegram.MacOS.AppStore)
+		// system_profiler reported no arch_kind for it: this is the executable.
+		assert.Equal(t, "universal", telegram.Arch)
+		assert.Equal(t, "pkg:macos/macos/Telegram@12.10?app-store=true&arch=universal&bundle-id=ru.keepcoder.Telegram", telegram.PUrl)
 
 		// Found one level down, in a vendor folder.
 		whatsapp := byPath["/Applications/WhatsApp.localized/WhatsApp.app"]
@@ -195,4 +263,24 @@ func TestMacOSAppIdentity(t *testing.T) {
 		assert.Equal(t, "News", news.Name)
 		assert.Equal(t, "com.apple.news", news.MacOS.BundleID)
 	})
+}
+
+// The executable is the authority on the architecture. arch_kind only stands
+// in when the executable cannot be read.
+func TestAppArchitecturePrefersTheExecutable(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/packages_macos_identity.toml"))
+	require.NoError(t, err)
+
+	// TextEdit's executable is universal, whatever arch_kind claims.
+	textEdit := &sysProfilerItem{Path: "/System/Applications/TextEdit.app", ArchKind: "arch_i64"}
+	info, ok := entryInfoPlist(conn, textEdit)
+	require.True(t, ok)
+	assert.Equal(t, "universal", appArchitecture(conn, textEdit, info))
+
+	// No such executable: arch_kind answers.
+	missing := &sysProfilerItem{Path: "/Applications/Missing.app", ArchKind: "arch_i64"}
+	assert.Equal(t, "x86_64", appArchitecture(conn, missing, infoPlist{Executable: "Missing"}))
+
+	// Neither: no architecture rather than the host's.
+	assert.Equal(t, "", appArchitecture(conn, &sysProfilerItem{Path: "/Applications/Missing.app"}, infoPlist{Executable: "Missing"}))
 }
