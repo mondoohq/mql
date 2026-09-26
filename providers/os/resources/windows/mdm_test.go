@@ -35,6 +35,40 @@ func TestParseMdmState_Intune(t *testing.T) {
 	assert.Equal(t, "user", s.Method())
 }
 
+// An Intune-managed device also keeps an active "Microsoft Device Management"
+// enrollment whose key can sort before the OMA-DM one. The OMA-DM enrollment
+// must win, or the vendor is not recognized.
+func TestParseMdmState_PrefersOMADMEnrollment(t *testing.T) {
+	in := `{"Enrollments":[
+{"Id":"3A49A6B2-0000-4000-8000-000000000001","ProviderId":"Microsoft Device Management","EnrollmentState":1,"EnrollmentType":26,
+ "DiscoveryUrl":"https://discovery.dm.microsoft.com/EnrollmentConfiguration?api-version=1.0","ServerUrl":null},
+{"Id":"87BB0C1D-0000-4000-8000-000000000002","ProviderId":"MS DM Server","EnrollmentState":1,"EnrollmentType":6,
+ "DiscoveryUrl":"https://enrollment.manage.microsoft.com/enrollmentserver/discovery.svc",
+ "ServerUrl":"https://r.manage.microsoft.com/devicegatewayproxy/cimhandler.ashx"}
+],"Unreadable":0}`
+	s, err := ParseMdmState(strings.NewReader(in))
+	require.NoError(t, err)
+	e, err := s.ActiveEnrollment()
+	require.NoError(t, err)
+	require.NotNil(t, e)
+	assert.Equal(t, "MS DM Server", e.ProviderID)
+	assert.Equal(t, "https://r.manage.microsoft.com/devicegatewayproxy/cimhandler.ashx", e.URL())
+}
+
+// Without an OMA-DM enrollment the first active enrollment is still reported.
+func TestParseMdmState_FirstActiveWithoutOMADM(t *testing.T) {
+	in := `{"Enrollments":[
+{"Id":"A","ProviderId":"Other","EnrollmentState":2,"DiscoveryUrl":"https://a.example.com"},
+{"Id":"B","ProviderId":"Microsoft Device Management","EnrollmentState":1,"DiscoveryUrl":"https://discovery.dm.microsoft.com/x"}
+],"Unreadable":0}`
+	s, err := ParseMdmState(strings.NewReader(in))
+	require.NoError(t, err)
+	e, err := s.ActiveEnrollment()
+	require.NoError(t, err)
+	require.NotNil(t, e)
+	assert.Equal(t, "B", e.ID)
+}
+
 // PowerShell wraps a list held in a property as {"value":[...],"Count":n} on
 // some hosts. A plain slice tag decodes that to empty and reports an enrolled
 // device as not enrolled.

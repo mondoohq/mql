@@ -134,15 +134,34 @@ func ParseMdmState(r io.Reader) (*MdmState, error) {
 	return &state, nil
 }
 
-// ActiveEnrollment returns the first active enrollment, or nil when there is
-// none. When none is active but some keys could not be read, it returns an
-// error, because an unreadable key may be the enrollment and reporting "not
-// enrolled" would be a guess.
+// mdmOMADMProviderID is the ProviderID of the OMA-DM MDM enrollment, the
+// channel an MDM server such as Intune manages the device through.
+const mdmOMADMProviderID = "MS DM Server"
+
+// ActiveEnrollment returns the active MDM enrollment, or nil when there is
+// none. A device can hold several active enrollments: an Intune-managed device
+// also keeps a "Microsoft Device Management" enrollment for Microsoft's own
+// device management service, whose key may sort first. The OMA-DM enrollment
+// is the MDM one, so it wins; otherwise the first active enrollment is used.
+// When none is active but some keys could not be read, it returns an error,
+// because an unreadable key may be the enrollment and reporting "not enrolled"
+// would be a guess.
 func (s *MdmState) ActiveEnrollment() (*MdmEnrollment, error) {
+	var first *MdmEnrollment
 	for i := range s.Enrollments {
-		if s.Enrollments[i].Active() {
-			return &s.Enrollments[i], nil
+		e := &s.Enrollments[i]
+		if !e.Active() {
+			continue
 		}
+		if e.ProviderID == mdmOMADMProviderID {
+			return e, nil
+		}
+		if first == nil {
+			first = e
+		}
+	}
+	if first != nil {
+		return first, nil
 	}
 	if s.Unreadable > 0 {
 		return nil, errors.New("could not read every MDM enrollment key")
