@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -80,6 +81,31 @@ type ConnectedProvider struct {
 	Instance        *RunningProvider
 	Connection      *plugin.ConnectRes
 	ConnectionError error
+
+	// assetFailure is the first ASSET-scoped error this connection reported.
+	// An ASSET-scoped failure, such as a 401, means every remaining call on
+	// the asset fails the same way, so the runtime answers them with it
+	// instead of asking the provider again (ADR 046 phase 8). It belongs to
+	// the connection, not the asset: another provider on the same runtime
+	// holds its own credentials and may still succeed.
+	assetFailure atomic.Pointer[llx.Error]
+}
+
+// failedAsset returns the ASSET-scoped error this connection already reported,
+// or nil.
+func (c *ConnectedProvider) failedAsset() *llx.Error {
+	return c.assetFailure.Load()
+}
+
+// noteAssetFailure remembers err if it is an ASSET-scoped classified error. The
+// first one wins, so every short-circuited call repeats the same error. It
+// reports whether err was the one stored.
+func (c *ConnectedProvider) noteAssetFailure(err error) bool {
+	var classified *llx.Error
+	if !errors.As(err, &classified) || classified.Scope != llx.ErrorScope_ERROR_SCOPE_ASSET {
+		return false
+	}
+	return c.assetFailure.CompareAndSwap(nil, classified)
 }
 
 func (c *coordinator) RuntimeWithShutdownTimeout(timeout time.Duration) *Runtime {
@@ -281,6 +307,9 @@ func (r *Runtime) setProviderConnection(c *plugin.ConnectRes, err error) {
 	r.mu.Lock()
 	r.Provider.Connection = c
 	r.Provider.ConnectionError = err
+	// A new connection may carry new credentials; what the old one failed
+	// on says nothing about it.
+	r.Provider.assetFailure.Store(nil)
 	r.mu.Unlock()
 }
 
@@ -558,6 +587,9 @@ func (r *Runtime) CreateResource(name string, args map[string]*llx.Primitive) (l
 	if crashErr := provider.Instance.crashError(); crashErr != nil {
 		return nil, crashErr
 	}
+	if failed := provider.failedAsset(); failed != nil {
+		return nil, failed
+	}
 
 	req := &plugin.DataReq{
 		Connection: provider.Connection.Id,
@@ -704,6 +736,23 @@ func (r *Runtime) watchAndUpdate(resource string, resourceID string, field strin
 		ResourceId: resourceID,
 		Field:      field,
 	}
+
+	if failed := provider.failedAsset(); failed != nil {
+		// The field fails the way the provider already said every call on
+		// this asset fails, without asking it again. It is recorded like any
+		// other answer, so the results are the same either way.
+		raw := &llx.RawData{Error: failed}
+		r.Recording().AddData(llx.AddDataReq{
+			ConnectionID:      provider.Connection.Id,
+			Resource:          resource,
+			ResourceID:        resourceID,
+			RequestResourceId: req.ResourceId,
+			Data:              raw,
+			Field:             field,
+		})
+		return raw, nil
+	}
+
 	data, err := provider.Instance.Plugin.GetData(req)
 	if err != nil {
 		// Recoverable errors can continue with the execution,
@@ -735,6 +784,13 @@ func (r *Runtime) watchAndUpdate(resource string, resourceID string, field strin
 				Err(raw.Error).
 				EmbedObject(classified).
 				Msg("provider field failed")
+			if provider.noteAssetFailure(classified) {
+				log.Debug().
+					Str("provider", provider.Instance.Name).
+					Err(classified).
+					EmbedObject(classified).
+					Msg("asset-scoped failure, answering the remaining calls on this connection with it")
+			}
 		}
 	} else {
 		if data.Data == nil {

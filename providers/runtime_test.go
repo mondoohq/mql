@@ -1539,3 +1539,132 @@ func TestRuntime_WatchAndUpdate_RehydratesTheErrorKind(t *testing.T) {
 		assert.Equal(t, "eu-west-1", gaps[0].ScopeID)
 	})
 }
+
+// ADR 046 phase 8: once a connection reports an ASSET-scoped failure, every
+// later call on it is answered with that failure instead of reaching the
+// provider, and the answer is the one the provider would have given.
+func TestRuntime_ShortCircuitsAfterAssetScopedFailure(t *testing.T) {
+	resName := "testResource"
+	fieldName := "testField"
+
+	unauthenticated := &plugin.DataRes{
+		Error: "401 Unauthorized: token expired",
+		ErrorDetail: &llx.ErrorDetail{
+			Kind:  llx.ErrorKind_ERROR_KIND_UNAUTHENTICATED,
+			Scope: llx.ErrorScope_ERROR_SCOPE_ASSET,
+		},
+	}
+
+	// newRuntime expects exactly `calls` GetData requests on the provider.
+	newRuntime := func(t *testing.T, calls int, res *plugin.DataRes) (*Runtime, *ConnectedProvider) {
+		ctrl := gomock.NewController(t)
+		mockC := NewMockProvidersCoordinator(ctrl)
+		mockSchema := NewMockResourcesSchema(ctrl)
+		mockPlugin := NewMockProviderPlugin(ctrl)
+
+		p := &ConnectedProvider{
+			Instance:   &RunningProvider{ID: BuiltinCoreID, Name: "test", Plugin: mockPlugin},
+			Connection: &plugin.ConnectRes{Id: 1},
+		}
+
+		mockC.EXPECT().Schema().AnyTimes().Return(mockSchema)
+		mockSchema.EXPECT().Lookup(resName).AnyTimes().Return(&resources.ResourceInfo{
+			Id:       resName,
+			Name:     resName,
+			Provider: BuiltinCoreID,
+			Fields: map[string]*resources.Field{
+				fieldName: {Name: fieldName, Provider: BuiltinCoreID},
+			},
+		})
+		mockPlugin.EXPECT().GetData(gomock.Any()).Times(calls).Return(res, nil)
+
+		return &Runtime{
+			coordinator: mockC,
+			recording:   recording.Null{},
+			providers:   map[string]*ConnectedProvider{BuiltinCoreID: p},
+			Provider:    p,
+		}, p
+	}
+
+	t.Run("later fields repeat the failure without calling the provider", func(t *testing.T) {
+		r, _ := newRuntime(t, 1, unauthenticated)
+
+		first, err := r.watchAndUpdate(resName, "id-1", fieldName, "")
+		require.NoError(t, err)
+		require.Error(t, first.Error)
+
+		second, err := r.watchAndUpdate(resName, "id-2", fieldName, "")
+		require.NoError(t, err, "the short-circuit is field data, not a runtime failure")
+		require.Error(t, second.Error)
+		assert.True(t, errors.Is(second.Error, llx.ErrUnauthenticated))
+		assert.Equal(t, first.Error.Error(), second.Error.Error())
+	})
+
+	t.Run("later resources repeat the failure without calling the provider", func(t *testing.T) {
+		r, _ := newRuntime(t, 1, unauthenticated)
+
+		_, err := r.watchAndUpdate(resName, "id-1", fieldName, "")
+		require.NoError(t, err)
+
+		_, err = r.CreateResource(resName, nil)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, llx.ErrUnauthenticated))
+	})
+
+	t.Run("a failure scoped narrower than the asset does not short-circuit", func(t *testing.T) {
+		r, _ := newRuntime(t, 2, &plugin.DataRes{
+			Error: "AccessDenied",
+			ErrorDetail: &llx.ErrorDetail{
+				Kind:  llx.ErrorKind_ERROR_KIND_FORBIDDEN,
+				Scope: llx.ErrorScope_ERROR_SCOPE_FIELD,
+			},
+		})
+
+		_, err := r.watchAndUpdate(resName, "id-1", fieldName, "")
+		require.NoError(t, err)
+		_, err = r.watchAndUpdate(resName, "id-2", fieldName, "")
+		require.NoError(t, err)
+	})
+
+	t.Run("an unclassified failure does not short-circuit", func(t *testing.T) {
+		r, _ := newRuntime(t, 2, &plugin.DataRes{Error: "401 Unauthorized"})
+
+		_, err := r.watchAndUpdate(resName, "id-1", fieldName, "")
+		require.NoError(t, err)
+		_, err = r.watchAndUpdate(resName, "id-2", fieldName, "")
+		require.NoError(t, err)
+	})
+
+	t.Run("a new connection clears the failure", func(t *testing.T) {
+		r, _ := newRuntime(t, 2, unauthenticated)
+
+		_, err := r.watchAndUpdate(resName, "id-1", fieldName, "")
+		require.NoError(t, err)
+
+		r.setProviderConnection(&plugin.ConnectRes{Id: 2}, nil)
+
+		_, err = r.watchAndUpdate(resName, "id-2", fieldName, "")
+		require.NoError(t, err)
+	})
+
+	t.Run("another asset on the same provider process is not affected", func(t *testing.T) {
+		// The provider process is shared across assets; the failure belongs
+		// to one asset's connection.
+		_, failing := newRuntime(t, 0, nil)
+		other := &ConnectedProvider{Instance: failing.Instance, Connection: &plugin.ConnectRes{Id: 2}}
+
+		require.True(t, failing.noteAssetFailure(llx.Unauthenticated(nil, llx.WithScope(llx.ErrorScope_ERROR_SCOPE_ASSET, ""))))
+		assert.NotNil(t, failing.failedAsset())
+		assert.Nil(t, other.failedAsset())
+	})
+
+	t.Run("the first asset-scoped failure wins", func(t *testing.T) {
+		_, p := newRuntime(t, 0, nil)
+
+		first := llx.Unauthenticated(errors.New("first"), llx.WithScope(llx.ErrorScope_ERROR_SCOPE_ASSET, ""))
+		second := llx.Unauthenticated(errors.New("second"), llx.WithScope(llx.ErrorScope_ERROR_SCOPE_ASSET, ""))
+		assert.True(t, p.noteAssetFailure(first))
+		assert.False(t, p.noteAssetFailure(second))
+		assert.Equal(t, "first", p.failedAsset().Error())
+	})
+}

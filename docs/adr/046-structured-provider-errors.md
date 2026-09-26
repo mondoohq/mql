@@ -985,6 +985,30 @@ picks it up in its migration step.
 - **Precedence.** Permissions the call site names always win; the index is
   asked only when there are none.
 
+**Phase 8 landed.** A connection that reports an `ASSET`-scoped failure is
+not asked again (`providers/runtime.go`). Nothing produces an `ASSET` scope
+yet, so no scan changes until a provider migrates.
+
+- **Where it lives.** On the runtime's connection to a provider
+  (`ConnectedProvider`), not on the asset and not on the provider process.
+  Another provider on the same runtime holds its own credentials and may still
+  succeed; the same provider process serves other assets. Either wider choice
+  would change results, which this phase must not.
+- **What is short-circuited.** Every field read and resource creation on that
+  connection after the first `ASSET`-scoped field error. A field is answered
+  with that error as field data, and recorded like any other answer, so the
+  result and the recording are the same as if the provider had been asked. A
+  resource creation returns it as its error. The first failure wins; failures
+  that were already in flight return their own.
+- **What clears it.** A new connection for the runtime's provider, since it
+  may carry new credentials.
+- **Only classified field errors trip it.** An unclassified error, or a
+  classified one with a narrower scope, never does. A resource creation that
+  fails does not trip it either, because a creation error still crosses the
+  process boundary as a plain gRPC error and loses its classification.
+- **Reporting once** needs nothing new: phase 5 already groups identical
+  errors into one line with a count, and phase 6 deduplicates them per score.
+
 **Step 10 for aws is open** (#11012). It returns classified errors
 unconditionally; it gets the v13 branches of §9 and can merge now that phase 4
 has landed.
