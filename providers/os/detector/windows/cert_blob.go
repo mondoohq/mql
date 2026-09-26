@@ -6,6 +6,8 @@ package windows
 import (
 	"encoding/binary"
 	"errors"
+
+	"github.com/rs/zerolog/log"
 )
 
 // certCertPropID is CERT_CERT_PROP_ID: the property of a serialized certificate
@@ -30,6 +32,11 @@ func CertificateFromStoreBlob(blob []byte) ([]byte, error) {
 	offset := 0
 	for i := 0; i < maxStoreBlobProperties && offset+header <= len(blob); i++ {
 		id := binary.LittleEndian.Uint32(blob[offset:])
+		if reserved := binary.LittleEndian.Uint32(blob[offset+4:]); reserved != 1 {
+			// The format documents this field as 1. Keep parsing, but leave a
+			// trace for diagnosing a corrupt or unexpected blob.
+			log.Debug().Uint32("property", id).Uint32("reserved", reserved).Msg("certificate store blob: unexpected reserved value")
+		}
 		length := binary.LittleEndian.Uint32(blob[offset+8:])
 		start := offset + header
 		if uint64(length) > uint64(len(blob)-start) {

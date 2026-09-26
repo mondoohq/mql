@@ -87,6 +87,9 @@ func localMachineCertificates() [][]byte {
 		windows.CERT_SYSTEM_STORE_LOCAL_MACHINE|windows.CERT_STORE_READONLY_FLAG|windows.CERT_STORE_OPEN_EXISTING_FLAG,
 		uintptr(unsafe.Pointer(storeName)),
 	)
+	// CertOpenStore takes the store name as a uintptr, which does not keep the
+	// UTF-16 buffer alive on its own. Keep it reachable until the call returns.
+	runtime.KeepAlive(storeName)
 	if err != nil {
 		log.Debug().Err(err).Msg("could not open the local machine certificate store")
 		return nil
