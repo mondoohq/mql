@@ -20,6 +20,25 @@ import (
 // Note that `==` and `!=` stay TEXTUAL (versionEqVersion below). Ordering is semantic,
 // so version('1.2') < version('1.2.1'), but equality answers "is this the same version
 // string", which is what a policy asserting an exact pinned version means.
+//
+// Ordering departs from versionx in one place: an epoch written on only one side.
+// Packages report their epoch ("1:8.2p1-4ubuntu0.13") while the bound a query compares
+// them against names an upstream version and carries none (version('8.5')). dpkg and
+// rpm read the missing epoch as 0, which makes every epoch'd package newer than every
+// such bound, so `package.version < version('8.5')` was false for OpenSSH 8.2 on
+// Debian. The operators therefore compare without epochs when exactly one side has
+// one. When both do, the epochs decide as usual. versionx.Compare itself stays the
+// strict total order used for sorting.
+
+// compareVersions orders two version strings for MQL's comparison operators, ignoring
+// an epoch written on only one side (see above).
+func compareVersions(a, b string) int {
+	va, vb := versionx.Parse(a), versionx.Parse(b)
+	if va.HasEpoch() != vb.HasEpoch() {
+		va, vb = va.WithoutEpoch(), vb.WithoutEpoch()
+	}
+	return va.Compare(vb)
+}
 
 // versionCompare wraps a comparison of two version strings into a builtin operator,
 // guarding the operands: a bare type assertion on runtime data panics the executor, and
@@ -34,7 +53,7 @@ func versionCompare(keep func(cmp int) bool) func(left, right any) *RawData {
 				Error: errors.New("version comparison expects version strings"),
 			}
 		}
-		return BoolData(keep(versionx.Compare(l, r)))
+		return BoolData(keep(compareVersions(l, r)))
 	}
 }
 
@@ -141,12 +160,20 @@ func versionInRange(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (
 		conditions = append(conditions, ts)
 	}
 
-	res, err := versionx.Satisfies(base, conditions...)
-	if err != nil {
-		return nil, 0, errors.New("inRange was called with an invalid constraint: " + err.Error())
-	}
-	if !res {
-		return BoolFalse, 0, nil
+	// Each bound is checked on its own so the one-sided epoch rule of the operators
+	// applies per bound: inRange('8.0', '8.5') on "1:8.2p1" compares upstream versions.
+	for _, cond := range conditions {
+		c, err := versionx.ParseConstraint(cond)
+		if err != nil {
+			return nil, 0, errors.New("inRange was called with an invalid constraint: " + err.Error())
+		}
+		v := base
+		if v.HasEpoch() != c.HasEpoch() {
+			v, c = v.WithoutEpoch(), c.WithoutEpoch()
+		}
+		if !c.Check(v) {
+			return BoolFalse, 0, nil
+		}
 	}
 	return BoolTrue, 0, nil
 }

@@ -1107,13 +1107,15 @@ func TestVersion(t *testing.T) {
 				Code:        "version('2:1.2.3') == version('1.2.3')",
 				ResultIndex: 2, Expectation: false,
 			},
+			// Ordering ignores an epoch written on only one side: a bound without one
+			// names an upstream version (#11109).
 			{
 				Code:        "version('3:1.2') < version('1.10.2')",
-				ResultIndex: 2, Expectation: false,
+				ResultIndex: 2, Expectation: true,
 			},
 			{
 				Code:        "version('1.10') >= version('4:1.2.3')",
-				ResultIndex: 2, Expectation: false,
+				ResultIndex: 2, Expectation: true,
 			},
 			{
 				Code:        "version('1.2') <= version('3:1.10.2')",
@@ -1122,6 +1124,65 @@ func TestVersion(t *testing.T) {
 			{
 				Code:        "version('4:1.10') > version('1.2.3')",
 				ResultIndex: 2, Expectation: true,
+			},
+			{
+				Code:        "version('1:8.2p1-4ubuntu0.13') < version('8.5')",
+				ResultIndex: 2, Expectation: true,
+			},
+			{
+				Code:        "version('1:8.4p1-5+deb11u7') >= version('8.5')",
+				ResultIndex: 2, Expectation: false,
+			},
+			{
+				Code:        "version('1:9.2p1-2+deb12u10') >= version('8.5')",
+				ResultIndex: 2, Expectation: true,
+			},
+			{
+				Code:        "version('8.2') > version('1:8.4')",
+				ResultIndex: 2, Expectation: false,
+			},
+			// An explicit 0: is a written epoch, so both sides have one and it decides.
+			{
+				Code:        "version('0:1.2') < version('1:1.0')",
+				ResultIndex: 2, Expectation: true,
+			},
+		})
+	})
+
+	t.Run("one-sided epoch against a package version string", func(t *testing.T) {
+		x.TestSimple(t, []testutils.SimpleTest{
+			{
+				Code:        "'1:8.2p1-4ubuntu0.13' < semver('8.5')",
+				ResultIndex: 2, Expectation: true,
+			},
+			{
+				Code:        "'1:8.2p1-4ubuntu0.13' >= semver('8.5')",
+				ResultIndex: 2, Expectation: false,
+			},
+		})
+	})
+
+	t.Run("one-sided epoch in inRange", func(t *testing.T) {
+		x.TestSimple(t, []testutils.SimpleTest{
+			{
+				Code:        "version('1:8.2p1-4ubuntu0.13').inRange('8.0', '8.4')",
+				ResultIndex: 0, Expectation: true,
+			},
+			{
+				Code:        "version('1:8.2p1-4ubuntu0.13').inRange('8.5', '9.0')",
+				ResultIndex: 0, Expectation: false,
+			},
+			{
+				Code:        "version('8.2').inRange('1:8.0', '< 1:8.4')",
+				ResultIndex: 0, Expectation: true,
+			},
+			{
+				Code:        "version('1:8.2').inRange('^8.0', '< 9.0')",
+				ResultIndex: 0, Expectation: true,
+			},
+			{
+				Code:        "version('2:1.0').inRange('1:9.0', '< 3:0')",
+				ResultIndex: 0, Expectation: true,
 			},
 		})
 	})
@@ -1250,10 +1311,13 @@ func TestVersion(t *testing.T) {
 			{Code: "version('1.2.3').inRange('1.2.3', '1.2.3')", ResultIndex: 0, Expectation: true},
 
 			// Shapes that used to be an error because the comparator underneath was
-			// semver-only. An epoch outranks everything after it, so 1:1.2.3 is above
-			// the 2.0.0 ceiling; a four-component version is an ordinary version.
-			{Code: "version('1:1.2.3').inRange('>= 1.0.0', '< 2.0.0')", ResultIndex: 0, Expectation: false},
+			// semver-only. A bound without an epoch names an upstream version, so
+			// 1:1.2.3 is inside 1.0.0..2.0.0; when both sides carry an epoch, the
+			// epoch outranks everything after it. A four-component version is an
+			// ordinary version.
+			{Code: "version('1:1.2.3').inRange('>= 1.0.0', '< 2.0.0')", ResultIndex: 0, Expectation: true},
 			{Code: "version('1:1.2.3').inRange('>= 1.0.0', '< 2:1.0.0')", ResultIndex: 0, Expectation: true},
+			{Code: "version('2:1.2.3').inRange('>= 1:1.0.0', '< 1:2.0.0')", ResultIndex: 0, Expectation: false},
 			{Code: "version('1.2.3.4.5').inRange('>= 1.0.0', '< 2.0.0')", ResultIndex: 0, Expectation: true},
 			{Code: "version('126.0.6478.126').inRange('>= 100.0.0.0', '< 127.0.0.0')", ResultIndex: 0, Expectation: true},
 			{Code: "version('1.1.1k').inRange('>= 1.1.1f', '<= 1.1.1w')", ResultIndex: 0, Expectation: true},

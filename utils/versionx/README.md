@@ -29,6 +29,12 @@ versionx.Satisfies(v, ">= 1.0.0", "< 2.0.0")
    for their releases; `1.0.post1` is a *rebuild* of `1.0`, so it sorts after `1.0` and before
    `1.0.1`. A bare letter is not a word: `1.1.1k` stays openssl's patch release, above `1.1.1`.
 
+MQL's `<`, `>`, `<=`, `>=` and `inRange` add one rule on top: when only one side carries an
+epoch, both are compared without it, so `version('1:8.2p1-4ubuntu0.13') < version('8.5')` is
+true. A query's bound names an upstream version while the package reports its epoch. `Compare`
+itself stays the strict total order, since sorting needs transitivity and the rule would break
+it (`1:8.2 < 8.5 < 0:9.0 < 1:8.2`).
+
 Plus: apk writes a unix build stamp where deb writes an epoch, in the same position with the
 same punctuation (`1632431095:1.2.2-r7` vs `1:2.4.52-1ubuntu4.6`). Nothing in the grammar
 separates them, so magnitude does — an epoch is a hand-bumped single digit, a build stamp is

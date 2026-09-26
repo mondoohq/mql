@@ -139,6 +139,35 @@ func TestKind(t *testing.T) {
 	}
 }
 
+func TestHasEpoch(t *testing.T) {
+	assert.False(t, Parse("1.2.3").HasEpoch())
+	assert.True(t, Parse("1:1.2.3").HasEpoch())
+	assert.True(t, Parse("0:1.2.3").HasEpoch(), "an explicit 0 is a written epoch")
+	assert.True(t, Parse("1!2.0").HasEpoch())
+	assert.False(t, Parse("1632431095:1.2.2-r7").HasEpoch(), "an apk build stamp is not an epoch")
+	assert.False(t, Parse("").HasEpoch())
+}
+
+func TestWithoutEpoch(t *testing.T) {
+	v := Parse("1:8.2p1-4ubuntu0.13").WithoutEpoch()
+	assert.Equal(t, "8.2p1-4ubuntu0.13", v.String())
+	assert.False(t, v.HasEpoch())
+	assert.Equal(t, KindGeneric, v.Kind())
+	assert.Equal(t, -1, v.Compare(Parse("8.5")))
+
+	assert.Equal(t, "2.0", Parse("1!2.0").WithoutEpoch().String())
+	assert.Equal(t, "1.2.3", Parse("1.2.3").WithoutEpoch().String())
+}
+
+func TestConstraintWithoutEpoch(t *testing.T) {
+	c, err := ParseConstraint("^1:8.0")
+	require.NoError(t, err)
+	assert.True(t, c.HasEpoch())
+	assert.False(t, c.Check(Parse("8.2")), "epoch'd bound against an epochless version")
+	assert.True(t, c.WithoutEpoch().Check(Parse("8.2")))
+	assert.False(t, c.WithoutEpoch().Check(Parse("9.0")), "the upper bound loses its epoch too")
+}
+
 func TestEpoch(t *testing.T) {
 	assert.Equal(t, 0, Parse("1.2.3").Epoch())
 	assert.Equal(t, 7, Parse("7:1.2.3").Epoch())
