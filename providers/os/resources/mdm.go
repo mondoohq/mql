@@ -145,7 +145,7 @@ func windowsMdmResult(s *windows.MdmState) (mdmResult, error) {
 }
 
 // populate reads the platform's enrollment state once and sets every field,
-// so the four accessors share one command and one error path.
+// so every accessor shares one command and one error path.
 func (m *mqlMdm) populate() error {
 	m.lock.Lock()
 	defer m.lock.Unlock()

@@ -391,23 +391,6 @@ func (e *mqlEdr) defenderStatus() *mqlWindowsDefenderStatus {
 // vocabulary. Passive and EDR-block modes both report the antimalware service
 // as enabled while remediating little or nothing, which is why the mode is
 // worth reporting separately from running.
-// enrichFalconIdentity reports the Falcon sensor's agent and customer IDs. They
-// are detected once, with the platform; reading them back from the platform
-// labels keeps these fields and the labels from ever disagreeing.
-func (e *mqlEdr) enrichFalconIdentity(args map[string]*llx.RawData) {
-	conn, ok := e.MqlRuntime.Connection.(shared.Connection)
-	if !ok || conn.Asset() == nil || conn.Asset().Platform == nil {
-		return
-	}
-	labels := conn.Asset().Platform.Labels
-	if aid := labels[crowdstrike.LabelAID]; aid != "" {
-		args["agentId"] = llx.StringData(aid)
-	}
-	if cid := labels[crowdstrike.LabelCID]; cid != "" {
-		args["tenantId"] = llx.StringData(cid)
-	}
-}
-
 func defenderMode(amRunningMode string) string {
 	switch amRunningMode {
 	case "Normal":
@@ -418,6 +401,25 @@ func defenderMode(amRunningMode string) string {
 		return "blockOnly"
 	}
 	return ""
+}
+
+// enrichFalconIdentity reports the Falcon sensor's agent and customer IDs. They
+// are detected once, with the platform; reading them back through the same
+// helper platform detection wrote them with keeps these fields and the labels
+// from ever disagreeing.
+func (e *mqlEdr) enrichFalconIdentity(args map[string]*llx.RawData) {
+	conn, ok := e.MqlRuntime.Connection.(shared.Connection)
+	if !ok || conn.Asset() == nil {
+		return
+	}
+	id := crowdstrike.FromLabels(conn.Asset().Platform)
+	if id == nil {
+		return
+	}
+	args["agentId"] = llx.StringData(id.AID)
+	if id.CID != "" {
+		args["tenantId"] = llx.StringData(id.CID)
+	}
 }
 
 func pickResources(all []any, idx []int) []any {
