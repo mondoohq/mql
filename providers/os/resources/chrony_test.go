@@ -147,6 +147,24 @@ func TestLoadChronyConfigInclude(t *testing.T) {
 	assert.NotContains(t, cfg.settings, "% comment")
 }
 
+func TestLoadChronyConfigIncludeGlobInDirectory(t *testing.T) {
+	afs := chronyFs(t, map[string]string{
+		"/etc/chrony.conf":              "include /etc/chrony/*.d/*.conf\n",
+		"/etc/chrony/b.d/1.conf":        "server b.example.com\n",
+		"/etc/chrony/a.d/1.conf":        "server a.example.com\n",
+		"/etc/chrony/a.d/nested/x.conf": "server nested.example.com\n",
+		"/etc/chrony/c.x/1.conf":        "server c.example.com\n",
+	})
+
+	cfg, err := loadChronyConfig(afs, "/etc/chrony.conf")
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"/etc/chrony.conf",
+		"/etc/chrony/a.d/1.conf",
+		"/etc/chrony/b.d/1.conf",
+	}, cfg.files)
+}
+
 func TestLoadChronyConfigMissing(t *testing.T) {
 	cfg, err := loadChronyConfig(chronyFs(t, nil), "/etc/chrony.conf")
 	require.NoError(t, err)

@@ -219,33 +219,26 @@ func (c *chronyConfig) read(afs *afero.Afero, path string, level int) error {
 }
 
 // chronyGlob expands an include pattern. chrony runs glob(3) on it, which
-// matches metacharacters in the file name; a pattern without any is used as
-// is. Results are sorted, as glob(3) returns them.
+// expands wildcards in any path component; a pattern without one is used as
+// is. Like sshd Include handling (expandSshdGlob), only `*` is expanded. Matches are sorted, as glob(3) returns them, and directories are
+// skipped since only files can be read.
 func chronyGlob(afs *afero.Afero, pattern string) ([]string, error) {
 	if !filepath.IsAbs(pattern) {
 		pattern = "/" + pattern
 	}
-	dir, base := filepath.Split(pattern)
-	if !strings.ContainsAny(base, "*?[") {
+	if !reGlob.MatchString(pattern) {
 		return []string{pattern}, nil
 	}
-	entries, err := afs.ReadDir(dir)
+	matches, err := expandSshdGlob(afs, pattern)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
-	var res []string
-	for _, e := range entries {
-		if e.IsDir() {
+	res := make([]string, 0, len(matches))
+	for _, m := range matches {
+		if fi, err := afs.Stat(m); err == nil && fi.IsDir() {
 			continue
 		}
-		if ok, err := filepath.Match(base, e.Name()); err != nil {
-			return nil, err
-		} else if ok {
-			res = append(res, filepath.Join(dir, e.Name()))
-		}
+		res = append(res, m)
 	}
 	sort.Strings(res)
 	return res, nil
