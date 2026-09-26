@@ -166,7 +166,7 @@ and the text of several common licenses in use on Debian systems.`,
 func TestDpkgUpdateParser(t *testing.T) {
 	mock, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/updates_dpkg.toml"))
 	require.NoError(t, err)
-	c, err := mock.RunCommand("DEBIAN_FRONTEND=noninteractive apt-get upgrade --dry-run")
+	c, err := mock.RunCommand(aptUpgradeDryRunCmd)
 	require.NoError(t, err)
 	assert.Nil(t, err)
 

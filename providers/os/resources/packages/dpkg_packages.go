@@ -372,6 +372,12 @@ func (dpm *DebPkgManager) timeZone(fs afero.Fs) *time.Location {
 	return time.UTC
 }
 
+// aptUpgradeDryRunCmd lists the pending upgrades. Even a dry run makes libapt
+// write its solver log, /var/log/apt/eipp.log.xz, with mode 0644, so a scan would
+// loosen the permissions of a log it is often asked to check. Pointing
+// Dir::Log::Planner at /dev/null skips that write and leaves the output unchanged.
+const aptUpgradeDryRunCmd = "DEBIAN_FRONTEND=noninteractive apt-get -o Dir::Log::Planner=/dev/null upgrade --dry-run"
+
 func (dpm *DebPkgManager) Available() (map[string]PackageUpdate, error) {
 	// TODO: run this as a complete shell script in motor
 	// DEBIAN_FRONTEND=noninteractive apt-get update >/dev/null 2>&1
@@ -380,7 +386,7 @@ func (dpm *DebPkgManager) Available() (map[string]PackageUpdate, error) {
 	// DEBIAN_FRONTEND=noninteractive apt-get upgrade --dry-run
 	_, _ = dpm.conn.RunCommand("DEBIAN_FRONTEND=noninteractive apt-get update >/dev/null 2>&1")
 
-	cmd, err := dpm.conn.RunCommand("DEBIAN_FRONTEND=noninteractive apt-get upgrade --dry-run")
+	cmd, err := dpm.conn.RunCommand(aptUpgradeDryRunCmd)
 	if err != nil {
 		log.Debug().Err(err).Msg("mql[packages]> could not run apt-get upgrade")
 		return nil, fmt.Errorf("could not run apt-get upgrade")
