@@ -153,3 +153,5 @@ TouPromptDisabled = "TouPromptDisabled"
 # the name must stay verbatim to match the variable the daemon actually looks
 # up.
 HSA_OVERRIDE_GFX_VERSION = "HSA_OVERRIDE_GFX_VERSION"
+# AWS Glue ConnectionType VERTICA, the Vertica analytics database connector.
+VERTICA = "VERTICA"

@@ -79,7 +79,7 @@ private googleworkspace.calendar @defaults("summary") {
   summaryOverride string
   // Whether the calendar is the primary calendar for the authenticated user
   primary bool
-  // The effective access role for the authenticated user (freeBusyReader, reader, writer, owner)
+  // The effective access role for the authenticated user (freeBusyReader, reader, writerWithoutPrivateAccess, writer, owner)
   accessRole string
   // Description of the calendar
   description string
@@ -108,7 +108,7 @@ private googleworkspace.calendar @defaults("summary") {
 private googleworkspace.calendar.aclRule @defaults("role") {
   // Identifier of the ACL rule
   id string
-  // The role assigned to the scope. Possible values are none, freeBusyReader, reader, writer, owner
+  // The role assigned to the scope. Possible values are none, freeBusyReader, reader, writerWithoutPrivateAccess, writer, owner
   role string
   // The extent to which calendar access is granted by this ACL rule
   scope googleworkspace.calendar.aclRule.scope
@@ -306,7 +306,9 @@ private googleworkspace.user.email @defaults("address type primary") {
 private googleworkspace.user.phone @defaults("value type primary") {
   // Phone number (free-form; consumers should not assume E.164)
   value string
-  // Phone type (work, home, mobile, main, pager, callback, fax variants, custom)
+  // Phone type
+  //
+  // One of assistant, callback, car, company_main, custom, grand_central, home, home_fax, isdn, main, mobile, other, other_fax, pager, radio, telex, tty_tdd, work, work_fax, work_mobile, or work_pager.
   type string
   // Custom type label (populated when `type` is `custom`)
   customType string
@@ -1050,7 +1052,9 @@ private googleworkspace.chromeOsDevice @defaults("serialNumber model osVersion s
   id string
   // Serial number of the device
   serialNumber string
-  // Status of the device. Possible values: ACTIVE, DEPROVISIONED, DISABLED, INACTIVE, RETURN_APPROVED, RETURN_REQUESTED, SHIPPED, UNKNOWN
+  // Status of the device
+  //
+  // One of ACTIVE, DEPROVISIONED, DISABLED, INACTIVE, RETURN_APPROVED, RETURN_REQUESTED, SHIPPED, UNKNOWN, DELINQUENT, PRE_PROVISIONED, or RETURN_ARRIVED.
   status string
   // Model name of the device
   model string

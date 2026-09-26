@@ -559,8 +559,9 @@ private okta.role @defaults("label status") {
   id string
   // How the role is assigned
   //
-  // Either USER for a role assigned directly to a user, or GROUP for a
-  // role granted through group membership.
+  // One of USER for a role assigned directly to a user, GROUP for a
+  // role granted through group membership, or CLIENT for a role assigned
+  // to an OAuth 2.0 service client.
   assignmentType string
   // Timestamp when the role was created
   created time
@@ -1205,7 +1206,8 @@ private okta.policyRule @defaults("name") {
   //
   // Mirrors the type of the policy the rule belongs to. One of OKTA_SIGN_ON,
   // PASSWORD, MFA_ENROLL, OAUTH_AUTHORIZATION_POLICY, IDP_DISCOVERY,
-  // ACCESS_POLICY, or PROFILE_ENROLLMENT.
+  // ACCESS_POLICY, PROFILE_ENROLLMENT, ENTITY_RISK, POST_AUTH_SESSION, or
+  // SIGN_ON (reported by the rules of an OKTA_SIGN_ON policy).
   type string
   // Rule actions
   //
@@ -1282,8 +1284,9 @@ private okta.network @defaults("name type") {
   name string
   // Type of the network zone
   //
-  // One of IP (explicit gateway and proxy addresses) or DYNAMIC
-  // (matched by ASN, geolocation, or proxy classification).
+  // One of IP (explicit gateway and proxy addresses), DYNAMIC
+  // (matched by ASN, geolocation, or proxy classification), or DYNAMIC_V2
+  // (enhanced dynamic zone).
   type string
   // Timestamp when the network zone was created
   created time
@@ -1469,7 +1472,7 @@ private okta.identityProvider @defaults("name type status") {
   status string
   // Issuer mode for OIDC/SAML responses
   //
-  // One of ORG_URL, CUSTOM_URL_DOMAIN, or DYNAMIC.
+  // One of ORG_URL, CUSTOM_URL_DOMAIN, CUSTOM_URL, or DYNAMIC.
   issuerMode string
   // Protocol configuration
   //
@@ -2288,7 +2291,7 @@ private okta.agentPool @defaults("name type operationalStatus") {
   type string
   // Operational status of the pool
   //
-  // One of ACTIVE, INACTIVE, DEGRADED, or UNKNOWN.
+  // One of ACTIVE, INACTIVE, DEGRADED, UNKNOWN, OPERATIONAL, or DISRUPTED.
   operationalStatus string
   // Number of agents in the pool that are disrupted
   //
@@ -2329,7 +2332,7 @@ private okta.agentPool.agent @defaults("name version operationalStatus") {
   lastConnection time
   // Operational status of the agent
   //
-  // One of ACTIVE, INACTIVE, DEGRADED, or UNKNOWN.
+  // One of ACTIVE, INACTIVE, DEGRADED, UNKNOWN, OPERATIONAL, or DISRUPTED.
   operationalStatus string
   // Status of the agent within the auto-update process
   updateStatus string
@@ -2356,7 +2359,8 @@ private okta.emailDomain @defaults("domain validationStatus") {
   validationSubdomain string
   // Validation state of the mail domain
   //
-  // One of NOT_STARTED, IN_PROGRESS, VERIFIED, COMPLETED, or ERROR.
+  // One of NOT_STARTED, IN_PROGRESS, VERIFIED, COMPLETED, ERROR, POLLING, or
+  // DELETED.
   validationStatus string
   // Display name used in the From address of outbound mail
   displayName string

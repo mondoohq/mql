@@ -621,7 +621,7 @@ datadog.monitor @defaults("id name type") {
   query string
   // Message (notification text)
   message string
-  // Overall state (Alert, Warn, No Data, OK)
+  // Overall state (Alert, Warn, No Data, OK, Ignored, Skipped, Unknown)
   overallState string
   // Tags
   tags []string
@@ -707,7 +707,7 @@ datadog.syntheticsTest @defaults("publicId name type") {
   publicId string
   // Test name
   name string
-  // Test type (api, browser)
+  // Test type (api, browser, mobile, network)
   type string
   // Subtype (http, ssl, dns, websocket, tcp, udp, icmp, grpc, multi)
   subtype string
@@ -763,7 +763,7 @@ datadog.slo @defaults("id name type") {
   targetThreshold float
   // Warning threshold (percentage)
   warningThreshold float
-  // Timeframe (7d, 30d, 90d)
+  // Timeframe (7d, 30d, 90d, custom)
   timeframe string
   // User that created the SLO
   //
@@ -1091,7 +1091,7 @@ datadog.sensitiveDataScannerGroup @defaults("id name") {
   description string
   // Whether the group is enabled
   isEnabled bool
-  // Product list (logs, apm)
+  // Product list (logs, rum, events, apm)
   productList []string
   // Filter query
   filter string
@@ -1221,7 +1221,7 @@ datadog.logsArchive @defaults("id name") {
 //
 // Real User Monitoring (RUM) application that collects browser or mobile
 // telemetry from end users. The `type` field records the platform (one of
-// browser, ios, android, react-native, flutter, roku, unity, or
+// browser, ios, android, react-native, flutter, roku, electron, unity, or
 // kotlin-multiplatform), and `clientToken` is the credential embedded in the
 // client SDK to send RUM events, so auditing which applications exist and
 // whether each is active helps confirm that only sanctioned properties emit
@@ -1231,7 +1231,7 @@ datadog.rumApplication @defaults("id name") {
   id string
   // Application name
   name string
-  // Application type (browser, ios, android, react-native, flutter, roku, unity, kotlin-multiplatform)
+  // Application type (browser, ios, android, react-native, flutter, roku, electron, unity, kotlin-multiplatform)
   type string
   // Client token
   clientToken string

@@ -66,7 +66,7 @@ portainer @root {
 // container runtime alone cannot reveal. The `disableKube*` flags and edge
 // trust settings round out the instance hardening picture.
 portainer.settings @defaults("authenticationMethod requiredPasswordLength") {
-  // Active authentication method: internal, ldap, or oauth
+  // Active authentication method: internal, ldap, oauth, or unknown
   authenticationMethod string
   // Minimum password length enforced for internal authentication
   requiredPasswordLength int
@@ -281,7 +281,7 @@ portainer.environment @defaults("name type status") {
   id int
   // Environment name
   name string
-  // Environment type: docker, agent-docker, azure-aci, edge-agent-docker, kubernetes, agent-kubernetes, or edge-agent-kubernetes
+  // Environment type: docker, agent-docker, azure-aci, edge-agent-docker, kubernetes, agent-kubernetes, edge-agent-kubernetes, or unknown
   type string
   // Connection status: up, down, provisioning, error, or unknown
   status string

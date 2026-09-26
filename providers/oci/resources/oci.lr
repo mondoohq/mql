@@ -5521,14 +5521,14 @@ private oci.networkLoadBalancer.loadBalancer @defaults("name isPrivate state") {
 // Port and protocol a network load balancer accepts traffic on, and the
 // backend set it forwards to. Unlike a Load Balancer listener there is
 // no TLS termination here: the network load balancer operates at layer
-// 4, so `protocol` is TCP, UDP, TCP_AND_UDP, ICMP, or ANY, and a `port`
+// 4, so `protocol` is TCP, UDP, TCP_AND_UDP, ICMP, ANY, or L3IP, and a `port`
 // of 0 means the listener accepts every port.
 private oci.networkLoadBalancer.listener @defaults("name port protocol") {
   // Listener name
   name string
   // Listener port, or 0 when the listener accepts all ports
   port int
-  // Protocol (TCP, UDP, TCP_AND_UDP, ICMP, ANY)
+  // Protocol (TCP, UDP, TCP_AND_UDP, ICMP, ANY, L3IP)
   protocol string
   // Name of the backend set the listener forwards to
   defaultBackendSetName string
@@ -6668,10 +6668,10 @@ private oci.goldenGate.deployment @defaults("name isPublic state") {
   // Deployment type
   //
   // One of OGG, DATABASE_ORACLE, BIGDATA, DATABASE_MICROSOFT_SQLSERVER,
-  // DATABASE_MYSQL, DATABASE_POSTGRESQL, DATABASE_DB2ZOS, GGSA, or
-  // DATA_TRANSFORMS.
+  // DATABASE_MYSQL, DATABASE_POSTGRESQL, DATABASE_DB2ZOS, GGSA,
+  // DATA_TRANSFORMS, DATABASE_DB2I, VERIDATA_SERVER, or VERIDATA_AGENT.
   deploymentType string
-  // Deployment category (DATA_REPLICATION, STREAM_ANALYTICS, DATA_TRANSFORMS)
+  // Deployment category (DATA_REPLICATION, STREAM_ANALYTICS, DATA_TRANSFORMS, DATA_VERIFICATION)
   category string
   // Environment type (PRODUCTION, DEVELOPMENT_OR_TESTING)
   environmentType string
@@ -8214,7 +8214,7 @@ private oci.database.backup @defaults("name") {
   availabilityDomain string
   // Backup type (INCREMENTAL, FULL, VIRTUAL_FULL)
   type string
-  // Backup destination (OBJECT_STORE, DBRS, AWS_S3)
+  // Backup destination (OBJECT_STORE, DBRS, AWS_S3, NFS, RECOVERY_APPLIANCE)
   backupDestinationType string
   // Size of the source database at backup time, in GBs
   databaseSizeInGBs float
@@ -9088,7 +9088,7 @@ private oci.dataSafe.configuration @defaults("region isEnabled lifecycleState") 
   url string
   // Compartment containing the configuration
   compartment() oci.compartment
-  // Lifecycle state of Data Safe in this region (CREATING, UPDATING, ACTIVE, INACTIVE, DELETING, DELETED, FAILED)
+  // Lifecycle state of Data Safe in this region (CREATING, UPDATING, ACTIVE, INACTIVE, DELETING, DELETED, FAILED, NA)
   lifecycleState string
   // NAT Gateway IP address used by Data Safe to reach customer databases in this region
   natGatewayIpAddress string

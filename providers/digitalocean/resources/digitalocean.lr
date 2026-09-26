@@ -615,7 +615,7 @@ private digitalocean.firewall.egressRule @defaults("protocol ports openToInterne
 //
 // Managed relational, key-value, document, or streaming database
 // cluster; the `engine` field distinguishes PostgreSQL, MySQL, Redis,
-// MongoDB, Kafka, and OpenSearch. Reports the cluster's size, node
+// Valkey, MongoDB, Kafka, and OpenSearch. Reports the cluster's size, node
 // count, region, and lifecycle status alongside its network exposure
 // (public and private connection endpoints, the attached VPC, and the
 // trusted-source firewall rules), its TLS material, and its backup,
@@ -628,7 +628,7 @@ digitalocean.database @defaults("id name engine") {
   id string
   // Database cluster name
   name string
-  // Database engine (pg, mysql, redis, mongodb, kafka, opensearch)
+  // Database engine (pg, mysql, redis, valkey, mongodb, kafka, opensearch)
   engine string
   // Database engine version
   version string
@@ -966,7 +966,7 @@ private digitalocean.vectorDatabase.backup @defaults("backupId status startedAt"
 // DNS zone that DigitalOcean serves for a registered domain name.
 // The zone TTL, the raw `zoneFile` contents as DigitalOcean serves
 // them, and the individual `records` defined under the domain (A,
-// AAAA, CNAME, MX, TXT, NS, SRV, CAA) are queryable, which supports
+// AAAA, CNAME, MX, TXT, NS, SOA, SRV, CAA) are queryable, which supports
 // auditing zone contents for dangling references or unexpected
 // entries.
 digitalocean.domain @defaults("name") {
@@ -983,7 +983,7 @@ digitalocean.domain @defaults("name") {
 // DigitalOcean DNS record
 //
 // A single DNS record within a DigitalOcean-managed domain. Surfaces
-// the record `type` (A, AAAA, CNAME, MX, TXT, NS, SRV, CAA), the record
+// the record `type` (A, AAAA, CNAME, MX, TXT, NS, SOA, SRV, CAA), the record
 // `name` (subdomain), the `data` it resolves to, the `ttl`, and the
 // `priority`, `port`, and `weight` used by MX and SRV records. CAA
 // records carry their property in `tag` and the issuer-critical bit in
@@ -995,7 +995,7 @@ private digitalocean.domain.record @defaults("type name data") {
   domainName string
   // Record ID
   id int
-  // Record type (A, AAAA, CNAME, MX, TXT, NS, SRV, CAA)
+  // Record type (A, AAAA, CNAME, MX, TXT, NS, SOA, SRV, CAA)
   type string
   // Record name (subdomain)
   name string
@@ -1282,7 +1282,8 @@ digitalocean.vpcPeering @defaults("id name status") {
   vpcs() []digitalocean.vpc
   // Peering lifecycle state
   //
-  // One of PENDING (the peering is being established), ACTIVE (traffic
+  // One of PENDING (the peering is being established), PROVISIONING (the
+  // peering is being provisioned), ACTIVE (traffic
   // flows between the peered VPCs), or DELETING (the peering is being
   // torn down).
   status string
@@ -1309,7 +1310,7 @@ digitalocean.kubernetes.cluster @defaults("id name version") {
   version string
   // Region slug
   region string
-  // Status (running, provisioning, degraded, error, deleted, upgrading, invalid)
+  // Status (running, provisioning, degraded, error, deleted, upgrading, invalid, deleting)
   status string
   // Time the resource was created
   createdAt time
@@ -1699,7 +1700,7 @@ private digitalocean.registry.garbageCollection @defaults("uuid status createdAt
   registryName string
   // Status
   //
-  // One of: requested, waiting, running, cancelling, cancelled, succeeded, failed.
+  // One of: requested, waiting, running, cancelling, cancelled, succeeded, failed, "waiting for write JWTs to expire", "scanning manifests", "deleting unreferenced blobs".
   status string
   // Garbage collection type
   //
@@ -1795,7 +1796,7 @@ digitalocean.app @defaults("id name") {
   alerts() []digitalocean.app.alert
   // Ephemeral compute instances of the current deployment
   //
-  // Each entry: componentName, componentType (SERVICE, WORKER, JOB), instanceName, instanceAlias.
+  // Each entry: componentName, componentType (UNKNOWN, SERVICE, WORKER, JOB), instanceName, instanceAlias.
   instances() []dict
   // Whether the app serves traffic to the internet
   //
@@ -2031,7 +2032,7 @@ private digitalocean.app.alert @defaults("id rule phase") {
   value float
   // Evaluation window (e.g., FIVE_MINUTES, TEN_MINUTES, ONE_HOUR); empty for event alerts
   window string
-  // Configuration phase (PENDING, CONFIGURING, ACTIVE, ERROR)
+  // Configuration phase (UNKNOWN, PENDING, CONFIGURING, ACTIVE, ERROR)
   phase string
   // Email destinations notified when the alert triggers
   emails []string
@@ -2365,8 +2366,8 @@ digitalocean.spacesBucket @defaults("name region encryptionEnabled versioningSta
 // DigitalOcean image
 //
 // Bootable disk template a droplet is created from. The `type` field
-// distinguishes distribution, application, snapshot, backup, custom,
-// and admin images, and the `public` flag reports whether the image is
+// distinguishes base, distribution, application, snapshot, backup,
+// custom, and admin images, and the `public` flag reports whether the image is
 // shared with every DigitalOcean account or kept private to this one,
 // which matters when auditing where droplets boot from. Also queryable
 // are the `distribution` and `slug`, the `regions` the image is
@@ -2382,7 +2383,7 @@ digitalocean.image @defaults("id name distribution") {
   id int
   // Image name
   name string
-  // Image type (distribution, application, snapshot, backup, custom, admin)
+  // Image type (base, distribution, application, snapshot, backup, custom, admin)
   type string
   // Operating system distribution
   distribution string
@@ -2669,8 +2670,8 @@ digitalocean.vpcNatGateway @defaults("id name region state") {
 // DigitalOcean managed NFS share
 //
 // Managed Network File System share that clients mount over the
-// network. The lifecycle `status` (CREATING, ACTIVE, FAILED, DELETED)
-// reports whether the share is usable, while `host` and `mountPath`
+// network. The lifecycle `status` (CREATING, ACTIVE, INACTIVE, FAILED,
+// DELETED) reports whether the share is usable, while `host` and `mountPath`
 // give the mount target. `vpcs` resolves the VPCs the share is
 // reachable from, and `accessPoints` lists the exports that govern
 // client access. Select a share by id with `digitalocean.nfs(id:
@@ -2684,7 +2685,7 @@ digitalocean.nfs @defaults("id name region status") {
   sizeGib int
   // Region slug
   region string
-  // Lifecycle status (CREATING, ACTIVE, FAILED, DELETED)
+  // Lifecycle status (CREATING, ACTIVE, INACTIVE, FAILED, DELETED)
   status string
   // Performance tier
   performanceTier string
@@ -2723,7 +2724,7 @@ private digitalocean.nfs.snapshot @defaults("name status sizeGibibytes createdAt
   region string
   // Size of the snapshot in gibibytes
   sizeGibibytes int
-  // Lifecycle status of the snapshot (CREATING, AVAILABLE, DELETING, or ERROR)
+  // Lifecycle status of the snapshot (UNKNOWN, CREATING, AVAILABLE, ACTIVE, DELETING, ERROR, FAILED, or DELETED)
   status string
   // ID of the share the snapshot was taken from
   shareId string

@@ -1104,7 +1104,7 @@ private nutanix.storage.volumeGroup @defaults("name sharingStatus enabledAuthent
   usageType string
   // Access protocol
   //
-  // One of ISCSI or NVMF.
+  // One of NOT_ASSIGNED, ISCSI, or NVMF.
   protocol string
   // Attachment type
   //

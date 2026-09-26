@@ -1705,7 +1705,7 @@ private vsphere.vmknic @defaults("name portGroupName tcpipStack") {
   portGroupMoid string
   // Host services this VMkernel NIC currently carries
   //
-  // Possible values: `management`, `vmotion`, `vsan`, `faultToleranceLogging`, `vSphereReplication`, `vSphereReplicationNFC`, `vSphereProvisioning`, `vSphereBackupNFC`, `ptp`. Empty when the NIC carries no managed services.
+  // Possible values: `management`, `vmotion`, `vsan`, `faultToleranceLogging`, `vSphereReplication`, `vSphereReplicationNFC`, `vSphereProvisioning`, `vSphereBackupNFC`, `ptp`, `vsanWitness`, `nvmeTcp`, `nvmeRdma`, `vsanExternal`. Empty when the NIC carries no managed services.
   services []string
 }
 

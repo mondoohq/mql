@@ -940,7 +940,7 @@ private microsoft.conditionalAccess.policy.grantControls @defaults("id") {
   operator string
   // List of values of built-in controls required by the policy
   //
-  // Possible values: block, mfa, compliantDevice, domainJoinedDevice, approvedApplication, compliantApplication, passwordChange, unknownFutureValue.
+  // Possible values: block, mfa, compliantDevice, domainJoinedDevice, approvedApplication, compliantApplication, passwordChange, unknownFutureValue, riskRemediation.
   builtInControls []string
   // The authentication strength required by the conditional access policy (Optional)
   authenticationStrength microsoft.conditionalAccess.policy.grantControls.authenticationStrength
@@ -2218,7 +2218,7 @@ microsoft.security.riskDetection @defaults("riskEventType riskLevel riskState de
   source string
   // Detection timing (notDefined, realtime, nearRealtime, offline, unknownFutureValue)
   detectionTimingType string
-  // Activity the detection relates to (signin, user, unknownFutureValue)
+  // Activity the detection relates to (signin, user, unknownFutureValue, servicePrincipal)
   activity string
   // IP address of the activity that triggered the detection
   ipAddress string
@@ -2270,7 +2270,7 @@ microsoft.security.alert @defaults("title severity status category") {
   categories []string
   // Severity (unknown, informational, low, medium, high)
   severity string
-  // Status (new, inProgress, resolved)
+  // Status (unknown, new, inProgress, resolved)
   status string
   // Analyst classification (unknown, falsePositive, truePositive, informationalExpectedActivity)
   classification string
@@ -2280,7 +2280,7 @@ microsoft.security.alert @defaults("title severity status category") {
   determination string
   // Defender service that generated the alert
   //
-  // One of: microsoftDefenderForEndpoint, microsoftDefenderForIdentity, microsoftDefenderForCloudApps, microsoftDefenderForOffice365, microsoft365Defender, aadIdentityProtection, microsoftAppGovernance, dataLossPrevention.
+  // One of: microsoftDefenderForEndpoint, microsoftDefenderForIdentity, microsoftDefenderForCloudApps, microsoftDefenderForOffice365, microsoft365Defender, aadIdentityProtection, microsoftAppGovernance, dataLossPrevention, unknown, azureAdIdentityProtection, microsoftDefenderForCloud, microsoftSentinel, microsoftInsiderRiskManagement, microsoftThreatIntelligence, microsoftSecurityForAI.
   serviceSource string
   // Detection technology or sensor that surfaced the alert
   detectionSource string
@@ -2692,10 +2692,11 @@ private microsoft.defaultAppManagementPolicy.appManagementConfiguration @default
   //
   // Each entry has keys: `restrictionType` (one of passwordAddition,
   // passwordLifetime, symmetricKeyAddition, symmetricKeyLifetime,
-  // customPasswordAddition, or unknownFutureValue), `maxLifetime` (the
-  // maximum allowed credential lifetime as an ISO 8601 duration), `state`
-  // (enabled or disabled), and `restrictForAppsCreatedAfterDateTime` (the
-  // timestamp after which apps created later are subject to the restriction).
+  // customPasswordAddition, asymmetricKeyLifetime, or unknownFutureValue),
+  // `maxLifetime` (the maximum allowed credential lifetime as an ISO 8601
+  // duration), `state` (enabled or disabled), and
+  // `restrictForAppsCreatedAfterDateTime` (the timestamp after which apps
+  // created later are subject to the restriction).
   keyCredentials []dict
 }
 
@@ -3184,7 +3185,7 @@ private microsoft.crossTenantAccessPolicyDefault.b2bSetting.targetConfig @defaul
 private microsoft.crossTenantAccessPolicyDefault.b2bSetting.target @defaults("target targetType") {
   // The unique identifier for the target.
   target string
-  // The type of target. Possible values are: user, application.
+  // The type of target. Possible values are: user, group, application.
   targetType string
 }
 
@@ -3442,7 +3443,8 @@ private microsoft.devicemanagement.windowsUpdateRing @defaults("displayName auto
   //
   // One of userNotification, autoInstallAtMaintenanceTime,
   // autoInstallAndRebootAtMaintenanceTime, autoInstallAndRebootAtScheduledTime,
-  // autoInstallAndRebootWithoutEndUserControl, or windowsDefault.
+  // autoInstallAndRebootWithoutEndUserControl, windowsDefault, userDefined, or
+  // notifyDownload.
   automaticUpdateMode string
   // Which updates devices receive
   //
@@ -3682,7 +3684,7 @@ private microsoft.devicemanagement.complianceManagementPartner @defaults("displa
   id string
   // Partner display name
   displayName string
-  // Partner connection state (unknown, unavailable, enabled, unresponsive)
+  // Partner connection state (unknown, unavailable, enabled, unresponsive, terminated, rejected)
   partnerState string
   // Date and time the partner last reported a heartbeat
   lastHeartbeatDateTime time
@@ -3906,7 +3908,7 @@ private microsoft.devicemanagement.manageddevice {
   // threats each with `category`, `severity`, `executionState`, `state`, and
   // `threatState`.
   windowsProtectionState dict
-  // Compliance state of the device (compliant, noncompliant, conflict, error, unknown, notApplicable)
+  // Compliance state of the device (compliant, noncompliant, conflict, error, unknown, notApplicable, inGracePeriod, configManager)
   complianceState string
   // Device registration state
   //
@@ -4037,7 +4039,7 @@ private microsoft.devicemanagement.policyAssignment @defaults("id targetType") {
 // Compliance and configuration evaluation results for a managed device, one
 // entry per policy. The `state` field gives the aggregate result
 // (`compliant`, `nonCompliant`, `conflict`, `error`, `notApplicable`,
-// `inGracePeriod`), and `settingStates` lists per-setting outcomes that
+// `inGracePeriod`, `unknown`, `remediated`, `notAssigned`), and `settingStates` lists per-setting outcomes that
 // rolled up into it. `sourceType` distinguishes compliance from configuration
 // evaluations (`deviceCompliancePolicyState`, `deviceConfigurationState`).
 private microsoft.devicemanagement.manageddevice.policyState @defaults("displayName state") {
@@ -4045,7 +4047,7 @@ private microsoft.devicemanagement.manageddevice.policyState @defaults("displayN
   id string
   // Policy or profile display name
   displayName string
-  // Aggregate evaluation state (compliant, nonCompliant, conflict, error, notApplicable, inGracePeriod)
+  // Aggregate evaluation state (compliant, nonCompliant, conflict, error, notApplicable, inGracePeriod, unknown, remediated, notAssigned)
   state string
   // Per-setting evaluation states with the setting definition ID and outcome
   settingStates []dict
@@ -4151,7 +4153,9 @@ private microsoft.devicemanagement.detectedapp @defaults("displayName version de
   sizeInByte int
   // Number of managed devices with this app installed
   deviceCount int
-  // Platform the app was detected on (windows, iOS, android, macOS, unknown)
+  // Platform the app was detected on
+  //
+  // One of unknown, windows, windowsMobile, windowsHolographic, ios, macOS, chromeOS, androidOSP, androidDeviceAdministrator, androidWorkProfile, or androidDedicatedAndFullyManaged.
   platform string
   // Publisher
   publisher string
@@ -4305,7 +4309,7 @@ private microsoft.powerbi.tenantSetting @defaults("name title enabled") {
 //
 // Examine a Power BI workspace (also called a group) provisioned in the
 // tenant. Select a workspace by its `id`. Each workspace reports its `name`,
-// `type` (Workspace, PersonalGroup, or Group), `state` (Active, Deleted, or
+// `type` (Workspace, PersonalGroup, Personal, AdminWorkspace, or Group), `state` (Active, Deleted, or
 // Orphaned), whether it runs on a dedicated capacity, the `capacity` backing
 // it, and the `users` granted access along with their roles.
 private microsoft.powerbi.workspace @defaults("id name type state") {
@@ -4315,7 +4319,7 @@ private microsoft.powerbi.workspace @defaults("id name type state") {
   name string
   // Workspace type
   //
-  // One of Workspace, PersonalGroup, or Group.
+  // One of Workspace, PersonalGroup, Personal, AdminWorkspace, or Group.
   type string
   // Workspace state
   //
@@ -4337,7 +4341,7 @@ private microsoft.powerbi.workspace @defaults("id name type state") {
 //
 // Examine a single user, group, or service principal granted access to a
 // Power BI workspace, including the `accessRight` (Admin, Member, Contributor,
-// or Viewer) and the `principalType` of the grantee.
+// Viewer, or None) and the `principalType` of the grantee.
 private microsoft.powerbi.workspace.user @defaults("emailAddress accessRight principalType") {
   // Display name of the grantee
   displayName string
@@ -4347,11 +4351,11 @@ private microsoft.powerbi.workspace.user @defaults("emailAddress accessRight pri
   identifier string
   // Type of grantee
   //
-  // One of User, Group, or App.
+  // One of User, Group, App, or None.
   principalType string
   // Access right granted
   //
-  // One of Admin, Member, Contributor, or Viewer.
+  // One of Admin, Member, Contributor, Viewer, or None.
   accessRight string
   // Microsoft Graph object ID of the grantee
   graphId string

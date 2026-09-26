@@ -665,13 +665,13 @@ private jamf.policy @defaults("name enabled frequency") {
 
 // Package action within a Jamf Pro policy
 //
-// Single package entry on a policy: the `action` taken (Install, Cache, or
-// Uninstall) and the install options. The `package` field resolves to the
+// Single package entry on a policy: the `action` taken (Install, Cache,
+// Install Cached, or Uninstall) and the install options. The `package` field resolves to the
 // full package definition, letting you audit what software a policy deploys.
 private jamf.policy.package @defaults("action") {
   // Action taken for the package
   //
-  // One of Install, Cache, or Uninstall.
+  // One of Install, Cache, Install Cached, or Uninstall.
   action string
 
   // Whether the package fills the user template

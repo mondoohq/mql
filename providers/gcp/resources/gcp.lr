@@ -422,7 +422,7 @@ private gcp.cloudIdentity.membership @defaults("memberKey type") {
   name string
   // Email address or identifier of the member
   memberKey string
-  // Member type (USER, SERVICE_ACCOUNT, GROUP, SHARED_DRIVE, OTHER)
+  // Member type (USER, SERVICE_ACCOUNT, GROUP, SHARED_DRIVE, CBCM_BROWSER, CHROME_OS_DEVICE, OTHER)
   type string
   // Roles the member holds in the group (MEMBER, MANAGER, OWNER)
   roles []string
@@ -1753,7 +1753,7 @@ gcp.project.computeService.instance @defaults("name id") {
   minCpuPlatform string
   // Network interfaces attached to the instance
   nics []gcp.project.computeService.instance.networkInterface
-  // Distinct network interface stack types across all interfaces (IPV4_ONLY, IPV4_IPV6)
+  // Distinct network interface stack types across all interfaces (IPV4_ONLY, IPV4_IPV6, IPV6_ONLY)
   networkStackTypes []string
   // Whether the instance has at least one external IP attached via a network interface accessConfig
   hasPublicIp() bool
@@ -1950,7 +1950,7 @@ private gcp.project.computeService.instance.networkInterface @defaults("name net
   ipv6Address string
   // IP stack type of the interface (IPV4_ONLY, IPV4_IPV6, IPV6_ONLY)
   stackType string
-  // Interface type (VIRTIO_NET, GVNIC)
+  // Interface type (VIRTIO_NET, GVNIC, IDPF, IRDMA, MRDMA)
   nicType string
   // Number of transmit and receive queues on the interface
   queueCount int
@@ -2006,7 +2006,7 @@ private gcp.project.computeService.instance.networkInterface.accessConfig @defau
   externalIpv6 string
   // Network service tier the external address is served over
   //
-  // One of PREMIUM, STANDARD, or FIXED_STANDARD.
+  // One of PREMIUM, STANDARD, FIXED_STANDARD, or STANDARD_OVERRIDES_FIXED_STANDARD.
   networkTier string
   // Whether a reverse DNS (PTR) record is published for the external address
   setPublicPtr bool
@@ -2142,7 +2142,7 @@ private gcp.project.computeService.instance.confidentialCompute @defaults("enabl
   enabled bool
   // Confidential VM technology
   //
-  // One of SEV, SEV_SNP, TDX, CCA, or CONFIDENTIAL_INSTANCE_TYPE_UNSPECIFIED. Empty when confidential compute is not enabled.
+  // One of SEV, SEV_SNP, TDX, CCA, BMSAI, or CONFIDENTIAL_INSTANCE_TYPE_UNSPECIFIED. Empty when confidential compute is not enabled.
   instanceType string
 }
 
@@ -2761,9 +2761,11 @@ gcp.project.computeService.subnetwork @defaults("name") {
   // Full URL of the public delegated prefix or internal range the subnetwork
   // is carved out of. Empty when the range was assigned directly.
   ipCollection string
-  // Whether the subnet mask is resolved on read
+  // Subnet mask resolution mode
   //
-  // One of RESOLVE_SUBNET_MASK_UNSPECIFIED, ARBITRARY, or STRICT.
+  // How VMs in the subnetwork resolve the subnet mask over ARP. One of
+  // ARP_ALL_RANGES, ARP_PRIMARY_RANGE, ARP_BROADCAST_PRIMARY_RANGE, or
+  // ARP_BROADCAST_PRIMARY_RANGE_WITH_LEARNING. Empty when not configured.
   resolveSubnetMask string
   // Internal IPv6 ranges Google reserves within this subnetwork
   systemReservedInternalIpv6Ranges []string
@@ -3658,7 +3660,8 @@ private gcp.project.sqlService.instance.database @defaults("name") {
 // and access configuration. The type distinguishes built-in database accounts
 // from Cloud IAM principals (BUILT_IN, CLOUD_IAM_USER,
 // CLOUD_IAM_SERVICE_ACCOUNT, CLOUD_IAM_GROUP, CLOUD_IAM_GROUP_USER,
-// CLOUD_IAM_GROUP_SERVICE_ACCOUNT); host restricts where a MySQL user may
+// CLOUD_IAM_GROUP_SERVICE_ACCOUNT, CLOUD_IAM_WORKFORCE_IDENTITY,
+// ENTRAID_USER); host restricts where a MySQL user may
 // connect from; iamEmail identifies the Cloud IAM principal; databaseRoles
 // lists role memberships on PostgreSQL and SQL Server; and passwordPolicy and
 // dualPasswordType describe credential handling. Built-in users are a common
@@ -3672,7 +3675,9 @@ private gcp.project.sqlService.instance.user @defaults("name type host") {
   name string
   // Host from which the user can connect (MySQL only)
   host string
-  // User type (BUILT_IN, CLOUD_IAM_USER, CLOUD_IAM_SERVICE_ACCOUNT, CLOUD_IAM_GROUP, CLOUD_IAM_GROUP_USER, CLOUD_IAM_GROUP_SERVICE_ACCOUNT)
+  // User type
+  //
+  // One of BUILT_IN, CLOUD_IAM_USER, CLOUD_IAM_SERVICE_ACCOUNT, CLOUD_IAM_GROUP, CLOUD_IAM_GROUP_USER, CLOUD_IAM_GROUP_SERVICE_ACCOUNT, CLOUD_IAM_WORKFORCE_IDENTITY, or ENTRAID_USER.
   type string
   // IAM email for Cloud IAM users
   iamEmail string
@@ -3693,7 +3698,8 @@ private gcp.project.sqlService.instance.user @defaults("name type host") {
 //
 // Single backup operation on a Cloud SQL instance, with its status, timing,
 // and storage configuration. The backupKind is SNAPSHOT or PHYSICAL; status
-// is one of ENQUEUED, RUNNING, FAILED, SUCCESSFUL, SKIPPED, or DELETED;
+// is one of ENQUEUED, OVERDUE, RUNNING, FAILED, SUCCESSFUL, SKIPPED,
+// DELETION_PENDING, DELETION_FAILED, or DELETED;
 // startTime, endTime, and enqueuedTime record the run timeline; location and
 // databaseVersion capture where the backup is stored and the engine version
 // at backup time; and error carries the failure details for a failed run. The
@@ -3969,8 +3975,9 @@ private gcp.project.sqlService.instance.settings.backupconfiguration {
   transactionLogRetentionDays int
   // Backup tier managing the backups for this instance
   //
-  // One of BACKUP_TIER_UNSPECIFIED, STANDARD (managed by Cloud SQL), or
-  // ENHANCED (managed by Google Cloud Backup and DR Service).
+  // One of BACKUP_TIER_UNSPECIFIED, STANDARD (managed by Cloud SQL),
+  // ENHANCED (managed by Google Cloud Backup and DR Service), or the
+  // deprecated ADVANCED.
   backupTier string
   // Storage location of the transactional logs used for point-in-time recovery
   //
@@ -5093,7 +5100,7 @@ private gcp.project.gkeService.cluster @defaults("name description location stat
   satisfiesPzs bool
   // Etcd encryption configuration
   databaseEncryption dict
-  // Etcd encryption state (ENCRYPTED, DECRYPTED)
+  // Etcd encryption state (ENCRYPTED, DECRYPTED, ALL_OBJECTS_ENCRYPTION_ENABLED)
   databaseEncryptionState string
   // Cloud KMS key used for etcd encryption
   databaseEncryptionKey() gcp.project.kmsService.keyring.cryptokey
@@ -6405,7 +6412,9 @@ private gcp.project.kmsService.keyring.cryptokey @defaults("name purpose") {
   name string
   // Primary version for encrypt to use for this crypto key
   primary gcp.project.kmsService.keyring.cryptokey.version
-  // Lifecycle state of the primary version (ENABLED, DISABLED, DESTROYED, DESTROY_SCHEDULED; empty when the key has no primary)
+  // Lifecycle state of the primary version
+  //
+  // One of PENDING_GENERATION, ENABLED, DISABLED, DESTROYED, DESTROY_SCHEDULED, PENDING_IMPORT, IMPORT_FAILED, GENERATION_FAILED, PENDING_EXTERNAL_DESTRUCTION, or EXTERNAL_DESTRUCTION_FAILED. Empty when the key has no primary.
   primaryState string
   // Crypto key purpose
   purpose string
@@ -6419,8 +6428,8 @@ private gcp.project.kmsService.keyring.cryptokey @defaults("name purpose") {
   rotationEnabled() bool
   // Default settings for new crypto key versions
   //
-  // Keys: `protectionLevel` (SOFTWARE, HSM, EXTERNAL, or EXTERNAL_VPC) and
-  // `algorithm` (the crypto key version algorithm applied to versions
+  // Keys: `protectionLevel` (SOFTWARE, HSM, EXTERNAL, EXTERNAL_VPC, or
+  // HSM_SINGLE_TENANT) and `algorithm` (the crypto key version algorithm applied to versions
   // created for this key).
   versionTemplate dict
   // User-defined labels
@@ -6501,8 +6510,11 @@ private gcp.project.kmsService.keyring.cryptokey.protectedResources @defaults("r
 // Google Cloud (GCP) KMS crypto key version
 //
 // Individual version of a Cloud KMS cryptographic key, exposing its
-// lifecycle state (`ENABLED`, `DISABLED`, `DESTROY_SCHEDULED`,
-// `DESTROYED`), protection level (`SOFTWARE`, `HSM`, `EXTERNAL`),
+// lifecycle state (`PENDING_GENERATION`, `ENABLED`, `DISABLED`,
+// `DESTROY_SCHEDULED`, `DESTROYED`, `PENDING_IMPORT`, `IMPORT_FAILED`,
+// `GENERATION_FAILED`, `PENDING_EXTERNAL_DESTRUCTION`,
+// `EXTERNAL_DESTRUCTION_FAILED`), protection level (`SOFTWARE`, `HSM`,
+// `EXTERNAL`, `EXTERNAL_VPC`, `HSM_SINGLE_TENANT`),
 // algorithm, HSM attestation, creation and destruction timestamps, import
 // job provenance, and external protection level options for keys held
 // outside Google.
@@ -6638,7 +6650,7 @@ private gcp.project.kmsService.ekmConnection @defaults("name keyManagementMode l
 // bring external key material into a Cloud KMS keyring. Query its
 // `importMethod` (the wrapping scheme, e.g.
 // `RSA_OAEP_3072_SHA256_AES_256`), `protectionLevel` (`SOFTWARE`, `HSM`,
-// `EXTERNAL`, `EXTERNAL_VPC`), lifecycle state (`PENDING_GENERATION`,
+// `EXTERNAL`, `EXTERNAL_VPC`, `HSM_SINGLE_TENANT`), lifecycle state (`PENDING_GENERATION`,
 // `ACTIVE`, `EXPIRED`), creation and generation timestamps,
 // `expireTime` / `expireEventTime`, the optional HSM `attestation`
 // produced at key creation, and the `cryptoKeyBackend` the job's
@@ -6656,7 +6668,7 @@ private gcp.project.kmsService.keyring.importJob @defaults("name state importMet
   location string
   // Wrapping method used for incoming key material
   //
-  // One of RSA_OAEP_3072_SHA1_AES_256, RSA_OAEP_4096_SHA1_AES_256, RSA_OAEP_3072_SHA256_AES_256, RSA_OAEP_4096_SHA256_AES_256, RSA_OAEP_3072_SHA256, RSA_OAEP_4096_SHA256, or IMPORT_METHOD_UNSPECIFIED.
+  // One of RSA_OAEP_3072_SHA1_AES_256, RSA_OAEP_4096_SHA1_AES_256, RSA_OAEP_3072_SHA256_AES_256, RSA_OAEP_4096_SHA256_AES_256, RSA_OAEP_3072_SHA256, RSA_OAEP_4096_SHA256, HPKE_KEM_ML_KEM_768_HKDF_SHA256_AES_256_GCM, HPKE_KEM_ML_KEM_1024_HKDF_SHA256_AES_256_GCM, HPKE_KEM_XWING_HKDF_SHA256_AES_256_GCM, or IMPORT_METHOD_UNSPECIFIED.
   importMethod string
   // Protection level of the import job
   //
@@ -7632,7 +7644,7 @@ private gcp.organization.workforcePool.provider @defaults("displayName providerT
   detailedAuditLogging bool
   // Whether SCIM-managed groups are used for authorization instead of the mapped `google.groups` attribute
   //
-  // One of SCIM_USAGE_UNSPECIFIED (do not use SCIM data) or ENABLED_FOR_GROUPS.
+  // One of SCIM_USAGE_UNSPECIFIED (do not use SCIM data), ENABLED_FOR_GROUPS, or ENABLED_FOR_USERS_GROUPS.
   scimUsage string
   // Discriminator for which protocol this provider trusts: `oidc` or `saml`
   providerType string
@@ -8638,7 +8650,8 @@ private gcp.project.dataprocService.cluster.virtualClusterConfig {
 //
 // Dataproc job submitted to a cluster
 //
-// Covers the job UUID, status (PENDING, RUNNING, DONE, ERROR, CANCELLED),
+// Covers the job UUID, status (PENDING, SETUP_DONE, RUNNING, CANCEL_PENDING,
+// CANCEL_STARTED, CANCELLED, DONE, ERROR, ATTEMPT_FAILURE),
 // job type (hadoop, spark, pyspark, hive, pig, presto, sparkR, sparkSql,
 // flink), the target cluster, user-defined labels, and the driver output
 // resource URI.
@@ -9877,7 +9890,7 @@ private gcp.project.firestoreService.database.index @defaults("name queryScope")
   name string
   // Query scope (COLLECTION, COLLECTION_GROUP, COLLECTION_RECURSIVE)
   queryScope string
-  // API scope (DATASTORE_MODE_API, ANY_API)
+  // API scope (DATASTORE_MODE_API, ANY_API, MONGODB_COMPATIBLE_API)
   apiScope string
   // Index fields
   //
@@ -11049,7 +11062,7 @@ private gcp.project.computeService.securityPolicy.networkDdosProtection @default
   ddosProtection string
   // Whether adaptive tuning of the network protection is enabled
   //
-  // One of DISABLED or PREVIEW. Empty when the policy leaves it unset.
+  // One of DISABLED, ENABLED, or PREVIEW. Empty when the policy leaves it unset.
   ddosAdaptiveProtection string
   // Fraction of the baseline traffic that has to be affected before mitigation applies
   ddosImpactedBaselineThreshold float
@@ -11093,7 +11106,7 @@ private gcp.project.computeService.securityPolicy.rule.matcher @defaults("versio
 // Compute Engine SSL policy that governs the TLS protocol
 // version and cipher suites negotiated by HTTPS and SSL proxy load
 // balancers. Query its `profile` (`COMPATIBLE`, `MODERN`, `RESTRICTED`,
-// or `CUSTOM`), `minTlsVersion`, enabled features, and custom features
+// `FIPS_202205`, or `CUSTOM`), `minTlsVersion`, enabled features, and custom features
 // (when profile is `CUSTOM`). The `weakTls` field evaluates to `true`
 // when the policy permits cipher suites or protocol versions considered
 // cryptographically weak. `warnings` surfaces any API-reported
@@ -11105,9 +11118,9 @@ private gcp.project.computeService.sslPolicy @defaults("name profile minTlsVersi
   name string
   // Human-readable description of the resource
   description string
-  // Profile (COMPATIBLE, MODERN, RESTRICTED, CUSTOM)
+  // Profile (COMPATIBLE, MODERN, RESTRICTED, FIPS_202205, CUSTOM)
   profile string
-  // Minimum TLS version (TLS_1_0, TLS_1_1, TLS_1_2)
+  // Minimum TLS version (TLS_1_0, TLS_1_1, TLS_1_2, TLS_1_3)
   minTlsVersion string
   // Whether the policy permits weak TLS
   //
@@ -11334,7 +11347,7 @@ private gcp.project.computeService.router.nat @defaults("name") {
   logConfig dict
   // Endpoint types (ENDPOINT_TYPE_VM, ENDPOINT_TYPE_SWG, ENDPOINT_TYPE_MANAGED_PROXY_LB)
   endpointTypes []string
-  // Auto network tier (PREMIUM, STANDARD)
+  // Auto network tier (PREMIUM, STANDARD, FIXED_STANDARD, STANDARD_OVERRIDES_FIXED_STANDARD)
   autoNetworkTier string
   // ICMP idle timeout in seconds
   icmpIdleTimeoutSec int
@@ -11421,7 +11434,7 @@ private gcp.project.certificateAuthorityService.caPool @defaults("name tier") {
 // Certificate authority managed by the Private CA Service. Its `type` is
 // `SELF_SIGNED` (root CAs) or `SUBORDINATE` (intermediate CAs), and
 // `state` is one of `ENABLED`, `DISABLED`, `STAGED`,
-// `AWAITING_USER_ACTIVATION`, `DELETION_REQUESTED`, or `PURGED`. Alongside
+// `AWAITING_USER_ACTIVATION`, `DELETED`, `DELETION_REQUESTED`, or `PURGED`. Alongside
 // the key specification, certificate configuration, lifetime, PEM-encoded
 // certificate chains, and the bucket serving the published CRL and CA
 // certificates, `expireTime` reports when the CA certificate itself
@@ -11439,7 +11452,7 @@ private gcp.project.certificateAuthorityService.certificateAuthority @defaults("
   caPool string
   // Type (SELF_SIGNED, SUBORDINATE)
   type string
-  // Current state (ENABLED, DISABLED, STAGED, AWAITING_USER_ACTIVATION, DELETION_REQUESTED, PURGED)
+  // Current state (ENABLED, DISABLED, STAGED, AWAITING_USER_ACTIVATION, DELETED, DELETION_REQUESTED, PURGED)
   state string
   // Key specification
   //
@@ -12641,7 +12654,8 @@ private gcp.project.appEngineService.version @defaults("id servingStatus") {
   //
   // Ordered URL routing rules for the version. Keys per handler include
   // `urlRegex` (the path pattern matched), `securityLevel` (HTTPS
-  // enforcement: SECURE_NEVER, SECURE_OPTIONAL, SECURE_ALWAYS), `login`
+  // enforcement: SECURE_DEFAULT, SECURE_NEVER, SECURE_OPTIONAL,
+  // SECURE_ALWAYS), `login`
   // (access requirement: LOGIN_OPTIONAL, LOGIN_ADMIN, LOGIN_REQUIRED), and
   // `authFailAction` (response when the login requirement is not met).
   handlers []dict
@@ -12850,8 +12864,8 @@ private gcp.project.workbenchService {
 // it to audit whether the notebook is reachable from the internet
 // (disablePublicIp), whether proxy access to the Jupyter UI is turned off,
 // whether deletion protection is enabled, who owns the instance, and the
-// health state of the notebook agent (HEALTHY, UNHEALTHY, or
-// AGENT_NOT_INSTALLED). The Compute Engine configuration, including network
+// health state of the notebook agent (HEALTHY, UNHEALTHY,
+// AGENT_NOT_INSTALLED, or AGENT_NOT_RUNNING). The Compute Engine configuration, including network
 // interfaces and disks, is exposed through gceSetup.
 private gcp.project.workbenchService.instance @defaults("name state healthState") {
   // Project ID
@@ -12984,7 +12998,7 @@ private gcp.project.composerService.environment @defaults("name state imageVersi
   projectId string
   // Full resource name (projects/{project}/locations/{location}/environments/{environment})
   name string
-  // Current state of the environment (CREATING, RUNNING, UPDATING, DELETING, ERROR)
+  // Current state of the environment (CREATING, RUNNING, UPDATING, HIBERNATED, DELETING, ERROR)
   state string
   // UUID associated with the environment
   uuid string
@@ -13131,7 +13145,7 @@ private gcp.project.healthcareService.hl7v2Store @defaults("name") {
 // Google Cloud (GCP) Compute health check
 //
 // Examine a Compute Engine health check: its protocol type (HTTP, HTTPS, TCP,
-// SSL, HTTP2, GRPC), check interval and timeout, healthy and unhealthy
+// SSL, HTTP2, GRPC, GRPC_WITH_TLS), check interval and timeout, healthy and unhealthy
 // thresholds, protocol-specific configuration (httpHealthCheck,
 // httpsHealthCheck, tcpHealthCheck, sslHealthCheck, http2HealthCheck,
 // grpcHealthCheck), logging configuration, and whether the check is regional
@@ -13145,7 +13159,7 @@ private gcp.project.computeService.healthCheck @defaults("name type") {
   name string
   // Human-readable description of the resource
   description string
-  // Type of health check (HTTP, HTTPS, TCP, SSL, HTTP2, GRPC)
+  // Type of health check (HTTP, HTTPS, TCP, SSL, HTTP2, GRPC, GRPC_WITH_TLS)
   type string
   // How often (in seconds) to send a health check
   checkIntervalSec int
@@ -13425,7 +13439,8 @@ private gcp.project.computeService.serviceAttachment @defaults("name connectionP
 //
 // Compute Engine Network Endpoint Group (NEG): its endpoint type
 // (GCE_VM_IP, GCE_VM_IP_PORT, SERVERLESS, PRIVATE_SERVICE_CONNECT,
-// INTERNET_IP_PORT, INTERNET_FQDN_PORT), default port, number of endpoints,
+// INTERNET_IP_PORT, INTERNET_FQDN_PORT, GCE_VM_IP_DEDICATED_BACKEND,
+// GCE_VM_IP_PORTMAP, NON_GCP_PRIVATE_IP_PORT), default port, number of endpoints,
 // the network and subnetwork it belongs to, serverless backend configuration
 // (Cloud Run, App Engine, or Cloud Functions), PSC target service, and zone
 // or region placement.
@@ -13436,7 +13451,9 @@ private gcp.project.computeService.networkEndpointGroup @defaults("name networkE
   name string
   // Human-readable description of the resource
   description string
-  // Network endpoint type (GCE_VM_IP, GCE_VM_IP_PORT, SERVERLESS, PRIVATE_SERVICE_CONNECT, INTERNET_IP_PORT, INTERNET_FQDN_PORT)
+  // Network endpoint type
+  //
+  // One of GCE_VM_IP, GCE_VM_IP_PORT, SERVERLESS, PRIVATE_SERVICE_CONNECT, INTERNET_IP_PORT, INTERNET_FQDN_PORT, GCE_VM_IP_DEDICATED_BACKEND, GCE_VM_IP_PORTMAP, or NON_GCP_PRIVATE_IP_PORT.
   networkEndpointType string
   // Default port
   defaultPort int
@@ -13471,8 +13488,8 @@ private gcp.project.computeService.networkEndpointGroup @defaults("name networkE
 // Google Cloud (GCP) Compute Interconnect connection
 //
 // Dedicated or Partner Interconnect connection: its type
-// (DEDICATED, PARTNER), link type (10G_LR, 100G_LR), requested and
-// provisioned link counts, administrative status, operational status,
+// (DEDICATED, PARTNER, IT_PRIVATE), link type (10G_LR, 100G_LR, 400G_LR4),
+// requested and provisioned link counts, administrative status, operational status,
 // connection state (ACTIVE, UNPROVISIONED), Google and peer IP addresses for
 // ping testing, NOC contact email, physical location, remote location for
 // Cross-Cloud Interconnect, MACsec feature availability, attached VLAN
@@ -13487,9 +13504,9 @@ private gcp.project.computeService.interconnect @defaults("name interconnectType
   description string
   // Whether administrative traffic is enabled
   adminEnabled bool
-  // Interconnect type (DEDICATED, PARTNER)
+  // Interconnect type (DEDICATED, PARTNER, IT_PRIVATE)
   interconnectType string
-  // Link type (LINK_TYPE_ETHERNET_10G_LR, LINK_TYPE_ETHERNET_100G_LR)
+  // Link type (LINK_TYPE_ETHERNET_10G_LR, LINK_TYPE_ETHERNET_100G_LR, LINK_TYPE_ETHERNET_400G_LR4)
   linkType string
   // Requested link count
   requestedLinkCount int
@@ -13536,8 +13553,9 @@ private gcp.project.computeService.interconnect @defaults("name interconnectType
 // Google Cloud (GCP) Compute Interconnect Attachment (VLAN)
 //
 // Dedicated or Partner Interconnect VLAN attachment: its type
-// (DEDICATED, PARTNER, PARTNER_PROVIDER), state (ACTIVE, UNPROVISIONED,
-// PENDING_PARTNER, DEFUNCT, PENDING_CUSTOMER), edge availability domain,
+// (DEDICATED, PARTNER, PARTNER_PROVIDER, L2_DEDICATED), state (ACTIVE,
+// UNPROVISIONED, PENDING_PARTNER, PARTNER_REQUEST_RECEIVED, DEFUNCT,
+// PENDING_CUSTOMER), edge availability domain,
 // bandwidth, VLAN tag (802.1Q), encryption mode (NONE, IPSEC), IPv4 and IPv6
 // addresses for the Cloud Router and customer router sides, stack type
 // (IPV4_ONLY, IPV4_IPV6), the associated Interconnect connection and Cloud
@@ -13553,9 +13571,9 @@ private gcp.project.computeService.interconnectAttachment @defaults("name type s
   adminEnabled bool
   // Bandwidth (BPS_50M through BPS_50G)
   bandwidth string
-  // Attachment type (DEDICATED, PARTNER, PARTNER_PROVIDER)
+  // Attachment type (DEDICATED, PARTNER, PARTNER_PROVIDER, L2_DEDICATED)
   type string
-  // Attachment state (ACTIVE, UNPROVISIONED, PENDING_PARTNER, DEFUNCT, PENDING_CUSTOMER)
+  // Attachment state (ACTIVE, UNPROVISIONED, PENDING_PARTNER, PARTNER_REQUEST_RECEIVED, DEFUNCT, PENDING_CUSTOMER)
   state string
   // Edge availability domain
   edgeAvailabilityDomain string
@@ -13781,8 +13799,9 @@ private gcp.project.computeService.targetPool @defaults("name") {
 // Bring Your Own IP (BYOIP) public advertised prefix: the IP CIDR
 // range being advertised, its validation status (INITIAL, PTR_CONFIGURED,
 // VALIDATED, PREFIX_CONFIGURATION_COMPLETE, PREFIX_CONFIGURATION_IN_PROGRESS,
-// PREFIX_REMOVAL_IN_PROGRESS, READY_TO_USE), the DNS verification IP, BYOIP
-// API version, PDP scope (REGIONAL, GLOBAL), and any public delegated
+// PREFIX_REMOVAL_IN_PROGRESS, READY_TO_ANNOUNCE, ANNOUNCED_TO_INTERNET,
+// REVERSE_DNS_LOOKUP_FAILED, READY_TO_USE), the DNS verification IP, BYOIP
+// API version, PDP scope (REGIONAL, GLOBAL, GLOBAL_AND_REGIONAL), and any public delegated
 // sub-prefixes.
 private gcp.project.computeService.publicAdvertisedPrefix @defaults("name ipCidrRange status") {
   // Unique identifier
@@ -13793,13 +13812,15 @@ private gcp.project.computeService.publicAdvertisedPrefix @defaults("name ipCidr
   description string
   // IP CIDR range
   ipCidrRange string
-  // Status (INITIAL, PTR_CONFIGURED, VALIDATED, PREFIX_CONFIGURATION_COMPLETE, PREFIX_CONFIGURATION_IN_PROGRESS, PREFIX_REMOVAL_IN_PROGRESS, READY_TO_USE)
+  // Status
+  //
+  // One of INITIAL, PTR_CONFIGURED, VALIDATED, PREFIX_CONFIGURATION_COMPLETE, PREFIX_CONFIGURATION_IN_PROGRESS, PREFIX_REMOVAL_IN_PROGRESS, READY_TO_ANNOUNCE, ANNOUNCED_TO_INTERNET, REVERSE_DNS_LOOKUP_FAILED, or READY_TO_USE.
   status string
   // DNS verification IP
   dnsVerificationIp string
   // BYOIP API version (V1, V2)
   byoipApiVersion string
-  // PDP scope (REGIONAL, GLOBAL)
+  // PDP scope (REGIONAL, GLOBAL, GLOBAL_AND_REGIONAL)
   pdpScope string
   // Public delegated prefixes
   publicDelegatedPrefixes []dict
@@ -13886,7 +13907,7 @@ private gcp.project.computeService.instanceTemplate.instanceProperties @defaults
   enableConfidentialCompute bool
   // Confidential Computing technology the VMs use
   //
-  // One of SEV, SEV_SNP, TDX, CCA, or
+  // One of SEV, SEV_SNP, TDX, CCA, BMSAI, or
   // CONFIDENTIAL_INSTANCE_TYPE_UNSPECIFIED.
   confidentialInstanceType string
   // Service accounts the VMs authenticate with, and the OAuth scopes granted to each
@@ -14106,8 +14127,8 @@ private gcp.project.dataflowService.job @defaults("name currentState") {
   // One of JOB_STATE_UNKNOWN, JOB_STATE_STOPPED, JOB_STATE_RUNNING,
   // JOB_STATE_DONE, JOB_STATE_FAILED, JOB_STATE_CANCELLED,
   // JOB_STATE_UPDATED, JOB_STATE_DRAINING, JOB_STATE_DRAINED,
-  // JOB_STATE_PENDING, JOB_STATE_CANCELLING, JOB_STATE_QUEUED, or
-  // JOB_STATE_RESOURCE_CLEANING_UP.
+  // JOB_STATE_PENDING, JOB_STATE_CANCELLING, JOB_STATE_QUEUED,
+  // JOB_STATE_RESOURCE_CLEANING_UP, JOB_STATE_PAUSING, or JOB_STATE_PAUSED.
   currentState string
   // Timestamp when the job was created
   createTime time
@@ -14158,7 +14179,7 @@ private gcp.project.artifactRegistryService {
 // Google Cloud (GCP) Artifact Registry repository
 //
 // Single Artifact Registry repository: its package format (DOCKER, MAVEN,
-// NPM, PYTHON, APT, YUM, GO, GENERIC), mode (STANDARD, VIRTUAL, REMOTE),
+// NPM, PYTHON, APT, YUM, GO, GENERIC, KFP, RUBY), mode (STANDARD, VIRTUAL, REMOTE),
 // encryption key, cleanup policies, format- and mode-specific
 // configuration, and IAM policy bindings. The `vulnerabilityScanningConfig`
 // field reports whether container-image scanning is active or inherited,
@@ -14824,7 +14845,7 @@ private gcp.project.vertexaiService.pipelineJob @defaults("name displayName stat
   name string
   // Display name
   displayName string
-  // Current state (PIPELINE_STATE_QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLING, CANCELLED, PAUSED)
+  // Current state (PIPELINE_STATE_QUEUED, PENDING, RUNNING, SUCCEEDED, FAILED, CANCELLING, CANCELLED, PAUSED)
   state string
   // Pipeline spec
   pipelineSpec dict
@@ -15830,7 +15851,9 @@ private gcp.scc.source @defaults("name displayName") {
 // misconfigurations, vulnerabilities, and active threats. A finding carries a
 // category (for example OPEN_FIREWALL, PUBLIC_BUCKET_ACL), severity (CRITICAL,
 // HIGH, MEDIUM, LOW), state (ACTIVE, INACTIVE), mute state, and finding class
-// (THREAT, VULNERABILITY, MISCONFIGURATION). It also exposes the affected
+// (THREAT, VULNERABILITY, MISCONFIGURATION, OBSERVATION, SCC_ERROR,
+// POSTURE_VIOLATION, TOXIC_COMBINATION, SENSITIVE_DATA_RISK, CHOKEPOINT, or
+// EXTERNAL_EXPOSURE). It also exposes the affected
 // resource, event and create times, source-specific properties, security
 // marks, and external exposure details including toxic combination and
 // chokepoint analysis.
@@ -17955,7 +17978,8 @@ private gcp.project.containerAnalysisService {
 // Container Analysis occurrence, a scan finding attached to a container
 // image artifact. `kind` identifies the occurrence type (VULNERABILITY,
 // BUILD, IMAGE, PACKAGE, DEPLOYMENT, DISCOVERY, ATTESTATION, UPGRADE,
-// COMPLIANCE, SBOM_REFERENCE); `resourceUri` identifies the artifact; and
+// COMPLIANCE, DSSE_ATTESTATION, VULNERABILITY_ASSESSMENT, SBOM_REFERENCE,
+// SECRET); `resourceUri` identifies the artifact; and
 // the corresponding detail field (for example `vulnerability`,
 // `attestation`, `build`) holds the type-specific data for
 // software-supply-chain audits.
@@ -17966,7 +17990,9 @@ private gcp.project.containerAnalysisService.occurrence @defaults("name kind") {
   resourceUri string
   // Note name this occurrence is associated with
   noteName string
-  // Occurrence kind (VULNERABILITY, BUILD, IMAGE, PACKAGE, DEPLOYMENT, DISCOVERY, ATTESTATION, UPGRADE, COMPLIANCE, SBOM_REFERENCE)
+  // Occurrence kind
+  //
+  // One of VULNERABILITY, BUILD, IMAGE, PACKAGE, DEPLOYMENT, DISCOVERY, ATTESTATION, UPGRADE, COMPLIANCE, DSSE_ATTESTATION, VULNERABILITY_ASSESSMENT, SBOM_REFERENCE, or SECRET.
   kind string
   // Remediation details
   remediation string
@@ -18045,7 +18071,8 @@ private gcp.project.containerAnalysisService.occurrence @defaults("name kind") {
 // Container Analysis note, a metadata definition that occurrences
 // reference, identified by `name`. `kind` selects the note type
 // (VULNERABILITY, BUILD, IMAGE, PACKAGE, DEPLOYMENT, DISCOVERY, ATTESTATION,
-// UPGRADE, COMPLIANCE, SBOM_REFERENCE) and the matching detail field holds
+// UPGRADE, COMPLIANCE, DSSE_ATTESTATION, VULNERABILITY_ASSESSMENT,
+// SBOM_REFERENCE, SECRET) and the matching detail field holds
 // the type-specific definition. For ATTESTATION notes `attestationAuthority`
 // holds the authority that underpins Binary Authorization trust, so notes
 // expose the supply-chain trust roots that the occurrence findings alone do
@@ -18057,7 +18084,9 @@ private gcp.project.containerAnalysisService.note @defaults("name kind") {
   shortDescription string
   // Detailed description of the note
   longDescription string
-  // Note kind (VULNERABILITY, BUILD, IMAGE, PACKAGE, DEPLOYMENT, DISCOVERY, ATTESTATION, UPGRADE, COMPLIANCE, SBOM_REFERENCE)
+  // Note kind
+  //
+  // One of VULNERABILITY, BUILD, IMAGE, PACKAGE, DEPLOYMENT, DISCOVERY, ATTESTATION, UPGRADE, COMPLIANCE, DSSE_ATTESTATION, VULNERABILITY_ASSESSMENT, SBOM_REFERENCE, or SECRET.
   kind string
   // Attestation authority definition (when kind is ATTESTATION)
   //
@@ -18252,7 +18281,7 @@ private gcp.project.cloudBuildService.trigger.repositoryEventConfig @defaults("r
 // the machine type and disk size of individual workers, `networkConfig`
 // gives the peered VPC network and egress option that isolate builds from
 // the public internet, and `state` reports the pool's lifecycle (CREATING,
-// RUNNING, DELETING, UPDATING).
+// RUNNING, DELETING, DELETED, UPDATING).
 private gcp.project.cloudBuildService.workerPool @defaults("name displayName state") {
   // Project ID
   projectId string
@@ -18260,7 +18289,7 @@ private gcp.project.cloudBuildService.workerPool @defaults("name displayName sta
   name string
   // Human-readable display name
   displayName string
-  // Worker pool state (CREATING, RUNNING, DELETING, UPDATING)
+  // Worker pool state (CREATING, RUNNING, DELETING, DELETED, UPDATING)
   state string
   // User-defined annotations (key-value pairs)
   annotations map[string]string
@@ -18831,7 +18860,7 @@ private gcp.project.privilegedAccessManagerService.grant @defaults("name request
   // State of the grant
   //
   // One of APPROVAL_AWAITED, DENIED, SCHEDULED, ACTIVATING, ACTIVE, ACTIVATION_FAILED,
-  // EXPIRED, REVOKING, REVOKED, ENDED, or STATE_UNSPECIFIED.
+  // EXPIRED, REVOKING, REVOKED, ENDED, WITHDRAWING, WITHDRAWN, or STATE_UNSPECIFIED.
   state string
   // Whether the bindings this grant conferred were changed outside Privileged Access Manager
   externallyModified bool
@@ -19268,7 +19297,7 @@ private gcp.project.datastreamService.connectionProfile @defaults("name profileT
 // on-premises or private-cloud data sources without traversing the public
 // internet. `network` resolves the peered VPC, `subnet` is the CIDR range
 // allocated to the peering, and `state` reports the lifecycle (CREATING,
-// CREATED, FAILED, DELETING, DELETED). Inspect `error` for failure details
+// CREATED, FAILED, DELETING, FAILED_TO_DELETE, DELETED). Inspect `error` for failure details
 // and `routes` for the routing entries configured inside the connection.
 private gcp.project.datastreamService.privateConnection @defaults("name state") {
   // Project ID

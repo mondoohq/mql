@@ -1165,7 +1165,7 @@ databricks.systemSchema @defaults("schema state") {
   // Whether the schema is enabled on the metastore
   //
   // One of ENABLE_INITIALIZED, ENABLE_COMPLETED, DISABLE_INITIALIZED,
-  // UNAVAILABLE, or AVAILABLE. Only ENABLE_COMPLETED means the schema is
+  // UNAVAILABLE, AVAILABLE, or MANAGED. Only ENABLE_COMPLETED means the schema is
   // populated and queryable.
   state string
 }
@@ -1559,7 +1559,7 @@ private databricks.clusterSpec @defaults("key dataSecurityMode sparkVersion") {
   dataSecurityMode string
   // Identity a single-user compute runs as, empty on other access modes
   singleUserName string
-  // Execution engine, PHOTON or STANDARD
+  // Execution engine, PHOTON, STANDARD, or NULL
   runtimeEngine string
   // Instance type of the worker nodes
   nodeTypeId string
@@ -2309,8 +2309,8 @@ databricks.networkPolicy @defaults("id egressRestrictionMode egressEnforcementMo
   blockedInternetDestinations map[string]string
   // Storage destinations serverless compute may reach
   //
-  // One entry per destination, each with a `type` of AWS_S3 or
-  // AZURE_STORAGE, and the `bucketName` and `region`, or the
+  // One entry per destination, each with a `type` of AWS_S3, AZURE_STORAGE,
+  // or GOOGLE_CLOUD_STORAGE, and the `bucketName` and `region`, or the
   // `azureStorageAccount` and `azureStorageService`, that identify it.
   allowedStorageDestinations []dict
 }

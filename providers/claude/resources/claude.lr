@@ -367,7 +367,7 @@ claude.file @defaults("id filename") {
 // instructions that extend agent capabilities. Skills can be
 // Anthropic-provided or custom, letting you audit which extensions
 // are available to agents and where they originate. The `source`
-// field is one of custom or anthropic.
+// field is one of custom, anthropic, anthropic_example, or plugin.
 claude.skill @defaults("id displayTitle") {
   // Skill identifier
   id string
@@ -632,8 +632,9 @@ claude.organization.workspace.member @defaults("workspaceRole") {
 // Claude organization member
 //
 // Member of the Claude organization, including their role assignment.
-// The `role` field is one of user, developer, billing, admin, or
-// claude_code_user.
+// The `role` field is one of user, developer, billing, admin,
+// claude_code_user, owner, primary_owner, membership_admin, or managed.
+// The last four apply to Claude Enterprise organizations.
 claude.organization.member @defaults("id name email role") {
   // User identifier
   id string
@@ -643,7 +644,8 @@ claude.organization.member @defaults("id name email role") {
   email string
   // Organization role
   //
-  // One of user, developer, billing, admin, or claude_code_user.
+  // One of user, developer, billing, admin, claude_code_user, owner,
+  // primary_owner, membership_admin, or managed.
   role string
   // Timestamp when the user was added to the organization
   addedAt time
@@ -660,7 +662,8 @@ claude.organization.invite @defaults("id email role status") {
   email string
   // Assigned role
   //
-  // One of user, developer, billing, admin, or claude_code_user.
+  // One of user, developer, billing, admin, claude_code_user, owner,
+  // primary_owner, membership_admin, or managed.
   role string
   // Invite status
   //
@@ -755,7 +758,8 @@ claude.organization.usageEntry @defaults("startingAt") {
   workspace() claude.organization.workspace
   // API service tier
   //
-  // One of standard, batch, priority, flex, or priority_on_demand.
+  // One of standard, batch, priority, flex, priority_on_demand, or
+  // flex_discount.
   serviceTier string
   // Uncached input tokens consumed
   uncachedInputTokens int

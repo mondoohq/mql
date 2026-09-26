@@ -1024,7 +1024,8 @@ private hetzner.iso @defaults("id name type") {
 // `ash` (Ashburn), or `hil` (Hillsboro). Select a location by its numeric
 // `id`, for example `hetzner.location(id: 1)`. Beyond the human-readable
 // `city`, `country`, and geographic coordinates, the `networkZone` groups
-// locations that can share private networks (eu-central, us-east, us-west),
+// locations that can share private networks (eu-central, us-east, us-west,
+// ap-southeast),
 // which matters when planning cross-region connectivity and data residency.
 // The servers, volumes, loadBalancers, primaryIps, floatingIps and
 // storageBoxes fields list what the project actually holds here, which is what
@@ -1033,11 +1034,11 @@ private hetzner.location @defaults("id name city") {
   init(id? int)
   // Location ID
   id int
-  // Slug name (fsn1, nbg1, hel1, ash, hil)
+  // Slug name (fsn1, nbg1, hel1, ash, hil, sin)
   name string
   // Description
   description string
-  // Country code (DE, FI, US)
+  // Country code (DE, FI, US, SG)
   country string
   // City
   city string
@@ -1045,7 +1046,7 @@ private hetzner.location @defaults("id name city") {
   latitude float
   // Longitude
   longitude float
-  // Network zone (eu-central, us-east, us-west)
+  // Network zone (eu-central, us-east, us-west, ap-southeast)
   networkZone string
   // Servers running in this location
   servers() []hetzner.server

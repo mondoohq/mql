@@ -735,7 +735,7 @@ private openstack.router @defaults("id name status") {
   name string
   // Operational status
   //
-  // One of ACTIVE, DOWN, BUILD, or ERROR.
+  // One of ACTIVE, DOWN, BUILD, ALLOCATING, or ERROR.
   status string
   // Whether the router is administratively up
   adminStateUp bool
@@ -778,7 +778,7 @@ private openstack.port @defaults("id name status macAddress") {
   id string
   // Port name
   name string
-  // Status (ACTIVE, DOWN, BUILD)
+  // Status (ACTIVE, DOWN, BUILD, ERROR, N/A)
   status string
   // Whether the port is administratively up
   adminStateUp bool
@@ -805,7 +805,8 @@ private openstack.port @defaults("id name status macAddress") {
   // Virtual interface card type bound to the port
   //
   // One of normal, direct, direct-physical, macvtap, baremetal,
-  // virtio-forwarder, vdpa, remote-managed, or smart-nic. Everything other than
+  // virtio-forwarder, vdpa, remote-managed, smart-nic, accelerator-direct, or
+  // accelerator-direct-physical. Everything other than
   // normal and macvtap hands the guest a hardware function, so the software
   // datapath that enforces security groups is bypassed. Empty when the cloud
   // does not expose port binding attributes to this user.
@@ -1576,7 +1577,7 @@ private openstack.octavia.member @defaults("id name address protocolPort weight"
   monitorPort int
   // Provisioning status (ACTIVE, PENDING_*, ERROR)
   provisioningStatus string
-  // Operating status (ONLINE, OFFLINE, DEGRADED, ERROR, NO_MONITOR)
+  // Operating status (ONLINE, OFFLINE, DEGRADED, ERROR, NO_MONITOR, DRAINING)
   operatingStatus string
   // Tags (microversion 2.5+)
   tags []string
@@ -3855,7 +3856,7 @@ private openstack.octavia.amphora @defaults("id role status certExpiration") {
   // Status
   //
   // One of BOOTING, ALLOCATED, READY, PENDING_CREATE, PENDING_DELETE, DELETED,
-  // or ERROR.
+  // FAILOVER_STOPPED, or ERROR.
   status string
   // Expiry of the certificate securing the control channel to this amphora
   certExpiration time
@@ -3911,7 +3912,11 @@ private openstack.orchestration.stack.resource @defaults("name type status") {
   //
   // One of INIT_COMPLETE, CREATE_IN_PROGRESS, CREATE_COMPLETE, CREATE_FAILED,
   // UPDATE_IN_PROGRESS, UPDATE_COMPLETE, UPDATE_FAILED, DELETE_IN_PROGRESS,
-  // DELETE_COMPLETE, DELETE_FAILED, CHECK_COMPLETE, or SNAPSHOT_COMPLETE.
+  // DELETE_COMPLETE, DELETE_FAILED, CHECK_COMPLETE, SNAPSHOT_COMPLETE,
+  // ROLLBACK_IN_PROGRESS, ROLLBACK_COMPLETE, ROLLBACK_FAILED, SUSPEND_IN_PROGRESS,
+  // SUSPEND_COMPLETE, SUSPEND_FAILED, RESUME_IN_PROGRESS, RESUME_COMPLETE,
+  // RESUME_FAILED, ADOPT_IN_PROGRESS, ADOPT_COMPLETE, ADOPT_FAILED,
+  // SNAPSHOT_IN_PROGRESS, SNAPSHOT_FAILED, CHECK_IN_PROGRESS, or CHECK_FAILED.
   status string
   // Reason for the current status
   statusReason string

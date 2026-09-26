@@ -94,8 +94,11 @@ auth0.client @defaults("name appType") @maturity("experimental") {
   description string
   // Application type
   //
-  // One of native, spa (single-page app), regular_web, or non_interactive
-  // (machine-to-machine).
+  // One of native, spa (single-page app), regular_web, non_interactive
+  // (machine-to-machine), resource_server, express_configuration,
+  // sso_integration, oag, or a third-party SSO integration type (rms, box,
+  // cloudbees, concur, dropbox, mscrm, echosign, egnyte, newrelic, office365,
+  // salesforce, sentry, sharepoint, slack, springcm, zendesk, or zoom).
   appType string
   // Whether this application is a "first party" application
   isFirstParty bool

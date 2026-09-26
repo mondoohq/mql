@@ -462,7 +462,7 @@ atlassian.jira.serverInfo @defaults("serverTitle") {
 // Jira user account
 //
 // Atlassian account as it appears in Jira: account ID, display
-// name, account type (atlassian, app, or customer), avatar, email, active
+// name, account type (atlassian, app, customer, or unknown), avatar, email, active
 // status, timezone, locale, group memberships, and the application roles
 // the user is granted (e.g., jira-software-users).
 atlassian.jira.user @defaults("name active") {
@@ -470,7 +470,7 @@ atlassian.jira.user @defaults("name active") {
   id string
   // Display name
   name string
-  // Account type (atlassian, app, customer)
+  // Account type (atlassian, app, customer, unknown)
   type string
   // Avatar URL
   picture string
@@ -528,7 +528,8 @@ atlassian.jira.applicationRole @defaults("name") {
 // Jira project
 //
 // Project identity (id, key, name, UUID, URL, email), its
-// project-type key (software, service_desk, or business), privacy,
+// project-type key (software, service_desk, business, or
+// product_discovery), privacy,
 // archived, and deleted state, custom properties, the project lead, the
 // permission scheme attached to it, and the components and versions defined
 // on the project. The unit of access control for project-level audits.

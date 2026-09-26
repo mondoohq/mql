@@ -34,7 +34,7 @@ hcp.organization @defaults("id name state") {
   id string
   // Human-readable organization name
   name string
-  // Lifecycle state, one of ACTIVE, PENDING, or SUSPENDED
+  // Lifecycle state, one of ACTIVE, PENDING, SUSPENDED, or PENDING_DELETE
   state string
   // Time the organization was created
   createdAt time
@@ -59,7 +59,7 @@ hcp.project @defaults("id name state") {
   name string
   // Free-form project description
   description string
-  // Lifecycle state, one of ACTIVE, PENDING, or DELETING
+  // Lifecycle state, one of ACTIVE, PENDING, DELETING, or DELETED
   state string
   // Time the project was created
   createdAt time

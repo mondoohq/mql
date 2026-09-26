@@ -644,7 +644,7 @@ private stackit.network @defaults("id name routed") {
   ipv6Nameservers []string
   // IPv6 prefix list
   ipv6Prefixes []string
-  // Network state (CREATING, CREATED, UPDATING, DELETING, FAILED)
+  // Network state (CREATING, CREATED, UPDATING, DELETING, FAILED, DELETED, UPDATED)
   state string
   // Whether DHCP is enabled on the network
   //

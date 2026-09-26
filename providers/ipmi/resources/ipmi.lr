@@ -71,7 +71,7 @@ ipmi.chassis {
   // `parameterValidUnlocked`, and `bootFlags`, an object holding the boot-flag
   // overrides. Within `bootFlags`: `bootDeviceSelector` (device forced for the
   // next boot, one of none, pxe, disk, safe, diag, cdrom, bios, rfloppy,
-  // rprimary, rcdrom, rdisk, or floppy), `biosVerbosity` (default, quiet,
+  // rprimary, rcdrom, rdisk, floppy, or unknown), `biosVerbosity` (default, quiet,
   // verbose, or reserved), `consoleRedirection` (bios, skip, redirected, or
   // reserved), `biosMuxControlOverride` (recommended, force-bmc, force-system,
   // or reserved), and the boolean overrides `biosFlagsValid`,

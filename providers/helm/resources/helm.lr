@@ -423,7 +423,7 @@ private helm.chart.lintResult @defaults("passed") {
 private helm.chart.lintMessage @defaults("severity message") {
   // Severity
   //
-  // One of "info", "warning", or "error".
+  // One of "info", "warning", "error", or "unknown".
   severity string
   // Chart-relative path the message concerns
   path string

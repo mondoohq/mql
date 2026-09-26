@@ -188,7 +188,7 @@ mongodbatlas.orgUser @defaults("username orgMembershipStatus") {
   id string
   // Login name (email)
   username string
-  // Membership status (ACTIVE or PENDING)
+  // Membership status (ACTIVE, PENDING, INVITATION_EXPIRED, or INVITATION_REJECTED)
   orgMembershipStatus string
   // Organization-level roles granted to the member
   orgRoles []string
@@ -518,8 +518,8 @@ private mongodbatlas.backupScheduleConfig @defaults("referenceHourOfDay restoreW
   nextSnapshot time
   // Retention policy items
   //
-  // Each entry carries frequencyType (hourly, daily, weekly, monthly, or
-  // yearly), frequencyInterval, retentionUnit (days, weeks, months, or years),
+  // Each entry carries frequencyType (hourly, daily, weekly, monthly, yearly,
+  // or ondemand), frequencyInterval, retentionUnit (days, weeks, months, or years),
   // and retentionValue. An empty list means no snapshots are retained on a
   // schedule.
   policyItems []dict
@@ -598,7 +598,7 @@ mongodbatlas.snapshotExportBucket @defaults("bucketName cloudProvider") {
   id string
   // Name of the storage bucket (an AWS S3 bucket or an Azure Blob Storage container)
   bucketName string
-  // Cloud provider hosting the bucket (AWS or AZURE)
+  // Cloud provider hosting the bucket (AWS, AZURE, or GCP)
   cloudProvider string
   // Azure region the storage account is in, null for an AWS bucket
   region string
@@ -644,7 +644,7 @@ mongodbatlas.searchIndex @defaults("name type database collectionName status") {
   collectionName string
   // Build status
   //
-  // One of READY, BUILDING, FAILED, STALE, PENDING, or DELETING.
+  // One of READY, BUILDING, FAILED, STALE, PENDING, DELETING, or DOES_NOT_EXIST.
   status string
   // Whether the index is currently queryable
   queryable bool
@@ -1398,7 +1398,7 @@ mongodbatlas.projectUser @defaults("username roles orgMembershipStatus") {
   username string
   // Roles the user holds on the project
   roles []string
-  // Organization membership status (ACTIVE or PENDING)
+  // Organization membership status (ACTIVE, PENDING, INVITATION_EXPIRED, or INVITATION_REJECTED)
   orgMembershipStatus string
   // Time the user last authenticated, null when they never have
   lastAuth time

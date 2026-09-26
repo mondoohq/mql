@@ -189,7 +189,7 @@ private cloudflare.zone.owner @defaults("name") {
 
 // Cloudflare zone security settings
 private cloudflare.zone.settings {
-	// SSL/TLS encryption mode (off, flexible, full, strict)
+	// SSL/TLS encryption mode (off, flexible, full, strict, origin_pull)
 	ssl string
 	// Whether HTTPS is always used (on, off)
 	alwaysUseHttps string
@@ -199,7 +199,7 @@ private cloudflare.zone.settings {
 	tls13 string
 	// Automatic HTTPS rewrites (on, off)
 	automaticHttpsRewrites string
-	// Security level (essentially_off, low, medium, high, under_attack)
+	// Security level (off, essentially_off, low, medium, high, under_attack)
 	securityLevel string
 	// Web Application Firewall (on, off)
 	waf string
@@ -1022,7 +1022,7 @@ private cloudflare.one.idp @defaults("name") {
 	name string // The name of the identity provider, shown to users on the login page.
 	type string // The type of the identity provider.
 
-	// Whether this IdP is SAML-based (SAML, Centrify, OneLogin, Ping, or Okta-via-the-generic-saml-type; OIDC and social IdPs are excluded)
+	// Whether this IdP is SAML-based (SAML, ADFS, Centrify, OneLogin, Ping, PingOne, or Okta-via-the-generic-saml-type; OIDC and social IdPs are excluded)
 	saml bool
 	// SAML SSO target URL (only set for SAML IdPs)
 	ssoTargetUrl string
@@ -1250,7 +1250,7 @@ private cloudflare.one.gatewayRule @defaults("name action") {
 	identity string
 	// Filter expression for device posture
 	devicePosture string
-	// Which filter types apply (dns, http, l4, egress, resolve)
+	// Which filter types apply (dns, http, l4, egress, resolve, dns_resolver)
 	filters []string
 	// Rule version
 	version int
@@ -1266,7 +1266,7 @@ private cloudflare.one.list @defaults("name type") {
 	id string
 	// List name
 	name string
-	// List type (SERIAL, URL, DOMAIN, EMAIL, IP)
+	// List type (SERIAL, URL, DOMAIN, EMAIL, IP, CATEGORY, LOCATION, DEVICE, AAGUID)
 	type string
 	// List description
 	description string
@@ -1380,7 +1380,7 @@ private cloudflare.one.devicePostureIntegration @defaults("name type") {
 	id string
 	// Integration name
 	name string
-	// Integration type (workspace_one, crowdstrike_s2s, uptycs, intune, kolide, tanium, sentinelone_s2s)
+	// Integration type (workspace_one, crowdstrike_s2s, uptycs, intune, kolide, tanium, sentinelone_s2s, tanium_s2s, custom_s2s)
 	type string
 	// Check interval
 	interval string
@@ -1729,7 +1729,7 @@ private cloudflare.zone.originCACertificate @defaults("id requestType") {
 	id string
 	// Hostnames covered by the certificate
 	hostnames []string
-	// Certificate request type (origin-rsa, origin-ecc)
+	// Certificate request type (origin-rsa, origin-ecc, keyless-certificate)
 	requestType string
 	// Requested validity in days
 	requestValidity int
@@ -1878,7 +1878,7 @@ private cloudflare.zone.botManagement {
 	autoUpdateModel bool
 	// Whether the latest model is being used
 	usingLatestModel bool
-	// AI bots protection setting (block, disabled)
+	// AI bots protection setting (block, disabled, only_on_ad_pages)
 	aiBotsProtection string
 }
 
@@ -2001,7 +2001,7 @@ private cloudflare.notificationPolicy @defaults("name alertType enabled") {
 
 // Cloudflare zone DNSSEC configuration
 private cloudflare.zone.dnssec @defaults("status algorithm") {
-	// DNSSEC status (active, disabled, pending)
+	// DNSSEC status (active, disabled, pending, pending-disabled, error)
 	status string
 	// DNSKEY flags
 	flags int

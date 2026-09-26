@@ -603,7 +603,7 @@ private k8s.pod @defaults("namespace name created") @context("k8s.context") @roo
   nodeSelector() map[string]string
   // Node taints this pod tolerates
   //
-  // Each entry has keys key, operator (Exists or Equal), value, effect
+  // Each entry has keys key, operator (Exists, Equal, Lt, or Gt), value, effect
   // (NoSchedule, PreferNoSchedule, or NoExecute), and tolerationSeconds. An
   // empty effect tolerates the matched key under every taint effect.
   tolerations() []dict
@@ -1998,7 +1998,7 @@ private k8s.container @defaults("name") {
   //
   // One entry per variable, with keys `name`, `value` (a literal value), and
   // `valueFrom` for values sourced from elsewhere (`configMapKeyRef`,
-  // `secretKeyRef`, `fieldRef`, or `resourceFieldRef`).
+  // `secretKeyRef`, `fieldRef`, `resourceFieldRef`, or `fileKeyRef`).
   env dict
   // Sources to populate environment variables in bulk
   //
@@ -2202,8 +2202,8 @@ private k8s.initContainer @defaults("name") {
   // Environment variables set directly on the container
   //
   // Each entry has `name` and either a literal `value` or a `valueFrom`
-  // source (`fieldRef`, `resourceFieldRef`, `configMapKeyRef`, or
-  // `secretKeyRef`). Values pulled from a ConfigMap or Secret can expose
+  // source (`fieldRef`, `resourceFieldRef`, `configMapKeyRef`,
+  // `secretKeyRef`, or `fileKeyRef`). Values pulled from a ConfigMap or Secret can expose
   // sensitive data to the container.
   env dict
   // Sources that populate environment variables in bulk
@@ -2350,7 +2350,7 @@ private k8s.ephemeralContainer @defaults("name") {
   //
   // One entry per variable, each with `name` and either an inline `value`
   // or a `valueFrom` source (`fieldRef`, `resourceFieldRef`,
-  // `configMapKeyRef`, or `secretKeyRef`).
+  // `configMapKeyRef`, `secretKeyRef`, or `fileKeyRef`).
   env dict
   // Sources that populate environment variables in bulk
   //
@@ -3383,7 +3383,7 @@ private k8s.customresource @defaults("name namespace created") @context("k8s.con
 // The capacity, accessModes, volumeMode, and storageClass fields describe the
 // volume's size and capabilities, persistentVolumeReclaimPolicy governs what
 // happens when its claim is released, and phase reports its lifecycle state
-// (Available, Bound, Released, or Failed). The claim field returns the
+// (Pending, Available, Bound, Released, or Failed). The claim field returns the
 // PersistentVolumeClaim currently bound to the volume.
 private k8s.persistentvolume @defaults("name capacity['storage'] phase storageClassName created") @context("k8s.context") {
   // Mondoo ID for the Kubernetes object
@@ -3759,8 +3759,8 @@ private k8s.horizontalpodautoscaler @defaults("namespace name minReplicas maxRep
   currentMetrics() []dict
   // Status conditions
   //
-  // Each entry has `type` (`AbleToScale`, `ScalingActive`, or
-  // `ScalingLimited`), `status` (`True`, `False`, or `Unknown`),
+  // Each entry has `type` (`AbleToScale`, `ScalingActive`,
+  // `ScalingLimited`, or `ScaledToZero`), `status` (`True`, `False`, or `Unknown`),
   // `lastTransitionTime`, `reason`, and `message` keys reporting whether the
   // autoscaler can act and why it is or is not scaling.
   conditions() []dict

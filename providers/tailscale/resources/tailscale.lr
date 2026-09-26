@@ -555,7 +555,7 @@ private tailscale.service @defaults("name ports") {
 // Configured log stream that forwards tailnet logs to an external
 // destination. `logType` is `configuration` (admin audit log)
 // or `network` (flow log). `destinationType` is one of `splunk`,
-// `elastic`, `panther`, `cribl`, `datadog`, `axiom`, or `s3`. For HTTP
+// `elastic`, `panther`, `cribl`, `datadog`, `axiom`, `s3`, or `gcs`. For HTTP
 // sinks `url` and `user` carry the connection details; for S3 sinks
 // `s3Bucket`, `s3Region`, `s3KeyPrefix`, and `s3AuthenticationType`
 // (`accesskey` or `rolearn`) define the bucket and authentication mode,
@@ -567,7 +567,7 @@ private tailscale.logstream @defaults("logType destinationType") {
   logType string
   // Destination service receiving the stream
   //
-  // One of `splunk`, `elastic`, `panther`, `cribl`, `datadog`, `axiom`, or `s3`.
+  // One of `splunk`, `elastic`, `panther`, `cribl`, `datadog`, `axiom`, `s3`, or `gcs`.
   destinationType string
   // Endpoint URL for HTTP destinations
   url string

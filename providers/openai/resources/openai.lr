@@ -334,7 +334,7 @@ openai.file @defaults("id filename purpose") @maturity("preview") {
   createdAt time
   // Intended use of the file
   //
-  // One of assistants, assistants_output, batch, batch_output, fine-tune, fine-tune-results, or vision.
+  // One of assistants, assistants_output, batch, batch_output, fine-tune, fine-tune-results, vision, or user_data.
   purpose string
   // Processing status
   //
@@ -703,8 +703,8 @@ openai.project.apiKey @defaults("id name") @maturity("preview") {
 // OpenAI project service account
 //
 // Service account within an organization project. Service accounts
-// are non-human identities used for API automation, each assigned an
-// owner or member role. Audit service account roles and creation
+// are non-human identities used for API automation, each assigned the
+// owner or member role, or none. Audit service account roles and creation
 // dates to keep automation credentials scoped and accounted for.
 openai.project.serviceAccount @defaults("id name role") @maturity("preview") {
   // Service account identifier
@@ -713,7 +713,7 @@ openai.project.serviceAccount @defaults("id name role") @maturity("preview") {
   name string
   // Assigned role
   //
-  // One of owner or member.
+  // One of owner, member, or none.
   role string
   // Creation timestamp
   createdAt time
@@ -1118,6 +1118,8 @@ openai.vault @defaults("id name") @maturity("preview") {
 // static_bearer carries a token with no expiration and nothing to renew it, so
 // a static_bearer credential against an external `mcpServerUrl` stays valid
 // until someone rotates it by hand.
+// environment_variable hands the secret to the agent's sandbox as an
+// environment variable.
 openai.vault.credential @defaults("id name authType mcpServerUrl") @maturity("preview") {
   // Credential identifier
   id string
@@ -1129,7 +1131,7 @@ openai.vault.credential @defaults("id name authType mcpServerUrl") @maturity("pr
   vault() openai.vault
   // Authentication method
   //
-  // One of mcp_oauth or static_bearer.
+  // One of mcp_oauth, static_bearer, or environment_variable.
   authType string
   // HTTPS MCP server URL this credential authorizes
   mcpServerUrl string

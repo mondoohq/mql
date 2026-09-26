@@ -214,7 +214,7 @@ private aws.billing.budget @defaults("name budgetType budgetLimit actualSpend") 
   //
   // One of COST, USAGE, RI_UTILIZATION, RI_COVERAGE, SAVINGS_PLANS_UTILIZATION, or SAVINGS_PLANS_COVERAGE.
   budgetType string
-  // Reporting period: DAILY, MONTHLY, QUARTERLY, or ANNUALLY
+  // Reporting period: DAILY, MONTHLY, QUARTERLY, ANNUALLY, or CUSTOM
   timeUnit string
   // Configured budget ceiling
   budgetLimit float
@@ -497,7 +497,7 @@ aws.vpc @defaults("id isDefault cidrBlock region") {
   name string
   // IPv4 CIDR block of the VPC
   cidrBlock string
-  // State of the VPC: pending or available
+  // State of the VPC: pending, available, or deleting
   state string
   // Whether the VPC is the default VPC
   isDefault bool
@@ -690,9 +690,9 @@ private aws.vpc.routetable.route @defaults("destinationCidrBlock state") {
   carrierGatewayId string
   // ARN of the core network
   coreNetworkArn string
-  // How the route was created (CreateRouteTable, CreateRoute, EnableVgwRoutePropagation)
+  // How the route was created (CreateRouteTable, CreateRoute, EnableVgwRoutePropagation, Advertisement)
   origin string
-  // State of the route (active, blackhole)
+  // State of the route (active, blackhole, filtered)
   state string
 }
 
@@ -1671,7 +1671,7 @@ private aws.networkfirewall.firewall @defaults("arn name region") {
   // One entry per configured listener, each with `port` and `type`. Empty when
   // the firewall does not run any proxy listeners.
   proxyListeners []dict
-  // Readiness of the firewall to handle traffic (READY, PROVISIONING, DELETING)
+  // Readiness of the firewall to handle traffic (READY, PROVISIONING, DELETING, FAILED)
   status() string
   // Configuration sync state summary across all Availability Zones (IN_SYNC, PENDING, CAPACITY_CONSTRAINED)
   configurationSyncStateSummary() string
@@ -1809,7 +1809,7 @@ private aws.networkfirewall.rulegroup @defaults("arn name region") {
   consumedCapacity int
   // Number of firewall policies that reference this rule group
   numberOfAssociations int
-  // Type of the rule group (STATELESS or STATEFUL)
+  // Type of the rule group (STATELESS, STATEFUL, or STATEFUL_DOMAIN)
   type string
   // Status of the rule group (ACTIVE, DELETING, ERROR)
   ruleGroupStatus string
@@ -2132,7 +2132,7 @@ private aws.efs.mountTarget @defaults("mountTargetId availabilityZone") {
   ipAddress string
   // Security groups attached to mount target
   securityGroups() []aws.ec2.securitygroup
-  // Mount target state (creating, available, deleting)
+  // Mount target state (creating, available, updating, deleting, deleted, error)
   lifecycleState string
   // Network interface the mount target uses
   networkInterface() aws.ec2.networkinterface
@@ -2211,7 +2211,7 @@ private aws.fsx.filesystem @defaults("id type region") {
   lifecycle string
   // Storage capacity in GiB
   storageCapacity int
-  // Storage type (SSD, HDD)
+  // Storage type (SSD, HDD, INTELLIGENT_TIERING)
   storageType string
   // Whether file system is encrypted at rest (true if kmsKeyId is set)
   encrypted() bool
@@ -2298,7 +2298,7 @@ private aws.fsx.volume @defaults("id name lifecycle region") {
   fileSystem() aws.fsx.filesystem
   // Volume type (ONTAP or OPENZFS)
   volumeType string
-  // Lifecycle status (AVAILABLE, CREATING, DELETING, FAILED, MISCONFIGURED, PENDING)
+  // Lifecycle status (AVAILABLE, CREATING, CREATED, DELETING, FAILED, MISCONFIGURED, PENDING)
   lifecycle string
   // Storage virtual machine ID (ONTAP only)
   storageVirtualMachineId string
@@ -2435,7 +2435,7 @@ private aws.kms.key @defaults("id region aliases metadata.Description") {
   externalAccessFindings() []aws.iam.accessAnalyzer.finding
   // Describes the type of key material in the key
   //
-  // One of: SYMMETRIC_DEFAULT, RSA_2048, RSA_3072, RSA_4096, ECC_NIST_P256, ECC_NIST_P384, ECC_NIST_P521, ECC_SECG_P256K1, HMAC_224, HMAC_256, HMAC_384, HMAC_512, SM2.
+  // One of: SYMMETRIC_DEFAULT, RSA_2048, RSA_3072, RSA_4096, ECC_NIST_P256, ECC_NIST_P384, ECC_NIST_P521, ECC_SECG_P256K1, HMAC_224, HMAC_256, HMAC_384, HMAC_512, SM2, ML_DSA_44, ML_DSA_65, ML_DSA_87, ECC_NIST_EDWARDS25519.
   keySpec() string
   // Cryptographic operations the key supports: SIGN_VERIFY, ENCRYPT_DECRYPT, GENERATE_VERIFY_MAC, KEY_AGREEMENT
   keyUsage() string
@@ -2862,7 +2862,7 @@ private aws.iam.user.serviceSpecificCredential @defaults("serviceName status cre
   serviceUsername string
   // Friendly name given to the credential (empty when none was set)
   serviceCredentialAlias string
-  // Status of the credential: Active or Inactive
+  // Status of the credential: Active, Inactive, or Expired
   status string
   // Time when the credential was created
   createdAt time
@@ -3804,7 +3804,7 @@ private aws.sagemaker.notebookinstance @defaults("arn name") {
   createdAt time
   // Time when the notebook instance was last modified
   lastModifiedAt time
-  // Status of the notebook instance: Pending, InService, Stopping, Stopped, Failed, Deleting, or Updating
+  // Status of the notebook instance: Pending, InService, Stopping, Stopped, Failed, Deleting, Updating, PendingMaintenance, or InMaintenance
   status string
   // URL to connect to the Jupyter notebook
   url string
@@ -4068,7 +4068,7 @@ private aws.sagemaker.trainingjob.channel @defaults("channelName s3Uri") {
   //
   // Null when the channel reads from a file system rather than S3.
   bucket() aws.s3.bucket
-  // S3 data type: S3Prefix, ManifestFile, or AugmentedManifestFile
+  // S3 data type: S3Prefix, ManifestFile, AugmentedManifestFile, or Converse
   s3DataType string
   // How the data is distributed to training instances: FullyReplicated or ShardedByS3Key
   s3DataDistributionType string
@@ -4387,7 +4387,7 @@ private aws.sagemaker.clusterRestrictedInstanceGroup @defaults("instanceGroupNam
   instanceType string
   // Region where the cluster exists
   region string
-  // Status: InService, Creating, Updating, Failed, Degraded, or Deleting
+  // Status: InService, Creating, Updating, Failed, Degraded, SystemUpdating, or Deleting
   status string
   // Current number of instances in the group
   currentCount int
@@ -4475,7 +4475,7 @@ private aws.sagemaker.featureGroup @defaults("arn name status") {
   onlineStoreConfig() dict
   // Failure reason if the feature group failed
   failureReason() string
-  // Offline store replication status: Active or Blocked
+  // Offline store replication status: Active, Blocked, or Disabled
   offlineStoreStatus() string
   // Size of the online store in bytes
   onlineStoreTotalSizeBytes() int
@@ -5336,7 +5336,7 @@ private aws.sagemaker.autoMLJob.inputChannel @defaults("targetAttributeName s3Ur
   compressionType string
   // S3 URI for input data
   s3Uri string
-  // S3 data type: ManifestFile or S3Prefix
+  // S3 data type: ManifestFile, S3Prefix, or AugmentedManifestFile
   s3DataType string
 }
 
@@ -6557,8 +6557,8 @@ private aws.opensearch.domain @defaults("name engineVersion") {
   // Minimum TLS security policy
   //
   // Minimum TLS version the domain endpoint negotiates. One of
-  // Policy-Min-TLS-1-0-2019-07, Policy-Min-TLS-1-2-2019-07, or
-  // Policy-Min-TLS-1-2-PFS-2023-10.
+  // Policy-Min-TLS-1-0-2019-07, Policy-Min-TLS-1-2-2019-07,
+  // Policy-Min-TLS-1-2-PFS-2023-10, or Policy-Min-TLS-1-2-RFC9151-FIPS-2024-08.
   tlsSecurityPolicy string
   // Domain access policy as a JSON-formatted string
   //
@@ -6738,7 +6738,7 @@ private aws.acm.certificate @defaults("domainName issuer createdAt notAfter") {
   // Per-domain validation details
   //
   // One entry per domain covered by the certificate. Each dict carries
-  // `DomainName`, the `ValidationMethod` (DNS or EMAIL), the
+  // `DomainName`, the `ValidationMethod` (DNS, EMAIL, or HTTP), the
   // `ValidationStatus` (PENDING_VALIDATION, SUCCESS, or FAILED),
   // `ValidationDomain`, `ValidationEmails`, and for DNS validation a
   // `ResourceRecord` holding the `Name`, `Type`, and `Value` of the CNAME
@@ -6811,7 +6811,7 @@ private aws.autoscaling.group @defaults("name region minSize maxSize") {
   name string
   // List of load balancer names associated with the group
   loadBalancerNames []string
-  // Health check type used by the group: ELB or EC2
+  // Health check type used by the group: ELB, EC2, EBS, or VPC_LATTICE
   healthCheckType string
   // Tags for the asg
   tags map[string]string
@@ -7279,7 +7279,7 @@ private aws.elb.listener @defaults("arn port protocol") {
   loadBalancer() aws.elb.loadbalancer
   // Port on which the listener listens
   port int
-  // Protocol for connections from clients to the load balancer (HTTP, HTTPS, TCP, TLS, UDP, TCP_UDP, GENEVE)
+  // Protocol for connections from clients to the load balancer (HTTP, HTTPS, TCP, TLS, UDP, TCP_UDP, GENEVE, QUIC, TCP_QUIC)
   protocol string
   // SSL policy for HTTPS/TLS listeners
   sslPolicy string
@@ -7287,10 +7287,11 @@ private aws.elb.listener @defaults("arn port protocol") {
   //
   // Actions the listener applies to requests that match no rule. Each dict
   // has a `Type` (`forward`, `redirect`, `fixed-response`,
-  // `authenticate-cognito`, or `authenticate-oidc`), an `Order`, and the
-  // config block for that type (`TargetGroupArn` or `ForwardConfig`,
-  // `RedirectConfig`, `FixedResponseConfig`, `AuthenticateCognitoConfig`,
-  // or `AuthenticateOidcConfig`). For the forward targets resolved to
+  // `authenticate-cognito`, `authenticate-oidc`, or `jwt-validation`), an
+  // `Order`, and the config block for that type (`TargetGroupArn` or
+  // `ForwardConfig`, `RedirectConfig`, `FixedResponseConfig`,
+  // `AuthenticateCognitoConfig`, `AuthenticateOidcConfig`, or
+  // `JwtValidationConfig`). For the forward targets resolved to
   // typed resources, use the forwardTargetGroups field.
   defaultActions []dict
   // Target groups this listener forwards to by default
@@ -7385,8 +7386,8 @@ private aws.elb.listener.rule @defaults("arn priority isDefault") {
   // Actions the rule applies to matching requests
   //
   // Each dict has a `Type` (forward, redirect, fixed-response,
-  // authenticate-cognito, or authenticate-oidc), an `Order`, and the config
-  // block for that type.
+  // authenticate-cognito, authenticate-oidc, or jwt-validation), an `Order`,
+  // and the config block for that type.
   actions []dict
 
   // Tags for the listener rule
@@ -7565,13 +7566,13 @@ private aws.codebuild.project @defaults("arn name") {
   securityGroups() []aws.ec2.securitygroup
   // Build environment type
   //
-  // One of: LINUX_CONTAINER, LINUX_GPU_CONTAINER, WINDOWS_SERVER_2019_CONTAINER, ARM_CONTAINER, LINUX_LAMBDA_CONTAINER, ARM_LAMBDA_CONTAINER, MAC_ARM.
+  // One of: LINUX_CONTAINER, LINUX_GPU_CONTAINER, WINDOWS_SERVER_2019_CONTAINER, ARM_CONTAINER, LINUX_LAMBDA_CONTAINER, ARM_LAMBDA_CONTAINER, MAC_ARM, WINDOWS_CONTAINER, WINDOWS_SERVER_2022_CONTAINER, LINUX_EC2, ARM_EC2, WINDOWS_EC2.
   environmentType string
   // Docker image tag or digest used for the build environment
   environmentImage string
   // Compute size used for builds
   //
-  // One of: BUILD_GENERAL1_SMALL, BUILD_GENERAL1_MEDIUM, BUILD_GENERAL1_LARGE, BUILD_GENERAL1_XLARGE, BUILD_GENERAL1_2XLARGE, BUILD_LAMBDA_1GB through BUILD_LAMBDA_10GB, or ATTRIBUTE_BASED_COMPUTE.
+  // One of: BUILD_GENERAL1_SMALL, BUILD_GENERAL1_MEDIUM, BUILD_GENERAL1_LARGE, BUILD_GENERAL1_XLARGE, BUILD_GENERAL1_2XLARGE, BUILD_LAMBDA_1GB through BUILD_LAMBDA_10GB, ATTRIBUTE_BASED_COMPUTE, or CUSTOM_INSTANCE_TYPE.
   environmentComputeType string
   // ARN of an S3 object containing the PEM-encoded certificate for the build environment
   environmentCertificate string
@@ -7967,7 +7968,7 @@ private aws.guardduty.detector @defaults("id region") {
 private aws.guardduty.detector.feature @defaults("name status") {
   // Feature name
   //
-  // One of: S3_DATA_EVENTS, EKS_AUDIT_LOGS, EBS_MALWARE_PROTECTION, RDS_LOGIN_EVENTS, EKS_RUNTIME_MONITORING, LAMBDA_NETWORK_LOGS, RUNTIME_MONITORING, AI_ANALYST.
+  // One of: S3_DATA_EVENTS, EKS_AUDIT_LOGS, EBS_MALWARE_PROTECTION, RDS_LOGIN_EVENTS, EKS_RUNTIME_MONITORING, LAMBDA_NETWORK_LOGS, RUNTIME_MONITORING, AI_ANALYST, AI_PROTECTION, FLOW_LOGS, CLOUD_TRAIL, DNS_LOGS.
   name string
   // Feature status: ENABLED, DISABLED
   status string
@@ -9478,11 +9479,11 @@ private aws.ecs.capacityProvider @defaults("name status region") {
   name string
   // Region where the capacity provider exists
   region string
-  // Status of the capacity provider (ACTIVE, INACTIVE)
+  // Status of the capacity provider (ACTIVE, INACTIVE, PROVISIONING, DEPROVISIONING)
   status string
   // Update status
   //
-  // One of DELETE_IN_PROGRESS, DELETE_COMPLETE, DELETE_FAILED, UPDATE_IN_PROGRESS, UPDATE_COMPLETE, or UPDATE_FAILED.
+  // One of CREATE_IN_PROGRESS, CREATE_COMPLETE, CREATE_FAILED, DELETE_IN_PROGRESS, DELETE_COMPLETE, DELETE_FAILED, UPDATE_IN_PROGRESS, UPDATE_COMPLETE, or UPDATE_FAILED.
   updateStatus string
   // Tags for the capacity provider
   tags map[string]string
@@ -9758,7 +9759,7 @@ private aws.ecs.task @defaults("lastStatus platformFamily platformVersion") {
   memory string
   // Health status of the task (HEALTHY, UNHEALTHY, UNKNOWN)
   healthStatus string
-  // Launch type for the task (EC2, FARGATE, EXTERNAL)
+  // Launch type for the task (EC2, FARGATE, EXTERNAL, MANAGED_INSTANCES)
   launchType string
   // Capacity provider that launched the task
   capacityProviderName string
@@ -9898,7 +9899,7 @@ private aws.ecs.taskDefinition @defaults("arn family revision") {
   registeredAt() time
   // ARN of the principal that registered this task definition revision
   registeredBy() string
-  // Launch types the task definition is compatible with (EC2, FARGATE, EXTERNAL)
+  // Launch types the task definition is compatible with (EC2, FARGATE, EXTERNAL, MANAGED_INSTANCES)
   requiresCompatibilities() []string
   // CPU architecture the task runs on (X86_64, ARM64)
   runtimePlatformCpuArchitecture() string
@@ -10488,7 +10489,7 @@ private aws.emr.cluster.step @defaults("name status") {
   id string
   // Step name
   name string
-  // Action to take on failure: TERMINATE_CLUSTER, CANCEL_AND_WAIT, CONTINUE
+  // Action to take on failure: TERMINATE_CLUSTER, CANCEL_AND_WAIT, CONTINUE, TERMINATE_JOB_FLOW
   actionOnFailure string
   // Step execution state: PENDING, CANCEL_PENDING, RUNNING, COMPLETED, CANCELLED, FAILED, INTERRUPTED
   status string
@@ -11826,7 +11827,7 @@ private aws.cloudwatch.loggroup @defaults("arn") {
   managedBy() string
   // Data protection policy status
   //
-  // One of ACTIVATED, DELETED, or ARCHIVED. ACTIVATED indicates that the log
+  // One of ACTIVATED, DELETED, ARCHIVED, or DISABLED. ACTIVATED indicates that the log
   // group has a data protection policy currently in effect; DELETED and
   // ARCHIVED indicate that the group had a policy in the past. Unset when
   // the group has never had a data protection policy.
@@ -12864,7 +12865,7 @@ private aws.cloudtrail.eventDataStore @defaults("name status") {
   billingMode() string
   // Tags for the event data store
   tags() map[string]string
-  // Lake query federation status: ENABLED or DISABLED
+  // Lake query federation status: ENABLED, DISABLED, ENABLING, or DISABLING
   federationStatus() string
   // IAM role used to access resources for the federated event data store
   federationRole() aws.iam.role
@@ -13825,7 +13826,7 @@ private aws.drs.replicationConfiguration @defaults("sourceServerID") {
   useDedicatedReplicationServer bool
   // EC2 instance type for replication server
   replicationServerInstanceType string
-  // EBS encryption mode (DEFAULT, CUSTOM)
+  // EBS encryption mode (DEFAULT, CUSTOM, NONE)
   ebsEncryption string
   // Custom KMS key for EBS encryption
   ebsEncryptionKey() aws.kms.key
@@ -14237,8 +14238,8 @@ aws.dynamodb {
   // On-demand and system backups across all DynamoDB tables
   //
   // Each entry carries BackupArn, BackupName, BackupCreationDateTime,
-  // BackupExpiryDateTime, BackupSizeBytes, BackupStatus (CREATING, ACTIVE, or
-  // DELETED), BackupType (USER, SYSTEM, or AWS_BACKUP), and the source
+  // BackupExpiryDateTime, BackupSizeBytes, BackupStatus (CREATING, ACTIVE,
+  // AVAILABLE, or DELETED), BackupType (USER, SYSTEM, or AWS_BACKUP), and the source
   // TableName, TableId, and TableArn.
   backups() []dict
   // List of global tables for DynamoDB
@@ -14365,8 +14366,8 @@ private aws.dynamodb.table @defaults("name region") {
   // On-demand and system backups of the table
   //
   // Each entry carries BackupArn, BackupName, BackupCreationDateTime,
-  // BackupExpiryDateTime, BackupSizeBytes, BackupStatus (CREATING, ACTIVE, or
-  // DELETED), and BackupType (USER, SYSTEM, or AWS_BACKUP).
+  // BackupExpiryDateTime, BackupSizeBytes, BackupStatus (CREATING, ACTIVE,
+  // AVAILABLE, or DELETED), and BackupType (USER, SYSTEM, or AWS_BACKUP).
   backups() []dict
   // Server-side encryption settings for the table
   //
@@ -15480,7 +15481,7 @@ private aws.elasticache.cluster @defaults("cacheClusterId region nodeType engine
   clientDownloadLandingPage string
   // Node type for the nodes in the cluster
   nodeType string
-  // Name of the cache engine used for this cluster: Memcached or Redis
+  // Name of the cache engine used for this cluster: Memcached, Redis, or Valkey
   engine string
   // Version of the cache engine that is used in this cluster
   engineVersion string
@@ -15564,7 +15565,7 @@ private aws.elasticache.serverlessCache @defaults("name description status engin
   name string
   // Description of the serverless cache
   description string
-  // Cache engine used for this cluster: Memcached or Redis
+  // Cache engine used for this cluster: Memcached, Redis, or Valkey
   engine string
   // Version of the cache engine that is used in this cluster
   engineVersion string
@@ -16460,7 +16461,8 @@ private aws.route53.record @defaults("name type") {
 //
 // Health check that Route 53 uses to drive DNS failover and to alarm on
 // endpoint availability. `type` selects what is measured (HTTP, HTTPS,
-// TCP, CALCULATED, or CLOUDWATCH_METRIC); for endpoint checks the target
+// HTTP_STR_MATCH, HTTPS_STR_MATCH, TCP, CALCULATED, CLOUDWATCH_METRIC, or
+// RECOVERY_CONTROL); for endpoint checks the target
 // is given by `ipAddress` or `fullyQualifiedDomainName` plus `port` and
 // `resourcePath`, and `status` reports the latest observed result.
 // CALCULATED checks aggregate `childHealthChecks` against
@@ -16472,7 +16474,7 @@ private aws.route53.healthCheck @defaults("id type protocol") {
   arn string
   // Tags associated with the health check
   tags map[string]string
-  // Health check type: HTTP, HTTPS, TCP, CALCULATED, CLOUDWATCH_METRIC
+  // Health check type: HTTP, HTTPS, HTTP_STR_MATCH, HTTPS_STR_MATCH, TCP, CALCULATED, CLOUDWATCH_METRIC, RECOVERY_CONTROL
   type string
   // Protocol: HTTP, HTTPS, or TCP. Empty for non-endpoint types (CALCULATED, CLOUDWATCH_METRIC, RECOVERY_CONTROL)
   protocol string
@@ -16757,7 +16759,7 @@ private aws.route53.resolver.endpoint @defaults("id name direction status") {
 //
 // DNS forwarding decision applied to outbound queries from a VPC. The
 // `domainName` field selects which queries the rule matches and `ruleType`
-// (`FORWARD`, `SYSTEM`, or `RECURSIVE`) determines how the rule behaves:
+// (`FORWARD`, `SYSTEM`, `RECURSIVE`, or `DELEGATE`) determines how the rule behaves:
 // `FORWARD` rules ship matching queries to `targetIps` through the outbound
 // `resolverEndpoint`, `SYSTEM` rules intentionally override a broader
 // forwarding rule for a subdomain, and `RECURSIVE` rules are managed by
@@ -16778,7 +16780,7 @@ private aws.route53.resolver.rule @defaults("id name domainName ruleType status"
   statusMessage string
   // Domain name the rule applies to
   domainName string
-  // Rule type: FORWARD, SYSTEM, or RECURSIVE
+  // Rule type: FORWARD, SYSTEM, RECURSIVE, or DELEGATE
   ruleType string
   // Resolver endpoint ID used by FORWARD rules; empty otherwise
   resolverEndpointId string
@@ -16979,7 +16981,7 @@ private aws.route53.resolver.firewallRule @defaults("name priority action") {
   // Advanced DNS Firewall rule type for threat detection
   //
   // One of `DGA` (domain generation algorithm detection), `DNS_TUNNELING`,
-  // or empty for non-advanced rules.
+  // `DICTIONARY_DGA`, or empty for non-advanced rules.
   dnsThreatProtection string
   // Confidence threshold for advanced threat detection
   //
@@ -16989,7 +16991,7 @@ private aws.route53.resolver.firewallRule @defaults("name priority action") {
   //
   // Present for advanced and threat-protection rules; exactly one of the
   // following keys is populated. `dnsThreatProtection`:
-  // `{confidenceThreshold, value}` where value is `DGA` or `DNS_TUNNELING`.
+  // `{confidenceThreshold, value}` where value is `DGA`, `DNS_TUNNELING`, or `DICTIONARY_DGA`.
   // `firewallAdvancedContentCategory`: `{category}`.
   // `firewallAdvancedThreatCategory`: `{category}`.
   firewallRuleType dict
@@ -17107,8 +17109,8 @@ private aws.route53.resolver.firewallConfig @defaults("resourceId firewallFailOp
   ownerId string
   // Fail-open behavior
   //
-  // One of `ENABLED` (allow queries on failure) or `DISABLED` (block on
-  // failure, the default).
+  // One of `ENABLED` (allow queries on failure), `DISABLED` (block on
+  // failure, the default), or `USE_LOCAL_RESOURCE_SETTING`.
   firewallFailOpen string
 }
 
@@ -17167,7 +17169,8 @@ private aws.ecr.repository @defaults("uri region") {
   imageScanOnPush bool
   // Image tag mutability
   //
-  // Whether image tags can be overwritten, either MUTABLE or IMMUTABLE.
+  // Whether image tags can be overwritten: MUTABLE, IMMUTABLE,
+  // IMMUTABLE_WITH_EXCLUSION, or MUTABLE_WITH_EXCLUSION.
   // Immutable tags stop an existing tag from being re-pointed at a different
   // image. Null for public repositories: ECR Public exposes no tag mutability
   // control, so the setting is unknown rather than known to be either value.
@@ -17596,7 +17599,7 @@ private aws.apigateway.restapi @defaults("name id") {
   version string
   // TLS version and cipher suite for the API
   //
-  // One of: TLS_1_0, TLS_1_2, SecurityPolicy_TLS13_1_3_2025_09, SecurityPolicy_TLS13_1_3_FIPS_2025_09, SecurityPolicy_TLS13_1_2_PFS_PQ_2025_09, SecurityPolicy_TLS13_1_2_FIPS_PQ_2025_09, SecurityPolicy_TLS13_1_2_FIPS_PFS_PQ_2025_09, SecurityPolicy_TLS13_1_2_PQ_2025_09, SecurityPolicy_TLS13_1_2_2021_06, SecurityPolicy_TLS13_2025_EDGE, SecurityPolicy_TLS12_PFS_2025_EDGE, SecurityPolicy_TLS12_2018_EDGE.
+  // One of: TLS_1_0, TLS_1_2, SecurityPolicy_TLS13_1_3_2025_09, SecurityPolicy_TLS13_1_3_FIPS_2025_09, SecurityPolicy_TLS13_1_2_PFS_PQ_2025_09, SecurityPolicy_TLS13_1_2_FIPS_PQ_2025_09, SecurityPolicy_TLS13_1_2_FIPS_PFS_PQ_2025_09, SecurityPolicy_TLS13_1_2_Ext2_PQ_2025_09, SecurityPolicy_TLS13_1_2_Ext2_FIPS_PQ_2025_09, SecurityPolicy_TLS13_1_2_PQ_2025_09, SecurityPolicy_TLS13_1_2_2021_06, SecurityPolicy_TLS13_2025_EDGE, SecurityPolicy_TLS12_PFS_2025_EDGE, SecurityPolicy_TLS12_2018_EDGE.
   securityPolicy string
   // Resource policy for the API (JSON string)
   policy string
@@ -18115,7 +18118,7 @@ private aws.apigatewayv2.domainName @defaults("domainName routingMode") {
   arn string
   // Region where the domain is registered
   region string
-  // Routing mode: API_MAPPING_ONLY or ROUTING_RULE_THEN_API_MAPPING
+  // Routing mode: API_MAPPING_ONLY, ROUTING_RULE_ONLY, or ROUTING_RULE_THEN_API_MAPPING
   routingMode string
   // API mapping selection expression
   apiMappingSelectionExpression string
@@ -18494,7 +18497,8 @@ private aws.lambda.function.version @defaults("arn version") {
   lastModifiedAt time
   // Lifecycle state of this version
   //
-  // One of Active, Inactive, Pending, or Failed. Null when the state could not
+  // One of Active, Inactive, Pending, Failed, Deactivating, Deactivated,
+  // ActiveNonInvocable, or Deleting. Null when the state could not
   // be read. ListVersionsByFunction does not carry the state, so reading this
   // field costs one GetFunctionConfiguration call per version, and a query
   // shaped like functions { versions { state } } scales with the total number
@@ -18823,7 +18827,7 @@ private aws.ssm.instance @defaults("instanceId region platformName platformVersi
   computerName string
   // IAM role assigned to the managed instance for Systems Manager (set for hybrid/on-premises activations)
   iamRole() aws.iam.role
-  // How the managed node was registered: AWS::EC2::Instance or AWS::SSM::ManagedInstance
+  // How the managed node was registered: AWS::EC2::Instance, AWS::SSM::ManagedInstance, AWS::IoT::Thing, or Microsoft.Compute/virtualMachines
   sourceType string
   // Identifier of the registration source (instance ID or activation-registered ID)
   sourceId string
@@ -19414,7 +19418,7 @@ private aws.ec2.transitgateway.attachment @defaults("id resourceType state") {
   transitGatewayId string
   // ID of the attached resource (VPC ID, VPN connection ID, etc.)
   resourceId string
-  // Type of the attached resource: vpc, vpn, direct-connect-gateway, connect, peering, tgw-peering
+  // Type of the attached resource: vpc, vpn, vpn-concentrator, direct-connect-gateway, connect, peering, tgw-peering, network-function, client-vpn
   resourceType string
   // State of the attachment
   //
@@ -19811,7 +19815,7 @@ private aws.ec2.placementGroup @defaults("name strategy state") {
   arn string
   // Region where the placement group exists
   region string
-  // Placement strategy: cluster, spread, or partition
+  // Placement strategy: cluster, spread, partition, or precision-time
   strategy string
   // State of the placement group: pending, available, deleting, deleted
   state string
@@ -19841,7 +19845,9 @@ private aws.ec2.capacityReservation @defaults("id instanceType state availabilit
   totalInstanceCount int
   // Available instance count
   availableInstanceCount int
-  // State: active, expired, cancelled, pending, failed, scheduled, payment-pending, payment-failed
+  // State of the capacity reservation
+  //
+  // One of active, expired, cancelled, pending, failed, scheduled, payment-pending, payment-failed, assessing, delayed, unsupported, cancelling, or unavailable.
   state string
   // Whether the reservation matches running instances: open or targeted
   instanceMatchCriteria string
@@ -19867,7 +19873,9 @@ private aws.ec2.instanceConnectEndpoint @defaults("id state") {
   arn string
   // Region where the endpoint exists
   region string
-  // State: create-in-progress, create-complete, create-failed, delete-in-progress, delete-complete, delete-failed
+  // State of the endpoint
+  //
+  // One of create-in-progress, create-complete, create-failed, delete-in-progress, delete-complete, delete-failed, update-in-progress, update-complete, or update-failed.
   state string
   // Subnet the endpoint is in
   subnet() aws.vpc.subnet
@@ -20382,11 +20390,12 @@ private aws.inspector.coverage {
   scanType string
   // Depth of scanning applied to the resource
   //
-  // One of EC2_SSM_AGENT_BASED, EC2_AGENTLESS, or EC2_HYBRID.
+  // One of EC2_SSM_AGENT_BASED, EC2_AGENTLESS, EC2_HYBRID, EC2_INSPECTOR_AGENT_BASED, or
+  // VM_INSPECTOR_AGENT_BASED.
   scanMode string
   // Cloud platform hosting the covered resource
   //
-  // One of AWS, AZURE, or GCP. Inspector can scan resources outside AWS, so
+  // One of AWS, AZURE, GCP, or NOT_APPLICABLE. Inspector can scan resources outside AWS, so
   // this distinguishes them from resources in the scanned AWS account.
   provider string
   // Account, subscription, or project ID that owns the resource on its provider
@@ -20727,7 +20736,7 @@ private aws.ec2.instance @defaults("instanceId region state instanceType archite
   // underlying platform and is how you tell whether an instance is
   // Nitro-based.
   instanceTypeHypervisor() string
-  // Whether this is a Spot Instance or a Scheduled Instance: spot, scheduled, or capacity-block
+  // Whether this is a Spot Instance or a Scheduled Instance: spot, scheduled, capacity-block, or interruptible-capacity-reservation
   instanceLifecycle string
   // Root device type used by the AMI: ebs or instance-store
   rootDeviceType string
@@ -21511,7 +21520,7 @@ private aws.eks.nodegroup @defaults("name diskSize status") {
   modifiedAt() time
   // Status for the EKS node group
   status() string
-  // Capacity type for the EKS node group (ON_DEMAND, SPOT)
+  // Capacity type for the EKS node group (ON_DEMAND, SPOT, CAPACITY_BLOCK)
   capacityType() string
   // Scaling configuration for the EKS node group
   //
@@ -23610,7 +23619,8 @@ private aws.appstream.stack @defaults("name region") {
   // action between the streaming session and the local device: one of
   // CLIPBOARD_COPY_FROM_LOCAL_DEVICE, CLIPBOARD_COPY_TO_LOCAL_DEVICE,
   // FILE_UPLOAD, FILE_DOWNLOAD, PRINTING_TO_LOCAL_DEVICE,
-  // DOMAIN_PASSWORD_SIGNIN, or DOMAIN_SMART_CARD_SIGNIN. Audit these to
+  // DOMAIN_PASSWORD_SIGNIN, DOMAIN_SMART_CARD_SIGNIN, or
+  // AUTO_TIME_ZONE_REDIRECTION. Audit these to
   // confirm data-exfiltration paths (clipboard, file transfer, printing)
   // are restricted.
   userSettings []dict
@@ -23881,7 +23891,7 @@ private aws.appsync.graphqlApi @defaults("name authenticationType region") {
   //
   // Each entry has its authenticationType and provider-specific config (openIDConnectConfig, userPoolConfig, lambdaAuthorizerConfig).
   additionalAuthenticationProviders []dict
-  // Field logging level published to CloudWatch Logs: NONE, ERROR, or ALL
+  // Field logging level published to CloudWatch Logs: NONE, ERROR, INFO, DEBUG, or ALL
   logFieldLogLevel string
   // Whether verbose content (headers, context, evaluated mapping templates) is excluded from logs
   logExcludeVerboseContent bool
@@ -25178,7 +25188,7 @@ private aws.kinesis.firehoseDeliveryStream @defaults("name status region") {
   name string
   // Current status of the delivery stream: CREATING, CREATING_FAILED, DELETING, DELETING_FAILED, or ACTIVE
   status string
-  // Type of the delivery stream (DirectPut or KinesisStreamAsSource)
+  // Type of the delivery stream (DirectPut, KinesisStreamAsSource, MSKAsSource, or DatabaseAsSource)
   deliveryStreamType string
   // Server-side encryption configuration for the delivery stream
   serverSideEncryption() aws.kinesis.firehoseDeliveryStream.encryption
@@ -25635,11 +25645,11 @@ private aws.timestream.influxdb.backup @defaults("name status type createdAt") {
   region string
   // Status of the backup
   //
-  // One of CREATING, READY, DELETING, or FAILED.
+  // One of CREATING, READY, DELETING, FAILED, IN_PROGRESS, COMPLETED, or DELETED.
   status string
   // How the backup was triggered
   //
-  // One of ON_DEMAND, DAILY, WEEKLY, MONTHLY, CONTINUOUS, or CUSTOM_SCHEDULE.
+  // One of ON_DEMAND, HOURLY, DAILY, WEEKLY, MONTHLY, CONTINUOUS, or CUSTOM_SCHEDULE.
   type string
   // Database engine the backup was taken from
   //
@@ -25866,7 +25876,7 @@ private aws.neptuneAnalytics.graph @defaults("arn name status region") {
   name string
   // Region of the graph
   region string
-  // Status of the graph: CREATING, AVAILABLE, DELETING, RESETTING, UPDATING, SNAPSHOTTING, FAILED, or IMPORTING
+  // Status of the graph: CREATING, AVAILABLE, DELETING, RESETTING, UPDATING, SNAPSHOTTING, FAILED, IMPORTING, STARTING, STOPPING, or STOPPED
   status string
   // Connection endpoint for the graph
   endpoint string
@@ -26496,7 +26506,9 @@ private aws.rds.eventSubscription @defaults("arn name status") {
   status string
   // SNS topic that events are published to
   snsTopic() aws.sns.topic
-  // Source type: db-instance, db-cluster, db-parameter-group, db-security-group, db-snapshot, db-cluster-snapshot, custom-availability-zone
+  // Source type of the event subscription
+  //
+  // One of db-instance, db-cluster, db-parameter-group, db-security-group, db-snapshot, db-cluster-snapshot, custom-availability-zone, custom-engine-version, db-proxy, blue-green-deployment, db-shard-group, or zero-etl.
   sourceType string
   // List of source IDs for the event subscription
   sourceIds []string
@@ -26546,7 +26558,8 @@ private aws.glue.workflow @defaults("name region") {
 // Data Catalog connection definition that Glue jobs and crawlers use to
 // reach a backing data store. The `connectionType` (JDBC, KAFKA,
 // MONGODB, NETWORK, MARKETPLACE, CUSTOM, SFTP, VIEW_VALIDATION_REDSHIFT,
-// VIEW_VALIDATION_ATHENA) selects the store, and the
+// VIEW_VALIDATION_ATHENA, or a native SaaS or database connector type
+// such as SALESFORCE or POSTGRESQL) selects the store, and the
 // `connectionProperties` keys hold its settings. Auditing `PASSWORD`
 // against `SECRET_ID` flags inline credentials versus Secrets Manager
 // references (values for sensitive keys are redacted, see the field
@@ -26563,7 +26576,21 @@ private aws.glue.connection @defaults("name connectionType region") {
   region string
   // Description of the connection
   description string
-  // Connection type: JDBC, KAFKA, MONGODB, NETWORK, MARKETPLACE, CUSTOM, SFTP, VIEW_VALIDATION_REDSHIFT, VIEW_VALIDATION_ATHENA
+  // Connection type
+  //
+  // One of JDBC, KAFKA, MONGODB, NETWORK, MARKETPLACE, CUSTOM, SFTP, VIEW_VALIDATION_REDSHIFT,
+  // VIEW_VALIDATION_ATHENA, SALESFORCE, GOOGLEADS, GOOGLESHEETS, GOOGLEANALYTICS4, SERVICENOW,
+  // MARKETO, SAPODATA, ZENDESK, JIRACLOUD, NETSUITEERP, HUBSPOT, FACEBOOKADS, INSTAGRAMADS, ZOHOCRM,
+  // SALESFORCEPARDOT, SALESFORCEMARKETINGCLOUD, ADOBEANALYTICS, SLACK, LINKEDIN, MIXPANEL, ASANA,
+  // STRIPE, SMARTSHEET, DATADOG, WOOCOMMERCE, INTERCOM, SNAPCHATADS, PAYPAL, QUICKBOOKS,
+  // FACEBOOKPAGEINSIGHTS, FRESHDESK, TWILIO, DOCUSIGNMONITOR, FRESHSALES, ZOOM, GOOGLESEARCHCONSOLE,
+  // SALESFORCECOMMERCECLOUD, SAPCONCUR, DYNATRACE, MICROSOFTDYNAMIC365FINANCEANDOPS, MICROSOFTTEAMS,
+  // BLACKBAUDRAISEREDGENXT, MAILCHIMP, GITLAB, PENDO, PRODUCTBOARD, CIRCLECI, PIPEDIVE, SENDGRID,
+  // AZURECOSMOS, AZURESQL, BIGQUERY, BLACKBAUD, CLOUDERAHIVE, CLOUDERAIMPALA, CLOUDWATCH,
+  // CLOUDWATCHMETRICS, CMDB, DATALAKEGEN2, DB2, DB2AS400, DOCUMENTDB, DOMO, DYNAMODB,
+  // GOOGLECLOUDSTORAGE, HBASE, KUSTOMER, MICROSOFTDYNAMICS365CRM, MONDAY, MYSQL, OKTA, OPENSEARCH,
+  // ORACLE, PIPEDRIVE, POSTGRESQL, SAPHANA, SQLSERVER, SYNAPSE, TERADATA, TERADATANOS, TIMESTREAM,
+  // TPCDS, or VERTICA.
   connectionType string
   // Connection properties (key/value pairs)
   //
@@ -26586,8 +26613,8 @@ private aws.glue.connection @defaults("name connectionType region") {
 // Glue trigger: the schedule, on-demand button, predicate, or
 // EventBridge event source that fires a chain of jobs and crawlers. The
 // `type` (SCHEDULED, CONDITIONAL, ON_DEMAND, EVENT) and `state`
-// (CREATING, ACTIVATING, ACTIVATED, DEACTIVATING, DEACTIVATED, DELETING,
-// UPDATING) describe how it fires and its lifecycle. The cron
+// (CREATING, CREATED, ACTIVATING, ACTIVATED, DEACTIVATING, DEACTIVATED,
+// DELETING, UPDATING) describe how it fires and its lifecycle. The cron
 // `schedule`, the `actions` it runs (jobs and crawlers with their
 // per-run arguments), the `predicate` linking it to upstream triggers in
 // CONDITIONAL mode, the `eventBatchingCondition` for EVENT triggers, and
@@ -27308,7 +27335,9 @@ private aws.mq.broker @defaults("name engineType deploymentMode state region") {
   brokerId string
   // Name of the broker
   name string
-  // Current state of the broker: CREATION_IN_PROGRESS, RUNNING, REBOOT_IN_PROGRESS, CREATION_FAILED, DELETION_IN_PROGRESS, CRITICAL_ACTION_REQUIRED
+  // Current state of the broker
+  //
+  // One of CREATION_IN_PROGRESS, RUNNING, REBOOT_IN_PROGRESS, CREATION_FAILED, DELETION_IN_PROGRESS, CRITICAL_ACTION_REQUIRED, or REPLICA.
   state string
   // Engine type: ACTIVEMQ or RABBITMQ
   engineType string
@@ -27500,7 +27529,9 @@ private aws.batch.computeEnvironment @defaults("arn name state status") {
   capacityTags() map[string]string
   // Instance types used by the compute environment
   instanceTypes() []string
-  // Allocation strategy: BEST_FIT, BEST_FIT_PROGRESSIVE, SPOT_CAPACITY_OPTIMIZED, SPOT_PRICE_CAPACITY_OPTIMIZED
+  // Allocation strategy
+  //
+  // One of BEST_FIT, BEST_FIT_PROGRESSIVE, BEST_FIT_PROGRESSIVE_ORDERED, SPOT_CAPACITY_OPTIMIZED, SPOT_PRICE_CAPACITY_OPTIMIZED, or SPOT_CAPACITY_OPTIMIZED_PRIORITIZED.
   allocationStrategy() string
   // Subnets for the compute resources
   subnets() []aws.vpc.subnet
@@ -28382,7 +28413,7 @@ private aws.cloudformation.stack.resource @defaults("logicalId resourceType stat
   statusReason string
   // Time the resource status was last updated
   lastUpdatedAt time
-  // Drift status of the resource: IN_SYNC, MODIFIED, DELETED, NOT_CHECKED, or UNKNOWN
+  // Drift status of the resource: IN_SYNC, MODIFIED, DELETED, NOT_CHECKED, UNKNOWN, or UNSUPPORTED
   driftStatus string
 }
 
@@ -28512,7 +28543,7 @@ private aws.keyspaces.table @defaults("arn keyspaceName name status") {
   defaultTimeToLive() int
   // Whether client-side timestamps are enabled
   clientSideTimestampsEnabled() bool
-  // Status of the change data capture (CDC) stream: ENABLED or DISABLED
+  // Status of the change data capture (CDC) stream: ENABLED, ENABLING, DISABLED, or DISABLING
   cdcStatus() string
   // CDC stream record contents: NEW_AND_OLD_IMAGES, NEW_IMAGE, OLD_IMAGE, or KEYS_ONLY
   cdcViewType() string
@@ -28562,7 +28593,7 @@ private aws.ssm.document @defaults("name documentType") {
   region string
   // Document type: Command, Automation, Policy, Session, Package, etc.
   documentType string
-  // Document format: JSON or YAML
+  // Document format: JSON, YAML, or TEXT
   documentFormat string
   // Document version
   documentVersion string
@@ -28570,7 +28601,7 @@ private aws.ssm.document @defaults("name documentType") {
   description() string
   // Owner of the document (account ID or Amazon)
   owner string
-  // Status of the document: Active, Creating, Deleting, Updating
+  // Status of the document: Active, Creating, Deleting, Updating, Failed
   status() string
   // Platform types the document supports: Windows, Linux, macOS
   platformTypes []string
@@ -28884,9 +28915,9 @@ private aws.ssm.patchGroup @defaults("patchGroup operatingSystem baselineName") 
   baselineName string
   // Operating system the binding applies to
   //
-  // One of `WINDOWS`, `AMAZON_LINUX`, `AMAZON_LINUX_2`, `AMAZON_LINUX_2023`, `UBUNTU`,
-  // `REDHAT_ENTERPRISE_LINUX`, `SUSE`, `CENTOS`, `ORACLE_LINUX`, `DEBIAN`, `MACOS`, `RASPBIAN`, or
-  // `ROCKY_LINUX`.
+  // One of `WINDOWS`, `AMAZON_LINUX`, `AMAZON_LINUX_2`, `AMAZON_LINUX_2022`, `AMAZON_LINUX_2023`, `UBUNTU`,
+  // `REDHAT_ENTERPRISE_LINUX`, `SUSE`, `CENTOS`, `ORACLE_LINUX`, `DEBIAN`, `MACOS`, `RASPBIAN`,
+  // `ROCKY_LINUX`, or `ALMA_LINUX`.
   operatingSystem string
   // Identity of the baseline the patch group is bound to
   //
@@ -28968,7 +28999,7 @@ private aws.ec2.vpcEndpointServiceConfiguration.connection @defaults("endpointId
   endpointOwner string
   // Region of the consumer
   endpointRegion string
-  // Connection state: pendingAcceptance, pending, available, deleting, deleted, rejected, failed, expired
+  // Connection state: pendingAcceptance, pending, available, deleting, deleted, rejected, failed, expired, partial
   endpointState string
   // IP address type of the connection: ipv4, ipv6, dualstack
   ipAddressType string
@@ -29009,7 +29040,7 @@ private aws.ec2.ipam @defaults("id region tier state") {
   tier string
   // State of the IPAM
   //
-  // One of: create-in-progress, create-complete, modify-in-progress, modify-complete, delete-in-progress, delete-complete, isolate-in-progress, isolate-complete, restore-in-progress.
+  // One of: create-in-progress, create-complete, create-failed, modify-in-progress, modify-complete, modify-failed, delete-in-progress, delete-complete, delete-failed, isolate-in-progress, isolate-complete, restore-in-progress.
   state string
   // Diagnostic message that accompanies a non-terminal state
   stateMessage string
@@ -29065,7 +29096,9 @@ private aws.ec2.ipam.scope @defaults("id type isDefault region") {
   isDefault bool
   // Number of pools in the scope
   poolCount int
-  // State of the scope: create-in-progress, create-complete, modify-in-progress, modify-complete, delete-in-progress, delete-complete
+  // State of the scope
+  //
+  // One of: create-in-progress, create-complete, create-failed, modify-in-progress, modify-complete, modify-failed, delete-in-progress, delete-complete, delete-failed, isolate-in-progress, isolate-complete, restore-in-progress.
   state string
   // Tags attached to the scope
   tags map[string]string
@@ -29106,7 +29139,7 @@ private aws.ec2.ipam.pool @defaults("id addressFamily state region") {
   awsService string
   // State of the pool
   //
-  // One of: create-in-progress, create-complete, modify-in-progress, modify-complete, delete-in-progress, delete-complete, isolate-in-progress, isolate-complete, restore-in-progress.
+  // One of: create-in-progress, create-complete, create-failed, modify-in-progress, modify-complete, modify-failed, delete-in-progress, delete-complete, delete-failed, isolate-in-progress, isolate-complete, restore-in-progress.
   state string
   // Diagnostic message that accompanies a non-terminal state
   stateMessage string
@@ -29155,7 +29188,7 @@ private aws.ec2.ipam.pool.allocation @defaults("cidr resourceType resourceId") {
   resourceOwner string
   // Region of the resource the CIDR is allocated to
   resourceRegion string
-  // Type of the resource the CIDR is allocated to (vpc, subnet, ec2-public-ipv4-pool, ipam-pool, custom)
+  // Type of the resource the CIDR is allocated to (vpc, subnet, ec2-public-ipv4-pool, ipam-pool, custom, eip, anycast-ip-list)
   resourceType string
 }
 
@@ -29884,7 +29917,7 @@ private aws.identitycenter.instance @defaults("arn name status") {
   name string
   // Identity store ID
   identityStoreId string
-  // Status of the instance: CREATE_IN_PROGRESS, ACTIVE, DELETE_IN_PROGRESS
+  // Status of the instance: CREATE_IN_PROGRESS, CREATE_FAILED, ACTIVE, DELETE_IN_PROGRESS
   status string
   // Date the instance was created
   createdAt time
@@ -31400,7 +31433,7 @@ private aws.bedrock.customModel @defaults("modelArn modelName") {
   region string
   // Base model used for customization
   baseModel() aws.bedrock.foundationModel
-  // Customization type: FINE_TUNING or CONTINUED_PRE_TRAINING
+  // Customization type: FINE_TUNING, CONTINUED_PRE_TRAINING, DISTILLATION, REINFORCEMENT_FINE_TUNING, or IMPORTED
   customizationType string
   // KMS key used for model encryption
   kmsKey() aws.kms.key
@@ -31760,7 +31793,7 @@ private aws.bedrock.knowledgeBase @defaults("name status") {
   region string
   // Status of the knowledge base
   //
-  // One of CREATING, ACTIVE, DELETING, UPDATING, FAILED, DELETE_UNSUCCESSFUL, or DELETE_INACCESSIBLE_SOURCE.
+  // One of CREATING, ACTIVE, DELETING, UPDATING, FAILED, DELETE_UNSUCCESSFUL, UPDATE_UNSUCCESSFUL, or DELETE_INACCESSIBLE_SOURCE.
   status string
   // Description of the knowledge base
   description() string
@@ -31774,7 +31807,7 @@ private aws.bedrock.knowledgeBase @defaults("name status") {
   storageConfiguration() dict
   // Knowledge-base configuration including the type and embedding-model settings
   //
-  // Carries a `type` discriminator (VECTOR, KENDRA, or SQL) and the backend-specific configuration including the embedding-model ARN for vector knowledge bases.
+  // Carries a `type` discriminator (VECTOR, KENDRA, SQL, or MANAGED) and the backend-specific configuration including the embedding-model ARN for vector knowledge bases.
   knowledgeBaseConfiguration() dict
   // Vector store backing the knowledge base
   //
@@ -32450,7 +32483,7 @@ private aws.stepfunctions.stateMachine.loggingConfiguration @defaults("level") {
 aws.fms @defaults("defaultAdminAccount") {
   // ID of the account configured as the Firewall Manager default administrator
   defaultAdminAccount() string
-  // Onboarding/role status of the default administrator (READY, CREATING, PENDING_DELETION, DELETING, or UNKNOWN if access is denied)
+  // Onboarding/role status of the default administrator (READY, CREATING, PENDING_DELETION, DELETING, DELETED, or UNKNOWN if access is denied)
   defaultAdminRoleStatus() string
   // List of Firewall Manager administrator accounts in the organization
   adminAccounts() []aws.fms.adminAccount
@@ -32661,7 +32694,7 @@ private aws.datasync.agent @defaults("arn name status") {
   status string
   // Agent software version
   version string
-  // Type of service endpoint the agent connects to: PUBLIC, FIPS, or PRIVATE_LINK
+  // Type of service endpoint the agent connects to: PUBLIC, FIPS, PRIVATE_LINK, or FIPS_PRIVATE_LINK
   endpointType() string
   // ID of the VPC endpoint the agent uses when it connects over PrivateLink (null for public endpoints)
   vpcEndpointId() string

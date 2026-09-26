@@ -678,7 +678,7 @@ private github.organization.customProperty @defaults("name required") {
 // GitHub Copilot Business configuration
 //
 // GitHub Copilot Business configuration for an organization. Reports how seats are
-// assigned (`seatManagementSetting`: assign_all, assign_selected, or disabled),
+// assigned (`seatManagementSetting`: assign_all, assign_selected, disabled, or unconfigured),
 // the `publicCodeSuggestions` and `copilotChat` policies, the seat-usage
 // breakdown, the `contentExclusion` glob patterns that keep files out of
 // suggestions, and the per-user `seats`.
@@ -746,7 +746,7 @@ private github.organization.copilot.seat @defaults("assigneeLogin planType lastA
   updatedAt time
   // Copilot plan type for this seat
   //
-  // One of `business`, `enterprise`, or `individual`.
+  // One of `business`, `enterprise`, `individual`, or `unknown`.
   planType string
 }
 
@@ -1523,9 +1523,9 @@ private github.repositoryRuleset @defaults("id name enforcement") {
   id int
   // Ruleset name
   name string
-  // Target type (branch, tag)
+  // Target type (branch, tag, push, repository)
   target string
-  // Source type (Repository, Organization)
+  // Source type (Repository, Organization, Enterprise)
   sourceType string
   // Source (repo or org name)
   source string
@@ -1534,8 +1534,8 @@ private github.repositoryRuleset @defaults("id name enforcement") {
   // Actors allowed to bypass this ruleset
   //
   // Each entry has `actor_id` (numeric id of the actor), `actor_type`
-  // (one of Integration, OrganizationAdmin, RepositoryRole, Team, or
-  // DeployKey), and `bypass_mode` (always, or pull_request to bypass
+  // (one of Integration, OrganizationAdmin, RepositoryRole, Team, DeployKey,
+  // or User), and `bypass_mode` (always, exempt, or pull_request to bypass
   // only for pull requests).
   bypassActors []dict
   // Conditions that select which refs and repositories the ruleset targets
@@ -1585,7 +1585,7 @@ private github.repositoryActionsSettings @defaults("allowedActions") {
   canApprovePullRequestReviews bool
   // Access other repositories have to this repository's actions and reusable workflows
   //
-  // One of none, organization, or enterprise. A private repository set to
+  // One of none, user, organization, or enterprise. A private repository set to
   // organization lets workflows in every other repository in the organization
   // consume its actions and reusable workflows, which widens the blast radius
   // of a compromise here. Null when the setting does not apply, as on a public
@@ -1659,7 +1659,8 @@ private github.file @defaults("name type") {
   name string
   // File type
   //
-  // Either "file" for a regular file or "dir" for a directory.
+  // One of "file" for a regular file, "dir" for a directory, "submodule" for a
+  // Git submodule, or "symlink" for a symbolic link.
   type string
   // File shasum
   sha string
@@ -2421,7 +2422,7 @@ private github.codeScanningAlert @defaults("number state") {
   dismissedBy github.user
   // Reason for dismissal
   //
-  // One of `false positive`, `won't fix`, or `used in tests`, or empty when
+  // One of `false positive`, `won't fix`, `used in tests`, or `mitigated`, or empty when
   // the alert has not been dismissed.
   dismissedReason string
   // Comment on dismissal

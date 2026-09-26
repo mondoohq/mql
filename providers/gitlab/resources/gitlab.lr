@@ -534,7 +534,10 @@ gitlab.namespace @defaults("name kind plan") {
   membersCountWithDescendants int
   // Number of billable members
   billableMembersCount int
-  // Subscription plan (free, premium, ultimate)
+  // Subscription plan
+  //
+  // One of default, free, bronze, silver, premium, gold, ultimate,
+  // premium_trial, ultimate_trial, ultimate_trial_paid_customer, or opensource.
   plan string
   // Whether the namespace is on a trial
   trial bool
@@ -612,7 +615,7 @@ gitlab.group @defaults("name visibility webURL") @root {
   shareWithGroupLock bool
   // Shared-runner policy for the group (enabled, disabled_and_overridable, disabled_and_unoverridable)
   sharedRunnersSetting string
-  // Minimum role that can create projects in the group (noone, maintainer, developer)
+  // Minimum role that can create projects in the group (noone, maintainer, developer, owner, administrator)
   projectCreationLevel string
   // Minimum role that can create subgroups in the group (owner, maintainer)
   subGroupCreationLevel string
@@ -1158,7 +1161,7 @@ private gitlab.project.approvalRule @defaults("name ruleType approvalsRequired")
   ruleType string
   // Report type for report_approver rules
   //
-  // One of license_scanning, code_coverage, or scan_finding. Empty for non-report rules.
+  // One of license_scanning, code_coverage, scan_finding, or any_merge_request. Empty for non-report rules.
   reportType string
   // Whether the rule applies to all protected branches
   appliesToAllProtectedBranches bool
@@ -1869,7 +1872,7 @@ private gitlab.project.pipeline @defaults("id status ref") {
   status string
   // Pipeline source
   //
-  // One of: push, web, trigger, schedule, api, external, pipeline, chat, webide, merge_request_event, external_pull_request_event, parent_pipeline, ondemand_dast_scan, ondemand_dast_validation.
+  // One of: push, web, trigger, schedule, api, external, pipeline, chat, webide, merge_request_event, external_pull_request_event, parent_pipeline, ondemand_dast_scan, ondemand_dast_validation, security_orchestration_policy.
   source string
   // Git reference (branch or tag name)
   ref string
@@ -2270,7 +2273,7 @@ private gitlab.project.vulnerability @defaults("severity state reportType title"
   //
   // One of SAST, DAST, DEPENDENCY_SCANNING, CONTAINER_SCANNING,
   // SECRET_DETECTION, COVERAGE_FUZZING, API_FUZZING,
-  // CLUSTER_IMAGE_SCANNING, or GENERIC.
+  // CLUSTER_IMAGE_SCANNING, CONTAINER_SCANNING_FOR_REGISTRY, SARIF, or GENERIC.
   reportType string
   // When the vulnerability was first detected
   detectedAt time
@@ -2469,12 +2472,12 @@ private gitlab.project.package @defaults("name version packageType status") {
   //
   // One of `maven`, `npm`, `conan`, `nuget`, `pypi`, `composer`,
   // `generic`, `golang`, `debian`, `helm`, `terraform_module`,
-  // `rubygems`, or `ml_model`.
+  // `rubygems`, `rpm`, `ml_model`, or `cargo`.
   packageType string
   // Lifecycle status
   //
-  // One of `default`, `hidden`, `processing`, `error`, or
-  // `pending_destruction`.
+  // One of `default`, `hidden`, `processing`, `error`,
+  // `pending_destruction`, or `deprecated`.
   status string
   // When the package was published
   createdAt time
@@ -2531,7 +2534,7 @@ private gitlab.project.packageProtectionRule @defaults("packageNamePattern packa
   //
   // One of `maven`, `npm`, `conan`, `nuget`, `pypi`, `composer`,
   // `generic`, `golang`, `debian`, `helm`, `terraform_module`,
-  // `rubygems`, or `ml_model`.
+  // `rubygems`, `ml_model`, or `cargo`.
   packageType string
   // Minimum project access level required to push matching packages
   //
@@ -2755,7 +2758,7 @@ private gitlab.project.remoteMirror @defaults("url enabled updateStatus") {
   mirrorBranchRegex string
   // Outcome of the most recent replication attempt
   //
-  // One of `none`, `scheduled`, `started`, `finished`, or `failed`.
+  // One of `none`, `scheduled`, `started`, `finished`, `failed`, or `to_retry`.
   updateStatus string
   // Error reported by the most recent failed replication attempt
   lastError string
@@ -2785,7 +2788,9 @@ private gitlab.group.enterpriseAccessToken @defaults("name active expiresAt last
   // One or more of `api`, `read_api`, `read_user`, `read_repository`,
   // `write_repository`, `read_registry`, `write_registry`,
   // `create_runner`, `manage_runner`, `ai_features`, `k8s_proxy`,
-  // `self_rotate`, `read_service_ping`, and `sudo`.
+  // `self_rotate`, `read_virtual_registry`, `write_virtual_registry`,
+  // `read_observability`, `write_observability`, `mcp`, `mcp_orbit`,
+  // `granular`, `read_service_ping`, `admin_mode`, and `sudo`.
   scopes []string
   // Whether the token can currently authenticate
   active bool

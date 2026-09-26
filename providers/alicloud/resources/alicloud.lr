@@ -869,7 +869,9 @@ alicloud.ecs.disk @defaults("diskId diskName category size status") {
   // Disk category
   //
   // One of cloud, cloud_efficiency, cloud_ssd, cloud_essd, cloud_auto,
-  // cloud_essd_entry, ephemeral_ssd, or local disk categories.
+  // cloud_essd_entry, cloud_regional_disk_auto, elastic_ephemeral_disk_standard,
+  // elastic_ephemeral_disk_premium, ephemeral, ephemeral_ssd, local_ssd_pro,
+  // local_hdd_pro, or other local disk categories.
   category string
   // Disk size in GiB
   size int
@@ -942,7 +944,7 @@ alicloud.ecs.image @defaults("imageId imageName osName status") {
   osType string
   // CPU architecture of the image
   //
-  // One of i386 or x86_64.
+  // One of i386, x86_64, or arm64.
   architecture string
   // Image size in GiB
   size int
@@ -1051,7 +1053,7 @@ alicloud.ecs.snapshot @defaults("snapshotName snapshotId status encrypted") {
   category string
   // Days the snapshot is retained before automatic deletion, 0 when it is retained indefinitely
   retentionDays int
-  // How the snapshot was created, either user or auto for an automatic snapshot policy
+  // How the snapshot was created, one of user, or auto or timer for an automatic snapshot policy
   snapshotType string
   // What the snapshot is used by, for example image, disk, image_disk, or none
   usage string
@@ -1306,12 +1308,12 @@ alicloud.ess.scalingGroup @defaults("name scalingGroupId lifecycleState totalCap
   healthCheckType string
   // How instances are spread across zones
   //
-  // One of PRIORITY, BALANCE, or COST_OPTIMIZED.
+  // One of PRIORITY, BALANCE, COST_OPTIMIZED, or COMPOSABLE.
   multiAZPolicy string
   // Reclaim mode applied when the group removes an instance
   //
-  // One of recycle, which stops the instance, release, which deletes it, or
-  // forcerelease.
+  // One of recycle, which stops the instance, release, which deletes it,
+  // forcerelease, or forcerecycle.
   scalingPolicy string
   // Whether the group is protected from deletion
   groupDeletionProtection bool
@@ -1982,7 +1984,7 @@ alicloud.vpc.routeTable {
   vpc() alicloud.vpc.network
   // Lifecycle status
   //
-  // One of Pending or Available.
+  // One of Pending, Available, or Deleting.
   status string
   // Time when the route table was created
   creationTime time
@@ -2263,7 +2265,7 @@ alicloud.vpc.eipAddress {
   ipAddress string
   // Lifecycle status
   //
-  // One of Associating, Unassociating, InUse, or Available.
+  // One of Associating, Unassociating, InUse, Available, or Releasing.
   status string
   // Peak bandwidth of the EIP in Mbit/s
   bandwidth string
@@ -2277,7 +2279,8 @@ alicloud.vpc.eipAddress {
   chargeType string
   // ISP line of the EIP
   //
-  // One of BGP, BGP_PRO, ChinaTelecom, ChinaUnicom, or ChinaMobile.
+  // One of BGP, BGP_PRO, ChinaTelecom, ChinaUnicom, ChinaMobile, ChinaTelecom_L2,
+  // ChinaUnicom_L2, ChinaMobile_L2, or BGP_FinanceCloud.
   isp string
   // ID of the instance the EIP is bound to
   instanceId string
@@ -2328,7 +2331,7 @@ alicloud.vpc.eipAddress {
   bizType string
   // Business (payment) status of the EIP
   //
-  // One of Normal or FinancialLocked.
+  // One of Normal, FinancialLocked, OperationLock, or Unactivated.
   businessStatus string
   // Association mode of the EIP
   //
@@ -2423,7 +2426,7 @@ alicloud.vpc.networkAcl.entry @defaults("direction policy protocol port") {
   policy string
   // Protocol the rule matches
   //
-  // One of icmp, gre, tcp, udp, or all.
+  // One of icmp, icmpv6, gre, tcp, udp, or all.
   protocol string
   // Port range the rule matches
   //
@@ -2987,7 +2990,8 @@ alicloud.slb.backendServer @defaults("type serverId serverIp port weight") {
   weight int
   // Kind of backend
   //
-  // Either ecs for an instance or eni for an elastic network interface.
+  // One of ecs for an instance, eni for an elastic network interface, or eci
+  // for an elastic container instance.
   type string
   // Backend server description
   description string
@@ -3040,7 +3044,8 @@ alicloud.rds.instance {
   dbInstanceClass string
   // Storage type of the instance
   //
-  // One of local_ssd, cloud_ssd, cloud_essd, cloud_essd2, or cloud_essd3.
+  // One of local_ssd, cloud_ssd, cloud_essd, cloud_essd2, cloud_essd3, or
+  // general_essd.
   dbInstanceStorageType string
   // Network connection type of the instance
   //
@@ -3066,7 +3071,7 @@ alicloud.rds.instance {
   instanceNetworkType string
   // Billing method of the instance
   //
-  // One of Postpaid (pay-as-you-go) or Prepaid (subscription).
+  // One of Postpaid (pay-as-you-go), Prepaid (subscription), or Serverless.
   payType string
   // Time when the instance was created
   createTime time
@@ -3081,7 +3086,8 @@ alicloud.rds.instance {
   lockReason string
   // RDS edition of the instance
   //
-  // One of Basic, HighAvailability, cluster, Finance, or serverless_basic.
+  // One of Basic, HighAvailability, cluster, AlwaysOn, Finance,
+  // serverless_basic, serverless_standard, or serverless_ha.
   category string
   // Whether release (deletion) protection is enabled for the instance
   deletionProtection bool
@@ -3364,7 +3370,7 @@ alicloud.mongodb.instance {
   engine string
   // Database engine version
   //
-  // One of 7.0, 6.0, 5.0, 4.4, 4.2, 4.0, or 3.4.
+  // One of 8.0, 7.0, 6.0, 5.0, 4.4, 4.2, 4.0, or 3.4.
   engineVersion string
   // Lifecycle status
   //
@@ -3388,7 +3394,7 @@ alicloud.mongodb.instance {
   chargeType string
   // Disk storage type
   //
-  // One of cloud_essd, cloud_essd1, cloud_essd2, cloud_essd3, local_ssd, or cloud_essd_dbfs_s.
+  // One of cloud_essd, cloud_essd1, cloud_essd2, cloud_essd3, cloud_auto, local_ssd, or cloud_essd_dbfs_s.
   storageType string
   // Number of nodes in a replica set instance
   replicationFactor string
@@ -3529,7 +3535,8 @@ alicloud.polardb.cluster {
   // Product edition
   //
   // One of Normal (Cluster Edition), Basic (Single Node Edition), ArchiveNormal
-  // (X-Engine), or SENormal (Standard Edition).
+  // (X-Engine), NormalMultimaster (Multi-master Cluster Edition), or SENormal
+  // (Standard Edition).
   category string
   // Product sub-edition, for example Exclusive or General
   subCategory string
@@ -3654,7 +3661,7 @@ alicloud.polardb.cluster {
   auditLogEnabled() bool
   // Raw state of the SQL audit collector
   //
-  // One of Enable, Enabling, Disable, or Disabling. Only Enable means
+  // One of Enable, Enabling, Disable, Disabled, or Disabling. Only Enable means
   // statements are being recorded now.
   auditLogCollectorStatus() string
   // Applications provisioned on the cluster
@@ -3963,7 +3970,7 @@ alicloud.vpc.flowLog {
   description string
   // Flow log state
   //
-  // One of Active or Inactive. A flow log only captures traffic while Active.
+  // One of Active, Activating, or Inactive. A flow log only captures traffic while Active.
   status string
   // Business (billing) state of the flow log
   //
@@ -4166,12 +4173,12 @@ alicloud.kms.secret {
   arn string
   // Secret type
   //
-  // One of Generic, Rds, RAMCredentials, or ECS. Managed types (Rds, ECS,
+  // One of Generic, Rds, Redis, PolarDB, RAMCredentials, or ECS. Managed types (Rds, ECS,
   // RAMCredentials) are rotated by the owning service.
   secretType string
   // Automatic-rotation state
   //
-  // One of Enabled, Disabled, or Suspended.
+  // One of Enabled, Disabled, Suspended, or Invalid.
   automaticRotation string
   // Interval between automatic rotations, in seconds
   //
@@ -4804,8 +4811,8 @@ alicloud.config.aggregator @defaults("aggregatorName aggregatorType accountCount
   aggregatorName string
   // Aggregator type
   //
-  // Either RD, covering a resource directory folder, or CUSTOM, covering a
-  // fixed set of accounts.
+  // One of RD, covering the whole resource directory, FOLDER, covering a
+  // resource directory folder, or CUSTOM, covering a fixed set of accounts.
   aggregatorType string
   // Aggregator description
   description string
@@ -5635,7 +5642,7 @@ alicloud.alb.serverGroup {
   crossZoneEnabled bool
   // Whether health checks are enabled for the group
   healthCheckEnabled bool
-  // Health-check protocol, one of HTTP, TCP, or gRPC
+  // Health-check protocol, one of HTTP, HTTPS, TCP, or gRPC
   healthCheckProtocol string
   // Health-check request path, for HTTP health checks
   healthCheckPath string
@@ -5667,7 +5674,7 @@ alicloud.alb.serverGroup.server @defaults("serverType serverId serverIp port wei
   serverId string
   // Kind of backend
   //
-  // One of Ecs, Eni, Ip, or Fc.
+  // One of Ecs, Eni, Eci, Ip, or Fc.
   serverType string
   // IP address the load balancer forwards to
   serverIp string
@@ -5882,7 +5889,7 @@ alicloud.nlb.serverGroup {
   type string
   // Server group status
   status string
-  // Backend protocol, one of TCP, UDP, or TCPSSL
+  // Backend protocol, one of TCP, UDP, TCP_UDP, or TCPSSL
   protocol string
   // Scheduling algorithm, for example Wrr, rr, sch, tch, or qch
   scheduler string
@@ -5928,7 +5935,7 @@ alicloud.nlb.serverGroup.server @defaults("serverType serverId serverIp port wei
   serverId string
   // Kind of backend
   //
-  // One of Ecs, Eni, or Ip.
+  // One of Ecs, Eni, Eci, or Ip.
   serverType string
   // IP address the load balancer forwards to
   serverIp string
@@ -6064,7 +6071,7 @@ alicloud.fc.trigger {
   triggerId string
   // Trigger type
   //
-  // One of http, oss, timer, log, mns_topic, cdn_events, or eventbridge.
+  // One of http, oss, timer, log, mns_topic, cdn_events, tablestore, or eventbridge.
   type string
   // ARN of the event source that fires the trigger
   sourceArn string
@@ -6817,13 +6824,13 @@ alicloud.cloudFirewall.natControlPolicy @defaults("direction action source desti
   action string
   // Source address, CIDR, or address-book reference
   source string
-  // Source type, either net (a CIDR) or group (an address book)
+  // Source type, one of net (a CIDR), group (an address book), or location (a region)
   sourceType string
   // CIDRs behind a source address book, empty when the source is a plain CIDR
   sourceGroupCidrs []string
   // Destination address, CIDR, domain, or address-book reference
   destination string
-  // Destination type, one of net, group, or domain
+  // Destination type, one of net, group, domain, or location
   destinationType string
   // CIDRs behind a destination address book, empty when the destination is a plain CIDR
   destinationGroupCidrs []string
@@ -7617,8 +7624,9 @@ alicloud.sas.noticeConfig @defaults("project channels") {
 alicloud.sas.vulnerabilityConfig @defaults("type enabled") {
   // Vulnerability type the setting covers, used as the lookup key
   //
-  // One of cve (system vulnerabilities), sca (application vulnerabilities
-  // found by version fingerprint), app (web scanner findings), emg (emergency
+  // One of cve (system vulnerabilities), sys (Windows system vulnerabilities),
+  // cms (web content management system vulnerabilities), sca (application
+  // vulnerabilities found by version fingerprint), app (web scanner findings), emg (emergency
   // vulnerabilities), scanMode (whether only real-risk vulnerabilities are
   // shown), imageVulClean (the retention period for image vulnerabilities), or
   // yum (whether Alibaba Cloud sources are preferred when fixing).
@@ -8668,7 +8676,7 @@ alicloud.es.instance @defaults("description instanceId esVersion status") {
   instanceCategory() string
   // Cluster status
   //
-  // One of active, activating, inactive, or invalid.
+  // One of active, activating, inactive, invalid, or unknown.
   status string
   // Region the cluster lives in
   regionId string

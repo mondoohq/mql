@@ -861,7 +861,7 @@ snowflake.warehouse @defaults("name") {
 // returned by SHOW GRANTS. Grants are the core of Snowflake access control, so
 // auditing them reveals who holds which privileges on which objects and whether a
 // grantee can re-grant them. The `grantedTo` field discriminates the grantee kind
-// (ROLE, USER, SHARE, or DATABASE_ROLE), `grantedOn` identifies the object type
+// (ROLE, USER, SHARE, DATABASE_ROLE, APPLICATION_ROLE, or APPLICATION), `grantedOn` identifies the object type
 // (such as DATABASE or TABLE), and `grantOption` flags whether the grantee holds
 // WITH GRANT OPTION.
 snowflake.grant @defaults("privilege grantedOn name granteeName") {
@@ -871,7 +871,7 @@ snowflake.grant @defaults("privilege grantedOn name granteeName") {
   grantedOn string
   // Fully qualified name of the object the privilege is on
   name string
-  // Type of grantee (ROLE, USER, SHARE, DATABASE_ROLE)
+  // Type of grantee (ROLE, USER, SHARE, DATABASE_ROLE, APPLICATION_ROLE, APPLICATION)
   grantedTo string
   // Name of the grantee (role name, user name, share name, etc.)
   //
@@ -1242,13 +1242,13 @@ snowflake.authenticationPolicy @defaults("name mfaEnrollment") {
   options string
   // When the authentication policy was created
   createdAt time
-  // Permitted authentication methods (one or more of ALL, SAML, PASSWORD, OAUTH, KEYPAIR)
+  // Permitted authentication methods (one or more of ALL, SAML, PASSWORD, OAUTH, KEYPAIR, OIDC, PROGRAMMATIC_ACCESS_TOKEN, WORKLOAD_IDENTITY)
   authenticationMethods() []string
   // Permitted MFA authentication methods (one or more of ALL, SAML, PASSWORD)
   mfaAuthenticationMethods() []string
-  // MFA enrollment requirement (REQUIRED or OPTIONAL)
+  // MFA enrollment requirement (REQUIRED, REQUIRED_PASSWORD_ONLY, or OPTIONAL)
   mfaEnrollment() string
-  // Permitted client types (one or more of ALL, SNOWFLAKE_UI, DRIVERS, SNOWSQL)
+  // Permitted client types (one or more of ALL, SNOWFLAKE_UI, DRIVERS, SNOWSQL, SNOWFLAKE_CLI)
   clientTypes() []string
   // Names of security integrations permitted by this policy
   securityIntegrations() []string
@@ -1476,7 +1476,7 @@ snowflake.rowAccessPolicy @defaults("name databaseName schemaName") {
 // Named set of network identifiers (IP ranges, cloud private-link endpoints,
 // or host:port pairs) that network policies and external-access integrations
 // reference to allow or block traffic. The `type` field reports which kind of
-// identifier the rule holds (HOST_PORT, AWSVPCEID, or AZURELINKID), and `mode`
+// identifier the rule holds (IPV4, HOST_PORT, AWSVPCEID, or AZURELINKID), and `mode`
 // reports the traffic direction it governs (INGRESS, EGRESS, or
 // INTERNAL_STAGE). The `valueList` field returns the actual identifiers, and
 // `entriesInValueList` gives their count. Rules are schema-scoped and selected
@@ -1500,8 +1500,9 @@ snowflake.networkRule @defaults("name type mode") {
   comment string
   // Kind of identifier the rule holds
   //
-  // One of HOST_PORT (hostnames or host:port pairs), AWSVPCEID (AWS VPC
-  // endpoint IDs), or AZURELINKID (Azure private-link IDs).
+  // One of IPV4 (IP addresses or CIDR ranges), HOST_PORT (hostnames or
+  // host:port pairs), AWSVPCEID (AWS VPC endpoint IDs), or AZURELINKID (Azure
+  // private-link IDs).
   type string
   // Traffic direction the rule governs
   //
@@ -1550,7 +1551,7 @@ snowflake.storageIntegration @defaults("name storageProvider enabled") {
   // STORAGE_GCP_SERVICE_ACCOUNT, AZURE_TENANT_ID, AZURE_CONSENT_URL, and
   // AZURE_MULTI_TENANT_APP_NAME. The set of keys depends on the cloud provider.
   properties() map[string]string
-  // Cloud provider backing the integration (S3, GCS, or AZURE)
+  // Cloud provider backing the integration (S3, S3GOV, S3CHINA, GCS, or AZURE)
   storageProvider() string
   // Cloud storage locations that stages using this integration may access
   storageAllowedLocations() []string
@@ -1607,7 +1608,7 @@ snowflake.notificationIntegration @defaults("name notificationProvider enabled")
   properties() map[string]string
   // Message flow direction (INBOUND or OUTBOUND)
   direction() string
-  // Backing messaging service (AWS_SNS, AWS_SQS, GCP_PUBSUB, or AZURE_EVENT_GRID)
+  // Backing messaging service (AWS_SNS, AWS_SQS, GCP_PUBSUB, AZURE_EVENT_GRID, or AZURE_STORAGE_QUEUE)
   notificationProvider() string
   // Amazon SNS topic ARN messages are published to
   awsSnsTopicArn() string
