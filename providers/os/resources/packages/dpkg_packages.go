@@ -68,6 +68,23 @@ func dpkgControlField(line []byte) (key []byte, value []byte, ok bool) {
 	return line[:i], line[i+2:], true
 }
 
+// dpkgFilesInstalled reports whether a dpkg Status field ("want flag
+// state") describes a package whose files are on disk. The states
+// "not-installed" and "config-files" have none; every other state has at
+// least part of the package unpacked. An empty status (status.d entries of
+// distroless images) counts as installed.
+func dpkgFilesInstalled(status string) bool {
+	fields := strings.Fields(status)
+	if len(fields) < 3 {
+		return true
+	}
+	switch fields[2] {
+	case "not-installed", "config-files":
+		return false
+	}
+	return true
+}
+
 // ParseDpkgPackages parses the dpkg database content located in /var/lib/dpkg/status
 func ParseDpkgPackages(pf *inventory.Platform, input io.Reader) ([]Package, error) {
 	const STATE_RESET = 0
@@ -75,6 +92,13 @@ func ParseDpkgPackages(pf *inventory.Platform, input io.Reader) ([]Package, erro
 	pkgs := []Package{}
 
 	add := func(pkg Package) {
+		// A package that was removed but not purged stays in the status file
+		// as "deinstall ok config-files": its files are gone, only its
+		// configuration is left. It is not installed.
+		if !dpkgFilesInstalled(pkg.Status) {
+			log.Debug().Str("package", pkg.Name).Str("status", pkg.Status).Msg("ignored deb package that is not installed")
+			return
+		}
 		// do sanitization checks to ensure we have minimal information
 		if pkg.Name != "" && pkg.Version != "" {
 			// A hold lives in the status triple that was just parsed, so it

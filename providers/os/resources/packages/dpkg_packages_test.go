@@ -567,3 +567,18 @@ func TestDpkgParserEpoch(t *testing.T) {
 	assert.Empty(t, m[1].Epoch)
 	assert.NotContains(t, m[1].PUrl, "epoch=")
 }
+
+func TestParseDpkgPackages_RemovedPackagesAreNotInstalled(t *testing.T) {
+	status := "Package: kept\nStatus: install ok installed\nVersion: 1.0\nArchitecture: amd64\n\n" +
+		"Package: removed\nStatus: deinstall ok config-files\nVersion: 2.0\nArchitecture: amd64\n\n" +
+		"Package: purged\nStatus: purge ok not-installed\nVersion: 3.0\nArchitecture: amd64\n\n" +
+		"Package: unpacked\nStatus: install ok unpacked\nVersion: 4.0\nArchitecture: amd64\n"
+	pf := &inventory.Platform{Name: "ubuntu", Version: "24.04", Arch: "amd64", Family: []string{"debian", "linux"}}
+	pkgs, err := ParseDpkgPackages(pf, strings.NewReader(status))
+	require.NoError(t, err)
+	var names []string
+	for _, p := range pkgs {
+		names = append(names, p.Name)
+	}
+	assert.Equal(t, []string{"kept", "unpacked"}, names)
+}
