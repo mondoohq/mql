@@ -43,7 +43,7 @@ func TestMacOsXPackageParser(t *testing.T) {
 	assert.Equal(t, "10.0", m[0].Version, "pkg version detected")
 	assert.Equal(t, packages.MacosPkgFormat, m[0].Format, "pkg format detected")
 	assert.Equal(t, packages.PkgFilesIncluded, m[0].FilesAvailable)
-	assert.Equal(t, "pkg:macos/macos/Preview@10.0", m[0].PUrl)
+	assert.Equal(t, "pkg:macos/macos/Preview@10.0?arch=x86_64", m[0].PUrl)
 	assert.Equal(t, []packages.FileRecord{{Path: "/Applications/Preview.app"}}, m[0].Files)
 	assert.Empty(t, m[0].Arch)
 
@@ -51,13 +51,13 @@ func TestMacOsXPackageParser(t *testing.T) {
 	assert.Equal(t, "11.0", m[1].Version, "pkg version detected")
 	assert.Equal(t, packages.MacosPkgFormat, m[1].Format, "pkg format detected")
 	assert.Equal(t, packages.PkgFilesIncluded, m[1].FilesAvailable)
-	assert.Equal(t, "pkg:macos/macos/Contacts@11.0", m[1].PUrl)
+	assert.Equal(t, "pkg:macos/macos/Contacts@11.0?arch=x86_64", m[1].PUrl)
 	assert.Equal(t, []packages.FileRecord{{Path: "/Applications/Contacts.app"}}, m[1].Files)
 
 	assert.Equal(t, "Firefox", m[2].Name, "pkg name detected")
 	assert.Equal(t, "128.12.0", m[2].Version, "pkg version detected")
 	assert.Equal(t, packages.MacosPkgFormat, m[2].Format, "pkg format detected")
-	assert.Equal(t, "pkg:macos/macos/Firefox@128.12.0?arch=universal&remoting-name=firefox-esr&team-id=43AQ936H96", m[2].PUrl)
+	assert.Equal(t, "pkg:macos/macos/Firefox@128.12.0?arch=x86_64&remoting-name=firefox-esr&team-id=43AQ936H96", m[2].PUrl)
 	assert.Equal(t, []packages.FileRecord{{Path: "/Applications/Firefox.app"}}, m[2].Files)
 
 	// system_profiler only surfaces CFBundleShortVersionString; when that is
@@ -65,14 +65,14 @@ func TestMacOsXPackageParser(t *testing.T) {
 	// version from the bundle's Info.plist.
 	assert.Equal(t, "Microsoft Teams (PWA)", m[3].Name, "pkg name detected")
 	assert.Equal(t, "7778.181", m[3].Version, "pkg version recovered from Info.plist")
-	assert.Equal(t, "pkg:macos/macos/Microsoft%20Teams%20%28PWA%29@7778.181?arch=universal&bundle-id=com.microsoft.teams2.pwa", m[3].PUrl)
+	assert.Equal(t, "pkg:macos/macos/Microsoft%20Teams%20%28PWA%29@7778.181?arch=x86_64&bundle-id=com.microsoft.teams2.pwa", m[3].PUrl)
 
 	// An application bundle whose Info.plist carries no version keys at all is
 	// still a real installed application, so it is reported with an empty
 	// version rather than dropped.
 	assert.Equal(t, "qFlipper", m[4].Name, "versionless app bundle kept")
 	assert.Equal(t, "", m[4].Version, "no version available in the Info.plist")
-	assert.Equal(t, "pkg:macos/macos/qFlipper?arch=universal&bundle-id=com.yourcompany.qFlipper", m[4].PUrl)
+	assert.Equal(t, "pkg:macos/macos/qFlipper?arch=x86_64&bundle-id=com.yourcompany.qFlipper", m[4].PUrl)
 
 	// Wrapped iOS apps keep their Info.plist inside Wrapper/, so there is no
 	// Contents/Info.plist to find. They report a version, so they must never
@@ -81,7 +81,7 @@ func TestMacOsXPackageParser(t *testing.T) {
 	// distinguishable by its origin.
 	assert.Equal(t, "Victory", m[5].Name, "wrapped iOS app kept")
 	assert.Equal(t, "3.2.1", m[5].Version, "version reported by system_profiler")
-	assert.Equal(t, "pkg:macos/macos/Victory@3.2.1?arch=universal", m[5].PUrl)
+	assert.Equal(t, "pkg:macos/macos/Victory@3.2.1?arch=x86_64", m[5].PUrl)
 	assert.Equal(t, "ios_app_store", m[5].Origin, "iOS App Store provenance detected")
 
 	// system_profiler's obtained_from is surfaced as the package origin, which
@@ -171,7 +171,7 @@ func TestMacOsXPackageParser(t *testing.T) {
 	chrome := findByName(m, "Google Chrome")
 	assert.Len(t, chrome, 1, "only the browser installed on this Mac is reported")
 	assert.Equal(t, "154.0.8037.45", chrome[0].Version, "version of the installed browser")
-	assert.Equal(t, "pkg:macos/macos/Google%20Chrome@154.0.8037.45?arch=universal", chrome[0].PUrl)
+	assert.Equal(t, "pkg:macos/macos/Google%20Chrome@154.0.8037.45?arch=x86_64", chrome[0].PUrl)
 	assert.Equal(t, []packages.FileRecord{{Path: "/Applications/Google Chrome.app"}}, chrome[0].Files)
 
 	// Adobe ships the Acrobat updater's CFBundleShortVersionString with padding
@@ -183,7 +183,7 @@ func TestMacOsXPackageParser(t *testing.T) {
 	updater := findByName(m, "Acrobat Update Helper")
 	assert.Len(t, updater, 1, "the updater is reported")
 	assert.Equal(t, "1.2.6", updater[0].Version, "padding removed from the version")
-	assert.Equal(t, "pkg:macos/macos/Acrobat%20Update%20Helper@1.2.6?arch=universal", updater[0].PUrl)
+	assert.Equal(t, "pkg:macos/macos/Acrobat%20Update%20Helper@1.2.6?arch=x86_64", updater[0].PUrl)
 }
 
 func names(pkgs []packages.Package) []string {
@@ -241,7 +241,7 @@ func TestMacOSPackagesIncludeCryptexApplications(t *testing.T) {
 	assert.Equal(t, "27.0", safari.Version)
 	assert.Equal(t, "apple", safari.Origin)
 	assert.Equal(t, packages.MacosPkgFormat, safari.Format)
-	assert.Equal(t, "pkg:macos/macos/Safari@27.0", safari.PUrl)
+	assert.Equal(t, "pkg:macos/macos/Safari@27.0?arch=arm64", safari.PUrl)
 
 	// Named after the bundle directory, like every other application, whatever
 	// display name its Info.plist carries.
@@ -281,7 +281,7 @@ func TestMacOSPackagesKeepReleaseTaggedVersions(t *testing.T) {
 	// Reported by system_profiler.
 	assert.Equal(t, "OpenRA - Red Alert", pkgs[0].Name)
 	assert.Equal(t, "20250330", pkgs[0].Version)
-	assert.Equal(t, "pkg:macos/macos/OpenRA%20-%20Red%20Alert@20250330", pkgs[0].PUrl)
+	assert.Equal(t, "pkg:macos/macos/OpenRA%20-%20Red%20Alert@20250330?arch=arm64", pkgs[0].PUrl)
 
 	// Recovered from the Info.plist.
 	assert.Equal(t, "OpenRA - Tiberian Dawn", pkgs[1].Name)

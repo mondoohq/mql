@@ -206,9 +206,15 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 			Format:         MacosPkgFormat,
 			FilesAvailable: PkgFilesIncluded,
 			Arch:           arch,
+			// TODO(#11113): switch the purl's arch qualifier to the executable's
+			// architecture (purl.WithArch(arch)), which Arch above already
+			// reports. It stays the host's architecture for now: consumers key
+			// a macOS application's identity on the purl's arch, so changing its
+			// value would make every universal and Intel-only application look
+			// like a different package. Switch once consumers no longer do.
 			PUrl: purl.NewPackageURL(
 				platform, purl.TypeMacos, name, version,
-				purl.WithArch(arch), purl.WithQualifiers(purlQualifiers),
+				purl.WithQualifiers(purlQualifiers),
 			).String(),
 			MacOS:        app,
 			InstallScope: scope,

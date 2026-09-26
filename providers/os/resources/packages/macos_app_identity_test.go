@@ -192,7 +192,7 @@ func TestMacOSAppIdentity(t *testing.T) {
 		assert.True(t, monodraw.MacOS.AppStore)
 		assert.Equal(t, "mac_app_store", monodraw.Origin)
 		assert.Equal(t, "universal", monodraw.Arch)
-		assert.Equal(t, "pkg:macos/macos/Monodraw@1.7.1?app-store=true&arch=universal&bundle-id=com.helftone.monodraw", monodraw.PUrl)
+		assert.Equal(t, "pkg:macos/macos/Monodraw@1.7.1?app-store=true&arch=arm64&bundle-id=com.helftone.monodraw", monodraw.PUrl)
 	})
 
 	t.Run("application shipped with macOS", func(t *testing.T) {
@@ -202,19 +202,19 @@ func TestMacOSAppIdentity(t *testing.T) {
 		assert.Empty(t, textEdit.MacOS.TeamID)
 		assert.False(t, textEdit.MacOS.AppStore)
 		assert.Equal(t, "universal", textEdit.Arch)
-		assert.Equal(t, "pkg:macos/macos/TextEdit@1.20?arch=universal&bundle-id=com.apple.TextEdit", textEdit.PUrl)
+		assert.Equal(t, "pkg:macos/macos/TextEdit@1.20?arch=arm64&bundle-id=com.apple.TextEdit", textEdit.PUrl)
 	})
 
 	t.Run("architectures", func(t *testing.T) {
 		assert.Equal(t, "arm64", byPath["/Applications/VLC.app"].Arch)
 		assert.Equal(t, "x86_64", byPath["/Applications/Oracle Secure Global Desktop Client.app"].Arch)
-		assert.Equal(t, "pkg:macos/macos/Oracle%20Secure%20Global%20Desktop%20Client@5.60.567?arch=x86_64&bundle-id=com.oracle.sgd.ttatcc&team-id=VB5E2TV963",
+		assert.Equal(t, "pkg:macos/macos/Oracle%20Secure%20Global%20Desktop%20Client@5.60.567?arch=arm64&bundle-id=com.oracle.sgd.ttatcc&team-id=VB5E2TV963",
 			byPath["/Applications/Oracle Secure Global Desktop Client.app"].PUrl)
 		// A shell script launcher has no Mach-O architecture, and the host's
 		// would be wrong: no arch, and no arch qualifier.
 		zap := byPath["/Applications/ZAP.app"]
 		assert.Empty(t, zap.Arch)
-		assert.Equal(t, "pkg:macos/macos/ZAP@2.15.0?bundle-id=org.zaproxy.zap.ZAP", zap.PUrl)
+		assert.Equal(t, "pkg:macos/macos/ZAP@2.15.0?arch=arm64&bundle-id=org.zaproxy.zap.ZAP", zap.PUrl)
 	})
 
 	t.Run("application in a home directory", func(t *testing.T) {
@@ -246,7 +246,7 @@ func TestMacOSAppIdentity(t *testing.T) {
 		assert.True(t, telegram.MacOS.AppStore)
 		// system_profiler reported no arch_kind for it: this is the executable.
 		assert.Equal(t, "universal", telegram.Arch)
-		assert.Equal(t, "pkg:macos/macos/Telegram@12.10?app-store=true&arch=universal&bundle-id=ru.keepcoder.Telegram", telegram.PUrl)
+		assert.Equal(t, "pkg:macos/macos/Telegram@12.10?app-store=true&arch=arm64&bundle-id=ru.keepcoder.Telegram", telegram.PUrl)
 
 		// Found one level down, in a vendor folder.
 		whatsapp := byPath["/Applications/WhatsApp.localized/WhatsApp.app"]

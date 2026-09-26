@@ -1358,8 +1358,9 @@ package @defaults("name version") {
 
   // Package URL (purl) identifier for this package
   //
-  // On macOS, qualifiers present when known: `arch`, `bundle-id`, `team-id`,
-  // `app-store=true`, `install-scope=user`.
+  // On macOS, qualifiers present when known: `arch` (for now the host's
+  // architecture), `bundle-id`, `team-id`, `app-store=true`,
+  // `install-scope=user`.
   purl string
 
   // Common Platform Enumeration (CPE) for the package
