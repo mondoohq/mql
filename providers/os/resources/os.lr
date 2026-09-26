@@ -10121,7 +10121,16 @@ shadow.entry {
 // and the `.repo` files (for example `$releasever` and `$basearch`) and
 // `repos` lists every configured repository as `yum.repo` entries.
 yum {
-  // Variables defined in Yum configuration files (/etc/yum.conf and all .repo files in the /etc/yum.repos.d/)
+  // Variables available for substitution in yum/dnf repository configuration
+  //
+  // The built-in `arch`, `basearch`, and `releasever` as dnf computes them,
+  // plus the custom variables defined on disk: one file per variable in
+  // `/etc/yum/vars` and `/etc/dnf/vars` (dnf 4), or `/usr/share/dnf5/vars.d`
+  // and `/etc/dnf/vars` (dnf 5), named after the file with the file's first
+  // line as the value. A variable in `/etc/dnf/vars` overrides one of the same
+  // name in the other directory, and a custom variable overrides a built-in
+  // one, the same way dnf resolves them. The built-in variables are missing
+  // where dnf's Python API is unavailable, such as dnf 5 hosts and image scans.
   vars() map[string]string
   // List of all configured Yum repositories
   repos() []yum.repo
