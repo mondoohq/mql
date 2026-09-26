@@ -5,6 +5,7 @@ package resources
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -468,4 +469,123 @@ func TestPamConfPathMissingFile(t *testing.T) {
 	exists := res.(*mqlPamConf).GetExists()
 	require.NoError(t, exists.Error)
 	assert.False(t, exists.Data)
+}
+
+// newPamVendorRuntime builds a runtime whose per-service PAM directories hold
+// the given service files (path -> content). Every directory named by a key
+// is created, and the find listing for it is recorded so getSortedPathFiles
+// enumerates it. A legacy /etc/pam.conf is always present, so tests can prove
+// it stays ignored in directory mode.
+func newPamVendorRuntime(t *testing.T, services map[string]string) *plugin.Runtime {
+	t.Helper()
+
+	files := map[string]*mock.MockFileData{
+		defaultPamConf: {Path: defaultPamConf, Content: "login auth required pam_unix.so\n"},
+	}
+	listings := map[string][]string{}
+	for path, content := range services {
+		files[path] = &mock.MockFileData{Path: path, Content: content}
+		dir := filepath.Dir(path)
+		listings[dir] = append(listings[dir], path)
+	}
+	commands := map[string]*mock.Command{
+		"find --version": {Stdout: "find (GNU findutils) 4.9.0\n"},
+	}
+	for dir, paths := range listings {
+		files[dir] = &mock.MockFileData{Path: dir, StatData: mock.FileInfo{Mode: os.ModeDir | 0o755}}
+		findCmd := filesfind.BuildFilesFindCmd(dir, false, "file", "", 0, "", nil, true)
+		commands[findCmd] = &mock.Command{Stdout: strings.Join(paths, "\n") + "\n"}
+	}
+
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "opensuse-leap", Family: []string{"suse", "linux", "unix"}},
+	}, mock.WithData(&mock.TomlData{Files: files, Commands: commands}))
+	require.NoError(t, err)
+
+	return &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+}
+
+func TestPamConfFallsBackToVendorDirs(t *testing.T) {
+	// openSUSE Leap 16 ships su only as /usr/lib/pam.d/su. PAM loads the first
+	// file named after the service across /etc/pam.d, /usr/lib/pam.d and
+	// /usr/etc/pam.d, so an /etc/pam.d copy shadows the vendor one.
+	rt := newPamVendorRuntime(t, map[string]string{
+		"/etc/pam.d/login":     "auth required pam_faillock.so deny=3\n",
+		"/usr/lib/pam.d/login": "auth required pam_unix.so\n",
+		"/usr/lib/pam.d/su":    "auth required pam_wheel.so use_uid\n",
+		"/usr/etc/pam.d/su":    "auth sufficient pam_rootok.so\n",
+		"/usr/etc/pam.d/sshd":  "auth include common-auth\n",
+	})
+
+	res, err := NewResource(rt, "pam.conf", map[string]*llx.RawData{})
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"/etc/pam.d/login",
+		"/usr/lib/pam.d/su",
+		"/usr/etc/pam.d/sshd",
+	}, pamPaths(t, res), "one file per service, first directory wins")
+
+	entries := res.(*mqlPamConf).GetEntries()
+	require.NoError(t, entries.Error)
+	_, hasPamConfService := entries.Data["login"]
+	assert.False(t, hasPamConfService,
+		"/etc/pam.conf must not be parsed while a pam.d directory exists")
+
+	svc, err := NewResource(rt, "pam.conf.service", map[string]*llx.RawData{
+		"name": llx.StringData("su"),
+	})
+	require.NoError(t, err)
+	su := svc.(*mqlPamConfService)
+	assert.Equal(t, "/usr/lib/pam.d/su", su.Path.Data)
+	mods := su.GetModules()
+	require.NoError(t, mods.Error)
+	wheel, ok := mods.Data["pam_wheel"].(*mqlPamModule)
+	require.True(t, ok, "pam_wheel from the vendor su file is visible")
+	assert.Equal(t, map[string]any{"use_uid": ""}, wheel.Params.Data)
+	_, hasRootok := mods.Data["pam_rootok"]
+	assert.False(t, hasRootok, "the shadowed /usr/etc/pam.d/su is not read")
+}
+
+func TestPamConfVendorDirWithoutEtcPamD(t *testing.T) {
+	// With no /etc/pam.d at all, PAM still runs in directory mode when a
+	// vendor directory exists, and /etc/pam.conf stays ignored.
+	rt := newPamVendorRuntime(t, map[string]string{
+		"/usr/lib/pam.d/su": "auth required pam_wheel.so use_uid\n",
+	})
+
+	res, err := NewResource(rt, "pam.conf", map[string]*llx.RawData{})
+	require.NoError(t, err)
+	pam := res.(*mqlPamConf)
+
+	exists := pam.GetExists()
+	require.NoError(t, exists.Error)
+	assert.True(t, exists.Data)
+	assert.Equal(t, []string{"/usr/lib/pam.d/su"}, pamPaths(t, res))
+}
+
+func TestPamConfPathSelectsVendorFile(t *testing.T) {
+	// A path-selected vendor file is a per-service file, not the single-file
+	// layout: its lines carry no leading service column.
+	rt := newPamVendorRuntime(t, map[string]string{
+		"/usr/lib/pam.d/su": "auth required pam_wheel.so use_uid\n",
+	})
+
+	res, err := NewResource(rt, "pam.conf", map[string]*llx.RawData{
+		"path": llx.StringData("/usr/lib/pam.d/su"),
+	})
+	require.NoError(t, err)
+	entries := res.(*mqlPamConf).GetEntries()
+	require.NoError(t, entries.Error)
+	list, ok := entries.Data["/usr/lib/pam.d/su"].([]any)
+	require.True(t, ok)
+	require.Len(t, list, 1)
+	assert.Equal(t, "pam_wheel.so", list[0].(*mqlPamConfServiceEntry).Module.Data)
+}
+
+func TestIsPamServiceDir(t *testing.T) {
+	assert.True(t, isPamServiceDir("/etc/pam.d/su"))
+	assert.True(t, isPamServiceDir("/usr/lib/pam.d/su"))
+	assert.True(t, isPamServiceDir("/usr/etc/pam.d/su"))
+	assert.False(t, isPamServiceDir("/etc/pam.conf"))
+	assert.False(t, isPamServiceDir("/etc/pam.d/sub/su"))
 }

@@ -25,6 +25,38 @@ const (
 	defaultPamDir  = "/etc/pam.d"
 )
 
+// pamServiceDirs lists the directories Linux-PAM reads a service's
+// configuration from, in lookup order: the admin's /etc/pam.d, then the
+// distribution defaults in /usr/lib/pam.d, then the vendor directory
+// (/usr/etc/pam.d on distributions built with --enable-vendordir=/usr/etc).
+// The first file named after the service wins, so a file in /etc/pam.d
+// shadows the vendor copy. see libpam/pam_handlers.c: _pam_open_config_file
+var pamServiceDirs = []string{defaultPamDir, "/usr/lib/pam.d", "/usr/etc/pam.d"}
+
+// isPamServiceDir reports whether the file lives directly in one of the
+// per-service PAM directories, where the file name is the service name.
+func isPamServiceDir(filePath string) bool {
+	dir := filepath.Dir(filePath)
+	for _, d := range pamServiceDirs {
+		if dir == d {
+			return true
+		}
+	}
+	return false
+}
+
+// pamPathExists reports whether path exists on the target.
+func pamPathExists(runtime *plugin.Runtime, path string) (bool, error) {
+	raw, err := CreateResource(runtime, "file", map[string]*llx.RawData{
+		"path": llx.StringData(path),
+	})
+	if err != nil {
+		return false, err
+	}
+	exist := raw.(*mqlFile).GetExists()
+	return exist.Data, exist.Error
+}
+
 func initPamConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if x, ok := args["path"]; ok {
 		path, ok := x.Value.(string)
@@ -73,22 +105,16 @@ func (se *mqlPamConfServiceEntry) id() (string, error) {
 }
 
 // exists reports whether any PAM configuration is present, checking the
-// pam.d directory and the single-file pam.conf the same way files() selects
+// pam.d directories and the single-file pam.conf the same way files() selects
 // between them. Unlike files() it never errors when nothing is found, so
 // audits can guard PAM checks on hosts that ship no PAM configuration.
 func (s *mqlPamConf) exists() (bool, error) {
-	for _, path := range []string{defaultPamDir, defaultPamConf} {
-		raw, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
-			"path": llx.StringData(path),
-		})
+	for _, path := range append(append([]string{}, pamServiceDirs...), defaultPamConf) {
+		exist, err := pamPathExists(s.MqlRuntime, path)
 		if err != nil {
 			return false, err
 		}
-		exist := raw.(*mqlFile).GetExists()
-		if exist.Error != nil {
-			return false, exist.Error
-		}
-		if exist.Data {
+		if exist {
 			return true, nil
 		}
 	}
@@ -98,28 +124,44 @@ func (s *mqlPamConf) exists() (bool, error) {
 // GetFiles is called when the user has not provided a custom path. Otherwise files are set in the init
 // method and this function is never called then since the data is already cached.
 func (s *mqlPamConf) files() ([]any, error) {
-	// Linux-PAM uses the /etc/pam.d directory when it exists and ignores the
-	// legacy single-file /etc/pam.conf entirely; only when /etc/pam.d is absent
-	// does it fall back to /etc/pam.conf. We parse the same source PAM itself
-	// uses so audits reflect the effective configuration rather than dead files.
+	// Linux-PAM uses the per-service directories when any of them exists and
+	// ignores the legacy single-file /etc/pam.conf entirely; only when none
+	// exists does it fall back to /etc/pam.conf. Within the directories it
+	// loads the first file named after the service, in pamServiceDirs order.
+	// We parse the same files PAM itself loads so audits reflect the
+	// effective configuration rather than shadowed or dead files.
 	// see http://www.linux-pam.org/Linux-PAM-html/sag-configuration.html
-	raw, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
-		"path": llx.StringData(defaultPamDir),
-	})
-	if err != nil {
-		return nil, err
-	}
-	f := raw.(*mqlFile)
-	exist := f.GetExists()
-	if exist.Error != nil {
-		return nil, exist.Error
+	var res []any
+	seen := map[string]struct{}{}
+	anyDir := false
+	for _, dir := range pamServiceDirs {
+		exist, err := pamPathExists(s.MqlRuntime, dir)
+		if err != nil {
+			return nil, err
+		}
+		if !exist {
+			continue
+		}
+		anyDir = true
+
+		files, err := getSortedPathFiles(s.MqlRuntime, dir)
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range files {
+			service := strings.TrimPrefix(f.(*mqlFile).Path.Data, dir+"/")
+			if _, ok := seen[service]; ok {
+				continue
+			}
+			seen[service] = struct{}{}
+			res = append(res, f)
+		}
 	}
 
-	if exist.Data {
-		return getSortedPathFiles(s.MqlRuntime, defaultPamDir)
-	} else {
+	if !anyDir {
 		return getSortedPathFiles(s.MqlRuntime, defaultPamConf)
 	}
+	return res, nil
 }
 
 func (s *mqlPamConf) content(files []any) (string, error) {
@@ -412,8 +454,9 @@ func (s *mqlPamConf) modules(entries map[string]any) ([]any, error) {
 }
 
 // initPamConfService selects a single PAM service by name and caches its
-// parsed entries. The name matches the file under /etc/pam.d (e.g. "su" ->
-// /etc/pam.d/su) or the service column in the single-file /etc/pam.conf. When
+// parsed entries. The name matches the file PAM loads for the service (e.g.
+// "su" -> /etc/pam.d/su, or /usr/lib/pam.d/su when only the distribution
+// default exists) or the service column in the single-file /etc/pam.conf. When
 // no such service is configured the resource is returned with an empty path
 // and no entries rather than an error, so audits can branch on it cleanly.
 func initPamConfService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -450,7 +493,7 @@ func initPamConfService(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 		return nil, nil, entries.Error
 	}
 
-	// entries is keyed by the /etc/pam.d/<name> file path, or by the bare
+	// entries is keyed by the <pam.d dir>/<name> file path, or by the bare
 	// service name for single-file /etc/pam.conf. filepath.Base matches both.
 	path := ""
 	serviceEntries := []any{}
@@ -530,12 +573,12 @@ func (s *mqlPamConf) entries(files []any) (map[string]any, error) {
 
 	services := map[string]any{}
 	for filePath, content := range contents {
-		// Files directly under /etc/pam.d carry one service each (the file
-		// name is the service). The legacy single-file /etc/pam.conf instead
+		// Files directly under a pam.d directory carry one service each (the
+		// file name is the service). The legacy single-file /etc/pam.conf instead
 		// prefixes every line with the service name, so its lines have one
 		// extra leading column. Detect the layout by whether the file lives
 		// in the pam.d directory and group single-file lines by that column.
-		singleFile := filepath.Dir(filePath) != defaultPamDir
+		singleFile := !isPamServiceDir(filePath)
 		if !singleFile {
 			// Preserve the empty-service key so e.g.
 			// pam.conf.entries["/etc/pam.d/su"] stays an empty list rather

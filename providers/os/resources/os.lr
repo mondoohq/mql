@@ -1505,8 +1505,11 @@ packages {
 
 // PAM (pluggable authentication module) configuration
 //
-// Aggregate view of the /etc/pam.d service configuration (and the
-// legacy single-file /etc/pam.conf). `entries` returns parsed service
+// Aggregate view of the PAM service configuration: one file per service,
+// read from `/etc/pam.d` or, for a service with no file there, from the
+// distribution defaults in `/usr/lib/pam.d` or `/usr/etc/pam.d`, the same
+// order PAM uses. The legacy single-file `/etc/pam.conf` is read only when
+// none of those directories exists. `entries` returns parsed service
 // entries keyed by service, each carrying its type, control, and
 // module; `modules` deduplicates the modules loaded across every
 // service. Used to audit authentication policy, such as which services
@@ -1515,11 +1518,16 @@ pam.conf {
   init(path string)
   // Whether PAM configuration is present on the system
   //
-  // True when either the `/etc/pam.d` directory or the `/etc/pam.conf` file
-  // exists. Use it to guard PAM audits on hosts that ship no PAM
-  // configuration, such as container-optimized OS images.
+  // True when any of the `/etc/pam.d`, `/usr/lib/pam.d`, or `/usr/etc/pam.d`
+  // directories or the `/etc/pam.conf` file exists. Use it to guard PAM
+  // audits on hosts that ship no PAM configuration, such as
+  // container-optimized OS images.
   exists() bool
   // List of files that make up the PAM configuration
+  //
+  // The file PAM loads for each service. A service file in `/etc/pam.d`
+  // shadows the one of the same name in `/usr/lib/pam.d` or `/usr/etc/pam.d`,
+  // so only the `/etc/pam.d` copy is listed.
   files() []file
   // The raw PAM configuration (across all files)
   content(files) string
@@ -1538,7 +1546,8 @@ pam.conf {
 private pam.conf.serviceEntry @defaults("service module") {
   // Service the entry belongs to
   //
-  // The `/etc/pam.d/<service>` file path the line came from, or the service
+  // The `<pam.d directory>/<service>` file path the line came from, such as
+  // `/etc/pam.d/su` or `/usr/lib/pam.d/su`, or the service
   // name in the first column when read from the single-file `/etc/pam.conf`.
   service string
   // Line number the entry was read from
@@ -1571,8 +1580,9 @@ private pam.conf.serviceEntry @defaults("service module") {
 //
 // PAM configuration for a single service selected by name, for example
 // `pam.conf.service(name: "su")` or `pam.conf.service(name: "sshd")`.
-// The service is resolved from its `/etc/pam.d/<name>` file, or from the
-// lines naming it in the legacy single-file `/etc/pam.conf`. `entries`
+// The service is resolved from its `/etc/pam.d/<name>` file, falling back
+// to `/usr/lib/pam.d/<name>` and then `/usr/etc/pam.d/<name>` as PAM does,
+// or from the lines naming it in the legacy single-file `/etc/pam.conf`. `entries`
 // are the parsed lines for that service and `modules` aggregates the
 // modules it loads keyed by name, so audits such as
 // `pam.conf.service(name: "su").modules["pam_wheel"].params["use_uid"]`
@@ -1583,7 +1593,9 @@ private pam.conf.service {
   name string
   // Path of the configuration file the service is defined in
   //
-  // `/etc/pam.d/<name>` on systems that use the pam.d directory, or
+  // `/etc/pam.d/<name>` on systems that use the pam.d directory,
+  // `/usr/lib/pam.d/<name>` or `/usr/etc/pam.d/<name>` when the service has
+  // only a distribution default, or
   // `/etc/pam.conf` when the service comes from the legacy single file. Empty
   // when no such service is configured.
   path string
@@ -1635,7 +1647,7 @@ private pam.module @defaults("name enabled entries.length") {
   enabled bool
   // Every service entry that loads this module
   //
-  // The full list across all `/etc/pam.d/*` files, in source order.
+  // The full list across every service file, in source order.
   // Each entry carries its originating `service`, `lineNumber`,
   // `pamType`, `control`, and raw `options` so callers can drill back
   // into the underlying line if `params` aggregation isn't enough.
