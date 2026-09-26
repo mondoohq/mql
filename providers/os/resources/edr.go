@@ -12,6 +12,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/detector/crowdstrike"
 	"go.mondoo.com/mql/providers/os/resources/edr"
 	"go.mondoo.com/mql/types"
 )
@@ -342,7 +343,13 @@ func (e *mqlEdr) enrich(d edr.Detection, args map[string]*llx.RawData) {
 	args["signatureAge"] = llx.NilData
 	args["signatureUpdatedAt"] = llx.NilData
 	args["signatureVersion"] = llx.NilData
+	args["agentId"] = llx.NilData
+	args["tenantId"] = llx.NilData
 
+	if d.Product.ID == "crowdstrike-falcon" {
+		e.enrichFalconIdentity(args)
+		return
+	}
 	if d.Product.ID != "microsoft-defender" {
 		return
 	}
@@ -384,6 +391,23 @@ func (e *mqlEdr) defenderStatus() *mqlWindowsDefenderStatus {
 // vocabulary. Passive and EDR-block modes both report the antimalware service
 // as enabled while remediating little or nothing, which is why the mode is
 // worth reporting separately from running.
+// enrichFalconIdentity reports the Falcon sensor's agent and customer IDs. They
+// are detected once, with the platform; reading them back from the platform
+// labels keeps these fields and the labels from ever disagreeing.
+func (e *mqlEdr) enrichFalconIdentity(args map[string]*llx.RawData) {
+	conn, ok := e.MqlRuntime.Connection.(shared.Connection)
+	if !ok || conn.Asset() == nil || conn.Asset().Platform == nil {
+		return
+	}
+	labels := conn.Asset().Platform.Labels
+	if aid := labels[crowdstrike.LabelAID]; aid != "" {
+		args["agentId"] = llx.StringData(aid)
+	}
+	if cid := labels[crowdstrike.LabelCID]; cid != "" {
+		args["tenantId"] = llx.StringData(cid)
+	}
+}
+
 func defenderMode(amRunningMode string) string {
 	switch amRunningMode {
 	case "Normal":

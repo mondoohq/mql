@@ -16394,6 +16394,16 @@ private edr.product @defaults("name vendor installed healthy") {
   signatureUpdatedAt time
   // Version of the agent's detection content
   signatureVersion string
+  // ID the vendor's console uses for this agent
+  //
+  // The agent ID (AID) for CrowdStrike Falcon. Null for agents whose ID is not
+  // detected yet; more vendors will follow.
+  agentId string
+  // ID of the vendor customer or tenant the agent reports to
+  //
+  // The customer ID (CID) for CrowdStrike Falcon. Null for agents whose tenant
+  // is not detected yet.
+  tenantId string
   // Signals that identified the agent
   //
   // Each entry names what matched: `package`, `service`, `process`, `path`,
@@ -16432,6 +16442,26 @@ mdm @defaults("enrolled vendor") @maturity("preview") {
   // policy for Windows Group Policy auto-enrollment, and user for an
   // enrollment a user started.
   method() string
+  // Device ID the MDM service assigned to this device
+  //
+  // The Intune managed device ID for a device enrolled in Intune, read from the
+  // device's Intune MDM certificate. Null when the device is not enrolled, when
+  // the vendor's ID is not detected yet, or when the certificate is not
+  // readable.
+  deviceId() string
+  // Tenant the MDM service manages the device for
+  //
+  // The Microsoft Entra tenant ID for a device enrolled in Intune. Null when the
+  // device is not enrolled or the tenant is not detected.
+  tenantId() string
+  // Microsoft Entra device ID
+  //
+  // The ID of the device object in Microsoft Entra ID, read from the device's
+  // Entra device certificate. A device can be Entra-joined without being
+  // enrolled in an MDM service, so this can be set while enrolled is false.
+  // Null when the device is not Entra-joined or the certificate is not
+  // readable.
+  entraDeviceId() string
 }
 
 // Cloud-asset metadata

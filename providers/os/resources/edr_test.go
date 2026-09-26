@@ -7,7 +7,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/detector/crowdstrike"
 	"go.mondoo.com/mql/providers/os/resources/edr"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 func TestDefenderMode(t *testing.T) {
@@ -64,4 +71,38 @@ func TestCatalogOnlyCostsWhatThePlatformNeeds(t *testing.T) {
 
 	assert.False(t, catalogNeedsProcesses("freebsd"))
 	assert.False(t, catalogNeedsSystemExtensions("freebsd"))
+}
+
+func TestEnrichFalconIdentity(t *testing.T) {
+	newEdr := func(t *testing.T, labels map[string]string) *mqlEdr {
+		conn, err := mock.New(0, &inventory.Asset{Platform: &inventory.Platform{Name: "ubuntu", Labels: labels}})
+		require.NoError(t, err)
+		return &mqlEdr{MqlRuntime: &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}}
+	}
+	falcon := edr.Detection{Product: edr.Product{ID: "crowdstrike-falcon"}}
+
+	t.Run("falcon reports agent and customer IDs from the platform", func(t *testing.T) {
+		args := map[string]*llx.RawData{}
+		newEdr(t, map[string]string{
+			crowdstrike.LabelAID: "0123456789abcdef0123456789abcdef",
+			crowdstrike.LabelCID: "fedcba9876543210fedcba9876543210",
+		}).enrich(falcon, args)
+		assert.Equal(t, "0123456789abcdef0123456789abcdef", args["agentId"].Value)
+		assert.Equal(t, "fedcba9876543210fedcba9876543210", args["tenantId"].Value)
+	})
+
+	t.Run("falcon without detected IDs is null", func(t *testing.T) {
+		args := map[string]*llx.RawData{}
+		newEdr(t, nil).enrich(falcon, args)
+		assert.Nil(t, args["agentId"].Value)
+		assert.Nil(t, args["tenantId"].Value)
+	})
+
+	t.Run("other agents are null", func(t *testing.T) {
+		args := map[string]*llx.RawData{}
+		newEdr(t, map[string]string{crowdstrike.LabelAID: "0123456789abcdef0123456789abcdef"}).
+			enrich(edr.Detection{Product: edr.Product{ID: "sentinelone"}}, args)
+		assert.Nil(t, args["agentId"].Value)
+		assert.Nil(t, args["tenantId"].Value)
+	})
 }

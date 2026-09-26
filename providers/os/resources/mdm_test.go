@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	detwin "go.mondoo.com/mql/providers/os/detector/windows"
 	"go.mondoo.com/mql/providers/os/resources/windows"
 )
 
@@ -85,4 +86,46 @@ func TestMdmResultSet_UnknownVendorIsNull(t *testing.T) {
 	assert.Equal(t, "https://mdm.example.com/x", m.ServerUrl.Data)
 	assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, m.Vendor.State)
 	assert.Equal(t, "user", m.Method.Data)
+}
+
+func TestMdmResultSet_DeviceIdentity(t *testing.T) {
+	// Made-up identifiers.
+	id := detwin.DeviceIdentity{
+		IntuneDeviceID: "0a1b2c3d-4e5f-4061-8273-a4b5c6d7e8f9",
+		EntraTenantID:  "11223344-5566-7788-99aa-bbccddeeff00",
+		EntraDeviceID:  "c0ffee00-1234-4abc-8def-0123456789ab",
+	}
+	null := plugin.StateIsSet | plugin.StateIsNull
+
+	t.Run("enrolled in Intune reports the device and tenant", func(t *testing.T) {
+		m := &mqlMdm{}
+		mdmResult{enrolled: true, serverURL: "https://r.manage.microsoft.com/EnrollmentServer", identity: id}.set(m)
+		assert.Equal(t, id.IntuneDeviceID, m.DeviceId.Data)
+		assert.Equal(t, id.EntraTenantID, m.TenantId.Data)
+		assert.Equal(t, id.EntraDeviceID, m.EntraDeviceId.Data)
+	})
+
+	t.Run("enrolled elsewhere does not report Intune IDs", func(t *testing.T) {
+		m := &mqlMdm{}
+		mdmResult{enrolled: true, serverURL: "https://acme.jamfcloud.com/mdm", identity: id}.set(m)
+		assert.Equal(t, null, m.DeviceId.State)
+		assert.Equal(t, null, m.TenantId.State)
+		assert.Equal(t, id.EntraDeviceID, m.EntraDeviceId.Data, "Entra join is independent of the MDM")
+	})
+
+	t.Run("not enrolled ignores a leftover Intune certificate", func(t *testing.T) {
+		m := &mqlMdm{}
+		mdmResult{identity: id}.set(m)
+		assert.Equal(t, null, m.DeviceId.State)
+		assert.Equal(t, null, m.TenantId.State)
+		assert.Equal(t, id.EntraDeviceID, m.EntraDeviceId.Data)
+	})
+
+	t.Run("nothing detected is null", func(t *testing.T) {
+		m := &mqlMdm{}
+		mdmResult{enrolled: true, serverURL: "https://r.manage.microsoft.com/x"}.set(m)
+		for _, f := range []plugin.TValue[string]{m.DeviceId, m.TenantId, m.EntraDeviceId} {
+			assert.Equal(t, null, f.State)
+		}
+	})
 }

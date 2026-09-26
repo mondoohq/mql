@@ -14,6 +14,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	detwin "go.mondoo.com/mql/providers/os/detector/windows"
 	"go.mondoo.com/mql/providers/os/resources/powershell"
 	"go.mondoo.com/mql/providers/os/resources/windows"
 )
@@ -73,13 +74,28 @@ type mdmResult struct {
 	enrolled  bool
 	serverURL string
 	method    string
+	identity  detwin.DeviceIdentity
 }
 
 func (r mdmResult) set(m *mqlMdm) {
+	vendor := mdmVendor(r.serverURL)
 	m.Enrolled = plugin.TValue[bool]{Data: r.enrolled, State: plugin.StateIsSet}
 	m.ServerUrl = mdmStringField(r.serverURL)
-	m.Vendor = mdmStringField(mdmVendor(r.serverURL))
+	m.Vendor = mdmStringField(vendor)
 	m.Method = mdmStringField(r.method)
+
+	// The Intune device and tenant IDs describe the MDM enrollment, so they are
+	// only reported while the device is enrolled in Intune: a certificate left
+	// behind by an earlier enrollment must not pass as the current one.
+	var deviceID, tenantID string
+	if r.enrolled && vendor == "intune" {
+		deviceID = r.identity.IntuneDeviceID
+		tenantID = r.identity.EntraTenantID
+	}
+	m.DeviceId = mdmStringField(deviceID)
+	m.TenantId = mdmStringField(tenantID)
+	// Entra join is independent of MDM enrollment.
+	m.EntraDeviceId = mdmStringField(r.identity.EntraDeviceID)
 }
 
 func mdmStringField(v string) plugin.TValue[string] {
@@ -144,6 +160,10 @@ func (m *mqlMdm) populate() error {
 		if err != nil {
 			return err
 		}
+		// The device identity is detected once, with the platform, from the
+		// device certificates; reading it back from the platform labels keeps
+		// these fields and the labels from ever disagreeing.
+		res.identity = detwin.DeviceIdentityFromLabels(platform)
 	}
 
 	res.set(m)
@@ -189,3 +209,8 @@ func (m *mqlMdm) enrolled() (bool, error)    { return false, m.populate() }
 func (m *mqlMdm) vendor() (string, error)    { return "", m.populate() }
 func (m *mqlMdm) serverUrl() (string, error) { return "", m.populate() }
 func (m *mqlMdm) method() (string, error)    { return "", m.populate() }
+func (m *mqlMdm) deviceId() (string, error)  { return "", m.populate() }
+func (m *mqlMdm) tenantId() (string, error)  { return "", m.populate() }
+func (m *mqlMdm) entraDeviceId() (string, error) {
+	return "", m.populate()
+}

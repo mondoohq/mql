@@ -15337,6 +15337,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"edr.product.signatureVersion": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlEdrProduct).GetSignatureVersion()).ToDataRes(types.String)
 	},
+	"edr.product.agentId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetAgentId()).ToDataRes(types.String)
+	},
+	"edr.product.tenantId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlEdrProduct).GetTenantId()).ToDataRes(types.String)
+	},
 	"edr.product.detectedBy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlEdrProduct).GetDetectedBy()).ToDataRes(types.Array(types.String))
 	},
@@ -15363,6 +15369,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"mdm.method": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMdm).GetMethod()).ToDataRes(types.String)
+	},
+	"mdm.deviceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMdm).GetDeviceId()).ToDataRes(types.String)
+	},
+	"mdm.tenantId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMdm).GetTenantId()).ToDataRes(types.String)
+	},
+	"mdm.entraDeviceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMdm).GetEntraDeviceId()).ToDataRes(types.String)
 	},
 	"cloud.provider": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloud).GetProvider()).ToDataRes(types.String)
@@ -36115,6 +36130,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlEdrProduct).SignatureVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"edr.product.agentId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).AgentId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"edr.product.tenantId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlEdrProduct).TenantId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"edr.product.detectedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlEdrProduct).DetectedBy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -36153,6 +36176,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mdm.method": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMdm).Method, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mdm.deviceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMdm).DeviceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mdm.tenantId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMdm).TenantId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"mdm.entraDeviceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMdm).EntraDeviceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"cloud.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -92573,6 +92608,8 @@ type mqlEdrProduct struct {
 	SignatureAge       plugin.TValue[int64]
 	SignatureUpdatedAt plugin.TValue[*time.Time]
 	SignatureVersion   plugin.TValue[string]
+	AgentId            plugin.TValue[string]
+	TenantId           plugin.TValue[string]
 	DetectedBy         plugin.TValue[[]any]
 	Services           plugin.TValue[[]any]
 	Packages           plugin.TValue[[]any]
@@ -92669,6 +92706,14 @@ func (c *mqlEdrProduct) GetSignatureVersion() *plugin.TValue[string] {
 	return &c.SignatureVersion
 }
 
+func (c *mqlEdrProduct) GetAgentId() *plugin.TValue[string] {
+	return &c.AgentId
+}
+
+func (c *mqlEdrProduct) GetTenantId() *plugin.TValue[string] {
+	return &c.TenantId
+}
+
 func (c *mqlEdrProduct) GetDetectedBy() *plugin.TValue[[]any] {
 	return &c.DetectedBy
 }
@@ -92742,10 +92787,13 @@ type mqlMdm struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlMdmInternal
-	Enrolled  plugin.TValue[bool]
-	Vendor    plugin.TValue[string]
-	ServerUrl plugin.TValue[string]
-	Method    plugin.TValue[string]
+	Enrolled      plugin.TValue[bool]
+	Vendor        plugin.TValue[string]
+	ServerUrl     plugin.TValue[string]
+	Method        plugin.TValue[string]
+	DeviceId      plugin.TValue[string]
+	TenantId      plugin.TValue[string]
+	EntraDeviceId plugin.TValue[string]
 }
 
 // createMdm creates a new instance of this resource
@@ -92806,6 +92854,24 @@ func (c *mqlMdm) GetServerUrl() *plugin.TValue[string] {
 func (c *mqlMdm) GetMethod() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Method, func() (string, error) {
 		return c.method()
+	})
+}
+
+func (c *mqlMdm) GetDeviceId() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.DeviceId, func() (string, error) {
+		return c.deviceId()
+	})
+}
+
+func (c *mqlMdm) GetTenantId() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.TenantId, func() (string, error) {
+		return c.tenantId()
+	})
+}
+
+func (c *mqlMdm) GetEntraDeviceId() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.EntraDeviceId, func() (string, error) {
+		return c.entraDeviceId()
 	})
 }
 
