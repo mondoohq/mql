@@ -209,8 +209,8 @@ func TestMacOSAppIdentity(t *testing.T) {
 		assert.Equal(t, "x86_64", byPath["/Applications/Oracle Secure Global Desktop Client.app"].Arch)
 		assert.Equal(t, "pkg:macos/macos/Oracle%20Secure%20Global%20Desktop%20Client@5.60.567?arch=arm64&bundle-id=com.oracle.sgd.ttatcc&team-id=VB5E2TV963",
 			byPath["/Applications/Oracle Secure Global Desktop Client.app"].PUrl)
-		// A shell script launcher has no Mach-O architecture, and the host's
-		// would be wrong: no arch, and no arch qualifier.
+		// A shell script launcher has no Mach-O architecture, so package.arch
+		// is empty. The purl keeps the host's architecture for now (#11113).
 		zap := byPath["/Applications/ZAP.app"]
 		assert.Empty(t, zap.Arch)
 		assert.Equal(t, "pkg:macos/macos/ZAP@2.15.0?arch=arm64&bundle-id=org.zaproxy.zap.ZAP", zap.PUrl)
@@ -326,4 +326,15 @@ func TestIsTruthy(t *testing.T) {
 	for _, v := range []any{nil, false, uint64(0), "", "0", "NO"} {
 		assert.False(t, isTruthy(v), "%v", v)
 	}
+}
+
+// Content larger than a localization file is ignored before anything is
+// allocated from its length.
+func TestParseStringsFileIgnoresOversizedContent(t *testing.T) {
+	small := []byte(`"CFBundleDisplayName" = "Webex";`)
+	assert.Equal(t, map[string]string{"CFBundleDisplayName": "Webex"}, parseStringsFile(small))
+
+	big := append([]byte{0xff, 0xfe}, make([]byte, maxInfoStringsSize)...)
+	assert.Nil(t, parseStringsFile(big))
+	assert.Nil(t, decodeUTF16(big))
 }

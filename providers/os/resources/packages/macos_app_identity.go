@@ -517,6 +517,9 @@ func localizedInfoStrings(conn shared.Connection, path string, devRegion string)
 // property list, or the old text format of "key" = "value"; pairs, in UTF-8 or
 // UTF-16. The text format is a property list dictionary without its braces.
 func parseStringsFile(raw []byte) map[string]string {
+	if len(raw) > maxInfoStringsSize {
+		return nil
+	}
 	content := decodeUTF16(raw)
 	var m map[string]any
 	if _, err := plist.Unmarshal(content, &m); err == nil && len(m) > 0 {
@@ -531,8 +534,12 @@ func parseStringsFile(raw []byte) map[string]string {
 }
 
 // decodeUTF16 converts UTF-16 content with a byte order mark to UTF-8 and
-// drops a UTF-8 byte order mark; anything else is returned as is.
+// drops a UTF-8 byte order mark; anything else is returned as is. Content
+// larger than maxInfoStringsSize is not a localization file and yields nil.
 func decodeUTF16(b []byte) []byte {
+	if len(b) > maxInfoStringsSize {
+		return nil
+	}
 	var order binary.ByteOrder
 	switch {
 	case len(b) >= 2 && b[0] == 0xff && b[1] == 0xfe:
