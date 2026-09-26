@@ -14,6 +14,7 @@ import (
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/detector"
 	"go.mondoo.com/mql/providers/os/detector/crowdstrike"
+	win "go.mondoo.com/mql/providers/os/detector/windows"
 	"go.mondoo.com/mql/providers/os/id/awsec2"
 	"go.mondoo.com/mql/providers/os/id/awsecs"
 	"go.mondoo.com/mql/providers/os/id/biosuuid"
@@ -259,6 +260,24 @@ func gatherPlatformInfo(conn shared.Connection, pf *inventory.Platform, idDetect
 				RelatedPlatformIDs: []string{},
 			}, nil
 		}
+		return &platformInfo{}, nil
+	case ids.IdDetector_IntuneDevice:
+		identity := win.DeviceIdentityFromLabels(pf)
+		if identity.IntunePlatformID() == "" && pf.IsFamily("windows") {
+			info, err := win.GetIntuneInfo(conn)
+			if err != nil {
+				log.Debug().Err(err).Msg("could not get Intune device information")
+			}
+			identity = info.Identity()
+		}
+		if identifier := identity.IntunePlatformID(); identifier != "" {
+			return &platformInfo{
+				IDs:                []string{identifier},
+				Name:               "",
+				RelatedPlatformIDs: []string{},
+			}, nil
+		}
+		// not Intune-enrolled, or the tenant is unknown
 		return &platformInfo{}, nil
 	case ids.IdDetector_AwsEcs:
 		metadata, err := awsecs.Resolve(conn, pf)

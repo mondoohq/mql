@@ -217,15 +217,21 @@ func detectIntuneDeviceID(pf *inventory.Platform, conn shared.Connection) {
 		return
 	}
 
-	intuneDeviceID, err := win.GetIntuneDeviceID(conn)
+	info, err := win.GetIntuneInfo(conn)
 	if err != nil {
-		log.Debug().Err(err).Msg("could not get Intune device ID")
+		log.Debug().Err(err).Msg("could not get Intune device information")
+		return
+	}
+	if info == nil {
 		return
 	}
 
-	if intuneDeviceID != "" {
-		pf.Labels["windows.mondoo.com/intune-device-id"] = intuneDeviceID
+	if info.EntDMID != "" {
+		pf.Labels["windows.mondoo.com/intune-device-id"] = info.EntDMID
 	}
+	// The Microsoft device identity comes from the public device certificates
+	// read in the same call; without access to the store the labels are absent.
+	info.Identity().SetLabels(pf)
 }
 
 // detectESU checks if Windows 10 Extended Security Updates (ESU) are enabled.

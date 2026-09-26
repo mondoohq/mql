@@ -14,6 +14,10 @@ const (
 	// IdDetector_CrowdStrikeAID identifies a host by the agent ID of its
 	// CrowdStrike Falcon sensor. Opt-in: it is never part of the defaults.
 	IdDetector_CrowdStrikeAID = "crowdstrike-aid"
+	// IdDetector_IntuneDevice identifies a Windows device by its Microsoft
+	// Intune device ID, scoped by its Entra tenant. Opt-in: it is never part of
+	// the defaults.
+	IdDetector_IntuneDevice = "intune-device"
 
 	// IdDetector_PlatformID = "transport-platform-id" // TODO: how does this work?
 )
