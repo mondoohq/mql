@@ -16,7 +16,7 @@ Skills carry the procedures and the traps. This file carries the rules. Invoke t
 
 | skill | use when |
 |---|---|
-| `new-resource` | adding/changing a resource or field in an existing provider, or a resource returns null/empty and the schema is the suspect. `references/implementation-patterns.md` has the Go patterns (`CreateResource`/`NewResource`, `Internal` structs, lazy loading, discovery filters). |
+| `new-resource` | adding/changing a resource or field in an existing provider, or a resource returns null/empty and the schema is the suspect. `references/implementation-patterns.md` has the Go patterns (`CreateResource`/`NewResource`, `Internal` structs, lazy loading, discovery filters, pagination, AWS region fan-out and EC2 filters, Azure resource IDs and pagers). |
 | `new-provider` | provider doesn't exist yet (hands off to `new-resource`) |
 | `provider-verification` | proving a PR or commit range against provisioned cloud infra |
 | `provider-bug-review` | auditing a shipped provider by reading code: nil handling, pagination, `__id` collisions |
@@ -112,7 +112,7 @@ Patterns and samples: `.agents/skills/new-resource/references/implementation-pat
 - Never hardcode empty/default values for fields the list API doesn't return. Declare them computed (`description() string`), fetch the detail API on demand, cache on `Internal` (double-check locking; one fetch can feed several fields).
 - Never use `os/exec`. Go through the `command` resource so execution works over local, SSH and container connections (`providers/os/resources/lsblk.go`).
 - Resolve discovered assets by ARN, never asset name (that's a display name). Inject `getAssetIdentifier(runtime)` only when non-empty, since an empty `args["arn"]` defeats the init's nil guard. Exception: name-driven APIs like IAM `GetUser`, where discovery sets the asset name to the resource name; use `getAssetName(runtime)`.
-- Always paginate when the API supports it; loop on the marker/token until nil.
+- Always paginate when the API supports it: the SDK's `New*Paginator`/`NewList*Pager` when one exists, otherwise loop on the marker/token until nil.
 - `convert.SliceStrPtrToStr` and `convert.SliceStrPtrToInterface` panic on nil elements. Write a nil-safe loop if the SDK slice can hold nil pointers.
 - A refusal is an error, never a null (ADR 046 §3). The provider's classifiers (`Is400AccessDeniedError`, `isServiceDisabled`, `isAzureAccessDenied`, ...) decide the kind; a true answer wraps the SDK error instead of returning `nil, nil`: `return nil, llx.Forbidden(err, llx.WithPermissions("ec2:DescribeInstances"))`. The kinds: `Unauthenticated` (401), `Forbidden` (403, includes a missing `sudo`), `NotFound` (could not answer because what it had to read is missing), `NotApplicable` (API not enabled, not in this plan or region), `Gone` (retired API), `TooManyRequests` (with `llx.WithRetryAfter`), `Unavailable` (5xx, timeout, connection refused), `MalformedData` (the target's answer doesn't parse). Classify by what the target said, not the status alone (GCP's 403 "API not enabled" is `NotApplicable`). Pick the narrowest kind that is true; unsure means unclassified, return the error as is. A wrong kind is worse than none.
 - Through v14 that change is opt-in (ADR 046 §9). A call site that returned a null or an empty value for a refusal in v13 keeps it behind the flag, before the classified return: `if !plugin.StructuredErrors() && Is400AccessDeniedError(err) { return []any{}, nil }`. Never read the features yourself, the SDK sets the flag on Connect. v15 deletes these branches.

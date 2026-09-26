@@ -186,23 +186,143 @@ if conn.Filters.General.HasTags() {
 
 ## Pagination
 
-Loop on the marker or token until the API stops returning one:
+Use the SDK paginator when the client has one. AWS SDK v2 generates `New<Operation>Paginator` for most list and describe calls; it follows the token for you and stops when the API does:
 
 ```go
-var marker *string
-for {
-    result, err := svc.DescribeDBParameterGroups(ctx, &rds.DescribeDBParameterGroupsInput{Marker: marker})
+paginator := rds.NewDescribeDBParameterGroupsPaginator(svc, &rds.DescribeDBParameterGroupsInput{})
+for paginator.HasMorePages() {
+    page, err := paginator.NextPage(ctx)
     if err != nil {
         return nil, err
     }
-    for _, item := range result.Items {
-        // process each item
+    for _, pg := range page.DBParameterGroups {
+        // map each item
     }
-    if result.Marker == nil {
-        break
-    }
-    marker = result.Marker
 }
 ```
 
-Test the walk with `httptest`, including a server that ignores its cursor, so a stuck page cannot multiply records up to the cap.
+`providers/aws/resources/aws_rds.go: parameterGroups`. Check the SDK package for a `New*Paginator` before writing a loop by hand. Only when there is none (DAX `DescribeClusters`), loop on the marker or token until the API stops returning one:
+
+```go
+var nextToken *string
+for {
+    resp, err := svc.DescribeClusters(ctx, &dax.DescribeClustersInput{NextToken: nextToken})
+    if err != nil {
+        return nil, err
+    }
+    // map resp.Clusters
+    if resp.NextToken == nil {
+        break
+    }
+    nextToken = resp.NextToken
+}
+```
+
+`providers/aws/resources/aws_dax.go: getDaxClusters`. Test a hand-written walk with `httptest`, including a server that ignores its cursor, so a stuck page cannot multiply records up to the cap.
+
+## AWS: multi-region fan-out
+
+A regional service is listed once per region in scope and the results concatenated. New listers use `perRegion` (`providers/aws/resources/aws_regional.go`), which runs the closure per region from `conn.Regions()` (region filters already applied) at bounded concurrency:
+
+```go
+func (a *mqlAwsRds) parameterGroups() ([]any, error) {
+    conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+    return perRegion(conn, "rds", func(ctx context.Context, region string) ([]any, error) {
+        svc := conn.Rds(region)
+        res := []any{}
+        // paginate, CreateResource with "region": llx.StringData(region)
+        return res, nil
+    })
+}
+```
+
+- Return the SDK error from the closure as is. `perRegion` classifies it (`classifyError` in `aws_disposition.go`): a service absent from the region contributes nothing, a denied region is recorded as a coverage gap, and one failed region no longer discards the others. No `Is400AccessDeniedError` branch inside the closure.
+- The second argument is the AWS service id used for that classification (`"rds"`, `"ecr"`, `"macie2"`).
+- Carry `region` on every resource and into `__id` when the natural id is not an ARN; the same name exists in every region.
+
+Most existing listers still use the older builder/collector pair: a `get<Thing>` method returning one `jobpool.NewJob` per region, run by `jobpool.CreatePool(jobs, 5)` (`providers/aws/resources/aws_dax.go: daxClusters`, `getDaxClusters`). Its closures handle refusals themselves under the per-region exception in AGENTS.md §2 Step 3 (log and skip the partition). When editing one, keep its shape or migrate the whole lister to `perRegion`; don't mix the two in one function.
+
+## AWS: EC2 tag filters, server side and client side
+
+EC2 `Describe*` inputs take `Filters`, so include-tag filters can be pushed to the API and AWS returns only the matches. Exclude tags have no server-side form and are always applied to each item:
+
+```go
+params := &ec2.DescribeSecurityGroupsInput{
+    Filters: conn.Filters.General.ToServerSideEc2Filters(), // include tags only
+}
+paginator := ec2.NewDescribeSecurityGroupsPaginator(svc, params)
+for paginator.HasMorePages() {
+    page, err := paginator.NextPage(ctx)
+    ...
+    for _, group := range page.SecurityGroups {
+        if conn.Filters.General.MatchesExcludeTags(ec2TagsToMap(group.Tags)) {
+            continue
+        }
+        ...
+    }
+}
+```
+
+`providers/aws/resources/aws_ec2.go: getSecurityGroups`; definitions in `providers/aws/connection/filters.go`.
+
+| API | include tags | exclude tags |
+|---|---|---|
+| EC2 `Describe*` with a `Filters` input | `ToServerSideEc2Filters()` | `MatchesExcludeTags()` per item |
+| anything else | `IsFilteredOutByTags()` per item, gated on `HasTags()` (Discovery section above) | covered by `IsFilteredOutByTags()` |
+
+## Azure: resource IDs
+
+Child listers and detail calls need the subscription, resource group and parent names that are already in the parent's ARM ID. Parse it, don't split strings:
+
+```go
+resourceID, err := ParseResourceID(a.Id.Data)
+if err != nil {
+    return nil, err
+}
+site, err := resourceID.Component("sites")
+if err != nil {
+    return nil, err
+}
+// resourceID.SubscriptionID, resourceID.ResourceGroup
+```
+
+`providers/azure/resources/resourceid.go`. `Component` is case-insensitive because ARM IDs are; pass the segment name as it appears in the ID (`sites`, `virtualMachines`, `managedEnvironments`).
+
+## Azure: ARM pagers
+
+ARM clients return a pager from `NewList*Pager`. Loop on `More()`, and propagate the `NextPage` error:
+
+```go
+client, err := web.NewWebAppsClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
+    ClientOptions: conn.ClientOptions(),
+})
+if err != nil {
+    return nil, err
+}
+pager := client.NewListSlotsPager(resourceID.ResourceGroup, site, &web.WebAppsClientListSlotsOptions{})
+res := []any{}
+for pager.More() {
+    page, err := pager.NextPage(ctx)
+    if err != nil {
+        return nil, err
+    }
+    for _, entry := range page.Value {
+        // map entry
+    }
+}
+```
+
+`providers/azure/resources/web.go: slots`. Build the client with `conn.ClientOptions()` so the connection's request pipeline (the API trace policy) applies to it.
+
+## Azure: diagnostic settings
+
+A resource that supports Azure Monitor diagnostic settings exposes them by passing its own ARM ID to the shared helper, not by building a new client:
+
+```go
+func (a *mqlAzureSubscriptionKeyVaultServiceVault) diagnosticSettings() ([]any, error) {
+    conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+    return getDiagnosticSettings(a.Id.Data, a.MqlRuntime, conn)
+}
+```
+
+Declared in the `.lr` as `diagnosticSettings() []azure.subscription.monitorService.diagnosticsetting`. `getDiagnosticSettings` is in `providers/azure/resources/monitor.go`; `providers/azure/resources/keyvault.go` and `web.go` call it.
