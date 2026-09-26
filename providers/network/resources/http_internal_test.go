@@ -193,6 +193,45 @@ func TestParseSetCookieDirectives(t *testing.T) {
 		_, _, params := parseSetCookieDirectives("sid=1; Domain=Example.COM; SameSite=Strict")
 		assert.Equal(t, map[string]any{"domain": "Example.COM", "samesite": "Strict"}, params.Value)
 	})
+
+	t.Run("names a cookie that is set to an empty value", func(t *testing.T) {
+		// Clearing a cookie by setting it to the empty string is ordinary, and
+		// the header still names the cookie being cleared. Reading the empty
+		// value as "not the name-value pair" promoted the first attribute into
+		// the cookie and shifted every attribute after it onto the wrong key.
+		name, value, params := parseSetCookieDirectives(
+			"ct0=; Max-Age=-1; Path=/; Domain=.example.com; Secure; SameSite=Lax")
+		assert.Equal(t, llx.StringData("ct0"), name)
+		assert.Equal(t, llx.StringData(""), value)
+		assert.Equal(t, map[string]any{
+			"max-age":  "-1",
+			"path":     "/",
+			"domain":   ".example.com",
+			"secure":   "",
+			"samesite": "Lax",
+		}, params.Value)
+	})
+
+	t.Run("names a cookie whose only field is an empty value", func(t *testing.T) {
+		name, value, params := parseSetCookieDirectives("sid=")
+		assert.Equal(t, llx.StringData("sid"), name)
+		assert.Equal(t, llx.StringData(""), value)
+		assert.Equal(t, llx.NilData, params)
+	})
+
+	t.Run("keeps a value that contains its own equals signs", func(t *testing.T) {
+		name, value, _ := parseSetCookieDirectives("token=a=b=c; Path=/")
+		assert.Equal(t, llx.StringData("token"), name)
+		assert.Equal(t, llx.StringData("a=b=c"), value)
+	})
+
+	t.Run("sets no cookie when the first field is not a name-value pair", func(t *testing.T) {
+		// RFC 6265 section 5.2 step 2: a cookie-string with no "=" in its
+		// name-value pair is ignored entirely.
+		name, value, _ := parseSetCookieDirectives("justaflag; Path=/")
+		assert.Equal(t, llx.NilData, name)
+		assert.Equal(t, llx.NilData, value)
+	})
 }
 
 func TestHttpHeaderSetCookie(t *testing.T) {
