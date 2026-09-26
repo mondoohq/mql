@@ -117,6 +117,18 @@ func (c Constraint) Check(v Version) bool {
 	}
 }
 
+// HasEpoch reports whether the constraint's version was written with an epoch.
+func (c Constraint) HasEpoch() bool { return c.ver.HasEpoch() }
+
+// WithoutEpoch returns the constraint with the epoch removed from its bounds.
+func (c Constraint) WithoutEpoch() Constraint {
+	c.ver = c.ver.WithoutEpoch()
+	if !c.hi.IsZero() {
+		c.hi = c.hi.WithoutEpoch()
+	}
+	return c
+}
+
 // String returns the constraint as it was written.
 func (c Constraint) String() string { return c.src }
 

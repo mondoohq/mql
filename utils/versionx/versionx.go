@@ -8,6 +8,11 @@
 // the same way no matter which of those asked, which is only true if they all call the
 // same code.
 //
+// MQL's comparison operators add one rule on top of [Compare]: when only one side
+// carries an epoch, both are compared without it, because a query's bound
+// (version('8.5')) names an upstream version while the package it is checked against
+// reports its epoch. [Compare] stays the strict total order; see llx/builtin_version.go.
+//
 // # What it has to handle
 //
 // Real inventories are not semver. A fleet reports, in the same list:
@@ -245,6 +250,19 @@ func (v Version) Kind() Kind { return v.kind }
 
 // Epoch is the deb/rpm (`1:`) or PEP 440 (`1!`) epoch, 0 when there is none.
 func (v Version) Epoch() int { return v.epoch }
+
+// HasEpoch reports whether an epoch was written: "1:1.2" and "0:1.2" have one, "1.2"
+// does not. An apk build stamp is not an epoch (see [maxPlausibleEpoch]).
+func (v Version) HasEpoch() bool { return v.kind == KindDebian || v.kind == KindPython }
+
+// WithoutEpoch returns v with its epoch removed, as if it had been written without
+// one: "1:8.2p1-4" becomes "8.2p1-4". A version without an epoch is returned as is.
+func (v Version) WithoutEpoch() Version {
+	if !v.HasEpoch() {
+		return v
+	}
+	return Parse(reEpoch.ReplaceAllString(strings.TrimSpace(v.src), ""))
+}
 
 // IsZero reports whether this is an empty version (no string at all).
 func (v Version) IsZero() bool { return strings.TrimSpace(v.src) == "" }
