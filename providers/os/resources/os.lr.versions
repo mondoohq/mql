@@ -706,11 +706,6 @@ dart.packages.files 13.13.1
 dart.packages.list 13.13.1
 dart.packages.path 13.13.1
 dart.packages.root 13.13.1
-directory 14.5.1
-directory.entra 14.5.1
-directory.entra.deviceId 14.5.1
-directory.entra.tenantId 14.5.1
-directory.joined 14.5.1
 docker 9.0.0
 docker.container 9.0.0
 docker.container.command 9.0.0
@@ -1443,6 +1438,11 @@ ibm.bob.skill.purl 13.40.10
 ibm.bob.skill.sha256 13.13.1
 ibm.bob.skill.source 13.13.1
 ibm.bob.skills 13.13.1
+idp 14.5.1
+idp.entra 14.5.1
+idp.entra.deviceId 14.5.1
+idp.entra.tenantId 14.5.1
+idp.joined 14.5.1
 iis 13.40.10
 iis.appPool 13.40.10
 iis.appPool.autoStart 13.40.10

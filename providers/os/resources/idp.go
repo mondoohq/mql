@@ -14,13 +14,13 @@ import (
 	detwin "go.mondoo.com/mql/providers/os/detector/windows"
 )
 
-type mqlDirectoryInternal struct {
+type mqlIdpInternal struct {
 	lock    sync.Mutex
 	fetched bool
 }
 
-func (d *mqlDirectory) id() (string, error) {
-	return "directory", nil
+func (i *mqlIdp) id() (string, error) {
+	return "idp", nil
 }
 
 // entraMembership is the device's Microsoft Entra ID membership, reduced from
@@ -43,81 +43,81 @@ func entraFromIdentity(id detwin.DeviceIdentity) entraMembership {
 
 func (e entraMembership) member() bool { return e.deviceID != "" }
 
-// directoryResult holds every membership detected for the device. Each
-// directory is its own field, because a device can be a member of several.
-type directoryResult struct {
+// idpResult holds every membership detected for the device. Each identity
+// provider is its own field, because a device can belong to several.
+type idpResult struct {
 	entra entraMembership
 }
 
-func (r directoryResult) set(d *mqlDirectory) error {
-	d.Joined = plugin.TValue[bool]{Data: r.entra.member(), State: plugin.StateIsSet}
+func (r idpResult) set(i *mqlIdp) error {
+	i.Joined = plugin.TValue[bool]{Data: r.entra.member(), State: plugin.StateIsSet}
 
 	if !r.entra.member() {
-		d.Entra = plugin.TValue[*mqlDirectoryEntra]{State: plugin.StateIsSet | plugin.StateIsNull}
+		i.Entra = plugin.TValue[*mqlIdpEntra]{State: plugin.StateIsSet | plugin.StateIsNull}
 		return nil
 	}
-	raw, err := CreateResource(d.MqlRuntime, "directory.entra", map[string]*llx.RawData{
-		"__id":     llx.StringData("directory.entra"),
+	raw, err := CreateResource(i.MqlRuntime, "idp.entra", map[string]*llx.RawData{
+		"__id":     llx.StringData("idp.entra"),
 		"deviceId": mdmStringData(r.entra.deviceID),
 		"tenantId": mdmStringData(r.entra.tenantID),
 	})
 	if err != nil {
 		return err
 	}
-	d.Entra = plugin.TValue[*mqlDirectoryEntra]{Data: raw.(*mqlDirectoryEntra), State: plugin.StateIsSet}
+	i.Entra = plugin.TValue[*mqlIdpEntra]{Data: raw.(*mqlIdpEntra), State: plugin.StateIsSet}
 	return nil
 }
 
 // populate reads the device identity once and sets every field. The identity
 // is detected with the platform, from the device certificates; reading it back
 // from the platform labels keeps these fields and the labels in agreement.
-// Platforms without directory detection report no membership.
-func (d *mqlDirectory) populate() error {
-	d.lock.Lock()
-	defer d.lock.Unlock()
-	if d.fetched {
+// Platforms without identity-provider detection report no membership.
+func (i *mqlIdp) populate() error {
+	i.lock.Lock()
+	defer i.lock.Unlock()
+	if i.fetched {
 		return nil
 	}
 
-	conn, ok := d.MqlRuntime.Connection.(shared.Connection)
+	conn, ok := i.MqlRuntime.Connection.(shared.Connection)
 	if !ok {
-		return errors.New("directory is not supported on this connection")
+		return errors.New("idp is not supported on this connection")
 	}
 	platform := conn.Asset().Platform
 
-	var res directoryResult
+	var res idpResult
 	if platform != nil && platform.IsFamily(inventory.FAMILY_WINDOWS) {
 		res.entra = entraFromIdentity(detwin.DeviceIdentityFromLabels(platform))
 	}
-	if err := res.set(d); err != nil {
+	if err := res.set(i); err != nil {
 		return err
 	}
-	d.fetched = true
+	i.fetched = true
 	return nil
 }
 
-func (d *mqlDirectory) joined() (bool, error) { return false, d.populate() }
+func (i *mqlIdp) joined() (bool, error) { return false, i.populate() }
 
-func (d *mqlDirectory) entra() (*mqlDirectoryEntra, error) { return nil, d.populate() }
+func (i *mqlIdp) entra() (*mqlIdpEntra, error) { return nil, i.populate() }
 
-// initDirectoryEntra makes directory.entra reachable by its own path. The
-// resource shares its name with the directory field that returns it, so a
-// query for directory.entra resolves to the resource; without this it would be
-// built from empty arguments and report null for every field.
-func initDirectoryEntra(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
+// initIdpEntra makes idp.entra reachable by its own path. The resource shares
+// its name with the idp field that returns it, so a query for idp.entra
+// resolves to the resource; without this it would be built from empty
+// arguments and report null for every field.
+func initIdpEntra(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if _, ok := args["__id"]; ok {
 		return args, nil, nil
 	}
-	parent, err := CreateResource(runtime, "directory", map[string]*llx.RawData{})
+	parent, err := CreateResource(runtime, "idp", map[string]*llx.RawData{})
 	if err != nil {
 		return nil, nil, err
 	}
-	v := parent.(*mqlDirectory).GetEntra()
+	v := parent.(*mqlIdp).GetEntra()
 	if v.Error != nil {
 		return nil, nil, v.Error
 	}
 	if v.IsNull() {
-		return nil, nil, errors.New("cannot read directory.entra: the device has no Microsoft Entra device identity")
+		return nil, nil, errors.New("cannot read idp.entra: the device has no Microsoft Entra device identity")
 	}
 	return args, v.Data, nil
 }

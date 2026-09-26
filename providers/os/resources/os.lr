@@ -31,7 +31,6 @@ alias os.base.cloud = cloud
 alias os.base.containerd = containerd
 alias os.base.continuedev = continuedev
 alias os.base.cursor = cursor
-alias os.base.directory = directory
 alias os.base.docker = docker
 alias os.base.edr = edr
 alias os.base.files = files
@@ -39,6 +38,7 @@ alias os.base.firefox = firefox
 alias os.base.gemini = gemini
 alias os.base.goose = goose
 alias os.base.haproxy = haproxy
+alias os.base.idp = idp
 alias os.base.ipAddress = ipAddress
 alias os.base.jboss = jboss
 alias os.base.jetbrains = jetbrains
@@ -16464,31 +16464,34 @@ private mdm.intune @defaults("deviceId tenantId") {
   tenantId string
 }
 
-// Directory membership of this device
+// Identity provider this device belongs to
 //
-// Which directories the device is joined to, bound to, or registered with. A
-// device can be a member of several at once (for example a hybrid join to
-// Active Directory and Microsoft Entra ID), so each directory is its own field
-// and is null when the device is not a member. Independent of MDM enrollment:
-// a device can be a directory member without being enrolled in an MDM
+// The identity providers the device is joined to, bound to, or registered
+// with, alongside mdm for its management and edr for its endpoint protection.
+// A device can belong to several at once (for example a hybrid join to Active
+// Directory and Microsoft Entra ID), so each one is its own field and is null
+// when the device does not belong to it. Independent of MDM enrollment: a
+// device can belong to an identity provider without being enrolled in an MDM
 // service, and the other way round. Microsoft Entra ID is detected on Windows
-// today; other directories (for example Active Directory, FreeIPA,
-// LDAP/Kerberos realms, or JumpCloud) can be added as fields later.
-directory @defaults("joined") @maturity("preview") {
-  // Whether the device is a member of any recognized directory
+// today; others (for example Active Directory, FreeIPA,
+// LDAP/Kerberos realms, or JumpCloud) can be added as fields later. This is
+// the device's own identity, not the user-facing federation an `idp` resource
+// describes in the SaaS providers.
+idp @defaults("joined") @maturity("preview") {
+  // Whether the device belongs to any recognized identity provider
   joined() bool
   // Microsoft Entra ID membership, null when the device has no Entra device identity
-  entra() directory.entra
+  entra() idp.entra
 }
 
 // Microsoft Entra ID membership
 //
 // The device's identity in Microsoft Entra ID, read on Windows from the
 // device's Entra device certificate. The resource is only returned for a
-// member, so directory.entra not being null means the device has an Entra
-// device identity. How the device joined (for example hybrid join or
-// registration) may be added as a field later.
-private directory.entra @defaults("deviceId tenantId") {
+// member, so idp.entra not being null means the device has an Entra device
+// identity. How the device joined (for example hybrid join or registration)
+// may be added as a field later.
+private idp.entra @defaults("deviceId tenantId") {
   // ID of the device object in Microsoft Entra ID
   deviceId string
   // Entra tenant the device belongs to

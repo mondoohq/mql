@@ -89,7 +89,10 @@ func TestMdmResultSet_UnknownVendorIsNull(t *testing.T) {
 	assert.Equal(t, "user", m.Method.Data)
 }
 
-func TestMdmAndDirectory_DeviceKinds(t *testing.T) {
+// Each subtest is one device kind, asserting mdm and idp together so the two
+// cannot drift into reporting contradictory things about the same device.
+// idp-only behavior lives in idp_test.go.
+func TestMdmAndIdp_DeviceKinds(t *testing.T) {
 	// Made-up identifiers.
 	full := detwin.DeviceIdentity{
 		IntuneDeviceID: "0a1b2c3d-4e5f-4061-8273-a4b5c6d7e8f9",
@@ -104,17 +107,17 @@ func TestMdmAndDirectory_DeviceKinds(t *testing.T) {
 	newMdm := func() *mqlMdm {
 		return &mqlMdm{MqlRuntime: &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}}
 	}
-	newDirectory := func() *mqlDirectory {
-		return &mqlDirectory{MqlRuntime: &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}}
+	newIdp := func() *mqlIdp {
+		return &mqlIdp{MqlRuntime: &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}}
 	}
-	assertMember := func(t *testing.T, d *mqlDirectory, id detwin.DeviceIdentity) {
+	assertMember := func(t *testing.T, d *mqlIdp, id detwin.DeviceIdentity) {
 		t.Helper()
 		assert.True(t, d.Joined.Data)
 		require.NotNil(t, d.Entra.Data)
 		assert.Equal(t, id.EntraDeviceID, d.Entra.Data.DeviceId.Data)
 		assert.Equal(t, id.EntraTenantID, d.Entra.Data.TenantId.Data)
 	}
-	assertNotMember := func(t *testing.T, d *mqlDirectory) {
+	assertNotMember := func(t *testing.T, d *mqlIdp) {
 		t.Helper()
 		assert.False(t, d.Joined.Data)
 		assert.Equal(t, null, d.Entra.State)
@@ -129,8 +132,8 @@ func TestMdmAndDirectory_DeviceKinds(t *testing.T) {
 		assert.Equal(t, full.IntuneDeviceID, m.Intune.Data.DeviceId.Data)
 		assert.Equal(t, full.EntraTenantID, m.Intune.Data.TenantId.Data)
 
-		d := newDirectory()
-		require.NoError(t, directoryResult{entra: entraFromIdentity(full)}.set(d))
+		d := newIdp()
+		require.NoError(t, idpResult{entra: entraFromIdentity(full)}.set(d))
 		assertMember(t, d, full)
 	})
 
@@ -141,8 +144,8 @@ func TestMdmAndDirectory_DeviceKinds(t *testing.T) {
 		assert.Equal(t, null, m.DeviceId.State)
 		assert.Equal(t, null, m.Intune.State)
 
-		d := newDirectory()
-		require.NoError(t, directoryResult{entra: entraFromIdentity(entraOnly)}.set(d))
+		d := newIdp()
+		require.NoError(t, idpResult{entra: entraFromIdentity(entraOnly)}.set(d))
 		assertMember(t, d, entraOnly)
 	})
 
@@ -153,9 +156,9 @@ func TestMdmAndDirectory_DeviceKinds(t *testing.T) {
 		assert.Equal(t, null, m.DeviceId.State)
 		assert.Equal(t, null, m.Intune.State)
 
-		// No directory detection ran (e.g. macOS): no membership.
-		d := newDirectory()
-		require.NoError(t, directoryResult{}.set(d))
+		// No identity-provider detection ran (e.g. macOS): no membership.
+		d := newIdp()
+		require.NoError(t, idpResult{}.set(d))
 		assertNotMember(t, d)
 	})
 
@@ -166,8 +169,8 @@ func TestMdmAndDirectory_DeviceKinds(t *testing.T) {
 		assert.Equal(t, null, m.DeviceId.State)
 		assert.Equal(t, null, m.Intune.State)
 
-		d := newDirectory()
-		require.NoError(t, directoryResult{entra: entraFromIdentity(detwin.DeviceIdentity{})}.set(d))
+		d := newIdp()
+		require.NoError(t, idpResult{entra: entraFromIdentity(detwin.DeviceIdentity{})}.set(d))
 		assertNotMember(t, d)
 	})
 
@@ -179,8 +182,8 @@ func TestMdmAndDirectory_DeviceKinds(t *testing.T) {
 	})
 
 	t.Run("an Intune tenant without an Entra device ID is not a membership", func(t *testing.T) {
-		d := newDirectory()
-		require.NoError(t, directoryResult{entra: entraFromIdentity(detwin.DeviceIdentity{IntuneDeviceID: full.IntuneDeviceID, EntraTenantID: full.EntraTenantID})}.set(d))
+		d := newIdp()
+		require.NoError(t, idpResult{entra: entraFromIdentity(detwin.DeviceIdentity{IntuneDeviceID: full.IntuneDeviceID, EntraTenantID: full.EntraTenantID})}.set(d))
 		assertNotMember(t, d)
 	})
 
