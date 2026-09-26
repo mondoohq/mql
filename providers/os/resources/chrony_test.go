@@ -4,6 +4,9 @@
 package resources
 
 import (
+	"fmt"
+	"io/fs"
+	"os"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -163,6 +166,48 @@ func TestLoadChronyConfigIncludeGlobInDirectory(t *testing.T) {
 		"/etc/chrony/a.d/1.conf",
 		"/etc/chrony/b.d/1.conf",
 	}, cfg.files)
+}
+
+// wrappedNotExistFs reports a missing path the way a remote connection's
+// filesystem can: fs.ErrNotExist wrapped in its own error, not *os.PathError.
+type wrappedNotExistFs struct{ afero.Fs }
+
+func (w wrappedNotExistFs) wrap(err error) error {
+	if err != nil && os.IsNotExist(err) {
+		return fmt.Errorf("remote: %w", fs.ErrNotExist)
+	}
+	return err
+}
+
+func (w wrappedNotExistFs) Open(name string) (afero.File, error) {
+	f, err := w.Fs.Open(name)
+	return f, w.wrap(err)
+}
+
+func (w wrappedNotExistFs) Stat(name string) (os.FileInfo, error) {
+	fi, err := w.Fs.Stat(name)
+	return fi, w.wrap(err)
+}
+
+func TestLoadChronyConfigWrappedNotExist(t *testing.T) {
+	// Leap 16 lists /etc/chrony.d in confdir although the directory does not
+	// exist on a stock host, and /run/chrony-dhcp is absent in an image scan.
+	mem := chronyFs(t, leap16Chrony)
+	afs := &afero.Afero{Fs: wrappedNotExistFs{mem.Fs}}
+	_, err := afs.ReadDir("/etc/chrony.d")
+	require.Error(t, err)
+	require.False(t, os.IsNotExist(err), "the wrapper must defeat os.IsNotExist")
+
+	cfg, err := loadChronyConfig(afs, "/usr/etc/chrony.conf")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"/usr/etc/chrony.conf", "/usr/etc/chrony.d/pool.conf"}, cfg.files)
+
+	afs2 := &afero.Afero{Fs: wrappedNotExistFs{chronyFs(t, map[string]string{
+		"/etc/chrony.conf": "include /etc/chrony/missing.conf\nserver a.example.com\n",
+	}).Fs}}
+	cfg, err = loadChronyConfig(afs2, "/etc/chrony.conf")
+	require.NoError(t, err, "a missing include is skipped")
+	assert.Equal(t, []string{"/etc/chrony.conf"}, cfg.files)
 }
 
 func TestLoadChronyConfigMissing(t *testing.T) {

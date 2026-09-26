@@ -6,7 +6,7 @@ package resources
 import (
 	"errors"
 	"fmt"
-	"os"
+	"io/fs"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -175,8 +175,10 @@ func (c *chronyConfig) read(afs *afero.Afero, path string, level int) error {
 	data, err := afs.ReadFile(path)
 	if err != nil {
 		// chronyd skips an include glob that matches nothing; a missing file
-		// here is the same case.
-		if os.IsNotExist(err) {
+		// here is the same case. The connection's virtual filesystem may not
+		// return *os.PathError, so match the wrapped sentinel rather than using
+		// os.IsNotExist.
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil
 		}
 		return err
@@ -253,7 +255,7 @@ func chronySearchDirs(afs *afero.Afero, dirs []string, suffix string) ([]string,
 	for _, dir := range dirs {
 		entries, err := afs.ReadDir(dir)
 		if err != nil {
-			if os.IsNotExist(err) {
+			if errors.Is(err, fs.ErrNotExist) {
 				continue
 			}
 			return nil, err
