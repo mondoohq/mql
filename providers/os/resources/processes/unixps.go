@@ -61,21 +61,28 @@ func (p ProcessEntry) ToOSProcess() *OSProcess {
 		executablePath = args[0]
 	}
 
-	// Take the last path segment without splitting the whole path first, which
-	// allocated a slice of every segment per process just to read one of them.
-	// Deliberately not path.Base: it maps "" to "." and "/usr/bin/" to "bin",
-	// where this reports "" for both.
-	executable := executablePath
-	if i := strings.LastIndexByte(executablePath, '/'); i >= 0 {
-		executable = executablePath[i+1:]
-	}
-
 	return &OSProcess{
 		Pid:        p.Pid,
 		Command:    p.Command,
-		Executable: executable,
+		Executable: executableFromPath(executablePath),
 		State:      "",
 	}
+}
+
+// executableFromPath returns the last path segment of an executable path.
+//
+// It takes the segment without splitting the whole path first, which
+// allocated a slice of every segment per process just to read one of them.
+// The returned string shares the memory of the argument, so the function
+// allocates nothing at all.
+//
+// Deliberately not path.Base: that maps "" to "." and "/usr/bin/" to "bin",
+// where this reports "" for both.
+func executableFromPath(executablePath string) string {
+	if i := strings.LastIndexByte(executablePath, '/'); i >= 0 {
+		return executablePath[i+1:]
+	}
+	return executablePath
 }
 
 func ParseLinuxPsResult(input io.Reader) ([]*ProcessEntry, error) {
