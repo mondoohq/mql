@@ -4,9 +4,14 @@
 package processes
 
 import (
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -35,6 +40,40 @@ func writeProcEntry(t *testing.T, fs afero.Fs, pid, name string) {
 	t.Helper()
 	require.NoError(t, afero.WriteFile(fs, "/proc/"+pid+"/cmdline", []byte(name+"\x00"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, "/proc/"+pid+"/status", []byte("Name:\t"+name+"\nState:\tS (sleeping)\nPid:\t"+pid+"\n"), 0o644))
+}
+
+type countingLinkFs struct {
+	afero.Fs
+	links       map[string]string
+	fdDirOpens  int
+	readlinkOps int
+}
+
+func (c *countingLinkFs) Open(path string) (afero.File, error) {
+	if strings.HasPrefix(path, "/proc/") && strings.HasSuffix(path, "/fd") {
+		c.fdDirOpens++
+	}
+	return c.Fs.Open(path)
+}
+
+func (c *countingLinkFs) ReadlinkIfPossible(path string) (string, error) {
+	c.readlinkOps++
+	link, ok := c.links[path]
+	if !ok {
+		return "", os.ErrNotExist
+	}
+	return link, nil
+}
+
+func writeProcSockets(t *testing.T, fs afero.Fs, links map[string]string, pid string, inodes ...int64) {
+	t.Helper()
+	fdDir := filepath.Join("/proc", pid, "fd")
+	require.NoError(t, fs.MkdirAll(fdDir, 0o755))
+	for i := range inodes {
+		fd := filepath.Join(fdDir, strconv.Itoa(i+3))
+		require.NoError(t, afero.WriteFile(fs, fd, []byte{}, 0o644))
+		links[fd] = "socket:[" + strconv.FormatInt(inodes[i], 10) + "]"
+	}
 }
 
 func newLinuxProcManager(t *testing.T) *LinuxProcManager {
@@ -82,4 +121,62 @@ func TestLinuxProcManager_ProcessExistingSucceeds(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(42), proc.Pid)
 	require.Equal(t, "bash", proc.Command)
+}
+
+func TestLinuxProcManager_ProcessDefersSocketEnumeration(t *testing.T) {
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/proc", 0o755))
+	writeProcEntry(t, baseFs, "42", "bash")
+
+	links := map[string]string{}
+	writeProcSockets(t, baseFs, links, "42", 4201, 4202)
+
+	fs := &countingLinkFs{Fs: baseFs, links: links}
+	lpm := &LinuxProcManager{conn: &fakeProcConn{fs: fs}}
+
+	proc, err := lpm.Process(42)
+	require.NoError(t, err)
+	require.NotNil(t, proc)
+	assert.Equal(t, "bash", proc.Command)
+	assert.Equal(t, 0, fs.fdDirOpens, "Process must not scan /proc/<pid>/fd")
+	assert.Equal(t, 0, fs.readlinkOps, "Process must not resolve fd symlinks")
+
+	socketInodesByPid, err := lpm.ListSocketInodesByProcess()
+	require.NoError(t, err)
+	assert.Greater(t, fs.fdDirOpens, 0, "socket scan should happen only when requested")
+	assert.Greater(t, fs.readlinkOps, 0, "socket scan should happen only when requested")
+
+	got, ok := socketInodesByPid[42]
+	require.True(t, ok)
+	require.NoError(t, got.Error)
+	assert.ElementsMatch(t, []int64{4201, 4202}, got.Data)
+}
+
+func TestLinuxProcManager_SocketEnumerationIsDeferred(t *testing.T) {
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/proc", 0o755))
+	writeProcEntry(t, baseFs, "1", "init")
+	writeProcEntry(t, baseFs, "42", "bash")
+
+	links := map[string]string{}
+	writeProcSockets(t, baseFs, links, "1", 1001)
+	writeProcSockets(t, baseFs, links, "42", 4201, 4202)
+
+	fs := &countingLinkFs{Fs: baseFs, links: links}
+	lpm := &LinuxProcManager{conn: &fakeProcConn{fs: fs}}
+
+	_, err := lpm.List()
+	require.NoError(t, err)
+	assert.Equal(t, 0, fs.fdDirOpens, "List must not scan /proc/<pid>/fd")
+	assert.Equal(t, 0, fs.readlinkOps, "List must not resolve fd symlinks")
+
+	socketInodesByPid, err := lpm.ListSocketInodesByProcess()
+	require.NoError(t, err)
+	assert.Greater(t, fs.fdDirOpens, 0, "socket scan should happen only when requested")
+	assert.Greater(t, fs.readlinkOps, 0, "socket scan should happen only when requested")
+
+	got, ok := socketInodesByPid[42]
+	require.True(t, ok)
+	require.NoError(t, got.Error)
+	assert.ElementsMatch(t, []int64{4201, 4202}, got.Data)
 }
