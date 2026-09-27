@@ -13,6 +13,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/mock"
 	"go.mondoo.com/mql/providers/os/detector/crowdstrike"
+	"go.mondoo.com/mql/providers/os/detector/defender"
 	"go.mondoo.com/mql/providers/os/resources/edr"
 	"go.mondoo.com/mql/utils/syncx"
 )
@@ -102,6 +103,32 @@ func TestEnrichFalconIdentity(t *testing.T) {
 		args := map[string]*llx.RawData{}
 		newEdr(t, map[string]string{crowdstrike.LabelAID: "0123456789abcdef0123456789abcdef"}).
 			enrich(edr.Detection{Product: edr.Product{ID: "sentinelone"}}, args)
+		assert.Nil(t, args["agentId"].Value)
+		assert.Nil(t, args["tenantId"].Value)
+	})
+}
+
+func TestApplyDefenderIdentity(t *testing.T) {
+	t.Run("onboarded sensor reports machine and organization IDs", func(t *testing.T) {
+		args := map[string]*llx.RawData{"agentId": llx.NilData, "tenantId": llx.NilData}
+		applyDefenderIdentity(&defender.Identity{
+			MachineID: "0123456789abcdef0123456789abcdef01234567",
+			OrgID:     "01234567-89ab-cdef-0123-456789abcdef",
+		}, args)
+		assert.Equal(t, "0123456789abcdef0123456789abcdef01234567", args["agentId"].Value)
+		assert.Equal(t, "01234567-89ab-cdef-0123-456789abcdef", args["tenantId"].Value)
+	})
+
+	t.Run("no organization leaves tenantId null", func(t *testing.T) {
+		args := map[string]*llx.RawData{"agentId": llx.NilData, "tenantId": llx.NilData}
+		applyDefenderIdentity(&defender.Identity{MachineID: "0123456789abcdef0123456789abcdef01234567"}, args)
+		assert.Equal(t, "0123456789abcdef0123456789abcdef01234567", args["agentId"].Value)
+		assert.Nil(t, args["tenantId"].Value)
+	})
+
+	t.Run("not onboarded leaves both null", func(t *testing.T) {
+		args := map[string]*llx.RawData{"agentId": llx.NilData, "tenantId": llx.NilData}
+		applyDefenderIdentity(nil, args)
 		assert.Nil(t, args["agentId"].Value)
 		assert.Nil(t, args["tenantId"].Value)
 	})

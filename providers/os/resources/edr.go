@@ -13,6 +13,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/detector/crowdstrike"
+	"go.mondoo.com/mql/providers/os/detector/defender"
 	"go.mondoo.com/mql/providers/os/resources/edr"
 	"go.mondoo.com/mql/types"
 )
@@ -354,6 +355,8 @@ func (e *mqlEdr) enrich(d edr.Detection, args map[string]*llx.RawData) {
 		return
 	}
 
+	e.enrichDefenderIdentity(args)
+
 	status := e.defenderStatus()
 	if status == nil {
 		return
@@ -419,6 +422,27 @@ func (e *mqlEdr) enrichFalconIdentity(args map[string]*llx.RawData) {
 	args["agentId"] = llx.StringData(id.AID)
 	if id.CID != "" {
 		args["tenantId"] = llx.StringData(id.CID)
+	}
+}
+
+// enrichDefenderIdentity reports the Defender for Endpoint machine ID and the
+// organization the sensor is onboarded to. Both stay null on a device that is
+// not onboarded, since Defender Antivirus runs without the sensor.
+func (e *mqlEdr) enrichDefenderIdentity(args map[string]*llx.RawData) {
+	conn, ok := e.MqlRuntime.Connection.(shared.Connection)
+	if !ok {
+		return
+	}
+	applyDefenderIdentity(defender.Detect(conn), args)
+}
+
+func applyDefenderIdentity(id *defender.Identity, args map[string]*llx.RawData) {
+	if id == nil {
+		return
+	}
+	args["agentId"] = llx.StringData(id.MachineID)
+	if id.OrgID != "" {
+		args["tenantId"] = llx.StringData(id.OrgID)
 	}
 }
 
