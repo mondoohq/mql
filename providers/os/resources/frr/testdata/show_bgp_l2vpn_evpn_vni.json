@@ -1,0 +1,21 @@
+{
+  "vni": 4001,
+  "bgpTableVersion": 42,
+  "bgpLocalRouterId": "192.0.2.30",
+  "[3]:[0]:[32]:[192.0.2.31]": {
+    "prefix": "[3]:[0]:[32]:[192.0.2.31]",
+    "prefixLen": 352,
+    "paths": [
+      {
+        "valid": true,
+        "bestpath": true,
+        "path": "65000",
+        "origin": "IGP",
+        "nexthops": [{"ip": "192.0.2.31", "afi": "ipv4", "used": true}],
+        "extendedCommunity": {"string": "RT:65100:4001 ET:8"}
+      }
+    ]
+  },
+  "numPrefix": 1,
+  "numPaths": 1
+}
