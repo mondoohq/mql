@@ -34,13 +34,17 @@ const (
 // NewImageConnection uses a container image reference as input and creates a tar connection.
 // Optional cleanupDirs are removed when the connection is closed.
 func NewImageConnection(id uint32, conf *inventory.Config, asset *inventory.Asset, img v1.Image, ref name.Reference, cleanupDirs ...string) (*tar.Connection, error) {
+	return NewImageConnectionWithCloseFn(id, conf, asset, img, ref, nil, cleanupDirs...)
+}
+
+func NewImageConnectionWithCloseFn(id uint32, conf *inventory.Config, asset *inventory.Asset, img v1.Image, ref name.Reference, closeFn func(), cleanupDirs ...string) (*tar.Connection, error) {
 	// FIXME: DEPRECATED, remove in v12.0 vv
 	// The DelayDiscovery flag should always be set from v12
 	if conf.Options == nil || conf.Options[plugin.DISABLE_DELAYED_DISCOVERY_OPTION] == "" {
 		conf.DelayDiscovery = true // Delay discovery, to make sure we don't directly download the image
 	}
 	// ^^
-	return newImageTarConnection(id, conf, asset, img, ref, includeOciTar(conf), cleanupDirs...)
+	return newImageTarConnectionWithCloseFn(id, conf, asset, img, ref, includeOciTar(conf), closeFn, cleanupDirs...)
 }
 
 // newImageTarConnection extracts img's flattened filesystem to a temporary tar
@@ -48,6 +52,10 @@ func NewImageConnection(id uint32, conf *inventory.Config, asset *inventory.Asse
 // non-nil, it also writes a sibling OCI-format tarball alongside. The temp
 // files are removed on connection close, along with any cleanupDirs.
 func newImageTarConnection(id uint32, conf *inventory.Config, asset *inventory.Asset, img v1.Image, ref name.Reference, includeOci bool, cleanupDirs ...string) (*tar.Connection, error) {
+	return newImageTarConnectionWithCloseFn(id, conf, asset, img, ref, includeOci, nil, cleanupDirs...)
+}
+
+func newImageTarConnectionWithCloseFn(id uint32, conf *inventory.Config, asset *inventory.Asset, img v1.Image, ref name.Reference, includeOci bool, closeFn func(), cleanupDirs ...string) (*tar.Connection, error) {
 	if conf.Options == nil {
 		conf.Options = map[string]string{}
 	}
@@ -103,6 +111,9 @@ func newImageTarConnection(id uint32, conf *inventory.Config, asset *inventory.A
 				if err := os.RemoveAll(dir); err != nil {
 					log.Warn().Err(err).Str("dir", dir).Msg("tar> failed to remove temporary cache directory")
 				}
+			}
+			if closeFn != nil {
+				closeFn()
 			}
 		}),
 	)

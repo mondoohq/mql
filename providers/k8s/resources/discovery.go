@@ -5,8 +5,14 @@ package resources
 
 import (
 	"bytes"
+	"crypto/subtle"
+	"encoding/json"
 	"fmt"
+	"os"
+	"sort"
+	"strconv"
 	"strings"
+	"text/template"
 
 	"github.com/gobwas/glob"
 	"github.com/pkg/errors"
@@ -16,13 +22,16 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/k8s/connection/shared"
 	"go.mondoo.com/mql/providers/k8s/connection/shared/resources"
+	"go.mondoo.com/mql/providers/os/id/containerid"
 	"go.mondoo.com/mql/types"
 	"go.mondoo.com/mql/utils/stringx"
 	admissionv1 "k8s.io/api/admission/v1"
+	corev1 "k8s.io/api/core/v1"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"sigs.k8s.io/yaml"
 )
 
 const (
@@ -37,11 +46,53 @@ const (
 	DiscoveryReplicaSets      = "replicasets"
 	DiscoveryDaemonSets       = "daemonsets"
 	DiscoveryContainerImages  = "container-images"
+	DiscoveryRuntimeCache     = "runtime-cache-images"
 	DiscoveryAdmissionReviews = "admissionreviews"
 	DiscoveryIngresses        = "ingresses"
 	DiscoveryNamespaces       = "namespaces"
 	DiscoveryServices         = "services"
 )
+
+const (
+	runtimeCacheOptionNodeName      = "runtime-cache-node-name"
+	runtimeCacheOptionDelegatesFile = "runtime-cache-delegates-file"
+	runtimeCacheOptionAllowPull     = "runtime-cache-allow-pull"
+	runtimeCacheOptionScanOnlyInUse = "runtime-cache-scan-only-in-use"
+	runtimeCacheOptionScannerPods   = "runtime-cache-scanner-pod-selector"
+
+	runtimeImageConnectionType           = "runtime-image"
+	runtimeImageOptionRef                = "runtime-cache-image-ref"
+	runtimeImageOptionDigest             = "runtime-cache-image-digest"
+	runtimeImageOptionKind               = "runtime-cache-kind"
+	runtimeImageOptionDelegateID         = "runtime-cache-delegate-id"
+	runtimeImageOptionDelegateCandidates = "runtime-cache-delegate-candidates"
+	runtimeImageOptionEndpoint           = "runtime-cache-endpoint"
+	runtimeImageOptionNamespaces         = "runtime-cache-namespaces"
+	runtimeImageOptionAllowPull          = "runtime-cache-allow-pull"
+	runtimeImageOptionMaxLayerReaders    = "runtime-cache-max-concurrent-layer-io"
+	runtimeImageOptionMaxConcurrentImage = "runtime-cache-max-concurrent-images"
+)
+
+type runtimeCacheDelegatesFile struct {
+	RuntimeImageCache runtimeCacheSettings `json:"runtimeImageCache"`
+}
+
+type runtimeCacheSettings struct {
+	AllowPull                 bool                   `json:"allowPull"`
+	ScanOnlyInUse             bool                   `json:"scanOnlyInUse"`
+	MaxConcurrentImageScans   int                    `json:"maxConcurrentImageScans"`
+	MaxConcurrentLayerReaders int                    `json:"maxConcurrentLayerReaders"`
+	Delegates                 []runtimeCacheDelegate `json:"delegates"`
+}
+
+type runtimeCacheDelegate struct {
+	ID         string   `json:"id"`
+	Kind       string   `json:"kind"`
+	Endpoint   string   `json:"endpoint"`
+	Priority   int      `json:"priority"`
+	Namespaces []string `json:"namespaces"`
+	ReadOnly   bool     `json:"readonly"`
+}
 
 type FilterOpts struct {
 	include []string
@@ -195,6 +246,25 @@ func discoverLegacy(runtime *plugin.Runtime, conn shared.Connection, invConfig *
 		in.Spec.Assets = append(in.Spec.Assets, nss...)
 	}
 
+	legacyTargets := invConfig.Discover.Targets
+	if stringx.ContainsAnyOf(invConfig.Discover.Targets, DiscoveryRuntimeCache) {
+		assets, err := discoverRuntimeCacheImages(conn, invConfig, k8s, nsFilter)
+		if err != nil {
+			return nil, err
+		}
+		in.Spec.Assets = append(in.Spec.Assets, assets...)
+		legacyTargets = namespaceStageDiscoveryTargets(invConfig.Discover.Targets)
+		if len(legacyTargets) == 0 {
+			return in, nil
+		}
+	}
+
+	assetInvConfig := invConfig
+	if len(legacyTargets) != len(invConfig.Discover.Targets) {
+		assetInvConfig = invConfig.Clone()
+		assetInvConfig.Discover = &inventory.Discovery{Targets: legacyTargets}
+	}
+
 	// Discover the assets for each namespace and use the namespace platform ID as root
 	for _, ns := range nss {
 		// Plain namespace names always compile; ignore the impossible error.
@@ -203,7 +273,7 @@ func discoverLegacy(runtime *plugin.Runtime, conn shared.Connection, invConfig *
 		od := NewPlatformIdOwnershipIndex(ns.PlatformIds[0])
 
 		// We don't want to discover the namespaces again since we have already done this above
-		assets, err := discoverAssets(runtime, conn, invConfig, ns.PlatformIds[0], k8s, nsFilter, resFilters, labelFilters, od, imgFilter)
+		assets, err := discoverAssets(runtime, conn, assetInvConfig, ns.PlatformIds[0], k8s, nsFilter, resFilters, labelFilters, od, imgFilter)
 		if err != nil {
 			return nil, err
 		}
@@ -266,6 +336,23 @@ func discoverClusterStage(runtime *plugin.Runtime, conn shared.Connection, invCo
 		}
 	}
 
+	namespaceTargets := namespaceStageDiscoveryTargets(invConfig.Discover.Targets)
+	if stringx.ContainsAnyOf(invConfig.Discover.Targets, DiscoveryRuntimeCache) {
+		res, err := runtime.CreateResource(runtime, "k8s", nil)
+		if err != nil {
+			return nil, err
+		}
+		k8s := res.(*mqlK8s)
+		assets, err := discoverRuntimeCacheImages(conn, invConfig, k8s, nsFilter)
+		if err != nil {
+			return nil, err
+		}
+		in.Spec.Assets = append(in.Spec.Assets, assets...)
+	}
+	if len(namespaceTargets) == 0 {
+		return in, nil
+	}
+
 	// Discover namespaces and emit them as scannable assets with platform IDs
 	// and discovery targets. Override each namespace's connection config to
 	// route to stage 2 when the client connects to it later.
@@ -279,7 +366,7 @@ func discoverClusterStage(runtime *plugin.Runtime, conn shared.Connection, invCo
 	// IDs → skip" logic in AssetExplorer/scanner prevents them from being
 	// scanned or added to the progress bar. They are still emitted so that
 	// AssetExplorer connects to them (triggering stage 2 workload discovery).
-	nsIsScannable := stringx.ContainsAnyOf(invConfig.Discover.Targets,
+	nsIsScannable := stringx.ContainsAnyOf(namespaceTargets,
 		DiscoveryNamespaces, DiscoveryAuto, DiscoveryAll)
 
 	for _, ns := range nss {
@@ -288,6 +375,7 @@ func discoverClusterStage(runtime *plugin.Runtime, conn shared.Connection, invCo
 		// be created once (scoped to the first namespace's connection) and reused
 		// by all other namespaces, returning stale data.
 		nsConfig := invConfig.Clone() // Clone() copies Options, propagating OPTION_STAGED_DISCOVERY
+		nsConfig.Discover = &inventory.Discovery{Targets: namespaceTargets}
 		nsConfig.Options[shared.OPTION_NAMESPACE] = ns.Name
 
 		if !nsIsScannable {
@@ -301,6 +389,17 @@ func discoverClusterStage(runtime *plugin.Runtime, conn shared.Connection, invCo
 	}
 
 	return in, nil
+}
+
+func namespaceStageDiscoveryTargets(targets []string) []string {
+	out := make([]string, 0, len(targets))
+	for _, target := range targets {
+		if target == DiscoveryRuntimeCache {
+			continue
+		}
+		out = append(out, target)
+	}
+	return out
 }
 
 // discoverNamespaceStage is stage 2 of staged discovery: discovers workloads
@@ -453,6 +552,13 @@ func discoverAssets(
 		}
 		if target == DiscoveryContainerImages || target == DiscoveryAll {
 			list, err = discoverContainerImages(conn, runtime, invConfig, k8s, nsFilter, labelFilters, imgFilter)
+			if err != nil {
+				return nil, err
+			}
+			assets = append(assets, list...)
+		}
+		if target == DiscoveryRuntimeCache {
+			list, err = discoverRuntimeCacheImages(conn, invConfig, k8s, nsFilter)
 			if err != nil {
 				return nil, err
 			}
@@ -1205,6 +1311,446 @@ func discoverNamespaces(
 		}
 	}
 	return assetList, nil
+}
+
+func discoverRuntimeCacheImages(conn shared.Connection, invConfig *inventory.Config, k8s *mqlK8s, nsFilter FilterOpts) ([]*inventory.Asset, error) {
+	nodeName, err := runtimeCacheResolveInventoryTemplateOption(invConfig.Options[runtimeCacheOptionNodeName])
+	if err != nil {
+		return nil, fmt.Errorf("failed to render %s: %w", runtimeCacheOptionNodeName, err)
+	}
+	if nodeName == "" {
+		return nil, fmt.Errorf("%s is required for %s discovery", runtimeCacheOptionNodeName, DiscoveryRuntimeCache)
+	}
+
+	settings, err := loadRuntimeCacheSettings(invConfig)
+	if err != nil {
+		return nil, err
+	}
+	if runtimeCacheBoolOption(invConfig, runtimeCacheOptionAllowPull, settings.AllowPull) {
+		return nil, fmt.Errorf("%s discovery does not support registry pulls", DiscoveryRuntimeCache)
+	}
+	if !runtimeCacheBoolOption(invConfig, runtimeCacheOptionScanOnlyInUse, settings.ScanOnlyInUse) {
+		return nil, fmt.Errorf("%s discovery currently supports in-use images only", DiscoveryRuntimeCache)
+	}
+
+	delegates := runtimeCacheDelegatesByKind(settings.Delegates)
+	if len(delegates["containerd"]) == 0 {
+		return nil, fmt.Errorf("%s discovery requires at least one containerd delegate", DiscoveryRuntimeCache)
+	}
+
+	pods := k8s.GetPods()
+	if pods.Error != nil {
+		return nil, pods.Error
+	}
+
+	podObjects := make([]*corev1.Pod, 0, len(pods.Data))
+	for _, p := range pods.Data {
+		pod := p.(*mqlK8sPod)
+		podObj, err := pod.getPod()
+		if err != nil {
+			continue
+		}
+		podObjects = append(podObjects, podObj)
+	}
+	activeScannerNodes, scannerNodesConstrained, err := runtimeCacheActiveScannerNodeNames(podObjects, invConfig.Options[runtimeCacheOptionScannerPods])
+	if err != nil {
+		return nil, err
+	}
+
+	type imageAsset struct {
+		ref                string
+		digest             string
+		nodeName           string
+		delegate           runtimeCacheDelegate
+		delegateCandidates []runtimeCacheDelegate
+		ownerKey           string
+		containers         map[string]struct{}
+		namespaces         map[string]struct{}
+		nodes              map[string]struct{}
+		delegates          map[string]struct{}
+	}
+
+	byImage := map[string]*imageAsset{}
+	for _, podObj := range podObjects {
+		if skip := nsFilter.skip(podObj.Namespace); skip {
+			continue
+		}
+		if strings.TrimSpace(podObj.Spec.NodeName) == "" {
+			continue
+		}
+		if !runtimeCachePodEligibleForRuntimeCacheNode(podObj.Spec.NodeName, nodeName, activeScannerNodes, scannerNodesConstrained) {
+			continue
+		}
+
+		for _, status := range runtimeCacheContainerStatuses(podObj) {
+			if strings.TrimSpace(status.ContainerID) == "" {
+				continue
+			}
+			ref, digest := runtimeCacheImageReference(status)
+			if ref == "" {
+				continue
+			}
+			delegateCandidates := runtimeCacheDelegatesForStatus(delegates, status)
+			if len(delegateCandidates) == 0 {
+				continue
+			}
+			delegate := delegateCandidates[0]
+			key := runtimeCacheImageDedupeKey(podObj.Spec.NodeName, delegate.ID, ref, digest)
+			ownerKey := runtimeCacheImageOwnerKey(podObj.Spec.NodeName, delegate.ID, ref)
+			entry := byImage[key]
+			if entry == nil {
+				entry = &imageAsset{
+					ref:                ref,
+					digest:             digest,
+					nodeName:           podObj.Spec.NodeName,
+					delegate:           delegate,
+					delegateCandidates: delegateCandidates,
+					ownerKey:           ownerKey,
+					containers:         map[string]struct{}{},
+					namespaces:         map[string]struct{}{},
+					nodes:              map[string]struct{}{},
+					delegates:          map[string]struct{}{},
+				}
+				byImage[key] = entry
+			} else if ownerKey < entry.ownerKey {
+				entry.ref = ref
+				entry.digest = digest
+				entry.nodeName = podObj.Spec.NodeName
+				entry.delegate = delegate
+				entry.delegateCandidates = delegateCandidates
+				entry.ownerKey = ownerKey
+			} else if runtimeCacheStringEqual(ownerKey, entry.ownerKey) && len(digest) > 0 && (len(entry.digest) == 0 || ref < entry.ref) {
+				entry.ref = ref
+				entry.digest = digest
+			}
+			if status.ContainerID != "" {
+				entry.containers[status.ContainerID] = struct{}{}
+			}
+			if podObj.Namespace != "" {
+				entry.namespaces[podObj.Namespace] = struct{}{}
+			}
+			entry.nodes[podObj.Spec.NodeName] = struct{}{}
+			for _, candidate := range delegateCandidates {
+				entry.delegates[candidate.ID] = struct{}{}
+			}
+		}
+	}
+
+	keys := make([]string, 0, len(byImage))
+	for key := range byImage {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	assetList := make([]*inventory.Asset, 0, len(keys))
+	for _, key := range keys {
+		img := byImage[key]
+		if img.nodeName != nodeName {
+			continue
+		}
+		options := map[string]string{
+			runtimeImageOptionRef:           img.ref,
+			runtimeImageOptionDigest:        img.digest,
+			runtimeImageOptionKind:          img.delegate.Kind,
+			runtimeImageOptionDelegateID:    img.delegate.ID,
+			runtimeImageOptionEndpoint:      img.delegate.Endpoint,
+			runtimeImageOptionNamespaces:    strings.Join(img.delegate.Namespaces, ","),
+			runtimeImageOptionAllowPull:     "false",
+			runtimeCacheOptionNodeName:      nodeName,
+			runtimeCacheOptionScanOnlyInUse: "true",
+		}
+		runtimeCacheApplyConcurrencyOptions(options, settings, invConfig.Options)
+		if len(img.delegateCandidates) > 1 {
+			raw, err := json.Marshal(img.delegateCandidates)
+			if err != nil {
+				return nil, err
+			}
+			options[runtimeImageOptionDelegateCandidates] = string(raw)
+		}
+		if disableCache := invConfig.Options["disable-cache"]; disableCache != "" {
+			options["disable-cache"] = disableCache
+		}
+
+		labels := map[string]string{
+			"mondoo.com/scan":                     "runtime-cache",
+			"mondoo.com/runtime-image-ref":        img.ref,
+			"mondoo.com/runtime-cache-owner-node": img.nodeName,
+			"k8s.mondoo.com/node":                 img.nodeName,
+		}
+		if img.digest != "" {
+			labels["mondoo.com/runtime-image-digest"] = img.digest
+		}
+
+		var category inventory.AssetCategory
+		if conn.Asset() != nil {
+			category = conn.Asset().Category
+		}
+		asset := &inventory.Asset{
+			Name: runtimeCacheImageAssetName(img.nodeName, img.ref, img.digest),
+			Connections: []*inventory.Config{
+				{
+					Type:    runtimeImageConnectionType,
+					Host:    img.ref,
+					Options: options,
+				},
+			},
+			Category: category,
+			Labels:   labels,
+			Annotations: map[string]string{
+				"mondoo.com/runtime-cache-containers": strings.Join(sortedStringSet(img.containers), ","),
+				"mondoo.com/runtime-cache-namespaces": strings.Join(sortedStringSet(img.namespaces), ","),
+				"mondoo.com/runtime-cache-nodes":      strings.Join(sortedStringSet(img.nodes), ","),
+				"mondoo.com/runtime-cache-delegates":  strings.Join(sortedStringSet(img.delegates), ","),
+			},
+		}
+		if img.digest != "" {
+			asset.PlatformIds = []string{containerid.MondooContainerImageID(img.digest)}
+		}
+		assetList = append(assetList, asset)
+	}
+
+	return assetList, nil
+}
+
+func runtimeCacheApplyConcurrencyOptions(options map[string]string, settings *runtimeCacheSettings, invOptions map[string]string) {
+	if settings != nil && settings.MaxConcurrentLayerReaders > 0 {
+		options[runtimeImageOptionMaxLayerReaders] = strconv.Itoa(settings.MaxConcurrentLayerReaders)
+	} else if maxLayerReaders := invOptions[runtimeImageOptionMaxLayerReaders]; maxLayerReaders != "" {
+		options[runtimeImageOptionMaxLayerReaders] = maxLayerReaders
+	}
+	if settings != nil && settings.MaxConcurrentImageScans > 0 {
+		options[runtimeImageOptionMaxConcurrentImage] = strconv.Itoa(settings.MaxConcurrentImageScans)
+	} else if maxImages := invOptions[runtimeImageOptionMaxConcurrentImage]; maxImages != "" {
+		options[runtimeImageOptionMaxConcurrentImage] = maxImages
+	}
+}
+
+func runtimeCacheImageDedupeKey(nodeName, delegateID, ref, digest string) string {
+	identity := strings.TrimSpace(digest)
+	if identity != "" {
+		return strings.Join([]string{"digest", identity}, "\x00")
+	}
+	return strings.Join([]string{"ref", strings.TrimSpace(nodeName), strings.TrimSpace(delegateID), strings.TrimSpace(ref)}, "\x00")
+}
+
+func runtimeCacheImageOwnerKey(nodeName, delegateID, ref string) string {
+	return strings.Join([]string{strings.TrimSpace(nodeName), strings.TrimSpace(delegateID), strings.TrimSpace(ref)}, "\x00")
+}
+
+func runtimeCacheImageAssetName(nodeName, ref, digest string) string {
+	if strings.TrimSpace(digest) != "" {
+		return fmt.Sprintf("%s@%s", ref, containerid.ShortContainerImageID(digest))
+	}
+	return fmt.Sprintf("%s/%s", nodeName, ref)
+}
+
+func runtimeCacheStringEqual(a, b string) bool {
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+func runtimeCacheActiveScannerNodeNames(pods []*corev1.Pod, selector string) (map[string]struct{}, bool, error) {
+	selector = strings.TrimSpace(selector)
+	if selector == "" {
+		return nil, false, nil
+	}
+	required, err := labels.Parse(selector)
+	if err != nil {
+		return nil, false, fmt.Errorf("invalid %s %q: %w", runtimeCacheOptionScannerPods, selector, err)
+	}
+
+	active := map[string]struct{}{}
+	for _, pod := range pods {
+		if pod == nil || strings.TrimSpace(pod.Spec.NodeName) == "" {
+			continue
+		}
+		if !runtimeCacheScannerPodIsActive(pod) {
+			continue
+		}
+		if required.Matches(labels.Set(pod.Labels)) {
+			active[pod.Spec.NodeName] = struct{}{}
+		}
+	}
+	if len(active) == 0 {
+		return nil, false, nil
+	}
+	return active, true, nil
+}
+
+func runtimeCachePodEligibleForRuntimeCacheNode(podNodeName, currentNodeName string, scannerNodes map[string]struct{}, scannerNodesConstrained bool) bool {
+	podNodeName = strings.TrimSpace(podNodeName)
+	if podNodeName == "" {
+		return false
+	}
+	if scannerNodesConstrained {
+		_, ok := scannerNodes[podNodeName]
+		return ok
+	}
+	return podNodeName == strings.TrimSpace(currentNodeName)
+}
+
+func runtimeCacheScannerPodIsActive(pod *corev1.Pod) bool {
+	if pod.DeletionTimestamp != nil || pod.Status.Phase != corev1.PodRunning {
+		return false
+	}
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == corev1.PodReady {
+			return condition.Status == corev1.ConditionTrue
+		}
+	}
+	return false
+}
+
+func loadRuntimeCacheSettings(invConfig *inventory.Config) (*runtimeCacheSettings, error) {
+	path := strings.TrimSpace(invConfig.Options[runtimeCacheOptionDelegatesFile])
+	if path == "" {
+		return nil, fmt.Errorf("%s is required for %s discovery", runtimeCacheOptionDelegatesFile, DiscoveryRuntimeCache)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read runtime cache delegates file %q: %w", path, err)
+	}
+	var cfg runtimeCacheDelegatesFile
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse runtime cache delegates file %q: %w", path, err)
+	}
+	if len(cfg.RuntimeImageCache.Delegates) == 0 {
+		return nil, fmt.Errorf("runtime cache delegates file %q does not define delegates", path)
+	}
+	return &cfg.RuntimeImageCache, nil
+}
+
+func runtimeCacheSettingsFromRuntime(rt *plugin.Runtime) (*runtimeCacheSettings, error) {
+	if rt == nil || rt.Connection == nil {
+		return nil, nil
+	}
+	conn, ok := rt.Connection.(shared.Connection)
+	if !ok || conn.Asset() == nil {
+		return nil, nil
+	}
+	for _, cfg := range conn.Asset().Connections {
+		if cfg == nil || cfg.Options == nil {
+			continue
+		}
+		if strings.TrimSpace(cfg.Options[runtimeCacheOptionDelegatesFile]) == "" {
+			continue
+		}
+		return loadRuntimeCacheSettings(cfg)
+	}
+	return nil, nil
+}
+
+func runtimeCacheBoolOption(invConfig *inventory.Config, key string, fallback bool) bool {
+	raw := strings.TrimSpace(invConfig.Options[key])
+	if raw == "" {
+		return fallback
+	}
+	return strings.EqualFold(raw, "true")
+}
+
+func runtimeCacheResolveInventoryTemplateOption(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if !strings.Contains(value, "{{") {
+		return value, nil
+	}
+
+	tpl, err := template.New("runtime-cache-option").Funcs(template.FuncMap{
+		"getenv": os.Getenv,
+	}).Parse(value)
+	if err != nil {
+		return "", err
+	}
+
+	var out bytes.Buffer
+	if err := tpl.Execute(&out, nil); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out.String()), nil
+}
+
+func runtimeCacheDelegatesByKind(delegates []runtimeCacheDelegate) map[string][]runtimeCacheDelegate {
+	byKind := map[string][]runtimeCacheDelegate{}
+	for _, delegate := range delegates {
+		delegate.Kind = strings.TrimSpace(delegate.Kind)
+		delegate.Endpoint = strings.TrimSpace(delegate.Endpoint)
+		if delegate.Kind == "" || delegate.Endpoint == "" || !delegate.ReadOnly {
+			continue
+		}
+		if delegate.ID == "" {
+			delegate.ID = delegate.Kind
+		}
+		if len(delegate.Namespaces) == 0 {
+			delegate.Namespaces = []string{"k8s.io"}
+		}
+		byKind[delegate.Kind] = append(byKind[delegate.Kind], delegate)
+	}
+	for kind := range byKind {
+		sort.SliceStable(byKind[kind], func(i, j int) bool {
+			if byKind[kind][i].Priority == byKind[kind][j].Priority {
+				return byKind[kind][i].ID < byKind[kind][j].ID
+			}
+			return byKind[kind][i].Priority < byKind[kind][j].Priority
+		})
+	}
+	return byKind
+}
+
+func runtimeCacheContainerStatuses(pod *corev1.Pod) []corev1.ContainerStatus {
+	if pod == nil {
+		return nil
+	}
+	out := make([]corev1.ContainerStatus, 0,
+		len(pod.Status.InitContainerStatuses)+len(pod.Status.ContainerStatuses)+len(pod.Status.EphemeralContainerStatuses))
+	out = append(out, pod.Status.InitContainerStatuses...)
+	out = append(out, pod.Status.ContainerStatuses...)
+	out = append(out, pod.Status.EphemeralContainerStatuses...)
+	return out
+}
+
+func runtimeCacheImageReference(status corev1.ContainerStatus) (string, string) {
+	var digest string
+	if strings.Contains(status.ImageID, "@sha256:") {
+		digest = normalizeRuntimeImageID(status.ImageID)
+		if !strings.HasPrefix(digest, "sha256:") {
+			digest = ""
+		}
+	}
+	ref := strings.TrimSpace(status.Image)
+	if ref == "" {
+		ref = digest
+		if ref == "" {
+			ref = normalizeRuntimeImageID(status.ImageID)
+		}
+	}
+	return ref, digest
+}
+
+func runtimeCacheDelegateForStatus(delegates map[string][]runtimeCacheDelegate, status corev1.ContainerStatus) (runtimeCacheDelegate, bool) {
+	items := runtimeCacheDelegatesForStatus(delegates, status)
+	if len(items) == 0 {
+		return runtimeCacheDelegate{}, false
+	}
+	return items[0], true
+}
+
+func runtimeCacheDelegatesForStatus(delegates map[string][]runtimeCacheDelegate, status corev1.ContainerStatus) []runtimeCacheDelegate {
+	kind := runtimeKindFromContainerID(status.ContainerID)
+	if kind == "" {
+		return nil
+	}
+	items := delegates[kind]
+	if len(items) == 0 {
+		return nil
+	}
+	return items
+}
+
+func sortedStringSet(in map[string]struct{}) []string {
+	out := make([]string, 0, len(in))
+	for v := range in {
+		out = append(out, v)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func discoverContainerImages(conn shared.Connection, runtime *plugin.Runtime, invConfig *inventory.Config, k8s *mqlK8s, nsFilter FilterOpts, labelFilters *LabelSelectorFilters, imgFilter FilterOpts) ([]*inventory.Asset, error) {

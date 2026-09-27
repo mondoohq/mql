@@ -42,6 +42,7 @@ const (
 	Type_DockerSnapshot    ConnectionType = "docker-snapshot"
 	Type_ContainerRegistry ConnectionType = "container-registry"
 	Type_RegistryImage     ConnectionType = "registry-image"
+	Type_RuntimeImage      ConnectionType = "runtime-image"
 	Type_Device            ConnectionType = "device"
 
 	ContainerProxyOption string = "container-proxy"

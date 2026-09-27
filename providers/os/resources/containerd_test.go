@@ -191,3 +191,63 @@ func TestParseContainerIDListWithEmptyLines(t *testing.T) {
 	// Empty lines should be filtered out
 	assert.Equal(t, []string{"container1", "container2"}, containerIDs)
 }
+
+func TestSplitImageReferenceNames(t *testing.T) {
+	tags, digests := splitImageReferenceNames([]string{
+		"registry.example.com/team/app:1.2.3",
+		"registry.example.com/team/app@sha256:abc123",
+		"docker-pullable://registry.example.com/team/sidecar@sha256:def456",
+		"sha256:localid",
+		"",
+	})
+
+	assert.Equal(t, []string{"registry.example.com/team/app:1.2.3"}, tags)
+	assert.Equal(t, []string{"sha256:abc123", "sha256:def456", "sha256:localid"}, digests)
+}
+
+func TestNormalizeRuntimeImageID(t *testing.T) {
+	tests := map[string]string{
+		"docker-pullable://registry.example.com/team/app@sha256:abc123": "sha256:abc123",
+		"docker://sha256:def456":              "sha256:def456",
+		"containerd://sha256:789abc":          "sha256:789abc",
+		"cri-o://sha256:localid":              "sha256:localid",
+		"registry.example.com/team/app:1.2.3": "registry.example.com/team/app:1.2.3",
+	}
+
+	for input, expected := range tests {
+		t.Run(input, func(t *testing.T) {
+			assert.Equal(t, expected, normalizeRuntimeImageID(input))
+		})
+	}
+}
+
+func TestStringsSetToAnySortsValues(t *testing.T) {
+	values := stringsSetToAny(map[string]struct{}{
+		"k8s.io":  {},
+		"default": {},
+		"moby":    {},
+	})
+
+	assert.Equal(t, []any{"default", "k8s.io", "moby"}, values)
+}
+
+func TestRuntimeImageArgsFromReferenceDigest(t *testing.T) {
+	args := runtimeImageArgsFromReference("registry.example.com/team/app@sha256:abc123")
+
+	assert.Equal(t, "sha256:abc123", args["id"].Value)
+	assert.Equal(t, "sha256:abc123", args["imageId"].Value)
+	assert.Equal(t, []any{"sha256:abc123"}, args["repoDigests"].Value)
+	assert.Equal(t, []any{}, args["repoTags"].Value)
+	assert.Equal(t, "sha256:abc123", args["resolvedDigest"].Value)
+	assert.Equal(t, "sha256:abc123", args["targetDigest"].Value)
+}
+
+func TestRuntimeImageArgsFromReferenceTag(t *testing.T) {
+	args := runtimeImageArgsFromReference("registry.example.com/team/app:1.2.3")
+
+	assert.Equal(t, "registry.example.com/team/app:1.2.3", args["id"].Value)
+	assert.Equal(t, "registry.example.com/team/app:1.2.3", args["imageId"].Value)
+	assert.Equal(t, []any{"registry.example.com/team/app:1.2.3"}, args["repoTags"].Value)
+	assert.Equal(t, []any{}, args["repoDigests"].Value)
+	assert.Equal(t, "", args["resolvedDigest"].Value)
+}
