@@ -49,3 +49,8 @@ func TestUsbSourceFor(t *testing.T) {
 		})
 	}
 }
+
+func TestErrUsbUnsupported(t *testing.T) {
+	assert.EqualError(t, errUsbUnsupported(&inventory.Platform{Name: "windows"}), "could not detect usb: windows")
+	assert.EqualError(t, errUsbUnsupported(nil), "could not detect usb: ")
+}

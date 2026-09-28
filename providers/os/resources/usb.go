@@ -25,8 +25,12 @@ func (d *mqlUsb) devices() ([]any, error) {
 	case usbSourceLinuxSysfs:
 		return d.listLinux()
 	default:
-		return nil, errors.New("could not detect usb: " + pf.Name)
+		return nil, errUsbUnsupported(pf)
 	}
+}
+
+func errUsbUnsupported(pf *inventory.Platform) error {
+	return errors.New("could not detect usb: " + pf.GetName())
 }
 
 type usbSource int
