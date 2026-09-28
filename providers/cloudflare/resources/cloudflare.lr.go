@@ -47,6 +47,9 @@ const (
 	ResourceCloudflareOneAccessGroup                                  string = "cloudflare.one.accessGroup"
 	ResourceCloudflareOneServiceToken                                 string = "cloudflare.one.serviceToken"
 	ResourceCloudflareOneOrganization                                 string = "cloudflare.one.organization"
+	ResourceCloudflareOneCasbPosturePolicy                            string = "cloudflare.one.casbPosturePolicy"
+	ResourceCloudflareOneCasbPosturePolicyRemediation                 string = "cloudflare.one.casbPosturePolicy.remediation"
+	ResourceCloudflareOneCasbPosturePolicyWebhook                     string = "cloudflare.one.casbPosturePolicy.webhook"
 	ResourceCloudflareOneGatewayConfiguration                         string = "cloudflare.one.gatewayConfiguration"
 	ResourceCloudflareOneGatewayRule                                  string = "cloudflare.one.gatewayRule"
 	ResourceCloudflareOneList                                         string = "cloudflare.one.list"
@@ -232,6 +235,18 @@ func init() {
 		"cloudflare.one.organization": {
 			// to override args, implement: initCloudflareOneOrganization(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createCloudflareOneOrganization,
+		},
+		"cloudflare.one.casbPosturePolicy": {
+			// to override args, implement: initCloudflareOneCasbPosturePolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCloudflareOneCasbPosturePolicy,
+		},
+		"cloudflare.one.casbPosturePolicy.remediation": {
+			// to override args, implement: initCloudflareOneCasbPosturePolicyRemediation(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCloudflareOneCasbPosturePolicyRemediation,
+		},
+		"cloudflare.one.casbPosturePolicy.webhook": {
+			// to override args, implement: initCloudflareOneCasbPosturePolicyWebhook(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createCloudflareOneCasbPosturePolicyWebhook,
 		},
 		"cloudflare.one.gatewayConfiguration": {
 			// to override args, implement: initCloudflareOneGatewayConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -1188,6 +1203,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"cloudflare.one.devicePostureIntegrations": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareOne).GetDevicePostureIntegrations()).ToDataRes(types.Array(types.Resource("cloudflare.one.devicePostureIntegration")))
 	},
+	"cloudflare.one.casbPosturePolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOne).GetCasbPosturePolicies()).ToDataRes(types.Array(types.Resource("cloudflare.one.casbPosturePolicy")))
+	},
 	"cloudflare.one.app.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareOneApp).GetId()).ToDataRes(types.String)
 	},
@@ -1406,6 +1424,66 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"cloudflare.one.organization.updatedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareOneOrganization).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"cloudflare.one.organization.serviceTokenInactivityEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneOrganization).GetServiceTokenInactivityEnabled()).ToDataRes(types.Bool)
+	},
+	"cloudflare.one.organization.serviceTokenInactivityAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneOrganization).GetServiceTokenInactivityAction()).ToDataRes(types.String)
+	},
+	"cloudflare.one.organization.serviceTokenInactivityThresholdDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneOrganization).GetServiceTokenInactivityThresholdDays()).ToDataRes(types.Int)
+	},
+	"cloudflare.one.casbPosturePolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCasbPosturePolicy).GetId()).ToDataRes(types.String)
+	},
+	"cloudflare.one.casbPosturePolicy.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCasbPosturePolicy).GetDisplayName()).ToDataRes(types.String)
+	},
+	"cloudflare.one.casbPosturePolicy.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCasbPosturePolicy).GetDescription()).ToDataRes(types.String)
+	},
+	"cloudflare.one.casbPosturePolicy.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCasbPosturePolicy).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"cloudflare.one.casbPosturePolicy.findingTypeId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCasbPosturePolicy).GetFindingTypeId()).ToDataRes(types.String)
+	},
+	"cloudflare.one.casbPosturePolicy.appliesToAllIntegrations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCasbPosturePolicy).GetAppliesToAllIntegrations()).ToDataRes(types.Bool)
+	},
+	"cloudflare.one.casbPosturePolicy.integrationIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCasbPosturePolicy).GetIntegrationIds()).ToDataRes(types.Array(types.String))
+	},
+	"cloudflare.one.casbPosturePolicy.remediations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCasbPosturePolicy).GetRemediations()).ToDataRes(types.Array(types.Resource("cloudflare.one.casbPosturePolicy.remediation")))
+	},
+	"cloudflare.one.casbPosturePolicy.webhooks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCasbPosturePolicy).GetWebhooks()).ToDataRes(types.Array(types.Resource("cloudflare.one.casbPosturePolicy.webhook")))
+	},
+	"cloudflare.one.casbPosturePolicy.lastTriggeredAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCasbPosturePolicy).GetLastTriggeredAt()).ToDataRes(types.Time)
+	},
+	"cloudflare.one.casbPosturePolicy.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCasbPosturePolicy).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"cloudflare.one.casbPosturePolicy.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCasbPosturePolicy).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"cloudflare.one.casbPosturePolicy.remediation.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCasbPosturePolicyRemediation).GetId()).ToDataRes(types.String)
+	},
+	"cloudflare.one.casbPosturePolicy.remediation.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCasbPosturePolicyRemediation).GetType()).ToDataRes(types.String)
+	},
+	"cloudflare.one.casbPosturePolicy.remediation.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCasbPosturePolicyRemediation).GetDisplayName()).ToDataRes(types.String)
+	},
+	"cloudflare.one.casbPosturePolicy.webhook.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCasbPosturePolicyWebhook).GetId()).ToDataRes(types.String)
+	},
+	"cloudflare.one.casbPosturePolicy.webhook.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlCloudflareOneCasbPosturePolicyWebhook).GetDisplayName()).ToDataRes(types.String)
 	},
 	"cloudflare.one.gatewayConfiguration.tlsDecryptEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloudflareOneGatewayConfiguration).GetTlsDecryptEnabled()).ToDataRes(types.Bool)
@@ -3757,6 +3835,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlCloudflareOne).DevicePostureIntegrations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"cloudflare.one.casbPosturePolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOne).CasbPosturePolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"cloudflare.one.app.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCloudflareOneApp).__id, ok = v.Value.(string)
 		return
@@ -4075,6 +4157,98 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"cloudflare.one.organization.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlCloudflareOneOrganization).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.organization.serviceTokenInactivityEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneOrganization).ServiceTokenInactivityEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.organization.serviceTokenInactivityAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneOrganization).ServiceTokenInactivityAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.organization.serviceTokenInactivityThresholdDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneOrganization).ServiceTokenInactivityThresholdDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicy).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicy).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicy).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.findingTypeId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicy).FindingTypeId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.appliesToAllIntegrations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicy).AppliesToAllIntegrations, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.integrationIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicy).IntegrationIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.remediations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicy).Remediations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.webhooks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicy).Webhooks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.lastTriggeredAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicy).LastTriggeredAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicy).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicy).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.remediation.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicyRemediation).__id, ok = v.Value.(string)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.remediation.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicyRemediation).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.remediation.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicyRemediation).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.remediation.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicyRemediation).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.webhook.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicyWebhook).__id, ok = v.Value.(string)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.webhook.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicyWebhook).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"cloudflare.one.casbPosturePolicy.webhook.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlCloudflareOneCasbPosturePolicyWebhook).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"cloudflare.one.gatewayConfiguration.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -8839,6 +9013,7 @@ type mqlCloudflareOne struct {
 	Devices                   plugin.TValue[[]any]
 	DevicePostureRules        plugin.TValue[[]any]
 	DevicePostureIntegrations plugin.TValue[[]any]
+	CasbPosturePolicies       plugin.TValue[[]any]
 }
 
 // createCloudflareOne creates a new instance of this resource
@@ -9094,6 +9269,22 @@ func (c *mqlCloudflareOne) GetDevicePostureIntegrations() *plugin.TValue[[]any] 
 		}
 
 		return c.devicePostureIntegrations()
+	})
+}
+
+func (c *mqlCloudflareOne) GetCasbPosturePolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CasbPosturePolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("cloudflare.one", c.__id, "casbPosturePolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.casbPosturePolicies()
 	})
 }
 
@@ -9683,17 +9874,20 @@ type mqlCloudflareOneOrganization struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlCloudflareOneOrganizationInternal it will be used here
-	Name                           plugin.TValue[string]
-	AuthDomain                     plugin.TValue[string]
-	IsUiReadOnly                   plugin.TValue[bool]
-	UserSeatExpirationInactiveTime plugin.TValue[string]
-	AutoRedirectToIdentity         plugin.TValue[bool]
-	SessionDuration                plugin.TValue[string]
-	WarpAuthSessionDuration        plugin.TValue[string]
-	AllowAuthenticateViaWarp       plugin.TValue[bool]
-	WarpAuthNonBrowser401          plugin.TValue[bool]
-	CreatedAt                      plugin.TValue[*time.Time]
-	UpdatedAt                      plugin.TValue[*time.Time]
+	Name                                plugin.TValue[string]
+	AuthDomain                          plugin.TValue[string]
+	IsUiReadOnly                        plugin.TValue[bool]
+	UserSeatExpirationInactiveTime      plugin.TValue[string]
+	AutoRedirectToIdentity              plugin.TValue[bool]
+	SessionDuration                     plugin.TValue[string]
+	WarpAuthSessionDuration             plugin.TValue[string]
+	AllowAuthenticateViaWarp            plugin.TValue[bool]
+	WarpAuthNonBrowser401               plugin.TValue[bool]
+	CreatedAt                           plugin.TValue[*time.Time]
+	UpdatedAt                           plugin.TValue[*time.Time]
+	ServiceTokenInactivityEnabled       plugin.TValue[bool]
+	ServiceTokenInactivityAction        plugin.TValue[string]
+	ServiceTokenInactivityThresholdDays plugin.TValue[int64]
 }
 
 // createCloudflareOneOrganization creates a new instance of this resource
@@ -9770,6 +9964,235 @@ func (c *mqlCloudflareOneOrganization) GetCreatedAt() *plugin.TValue[*time.Time]
 
 func (c *mqlCloudflareOneOrganization) GetUpdatedAt() *plugin.TValue[*time.Time] {
 	return &c.UpdatedAt
+}
+
+func (c *mqlCloudflareOneOrganization) GetServiceTokenInactivityEnabled() *plugin.TValue[bool] {
+	return &c.ServiceTokenInactivityEnabled
+}
+
+func (c *mqlCloudflareOneOrganization) GetServiceTokenInactivityAction() *plugin.TValue[string] {
+	return &c.ServiceTokenInactivityAction
+}
+
+func (c *mqlCloudflareOneOrganization) GetServiceTokenInactivityThresholdDays() *plugin.TValue[int64] {
+	return &c.ServiceTokenInactivityThresholdDays
+}
+
+// mqlCloudflareOneCasbPosturePolicy for the cloudflare.one.casbPosturePolicy resource
+type mqlCloudflareOneCasbPosturePolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCloudflareOneCasbPosturePolicyInternal it will be used here
+	Id                       plugin.TValue[string]
+	DisplayName              plugin.TValue[string]
+	Description              plugin.TValue[string]
+	Enabled                  plugin.TValue[bool]
+	FindingTypeId            plugin.TValue[string]
+	AppliesToAllIntegrations plugin.TValue[bool]
+	IntegrationIds           plugin.TValue[[]any]
+	Remediations             plugin.TValue[[]any]
+	Webhooks                 plugin.TValue[[]any]
+	LastTriggeredAt          plugin.TValue[*time.Time]
+	CreatedAt                plugin.TValue[*time.Time]
+	UpdatedAt                plugin.TValue[*time.Time]
+}
+
+// createCloudflareOneCasbPosturePolicy creates a new instance of this resource
+func createCloudflareOneCasbPosturePolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCloudflareOneCasbPosturePolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cloudflare.one.casbPosturePolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicy) MqlName() string {
+	return "cloudflare.one.casbPosturePolicy"
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicy) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicy) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicy) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicy) GetFindingTypeId() *plugin.TValue[string] {
+	return &c.FindingTypeId
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicy) GetAppliesToAllIntegrations() *plugin.TValue[bool] {
+	return &c.AppliesToAllIntegrations
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicy) GetIntegrationIds() *plugin.TValue[[]any] {
+	return &c.IntegrationIds
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicy) GetRemediations() *plugin.TValue[[]any] {
+	return &c.Remediations
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicy) GetWebhooks() *plugin.TValue[[]any] {
+	return &c.Webhooks
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicy) GetLastTriggeredAt() *plugin.TValue[*time.Time] {
+	return &c.LastTriggeredAt
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicy) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicy) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+// mqlCloudflareOneCasbPosturePolicyRemediation for the cloudflare.one.casbPosturePolicy.remediation resource
+type mqlCloudflareOneCasbPosturePolicyRemediation struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCloudflareOneCasbPosturePolicyRemediationInternal it will be used here
+	Id          plugin.TValue[string]
+	Type        plugin.TValue[string]
+	DisplayName plugin.TValue[string]
+}
+
+// createCloudflareOneCasbPosturePolicyRemediation creates a new instance of this resource
+func createCloudflareOneCasbPosturePolicyRemediation(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCloudflareOneCasbPosturePolicyRemediation{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cloudflare.one.casbPosturePolicy.remediation", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicyRemediation) MqlName() string {
+	return "cloudflare.one.casbPosturePolicy.remediation"
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicyRemediation) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicyRemediation) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicyRemediation) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicyRemediation) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+// mqlCloudflareOneCasbPosturePolicyWebhook for the cloudflare.one.casbPosturePolicy.webhook resource
+type mqlCloudflareOneCasbPosturePolicyWebhook struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlCloudflareOneCasbPosturePolicyWebhookInternal it will be used here
+	Id          plugin.TValue[string]
+	DisplayName plugin.TValue[string]
+}
+
+// createCloudflareOneCasbPosturePolicyWebhook creates a new instance of this resource
+func createCloudflareOneCasbPosturePolicyWebhook(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlCloudflareOneCasbPosturePolicyWebhook{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("cloudflare.one.casbPosturePolicy.webhook", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicyWebhook) MqlName() string {
+	return "cloudflare.one.casbPosturePolicy.webhook"
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicyWebhook) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicyWebhook) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlCloudflareOneCasbPosturePolicyWebhook) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
 }
 
 // mqlCloudflareOneGatewayConfiguration for the cloudflare.one.gatewayConfiguration resource

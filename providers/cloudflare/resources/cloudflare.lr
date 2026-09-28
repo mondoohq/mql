@@ -911,6 +911,12 @@ private cloudflare.one {
 	devicePostureRules() []cloudflare.one.devicePostureRule
 	// Device posture integrations
 	devicePostureIntegrations() []cloudflare.one.devicePostureIntegration
+	// CASB posture policies
+	//
+	// Policies that decide what happens automatically when a CASB posture scan
+	// raises a finding of a given type: which remediations run and which
+	// webhooks are notified.
+	casbPosturePolicies() []cloudflare.one.casbPosturePolicy
 }
 
 // Cloudflare One application
@@ -1133,6 +1139,81 @@ private cloudflare.one.organization @defaults("name authDomain") {
 	createdAt time
 	// Time the organization was last updated
 	updatedAt time
+	// Whether inactive service tokens are automatically disabled or deleted
+	//
+	// When true, a service token unused for serviceTokenInactivityThresholdDays
+	// has serviceTokenInactivityAction applied to it, so forgotten machine
+	// credentials stop working on their own. Null when the organization does
+	// not report the setting.
+	serviceTokenInactivityEnabled bool
+	// Action applied to an inactive service token
+	//
+	// Either disable or delete. Null when the organization does not report the
+	// setting.
+	serviceTokenInactivityAction string
+	// Days a service token must go unused before serviceTokenInactivityAction is applied
+	//
+	// Null when the organization does not report the setting.
+	serviceTokenInactivityThresholdDays int
+}
+
+// Cloudflare One CASB posture policy
+//
+// Integration-scoped response to one CASB finding type, selected by `id`.
+// `enabled` reports whether the policy is active, `findingTypeId` names the
+// finding type it reacts to, and `appliesToAllIntegrations` together with
+// `integrationIds` say which connected SaaS integrations it covers.
+// `remediations` lists the automated fixes that run when the finding is raised
+// and `webhooks` the endpoints that are notified, so an enabled policy with
+// remediations shows that a finding is fixed automatically rather than only
+// reported. `lastTriggeredAt` is the last time the policy ran successfully.
+private cloudflare.one.casbPosturePolicy @defaults("displayName enabled") {
+	// Policy identifier
+	id string
+	// Display name of the policy
+	displayName string
+	// Description of what the policy does
+	description string
+	// Whether the policy is enabled
+	enabled bool
+	// Identifier of the CASB finding type the policy responds to
+	findingTypeId string
+	// Whether the policy applies to every CASB integration in the account
+	//
+	// When false, the policy applies only to the integrations in integrationIds.
+	appliesToAllIntegrations bool
+	// Identifiers of the CASB integrations the policy applies to
+	integrationIds []string
+	// Automated remediations run when the finding is raised
+	remediations []cloudflare.one.casbPosturePolicy.remediation
+	// Webhooks notified when the finding is raised
+	webhooks []cloudflare.one.casbPosturePolicy.webhook
+	// Time the policy last ran successfully
+	//
+	// Null when the policy has never been triggered.
+	lastTriggeredAt time
+	// Time the policy was created
+	createdAt time
+	// Time the policy was last updated
+	updatedAt time
+}
+
+// Automated remediation run by a CASB posture policy
+private cloudflare.one.casbPosturePolicy.remediation @defaults("type") {
+	// Remediation type identifier
+	id string
+	// System name of the remediation type
+	type string
+	// Display name of the remediation type
+	displayName string
+}
+
+// Webhook notified by a CASB posture policy
+private cloudflare.one.casbPosturePolicy.webhook @defaults("displayName") {
+	// Webhook configuration identifier
+	id string
+	// Display name of the webhook configuration
+	displayName string
 }
 
 // Account-wide Cloudflare Gateway enforcement settings
