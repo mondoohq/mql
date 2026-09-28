@@ -564,13 +564,14 @@ func (p *mqlPorts) parseWindowsPorts(r io.Reader, processes map[int64]*mqlProces
 
 // macOS Implementation
 
-// expandLsofWildcardAddress spells out the wildcard bind lsof writes as "*".
+// expandWildcardAddress spells out the wildcard bind lsof and sockstat write
+// as "*".
 // A socket bound there listens on every address on every interface, so it maps
 // to the unspecified address -- 0.0.0.0 for IPv4, :: for IPv6 -- which is how
 // the same bind reads on Linux. It is emphatically not loopback: mapping it to
 // 127.0.0.1 reports a listener reachable from the network as a local-only one,
 // and silently passes any check looking for exposed ports.
-func expandLsofWildcardAddress(address string, protocol string) string {
+func expandWildcardAddress(address string, protocol string) string {
 	if !strings.HasPrefix(address, "*") {
 		return address
 	}
@@ -636,7 +637,7 @@ func (p *mqlPorts) listMacos() ([]any, error) {
 			if err != nil {
 				return nil, err
 			}
-			localAddress = expandLsofWildcardAddress(localAddress, protocol)
+			localAddress = expandWildcardAddress(localAddress, protocol)
 
 			state, ok := TCP_STATES[fd.TcpState()]
 			if !ok {
@@ -671,8 +672,7 @@ func (p *mqlPorts) listMacos() ([]any, error) {
 
 // freebsdPortStates maps sockstat's CONN STATE column onto the canonical
 // TCP_STATES vocabulary, so `state == "listen"` behaves the same on FreeBSD as
-// everywhere else. udp rows carry no state and keep an empty value rather than
-// having one invented for them.
+// everywhere else.
 var freebsdPortStates = map[string]string{
 	"LISTEN":      TCP_STATES[10],
 	"ESTABLISHED": TCP_STATES[1],
@@ -690,10 +690,19 @@ var freebsdPortStates = map[string]string{
 // freebsdPortState translates one sockstat CONN STATE token onto the canonical
 // TCP_STATES vocabulary. An unrecognised token passes through unchanged rather
 // than becoming "", so a state FreeBSD adds later is still visible instead of
-// silently reading as no state at all. udp rows carry no state and keep their
-// empty value.
-func freebsdPortState(raw string) string {
+// silently reading as no state at all.
+//
+// sockstat gives udp sockets no state. They read the way Linux reports the same
+// socket in /proc/net/udp: "close" while unconnected (bound, waiting for
+// datagrams from anyone) and "established" once connect() has fixed a peer.
+func freebsdPortState(raw string, protocol string, remoteAddress string) string {
 	if raw == "" {
+		if strings.HasPrefix(protocol, "udp") {
+			if remoteAddress == "" {
+				return TCP_STATES[7]
+			}
+			return TCP_STATES[1]
+		}
 		return ""
 	}
 	if state, ok := freebsdPortStates[raw]; ok {
@@ -704,10 +713,19 @@ func freebsdPortState(raw string) string {
 
 // listFreebsd reads sockets from sockstat, which is part of the base system.
 func (p *mqlPorts) listFreebsd() ([]any, error) {
-	users, err := p.users()
+	// sockstat names the owning user, so look users up by name. The uid-keyed
+	// map cannot stand in: FreeBSD ships root and toor both with uid 0, and
+	// whichever came last in passwd took the slot, so every root-owned socket
+	// found no user named root.
+	usersObj, err := CreateResource(p.MqlRuntime, "users", map[string]*llx.RawData{})
 	if err != nil {
 		return nil, err
 	}
+	allUsers := usersObj.(*mqlUsers)
+	if err := allUsers.refreshCache(nil); err != nil {
+		return nil, err
+	}
+	usersByName := allUsers.usersByName
 
 	processes, err := p.processesByPid()
 	if err != nil {
@@ -715,47 +733,42 @@ func (p *mqlPorts) listFreebsd() ([]any, error) {
 	}
 
 	conn := p.MqlRuntime.Connection.(shared.Connection)
-	executedCmd, err := conn.RunCommand("sockstat -46 -s")
-	if err != nil {
-		return nil, err
-	}
-	if executedCmd.ExitStatus != 0 {
-		// -s is not available on every release; the listing without it still
-		// carries every socket, only without the state column.
-		executedCmd, err = conn.RunCommand("sockstat -46")
+	// -w keeps sockstat from cutting addresses to the column width, which
+	// otherwise truncates a scoped IPv6 address and loses its port. -s is not
+	// available on every release; the listing without it still carries every
+	// socket, only without the state column.
+	var executedCmd *shared.Command
+	for _, cmd := range []string{"sockstat -46 -s -w", "sockstat -46 -w", "sockstat -46"} {
+		executedCmd, err = conn.RunCommand(cmd)
 		if err != nil {
 			return nil, err
 		}
-		if executedCmd.ExitStatus != 0 {
-			return nil, errors.New("could not list ports: sockstat failed")
+		if executedCmd.ExitStatus == 0 {
+			break
 		}
+	}
+	if executedCmd.ExitStatus != 0 {
+		return nil, errors.New("could not list ports: sockstat failed")
 	}
 
 	entries, err := ports.ParseSockstat(executedCmd.Stdout)
 	if err != nil {
 		return nil, err
 	}
-
-	// sockstat names the owning user, while the users map is keyed by uid.
-	// Index once: scanning per socket is O(sockets x users).
-	usersByName := make(map[string]*mqlUser, len(users))
-	for uid := range users {
-		u := users[uid]
-		if u != nil {
-			usersByName[u.Name.Data] = u
-		}
-	}
+	// Without the merge, the second row of a shared socket resolved to the
+	// cached resource of the first, listing one port twice under one process.
+	entries = ports.MergeSharedSockets(entries)
 
 	res := []any{}
 	for i := range entries {
 		entry := entries[i]
 
-		state := freebsdPortState(entry.State)
+		state := freebsdPortState(entry.State, entry.Protocol, entry.RemoteAddress)
 
 		args := map[string]*llx.RawData{
 			"protocol":      llx.StringData(entry.Protocol),
 			"port":          llx.IntData(entry.LocalPort),
-			"address":       llx.StringData(entry.LocalAddress),
+			"address":       llx.StringData(expandWildcardAddress(entry.LocalAddress, entry.Protocol)),
 			"state":         llx.StringData(state),
 			"remoteAddress": llx.StringData(entry.RemoteAddress),
 			"remotePort":    llx.IntData(entry.RemotePort),
@@ -766,7 +779,12 @@ func (p *mqlPorts) listFreebsd() ([]any, error) {
 			args["user"] = llx.ResourceData(mqlUser, "user")
 		}
 
-		mqlProcess := processes[entry.Pid]
+		// A socket no process holds (TIME_WAIT) has no pid, which parses as 0,
+		// and FreeBSD's pid 0 is the kernel itself.
+		var mqlProcess *mqlProcess
+		if entry.Pid > 0 {
+			mqlProcess = processes[entry.Pid]
+		}
 		if mqlProcess != nil {
 			args["process"] = llx.ResourceData(mqlProcess, "process")
 		}

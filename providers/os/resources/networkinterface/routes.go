@@ -60,6 +60,10 @@ func Routes(conn shared.Connection, pf *inventory.Platform) ([]Route, error) {
 		detector = &darwinRouteDetector{conn: conn, platform: pf}
 	case pf.IsFamily(inventory.FAMILY_WINDOWS):
 		detector = &windowsRouteDetector{conn: conn, platform: pf}
+	case pf.Name == "freebsd":
+		// netstat's --libxo JSON output is FreeBSD's. OpenBSD, NetBSD and
+		// DragonFly have no libxo, so they are not routed here.
+		detector = &freebsdRouteDetector{conn: conn, platform: pf}
 	default:
 		return nil, errors.New("your platform is not supported for the detection of network routes")
 	}

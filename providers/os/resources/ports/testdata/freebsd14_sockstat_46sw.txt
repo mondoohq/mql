@@ -1,0 +1,19 @@
+USER     COMMAND    PID   FD  PROTO     LOCAL ADDRESS                                 FOREIGN ADDRESS                               CONN STATE
+ec2-user sshd-sessi 33340 7   tcp4      172.17.2.106:22                               203.0.113.10:62176                            ESTABLISHED
+root     sshd-sessi 33338 7   tcp4      172.17.2.106:22                               203.0.113.10:62176                            ESTABLISHED
+mysql    mysqld     29115 19  tcp46     *:33060                                       *:*                                           LISTEN
+mysql    mysqld     29115 22  tcp46     *:3306                                        *:*                                           LISTEN
+www      nginx       7895 6   tcp4      *:80                                          *:*                                           LISTEN
+root     nginx       7894 6   tcp4      *:80                                          *:*                                           LISTEN
+root     sshd        1830 6   tcp6      *:22                                          *:*                                           LISTEN
+root     sshd        1830 7   tcp4      *:22                                          *:*                                           LISTEN
+ntpd     ntpd        1771 20  udp6      *:123                                         *:*
+ntpd     ntpd        1771 21  udp4      *:123                                         *:*
+ntpd     ntpd        1771 22  udp6      [fe80::4ff:d0ff:fee3:9f9f%ena0]:123           *:*
+ntpd     ntpd        1771 23  udp4      172.17.2.106:123                              *:*
+ntpd     ntpd        1771 24  udp6      [::1]:123                                     *:*
+ntpd     ntpd        1771 25  udp6      [fe80::1%lo0]:123                             *:*
+ntpd     ntpd        1771 26  udp4      127.0.0.1:123                                 *:*
+root     syslogd     1137 6   udp6      *:514                                         *:*
+root     syslogd     1137 7   udp4      *:514                                         *:*
+?        ?          ?     ?   tcp4      172.17.2.106:22                               203.0.113.10:62154                            TIME_WAIT

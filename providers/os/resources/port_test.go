@@ -133,7 +133,7 @@ func TestAixPortStatesAreCanonical(t *testing.T) {
 // A wildcard bind is reachable from the network. It used to be rewritten to
 // loopback, which reported every exposed listener as local-only and quietly
 // passed any check looking for internet-facing ports.
-func TestExpandLsofWildcardAddress(t *testing.T) {
+func TestExpandWildcardAddress(t *testing.T) {
 	for _, tt := range []struct {
 		address  string
 		protocol string
@@ -150,24 +150,31 @@ func TestExpandLsofWildcardAddress(t *testing.T) {
 		{"", "tcp4", ""},
 	} {
 		t.Run(tt.protocol+"/"+tt.address, func(t *testing.T) {
-			assert.Equal(t, tt.want, expandLsofWildcardAddress(tt.address, tt.protocol))
+			assert.Equal(t, tt.want, expandWildcardAddress(tt.address, tt.protocol))
 		})
 	}
 }
 
 func TestFreebsdPortState(t *testing.T) {
 	// mapped onto the same vocabulary the other platforms use
-	assert.Equal(t, "listen", freebsdPortState("LISTEN"))
-	assert.Equal(t, "established", freebsdPortState("ESTABLISHED"))
-	assert.Equal(t, "time wait", freebsdPortState("TIME_WAIT"))
-	assert.Equal(t, "close wait", freebsdPortState("CLOSE_WAIT"))
+	assert.Equal(t, "listen", freebsdPortState("LISTEN", "tcp4", ""))
+	assert.Equal(t, "established", freebsdPortState("ESTABLISHED", "tcp4", "10.0.0.1"))
+	assert.Equal(t, "time wait", freebsdPortState("TIME_WAIT", "tcp4", "10.0.0.1"))
+	assert.Equal(t, "close wait", freebsdPortState("CLOSE_WAIT", "tcp6", "::1"))
 
-	// udp rows carry no state at all
-	assert.Equal(t, "", freebsdPortState(""))
+	// sockstat gives udp no state; it reads as Linux reports the same socket
+	// in /proc/net/udp: unconnected is "close", connected is "established"
+	assert.Equal(t, "close", freebsdPortState("", "udp4", ""))
+	assert.Equal(t, "close", freebsdPortState("", "udp6", ""))
+	assert.Equal(t, "established", freebsdPortState("", "udp4", "10.0.0.53"))
+
+	// a tcp row without state (sockstat without -s) stays empty rather than
+	// having one guessed
+	assert.Equal(t, "", freebsdPortState("", "tcp4", ""))
 
 	// a state FreeBSD adds later must stay visible rather than read as "no
 	// state", which is what a bare map lookup would have produced
-	assert.Equal(t, "SOME_FUTURE_STATE", freebsdPortState("SOME_FUTURE_STATE"))
+	assert.Equal(t, "SOME_FUTURE_STATE", freebsdPortState("SOME_FUTURE_STATE", "tcp4", ""))
 }
 
 // A socket owned by a uid with no passwd entry leaves port.user null instead
