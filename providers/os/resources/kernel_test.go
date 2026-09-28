@@ -1069,6 +1069,101 @@ func TestKernelFilters(t *testing.T) {
 			runningKernel: "4.12.14-122.23-default",
 			wantOK:        false,
 		},
+
+		// --- azure linux / cbl-mariner ---
+		// Azure Linux 3.0 VM: uname -r 6.6.150.1-1.azl3 with kernel,
+		// kernel-hwe and kernel-mshv installed.
+		{
+			name:          "azurelinux: the booted kernel is marked running",
+			filter:        azureLinuxKernelVersion,
+			pkg:           kernelPackage{Name: "kernel", Version: "6.6.150.1-1.azl3", Arch: "x86_64"},
+			runningKernel: "6.6.150.1-1.azl3",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel", Version: "6.6.150.1-1.azl3", Running: true},
+		},
+		{
+			name:          "azurelinux: kernel-hwe is a kernel, not running",
+			filter:        azureLinuxKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-hwe", Version: "6.18.43.1-2.azl3", Arch: "x86_64"},
+			runningKernel: "6.6.150.1-1.azl3",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel-hwe", Version: "6.18.43.1-2.azl3", Running: false},
+		},
+		{
+			name:          "azurelinux: kernel-mshv is a kernel",
+			filter:        azureLinuxKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-mshv", Version: "6.6.137.mshv2-2.azl3", Arch: "x86_64"},
+			runningKernel: "6.6.137.mshv2-2.azl3",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel-mshv", Version: "6.6.137.mshv2-2.azl3", Running: true},
+		},
+		{
+			name:          "azurelinux: kernel-uvm is a utility VM guest kernel, not the host's",
+			filter:        azureLinuxKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-uvm", Version: "6.6.137.mshv1-1.azl3", Arch: "x86_64"},
+			runningKernel: "6.6.150.1-1.azl3",
+			wantOK:        false,
+		},
+		{
+			name:          "azurelinux: kernel-headers is not a kernel",
+			filter:        azureLinuxKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-headers", Version: "6.6.150.1-1.azl3", Arch: "noarch"},
+			runningKernel: "6.6.150.1-1.azl3",
+			wantOK:        false,
+		},
+		{
+			// CBL-Mariner 2.0 container after `tdnf install kernel`:
+			// /lib/modules/5.15.202.1-1.cm2
+			name:          "mariner: the running release has no arch suffix",
+			filter:        azureLinuxKernelVersion,
+			pkg:           kernelPackage{Name: "kernel", Version: "5.15.202.1-1.cm2", Arch: "x86_64"},
+			runningKernel: "5.15.202.1-1.cm2",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel", Version: "5.15.202.1-1.cm2", Running: true},
+		},
+
+		// --- mageia ---
+		// Mageia 9 container after installing kernel-desktop, kernel-server
+		// and kernel-linus: /lib/modules holds 6.6.141-desktop-1.mga9,
+		// 6.6.141-server-1.mga9 and 6.6.141-1.mga9.
+		{
+			name:          "mageia: kernel-desktop is marked running",
+			filter:        mageiaKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-desktop", Version: "6.6.141-1.mga9", Arch: "x86_64"},
+			runningKernel: "6.6.141-desktop-1.mga9",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel-desktop", Version: "6.6.141-1.mga9", Running: true},
+		},
+		{
+			name:          "mageia: kernel-server of the same version is not the desktop kernel",
+			filter:        mageiaKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-server", Version: "6.6.141-1.mga9", Arch: "x86_64"},
+			runningKernel: "6.6.141-desktop-1.mga9",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel-server", Version: "6.6.141-1.mga9", Running: false},
+		},
+		{
+			name:          "mageia: kernel-linus carries no flavor in the running release",
+			filter:        mageiaKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-linus", Version: "6.6.141-1.mga9", Arch: "x86_64"},
+			runningKernel: "6.6.141-1.mga9",
+			wantOK:        true,
+			want:          KernelVersion{Name: "kernel-linus", Version: "6.6.141-1.mga9", Running: true},
+		},
+		{
+			name:          "mageia: the -latest metapackage is not a kernel",
+			filter:        mageiaKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-desktop-latest", Version: "6.6.141-1.mga9", Arch: "x86_64"},
+			runningKernel: "6.6.141-desktop-1.mga9",
+			wantOK:        false,
+		},
+		{
+			name:          "mageia: kernel-firmware is not a kernel",
+			filter:        mageiaKernelVersion,
+			pkg:           kernelPackage{Name: "kernel-firmware", Version: "20250509-1.mga9", Arch: "noarch"},
+			runningKernel: "6.6.141-desktop-1.mga9",
+			wantOK:        false,
+		},
 	}
 
 	for _, tc := range cases {
@@ -1144,6 +1239,26 @@ func TestKernelFilterForPlatform(t *testing.T) {
 			supported: true,
 		},
 		{
+			name:      "openeuler rides the euler family",
+			platform:  &inventory.Platform{Name: "openeuler", Family: []string{"euler", "linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "azurelinux",
+			platform:  &inventory.Platform{Name: "azurelinux", Family: []string{"linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "mariner",
+			platform:  &inventory.Platform{Name: "mariner", Family: []string{"linux", "unix", "os"}},
+			supported: true,
+		},
+		{
+			name:      "mageia",
+			platform:  &inventory.Platform{Name: "mageia", Family: []string{"linux", "unix", "os"}},
+			supported: true,
+		},
+		{
 			name:      "gentoo has no kernel-package filter and must not answer with an empty list",
 			platform:  &inventory.Platform{Name: "gentoo", Family: []string{"linux", "unix", "os"}},
 			supported: false,
@@ -1169,6 +1284,66 @@ func TestKernelFilterForPlatform(t *testing.T) {
 			} else {
 				assert.Nil(t, filter)
 			}
+		})
+	}
+}
+
+// TestKernelFilterForPlatformPicksTheRightFilter runs the dispatched filter
+// over a kernel package and running release captured from each platform, so
+// a platform routed to a filter that reads its packages wrongly (no kernel
+// found, or none marked running) fails here and not only on a live host.
+func TestKernelFilterForPlatformPicksTheRightFilter(t *testing.T) {
+	cases := []struct {
+		name          string
+		platform      *inventory.Platform
+		pkg           kernelPackage
+		runningKernel string
+	}{
+		{
+			// openEuler 24.03 container after `dnf install kernel`:
+			// /lib/modules/6.6.0-145.0.13.139.oe2403.x86_64
+			name:          "openeuler",
+			platform:      &inventory.Platform{Name: "openeuler", Family: []string{"euler", "linux", "unix", "os"}},
+			pkg:           kernelPackage{Name: "kernel", Version: "6.6.0-145.0.13.139.oe2403", Arch: "x86_64"},
+			runningKernel: "6.6.0-145.0.13.139.oe2403.x86_64",
+		},
+		{
+			// Azure Linux 3.0 VM, uname -r
+			name:          "azurelinux",
+			platform:      &inventory.Platform{Name: "azurelinux", Family: []string{"linux", "unix", "os"}},
+			pkg:           kernelPackage{Name: "kernel", Version: "6.6.150.1-1.azl3", Arch: "x86_64"},
+			runningKernel: "6.6.150.1-1.azl3",
+		},
+		{
+			// CBL-Mariner 2.0 container after `tdnf install kernel`
+			name:          "mariner",
+			platform:      &inventory.Platform{Name: "mariner", Family: []string{"linux", "unix", "os"}},
+			pkg:           kernelPackage{Name: "kernel", Version: "5.15.202.1-1.cm2", Arch: "x86_64"},
+			runningKernel: "5.15.202.1-1.cm2",
+		},
+		{
+			// Mageia 9 container after `dnf install kernel-desktop-latest`
+			name:          "mageia",
+			platform:      &inventory.Platform{Name: "mageia", Family: []string{"linux", "unix", "os"}},
+			pkg:           kernelPackage{Name: "kernel-desktop", Version: "6.6.141-1.mga9", Arch: "x86_64"},
+			runningKernel: "6.6.141-desktop-1.mga9",
+		},
+		{
+			// Rocky Linux 9 EC2 instance: pinned so the redhat path is unchanged
+			name:          "rocky",
+			platform:      &inventory.Platform{Name: "rocky", Family: []string{"redhat", "linux", "unix", "os"}},
+			pkg:           kernelPackage{Name: "kernel", Version: "5.14.0-687.15.1.el9_8", Arch: "x86_64"},
+			runningKernel: "5.14.0-687.15.1.el9_8.x86_64",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			filter, ok := kernelFilterForPlatform(tc.platform)
+			require.True(t, ok)
+			got, ok := filter(tc.pkg, tc.runningKernel)
+			require.True(t, ok, "the platform's kernel package must be recognised")
+			assert.Equal(t, KernelVersion{Name: tc.pkg.Name, Version: tc.pkg.Version, Running: true}, got)
 		})
 	}
 }

@@ -372,6 +372,96 @@ func redhatKernelVersion(pkg kernelPackage, runningKernelVersion string) (Kernel
 	}, true
 }
 
+// azureLinuxKernelPackages is the set of Azure Linux packages that carry a
+// kernel the host boots: the default kernel, the hardware-enablement kernel,
+// and the kernel built for Microsoft Hypervisor hosts. kernel-uvm is left
+// out on purpose: it is a guest kernel for utility VMs and installs nothing
+// under /lib/modules. Everything else kernel-* is headers, tools, docs or
+// driver subpackages of one of these.
+var azureLinuxKernelPackages = map[string]bool{
+	"kernel":      true,
+	"kernel-hwe":  true,
+	"kernel-mshv": true,
+}
+
+// azureLinuxKernelVersion reads an Azure Linux or CBL-Mariner kernel package.
+// Unlike RHEL, the running release is exactly the package version-release,
+// with no arch suffix, whatever the flavor.
+//
+//	rpm -qa --qf '%{NAME} %{VERSION}-%{RELEASE}.%{ARCH}\n' 'kernel*'   (Azure Linux 3.0 VM)
+//	kernel 6.6.150.1-1.azl3.x86_64
+//	kernel-hwe 6.18.43.1-2.azl3.x86_64
+//	kernel-mshv 6.6.137.mshv2-2.azl3.x86_64
+//	uname -r
+//	6.6.150.1-1.azl3
+//	ls /lib/modules
+//	6.18.43.1-2.azl3  6.6.137.mshv2-2.azl3  6.6.150.1-1.azl3
+func azureLinuxKernelVersion(pkg kernelPackage, runningKernelVersion string) (KernelVersion, bool) {
+	if !azureLinuxKernelPackages[pkg.Name] {
+		return KernelVersion{}, false
+	}
+
+	return KernelVersion{
+		Name:    pkg.Name,
+		Version: pkg.Version,
+		Running: stripRPMEpoch(pkg.Version) == runningKernelVersion,
+	}, true
+}
+
+// mageiaKernelPackages is the set of Mageia packages that carry a kernel.
+// Each flavor also ships a "-latest" metapackage with the same version that
+// only pulls in the newest kernel of that flavor; it is not a kernel itself
+// and would list every kernel twice.
+var mageiaKernelPackages = map[string]bool{
+	"kernel-desktop":    true,
+	"kernel-desktop586": true,
+	"kernel-server":     true,
+	"kernel-linus":      true,
+}
+
+// mageiaKernelVersion reads a Mageia kernel package. Mageia puts the flavor
+// between the version and the release in the running release, except for
+// kernel-linus, the unpatched upstream kernel, which carries no flavor:
+//
+//	rpm -qa --qf '%{NAME} %{VERSION}-%{RELEASE}\n' 'kernel*'   (Mageia 9)
+//	kernel-desktop 6.6.141-1.mga9
+//	kernel-server 6.6.141-1.mga9
+//	kernel-linus 6.6.141-1.mga9
+//	ls /lib/modules
+//	6.6.141-1.mga9  6.6.141-desktop-1.mga9  6.6.141-server-1.mga9
+func mageiaKernelVersion(pkg kernelPackage, runningKernelVersion string) (KernelVersion, bool) {
+	if !mageiaKernelPackages[pkg.Name] {
+		return KernelVersion{}, false
+	}
+
+	return KernelVersion{
+		Name:    pkg.Name,
+		Version: pkg.Version,
+		Running: mageiaKernelMatchesRunning(pkg.Version, pkg.Name, runningKernelVersion),
+	}, true
+}
+
+// mageiaKernelMatchesRunning rebuilds the release uname reports for a Mageia
+// kernel package, "<version>-<flavor>-<release>", and compares it with the
+// running one.
+func mageiaKernelMatchesRunning(pkgVersion, pkgName, runningKernelVersion string) bool {
+	if runningKernelVersion == "" {
+		return false
+	}
+
+	version := stripRPMEpoch(pkgVersion)
+	flavor := strings.TrimPrefix(pkgName, "kernel-")
+	if flavor == "linus" {
+		return version == runningKernelVersion
+	}
+
+	i := strings.LastIndex(version, "-")
+	if i < 0 {
+		return false
+	}
+	return version[:i]+"-"+flavor+"-"+version[i+1:] == runningKernelVersion
+}
+
 // photonKernelVersion reads a Photon kernel package, whose flavor lives in
 // the package name suffix ("linux" bare, "linux-esx" for VMware).
 func photonKernelVersion(pkg kernelPackage, runningKernelVersion string) (KernelVersion, bool) {
@@ -507,8 +597,18 @@ func kernelFilterForPlatform(platform *inventory.Platform) (kernelFilter, bool) 
 		return debianKernelVersion, true
 	case platform.Name == "oraclelinux":
 		return oracleKernelVersion, true
-	case platform.IsFamily("redhat") || platform.Name == "amazonlinux":
+	// The euler family (openEuler, EulerOS, Huawei Cloud EulerOS) names its
+	// kernel package "kernel" and versions it the way RHEL does, arch suffix
+	// in the running release included.
+	case platform.IsFamily("redhat") || platform.IsFamily("euler") || platform.Name == "amazonlinux":
 		return redhatKernelVersion, true
+	// Azure Linux, and CBL-Mariner as it was called before 3.0, are rpm based
+	// but resolve outside the redhat family, and their running release carries
+	// no arch suffix.
+	case platform.Name == "azurelinux" || platform.Name == "mariner":
+		return azureLinuxKernelVersion, true
+	case platform.Name == "mageia":
+		return mageiaKernelVersion, true
 	case platform.Name == "photon":
 		return photonKernelVersion, true
 	case platform.IsFamily("suse"):
