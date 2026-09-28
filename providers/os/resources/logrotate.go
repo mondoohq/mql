@@ -36,6 +36,8 @@ func logrotateLocations(fs afero.Fs) (string, []string) {
 	if fs == nil {
 		return conf, nil
 	}
+	// conf is /etc/logrotate.conf or its /usr/etc copy. Only when neither
+	// exists does the /usr/local/etc tree take over, drop-ins included.
 	if _, err := fs.Stat(conf); err != nil {
 		if _, err := fs.Stat(localLogrotateConf); err == nil {
 			var dirs []string
