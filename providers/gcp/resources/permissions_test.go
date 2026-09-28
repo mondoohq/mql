@@ -131,6 +131,7 @@ var validatedGCPPermissions = []string{
 	"cloudsql.instances.list",
 	"cloudsql.sslCerts.list",
 	"cloudsql.users.list",
+	"cloudtasks.cmekConfig.get",
 	"cloudtasks.queues.getIamPolicy",
 	"cloudtasks.queues.list",
 	"composer.environments.list",

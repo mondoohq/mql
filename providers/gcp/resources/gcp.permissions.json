@@ -1,7 +1,7 @@
 {
   "provider": "gcp",
-  "version": "14.0.0-rc.1",
-  "generated_at": "2026-09-14T15:48:55-07:00",
+  "version": "14.1.0",
+  "generated_at": "2026-09-28T09:40:52-07:00",
   "permissions": [
     "accessapproval.settings.get",
     "aiplatform.batchPredictionJobs.list",
@@ -92,6 +92,7 @@
     "cloudsql.instances.list",
     "cloudsql.sslCerts.list",
     "cloudsql.users.list",
+    "cloudtasks.cmekConfig.get",
     "cloudtasks.queues.getIamPolicy",
     "cloudtasks.queues.list",
     "composer.environments.list",
@@ -840,6 +841,12 @@
       "service": "cloudsql",
       "action": "Users.List",
       "source_file": "sql.go"
+    },
+    {
+      "permission": "cloudtasks.cmekConfig.get",
+      "service": "cloudtasks",
+      "action": "GetCmekConfig",
+      "source_file": "cloudtasks.go"
     },
     {
       "permission": "cloudtasks.queues.getIamPolicy",

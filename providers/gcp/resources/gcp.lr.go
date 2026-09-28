@@ -282,6 +282,7 @@ const (
 	ResourceGcpProjectBigtableServiceInstance                                          string = "gcp.project.bigtableService.instance"
 	ResourceGcpProjectBigtableServiceCluster                                           string = "gcp.project.bigtableService.cluster"
 	ResourceGcpProjectBigtableServiceTable                                             string = "gcp.project.bigtableService.table"
+	ResourceGcpProjectBigtableServiceTableBackupPolicy                                 string = "gcp.project.bigtableService.table.backupPolicy"
 	ResourceGcpProjectBigtableServiceAppProfile                                        string = "gcp.project.bigtableService.appProfile"
 	ResourceGcpProjectBigtableServiceBackup                                            string = "gcp.project.bigtableService.backup"
 	ResourceGcpProjectAlloydbService                                                   string = "gcp.project.alloydbService"
@@ -334,6 +335,7 @@ const (
 	ResourceGcpProjectFilestoreServiceInstanceNetwork                                  string = "gcp.project.filestoreService.instance.network"
 	ResourceGcpProjectCloudTasksService                                                string = "gcp.project.cloudTasksService"
 	ResourceGcpProjectCloudTasksServiceQueue                                           string = "gcp.project.cloudTasksService.queue"
+	ResourceGcpProjectCloudTasksServiceQueueHttpTargetConfig                           string = "gcp.project.cloudTasksService.queue.httpTargetConfig"
 	ResourceGcpProjectCloudSchedulerService                                            string = "gcp.project.cloudSchedulerService"
 	ResourceGcpProjectCloudSchedulerServiceJob                                         string = "gcp.project.cloudSchedulerService.job"
 	ResourceGcpProjectAppEngineService                                                 string = "gcp.project.appEngineService"
@@ -1616,6 +1618,10 @@ func init() {
 			// to override args, implement: initGcpProjectBigtableServiceTable(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGcpProjectBigtableServiceTable,
 		},
+		"gcp.project.bigtableService.table.backupPolicy": {
+			// to override args, implement: initGcpProjectBigtableServiceTableBackupPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectBigtableServiceTableBackupPolicy,
+		},
 		"gcp.project.bigtableService.appProfile": {
 			// to override args, implement: initGcpProjectBigtableServiceAppProfile(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGcpProjectBigtableServiceAppProfile,
@@ -1823,6 +1829,10 @@ func init() {
 		"gcp.project.cloudTasksService.queue": {
 			// to override args, implement: initGcpProjectCloudTasksServiceQueue(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGcpProjectCloudTasksServiceQueue,
+		},
+		"gcp.project.cloudTasksService.queue.httpTargetConfig": {
+			// to override args, implement: initGcpProjectCloudTasksServiceQueueHttpTargetConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectCloudTasksServiceQueueHttpTargetConfig,
 		},
 		"gcp.project.cloudSchedulerService": {
 			Init:   initGcpProjectCloudSchedulerService,
@@ -11758,11 +11768,32 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.bigtableService.table.automatedBackupPolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectBigtableServiceTable).GetAutomatedBackupPolicy()).ToDataRes(types.Dict)
 	},
+	"gcp.project.bigtableService.table.automatedBackupsDisabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBigtableServiceTable).GetAutomatedBackupsDisabled()).ToDataRes(types.Bool)
+	},
+	"gcp.project.bigtableService.table.effectiveAutomatedBackupPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBigtableServiceTable).GetEffectiveAutomatedBackupPolicy()).ToDataRes(types.Resource("gcp.project.bigtableService.table.backupPolicy"))
+	},
 	"gcp.project.bigtableService.table.changeStreamConfig": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectBigtableServiceTable).GetChangeStreamConfig()).ToDataRes(types.Dict)
 	},
 	"gcp.project.bigtableService.table.tieredStorageConfig": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectBigtableServiceTable).GetTieredStorageConfig()).ToDataRes(types.Dict)
+	},
+	"gcp.project.bigtableService.table.backupPolicy.frequencySeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBigtableServiceTableBackupPolicy).GetFrequencySeconds()).ToDataRes(types.Int)
+	},
+	"gcp.project.bigtableService.table.backupPolicy.retentionPeriodSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBigtableServiceTableBackupPolicy).GetRetentionPeriodSeconds()).ToDataRes(types.Int)
+	},
+	"gcp.project.bigtableService.table.backupPolicy.keepHotDurationSeconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBigtableServiceTableBackupPolicy).GetKeepHotDurationSeconds()).ToDataRes(types.Int)
+	},
+	"gcp.project.bigtableService.table.backupPolicy.locations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBigtableServiceTableBackupPolicy).GetLocations()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.bigtableService.table.backupPolicy.disabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectBigtableServiceTableBackupPolicy).GetDisabled()).ToDataRes(types.Bool)
 	},
 	"gcp.project.bigtableService.appProfile.projectId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectBigtableServiceAppProfile).GetProjectId()).ToDataRes(types.String)
@@ -13452,6 +13483,48 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.cloudTasksService.queue.iamPolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectCloudTasksServiceQueue).GetIamPolicy()).ToDataRes(types.Array(types.Resource("gcp.resourcemanager.binding")))
+	},
+	"gcp.project.cloudTasksService.queue.httpTarget": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudTasksServiceQueue).GetHttpTarget()).ToDataRes(types.Resource("gcp.project.cloudTasksService.queue.httpTargetConfig"))
+	},
+	"gcp.project.cloudTasksService.queue.kmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudTasksServiceQueue).GetKmsKey()).ToDataRes(types.Resource("gcp.project.kmsService.keyring.cryptokey"))
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.httpMethod": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).GetHttpMethod()).ToDataRes(types.String)
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.headerOverrides": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).GetHeaderOverrides()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.uriScheme": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).GetUriScheme()).ToDataRes(types.String)
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.uriHost": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).GetUriHost()).ToDataRes(types.String)
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.uriPort": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).GetUriPort()).ToDataRes(types.Int)
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.uriPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).GetUriPath()).ToDataRes(types.String)
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.uriQuery": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).GetUriQuery()).ToDataRes(types.String)
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.uriOverrideEnforceMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).GetUriOverrideEnforceMode()).ToDataRes(types.String)
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.oidcServiceAccount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).GetOidcServiceAccount()).ToDataRes(types.Resource("gcp.project.iamService.serviceAccount"))
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.oidcAudience": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).GetOidcAudience()).ToDataRes(types.String)
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.oauthServiceAccount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).GetOauthServiceAccount()).ToDataRes(types.Resource("gcp.project.iamService.serviceAccount"))
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.oauthScope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).GetOauthScope()).ToDataRes(types.String)
 	},
 	"gcp.project.cloudSchedulerService.projectId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectCloudSchedulerService).GetProjectId()).ToDataRes(types.String)
@@ -32756,12 +32829,44 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectBigtableServiceTable).AutomatedBackupPolicy, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"gcp.project.bigtableService.table.automatedBackupsDisabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBigtableServiceTable).AutomatedBackupsDisabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.bigtableService.table.effectiveAutomatedBackupPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBigtableServiceTable).EffectiveAutomatedBackupPolicy, ok = plugin.RawToTValue[*mqlGcpProjectBigtableServiceTableBackupPolicy](v.Value, v.Error)
+		return
+	},
 	"gcp.project.bigtableService.table.changeStreamConfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectBigtableServiceTable).ChangeStreamConfig, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
 	"gcp.project.bigtableService.table.tieredStorageConfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectBigtableServiceTable).TieredStorageConfig, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.bigtableService.table.backupPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBigtableServiceTableBackupPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.bigtableService.table.backupPolicy.frequencySeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBigtableServiceTableBackupPolicy).FrequencySeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.bigtableService.table.backupPolicy.retentionPeriodSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBigtableServiceTableBackupPolicy).RetentionPeriodSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.bigtableService.table.backupPolicy.keepHotDurationSeconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBigtableServiceTableBackupPolicy).KeepHotDurationSeconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.bigtableService.table.backupPolicy.locations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBigtableServiceTableBackupPolicy).Locations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.bigtableService.table.backupPolicy.disabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectBigtableServiceTableBackupPolicy).Disabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"gcp.project.bigtableService.appProfile.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -35222,6 +35327,66 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.cloudTasksService.queue.iamPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectCloudTasksServiceQueue).IamPolicy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudTasksService.queue.httpTarget": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudTasksServiceQueue).HttpTarget, ok = plugin.RawToTValue[*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudTasksService.queue.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudTasksServiceQueue).KmsKey, ok = plugin.RawToTValue[*mqlGcpProjectKmsServiceKeyringCryptokey](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.httpMethod": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).HttpMethod, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.headerOverrides": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).HeaderOverrides, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.uriScheme": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).UriScheme, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.uriHost": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).UriHost, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.uriPort": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).UriPort, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.uriPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).UriPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.uriQuery": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).UriQuery, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.uriOverrideEnforceMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).UriOverrideEnforceMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.oidcServiceAccount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).OidcServiceAccount, ok = plugin.RawToTValue[*mqlGcpProjectIamServiceServiceAccount](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.oidcAudience": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).OidcAudience, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.oauthServiceAccount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).OauthServiceAccount, ok = plugin.RawToTValue[*mqlGcpProjectIamServiceServiceAccount](v.Value, v.Error)
+		return
+	},
+	"gcp.project.cloudTasksService.queue.httpTargetConfig.oauthScope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig).OauthScope, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"gcp.project.cloudSchedulerService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -76143,15 +76308,17 @@ type mqlGcpProjectBigtableServiceTable struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlGcpProjectBigtableServiceTableInternal it will be used here
-	ProjectId             plugin.TValue[string]
-	InstanceName          plugin.TValue[string]
-	Name                  plugin.TValue[string]
-	ColumnFamilies        plugin.TValue[any]
-	Granularity           plugin.TValue[string]
-	DeletionProtection    plugin.TValue[bool]
-	AutomatedBackupPolicy plugin.TValue[any]
-	ChangeStreamConfig    plugin.TValue[any]
-	TieredStorageConfig   plugin.TValue[any]
+	ProjectId                      plugin.TValue[string]
+	InstanceName                   plugin.TValue[string]
+	Name                           plugin.TValue[string]
+	ColumnFamilies                 plugin.TValue[any]
+	Granularity                    plugin.TValue[string]
+	DeletionProtection             plugin.TValue[bool]
+	AutomatedBackupPolicy          plugin.TValue[any]
+	AutomatedBackupsDisabled       plugin.TValue[bool]
+	EffectiveAutomatedBackupPolicy plugin.TValue[*mqlGcpProjectBigtableServiceTableBackupPolicy]
+	ChangeStreamConfig             plugin.TValue[any]
+	TieredStorageConfig            plugin.TValue[any]
 }
 
 // createGcpProjectBigtableServiceTable creates a new instance of this resource
@@ -76219,12 +76386,84 @@ func (c *mqlGcpProjectBigtableServiceTable) GetAutomatedBackupPolicy() *plugin.T
 	return &c.AutomatedBackupPolicy
 }
 
+func (c *mqlGcpProjectBigtableServiceTable) GetAutomatedBackupsDisabled() *plugin.TValue[bool] {
+	return &c.AutomatedBackupsDisabled
+}
+
+func (c *mqlGcpProjectBigtableServiceTable) GetEffectiveAutomatedBackupPolicy() *plugin.TValue[*mqlGcpProjectBigtableServiceTableBackupPolicy] {
+	return &c.EffectiveAutomatedBackupPolicy
+}
+
 func (c *mqlGcpProjectBigtableServiceTable) GetChangeStreamConfig() *plugin.TValue[any] {
 	return &c.ChangeStreamConfig
 }
 
 func (c *mqlGcpProjectBigtableServiceTable) GetTieredStorageConfig() *plugin.TValue[any] {
 	return &c.TieredStorageConfig
+}
+
+// mqlGcpProjectBigtableServiceTableBackupPolicy for the gcp.project.bigtableService.table.backupPolicy resource
+type mqlGcpProjectBigtableServiceTableBackupPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectBigtableServiceTableBackupPolicyInternal it will be used here
+	FrequencySeconds       plugin.TValue[int64]
+	RetentionPeriodSeconds plugin.TValue[int64]
+	KeepHotDurationSeconds plugin.TValue[int64]
+	Locations              plugin.TValue[[]any]
+	Disabled               plugin.TValue[bool]
+}
+
+// createGcpProjectBigtableServiceTableBackupPolicy creates a new instance of this resource
+func createGcpProjectBigtableServiceTableBackupPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectBigtableServiceTableBackupPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.bigtableService.table.backupPolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectBigtableServiceTableBackupPolicy) MqlName() string {
+	return "gcp.project.bigtableService.table.backupPolicy"
+}
+
+func (c *mqlGcpProjectBigtableServiceTableBackupPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectBigtableServiceTableBackupPolicy) GetFrequencySeconds() *plugin.TValue[int64] {
+	return &c.FrequencySeconds
+}
+
+func (c *mqlGcpProjectBigtableServiceTableBackupPolicy) GetRetentionPeriodSeconds() *plugin.TValue[int64] {
+	return &c.RetentionPeriodSeconds
+}
+
+func (c *mqlGcpProjectBigtableServiceTableBackupPolicy) GetKeepHotDurationSeconds() *plugin.TValue[int64] {
+	return &c.KeepHotDurationSeconds
+}
+
+func (c *mqlGcpProjectBigtableServiceTableBackupPolicy) GetLocations() *plugin.TValue[[]any] {
+	return &c.Locations
+}
+
+func (c *mqlGcpProjectBigtableServiceTableBackupPolicy) GetDisabled() *plugin.TValue[bool] {
+	return &c.Disabled
 }
 
 // mqlGcpProjectBigtableServiceAppProfile for the gcp.project.bigtableService.appProfile resource
@@ -81859,7 +82098,7 @@ func (c *mqlGcpProjectCloudTasksService) GetQueues() *plugin.TValue[[]any] {
 type mqlGcpProjectCloudTasksServiceQueue struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlGcpProjectCloudTasksServiceQueueInternal it will be used here
+	mqlGcpProjectCloudTasksServiceQueueInternal
 	ProjectId                plugin.TValue[string]
 	Name                     plugin.TValue[string]
 	State                    plugin.TValue[string]
@@ -81867,6 +82106,8 @@ type mqlGcpProjectCloudTasksServiceQueue struct {
 	RetryConfig              plugin.TValue[*mqlGcpRetryConfig]
 	AppEngineRoutingOverride plugin.TValue[any]
 	IamPolicy                plugin.TValue[[]any]
+	HttpTarget               plugin.TValue[*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig]
+	KmsKey                   plugin.TValue[*mqlGcpProjectKmsServiceKeyringCryptokey]
 }
 
 // createGcpProjectCloudTasksServiceQueue creates a new instance of this resource
@@ -81944,6 +82185,149 @@ func (c *mqlGcpProjectCloudTasksServiceQueue) GetIamPolicy() *plugin.TValue[[]an
 
 		return c.iamPolicy()
 	})
+}
+
+func (c *mqlGcpProjectCloudTasksServiceQueue) GetHttpTarget() *plugin.TValue[*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig] {
+	return &c.HttpTarget
+}
+
+func (c *mqlGcpProjectCloudTasksServiceQueue) GetKmsKey() *plugin.TValue[*mqlGcpProjectKmsServiceKeyringCryptokey] {
+	return plugin.GetOrCompute[*mqlGcpProjectKmsServiceKeyringCryptokey](&c.KmsKey, func() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.cloudTasksService.queue", c.__id, "kmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectKmsServiceKeyringCryptokey), nil
+			}
+		}
+
+		return c.kmsKey()
+	})
+}
+
+// mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig for the gcp.project.cloudTasksService.queue.httpTargetConfig resource
+type mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGcpProjectCloudTasksServiceQueueHttpTargetConfigInternal
+	HttpMethod             plugin.TValue[string]
+	HeaderOverrides        plugin.TValue[map[string]any]
+	UriScheme              plugin.TValue[string]
+	UriHost                plugin.TValue[string]
+	UriPort                plugin.TValue[int64]
+	UriPath                plugin.TValue[string]
+	UriQuery               plugin.TValue[string]
+	UriOverrideEnforceMode plugin.TValue[string]
+	OidcServiceAccount     plugin.TValue[*mqlGcpProjectIamServiceServiceAccount]
+	OidcAudience           plugin.TValue[string]
+	OauthServiceAccount    plugin.TValue[*mqlGcpProjectIamServiceServiceAccount]
+	OauthScope             plugin.TValue[string]
+}
+
+// createGcpProjectCloudTasksServiceQueueHttpTargetConfig creates a new instance of this resource
+func createGcpProjectCloudTasksServiceQueueHttpTargetConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.cloudTasksService.queue.httpTargetConfig", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig) MqlName() string {
+	return "gcp.project.cloudTasksService.queue.httpTargetConfig"
+}
+
+func (c *mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig) GetHttpMethod() *plugin.TValue[string] {
+	return &c.HttpMethod
+}
+
+func (c *mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig) GetHeaderOverrides() *plugin.TValue[map[string]any] {
+	return &c.HeaderOverrides
+}
+
+func (c *mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig) GetUriScheme() *plugin.TValue[string] {
+	return &c.UriScheme
+}
+
+func (c *mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig) GetUriHost() *plugin.TValue[string] {
+	return &c.UriHost
+}
+
+func (c *mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig) GetUriPort() *plugin.TValue[int64] {
+	return &c.UriPort
+}
+
+func (c *mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig) GetUriPath() *plugin.TValue[string] {
+	return &c.UriPath
+}
+
+func (c *mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig) GetUriQuery() *plugin.TValue[string] {
+	return &c.UriQuery
+}
+
+func (c *mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig) GetUriOverrideEnforceMode() *plugin.TValue[string] {
+	return &c.UriOverrideEnforceMode
+}
+
+func (c *mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig) GetOidcServiceAccount() *plugin.TValue[*mqlGcpProjectIamServiceServiceAccount] {
+	return plugin.GetOrCompute[*mqlGcpProjectIamServiceServiceAccount](&c.OidcServiceAccount, func() (*mqlGcpProjectIamServiceServiceAccount, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.cloudTasksService.queue.httpTargetConfig", c.__id, "oidcServiceAccount")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectIamServiceServiceAccount), nil
+			}
+		}
+
+		return c.oidcServiceAccount()
+	})
+}
+
+func (c *mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig) GetOidcAudience() *plugin.TValue[string] {
+	return &c.OidcAudience
+}
+
+func (c *mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig) GetOauthServiceAccount() *plugin.TValue[*mqlGcpProjectIamServiceServiceAccount] {
+	return plugin.GetOrCompute[*mqlGcpProjectIamServiceServiceAccount](&c.OauthServiceAccount, func() (*mqlGcpProjectIamServiceServiceAccount, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.cloudTasksService.queue.httpTargetConfig", c.__id, "oauthServiceAccount")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectIamServiceServiceAccount), nil
+			}
+		}
+
+		return c.oauthServiceAccount()
+	})
+}
+
+func (c *mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig) GetOauthScope() *plugin.TValue[string] {
+	return &c.OauthScope
 }
 
 // mqlGcpProjectCloudSchedulerService for the gcp.project.cloudSchedulerService resource

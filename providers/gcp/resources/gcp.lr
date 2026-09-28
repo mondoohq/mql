@@ -10400,10 +10400,20 @@ private gcp.project.bigtableService.table @defaults("name") {
   // Automated backup policy
   //
   // Keys `retentionPeriod` and `frequency` (both durations) set how long
-  // automated backups are kept and how often they run, and `locations`
-  // lists the backup storage locations. Null when automated backups are
-  // disabled.
+  // automated backups are kept and how often they run, `keepHotDuration`
+  // (a duration) sets how long backups stay HOT, and `locations` lists the
+  // backup storage locations. A duration key is absent when the policy does
+  // not set it. Null when the table configures no policy or explicitly
+  // disables automated backups. See effectiveAutomatedBackupPolicy for the
+  // policy actually in force.
   automatedBackupPolicy dict
+  // Whether the table explicitly opts out of automated backups
+  automatedBackupsDisabled bool
+  // Automated backup policy in force on the table
+  //
+  // The policy Bigtable applies, which may be a system default when the
+  // table configures none. Null when Bigtable reports no effective policy.
+  effectiveAutomatedBackupPolicy gcp.project.bigtableService.table.backupPolicy
   // Change stream configuration
   //
   // The `retentionPeriod` key gives the duration for which change stream
@@ -10415,6 +10425,33 @@ private gcp.project.bigtableService.table @defaults("name") {
   // data older than this moves to the infrequent-access (HDD) tier. Null
   // when tiered storage is not configured.
   tieredStorageConfig dict
+}
+
+// Google Cloud (GCP) Bigtable table automated backup policy
+//
+// How often Bigtable backs up the table (`frequencySeconds`), how long each
+// backup is kept (`retentionPeriodSeconds`), how long it stays a HOT backup
+// (`keepHotDurationSeconds`), the zones backups may be created in
+// (`locations`), and whether automated backups are turned off (`disabled`).
+private gcp.project.bigtableService.table.backupPolicy @defaults("disabled frequencySeconds retentionPeriodSeconds") {
+  // Time between automated backups, in seconds
+  //
+  // Null when the policy does not set it.
+  frequencySeconds int
+  // How long each automated backup is retained, in seconds
+  //
+  // Null when the policy does not set it.
+  retentionPeriodSeconds int
+  // How long each automated backup stays a HOT backup, in seconds
+  //
+  // Null when backups are STANDARD backups.
+  keepHotDurationSeconds int
+  // Zones where automated backups may be created, in the form projects/PROJECT/locations/ZONE
+  //
+  // Empty when backups may be created in every zone of the instance.
+  locations []string
+  // Whether automated backups are turned off
+  disabled bool
 }
 
 // Google Cloud (GCP) Bigtable app profile
@@ -12461,6 +12498,79 @@ private gcp.project.cloudTasksService.queue @defaults("name state") {
   appEngineRoutingOverride dict
   // IAM policy bindings on the queue (who can enqueue, lease, or manage tasks)
   iamPolicy() []gcp.resourcemanager.binding
+  // HTTP target settings applied to every task dispatched from the queue
+  //
+  // Overrides for the destination URI, HTTP method, headers, and the
+  // service account whose OIDC or OAuth token authenticates each request.
+  // Null when the queue sets no HTTP target.
+  httpTarget gcp.project.cloudTasksService.queue.httpTargetConfig
+  // Customer-managed Cloud KMS key encrypting the queue and its tasks
+  //
+  // Cloud Tasks applies one CMEK setting per project and location, so every
+  // queue in the same location reports the same key. Null when the location
+  // uses Google-managed encryption.
+  kmsKey() gcp.project.kmsService.keyring.cryptokey
+}
+
+// Google Cloud (GCP) Cloud Tasks queue HTTP target
+//
+// Queue-level overrides for HTTP tasks. The `uri*` fields rewrite the
+// scheme, host, port, path, or query of each task's URL, and
+// `uriOverrideEnforceMode` says whether they replace a task's own values
+// (ALWAYS) or only fill in missing ones (IF_NOT_EXISTS). `httpMethod` and
+// `headerOverrides` replace the method and headers of every task. The
+// `oidcServiceAccount` and `oauthServiceAccount` fields name the identity
+// every task runs as.
+private gcp.project.cloudTasksService.queue.httpTargetConfig @defaults("httpMethod uriHost") {
+  // HTTP method used for every task (POST, GET, HEAD, PUT, DELETE, PATCH, OPTIONS)
+  //
+  // HTTP_METHOD_UNSPECIFIED when each task keeps its own method.
+  httpMethod string
+  // Headers set on every task, keyed by header name
+  headerOverrides map[string]string
+  // Scheme override (HTTP or HTTPS)
+  //
+  // Null when the queue does not override the scheme.
+  uriScheme string
+  // Host override
+  //
+  // Null when the queue does not override the host.
+  uriHost string
+  // Port override
+  //
+  // Null when the queue does not override the port.
+  uriPort int
+  // URI path override
+  //
+  // Null when the queue does not override the path.
+  uriPath string
+  // URI query override
+  //
+  // Null when the queue does not override the query string.
+  uriQuery string
+  // How the URI overrides apply (ALWAYS, IF_NOT_EXISTS, or URI_OVERRIDE_ENFORCE_MODE_UNSPECIFIED)
+  //
+  // ALWAYS replaces each task's own values, IF_NOT_EXISTS only fills in
+  // values the task leaves empty. Null when the queue sets no URI override.
+  uriOverrideEnforceMode string
+  // Service account whose OIDC token authenticates each task
+  //
+  // Null when the queue does not use an OIDC token.
+  oidcServiceAccount() gcp.project.iamService.serviceAccount
+  // Audience of the OIDC token
+  //
+  // Null when the queue does not use an OIDC token. Empty when the target
+  // URI is used as the audience.
+  oidcAudience string
+  // Service account whose OAuth token authenticates each task
+  //
+  // Null when the queue does not use an OAuth token.
+  oauthServiceAccount() gcp.project.iamService.serviceAccount
+  // OAuth scope of the token
+  //
+  // Null when the queue does not use an OAuth token. Empty when the default
+  // cloud-platform scope applies.
+  oauthScope string
 }
 
 // Google Cloud (GCP) Cloud Scheduler
