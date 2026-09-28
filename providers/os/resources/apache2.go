@@ -237,7 +237,7 @@ func apacheDiscoverLayout(conn shared.Connection, afs *afero.Afero) apacheLayout
 // shared by the binary version scanners; the caller owns opening/closing the
 // underlying file. `overlap` is the number of trailing bytes retained between
 // chunks so a match spanning a chunk boundary isn't missed. When accept is not
-// nil, runs it rejects are skipped and the scan moves on to the next match.
+// nil, matches it rejects are skipped and the scan moves on to the next match.
 func scanReaderForTag(r io.Reader, tag []byte, overlap int, isVersionByte func(byte) bool, accept func([]byte) bool) string {
 	const chunkSize = 64 * 1024
 	buf := make([]byte, chunkSize+overlap)
