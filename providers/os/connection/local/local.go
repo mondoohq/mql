@@ -5,7 +5,6 @@ package local
 
 import (
 	"bytes"
-	"io"
 	"os"
 	"os/exec"
 	"runtime"
@@ -81,29 +80,30 @@ func NewConnection(id uint32, conf *inventory.Config, asset *inventory.Asset) *L
 		res.shell = []string{"powershell", "-c"}
 	} else {
 		res.shell = []string{"sh", "-c"}
-		res.resolveElevation()
+		err := res.resolveElevation(func(cmd string) (*shared.Command, error) {
+			return (&CommandRunner{Shell: res.shell}).Exec(cmd, []string{})
+		})
+		if err != nil {
+			log.Warn().Err(err).Msg("local connection runs commands with sudo, which is expected to fail")
+		}
 	}
 
 	return &res
 }
 
 // resolveElevation picks sudo or doas when elevation is requested without a
-// configured executable. With neither installed the executable stays empty,
-// which BuildSudoCommand treats as sudo.
-func (p *LocalConnection) resolveElevation() {
-	if p.Sudo == nil || !p.Sudo.Active || p.Sudo.Executable != "" {
-		return
+// configured executable. NewConnection cannot fail, so when neither is
+// installed the error is logged and the executable stays empty, which
+// BuildSudoCommand treats as sudo.
+func (p *LocalConnection) resolveElevation(run func(string) (*shared.Command, error)) error {
+	if p.Sudo == nil || !p.Sudo.Active {
+		return nil
 	}
-	c := &CommandRunner{Shell: p.shell}
-	out, err := c.Exec(shared.ElevationProbeCommand, []string{})
-	if err != nil || out == nil {
-		return
+	if err := shared.ResolveElevation(p.Sudo, run); err != nil {
+		return err
 	}
-	stdout, _ := io.ReadAll(out.Stdout)
-	if executable, _ := shared.ParseElevationProbe(string(stdout)); executable != "" {
-		p.Sudo.Executable = executable
-		log.Debug().Str("executable", executable).Msg("activated privilege elevation for local connection")
-	}
+	log.Debug().Str("executable", p.Sudo.Executable).Msg("activated privilege elevation for local connection")
+	return nil
 }
 
 func (p *LocalConnection) Name() string {

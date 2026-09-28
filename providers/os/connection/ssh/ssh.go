@@ -102,7 +102,7 @@ func NewConnection(id uint32, conf *inventory.Config, asset *inventory.Asset) (*
 		// just check for the explicit positive case, otherwise just activate sudo
 		// we check sudo in VerifyConnection
 		if strings.TrimSpace(string(stdout)) != "0" {
-			if err := resolveElevation(conf.Sudo, res.runRawCommand); err != nil {
+			if err := shared.ResolveElevation(conf.Sudo, res.runRawCommand); err != nil {
 				res.Close()
 				return nil, err
 			}
@@ -346,37 +346,6 @@ func (c *Connection) setDefaultSettings() {
 		c.conf.Port = 22
 	}
 
-}
-
-// resolveElevation picks the executable used to elevate commands. An
-// executable configured in the inventory is kept as is. Otherwise the target
-// is probed for sudo, then doas. When the probe shows that neither is
-// installed, the connection fails: every command and file read would be
-// prefixed with a missing executable, so no query could return correct data.
-// When the probe cannot run at all, sudo is used as before and verify()
-// reports any problem.
-func resolveElevation(sudo *inventory.Sudo, runRawCommand func(string) (*shared.Command, error)) error {
-	if sudo.Executable != "" {
-		return nil
-	}
-
-	var stdout []byte
-	out, err := runRawCommand(shared.ElevationProbeCommand)
-	if err == nil && out != nil {
-		stdout, _ = io.ReadAll(out.Stdout)
-	}
-
-	executable, probed := shared.ParseElevationProbe(string(stdout))
-	switch {
-	case executable != "":
-		sudo.Executable = executable
-	case probed:
-		return errors.New("cannot elevate privileges: neither sudo nor doas is installed on the target")
-	default:
-		log.Debug().Msg("could not probe the target for sudo or doas, using sudo")
-		sudo.Executable = shared.ElevationSudo
-	}
-	return nil
 }
 
 func (c *Connection) Connect() error {

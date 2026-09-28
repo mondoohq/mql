@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -299,6 +301,38 @@ func ParseElevationProbe(stdout string) (executable string, probed bool) {
 	default:
 		return "", probed
 	}
+}
+
+// ResolveElevation picks the executable used to elevate commands. An
+// executable configured in the inventory is kept as is. Otherwise the target
+// is probed for sudo, then doas. When the probe shows that neither is
+// installed, it returns an error: every command and file read would be
+// prefixed with a missing executable, so no query could return correct data.
+// When the probe cannot run at all, sudo is used as before.
+//
+// run must execute the command without elevation.
+func ResolveElevation(sudo *inventory.Sudo, run func(string) (*Command, error)) error {
+	if sudo.Executable != "" {
+		return nil
+	}
+
+	var stdout []byte
+	out, err := run(ElevationProbeCommand)
+	if err == nil && out != nil {
+		stdout, _ = io.ReadAll(out.Stdout)
+	}
+
+	executable, probed := ParseElevationProbe(string(stdout))
+	switch {
+	case executable != "":
+		sudo.Executable = executable
+	case probed:
+		return errors.New("cannot elevate privileges: neither sudo nor doas is installed on the target")
+	default:
+		log.Debug().Msg("could not probe the target for sudo or doas, using sudo")
+		sudo.Executable = ElevationSudo
+	}
+	return nil
 }
 
 var envAssignmentRegex = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
