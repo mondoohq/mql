@@ -156,6 +156,10 @@ type mqlAlicloudEsInstanceInternal struct {
 	detailLock    sync.Mutex
 	detailFetched atomic.Bool
 	detail        *esclient.DescribeInstanceResponseBodyResult
+
+	snapshotLock    sync.Mutex
+	snapshotFetched atomic.Bool
+	snapshot        *esclient.DescribeSnapshotSettingResponseBodyResult
 }
 
 // newEsInstance builds an alicloud.es.instance from a ListInstance item. The
@@ -422,4 +426,96 @@ func (r *mqlAlicloudEsInstance) internetExposed() (bool, error) {
 		return false, err
 	}
 	return esInternetExposed(tea.BoolValue(d.EnablePublic), tea.BoolValue(d.EnableKibanaPublicNetwork)), nil
+}
+
+// esClassifyError maps a refused Elasticsearch API call to its ADR 046 kind,
+// naming the permission the call needs. An error the target did not refuse,
+// such as a transport failure or a server fault, is returned unchanged.
+func esClassifyError(err error, permission string) error {
+	var sdkErr *tea.SDKError
+	if !errors.As(err, &sdkErr) || sdkErr.StatusCode == nil {
+		return err
+	}
+	switch *sdkErr.StatusCode {
+	case http.StatusUnauthorized:
+		return llx.Unauthenticated(err)
+	case http.StatusForbidden:
+		return llx.Forbidden(err, llx.WithPermissions(permission))
+	}
+	return err
+}
+
+// snapshotSettingFor loads and memoizes the automatic snapshot setting, so the
+// snapshot accessors share one DescribeSnapshotSetting call. An error is not
+// cached, so a later access retries.
+func (r *mqlAlicloudEsInstance) snapshotSettingFor() (*esclient.DescribeSnapshotSettingResponseBodyResult, error) {
+	if r.snapshotFetched.Load() {
+		return r.snapshot, nil
+	}
+	r.snapshotLock.Lock()
+	defer r.snapshotLock.Unlock()
+	if r.snapshotFetched.Load() {
+		return r.snapshot, nil
+	}
+
+	conn := r.MqlRuntime.Connection.(*connection.AlicloudConnection)
+	client, err := conn.ElasticsearchClient(r.region)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.DescribeSnapshotSetting(tea.String(r.InstanceId.Data))
+	if err != nil {
+		return nil, esClassifyError(err, "elasticsearch:DescribeSnapshotSetting")
+	}
+	if resp != nil && resp.Body != nil {
+		r.snapshot = resp.Body.Result
+	}
+	r.snapshotFetched.Store(true)
+	return r.snapshot, nil
+}
+
+// esSnapshotIndices flattens the index list of a snapshot setting. A setting
+// that carries no list at all yields nil, so the field reads null rather than
+// an empty list that would claim no index is covered.
+func esSnapshotIndices(s *esclient.DescribeSnapshotSettingResponseBodyResult) []any {
+	if s == nil || s.Indices == nil {
+		return nil
+	}
+	return esStrings(s.Indices)
+}
+
+func (r *mqlAlicloudEsInstance) autoSnapshotEnabled() (bool, error) {
+	s, err := r.snapshotSettingFor()
+	if err != nil {
+		return false, err
+	}
+	if s == nil || s.Enable == nil {
+		r.AutoSnapshotEnabled.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return *s.Enable, nil
+}
+
+func (r *mqlAlicloudEsInstance) autoSnapshotSchedule() (string, error) {
+	s, err := r.snapshotSettingFor()
+	if err != nil {
+		return "", err
+	}
+	if s == nil || s.QuartzRegex == nil {
+		r.AutoSnapshotSchedule.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *s.QuartzRegex, nil
+}
+
+func (r *mqlAlicloudEsInstance) snapshotIndices() ([]any, error) {
+	s, err := r.snapshotSettingFor()
+	if err != nil {
+		return nil, err
+	}
+	indices := esSnapshotIndices(s)
+	if indices == nil {
+		r.SnapshotIndices.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return indices, nil
 }

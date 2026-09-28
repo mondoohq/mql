@@ -4,14 +4,18 @@
 package resources
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
 
+	esclient "github.com/alibabacloud-go/elasticsearch-20170613/v6/client"
 	tea "github.com/alibabacloud-go/tea/tea"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"go.mondoo.com/mql/llx"
 )
 
 // TestEsParseTime covers the cluster timestamp parser across the layouts the
@@ -107,4 +111,65 @@ func TestEsInternetExposed(t *testing.T) {
 			assert.Equal(t, tt.want, esInternetExposed(tt.public, tt.kibanaPublic))
 		})
 	}
+}
+
+// TestEsSnapshotIndices covers the snapshot index list. A setting without a
+// list must read null, not an empty list that would claim no index is backed
+// up, and blank entries must not surface as index names.
+func TestEsSnapshotIndices(t *testing.T) {
+	t.Run("nil setting is null", func(t *testing.T) {
+		assert.Nil(t, esSnapshotIndices(nil))
+	})
+	t.Run("absent list is null", func(t *testing.T) {
+		assert.Nil(t, esSnapshotIndices(&esclient.DescribeSnapshotSettingResponseBodyResult{Enable: tea.Bool(true)}))
+	})
+	t.Run("empty list stays empty", func(t *testing.T) {
+		assert.Equal(t, []any{}, esSnapshotIndices(&esclient.DescribeSnapshotSettingResponseBodyResult{Indices: []*string{}}))
+	})
+	t.Run("blank entries dropped", func(t *testing.T) {
+		got := esSnapshotIndices(&esclient.DescribeSnapshotSettingResponseBodyResult{
+			Indices: []*string{tea.String("logs-*"), nil, tea.String(""), tea.String("orders")},
+		})
+		assert.Equal(t, []any{"logs-*", "orders"}, got)
+	})
+}
+
+// TestEsSnapshotSettingDecode checks that the SDK struct tags match the field
+// names the API documents, so a renamed tag cannot silently zero a field.
+func TestEsSnapshotSettingDecode(t *testing.T) {
+	body := `{"RequestId":"r","Result":{"Enable":true,"QuartzRegex":"0 0 01 ? * * *","Indices":["logs-*","orders"]}}`
+	var resp esclient.DescribeSnapshotSettingResponseBody
+	require.NoError(t, json.Unmarshal([]byte(body), &resp))
+	require.NotNil(t, resp.Result)
+	assert.True(t, tea.BoolValue(resp.Result.Enable))
+	assert.Equal(t, "0 0 01 ? * * *", tea.StringValue(resp.Result.QuartzRegex))
+	assert.Equal(t, []any{"logs-*", "orders"}, esSnapshotIndices(resp.Result))
+}
+
+// TestEsClassifyError covers the refusal classifier on the snapshot call. A
+// 403 is Forbidden naming the permission, a 401 is Unauthenticated, and
+// anything the target did not refuse stays unclassified.
+func TestEsClassifyError(t *testing.T) {
+	sdkErr := func(status int) error {
+		return &tea.SDKError{StatusCode: tea.Int(status), Code: tea.String("x")}
+	}
+	const perm = "elasticsearch:DescribeSnapshotSetting"
+
+	t.Run("403 is forbidden with permission", func(t *testing.T) {
+		err := esClassifyError(sdkErr(403), perm)
+		assert.ErrorIs(t, err, llx.ErrForbidden)
+		var le *llx.Error
+		require.True(t, errors.As(err, &le))
+		assert.Contains(t, le.Permissions, perm)
+	})
+	t.Run("401 is unauthenticated", func(t *testing.T) {
+		assert.ErrorIs(t, esClassifyError(sdkErr(401), perm), llx.ErrUnauthenticated)
+	})
+	t.Run("500 is unclassified", func(t *testing.T) {
+		assert.Equal(t, llx.KindOf(errors.New("x")), llx.KindOf(esClassifyError(sdkErr(500), perm)))
+	})
+	t.Run("transport error is unclassified", func(t *testing.T) {
+		in := errors.New("dial tcp: connection refused")
+		assert.Equal(t, in, esClassifyError(in, perm))
+	})
 }

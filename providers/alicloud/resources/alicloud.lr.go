@@ -8248,6 +8248,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"alicloud.es.instance.internetExposed": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAlicloudEsInstance).GetInternetExposed()).ToDataRes(types.Bool)
 	},
+	"alicloud.es.instance.autoSnapshotEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEsInstance).GetAutoSnapshotEnabled()).ToDataRes(types.Bool)
+	},
+	"alicloud.es.instance.autoSnapshotSchedule": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEsInstance).GetAutoSnapshotSchedule()).ToDataRes(types.String)
+	},
+	"alicloud.es.instance.snapshotIndices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAlicloudEsInstance).GetSnapshotIndices()).ToDataRes(types.Array(types.String))
+	},
 }
 
 func GetData(resource plugin.Resource, field string, args map[string]*llx.RawData) *plugin.DataRes {
@@ -18694,6 +18703,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"alicloud.es.instance.internetExposed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAlicloudEsInstance).InternetExposed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.es.instance.autoSnapshotEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEsInstance).AutoSnapshotEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"alicloud.es.instance.autoSnapshotSchedule": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEsInstance).AutoSnapshotSchedule, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"alicloud.es.instance.snapshotIndices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAlicloudEsInstance).SnapshotIndices, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 }
@@ -42666,6 +42687,9 @@ type mqlAlicloudEsInstance struct {
 	KibanaDomain                plugin.TValue[string]
 	KibanaIpWhitelist           plugin.TValue[[]any]
 	InternetExposed             plugin.TValue[bool]
+	AutoSnapshotEnabled         plugin.TValue[bool]
+	AutoSnapshotSchedule        plugin.TValue[string]
+	SnapshotIndices             plugin.TValue[[]any]
 }
 
 // createAlicloudEsInstance creates a new instance of this resource
@@ -42884,5 +42908,23 @@ func (c *mqlAlicloudEsInstance) GetKibanaIpWhitelist() *plugin.TValue[[]any] {
 func (c *mqlAlicloudEsInstance) GetInternetExposed() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.InternetExposed, func() (bool, error) {
 		return c.internetExposed()
+	})
+}
+
+func (c *mqlAlicloudEsInstance) GetAutoSnapshotEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AutoSnapshotEnabled, func() (bool, error) {
+		return c.autoSnapshotEnabled()
+	})
+}
+
+func (c *mqlAlicloudEsInstance) GetAutoSnapshotSchedule() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AutoSnapshotSchedule, func() (string, error) {
+		return c.autoSnapshotSchedule()
+	})
+}
+
+func (c *mqlAlicloudEsInstance) GetSnapshotIndices() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SnapshotIndices, func() ([]any, error) {
+		return c.snapshotIndices()
 	})
 }
