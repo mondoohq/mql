@@ -60,6 +60,12 @@ const (
 	// whole system at once, so this is the install date of every package on the
 	// host and not the newest of many.
 	LastUpdateSourceNixosGeneration = "nixos-generation"
+	// LastUpdateSourceApkLog is a completed `apk upgrade` run that moved at
+	// least one package to a newer build, as apk-tools 3 records it in
+	// /var/log/apk.log. Like LastUpdateSourceAptHistory it is an upgrade of
+	// whatever the configured repositories offer, which on Alpine are the
+	// distribution's own but can include a third-party one.
+	LastUpdateSourceApkLog = "apk-log"
 )
 
 // lastUpdateSkewTolerance is how far into the future an install timestamp may
@@ -105,7 +111,8 @@ func ValidateLastInstalledUpdate(update *LastInstalledUpdate, now time.Time) *La
 // ResolveLastInstalledUpdate reads the newest operating system update install
 // recorded by the asset's own update mechanism. It covers the platforms whose
 // record lives in a file the connection can read on its own: the apt history
-// log on Debian, and the install history plist on macOS. rpm-based platforms
+// log on Debian, apk-tools' transaction log on Alpine, and the install history
+// plist on macOS. rpm-based platforms
 // and Windows are resolved by the os resource instead, because both need a
 // resource the runtime has likely cached (`packages` carries %{VENDOR} for
 // every rpm, which attributes dnf's log lines to the OS vendor, and
@@ -123,6 +130,8 @@ func ResolveLastInstalledUpdate(conn shared.Connection) (*LastInstalledUpdate, e
 	switch {
 	case asset.Platform.IsFamily("debian"):
 		return lastInstalledDebian(conn)
+	case asset.Platform.Name == "alpine":
+		return lastInstalledApkFS(conn.FileSystem())
 	case asset.Platform.Name == "macos":
 		return lastInstalledMacos(conn)
 	case asset.Platform.Name == "nixos":

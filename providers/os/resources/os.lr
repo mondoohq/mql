@@ -674,30 +674,32 @@ os.base @root {
   // Newest completed update the platform's own update mechanism recorded
   // for software the operating system vendor ships: a vendor package
   // upgrade in dnf's transaction log, a completed apt upgrade run
-  // (timestamped by its End-Date), a macOS update in the install history,
-  // or a Windows Update Agent entry for a Windows product. Software that
-  // is not the operating system does not count, so a .NET or Office update
-  // on Windows, a third-party rpm such as Docker or Grafana, and an
-  // operator running `apt install` are all excluded, and so is definition
-  // data (XProtect on macOS, Defender signatures on Windows) that lands
-  // daily or weekly. Installing a package is not updating the operating
-  // system, so a first-time install never advances this timestamp, on any
-  // platform.
+  // (timestamped by its End-Date), a completed `apk upgrade` run that
+  // upgraded at least one package (timestamped by when it started, the only
+  // time apk records), a macOS update in the install history, or a Windows
+  // Update Agent entry for a Windows product. Software that is not the
+  // operating system does not count, so a .NET or Office update on Windows,
+  // a third-party rpm such as Docker or Grafana, and an operator running
+  // `apt install` or `apk add` are all excluded, and so is definition data
+  // (XProtect on macOS, Defender signatures on Windows) that lands daily or
+  // weekly. Installing a package is not updating the operating system, so a
+  // first-time install never advances this timestamp, on any platform.
   //
   // Null on containers and container images, which are rebuilt rather than
   // patched, so the newest install inside one dates the image build rather
-  // than any patching of the workload. Null too wherever the asset keeps
-  // no record of a completed update that can be attributed to the vendor:
-  // an rpm host whose package manager writes no transaction log (SUSE,
-  // yum-era RHEL, Photon), image-based systems that update by swapping the
-  // OS image (Bottlerocket, CoreOS), a Debian host whose apt history has
-  // rotated away or whose newest history log cannot be read, a Windows
-  // host whose update agent history cannot be read, apk and pacman. A
-  // timestamp materially in the future (a skewed clock, a misread
-  // timezone) also reads null rather than reporting the asset as freshly
-  // patched. An inferred, incomplete or ambiguous answer would report a
-  // different fact than the one asked for, so the field reads null instead
-  // of answering loosely.
+  // than any patching of the workload. Null too wherever the asset keeps no
+  // record of a completed update that can be attributed to the vendor: an
+  // rpm host whose package manager writes no transaction log (SUSE, yum-era
+  // RHEL, Photon), image-based systems that update by swapping the OS image
+  // (Bottlerocket, CoreOS), a Debian host whose apt history has rotated
+  // away or whose newest history log cannot be read, a Windows host whose
+  // update agent history cannot be read, an Alpine host whose apk-tools
+  // writes no transaction log (Alpine 3.22 and earlier), and pacman. A
+  // timestamp materially in the future (a skewed clock, a misread timezone)
+  // also reads null rather than reporting the asset as freshly patched. An
+  // inferred, incomplete or ambiguous answer would report a different fact
+  // than the one asked for, so the field reads null instead of answering
+  // loosely.
   //
   // Null is not false, so guard on it rather than comparing straight
   // through: `os.lastUpdate != null && (time.now - os.lastUpdate).days < 30`.
@@ -713,18 +715,20 @@ os.base @root {
   lastUpdateAge() time
   // Record the last-update timestamp was read from
   //
-  // One of "dnf-rpm-log", "apt-security", "apt-history",
-  // "macos-install-history", or "windows-update-agent". Every one of them
-  // names an exact, completed install event, so this reports provenance
-  // rather than precision, and how tightly the vendor attribution holds is
-  // what separates them. "apt-security" is a completed unattended-upgrades
-  // run, whose default origin is the distribution's security pocket, which
-  // makes it the closest an asset comes to recording a vendor security
-  // advisory without an external advisory database; "apt-history" is an
-  // operator-run full upgrade, which vendor packages dominate but which
-  // can also carry a third-party repository. A policy that demands the
-  // vendor security channel can require "apt-security", where a looser one
-  // takes any non-null answer. Null whenever `lastUpdate` is null.
+  // One of "dnf-rpm-log", "apt-security", "apt-history", "apk-log",
+  // "macos-install-history", "windows-update-agent", or "nixos-generation".
+  // Every one of them names an exact, completed install event, so this
+  // reports provenance rather than precision, and how tightly the vendor
+  // attribution holds is what separates them. "apt-security" is a completed
+  // unattended-upgrades run, whose default origin is the distribution's
+  // security pocket, which makes it the closest an asset comes to recording
+  // a vendor security advisory without an external advisory database;
+  // "apt-history" is an operator-run full upgrade, which vendor packages
+  // dominate but which can also carry a third-party repository. "apk-log"
+  // is the same kind of operator-run upgrade on Alpine. A policy that
+  // demands the vendor security channel can require "apt-security", where a
+  // looser one takes any non-null answer. Null whenever `lastUpdate` is
+  // null.
   lastUpdateSource() string
   // Whether a reboot is pending
   rebootpending() bool

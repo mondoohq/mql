@@ -1,0 +1,321 @@
+
+Running `apk --root /mnt --initdb --no-cache add alpine-base linux-virt chrony e2fsprogs openssh tzdata doas dhcpcd mount nvme-cli dosfstools limine-efi-updater sgdisk limine-bios limine-bios-updater limine-efi-x86_64 limine-tool cloud-init openssh-server-pam e2fsprogs-extra` at 2026-09-24 17:21:43
+apk-tools 3.0.8-r0, compiled for x86_64.
+(  1/206) Installing alpine-baselayout-data (3.7.2-r1)
+(  2/206) Installing musl (1.2.6-r2)
+(  3/206) Installing busybox (1.37.0-r31)
+  Executing busybox-1.37.0-r31.post-install
+(  4/206) Installing busybox-binsh (1.37.0-r31)
+(  5/206) Installing alpine-baselayout (3.7.2-r1)
+  Executing alpine-baselayout-3.7.2-r1.pre-install
+  Executing alpine-baselayout-3.7.2-r1.post-install
+(  6/206) Installing bridge (1.5-r5)
+(  7/206) Installing ifupdown-ng (0.13.0-r0)
+(  8/206) Installing openrc-user (0.63.2-r0)
+(  9/206) Installing libcap2 (2.78-r0)
+( 10/206) Installing openrc (0.63.2-r0)
+  Executing openrc-0.63.2-r0.post-install
+( 11/206) Installing mdev-conf (4.10-r0)
+( 12/206) Installing busybox-mdev-openrc (1.37.0-r31)
+( 13/206) Installing alpine-conf (3.22.0-r0)
+( 14/206) Installing alpine-keys (2.6-r0)
+( 15/206) Installing alpine-release (3.24.2-r0)
+( 16/206) Installing libcrypto3 (3.5.8-r0)
+( 17/206) Installing libssl3 (3.5.8-r0)
+( 18/206) Installing ssl_client (1.37.0-r31)
+( 19/206) Installing zlib (1.3.2-r0)
+( 20/206) Installing libapk (3.0.8-r0)
+( 21/206) Installing ca-certificates-bundle (20260909-r0)
+( 22/206) Installing apk-tools (3.0.8-r0)
+( 23/206) Installing busybox-openrc (1.37.0-r31)
+( 24/206) Installing busybox-suid (1.37.0-r31)
+( 25/206) Installing scanelf (1.3.9-r1)
+( 26/206) Installing musl-utils (1.2.6-r2)
+( 27/206) Installing alpine-base (3.24.2-r0)
+( 28/206) Installing chrony-common (4.8-r7)
+  Executing chrony-common-4.8-r7.pre-install
+( 29/206) Installing libseccomp (2.6.0-r2)
+( 30/206) Installing chrony (4.8-r7)
+( 31/206) Installing chrony-openrc (4.8-r7)
+( 32/206) Installing libeconf (0.8.3-r0)
+( 33/206) Installing libblkid (2.42.3-r1)
+( 34/206) Installing blkid (2.42.3-r1)
+( 35/206) Installing libsmartcols (2.42.3-r1)
+( 36/206) Installing partx (2.42.3-r1)
+( 37/206) Installing libuuid (2.42.3-r1)
+( 38/206) Installing libfdisk (2.42.3-r1)
+( 39/206) Installing ncurses-terminfo-base (6.6_p20260516-r0)
+( 40/206) Installing libncursesw (6.6_p20260516-r0)
+( 41/206) Installing sfdisk (2.42.3-r1)
+( 42/206) Installing cloud-utils-growpart (0.33-r1)
+( 43/206) Installing zstd-libs (1.5.7-r2)
+( 44/206) Installing libelf (0.195-r0)
+( 45/206) Installing libmnl (1.0.5-r2)
+( 46/206) Installing iproute2-minimal (7.0.0-r0)
+( 47/206) Installing ifupdown-ng-iproute2 (0.13.0-r0)
+( 48/206) Installing libexpat (2.8.5-r0)
+( 49/206) Installing libbz2 (1.0.8-r6)
+( 50/206) Installing libffi (3.5.2-r1)
+( 51/206) Installing gdbm (1.26-r0)
+( 52/206) Installing xz-libs (5.8.4-r0)
+( 53/206) Installing libgcc (15.2.0-r5)
+( 54/206) Installing libstdc++ (15.2.0-r5)
+( 55/206) Installing mpdecimal (4.0.1-r0)
+( 56/206) Installing libpanelw (6.6_p20260516-r0)
+( 57/206) Installing readline (8.3.3-r1)
+( 58/206) Installing sqlite-libs (3.53.4-r0)
+( 59/206) Installing python3 (3.14.7-r1)
+( 60/206) Installing python3-pycache-pyc0 (3.14.7-r1)
+( 61/206) Installing pyc (3.14.7-r1)
+( 62/206) Installing cloud-init-pyc (26.1-r3)
+( 63/206) Installing python3-pyc (3.14.7-r1)
+( 64/206) Installing py3-configobj (5.0.9-r2)
+( 65/206) Installing py3-configobj-pyc (5.0.9-r2)
+( 66/206) Installing py3-markupsafe (3.0.3-r1)
+( 67/206) Installing py3-markupsafe-pyc (3.0.3-r1)
+( 68/206) Installing py3-jinja2 (3.1.6-r1)
+( 69/206) Installing py3-jinja2-pyc (3.1.6-r1)
+( 70/206) Installing py3-jsonpointer (3.1.1-r0)
+( 71/206) Installing py3-jsonpointer-pyc (3.1.1-r0)
+( 72/206) Installing py3-jsonpatch (1.33-r5)
+( 73/206) Installing py3-jsonpatch-pyc (1.33-r5)
+( 74/206) Installing py3-attrs (26.1.0-r0)
+( 75/206) Installing py3-attrs-pyc (26.1.0-r0)
+( 76/206) Installing py3-rpds-py (0.30.0-r2)
+( 77/206) Installing py3-rpds-py-pyc (0.30.0-r2)
+( 78/206) Installing py3-typing-extensions (4.15.0-r1)
+( 79/206) Installing py3-typing-extensions-pyc (4.15.0-r1)
+( 80/206) Installing py3-referencing (0.37.0-r1)
+( 81/206) Installing py3-referencing-pyc (0.37.0-r1)
+( 82/206) Installing py3-jsonschema-specifications (2025.9.1-r2)
+( 83/206) Installing py3-jsonschema-specifications-pyc (2025.9.1-r2)
+( 84/206) Installing py3-jsonschema (4.26.0-r0)
+( 85/206) Installing py3-jsonschema-pyc (4.26.0-r0)
+( 86/206) Installing py3-certifi (2026.2.25-r1)
+( 87/206) Installing py3-certifi-pyc (2026.2.25-r1)
+( 88/206) Installing py3-charset-normalizer (3.4.9-r0)
+( 89/206) Installing py3-charset-normalizer-pyc (3.4.9-r0)
+( 90/206) Installing py3-idna (3.16-r0)
+( 91/206) Installing py3-idna-pyc (3.16-r0)
+( 92/206) Installing py3-urllib3 (2.7.0-r0)
+( 93/206) Installing py3-urllib3-pyc (2.7.0-r0)
+( 94/206) Installing py3-requests (2.33.1-r0)
+( 95/206) Installing py3-requests-pyc (2.33.1-r0)
+( 96/206) Installing yaml (0.2.5-r2)
+( 97/206) Installing py3-yaml (6.0.3-r2)
+( 98/206) Installing py3-yaml-pyc (6.0.3-r2)
+( 99/206) Installing libmd (1.2.0-r0)
+(100/206) Installing libbsd (0.12.2-r0)
+(101/206) Installing skalibs-libs (2.15.0.0-r0)
+(102/206) Installing utmps-libs (0.1.3.3-r0)
+(103/206) Installing linux-pam (1.7.1-r2)
+(104/206) Installing shadow (4.18.0-r1)
+(105/206) Installing tzdata (2026d-r0)
+(106/206) Installing cloud-init-datasource-akamai (26.1-r3)
+(107/206) Installing cloud-init-datasource-akamai-pyc (26.1-r3)
+(108/206) Installing cloud-init-datasource-aliyun (26.1-r3)
+(109/206) Installing cloud-init-datasource-aliyun-pyc (26.1-r3)
+(110/206) Installing cloud-init-datasource-altcloud (26.1-r3)
+(111/206) Installing cloud-init-datasource-altcloud-pyc (26.1-r3)
+(112/206) Installing cloud-init-datasource-azure (26.1-r3)
+(113/206) Installing cloud-init-datasource-azure-pyc (26.1-r3)
+(114/206) Installing cloud-init-datasource-bigstep (26.1-r3)
+(115/206) Installing cloud-init-datasource-bigstep-pyc (26.1-r3)
+(116/206) Installing cloud-init-datasource-cloudcix (26.1-r3)
+(117/206) Installing cloud-init-datasource-cloudcix-pyc (26.1-r3)
+(118/206) Installing cloud-init-datasource-cloudsigma (26.1-r3)
+(119/206) Installing cloud-init-datasource-cloudsigma-pyc (26.1-r3)
+(120/206) Installing cloud-init-datasource-cloudstack (26.1-r3)
+(121/206) Installing cloud-init-datasource-cloudstack-pyc (26.1-r3)
+(122/206) Installing cloud-init-datasource-configdrive (26.1-r3)
+(123/206) Installing cloud-init-datasource-configdrive-pyc (26.1-r3)
+(124/206) Installing cloud-init-datasource-digitalocean (26.1-r3)
+(125/206) Installing cloud-init-datasource-digitalocean-pyc (26.1-r3)
+(126/206) Installing cloud-init-datasource-ec2 (26.1-r3)
+(127/206) Installing cloud-init-datasource-ec2-pyc (26.1-r3)
+(128/206) Installing cloud-init-datasource-exoscale (26.1-r3)
+(129/206) Installing cloud-init-datasource-exoscale-pyc (26.1-r3)
+(130/206) Installing cloud-init-datasource-gce (26.1-r3)
+(131/206) Installing cloud-init-datasource-gce-pyc (26.1-r3)
+(132/206) Installing cloud-init-datasource-hetzner (26.1-r3)
+(133/206) Installing cloud-init-datasource-hetzner-pyc (26.1-r3)
+(134/206) Installing cloud-init-datasource-ibmcloud (26.1-r3)
+(135/206) Installing cloud-init-datasource-ibmcloud-pyc (26.1-r3)
+(136/206) Installing cloud-init-datasource-lxd (26.1-r3)
+(137/206) Installing cloud-init-datasource-lxd-pyc (26.1-r3)
+(138/206) Installing cloud-init-datasource-maas (26.1-r3)
+(139/206) Installing cloud-init-datasource-maas-pyc (26.1-r3)
+(140/206) Installing cloud-init-datasource-nocloud (26.1-r3)
+(141/206) Installing cloud-init-datasource-nocloud-pyc (26.1-r3)
+(142/206) Installing cloud-init-datasource-nwcs (26.1-r3)
+(143/206) Installing cloud-init-datasource-nwcs-pyc (26.1-r3)
+(144/206) Installing cloud-init-datasource-opennebula (26.1-r3)
+(145/206) Installing cloud-init-datasource-opennebula-pyc (26.1-r3)
+(146/206) Installing cloud-init-datasource-openstack (26.1-r3)
+(147/206) Installing cloud-init-datasource-openstack-pyc (26.1-r3)
+(148/206) Installing cloud-init-datasource-oracle (26.1-r3)
+(149/206) Installing cloud-init-datasource-oracle-pyc (26.1-r3)
+(150/206) Installing cloud-init-datasource-ovf (26.1-r3)
+(151/206) Installing cloud-init-datasource-ovf-pyc (26.1-r3)
+(152/206) Installing cloud-init-datasource-rbx (26.1-r3)
+(153/206) Installing cloud-init-datasource-rbx-pyc (26.1-r3)
+(154/206) Installing cloud-init-datasource-scaleway (26.1-r3)
+(155/206) Installing cloud-init-datasource-scaleway-pyc (26.1-r3)
+(156/206) Installing cloud-init-datasource-smartos (26.1-r3)
+(157/206) Installing cloud-init-datasource-smartos-pyc (26.1-r3)
+(158/206) Installing cloud-init-datasource-upcloud (26.1-r3)
+(159/206) Installing cloud-init-datasource-upcloud-pyc (26.1-r3)
+(160/206) Installing cloud-init-datasource-vmware (26.1-r3)
+(161/206) Installing cloud-init-datasource-vmware-pyc (26.1-r3)
+(162/206) Installing cloud-init-datasource-vultr (26.1-r3)
+(163/206) Installing cloud-init-datasource-vultr-pyc (26.1-r3)
+(164/206) Installing cloud-init-datasource-wsl (26.1-r3)
+(165/206) Installing cloud-init-datasource-wsl-pyc (26.1-r3)
+(166/206) Installing cloud-init-datasources (26.1-r3)
+(167/206) Installing cloud-init (26.1-r3)
+  Executing cloud-init-26.1-r3.post-install
+  * Please run setup-cloud-init to enable required init.d services.
+  * 
+  * You may also want to read file /usr/share/doc/cloud-init/README.Alpine
+  * in the cloud-init-doc package.
+(168/206) Installing cloud-init-openrc (26.1-r3)
+(169/206) Installing dhcpcd (10.5.2-r1)
+  Executing dhcpcd-10.5.2-r1.pre-install
+(170/206) Installing dhcpcd-openrc (10.5.2-r1)
+(171/206) Installing doas (6.8.2-r8)
+(172/206) Installing dosfstools (4.2-r2)
+(173/206) Installing libcom_err (1.47.4-r0)
+(174/206) Installing e2fsprogs-libs (1.47.4-r0)
+(175/206) Installing e2fsprogs (1.47.4-r0)
+(176/206) Installing e2fsprogs-extra (1.47.4-r0)
+(177/206) Installing limine-bios (12.9.0-r0)
+(178/206) Installing limine-tool (12.9.0-r0)
+(179/206) Installing limine-bios-updater (12.9.0-r0)
+  Executing limine-bios-updater-12.9.0-r0.post-install
+  * 
+  * The limine-bios-updater apk trigger hook is disabled by default in the
+  * default configuration file (/etc/limine/limine-bios-updater.conf).
+  * Remember to remove or comment out the disable_hook=1 line, after updating the
+  * configuration file, to enable the hook, then, use:
+  * 
+  *   apk fix limine-bios-updater
+  * 
+  * to manually run the hook for the first time.
+  * 
+(180/206) Installing limine-efi-updater (12.9.0-r0)
+  Executing limine-efi-updater-12.9.0-r0.post-install
+  * 
+  * The limine-efi-updater apk trigger hook is disabled by default in the default
+  * configuration file (/etc/limine/limine-efi-updater.conf).
+  * Remember to remove or comment out the disable_hook=1 line, after updating the
+  * configuration file, to enable the hook, then, use:
+  * 
+  *   apk fix limine-efi-updater
+  * 
+  * to manually run the hook for the first time.
+  * 
+(181/206) Installing limine-efi-x86_64 (12.9.0-r0)
+(182/206) Installing kmod (34.2-r1)
+(183/206) Installing lddtree (1.27-r0)
+(184/206) Installing device-mapper-libs (2.03.35-r3)
+(185/206) Installing json-c (0.18-r1)
+(186/206) Installing cryptsetup-libs (2.8.6-r0)
+(187/206) Installing kmod-libs (34.2-r1)
+(188/206) Installing mkinitfs (3.14.1-r0)
+  Executing mkinitfs-3.14.1-r0.post-install
+(189/206) Installing linux-virt (6.18.53-r0)
+(190/206) Installing libmount (2.42.3-r1)
+(191/206) Installing mount (2.42.3-r1)
+(192/206) Installing libnvmemi (1.16.2-r0)
+(193/206) Installing libnvme (1.16.2-r0)
+(194/206) Installing nvme-cli (2.16-r1)
+(195/206) Installing openssh-keygen (10.3_p1-r1)
+(196/206) Installing libedit (20260508.3.1-r1)
+(197/206) Installing openssh-client-common (10.3_p1-r1)
+(198/206) Installing openssh-client-default (10.3_p1-r1)
+(199/206) Installing openssh-sftp-server (10.3_p1-r1)
+(200/206) Installing openssh-server-common (10.3_p1-r1)
+(201/206) Installing openssh-server-common-openrc (10.3_p1-r1)
+(202/206) Installing openssh-server (10.3_p1-r1)
+(203/206) Installing openssh (10.3_p1-r1)
+(204/206) Installing openssh-server-pam (10.3_p1-r1)
+(205/206) Installing popt (1.19-r4)
+(206/206) Installing sgdisk (1.0.10-r1)
+Executing busybox-1.37.0-r31.trigger
+Executing limine-bios-updater-12.9.0-r0.trigger
+Executing limine-efi-updater-12.9.0-r0.trigger
+Executing kmod-34.2-r1.trigger
+Executing mkinitfs-3.14.1-r0.trigger
+* creating /boot/initramfs-virt for 6.18.53-0-virt
+OK: 128.8 MiB in 206 packages
+
+Running `apk update` at 2026-09-28 05:49:32
+apk-tools 3.0.8-r0, compiled for x86_64.
+v3.24.2-42-g6410253620b [https://dl-cdn.alpinelinux.org/alpine/v3.24/main]
+v3.24.2-41-gfd6259d7275 [https://dl-cdn.alpinelinux.org/alpine/v3.24/community]
+OK: 28654 distinct packages available
+
+Running `apk update` at 2026-09-28 05:49:39
+apk-tools 3.0.8-r0, compiled for x86_64.
+v3.24.2-42-g6410253620b [https://dl-cdn.alpinelinux.org/alpine/v3.24/main]
+v3.24.2-41-gfd6259d7275 [https://dl-cdn.alpinelinux.org/alpine/v3.24/community]
+OK: 28654 distinct packages available
+
+Running `apk update` at 2026-09-28 05:49:50
+apk-tools 3.0.8-r0, compiled for x86_64.
+v3.24.2-42-g6410253620b [https://dl-cdn.alpinelinux.org/alpine/v3.24/main]
+v3.24.2-41-gfd6259d7275 [https://dl-cdn.alpinelinux.org/alpine/v3.24/community]
+OK: 28654 distinct packages available
+
+Running `apk update` at 2026-09-28 05:50:16
+apk-tools 3.0.8-r0, compiled for x86_64.
+v3.24.2-42-g6410253620b [https://dl-cdn.alpinelinux.org/alpine/v3.24/main]
+v3.24.2-41-gfd6259d7275 [https://dl-cdn.alpinelinux.org/alpine/v3.24/community]
+OK: 28654 distinct packages available
+
+Running `apk update` at 2026-09-28 05:50:25
+apk-tools 3.0.8-r0, compiled for x86_64.
+v3.24.2-42-g6410253620b [https://dl-cdn.alpinelinux.org/alpine/v3.24/main]
+v3.24.2-41-gfd6259d7275 [https://dl-cdn.alpinelinux.org/alpine/v3.24/community]
+OK: 28654 distinct packages available
+
+Running `apk update` at 2026-09-28 05:51:04
+apk-tools 3.0.8-r0, compiled for x86_64.
+v3.24.2-42-g6410253620b [https://dl-cdn.alpinelinux.org/alpine/v3.24/main]
+v3.24.2-41-gfd6259d7275 [https://dl-cdn.alpinelinux.org/alpine/v3.24/community]
+OK: 28654 distinct packages available
+
+Running `apk add jq` at 2026-09-28 05:53:57
+apk-tools 3.0.8-r0, compiled for x86_64.
+(1/2) Installing oniguruma (6.9.10-r0)
+(2/2) Installing jq (1.8.2-r0)
+Executing busybox-1.37.0-r31.trigger
+OK: 129.7 MiB in 208 packages
+
+Running `apk add jq` at 2026-09-28 05:54:22
+apk-tools 3.0.8-r0, compiled for x86_64.
+OK: 129.7 MiB in 208 packages
+
+Running `apk add tree` at 2026-09-28 05:57:32
+apk-tools 3.0.8-r0, compiled for x86_64.
+(1/1) Installing tree (2.3.2-r0)
+Executing busybox-1.37.0-r31.trigger
+OK: 129.7 MiB in 209 packages
+
+Running `apk add --virtual .lastupdate-test --repository https://dl-cdn.alpinelinux.org/alpine/v3.22/main tree<2.3` at 2026-09-28 05:57:33
+apk-tools 3.0.8-r0, compiled for x86_64.
+(1/2) Downgrading tree (2.3.2-r0 -> 2.2.1-r0)
+(2/2) Installing .lastupdate-test (20260928.055734)
+Executing busybox-1.37.0-r31.trigger
+OK: 129.7 MiB in 210 packages
+
+Running `apk del .lastupdate-test` at 2026-09-28 05:57:34
+apk-tools 3.0.8-r0, compiled for x86_64.
+(1/1) Purging .lastupdate-test (20260928.055734)
+OK: 129.7 MiB in 209 packages
+
+Running `apk upgrade tree` at 2026-09-28 06:00:00
+apk-tools 3.0.8-r0, compiled for x86_64.
+(1/1) Upgrading tree (2.2.1-r0 -> 2.3.2-r0)
+Executing busybox-1.37.0-r31.trigger
+OK: 129.7 MiB in 209 packages
