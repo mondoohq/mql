@@ -1,0 +1,7 @@
+# A FreeBSD root filesystem scanned without running commands: only the UUID
+# rc.d/hostid_save wrote to /etc/hostid is there. SMBIOS UUIDs of some vendors
+# are upper case; the machine ID is lower case like on the other platforms.
+
+[files."/etc/hostid"]
+path = "/etc/hostid"
+content = "4C4C4544-0042-3510-8052-B4C04F4A4D32\n"

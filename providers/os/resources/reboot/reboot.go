@@ -29,6 +29,8 @@ func New(conn shared.Connection) (Reboot, error) {
 		return &RpmNewestKernel{conn: conn}, nil
 	case pf.IsFamily("suse"):
 		return &ZypperNeedsRebooting{conn: conn}, nil
+	case pf.Name == "freebsd":
+		return &FreebsdReboot{conn: conn}, nil
 	case pf.IsFamily(inventory.FAMILY_WINDOWS):
 		return &WinReboot{conn: conn}, nil
 	default:

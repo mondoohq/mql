@@ -1,0 +1,7 @@
+# FreeBSD 14.5 after freebsd-update installed a kernel patch, before the reboot:
+# the installed kernel is -p1, the running one is still the release kernel.
+
+[commands."freebsd-version -k && uname -r"]
+stdout = """14.5-RELEASE-p1
+14.5-RELEASE
+"""

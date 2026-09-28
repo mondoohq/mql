@@ -197,6 +197,62 @@ func kernelFromFixture(t *testing.T, fixture string) *mqlKernel {
 	return raw.(*mqlKernel)
 }
 
+func freebsdKernelFromFixture(t *testing.T, fixture string) *mqlKernel {
+	t.Helper()
+
+	fixturePath, err := filepath.Abs(fixture)
+	require.NoError(t, err)
+
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:   "freebsd",
+			Family: []string{"bsd", "unix", "os"},
+		},
+	}, mock.WithPath(fixturePath))
+	require.NoError(t, err)
+
+	raw, err := CreateResource(&plugin.Runtime{
+		Connection: conn,
+		Resources:  &syncx.Map[plugin.Resource]{},
+	}, "kernel", map[string]*llx.RawData{})
+	require.NoError(t, err)
+	return raw.(*mqlKernel)
+}
+
+func TestKernelAslr_Freebsd(t *testing.T) {
+	aslr := freebsdKernelFromFixture(t, "testdata/kernel_hardening_freebsd.toml").GetAslr()
+	require.NoError(t, aslr.Error)
+	assert.Equal(t, int64(1), aslr.Data.Mode.Data)
+	assert.Equal(t, "enabled", aslr.Data.Level.Data)
+	require.False(t, aslr.Data.Enabled.IsNull())
+	assert.True(t, aslr.Data.Enabled.Data)
+}
+
+// A FreeBSD release before 13 has no ASLR sysctl, so the command fails.
+func TestKernelAslr_FreebsdWithoutSysctlReadsNull(t *testing.T) {
+	aslr := freebsdKernelFromFixture(t, "testdata/kernel_hardening_absent.toml").GetAslr()
+	require.NoError(t, aslr.Error)
+	assert.Equal(t, int64(-1), aslr.Data.Mode.Data)
+	assert.Equal(t, "unknown", aslr.Data.Level.Data)
+	assert.True(t, aslr.Data.Enabled.IsNull())
+}
+
+func TestFreebsdAslrArgs(t *testing.T) {
+	off := freebsdAslrArgs("0\n", true)
+	assert.Equal(t, int64(0), off["mode"].Value)
+	assert.Equal(t, "disabled", off["level"].Value)
+	assert.Equal(t, false, off["enabled"].Value)
+
+	on := freebsdAslrArgs("1\n", true)
+	assert.Equal(t, "enabled", on["level"].Value)
+	assert.Equal(t, true, on["enabled"].Value)
+
+	garbage := freebsdAslrArgs("sysctl: unknown oid 'kern.elf64.aslr.enable'", true)
+	assert.Equal(t, int64(-1), garbage["mode"].Value)
+	assert.Equal(t, "unknown", garbage["level"].Value)
+	assert.Nil(t, garbage["enabled"].Value)
+}
+
 func TestKernelAslr_AbsentFileReadsNull(t *testing.T) {
 	aslr := kernelFromFixture(t, "testdata/kernel_hardening_absent.toml").GetAslr()
 	require.NoError(t, aslr.Error)

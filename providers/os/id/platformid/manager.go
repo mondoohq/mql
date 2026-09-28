@@ -25,6 +25,8 @@ func MachineIDProvider(conn shared.Connection, platform *inventory.Platform) (Un
 		uuidProvider = &MacOSIdProvider{connection: conn}
 	} else if uuidProvider == nil && platform.Name == "windows" {
 		uuidProvider = &WinIdProvider{connection: conn}
+	} else if uuidProvider == nil && platform.Name == "freebsd" {
+		uuidProvider = &FreeBSDIdProvider{connection: conn}
 	}
 
 	return uuidProvider, nil

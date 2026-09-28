@@ -9,6 +9,7 @@ import (
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/types"
 )
 
@@ -211,6 +212,11 @@ func parseLockdownMode(raw string) string {
 // =============================================================================
 
 func (k *mqlKernel) aslr() (*mqlKernelAslr, error) {
+	conn := k.MqlRuntime.Connection.(shared.Connection)
+	if conn.Asset().GetPlatform().GetName() == "freebsd" {
+		return k.freebsdAslr(conn)
+	}
+
 	raw, ok, err := readKernelHardeningFile(k.MqlRuntime, "/proc/sys/kernel/randomize_va_space")
 	if err != nil {
 		return nil, err
@@ -236,6 +242,72 @@ func kernelAslrArgs(raw string, ok bool) map[string]*llx.RawData {
 			return map[string]*llx.RawData{
 				"mode":    llx.IntData(mode),
 				"level":   llx.StringData(aslrLevel(mode)),
+				"enabled": llx.BoolData(mode > 0),
+			}
+		}
+	}
+
+	return map[string]*llx.RawData{
+		"mode":    llx.IntData(-1),
+		"level":   llx.StringData("unknown"),
+		"enabled": llx.NilData,
+	}
+}
+
+// freebsdAslrCommand prints the ASLR switch for the native ELF ABI. FreeBSD 13
+// added one switch per ABI: kern.elf64.aslr.enable on 64-bit platforms, where
+// kern.elf32 covers 32-bit compat binaries, and kern.elf32.aslr.enable on
+// 32-bit platforms, which have no elf64 node. Older releases have neither.
+const freebsdAslrCommand = "sysctl -n kern.elf64.aslr.enable 2>/dev/null || sysctl -n kern.elf32.aslr.enable"
+
+func (k *mqlKernel) freebsdAslr(conn shared.Connection) (*mqlKernelAslr, error) {
+	raw, ok := "", false
+	if conn.Capabilities().Has(shared.Capability_RunCommand) {
+		o, err := CreateResource(k.MqlRuntime, "command", map[string]*llx.RawData{
+			"command": llx.StringData(freebsdAslrCommand),
+		})
+		if err != nil {
+			return nil, err
+		}
+		cmd := o.(*mqlCommand)
+		exit := cmd.GetExitcode()
+		if exit.Error != nil {
+			return nil, exit.Error
+		}
+		stdout := cmd.GetStdout()
+		if stdout.Error != nil {
+			return nil, stdout.Error
+		}
+		raw, ok = stdout.Data, exit.Data == 0
+	}
+
+	resource, err := CreateResource(k.MqlRuntime, "kernel.aslr", freebsdAslrArgs(raw, ok))
+	if err != nil {
+		return nil, err
+	}
+	return resource.(*mqlKernelAslr), nil
+}
+
+// freebsdAslrArgs turns the value of kern.elf64.aslr.enable into the resource
+// fields. ok reports whether the sysctl was read at all.
+//
+// FreeBSD has a single on/off switch, so `level` is `enabled` or `disabled`
+// rather than Linux's conservative/full scale. As on Linux, `enabled` stays
+// null when nothing was read: a release without the switch, or a scan that
+// cannot run commands.
+func freebsdAslrArgs(raw string, ok bool) map[string]*llx.RawData {
+	if ok {
+		if mode, perr := strconv.ParseInt(strings.TrimSpace(raw), 10, 64); perr == nil {
+			level := "unknown"
+			switch {
+			case mode == 0:
+				level = "disabled"
+			case mode > 0:
+				level = "enabled"
+			}
+			return map[string]*llx.RawData{
+				"mode":    llx.IntData(mode),
+				"level":   llx.StringData(level),
 				"enabled": llx.BoolData(mode > 0),
 			}
 		}

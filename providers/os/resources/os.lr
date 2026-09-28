@@ -6700,9 +6700,10 @@ private systemd.boot.entry @defaults("title kind") {
 // Running kernel and its modules
 //
 // Running kernel and its configuration surface. Exposes kernel version
-// info, sysctl `parameters`, `modules`, installed kernel versions, and,
-// on Linux, hardening state (`cmdline`, `taint`, `lockdown`, `aslr`) and
-// the live patches applied in memory (`livepatch`).
+// info, sysctl `parameters`, `modules`, installed kernel versions, ASLR
+// state (`aslr`, Linux and FreeBSD), and, on Linux, hardening state
+// (`cmdline`, `taint`, `lockdown`) and the live patches applied in memory
+// (`livepatch`).
 kernel @defaults("info") {
   // Active kernel information (version, path, device, arguments)
   info() dict
@@ -6718,7 +6719,7 @@ kernel @defaults("info") {
   taint() kernel.taint
   // Kernel lockdown LSM mode (Linux only)
   lockdown() kernel.lockdown
-  // Address Space Layout Randomization (ASLR) state (Linux only)
+  // Address Space Layout Randomization (ASLR) state (Linux and FreeBSD)
   aslr() kernel.aslr
   // Live patches applied to the running kernel (Linux only)
   livepatch() kernel.livepatch
@@ -6909,21 +6910,26 @@ private kernel.lockdown @defaults("mode") {
   enabled bool
 }
 
-// Linux Address Space Layout Randomization (ASLR) state
+// Address Space Layout Randomization (ASLR) state
 //
-// Kernel userspace ASLR setting from
-// /proc/sys/kernel/randomize_va_space. ASLR randomizes memory layout
-// to make memory-corruption exploits harder; CIS benchmarks require
-// `mode` 2 (full randomization).
+// Kernel userspace ASLR setting. ASLR randomizes memory layout to make
+// memory-corruption exploits harder. On Linux the setting comes from
+// /proc/sys/kernel/randomize_va_space, where `mode` 2 is full
+// randomization. On FreeBSD 13 and later it comes from
+// kern.elf64.aslr.enable (kern.elf32.aslr.enable on 32-bit platforms),
+// a switch that is either on or off.
 private kernel.aslr @defaults("level enabled") {
-  // Raw ASLR mode value from /proc/sys/kernel/randomize_va_space
+  // Raw ASLR mode value
   //
-  // `0` disabled, `1` conservative (stack, libraries, vdso), `2`
-  // full (also heap/brk). `-1` when the file is unavailable.
+  // On Linux, the value of /proc/sys/kernel/randomize_va_space: `0`
+  // disabled, `1` conservative (stack, libraries, vdso), `2` full (also
+  // heap/brk). On FreeBSD, the value of kern.elf64.aslr.enable: `0`
+  // disabled, `1` enabled. `-1` when the setting is unavailable.
   mode int
   // Human-readable level
   //
-  // One of `disabled`, `conservative`, `full`, or `unknown`.
+  // On Linux one of `disabled`, `conservative`, `full`, or `unknown`. On
+  // FreeBSD one of `disabled`, `enabled`, or `unknown`.
   level string
   // Whether ASLR is enabled (`mode > 0`)
   enabled bool

@@ -1,0 +1,9 @@
+# FreeBSD 14.5-RELEASE on an EC2 t3.medium (Nitro) instance
+
+[commands."echo \"vm_guest=$(sysctl -n kern.vm_guest 2>/dev/null)\"; kenv -q smbios.system.product; kenv -q smbios.system.maker; kenv -q smbios.planar.maker; kenv -q smbios.bios.vendor; kenv -q smbios.system.version; true"]
+stdout = """vm_guest=kvm
+t3.medium
+Amazon EC2
+Amazon EC2
+Amazon EC2
+"""
