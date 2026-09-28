@@ -31,6 +31,7 @@ import (
 	"go.mondoo.com/mql/providers/os/connection/ssh/scp"
 	"go.mondoo.com/mql/providers/os/connection/ssh/sftp"
 	"go.mondoo.com/mql/providers/os/connection/ssh/signers"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 	"go.mondoo.com/mql/utils/multierr"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
@@ -142,7 +143,9 @@ func (c *Connection) RunCommand(command string) (*shared.Command, error) {
 	if c.Sudo != nil && c.Sudo.Active {
 		command = shared.BuildSudoCommand(c.Sudo, command)
 	}
-	return c.runRawCommand(command)
+	res, err := c.runRawCommand(command)
+	powershell.DecodeStderr(res)
+	return res, err
 }
 
 func (c *Connection) runRawCommand(command string) (*shared.Command, error) {

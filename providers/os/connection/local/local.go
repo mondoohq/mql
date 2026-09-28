@@ -114,6 +114,7 @@ func (p *LocalConnection) RunCommand(command string) (*shared.Command, error) {
 	args := []string{}
 
 	res, err := c.Exec(command, args)
+	powershell.DecodeStderr(res)
 	return res, err
 }
 
