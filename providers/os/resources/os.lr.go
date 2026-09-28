@@ -4307,6 +4307,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"inetd.config.entry.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlInetdConfigEntry).GetName()).ToDataRes(types.String)
 	},
+	"inetd.config.entry.address": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlInetdConfigEntry).GetAddress()).ToDataRes(types.String)
+	},
 	"inetd.config.entry.socketType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlInetdConfigEntry).GetSocketType()).ToDataRes(types.String)
 	},
@@ -19652,6 +19655,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"inetd.config.entry.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlInetdConfigEntry).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"inetd.config.entry.address": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlInetdConfigEntry).Address, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"inetd.config.entry.socketType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -45991,6 +45998,7 @@ type mqlInetdConfigEntry struct {
 	__id       string
 	// optional: if you define mqlInetdConfigEntryInternal it will be used here
 	Name       plugin.TValue[string]
+	Address    plugin.TValue[string]
 	SocketType plugin.TValue[string]
 	Protocol   plugin.TValue[string]
 	Wait       plugin.TValue[string]
@@ -46034,6 +46042,10 @@ func (c *mqlInetdConfigEntry) MqlID() string {
 
 func (c *mqlInetdConfigEntry) GetName() *plugin.TValue[string] {
 	return &c.Name
+}
+
+func (c *mqlInetdConfigEntry) GetAddress() *plugin.TValue[string] {
+	return &c.Address
 }
 
 func (c *mqlInetdConfigEntry) GetSocketType() *plugin.TValue[string] {

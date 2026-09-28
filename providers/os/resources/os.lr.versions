@@ -1565,6 +1565,7 @@ inetd.config 13.24.1
 inetd.config.content 13.24.1
 inetd.config.entries 13.24.1
 inetd.config.entry 13.24.1
+inetd.config.entry.address 14.6.1
 inetd.config.entry.arguments 13.24.1
 inetd.config.entry.context 13.24.1
 inetd.config.entry.name 13.24.1

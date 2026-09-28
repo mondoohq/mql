@@ -136,6 +136,7 @@ func (s *mqlInetdConfig) content(files []any) (string, error) {
 
 func (s *mqlInetdConfig) entries(files []any) ([]any, error) {
 	res := []any{}
+	parser := &inetd.Parser{}
 	for i := range files {
 		file := files[i].(*mqlFile)
 
@@ -147,7 +148,7 @@ func (s *mqlInetdConfig) entries(files []any) ([]any, error) {
 			continue
 		}
 
-		for _, e := range inetd.Parse(content) {
+		for _, e := range parser.Parse(content) {
 			ctx, err := CreateResource(s.MqlRuntime, "file.context", map[string]*llx.RawData{
 				"file":  llx.ResourceData(file, "file"),
 				"range": llx.RangeData(llx.NewRange().AddLine(uint32(e.Line))),
@@ -162,6 +163,7 @@ func (s *mqlInetdConfig) entries(files []any) ([]any, error) {
 				// later entry would silently shadow the earlier one.
 				"__id":       llx.StringData(fmt.Sprintf("%s/%d/%s/%s", file.Path.Data, e.Line, e.Name, e.Protocol)),
 				"name":       llx.StringData(e.Name),
+				"address":    llx.StringData(e.Address),
 				"socketType": llx.StringData(e.SocketType),
 				"protocol":   llx.StringData(e.Protocol),
 				"wait":       llx.StringData(e.Wait),

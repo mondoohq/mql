@@ -1756,8 +1756,14 @@ inetd.config {
 // inetd.config.entries.where(name == "ftp"). Entries that are commented
 // out with a leading # are disabled and excluded.
 private inetd.config.entry @defaults("name protocol server") @context("file.context") {
-  // Service name or port (first column)
+  // Service name or port (first column, without any local address prefix)
   name string
+  // Local address the service binds to
+  //
+  // Taken from an address prefix on the service name, such as 127.0.0.1 in
+  // 127.0.0.1:ftp, or from a preceding address-only line such as 127.0.0.1:.
+  // Empty when the service listens on all addresses.
+  address string
   // Socket type, such as stream, dgram, or raw
   socketType string
   // Transport protocol, such as tcp, udp, tcp6, or udp6
