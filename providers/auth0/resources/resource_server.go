@@ -67,6 +67,8 @@ func newMqlAuth0ResourceServer(runtime *plugin.Runtime, rs *management.ResourceS
 		popRequiredFor = rs.ProofOfPossession.RequiredFor
 	}
 
+	userPolicy, clientPolicy, anonymousUserPolicy := subjectTypePolicies(rs.SubjectTypeAuthorization)
+
 	r, err := CreateResource(runtime, "auth0.resourceServer", map[string]*llx.RawData{
 		"id":                  llx.StringDataPtr(rs.ID),
 		"name":                llx.StringDataPtr(rs.Name),
@@ -78,11 +80,16 @@ func newMqlAuth0ResourceServer(runtime *plugin.Runtime, rs *management.ResourceS
 		"enforcePolicies":     llx.BoolDataPtr(rs.EnforcePolicies),
 		"allowOfflineAccess":  llx.BoolDataPtr(rs.AllowOfflineAccess),
 		"skipConsentForVerifiableFirstPartyClients": llx.BoolDataPtr(rs.SkipConsentForVerifiableFirstPartyClients),
-		"isSystem":                     llx.BoolDataPtr(rs.IsSystem),
-		"scopes":                       llx.MapData(scopes, types.String),
-		"proofOfPossessionMechanism":   llx.StringDataPtr(popMechanism),
-		"proofOfPossessionRequired":    llx.BoolDataPtr(popRequired),
-		"proofOfPossessionRequiredFor": llx.StringDataPtr(popRequiredFor),
+		"isSystem":                              llx.BoolDataPtr(rs.IsSystem),
+		"scopes":                                llx.MapData(scopes, types.String),
+		"proofOfPossessionMechanism":            llx.StringDataPtr(popMechanism),
+		"proofOfPossessionRequired":             llx.BoolDataPtr(popRequired),
+		"proofOfPossessionRequiredFor":          llx.StringDataPtr(popRequiredFor),
+		"tokenLifetimeForAnonymousAccessTokens": llx.IntDataPtr(rs.TokenLifetimeForAnonymousAccessTokens),
+		"userPolicy":                            llx.StringDataPtr(userPolicy),
+		"clientPolicy":                          llx.StringDataPtr(clientPolicy),
+		"anonymousUserPolicy":                   llx.StringDataPtr(anonymousUserPolicy),
+		"accessTokenCustomClaims":               accessTokenCustomClaims(rs.AccessToken),
 	})
 	if err != nil {
 		return nil, err
@@ -130,4 +137,38 @@ func initAuth0ResourceServer(runtime *plugin.Runtime, args map[string]*llx.RawDa
 
 func (r *mqlAuth0ResourceServer) id() (string, error) {
 	return "auth0.resourceServer/" + r.Id.Data, nil
+}
+
+// subjectTypePolicies returns the user, client, and anonymous-user
+// authorization policies, each nil when the API did not report it.
+func subjectTypePolicies(sta *management.ResourceServerSubjectTypeAuthorization) (user, client, anonymousUser *string) {
+	if sta == nil {
+		return nil, nil, nil
+	}
+	if sta.User != nil {
+		user = sta.User.Policy
+	}
+	if sta.Client != nil {
+		client = sta.Client.Policy
+	}
+	if sta.AnonymousUser != nil {
+		anonymousUser = sta.AnonymousUser.Policy
+	}
+	return user, client, anonymousUser
+}
+
+// accessTokenCustomClaims maps the access token custom claims to a claim name
+// to expression map, or null when no claims mapping is configured.
+func accessTokenCustomClaims(at *management.ResourceServerAccessToken) *llx.RawData {
+	if at == nil || at.ClaimsMapping == nil || at.ClaimsMapping.CustomClaims == nil {
+		return llx.NilData
+	}
+	claims := map[string]any{}
+	for _, c := range *at.ClaimsMapping.CustomClaims {
+		if c.Name == nil || *c.Name == "" {
+			continue
+		}
+		claims[*c.Name] = auth0.StringValue(c.Expression)
+	}
+	return llx.MapData(claims, types.String)
 }
