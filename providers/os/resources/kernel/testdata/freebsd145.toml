@@ -1,0 +1,148 @@
+# Excerpt of `sysctl -ae` from a FreeBSD 14.5-RELEASE amd64 EC2 instance, with
+# the host identifiers replaced. Lines keep their stream order; the cuts fall
+# inside the multi-line kern.msgbuf and vm.phys_segs values.
+[commands."sysctl -ae"]
+stdout = '''
+kern.ostype=FreeBSD
+kern.osrelease=14.5-RELEASE
+kern.osrevision=199506
+kern.version=FreeBSD 14.5-RELEASE releng/14.5-n274872-4099b5c82880 GENERIC
+
+kern.maxvnodes=181505
+kern.maxproc=9364
+kern.maxfiles=127169
+kern.argmax=524288
+kern.securelevel=-1
+kern.hostname=freebsd
+kern.hostid=1234567890
+kern.clockrate={ hz = 100, tick = 10000, profhz = 8128, stathz = 127 }
+kern.posix1version=200112
+kern.ngroups=1023
+kern.job_control=1
+kern.saved_ids=0
+kern.boottime={ sec = 1790564599, usec = 308379 } Mon Sep 28 03:03:19 2026
+kern.domainname=
+kern.osreldate=1405000
+kern.bootfile=/boot/kernel/kernel
+kern.maxfilesperproc=114444
+kern.ipc.num_snd_tags=0
+kern.ipc.maxmbufmem=2015059968
+kern.ipc.mb_use_ext_pgs=1
+kern.ps_strings=804468358064
+kern.usrstack=804468359168
+kern.logsigexit=1
+kern.iov_max=1024
+kern.hostuuid=ec2a1b2c-3d4e-5f60-7182-93a4b5c6d7e8
+kern.maxphys=1048576
+kern.rpc.unenc.tx_msgcnt=0
+kern.rpc.unenc.tx_msgbytes=0
+kern.msgbuf=---<<BOOT>>---
+Copyright (c) 1992-2023 The FreeBSD Project.
+Copyright (c) 1979, 1980, 1983, 1986, 1988, 1989, 1991, 1992, 1993, 1994
+	The Regents of the University of California. All rights reserved.
+FreeBSD is a registered trademark of The FreeBSD Foundation.
+FreeBSD 14.5-RELEASE releng/14.5-n274872-4099b5c82880 GENERIC amd64
+FreeBSD clang version 21.1.8 (https://github.com/llvm/llvm-project.git llvmorg-21.1.8-0-g2078da43e25a)
+VT(efifb): resolution 800x600
+CPU: Intel(R) Xeon(R) Platinum 8259CL CPU @ 2.50GHz (2500.00-MHz K8-class CPU)
+  Origin="GenuineIntel"  Id=0x50657  Family=0x6  Model=0x55  Stepping=7
+  Features=0x1f83fbff<FPU,VME,DE,PSE,TSC,MSR,PAE,MCE,CX8,APIC,SEP,MTRR,PGE,MCA,CMOV,PAT,PSE36,MMX,FXSR,SSE,SSE2,SS,HTT>
+  Features2=0xfffa3203<SSE3,PCLMULQDQ,SSSE3,FMA,CX16,PCID,SSE4.1,SSE4.2,x2APIC,MOVBE,POPCNT,TSCDLT,AESNI,XSAVE,OSXSAVE,AVX,F16C,RDRAND,HV>
+  AMD Features=0x2c100800<SYSCALL,NX,Page1GB,RDTSCP,LM>
+  AMD Features2=0x121<LAHF,ABM,Prefetch>
+  Structured Extended Features=0xd19f47ab<FSGSBASE,TSCADJ,BMI1,AVX2,SMEP,BMI2,ERMS,INVPCID,MPX,AVX512F,AVX512DQ,RDSEED,ADX,SMAP,CLFLUSHOPT,CLWB,AVX512CD,AVX512BW,AVX512VL>
+  Structured Extended Features2=0x18<PKU,OSPKE>
+  XSAVE Features=0xf<XSAVEOPT,XSAVEC,XINUSE,XSAVES>
+  TSC: P-state invariant
+Hypervisor: Origin = "KVMKVMKVM"
+real memory  = 4294967296 (4096 MB)
+avail memory = 4014055424 (3828 MB)
+Event timer "LAPIC" quality 600
+ACPI APIC Table: <AMAZON AMZNAPIC>
+FreeBSD/SMP: Multiprocessor System Detected: 2 CPUs
+FreeBSD/SMP: 1 package(s) x 1 core(s) x 2 hardware threads
+random: registering fast source Intel Secure Key RNG
+ena0: Cannot get hash function
+ena0: Cannot get hash function
+ena0: Cannot get hash function
+ena0: Cannot get hash function
+
+kern.always_console_output=0
+kern.log_console_add_linefeed=0
+vm.ndomains=1
+vm.phys_locality=
+0: -1 
+
+vm.phys_segs=
+SEGMENT 0:
+
+start:     0x1000
+end:       0xa0000
+domain:    0
+free list: 0xffffffff81c0e470
+
+SEGMENT 1:
+
+start:     0x101000
+end:       0x1000000
+domain:    0
+free list: 0xffffffff81c0e470
+
+SEGMENT 2:
+
+start:     0x1000000
+end:       0xa979d000
+domain:    0
+free list: 0xffffffff81c0e200
+
+SEGMENT 3:
+
+start:     0xb1a00000
+end:       0xb1be0000
+domain:    0
+free list: 0xffffffff81c0e200
+
+SEGMENT 4:
+
+start:     0xb1c00000
+end:       0xb443c000
+domain:    0
+free list: 0xffffffff81c0e200
+
+SEGMENT 5:
+
+start:     0xb4444000
+end:       0xb447b000
+domain:    0
+free list: 0xffffffff81c0e200
+
+SEGMENT 6:
+
+start:     0xb4601000
+end:       0xbbcce000
+domain:    0
+free list: 0xffffffff81c0e200
+
+SEGMENT 7:
+
+start:     0xbbfde000
+end:       0xbff7c000
+domain:    0
+free list: 0xffffffff81c0e200
+
+SEGMENT 8:
+
+start:     0x100000000
+end:       0x13b3e6000
+domain:    0
+free list: 0xffffffff81c0e200
+
+vm.phys_free=
+hw.model=Intel(R) Xeon(R) Platinum 8259CL CPU @ 2.50GHz
+kstat.zfs.zroot.misc.iostats.trim_bytes_written=0
+kstat.zfs.zroot.misc.iostats.trim_extents_written=0
+kstat.zfs.zroot.misc.dmu_tx_assign.2199023255552 ns=0
+kstat.zfs.zroot.misc.dmu_tx_assign.1099511627776 ns=0
+kstat.zfs.zroot.misc.dmu_tx_assign.549755813888 ns=0
+kstat.zfs.zroot.misc.dmu_tx_assign.274877906944 ns=0
+'''

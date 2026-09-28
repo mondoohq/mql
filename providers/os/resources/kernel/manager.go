@@ -284,16 +284,33 @@ func (s *BsdKernelManager) Info() (KernelInfo, error) {
 }
 
 func (s *BsdKernelManager) Parameters() (map[string]string, error) {
-	cmd, err := s.conn.RunCommand("sysctl -a")
+	command, sep := bsdSysctlCommand(s.conn.Asset().Platform.Name)
+	cmd, err := s.conn.RunCommand(command)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not read kernel parameters")
 	}
 
-	platform := s.conn.Asset().Platform
-	if platform.Name == "openbsd" {
-		return ParseSysctl(cmd.Stdout, "=")
-	} else {
-		return ParseSysctl(cmd.Stdout, ":")
+	return ParseSysctl(cmd.Stdout, sep)
+}
+
+// bsdSysctlCommand returns the command that lists every sysctl on a BSD
+// platform and the separator it prints between name and value.
+//
+// FreeBSD prints `name: value` by default, and `-e` switches the separator to
+// `=`, which appears far less often than a colon in the continuation lines of
+// multi-line values like the kernel message buffer. OpenBSD prints
+// `name=value` and NetBSD `name = value`. NetBSD keeps sysctl in /sbin, which
+// is not on an unprivileged user's PATH.
+func bsdSysctlCommand(platform string) (string, string) {
+	switch platform {
+	case "freebsd":
+		return "sysctl -ae", "="
+	case "openbsd":
+		return "sysctl -a", "="
+	case "netbsd":
+		return "/sbin/sysctl -a", "="
+	default:
+		return "sysctl -a", ":"
 	}
 }
 
