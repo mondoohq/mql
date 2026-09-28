@@ -209,9 +209,10 @@ func (c *cloudTasksCmekCache) kmsKeyName(runtime *plugin.Runtime, location strin
 				c.keys[location] = ""
 				return "", nil
 			case codes.PermissionDenied:
-				if !saysServiceDisabled(err) {
-					return "", llx.Forbidden(err, llx.WithPermissions("cloudtasks.cmekConfig.get"))
+				if saysServiceDisabled(err) {
+					return "", llx.NotApplicable(err)
 				}
+				return "", llx.Forbidden(err, llx.WithPermissions("cloudtasks.cmekConfig.get"))
 			}
 		}
 		return "", err
