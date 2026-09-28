@@ -334,3 +334,53 @@ func TestNftSetParseElements_Empty(t *testing.T) {
 	s2 := &nftSet{Elem: json.RawMessage(`null`)}
 	assert.Nil(t, s2.parseSetElements())
 }
+
+func TestParseNftVersion(t *testing.T) {
+	tests := []struct {
+		out  string
+		want string
+	}{
+		// `nft --version` captured on the sweep hosts
+		{"nftables v0.8.2 (Joe Btfsplk)\n", "0.8.2"},            // Ubuntu 18.04
+		{"nftables v0.9.0 (Fearless Fosdick)\n", "0.9.0"},       // Debian 10
+		{"nftables v1.0.2 (Lester Gooch)\n", "1.0.2"},           // Ubuntu 22.04
+		{"nftables v1.0.9 (Old Doc Yak #3)\n", "1.0.9"},         // AlmaLinux 9, RHEL 9
+		{"nftables v1.1.3 (Commodore Bullmoose #4)\n", "1.1.3"}, // Debian 13
+		{"", ""},
+		{"something unexpected\n", ""},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, parseNftVersion(tt.out), tt.out)
+	}
+}
+
+func TestNftVersionSupportsJSON(t *testing.T) {
+	tests := []struct {
+		version   string
+		supported bool
+		ok        bool
+	}{
+		{"0.8.2", false, true},
+		{"0.9.0", false, true},
+		{"0.9.1", true, true},
+		{"0.9.3", true, true},
+		{"1.0.2", true, true},
+		{"1.1.3", true, true},
+		{"0.10", true, true},
+		{"1.0.6-rc1", true, true},
+		{"0.9", false, true},
+		{"", false, false},
+		{"abc", false, false},
+		{"x.y.z", false, false},
+	}
+	for _, tt := range tests {
+		supported, ok := nftVersionSupportsJSON(tt.version)
+		assert.Equal(t, tt.ok, ok, tt.version)
+		assert.Equal(t, tt.supported, supported, tt.version)
+	}
+}
+
+func TestNftUnsupportedVersionError(t *testing.T) {
+	err := nftUnsupportedVersionError("0.8.2")
+	assert.EqualError(t, err, "nft 0.8.2 cannot list the ruleset as JSON; reading nftables tables, chains, rules, and sets requires nft 0.9.1 or later")
+}

@@ -237,6 +237,58 @@ type mqlNftablesInternal struct {
 	fetched      bool
 	cacheRuleset *nftRuleset
 	lock         sync.Mutex
+
+	versionFetched bool
+	cacheVersion   string
+	versionLock    sync.Mutex
+}
+
+// nftMinJSONVersion is the first nft release whose `nft -j list ruleset`
+// output this resource can read. nft 0.8.x has no -j option at all. nft 0.9.0
+// has an early JSON output that predates the metainfo object and aborts with
+// an assertion (stmt_print_json: Assertion `__out' failed) on statements it
+// cannot serialize, such as the counter and jump rules iptables-nft writes.
+// nft 0.9.1 reworked the JSON schema and added metainfo to all output.
+var nftMinJSONVersion = [3]int{0, 9, 1}
+
+// parseNftVersion extracts the version from `nft --version` output, which is
+// "nftables v<version> (<release name>)" on every release from 0.8 to 1.1.
+func parseNftVersion(out string) string {
+	for _, field := range strings.Fields(out) {
+		if len(field) > 1 && field[0] == 'v' && field[1] >= '0' && field[1] <= '9' {
+			return field[1:]
+		}
+	}
+	return ""
+}
+
+// nftVersionSupportsJSON reports whether an nft version can produce the JSON
+// ruleset this resource parses. ok is false when the version cannot be parsed,
+// in which case the caller should try the JSON command anyway.
+func nftVersionSupportsJSON(version string) (supported bool, ok bool) {
+	parts := strings.SplitN(version, ".", 4)
+	if len(parts) < 2 {
+		return false, false
+	}
+	var v [3]int
+	for i := 0; i < 3 && i < len(parts); i++ {
+		// tolerate suffixes such as "1.0.6-rc1"
+		num := parts[i]
+		if j := strings.IndexFunc(num, func(r rune) bool { return r < '0' || r > '9' }); j >= 0 {
+			num = num[:j]
+		}
+		n, err := strconv.Atoi(num)
+		if err != nil {
+			return false, false
+		}
+		v[i] = n
+	}
+	for i := range v {
+		if v[i] != nftMinJSONVersion[i] {
+			return v[i] > nftMinJSONVersion[i], true
+		}
+	}
+	return true, true
 }
 
 func (n *mqlNftables) id() (string, error) {
@@ -294,6 +346,36 @@ func nftLookupTable(runtime *plugin.Runtime, family, name string) (*mqlNftablesT
 	return raw.(*mqlNftablesTable), nil
 }
 
+// fetchVersion lazily runs `nft --version`, which works on every nft release,
+// unlike the JSON ruleset.
+func (n *mqlNftables) fetchVersion() (string, error) {
+	n.versionLock.Lock()
+	defer n.versionLock.Unlock()
+	if n.versionFetched {
+		return n.cacheVersion, nil
+	}
+
+	conn, ok := n.MqlRuntime.Connection.(shared.Connection)
+	if !ok || !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		n.versionFetched = true
+		return "", nil
+	}
+
+	o, err := CreateResource(n.MqlRuntime, "command", map[string]*llx.RawData{
+		"command": llx.StringData("nft --version"),
+	})
+	if err != nil {
+		return "", err
+	}
+	cmd := o.(*mqlCommand)
+	if exit := cmd.GetExitcode(); exit.Data != 0 {
+		return "", fmt.Errorf("nft command failed (exit %d): %s", exit.Data, cmd.Stderr.Data)
+	}
+	n.cacheVersion = parseNftVersion(cmd.Stdout.Data)
+	n.versionFetched = true
+	return n.cacheVersion, nil
+}
+
 // fetchRuleset lazily fetches and caches the nft JSON ruleset.
 func (n *mqlNftables) fetchRuleset() (*nftRuleset, error) {
 	if n.fetched {
@@ -309,6 +391,16 @@ func (n *mqlNftables) fetchRuleset() (*nftRuleset, error) {
 	if !ok || !conn.Capabilities().Has(shared.Capability_RunCommand) {
 		n.fetched = true
 		return nil, nil
+	}
+
+	// Older nft either rejects -j or crashes on it, so check the version first
+	// and report what is needed instead of the raw nft failure.
+	version, err := n.fetchVersion()
+	if err != nil {
+		return nil, err
+	}
+	if supported, ok := nftVersionSupportsJSON(version); ok && !supported {
+		return nil, nftUnsupportedVersionError(version)
 	}
 
 	o, err := CreateResource(n.MqlRuntime, "command", map[string]*llx.RawData{
@@ -331,20 +423,13 @@ func (n *mqlNftables) fetchRuleset() (*nftRuleset, error) {
 	return ruleset, nil
 }
 
+func nftUnsupportedVersionError(version string) error {
+	return fmt.Errorf("nft %s cannot list the ruleset as JSON; reading nftables tables, chains, rules, and sets requires nft %d.%d.%d or later",
+		version, nftMinJSONVersion[0], nftMinJSONVersion[1], nftMinJSONVersion[2])
+}
+
 func (n *mqlNftables) version() (string, error) {
-	ruleset, err := n.fetchRuleset()
-	if err != nil {
-		return "", err
-	}
-	if ruleset == nil {
-		return "", nil
-	}
-	for _, obj := range ruleset.Nftables {
-		if obj.Metainfo != nil {
-			return obj.Metainfo.Version, nil
-		}
-	}
-	return "", nil
+	return n.fetchVersion()
 }
 
 func (n *mqlNftables) tables() ([]any, error) {
