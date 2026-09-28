@@ -357,26 +357,56 @@ func (dpm *DebPkgManager) List() ([]Package, error) {
 // applyInstallDates fills in the install time dpkg recorded for each package.
 //
 // dpkg keeps no install time in its status file the way rpm keeps
-// %{INSTALLTIME} in the rpm header, so the only record is the log of the
-// operations that placed the packages. Reading it here rather than lazily on
-// the resource keeps installDate an eager field: it ships today, and turning it
-// into a computed method would change a released field's shape.
+// %{INSTALLTIME} in the rpm header. Two records stand in for it, read in this
+// order:
 //
-// A package the retained logs do not mention keeps its zero time, which the
-// resource layer surfaces as null. That is the same answer it gave before this
-// read existed, so a stripped or rotated-away log costs nothing that was
-// previously there.
+//  1. The dpkg log, which names the version and the time it was placed. It is
+//     bounded by what logrotate kept and is often absent on cloud images.
+//  2. The modification time of the package's file list in /var/lib/dpkg/info,
+//     which dpkg rewrites when it unpacks the package. That is the time of
+//     the last install, upgrade or reinstall, the same event rpm's
+//     %{INSTALLTIME} records. It also moves when another package's unpack
+//     takes over one of this package's files, so it can be later than the
+//     install, never earlier.
+//
+// Reading both here rather than lazily on the resource keeps installDate an
+// eager field: it ships today, and turning it into a computed method would
+// change a released field's shape.
+//
+// A package neither record covers keeps its zero time, which the resource layer
+// surfaces as null.
 func (dpm *DebPkgManager) applyInstallDates(fs afero.Fs, pkgList []Package) {
 	dates := ReadDpkgInstallDates(fs, dpm.timeZone(fs))
-	if len(dates) == 0 {
-		return
-	}
-
+	missing := false
 	for i := range pkgList {
 		if !pkgList[i].InstallDate.IsZero() {
 			continue
 		}
 		if t, ok := dates.Get(pkgList[i].Name, pkgList[i].Arch, pkgList[i].Version); ok {
+			pkgList[i].InstallDate = t
+			continue
+		}
+		missing = true
+	}
+	if !missing {
+		return
+	}
+
+	applyDpkgListMtimes(pkgList, readDpkgListMtimes(dpm.conn))
+}
+
+// applyDpkgListMtimes dates every package that is still undated from the
+// modification time of its file list, for packages whose dpkg state means the
+// list was written by unpacking the installed version.
+func applyDpkgListMtimes(pkgList []Package, mtimes DpkgListMtimes) {
+	if len(mtimes) == 0 {
+		return
+	}
+	for i := range pkgList {
+		if !pkgList[i].InstallDate.IsZero() || !dpkgStateHasCurrentFileList(pkgList[i].Status) {
+			continue
+		}
+		if t, ok := mtimes.Get(pkgList[i].Name, pkgList[i].Arch); ok {
 			pkgList[i].InstallDate = t
 		}
 	}
