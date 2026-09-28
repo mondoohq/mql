@@ -1,0 +1,21 @@
+# Alpine 3.22 EC2 instance after `apk upgrade linux-virt` moved the kernel
+# package from 6.12.110-r0 to 6.12.111-r0, before the reboot. Excerpt of
+# /lib/apk/db/installed; the running kernel is still 6.12.110.
+
+[commands."uname -r"]
+stdout = "6.12.110-0-virt\n"
+
+[files."/lib/apk/db/installed"]
+content = """
+P:linux-pam
+V:1.7.0-r4
+A:x86_64
+o:linux-pam
+
+P:linux-virt
+V:6.12.111-r0
+A:x86_64
+T:Linux lts kernel
+o:linux-lts
+L:GPL-2.0-only
+"""
