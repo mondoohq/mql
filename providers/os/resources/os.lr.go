@@ -44839,7 +44839,9 @@ func (c *mqlPackage) GetOrigin() *plugin.TValue[string] {
 }
 
 func (c *mqlPackage) GetAvailable() *plugin.TValue[string] {
-	return &c.Available
+	return plugin.GetOrCompute[string](&c.Available, func() (string, error) {
+		return c.available()
+	})
 }
 
 func (c *mqlPackage) GetInstalled() *plugin.TValue[bool] {

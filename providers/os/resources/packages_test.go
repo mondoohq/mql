@@ -31,13 +31,13 @@ func TestFillPackageArgsDoesNotLeakBetweenPackages(t *testing.T) {
 		Name: "libfoo", Version: "1.2.3", Arch: "amd64", Format: "deb",
 	}
 
-	fillPackageArgs(args, &withLicense, "", nil)
+	fillPackageArgs(args, &withLicense, nil)
 	require.Contains(t, args, "license")
 	assert.Equal(t, "Apache-2.0", args["license"].Value)
 	require.IsType(t, &time.Time{}, args["installDate"].Value)
 	assert.Equal(t, installed, *args["installDate"].Value.(*time.Time))
 
-	fillPackageArgs(args, &withoutLicense, "", nil)
+	fillPackageArgs(args, &withoutLicense, nil)
 	assert.NotContains(t, args, "license",
 		"license leaked from the previous package")
 	assert.Equal(t, llx.NilData.Value, args["installDate"].Value,
@@ -63,11 +63,12 @@ func TestFillPackageArgs(t *testing.T) {
 		InstallScope: "user",
 		InstallUser:  "S-1-5-21-1-2-3-1001",
 	}
-	fillPackageArgs(args, &pkg, "3.0.12-1", nil)
+	fillPackageArgs(args, &pkg, nil)
 
 	assert.Equal(t, "openssl", args["name"].Value)
 	assert.Equal(t, "3.0.11-1", args["version"].Value)
-	assert.Equal(t, "3.0.12-1", args["available"].Value)
+	assert.NotContains(t, args, "available",
+		"available must stay unset so reading it, not listing packages, runs the update check")
 	assert.Equal(t, "x86_64", args["arch"].Value)
 	assert.Equal(t, "install ok installed", args["status"].Value)
 	assert.Equal(t, "TLS toolkit", args["description"].Value)
@@ -107,7 +108,7 @@ func TestCreateResourceDoesNotRetainArgs(t *testing.T) {
 
 	created := make([]*mqlPackage, 0, len(pkgs))
 	for i := range pkgs {
-		fillPackageArgs(args, &pkgs[i], "", nil)
+		fillPackageArgs(args, &pkgs[i], nil)
 		res, err := CreateResource(runtime, "package", args)
 		require.NoError(t, err)
 		created = append(created, res.(*mqlPackage))
@@ -160,7 +161,7 @@ func newTestUser(runtime *plugin.Runtime, name, sid string) *mqlUser {
 // installUser() always resolves to null regardless of osPkg.InstallUser.
 func createTestPackage(t *testing.T, runtime *plugin.Runtime, args map[string]*llx.RawData, osPkg *packages.Package) *mqlPackage {
 	t.Helper()
-	fillPackageArgs(args, osPkg, "", nil)
+	fillPackageArgs(args, osPkg, nil)
 	res, err := CreateResource(runtime, "package", args)
 	require.NoError(t, err)
 	pkg := res.(*mqlPackage)
@@ -288,7 +289,7 @@ func TestPackageIDMachineScopeUnaffected(t *testing.T) {
 	args := make(map[string]*llx.RawData, 15)
 
 	pkg := packages.Package{Name: "openssl", Version: "3.0.11-1", Arch: "x86_64", Format: "rpm"}
-	fillPackageArgs(args, &pkg, "", nil)
+	fillPackageArgs(args, &pkg, nil)
 	res, err := CreateResource(runtime, "package", args)
 	require.NoError(t, err)
 
@@ -309,7 +310,7 @@ func TestMacOSBundlesWithSameNameAndVersionStayDistinct(t *testing.T) {
 
 	created := make([]*mqlPackage, 0, len(pkgs))
 	for i := range pkgs {
-		fillPackageArgs(args, &pkgs[i], "", nil)
+		fillPackageArgs(args, &pkgs[i], nil)
 		res, err := CreateResource(runtime, "package", args)
 		require.NoError(t, err)
 		created = append(created, res.(*mqlPackage))

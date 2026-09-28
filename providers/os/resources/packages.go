@@ -95,6 +95,11 @@ type mqlPackageInternal struct {
 	// macosApp backs the macos() accessor. Nil for every package that is not
 	// a macOS application bundle.
 	macosApp *packages.MacOSApp
+
+	// updates backs available() and outdated(): the pending updates of the
+	// package manager that listed this package, shared by all its packages.
+	// Nil for a package that list() did not build.
+	updates *pkgUpdates
 }
 
 // initPackageMacos keeps `package.macos` from resolving on its own. The
@@ -240,11 +245,21 @@ func (p *mqlPackage) status() (string, error) {
 	return "", nil
 }
 
-func (p *mqlPackage) outdated() (bool, error) {
-	if len(p.Available.Data) > 0 {
-		return true, nil
+// available asks the package manager that listed the package for a newer
+// version, "" when it offers none.
+func (p *mqlPackage) available() (string, error) {
+	if p.updates == nil {
+		return "", nil
 	}
-	return false, nil
+	return p.updates.lookup(p.Name.Data, p.Arch.Data), nil
+}
+
+func (p *mqlPackage) outdated() (bool, error) {
+	available := p.GetAvailable()
+	if available.Error != nil {
+		return false, available.Error
+	}
+	return available.Data != "", nil
 }
 
 func (p *mqlPackage) origin() (string, error) {
@@ -312,6 +327,44 @@ type mqlPackagesInternal struct {
 	packagesByName map[string]*mqlPackage
 }
 
+// pkgUpdates holds one package manager's pending updates. The manager is only
+// asked the first time a package reads available or outdated, and only once
+// per scan however many packages ask.
+//
+// Asking is the expensive part of the inventory. On rpm hosts it is
+// `dnf check-update`, which refreshes expired repository metadata first and
+// can take a large share of a small host's memory; on deb hosts it is
+// `apt-get update`.
+// Listing packages for an SBOM or a name lookup never needs it.
+type pkgUpdates struct {
+	pm packages.OperatingSystemPkgManager
+
+	once sync.Once
+	// byNameArch maps "<name>/<arch>" to the available version.
+	byNameArch map[string]string
+}
+
+func (u *pkgUpdates) load() {
+	available, err := u.pm.Available()
+	if err != nil {
+		// As before the check was deferred: a manager that cannot report
+		// updates reports no newer version.
+		log.Debug().Err(err).Str("manager", u.pm.Name()).Msg("mql[packages]> could not retrieve available updates")
+		return
+	}
+	u.byNameArch = make(map[string]string, len(available))
+	for _, a := range available {
+		u.byNameArch[a.Name+"/"+a.Arch] = a.Available
+	}
+}
+
+// lookup returns the newer version the package manager offers for a package,
+// "" when there is none.
+func (u *pkgUpdates) lookup(name, arch string) string {
+	u.once.Do(u.load)
+	return u.byNameArch[name+"/"+arch]
+}
+
 // fillPackageArgs resets args and fills in the resource arguments for one
 // package. It clears the map itself rather than expecting a fresh one, so
 // list() can reuse a single map for the whole package list: CreateResource
@@ -319,12 +372,12 @@ type mqlPackagesInternal struct {
 //
 // The clear is load bearing. license is only set when the backend reported
 // one, so a leftover key would hand one package's license to the next.
-func fillPackageArgs(args map[string]*llx.RawData, osPkg *packages.Package, available string, cpes []any) {
+func fillPackageArgs(args map[string]*llx.RawData, osPkg *packages.Package, cpes []any) {
 	clear(args)
 
 	args["name"] = llx.StringData(osPkg.Name)
 	args["version"] = llx.StringData(osPkg.Version)
-	args["available"] = llx.StringData(available)
+	// available is left unset so available() runs on demand; see pkgUpdates.
 	args["arch"] = llx.StringData(osPkg.Arch)
 	args["status"] = llx.StringData(osPkg.Status)
 	args["pinned"] = llx.BoolData(osPkg.Pinned)
@@ -386,7 +439,10 @@ func (x *mqlPackages) list() ([]any, error) {
 	}
 
 	osPkgs := []packages.Package{}
-	osAvailablePkgs := map[string]packages.PackageUpdate{}
+	// osPkgUpdates[i] holds the pending updates of the manager that listed
+	// osPkgs[i]. Nothing asks the manager for them until a package reads
+	// available or outdated.
+	osPkgUpdates := []*pkgUpdates{}
 	for _, pm := range pms {
 		// retrieve all system packages
 		pkgs, err := pm.List()
@@ -395,23 +451,10 @@ func (x *mqlPackages) list() ([]any, error) {
 		}
 		osPkgs = append(osPkgs, pkgs...)
 
-		// TODO: do we really need to make this a blocking call, we could update available updates async
-		// we try to retrieve the available updates
-		available, err := pm.Available()
-		if err != nil {
-			log.Debug().Err(err).Msg("mql[packages]> could not retrieve available updates")
-			available = map[string]packages.PackageUpdate{}
+		updates := &pkgUpdates{pm: pm}
+		for range pkgs {
+			osPkgUpdates = append(osPkgUpdates, updates)
 		}
-		for k, v := range available {
-			osAvailablePkgs[k] = v
-		}
-	}
-
-	// make available updates easily findable
-	// we use packagename-arch as identifier
-	availableMap := make(map[string]packages.PackageUpdate)
-	for _, a := range osAvailablePkgs {
-		availableMap[a.Name+"/"+a.Arch] = a
 	}
 
 	// create MQL package os for each package
@@ -424,14 +467,6 @@ func (x *mqlPackages) list() ([]any, error) {
 	pkgArgs := make(map[string]*llx.RawData, 15)
 
 	for i, osPkg := range osPkgs {
-		// check if we found a newer version
-		available := ""
-		update, ok := availableMap[osPkg.Name+"/"+osPkg.Arch]
-		if ok {
-			available = update.Available
-			log.Debug().Str("package", osPkg.Name).Str("available", update.Available).Msg("mql[packages]> found newer version")
-		}
-
 		cpes := []any{}
 		for _, osPkgCpe := range osPkg.CPEs {
 			cpe, err := x.MqlRuntime.CreateSharedResource("cpe", map[string]*llx.RawData{
@@ -443,7 +478,7 @@ func (x *mqlPackages) list() ([]any, error) {
 			cpes = append(cpes, cpe)
 		}
 
-		fillPackageArgs(pkgArgs, &osPkg, available, cpes)
+		fillPackageArgs(pkgArgs, &osPkg, cpes)
 
 		pkg, err := CreateResource(x.MqlRuntime, "package", pkgArgs)
 		if err != nil {
@@ -458,6 +493,7 @@ func (x *mqlPackages) list() ([]any, error) {
 		// here, same as filesState/filesOnDisks above.
 		s.installUserSid = osPkg.InstallUser
 		s.macosApp = osPkg.MacOS
+		s.updates = osPkgUpdates[i]
 		pkgs[i] = s
 	}
 

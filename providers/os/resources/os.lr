@@ -1394,7 +1394,7 @@ package @defaults("name version") {
   origin() string
 
   // Latest version the package manager reports as available
-  available string
+  available() string
   // Whether the package is installed
   installed bool
   // Whether a newer version than the installed one is available
