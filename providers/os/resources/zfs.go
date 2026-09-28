@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -20,8 +21,82 @@ import (
 // Snapshot names include an @ separator.
 var validZfsName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.\-/:@]*$`)
 
+type mqlZfsInternal struct {
+	lock sync.Mutex
+	// noJSON is set once a zfs or zpool command rejected the -j flag
+	noJSON bool
+}
+
 func (z *mqlZfs) id() (string, error) {
 	return "zfs", nil
+}
+
+// runZfsCommand runs a zfs or zpool command and returns its stdout. A non-zero
+// exit code is returned as an error with the given description.
+func runZfsCommand(runtime *plugin.Runtime, command string, what string) (string, string, error) {
+	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
+		"command": llx.StringData(command),
+	})
+	if err != nil {
+		return "", "", err
+	}
+	cmd := o.(*mqlCommand)
+	if exit := cmd.GetExitcode(); exit.Error != nil {
+		return "", "", exit.Error
+	} else if exit.Data != 0 {
+		return "", cmd.Stderr.Data, errors.New("could not retrieve " + what + ": " + cmd.Stderr.Data)
+	}
+	return cmd.Stdout.Data, "", nil
+}
+
+// zfsOutput is the output of a zfs or zpool command, either from its JSON form
+// or from its text form.
+type zfsOutput struct {
+	json string
+	text []string
+}
+
+func (o zfsOutput) isJSON() bool {
+	return o.text == nil
+}
+
+// runZfsJSONOrText runs jsonCmd, which asks zfs or zpool for JSON output (-j).
+// OpenZFS added -j in 2.3; older releases (FreeBSD 13 and 14, Ubuntu 22.04 and
+// 24.04, Debian 12) reject it. Then the textCmds are run instead, and every
+// later call skips the JSON attempt.
+func runZfsJSONOrText(runtime *plugin.Runtime, what string, jsonCmd string, textCmds ...string) (zfsOutput, error) {
+	obj, err := CreateResource(runtime, "zfs", map[string]*llx.RawData{})
+	if err != nil {
+		return zfsOutput{}, err
+	}
+	z := obj.(*mqlZfs)
+
+	z.lock.Lock()
+	noJSON := z.noJSON
+	z.lock.Unlock()
+
+	if !noJSON {
+		out, stderr, err := runZfsCommand(runtime, jsonCmd, what)
+		if err == nil {
+			return zfsOutput{json: out}, nil
+		}
+		if !zfs.IsJSONUnsupported(stderr) {
+			return zfsOutput{}, err
+		}
+		z.lock.Lock()
+		z.noJSON = true
+		z.lock.Unlock()
+	}
+
+	text := make([]string, 0, len(textCmds))
+	for _, c := range textCmds {
+		out, _, err := runZfsCommand(runtime, c, what)
+		if err != nil {
+			return zfsOutput{}, err
+		}
+		text = append(text, out)
+	}
+	return zfsOutput{text: text}, nil
 }
 
 func (z *mqlZfs) version() (string, error) {
@@ -43,18 +118,17 @@ func (z *mqlZfs) version() (string, error) {
 }
 
 func (z *mqlZfs) pools() ([]any, error) {
-	o, err := CreateResource(z.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("zpool get -jp all"),
-	})
+	out, err := runZfsJSONOrText(z.MqlRuntime, "zfs pools", "zpool get -jp all", "zpool get -Hp all")
 	if err != nil {
 		return nil, err
 	}
-	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("could not retrieve zfs pools: " + cmd.Stderr.Data)
-	}
 
-	pools, err := zfs.ParsePools(cmd.Stdout.Data)
+	var pools []zfs.Pool
+	if out.isJSON() {
+		pools, err = zfs.ParsePools(out.json)
+	} else {
+		pools, err = zfs.ParsePoolsText(out.text[0])
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -85,18 +159,17 @@ func (z *mqlZfs) pools() ([]any, error) {
 }
 
 func (z *mqlZfs) datasets() ([]any, error) {
-	o, err := CreateResource(z.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("zfs get -jp all"),
-	})
+	out, err := runZfsJSONOrText(z.MqlRuntime, "zfs datasets", "zfs get -jp all", "zfs get -Hp all")
 	if err != nil {
 		return nil, err
 	}
-	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("could not retrieve zfs datasets: " + cmd.Stderr.Data)
-	}
 
-	datasets, err := zfs.ParseDatasets(cmd.Stdout.Data)
+	var datasets []zfs.Dataset
+	if out.isJSON() {
+		datasets, err = zfs.ParseDatasets(out.json)
+	} else {
+		datasets, err = zfs.ParseDatasetsText(out.text[0])
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -173,18 +246,21 @@ func (p *mqlZfsPool) vdevs() ([]any, error) {
 	if !validZfsName.MatchString(p.Name.Data) {
 		return nil, fmt.Errorf("invalid zfs pool name: %q", p.Name.Data)
 	}
-	o, err := CreateResource(p.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData(fmt.Sprintf("zpool status -jp %q", p.Name.Data)),
-	})
+	out, err := runZfsJSONOrText(p.MqlRuntime, "zfs pool vdevs",
+		fmt.Sprintf("zpool status -jp %q", p.Name.Data),
+		fmt.Sprintf("zpool status -ps %q", p.Name.Data),
+		fmt.Sprintf("zpool status -Pps %q", p.Name.Data),
+	)
 	if err != nil {
 		return nil, err
 	}
-	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("could not retrieve zfs pool vdevs: " + cmd.Stderr.Data)
-	}
 
-	vdevs, err := zfs.ParseVdevs(cmd.Stdout.Data)
+	var vdevs []zfs.Vdev
+	if out.isJSON() {
+		vdevs, err = zfs.ParseVdevs(out.json)
+	} else {
+		vdevs, err = zfs.ParseVdevsText(out.text[0], out.text[1])
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -236,18 +312,20 @@ func (p *mqlZfsPool) properties() (map[string]any, error) {
 	if !validZfsName.MatchString(p.Name.Data) {
 		return nil, fmt.Errorf("invalid zfs pool name: %q", p.Name.Data)
 	}
-	o, err := CreateResource(p.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData(fmt.Sprintf("zpool get -jp all %q", p.Name.Data)),
-	})
+	out, err := runZfsJSONOrText(p.MqlRuntime, "zfs pool properties",
+		fmt.Sprintf("zpool get -jp all %q", p.Name.Data),
+		fmt.Sprintf("zpool get -Hp all %q", p.Name.Data),
+	)
 	if err != nil {
 		return nil, err
 	}
-	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("could not retrieve zfs pool properties: " + cmd.Stderr.Data)
-	}
 
-	props, err := zfs.ParseProperties(cmd.Stdout.Data)
+	var props map[string]string
+	if out.isJSON() {
+		props, err = zfs.ParseProperties(out.json)
+	} else {
+		props, err = zfs.ParsePropertiesText(out.text[0])
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -304,18 +382,20 @@ func (d *mqlZfsDataset) properties() (map[string]any, error) {
 	if !validZfsName.MatchString(d.Name.Data) {
 		return nil, fmt.Errorf("invalid zfs dataset name: %q", d.Name.Data)
 	}
-	o, err := CreateResource(d.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData(fmt.Sprintf("zfs get -jp all %q", d.Name.Data)),
-	})
+	out, err := runZfsJSONOrText(d.MqlRuntime, "zfs dataset properties",
+		fmt.Sprintf("zfs get -jp all %q", d.Name.Data),
+		fmt.Sprintf("zfs get -Hp all %q", d.Name.Data),
+	)
 	if err != nil {
 		return nil, err
 	}
-	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("could not retrieve zfs dataset properties: " + cmd.Stderr.Data)
-	}
 
-	props, err := zfs.ParseProperties(cmd.Stdout.Data)
+	var props map[string]string
+	if out.isJSON() {
+		props, err = zfs.ParseProperties(out.json)
+	} else {
+		props, err = zfs.ParsePropertiesText(out.text[0])
+	}
 	if err != nil {
 		return nil, err
 	}

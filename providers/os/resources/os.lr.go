@@ -96126,7 +96126,7 @@ func (c *mqlMdadmDevice) GetState() *plugin.TValue[string] {
 type mqlZfs struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlZfsInternal it will be used here
+	mqlZfsInternal
 	Version  plugin.TValue[string]
 	Pools    plugin.TValue[[]any]
 	Datasets plugin.TValue[[]any]

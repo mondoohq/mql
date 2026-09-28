@@ -66,22 +66,6 @@ type propertyValue struct {
 	Value string `json:"value"`
 }
 
-type zpoolGetOutput struct {
-	Pools map[string]zpoolGetPool `json:"pools"`
-}
-
-type zpoolGetPool struct {
-	Properties map[string]propertyValue `json:"properties"`
-}
-
-type zfsGetOutput struct {
-	Datasets map[string]zfsGetDataset `json:"datasets"`
-}
-
-type zfsGetDataset struct {
-	Properties map[string]propertyValue `json:"properties"`
-}
-
 // JSON output structure for zpool status -jp (vdev topology).
 type zpoolStatusOutput struct {
 	Pools map[string]zpoolStatusPool `json:"pools"`
@@ -106,57 +90,65 @@ type zpoolStatusVdev struct {
 // ParsePools parses the JSON output of `zpool get -jp all`.
 // All pool properties (health, guid, size, etc.) come from this single command.
 func ParsePools(jsonOutput string) ([]Pool, error) {
-	if strings.TrimSpace(jsonOutput) == "" {
+	byName, err := parseGetJSON(jsonOutput, "zpool get")
+	if err != nil {
+		return nil, err
+	}
+	return poolsFromProperties(byName)
+}
+
+// ParsePoolsText parses the scriptable output of `zpool get -Hp all`, used on
+// OpenZFS releases older than 2.3 that have no JSON output.
+func ParsePoolsText(output string) ([]Pool, error) {
+	byName, err := parseGetText(output)
+	if err != nil {
+		return nil, fmt.Errorf("parsing zpool get output: %w", err)
+	}
+	return poolsFromProperties(byName)
+}
+
+func poolsFromProperties(byName map[string]map[string]string) ([]Pool, error) {
+	if len(byName) == 0 {
 		return nil, nil
 	}
 
-	var output zpoolGetOutput
-	if err := json.Unmarshal([]byte(jsonOutput), &output); err != nil {
-		return nil, fmt.Errorf("parsing zpool get JSON: %w", err)
-	}
-
-	if len(output.Pools) == 0 {
-		return nil, nil
-	}
-
-	pools := make([]Pool, 0, len(output.Pools))
-	for name, gp := range output.Pools {
-		props := gp.Properties
+	pools := make([]Pool, 0, len(byName))
+	for name, props := range byName {
 		pool := Pool{
 			Name:   name,
-			GUID:   propVal(props, "guid"),
-			Health: propVal(props, "health"),
+			GUID:   props["guid"],
+			Health: props["health"],
 		}
 
 		var err error
-		pool.Size, err = parseInt(propVal(props, "size"))
+		pool.Size, err = parseInt(props["size"])
 		if err != nil {
 			return nil, fmt.Errorf("parsing pool %q size: %w", name, err)
 		}
-		pool.Allocated, err = parseInt(propVal(props, "allocated"))
+		pool.Allocated, err = parseInt(props["allocated"])
 		if err != nil {
 			return nil, fmt.Errorf("parsing pool %q allocated: %w", name, err)
 		}
-		pool.Free, err = parseInt(propVal(props, "free"))
+		pool.Free, err = parseInt(props["free"])
 		if err != nil {
 			return nil, fmt.Errorf("parsing pool %q free: %w", name, err)
 		}
-		pool.Fragmentation, err = parseInt(propVal(props, "fragmentation"))
+		pool.Fragmentation, err = parseInt(props["fragmentation"])
 		if err != nil {
 			return nil, fmt.Errorf("parsing pool %q fragmentation: %w", name, err)
 		}
-		pool.PercentUsed, err = parseInt(propVal(props, "capacity"))
+		pool.PercentUsed, err = parseInt(props["capacity"])
 		if err != nil {
 			return nil, fmt.Errorf("parsing pool %q capacity: %w", name, err)
 		}
-		pool.Dedupratio, err = parseRatio(propVal(props, "dedupratio"))
+		pool.Dedupratio, err = parseRatio(props["dedupratio"])
 		if err != nil {
 			return nil, fmt.Errorf("parsing pool %q dedupratio: %w", name, err)
 		}
-		pool.Readonly = parseBool(propVal(props, "readonly"))
-		pool.Autoexpand = parseBool(propVal(props, "autoexpand"))
-		pool.Autoreplace = parseBool(propVal(props, "autoreplace"))
-		pool.Autotrim = parseBool(propVal(props, "autotrim"))
+		pool.Readonly = parseBool(props["readonly"])
+		pool.Autoexpand = parseBool(props["autoexpand"])
+		pool.Autoreplace = parseBool(props["autoreplace"])
+		pool.Autotrim = parseBool(props["autotrim"])
 
 		pools = append(pools, pool)
 	}
@@ -167,64 +159,71 @@ func ParsePools(jsonOutput string) ([]Pool, error) {
 // ParseDatasets parses the JSON output of `zfs get -jp all`.
 // All dataset properties come from this single command.
 func ParseDatasets(jsonOutput string) ([]Dataset, error) {
-	if strings.TrimSpace(jsonOutput) == "" {
+	byName, err := parseGetJSON(jsonOutput, "zfs get")
+	if err != nil {
+		return nil, err
+	}
+	return datasetsFromProperties(byName)
+}
+
+// ParseDatasetsText parses the scriptable output of `zfs get -Hp all`, used on
+// OpenZFS releases older than 2.3 that have no JSON output.
+func ParseDatasetsText(output string) ([]Dataset, error) {
+	byName, err := parseGetText(output)
+	if err != nil {
+		return nil, fmt.Errorf("parsing zfs get output: %w", err)
+	}
+	return datasetsFromProperties(byName)
+}
+
+func datasetsFromProperties(byName map[string]map[string]string) ([]Dataset, error) {
+	if len(byName) == 0 {
 		return nil, nil
 	}
 
-	var output zfsGetOutput
-	if err := json.Unmarshal([]byte(jsonOutput), &output); err != nil {
-		return nil, fmt.Errorf("parsing zfs get JSON: %w", err)
-	}
-
-	if len(output.Datasets) == 0 {
-		return nil, nil
-	}
-
-	datasets := make([]Dataset, 0, len(output.Datasets))
-	for name, dsProp := range output.Datasets {
-		props := dsProp.Properties
-
+	datasets := make([]Dataset, 0, len(byName))
+	for name, props := range byName {
 		ds := Dataset{
 			Name:        name,
-			Type:        strings.ToLower(propVal(props, "type")),
-			Mountpoint:  dashToEmpty(propVal(props, "mountpoint")),
-			Compression: dashToEmpty(propVal(props, "compression")),
-			Origin:      dashToEmpty(propVal(props, "origin")),
-			Encryption:  dashToEmpty(propVal(props, "encryption")),
+			Type:        strings.ToLower(props["type"]),
+			Mountpoint:  dashToEmpty(props["mountpoint"]),
+			Compression: dashToEmpty(props["compression"]),
+			Origin:      dashToEmpty(props["origin"]),
+			Encryption:  dashToEmpty(props["encryption"]),
 		}
 
 		var err error
-		ds.Used, err = parseInt(propVal(props, "used"))
+		ds.Used, err = parseInt(props["used"])
 		if err != nil {
 			return nil, fmt.Errorf("parsing dataset %q used: %w", name, err)
 		}
-		ds.Available, err = parseInt(propVal(props, "available"))
+		ds.Available, err = parseInt(props["available"])
 		if err != nil {
 			return nil, fmt.Errorf("parsing dataset %q available: %w", name, err)
 		}
-		ds.Referenced, err = parseInt(propVal(props, "referenced"))
+		ds.Referenced, err = parseInt(props["referenced"])
 		if err != nil {
 			return nil, fmt.Errorf("parsing dataset %q referenced: %w", name, err)
 		}
-		ds.Compressratio, err = parseRatio(propVal(props, "compressratio"))
+		ds.Compressratio, err = parseRatio(props["compressratio"])
 		if err != nil {
 			return nil, fmt.Errorf("parsing dataset %q compressratio: %w", name, err)
 		}
-		ds.Mounted = parseBool(propVal(props, "mounted"))
-		ds.Recordsize, err = parseInt(propVal(props, "recordsize"))
+		ds.Mounted = parseBool(props["mounted"])
+		ds.Recordsize, err = parseInt(props["recordsize"])
 		if err != nil {
 			return nil, fmt.Errorf("parsing dataset %q recordsize: %w", name, err)
 		}
-		ds.Quota, err = parseInt(propVal(props, "quota"))
+		ds.Quota, err = parseInt(props["quota"])
 		if err != nil {
 			return nil, fmt.Errorf("parsing dataset %q quota: %w", name, err)
 		}
-		ds.Reservation, err = parseInt(propVal(props, "reservation"))
+		ds.Reservation, err = parseInt(props["reservation"])
 		if err != nil {
 			return nil, fmt.Errorf("parsing dataset %q reservation: %w", name, err)
 		}
 
-		creationStr := propVal(props, "creation")
+		creationStr := props["creation"]
 		if creationStr != "" && creationStr != "-" {
 			epoch, err := strconv.ParseInt(creationStr, 10, 64)
 			if err != nil {
@@ -278,6 +277,88 @@ func ParseProperties(jsonOutput string) (map[string]string, error) {
 	}
 
 	return props, nil
+}
+
+// ParsePropertiesText parses the scriptable output of `zpool get -Hp all '<name>'`
+// or `zfs get -Hp all '<name>'` into a flat key-value map.
+func ParsePropertiesText(output string) (map[string]string, error) {
+	byName, err := parseGetText(output)
+	if err != nil {
+		return nil, fmt.Errorf("parsing properties: %w", err)
+	}
+	props := make(map[string]string)
+	for _, item := range byName {
+		for k, v := range item {
+			props[k] = v
+		}
+	}
+	return props, nil
+}
+
+// parseGetJSON parses `zpool get -jp` / `zfs get -jp` output into
+// name -> property -> value.
+func parseGetJSON(jsonOutput string, command string) (map[string]map[string]string, error) {
+	if strings.TrimSpace(jsonOutput) == "" {
+		return nil, nil
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(jsonOutput), &raw); err != nil {
+		return nil, fmt.Errorf("parsing %s JSON: %w", command, err)
+	}
+
+	key := "datasets"
+	if command == "zpool get" {
+		key = "pools"
+	}
+	data, ok := raw[key]
+	if !ok {
+		return nil, nil
+	}
+
+	var items map[string]struct {
+		Properties map[string]propertyValue `json:"properties"`
+	}
+	if err := json.Unmarshal(data, &items); err != nil {
+		return nil, fmt.Errorf("parsing %s JSON: %w", command, err)
+	}
+
+	byName := make(map[string]map[string]string, len(items))
+	for name, item := range items {
+		props := make(map[string]string, len(item.Properties))
+		for k, v := range item.Properties {
+			props[k] = v.Value
+		}
+		byName[name] = props
+	}
+	return byName, nil
+}
+
+// parseGetText parses `zpool get -Hp` / `zfs get -Hp` output into
+// name -> property -> value. Each line holds four tab-separated columns:
+// name, property, value, source. A value may itself contain tabs (user
+// properties), so the value is everything between the second and the last
+// column.
+func parseGetText(output string) (map[string]map[string]string, error) {
+	byName := map[string]map[string]string{}
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		if line == "" {
+			continue
+		}
+		cols := strings.Split(line, "\t")
+		if len(cols) < 4 {
+			return nil, fmt.Errorf("unexpected line %q", line)
+		}
+		name := cols[0]
+		props, ok := byName[name]
+		if !ok {
+			props = map[string]string{}
+			byName[name] = props
+		}
+		props[cols[1]] = strings.Join(cols[2:len(cols)-1], "\t")
+	}
+	return byName, nil
 }
 
 // ParseVdevs parses the JSON output of `zpool status -jp '<pool>'` and returns
@@ -356,12 +437,198 @@ func convertVdev(sv zpoolStatusVdev) (Vdev, error) {
 	return v, nil
 }
 
-// propVal extracts a property value string from a properties map, returning "" if not found.
-func propVal(props map[string]propertyValue, key string) string {
-	if v, ok := props[key]; ok {
-		return v.Value
+// IsJSONUnsupported reports whether a zfs or zpool command failed because it
+// does not know the -j (JSON output) flag. JSON output exists since OpenZFS
+// 2.3; older releases print "invalid option 'j'" and exit 2.
+func IsJSONUnsupported(stderr string) bool {
+	return strings.Contains(stderr, "invalid option 'j'")
+}
+
+// ParseVdevsText parses the text output of `zpool status -ps '<pool>'` and
+// `zpool status -Pps '<pool>'` and returns the top-level vdev groups (skipping
+// the root vdev), like ParseVdevs does for JSON. It is used on OpenZFS releases
+// older than 2.3 that have no JSON output.
+//
+// The first output provides the vdev names as the JSON output reports them
+// (disks without their /dev/ prefix), the second the full device paths. Both
+// list the same vdevs line by line.
+//
+// Only the pool's regular vdevs are returned. The special, dedup, logs, cache,
+// and spares sections are left out, since the JSON output reports those outside
+// the root vdev too.
+func ParseVdevsText(statusOutput string, fullPathOutput string) ([]Vdev, error) {
+	short := statusConfigLines(statusOutput)
+	full := statusConfigLines(fullPathOutput)
+	if len(short) == 0 {
+		return nil, nil
 	}
-	return ""
+	if len(short) != len(full) {
+		return nil, fmt.Errorf("parsing zpool status: %d vdev lines with names, %d with paths", len(short), len(full))
+	}
+
+	type node struct {
+		vdev     Vdev
+		depth    int
+		children []*node
+	}
+
+	var root *node
+	stack := []*node{}
+	for i, line := range short {
+		depth, fields := statusFields(line)
+		_, fullFields := statusFields(full[i])
+		if len(fields) == 0 {
+			continue
+		}
+
+		if depth == 0 {
+			if root != nil {
+				// A section after the root vdev (special, dedup, logs, cache, spares).
+				break
+			}
+			root = &node{depth: 0}
+			stack = []*node{root}
+			continue
+		}
+		if root == nil {
+			return nil, fmt.Errorf("parsing zpool status: vdev %q before the pool", fields[0])
+		}
+
+		v, err := statusVdev(fields, fullFields)
+		if err != nil {
+			return nil, err
+		}
+		n := &node{vdev: v, depth: depth}
+
+		for len(stack) > 1 && stack[len(stack)-1].depth >= depth {
+			stack = stack[:len(stack)-1]
+		}
+		parent := stack[len(stack)-1]
+		parent.children = append(parent.children, n)
+		stack = append(stack, n)
+	}
+
+	if root == nil {
+		return nil, nil
+	}
+
+	var convert func(nodes []*node) []Vdev
+	convert = func(nodes []*node) []Vdev {
+		if len(nodes) == 0 {
+			return nil
+		}
+		res := make([]Vdev, 0, len(nodes))
+		for _, n := range nodes {
+			v := n.vdev
+			v.Devices = convert(n.children)
+			if len(n.children) > 0 {
+				// Groups carry no path and no slow I/O count in the JSON output.
+				v.Type = groupVdevType(v.Name)
+				v.Path = ""
+				v.SlowIOs = 0
+			} else {
+				v.Type = leafVdevType(v.Path)
+			}
+			res = append(res, v)
+		}
+		return res
+	}
+	return convert(root.children), nil
+}
+
+// statusConfigLines returns the vdev lines of the config section of
+// `zpool status`, from the line after the NAME header up to the first blank
+// line.
+func statusConfigLines(output string) []string {
+	var lines []string
+	inConfig := false
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		if !inConfig {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 && fields[0] == "NAME" && fields[1] == "STATE" {
+				inConfig = true
+			}
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			break
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+// statusFields returns the nesting depth of a zpool status config line and its
+// whitespace-separated fields. Lines start with a tab, then two spaces per
+// nesting level.
+func statusFields(line string) (int, []string) {
+	line = strings.TrimPrefix(line, "\t")
+	trimmed := strings.TrimLeft(line, " ")
+	depth := (len(line) - len(trimmed)) / 2
+	return depth, strings.Fields(trimmed)
+}
+
+// statusVdev builds a vdev from a config line (NAME STATE READ WRITE CKSUM SLOW
+// [note]) and the same line printed with full paths.
+func statusVdev(fields []string, fullFields []string) (Vdev, error) {
+	v := Vdev{Name: fields[0]}
+	if len(fullFields) > 0 {
+		v.Path = fullFields[0]
+	}
+	if len(fields) > 1 {
+		v.State = fields[1]
+	}
+
+	counters := []*int64{&v.ReadErrors, &v.WriteErrors, &v.ChecksumErrors, &v.SlowIOs}
+	names := []string{"read errors", "write errors", "checksum errors", "slow I/Os"}
+	for i, dst := range counters {
+		if len(fields) <= 2+i {
+			break
+		}
+		n, err := parseInt(fields[2+i])
+		if err != nil {
+			return v, fmt.Errorf("parsing vdev %q %s: %w", v.Name, names[i], err)
+		}
+		*dst = n
+	}
+
+	// A missing device is listed by its GUID with a note "was /dev/ada1".
+	for i := 2; i < len(fullFields)-1; i++ {
+		if fullFields[i] == "was" {
+			v.Path = fullFields[i+1]
+			break
+		}
+	}
+	return v, nil
+}
+
+// groupVdevType derives the vdev type from a group vdev name such as
+// "mirror-0", "raidz2-1", "draid1:2d:4c:0s-0", "spare-3", or "replacing-0".
+func groupVdevType(name string) string {
+	t := name
+	if i := strings.LastIndexByte(t, '-'); i > 0 {
+		t = t[:i]
+	}
+	if i := strings.IndexByte(t, ':'); i > 0 {
+		t = t[:i]
+	}
+	switch {
+	case strings.HasPrefix(t, "raidz"):
+		return "raidz"
+	case strings.HasPrefix(t, "draid"):
+		return "draid"
+	}
+	return t
+}
+
+// leafVdevType derives the vdev type of a leaf vdev from its path: devices
+// under /dev are disks, anything else is a file vdev.
+func leafVdevType(path string) string {
+	if strings.HasPrefix(path, "/dev/") {
+		return "disk"
+	}
+	return "file"
 }
 
 // parseInt parses a string to int64, treating "-" and "" as 0.
