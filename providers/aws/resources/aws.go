@@ -653,3 +653,13 @@ func (sgh *securityGroupIdHandler) newSecurityGroupResources(runtime *plugin.Run
 	}
 	return sgs, nil
 }
+
+// nonEmptyEnum returns nil for an unset SDK enum value, so a field the API
+// did not report reads as null rather than an empty string.
+func nonEmptyEnum[T ~string](v T) *string {
+	if v == "" {
+		return nil
+	}
+	s := string(v)
+	return &s
+}

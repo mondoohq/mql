@@ -76,6 +76,7 @@ func (a *mqlAwsEventbridge) getEventBuses(conn *connection.AwsConnection) []*job
 							"name":      llx.StringDataPtr(bus.Name),
 							"createdAt": llx.TimeDataPtr(bus.CreationTime),
 							"region":    llx.StringData(region),
+							"managedBy": llx.StringDataPtr(bus.ManagedBy),
 						})
 					if err != nil {
 						return nil, err
@@ -193,6 +194,7 @@ func (a *mqlAwsEventbridgeEventBus) rules() ([]any, error) {
 					"description":        llx.StringDataPtr(rule.Description),
 					"eventPattern":       llx.StringDataPtr(rule.EventPattern),
 					"scheduleExpression": llx.StringDataPtr(rule.ScheduleExpression),
+					"managedBy":          llx.StringDataPtr(rule.ManagedBy),
 				})
 			if err != nil {
 				return nil, err

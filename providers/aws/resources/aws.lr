@@ -10675,6 +10675,11 @@ private aws.eventbridge.eventBus @defaults("arn name") {
   rules() []aws.eventbridge.rule
   // Resource policy document attached to the event bus (JSON); empty if no policy is attached
   policy() string
+  // AWS service principal that created the event bus on behalf of the account
+  //
+  // Set when an AWS service created and manages the event bus, for example
+  // `events.amazonaws.com`. Null for event buses the account created itself.
+  managedBy string
 }
 
 // Amazon EventBridge rule
@@ -10701,6 +10706,11 @@ private aws.eventbridge.rule @defaults("arn name state") {
   tags() map[string]string
   // Targets that matched events are delivered to
   eventTargets() []aws.eventbridge.rule.target
+  // AWS service principal that created the rule on behalf of the account
+  //
+  // Set when an AWS service created and manages the rule. Null for rules the
+  // account created itself.
+  managedBy string
 }
 
 // Amazon EventBridge rule target
@@ -25022,6 +25032,13 @@ private aws.kinesis.stream @defaults("name status region") {
   tags() map[string]string
   // Enhanced fan-out consumers registered with the stream
   consumers() []aws.kinesis.streamConsumer
+  // How records are distributed across the stream's shards
+  //
+  // AUTO when Kinesis Data Streams places records with service-managed
+  // algorithms and ignores partition keys, or USER_PARTITION_KEY when the
+  // partition key supplied by producers decides the shard. Null for streams
+  // in provisioned capacity mode, which do not report a strategy.
+  recordDistributionStrategy() string
 }
 
 // Amazon Kinesis enhanced fan-out stream consumer
@@ -26214,6 +26231,10 @@ private aws.glue.database @defaults("name region") {
   // Region where the database exists
   region string
   // Tables in the database
+  //
+  // Includes federated tables, which reference an entity outside the Glue
+  // Data Catalog and carry a federatedTable value. When the federation
+  // source cannot be read, only the non-federated tables are listed.
   tables() []aws.glue.database.table
 }
 
@@ -30775,7 +30796,8 @@ private aws.bedrock.marketplaceModelEndpoint @defaults("endpointArn modelSourceI
 // servers and runtimes holds deployed agents, while memories, browsers,
 // codeInterpreters, oauth2CredentialProviders,
 // apiKeyCredentialProviders, and workloadIdentities hold the supporting
-// infrastructure.
+// infrastructure. paymentManagers and paymentCredentialProviders hold the
+// AgentCore Payments setup agents use to pay through payment providers.
 private aws.bedrock.agentCore {
   // MCP gateways in the account
   gateways() []aws.bedrock.agentCore.gateway
@@ -30797,6 +30819,123 @@ private aws.bedrock.agentCore {
   capacityProviders() []aws.bedrock.agentCore.capacityProvider
   // Consent portals where end users grant agents access to their resources
   consentPortals() []aws.bedrock.agentCore.consentPortal
+  // Payment managers that let agents make payments through AgentCore Payments
+  paymentManagers() []aws.bedrock.agentCore.paymentManager
+  // Payment credential providers that hold payment-provider credentials in AgentCore Identity
+  paymentCredentialProviders() []aws.bedrock.agentCore.paymentCredentialProvider
+}
+
+// Amazon Bedrock AgentCore payment manager
+//
+// Payment manager that authorizes agents to make payments and groups the
+// payment connectors they pay through. `authorizerType` reports how inbound
+// requests are authenticated, `iamRole` the role the manager assumes, and
+// `kmsKey` the customer-managed key protecting sensitive payment data at
+// rest. `connectors` lists the payment-provider integrations under the
+// manager.
+private aws.bedrock.agentCore.paymentManager @defaults("name status authorizerType") {
+  // ARN of the payment manager
+  arn string
+  // Unique identifier of the payment manager
+  id string
+  // Name of the payment manager
+  name string
+  // Region where the payment manager exists
+  region string
+  // Description of the payment manager
+  description string
+  // Lifecycle status of the payment manager
+  //
+  // One of CREATING, READY, UPDATING, DELETING, CREATE_FAILED, UPDATE_FAILED, or DELETE_FAILED.
+  status string
+  // How inbound requests to the payment manager are authorized
+  //
+  // One of CUSTOM_JWT (bearer token) or AWS_IAM (IAM credentials).
+  authorizerType string
+  // IAM role associated with the payment manager
+  iamRole() aws.iam.role
+  // Customer-managed KMS key encrypting sensitive payment manager data at rest
+  kmsKey() aws.kms.key
+  // Workload identity of the payment manager in AgentCore Identity
+  workloadIdentity() aws.bedrock.agentCore.workloadIdentity
+  // Tags on the payment manager
+  tags() map[string]string
+  // Time the payment manager was created
+  createdAt time
+  // Time the payment manager was last updated
+  updatedAt time
+  // Payment connectors under the payment manager
+  connectors() []aws.bedrock.agentCore.paymentConnector
+}
+
+// Amazon Bedrock AgentCore payment connector
+//
+// Integration between a payment manager and a payment provider. `type`
+// names the provider, and `provisionMode` reports who owns the connector's
+// credentials: MANUAL when the account supplied the credential providers,
+// QUICK_CREATE when AgentCore provisioned and manages them.
+// `credentialsUpdatedAt` reports when service-managed credentials were last
+// provisioned or rotated, which supports credential-age checks, and
+// `credentialProviders` resolves the credential providers the connector
+// authenticates with.
+private aws.bedrock.agentCore.paymentConnector @defaults("name type status provisionMode") {
+  // Unique identifier of the payment connector
+  id string
+  // Name of the payment connector
+  name string
+  // Region where the payment connector exists
+  region string
+  // Lifecycle status of the payment connector
+  //
+  // One of CREATING, UPDATING, DELETING, READY, CREATE_FAILED, UPDATE_FAILED,
+  // DELETE_FAILED, AWS_MARKETPLACE_SUBSCRIPTION_REQUIRED, or PENDING_AUTHENTICATION.
+  status string
+  // Payment provider the connector integrates with
+  //
+  // One of CoinbaseCDP or StripePrivy.
+  type string
+  // How the connector's credentials were provisioned
+  //
+  // MANUAL when the account supplied the credential providers and owns the
+  // credentials, or QUICK_CREATE when AgentCore provisioned them and the
+  // credentials are service-managed. Connectors created before the setting
+  // existed report MANUAL.
+  provisionMode string
+  // Description of the payment connector
+  description() string
+  // Time the payment connector was created
+  createdAt() time
+  // Time the payment connector was last updated
+  updatedAt time
+  // Time the connector's current service-managed credentials took effect
+  //
+  // Set when the credentials are provisioned and updated by each rotation.
+  // Null for connectors whose provisionMode is MANUAL.
+  credentialsUpdatedAt() time
+  // Credential providers the connector authenticates to the payment provider with
+  credentialProviders() []aws.bedrock.agentCore.paymentCredentialProvider
+}
+
+// Amazon Bedrock AgentCore payment credential provider
+//
+// Credential provider in AgentCore Identity that stores the authentication
+// credentials for a payment provider. `vendor` names the payment provider,
+// and `createdAt` and `updatedAt` support credential-age checks.
+private aws.bedrock.agentCore.paymentCredentialProvider @defaults("name vendor") {
+  // ARN of the payment credential provider
+  arn string
+  // Name of the payment credential provider
+  name string
+  // Region where the payment credential provider exists
+  region string
+  // Payment provider the stored credentials belong to
+  //
+  // One of CoinbaseCDP or StripePrivy.
+  vendor string
+  // Time the payment credential provider was created
+  createdAt time
+  // Time the payment credential provider was last updated
+  updatedAt time
 }
 
 // Amazon Bedrock AgentCore gateway
@@ -31832,6 +31971,61 @@ private aws.bedrock.knowledgeBase @defaults("name status") {
   dataSources() @maturity("deprecated") @replaced_by("aws.bedrock.knowledgeBase.dataSourceDetails") []dict
   // Data sources connected to the knowledge base
   dataSourceDetails() []aws.bedrock.knowledgeBase.dataSource
+  // VPC configurations the knowledge base uses to reach private resources
+  vpcConfigurations() []aws.bedrock.knowledgeBase.vpcConfiguration
+}
+
+// VPC configuration of an Amazon Bedrock knowledge base
+//
+// Private network path a knowledge base uses to reach a resource, such as a
+// self-hosted vector store or data source, from inside a VPC. `vpc` and
+// `subnets` resolve where the knowledge base connects from, `resourceTarget`,
+// `protocol`, and `port` identify what it connects to, and `resolutionMode`
+// reports whether the target name is resolved publicly or inside the VPC.
+// `tlsServerName` reports the name matched against the target's TLS
+// certificate for an HTTPS connection. The `id` selects the configuration
+// within its knowledge base.
+private aws.bedrock.knowledgeBase.vpcConfiguration @defaults("name status resourceTarget protocol port") {
+  // Unique identifier of the VPC configuration
+  id string
+  // Region where the VPC configuration exists
+  region string
+  // Name of the VPC configuration
+  name string
+  // Description of the VPC configuration
+  description string
+  // Lifecycle status of the VPC configuration
+  //
+  // One of CREATING, CREATED, DELETING, CREATE_FAILED, or DELETE_FAILED.
+  status string
+  // Additional detail about the status, such as the cause of a failure
+  statusMessage string
+  // Protocol used to connect to the resource
+  //
+  // One of HTTP or HTTPS.
+  protocol string
+  // Port on which the resource is reached
+  port int
+  // Private IPv4 address or DNS name of the resource
+  resourceTarget string
+  // How the resource target is resolved
+  //
+  // One of PUBLIC or IN_VPC.
+  resolutionMode string
+  // HTTP Host header value sent when invoking the resource
+  hostHeader string
+  // Name matched against the Subject Alternative Names on the resource's TLS certificate
+  //
+  // Present when protocol is HTTPS.
+  tlsServerName string
+  // VPC the knowledge base connects through to reach the resource
+  vpc() aws.vpc
+  // Subnets the knowledge base uses to connect to the resource
+  subnets() []aws.vpc.subnet
+  // Time the VPC configuration was created
+  createdAt time
+  // Time the VPC configuration was last updated
+  updatedAt() time
 }
 
 // Vector store backing an Amazon Bedrock knowledge base

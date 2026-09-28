@@ -1,7 +1,7 @@
 {
   "provider": "aws",
-  "version": "14.0.0-rc.1",
-  "generated_at": "2026-09-14T15:48:55-07:00",
+  "version": "14.0.1",
+  "generated_at": "2026-09-28T09:40:52-07:00",
   "permissions": [
     "access-analyzer:GetFindingV2",
     "access-analyzer:ListAnalyzers",
@@ -95,6 +95,8 @@
     "bedrock-agentcore:GetGateway",
     "bedrock-agentcore:GetGatewayTarget",
     "bedrock-agentcore:GetMemory",
+    "bedrock-agentcore:GetPaymentConnector",
+    "bedrock-agentcore:GetPaymentManager",
     "bedrock-agentcore:ListAgentRuntimeEndpoints",
     "bedrock-agentcore:ListAgentRuntimes",
     "bedrock-agentcore:ListApiKeyCredentialProviders",
@@ -107,6 +109,9 @@
     "bedrock-agentcore:ListGateways",
     "bedrock-agentcore:ListMemories",
     "bedrock-agentcore:ListOauth2CredentialProviders",
+    "bedrock-agentcore:ListPaymentConnectors",
+    "bedrock-agentcore:ListPaymentCredentialProviders",
+    "bedrock-agentcore:ListPaymentManagers",
     "bedrock-agentcore:ListWorkloadIdentities",
     "bedrock:GetAccountDataRetention",
     "bedrock:GetAgent",
@@ -124,6 +129,7 @@
     "bedrock:GetModelImportJob",
     "bedrock:GetModelInvocationLoggingConfiguration",
     "bedrock:GetResourcePolicy",
+    "bedrock:GetVpcConfiguration",
     "bedrock:ListAgentActionGroups",
     "bedrock:ListAgentAliases",
     "bedrock:ListAgentCollaborators",
@@ -146,6 +152,7 @@
     "bedrock:ListModelInvocationJobs",
     "bedrock:ListPrompts",
     "bedrock:ListProvisionedModelThroughputs",
+    "bedrock:ListVpcConfigurations",
     "budgets:ViewBudget",
     "cassandra:Select",
     "cassandra:TagResource",
@@ -1621,6 +1628,18 @@
       "source_file": "aws_bedrock_agentcore.go"
     },
     {
+      "permission": "bedrock-agentcore:GetPaymentConnector",
+      "service": "bedrock-agentcore",
+      "action": "GetPaymentConnector",
+      "source_file": "aws_bedrock_agentcore_payments.go"
+    },
+    {
+      "permission": "bedrock-agentcore:GetPaymentManager",
+      "service": "bedrock-agentcore",
+      "action": "GetPaymentManager",
+      "source_file": "aws_bedrock_agentcore_payments.go"
+    },
+    {
       "permission": "bedrock-agentcore:ListAgentRuntimeEndpoints",
       "service": "bedrock-agentcore",
       "action": "ListAgentRuntimeEndpoints",
@@ -1691,6 +1710,24 @@
       "service": "bedrock-agentcore",
       "action": "ListOauth2CredentialProviders",
       "source_file": "aws_bedrock_agentcore.go"
+    },
+    {
+      "permission": "bedrock-agentcore:ListPaymentConnectors",
+      "service": "bedrock-agentcore",
+      "action": "ListPaymentConnectors",
+      "source_file": "aws_bedrock_agentcore_payments.go"
+    },
+    {
+      "permission": "bedrock-agentcore:ListPaymentCredentialProviders",
+      "service": "bedrock-agentcore",
+      "action": "ListPaymentCredentialProviders",
+      "source_file": "aws_bedrock_agentcore_payments.go"
+    },
+    {
+      "permission": "bedrock-agentcore:ListPaymentManagers",
+      "service": "bedrock-agentcore",
+      "action": "ListPaymentManagers",
+      "source_file": "aws_bedrock_agentcore_payments.go"
     },
     {
       "permission": "bedrock-agentcore:ListWorkloadIdentities",
@@ -1793,6 +1830,12 @@
       "service": "bedrock",
       "action": "GetResourcePolicy",
       "source_file": "aws_bedrock.go"
+    },
+    {
+      "permission": "bedrock:GetVpcConfiguration",
+      "service": "bedrock",
+      "action": "GetVpcConfiguration",
+      "source_file": "aws_bedrock_knowledgebase_vpc.go"
     },
     {
       "permission": "bedrock:ListAgentActionGroups",
@@ -1943,6 +1986,12 @@
       "service": "bedrock",
       "action": "ListProvisionedModelThroughputs",
       "source_file": "aws_bedrock.go"
+    },
+    {
+      "permission": "bedrock:ListVpcConfigurations",
+      "service": "bedrock",
+      "action": "ListVpcConfigurations",
+      "source_file": "aws_bedrock_knowledgebase_vpc.go"
     },
     {
       "permission": "budgets:ViewBudget",
