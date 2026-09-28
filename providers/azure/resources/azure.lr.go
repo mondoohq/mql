@@ -9198,6 +9198,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.storageService.account.allowCrossTenantReplication": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionStorageServiceAccount).GetAllowCrossTenantReplication()).ToDataRes(types.Bool)
 	},
+	"azure.subscription.storageService.account.allowCrossTenantDelegationSas": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionStorageServiceAccount).GetAllowCrossTenantDelegationSas()).ToDataRes(types.Bool)
+	},
 	"azure.subscription.storageService.account.isLocalUserEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionStorageServiceAccount).GetIsLocalUserEnabled()).ToDataRes(types.Bool)
 	},
@@ -9293,6 +9296,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"azure.subscription.storageService.account.sasExpirationAction": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionStorageServiceAccount).GetSasExpirationAction()).ToDataRes(types.String)
+	},
+	"azure.subscription.storageService.account.sasRequireUserBoundUserDelegationSas": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionStorageServiceAccount).GetSasRequireUserBoundUserDelegationSas()).ToDataRes(types.Bool)
+	},
+	"azure.subscription.storageService.account.sasRequireUserBoundUserDelegationSasAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionStorageServiceAccount).GetSasRequireUserBoundUserDelegationSasAction()).ToDataRes(types.String)
 	},
 	"azure.subscription.storageService.account.keyExpirationPeriodInDays": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionStorageServiceAccount).GetKeyExpirationPeriodInDays()).ToDataRes(types.Int)
@@ -32588,6 +32597,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAzureSubscriptionStorageServiceAccount).AllowCrossTenantReplication, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"azure.subscription.storageService.account.allowCrossTenantDelegationSas": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionStorageServiceAccount).AllowCrossTenantDelegationSas, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"azure.subscription.storageService.account.isLocalUserEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionStorageServiceAccount).IsLocalUserEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -32714,6 +32727,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.storageService.account.sasExpirationAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionStorageServiceAccount).SasExpirationAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.storageService.account.sasRequireUserBoundUserDelegationSas": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionStorageServiceAccount).SasRequireUserBoundUserDelegationSas, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.storageService.account.sasRequireUserBoundUserDelegationSasAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionStorageServiceAccount).SasRequireUserBoundUserDelegationSasAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.storageService.account.keyExpirationPeriodInDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -74340,6 +74361,7 @@ type mqlAzureSubscriptionStorageServiceAccount struct {
 	Key1CreationTime                                 plugin.TValue[*time.Time]
 	Key2CreationTime                                 plugin.TValue[*time.Time]
 	AllowCrossTenantReplication                      plugin.TValue[bool]
+	AllowCrossTenantDelegationSas                    plugin.TValue[bool]
 	IsLocalUserEnabled                               plugin.TValue[bool]
 	IsSftpEnabled                                    plugin.TValue[bool]
 	IsHnsEnabled                                     plugin.TValue[bool]
@@ -74372,6 +74394,8 @@ type mqlAzureSubscriptionStorageServiceAccount struct {
 	ServiceKeyTypes                                  plugin.TValue[map[string]any]
 	SasExpirationPeriod                              plugin.TValue[string]
 	SasExpirationAction                              plugin.TValue[string]
+	SasRequireUserBoundUserDelegationSas             plugin.TValue[bool]
+	SasRequireUserBoundUserDelegationSasAction       plugin.TValue[string]
 	KeyExpirationPeriodInDays                        plugin.TValue[int64]
 	ImmutableStorageEnabled                          plugin.TValue[bool]
 	ImmutableStoragePolicyPeriodDays                 plugin.TValue[int64]
@@ -74556,6 +74580,10 @@ func (c *mqlAzureSubscriptionStorageServiceAccount) GetAllowCrossTenantReplicati
 	return &c.AllowCrossTenantReplication
 }
 
+func (c *mqlAzureSubscriptionStorageServiceAccount) GetAllowCrossTenantDelegationSas() *plugin.TValue[bool] {
+	return &c.AllowCrossTenantDelegationSas
+}
+
 func (c *mqlAzureSubscriptionStorageServiceAccount) GetIsLocalUserEnabled() *plugin.TValue[bool] {
 	return &c.IsLocalUserEnabled
 }
@@ -74696,6 +74724,14 @@ func (c *mqlAzureSubscriptionStorageServiceAccount) GetSasExpirationPeriod() *pl
 
 func (c *mqlAzureSubscriptionStorageServiceAccount) GetSasExpirationAction() *plugin.TValue[string] {
 	return &c.SasExpirationAction
+}
+
+func (c *mqlAzureSubscriptionStorageServiceAccount) GetSasRequireUserBoundUserDelegationSas() *plugin.TValue[bool] {
+	return &c.SasRequireUserBoundUserDelegationSas
+}
+
+func (c *mqlAzureSubscriptionStorageServiceAccount) GetSasRequireUserBoundUserDelegationSasAction() *plugin.TValue[string] {
+	return &c.SasRequireUserBoundUserDelegationSasAction
 }
 
 func (c *mqlAzureSubscriptionStorageServiceAccount) GetKeyExpirationPeriodInDays() *plugin.TValue[int64] {

@@ -152,3 +152,52 @@ func TestIsInventoryPolicyNotFoundError(t *testing.T) {
 		assert.False(t, isInventoryPolicyNotFoundError(err))
 	})
 }
+
+func TestSasPolicyUserBoundDelegation(t *testing.T) {
+	t.Run("nil policy is null", func(t *testing.T) {
+		required, action := sasPolicyUserBoundDelegation(nil)
+		assert.Nil(t, required)
+		assert.Nil(t, action)
+	})
+
+	t.Run("policy without the setting is null", func(t *testing.T) {
+		exp := storage.ExpirationActionLog
+		period := "1.00:00:00"
+		required, action := sasPolicyUserBoundDelegation(&storage.SasPolicy{
+			ExpirationAction:    &exp,
+			SasExpirationPeriod: &period,
+		})
+		assert.Nil(t, required)
+		assert.Nil(t, action)
+	})
+
+	t.Run("policy with the setting", func(t *testing.T) {
+		yes := true
+		block := storage.PolicyViolationActionBlock
+		required, action := sasPolicyUserBoundDelegation(&storage.SasPolicy{
+			RequireUserBoundUserDelegationSas:       &yes,
+			RequireUserBoundUserDelegationSasAction: &block,
+		})
+		if assert.NotNil(t, required) {
+			assert.True(t, *required)
+		}
+		if assert.NotNil(t, action) {
+			assert.Equal(t, "Block", *action)
+		}
+	})
+
+	t.Run("explicit false is kept", func(t *testing.T) {
+		no := false
+		none := storage.PolicyViolationActionNone
+		required, action := sasPolicyUserBoundDelegation(&storage.SasPolicy{
+			RequireUserBoundUserDelegationSas:       &no,
+			RequireUserBoundUserDelegationSasAction: &none,
+		})
+		if assert.NotNil(t, required) {
+			assert.False(t, *required)
+		}
+		if assert.NotNil(t, action) {
+			assert.Equal(t, "None", *action)
+		}
+	})
+}

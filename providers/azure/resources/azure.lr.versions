@@ -6734,6 +6734,7 @@ azure.subscription.storageService 9.0.1
 azure.subscription.storageService.account 9.0.1
 azure.subscription.storageService.account.accessTier 11.6.2
 azure.subscription.storageService.account.allowBlobPublicAccess 11.4.28
+azure.subscription.storageService.account.allowCrossTenantDelegationSas 14.0.1
 azure.subscription.storageService.account.allowCrossTenantReplication 11.4.28
 azure.subscription.storageService.account.allowSharedKeyAccess 11.4.28
 azure.subscription.storageService.account.allowedCopyScope 13.5.1
@@ -6984,6 +6985,8 @@ azure.subscription.storageService.account.resourceIdentity 13.36.1
 azure.subscription.storageService.account.routingChoice 13.10.2
 azure.subscription.storageService.account.sasExpirationAction 13.5.1
 azure.subscription.storageService.account.sasExpirationPeriod 13.5.1
+azure.subscription.storageService.account.sasRequireUserBoundUserDelegationSas 14.0.1
+azure.subscription.storageService.account.sasRequireUserBoundUserDelegationSasAction 14.0.1
 azure.subscription.storageService.account.secondaryLocation 11.6.2
 azure.subscription.storageService.account.service.blobProperties 11.4.23
 azure.subscription.storageService.account.service.blobProperties.changeFeedEnabled 13.36.1

@@ -2025,9 +2025,10 @@ azure.subscription.batchService.account.pool @defaults("id name") {
   proxyAgentEnabled bool
   // Encryption applied to the pool's OS disk for confidential computing
   //
-  // One of VMGuestStateOnly (only the VM guest state is encrypted) or
+  // One of VMGuestStateOnly (only the VM guest state is encrypted),
   // DiskWithVMGuestState (the full OS disk and the guest state are
-  // encrypted). Null when the pool does not use a confidential or
+  // encrypted), or NonPersistedTPM (firmware state is not persisted in the
+  // VM guest state). Null when the pool does not use a confidential or
   // trusted-launch VM.
   securityEncryptionType string
   // Security type of the pool's virtual machines
@@ -6463,6 +6464,12 @@ private azure.subscription.storageService.account @defaults("id name location") 
   key2CreationTime time
   // Whether cross-tenant replication is allowed
   allowCrossTenantReplication bool
+  // Whether cross-tenant user delegation SAS is allowed
+  //
+  // When true, user delegation SAS tokens signed by an identity from
+  // another Microsoft Entra tenant are accepted. Azure treats an unset
+  // value as false. Null when the account does not report the setting.
+  allowCrossTenantDelegationSas bool
   // Whether local user accounts are enabled for SFTP/SSH
   isLocalUserEnabled bool
   // Whether SFTP is enabled on the storage account
@@ -6552,6 +6559,19 @@ private azure.subscription.storageService.account @defaults("id name location") 
   sasExpirationPeriod string
   // SAS expiration policy action ("Log" or "Block"); empty if no policy is set
   sasExpirationAction string
+  // Whether the SAS policy requires user delegation SAS tokens to be bound to a user
+  //
+  // When true, a user delegation SAS must name the end user it was issued
+  // for, so a leaked token cannot be used by anyone else. Azure treats an
+  // unset value as false. Null when the account has no SAS policy or the
+  // policy does not set it.
+  sasRequireUserBoundUserDelegationSas bool
+  // Action taken when a user delegation SAS is not bound to a user
+  //
+  // One of Block, Log, or None. Applies when
+  // sasRequireUserBoundUserDelegationSas is true. Null when the account has
+  // no SAS policy or the policy does not set it.
+  sasRequireUserBoundUserDelegationSasAction string
   // Account access-key expiration period (days)
   keyExpirationPeriodInDays int
   // Whether account-level immutability with versioning is enabled
