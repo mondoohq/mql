@@ -169,6 +169,41 @@ func TestPostgresqlFindsCurrentMajor(t *testing.T) {
 	})
 }
 
+// postgresql17-server on FreeBSD 14.5: `service postgresql initdb` creates
+// /var/db/postgres/data17 and keeps all three config files in it.
+func TestPostgresqlFreeBSDLayout(t *testing.T) {
+	fs := pgFs(t,
+		"/var/db/postgres/data17/postgresql.conf",
+		"/var/db/postgres/data17/pg_hba.conf",
+		"/var/db/postgres/data17/pg_ident.conf",
+	)
+	for _, name := range []string{"postgresql.conf", "pg_hba.conf", "pg_ident.conf"} {
+		assert.Equal(t, "/var/db/postgres/data17/"+name, findPostgresqlConfigFile(fs, name))
+	}
+
+	t.Run("the newest cluster wins, 9.x suffixes rank as major 9", func(t *testing.T) {
+		fs := pgFs(t,
+			"/var/db/postgres/data96/postgresql.conf",
+			"/var/db/postgres/data16/postgresql.conf",
+			"/var/db/postgres/data18/postgresql.conf",
+		)
+		assert.Equal(t, "/var/db/postgres/data18/postgresql.conf",
+			findPostgresqlConfigFile(fs, "postgresql.conf"))
+
+		fs = pgFs(t,
+			"/var/db/postgres/data96/postgresql.conf",
+			"/var/db/postgres/data10/postgresql.conf",
+		)
+		assert.Equal(t, "/var/db/postgres/data10/postgresql.conf",
+			findPostgresqlConfigFile(fs, "postgresql.conf"))
+	})
+
+	t.Run("a directory without a version is not a candidate", func(t *testing.T) {
+		fs := pgFs(t, "/var/db/postgres/data_old/postgresql.conf")
+		assert.Equal(t, "", findPostgresqlConfigFile(fs, "postgresql.conf"))
+	})
+}
+
 // A host carrying several clusters resolves to the newest, the way the old
 // descending enumeration did.
 func TestPostgresqlPrefersHighestMajor(t *testing.T) {

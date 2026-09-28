@@ -1,0 +1,129 @@
+# FreeBSD layout of the mariadb114-server and mariadb114-client 11.4.13
+# packages (FreeBSD 14 package set). The client package ships
+# /usr/local/etc/mysql/my.cnf.sample, which includes conf.d; the server
+# package ships conf.d/server.cnf.sample and installs the server at
+# /usr/local/libexec/mariadbd with a mysqld link beside it. Both samples are
+# copied to their live names here.
+
+[files."/usr"]
+path = "/usr"
+[files."/usr".stat]
+isdir = true
+mode = 16877
+
+[files."/usr/local"]
+path = "/usr/local"
+[files."/usr/local".stat]
+isdir = true
+mode = 16877
+
+[files."/usr/local/etc"]
+path = "/usr/local/etc"
+[files."/usr/local/etc".stat]
+isdir = true
+mode = 16877
+
+[files."/usr/local/etc/mysql"]
+path = "/usr/local/etc/mysql"
+[files."/usr/local/etc/mysql".stat]
+isdir = true
+mode = 16877
+
+[files."/usr/local/etc/mysql/conf.d"]
+path = "/usr/local/etc/mysql/conf.d"
+[files."/usr/local/etc/mysql/conf.d".stat]
+isdir = true
+mode = 16877
+
+[files."/usr/local/libexec"]
+path = "/usr/local/libexec"
+[files."/usr/local/libexec".stat]
+isdir = true
+mode = 16877
+
+[files."/usr/local/etc/mysql/my.cnf"]
+path = "/usr/local/etc/mysql/my.cnf"
+content = '''
+# This file is part of MariaDB.
+#
+# See https://mariadb.com/kb/en/configuring-mariadb-with-option-files/
+
+[client-server]
+port	= 3306
+socket	= /var/run/mysql/mysql.sock
+
+!includedir /usr/local/etc/mysql/conf.d/
+'''
+[files."/usr/local/etc/mysql/my.cnf".stat]
+mode = 33188
+
+[files."/usr/local/etc/mysql/conf.d/server.cnf"]
+path = "/usr/local/etc/mysql/conf.d/server.cnf"
+content = '''
+# Options specific to server applications, see
+# https://mariadb.com/kb/en/configuring-mariadb-with-option-files/#server-option-groups
+
+# Options specific to all server programs
+[server]
+
+# Options specific to MariaDB server programs
+[server-mariadb]
+
+#
+# Options for specific server tools
+#
+
+[mysqld]
+user				= mysql
+# port				= 3306 # inherited from /usr/local/etc/mysql/my.cnf
+# socket			= /var/run/mysql/mysql.sock # inherited from /usr/local/etc/mysql/my.cnf
+bind-address			= 127.0.0.1
+basedir				= /usr/local
+# datadir			= /var/db/mysql # set with --db_dir from rc-script
+net_retry_count			= 16384
+log_error			= /var/log/mysql/mysqld.err
+# [mysqld] configuration for ZFS
+# From https://www.percona.com/resources/technical-presentations/zfs-mysql-percona-technical-webinar
+# Create separate datasets for data and logs, eg
+# zroot/mysql      compression=on recordsize=128k atime=off
+# zroot/mysql/data recordsize=16k
+# zroot/mysql/logs
+# datadir 			= /var/db/mysql/data
+# innodb_log_group_home_dir	= /var/db/mysql/log
+# audit_log_file		= /var/db/mysql/log/audit.log
+# general_log_file		= /var/db/mysql/log/general.log
+# log_bin			= /var/db/mysql/log/mysql-bin
+# relay_log			= /var/db/mysql/log/relay-log
+# slow_query_log_file		= /var/db/mysql/log/slow.log
+# innodb_doublewrite		= 0
+# innodb_flush_method		= O_DSYNC
+
+# Options read by `mariadb-safe` (and `mysql_safe`)
+[mariadb-safe]
+
+# Options read my `mariabackup`
+[mariabackup]
+
+# Options read by mariadb-upgrade (and `mysql_upgrade`)
+[mariadb-upgrade]
+
+# Specific options read by the mariabackup SST method
+[sst]
+
+'''
+[files."/usr/local/etc/mysql/conf.d/server.cnf".stat]
+mode = 33188
+
+[files."/usr/local/libexec/mariadbd"]
+path = "/usr/local/libexec/mariadbd"
+content = '''
+ELF'''
+[files."/usr/local/libexec/mariadbd".stat]
+mode = 33261
+
+[files."/usr/local/libexec/mysqld"]
+path = "/usr/local/libexec/mysqld"
+content = '''
+ELF'''
+[files."/usr/local/libexec/mysqld".stat]
+mode = 33261

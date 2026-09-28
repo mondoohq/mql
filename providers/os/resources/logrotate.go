@@ -20,7 +20,33 @@ import (
 const (
 	defaultLogrotateConf = "/etc/logrotate.conf"
 	defaultLogrotateDir  = "/etc/logrotate.d"
+
+	// The FreeBSD port (sysutils/logrotate) installs its configuration under
+	// the local prefix; base FreeBSD rotates logs with newsyslog(8) instead.
+	localLogrotateConf = "/usr/local/etc/logrotate.conf"
+	localLogrotateDir  = "/usr/local/etc/logrotate.d"
 )
+
+// logrotateLocations returns the main configuration file and the drop-in
+// directories to read. /etc (or its /usr/etc vendor copy) wins; the
+// /usr/local/etc tree used by the FreeBSD port is read only when there is no
+// configuration under /etc.
+func logrotateLocations(fs afero.Fs) (string, []string) {
+	conf := resolveVendorConfigPath(fs, defaultLogrotateConf)
+	if fs == nil {
+		return conf, nil
+	}
+	if _, err := fs.Stat(conf); err != nil {
+		if _, err := fs.Stat(localLogrotateConf); err == nil {
+			var dirs []string
+			if fi, err := fs.Stat(localLogrotateDir); err == nil && fi.IsDir() {
+				dirs = append(dirs, localLogrotateDir)
+			}
+			return localLogrotateConf, dirs
+		}
+	}
+	return conf, vendorConfigDirs(fs, defaultLogrotateDir)
+}
 
 func initLogrotate(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	return args, nil, nil
@@ -53,8 +79,9 @@ func (l *mqlLogrotate) files() ([]any, error) {
 	// Add main logrotate.conf. Distributions that ship packaged defaults under
 	// /usr/etc (openSUSE Leap 16, SLE 16) keep it there unless an administrator
 	// overrode it in /etc.
+	mainPath, dropInDirs := logrotateLocations(fs)
 	mainFile, err := CreateResource(l.MqlRuntime, "file", map[string]*llx.RawData{
-		"path": llx.StringData(resolveVendorConfigPath(fs, defaultLogrotateConf)),
+		"path": llx.StringData(mainPath),
 	})
 	if err != nil {
 		return nil, err
@@ -71,7 +98,7 @@ func (l *mqlLogrotate) files() ([]any, error) {
 
 	// Drop-ins merge across both trees, with /etc shadowing a same-named file
 	// in /usr/etc.
-	for _, dir := range vendorConfigDirs(fs, defaultLogrotateDir) {
+	for _, dir := range dropInDirs {
 		files, err := CreateResource(l.MqlRuntime, "files.find", map[string]*llx.RawData{
 			"from":  llx.StringData(dir),
 			"type":  llx.StringData("file"),

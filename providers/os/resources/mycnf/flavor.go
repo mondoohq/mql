@@ -30,6 +30,7 @@ type FileProbe func(path string) (exists bool, isDir bool)
 var mariadbBinaries = []string{
 	"/usr/sbin/mariadbd",
 	"/usr/libexec/mariadbd",
+	"/usr/local/libexec/mariadbd", // FreeBSD ports
 	"/usr/local/mariadb/bin/mariadbd",
 	"/opt/homebrew/bin/mariadbd",
 }
@@ -40,8 +41,14 @@ var mariadbBinaries = []string{
 var mysqldBinaries = []string{
 	"/usr/sbin/mysqld",
 	"/usr/libexec/mysqld",
+	"/usr/local/libexec/mysqld", // FreeBSD ports
 	"/usr/local/mysql/bin/mysqld",
 	"/opt/homebrew/bin/mysqld",
+}
+
+// ServerBinaries returns the known server binary paths, MariaDB's first.
+func ServerBinaries() []string {
+	return append(slices.Clone(mariadbBinaries), mysqldBinaries...)
 }
 
 // DetectFlavor decides which product a parsed option file belongs to.

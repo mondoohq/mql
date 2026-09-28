@@ -30,6 +30,9 @@ var mysqlConfPaths = []string{
 	"/etc/mysql/mysql.cnf",
 	"/usr/local/mysql/etc/my.cnf",
 	"/usr/local/etc/my.cnf",
+	// FreeBSD ports (mysql80, mysql84) install my.cnf.sample here. mysqld
+	// 8.4 on FreeBSD 14 reads /usr/local/etc/my.cnf first, then this file.
+	"/usr/local/etc/mysql/my.cnf",
 	"/opt/homebrew/etc/my.cnf",
 }
 
@@ -40,6 +43,9 @@ var mariadbConfPaths = []string{
 	"/etc/mysql/my.cnf",
 	"/etc/mysql/mariadb.cnf",
 	"/usr/local/etc/my.cnf",
+	// FreeBSD ports (mariadb1011 through mariadb123) ship my.cnf.sample
+	// here, including /usr/local/etc/mysql/conf.d.
+	"/usr/local/etc/mysql/my.cnf",
 	"/opt/homebrew/etc/my.cnf",
 }
 
@@ -386,14 +392,26 @@ func userOptionFileSections(runtime *plugin.Runtime, resourceName, format string
 // therefore needs command execution, and reports nothing over a transport that
 // cannot run commands. The option files this file's other resources read are
 // unaffected, since those come off the filesystem.
+//
+// Several packagings install the server outside PATH (/usr/libexec on RHEL,
+// /usr/local/libexec on FreeBSD), so after the bare names fail the known
+// install paths that exist on the target are run directly.
 func detectServerVersion(runtime *plugin.Runtime) (version string, flavor string) {
 	conn, ok := runtime.Connection.(shared.Connection)
 	if !ok {
 		return "", ""
 	}
 
-	for _, cmd := range []string{"mariadbd --version", "mysqld --version"} {
-		res, err := conn.RunCommand(cmd)
+	bins := []string{"mariadbd", "mysqld"}
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+	for _, path := range mycnf.ServerBinaries() {
+		if ok, err := afs.Exists(path); err == nil && ok {
+			bins = append(bins, path)
+		}
+	}
+
+	for _, bin := range bins {
+		res, err := conn.RunCommand(bin + " --version")
 		if err != nil || res.ExitStatus != 0 {
 			continue
 		}

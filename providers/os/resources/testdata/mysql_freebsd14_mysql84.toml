@@ -1,0 +1,106 @@
+# FreeBSD 14.5 with the mysql84-server 8.4.11 package. The port installs the
+# server at /usr/local/libexec/mysqld (outside PATH) and its sample option file
+# at /usr/local/etc/mysql/my.cnf.sample; this host copied the sample to
+# my.cnf. `mysqld --verbose --help` lists the search order as
+# /usr/local/etc/my.cnf /usr/local/etc/mysql/my.cnf ~/.my.cnf.
+
+[files."/usr"]
+path = "/usr"
+[files."/usr".stat]
+isdir = true
+mode = 16877
+
+[files."/usr/local"]
+path = "/usr/local"
+[files."/usr/local".stat]
+isdir = true
+mode = 16877
+
+[files."/usr/local/etc"]
+path = "/usr/local/etc"
+[files."/usr/local/etc".stat]
+isdir = true
+mode = 16877
+
+[files."/usr/local/etc/mysql"]
+path = "/usr/local/etc/mysql"
+[files."/usr/local/etc/mysql".stat]
+isdir = true
+mode = 16877
+
+[files."/usr/local/libexec"]
+path = "/usr/local/libexec"
+[files."/usr/local/libexec".stat]
+isdir = true
+mode = 16877
+
+[files."/usr/local/etc/mysql/my.cnf"]
+path = "/usr/local/etc/mysql/my.cnf"
+content = '''
+[client]
+port                            = 3306
+socket                          = /tmp/mysql.sock
+
+[mysql]
+prompt                          = \u@\h [\d]>\_
+no_auto_rehash
+
+[mysqld]
+user                            = mysql
+port                            = 3306
+socket                          = /tmp/mysql.sock
+bind-address                    = 127.0.0.1
+basedir                         = /usr/local
+datadir                         = /var/db/mysql
+tmpdir                          = /var/db/mysql_tmpdir
+replica-load-tmpdir             = /var/db/mysql_tmpdir
+secure-file-priv                = /var/db/mysql_secure
+log-bin                         = mysql-bin
+log-output                      = TABLE
+relay-log-recovery              = 1
+slow-query-log                  = 1
+server-id                       = 1
+sync_binlog                     = 1
+sync_relay_log                  = 1
+binlog_cache_size               = 16M
+binlog_expire_logs_seconds      = 2592000
+default_password_lifetime       = 0
+enforce-gtid-consistency        = 1
+gtid-mode                       = ON
+safe-user-create                = 1
+lower_case_table_names          = 1
+explicit-defaults-for-timestamp = 1
+myisam-recover-options          = BACKUP,FORCE
+open_files_limit                = 32768
+table_open_cache                = 16384
+table_definition_cache          = 8192
+net_retry_count                 = 16384
+key_buffer_size                 = 256M
+max_allowed_packet              = 64M
+long_query_time                 = 0.5
+innodb_buffer_pool_size         = 1G
+innodb_data_home_dir            = /var/db/mysql
+innodb_log_group_home_dir       = /var/db/mysql
+innodb_data_file_path           = ibdata1:128M:autoextend
+innodb_temp_data_file_path      = ibtmp1:128M:autoextend
+innodb_flush_method             = O_DIRECT
+innodb_redo_log_capacity        = 512M
+innodb_log_buffer_size          = 16M
+innodb_write_io_threads         = 8
+innodb_read_io_threads          = 8
+innodb_autoinc_lock_mode        = 2
+
+[mysqldump]
+max_allowed_packet              = 256M
+quote_names
+quick
+'''
+[files."/usr/local/etc/mysql/my.cnf".stat]
+mode = 33188
+
+[files."/usr/local/libexec/mysqld"]
+path = "/usr/local/libexec/mysqld"
+content = '''
+ELF'''
+[files."/usr/local/libexec/mysqld".stat]
+mode = 33261

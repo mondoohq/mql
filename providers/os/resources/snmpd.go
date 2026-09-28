@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/snmpd"
 	"go.mondoo.com/mql/types"
 )
@@ -19,6 +21,30 @@ const (
 	defaultSnmpdConfig = "/etc/snmp/snmpd.conf"
 	snmpdDropInDirName = "snmpd.conf.d"
 )
+
+// snmpdConfigCandidates are the snmpd.conf locations probed in order. The
+// net-snmp package on FreeBSD searches /usr/local/etc/snmp and then
+// /usr/local/share/snmp (`net-snmp-config --snmpconfpath`), and its rc.d
+// script defaults to /usr/local/share/snmp/snmpd.conf.
+var snmpdConfigCandidates = []string{
+	defaultSnmpdConfig,
+	"/usr/local/etc/snmp/snmpd.conf",
+	"/usr/local/share/snmp/snmpd.conf",
+}
+
+// snmpdConfigPath returns the first candidate that exists on fs, or the
+// default path when none does.
+func snmpdConfigPath(fs afero.Fs) string {
+	if fs == nil {
+		return defaultSnmpdConfig
+	}
+	for _, p := range snmpdConfigCandidates {
+		if fi, err := fs.Stat(p); err == nil && !fi.IsDir() {
+			return p
+		}
+	}
+	return defaultSnmpdConfig
+}
 
 func initSnmpdConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
 	if x, ok := args["path"]; ok {
@@ -50,8 +76,12 @@ func (s *mqlSnmpdConfig) id() (string, error) {
 }
 
 func (s *mqlSnmpdConfig) file() (*mqlFile, error) {
+	var fs afero.Fs
+	if conn, ok := s.MqlRuntime.Connection.(shared.Connection); ok {
+		fs = conn.FileSystem()
+	}
 	f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
-		"path": llx.StringData(defaultSnmpdConfig),
+		"path": llx.StringData(snmpdConfigPath(fs)),
 	})
 	if err != nil {
 		return nil, err

@@ -206,6 +206,47 @@ func TestMysqlConf_UbuntuOptionsComeFromTheFragment(t *testing.T) {
 	assert.Contains(t, paths, "/etc/mysql/conf.d/mysqldump.cnf")
 }
 
+// The FreeBSD mysql84 port keeps its option file under /usr/local/etc/mysql.
+func TestMysqlConf_FreeBSDPortLayout(t *testing.T) {
+	conf := mysqlConf(t, "mysql_freebsd14_mysql84.toml")
+
+	file := conf.GetFile()
+	require.NoError(t, file.Error)
+	require.NotNil(t, file.Data)
+	assert.Equal(t, "/usr/local/etc/mysql/my.cnf", file.Data.Path.Data)
+
+	assert.Equal(t, []any{"127.0.0.1"}, conf.GetBindAddress().Data)
+	assert.Equal(t, "/usr/local", conf.GetBasedir().Data)
+	assert.Equal(t, "/var/db/mysql", conf.GetDatadir().Data)
+	assert.Equal(t, "/tmp/mysql.sock", conf.GetSocket().Data)
+	assert.Equal(t, "/var/db/mysql_secure", conf.GetSecureFilePriv().Data)
+
+	// The same layout carries no MariaDB signal.
+	mdb := mariadbConf(t, "mysql_freebsd14_mysql84.toml")
+	require.NoError(t, mdb.GetFile().Error)
+	assert.Nil(t, mdb.GetFile().Data)
+}
+
+// The FreeBSD mariadb ports share /usr/local/etc/mysql/my.cnf with the mysql
+// ports; the conf.d fragment names the product.
+func TestMariadbConf_FreeBSDPortLayout(t *testing.T) {
+	conf := mariadbConf(t, "mysql_freebsd14_mariadb114.toml")
+
+	file := conf.GetFile()
+	require.NoError(t, file.Error)
+	require.NotNil(t, file.Data)
+	assert.Equal(t, "/usr/local/etc/mysql/my.cnf", file.Data.Path.Data)
+
+	assert.Equal(t, []any{"127.0.0.1"}, conf.GetBindAddress().Data)
+	assert.Equal(t, "/usr/local", conf.GetBasedir().Data)
+	assert.Equal(t, "/var/log/mysql/mysqld.err", conf.GetLogError().Data)
+	assert.Equal(t, "/var/run/mysql/mysql.sock", conf.GetSocket().Data)
+
+	mysql := mysqlConf(t, "mysql_freebsd14_mariadb114.toml")
+	require.NoError(t, mysql.GetFile().Error)
+	assert.Nil(t, mysql.GetFile().Data)
+}
+
 // MariaDB 11 configures the server under [mariadbd] and ships no [mysqld]
 // group, so server scope has to include it or the whole view comes back empty.
 func TestMariadbConf_ServerScopeUsesMariadbdGroup(t *testing.T) {

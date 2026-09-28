@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/spf13/afero"
@@ -30,7 +31,8 @@ import (
 //
 // Distro packages stamp the major version into the directory name
 // (/etc/postgresql/<MAJOR>/main on Debian/Ubuntu, /var/lib/pgsql/<MAJOR>/data
-// on RHEL), so those two groups are resolved by glob. Enumerating the majors
+// on RHEL, /var/db/postgres/data<MAJOR> on FreeBSD), so those groups are
+// resolved by glob. Enumerating the majors
 // by hand goes stale the day a new one ships: the list previously stopped at
 // 17 and therefore found nothing at all on a PostgreSQL 18 install. The
 // remaining paths (container images, initdb defaults, homebrew) carry no
@@ -42,6 +44,7 @@ func postgresqlConfigSearchPaths(fs afero.Fs, name string) []string {
 		"/var/lib/pgsql/data/"+name,
 	)
 	paths = append(paths, versionedPostgresqlPaths(fs, "/var/lib/pgsql", "data", name)...)
+	paths = append(paths, freebsdPostgresqlPaths(fs, name)...)
 	return append(paths,
 		"/usr/local/var/postgres/"+name,
 		"/usr/local/pgsql/data/"+name,
@@ -59,10 +62,40 @@ func postgresqlConfigSearchPaths(fs afero.Fs, name string) []string {
 // globbed contributes no candidates, which is what the hardcoded list did when
 // a path simply was not there.
 func versionedPostgresqlPaths(fs afero.Fs, root, cluster, name string) []string {
+	// <root>/<major>/<cluster>/<name>
+	return postgresqlPathsByMajor(fs, root+"/*/"+cluster+"/"+name, func(match string) (int, bool) {
+		major, err := strconv.Atoi(path.Base(path.Dir(path.Dir(match))))
+		return major, err == nil
+	})
+}
+
+// freebsdPostgresqlPaths expands the data directories the FreeBSD
+// postgresql<MAJOR>-server packages create: the rc.d script initializes
+// ~postgres/data<MAJOR> (/var/db/postgres/data17 for postgresql17-server on
+// FreeBSD 14.5). Before PostgreSQL 10 the suffix carried major and minor
+// (data96 for 9.6), which is ranked as major 9.
+func freebsdPostgresqlPaths(fs afero.Fs, name string) []string {
+	return postgresqlPathsByMajor(fs, "/var/db/postgres/data*/"+name, func(match string) (int, bool) {
+		suffix := strings.TrimPrefix(path.Base(path.Dir(match)), "data")
+		major, err := strconv.Atoi(suffix)
+		if err != nil || major <= 0 {
+			return 0, false
+		}
+		if major >= 90 && major <= 99 {
+			major /= 10
+		}
+		return major, true
+	})
+}
+
+// postgresqlPathsByMajor expands pattern and returns the matches ordered by the
+// major version majorOf reads from each, highest first. Matches majorOf
+// rejects are dropped.
+func postgresqlPathsByMajor(fs afero.Fs, pattern string, majorOf func(match string) (int, bool)) []string {
 	if fs == nil {
 		return nil
 	}
-	matches, err := afero.Glob(fs, root+"/*/"+cluster+"/"+name)
+	matches, err := afero.Glob(fs, pattern)
 	if err != nil {
 		return nil
 	}
@@ -73,9 +106,8 @@ func versionedPostgresqlPaths(fs afero.Fs, root, cluster, name string) []string 
 	}
 	candidates := make([]candidate, 0, len(matches))
 	for _, match := range matches {
-		// <root>/<major>/<cluster>/<name>
-		major, err := strconv.Atoi(path.Base(path.Dir(path.Dir(match))))
-		if err != nil {
+		major, ok := majorOf(match)
+		if !ok {
 			continue
 		}
 		candidates = append(candidates, candidate{major: major, path: match})
