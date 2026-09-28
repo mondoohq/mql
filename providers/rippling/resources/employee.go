@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"go.mondoo.com/mql/llx"
@@ -98,7 +99,10 @@ func newMqlRipplingEmployee(runtime *plugin.Runtime, e *connection.Employee) (*m
 	if err != nil {
 		return nil, err
 	}
-	emp := r.(*mqlRipplingEmployee)
+	emp, ok := r.(*mqlRipplingEmployee)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlRipplingEmployee", r)
+	}
 	emp.managerID = e.Manager
 	emp.departmentID = e.Department
 	emp.teamID = e.Team
@@ -125,7 +129,11 @@ func (e *mqlRipplingEmployee) department() (*mqlRipplingDepartment, error) {
 	if err != nil {
 		return nil, err
 	}
-	return r.(*mqlRipplingDepartment), nil
+	res, ok := r.(*mqlRipplingDepartment)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlRipplingDepartment", r)
+	}
+	return res, nil
 }
 
 func (e *mqlRipplingEmployee) team() (*mqlRipplingTeam, error) {
@@ -139,7 +147,11 @@ func (e *mqlRipplingEmployee) team() (*mqlRipplingTeam, error) {
 	if err != nil {
 		return nil, err
 	}
-	return r.(*mqlRipplingTeam), nil
+	res, ok := r.(*mqlRipplingTeam)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlRipplingTeam", r)
+	}
+	return res, nil
 }
 
 func (e *mqlRipplingEmployee) workLocation() (*mqlRipplingWorkLocation, error) {
@@ -153,5 +165,9 @@ func (e *mqlRipplingEmployee) workLocation() (*mqlRipplingWorkLocation, error) {
 	if err != nil {
 		return nil, err
 	}
-	return r.(*mqlRipplingWorkLocation), nil
+	res, ok := r.(*mqlRipplingWorkLocation)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlRipplingWorkLocation", r)
+	}
+	return res, nil
 }

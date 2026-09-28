@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -61,7 +62,10 @@ func newMqlRipplingTeam(runtime *plugin.Runtime, t *connection.Team) (*mqlRippli
 	if err != nil {
 		return nil, err
 	}
-	team := r.(*mqlRipplingTeam)
+	team, ok := r.(*mqlRipplingTeam)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlRipplingTeam", r)
+	}
 	team.parentTeamID = t.ParentTeam
 	return team, nil
 }
@@ -77,7 +81,11 @@ func (t *mqlRipplingTeam) parentTeam() (*mqlRipplingTeam, error) {
 	if err != nil {
 		return nil, err
 	}
-	return r.(*mqlRipplingTeam), nil
+	res, ok := r.(*mqlRipplingTeam)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlRipplingTeam", r)
+	}
+	return res, nil
 }
 
 func (t *mqlRipplingTeam) employees() ([]any, error) {

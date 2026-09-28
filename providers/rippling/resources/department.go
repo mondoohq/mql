@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -61,7 +62,10 @@ func newMqlRipplingDepartment(runtime *plugin.Runtime, d *connection.Department)
 	if err != nil {
 		return nil, err
 	}
-	dept := r.(*mqlRipplingDepartment)
+	dept, ok := r.(*mqlRipplingDepartment)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlRipplingDepartment", r)
+	}
 	dept.parentID = d.Parent
 	return dept, nil
 }
@@ -77,7 +81,11 @@ func (d *mqlRipplingDepartment) parent() (*mqlRipplingDepartment, error) {
 	if err != nil {
 		return nil, err
 	}
-	return r.(*mqlRipplingDepartment), nil
+	res, ok := r.(*mqlRipplingDepartment)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlRipplingDepartment", r)
+	}
+	return res, nil
 }
 
 func (d *mqlRipplingDepartment) employees() ([]any, error) {

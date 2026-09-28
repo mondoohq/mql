@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -62,7 +63,10 @@ func newMqlRipplingGroup(runtime *plugin.Runtime, g *connection.Group) (*mqlRipp
 	if err != nil {
 		return nil, err
 	}
-	group := r.(*mqlRipplingGroup)
+	group, ok := r.(*mqlRipplingGroup)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlRipplingGroup", r)
+	}
 	// Assign rather than append: CreateResource returns the cached instance
 	// when this group was already built during the scan, and appending there
 	// would list every member twice.

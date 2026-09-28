@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -67,7 +68,11 @@ func newMqlRipplingWorkLocation(runtime *plugin.Runtime, l *connection.WorkLocat
 	if err != nil {
 		return nil, err
 	}
-	return r.(*mqlRipplingWorkLocation), nil
+	res, ok := r.(*mqlRipplingWorkLocation)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlRipplingWorkLocation", r)
+	}
+	return res, nil
 }
 
 func (l *mqlRipplingWorkLocation) employees() ([]any, error) {

@@ -4,6 +4,8 @@
 package resources
 
 import (
+	"fmt"
+
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/rippling/connection"
@@ -37,5 +39,9 @@ func newMqlRipplingCompany(runtime *plugin.Runtime, c *connection.Company) (*mql
 	if err != nil {
 		return nil, err
 	}
-	return r.(*mqlRipplingCompany), nil
+	res, ok := r.(*mqlRipplingCompany)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlRipplingCompany", r)
+	}
+	return res, nil
 }

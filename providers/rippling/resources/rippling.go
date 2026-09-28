@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"fmt"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -124,5 +125,9 @@ func resolveEmployee(runtime *plugin.Runtime, id string) (*mqlRipplingEmployee, 
 	if err != nil {
 		return nil, err
 	}
-	return r.(*mqlRipplingEmployee), nil
+	res, ok := r.(*mqlRipplingEmployee)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlRipplingEmployee", r)
+	}
+	return res, nil
 }
