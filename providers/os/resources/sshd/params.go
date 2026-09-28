@@ -6,7 +6,6 @@ package sshd
 import (
 	"strings"
 
-	shellquote "github.com/kballard/go-shellquote"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/utils/sortx"
@@ -283,8 +282,13 @@ func ParseBlocksWithGlob(rootPath string, fileContent fileContentFunc, globExpan
 //
 // Quote-aware splitting also fixes the case quoting exists for: a path that
 // contains a space is now one argument rather than two broken ones.
+//
+// The split follows OpenSSH's argv_split rather than POSIX shell rules: a
+// backslash only escapes a quote, another backslash, or an unquoted space, and
+// is kept literally before anything else. That is what keeps a Windows path
+// such as `Include C:\ProgramData\ssh\extra.conf` intact.
 func splitIncludeArgs(args string) []string {
-	if fields, err := shellquote.Split(args); err == nil {
+	if fields, ok := argvSplit(args); ok {
 		return fields
 	}
 
@@ -488,4 +492,51 @@ var SSH_Keywords = map[string]string{
 	"x11forwarding":                   "X11Forwarding",
 	"x11uselocalhost":                 "X11UseLocalhost",
 	"xauthlocation":                   "XAuthLocation",
+}
+
+// argvSplit is a port of argv_split from OpenSSH misc.c, which sshd uses to
+// tokenize every configuration line. It reports false for an unterminated
+// quote, which sshd rejects as an invalid format.
+func argvSplit(s string) ([]string, bool) {
+	var args []string
+	r := []rune(s)
+	for i := 0; i < len(r); i++ {
+		if r[i] == ' ' || r[i] == '\t' {
+			continue
+		}
+		var quote rune
+		var arg strings.Builder
+		for ; i < len(r); i++ {
+			c := r[i]
+			switch {
+			case c == '\\':
+				if i+1 < len(r) {
+					next := r[i+1]
+					if next == '\'' || next == '"' || next == '\\' || (quote == 0 && next == ' ') {
+						i++
+						c = next
+					}
+				}
+				arg.WriteRune(c)
+				continue
+			case quote == 0 && (c == ' ' || c == '\t'):
+				// unquoted whitespace ends the token
+			case quote == 0 && (c == '"' || c == '\''):
+				quote = c
+				continue
+			case quote != 0 && c == quote:
+				quote = 0
+				continue
+			default:
+				arg.WriteRune(c)
+				continue
+			}
+			break
+		}
+		if quote != 0 {
+			return nil, false
+		}
+		args = append(args, arg.String())
+	}
+	return args, true
 }

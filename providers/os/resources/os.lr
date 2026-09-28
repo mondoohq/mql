@@ -1675,7 +1675,8 @@ sshd {}
 // hardening checks, `permitRootLogin` for root-access policy, and
 // `blocks` for the conditional Match blocks. Compare the configured
 // values (`ciphers`) against the effective ones (`effectiveCiphers`) to
-// catch overrides applied at runtime.
+// catch overrides applied at runtime. The default file is
+// /etc/ssh/sshd_config, or C:\ProgramData\ssh\sshd_config on Windows.
 sshd.config {
   init(path? string)
   // File of this SSH server configuration
