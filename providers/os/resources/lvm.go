@@ -18,7 +18,7 @@ func (l *mqlLvm) id() (string, error) {
 }
 
 func (l *mqlLvm) physicalVolumes() ([]any, error) {
-	stdout, ok, err := l.runLvmReport("pvs --reportformat json --units b --nosuffix -o pv_name,pv_uuid,vg_name,pv_fmt,pv_attr,pv_size,pv_free")
+	stdout, ok, err := l.runLvmReport("pvs", "pv", "pv_name,pv_uuid,vg_name,pv_fmt,pv_attr,pv_size,pv_free")
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +51,7 @@ func (l *mqlLvm) physicalVolumes() ([]any, error) {
 }
 
 func (l *mqlLvm) volumeGroups() ([]any, error) {
-	stdout, ok, err := l.runLvmReport("vgs --reportformat json --units b --nosuffix -o vg_name,vg_uuid,vg_attr,vg_size,vg_free,pv_count,lv_count,snap_count")
+	stdout, ok, err := l.runLvmReport("vgs", "vg", "vg_name,vg_uuid,vg_attr,vg_size,vg_free,pv_count,lv_count,snap_count")
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func (l *mqlLvm) volumeGroups() ([]any, error) {
 }
 
 func (l *mqlLvm) logicalVolumes() ([]any, error) {
-	stdout, ok, err := l.runLvmReport("lvs --reportformat json --units b --nosuffix -o lv_name,lv_path,lv_uuid,vg_name,lv_attr,lv_size,origin,data_percent,pool_lv")
+	stdout, ok, err := l.runLvmReport("lvs", "lv", "lv_name,lv_path,lv_uuid,vg_name,lv_attr,lv_size,origin,data_percent,pool_lv")
 	if err != nil {
 		return nil, err
 	}
@@ -119,29 +119,145 @@ func (l *mqlLvm) logicalVolumes() ([]any, error) {
 	return res, nil
 }
 
-// runLvmReport executes an lvm reporting command via the command resource.
-// The second return value is false when lvm is not installed on the host —
-// treated as "empty list" so a query against a non-LVM host succeeds with `[]`.
-// Any other non-zero exit (permission denied, broken metadata, etc.) is
-// surfaced as an error rather than silently producing an empty result.
-func (l *mqlLvm) runLvmReport(cmdline string) (string, bool, error) {
+// runLvmReport executes an lvm reporting command (pvs, vgs, lvs) via the
+// command resource and returns its report in the JSON shape emitted by
+// `--reportformat json`. The second return value is false when lvm is not
+// installed on the host — treated as "empty list" so a query against a
+// non-LVM host succeeds with `[]`. Any other non-zero exit (permission
+// denied, broken metadata, etc.) is surfaced as an error rather than
+// silently producing an empty result.
+//
+// `--reportformat json` first shipped in LVM2 2.02.158. Older releases
+// (e.g. 2.02.133 on Ubuntu 16.04) reject the option, and for those the
+// report is re-run with `--nameprefixes` output, which every LVM2 release
+// this provider supports understands, and converted to the same JSON shape.
+func (l *mqlLvm) runLvmReport(tool, key, fields string) (string, bool, error) {
+	stdout, stderr, exit, err := l.runLvmCommand(tool + " --reportformat json --units b --nosuffix -o " + fields)
+	if err != nil {
+		return "", false, err
+	}
+	if exit == 0 {
+		return stdout, true, nil
+	}
+	if isLvmNotInstalled(exit, stderr) {
+		return "", false, nil
+	}
+	if !isLvmReportFormatUnsupported(stderr) {
+		return "", false, fmt.Errorf("lvm command failed (exit %d): %s", exit, strings.TrimSpace(stderr))
+	}
+
+	stdout, stderr, exit, err = l.runLvmCommand(tool + " --noheadings --nameprefixes --units b --nosuffix -o " + fields)
+	if err != nil {
+		return "", false, err
+	}
+	if exit != 0 {
+		return "", false, fmt.Errorf("lvm command failed (exit %d): %s", exit, strings.TrimSpace(stderr))
+	}
+	report, err := lvmNamePrefixedToJSON(stdout, key)
+	if err != nil {
+		return "", false, err
+	}
+	return report, true, nil
+}
+
+func (l *mqlLvm) runLvmCommand(cmdline string) (string, string, int64, error) {
 	o, err := CreateResource(l.MqlRuntime, "command", map[string]*llx.RawData{
 		"command": llx.StringData(cmdline),
 	})
 	if err != nil {
-		return "", false, err
+		return "", "", 0, err
 	}
 	cmd := o.(*mqlCommand)
 	exit := cmd.GetExitcode()
-	if exit.Data == 0 {
-		return cmd.Stdout.Data, true, nil
+	if exit.Error != nil {
+		return "", "", 0, exit.Error
 	}
+	return cmd.GetStdout().Data, cmd.GetStderr().Data, exit.Data, nil
+}
 
-	stderr := cmd.Stderr.Data
-	if isLvmNotInstalled(exit.Data, stderr) {
-		return "", false, nil
+// isLvmReportFormatUnsupported reports whether an lvm reporting command
+// failed because the installed LVM2 predates `--reportformat` (2.02.158).
+// Those releases reject it during option parsing, e.g.
+// "vgs: unrecognized option '--reportformat'".
+func isLvmReportFormatUnsupported(stderr string) bool {
+	s := strings.ToLower(stderr)
+	return strings.Contains(s, "--reportformat") &&
+		(strings.Contains(s, "unrecognized option") || strings.Contains(s, "unrecognised option"))
+}
+
+// lvmNamePrefixedToJSON converts `--noheadings --nameprefixes` report output
+// into the JSON document `--reportformat json` would have produced, so both
+// paths share one parser. Each row is one line of KEY='value' pairs, where
+// KEY is the field name upper-cased and prefixed with LVM2_:
+//
+//	LVM2_VG_NAME='vg0' LVM2_VG_UUID='MZMDJ9-...' LVM2_PV_COUNT='1'
+func lvmNamePrefixedToJSON(stdout, key string) (string, error) {
+	rows := []map[string]string{}
+	for _, line := range strings.Split(stdout, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		row, err := parseLvmNamePrefixedLine(line)
+		if err != nil {
+			return "", err
+		}
+		rows = append(rows, row)
 	}
-	return "", false, fmt.Errorf("lvm command failed (exit %d): %s", exit.Data, strings.TrimSpace(stderr))
+	out, err := json.Marshal(map[string][]map[string][]map[string]string{
+		"report": {{key: rows}},
+	})
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+// parseLvmNamePrefixedLine parses one line of `--nameprefixes` output. A
+// value runs from its opening quote to the next quote that is followed by
+// whitespace or the end of the line.
+func parseLvmNamePrefixedLine(line string) (map[string]string, error) {
+	row := map[string]string{}
+	rest := line
+	for {
+		rest = strings.TrimLeft(rest, " \t")
+		if rest == "" {
+			return row, nil
+		}
+		eq := strings.Index(rest, "=")
+		if eq <= 0 {
+			return nil, fmt.Errorf("lvm: cannot parse report line %q", line)
+		}
+		name := rest[:eq]
+		rest = rest[eq+1:]
+
+		var value string
+		if strings.HasPrefix(rest, "'") {
+			rest = rest[1:]
+			end := -1
+			for i := 0; i < len(rest); i++ {
+				if rest[i] == '\'' && (i+1 == len(rest) || rest[i+1] == ' ' || rest[i+1] == '\t') {
+					end = i
+					break
+				}
+			}
+			if end < 0 {
+				return nil, fmt.Errorf("lvm: unterminated value for %s in report line %q", name, line)
+			}
+			value = rest[:end]
+			rest = rest[end+1:]
+		} else {
+			// --unquoted output: the value runs to the next whitespace
+			end := strings.IndexAny(rest, " \t")
+			if end < 0 {
+				end = len(rest)
+			}
+			value = rest[:end]
+			rest = rest[end:]
+		}
+
+		row[strings.ToLower(strings.TrimPrefix(name, "LVM2_"))] = value
+	}
 }
 
 // isLvmNotInstalled reports whether the failure of an lvm reporting command

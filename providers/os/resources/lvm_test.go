@@ -166,3 +166,150 @@ func TestParseLvmFloat(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "data_percent")
 }
+
+// Output of LVM2 2.02.133 (Ubuntu 16.04), which predates --reportformat json,
+// for a loopback VG holding a linear LV, a snapshot of it, a thin pool and a
+// thin LV:
+//
+//	pvs --noheadings --nameprefixes --units b --nosuffix -o pv_name,pv_uuid,vg_name,pv_fmt,pv_attr,pv_size,pv_free
+//	vgs --noheadings --nameprefixes --units b --nosuffix -o vg_name,vg_uuid,vg_attr,vg_size,vg_free,pv_count,lv_count,snap_count
+//	lvs --noheadings --nameprefixes --units b --nosuffix -o lv_name,lv_path,lv_uuid,vg_name,lv_attr,lv_size,origin,data_percent,pool_lv
+const (
+	lvmLegacyPVs = `  LVM2_PV_NAME='/dev/loop5' LVM2_PV_UUID='EOWMaC-AeEB-gOKl-vvNm-Z5cc-POyg-7xe11O' LVM2_VG_NAME='mqltestvg' LVM2_PV_FMT='lvm2' LVM2_PV_ATTR='a--' LVM2_PV_SIZE='532676608' LVM2_PV_FREE='356515840'
+`
+	lvmLegacyVGs = `  LVM2_VG_NAME='mqltestvg' LVM2_VG_UUID='MZMDJ9-E9kQ-Y31i-2lHf-ipVN-GYOf-9Wjd0f' LVM2_VG_ATTR='wz--n-' LVM2_VG_SIZE='532676608' LVM2_VG_FREE='356515840' LVM2_PV_COUNT='1' LVM2_LV_COUNT='4' LVM2_SNAP_COUNT='1'
+`
+	lvmLegacyLVs = `  LVM2_LV_NAME='data' LVM2_LV_PATH='/dev/mqltestvg/data' LVM2_LV_UUID='4r6T3p-NLKn-pTCh-1JKj-nItX-LFs9-ONJzPu' LVM2_VG_NAME='mqltestvg' LVM2_LV_ATTR='owi-a-s---' LVM2_LV_SIZE='67108864' LVM2_ORIGIN='' LVM2_DATA_PERCENT='' LVM2_POOL_LV=''
+  LVM2_LV_NAME='datasnap' LVM2_LV_PATH='/dev/mqltestvg/datasnap' LVM2_LV_UUID='FIHvj1-7fD8-WO3q-EsM1-yt6x-ov6I-CsXFVi' LVM2_VG_NAME='mqltestvg' LVM2_LV_ATTR='swi-a-s---' LVM2_LV_SIZE='33554432' LVM2_ORIGIN='data' LVM2_DATA_PERCENT='0.00' LVM2_POOL_LV=''
+  LVM2_LV_NAME='pool' LVM2_LV_PATH='' LVM2_LV_UUID='40aJzM-Ef71-39cj-Zgq5-ThA4-yK3E-bctBfO' LVM2_VG_NAME='mqltestvg' LVM2_LV_ATTR='twi-aotz--' LVM2_LV_SIZE='67108864' LVM2_ORIGIN='' LVM2_DATA_PERCENT='0.00' LVM2_POOL_LV=''
+  LVM2_LV_NAME='thin' LVM2_LV_PATH='/dev/mqltestvg/thin' LVM2_LV_UUID='F3h0RV-foJL-M9GG-MgND-3cWD-aoVA-ovHVJG' LVM2_VG_NAME='mqltestvg' LVM2_LV_ATTR='Vwi-a-tz--' LVM2_LV_SIZE='33554432' LVM2_ORIGIN='' LVM2_DATA_PERCENT='0.00' LVM2_POOL_LV='pool'
+`
+)
+
+func TestParseLvmLegacyPVs(t *testing.T) {
+	report, err := lvmNamePrefixedToJSON(lvmLegacyPVs, "pv")
+	require.NoError(t, err)
+	pvs, err := parseLvmPVs(report)
+	require.NoError(t, err)
+	require.Equal(t, []parsedLvmPV{{
+		Name:       "/dev/loop5",
+		UUID:       "EOWMaC-AeEB-gOKl-vvNm-Z5cc-POyg-7xe11O",
+		VGName:     "mqltestvg",
+		Format:     "lvm2",
+		Attributes: "a--",
+		SizeBytes:  532676608,
+		FreeBytes:  356515840,
+	}}, pvs)
+}
+
+func TestParseLvmLegacyVGs(t *testing.T) {
+	report, err := lvmNamePrefixedToJSON(lvmLegacyVGs, "vg")
+	require.NoError(t, err)
+	vgs, err := parseLvmVGs(report)
+	require.NoError(t, err)
+	require.Equal(t, []parsedLvmVG{{
+		Name:          "mqltestvg",
+		UUID:          "MZMDJ9-E9kQ-Y31i-2lHf-ipVN-GYOf-9Wjd0f",
+		Attributes:    "wz--n-",
+		SizeBytes:     532676608,
+		FreeBytes:     356515840,
+		PVCount:       1,
+		LVCount:       4,
+		SnapshotCount: 1,
+	}}, vgs)
+}
+
+func TestParseLvmLegacyLVs(t *testing.T) {
+	report, err := lvmNamePrefixedToJSON(lvmLegacyLVs, "lv")
+	require.NoError(t, err)
+	lvs, err := parseLvmLVs(report)
+	require.NoError(t, err)
+	require.Len(t, lvs, 4)
+
+	assert.Equal(t, "data", lvs[0].Name)
+	assert.Equal(t, "/dev/mqltestvg/data", lvs[0].Path)
+	assert.Equal(t, "4r6T3p-NLKn-pTCh-1JKj-nItX-LFs9-ONJzPu", lvs[0].UUID)
+	assert.Equal(t, "mqltestvg", lvs[0].VGName)
+	assert.Equal(t, "owi-a-s---", lvs[0].Attributes)
+	assert.Equal(t, int64(67108864), lvs[0].SizeBytes)
+	assert.Nil(t, lvs[0].DataPercent)
+
+	assert.Equal(t, "datasnap", lvs[1].Name)
+	assert.Equal(t, "data", lvs[1].Origin)
+	require.NotNil(t, lvs[1].DataPercent)
+	assert.Equal(t, 0.0, *lvs[1].DataPercent)
+
+	assert.Equal(t, "pool", lvs[2].Name)
+	assert.Equal(t, "", lvs[2].Path)
+
+	assert.Equal(t, "thin", lvs[3].Name)
+	assert.Equal(t, "pool", lvs[3].PoolName)
+	assert.Equal(t, int64(33554432), lvs[3].SizeBytes)
+}
+
+func TestParseLvmLegacyEmpty(t *testing.T) {
+	// A host with no volume groups prints nothing and exits 0.
+	report, err := lvmNamePrefixedToJSON("", "vg")
+	require.NoError(t, err)
+	vgs, err := parseLvmVGs(report)
+	require.NoError(t, err)
+	assert.Empty(t, vgs)
+}
+
+func TestParseLvmNamePrefixedLine(t *testing.T) {
+	row, err := parseLvmNamePrefixedLine(`LVM2_PV_NAME='/dev/it's here' LVM2_VG_NAME=''`)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"pv_name": "/dev/it's here", "vg_name": ""}, row)
+
+	row, err = parseLvmNamePrefixedLine(`LVM2_VG_NAME=vg0 LVM2_PV_COUNT=1`)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"vg_name": "vg0", "pv_count": "1"}, row)
+
+	_, err = parseLvmNamePrefixedLine(`LVM2_VG_NAME='vg0`)
+	require.Error(t, err)
+
+	_, err = parseLvmNamePrefixedLine(`garbage`)
+	require.Error(t, err)
+}
+
+func TestIsLvmReportFormatUnsupported(t *testing.T) {
+	// stderr of vgs --reportformat json on LVM2 2.02.133 (Ubuntu 16.04), exit 3
+	assert.True(t, isLvmReportFormatUnsupported("vgs: unrecognized option '--reportformat'\n  Error during parsing of command line.\n"))
+	assert.False(t, isLvmReportFormatUnsupported("  Volume group \"nosuchvg\" not found\n"))
+	assert.False(t, isLvmReportFormatUnsupported("  WARNING: Running as a non-root user. Functionality may be unavailable.\n  /run/lock/lvm/P_global:aux: open failed: Permission denied\n"))
+}
+
+func TestParseLvmLegacyMatchesJSON(t *testing.T) {
+	// LVM2 2.03.33 (RHEL 9) supports both formats. The same lvs report in
+	// each must parse to the same values, so hosts on the fallback path see
+	// what JSON-capable hosts see.
+	jsonOut := `  {
+      "report": [
+          {
+              "lv": [
+                  {"lv_name":"data", "lv_path":"/dev/mqltestvg/data", "lv_uuid":"8PbvRT-0Gl3-Sjm5-3By3-8jNq-cNDH-b1gaPC", "vg_name":"mqltestvg", "lv_attr":"owi-a-s---", "lv_size":"67108864", "origin":"", "data_percent":"", "pool_lv":""},
+                  {"lv_name":"datasnap", "lv_path":"/dev/mqltestvg/datasnap", "lv_uuid":"Tgv0NB-1U0f-FFB4-I1IX-PCKm-0m6h-t3z12o", "vg_name":"mqltestvg", "lv_attr":"swi-a-s---", "lv_size":"33554432", "origin":"data", "data_percent":"0.00", "pool_lv":""},
+                  {"lv_name":"pool", "lv_path":"", "lv_uuid":"Ra5S47-m5Ps-J7Yj-Rovd-3gQu-bY4B-617aPr", "vg_name":"mqltestvg", "lv_attr":"twi-aotz--", "lv_size":"67108864", "origin":"", "data_percent":"0.00", "pool_lv":""},
+                  {"lv_name":"thin", "lv_path":"/dev/mqltestvg/thin", "lv_uuid":"v0pnIs-wRbH-KoU7-7ehN-xxnV-PN0v-FazEc3", "vg_name":"mqltestvg", "lv_attr":"Vwi-a-tz--", "lv_size":"33554432", "origin":"", "data_percent":"0.00", "pool_lv":"pool"}
+              ]
+          }
+      ]
+      ,
+      "log": [
+      ]
+  }
+`
+	legacyOut := `  LVM2_LV_NAME='data' LVM2_LV_PATH='/dev/mqltestvg/data' LVM2_LV_UUID='8PbvRT-0Gl3-Sjm5-3By3-8jNq-cNDH-b1gaPC' LVM2_VG_NAME='mqltestvg' LVM2_LV_ATTR='owi-a-s---' LVM2_LV_SIZE='67108864' LVM2_ORIGIN='' LVM2_DATA_PERCENT='' LVM2_POOL_LV=''
+  LVM2_LV_NAME='datasnap' LVM2_LV_PATH='/dev/mqltestvg/datasnap' LVM2_LV_UUID='Tgv0NB-1U0f-FFB4-I1IX-PCKm-0m6h-t3z12o' LVM2_VG_NAME='mqltestvg' LVM2_LV_ATTR='swi-a-s---' LVM2_LV_SIZE='33554432' LVM2_ORIGIN='data' LVM2_DATA_PERCENT='0.00' LVM2_POOL_LV=''
+  LVM2_LV_NAME='pool' LVM2_LV_PATH='' LVM2_LV_UUID='Ra5S47-m5Ps-J7Yj-Rovd-3gQu-bY4B-617aPr' LVM2_VG_NAME='mqltestvg' LVM2_LV_ATTR='twi-aotz--' LVM2_LV_SIZE='67108864' LVM2_ORIGIN='' LVM2_DATA_PERCENT='0.00' LVM2_POOL_LV=''
+  LVM2_LV_NAME='thin' LVM2_LV_PATH='/dev/mqltestvg/thin' LVM2_LV_UUID='v0pnIs-wRbH-KoU7-7ehN-xxnV-PN0v-FazEc3' LVM2_VG_NAME='mqltestvg' LVM2_LV_ATTR='Vwi-a-tz--' LVM2_LV_SIZE='33554432' LVM2_ORIGIN='' LVM2_DATA_PERCENT='0.00' LVM2_POOL_LV='pool'
+`
+	fromJSON, err := parseLvmLVs(jsonOut)
+	require.NoError(t, err)
+	report, err := lvmNamePrefixedToJSON(legacyOut, "lv")
+	require.NoError(t, err)
+	fromLegacy, err := parseLvmLVs(report)
+	require.NoError(t, err)
+	require.Len(t, fromJSON, 4)
+	assert.Equal(t, fromJSON, fromLegacy)
+}
