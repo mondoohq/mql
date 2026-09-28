@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/llx"
@@ -16,6 +17,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/mock"
 	"go.mondoo.com/mql/providers/os/resources/plist"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 func TestLaunchdGetString(t *testing.T) {
@@ -758,4 +760,35 @@ func TestLaunchdPlistExtensionCaseInsensitive(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+// The content field carries the whole decoded plist. plist.Decode returns the
+// named type plist.Data, which llx's dict converter rejects with "unsupported
+// child type: plist.Data", so every job's content failed to serialize. The
+// fixture is a real macOS plist.
+func TestLaunchdJobContentSerializes(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/launchd_macos.toml"))
+	require.NoError(t, err)
+
+	l := &mqlLaunchd{MqlRuntime: &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}}
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+
+	job, err := l.parseJobFile(afs, "/System/Library/LaunchAgents/com.openssh.ssh-agent.plist", "system", "agent")
+	require.NoError(t, err)
+	assert.Equal(t, "com.openssh.ssh-agent", job.Label.Data)
+
+	res := llx.DictData(job.Content.Data).Result()
+	require.Empty(t, res.Error)
+
+	back := res.RawData()
+	require.NoError(t, back.Error)
+	content, ok := back.Value.(map[string]any)
+	require.True(t, ok, "content should decode to a map, got %T", back.Value)
+	assert.Equal(t, "com.openssh.ssh-agent", content["Label"])
+	assert.Equal(t, "Interactive", content["ProcessType"])
+	assert.Equal(t, false, content["EnablePressuredExit"])
+	assert.Equal(t, []any{"/usr/bin/ssh-agent", "-l"}, content["ProgramArguments"])
+	assert.Equal(t, map[string]any{
+		"Listeners": map[string]any{"SecureSocketWithKey": "SSH_AUTH_SOCK"},
+	}, content["Sockets"])
 }

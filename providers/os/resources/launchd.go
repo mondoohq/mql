@@ -190,6 +190,9 @@ func (l *mqlLaunchd) parseJobFile(afs *afero.Afero, path, source, jobType string
 	machServices := launchdGetDict(data, "MachServices")
 	startCalendarInterval := launchdGetDictArray(data, "StartCalendarInterval")
 	environmentVariables := launchdGetStringMap(data, "EnvironmentVariables")
+	// llx's dict converter accepts map[string]any but not the named type
+	// plist.Data, so hand it the underlying map.
+	content := map[string]any(data)
 
 	// Create the job resource with path as __id
 	job, err := CreateResource(l.MqlRuntime, "launchd.job", map[string]*llx.RawData{
@@ -217,7 +220,7 @@ func (l *mqlLaunchd) parseJobFile(afs *afero.Afero, path, source, jobType string
 		"stderrPath":            llx.StringData(stderrPath),
 		"rootDirectory":         llx.StringData(rootDirectory),
 		"file":                  llx.ResourceData(fileRes, "file"),
-		"content":               llx.DictData(data),
+		"content":               llx.DictData(content),
 	})
 	if err != nil {
 		return nil, err

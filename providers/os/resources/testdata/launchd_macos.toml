@@ -120,3 +120,33 @@ content = """<?xml version="1.0" encoding="UTF-8"?>
 
 [files."/Library/LaunchDaemons/not-a-plist.txt"]
 content = """This is not a plist file"""
+
+# Copied verbatim from /System/Library/LaunchAgents/com.openssh.ssh-agent.plist on macOS 27.
+[files."/System/Library/LaunchAgents/com.openssh.ssh-agent.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.openssh.ssh-agent</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/bin/ssh-agent</string>
+		<string>-l</string>
+	</array>
+	<key>Sockets</key>
+	<dict>
+		<key>Listeners</key>
+		<dict>
+			<key>SecureSocketWithKey</key>
+			<string>SSH_AUTH_SOCK</string>
+		</dict>
+	</dict>
+	<key>EnablePressuredExit</key>
+	<false/>
+	<key>EnableTransactions</key>
+	<true/>
+	<key>ProcessType</key>
+	<string>Interactive</string>
+</dict>
+</plist>"""
