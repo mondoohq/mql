@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -231,4 +232,63 @@ func TestRawDataJson_errorValuesCarryNoRawControlBytes(t *testing.T) {
 		require.Greater(t, b, byte(0x1f),
 			"raw control byte %#x at offset %d in %q", b, i, buf.String())
 	}
+}
+
+// MQL represents an unbounded int as math.MaxInt64 / math.MinInt64 and an
+// unbounded float as ±Inf. JSON has no infinity token, so these are exported
+// as strings, the same way an infinite time exports as "Never". Every other
+// number stays a bare JSON number.
+func TestRawDataJson_numbers(t *testing.T) {
+	tests := []struct {
+		name string
+		typ  types.Type
+		data any
+		want string
+	}{
+		{"int", types.Int, int64(99999), "99999"},
+		{"negative int", types.Int, int64(-1), "-1"},
+		{"zero int", types.Int, int64(0), "0"},
+		{"int max-1", types.Int, int64(math.MaxInt64 - 1), "9223372036854775806"},
+		{"int infinity", types.Int, int64(math.MaxInt64), `"Inf"`},
+		{"int negative infinity", types.Int, int64(math.MinInt64), `"-Inf"`},
+		{"float", types.Float, 1.5, "1.5"},
+		{"float infinity", types.Float, math.Inf(1), `"Inf"`},
+		{"float negative infinity", types.Float, math.Inf(-1), `"-Inf"`},
+		{"float NaN", types.Float, math.NaN(), `"NaN"`},
+		{"dict int", types.Dict, int64(7), "7"},
+		{"dict int infinity", types.Dict, int64(math.MaxInt64), `"Inf"`},
+		{"dict float infinity", types.Dict, math.Inf(-1), `"-Inf"`},
+		{"dict float NaN", types.Dict, math.NaN(), `"NaN"`},
+		{"dict nested infinity", types.Dict, map[string]any{"a": int64(math.MaxInt64), "b": []any{math.Inf(1), 2.5}}, `{"a":"Inf","b":["Inf",2.5]}`},
+		{"int array with infinity", types.Array(types.Int), []any{int64(1), int64(math.MaxInt64)}, `[1,"Inf"]`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var res bytes.Buffer
+			require.NoError(t, rawDataJSON(tc.typ, tc.data, "", &CodeBundle{}, &res))
+			assert.Equal(t, tc.want, res.String())
+			assert.True(t, json.Valid(res.Bytes()), "not valid JSON: %s", res.String())
+		})
+	}
+}
+
+// shadow.list { user maxdays inactivedays } on Debian 12, where root's
+// /etc/shadow line is `root:...:20719:0:99999:7:::` (inactive field empty).
+func TestRawDataJson_shadowEntryBlock(t *testing.T) {
+	bundle := &CodeBundle{Labels: &Labels{Labels: map[string]string{
+		"u": "user", "m": "maxdays", "i": "inactivedays",
+	}}}
+	data := map[string]any{
+		"u": StringData("root"),
+		"m": IntData(99999),
+		"i": IntData(math.MaxInt64),
+	}
+	var res bytes.Buffer
+	require.NoError(t, refMapJSON(types.Block, data, "", bundle, &res))
+	assert.True(t, json.Valid(res.Bytes()), "not valid JSON: %s", res.String())
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(res.Bytes(), &got))
+	assert.Equal(t, map[string]any{"user": "root", "maxdays": float64(99999), "inactivedays": "Inf"}, got)
 }
