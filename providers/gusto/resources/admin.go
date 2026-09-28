@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -63,7 +64,10 @@ func newMqlGustoAdmin(runtime *plugin.Runtime, a *connection.Admin) (*mqlGustoAd
 	if err != nil {
 		return nil, err
 	}
-	admin := r.(*mqlGustoAdmin)
+	admin, ok := r.(*mqlGustoAdmin)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlGustoAdmin", r)
+	}
 	admin.cacheCompanyUUID = a.CompanyUUID
 	return admin, nil
 }

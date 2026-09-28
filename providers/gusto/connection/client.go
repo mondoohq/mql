@@ -183,7 +183,11 @@ func cachedList[T any](c *GustoConnection, key string, fetch func() ([]T, error)
 	entry.mu.Lock()
 	defer entry.mu.Unlock()
 	if entry.set {
-		return entry.value.([]T), nil
+		out, ok := entry.value.([]T)
+		if !ok {
+			return nil, fmt.Errorf("list cache type mismatch for key %q: have %T", key, entry.value)
+		}
+		return out, nil
 	}
 	out, err := fetch()
 	if err != nil {

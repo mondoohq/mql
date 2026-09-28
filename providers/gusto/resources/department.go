@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -16,6 +17,12 @@ type mqlGustoDepartmentInternal struct {
 	cacheCompanyUUID string
 	employeeUUIDs    []string
 	contractorUUIDs  []string
+	// employeesPopulated records that the department payload carried the
+	// employee list. When it did, that list is authoritative, including when
+	// it is empty; only a payload without the list falls back to the
+	// department_uuid on each employee record, so the two sources are never
+	// mixed for one department.
+	employeesPopulated bool
 	// contractorsPopulated records that the department payload actually
 	// carried the contractor list. A department with no contractors yields an
 	// empty-but-present list, so length alone cannot tell "nobody is
@@ -73,14 +80,20 @@ func newMqlGustoDepartment(runtime *plugin.Runtime, d *connection.Department) (*
 	if err != nil {
 		return nil, err
 	}
-	dept := r.(*mqlGustoDepartment)
-	dept.cacheCompanyUUID = d.CompanyUUID
-	dept.employeeUUIDs = make([]string, 0, len(d.EmployeeRefs))
-	for _, ref := range d.EmployeeRefs {
-		dept.employeeUUIDs = append(dept.employeeUUIDs, ref.UUID)
+	dept, ok := r.(*mqlGustoDepartment)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlGustoDepartment", r)
 	}
-	// A JSON null or an absent key leaves the slice nil, which is the one
-	// signal that the payload did not report contractor membership at all.
+	dept.cacheCompanyUUID = d.CompanyUUID
+	// A JSON null or an absent key leaves a slice nil, which is the one
+	// signal that the payload did not report that membership at all.
+	if d.EmployeeRefs != nil {
+		dept.employeeUUIDs = make([]string, 0, len(d.EmployeeRefs))
+		for _, ref := range d.EmployeeRefs {
+			dept.employeeUUIDs = append(dept.employeeUUIDs, ref.UUID)
+		}
+		dept.employeesPopulated = true
+	}
 	if d.ContractorRefs != nil {
 		dept.contractorUUIDs = make([]string, 0, len(d.ContractorRefs))
 		for _, ref := range d.ContractorRefs {
@@ -103,7 +116,7 @@ func (d *mqlGustoDepartment) employees() ([]any, error) {
 
 	// The department payload lists the uuids assigned to it. Resolve exactly
 	// that set from the company roster, which is memoized on the connection.
-	if len(d.employeeUUIDs) > 0 {
+	if d.employeesPopulated {
 		byUUID := make(map[string]*connection.Employee, len(employees))
 		for i := range employees {
 			byUUID[employees[i].UUID] = &employees[i]
@@ -123,8 +136,8 @@ func (d *mqlGustoDepartment) employees() ([]any, error) {
 		return out, nil
 	}
 
-	// No uuid list to work from, so fall back to the department_uuid carried
-	// by each employee record.
+	// The payload did not report membership, so fall back to the
+	// department_uuid carried by each employee record.
 	out := []any{}
 	for i := range employees {
 		if employees[i].DepartmentUUID != d.Uuid.Data {

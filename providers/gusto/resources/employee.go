@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -85,7 +86,10 @@ func newMqlGustoEmployee(runtime *plugin.Runtime, e *connection.Employee) (*mqlG
 	if err != nil {
 		return nil, err
 	}
-	emp := r.(*mqlGustoEmployee)
+	emp, ok := r.(*mqlGustoEmployee)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlGustoEmployee", r)
+	}
 	emp.cacheCompanyUUID = e.CompanyUUID
 	emp.cacheManagerUUID = e.ManagerUUID
 	emp.cacheDepartmentUUID = e.DepartmentUUID
@@ -107,7 +111,11 @@ func (e *mqlGustoEmployee) manager() (*mqlGustoEmployee, error) {
 	if err != nil {
 		return nil, err
 	}
-	return r.(*mqlGustoEmployee), nil
+	res, ok := r.(*mqlGustoEmployee)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlGustoEmployee", r)
+	}
+	return res, nil
 }
 
 func (e *mqlGustoEmployee) department() (*mqlGustoDepartment, error) {
@@ -121,5 +129,9 @@ func (e *mqlGustoEmployee) department() (*mqlGustoDepartment, error) {
 	if err != nil {
 		return nil, err
 	}
-	return r.(*mqlGustoDepartment), nil
+	res, ok := r.(*mqlGustoDepartment)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlGustoDepartment", r)
+	}
+	return res, nil
 }

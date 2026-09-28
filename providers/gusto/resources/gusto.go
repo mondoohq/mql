@@ -82,7 +82,11 @@ func resolveCompany(runtime *plugin.Runtime, uuid string, field *plugin.TValue[*
 	if err != nil {
 		return nil, err
 	}
-	return r.(*mqlGustoCompany), nil
+	res, ok := r.(*mqlGustoCompany)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlGustoCompany", r)
+	}
+	return res, nil
 }
 
 func (g *mqlGusto) employees() ([]any, error) {
@@ -180,5 +184,9 @@ func newMqlGustoCompany(runtime *plugin.Runtime, c *connection.Company) (*mqlGus
 	if err != nil {
 		return nil, err
 	}
-	return r.(*mqlGustoCompany), nil
+	res, ok := r.(*mqlGustoCompany)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlGustoCompany", r)
+	}
+	return res, nil
 }

@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -73,7 +74,10 @@ func newMqlGustoLocation(runtime *plugin.Runtime, l *connection.Location) (*mqlG
 	if err != nil {
 		return nil, err
 	}
-	loc := r.(*mqlGustoLocation)
+	loc, ok := r.(*mqlGustoLocation)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlGustoLocation", r)
+	}
 	loc.cacheCompanyUUID = l.CompanyUUID
 	return loc, nil
 }

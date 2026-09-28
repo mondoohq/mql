@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -70,7 +71,10 @@ func newMqlGustoContractor(runtime *plugin.Runtime, c *connection.Contractor) (*
 	if err != nil {
 		return nil, err
 	}
-	contractor := r.(*mqlGustoContractor)
+	contractor, ok := r.(*mqlGustoContractor)
+	if !ok {
+		return nil, fmt.Errorf("unexpected resource type %T, expected *mqlGustoContractor", r)
+	}
 	contractor.cacheCompanyUUID = c.CompanyUUID
 	return contractor, nil
 }
