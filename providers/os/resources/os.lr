@@ -1443,13 +1443,22 @@ package @defaults("name version") {
   // Populated from %{INSTALLTIME} (rpm), the install-date field of the
   // xbps database, the install time in the FreeBSD pkg database, the
   // InstallDate column of the Windows Uninstall registry, and the install,
-  // upgrade and `status installed` lines of the dpkg logs.
+  // upgrade and `status installed` lines of the dpkg logs. On macOS, the
+  // install time in the installer receipt of the package that installed
+  // the application: /var/db/receipts for pkg installers and the App
+  // Store, /Library/Apple/System/Library/Receipts for Apple packages from
+  // Software Update such as XProtect.
   //
   // On dpkg the answer is bounded by what logrotate kept, which
   // distributions ship as twelve monthly copies of /var/log/dpkg.log: a
-  // package untouched for longer than that window carries no date. Null
-  // on backends with no install-time source at all (apk, pacman, macOS)
-  // and on any package whose install was not recorded.
+  // package untouched for longer than that window carries no date. On
+  // macOS it is null for applications no receipt claims: the ones that
+  // ship with the OS, and those copied into place from a disk image or
+  // archive. It is also null when the receipt names another version than
+  // the one installed, because the application updated itself after the
+  // package was installed. Null on backends with no install-time source
+  // at all (apk, pacman) and on any package whose install was not
+  // recorded.
   installDate time
 
   // Install scope of this package: "machine" or "user"

@@ -257,7 +257,12 @@ func (mpm *MacOSPkgManager) List() ([]Package, error) {
 		return nil, fmt.Errorf("could not read package list")
 	}
 
-	return ParseMacOSPackages(mpm.conn, mpm.platform, cmd.Stdout)
+	pkgs, err := ParseMacOSPackages(mpm.conn, mpm.platform, cmd.Stdout)
+	if err != nil {
+		return nil, err
+	}
+	applyMacOSReceiptInstallDates(pkgs, readMacOSReceipts(mpm.conn))
+	return pkgs, nil
 }
 
 func (mpm *MacOSPkgManager) Available() (map[string]PackageUpdate, error) {
