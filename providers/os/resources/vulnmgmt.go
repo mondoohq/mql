@@ -238,6 +238,7 @@ func (v *mqlVulnmgmt) populateFromReport(vulnReport *gql.VulnReport) error {
 			"worstScore": llx.ResourceData(cvssScore, "audit.cvss"),
 			"state":      llx.StringData(c.State),
 			"summary":    llx.StringData(c.Summary),
+			"unscored":   llx.BoolData(reportCveUnscored(c)),
 			"published":  llx.TimeDataPtr(parsedPublished),
 			"modified":   llx.TimeDataPtr(parsedModified),
 		})
@@ -278,6 +279,23 @@ func (v *mqlVulnmgmt) populateFromReport(vulnReport *gql.VulnReport) error {
 	v.Stats = plugin.TValue[*mqlAuditCvss]{Data: statsCvssScore, State: plugin.StateIsSet}
 
 	return nil
+}
+
+// reportCveUnscored reports whether a compact-report CVE has no CVSS score
+// assigned. The report carries no explicit flag for this, so it is derived
+// from the scores it does carry: a CVE is unscored when neither its worst
+// score nor any of its individual scores has a value or a vector. A vector
+// with a 0.0 base score is still a score.
+func reportCveUnscored(c *gql.Cve) bool {
+	if c.CvssScore.Value != 0 || c.CvssScore.Vector != "" {
+		return false
+	}
+	for _, s := range c.CvssScores {
+		if s.Value != 0 || s.Vector != "" {
+			return false
+		}
+	}
+	return true
 }
 
 func (v *mqlVulnmgmt) getReport() (*gql.VulnReport, error) {

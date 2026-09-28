@@ -168,6 +168,7 @@ func (v *mqlVulnmgmt) populateFromVex(vex []*fex.VulnerabilityExchange) error {
 				"worstScore": llx.ResourceData(worstCvss, "audit.cvss"),
 				"state":      llx.StringData(vexStatusString(vuln)),
 				"summary":    llx.StringData(vexSummary(vuln)),
+				"unscored":   llx.BoolData(vexUnscored(vuln)),
 				"published":  llx.TimeDataPtr(published),
 				"modified":   llx.TimeDataPtr(modified),
 			})
@@ -270,6 +271,18 @@ func vexWorstCvss(v *fex.VulnerabilityExchange) (float64, string) {
 		}
 	}
 	return best, vector
+}
+
+// vexUnscored reports whether a vulnerability has no CVSS score assigned: none
+// of its ratings carries a score or a vector. A rating with only a severity
+// (the platform's end-of-life findings have those) is not a CVSS score.
+func vexUnscored(v *fex.VulnerabilityExchange) bool {
+	for _, r := range v.Ratings {
+		if r != nil && (r.Score != 0 || r.Vector != "") {
+			return false
+		}
+	}
+	return true
 }
 
 // vexStatusString maps the VEX status enum onto the state string the vuln.cve

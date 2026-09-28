@@ -75,6 +75,8 @@ func TestPopulateFromVex(t *testing.T) {
 	assert.Equal(t, "CVE-2024-3094", cve.Id.Data)
 	assert.Equal(t, "AFFECTED", cve.State.Data)
 	assert.Equal(t, "malicious code in liblzma", cve.Summary.Data)
+	assert.True(t, cve.Unscored.IsSet())
+	assert.False(t, cve.Unscored.Data)
 	require.NotNil(t, cve.Published.Data)
 	assert.Equal(t, published.AsTime(), *cve.Published.Data)
 	require.NotNil(t, cve.Modified.Data)
@@ -256,4 +258,51 @@ func TestPopulateFromVexEmpty(t *testing.T) {
 	assert.Len(t, v.Packages.Data, 0)
 	require.NotNil(t, v.Stats.Data)
 	assert.Equal(t, 0.0, v.Stats.Data.Score.Data)
+}
+
+// TestPopulateFromVexUnscored pins vuln.cve.unscored on the VEX path. The
+// field used to be left unset, so every query for it logged a "field was never
+// set" provider bug and returned null. The rating shapes are taken from the
+// platform's response for a Windows Server 2022 host (a CVE with CVSS ratings)
+// and a Windows Server 2016 host (an end-of-life finding whose only rating is a
+// severity, with no score or vector).
+func TestPopulateFromVexUnscored(t *testing.T) {
+	runtime := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+	v := &mqlVulnmgmt{MqlRuntime: runtime}
+
+	vex := []*fex.VulnerabilityExchange{
+		{
+			Id:      "CVE-2026-32177",
+			Status:  fex.Status_STATUS_AFFECTED,
+			Ratings: []*fex.Rating{{Score: 7.3, Vector: "7.3/CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:L", Method: 2}},
+		},
+		{
+			Id:      "CVE-2024-0001",
+			Status:  fex.Status_STATUS_AFFECTED,
+			Ratings: []*fex.Rating{{Severity: "MEDIUM", Method: 6}},
+		},
+		{Id: "CVE-2024-0002", Status: fex.Status_STATUS_AFFECTED},
+		{
+			// A vector that scores 0.0 is still a CVSS score.
+			Id:      "CVE-2024-0003",
+			Status:  fex.Status_STATUS_AFFECTED,
+			Ratings: []*fex.Rating{nil, {Score: 0, Vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:N"}},
+		},
+	}
+
+	require.NoError(t, v.populateFromVex(vex))
+	require.Len(t, v.Cves.Data, 4)
+
+	want := map[string]bool{
+		"CVE-2026-32177": false,
+		"CVE-2024-0001":  true,
+		"CVE-2024-0002":  true,
+		"CVE-2024-0003":  false,
+	}
+	for _, c := range v.Cves.Data {
+		cve := c.(*mqlVulnCve)
+		require.True(t, cve.Unscored.IsSet(), "unscored not set for %s", cve.Id.Data)
+		assert.False(t, cve.Unscored.IsNull(), "unscored null for %s", cve.Id.Data)
+		assert.Equal(t, want[cve.Id.Data], cve.Unscored.Data, cve.Id.Data)
+	}
 }
