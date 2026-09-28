@@ -17069,8 +17069,10 @@ private usb.device @defaults("manufacturer name") @maturity("experimental") {
 // Crontab schedule on the system
 //
 // Scheduled cron jobs collected from every source on the host: the system
-// crontab (/etc/crontab), drop-in files under /etc/cron.d, and per-user
-// crontabs (/var/spool/cron, /var/spool/cron/crontabs, /usr/lib/cron/tabs).
+// crontab (/etc/crontab), drop-in files under /etc/cron.d and
+// /usr/local/etc/cron.d, and per-user crontabs (/var/spool/cron,
+// /var/spool/cron/crontabs, /var/spool/cron/tabs, /usr/lib/cron/tabs,
+// /var/cron/tabs).
 // The `entries` list shows what runs on a schedule, as which `user`, and
 // with what `command`. Use `entries.where(user == "root")` to focus on
 // privileged jobs. `files` lists the source files the entries were parsed

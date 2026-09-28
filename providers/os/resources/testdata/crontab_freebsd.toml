@@ -1,0 +1,44 @@
+# A FreeBSD host with a crontab in every place cron(8) reads one:
+#
+#   * /etc/crontab, the system crontab (user field)
+#   * /etc/cron.d, the base system's modular crontabs (user field)
+#   * /usr/local/etc/cron.d, crontabs installed by packages (user field)
+#   * /var/cron/tabs/<user>, per-user crontabs written by crontab(1) (no user
+#     field; the file name is the user)
+
+[files."/etc/crontab"]
+path = "/etc/crontab"
+content = """SHELL=/bin/sh
+PATH=/etc:/bin:/sbin:/usr/bin:/usr/sbin
+*/5	*	*	*	*	root	/usr/libexec/atrun
+"""
+
+[files."/etc/cron.d"]
+path = "/etc/cron.d"
+[files."/etc/cron.d".stat]
+isdir = true
+
+[files."/etc/cron.d/at"]
+path = "/etc/cron.d/at"
+content = """0	*	*	*	*	root	/usr/libexec/atrun -l
+"""
+
+[files."/usr/local/etc/cron.d"]
+path = "/usr/local/etc/cron.d"
+[files."/usr/local/etc/cron.d".stat]
+isdir = true
+
+[files."/usr/local/etc/cron.d/pkg-backup"]
+path = "/usr/local/etc/cron.d/pkg-backup"
+content = """15	3	*	*	*	root	/usr/local/bin/pkg-backup
+"""
+
+[files."/var/cron/tabs"]
+path = "/var/cron/tabs"
+[files."/var/cron/tabs".stat]
+isdir = true
+
+[files."/var/cron/tabs/root"]
+path = "/var/cron/tabs/root"
+content = """0 5 * * * /usr/local/sbin/aide --check
+"""

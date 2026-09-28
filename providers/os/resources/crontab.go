@@ -21,9 +21,10 @@ var systemCrontabPaths = []string{
 	"/etc/crontab",
 }
 
-// System cron.d directory (with user field)
+// System cron.d directories (with user field)
 var systemCronDirs = []string{
 	"/etc/cron.d",
+	"/usr/local/etc/cron.d", // FreeBSD, crontabs installed by packages
 }
 
 // User crontab directories (without user field, filename is the user)
@@ -37,6 +38,7 @@ var userCrontabDirs = []string{
 	"/var/spool/cron/tabs",     // SLES/openSUSE
 	"/var/spool/cron",          // RHEL/CentOS/Fedora
 	"/usr/lib/cron/tabs",       // macOS
+	"/var/cron/tabs",           // FreeBSD, OpenBSD, NetBSD
 }
 
 func (c *mqlCrontab) id() (string, error) {

@@ -4,12 +4,16 @@
 package resources
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 // A bare `crontab.entry` leaves `file` unset, so id() must report the missing
@@ -66,6 +70,56 @@ func TestCollectUserCrontabFiles(t *testing.T) {
 		{user: "bob", path: "/var/spool/cron/bob"},
 		{user: "carol", path: "/usr/lib/cron/tabs/carol"},
 	}, got)
+}
+
+// FreeBSD's cron(8) reads per-user crontabs from /var/cron/tabs and package
+// crontabs from /usr/local/etc/cron.d, next to /etc/crontab and /etc/cron.d.
+// All four must be reported, and root's per-user crontab must carry the file
+// name as its user.
+func TestCrontabFreeBSD(t *testing.T) {
+	fixturePath, err := filepath.Abs("testdata/crontab_freebsd.toml")
+	require.NoError(t, err)
+
+	asset := &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:   "freebsd",
+			Family: []string{"bsd", "unix"},
+		},
+	}
+	conn, err := mock.New(0, asset, mock.WithPath(fixturePath))
+	require.NoError(t, err)
+
+	runtime := &plugin.Runtime{
+		Connection: conn,
+		Resources:  &syncx.Map[plugin.Resource]{},
+	}
+	raw, err := CreateResource(runtime, "crontab", nil)
+	require.NoError(t, err)
+	c := raw.(*mqlCrontab)
+
+	files := c.GetFiles()
+	require.NoError(t, files.Error)
+	var paths []string
+	for _, f := range files.Data {
+		paths = append(paths, f.(*mqlFile).Path.Data)
+	}
+	assert.ElementsMatch(t, []string{
+		"/etc/crontab",
+		"/etc/cron.d/at",
+		"/usr/local/etc/cron.d/pkg-backup",
+		"/var/cron/tabs/root",
+	}, paths)
+
+	entries := c.GetEntries()
+	require.NoError(t, entries.Error)
+	var rootAide bool
+	for _, e := range entries.Data {
+		entry := e.(*mqlCrontabEntry)
+		if entry.Command.Data == "/usr/local/sbin/aide --check" {
+			rootAide = entry.User.Data == "root"
+		}
+	}
+	assert.True(t, rootAide, "root's /var/cron/tabs entry must be reported as user root")
 }
 
 // A host with no spool directories at all (a stripped container image) yields
