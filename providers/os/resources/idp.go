@@ -28,6 +28,7 @@ func (i *mqlIdp) id() (string, error) {
 type entraMembership struct {
 	deviceID string
 	tenantID string
+	joinType string
 }
 
 // entraFromIdentity maps the detected device identity to the Entra membership.
@@ -38,7 +39,7 @@ func entraFromIdentity(id detwin.DeviceIdentity) entraMembership {
 	if id.EntraDeviceID == "" {
 		return entraMembership{}
 	}
-	return entraMembership{deviceID: id.EntraDeviceID, tenantID: id.EntraTenantID}
+	return entraMembership{deviceID: id.EntraDeviceID, tenantID: id.EntraTenantID, joinType: id.EntraJoinType}
 }
 
 func (e entraMembership) member() bool { return e.deviceID != "" }
@@ -76,6 +77,7 @@ func (r idpResult) set(i *mqlIdp) error {
 		"__id":     llx.StringData("idp.entra"),
 		"deviceId": mdmStringData(r.entra.deviceID),
 		"tenantId": mdmStringData(r.entra.tenantID),
+		"joinType": mdmStringData(r.entra.joinType),
 	})
 	if err != nil {
 		return err

@@ -16607,13 +16607,24 @@ idp @defaults("joined") @maturity("preview") {
 // The device's identity in Microsoft Entra ID, read on Windows from the
 // device's Entra device certificate. The resource is only returned for a
 // member, so idp.entra not being null means the device has an Entra device
-// identity. How the device joined (for example hybrid join or registration)
-// may be added as a field later.
-private idp.entra @defaults("deviceId tenantId") {
+// identity. `joinType` tells an Entra join from a hybrid join.
+private idp.entra @defaults("deviceId tenantId joinType") {
   // ID of the device object in Microsoft Entra ID
   deviceId string
   // Entra tenant the device belongs to
   tenantId string
+  // How the device is attached to Microsoft Entra ID
+  //
+  // `joined` for a device joined to Microsoft Entra ID only, and `hybrid` for
+  // a Microsoft Entra hybrid joined device, which is also joined to an
+  // on-premises Active Directory domain. These are the device states
+  // `dsregcmd /status` reports from AzureAdJoined and DomainJoined, derived
+  // from the machine's Entra join record and its domain membership. Null when
+  // the join state cannot be read, such as on scans of a disk image, where
+  // domain membership is not available. An Entra registration (workplace
+  // join) belongs to a user profile rather than the machine, so a device that
+  // is only registered is not reported here.
+  joinType string
 }
 
 // Cloud-asset metadata

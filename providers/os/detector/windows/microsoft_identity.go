@@ -23,6 +23,9 @@ const (
 	// LabelEntraDeviceID is the platform label holding the Microsoft Entra
 	// device ID, taken from the device's Entra device certificate.
 	LabelEntraDeviceID = "microsoft.com/entra-device-id"
+	// LabelEntraJoinType is the platform label holding how the device is
+	// attached to Microsoft Entra ID, one of the EntraJoinType values.
+	LabelEntraJoinType = "microsoft.com/entra-join-type"
 
 	// intuneMDMIssuerCN is the issuing CA of the Intune MDM device certificate.
 	// Matched exactly: other Intune-issued certificates on a device carry
@@ -42,12 +45,50 @@ var (
 	oidEntraTenantID = asn1.ObjectIdentifier{1, 2, 840, 113556, 1, 5, 284, 5}
 )
 
+// How a device is attached to Microsoft Entra ID, following the device states
+// of dsregcmd /status: AzureAdJoined without DomainJoined is an Entra join,
+// AzureAdJoined with DomainJoined is a hybrid join. See
+// https://learn.microsoft.com/en-us/entra/identity/devices/troubleshoot-device-dsregcmd#device-state
+const (
+	// EntraJoinTypeJoined is a device joined to Microsoft Entra ID only.
+	EntraJoinTypeJoined = "joined"
+	// EntraJoinTypeHybrid is a device joined to both an on-premises Active
+	// Directory domain and Microsoft Entra ID (Microsoft Entra hybrid join).
+	EntraJoinTypeHybrid = "hybrid"
+)
+
+// EntraJoinType derives how the device is attached to Microsoft Entra ID from
+// the machine's join state, or "" when that cannot be told.
+//
+// hasDeviceCert is whether the local machine store holds the Entra device
+// certificate, which Windows creates for an Entra join and a hybrid join
+// alike. entraJoined is whether the machine has an Entra join record
+// (CloudDomainJoin\JoinInfo), and domainJoined whether it is a member of an
+// Active Directory domain, nil when that was not read.
+//
+// A device certificate without a join record is left open rather than
+// guessed: that is not a state dsregcmd reports as joined. An Entra
+// registration (workplace join) is per user; its device certificate lives in
+// the user's store, not the machine's, so it is not derived here.
+func EntraJoinType(hasDeviceCert bool, entraJoined bool, domainJoined *bool) string {
+	if !hasDeviceCert || !entraJoined || domainJoined == nil {
+		return ""
+	}
+	if *domainJoined {
+		return EntraJoinTypeHybrid
+	}
+	return EntraJoinTypeJoined
+}
+
 // DeviceIdentity is the Microsoft identity of a Windows device, as read from
 // the public device certificates in the local machine's personal store.
 type DeviceIdentity struct {
 	IntuneDeviceID string
 	EntraTenantID  string
 	EntraDeviceID  string
+	// EntraJoinType is how the device is attached to Microsoft Entra ID, one
+	// of the EntraJoinType values, or "" when unknown.
+	EntraJoinType string
 }
 
 // Empty reports whether no identity was found.
@@ -68,6 +109,9 @@ func (d DeviceIdentity) SetLabels(pf *inventory.Platform) {
 	}
 	if d.EntraDeviceID != "" {
 		pf.Labels[LabelEntraDeviceID] = d.EntraDeviceID
+	}
+	if d.EntraJoinType != "" {
+		pf.Labels[LabelEntraJoinType] = d.EntraJoinType
 	}
 }
 
@@ -110,6 +154,7 @@ func DeviceIdentityFromLabels(pf *inventory.Platform) DeviceIdentity {
 		IntuneDeviceID: pf.Labels[LabelIntuneDeviceID],
 		EntraTenantID:  pf.Labels[LabelEntraTenantID],
 		EntraDeviceID:  pf.Labels[LabelEntraDeviceID],
+		EntraJoinType:  pf.Labels[LabelEntraJoinType],
 	}
 }
 

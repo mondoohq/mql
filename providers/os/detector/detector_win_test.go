@@ -97,6 +97,48 @@ func TestDetectIntuneDeviceID(t *testing.T) {
 		assert.False(t, hasEntra, "no Entra device certificate was reported")
 	})
 
+	t.Run("the join state sets the Entra join type label", func(t *testing.T) {
+		// Made-up identifier for the Entra device certificate's subject.
+		const device = "c0ffee00-1234-4abc-8def-0123456789ab"
+		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		require.NoError(t, err)
+		der, err := x509.CreateCertificate(rand.Reader, &x509.Certificate{
+			SerialNumber: big.NewInt(2),
+			Subject:      pkix.Name{CommonName: device},
+			NotBefore:    time.Now().Add(-time.Hour),
+			NotAfter:     time.Now().Add(time.Hour),
+		}, &x509.Certificate{Subject: pkix.Name{CommonName: "MS-Organization-Access"}}, &key.PublicKey, key)
+		require.NoError(t, err)
+		cert := base64.StdEncoding.EncodeToString(der)
+
+		for _, tc := range []struct {
+			name, joinState, want string
+		}{
+			{"Entra joined", `"EntraJoined":true,"DomainJoined":false`, win.EntraJoinTypeJoined},
+			{"hybrid joined", `"EntraJoined":true,"DomainJoined":true`, win.EntraJoinTypeHybrid},
+			{"domain membership unknown", `"EntraJoined":true,"DomainJoined":null`, ""},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+					Commands: map[string]*mock.Command{
+						intuneCommandHash: {Stdout: `{"EnrollmentGUID":null,"EntDMID":null,"Certs":"` + cert + `",` + tc.joinState + `}`},
+					},
+				}))
+				require.NoError(t, err)
+
+				pf := &inventory.Platform{
+					Title:  "Windows 11 Enterprise",
+					Labels: map[string]string{"windows.mondoo.com/product-type": "1"},
+				}
+				detectIntuneDeviceID(pf, conn)
+				assert.Equal(t, device, pf.Labels[win.LabelEntraDeviceID])
+				got, ok := pf.Labels[win.LabelEntraJoinType]
+				assert.Equal(t, tc.want != "", ok)
+				assert.Equal(t, tc.want, got)
+			})
+		}
+	})
+
 	t.Run("workstation not enrolled should not set label", func(t *testing.T) {
 		conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(intuneNotEnrolledMock))
 		require.NoError(t, err)

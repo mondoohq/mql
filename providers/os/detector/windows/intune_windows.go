@@ -29,7 +29,14 @@ func GetIntuneInfo(conn shared.Connection) (*IntuneInfo, error) {
 		if entDMID == "" && len(certs) == 0 {
 			return nil, nil
 		}
-		return &IntuneInfo{EntDMID: entDMID, Certificates: certs}, nil
+		info := &IntuneInfo{EntDMID: entDMID, Certificates: certs}
+		// The join state only qualifies an Entra device identity, so it is
+		// read only when the machine holds one, as the PowerShell path does.
+		if ParseDeviceCertificates(certs, "").EntraDeviceID != "" {
+			info.EntraJoined = localEntraJoinRecord()
+			info.DomainJoined = localDomainJoined()
+		}
+		return info, nil
 	}
 	return powershellGetIntuneInfo(conn)
 }
@@ -108,4 +115,39 @@ func localMachineCertificates() [][]byte {
 		certs = append(certs, append([]byte(nil), der...))
 	}
 	return certs
+}
+
+// cloudDomainJoinInfoKey holds one subkey per Microsoft Entra join, named by
+// the device certificate's thumbprint. It is what dsregcmd reports as
+// AzureAdJoined, for an Entra join and a hybrid join alike.
+const cloudDomainJoinInfoKey = `SYSTEM\CurrentControlSet\Control\CloudDomainJoin\JoinInfo`
+
+// localEntraJoinRecord reports whether the machine has a Microsoft Entra join
+// record. An unreadable key counts as no record, which leaves the join type
+// unknown rather than wrong.
+func localEntraJoinRecord() bool {
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, cloudDomainJoinInfoKey, registry.ENUMERATE_SUB_KEYS)
+	if err != nil {
+		return false
+	}
+	defer k.Close()
+	names, err := k.ReadSubKeyNames(-1)
+	return err == nil && len(names) > 0
+}
+
+// localDomainJoined reports whether the machine is a member of an Active
+// Directory domain, using NetGetJoinInformation, or nil when it cannot be told.
+// https://learn.microsoft.com/en-us/windows/win32/api/lmjoin/nf-lmjoin-netgetjoininformation
+func localDomainJoined() *bool {
+	var name *uint16
+	var status uint32
+	if err := windows.NetGetJoinInformation(nil, &name, &status); err != nil {
+		log.Debug().Err(err).Msg("could not read the domain join state")
+		return nil
+	}
+	if name != nil {
+		defer windows.NetApiBufferFree((*byte)(unsafe.Pointer(name))) //nolint:errcheck
+	}
+	joined := status == windows.NetSetupDomainName
+	return &joined
 }

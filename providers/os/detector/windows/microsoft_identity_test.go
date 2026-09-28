@@ -206,6 +206,27 @@ func TestParseIntuneInfo(t *testing.T) {
 		assert.Len(t, info.Certificates, 1)
 	})
 
+	t.Run("join state of an Entra joined device", func(t *testing.T) {
+		info, err := ParseIntuneInfo(strings.NewReader(`{"EnrollmentGUID":"x","EntDMID":"` + testIntuneID + `","Certs":["` + intune + `","` + entra + `"],"EntraJoined":true,"DomainJoined":false}`))
+		require.NoError(t, err)
+		assert.Equal(t, EntraJoinTypeJoined, info.Identity().EntraJoinType)
+	})
+
+	t.Run("join state of a hybrid joined device", func(t *testing.T) {
+		info, err := ParseIntuneInfo(strings.NewReader(`{"EnrollmentGUID":null,"EntDMID":null,"Certs":"` + entra + `","EntraJoined":true,"DomainJoined":true}`))
+		require.NoError(t, err)
+		assert.Equal(t, EntraJoinTypeHybrid, info.Identity().EntraJoinType)
+	})
+
+	t.Run("join state not read", func(t *testing.T) {
+		// The script leaves both null when it could not read the domain
+		// membership; the join type then stays unknown.
+		info, err := ParseIntuneInfo(strings.NewReader(`{"Certs":"` + entra + `","EntraJoined":true,"DomainJoined":null}`))
+		require.NoError(t, err)
+		assert.Equal(t, testEntraDeviceID, info.Identity().EntraDeviceID)
+		assert.Equal(t, "", info.Identity().EntraJoinType)
+	})
+
 	t.Run("empty output", func(t *testing.T) {
 		info, err := ParseIntuneInfo(strings.NewReader("  \n"))
 		require.NoError(t, err)
@@ -215,13 +236,14 @@ func TestParseIntuneInfo(t *testing.T) {
 }
 
 func TestDeviceIdentityLabelsAndPlatformID(t *testing.T) {
-	full := DeviceIdentity{IntuneDeviceID: testIntuneID, EntraTenantID: testTenantID, EntraDeviceID: testEntraDeviceID}
+	full := DeviceIdentity{IntuneDeviceID: testIntuneID, EntraTenantID: testTenantID, EntraDeviceID: testEntraDeviceID, EntraJoinType: EntraJoinTypeHybrid}
 	pf := &inventory.Platform{}
 	full.SetLabels(pf)
 	assert.Equal(t, map[string]string{
 		LabelIntuneDeviceID: testIntuneID,
 		LabelEntraTenantID:  testTenantID,
 		LabelEntraDeviceID:  testEntraDeviceID,
+		LabelEntraJoinType:  EntraJoinTypeHybrid,
 	}, pf.Labels)
 	assert.Equal(t, full, DeviceIdentityFromLabels(pf))
 	assert.Equal(t, "//platformid.api.mondoo.app/runtime/intune/tenants/"+testTenantID+"/devices/"+testIntuneID, full.IntunePlatformID())
@@ -253,4 +275,33 @@ func TestIdentityDetectable(t *testing.T) {
 	assert.False(t, IdentityDetectable(pf("2", "Windows Server 2022 Datacenter")), "domain controller")
 	assert.False(t, IdentityDetectable(pf("", "Windows")), "product type unknown")
 	assert.False(t, IdentityDetectable(nil))
+}
+
+// EntraJoinType follows the device states of dsregcmd /status. Anything short
+// of a device certificate, a join record and a known domain membership is
+// unknown, never a guess: a device certificate left behind without a join
+// record is not a joined device, and without the domain membership an Entra
+// join cannot be told from a hybrid join.
+func TestEntraJoinType(t *testing.T) {
+	yes, no := true, false
+	tests := []struct {
+		name         string
+		cert         bool
+		entraJoined  bool
+		domainJoined *bool
+		want         string
+	}{
+		{"Entra joined", true, true, &no, EntraJoinTypeJoined},
+		{"hybrid joined", true, true, &yes, EntraJoinTypeHybrid},
+		{"domain membership unknown", true, true, nil, ""},
+		{"device certificate without a join record", true, false, &no, ""},
+		{"domain joined only", false, false, &yes, ""},
+		{"join record without a device certificate", false, true, &no, ""},
+		{"nothing", false, false, nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, EntraJoinType(tt.cert, tt.entraJoined, tt.domainJoined))
+		})
+	}
 }

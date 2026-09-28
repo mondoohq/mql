@@ -274,6 +274,10 @@ const (
 // GetIntuneInfo for filesystem connections, where no command can run. The
 // certificate store lives in the same hive: each certificate is a subkey named
 // by its thumbprint whose "Blob" value is a serialized store element.
+//
+// The join state is not read here: domain membership is kept by the LSA, not
+// in a documented registry value, so an offline scan cannot tell an Entra join
+// from a hybrid join and leaves the join type unknown.
 func staticIntuneInfo(rh hiveReader) *win.IntuneInfo {
 	info := &win.IntuneInfo{}
 

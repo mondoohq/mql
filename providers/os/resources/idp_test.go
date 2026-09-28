@@ -97,6 +97,19 @@ func TestIdpPopulate_PlatformsWithoutDetection(t *testing.T) {
 		require.NotNil(t, i.Entra.Data)
 		assert.Equal(t, labels[detwin.LabelEntraDeviceID], i.Entra.Data.DeviceId.Data)
 		assert.Equal(t, labels[detwin.LabelEntraTenantID], i.Entra.Data.TenantId.Data)
+		assert.Equal(t, null, i.Entra.Data.JoinType.State, "no join type was detected")
+	})
+
+	t.Run("a workstation reports how it joined", func(t *testing.T) {
+		withJoin := map[string]string{detwin.LabelEntraJoinType: detwin.EntraJoinTypeHybrid}
+		for k, v := range labels {
+			withJoin[k] = v
+		}
+		i := newIdp(t, windows("1", "Windows 11 Enterprise", withJoin))
+		require.NoError(t, i.populate())
+		require.NotNil(t, i.Entra.Data)
+		assert.Equal(t, plugin.StateIsSet, i.Entra.Data.JoinType.State)
+		assert.Equal(t, "hybrid", i.Entra.Data.JoinType.Data)
 	})
 
 	t.Run("a workstation with no identity reports a measured false", func(t *testing.T) {

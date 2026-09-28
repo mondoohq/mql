@@ -1442,6 +1442,7 @@ ibm.bob.skills 13.13.1
 idp 14.5.1
 idp.entra 14.5.1
 idp.entra.deviceId 14.5.1
+idp.entra.joinType 14.6.1
 idp.entra.tenantId 14.5.1
 idp.joined 14.5.1
 iis 13.40.10
