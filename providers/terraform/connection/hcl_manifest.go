@@ -139,10 +139,6 @@ func tfvarsRank(name string) int {
 	}
 }
 
-func isTfVarsFile(name string) bool {
-	return strings.HasSuffix(name, ".tfvars") || strings.HasSuffix(name, ".tfvars.json")
-}
-
 func newHclConnection(id uint32, path string, asset *inventory.Asset) (*Connection, error) {
 	// NOTE: right now we are only supporting to load either state, plan or hcl files but not at the same time
 	if len(asset.Connections) != 1 {
