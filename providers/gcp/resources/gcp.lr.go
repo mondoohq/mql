@@ -7302,9 +7302,6 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.dnsService.managedzone.managedBy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectDnsServiceManagedzone).GetManagedBy()).ToDataRes(types.String)
 	},
-	"gcp.project.dnsService.managedzone.effectiveTags": func(r plugin.Resource) *plugin.DataRes {
-		return (r.(*mqlGcpProjectDnsServiceManagedzone).GetEffectiveTags()).ToDataRes(types.Array(types.Resource("gcp.effectiveTag")))
-	},
 	"gcp.project.dnsService.managedzone.dnsKey.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectDnsServiceManagedzoneDnsKey).GetId()).ToDataRes(types.String)
 	},
@@ -26557,10 +26554,6 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.dnsService.managedzone.managedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectDnsServiceManagedzone).ManagedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
-		return
-	},
-	"gcp.project.dnsService.managedzone.effectiveTags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
-		r.(*mqlGcpProjectDnsServiceManagedzone).EffectiveTags, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"gcp.project.dnsService.managedzone.dnsKey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -61073,7 +61066,6 @@ type mqlGcpProjectDnsServiceManagedzone struct {
 	RecordSets                   plugin.TValue[[]any]
 	IamPolicy                    plugin.TValue[[]any]
 	ManagedBy                    plugin.TValue[string]
-	EffectiveTags                plugin.TValue[[]any]
 }
 
 // createGcpProjectDnsServiceManagedzone creates a new instance of this resource
@@ -61278,22 +61270,6 @@ func (c *mqlGcpProjectDnsServiceManagedzone) GetIamPolicy() *plugin.TValue[[]any
 func (c *mqlGcpProjectDnsServiceManagedzone) GetManagedBy() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.ManagedBy, func() (string, error) {
 		return c.managedBy()
-	})
-}
-
-func (c *mqlGcpProjectDnsServiceManagedzone) GetEffectiveTags() *plugin.TValue[[]any] {
-	return plugin.GetOrCompute[[]any](&c.EffectiveTags, func() ([]any, error) {
-		if c.MqlRuntime.HasRecording {
-			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.dnsService.managedzone", c.__id, "effectiveTags")
-			if err != nil {
-				return nil, err
-			}
-			if d != nil {
-				return d.Value.([]any), nil
-			}
-		}
-
-		return c.effectiveTags()
 	})
 }
 

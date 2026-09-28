@@ -826,7 +826,6 @@ var gcpPermissionExpansions = map[string][]string{
 		"compute.vpnGateways.listEffectiveTags",
 		"compute.vpnTunnels.listEffectiveTags",
 		"container.clusters.listEffectiveTags",
-		"dns.managedZones.listEffectiveTags",
 		"run.services.listEffectiveTags",
 		"secretmanager.secrets.listEffectiveTags",
 		"storage.buckets.listEffectiveTags",

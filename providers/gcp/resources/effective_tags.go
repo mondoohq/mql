@@ -178,15 +178,6 @@ func (g *mqlGcpProjectSecretmanagerServiceSecret) effectiveTags() ([]any, error)
 		fmt.Sprintf("//secretmanager.googleapis.com/projects/%s/secrets/%s", p[0], p[1]))
 }
 
-func (g *mqlGcpProjectDnsServiceManagedzone) effectiveTags() ([]any, error) {
-	p, ok, err := stringFields(&g.ProjectId, &g.Name)
-	if err != nil || !ok {
-		return []any{}, err
-	}
-	return effectiveTagsForResource(g.MqlRuntime,
-		fmt.Sprintf("//dns.googleapis.com/projects/%s/managedZones/%s", p[0], p[1]))
-}
-
 // effectiveTags on a bucket uses the projects/_ wildcard, which is the
 // documented resource-name form for Cloud Storage.
 func (g *mqlGcpProjectStorageServiceBucket) effectiveTags() ([]any, error) {

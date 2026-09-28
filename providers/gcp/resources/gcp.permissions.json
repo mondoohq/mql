@@ -195,7 +195,6 @@
     "dns.dnsKeys.list",
     "dns.managedZones.getIamPolicy",
     "dns.managedZones.list",
-    "dns.managedZones.listEffectiveTags",
     "dns.policies.list",
     "dns.resourceRecordSets.list",
     "dns.responsePolicies.list",
@@ -1549,12 +1548,6 @@
       "service": "dns",
       "action": "ManagedZones.List",
       "source_file": "dns.go"
-    },
-    {
-      "permission": "dns.managedZones.listEffectiveTags",
-      "service": "resourcemanager",
-      "action": "EffectiveTags.List",
-      "source_file": "effective_tags.go"
     },
     {
       "permission": "dns.policies.list",

@@ -4931,12 +4931,6 @@ private gcp.project.dnsService.managedzone @defaults("name") {
   // tools apply: "terraform", "config-connector", or "cloud-composer". Empty
   // when the resource carries no management signal.
   managedBy() string
-  // Resource Manager tags that apply to the resource, including inherited ones
-  //
-  // Covers both tag values bound to the resource directly and those set on an
-  // ancestor project, folder, or organization. Each entry reports which of the
-  // two it is through its `inherited` field.
-  effectiveTags() []gcp.effectiveTag
 }
 
 // Google Cloud DNS zone signing key
