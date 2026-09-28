@@ -14,6 +14,7 @@ import (
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/core/resources/versions/rpm"
 	"go.mondoo.com/mql/providers/os/connection/docker"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/connection/tar"
@@ -40,34 +41,12 @@ func (p *mqlOs) rebootpending() (bool, error) {
 	asset := conn.Asset()
 
 	if asset.Platform.Name == "photon" {
-		// get installed kernel and check if the found one is running
+		// Photon: compare the installed kernel packages with the running kernel.
 		k, err := CreateResource(p.MqlRuntime, "kernel", map[string]*llx.RawData{})
 		if err != nil {
 			return false, err
 		}
-		kernel := k.(*mqlKernel)
-
-		kernelInstalled := kernel.GetInstalled()
-		if kernelInstalled.Error != nil {
-			return false, kernelInstalled.Error
-		}
-
-		kernels := []KernelVersion{}
-		data, err := json.Marshal(kernelInstalled)
-		if err != nil {
-			return false, err
-		}
-		err = json.Unmarshal([]byte(data), &kernels)
-		if err != nil {
-			return false, err
-		}
-
-		// we should only have one kernel here
-		if len(kernels) != 1 {
-			return false, errors.New("unexpected kernel list result for photon os")
-		}
-
-		return !kernels[0].Running, nil
+		return photonRebootPending(k.(*mqlKernel).GetInstalled())
 	}
 
 	// TODO: move more logic into MQL to leverage its cache
@@ -422,33 +401,12 @@ func (p *mqlOsBase) rebootpending() (bool, error) {
 	platform := conn.Asset().Platform
 
 	if platform.Name == "photon" {
-		// get installed kernel and check if the found one is running
+		// Photon: compare the installed kernel packages with the running kernel.
 		raw, err := CreateResource(p.MqlRuntime, "kernel", map[string]*llx.RawData{})
 		if err != nil {
 			return false, err
 		}
-		kernel := raw.(*mqlKernel)
-		installed := kernel.GetInstalled()
-		if installed.Error != nil {
-			return false, installed.Error
-		}
-
-		kernels := []KernelVersion{}
-		data, err := json.Marshal(installed)
-		if err != nil {
-			return false, err
-		}
-		err = json.Unmarshal([]byte(data), &kernels)
-		if err != nil {
-			return false, err
-		}
-
-		// we should only have one kernel here
-		if len(kernels) != 1 {
-			return false, errors.New("unexpected kernel list result for photon os")
-		}
-
-		return !kernels[0].Running, nil
+		return photonRebootPending(raw.(*mqlKernel).GetInstalled())
 	}
 
 	// TODO: move more logic into MQL to leverage its cache
@@ -830,4 +788,69 @@ func (s *mqlOsLinux) apparmor() (*mqlApparmor, error) {
 		return nil, err
 	}
 	return res.(*mqlApparmor), nil
+}
+
+// photonRebootPending decides os.rebootpending on Photon OS from the value
+// of kernel.installed.
+//
+// It decodes the list itself (installed.Data), not the TValue wrapper around
+// it: the wrapper marshals to a JSON object, which can never decode into
+// []KernelVersion.
+//
+// The answer is:
+//   - false when no kernel package is installed. That is the normal state of
+//     a Photon container, which runs the host's kernel; there is nothing on
+//     disk to boot into.
+//   - true when kernel packages are installed but none of them is the running
+//     kernel, which is what an in-place kernel upgrade leaves behind.
+//   - true when a package of the same name as the running kernel is at a
+//     newer version, for kernels installed side by side.
+//   - false otherwise.
+//
+// kernel.installed on Photon also lists linux-* packages that are not kernels
+// (linux-api-headers, linux-esx-devel). They never match the running kernel
+// and share no name with it, so they do not affect the answer.
+func photonRebootPending(installed *plugin.TValue[[]any]) (bool, error) {
+	if installed.Error != nil {
+		return false, installed.Error
+	}
+
+	data, err := json.Marshal(installed.Data)
+	if err != nil {
+		return false, err
+	}
+	kernels := []KernelVersion{}
+	if err := json.Unmarshal(data, &kernels); err != nil {
+		return false, err
+	}
+
+	if len(kernels) == 0 {
+		return false, nil
+	}
+
+	var running *KernelVersion
+	for i := range kernels {
+		if kernels[i].Running {
+			running = &kernels[i]
+			break
+		}
+	}
+	if running == nil {
+		return true, nil
+	}
+
+	var parser rpm.Parser
+	for i := range kernels {
+		if kernels[i].Running || kernels[i].Name != running.Name {
+			continue
+		}
+		cmp, err := parser.Compare(kernels[i].Version, running.Version)
+		if err != nil {
+			return false, err
+		}
+		if cmp > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }
