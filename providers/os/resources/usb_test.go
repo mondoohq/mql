@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/resources/usb"
 )
 
@@ -27,4 +28,24 @@ func TestUsbDevicesWithLocation(t *testing.T) {
 		assert.NotEmpty(t, d.LocationID)
 	}
 	assert.ElementsMatch(t, []string{"composite", "normal"}, names)
+}
+
+func TestUsbSourceFor(t *testing.T) {
+	cases := []struct {
+		name     string
+		platform *inventory.Platform
+		want     usbSource
+	}{
+		{"macos", &inventory.Platform{Name: "macos", Family: []string{"darwin", "bsd", "unix", "os"}}, usbSourceMacos},
+		{"ubuntu", &inventory.Platform{Name: "ubuntu", Family: []string{"debian", "linux", "unix", "os"}}, usbSourceLinuxSysfs},
+		{"redhat", &inventory.Platform{Name: "redhat", Family: []string{"redhat", "linux", "unix", "os"}}, usbSourceLinuxSysfs},
+		{"windows", &inventory.Platform{Name: "windows", Family: []string{"windows", "os"}}, usbSourceUnsupported},
+		{"freebsd", &inventory.Platform{Name: "freebsd", Family: []string{"bsd", "unix", "os"}}, usbSourceUnsupported},
+		{"nil", nil, usbSourceUnsupported},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, usbSourceFor(tc.platform))
+		})
+	}
 }
