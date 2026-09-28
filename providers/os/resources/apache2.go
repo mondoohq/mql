@@ -58,7 +58,7 @@ func (s *mqlApache2) version() (string, error) {
 	// Prefer file-based detection: scan the httpd binary for the embedded
 	// "Apache/x.y.z" version string without loading the full binary into memory.
 	for _, bin := range apacheBinaries {
-		if v := scanBinaryForTag(afs, bin, apacheVersionTag); v != "" {
+		if v := scanBinaryForTag(afs, bin, apacheVersionTag, isFullApacheVersion); v != "" {
 			return v, nil
 		}
 	}
@@ -90,10 +90,27 @@ func (s *mqlApache2) version() (string, error) {
 
 var reApacheVersion = regexp.MustCompile(`Apache/(\S+)`)
 
+// isFullApacheVersion accepts only a major.minor.patch version. httpd embeds
+// the reduced ServerTokens forms "Apache/2" and "Apache/2.4" next to the full
+// "Apache/2.4.68", and the linker may place either of them first.
+func isFullApacheVersion(v []byte) bool {
+	parts := bytes.Split(v, []byte("."))
+	if len(parts) < 3 {
+		return false
+	}
+	for _, p := range parts {
+		if len(p) == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // scanBinaryForTag reads a file in chunks and looks for tag followed by a
 // dot-separated version number (e.g. "Apache/2.4.62"). This avoids loading
-// multi-megabyte binaries entirely into memory.
-func scanBinaryForTag(fs *afero.Afero, path string, tag []byte) string {
+// multi-megabyte binaries entirely into memory. When accept is not nil, a
+// match it rejects is skipped and the scan continues with the next one.
+func scanBinaryForTag(fs *afero.Afero, path string, tag []byte, accept func([]byte) bool) string {
 	f, err := fs.Open(path)
 	if err != nil {
 		return ""
@@ -102,7 +119,7 @@ func scanBinaryForTag(fs *afero.Afero, path string, tag []byte) string {
 
 	// Overlap must be at least len(tag) + max version length to avoid
 	// missing a match that spans two chunks.
-	return scanReaderForTag(f, tag, len(tag)+20, isApacheVersionByte)
+	return scanReaderForTag(f, tag, len(tag)+20, isApacheVersionByte, accept)
 }
 
 // isApacheVersionByte reports whether b belongs to an Apache/nginx style
@@ -169,7 +186,7 @@ func scanBinaryForQuotedTag(fs *afero.Afero, path string, tag []byte) string {
 
 	// The overlap has to cover the tag plus the longest value we are willing to
 	// read, so a literal straddling two chunks is not truncated.
-	return scanReaderForTag(f, tag, len(tag)+maxApacheLayoutValue, isNotDoubleQuote)
+	return scanReaderForTag(f, tag, len(tag)+maxApacheLayoutValue, isNotDoubleQuote, nil)
 }
 
 var (
@@ -219,18 +236,24 @@ func apacheDiscoverLayout(conn shared.Connection, afs *afero.Afero) apacheLayout
 // version bytes (as classified by isVersionByte). It is the reader-based core
 // shared by the binary version scanners; the caller owns opening/closing the
 // underlying file. `overlap` is the number of trailing bytes retained between
-// chunks so a match spanning a chunk boundary isn't missed.
-func scanReaderForTag(r io.Reader, tag []byte, overlap int, isVersionByte func(byte) bool) string {
+// chunks so a match spanning a chunk boundary isn't missed. When accept is not
+// nil, runs it rejects are skipped and the scan moves on to the next match.
+func scanReaderForTag(r io.Reader, tag []byte, overlap int, isVersionByte func(byte) bool, accept func([]byte) bool) string {
 	const chunkSize = 64 * 1024
 	buf := make([]byte, chunkSize+overlap)
 	carry := 0
 
+read:
 	for {
 		n, err := r.Read(buf[carry:])
 		active := buf[:carry+n]
 
-		idx := bytes.Index(active, tag)
-		if idx >= 0 {
+		for search := 0; search < len(active); {
+			rel := bytes.Index(active[search:], tag)
+			if rel < 0 {
+				break
+			}
+			idx := search + rel
 			start := idx + len(tag)
 			end := start
 			for end < len(active) && isVersionByte(active[end]) {
@@ -248,10 +271,13 @@ func scanReaderForTag(r io.Reader, tag []byte, overlap int, isVersionByte func(b
 				if end == len(active) && err == nil && len(active)-idx < len(buf) {
 					copy(buf, active[idx:])
 					carry = len(active) - idx
-					continue
+					continue read
 				}
-				return string(active[start:end])
+				if accept == nil || accept(active[start:end]) {
+					return string(active[start:end])
+				}
 			}
+			search = idx + 1
 		}
 
 		// Stop once the reader is drained. `active` was already scanned

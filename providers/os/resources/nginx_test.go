@@ -257,27 +257,27 @@ func TestScanBinaryForTagNginx(t *testing.T) {
 
 	t.Run("embedded version in binary data", func(t *testing.T) {
 		afs := writeBinary(t, []byte("\x00\x00nginx/1.25.3\x00\x00"))
-		assert.Equal(t, "1.25.3", scanBinaryForTag(afs, "/usr/sbin/nginx", tag))
+		assert.Equal(t, "1.25.3", scanBinaryForTag(afs, "/usr/sbin/nginx", tag, nil))
 	})
 
 	t.Run("four-part version", func(t *testing.T) {
 		afs := writeBinary(t, []byte("some binary stuff\x00nginx/1.21.4.2\x00more stuff"))
-		assert.Equal(t, "1.21.4.2", scanBinaryForTag(afs, "/usr/sbin/nginx", tag))
+		assert.Equal(t, "1.21.4.2", scanBinaryForTag(afs, "/usr/sbin/nginx", tag, nil))
 	})
 
 	t.Run("no version tag", func(t *testing.T) {
 		afs := writeBinary(t, []byte("no version here"))
-		assert.Equal(t, "", scanBinaryForTag(afs, "/usr/sbin/nginx", tag))
+		assert.Equal(t, "", scanBinaryForTag(afs, "/usr/sbin/nginx", tag, nil))
 	})
 
 	t.Run("file does not exist", func(t *testing.T) {
 		afs := &afero.Afero{Fs: afero.NewMemMapFs()}
-		assert.Equal(t, "", scanBinaryForTag(afs, "/usr/sbin/nginx", tag))
+		assert.Equal(t, "", scanBinaryForTag(afs, "/usr/sbin/nginx", tag, nil))
 	})
 
 	t.Run("tag without version digits", func(t *testing.T) {
 		afs := writeBinary(t, []byte("nginx/\x00rest"))
-		assert.Equal(t, "", scanBinaryForTag(afs, "/usr/sbin/nginx", tag))
+		assert.Equal(t, "", scanBinaryForTag(afs, "/usr/sbin/nginx", tag, nil))
 	})
 
 	t.Run("version spanning chunk boundary", func(t *testing.T) {
@@ -285,7 +285,7 @@ func TestScanBinaryForTagNginx(t *testing.T) {
 		prefix := make([]byte, 64*1024-3)
 		data := append(prefix, []byte("nginx/1.25.3\x00")...)
 		afs := writeBinary(t, data)
-		assert.Equal(t, "1.25.3", scanBinaryForTag(afs, "/usr/sbin/nginx", tag))
+		assert.Equal(t, "1.25.3", scanBinaryForTag(afs, "/usr/sbin/nginx", tag, nil))
 	})
 
 	t.Run("version literal at exact chunkSize+overlap boundary", func(t *testing.T) {
@@ -302,7 +302,7 @@ func TestScanBinaryForTagNginx(t *testing.T) {
 		data := append(prefix, head...)
 		data = append(data, []byte("2\x00trailing")...)
 		afs := writeBinary(t, data)
-		assert.Equal(t, "1.25.62", scanBinaryForTag(afs, "/usr/sbin/nginx", tag))
+		assert.Equal(t, "1.25.62", scanBinaryForTag(afs, "/usr/sbin/nginx", tag, nil))
 	})
 }
 
@@ -341,7 +341,7 @@ func TestScanReaderForTagShortReads(t *testing.T) {
 		// unmatched tail (carry = 0), missing the tag entirely.
 		data := []byte("\x00\x00nginx/1.25.3\x00")
 		r := &chunkReader{data: data, max: 3}
-		assert.Equal(t, "1.25.3", scanReaderForTag(r, tag, overlap, isApacheVersionByte))
+		assert.Equal(t, "1.25.3", scanReaderForTag(r, tag, overlap, isApacheVersionByte, nil))
 	})
 
 	t.Run("version literal split across short reads", func(t *testing.T) {
@@ -350,7 +350,7 @@ func TestScanReaderForTagShortReads(t *testing.T) {
 		// this to "1.25.6".
 		data := []byte("nginx/1.25.62\x00")
 		r := &chunkReader{data: data, max: 4}
-		assert.Equal(t, "1.25.62", scanReaderForTag(r, tag, overlap, isApacheVersionByte))
+		assert.Equal(t, "1.25.62", scanReaderForTag(r, tag, overlap, isApacheVersionByte, nil))
 	})
 
 	t.Run("version ends exactly at final EOF read", func(t *testing.T) {
@@ -359,7 +359,7 @@ func TestScanReaderForTagShortReads(t *testing.T) {
 		// also reports io.EOF.
 		data := []byte("nginx/1.25.62")
 		r := &chunkReader{data: data, max: 4}
-		assert.Equal(t, "1.25.62", scanReaderForTag(r, tag, overlap, isApacheVersionByte))
+		assert.Equal(t, "1.25.62", scanReaderForTag(r, tag, overlap, isApacheVersionByte, nil))
 	})
 }
 

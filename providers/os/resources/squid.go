@@ -91,7 +91,7 @@ func scanBinaryForSquidVersion(fs *afero.Afero, path string) string {
 	defer f.Close()
 
 	tag := squidVersionTag
-	return scanReaderForTag(f, tag, len(tag)+32, isSquidVersionByte)
+	return scanReaderForTag(f, tag, len(tag)+32, isSquidVersionByte, nil)
 }
 
 // isSquidVersionByte reports whether b belongs to a Squid version literal,

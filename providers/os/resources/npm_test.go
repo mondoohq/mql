@@ -317,3 +317,53 @@ func TestCollectNpmPackagesInPaths_skipsNoneExistentPaths(t *testing.T) {
 	require.True(t, foundApp1, "should find test-app-1 from valid path")
 	require.True(t, foundApp2, "should find test-app-2 from valid path")
 }
+
+func TestNpmScriptsManifest(t *testing.T) {
+	mockFS := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(mockFS, "/app/package.json", []byte(`{"scripts":{"test":"jest"}}`), 0o644))
+	require.NoError(t, afero.WriteFile(mockFS, "/app/package-lock.json", []byte(`{}`), 0o644))
+	require.NoError(t, mockFS.MkdirAll("/empty", 0o755))
+
+	require.Equal(t, "/app/package.json", npmScriptsManifest(mockFS, "/app"))
+	require.Equal(t, "/app/package.json", npmScriptsManifest(mockFS, "/app/package.json"))
+	require.Equal(t, "/app/package.json", npmScriptsManifest(mockFS, "/app/package-lock.json"))
+	require.Equal(t, "", npmScriptsManifest(mockFS, "/empty"))
+	require.Equal(t, "", npmScriptsManifest(mockFS, "/missing/package.json"))
+	require.Equal(t, "", npmScriptsManifest(mockFS, ""))
+}
+
+// A bare npm.packages searches the default locations and has no single
+// package.json. scripts used to read the empty path and fail with
+// "unexpected end of JSON input" on every host.
+func TestNpmPackagesScripts(t *testing.T) {
+	mockFS := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(mockFS, "/app/package.json",
+		[]byte(`{"name":"app","scripts":{"postinstall":"node setup.js"}}`), 0o644))
+	conn, err := fs.NewFileSystemConnectionWithFs(0, &inventory.Config{}, &inventory.Asset{}, "", nil, mockFS)
+	require.NoError(t, err)
+	newRuntime := func() *plugin.Runtime {
+		return &plugin.Runtime{
+			Resources:  &syncx.Map[plugin.Resource]{},
+			Connection: conn,
+			Callback:   &providerCallbacks{},
+		}
+	}
+
+	t.Run("default search", func(t *testing.T) {
+		raw, err := CreateResource(newRuntime(), "npm.packages", nil)
+		require.NoError(t, err)
+		scripts := raw.(*mqlNpmPackages).GetScripts()
+		require.NoError(t, scripts.Error)
+		require.Nil(t, scripts.Data)
+	})
+
+	t.Run("a project directory", func(t *testing.T) {
+		raw, err := CreateResource(newRuntime(), "npm.packages", map[string]*llx.RawData{
+			"path": llx.StringData("/app"),
+		})
+		require.NoError(t, err)
+		scripts := raw.(*mqlNpmPackages).GetScripts()
+		require.NoError(t, scripts.Error)
+		require.Equal(t, map[string]any{"postinstall": "node setup.js"}, scripts.Data)
+	})
+}

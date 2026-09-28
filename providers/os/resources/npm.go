@@ -450,13 +450,46 @@ func (r *mqlNpmPackages) files() ([]any, error) {
 	return nil, r.gatherData()
 }
 
-func (r *mqlNpmPackages) scripts() (map[string]any, error) {
-	if r.Path.Error != nil {
-		return nil, r.Path.Error
+// npmScriptsManifest returns the package.json that holds the scripts for a
+// single search path: the path itself when it names a package.json, the
+// package.json beside a lockfile, or the one inside a directory. It returns ""
+// when the path has no package.json.
+func npmScriptsManifest(fs afero.Fs, path string) string {
+	afs := &afero.Afero{Fs: fs}
+	candidate := path
+	if isDir, err := afs.IsDir(path); err == nil && isDir {
+		candidate = filepath.Join(path, "package.json")
+	} else if filepath.Base(path) != "package.json" {
+		candidate = filepath.Join(filepath.Dir(path), "package.json")
 	}
-	path := r.Path.Data
+	if fi, err := afs.Stat(candidate); err != nil || fi.IsDir() {
+		return ""
+	}
+	return candidate
+}
 
-	f, err := newFile(r.MqlRuntime, path)
+// scripts reads the scripts of the one project npm.packages was pointed at.
+// A search across several locations (the default) has no single package.json,
+// so the field is null there rather than an attempt to parse an empty path.
+func (r *mqlNpmPackages) scripts() (map[string]any, error) {
+	paths, err := r.getPaths()
+	if err != nil {
+		return nil, err
+	}
+	manifest := ""
+	if len(paths) == 1 {
+		conn, ok := r.MqlRuntime.Connection.(shared.Connection)
+		if !ok {
+			return nil, errors.New("npm.packages scripts require a filesystem connection")
+		}
+		manifest = npmScriptsManifest(conn.FileSystem(), paths[0])
+	}
+	if manifest == "" {
+		r.Scripts.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+
+	f, err := newFile(r.MqlRuntime, manifest)
 	if err != nil {
 		return nil, err
 	}

@@ -104,3 +104,49 @@ func TestApacheBinariesCoverKnownInstallations(t *testing.T) {
 		assert.Contains(t, apacheBinaries, want)
 	}
 }
+
+func TestApacheVersionFromBinary(t *testing.T) {
+	scan := func(data []byte) string {
+		afs := writeApacheBinary(t, "/usr/local/sbin/httpd", data)
+		return scanBinaryForTag(afs, "/usr/local/sbin/httpd", apacheVersionTag, isFullApacheVersion)
+	}
+
+	// String order in the apache24-2.4.68 httpd from FreeBSD 14.5 packages
+	// (`strings /usr/local/sbin/httpd | grep Apache/[0-9]`): the ServerTokens
+	// Major form comes first, then the full version, then the Minor form.
+	t.Run("the reduced ServerTokens forms are skipped", func(t *testing.T) {
+		data := []byte("LimitXMLRequestBody requires a non-negative integer.\x00Apache/2\x00file_walk_rxpool\x00" +
+			"Apache/2.4.68 (FreeBSD)\x00Apache/2.4.68\x00" +
+			"Container for directives based on existence of command line defines\x00Apache/2.4\x00")
+		assert.Equal(t, "2.4.68", scan(data))
+	})
+
+	t.Run("the minor form before the full version is skipped", func(t *testing.T) {
+		assert.Equal(t, "2.4.62", scan([]byte("\x00Apache/2.4\x00Apache/2.4.62 (Ubuntu)\x00")))
+	})
+
+	t.Run("a binary with only reduced forms yields nothing", func(t *testing.T) {
+		assert.Equal(t, "", scan([]byte("\x00Apache/2\x00Apache/2.4\x00Apache/2.4.\x00")))
+	})
+
+	// A rejected match must not stop the scan from reading the chunks that
+	// follow it.
+	t.Run("the full version in a later chunk", func(t *testing.T) {
+		var buf bytes.Buffer
+		buf.WriteString("\x00Apache/2\x00")
+		buf.WriteString(strings.Repeat("\x00", 64*1024))
+		buf.WriteString("Apache/2.4.68 (FreeBSD)\x00")
+		assert.Equal(t, "2.4.68", scan(buf.Bytes()))
+	})
+
+	// A rejected match inside the overlap retained between chunks is seen
+	// twice; it must be rejected both times.
+	t.Run("a reduced form in the retained overlap", func(t *testing.T) {
+		var buf bytes.Buffer
+		buf.WriteString(strings.Repeat("\x00", 64*1024-4))
+		buf.WriteString("Apache/2\x00")
+		buf.WriteString(strings.Repeat("\x00", 100))
+		buf.WriteString("Apache/2.4.68\x00")
+		assert.Equal(t, "2.4.68", scan(buf.Bytes()))
+	})
+}

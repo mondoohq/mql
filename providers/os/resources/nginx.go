@@ -43,7 +43,7 @@ func (n *mqlNginx) version() (string, error) {
 	// Prefer file-based detection: scan the nginx binary for the embedded
 	// "nginx/x.y.z" version string without loading the full binary into memory.
 	for _, bin := range nginxVersionBinaries {
-		if v := scanBinaryForTag(afs, bin, nginxVersionTag); v != "" {
+		if v := scanBinaryForTag(afs, bin, nginxVersionTag, nil); v != "" {
 			return v, nil
 		}
 	}
