@@ -27,6 +27,48 @@ type mqlTailscaleAclPolicyInternal struct {
 	rawLock    sync.Mutex
 	rawFetched atomic.Bool
 	rawValue   string
+
+	// cacheExternalTailnets holds the policy's externalTailnets section from
+	// the PolicyFile().Get() response the resource was created from.
+	cacheExternalTailnets map[string]tsclient.ExternalTailnet
+}
+
+// namedExternalTailnet pairs an external tailnet with the alias it is declared
+// under in the policy.
+type namedExternalTailnet struct {
+	name string
+	tsclient.ExternalTailnet
+}
+
+// sortedExternalTailnets flattens the policy's alias-keyed external tailnet
+// map into a list sorted by alias, so repeated scans of an unchanged policy
+// produce an identical list.
+func sortedExternalTailnets(in map[string]tsclient.ExternalTailnet) []namedExternalTailnet {
+	out := make([]namedExternalTailnet, 0, len(in))
+	for name, et := range in {
+		out = append(out, namedExternalTailnet{name: name, ExternalTailnet: et})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
+	return out
+}
+
+func (a *mqlTailscaleAclPolicy) externalTailnets() ([]any, error) {
+	entries := sortedExternalTailnets(a.cacheExternalTailnets)
+	resources := make([]any, 0, len(entries))
+	for _, et := range entries {
+		resource, err := CreateResource(a.MqlRuntime, "tailscale.aclPolicy.externalTailnet", map[string]*llx.RawData{
+			"__id":                      llx.StringData(a.Tailnet.Data + "/externalTailnet/" + et.name),
+			"name":                      llx.StringData(et.name),
+			"externalId":                llx.StringData(et.ExternalID),
+			"allowIncomingConnections":  llx.BoolData(et.AllowIncomingConnections),
+			"allowExternalReferencesTo": llx.ArrayData(stringSliceToAny(et.AllowExternalReferencesTo), types.String),
+		})
+		if err != nil {
+			return nil, err
+		}
+		resources = append(resources, resource)
+	}
+	return resources, nil
 }
 
 func (a *mqlTailscaleAclPolicy) id() (string, error) {
@@ -86,7 +128,7 @@ func createTailscaleAclPolicyResource(runtime *plugin.Runtime, tailnet string, a
 		return nil, err
 	}
 
-	return CreateResource(runtime, "tailscale.aclPolicy", map[string]*llx.RawData{
+	resource, err := CreateResource(runtime, "tailscale.aclPolicy", map[string]*llx.RawData{
 		"tailnet":                llx.StringData(tailnet),
 		"acls":                   llx.ArrayData(acls, types.Dict),
 		"grants":                 llx.ArrayData(grants, types.Dict),
@@ -110,6 +152,11 @@ func createTailscaleAclPolicyResource(runtime *plugin.Runtime, tailnet string, a
 		"randomizeClientPort":    llx.BoolData(acl.RandomizeClientPort),
 		"etag":                   llx.StringData(acl.ETag),
 	})
+	if err != nil {
+		return nil, err
+	}
+	resource.(*mqlTailscaleAclPolicy).cacheExternalTailnets = acl.ExternalTailnets
+	return resource, nil
 }
 
 // raw lazily fetches the raw HuJSON representation of the policy.
