@@ -4,7 +4,9 @@
 package resources
 
 import (
+	"net/url"
 	"strconv"
+	"strings"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
 	"go.mondoo.com/mql/llx"
@@ -57,6 +59,8 @@ type mqlGitlabProjectContainerExpirationPolicyInternal struct {
 
 type mqlGitlabProjectPackageInternal struct {
 	packageProjectID int64
+	cacheCreatorID   int64
+	cachePipeline    *gitlab.PackagePipeline
 }
 
 // -----------------------------------------------------------------------------
@@ -412,7 +416,95 @@ func buildMqlPackage(runtime *plugin.Runtime, pkg *gitlab.Package, projectID int
 	}
 	mqlPkg := res.(*mqlGitlabProjectPackage)
 	mqlPkg.packageProjectID = projectID
+	mqlPkg.cacheCreatorID, mqlPkg.cachePipeline = packageProvenance(pkg)
 	return mqlPkg, nil
+}
+
+// packageProvenance returns the id of the user who published the package and
+// the pipeline that last built it. GitLab sends creator_id: null when no
+// creator is recorded and omits pipeline when the package was not built in
+// CI/CD or the caller cannot read pipelines; the ids then come back as 0 and
+// the pipeline as nil. The deprecated pipelines array is always empty and is
+// not consulted.
+func packageProvenance(pkg *gitlab.Package) (creatorID int64, pipeline *gitlab.PackagePipeline) {
+	if pkg == nil {
+		return 0, nil
+	}
+	if pkg.Pipeline != nil && pkg.Pipeline.ID > 0 {
+		pipeline = pkg.Pipeline
+	}
+	return pkg.CreatorID, pipeline
+}
+
+// pipelineProjectPath extracts the project's full path from a pipeline web
+// URL such as https://gitlab.example.com/group/sub/proj/-/pipelines/42. A job
+// in one project can publish into another project's registry, so the
+// pipeline's project is not necessarily the package's project. Returns ""
+// when the URL does not have that shape.
+func pipelineProjectPath(webURL string) string {
+	u, err := url.Parse(webURL)
+	if err != nil {
+		return ""
+	}
+	path := strings.Trim(u.Path, "/")
+	idx := strings.Index(path, "/-/pipelines/")
+	if idx <= 0 {
+		return ""
+	}
+	return path[:idx]
+}
+
+// creator returns the user who published the package, or null when GitLab
+// does not record one.
+func (p *mqlGitlabProjectPackage) creator() (*mqlGitlabUser, error) {
+	if p.cacheCreatorID <= 0 {
+		p.Creator.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(p.MqlRuntime, "gitlab.user", map[string]*llx.RawData{
+		"id": llx.IntData(p.cacheCreatorID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlGitlabUser), nil
+}
+
+// pipeline returns the pipeline that most recently built the package. The
+// package payload carries only a subset of the pipeline's fields (no iid,
+// source, or name), so the full pipeline is fetched to avoid caching a
+// partial gitlab.project.pipeline under the same id that project.pipelines
+// would reuse. The pipeline is looked up in the project named by its web URL,
+// falling back to the package's project.
+func (p *mqlGitlabProjectPackage) pipeline() (*mqlGitlabProjectPipeline, error) {
+	if p.cachePipeline == nil {
+		p.Pipeline.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	var pid any = p.packageProjectID
+	if path := pipelineProjectPath(p.cachePipeline.WebURL); path != "" {
+		pid = path
+	} else if p.packageProjectID <= 0 {
+		p.Pipeline.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	conn := p.MqlRuntime.Connection.(*connection.GitLabConnection)
+	pl, resp, err := conn.Client().Pipelines.GetPipeline(pid, p.cachePipeline.ID)
+	// An instance served under a relative URL root prefixes the path, so a
+	// 404 on the URL-derived project retries against the package's project.
+	if err != nil && resp != nil && resp.StatusCode == 404 && p.packageProjectID > 0 {
+		if _, isPath := pid.(string); isPath {
+			pl, _, err = conn.Client().Pipelines.GetPipeline(p.packageProjectID, p.cachePipeline.ID)
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	if pl == nil {
+		p.Pipeline.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return newMqlGitlabPipelineFromDetail(p.MqlRuntime, pl)
 }
 
 func (p *mqlGitlabProjectPackage) project() (*mqlGitlabProject, error) {

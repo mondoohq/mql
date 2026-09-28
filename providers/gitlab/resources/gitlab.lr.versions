@@ -588,6 +588,7 @@ gitlab.project.onlyAllowMergeIfPipelineSucceeds 9.0.1
 gitlab.project.onlyMirrorProtectedBranches 13.3.9
 gitlab.project.package 13.3.1
 gitlab.project.package.createdAt 13.3.1
+gitlab.project.package.creator 14.0.1
 gitlab.project.package.file 13.3.1
 gitlab.project.package.file.createdAt 13.3.1
 gitlab.project.package.file.fileMD5 13.3.1
@@ -602,6 +603,7 @@ gitlab.project.package.id 13.3.1
 gitlab.project.package.lastDownloadedAt 13.3.1
 gitlab.project.package.name 13.3.1
 gitlab.project.package.packageType 13.3.1
+gitlab.project.package.pipeline 14.0.1
 gitlab.project.package.project 13.3.1
 gitlab.project.package.status 13.3.1
 gitlab.project.package.tags 13.3.1

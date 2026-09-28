@@ -2883,6 +2883,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gitlab.project.package.files": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabProjectPackage).GetFiles()).ToDataRes(types.Array(types.Resource("gitlab.project.package.file")))
 	},
+	"gitlab.project.package.creator": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabProjectPackage).GetCreator()).ToDataRes(types.Resource("gitlab.user"))
+	},
+	"gitlab.project.package.pipeline": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabProjectPackage).GetPipeline()).ToDataRes(types.Resource("gitlab.project.pipeline"))
+	},
 	"gitlab.project.package.file.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabProjectPackageFile).GetId()).ToDataRes(types.Int)
 	},
@@ -6768,6 +6774,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gitlab.project.package.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGitlabProjectPackage).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gitlab.project.package.creator": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabProjectPackage).Creator, ok = plugin.RawToTValue[*mqlGitlabUser](v.Value, v.Error)
+		return
+	},
+	"gitlab.project.package.pipeline": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabProjectPackage).Pipeline, ok = plugin.RawToTValue[*mqlGitlabProjectPipeline](v.Value, v.Error)
 		return
 	},
 	"gitlab.project.package.file.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -15020,6 +15034,8 @@ type mqlGitlabProjectPackage struct {
 	WebPath          plugin.TValue[string]
 	Project          plugin.TValue[*mqlGitlabProject]
 	Files            plugin.TValue[[]any]
+	Creator          plugin.TValue[*mqlGitlabUser]
+	Pipeline         plugin.TValue[*mqlGitlabProjectPipeline]
 }
 
 // createGitlabProjectPackage creates a new instance of this resource
@@ -15124,6 +15140,38 @@ func (c *mqlGitlabProjectPackage) GetFiles() *plugin.TValue[[]any] {
 		}
 
 		return c.files()
+	})
+}
+
+func (c *mqlGitlabProjectPackage) GetCreator() *plugin.TValue[*mqlGitlabUser] {
+	return plugin.GetOrCompute[*mqlGitlabUser](&c.Creator, func() (*mqlGitlabUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gitlab.project.package", c.__id, "creator")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGitlabUser), nil
+			}
+		}
+
+		return c.creator()
+	})
+}
+
+func (c *mqlGitlabProjectPackage) GetPipeline() *plugin.TValue[*mqlGitlabProjectPipeline] {
+	return plugin.GetOrCompute[*mqlGitlabProjectPipeline](&c.Pipeline, func() (*mqlGitlabProjectPipeline, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gitlab.project.package", c.__id, "pipeline")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGitlabProjectPipeline), nil
+			}
+		}
+
+		return c.pipeline()
 	})
 }
 

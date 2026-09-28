@@ -2491,6 +2491,16 @@ private gitlab.project.package @defaults("name version packageType status") {
   project() gitlab.project
   // Files contained in the package
   files() []gitlab.project.package.file
+  // User who published the package
+  //
+  // Null when GitLab does not record a creator, such as a package published
+  // by a deleted user.
+  creator() gitlab.user
+  // Pipeline that most recently built the package
+  //
+  // Null when the package was not published from a CI/CD pipeline or the
+  // token cannot read the project's pipelines.
+  pipeline() gitlab.project.pipeline
 }
 
 // File within a GitLab package
