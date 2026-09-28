@@ -106,7 +106,7 @@ func initAwsCloudtrailTrail(runtime *plugin.Runtime, args map[string]*llx.RawDat
 					}
 				}
 			} else if resp.Trail != nil {
-				trail, err := buildCloudtrailTrailResource(runtime, *resp.Trail)
+				trail, err := buildCloudtrailTrailResource(runtime, *resp.Trail, nil)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -141,7 +141,11 @@ func initAwsCloudtrailTrail(runtime *plugin.Runtime, args map[string]*llx.RawDat
 // resource and primes the trailCache so the status / event-selector lazy
 // accessors resolve against the same data. Shared by the list path and the
 // targeted init lookup.
-func buildCloudtrailTrailResource(runtime *plugin.Runtime, trail types.Trail) (*mqlAwsCloudtrailTrail, error) {
+//
+// tags, when non-nil, are the trail's tags already read for the discovery tag
+// filters; they are seeded so the field is not fetched again. A nil map leaves
+// the field lazy.
+func buildCloudtrailTrailResource(runtime *plugin.Runtime, trail types.Trail, tags map[string]string) (*mqlAwsCloudtrailTrail, error) {
 	args := map[string]*llx.RawData{
 		"arn":                        llx.StringDataPtr(trail.TrailARN),
 		"name":                       llx.StringDataPtr(trail.Name),
@@ -153,6 +157,9 @@ func buildCloudtrailTrailResource(runtime *plugin.Runtime, trail types.Trail) (*
 		"region":                     llx.StringDataPtr(trail.HomeRegion),
 		"hasInsightSelectors":        llx.BoolDataPtr(trail.HasInsightSelectors),
 		"hasCustomEventSelectors":    llx.BoolDataPtr(trail.HasCustomEventSelectors),
+	}
+	if tags != nil {
+		args["tags"] = llx.MapData(stringMapToAny(tags), mqlTypes.String)
 	}
 
 	mqlTrail, err := CreateResource(runtime, "aws.cloudtrail.trail", args)
@@ -195,13 +202,37 @@ func (a *mqlAwsCloudtrail) getTrails(conn *connection.AwsConnection) []*jobpool.
 				}
 				return nil, errors.Wrap(err, "could not gather aws cloudtrail trails")
 			}
+			// only include trail if this region is the home region for the trail
+			// we do this to avoid getting duped results from multiregion trails
+			trails := make([]types.Trail, 0, len(trailsResp.TrailList))
 			for _, trail := range trailsResp.TrailList {
-				// only include trail if this region is the home region for the trail
-				// we do this to avoid getting duped results from multiregion trails
-				if region != convert.ToValue(trail.HomeRegion) {
+				if region == convert.ToValue(trail.HomeRegion) {
+					trails = append(trails, trail)
+				}
+			}
+
+			// DescribeTrails returns no tags, so the discovery tag filters need
+			// ListTags per trail, and only when such a filter is set.
+			var tagsByArn map[string]map[string]string
+			if conn.Filters.General.HasTags() {
+				arns := make([]string, 0, len(trails))
+				for _, trail := range trails {
+					if trail.TrailARN != nil {
+						arns = append(arns, *trail.TrailARN)
+					}
+				}
+				tagsByArn = fetchTagsConcurrently(ctx, arns, func(ctx context.Context, trailArn string) (map[string]string, error) {
+					return getCloudtrailTags(ctx, svc, trailArn)
+				})
+			}
+
+			for _, trail := range trails {
+				tags, keep := trailTagsForFilters(conn.Filters.General, tagsByArn, convert.ToValue(trail.TrailARN))
+				if !keep {
+					log.Debug().Interface("trail", trail.TrailARN).Msg("excluding cloudtrail trail due to filters")
 					continue
 				}
-				mqlTrail, err := buildCloudtrailTrailResource(a.MqlRuntime, trail)
+				mqlTrail, err := buildCloudtrailTrailResource(a.MqlRuntime, trail, tags)
 				if err != nil {
 					return nil, err
 				}
@@ -380,20 +411,45 @@ func (a *mqlAwsCloudtrailTrail) isLogging() (bool, error) {
 func (a *mqlAwsCloudtrailTrail) tags() (map[string]any, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
 	svc := conn.Cloudtrail(a.Region.Data)
-	ctx := context.Background()
-
-	arnValue := a.Arn.Data
-	resp, err := svc.ListTags(ctx, &cloudtrail.ListTagsInput{
-		ResourceIdList: []string{arnValue},
-	})
+	tags, err := getCloudtrailTags(context.Background(), svc, a.Arn.Data)
 	if err != nil {
 		if Is400AccessDeniedError(err) {
 			return markTagsUnreadable(&a.Tags)
 		}
 		return nil, err
 	}
+	return stringMapToAny(tags), nil
+}
 
-	tags := map[string]any{}
+// trailTagsForFilters decides whether the discovery tag filters keep a trail,
+// from the tags read for it (tagsByArn, from ListTags). It also returns the
+// tags to seed on the resource: nil when there are no tag filters or its tags
+// could not be read, so that the field stays lazy. A trail whose tags could not
+// be read counts as untagged, as everywhere in the provider.
+func trailTagsForFilters(filters connection.GeneralDiscoveryFilters, tagsByArn map[string]map[string]string, trailArn string) (map[string]string, bool) {
+	if !filters.HasTags() {
+		return nil, true
+	}
+	tags, fetched := tagsByArn[trailArn]
+	if filters.IsFilteredOutByTags(tags) {
+		return nil, false
+	}
+	if !fetched {
+		return nil, true
+	}
+	return tags, true
+}
+
+// getCloudtrailTags reads a trail's tags. svc must be a client for the trail's
+// home region.
+func getCloudtrailTags(ctx context.Context, svc *cloudtrail.Client, trailArn string) (map[string]string, error) {
+	resp, err := svc.ListTags(ctx, &cloudtrail.ListTagsInput{
+		ResourceIdList: []string{trailArn},
+	})
+	if err != nil {
+		return nil, err
+	}
+	tags := map[string]string{}
 	for _, resourceTag := range resp.ResourceTagList {
 		for _, tag := range resourceTag.TagsList {
 			tags[convert.ToValue(tag.Key)] = convert.ToValue(tag.Value)
