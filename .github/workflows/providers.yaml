@@ -445,6 +445,11 @@ jobs:
             esac
           done < planned.txt
 
+          # Past this many, name a count instead: a full release is 80+ providers.
+          max_named=5
+          [ "$ok" -le "$max_named" ] || released="$ok providers, see the run"
+          [ "$bad" -le "$max_named" ] || failed="$bad providers, see the run"
+
           # Most runs on providers/** touch provider code without bumping a
           # version, so the "nothing to release" branch fired on 22 of 30
           # consecutive runs. A channel that is mostly no-ops trains people to
@@ -503,7 +508,11 @@ jobs:
           emit header "$header"
           # The notification preview shows only `text`, so name the providers
           # there too, not just in the blocks.
-          emit text "$(esc "$header")${released:+ ($(esc "$released"))}"
+          if [ "$ok" -le "$max_named" ]; then
+            emit text "$(esc "$header")${released:+ ($(esc "$released"))}"
+          else
+            emit text "$(esc "$header")"
+          fi
           emit mention "$mention"
           emit detail "$detail"
           emit build_status "$(status "$BUILD")"
