@@ -1,0 +1,2154 @@
+[
+  {
+    "Path": "Active Directory Certificate Services",
+    "Name": "AD-Certificate",
+    "DisplayName": "Active Directory Certificate Services",
+    "Description": "Active Directory Certificate Services (AD CS) is used to create certification authorities and related role services that allow you to issue and manage certificates used in a variety of applications.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Active Directory Certificate Services\\Certification Authority",
+    "Name": "ADCS-Cert-Authority",
+    "DisplayName": "Certification Authority",
+    "Description": "Certification Authority (CA) is used to issue and manage certificates. Multiple CAs can be linked to form a public key infrastructure.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Active Directory Certificate Services\\Certificate Enrollment Policy Web Service",
+    "Name": "ADCS-Enroll-Web-Pol",
+    "DisplayName": "Certificate Enrollment Policy Web Service",
+    "Description": "The Certificate Enrollment Policy Web Service enables users and computers to obtain certificate enrollment policy information even when the computer is not a member of a domain or if a domain-joined computer is temporarily outside the security boundary of the corporate network. The Certificate Enrollment Policy Web Service works with the Certificate Enrollment Web Service to provide policy-based automatic certificate enrollment for these users and computers.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Active Directory Certificate Services\\Certificate Enrollment Web Service",
+    "Name": "ADCS-Enroll-Web-Svc",
+    "DisplayName": "Certificate Enrollment Web Service",
+    "Description": "The Certificate Enrollment Web Service enables users and computers to enroll for and renew certificates even when the computer is not a member of a domain or if a domain-joined computer is temporarily outside the security boundary of the computer network. The Certificate Enrollment Web Service works together with the Certificate Enrollment Policy Web Service to provide policy-based automatic certificate enrollment for these users and computers.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Active Directory Certificate Services\\Certification Authority Web Enrollment",
+    "Name": "ADCS-Web-Enrollment",
+    "DisplayName": "Certification Authority Web Enrollment",
+    "Description": "Certification Authority Web Enrollment provides a simple Web interface that allows users to perform tasks such as request and renew certificates, retrieve certificate revocation lists (CRLs), and enroll for smart card certificates.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Active Directory Certificate Services\\Network Device Enrollment Service",
+    "Name": "ADCS-Device-Enrollment",
+    "DisplayName": "Network Device Enrollment Service",
+    "Description": "Network Device Enrollment Service makes it possible to issue and manage certificates for routers and other network devices that do not have network accounts.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Active Directory Certificate Services\\Online Responder",
+    "Name": "ADCS-Online-Cert",
+    "DisplayName": "Online Responder",
+    "Description": "Online Responder makes certificate revocation checking data accessible to clients in complex network environments.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Active Directory Domain Services",
+    "Name": "AD-Domain-Services",
+    "DisplayName": "Active Directory Domain Services",
+    "Description": "Active Directory Domain Services (AD DS) stores information about objects on the network and makes this information available to users and network administrators. AD DS uses domain controllers to give network users access to permitted resources anywhere on the network through a single logon process.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Active Directory Federation Services",
+    "Name": "ADFS-Federation",
+    "DisplayName": "Active Directory Federation Services",
+    "Description": "Active Directory Federation Services (AD FS) provides simplified, secured identity federation and Web single sign-on (SSO) capabilities. AD FS includes a Federation Service that enables browser-based Web SSO.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Active Directory Lightweight Directory Services",
+    "Name": "ADLDS",
+    "DisplayName": "Active Directory Lightweight Directory Services",
+    "Description": "Active Directory Lightweight Directory Services (AD LDS) provides a store for application-specific data, for directory-enabled applications that do not require the infrastructure of Active Directory Domain Services. Multiple instances of AD LDS can exist on a single server, each of which can have its own schema.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Active Directory Rights Management Services",
+    "Name": "ADRMS",
+    "DisplayName": "Active Directory Rights Management Services",
+    "Description": "Active Directory Rights Management Services (AD RMS) helps you protect information from unauthorized use. AD RMS establishes the identity of users and provides authorized users with licenses for protected information.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Active Directory Rights Management Services\\Active Directory Rights Management Server",
+    "Name": "ADRMS-Server",
+    "DisplayName": "Active Directory Rights Management Server",
+    "Description": "Active Directory Rights Management Services (AD RMS) helps you protect information from unauthorized use. AD RMS establishes the identity of users and provides authorized users with licenses for protected information.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Active Directory Rights Management Services\\Identity Federation Support",
+    "Name": "ADRMS-Identity",
+    "DisplayName": "Identity Federation Support",
+    "Description": "Identity Federation Support leverages federated trust relationships between your organization and other organizations to establish user identities and provide access to protected information created by either organization. For example, a trust created with Active Directory Federation Services can be used to establish user identities for AD RMS.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Device Health Attestation",
+    "Name": "DeviceHealthAttestationService",
+    "DisplayName": "Device Health Attestation",
+    "Description": "Device Health Attestation provides the ability to assess the health of managed devices.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "DHCP Server",
+    "Name": "DHCP",
+    "DisplayName": "DHCP Server",
+    "Description": "Dynamic Host Configuration Protocol (DHCP) Server enables you to centrally configure, manage, and provide temporary IP addresses and related information for client computers.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "DNS Server",
+    "Name": "DNS",
+    "DisplayName": "DNS Server",
+    "Description": "Domain Name System (DNS) Server provides name resolution for TCP/IP networks. DNS Server is easier to manage when it is installed on the same server as Active Directory Domain Services. If you select the Active Directory Domain Services role, you can install and configure DNS Server and Active Directory Domain Services to work together.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Fax Server",
+    "Name": "Fax",
+    "DisplayName": "Fax Server",
+    "Description": "Fax Server sends and receives faxes and allows you to manage fax resources such as jobs, settings, reports, and fax devices on this computer or on the network.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "File and Storage Services",
+    "Name": "FileAndStorage-Services",
+    "DisplayName": "File and Storage Services",
+    "Description": "File and Storage Services includes services that are always installed, as well as functionality that you can install to help manage file servers and storage.",
+    "Installed": true,
+    "InstallState": 1
+  },
+  {
+    "Path": "File and Storage Services\\File and iSCSI Services",
+    "Name": "File-Services",
+    "DisplayName": "File and iSCSI Services",
+    "Description": "File and iSCSI Services provides technologies that help you manage file servers and storage, reduce disk space utilization, replicate and cache files to branch offices, move or fail over a file share to another cluster node, and share files by using the NFS protocol.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "File and Storage Services\\File and iSCSI Services\\File Server",
+    "Name": "FS-FileServer",
+    "DisplayName": "File Server",
+    "Description": "File Server manages shared folders and enables users to access files on this computer from the network.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "File and Storage Services\\File and iSCSI Services\\BranchCache for Network Files",
+    "Name": "FS-BranchCache",
+    "DisplayName": "BranchCache for Network Files",
+    "Description": "BranchCache for Network Files provides support for BranchCache on this file server. BranchCache is a wide area network (WAN) bandwidth optimization technology that caches content from your main office content servers at branch office locations, allowing client computers at branch offices to access the content locally rather than over the WAN. After you complete installation, you must share folders and enable hash generation for shared folders by using Group Policy or Local Computer Policy.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "File and Storage Services\\File and iSCSI Services\\Data Deduplication",
+    "Name": "FS-Data-Deduplication",
+    "DisplayName": "Data Deduplication",
+    "Description": "Data Deduplication saves disk space by storing a single copy of identical data on the volume.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "File and Storage Services\\File and iSCSI Services\\DFS Namespaces",
+    "Name": "FS-DFS-Namespace",
+    "DisplayName": "DFS Namespaces",
+    "Description": "DFS Namespaces enables you to group shared folders located on different servers into one or more logically structured namespaces. Each namespace appears to users as a single shared folder with a series of subfolders. However, the underlying structure of the namespace can consist of numerous shared folders located on different servers and in multiple sites.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "File and Storage Services\\File and iSCSI Services\\DFS Replication",
+    "Name": "FS-DFS-Replication",
+    "DisplayName": "DFS Replication",
+    "Description": "DFS Replication is a multimaster replication engine that enables you to synchronize folders on multiple servers across local or wide area network (WAN) network connections. It uses the Remote Differential Compression (RDC) protocol to update only the portions of files that have changed since the last replication. DFS Replication can be used in conjunction with DFS Namespaces, or by itself.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "File and Storage Services\\File and iSCSI Services\\File Server Resource Manager",
+    "Name": "FS-Resource-Manager",
+    "DisplayName": "File Server Resource Manager",
+    "Description": "File Server Resource Manager helps you manage and understand the files and folders on a file server by scheduling file management tasks and storage reports, classifying files and folders, configuring folder quotas, and defining file screening policies.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "File and Storage Services\\File and iSCSI Services\\File Server VSS Agent Service",
+    "Name": "FS-VSS-Agent",
+    "DisplayName": "File Server VSS Agent Service",
+    "Description": "File Server VSS Agent Service enables you to perform volume shadow copies of applications that store data files on this file server.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "File and Storage Services\\File and iSCSI Services\\iSCSI Target Server",
+    "Name": "FS-iSCSITarget-Server",
+    "DisplayName": "iSCSI Target Server",
+    "Description": "iSCSI Target Server provides services and management tools for iSCSI targets.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "File and Storage Services\\File and iSCSI Services\\iSCSI Target Storage Provider (VDS and VSS hardware providers)",
+    "Name": "iSCSITarget-VSS-VDS",
+    "DisplayName": "iSCSI Target Storage Provider (VDS and VSS hardware providers)",
+    "Description": "iSCSI Target Storage Provider enables applications on a server that are connected to an iSCSI target to perform volume shadow copies of data on iSCSI virtual disks. It also enables you to manage iSCSI virtual disks by using older applications that require a Virtual Disk Service (VDS) hardware provider, such as the Diskraid command.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "File and Storage Services\\File and iSCSI Services\\Server for NFS",
+    "Name": "FS-NFS-Service",
+    "DisplayName": "Server for NFS",
+    "Description": "Server for NFS enables this computer to share files with UNIX-based computers and other computers that use the network file system (NFS) protocol.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "File and Storage Services\\File and iSCSI Services\\Work Folders",
+    "Name": "FS-SyncShareService",
+    "DisplayName": "Work Folders",
+    "Description": "Work Folders provides a way to use work files from a variety of computers, including work and personal devices. You can use Work Folders to host user files and keep them synchronized - whether users access their files from inside the network or from across the Internet.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "File and Storage Services\\Storage Services",
+    "Name": "Storage-Services",
+    "DisplayName": "Storage Services",
+    "Description": "Storage Services provides storage management functionality that is always installed and cannot be removed.",
+    "Installed": true,
+    "InstallState": 1
+  },
+  {
+    "Path": "Host Guardian Service",
+    "Name": "HostGuardianServiceRole",
+    "DisplayName": "Host Guardian Service",
+    "Description": "The Host Guardian Service (HGS) server role provides the Attestation & Key Protection services that enable Guarded Hosts to run Shielded virtual machines. The Attestation service validates Guarded Host identity & configuration. The Key Protection service enables distributed access to encrypted transport keys to enable Guarded Hosts to unlock and run Shielded virtual machines.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Hyper-V",
+    "Name": "Hyper-V",
+    "DisplayName": "Hyper-V",
+    "Description": "Hyper-V provides the services that you can use to create and manage virtual machines and their resources. Each virtual machine is a virtualized computer system that operates in an isolated execution environment. This allows you to run multiple operating systems simultaneously.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Network Controller",
+    "Name": "NetworkController",
+    "DisplayName": "Network Controller",
+    "Description": "The Network Controller provides the point of automation needed for continual configuration, monitoring and diagnostics of virtual networks, physical networks, network services, network topology, address management, etc. within a datacenter stamp.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Network Policy and Access Services",
+    "Name": "NPAS",
+    "DisplayName": "Network Policy and Access Services",
+    "Description": "Network Policy and Access Services provides Network Policy Server (NPS), which helps safeguard the security of your network.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Print and Document Services",
+    "Name": "Print-Services",
+    "DisplayName": "Print and Document Services",
+    "Description": "Print and Document Services enables you to centralize print server and network printer management tasks.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Print and Document Services\\Print Server",
+    "Name": "Print-Server",
+    "DisplayName": "Print Server",
+    "Description": "Print Server includes the Print Management snap-in, which is used for managing multiple printers or print servers and migrating printers to and from other Windows print servers.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Print and Document Services\\Internet Printing",
+    "Name": "Print-Internet",
+    "DisplayName": "Internet Printing",
+    "Description": "Internet Printing creates a Web site where users can manage print jobs on the server. It also enables users who have Internet Printing Client installed to use a Web browser to connect and print to shared printers on this server by using the Internet Printing Protocol (IPP).",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Print and Document Services\\LPD Service",
+    "Name": "Print-LPD-Service",
+    "DisplayName": "LPD Service",
+    "Description": "Line Printer Daemon (LPD) Service enables UNIX-based computers or other computers using the Line Printer Remote (LPR) service to print to shared printers on this server.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Access",
+    "Name": "RemoteAccess",
+    "DisplayName": "Remote Access",
+    "Description": "Remote Access provides seamless connectivity through DirectAccess, VPN, and Web Application Proxy. DirectAccess provides an Always On and Always Managed experience. RAS provides traditional VPN services, including site-to-site (branch-office or cloud-based) connectivity. Web Application Proxy enables the publishing of selected HTTP- and HTTPS-based applications from your corporate network to client devices outside of the corporate network. Routing provides traditional routing capabilities, including NAT and other connectivity options. RAS and Routing can be deployed in single-tenant or multi-tenant mode.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Access\\DirectAccess and VPN (RAS)",
+    "Name": "DirectAccess-VPN",
+    "DisplayName": "DirectAccess and VPN (RAS)",
+    "Description": "DirectAccess gives users the experience of being seamlessly connected to their corporate network any time they have Internet access. With DirectAccess, mobile computers can be managed any time the computer has Internet connectivity, ensuring mobile users stay up-to-date with security and system health policies. VPN uses the connectivity of the Internet plus a combination of tunnelling and data encryption technologies to connect remote clients and remote offices.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Access\\Routing",
+    "Name": "Routing",
+    "DisplayName": "Routing",
+    "Description": "Routing provides support for NAT Routers, LAN Routers running BGP, RIP, and multicast capable routers (IGMP Proxy).",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Access\\Web Application Proxy",
+    "Name": "Web-Application-Proxy",
+    "DisplayName": "Web Application Proxy",
+    "Description": "Web Application Proxy enables the publishing of selected HTTP- and HTTPS-based applications from your corporate network to client devices outside of the corporate network. It can use AD FS to ensure that users are authenticated before they gain access to published applications. Web Application Proxy also provides proxy functionality for your AD FS servers.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Desktop Services",
+    "Name": "Remote-Desktop-Services",
+    "DisplayName": "Remote Desktop Services",
+    "Description": "Remote Desktop Services enables users to access virtual desktops, session-based desktops, and RemoteApp programs. Use the Remote Desktop Services installation to configure a Virtual machine-based or a Session-based desktop deployment.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Desktop Services\\Remote Desktop Connection Broker",
+    "Name": "RDS-Connection-Broker",
+    "DisplayName": "Remote Desktop Connection Broker",
+    "Description": "Remote Desktop Connection Broker (RD Connection Broker) allows users to reconnect to their existing virtual desktops, RemoteApp programs, and session-based desktops. It enables even load distribution across RD Session Host servers in a session collection or across pooled virtual desktops in a pooled virtual desktop collection, and provides access to virtual desktops in a virtual desktop collection.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Desktop Services\\Remote Desktop Gateway",
+    "Name": "RDS-Gateway",
+    "DisplayName": "Remote Desktop Gateway",
+    "Description": "Remote Desktop Gateway (RD Gateway) enables authorized users to connect to virtual desktops, RemoteApp programs, and session-based desktops on the corporate network or over the Internet.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Desktop Services\\Remote Desktop Licensing",
+    "Name": "RDS-Licensing",
+    "DisplayName": "Remote Desktop Licensing",
+    "Description": "Remote Desktop Licensing (RD Licensing) manages the licenses required to connect to a Remote Desktop Session Host server or a virtual desktop. You can use RD Licensing to install, issue, and track the availability of licenses.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Desktop Services\\Remote Desktop Session Host",
+    "Name": "RDS-RD-Server",
+    "DisplayName": "Remote Desktop Session Host",
+    "Description": "Remote Desktop Session Host (RD Session Host) enables a server to host RemoteApp programs or session-based desktops. Users can connect to RD Session Host servers in a session collection to run programs, save files, and use resources on those servers. Users can access an RD Session Host server by using the Remote Desktop Connection client or by using RemoteApp programs.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Desktop Services\\Remote Desktop Virtualization Host",
+    "Name": "RDS-Virtualization",
+    "DisplayName": "Remote Desktop Virtualization Host",
+    "Description": "Remote Desktop Virtualization Host (RD Virtualization Host) enables users to connect to virtual desktops by using RemoteApp and Desktop Connection.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Desktop Services\\Remote Desktop Web Access",
+    "Name": "RDS-Web-Access",
+    "DisplayName": "Remote Desktop Web Access",
+    "Description": "Remote Desktop Web Access (RD Web Access) enables users to access RemoteApp and Desktop Connection through the Start menu or through a web browser. RemoteApp and Desktop Connection provides users with a customized view of RemoteApp programs, session-based desktops, and virtual desktops.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Volume Activation Services",
+    "Name": "VolumeActivation",
+    "DisplayName": "Volume Activation Services",
+    "Description": "Volume Activation Services enables you to automate and simplify the management of Key Management Service (KMS) host keys and the volume key activation infrastructure for a network. With this service you can install and manage a KMS host, or configure Microsoft Active Directory-Based Activation to provide volume activation for domain-joined systems.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)",
+    "Name": "Web-Server",
+    "DisplayName": "Web Server (IIS)",
+    "Description": "Web Server (IIS) provides a reliable, manageable, and scalable Web application infrastructure.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server",
+    "Name": "Web-WebServer",
+    "DisplayName": "Web Server",
+    "Description": "Web Server provides support for HTML Web sites and optional support for ASP.NET, ASP, and Web server extensions. You can use the Web Server to host an internal or external Web site or to provide an environment for developers to create Web-based applications.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Common HTTP Features",
+    "Name": "Web-Common-Http",
+    "DisplayName": "Common HTTP Features",
+    "Description": "Common HTTP Features supports basic HTTP functionality, such as delivering standard file formats and configuring custom server properties. Use Common HTTP Features to create custom error messages, to configure how the server responds to requests that do not specify a document, or to automatically redirect some requests to a different location.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Common HTTP Features\\Default Document",
+    "Name": "Web-Default-Doc",
+    "DisplayName": "Default Document",
+    "Description": "Default Document lets you configure a default file for the Web server to return when users do not specify a file in a request URL. Default documents make it easier and more convenient for users to reach your Web site.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Common HTTP Features\\Directory Browsing",
+    "Name": "Web-Dir-Browsing",
+    "DisplayName": "Directory Browsing",
+    "Description": "Directory Browsing lets users to see the contents of a directory on your Web server. Use Directory Browsing to enable an automatically generated list of all directories and files available in a directory when users do not specify a file in a request URL and default documents are either disabled or not configured.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Common HTTP Features\\HTTP Errors",
+    "Name": "Web-Http-Errors",
+    "DisplayName": "HTTP Errors",
+    "Description": "HTTP Errors allows you to customize the error messages returned to users' browsers when the Web server detects a fault condition. Use HTTP errors to provide users with a better user experience when they run up against an error message. Consider providing users with an e-mail address for staff who can help them resolve the error.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Common HTTP Features\\Static Content",
+    "Name": "Web-Static-Content",
+    "DisplayName": "Static Content",
+    "Description": "Static Content allows the Web server to publish static Web file formats, such as HTML pages and image files. Use Static Content to publish files on your Web server that users can then view using a Web browser.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Common HTTP Features\\HTTP Redirection",
+    "Name": "Web-Http-Redirect",
+    "DisplayName": "HTTP Redirection",
+    "Description": "HTTP Redirection provides support to redirect user requests to a specific destination. Use HTTP redirection whenever you want customers who might use one URL to actually end up at another URL. This is helpful in many situations, from simply renaming your Web site, to overcoming a domain name that is difficult to spell, or forcing clients to use a secure channel.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Common HTTP Features\\WebDAV Publishing",
+    "Name": "Web-DAV-Publishing",
+    "DisplayName": "WebDAV Publishing",
+    "Description": "WebDAV Publishing (Web Distributed Authoring and Versioning) enables you to publish files to and from a Web server by using the HTTP protocol. Because WebDAV uses HTTP, it works through most firewalls without modification.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Health and Diagnostics",
+    "Name": "Web-Health",
+    "DisplayName": "Health and Diagnostics",
+    "Description": "Health and Diagnostics provides infrastructure to monitor, manage, and troubleshoot the health of Web servers, sites, and applications.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Health and Diagnostics\\HTTP Logging",
+    "Name": "Web-Http-Logging",
+    "DisplayName": "HTTP Logging",
+    "Description": "HTTP Logging provides logging of Web site activity for this server. When a loggable event, usually an HTTP transaction, occurs, IIS calls the selected logging module, which then writes to one of the logs stored in the file system of the Web server. These logs are in addition to those provided by the operating system.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Health and Diagnostics\\Custom Logging",
+    "Name": "Web-Custom-Logging",
+    "DisplayName": "Custom Logging",
+    "Description": "Custom Logging provides support for logging Web server activity in a format that differs considerably from the manner in which IIS generates log files. Use custom to create your own logging module. Custom logging modules are added to IIS by registering a new COM component that implements ILogPlugin or ILogPluginEx.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Health and Diagnostics\\Logging Tools",
+    "Name": "Web-Log-Libraries",
+    "DisplayName": "Logging Tools",
+    "Description": "Logging Tools provides infrastructure to manage Web server logs and automate common logging tasks.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Health and Diagnostics\\ODBC Logging",
+    "Name": "Web-ODBC-Logging",
+    "DisplayName": "ODBC Logging",
+    "Description": "ODBC Logging provides infrastructure that supports logging Web server activity to an ODBC-compliant database. With a logging database, you can programmatically display and manipulate data from the logging database on an HTML page. You might do this to search logs for specific events to call out user defined events that you want to monitor.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Health and Diagnostics\\Request Monitor",
+    "Name": "Web-Request-Monitor",
+    "DisplayName": "Request Monitor",
+    "Description": "Request Monitor provides infrastructure to monitor Web application health by capturing information about HTTP requests in an IIS worker process. Administrators and developers can use Request Monitor to understand which HTTP requests are executing in a worker process when the worker process has become unresponsive or very slow.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Health and Diagnostics\\Tracing",
+    "Name": "Web-Http-Tracing",
+    "DisplayName": "Tracing",
+    "Description": "Tracing provides infrastructure to diagnose and troubleshoot Web applications. With failed request tracing, you can troubleshoot difficult to capture events like poor performance, or authentication related failures. This feature buffers trace events for a request and only flushes them to disk if the request falls into a user-configured error condition.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Performance",
+    "Name": "Web-Performance",
+    "DisplayName": "Performance",
+    "Description": "Performance provides infrastructure for output caching by integrating the dynamic output-caching capabilities of ASP.NET with the static output-caching capabilities that were present in IIS 6.0. IIS also lets you use bandwidth more effectively and efficiently by using common compression mechanisms such as Gzip and Deflate.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Performance\\Static Content Compression",
+    "Name": "Web-Stat-Compression",
+    "DisplayName": "Static Content Compression",
+    "Description": "Static Content Compression provides infrastructure to configure HTTP compression of static content. This allows more efficient use of bandwidth. Unlike dynamic responses, compressed static responses can be cached without degrading CPU resources.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Performance\\Dynamic Content Compression",
+    "Name": "Web-Dyn-Compression",
+    "DisplayName": "Dynamic Content Compression",
+    "Description": "Dynamic Content Compression provides infrastructure to configure HTTP compression of dynamic content. Enabling dynamic compression always gives you more efficient utilization of bandwidth, but if your server's processor utilization is already very high, the CPU load imposed by dynamic compression might make your site perform more slowly.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Security",
+    "Name": "Web-Security",
+    "DisplayName": "Security",
+    "Description": "Security provides infrastructure for securing the Web server from users and requests. IIS supports multiple authentication methods. Pick an appropriate authentication scheme based upon the role of the server. Filter all incoming requests, rejecting without processing requests that match user defined values, or restrict requests based on originating address space.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Security\\Request Filtering",
+    "Name": "Web-Filtering",
+    "DisplayName": "Request Filtering",
+    "Description": "Request Filtering screens all incoming requests to the server and filters these requests based on rules set by the administrator. Many malicious attacks share common characteristics, like extremely long requests, or requests for an unusual action. By filtering requests, you can attempt to mitigate the impact of these type attacks.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Security\\Basic Authentication",
+    "Name": "Web-Basic-Auth",
+    "DisplayName": "Basic Authentication",
+    "Description": "Basic authentication offers strong browser compatibility. Appropriate for small internal networks, this authentication method is rarely used on the public Internet. Its major disadvantage is that it transmits passwords across the network using an easily decrypted algorithm. If intercepted, these passwords are simple to decipher. Use SSL with Basic authentication.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Security\\Centralized SSL Certificate Support",
+    "Name": "Web-CertProvider",
+    "DisplayName": "Centralized SSL Certificate Support",
+    "Description": "Centralized SSL Certificate Support enables you to manage SSL server certificates centrally using a file share. Maintaining SSL server certificates on a file share simplifies management since there is one place to manage them.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Security\\Client Certificate Mapping Authentication",
+    "Name": "Web-Client-Auth",
+    "DisplayName": "Client Certificate Mapping Authentication",
+    "Description": "Client Certificate Mapping Authentication uses client certificates to authenticate users. A client certificate is a digital ID from a trusted source. IIS offers two types of authentication using client certificate mapping. This type uses Active Directory to offer one-to-one certificate mappings across multiple Web servers.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Security\\Digest Authentication",
+    "Name": "Web-Digest-Auth",
+    "DisplayName": "Digest Authentication",
+    "Description": "Digest authentication works by sending a password hash to a Windows domain controller to authenticate users. When you need improved security over Basic authentication, consider using Digest authentication, especially if users who must be authenticated access your Web site from behind firewalls and proxy servers.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Security\\IIS Client Certificate Mapping Authentication",
+    "Name": "Web-Cert-Auth",
+    "DisplayName": "IIS Client Certificate Mapping Authentication",
+    "Description": "IIS Client Certificate Mapping Authentication uses client certificates to authenticate users. A client certificate is a digital ID from a trusted source. IIS offers two types of authentication using client certificate mapping. This type uses IIS to offer one-to-one or many-to-one certificate mapping. Native IIS mapping of certificates offers better performance.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Security\\IP and Domain Restrictions",
+    "Name": "Web-IP-Security",
+    "DisplayName": "IP and Domain Restrictions",
+    "Description": "IP and Domain Restrictions allow you to enable or deny content based upon the originating IP address or domain name of the request. Instead of using groups, roles, or NTFS file system permissions to control access to content, you can specific IP addresses or domain names.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Security\\URL Authorization",
+    "Name": "Web-Url-Auth",
+    "DisplayName": "URL Authorization",
+    "Description": "URL Authorization allows you to create rules that restrict access to Web content. You can bind these rules to users, groups, or HTTP header verbs. By configuring URL authorization rules, you can prevent employees who are not members of certain groups from accessing content or interacting with Web pages.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Security\\Windows Authentication",
+    "Name": "Web-Windows-Auth",
+    "DisplayName": "Windows Authentication",
+    "Description": "Windows authentication is a low cost authentication solution for internal Web sites. This authentication scheme allows administrators in a Windows domain to take advantage of the domain infrastructure for authenticating users. Do not use Windows authentication if users who must be authenticated access your Web site from behind firewalls and proxy servers.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Application Development",
+    "Name": "Web-App-Dev",
+    "DisplayName": "Application Development",
+    "Description": "Application Development provides infrastructure for developing and hosting Web applications. Use these features to create Web content or extend the functionality of IIS. These technologies typically provide a way to perform dynamic operations that result in the creation of HTML output, which IIS then sends to fulfill client requests.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Application Development\\.NET Extensibility 3.5",
+    "Name": "Web-Net-Ext",
+    "DisplayName": ".NET Extensibility 3.5",
+    "Description": ".NET extensibility allows managed code developers to change, add and extend web server functionality in the entire request pipeline, the configuration, and the UI. Developers can use the familiar ASP.NET extensibility model and rich .NET APIs to build Web server features that are just as powerful as those written using the native C++ APIs.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Application Development\\.NET Extensibility 4.8",
+    "Name": "Web-Net-Ext45",
+    "DisplayName": ".NET Extensibility 4.8",
+    "Description": ".NET extensibility allows managed code developers to change, add and extend web server functionality in the entire request pipeline, the configuration, and the UI. Developers can use the familiar ASP.NET extensibility model and rich .NET APIs to build Web server features that are just as powerful as those written using the native C++ APIs.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Application Development\\Application Initialization",
+    "Name": "Web-AppInit",
+    "DisplayName": "Application Initialization",
+    "Description": "Application Initialization perform expensive web application initialization tasks before serving web pages.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Application Development\\ASP",
+    "Name": "Web-ASP",
+    "DisplayName": "ASP",
+    "Description": "Active Server Pages (ASP) provides a server side scripting environment for building Web sites and Web applications. Offering improved performance over CGI scripts, ASP provides IIS with native support for both VBScript and JScript. Use ASP if you have existing applications that require ASP support. For new development, consider using ASP.NET.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Application Development\\ASP.NET 3.5",
+    "Name": "Web-Asp-Net",
+    "DisplayName": "ASP.NET 3.5",
+    "Description": "ASP.NET provides a server side object oriented programming environment for building Web sites and Web applications using managed code. ASP.NET is not simply a new version of ASP. Having been entirely re-architected to provide a highly productive programming experience based on the .NET Framework, ASP.NET provides a robust infrastructure for building web applications.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Application Development\\ASP.NET 4.8",
+    "Name": "Web-Asp-Net45",
+    "DisplayName": "ASP.NET 4.8",
+    "Description": "ASP.NET provides a server side object oriented programming environment for building Web sites and Web applications using managed code. ASP.NET 4.8 is not simply a new version of ASP. Having been entirely re-architected to provide a highly productive programming experience based on the .NET Framework, ASP.NET provides a robust infrastructure for building web applications.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Application Development\\CGI",
+    "Name": "Web-CGI",
+    "DisplayName": "CGI",
+    "Description": "CGI defines how a Web server passes information to an external program. Typical uses might include using a Web form to collect information and then passing that information to a CGI script to be emailed somewhere else. Because CGI is a standard, CGI scripts can be written using a variety of programming languages. The downside to using CGI is the performance overhead.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Application Development\\ISAPI Extensions",
+    "Name": "Web-ISAPI-Ext",
+    "DisplayName": "ISAPI Extensions",
+    "Description": "Internet Server Application Programming Interface (ISAPI) Extensions provides support for dynamic Web content developing using ISAPI extensions. An ISAPI extension runs when requested just like any other static HTML file or dynamic ASP file. Since ISAPI applications are compiled code, they are processed much faster than ASP files or files that call COM+ components.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Application Development\\ISAPI Filters",
+    "Name": "Web-ISAPI-Filter",
+    "DisplayName": "ISAPI Filters",
+    "Description": "Internet Server Application Programming Interface (ISAPI) Filters provides support for Web applications that use ISAPI filters. ISAPI filters are files that can extend or change the functionality provided by IIS. An ISAPI filter reviews every request made to the Web server, until the filter finds one that it needs to process.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Application Development\\Server Side Includes",
+    "Name": "Web-Includes",
+    "DisplayName": "Server Side Includes",
+    "Description": "Server Side Includes (SSI) is a scripting language used to dynamically generate HTML pages. The script runs on the server before the page is delivered to the client and typically involves inserting one file into another. You might create an HTML navigation menu and use SSI to dynamically add it to all pages on a Web site.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Web Server\\Application Development\\WebSocket Protocol",
+    "Name": "Web-WebSockets",
+    "DisplayName": "WebSocket Protocol",
+    "Description": "IIS 10.0 and ASP.NET 4.8 support writing server applications that communicate over the WebSocket Protocol.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\FTP Server",
+    "Name": "Web-Ftp-Server",
+    "DisplayName": "FTP Server",
+    "Description": "FTP Server enables the transfer of files between a client and server by using the FTP protocol. Users can establish an FTP connection and transfer files by using an FTP client or FTP-enabled Web browser.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\FTP Server\\FTP Service",
+    "Name": "Web-Ftp-Service",
+    "DisplayName": "FTP Service",
+    "Description": "FTP Service enables FTP publishing on a Web server.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\FTP Server\\FTP Extensibility",
+    "Name": "Web-Ftp-Ext",
+    "DisplayName": "FTP Extensibility",
+    "Description": "FTP Extensibility enables support for FTP extensibility features such as custom providers, ASP.NET users or IIS Manager users.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Management Tools",
+    "Name": "Web-Mgmt-Tools",
+    "DisplayName": "Management Tools",
+    "Description": "Management Tools provide infrastructure to manage a Web server that runs IIS 10. You can use the IIS user interface, command-line tools, and scripts to manage the Web server. You can also edit the configuration files directly.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Management Tools\\IIS Management Console",
+    "Name": "Web-Mgmt-Console",
+    "DisplayName": "IIS Management Console",
+    "Description": "IIS Management Console provides infrastructure to manage IIS 10 by using a user interface. You can use the IIS management console to manage a local or remote Web server that runs IIS 10. To manage SMTP, you must install and use the IIS 6 Management Console.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Management Tools\\IIS 6 Management Compatibility",
+    "Name": "Web-Mgmt-Compat",
+    "DisplayName": "IIS 6 Management Compatibility",
+    "Description": "IIS 6 Management Compatibility provides forward compatibility for your applications and scripts that use the two IIS APIs, Admin Base Object (ABO) and Active Directory Service Interface (ADSI). You can use existing IIS 6 scripts to manage the IIS 10 Web server.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Management Tools\\IIS 6 Management Compatibility\\IIS 6 Metabase Compatibility",
+    "Name": "Web-Metabase",
+    "DisplayName": "IIS 6 Metabase Compatibility",
+    "Description": "IIS 6 Metabase Compatibility provides infrastructure to query and configure the metabase so that you can run applications and scripts migrated from earlier versions of IIS that use Admin Base Object (ABO) or Active Directory Service Interface (ADSI) APIs.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Management Tools\\IIS 6 Management Compatibility\\IIS 6 Management Console",
+    "Name": "Web-Lgcy-Mgmt-Console",
+    "DisplayName": "IIS 6 Management Console",
+    "Description": "IIS 6 Management Console provides infrastructure for administration of remote IIS 6.0 servers from this computer.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Management Tools\\IIS 6 Management Compatibility\\IIS 6 Scripting Tools",
+    "Name": "Web-Lgcy-Scripting",
+    "DisplayName": "IIS 6 Scripting Tools",
+    "Description": "IIS 6 Scripting Tools provide the ability to continue using IIS 6 scripting tools that you built to manage IIS 6 in IIS 10, especially if your applications and scripts that use ActiveX Data Objects (ADO) or Active Directory Service Interface (ADSI) APIs. IIS 6 Scripting Tools require Windows Process Activation Service Configuration API.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Management Tools\\IIS 6 Management Compatibility\\IIS 6 WMI Compatibility",
+    "Name": "Web-WMI",
+    "DisplayName": "IIS 6 WMI Compatibility",
+    "Description": "IIS 6 WMI Compatibility provides Windows Management Instrumentation (WMI) scripting interfaces to programmatically manage and automate tasks for IIS 10.0 Web server, from a set of scripts that you created in the WMI provider. This service includes the WMI CIM Studio, WMI Event Registration, WMI Event Viewer, and WMI Object Browser tools to manage sites.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Management Tools\\IIS Management Scripts and Tools",
+    "Name": "Web-Scripting-Tools",
+    "DisplayName": "IIS Management Scripts and Tools",
+    "Description": "IIS Management Scripts and Tools provide infrastructure to programmatically manage an IIS 10 Web server by using commands in a command window or by running scripts. You can use these tools when you want to automate commands in batch files or when you do not want to incur the overhead of managing IIS by using the user interface.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Web Server (IIS)\\Management Tools\\Management Service",
+    "Name": "Web-Mgmt-Service",
+    "DisplayName": "Management Service",
+    "Description": "Management Service allows the Web server to be managed remotely from another computer using IIS Manager.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Deployment Services",
+    "Name": "WDS",
+    "DisplayName": "Windows Deployment Services",
+    "Description": "Windows Deployment Services provides a simplified, secure means of rapidly and remotely deploying Windows operating systems to computers over the network.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Deployment Services\\Deployment Server",
+    "Name": "WDS-Deployment",
+    "DisplayName": "Deployment Server",
+    "Description": "Deployment Server provides the full functionality of Windows Deployment Services, which you can use to configure and remotely install Windows operating systems. With Windows Deployment Services, you can create and customize images and then use them to reimage computers. Deployment Server is dependent on the core parts of Transport Server.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Deployment Services\\Transport Server",
+    "Name": "WDS-Transport",
+    "DisplayName": "Transport Server",
+    "Description": "Transport Server provides a subset of the functionality of Windows Deployment Services. It contains only the core networking parts, which you can use to transmit data using multicasting on a stand-alone server. You should use this role service if you want to transmit data using multicasting, but do not want to incorporate all of Windows Deployment Services.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Server Update Services",
+    "Name": "UpdateServices",
+    "DisplayName": "Windows Server Update Services",
+    "Description": "Windows Server Update Services allows network administrators to specify the Microsoft updates that should be installed, create separate groups of computers for different sets of updates, and get reports on the compliance levels of the computers and the updates that must be installed.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Server Update Services\\WID Connectivity",
+    "Name": "UpdateServices-WidDB",
+    "DisplayName": "WID Connectivity",
+    "Description": "Installs the database used by WSUS into WID.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Server Update Services\\WSUS Services",
+    "Name": "UpdateServices-Services",
+    "DisplayName": "WSUS Services",
+    "Description": "Installs the services used by Windows Server Update Services: Update Service, the Reporting Web Service, the API Remoting Web Service, the Client Web Service, the Simple Web Authentication Web Service, the Server Synchronization Service, and the DSS Authentication Web Service.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Server Update Services\\SQL Server Connectivity",
+    "Name": "UpdateServices-DB",
+    "DisplayName": "SQL Server Connectivity",
+    "Description": "Installs the feature that enables WSUS to connect to a Microsoft SQL Server database.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": ".NET Framework 3.5 Features",
+    "Name": "NET-Framework-Features",
+    "DisplayName": ".NET Framework 3.5 Features",
+    "Description": ".NET Framework 3.5 combines the power of the .NET Framework 2.0 APIs with new technologies for building applications that offer appealing user interfaces, protect your customers' personal identity information, enable seamless and secure communication, and provide the ability to model a range of business processes.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": ".NET Framework 3.5 Features\\.NET Framework 3.5 (includes .NET 2.0 and 3.0)",
+    "Name": "NET-Framework-Core",
+    "DisplayName": ".NET Framework 3.5 (includes .NET 2.0 and 3.0)",
+    "Description": ".NET Framework 3.5 combines the power of the .NET Framework 2.0 APIs with new technologies for building applications that offer appealing user interfaces, protect your customers' personal identity information, enable seamless and secure communication, and provide the ability to model a range of business processes.",
+    "Installed": false,
+    "InstallState": 5
+  },
+  {
+    "Path": ".NET Framework 3.5 Features\\HTTP Activation",
+    "Name": "NET-HTTP-Activation",
+    "DisplayName": "HTTP Activation",
+    "Description": "HTTP Activation supports process activation via HTTP. Applications that use HTTP Activation can start and stop dynamically in response to work items that arrive over the network via HTTP.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": ".NET Framework 3.5 Features\\Non-HTTP Activation",
+    "Name": "NET-Non-HTTP-Activ",
+    "DisplayName": "Non-HTTP Activation",
+    "Description": "Non-HTTP Activation supports process activation via Message Queuing, TCP and named pipes. Applications that use Non-HTTP Activation can start and stop dynamically in response to work items that arrive over the network via Message Queuing, TCP and named pipes.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": ".NET Framework 4.8 Features",
+    "Name": "NET-Framework-45-Features",
+    "DisplayName": ".NET Framework 4.8 Features",
+    "Description": ".NET Framework 4.8 provides a comprehensive and consistent programming model for quickly and easily building and running applications that are built for various platforms including desktop PCs, Servers, smart phones and the public and private cloud.",
+    "Installed": true,
+    "InstallState": 1
+  },
+  {
+    "Path": ".NET Framework 4.8 Features\\.NET Framework 4.8",
+    "Name": "NET-Framework-45-Core",
+    "DisplayName": ".NET Framework 4.8",
+    "Description": ".NET Framework 4.8 provides a comprehensive and consistent programming model for quickly and easily building and running applications that are built for various platforms including desktop PCs, Servers, smart phones and the public and private cloud.",
+    "Installed": true,
+    "InstallState": 1
+  },
+  {
+    "Path": ".NET Framework 4.8 Features\\ASP.NET 4.8",
+    "Name": "NET-Framework-45-ASPNET",
+    "DisplayName": "ASP.NET 4.8",
+    "Description": "ASP.NET 4.8 provides core support for running ASP.NET 4.8 stand-alone applications as well as applications that are integrated with IIS.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": ".NET Framework 4.8 Features\\WCF Services",
+    "Name": "NET-WCF-Services45",
+    "DisplayName": "WCF Services",
+    "Description": "Windows Communication Foundation (WCF) Activation uses Windows Process Activation Service to invoke applications remotely over the network by using protocols such as HTTP, Message Queuing, TCP, and named pipes. Consequently, applications can start and stop dynamically in response to incoming work items, resulting in application hosting that is more robust, manageable, and efficient.",
+    "Installed": true,
+    "InstallState": 1
+  },
+  {
+    "Path": ".NET Framework 4.8 Features\\WCF Services\\HTTP Activation",
+    "Name": "NET-WCF-HTTP-Activation45",
+    "DisplayName": "HTTP Activation",
+    "Description": "HTTP Activation supports process activation via HTTP. Applications that use HTTP Activation can start and stop dynamically in response to work items that arrive over the network via HTTP.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": ".NET Framework 4.8 Features\\WCF Services\\Message Queuing (MSMQ) Activation",
+    "Name": "NET-WCF-MSMQ-Activation45",
+    "DisplayName": "Message Queuing (MSMQ) Activation",
+    "Description": "Message Queuing Activation supports process activation via Message Queuing. Applications that use Message Queuing Activation can start and stop dynamically in response to work items that arrive over the network via Message Queuing.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": ".NET Framework 4.8 Features\\WCF Services\\Named Pipe Activation",
+    "Name": "NET-WCF-Pipe-Activation45",
+    "DisplayName": "Named Pipe Activation",
+    "Description": "Named Pipes Activation supports process activation via named pipes. Applications that use Named Pipes Activation can start and stop dynamically in response to work items that arrive over the network via named pipes.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": ".NET Framework 4.8 Features\\WCF Services\\TCP Activation",
+    "Name": "NET-WCF-TCP-Activation45",
+    "DisplayName": "TCP Activation",
+    "Description": "TCP Activation supports process activation via TCP. Applications that use TCP Activation can start and stop dynamically in response to work items that arrive over the network via TCP.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": ".NET Framework 4.8 Features\\WCF Services\\TCP Port Sharing",
+    "Name": "NET-WCF-TCP-PortSharing45",
+    "DisplayName": "TCP Port Sharing",
+    "Description": "TCP Port Sharing allows multiple net.tcp applications to share a single TCP port. Consequently, these applications can coexist on the same physical computer in separate, isolated processes, while sharing the network infrastructure required to send and receive traffic over a TCP port, such as port 808.",
+    "Installed": true,
+    "InstallState": 1
+  },
+  {
+    "Path": "Azure Arc Setup",
+    "Name": "AzureArcSetup",
+    "DisplayName": "Azure Arc Setup",
+    "Description": "Provides the services that are needed to configure Azure Arc.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Background Intelligent Transfer Service (BITS)",
+    "Name": "BITS",
+    "DisplayName": "Background Intelligent Transfer Service (BITS)",
+    "Description": "Background Intelligent Transfer Service (BITS) asynchronously transfers files in the foreground or background, controls the flow of the transfers to preserve the responsiveness of other network applications, and automatically resumes file transfers after disconnecting from the network or restarting the computer.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Background Intelligent Transfer Service (BITS)\\IIS Server Extension",
+    "Name": "BITS-IIS-Ext",
+    "DisplayName": "IIS Server Extension",
+    "Description": "IIS Server Extension allows a computer to receive files uploaded by clients that implement the BITS upload protocol.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Background Intelligent Transfer Service (BITS)\\Compact Server",
+    "Name": "BITS-Compact-Server",
+    "DisplayName": "Compact Server",
+    "Description": "BITS Compact Server is a stand-alone HTTPS file server that lets you transfer a limited number of large files asynchronously between computers in the same domain or mutually-trusted domains.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "BitLocker Drive Encryption",
+    "Name": "BitLocker",
+    "DisplayName": "BitLocker Drive Encryption",
+    "Description": "BitLocker Drive Encryption helps to protect data on lost, stolen, or inappropriately decommissioned computers by encrypting the entire volume and checking the integrity of early boot components. Data is only decrypted if those components are successfully verified and the encrypted drive is located in the original computer. Integrity checking requires a compatible Trusted Platform Module (TPM).",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "BitLocker Network Unlock",
+    "Name": "BitLocker-NetworkUnlock",
+    "DisplayName": "BitLocker Network Unlock",
+    "Description": "BitLocker Network Unlock enables a network-based key protector to be used to automatically unlock BitLocker-protected operating system drives in domain-joined computers when the computer is restarted. This is beneficial if you are doing maintenance operations on computers during non-working hours that require the computer to be restarted to complete the operation.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "BranchCache",
+    "Name": "BranchCache",
+    "DisplayName": "BranchCache",
+    "Description": "<a href=\"http://go.microsoft.com/fwlink/?LinkId=244672\">BranchCache</a> installs the services required to configure this computer as either a hosted cache server or a BranchCache-enabled content server. If you are deploying a content server, it must also be configured as either a Hypertext Transfer Protocol (HTTP) web server or a Background Intelligent Transfer Service (BITS)-based application server. To deploy a BranchCache-enabled file server, use the Add Roles Wizard to install the File Services server role with the File Server and BranchCache for network files role services.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Client for NFS",
+    "Name": "NFS-Client",
+    "DisplayName": "Client for NFS",
+    "Description": "Client for NFS enables this computer to access files on UNIX-based NFS servers. When installed, you can configure a computer to connect to UNIX NFS shares that allow anonymous access.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Containers",
+    "Name": "Containers",
+    "DisplayName": "Containers",
+    "Description": "Provides services and tools to create and manage Windows Server Containers and their resources.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Data Center Bridging",
+    "Name": "Data-Center-Bridging",
+    "DisplayName": "Data Center Bridging",
+    "Description": "Data Center Bridging (DCB) is a suite of IEEE standards that are used to enhance Ethernet local area networks by providing hardware-based bandwidth guarantees and transport reliability. Use DCB to help enforce bandwidth allocation on a Converged Network Adapter for offloaded storage traffic such as Internet Small Computer System Interface, RDMA over Converged Ethernet, and Fibre Channel over Ethernet.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Direct Play",
+    "Name": "Direct-Play",
+    "DisplayName": "Direct Play",
+    "Description": "Direct Play provides support for applications that use the DirectPlay networked gaming API",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Enhanced Storage",
+    "Name": "EnhancedStorage",
+    "DisplayName": "Enhanced Storage",
+    "Description": "Enhanced Storage enables support for accessing additional functions made available by Enhanced Storage devices. Enhanced Storage devices have built-in safety features that let you control who can access the data on the device.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Failover Clustering",
+    "Name": "Failover-Clustering",
+    "DisplayName": "Failover Clustering",
+    "Description": "Failover Clustering allows multiple servers to work together to provide high availability of server roles. Failover Clustering is often used for File Services, virtual machines, database applications, and mail applications.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Group Policy Management",
+    "Name": "GPMC",
+    "DisplayName": "Group Policy Management",
+    "Description": "Group Policy Management is a scriptable Microsoft Management Console (MMC) snap-in, providing a single administrative tool for managing Group Policy across the enterprise. Group Policy Management is the standard tool for managing Group Policy.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Host Guardian Hyper-V Support",
+    "Name": "HostGuardian",
+    "DisplayName": "Host Guardian Hyper-V Support",
+    "Description": "Host Guardian provides the features necessary on a Hyper-V server to provision Shielded Virtual Machines.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "I/O Quality of Service",
+    "Name": "DiskIo-QoS",
+    "DisplayName": "I/O Quality of Service",
+    "Description": "Allows configuration of I/O quality-of-service settings such as maximum IO and bandwidth limits on applications.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "IIS Hostable Web Core",
+    "Name": "Web-WHC",
+    "DisplayName": "IIS Hostable Web Core",
+    "Description": "IIS Hostable Web Core enables you to write custom code that will host core IIS functionality in your own application. HWC enables your application to serve HTTP requests and use its own applicationHost.config and root web.config configuration files. The HWC application extension is contained in the hwebcore.dll file.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Internet Printing Client",
+    "Name": "Internet-Print-Client",
+    "DisplayName": "Internet Printing Client",
+    "Description": "Internet Printing Client enables clients to use Internet Printing Protocol (IPP) to connect and print to printers on the network or Internet.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "IP Address Management (IPAM) Server",
+    "Name": "IPAM",
+    "DisplayName": "IP Address Management (IPAM) Server",
+    "Description": "IP Address Management (IPAM) Server provides a central framework for managing your IP address space and corresponding infrastructure servers such as DHCP and DNS. IPAM supports automated discovery of infrastructure servers in an Active Directory forest. IPAM allows you to manage your dynamic and static IPv4 and IPv6 address space, tracks IP address utilization trends, and supports monitoring and management of DNS and DHCP services on your network.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "LPR Port Monitor",
+    "Name": "LPR-Port-Monitor",
+    "DisplayName": "LPR Port Monitor",
+    "Description": "Line Printer Remote (LPR) Port Monitor enables the computer to print to printers that are shared using any Line Printer Daemon (LPD) service. (LPD service is commonly used by UNIX-based computers and printer-sharing devices.)",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Management OData IIS Extension",
+    "Name": "ManagementOdata",
+    "DisplayName": "Management OData IIS Extension",
+    "Description": "Management OData IIS Extension is a framework for easily exposing Windows PowerShell cmdlets through an ODATA-based web service running under IIS. After enabling this feature, the user must provide a schema file (which contains definitions of the resources to be exposed) and an implementation of callback interfaces to make the web service functional.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Media Foundation",
+    "Name": "Server-Media-Foundation",
+    "DisplayName": "Media Foundation",
+    "Description": "Media Foundation, which includes Windows Media Foundation, the Windows Media Format SDK, and a server subset of DirectShow, provides the infrastructure required for applications and services to transcode, analyze, and generate thumbnails for media files. Media Foundation is required by the Desktop Experience.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Message Queuing",
+    "Name": "MSMQ",
+    "DisplayName": "Message Queuing",
+    "Description": "Message Queuing provides guaranteed message delivery, efficient routing, security, and priority-based messaging between applications. Message Queuing also accommodates message delivery between applications that run on different operating systems, use dissimilar network infrastructures, are temporarily offline, or that are running at different times.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Message Queuing\\Message Queuing Services",
+    "Name": "MSMQ-Services",
+    "DisplayName": "Message Queuing Services",
+    "Description": "Message Queuing Services provides guaranteed message delivery, efficient routing, security, and priority-based messaging between applications. Message Queuing also accommodates message delivery between applications that run on different operating systems, use dissimilar network infrastructures, are temporarily offline, or that are running at different times.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Message Queuing\\Message Queuing Services\\Message Queuing Server",
+    "Name": "MSMQ-Server",
+    "DisplayName": "Message Queuing Server",
+    "Description": "Message Queuing Server provides guaranteed message delivery, efficient routing, security, and priority-based messaging. It can be used to implement solutions for both asynchronous and synchronous messaging scenarios.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Message Queuing\\Message Queuing Services\\Directory Service Integration",
+    "Name": "MSMQ-Directory",
+    "DisplayName": "Directory Service Integration",
+    "Description": "Directory Service Integration enables publishing of queue properties to the directory, authentication and encryption of messages using certificates registered in the directory, and routing of messages across directory sites.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Message Queuing\\Message Queuing Services\\HTTP Support",
+    "Name": "MSMQ-HTTP-Support",
+    "DisplayName": "HTTP Support",
+    "Description": "HTTP Support enables the sending of messages over HTTP.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Message Queuing\\Message Queuing Services\\Message Queuing Triggers",
+    "Name": "MSMQ-Triggers",
+    "DisplayName": "Message Queuing Triggers",
+    "Description": "Message Queuing Triggers enables the invocation of a COM component or an executable depending on the filters that you define for the incoming messages in a given queue.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Message Queuing\\Message Queuing Services\\Multicasting Support",
+    "Name": "MSMQ-Multicasting",
+    "DisplayName": "Multicasting Support",
+    "Description": "Multicasting Support enables queuing and sending of multicast messages to a multicast IP address.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Message Queuing\\Message Queuing Services\\Routing Service",
+    "Name": "MSMQ-Routing",
+    "DisplayName": "Routing Service",
+    "Description": "Routing Service routes messages between different sites and within a site.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Message Queuing\\Message Queuing DCOM Proxy",
+    "Name": "MSMQ-DCOM",
+    "DisplayName": "Message Queuing DCOM Proxy",
+    "Description": "Message Queuing DCOM Proxy enables this computer to act as a DCOM client of a remote Message Queuing server.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Microsoft Defender Antivirus",
+    "Name": "Windows-Defender",
+    "DisplayName": "Microsoft Defender Antivirus",
+    "Description": "Microsoft Defender Antivirus helps protect your machine from malware.",
+    "Installed": true,
+    "InstallState": 1
+  },
+  {
+    "Path": "Multipath I/O",
+    "Name": "Multipath-IO",
+    "DisplayName": "Multipath I/O",
+    "Description": "Multipath I/O, along with the Microsoft Device Specific Module (DSM) or a third-party DSM, provides support for using multiple data paths to a storage device on Windows.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "MultiPoint Connector",
+    "Name": "MultiPoint-Connector",
+    "DisplayName": "MultiPoint Connector",
+    "Description": "Allows your computer to be monitored and managed by the MultiPoint Manager and MultiPoint Dashboard apps.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "MultiPoint Connector\\MultiPoint Connector Services",
+    "Name": "MultiPoint-Connector-Services",
+    "DisplayName": "MultiPoint Connector Services",
+    "Description": "Allows your computer to be monitored and managed by the MultiPoint Manager and MultiPoint Dashboard apps.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "MultiPoint Connector\\MultiPoint Manager and MultiPoint Dashboard",
+    "Name": "MultiPoint-Tools",
+    "DisplayName": "MultiPoint Manager and MultiPoint Dashboard",
+    "Description": "GUI tools for managing MultiPoint.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Network ATC",
+    "Name": "NetworkATC",
+    "DisplayName": "Network ATC",
+    "Description": "Deploys and maintains the Hyper-Converged Infrastructure (HCI) network configuration",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Network Load Balancing",
+    "Name": "NLB",
+    "DisplayName": "Network Load Balancing",
+    "Description": "Network Load Balancing (NLB) distributes traffic across several servers, using the TCP/IP networking protocol. NLB is particularly useful for ensuring that stateless applications, such as Web servers running Internet Information Services (IIS), are scalable by adding additional servers as the load increases.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Network Virtualization",
+    "Name": "NetworkVirtualization",
+    "DisplayName": "Network Virtualization",
+    "Description": "Network Virtualization provides overlays of virtual networks on the same physical network.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Peer Name Resolution Protocol",
+    "Name": "PNRP",
+    "DisplayName": "Peer Name Resolution Protocol",
+    "Description": "Peer Name Resolution Protocol allows applications to register and resolve names on your computer so that other computers can communicate with these applications.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Quality Windows Audio Video Experience",
+    "Name": "qWave",
+    "DisplayName": "Quality Windows Audio Video Experience",
+    "Description": "Quality Windows Audio Video Experience (qWave) is a networking platform for audio video (AV) streaming applications on IP home networks. qWave enhances AV streaming performance and reliability by ensuring network quality-of-service (QoS) for AV applications. It provides mechanisms for admission control, run time monitoring and enforcement, application feedback, and traffic prioritization. On Windows Server platforms, qWave provides only rate-of-flow and prioritization services.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "RAS Connection Manager Administration Kit (CMAK)",
+    "Name": "CMAK",
+    "DisplayName": "RAS Connection Manager Administration Kit (CMAK)",
+    "Description": "Create profiles for connecting to remote servers and networks.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Assistance",
+    "Name": "Remote-Assistance",
+    "DisplayName": "Remote Assistance",
+    "Description": "Remote Assistance enables you (or a support person) to help users with PC issues or questions. You can view and get control of the user's desktop to troubleshoot and fix problems. Users can also ask for help from friends or co-workers.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Differential Compression",
+    "Name": "RDC",
+    "DisplayName": "Remote Differential Compression",
+    "Description": "Remote Differential Compression computes and transfers the differences between two objects over a network using minimal bandwidth.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools",
+    "Name": "RSAT",
+    "DisplayName": "Remote Server Administration Tools",
+    "Description": "Remote Server Administration Tools includes snap-ins and command-line tools for remotely managing roles and features.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools",
+    "Name": "RSAT-Feature-Tools",
+    "DisplayName": "Feature Administration Tools",
+    "Description": "Feature Administration Tools includes snap-ins and command-line tools for remotely managing features.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\SMTP Server Tools",
+    "Name": "RSAT-SMTP",
+    "DisplayName": "SMTP Server Tools",
+    "Description": "SMTP Server Tools includes the Internet Information Services (IIS) 6.0 Manager snap-in.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\BitLocker Drive Encryption Administration Utilities",
+    "Name": "RSAT-Feature-Tools-BitLocker",
+    "DisplayName": "BitLocker Drive Encryption Administration Utilities",
+    "Description": "BitLocker Drive Encryption Administration Utilities include snap-ins and command-line tools for managing BitLocker Drive Encryption features.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\BitLocker Drive Encryption Administration Utilities\\BitLocker Drive Encryption Tools",
+    "Name": "RSAT-Feature-Tools-BitLocker-RemoteAdminTool",
+    "DisplayName": "BitLocker Drive Encryption Tools",
+    "Description": "BitLocker Drive Encryption Tools include the command line tools manage-bde and repair-bde and the BitLocker cmdlets for Windows PowerShell.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\BitLocker Drive Encryption Administration Utilities\\BitLocker Recovery Password Viewer",
+    "Name": "RSAT-Feature-Tools-BitLocker-BdeAducExt",
+    "DisplayName": "BitLocker Recovery Password Viewer",
+    "Description": "BitLocker Recovery Password Viewer helps locate BitLocker Drive Encryption recovery passwords for Windows-based computers in Active Directory Domain Services (AD DS).",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\BITS Server Extensions Tools",
+    "Name": "RSAT-Bits-Server",
+    "DisplayName": "BITS Server Extensions Tools",
+    "Description": "BITS Server Extensions Tools includes the Internet Information Services (IIS) 6.0 Manager and IIS Manager snap-ins.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\DataCenterBridging LLDP Tools",
+    "Name": "RSAT-DataCenterBridging-LLDP-Tools",
+    "DisplayName": "DataCenterBridging LLDP Tools",
+    "Description": "DataCenterBridging LLDP Tools includes Powershell tools for managing LLDP Agents on the Server",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\Failover Clustering Tools",
+    "Name": "RSAT-Clustering",
+    "DisplayName": "Failover Clustering Tools",
+    "Description": "Failover Clustering Tools include the Failover Cluster Manager snap-in, the Cluster-Aware Updating interface, and the Failover Cluster module for Windows PowerShell. Additional tools are the Failover Cluster Automation Server and the Failover Cluster Command Interface.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\Failover Clustering Tools\\Failover Cluster Management Tools",
+    "Name": "RSAT-Clustering-Mgmt",
+    "DisplayName": "Failover Cluster Management Tools",
+    "Description": "Failover Cluster Management Tools include the Failover Cluster Manager snap-in and the Cluster-Aware Updating interface.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\Failover Clustering Tools\\Failover Cluster Module for Windows PowerShell",
+    "Name": "RSAT-Clustering-PowerShell",
+    "DisplayName": "Failover Cluster Module for Windows PowerShell",
+    "Description": "The Failover Cluster Module for Windows PowerShell includes Windows PowerShell cmdlets for managing failover clusters.  It also includes the Cluster-Aware Updating module for Windows PowerShell, for installing software updates on failover clusters.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\Failover Clustering Tools\\Failover Cluster Automation Server",
+    "Name": "RSAT-Clustering-AutomationServer",
+    "DisplayName": "Failover Cluster Automation Server",
+    "Description": "Failover Cluster Automation Server is the deprecated Component Object Model (COM) programmatic interface, MSClus.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\Failover Clustering Tools\\Failover Cluster Command Interface",
+    "Name": "RSAT-Clustering-CmdInterface",
+    "DisplayName": "Failover Cluster Command Interface",
+    "Description": "Failover Cluster Command Interface is the deprecated cluster.exe command-line tool for Failover Clustering. This tool has been replaced by the Failover Clustering module for Windows PowerShell.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\IP Address Management (IPAM) Client",
+    "Name": "IPAM-Client-Feature",
+    "DisplayName": "IP Address Management (IPAM) Client",
+    "Description": "IP Address Management (IPAM) Client is used to connect to and manage a local or remote IPAM server. IPAM provides a central framework for managing IP address space and corresponding infrastructure servers such as DHCP and DNS in an Active Directory forest.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\Network Load Balancing Tools",
+    "Name": "RSAT-NLB",
+    "DisplayName": "Network Load Balancing Tools",
+    "Description": "Network Load Balancing Tools includes the Network Load Balancing Manager snap-in, the Network Load Balancing module for Windows PowerShell, and the nlb.exe and wlbs.exe command-line tools.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\Shielded VM Tools",
+    "Name": "RSAT-Shielded-VM-Tools",
+    "DisplayName": "Shielded VM Tools",
+    "Description": "Shielded VM Tools includes the Provisioning Data File Wizard and the Template Disk Wizard.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\SNMP Tools",
+    "Name": "RSAT-SNMP",
+    "DisplayName": "SNMP Tools",
+    "Description": "Simple Network Management Protocol (SNMP) Tools includes tools for managing SNMP.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\Storage Migration Service Tools",
+    "Name": "RSAT-SMS",
+    "DisplayName": "Storage Migration Service Tools",
+    "Description": "Tools to run inventory, transfer and cutover for storage migration.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\Storage Replica Module for Windows PowerShell",
+    "Name": "RSAT-Storage-Replica",
+    "DisplayName": "Storage Replica Module for Windows PowerShell",
+    "Description": "Storage Replica Module for Windows PowerShell includes the CIM provider and the Storage Replica module for Windows PowerShell.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\System Insights Module for Windows PowerShell",
+    "Name": "RSAT-System-Insights",
+    "DisplayName": "System Insights Module for Windows PowerShell",
+    "Description": "System Insights module for Windows PowerShell provides the ability to manage System Insights feature.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Feature Administration Tools\\WINS Server Tools",
+    "Name": "RSAT-WINS",
+    "DisplayName": "WINS Server Tools",
+    "Description": "WINS Server Tools includes the WINS Manager snap-in and command-line tool for managing the WINS Server.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools",
+    "Name": "RSAT-Role-Tools",
+    "DisplayName": "Role Administration Tools",
+    "Description": "Role Administration Tools includes snap-ins and command-line tools for remotely managing roles.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\AD DS and AD LDS Tools",
+    "Name": "RSAT-AD-Tools",
+    "DisplayName": "AD DS and AD LDS Tools",
+    "Description": "Active Directory Domain Services (AD DS) and Active Directory Lightweight Directory Services (AD LDS) Tools includes snap-ins and command-line tools for remotely managing AD DS and AD LDS.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\AD DS and AD LDS Tools\\Active Directory module for Windows PowerShell",
+    "Name": "RSAT-AD-PowerShell",
+    "DisplayName": "Active Directory module for Windows PowerShell",
+    "Description": "The Active Directory module for Windows PowerShel and the tools it provides can be used by Active Directory administrators to manage Active Directory Domain Services (AD DS) at the command line.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\AD DS and AD LDS Tools\\AD DS Tools",
+    "Name": "RSAT-ADDS",
+    "DisplayName": "AD DS Tools",
+    "Description": "Active Directory Domain Services (AD DS) Tools includes snap-ins and command-line tools for remotely managing AD DS.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\AD DS and AD LDS Tools\\AD DS Tools\\Active Directory Administrative Center",
+    "Name": "RSAT-AD-AdminCenter",
+    "DisplayName": "Active Directory Administrative Center",
+    "Description": "Active Directory Administrative Center provides users and network administrators with an enhanced Active Directory data management experience and a rich graphical user interface (GUI) to perform common Active Directory object management tasks.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\AD DS and AD LDS Tools\\AD DS Tools\\AD DS Snap-Ins and Command-Line Tools",
+    "Name": "RSAT-ADDS-Tools",
+    "DisplayName": "AD DS Snap-Ins and Command-Line Tools",
+    "Description": "Active Directory Domain Services Snap-Ins and Command-Line Tools includes Active Directory Users and Computers, Active Directory Domains and Trusts, Active Directory Sites and Services, and other snap-ins and command-line tools for remotely managing Active Directory domain controllers.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\AD DS and AD LDS Tools\\AD LDS Snap-Ins and Command-Line Tools",
+    "Name": "RSAT-ADLDS",
+    "DisplayName": "AD LDS Snap-Ins and Command-Line Tools",
+    "Description": "Active Directory Lightweight Directory Services (AD LDS) Snap-Ins and Command-Line Tools includes Active Directory Sites and Services, ADSI Edit, Schema Manager, and other snap-ins and command-line tools for managing AD LDS.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Hyper-V Management Tools",
+    "Name": "RSAT-Hyper-V-Tools",
+    "DisplayName": "Hyper-V Management Tools",
+    "Description": "Hyper-V Management Tools includes GUI and command-line tools for managing Hyper-V.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Hyper-V Management Tools\\Hyper-V GUI Management Tools",
+    "Name": "Hyper-V-Tools",
+    "DisplayName": "Hyper-V GUI Management Tools",
+    "Description": "Hyper-V GUI Management Tools includes the Hyper-V Manager snap-in and Virtual Machine Connection tool.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Hyper-V Management Tools\\Hyper-V Module for Windows PowerShell",
+    "Name": "Hyper-V-PowerShell",
+    "DisplayName": "Hyper-V Module for Windows PowerShell",
+    "Description": "Hyper-V Module for Windows PowerShell includes Windows PowerShell cmdlets for managing Hyper-V.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Remote Desktop Services Tools",
+    "Name": "RSAT-RDS-Tools",
+    "DisplayName": "Remote Desktop Services Tools",
+    "Description": "Remote Desktop Services Tools includes the snap-ins for managing Remote Desktop Services.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Remote Desktop Services Tools\\Remote Desktop Gateway Tools",
+    "Name": "RSAT-RDS-Gateway",
+    "DisplayName": "Remote Desktop Gateway Tools",
+    "Description": "Remote Desktop Gateway Tools helps you manage and monitor RD Gateway server status and events. By using Remote Desktop Gateway Manager, you can specify events (such as unsuccessful connection attempts to the RD Gateway server) that you want to monitor for auditing purposes.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Remote Desktop Services Tools\\Remote Desktop Licensing Diagnoser Tools",
+    "Name": "RSAT-RDS-Licensing-Diagnosis-UI",
+    "DisplayName": "Remote Desktop Licensing Diagnoser Tools",
+    "Description": "Remote Desktop Licensing Diagnoser Tools helps you determine which license servers the RD Session Host server or RD Virtualization Host server is configured to use, and whether those license servers have licenses available to issue to users or computing devices that are connecting to the servers.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Remote Desktop Services Tools\\Remote Desktop Licensing Tools",
+    "Name": "RDS-Licensing-UI",
+    "DisplayName": "Remote Desktop Licensing Tools",
+    "Description": "Remote Desktop Licensing Tools helps you manage the licenses required to connect to a Remote Desktop Session Host server or a virtual desktop. You can use RD Licensing to install, issue, and track the availability of licenses.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Windows Server Update Services Tools",
+    "Name": "UpdateServices-RSAT",
+    "DisplayName": "Windows Server Update Services Tools",
+    "Description": "Windows Server Update Services Tools includes graphical and Powershell tools for managing WSUS.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Windows Server Update Services Tools\\API and PowerShell cmdlets",
+    "Name": "UpdateServices-API",
+    "DisplayName": "API and PowerShell cmdlets",
+    "Description": "Installs the .NET API and PowerShell cmdlets for remote management, automated task creation, and managing WSUS from the command line.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Windows Server Update Services Tools\\User Interface Management Console",
+    "Name": "UpdateServices-UI",
+    "DisplayName": "User Interface Management Console",
+    "Description": "Installs the WSUS Management Console user interface (UI).",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Active Directory Certificate Services Tools",
+    "Name": "RSAT-ADCS",
+    "DisplayName": "Active Directory Certificate Services Tools",
+    "Description": "Active Directory Certificate Services Tools includes the Certification Authority, Certificate Templates, Enterprise PKI, and Online Responder Management snap-ins.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Active Directory Certificate Services Tools\\Certification Authority Management Tools",
+    "Name": "RSAT-ADCS-Mgmt",
+    "DisplayName": "Certification Authority Management Tools",
+    "Description": "Active Directory Certification Authority Management Tools includes the Certification Authority, Certificate Templates, and Enterprise PKI snap-ins.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Active Directory Certificate Services Tools\\Online Responder Tools",
+    "Name": "RSAT-Online-Responder",
+    "DisplayName": "Online Responder Tools",
+    "Description": "Online Responder Tools includes the Online Responder Management snap-in.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Active Directory Rights Management Services Tools",
+    "Name": "RSAT-ADRMS",
+    "DisplayName": "Active Directory Rights Management Services Tools",
+    "Description": "Active Directory Rights Management Services Tools includes the Active Directory Rights Management Services snap-in.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\DHCP Server Tools",
+    "Name": "RSAT-DHCP",
+    "DisplayName": "DHCP Server Tools",
+    "Description": "DHCP Server Tools includes the DHCP MMC snap-in, DHCP server netsh context and Windows PowerShell module for DHCP Server.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\DNS Server Tools",
+    "Name": "RSAT-DNS-Server",
+    "DisplayName": "DNS Server Tools",
+    "Description": "DNS Server Tools includes the DNS Manager snap-in, dnscmd.exe command-line tool and Windows PowerShell module for DNS Server.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Fax Server Tools",
+    "Name": "RSAT-Fax",
+    "DisplayName": "Fax Server Tools",
+    "Description": "Fax Server Tools includes the Fax Service Manager snap-in.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\File Services Tools",
+    "Name": "RSAT-File-Services",
+    "DisplayName": "File Services Tools",
+    "Description": "File Services Tools includes snap-ins and command-line tools for remotely managing File Services.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\File Services Tools\\DFS Management Tools",
+    "Name": "RSAT-DFS-Mgmt-Con",
+    "DisplayName": "DFS Management Tools",
+    "Description": "Includes the DFS Management snap-in, DFS Replication service, DFS Namespaces PowerShell commands, and the dfsutil, dfscmd, dfsdiag, dfsradmin, and dfsrdiag commands.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\File Services Tools\\File Server Resource Manager Tools",
+    "Name": "RSAT-FSRM-Mgmt",
+    "DisplayName": "File Server Resource Manager Tools",
+    "Description": "Includes the File Server Resource Manager snap-in and the dirquota, filescrn, and storrept commands.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\File Services Tools\\Services for Network File System Management Tools",
+    "Name": "RSAT-NFS-Admin",
+    "DisplayName": "Services for Network File System Management Tools",
+    "Description": "Includes the Network File System snap-in and the nfsadmin, showmount, and rpcinfo commands.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Network Controller Management Tools",
+    "Name": "RSAT-NetworkController",
+    "DisplayName": "Network Controller Management Tools",
+    "Description": "Network Controller Management Tools includes Powershell tools for managing the Network Controller Role",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Network Policy and Access Services Tools",
+    "Name": "RSAT-NPAS",
+    "DisplayName": "Network Policy and Access Services Tools",
+    "Description": "Network Policy and Access Services Tools includes the Network Policy Server snap-in.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Print and Document Services Tools",
+    "Name": "RSAT-Print-Services",
+    "DisplayName": "Print and Document Services Tools",
+    "Description": "Print and Document Services Tools includes the Print Management snap-in.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Remote Access Management Tools",
+    "Name": "RSAT-RemoteAccess",
+    "DisplayName": "Remote Access Management Tools",
+    "Description": "Remote Access Management Tools includes graphical and PowerShell tools for managing Remote Access.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Remote Access Management Tools\\Remote Access GUI and Command-Line Tools",
+    "Name": "RSAT-RemoteAccess-Mgmt",
+    "DisplayName": "Remote Access GUI and Command-Line Tools",
+    "Description": "Includes the Remote Access GUI and Command-Line Tools. Remote Access administrators can use the tools to manage Remote Access.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Remote Access Management Tools\\Remote Access module for Windows PowerShell",
+    "Name": "RSAT-RemoteAccess-PowerShell",
+    "DisplayName": "Remote Access module for Windows PowerShell",
+    "Description": "Includes the Remote Access provider and cmdlets. Remote Access administrators can use the Windows PowerShell environment and the tools it provides to manage Remote Access at the command line.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Volume Activation Tools",
+    "Name": "RSAT-VA-Tools",
+    "DisplayName": "Volume Activation Tools",
+    "Description": "Volume Activation Tools console can be used to manage volume activation license keys on a Key Management Service (KMS) host or in Active Directory Domain Services. You can use the Volume Activation Tools to install, activate, and manage one or more volume activation license keys, and to configure KMS settings.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Remote Server Administration Tools\\Role Administration Tools\\Windows Deployment Services Tools",
+    "Name": "WDS-AdminPack",
+    "DisplayName": "Windows Deployment Services Tools",
+    "Description": "<a href=\"http://go.microsoft.com/fwlink/?LinkId=294848\">Windows Deployment Services Tools</a> includes the Windows Deployment Services snap-in, wdsutil.exe command-line tool, and Remote Install extension for the Active Directory Users and Computers snap-in.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "RPC over HTTP Proxy",
+    "Name": "RPC-over-HTTP-Proxy",
+    "DisplayName": "RPC over HTTP Proxy",
+    "Description": "Remote Procedure Call (RPC) over HTTP Proxy relays RPC traffic from client applications over HTTP to the server as an alternative to clients accessing the server over a VPN connection.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Setup and Boot Event Collection",
+    "Name": "Setup-and-Boot-Event-Collection",
+    "DisplayName": "Setup and Boot Event Collection",
+    "Description": "This feature enables the collection and logging of setup and boot events from other computers on this network.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Simple TCP/IP Services",
+    "Name": "Simple-TCPIP",
+    "DisplayName": "Simple TCP/IP Services",
+    "Description": "Simple TCP/IP Services supports the following TCP/IP services: Character Generator, Daytime, Discard, Echo and Quote of the Day. Simple TCP/IP Services is provided for backward compatibility and should not be installed unless it is required.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "SMB 1.0/CIFS File Sharing Support",
+    "Name": "FS-SMB1",
+    "DisplayName": "SMB 1.0/CIFS File Sharing Support",
+    "Description": "Support for the SMB 1.0/CIFS file sharing protocol, and the Computer Browser protocol.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "SMB 1.0/CIFS File Sharing Support\\SMB 1.0/CIFS Client",
+    "Name": "FS-SMB1-CLIENT",
+    "DisplayName": "SMB 1.0/CIFS Client",
+    "Description": "Support for the SMB 1.0/CIFS client for accessing legacy servers.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "SMB 1.0/CIFS File Sharing Support\\SMB 1.0/CIFS Server",
+    "Name": "FS-SMB1-SERVER",
+    "DisplayName": "SMB 1.0/CIFS Server",
+    "Description": "Support for the SMB 1.0/CIFS file server for sharing data with legacy clients and browsing the network neighborhood.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "SMB Bandwidth Limit",
+    "Name": "FS-SMBBW",
+    "DisplayName": "SMB Bandwidth Limit",
+    "Description": "SMB Bandwidth Limit provides a mechanism to track SMB traffic per category (Default, Hyper-V or Live Migration) and allows you to limit the amount of traffic allowed for a given category. It is commonly used to limit the bandwidth used by Live Migration over SMB.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "SMTP Server",
+    "Name": "SMTP-Server",
+    "DisplayName": "SMTP Server",
+    "Description": "SMTP Server supports the transfer of e-mail messages between e-mail systems.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "SNMP Service",
+    "Name": "SNMP-Service",
+    "DisplayName": "SNMP Service",
+    "Description": "Simple Network Management Protocol (SNMP) Service includes agents that monitor the activity in network devices and report to the network console workstation.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "SNMP Service\\SNMP WMI Provider",
+    "Name": "SNMP-WMI-Provider",
+    "DisplayName": "SNMP WMI Provider",
+    "Description": "SNMP Windows Management Instrumentation (WMI) Provider enables WMI client scripts and applications to access SNMP information. Clients can use WMI C++ interfaces and scripting objects to communicate with network devices that use the SNMP protocol and can receive SNMP traps as WMI events.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Software Load Balancer",
+    "Name": "SoftwareLoadBalancer",
+    "DisplayName": "Software Load Balancer",
+    "Description": "The Software Load Balancer provides balancing of network resources.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Storage Migration Service",
+    "Name": "SMS",
+    "DisplayName": "Storage Migration Service",
+    "Description": "Orchestrates storage migration by invoking Storage Migration Service Proxy service.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Storage Migration Service Proxy",
+    "Name": "SMS-Proxy",
+    "DisplayName": "Storage Migration Service Proxy",
+    "Description": "Service to run inventory, transfer and cutover for storage migration.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Storage Replica",
+    "Name": "Storage-Replica",
+    "DisplayName": "Storage Replica",
+    "Description": "Allows you to replicate data using the Storage Replica feature.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Sysmon",
+    "Name": "Sysmon",
+    "DisplayName": "Sysmon",
+    "Description": "Enables the Sysmon tool that monitors and logs specified system activity to the Windows event log",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "System Data Archiver",
+    "Name": "System-DataArchiver",
+    "DisplayName": "System Data Archiver",
+    "Description": "Provides services to collect and archive Windows Server system data.",
+    "Installed": true,
+    "InstallState": 1
+  },
+  {
+    "Path": "System Insights",
+    "Name": "System-Insights",
+    "DisplayName": "System Insights",
+    "Description": "Provides the services that are needed to manage and invoke predictive analytics capabilities that analyze Windows System data.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Telnet Client",
+    "Name": "Telnet-Client",
+    "DisplayName": "Telnet Client",
+    "Description": "Telnet Client uses the Telnet protocol to connect to a remote Telnet server and run applications on that server.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "TFTP Client",
+    "Name": "TFTP-Client",
+    "DisplayName": "TFTP Client",
+    "Description": "Trivial File Transfer Protocol (TFTP) Client is used to read files from, or write files to, a remote TFTP server. TFTP is primarily used by embedded devices or systems that retrieve firmware, configuration information, or a system image during the boot process from a TFTP server.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "VM Shielding Tools for Fabric Management",
+    "Name": "FabricShieldedTools",
+    "DisplayName": "VM Shielding Tools for Fabric Management",
+    "Description": "Provides Shielded VM utilities that are used by Fabric Management solutions and should be installed on the Fabric Management server.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "WebDAV Redirector",
+    "Name": "WebDAV-Redirector",
+    "DisplayName": "WebDAV Redirector",
+    "Description": "Enables Windows-based programs to create, access, and modify Internet-based files.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Biometric Framework",
+    "Name": "Biometric-Framework",
+    "DisplayName": "Windows Biometric Framework",
+    "Description": "Windows Biometric Framework (WBF) allows fingerprint devices to be used to identify and verify identities and to sign in to Windows. WBF includes the components required to enable the use of fingerprint devices.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Identity Foundation 3.5",
+    "Name": "Windows-Identity-Foundation",
+    "DisplayName": "Windows Identity Foundation 3.5",
+    "Description": "Windows Identity Foundation (WIF) 3.5 is a set of .NET Framework classes that can be used for implementing claims-based identity in your .NET 3.5 and 4.0 applications. WIF 3.5 has been superseded by WIF classes that are provided as part of .NET 4.5. It is recommended that you use .NET 4.5 for supporting claims-based identity in your applications.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Internal Database",
+    "Name": "Windows-Internal-Database",
+    "DisplayName": "Windows Internal Database",
+    "Description": "Windows Internal Database is a relational data store that can be used only by Windows roles and features, such as Active Directory Rights Management Services, Windows Server Update Services, and Windows System Resource Manager.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows PowerShell",
+    "Name": "PowerShellRoot",
+    "DisplayName": "Windows PowerShell",
+    "Description": "Windows PowerShell enables you to automate local and remote Windows administration. This task-based command-line shell and scripting language is built on the Microsoft .NET Framework. It includes hundreds of built-in commands and lets you write and distribute your own commands and scripts.",
+    "Installed": true,
+    "InstallState": 1
+  },
+  {
+    "Path": "Windows PowerShell\\Windows PowerShell 5.1",
+    "Name": "PowerShell",
+    "DisplayName": "Windows PowerShell 5.1",
+    "Description": "Windows PowerShell enables you to automate local and remote Windows administration. This task-based command-line shell and scripting language is built on the Microsoft .NET Framework. It includes hundreds of built-in commands and lets you write and distribute your own commands and scripts.",
+    "Installed": true,
+    "InstallState": 1
+  },
+  {
+    "Path": "Windows PowerShell\\Windows PowerShell 2.0 Engine",
+    "Name": "PowerShell-V2",
+    "DisplayName": "Windows PowerShell 2.0 Engine",
+    "Description": "Windows PowerShell 2.0 Engine includes the core components from Windows PowerShell 2.0 for backward compatibility with existing Windows PowerShell host applications.",
+    "Installed": false,
+    "InstallState": 5
+  },
+  {
+    "Path": "Windows PowerShell\\Windows PowerShell Desired State Configuration Service",
+    "Name": "DSC-Service",
+    "DisplayName": "Windows PowerShell Desired State Configuration Service",
+    "Description": "Windows PowerShell Desired State Configuration Service supports configuration management of multiple nodes from a single repository.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows PowerShell\\Windows PowerShell Web Access",
+    "Name": "WindowsPowerShellWebAccess",
+    "DisplayName": "Windows PowerShell Web Access",
+    "Description": "Windows PowerShell Web Access lets a server act as a web gateway, through which an organization's users can manage remote computers by running Windows PowerShell sessions in a web browser. After Windows PowerShell Web Access is installed, an administrator completes the gateway configuration in the Web Server (IIS) management console.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Process Activation Service",
+    "Name": "WAS",
+    "DisplayName": "Windows Process Activation Service",
+    "Description": "Windows Process Activation Service generalizes the IIS process model, removing the dependency on HTTP. All the features of IIS that were previously available only to HTTP applications are now available to applications hosting Windows Communication Foundation (WCF) services, using non-HTTP protocols. IIS 10.0 also uses Windows Process Activation Service for message-based activation over HTTP.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Process Activation Service\\Process Model",
+    "Name": "WAS-Process-Model",
+    "DisplayName": "Process Model",
+    "Description": "Process Model hosts Web and WCF services. Introduced with IIS 6.0, the process model is a new architecture that features rapid failure protection, health monitoring, and recycling. Windows Process Activation Service Process Model removes the dependency on HTTP.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Process Activation Service\\.NET Environment 3.5",
+    "Name": "WAS-NET-Environment",
+    "DisplayName": ".NET Environment 3.5",
+    "Description": ".NET Environment supports managed code activation in the process model.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Process Activation Service\\Configuration APIs",
+    "Name": "WAS-Config-APIs",
+    "DisplayName": "Configuration APIs",
+    "Description": "Configuration APIs enable applications that are built using the .NET Framework to configure Windows Process Activation Model programmatically. This lets the application developer automatically configure Windows Process Activation Model settings when the application runs instead of requiring the administrator to manually configure these settings.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Search Service",
+    "Name": "Search-Service",
+    "DisplayName": "Windows Search Service",
+    "Description": "Windows Search Service provides fast file searches on a server from clients that are compatible with Windows Search Service. Windows Search Service is intended for desktop search or small file server scenarios, and not for enterprise scenarios.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Server Backup",
+    "Name": "Windows-Server-Backup",
+    "DisplayName": "Windows Server Backup",
+    "Description": "Windows Server Backup allows you to back up and recover your operating system, applications and data. You can schedule backups, and protect the entire server or specific volumes.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Server Migration Tools",
+    "Name": "Migration",
+    "DisplayName": "Windows Server Migration Tools",
+    "Description": "Windows Server Migration Tools includes Windows PowerShell cmdlets that facilitate migration of server roles, operating system settings, files, and shares from computers that are running earlier versions of Windows Server.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Standards-Based Storage Management",
+    "Name": "WindowsStorageManagementService",
+    "DisplayName": "Windows Standards-Based Storage Management",
+    "Description": "Windows Standards-Based Storage Management provides the ability to discover, manage, and monitor storage devices using management interfaces that conform to the SMI-S standard. This functionality is exposed as a set of Windows Management Instrumentation (WMI) classes and Windows PowerShell cmdlets.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows Subsystem for Linux",
+    "Name": "Microsoft-Windows-Subsystem-Linux",
+    "DisplayName": "Windows Subsystem for Linux",
+    "Description": "Provides services and environments for running native user-mode Linux shells and tools on Windows.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Windows TIFF IFilter",
+    "Name": "Windows-TIFF-IFilter",
+    "DisplayName": "Windows TIFF IFilter",
+    "Description": "Windows TIFF IFilter (Tagged Image File Format Index Filter) performs OCR (Optical Character Recognition) on TIFF 6.0-compliant files (.TIF and .TIFF extensions) and in that way enables indexing and full text search of those files.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "WinRM IIS Extension",
+    "Name": "WinRM-IIS-Ext",
+    "DisplayName": "WinRM IIS Extension",
+    "Description": "Windows Remote Management (WinRM) IIS Extension enables a server to receive a management request from a client by using WS-Management. WinRM is the Microsoft implementation of the WS-Management protocol which provides a secure way to communicate with local and remote computers by using Web services.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "WINS Server",
+    "Name": "WINS",
+    "DisplayName": "WINS Server",
+    "Description": "Windows Internet Naming Service (WINS) Server provides a distributed database for registering and querying dynamic mappings of NetBIOS names for computers and groups used on your network. WINS maps NetBIOS names to IP addresses and solves the problems arising from NetBIOS name resolution in routed environments.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "Wireless LAN Service",
+    "Name": "Wireless-Networking",
+    "DisplayName": "Wireless LAN Service",
+    "Description": "Wireless LAN (WLAN) Service configures and starts the WLAN AutoConfig service, regardless of whether the computer has any wireless adapters. WLAN AutoConfig enumerates wireless adapters, and manages both wireless connections and the wireless profiles that contain the settings required to configure a wireless client to connect to a wireless network.",
+    "Installed": false,
+    "InstallState": 0
+  },
+  {
+    "Path": "WoW64 Support",
+    "Name": "WoW64-Support",
+    "DisplayName": "WoW64 Support",
+    "Description": "Includes all of WoW64 to support running 32-bit applications on Server Core installations.  This feature is required for full Server installations. Uninstalling WoW64 Support will convert a full Server installation into a Server Core installation.",
+    "Installed": true,
+    "InstallState": 1
+  },
+  {
+    "Path": "XPS Viewer",
+    "Name": "XPS-Viewer",
+    "DisplayName": "XPS Viewer",
+    "Description": "The XPS Viewer is used to read, set permissions for, and digitally sign XPS documents.",
+    "Installed": true,
+    "InstallState": 1
+  }
+]
