@@ -223,7 +223,8 @@ func filterDiskDrives(drives []*diskDrive, opts map[string]string) (*diskDrive, 
 
 func filterDiskDrivesBySerialNumber(drives []*diskDrive, serialNumber string) (*diskDrive, error) {
 	for _, d := range drives {
-		if serialNumber == d.SerialNumber {
+		// Nitro (NVMe) reports the volume ID followed by the namespace ID, e.g. vol0123_00000001.
+		if d.SerialNumber == serialNumber || strings.HasPrefix(d.SerialNumber, serialNumber+"_") {
 			log.Debug().Str("serialNumber", serialNumber).Str("name", d.Name).Int("index", d.Index).Msg("found disk drive with matching serial number")
 			return d, nil
 		}
