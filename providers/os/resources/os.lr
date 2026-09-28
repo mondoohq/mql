@@ -17610,7 +17610,11 @@ private ai.model @defaults("name source") @maturity("preview") {
   quantization string
   // Human-readable parameter count
   //
-  // For example 7B, 13B, or 70B.
+  // For example 135M, 0.5B, 7B, or 70B. Read from the model's own metadata
+  // where the source keeps it: the parameter size Ollama records for the
+  // model, or general.size_label of a GGUF file (LM Studio, GPT4All, Jan).
+  // Otherwise only a count the model name or tag states explicitly is
+  // reported, such as the 135m of smollm:135m; empty when neither states one.
   parameterSize string
   // Model architecture
   //

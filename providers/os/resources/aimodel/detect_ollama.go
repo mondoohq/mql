@@ -236,9 +236,7 @@ func DetectOllamaModels(afs *afero.Afero, modelsDir string) []ModelInfo {
 
 					paramSize := extracted.ParameterSize
 					if paramSize == "" {
-						if m := reParamSize.FindStringSubmatch(name); len(m) > 1 {
-							paramSize = m[1] + "B"
-						}
+						paramSize = parameterSizeFromName(name)
 					}
 
 					// Build tags from tag name parts (split on -)
@@ -400,7 +398,8 @@ func readOllamaConfig(afs *afero.Afero, modelsDir string, digest string) ollamaE
 	if v, ok := raw["file_type"].(string); ok {
 		result.Quantization = v
 	}
-	// model_type holds human-readable parameter size (e.g. "8.0B", "70B")
+	// model_type holds the human-readable parameter size (e.g. "134.52M",
+	// "8.0B"); it is what the Ollama API reports as details.parameter_size.
 	if v, ok := raw["model_type"].(string); ok && v != "" {
 		result.ParameterSize = v
 	}

@@ -11,8 +11,9 @@ import (
 // GPT4AllDetector discovers models cached by GPT4All. It checks the shared
 // cache directory (~/.cache/gpt4all) and the platform-specific application data
 // directory (e.g. ~/Library/Application Support/nomic.ai/GPT4All on macOS).
-// Supports .gguf and .bin (legacy ggml) files. Quantization and parameter
-// size are extracted from filenames via regex.
+// Supports .gguf and .bin (legacy ggml) files. Quantization is extracted from
+// filenames via regex. The parameter size is the GGUF general.size_label,
+// falling back to a count the filename states.
 type GPT4AllDetector struct{}
 
 func (d *GPT4AllDetector) Detect(ctx DetectContext) []ModelInfo {
@@ -47,9 +48,9 @@ func (d *GPT4AllDetector) Detect(ctx DetectContext) []ModelInfo {
 			if match := reQuantization.FindString(e.Name()); match != "" {
 				quant = strings.ToUpper(match)
 			}
-			paramSize := ""
-			if pm := reParamSize.FindStringSubmatch(e.Name()); len(pm) > 1 {
-				paramSize = pm[1] + "B"
+			paramSize := parameterSizeFromName(e.Name())
+			if format == "gguf" {
+				paramSize = parameterSizeFromGGUF(ctx.Fs, []string{filepath.Join(dir, e.Name())}, e.Name())
 			}
 
 			results = append(results, ModelInfo{

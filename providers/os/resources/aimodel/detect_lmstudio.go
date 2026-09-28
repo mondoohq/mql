@@ -14,7 +14,8 @@ import (
 // LMStudioDetector discovers GGUF models cached by LM Studio. It checks both
 // the legacy path (~/.lmstudio/models) and the newer cache path
 // (~/.cache/lm-studio/models). Models are organized as publisher/repo/file.gguf.
-// Quantization and parameter size are extracted from filenames via regex.
+// Quantization is extracted from filenames via regex. The parameter size is
+// the GGUF general.size_label, falling back to a count the name states.
 type LMStudioDetector struct{}
 
 func (d *LMStudioDetector) Detect(ctx DetectContext) []ModelInfo {
@@ -57,10 +58,7 @@ func (d *LMStudioDetector) Detect(ctx DetectContext) []ModelInfo {
 					if match := reQuantization.FindString(filename); match != "" {
 						quant = strings.ToUpper(match)
 					}
-					paramSize := ""
-					if pm := reParamSize.FindStringSubmatch(modelName); len(pm) > 1 {
-						paramSize = pm[1] + "B"
-					}
+					paramSize := parameterSizeFromGGUF(ctx.Fs, []string{m.path}, modelName)
 
 					results = append(results, ModelInfo{
 						Name:          modelName + "/" + filename,

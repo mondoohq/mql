@@ -51,8 +51,10 @@ type Detector interface {
 
 var (
 	reQuantization = regexp.MustCompile(`(?i)(Q[0-9]+_[A-Z0-9_]+|F16|F32|FP16|FP32)`)
-	// Leading separator (dash, underscore, colon, space) avoids matching "b" inside words.
-	reParamSize = regexp.MustCompile(`(?i)[-_: ](\d+\.?\d*)[bB](?:[-_. ]|$)`)
+	// A parameter count in billions (b) or millions (m), such as the "7b" of
+	// "llama3:7b" or the "135m" of "smollm:135m". The leading separator (dash,
+	// underscore, colon, space) avoids matching the letter inside words.
+	reParamSize = regexp.MustCompile(`(?i)[-_: ](\d+\.?\d*)([bm])(?:[-_. ]|$)`)
 )
 
 // Detectors returns all registered model detectors.

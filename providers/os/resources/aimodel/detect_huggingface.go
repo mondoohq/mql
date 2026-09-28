@@ -61,10 +61,7 @@ func (d *HuggingFaceDetector) Detect(ctx DetectContext) []ModelInfo {
 		totalSize, modTime := dirSizeAndLatestMtime(ctx.Fs, blobsDir)
 		meta := extractHuggingFaceMetadata(ctx.Fs, modelDir)
 
-		paramSize := ""
-		if m := reParamSize.FindStringSubmatch(modelName); len(m) > 1 {
-			paramSize = m[1] + "B"
-		}
+		paramSize := parameterSizeFromName(modelName)
 
 		results = append(results, ModelInfo{
 			Name:          modelName,

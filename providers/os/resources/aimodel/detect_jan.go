@@ -14,8 +14,9 @@ import (
 // JanDetector discovers models managed by Jan (~/jan/models). Each model lives
 // in its own subdirectory and optionally contains a model.json with rich
 // metadata: name, version, description, license, tags, publisher, and format.
-// Quantization is extracted from GGUF filenames in the directory; parameter
-// size is extracted from the model name via regex.
+// Quantization is extracted from GGUF filenames in the directory. The
+// parameter size is the general.size_label of the model's GGUF file, falling
+// back to a count the model name states.
 type JanDetector struct{}
 
 type janModelMeta struct {
@@ -102,10 +103,12 @@ func (d *JanDetector) Detect(ctx DetectContext) []ModelInfo {
 			}
 		}
 
-		paramSize := ""
-		if pm := reParamSize.FindStringSubmatch(name); len(pm) > 1 {
-			paramSize = pm[1] + "B"
+		// The first GGUF file in the directory carries the size label.
+		var gguf []string
+		if files := findGGUFFiles(ctx.Fs, modelDir); len(files) > 0 {
+			gguf = []string{files[0].path}
 		}
+		paramSize := parameterSizeFromGGUF(ctx.Fs, gguf, name)
 
 		totalSize, modTime := dirSizeRecursive(ctx.Fs, modelDir)
 
