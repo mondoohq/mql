@@ -13,6 +13,10 @@ import (
 // Flagset is derived from Go's internal flagset, licensed MIT
 type FlagSet struct {
 	parsed bool
+	// actual maps flag names to their values. Operands are stored too, keyed
+	// by the word itself with an empty value: positional arguments, a lone
+	// "-", and words that look like flags but have no usable name ("---x",
+	// "-=x").
 	actual map[string]string
 	args   []string // arguments after flags
 }

@@ -65,9 +65,11 @@ const (
 // rather than a guess.
 func systemAccountRuleFor(pf *inventory.Platform) systemAccountRule {
 	switch {
+	case pf == nil:
+		return systemAccountRuleUnknown
 	case pf.IsFamily("darwin"):
 		return systemAccountRuleDarwin
-	case pf != nil && pf.Name == "freebsd":
+	case pf.Name == "freebsd":
 		return systemAccountRuleFreeBSD
 	case pf.IsFamily("linux"):
 		return systemAccountRuleLinux
