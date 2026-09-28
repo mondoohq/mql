@@ -1,0 +1,29 @@
+Repo-id            : appstream
+Repo-name          : CentOS Stream 9 - AppStream
+Repo-status        : enabled
+Repo-revision      : 9-stream
+Repo-distro-tags      : [cpe:/o:centos-stream:centos-stream:9]:  ,  , 9, C, O, S, S, a, e, e, m, n, r, t, t
+Repo-updated       : Tue 22 Sep 2026 01:38:40 PM UTC
+Repo-pkgs          : 20,894
+Repo-available-pkgs: 19,736
+Repo-size          : 48 G
+Repo-metalink      : https://mirrors.centos.org/metalink?repo=centos-appstream-9-stream&arch=x86_64&protocol=https,http
+  Updated          : Mon 28 Sep 2026 05:25:05 AM UTC
+Repo-baseurl       : https://download.cf.centos.org/9-stream/AppStream/x86_64/os/ (28 more)
+Repo-expire        : 21,600 second(s) (last: Mon 28 Sep 2026 05:25:05 AM UTC)
+Repo-filename      : /etc/yum.repos.d/centos.repo
+
+Repo-id            : appstream-debuginfo
+Repo-name          : CentOS Stream 9 - AppStream - Debug
+Repo-status        : disabled
+Repo-metalink      : https://mirrors.centos.org/metalink?repo=centos-appstream-debug-9-stream&arch=x86_64&protocol=https,http
+Repo-expire        : 21,600 second(s) (last: unknown)
+Repo-filename      : /etc/yum.repos.d/centos.repo
+
+Repo-id            : appstream-source
+Repo-name          : CentOS Stream 9 - AppStream - Source
+Repo-status        : disabled
+Repo-metalink      : https://mirrors.centos.org/metalink?repo=centos-appstream-source-9-stream&arch=source&protocol=https,http
+Repo-expire        : 21,600 second(s) (last: unknown)
+Repo-filename      : /etc/yum.repos.d/centos.repo
+

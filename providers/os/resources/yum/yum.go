@@ -32,6 +32,11 @@ const (
 	Rhel6VarsCommand       = "python -c 'import yum, json; yb = yum.YumBase(); print json.dumps(yb.conf.yumvar)'"
 )
 
+// Dnf5RepoInfoCommand lists repositories on dnf5, which has no verbose
+// repolist; `repo info` prints the same details under different labels.
+// See libdnf5-cli/output/repo_info.cpp.
+const Dnf5RepoInfoCommand = "dnf5 repo info --all"
+
 type YumRepo struct {
 	Id       string
 	Name     string
@@ -61,6 +66,7 @@ const (
 	Pkgs     = "Repo-pkgs"
 	Size     = "Repo-size"
 	Mirrors  = "Repo-mirrors"
+	Metalink = "Repo-metalink"
 	Baseurl  = "Repo-baseurl"
 	Expire   = "Repo-expire"
 	Filter   = "Filter"
@@ -117,7 +123,8 @@ func ParseRepos(r io.Reader) ([]*YumRepo, error) {
 				entry.Pkgs = value
 			case Size:
 				entry.Size = value
-			case Mirrors:
+			case Mirrors, Metalink:
+				// dnf prints either the metalink or the mirrorlist of a repo
 				entry.Mirrors = value
 			case Baseurl:
 				// remove (0 more)
@@ -144,4 +151,79 @@ func ParseRepos(r io.Reader) ([]*YumRepo, error) {
 	add(entry)
 
 	return res, nil
+}
+
+// labels printed by `dnf5 repo info`
+const (
+	dnf5Id         = "Repo ID"
+	dnf5Name       = "Name"
+	dnf5Status     = "Status"
+	dnf5Expire     = "Metadata expire"
+	dnf5Filename   = "Config file"
+	dnf5Baseurl    = "Base URL"
+	dnf5Metalink   = "Metalink"
+	dnf5Mirrorlist = "Mirrorlist"
+	dnf5Pkgs       = "Total packages"
+	dnf5Size       = "Size"
+	dnf5Revision   = "Revision"
+	dnf5Updated    = "Updated"
+)
+
+var (
+	// the key is everything up to the first colon; values such as URLs keep theirs
+	dnf5RepoLine = regexp.MustCompile(`^\s*([^:]+?)\s*:\s?(.*)$`)
+	// a Base URL resolved from a metalink or mirrorlist ends in "(N more)"
+	dnf5MoreMirrors = regexp.MustCompile(`\s*\(\d+ more\)$`)
+)
+
+// ParseDnf5Repos parses the output of `dnf5 repo info --all`.
+func ParseDnf5Repos(r io.Reader) ([]*YumRepo, error) {
+	res := []*YumRepo{}
+
+	var entry *YumRepo
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		m := dnf5RepoLine.FindStringSubmatch(scanner.Text())
+		if len(m) != 3 {
+			continue
+		}
+		key := m[1]
+		value := strings.TrimSpace(m[2])
+
+		if key == dnf5Id {
+			entry = &YumRepo{Id: value}
+			res = append(res, entry)
+			continue
+		}
+		if entry == nil {
+			continue
+		}
+
+		switch key {
+		case dnf5Name:
+			entry.Name = value
+		case dnf5Status:
+			entry.Status = value
+		case dnf5Expire:
+			entry.Expire = value
+		case dnf5Filename:
+			entry.Filename = value
+		case dnf5Baseurl:
+			// configured base URLs are space-separated; a URL taken from a
+			// mirror list is the first mirror followed by "(N more)"
+			entry.Baseurl = strings.Fields(dnf5MoreMirrors.ReplaceAllString(value, ""))
+		case dnf5Metalink, dnf5Mirrorlist:
+			entry.Mirrors = value
+		case dnf5Pkgs:
+			entry.Pkgs = value
+		case dnf5Size:
+			entry.Size = value
+		case dnf5Revision:
+			entry.Revision = value
+		case dnf5Updated:
+			entry.Updated = value
+		}
+	}
+
+	return res, scanner.Err()
 }

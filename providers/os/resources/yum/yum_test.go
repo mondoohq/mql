@@ -5,6 +5,8 @@ package yum
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -94,4 +96,123 @@ func TestYumRepoRhel8(t *testing.T) {
 	vars, err := ParseVariables(cmd.Stdout)
 	require.NoError(t, err)
 	assert.Equal(t, "8", vars["releasever"])
+}
+
+func parseDnf5Fixture(t *testing.T, name string) []*YumRepo {
+	t.Helper()
+	f, err := os.Open(filepath.Join("testdata", name))
+	require.NoError(t, err)
+	defer f.Close()
+	repos, err := ParseDnf5Repos(f)
+	require.NoError(t, err)
+	return repos
+}
+
+func TestParseDnf5ReposFedora43(t *testing.T) {
+	// `dnf5 repo info --all` on Fedora 43, dnf5 5.2.18
+	repos := parseDnf5Fixture(t, "dnf5_fedora43_repoinfo.txt")
+	require.Len(t, repos, 12)
+
+	repo := repos[0]
+	assert.Equal(t, "fedora", repo.Id)
+	assert.Equal(t, "Fedora 43 - x86_64", repo.Name)
+	assert.Equal(t, "enabled", repo.Status)
+	assert.Equal(t, "604800 seconds (last: 2026-09-28 05:12:19)", repo.Expire)
+	assert.Equal(t, "/etc/yum.repos.d/fedora.repo", repo.Filename)
+	assert.Equal(t, []string{"https://d2lzkl7pfhq30w.cloudfront.net/pub/fedora/linux/releases/43/Everything/x86_64/os/"}, repo.Baseurl)
+	assert.Equal(t, "https://mirrors.fedoraproject.org/metalink?repo=fedora-43&arch=x86_64", repo.Mirrors)
+	assert.Equal(t, "77664", repo.Pkgs)
+	assert.Equal(t, "117.1 GiB", repo.Size)
+	assert.Equal(t, "1761190640", repo.Revision)
+	assert.Equal(t, "2025-10-23 03:37:20", repo.Updated)
+
+	// a disabled repo has no base URL and no repodata
+	repo = repos[2]
+	assert.Equal(t, "fedora-cisco-openh264-debuginfo", repo.Id)
+	assert.Equal(t, "disabled", repo.Status)
+	assert.Equal(t, "/etc/yum.repos.d/fedora-cisco-openh264.repo", repo.Filename)
+	assert.Nil(t, repo.Baseurl)
+	assert.Equal(t, "https://mirrors.fedoraproject.org/metalink?repo=fedora-cisco-openh264-debug-43&arch=x86_64", repo.Mirrors)
+	assert.Empty(t, repo.Pkgs)
+	assert.Empty(t, repo.Size)
+	assert.Empty(t, repo.Revision)
+
+	enabled := 0
+	for _, r := range repos {
+		if r.Status == "enabled" {
+			enabled++
+		}
+	}
+	assert.Equal(t, 3, enabled, "fedora, fedora-cisco-openh264 and updates")
+}
+
+func TestParseDnf5ReposAmazonLinux2027(t *testing.T) {
+	// `dnf5 repo info --all` on Amazon Linux 2027, dnf5 5.4.2
+	repos := parseDnf5Fixture(t, "dnf5_al2027_repoinfo.txt")
+	require.Len(t, repos, 3)
+
+	repo := repos[0]
+	assert.Equal(t, "amazonlinux", repo.Id)
+	assert.Equal(t, "Amazon Linux 2027 repository", repo.Name)
+	assert.Equal(t, "enabled", repo.Status)
+	assert.Equal(t, "/etc/yum.repos.d/amazonlinux.repo", repo.Filename)
+	assert.Equal(t, []string{"https://al2027-repos-us-west-2-7f9a3b4e.s3.dualstack.us-west-2.amazonaws.com/core/guids/7eee71ed659b0d0571aafb3d6843efa5ae236105cf9c7cdfaf72a4360869078e/x86_64/"}, repo.Baseurl)
+	assert.Equal(t, "https://al2027-repos-us-west-2-7f9a3b4e.s3.dualstack.us-west-2.amazonaws.com/core/mirrors/2027.0.20260914/x86_64/mirror.list", repo.Mirrors)
+	assert.Equal(t, "7667", repo.Pkgs)
+	assert.Equal(t, "12.6 GiB", repo.Size)
+	assert.Equal(t, "1789596040", repo.Revision)
+
+	assert.Equal(t, "amazonlinux-debuginfo", repos[1].Id)
+	assert.Equal(t, "disabled", repos[1].Status)
+	assert.Equal(t, "amazonlinux-source", repos[2].Id)
+}
+
+func TestParseDnf5ReposMultipleBaseurls(t *testing.T) {
+	// Fedora 43 with a scratch reposdir: several configured base URLs are
+	// printed space-separated on one line
+	repos := parseDnf5Fixture(t, "dnf5_fedora43_multi_baseurl.txt")
+	require.Len(t, repos, 2)
+
+	assert.Equal(t, "mqlmirror", repos[0].Id)
+	assert.Nil(t, repos[0].Baseurl)
+	assert.Equal(t, "file:///media/ml", repos[0].Mirrors)
+
+	assert.Equal(t, "mqltest", repos[1].Id)
+	assert.Equal(t, "mql test repo", repos[1].Name)
+	assert.Equal(t, []string{"file:///media/a/", "file:///media/b/", "file:///media/c/"}, repos[1].Baseurl)
+	assert.Empty(t, repos[1].Mirrors)
+}
+
+func TestParseDnf5ReposIgnoresDnf4Output(t *testing.T) {
+	// the two formats share no labels, so each parser finds nothing in the other's output
+	f, err := os.Open("testdata/dnf4_centos9_metalink.txt")
+	require.NoError(t, err)
+	defer f.Close()
+	repos, err := ParseDnf5Repos(f)
+	require.NoError(t, err)
+	assert.Empty(t, repos)
+
+	repos, err = ParseRepos(strings.NewReader(`Repo ID              : fedora
+Name                 : Fedora 43 - x86_64`))
+	require.NoError(t, err)
+	assert.Empty(t, repos)
+}
+
+func TestParseReposMetalink(t *testing.T) {
+	// `yum -v repolist all` on CentOS Stream 9, dnf 4: a metalink repo prints
+	// Repo-metalink instead of Repo-mirrors, with a nested Updated line
+	f, err := os.Open("testdata/dnf4_centos9_metalink.txt")
+	require.NoError(t, err)
+	defer f.Close()
+	repos, err := ParseRepos(f)
+	require.NoError(t, err)
+	require.Len(t, repos, 3)
+
+	repo := repos[0]
+	assert.Equal(t, "appstream", repo.Id)
+	assert.Equal(t, "https://mirrors.centos.org/metalink?repo=centos-appstream-9-stream&arch=x86_64&protocol=https,http", repo.Mirrors)
+	assert.Equal(t, "Tue 22 Sep 2026 01:38:40 PM UTC", repo.Updated)
+	assert.Equal(t, []string{"https://download.cf.centos.org/9-stream/AppStream/x86_64/os/"}, repo.Baseurl)
+	assert.Equal(t, "20,894", repo.Pkgs)
+	assert.Equal(t, "/etc/yum.repos.d/centos.repo", repo.Filename)
 }

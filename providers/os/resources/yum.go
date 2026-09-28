@@ -35,8 +35,15 @@ func (y *mqlYum) repos() ([]any, error) {
 		return nil, errors.New("yum.repos is only supported on redhat-based platforms")
 	}
 
+	// dnf5 rejects `repolist -v`, and where it accepts it, prints no repo details
+	command, parse := yum.RhelYumRepoListCommand, yum.ParseRepos
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+	if ok, _ := afs.Exists(dnf5Binary); ok {
+		command, parse = yum.Dnf5RepoInfoCommand, yum.ParseDnf5Repos
+	}
+
 	o, err := CreateResource(y.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("yum -v repolist all"),
+		"command": llx.StringData(command),
 	})
 	if err != nil {
 		return nil, err
@@ -46,7 +53,7 @@ func (y *mqlYum) repos() ([]any, error) {
 		return nil, errors.New("could not retrieve yum repo list")
 	}
 
-	repos, err := yum.ParseRepos(strings.NewReader(cmd.Stdout.Data))
+	repos, err := parse(strings.NewReader(cmd.Stdout.Data))
 	if err != nil {
 		return nil, err
 	}

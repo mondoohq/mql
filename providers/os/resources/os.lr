@@ -10222,7 +10222,8 @@ yum {
 // Yum repository
 //
 // A single configured yum/dnf repository as reported by
-// `yum -v repolist all`: its `id`, human-readable `name`, `status`,
+// `yum -v repolist all`, or `dnf5 repo info --all` on dnf 5 hosts such as
+// Fedora 41+ and Amazon Linux 2027: its `id`, human-readable `name`, `status`,
 // `baseurl` list, expiry indicator, backing configuration `file`,
 // `revision`, package count, size, mirror list, and whether it is
 // currently `enabled`. Select a repository by ID, for example
@@ -10247,7 +10248,7 @@ yum.repo {
   pkgs string
   // Total size of the repository
   size string
-  // Mirrors for this repository
+  // Metalink or mirror list URL for this repository
   mirrors string
   // Whether the repository is used as a package source (status is enabled)
   enabled() bool

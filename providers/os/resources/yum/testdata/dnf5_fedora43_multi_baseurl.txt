@@ -1,0 +1,31 @@
+Repo ID             : mqlmirror
+Name                : mql mirror
+Status              : disabled
+Priority            : 99
+Cost                : 1000
+Type                : available
+Metadata expire     : 172800 seconds (last: unknown)
+Skip if unavailable : true
+Config file         : /tmp/mqlrepos/mqltest.repo
+URLs                : 
+  Mirrorlist        : file:///media/ml
+OpenPGP             : 
+  Verify repodata   : false
+  Verify packages   : true
+
+Repo ID             : mqltest
+Name                : mql test repo
+Status              : disabled
+Priority            : 99
+Cost                : 1000
+Type                : available
+Metadata expire     : 172800 seconds (last: unknown)
+Skip if unavailable : true
+Config file         : /tmp/mqlrepos/mqltest.repo
+URLs                : 
+  Base URL          : file:///media/a/ file:///media/b/ file:///media/c/
+OpenPGP             : 
+  Keys              : file:///k1 file:///k2
+  Verify repodata   : false
+  Verify packages   : true
+
