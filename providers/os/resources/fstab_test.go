@@ -7,8 +7,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 func fstabEntry(device, mountpoint string) *mqlFstabEntry {
@@ -102,4 +106,58 @@ func TestInitFstabDefaultsToEtcFstab(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Nil(t, res)
 	assert.Equal(t, "/etc/fstab", args["path"].Value)
+}
+
+func newFstabTestRuntime(t *testing.T, files map[string]string) *plugin.Runtime {
+	t.Helper()
+
+	data := &mock.TomlData{Files: map[string]*mock.MockFileData{}}
+	for path, content := range files {
+		data.Files[path] = &mock.MockFileData{Path: path, Content: content, StatData: mock.FileInfo{Mode: 0o644}}
+	}
+
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "debian", Family: []string{"debian", "linux"}},
+	}, mock.WithData(data))
+	require.NoError(t, err)
+
+	return &plugin.Runtime{
+		Connection: conn,
+		Resources:  &syncx.Map[plugin.Resource]{},
+	}
+}
+
+// Most container images (almalinux:10, busybox, distroless), and macOS, ship
+// without /etc/fstab. That is "no static mounts", not an error.
+func TestFstabEntriesMissingFileIsEmpty(t *testing.T) {
+	for _, path := range []string{"/etc/fstab", "/tmp/fstab.alt"} {
+		t.Run(path, func(t *testing.T) {
+			f := &mqlFstab{
+				MqlRuntime: newFstabTestRuntime(t, nil),
+				Path:       plugin.TValue[string]{Data: path, State: plugin.StateIsSet},
+			}
+			entries, err := f.entries()
+			require.NoError(t, err)
+			assert.NotNil(t, entries, "a missing fstab must be an empty list, not null")
+			assert.Empty(t, entries)
+		})
+	}
+}
+
+func TestFstabEntriesParsesFile(t *testing.T) {
+	// /etc/fstab of a Debian 12 EC2 instance
+	runtime := newFstabTestRuntime(t, map[string]string{
+		"/etc/fstab": "PARTUUID=5bef6505-7977-4726-9226-72e4a542b837 / ext4 rw,discard,errors=remount-ro,x-systemd.growfs 0 1\n" +
+			"PARTUUID=965e8c4a-c647-492f-b2ae-71c87aad6e91 /boot/efi vfat defaults 0 0\n",
+	})
+	f := &mqlFstab{
+		MqlRuntime: runtime,
+		Path:       plugin.TValue[string]{Data: "/etc/fstab", State: plugin.StateIsSet},
+	}
+	entries, err := f.entries()
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+	first := entries[0].(*mqlFstabEntry)
+	assert.Equal(t, "/", first.Mountpoint.Data)
+	assert.Equal(t, "ext4", first.Fstype.Data)
 }

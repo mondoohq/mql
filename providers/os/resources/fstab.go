@@ -4,6 +4,7 @@ package resources
 
 import (
 	"errors"
+	"io/fs"
 	"strings"
 
 	"go.mondoo.com/mql/llx"
@@ -46,13 +47,20 @@ func (f *mqlFstab) entries() ([]any, error) {
 		return nil, errors.New("wrong connection type")
 	}
 
-	fs := conn.FileSystem()
-	if fs == nil {
+	afs := conn.FileSystem()
+	if afs == nil {
 		return nil, errors.New("filesystem not available")
 	}
 
-	fstabFile, err := fs.Open(f.GetPath().Data)
+	fstabFile, err := afs.Open(f.GetPath().Data)
 	if err != nil {
+		// No fstab means no static mounts: most container images, distroless
+		// images, and macOS ship without one. The connection's virtual
+		// filesystem may not return *os.PathError, so match the wrapped
+		// sentinel rather than using os.IsNotExist.
+		if errors.Is(err, fs.ErrNotExist) {
+			return []any{}, nil
+		}
 		return nil, err
 	}
 	defer fstabFile.Close()
