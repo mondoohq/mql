@@ -9,6 +9,7 @@
 package dockerclient
 
 import (
+	"context"
 	"io"
 	"os"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/docker/cli/cli/context/store"
 	dopts "github.com/docker/cli/opts"
 	"github.com/moby/moby/client"
+	"github.com/moby/moby/client/pkg/versions"
 	"github.com/rs/zerolog/log"
 )
 
@@ -128,4 +130,44 @@ func NewDockerClient() (*client.Client, error) {
 	// automatically on the first request (WithAPIVersionNegotiation is a
 	// documented no-op kept only for backward compatibility).
 	return client.New(opts...)
+}
+
+// NewNegotiatedDockerClient builds a client like NewDockerClient and negotiates
+// the API version with the daemon before returning it, including daemons older
+// than the client library supports.
+//
+// The moby client negotiates on its first request, but only down to
+// client.MinAPIVersion (1.40). A daemon below that, such as Docker 18.09 (API
+// 1.39, the docker.io package on Debian 10), fails negotiation, the client
+// discards that error, and the request goes out as client.MaxAPIVersion. The
+// daemon rejects it with "client version 1.56 is too new". For that case the
+// client is rebuilt pinned to the daemon's own version, which is what setting
+// DOCKER_API_VERSION does by hand.
+//
+// A failed ping (no daemon, unreachable host) is not an error here: the client
+// is returned unchanged and the first real request reports the failure, as it
+// does for NewDockerClient. An explicit DOCKER_API_VERSION is always honored.
+func NewNegotiatedDockerClient(ctx context.Context) (*client.Client, error) {
+	opts, err := FromDockerEnv()
+	if err != nil {
+		return nil, err
+	}
+	cl, err := client.New(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	ping, err := cl.Ping(ctx, client.PingOptions{NegotiateAPIVersion: true})
+	if err == nil || ping.APIVersion == "" || !versions.LessThan(ping.APIVersion, client.MinAPIVersion) {
+		return cl, nil
+	}
+
+	log.Debug().Str("daemon_api_version", ping.APIVersion).Str("client_min_api_version", client.MinAPIVersion).
+		Msg("docker daemon API version is below the client minimum, pinning the client to the daemon version")
+	pinned, perr := client.New(append(opts, client.WithAPIVersion(ping.APIVersion))...)
+	if perr != nil {
+		return cl, nil
+	}
+	_ = cl.Close()
+	return pinned, nil
 }
