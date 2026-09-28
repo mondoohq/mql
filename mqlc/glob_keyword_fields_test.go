@@ -4,6 +4,9 @@
 package mqlc_test
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,6 +15,7 @@ import (
 	"go.mondoo.com/mql/mqlc"
 	"go.mondoo.com/mql/providers-sdk/v1/testutils"
 	"go.mondoo.com/mql/types"
+	"go.mondoo.com/mql/utils/sortx"
 )
 
 // `{ * }` expands to one expression per field. A field named like a keyword
@@ -108,4 +112,63 @@ func TestGlobKeepsBareIdentifiersForOtherFields(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "the glob's path read differs from a bare `path`")
+}
+
+// Every field name declared in any provider schema, plus every word the parser
+// or compiler treats as a value or keyword, must expand under `{ * }` to a
+// read of that field. The allowlist in globFieldExpression is hand-kept, so
+// this is what catches a provider adding a field whose name the compiler
+// reads as something else.
+//
+// The test builds one resource that declares all of those names as string
+// fields and globs it: a name that compiles to anything but a field read of
+// that name fails here, with the name in the message.
+func TestGlobReadsEveryDeclaredFieldName(t *testing.T) {
+	lrFiles, err := filepath.Glob(filepath.Join(testutils.TestutilsDir, "../../../providers/*/resources/*.lr"))
+	require.NoError(t, err)
+	require.NotEmpty(t, lrFiles)
+
+	names := map[string]struct{}{
+		// parser values: parseValue turns these into literals
+		"true": {}, "false": {}, "null": {}, "NaN": {}, "Infinity": {}, "Never": {},
+		// compiler keywords and operators an expression can start with
+		"return": {}, "empty": {}, "if": {}, "else": {}, "switch": {},
+		"case": {}, "default": {}, "props": {}, "in": {},
+	}
+	for _, lrFile := range lrFiles {
+		schema := testutils.MustLoadSchema(testutils.SchemaProvider{Path: lrFile})
+		for _, info := range schema.Resources {
+			for name := range info.Fields {
+				names[name] = struct{}{}
+			}
+		}
+	}
+
+	// guards against the glob silently matching nothing: thousands of distinct
+	// names are declared across the providers
+	require.Greater(t, len(names), 1000)
+
+	var lr strings.Builder
+	lr.WriteString("option provider = \"go.mondoo.com/mql/providers/globtest\"\n\nglobtest {\n")
+	for _, name := range sortx.Keys(names) {
+		lr.WriteString("  " + name + " string\n")
+	}
+	lr.WriteString("}\n")
+	lrPath := filepath.Join(t.TempDir(), "globtest.lr")
+	require.NoError(t, os.WriteFile(lrPath, []byte(lr.String()), 0o600))
+
+	schema := testutils.MustLoadSchema(testutils.SchemaProvider{Path: lrPath})
+	res, err := mqlc.Compile(`globtest { * }`, nil, mqlc.NewConfig(schema, features))
+	require.NoError(t, err)
+
+	read := map[string]bool{}
+	for _, chunk := range res.CodeV2.Blocks[len(res.CodeV2.Blocks)-1].Chunks {
+		if chunk.Call == llx.Chunk_FUNCTION && chunk.Function != nil &&
+			chunk.Function.Type == string(types.String) {
+			read[chunk.Id] = true
+		}
+	}
+	for name := range names {
+		assert.True(t, read[name], "`{ * }` does not read the field %q; add it to globKeywordFields", name)
+	}
 }
