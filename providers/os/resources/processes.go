@@ -81,6 +81,9 @@ func (p *mqlProcess) flags() (map[string]any, error) {
 		// executable is only a hint for finding the end of an unquoted
 		// program path, so a failure to read it is not a failure of flags
 		exe := p.GetExecutable()
+		if exe.Error != nil {
+			log.Debug().Err(exe.Error).Msg("process executable unavailable, splitting argv[0] without it")
+		}
 		err = fs.ParseWindowsCommand(cmd.Data, exe.Data)
 	} else {
 		err = fs.ParseCommand(cmd.Data)

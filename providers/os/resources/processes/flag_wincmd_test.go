@@ -119,6 +119,8 @@ func TestParseWindowsCommand(t *testing.T) {
 			},
 		},
 		{
+			// A POSIX shell reads "\ " as an escaped space; Windows does not,
+			// so the backslash stays in the value and the space still splits.
 			name:       "backslashes in an argument are literal",
 			cmd:        `C:\Windows\system32\DllHost.exe -config C:\Program\ Data\x.ini`,
 			executable: "DllHost",
