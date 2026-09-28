@@ -3,6 +3,7 @@
 
 option provider = "go.mondoo.com/mql/providers/rippling"
 option go_package = "go.mondoo.com/mql/providers/rippling/resources"
+option root = "rippling"
 
 // Rippling
 //
@@ -11,7 +12,7 @@ option go_package = "go.mondoo.com/mql/providers/rippling/resources"
 // locations, and groups. Identity and org-structure fields are exposed;
 // compensation, benefits, payroll mechanics, and personal contact details
 // are intentionally not modeled.
-rippling {
+rippling @root {
   // Company reachable with the configured credentials
   //
   // Rippling OAuth credentials are scoped to a single company, so this is
