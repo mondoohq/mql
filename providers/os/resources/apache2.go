@@ -809,9 +809,17 @@ func (s *mqlApache2Conf) envvars() (*mqlApache2ConfEnvvars, error) {
 		return nil, nil
 	}
 
+	// CreateResource does not run initApache2ConfEnvvars, so pass the file
+	// resource the schema declares rather than the init-only path argument.
+	f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
+		"path": llx.StringData(path),
+	})
+	if err != nil {
+		return nil, err
+	}
 	res, err := CreateResource(s.MqlRuntime, "apache2.conf.envvars", map[string]*llx.RawData{
 		"__id": llx.StringData("apache2.conf.envvars/" + path),
-		"path": llx.StringData(path),
+		"file": llx.ResourceData(f, "file"),
 	})
 	if err != nil {
 		return nil, err
