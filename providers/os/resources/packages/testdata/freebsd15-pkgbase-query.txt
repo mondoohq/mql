@@ -1,0 +1,5 @@
+FreeBSD-acct	15.1	System resource accounting	FreeBSD:15:amd64	base/FreeBSD-acct	1781224678	single	BSD2CLAUSE
+FreeBSD-runtime	15.1p3	Core system	FreeBSD:15:amd64	base/FreeBSD-runtime	1790564271	single	BSD2CLAUSE
+FreeBSD-kernel-generic	15.1p3	FreeBSD GENERIC Kernel 	FreeBSD:15:amd64	base/FreeBSD-kernel-generic	1790564258	single	BSD2CLAUSE
+jq	1.8.2	Lightweight and flexible command-line JSON processor	FreeBSD:15:amd64	textproc/jq	1790564476	single	MIT
+pkg	2.7.5	Package manager	FreeBSD:15:amd64	ports-mgmt/pkg	1790564472	single	BSD2CLAUSE

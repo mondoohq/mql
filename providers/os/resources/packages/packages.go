@@ -224,7 +224,7 @@ func ResolveSystemPkgManagers(conn shared.Connection) ([]OperatingSystemPkgManag
 	case asset.Platform.Name == "cos":
 		pms = append(pms, &CosPkgManager{conn: conn, platform: asset.Platform})
 	case asset.Platform.Name == "freebsd" || asset.Platform.Name == "dragonflybsd": // both use pkg cli
-		pms = append(pms, &FreeBSDPkgManager{conn: conn})
+		pms = append(pms, &FreeBSDPkgManager{conn: conn, platform: asset.Platform})
 	case asset.Platform.Name == "netbsd":
 		pms = append(pms, &NetBSDPkgManager{conn: conn})
 	case asset.Platform.Name == "openbsd":

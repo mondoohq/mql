@@ -1,0 +1,10 @@
+Updating FreeBSD-ports repository catalogue...
+FreeBSD-ports repository is up to date.
+Updating FreeBSD-ports-kmods repository catalogue...
+FreeBSD-ports-kmods repository is up to date.
+Updating FreeBSD-base repository catalogue...
+FreeBSD-base repository is up to date.
+All repositories are up to date.
+amazon-ssm-agent-3.3.4177.0_2      <   needs updating (remote has 3.3.4177.0_5)
+aws-ec2-imdsv2-get-1.0.7_11        <   needs updating (remote has 1.0.7_13)
+ca_root_nss-3.124                  <   needs updating (remote has 3.130)

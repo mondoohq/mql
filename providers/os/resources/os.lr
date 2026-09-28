@@ -1409,13 +1409,14 @@ package @defaults("name version") {
   //   rpm       the rpm database directory, %{_dbpath}
   //   apk       /lib/apk/db/installed
   //   pacman    the local database entry for the package
-  //   xbps      the package's own file list, the one backend that does report
-  //             the installed paths
+  //   xbps      the package's own file list, which reports the installed paths
+  //   pkg       the files the package installed, as `pkg query %Fp` lists them
+  //             (FreeBSD, DragonFly BSD)
   //   macOS     the application bundle path
   //   Windows   the install location from the uninstall registry
   //
   // Empty on package managers with no such record, among them flatpak, snap,
-  // homebrew, nix, gentoo, and the BSD package tools.
+  // homebrew, nix, gentoo, and the NetBSD and OpenBSD package tools.
   files() []pkgFileInfo
 
   // Package vendor
@@ -1425,18 +1426,20 @@ package @defaults("name version") {
   //
   // SPDX license expression (or upstream-reported license string).
   // Eagerly populated where the package manager has it inline (rpm
-  // %{LICENSE}, apk APKINDEX, pacman desc); fetched on demand for dpkg
-  // (parses /usr/share/doc/<pkg>/copyright). Empty when no source
-  // exists (e.g. Windows registry DisplayName).
+  // %{LICENSE}, apk APKINDEX, pacman desc, FreeBSD pkg); fetched on demand
+  // for dpkg (parses /usr/share/doc/<pkg>/copyright). Empty when no source
+  // exists (e.g. Windows registry DisplayName). FreeBSD pkg records its own
+  // license names, joined with OR or AND as the package declares, for
+  // example `ART10 OR GPLv1+`.
   license() string
 
   // Package install date
   //
   // Time the installed version of the package was placed on this asset.
   // Populated from %{INSTALLTIME} (rpm), the install-date field of the
-  // xbps database, the InstallDate column of the Windows Uninstall
-  // registry, and the install, upgrade and `status installed` lines of
-  // the dpkg logs.
+  // xbps database, the install time in the FreeBSD pkg database, the
+  // InstallDate column of the Windows Uninstall registry, and the install,
+  // upgrade and `status installed` lines of the dpkg logs.
   //
   // On dpkg the answer is bounded by what logrotate kept, which
   // distributions ship as twelve monthly copies of /var/log/dpkg.log: a

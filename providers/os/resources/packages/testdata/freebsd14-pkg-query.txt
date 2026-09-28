@@ -1,0 +1,8 @@
+jq	1.8.2	Lightweight and flexible command-line JSON processor	FreeBSD:14:amd64	textproc/jq	1790564973	single	MIT
+perl5	5.42.3	Practical Extraction and Report Language	FreeBSD:14:amd64	lang/perl5.42	1790564823	or	ART10, GPLv1+
+nginx	1.30.4,3	Robust and small WWW server	FreeBSD:14:amd64	www/nginx	1790564819	single	BSD2CLAUSE
+cups	2.4.19_1	Common UNIX Printing System	FreeBSD:14:amd64	print/cups	1790564982	and	APACHE20, CUPS
+dejavu	2.37_4	Bitstream Vera Fonts clone with a wider range of characters	FreeBSD:14:*	x11-fonts/dejavu	1790564913	and	AMS, AREV, BITSTREAM
+ca_root_nss	3.127	Root certificate bundle from the Mozilla Project	FreeBSD:14:*	security/ca_root_nss	1788480000	single	MPL20
+sudo	1.9.17p2_2	Allow others to run commands as root	FreeBSD:14:amd64	security/sudo	1790564818	single	sudo
+firstboot-pkgs	1.7	Install packages when the system first boots	FreeBSD:14:*	sysutils/firstboot-pkgs	1788480000	single	
