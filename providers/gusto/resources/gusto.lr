@@ -3,6 +3,7 @@
 
 option provider = "go.mondoo.com/mql/providers/gusto"
 option go_package = "go.mondoo.com/mql/providers/gusto/resources"
+option root = "gusto"
 
 // Gusto
 //
@@ -10,7 +11,7 @@ option go_package = "go.mondoo.com/mql/providers/gusto/resources"
 // organization: company profile, employees, contractors, departments, work
 // locations, and the administrators with privileged access to the Gusto
 // account.
-gusto {
+gusto @root {
   // Companies the connecting token has access to
   companies() []gusto.company
   // Employees across every accessible company
