@@ -5,7 +5,6 @@ package processes
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/kballard/go-shellquote"
@@ -22,9 +21,15 @@ func (f *FlagSet) ParseCommand(cmd string) error {
 	if cmd == "" {
 		return errors.New("no command provided")
 	}
+	// ps prints argv joined by spaces without re-quoting, so an argument with
+	// an apostrophe leaves an unbalanced quote. Fall back to whitespace
+	// splitting rather than failing the whole flag map for it.
 	words, err := shellquote.Split(cmd)
 	if err != nil {
-		return err
+		words = strings.Fields(cmd)
+	}
+	if len(words) == 0 {
+		return errors.New("no command provided")
 	}
 	args := words[1:]
 
@@ -40,7 +45,10 @@ func (f *FlagSet) ParseCommand(cmd string) error {
 		if key == "--" {
 			break
 		}
-		if strings.HasPrefix(key, "-") {
+		// A lone "-" is an operand (stdin, or the end of options for
+		// `#!/bin/sh -` scripts such as FreeBSD's periodic), never a flag
+		// that takes the next word as its value.
+		if key != "-" && strings.HasPrefix(key, "-") {
 			if i+1 < n && !strings.HasPrefix(args[i+1], "-") {
 				preparedArgs = append(preparedArgs, key+"="+args[i+1])
 				i++
@@ -95,7 +103,11 @@ func (f *FlagSet) parseOneArg() (bool, error) {
 	}
 	name := s[numMinuses:]
 	if len(name) == 0 || name[0] == '-' || name[0] == '=' {
-		return false, fmt.Errorf("bad flag syntax: %s", s)
+		// Not a flag the parser can name ("---x", "-=x"). Keep it as an
+		// operand: one odd argument must not cost the process its flag map.
+		f.args = f.args[1:]
+		f.actual[s] = ""
+		return true, nil
 	}
 
 	// it's a flag. does it have an argument?

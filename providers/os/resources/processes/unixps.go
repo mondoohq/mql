@@ -357,11 +357,45 @@ func (upm *UnixProcessManager) runList() ([]*OSProcess, error) {
 
 	log.Debug().Int("processes", len(entries)).Msg("found processes")
 
+	isFreeBSD := upm.platform.Name == "freebsd"
 	var ps []*OSProcess
 	for i := range entries {
-		ps = append(ps, entries[i].ToOSProcess())
+		p := entries[i].ToOSProcess()
+		if isFreeBSD {
+			p.State = freebsdProcessState(entries[i].Stat)
+		}
+		ps = append(ps, p)
 	}
 	return ps, nil
+}
+
+// freebsdRunStates names the run state that leads a FreeBSD ps STAT column,
+// as documented in ps(1). The labels follow the Linux /proc/<pid>/status
+// wording where the meaning is the same (R, S, D, T, Z, I).
+var freebsdRunStates = map[byte]string{
+	'D': "disk sleep",       // disk or other short-term uninterruptible wait
+	'I': "idle",             // sleeping for longer than about 20 seconds
+	'L': "lock wait",        // waiting to acquire a lock
+	'R': "running",          // runnable
+	'S': "sleeping",         // sleeping for less than about 20 seconds
+	'T': "stopped",          // stopped
+	'W': "interrupt thread", // idle interrupt thread
+	'Z': "zombie",           // dead, not yet reaped
+}
+
+// freebsdProcessState turns a FreeBSD ps STAT value such as "SLs" or "RNL"
+// into the "<letter> (<name>)" form Linux reports, for example "S (sleeping)".
+// Only the first character is the run state; the rest are modifiers (session
+// leader, locked pages, niceness) that Linux does not report either. An
+// undocumented letter is kept as is, and an empty value stays empty.
+func freebsdProcessState(stat string) string {
+	if stat == "" {
+		return ""
+	}
+	if name, ok := freebsdRunStates[stat[0]]; ok {
+		return stat[:1] + " (" + name + ")"
+	}
+	return stat[:1]
 }
 
 // ListSocketInodesByProcess returns a map with a pid as key and a list of socket inodes as value

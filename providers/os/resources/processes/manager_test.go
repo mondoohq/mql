@@ -61,6 +61,60 @@ func TestManagerFreebsd(t *testing.T) {
 	assert.Equal(t, 41, len(mounts))
 }
 
+func TestManagerFreeBSD15State(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:   "freebsd",
+			Family: []string{"bsd", "unix", "os"},
+		},
+	}, mock.WithPath("./testdata/freebsd15.toml"))
+	require.NoError(t, err)
+
+	mm, err := processes.ResolveManager(conn)
+	require.NoError(t, err)
+	list, err := mm.List()
+	require.NoError(t, err)
+	require.Len(t, list, 56)
+
+	byPid := map[int64]*processes.OSProcess{}
+	for _, p := range list {
+		byPid[p.Pid] = p
+	}
+	want := map[int64]string{
+		0:     "D (disk sleep)",       // DLs [kernel]
+		1:     "I (idle)",             // ILs /sbin/init
+		2:     "W (interrupt thread)", // WL [clock]
+		11:    "R (running)",          // RNL [idle]
+		1198:  "S (sleeping)",         // SCs syslogd
+		1470:  "I (idle)",             // Is+ getty
+		43851: "R (running)",          // R ps
+	}
+	for pid, state := range want {
+		require.Contains(t, byPid, pid)
+		assert.Equal(t, state, byPid[pid].State, "pid %d", pid)
+	}
+	assert.Equal(t, "/bin/sh - /dev/stdin daily", byPid[43822].Command)
+}
+
+func TestManagerMacosStateUnset(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:   "macos",
+			Family: []string{"unix", "darwin"},
+		},
+	}, mock.WithPath("./testdata/osx.toml"))
+	require.NoError(t, err)
+
+	mm, err := processes.ResolveManager(conn)
+	require.NoError(t, err)
+	list, err := mm.List()
+	require.NoError(t, err)
+	require.NotEmpty(t, list)
+	for _, p := range list {
+		assert.Empty(t, p.State, "pid %d", p.Pid)
+	}
+}
+
 // func TestManagerWindows(t *testing.T) {
 //  mock, err := mock.New(0, nil, mock.WithPath("./testdata/windows.toml"))
 // 	require.NoError(t, err)

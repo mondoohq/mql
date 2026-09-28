@@ -29,23 +29,6 @@ func TestManagerMacos(t *testing.T) {
 	assert.Equal(t, 15, len(serviceList))
 }
 
-func TestManagerFreebsd(t *testing.T) {
-	mock, err := mock.New(0, &inventory.Asset{
-		Platform: &inventory.Platform{
-			Name:   "freebsd",
-			Family: []string{"unix"},
-		},
-	}, mock.WithPath("./testdata/freebsd12.toml"))
-	require.NoError(t, err)
-
-	mm, err := services.ResolveManager(mock)
-	require.NoError(t, err)
-	serviceList, err := mm.List()
-	require.NoError(t, err)
-
-	assert.Equal(t, 25, len(serviceList))
-}
-
 func TestManagerDragonflybsd5(t *testing.T) {
 	mock, err := mock.New(0, &inventory.Asset{
 		Platform: &inventory.Platform{

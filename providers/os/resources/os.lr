@@ -1174,8 +1174,12 @@ user @defaults("name uid gid") {
   // defaulting to 1000 and 60000 when the file is absent or a value is unset
   // or unparsable. Root (uid 0) counts as a system
   // account. On macOS, true when uid is below 500, which covers root, the
-  // `_`-prefixed service accounts, and `nobody` (-2). Null on Windows and on
-  // other Unix platforms, which have no common convention. Combine with
+  // `_`-prefixed service accounts, and `nobody` (-2). On FreeBSD, true when
+  // uid is below minuid, or above maxuid and at most 65535, which covers root,
+  // the service accounts and `nobody` (65534). minuid and maxuid come from
+  // /etc/pw.conf, defaulting to 1000 and 32000 like pw(8) when the file is
+  // absent or a value is unset or unparsable. Null on Windows and on other
+  // Unix platforms, which have no common convention. Combine with
   // hasLoginShell to find service accounts that can log in, for example
   // `users.where(system && name != "root").none(hasLoginShell)`.
   system() bool

@@ -131,6 +131,40 @@ func TestFlagParser(t *testing.T) {
 				"p": "",
 			},
 		},
+		{
+			// FreeBSD periodic(8) runs as `#!/bin/sh -`; ps on 13.5 and 15.1
+			// shows the lone "-" before the script path.
+			cmd: "/bin/sh - /usr/sbin/periodic daily",
+			flags: map[string]string{
+				"-":                  "",
+				"/usr/sbin/periodic": "",
+				"daily":              "",
+			},
+		},
+		{
+			cmd: "/bin/sh - /usr/local/etc/periodic/security/460.pkg-checksum",
+			flags: map[string]string{
+				"-": "",
+				"/usr/local/etc/periodic/security/460.pkg-checksum": "",
+			},
+		},
+		{
+			cmd: "/usr/bin/tool ---weird -=x --good=1",
+			flags: map[string]string{
+				"---weird": "",
+				"-=x":      "",
+				"good":     "1",
+			},
+		},
+		{
+			// ps prints argv unquoted, so an apostrophe leaves an unbalanced quote
+			cmd: "/bin/sh -c echo don't --verbose",
+			flags: map[string]string{
+				"c":       "echo",
+				"don't":   "",
+				"verbose": "",
+			},
+		},
 	}
 
 	for i := range tests {

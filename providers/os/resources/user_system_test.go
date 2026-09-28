@@ -73,6 +73,70 @@ func TestIsLinuxSystemUID(t *testing.T) {
 	assert.True(t, isLinuxSystemUID(65534, uidRange{1000, 65000}), "nobody stays above a raised UID_MAX")
 }
 
+func TestParsePwConfUIDRange(t *testing.T) {
+	def := uidRange{1000, 32000}
+	cases := []struct {
+		name    string
+		content string
+		want    uidRange
+	}{
+		{name: "absent file", content: "", want: def},
+		{name: "written by pw useradd -D", content: "# pw.conf\n#\nminuid = 2000\nmaxuid = 50000\nmingid = 2000\n", want: uidRange{2000, 50000}},
+		{name: "keyword and value without =", content: "minuid\t5000\n", want: uidRange{5000, 32000}},
+		{name: "= without spaces", content: "maxuid=60000\n", want: uidRange{1000, 60000}},
+		{name: "leading whitespace", content: "   minuid 3000\n", want: uidRange{3000, 32000}},
+		{name: "quoted", content: "minuid = \"4000\"\nmaxuid = '40000'\n", want: uidRange{4000, 40000}},
+		{name: "comma-separated tail", content: "minuid = 4000,5000\n", want: uidRange{4000, 32000}},
+		{name: "later line wins", content: "minuid 2000\nminuid 3000\n", want: uidRange{3000, 32000}},
+		{name: "commented out", content: "#minuid = 5\n  # maxuid = 10\n", want: def},
+		{name: "gid keys do not set uids", content: "mingid 5000\nmaxgid 6000\n", want: def},
+		{name: "decimal only", content: "minuid 0x10\n", want: def},
+		{name: "unparsable value ignored", content: "minuid lots\nmaxuid 40000\n", want: uidRange{1000, 40000}},
+		{name: "negative ignored", content: "minuid -5\n", want: def},
+		{name: "keyword without value", content: "minuid\n", want: def},
+		{name: "min not below max falls back", content: "minuid 5000\nmaxuid 5000\n", want: def},
+		{name: "min above default max falls back", content: "minuid 40000\n", want: def},
+		{name: "CRLF line endings", content: "minuid = 2500\r\n", want: uidRange{2500, 32000}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, parsePwConfUIDRange(tc.content))
+		})
+	}
+}
+
+// Accounts from /etc/passwd on the FreeBSD 13.5, 14.5 and 15.1 hosts (none
+// has /etc/pw.conf, so pw uses 1000 and 32000).
+func TestIsFreeBSDSystemUID(t *testing.T) {
+	std := uidRange{min: 1000, max: 32000}
+	system := map[int64]string{
+		0:     "root",
+		1:     "daemon",
+		64:    "_pflogd",
+		80:    "www",
+		999:   "last below minuid",
+		32001: "first above maxuid",
+		65534: "nobody",
+		65535: "top of the 16-bit space",
+	}
+	for uid, why := range system {
+		assert.True(t, isFreeBSDSystemUID(uid, std), "%d %s", uid, why)
+	}
+	regular := map[int64]string{
+		1000:   "minuid itself",
+		1002:   "ec2-user",
+		4243:   "mqltest",
+		32000:  "maxuid itself",
+		65536:  "past the 16-bit space",
+		200000: "directory-service range",
+	}
+	for uid, why := range regular {
+		assert.False(t, isFreeBSDSystemUID(uid, std), "%d %s", uid, why)
+	}
+	assert.True(t, isFreeBSDSystemUID(1500, uidRange{2000, 32000}), "a raised minuid widens the low range")
+	assert.False(t, isFreeBSDSystemUID(40000, uidRange{1000, 50000}), "a raised maxuid narrows the high range")
+}
+
 func TestIsDarwinSystemUID(t *testing.T) {
 	assert.True(t, isDarwinSystemUID(0), "root")
 	assert.True(t, isDarwinSystemUID(-2), "nobody")
@@ -120,7 +184,10 @@ func TestSystemAccountRuleFor(t *testing.T) {
 	assert.Equal(t, systemAccountRuleLinux, systemAccountRuleFor(&inventory.Platform{Family: []string{"debian", "linux", "unix", "os"}}))
 	assert.Equal(t, systemAccountRuleDarwin, systemAccountRuleFor(&inventory.Platform{Family: []string{"darwin", "bsd", "unix", "os"}}))
 	assert.Equal(t, systemAccountRuleUnknown, systemAccountRuleFor(&inventory.Platform{Family: []string{"windows", "os"}}))
-	assert.Equal(t, systemAccountRuleUnknown, systemAccountRuleFor(&inventory.Platform{Family: []string{"bsd", "unix", "os"}}), "freebsd")
+	assert.Equal(t, systemAccountRuleFreeBSD, systemAccountRuleFor(&inventory.Platform{Name: "freebsd", Family: []string{"bsd", "unix", "os"}}))
+	assert.Equal(t, systemAccountRuleUnknown, systemAccountRuleFor(&inventory.Platform{Name: "openbsd", Family: []string{"bsd", "unix", "os"}}))
+	assert.Equal(t, systemAccountRuleUnknown, systemAccountRuleFor(&inventory.Platform{Name: "netbsd", Family: []string{"bsd", "unix", "os"}}))
+	assert.Equal(t, systemAccountRuleUnknown, systemAccountRuleFor(&inventory.Platform{Name: "dragonflybsd", Family: []string{"bsd", "unix", "os"}}))
 	assert.Equal(t, systemAccountRuleUnknown, systemAccountRuleFor(&inventory.Platform{Family: []string{"unix", "os"}}), "solaris")
 	assert.Equal(t, systemAccountRuleUnknown, systemAccountRuleFor(nil))
 }

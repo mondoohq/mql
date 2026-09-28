@@ -5,9 +5,12 @@ package resources
 
 import (
 	"errors"
+	"math"
 	"path"
 	"strconv"
+	"strings"
 
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -32,6 +35,12 @@ const (
 	// System Settings or sysadminctl. Accounts below it are hidden from the
 	// login window and reserved for the system.
 	darwinUIDMin int64 = 500
+	// freebsdUIDMin and freebsdUIDMax are the pw(8) compiled-in defaults for
+	// minuid and maxuid. pw.conf(5): "The default values for both user and
+	// group ids are 1000 and 32000 as minimum and maximum respectively."
+	freebsdUIDMin int64 = 1000
+	freebsdUIDMax int64 = 32000
+	pwConfPath          = "/etc/pw.conf"
 )
 
 // uidRange holds UID_MIN and UID_MAX from login.defs: the uids useradd
@@ -47,15 +56,19 @@ const (
 	systemAccountRuleUnknown systemAccountRule = iota
 	systemAccountRuleLinux
 	systemAccountRuleDarwin
+	systemAccountRuleFreeBSD
 )
 
 // systemAccountRuleFor picks how system accounts are told apart on a platform.
-// Only Linux (shadow-utils login.defs) and macOS have a rule; everything else,
-// including Windows, BSD and Solaris, reports null rather than a guess.
+// Linux (shadow-utils login.defs), FreeBSD (pw.conf) and macOS have a rule;
+// everything else, including Windows, the other BSDs and Solaris, reports null
+// rather than a guess.
 func systemAccountRuleFor(pf *inventory.Platform) systemAccountRule {
 	switch {
 	case pf.IsFamily("darwin"):
 		return systemAccountRuleDarwin
+	case pf != nil && pf.Name == "freebsd":
+		return systemAccountRuleFreeBSD
 	case pf.IsFamily("linux"):
 		return systemAccountRuleLinux
 	default:
@@ -106,6 +119,77 @@ func isDarwinSystemUID(uid int64) bool {
 	return uid < darwinUIDMin
 }
 
+// parsePwConfUIDRange reads minuid and maxuid from /etc/pw.conf the way pw(8)
+// does (usr.sbin/pw/pw_conf.c): a line's first token, split on whitespace and
+// '=', is the keyword unless it starts with '#'; the next token, also split on
+// ',', is the value, with a surrounding quote pair stripped. Values are
+// decimal only and a later line overrides an earlier one. pw warns "Invalid
+// min_uid ...; ignoring" for a value it cannot parse, so such a value leaves
+// the current one in place. When minuid is not below maxuid, pw falls back to
+// 1000 and 32000 (pw_user.c, pw_uidpolicy).
+func parsePwConfUIDRange(content string) uidRange {
+	r := uidRange{min: freebsdUIDMin, max: freebsdUIDMax}
+	isKeySep := func(c rune) bool { return c == ' ' || c == '\t' || c == '\r' || c == '=' }
+	isValSep := func(c rune) bool { return isKeySep(c) || c == ',' }
+	for line := range strings.SplitSeq(content, "\n") {
+		line = strings.TrimLeftFunc(line, isKeySep)
+		end := strings.IndexFunc(line, isKeySep)
+		if end <= 0 || line[0] == '#' {
+			continue
+		}
+		key, value := line[:end], strings.TrimLeftFunc(line[end:], isValSep)
+		if i := strings.IndexFunc(value, isValSep); i >= 0 {
+			value = value[:i]
+		}
+		v, ok := parsePwConfUID(value)
+		if !ok {
+			continue
+		}
+		switch key {
+		case "minuid":
+			r.min = v
+		case "maxuid":
+			r.max = v
+		}
+	}
+	if r.min >= r.max {
+		return uidRange{min: freebsdUIDMin, max: freebsdUIDMax}
+	}
+	return r
+}
+
+// parsePwConfUID parses one pw.conf uid value: an optional quote pair around
+// an unsigned decimal number (pw's strtounum parses base 10).
+func parsePwConfUID(raw string) (int64, bool) {
+	if raw != "" && (raw[0] == '"' || raw[0] == '\'') {
+		q := raw[0]
+		raw = raw[1:]
+		if i := strings.IndexByte(raw, q); i >= 0 {
+			raw = raw[:i]
+		}
+	}
+	if raw == "" || raw[0] < '0' || raw[0] > '9' {
+		return 0, false
+	}
+	v, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || v > math.MaxUint32 {
+		return 0, false
+	}
+	return v, true
+}
+
+// isFreeBSDSystemUID reports whether uid belongs to a FreeBSD system account:
+// below minuid (root, daemon, the ports-assigned service accounts), or above
+// maxuid within the 16-bit uid space (nobody is 65534). pw(8) and adduser(8)
+// only hand out uids inside [minuid, maxuid]; uids past 65535 come from
+// directory services and hold ordinary users, as on Linux.
+func isFreeBSDSystemUID(uid int64, r uidRange) bool {
+	if uid < r.min {
+		return true
+	}
+	return uid > r.max && uid <= maxUID16
+}
+
 // nonLoginShellDirs are the directories a nologin or false binary is accepted
 // from. Both the split and the merged-/usr locations are listed, so
 // /sbin/nologin and /usr/sbin/nologin are recognized whether or not /sbin is a
@@ -143,13 +227,40 @@ func isLoginShell(shell string) bool {
 	return !ok
 }
 
-// userUIDRange returns UID_MIN and UID_MAX from login.defs, read once per scan
-// and shared by every user.
-func (x *mqlUsers) userUIDRange() (uidRange, error) {
+// userUIDRange returns the uid range handed to regular users (login.defs on
+// Linux, pw.conf on FreeBSD), read once per scan and shared by every user.
+// The rule is fixed per connection, so the cached range always matches it.
+func (x *mqlUsers) userUIDRange(rule systemAccountRule) (uidRange, error) {
 	x.uidRangeOnce.Do(func() {
+		if rule == systemAccountRuleFreeBSD {
+			x.uidRange, x.uidRangeErr = readPwConfUIDRange(x.MqlRuntime)
+			return
+		}
 		x.uidRange, x.uidRangeErr = readUIDRange(x.MqlRuntime)
 	})
 	return x.uidRange, x.uidRangeErr
+}
+
+func readPwConfUIDRange(runtime *plugin.Runtime) (uidRange, error) {
+	raw, err := CreateResource(runtime, "file", map[string]*llx.RawData{
+		"path": llx.StringData(pwConfPath),
+	})
+	if err != nil {
+		return uidRange{}, err
+	}
+	f := raw.(*mqlFile)
+	exists := f.GetExists()
+	if exists.Error != nil {
+		return uidRange{}, exists.Error
+	}
+	if !exists.Data {
+		return parsePwConfUIDRange(""), nil
+	}
+	content := f.GetContent()
+	if content.Error != nil {
+		return uidRange{}, content.Error
+	}
+	return parsePwConfUIDRange(content.Data), nil
 }
 
 func readUIDRange(runtime *plugin.Runtime) (uidRange, error) {
@@ -198,10 +309,11 @@ func (u *mqlUser) system() (bool, error) {
 	if u.Uid.Error != nil {
 		return false, u.Uid.Error
 	}
-	switch systemAccountRuleFor(u.assetPlatform()) {
+	rule := systemAccountRuleFor(u.assetPlatform())
+	switch rule {
 	case systemAccountRuleDarwin:
 		return isDarwinSystemUID(u.Uid.Data), nil
-	case systemAccountRuleLinux:
+	case systemAccountRuleLinux, systemAccountRuleFreeBSD:
 		raw, err := CreateResource(u.MqlRuntime, "users", nil)
 		if err != nil {
 			return false, err
@@ -210,9 +322,12 @@ func (u *mqlUser) system() (bool, error) {
 		if !ok {
 			return false, errors.New("cannot resolve users resource")
 		}
-		r, err := users.userUIDRange()
+		r, err := users.userUIDRange(rule)
 		if err != nil {
 			return false, err
+		}
+		if rule == systemAccountRuleFreeBSD {
+			return isFreeBSDSystemUID(u.Uid.Data, r), nil
 		}
 		return isLinuxSystemUID(u.Uid.Data, r), nil
 	default:
