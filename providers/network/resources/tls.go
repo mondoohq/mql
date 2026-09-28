@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/rs/zerolog/log"
@@ -438,21 +439,40 @@ func gatherTlsCertificates(proto, host, port, domainName string) ([]*x509.Certif
 	}
 
 	nonSniCerts := []*x509.Certificate{}
-	nonSniConn, err := tls.DialWithDialer(dialer, proto, addr, &tls.Config{
-		InsecureSkipVerify: true,
-	})
+	potentialNonSniCerts, err := nonSniPeerCertificates(dialer, proto, addr)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer nonSniConn.Close()
-	potentialNonSniCerts := nonSniConn.ConnectionState()
-	for _, nonSniCert := range potentialNonSniCerts.PeerCertificates {
+	for _, nonSniCert := range potentialNonSniCerts {
 		if _, ok := isSNIcert[nonSniCert.SerialNumber.String()]; !ok {
 			nonSniCerts = append(nonSniCerts, nonSniCert)
 		}
 	}
 
 	return sniCerts, nonSniCerts, nil
+}
+
+// nonSniPeerCertificates returns the certificates the server presents to a
+// client that sends no SNI. It cannot use tls.DialWithDialer, which sets
+// ServerName from the address and so sends the host name as SNI; tls.Client
+// over a plain connection leaves it empty. The dialer's timeout covers the
+// handshake too, as it does in tls.DialWithDialer.
+func nonSniPeerCertificates(dialer *net.Dialer, proto, addr string) ([]*x509.Certificate, error) {
+	raw, err := dialer.Dial(proto, addr)
+	if err != nil {
+		return nil, err
+	}
+	defer raw.Close()
+	if dialer.Timeout > 0 {
+		if err := raw.SetDeadline(time.Now().Add(dialer.Timeout)); err != nil {
+			return nil, err
+		}
+	}
+	conn := tls.Client(raw, &tls.Config{InsecureSkipVerify: true})
+	if err := conn.Handshake(); err != nil {
+		return nil, err
+	}
+	return conn.ConnectionState().PeerCertificates, nil
 }
 
 // we should only detect once if the socket is running on TLS or not, if we have already detected it and, it
