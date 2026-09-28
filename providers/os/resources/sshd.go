@@ -95,6 +95,7 @@ func (s *mqlSshdConfig) file() (*mqlFile, error) {
 	if s.isWindows() {
 		path = windowsDefaultSshdConfig
 	} else if conn, ok := s.MqlRuntime.Connection.(shared.Connection); ok {
+		// Vendor defaults such as /usr/etc/ssh exist only on Linux.
 		path = resolveVendorConfigPath(conn.FileSystem(), defaultSshdConfig)
 	}
 
@@ -494,6 +495,11 @@ func (s *mqlSshdConfig) effectiveConfigCommand() (string, error) {
 		// quotes, and a Windows path cannot contain a double quote.
 		if strings.EqualFold(path, windowsDefaultSshdConfig) {
 			return sshdEffectiveConfigCommand, nil
+		}
+		// Inside double quotes cmd.exe still expands %VAR% and PowerShell
+		// expands $var, $(...) and backtick escapes; & | < > stay literal.
+		if strings.ContainsAny(path, "\"%$`") {
+			return "", fmt.Errorf("cannot run sshd -T for %q: the path contains a character the Windows shell would expand", path)
 		}
 		return sshdEffectiveConfigCommand + ` -f "` + path + `"`, nil
 	}

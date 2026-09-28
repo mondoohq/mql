@@ -348,6 +348,20 @@ kexalgorithms curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,
 	})
 }
 
+func TestSshdConfigEffectiveWindowsRejectsExpandablePath(t *testing.T) {
+	for _, path := range []string{`C:\%USERNAME%\sshd_config`, `C:\$(whoami)\sshd_config`, "C:\\a`b\\sshd_config"} {
+		t.Run(path, func(t *testing.T) {
+			runtime := sshdMockRuntime(t, windowsPlatform, nil, nil)
+			raw, err := NewResource(runtime, ResourceSshdConfig, map[string]*llx.RawData{
+				"path": llx.StringData(path),
+			})
+			require.NoError(t, err)
+			ciphers := raw.(*mqlSshdConfig).GetEffectiveCiphers()
+			require.ErrorContains(t, ciphers.Error, "Windows shell would expand")
+		})
+	}
+}
+
 func sshdMockRuntime(t *testing.T, pf *inventory.Platform, commands map[string]*mock.Command, files map[string]*mock.MockFileData) *plugin.Runtime {
 	t.Helper()
 	if files == nil {
