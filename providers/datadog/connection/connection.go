@@ -25,6 +25,10 @@ import (
 var unstableOperations = []string{
 	"v2.ListExecutionPolicies",
 	"v2.GetExecutionPolicy",
+	"v2.ListSecurityFindingsAutomationInboxRules",
+	"v2.ListSecurityFindingsAutomationDefaultInboxRules",
+	"v2.ListSnowflakeIntegrationAccounts",
+	"v2.ListDatabricksIntegrationAccounts",
 }
 
 type DatadogConnection struct {

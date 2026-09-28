@@ -4,11 +4,14 @@
 package resources
 
 import (
+	"encoding/json"
+
 	"github.com/DataDog/datadog-api-client-go/v2/api/datadogV1"
 	"github.com/DataDog/datadog-api-client-go/v2/api/datadogV2"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers/datadog/connection"
+	"go.mondoo.com/mql/types"
 )
 
 // Cloud integrations are standing credentials Datadog holds against another
@@ -40,20 +43,21 @@ func (r *mqlDatadog) integrationGcpAccounts() ([]interface{}, error) {
 		meta := acc.GetMeta()
 
 		res, err := CreateResource(r.MqlRuntime, "datadog.integration.gcp", map[string]*llx.RawData{
-			"id":                                llx.StringData(acc.GetId()),
-			"clientEmail":                       llx.StringData(attrs.GetClientEmail()),
-			"accessibleProjects":                llx.ArrayData(toAnyStrings(meta.GetAccessibleProjects()), "\x02"),
-			"isCspmEnabled":                     llx.BoolData(attrs.GetIsCspmEnabled()),
-			"isSecurityCommandCenterEnabled":    llx.BoolData(attrs.GetIsSecurityCommandCenterEnabled()),
-			"resourceCollectionEnabled":         llx.BoolData(attrs.GetResourceCollectionEnabled()),
-			"isResourceChangeCollectionEnabled": llx.BoolData(attrs.GetIsResourceChangeCollectionEnabled()),
-			"isPerProjectQuotaEnabled":          llx.BoolData(attrs.GetIsPerProjectQuotaEnabled()),
-			"isGlobalLocationEnabled":           llx.BoolData(attrs.GetIsGlobalLocationEnabled()),
-			"automute":                          llx.BoolData(attrs.GetAutomute()),
-			"hostFilters":                       llx.ArrayData(toAnyStrings(attrs.GetHostFilters()), "\x02"),
-			"cloudRunRevisionFilters":           llx.ArrayData(toAnyStrings(attrs.GetCloudRunRevisionFilters()), "\x02"),
-			"regionFilterConfigs":               llx.ArrayData(toAnyStrings(attrs.GetRegionFilterConfigs()), "\x02"),
-			"accountTags":                       llx.ArrayData(toAnyStrings(attrs.GetAccountTags()), "\x02"),
+			"id":                                   llx.StringData(acc.GetId()),
+			"clientEmail":                          llx.StringData(attrs.GetClientEmail()),
+			"accessibleProjects":                   llx.ArrayData(toAnyStrings(meta.GetAccessibleProjects()), "\x02"),
+			"isCspmEnabled":                        llx.BoolData(attrs.GetIsCspmEnabled()),
+			"isSecurityCommandCenterEnabled":       llx.BoolData(attrs.GetIsSecurityCommandCenterEnabled()),
+			"resourceCollectionEnabled":            llx.BoolData(attrs.GetResourceCollectionEnabled()),
+			"isResourceChangeCollectionEnabled":    llx.BoolData(attrs.GetIsResourceChangeCollectionEnabled()),
+			"isPerProjectQuotaEnabled":             llx.BoolData(attrs.GetIsPerProjectQuotaEnabled()),
+			"isGlobalLocationEnabled":              llx.BoolData(attrs.GetIsGlobalLocationEnabled()),
+			"isOrgFolderResourceCollectionEnabled": llx.BoolDataPtr(attrs.IsOrgFolderResourceCollectionEnabled),
+			"automute":                             llx.BoolData(attrs.GetAutomute()),
+			"hostFilters":                          llx.ArrayData(toAnyStrings(attrs.GetHostFilters()), "\x02"),
+			"cloudRunRevisionFilters":              llx.ArrayData(toAnyStrings(attrs.GetCloudRunRevisionFilters()), "\x02"),
+			"regionFilterConfigs":                  llx.ArrayData(toAnyStrings(attrs.GetRegionFilterConfigs()), "\x02"),
+			"accountTags":                          llx.ArrayData(toAnyStrings(attrs.GetAccountTags()), "\x02"),
 		})
 		if err != nil {
 			return nil, err
@@ -283,4 +287,196 @@ func (r *mqlDatadog) integrationConfluentAccounts() ([]interface{}, error) {
 
 func (r *mqlDatadogIntegrationConfluent) id() (string, error) {
 	return "datadog.integration.confluent/" + r.Id.Data, nil
+}
+
+// --- Snowflake and Databricks ---
+
+// integrationDataflows reads which collections an integration account has
+// switched on. Datadog names each collection by its wire key (for example
+// snowflake-security-logs) and the SDK gives every one its own field, so the
+// response is read back through its JSON form: that keeps collections the SDK
+// does not model yet, which land in AdditionalProperties, instead of silently
+// dropping them. A collection reported without an enabled state is left out
+// rather than reported as disabled.
+func integrationDataflows(dataflows interface{}) (map[string]interface{}, error) {
+	out := map[string]interface{}{}
+	if dataflows == nil {
+		return out, nil
+	}
+	raw, err := json.Marshal(dataflows)
+	if err != nil {
+		return nil, err
+	}
+	var flows map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &flows); err != nil {
+		return nil, err
+	}
+	for name, body := range flows {
+		var flow struct {
+			Enabled *bool `json:"enabled"`
+		}
+		if err := json.Unmarshal(body, &flow); err != nil || flow.Enabled == nil {
+			continue
+		}
+		out[name] = *flow.Enabled
+	}
+	return out, nil
+}
+
+// unparsedAuthType reads auth_type out of an authentication object the SDK
+// could not match to one of its known methods. Datadog may add methods, and
+// the discriminator still names them even when the rest of the shape is new.
+func unparsedAuthType(unparsed interface{}) *string {
+	m, ok := unparsed.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	s, ok := m["auth_type"].(string)
+	if !ok || s == "" {
+		return nil
+	}
+	return &s
+}
+
+func snowflakeAuthType(auth *datadogV2.SnowflakeIntegrationAccountAuthenticationResponse) *string {
+	if auth == nil {
+		return nil
+	}
+	if pk := auth.SnowflakeIntegrationAccountPrivateKeyAuthResponse; pk != nil {
+		s := string(pk.AuthType)
+		return &s
+	}
+	return unparsedAuthType(auth.UnparsedObject)
+}
+
+// databricksAuth returns the authentication method and, for OAuth, the client
+// ID of the service principal. Datadog never returns the token or the client
+// secret, and neither is read here.
+func databricksAuth(auth *datadogV2.DatabricksIntegrationAccountAuthenticationResponse) (authType *string, clientId *string) {
+	if auth == nil {
+		return nil, nil
+	}
+	switch {
+	case auth.DatabricksIntegrationAccountOAuthAuthResponse != nil:
+		o := auth.DatabricksIntegrationAccountOAuthAuthResponse
+		s := string(o.AuthType)
+		id := o.ClientId
+		return &s, &id
+	case auth.DatabricksIntegrationAccountPrivateActionRunnerAuthResponse != nil:
+		s := string(auth.DatabricksIntegrationAccountPrivateActionRunnerAuthResponse.AuthType)
+		return &s, nil
+	case auth.DatabricksIntegrationAccountBearerTokenAuthResponse != nil:
+		s := string(auth.DatabricksIntegrationAccountBearerTokenAuthResponse.AuthType)
+		return &s, nil
+	}
+	return unparsedAuthType(auth.UnparsedObject), nil
+}
+
+func snowflakeAccountArgs(acc datadogV2.SnowflakeIntegrationAccountResponseData) (map[string]*llx.RawData, error) {
+	attrs := acc.GetAttributes()
+	settings := attrs.GetSettings()
+
+	var dataflows interface{}
+	if attrs.Dataflows != nil {
+		dataflows = attrs.Dataflows
+	}
+	flows, err := integrationDataflows(dataflows)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]*llx.RawData{
+		"id":                llx.StringData(acc.GetId()),
+		"name":              llx.StringData(attrs.GetName()),
+		"accountIdentifier": llx.StringData(settings.GetSnowflakeAccountIdentifier()),
+		"username":          llx.StringData(settings.GetUsername()),
+		"authType":          llx.StringDataPtr(snowflakeAuthType(attrs.Authentication)),
+		"dataflows":         llx.MapData(flows, types.Bool),
+	}, nil
+}
+
+func databricksAccountArgs(acc datadogV2.DatabricksIntegrationAccountResponseData) (map[string]*llx.RawData, error) {
+	attrs := acc.GetAttributes()
+	settings := attrs.GetSettings()
+
+	var dataflows interface{}
+	if attrs.Dataflows != nil {
+		dataflows = attrs.Dataflows
+	}
+	flows, err := integrationDataflows(dataflows)
+	if err != nil {
+		return nil, err
+	}
+
+	authType, clientId := databricksAuth(attrs.Authentication)
+	return map[string]*llx.RawData{
+		"id":           llx.StringData(acc.GetId()),
+		"name":         llx.StringData(attrs.GetName()),
+		"workspaceUrl": llx.StringData(settings.GetWorkspaceUrl()),
+		"authType":     llx.StringDataPtr(authType),
+		"clientId":     llx.StringDataPtr(clientId),
+		"dataflows":    llx.MapData(flows, types.Bool),
+	}, nil
+}
+
+func (r *mqlDatadog) integrationSnowflakeAccounts() ([]interface{}, error) {
+	conn := r.MqlRuntime.Connection.(*connection.DatadogConnection)
+	api := datadogV2.NewSnowflakeIntegrationApi(conn.ApiClient())
+
+	resp, httpResp, err := api.ListSnowflakeIntegrationAccounts(conn.AuthCtx())
+	if err != nil {
+		if isForbidden(httpResp) {
+			return nil, llx.Forbidden(err)
+		}
+		return nil, err
+	}
+
+	var all []interface{}
+	for _, acc := range resp.GetData() {
+		args, err := snowflakeAccountArgs(acc)
+		if err != nil {
+			return nil, err
+		}
+		res, err := CreateResource(r.MqlRuntime, "datadog.integration.snowflake", args)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, res)
+	}
+	return all, nil
+}
+
+func (r *mqlDatadogIntegrationSnowflake) id() (string, error) {
+	return "datadog.integration.snowflake/" + r.Id.Data, nil
+}
+
+func (r *mqlDatadog) integrationDatabricksAccounts() ([]interface{}, error) {
+	conn := r.MqlRuntime.Connection.(*connection.DatadogConnection)
+	api := datadogV2.NewDatabricksIntegrationApi(conn.ApiClient())
+
+	resp, httpResp, err := api.ListDatabricksIntegrationAccounts(conn.AuthCtx())
+	if err != nil {
+		if isForbidden(httpResp) {
+			return nil, llx.Forbidden(err)
+		}
+		return nil, err
+	}
+
+	var all []interface{}
+	for _, acc := range resp.GetData() {
+		args, err := databricksAccountArgs(acc)
+		if err != nil {
+			return nil, err
+		}
+		res, err := CreateResource(r.MqlRuntime, "datadog.integration.databricks", args)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, res)
+	}
+	return all, nil
+}
+
+func (r *mqlDatadogIntegrationDatabricks) id() (string, error) {
+	return "datadog.integration.databricks/" + r.Id.Data, nil
 }

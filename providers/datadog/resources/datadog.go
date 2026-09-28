@@ -717,6 +717,8 @@ func (r *mqlDatadog) apiKeys() ([]interface{}, error) {
 			"lastUsedAt":              llx.TimeDataPtr(timePtr(attrs.GetDateLastUsed())),
 			"category":                llx.StringData(attrs.GetCategory()),
 			"remoteConfigReadEnabled": llx.BoolData(attrs.GetRemoteConfigReadEnabled()),
+			// Absent on the wire reads as null, not as a key that cannot enroll.
+			"privateActionRunnerEnrollEnabled": llx.BoolDataPtr(attrs.PrivateActionRunnerEnrollEnabled),
 		})
 		if err != nil {
 			return nil, err
