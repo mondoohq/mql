@@ -528,7 +528,11 @@ func discover(runtime *plugin.Runtime, awsAccount *mqlAwsAccount, target string,
 		for i := range fs.Data {
 			f := fs.Data[i].(*mqlAwsCloudtrailTrail)
 
-			tags := mapStringInterfaceToStringString(f.GetTags().Data)
+			tagsResult := f.GetTags()
+			if tagsResult.Error != nil {
+				log.Debug().Err(tagsResult.Error).Str("trail", f.Arn.Data).Msg("could not read cloudtrail trail tags for its labels")
+			}
+			tags := mapStringInterfaceToStringString(tagsResult.Data)
 			m := mqlObject{
 				name: f.Name.Data, labels: tags,
 				awsObject: awsObject{
