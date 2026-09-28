@@ -1,0 +1,42 @@
+# The Apple Virtualization guest fixture with systemd-detect-virt reporting
+# "none", as it does on a physical arm64 host. DMI still names Apple, so this
+# pins that on arm64 the DMI detectors run only after systemd confirms a VM.
+
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "aarch64"
+
+[commands."uname -r"]
+stdout = "6.12.0-204.92.4.2.el9uek.aarch64"
+
+[files."/proc/cpuinfo"]
+content = """
+processor	: 0
+BogoMIPS	: 48.00
+Features	: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 asimddp sha512 asimdfhm dit uscat ilrcpc flagm sb paca pacg dcpodp flagm2 frint i8mm bf16 bti afp rpres
+CPU implementer	: 0x61
+CPU architecture: 8
+CPU variant	: 0x0
+CPU part	: 0x000
+CPU revision	: 0
+"""
+
+[files."/sys/class/dmi/id/sys_vendor"]
+content = "Apple Inc.\n"
+
+[files."/sys/class/dmi/id/product_name"]
+content = "Apple Virtualization Generic Platform\n"
+
+[files."/sys/class/dmi/id/product_version"]
+content = "1\n"
+
+[files."/sys/class/dmi/id/bios_vendor"]
+content = "Apple Inc.\n"
+
+[commands."systemd-detect-virt --vm"]
+stdout = "none\n"
+
+[commands."systemd-detect-virt"]
+stdout = "none\n"

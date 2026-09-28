@@ -1,0 +1,40 @@
+# linux_systemd_detect_virt.toml with the CPUID "hypervisor" flag removed from
+# /proc/cpuinfo. On x86 that flag alone decides the gate, so systemd is not
+# asked even though it would answer "kvm".
+
+[commands."uname -s"]
+stdout = "Linux"
+
+[commands."uname -m"]
+stdout = "x86_64"
+
+[commands."uname -r"]
+stdout = "4.9.125-linuxkit"
+
+[files."/proc/cpuinfo"]
+content = """
+processor   : 0
+vendor_id   : GenuineIntel
+cpu family  : 6
+model       : 85
+model name  : Intel(R) Xeon(R) CPU E5-2699 v4 @ 2.20GHz
+stepping    : 4
+microcode   : 0x1
+cpu MHz     : 2199.998
+cache size  : 16384 KB
+physical id : 0
+siblings    : 2
+core id     : 0
+cpu cores   : 1
+apicid      : 0
+fpu         : yes
+cpuid level : 13
+wp          : yes
+flags       : fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss syscall nx pdpe1gb rdtscp lm constant_tsc arch_perfmon rep_good nopl xtopology nonstop_tsc cpuid tsc_known_freq pni pclmulqdq monitor vmx smx est tm2 ssse3 fma cx16 xtpr pcid sse4_1 sse4_2 x2apic movbe popcnt aes xsave avx f16c rdrand lahf_lm pti fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm rdseed adx smap clflushopt xsaveopt xsavec xgetbv1 arat md_clear
+"""
+
+[commands."systemd-detect-virt"]
+stdout = "kvm"
+
+[commands."systemd-detect-virt --vm"]
+stdout = "kvm"

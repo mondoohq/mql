@@ -134,3 +134,44 @@ func TestHypervisorLinuxOpenShiftVirtualization(t *testing.T) {
 
 	assert.Equal(t, "OpenShift Virtualization", hypervisor)
 }
+
+// An arm64 guest under Apple Virtualization.framework. arm64 has no CPUID
+// "hypervisor" flag, so the gate asks systemd-detect-virt --vm instead.
+func TestHypervisorLinuxArm64AppleVirtualization(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/linux_apple_virtualization.toml"))
+	require.NoError(t, err)
+	platform, ok := detector.DetectOS(conn)
+	require.True(t, ok)
+
+	hypervisor, ok := subject.Hypervisor(conn, platform)
+	require.True(t, ok)
+
+	assert.Equal(t, "Apple Virtualization", hypervisor)
+}
+
+// On arm64 the DMI vendor is consulted only once systemd confirms a VM, so a
+// physical host whose firmware names a cloud or hardware vendor is not
+// reported as virtualized.
+func TestHypervisorLinuxArm64PhysicalHost(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/linux_arm64_systemd_none.toml"))
+	require.NoError(t, err)
+	platform, ok := detector.DetectOS(conn)
+	require.True(t, ok)
+
+	hypervisor, ok := subject.Hypervisor(conn, platform)
+	assert.False(t, ok)
+	assert.Empty(t, hypervisor)
+}
+
+// On x86 the CPUID "hypervisor" flag alone decides whether the system is a
+// guest; its absence is not second-guessed with systemd-detect-virt.
+func TestHypervisorLinuxX86WithoutHypervisorFlag(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/linux_x86_no_hypervisor_flag.toml"))
+	require.NoError(t, err)
+	platform, ok := detector.DetectOS(conn)
+	require.True(t, ok)
+
+	hypervisor, ok := subject.Hypervisor(conn, platform)
+	assert.False(t, ok)
+	assert.Empty(t, hypervisor)
+}
