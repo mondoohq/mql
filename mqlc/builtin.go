@@ -188,8 +188,9 @@ func init() {
 			"values": {typ: dictArrayType, signature: FunctionSignature{}},
 		},
 		types.Version: {
-			"epoch":   {typ: intType, signature: FunctionSignature{}},
-			"inRange": {typ: intType, compile: compileVersionInRange},
+			"epoch":        {typ: intType, signature: FunctionSignature{}},
+			"withoutEpoch": {typ: types.Version, signature: FunctionSignature{}},
+			"inRange":      {typ: intType, compile: compileVersionInRange},
 		},
 		types.IP: {
 			"address":       {typ: stringType, signature: FunctionSignature{}},

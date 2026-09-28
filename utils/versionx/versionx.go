@@ -246,6 +246,25 @@ func (v Version) Kind() Kind { return v.kind }
 // Epoch is the deb/rpm (`1:`) or PEP 440 (`1!`) epoch, 0 when there is none.
 func (v Version) Epoch() int { return v.epoch }
 
+// HasEpoch reports whether an epoch was written: "1:1.2" and "0:1.2" have one, "1.2"
+// does not. An apk build stamp is not an epoch (see [maxPlausibleEpoch]).
+func (v Version) HasEpoch() bool { return v.kind == KindDebian || v.kind == KindPython }
+
+// WithoutEpoch returns v with its epoch removed: "1:8.2p1-4" becomes "8.2p1-4". A
+// version without an epoch is returned as is, and so is an apk build stamp, which
+// [Compare] already ignores.
+//
+// This is an explicit opt-out of the packaging rule, not a comparison mode. dpkg and
+// rpm read a missing epoch as 0, so "1:8.2p1" sorts above "8.5" and [Compare] keeps it
+// that way. A caller that means "the upstream release is older than 8.5" strips the
+// epoch on purpose.
+func (v Version) WithoutEpoch() Version {
+	if !v.HasEpoch() {
+		return v
+	}
+	return Parse(reEpoch.ReplaceAllString(strings.TrimSpace(v.src), ""))
+}
+
 // IsZero reports whether this is an empty version (no string at all).
 func (v Version) IsZero() bool { return strings.TrimSpace(v.src) == "" }
 

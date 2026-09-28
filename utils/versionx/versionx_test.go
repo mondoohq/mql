@@ -146,6 +146,39 @@ func TestEpoch(t *testing.T) {
 	assert.Equal(t, 0, Parse("1.2.3:4").Epoch(), "a colon mid-string is not an epoch")
 }
 
+func TestHasEpoch(t *testing.T) {
+	assert.False(t, Parse("1.2.3").HasEpoch())
+	assert.True(t, Parse("1:1.2.3").HasEpoch())
+	assert.True(t, Parse("0:1.2.3").HasEpoch(), "an explicit 0 is a written epoch")
+	assert.True(t, Parse("1!2.0").HasEpoch())
+	assert.False(t, Parse("1632431095:1.2.2-r7").HasEpoch(), "an apk build stamp is not an epoch")
+	assert.False(t, Parse("").HasEpoch())
+}
+
+func TestWithoutEpoch(t *testing.T) {
+	v := Parse("1:8.2p1-4ubuntu0.13").WithoutEpoch()
+	assert.Equal(t, "8.2p1-4ubuntu0.13", v.String())
+	assert.False(t, v.HasEpoch())
+	assert.Equal(t, 0, v.Epoch())
+	assert.Equal(t, -1, v.Compare(Parse("8.5")))
+
+	assert.Equal(t, "2.0", Parse("1!2.0").WithoutEpoch().String())
+	assert.Equal(t, "8.2p1", Parse("0:8.2p1").WithoutEpoch().String())
+	assert.Equal(t, "1.2.3", Parse("1.2.3").WithoutEpoch().String())
+	assert.Equal(t, "1632431095:1.2.2-r7", Parse("1632431095:1.2.2-r7").WithoutEpoch().String(),
+		"an apk build stamp is left in place; Compare already ignores it")
+	assert.True(t, Parse("").WithoutEpoch().IsZero())
+}
+
+// Compare keeps the dpkg and rpm rule that a missing epoch is 0 (Debian policy 5.6.12,
+// "It may be omitted, in which case zero is assumed"). WithoutEpoch is the explicit
+// way out, it must not leak into Compare.
+func TestCompareMissingEpochIsZero(t *testing.T) {
+	assert.Equal(t, 1, Compare("1:8.2p1-4ubuntu0.13", "8.5"))
+	assert.Equal(t, 0, Compare("0:8.5", "8.5"))
+	assert.Equal(t, -1, Compare("8.5", "1:8.2p1"))
+}
+
 func TestString(t *testing.T) {
 	assert.Equal(t, "1:2.4.52-1ubuntu4.6", Parse("1:2.4.52-1ubuntu4.6").String(),
 		"the original string must survive parsing")
