@@ -95,12 +95,18 @@ func NewConnection(id uint32, conf *inventory.Config, asset *inventory.Asset) (*
 	if conf.Sudo != nil && conf.Sudo.Active {
 		// the id command may not be available, eg. if ssh is used with windows
 		out, _ := res.RunCommand("id -u")
-		stdout, _ := io.ReadAll(out.Stdout)
+		var stdout []byte
+		if out != nil {
+			stdout, _ = io.ReadAll(out.Stdout)
+		}
 		// just check for the explicit positive case, otherwise just activate sudo
 		// we check sudo in VerifyConnection
-		if string(stdout) != "0" {
-			// configure sudo
-			log.Debug().Msg("activated sudo for ssh connection")
+		if strings.TrimSpace(string(stdout)) != "0" {
+			if err := resolveElevation(conf.Sudo, res.runRawCommand); err != nil {
+				res.Close()
+				return nil, err
+			}
+			log.Debug().Str("executable", conf.Sudo.Executable).Msg("activated privilege elevation for ssh connection")
 			res.Sudo = conf.Sudo
 		} else {
 			log.Debug().Msg("deactivated sudo for ssh connection since user is root")
@@ -340,10 +346,37 @@ func (c *Connection) setDefaultSettings() {
 		c.conf.Port = 22
 	}
 
-	// we need to check if an executable was provided, otherwise fallback to use sudo
-	if c.conf.Sudo != nil && c.conf.Sudo.Active && c.conf.Sudo.Executable == "" {
-		c.conf.Sudo.Executable = "sudo"
+}
+
+// resolveElevation picks the executable used to elevate commands. An
+// executable configured in the inventory is kept as is. Otherwise the target
+// is probed for sudo, then doas. When the probe shows that neither is
+// installed, the connection fails: every command and file read would be
+// prefixed with a missing executable, so no query could return correct data.
+// When the probe cannot run at all, sudo is used as before and verify()
+// reports any problem.
+func resolveElevation(sudo *inventory.Sudo, runRawCommand func(string) (*shared.Command, error)) error {
+	if sudo.Executable != "" {
+		return nil
 	}
+
+	var stdout []byte
+	out, err := runRawCommand(shared.ElevationProbeCommand)
+	if err == nil && out != nil {
+		stdout, _ = io.ReadAll(out.Stdout)
+	}
+
+	executable, probed := shared.ParseElevationProbe(string(stdout))
+	switch {
+	case executable != "":
+		sudo.Executable = executable
+	case probed:
+		return errors.New("cannot elevate privileges: neither sudo nor doas is installed on the target")
+	default:
+		log.Debug().Msg("could not probe the target for sudo or doas, using sudo")
+		sudo.Executable = shared.ElevationSudo
+	}
+	return nil
 }
 
 func (c *Connection) Connect() error {
@@ -786,14 +819,29 @@ func (c *Connection) verify() error {
 	stderr, _ := io.ReadAll(out.Stderr)
 	errMsg := string(stderr)
 
-	// sample messages are:
-	// sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper
-	// sudo: a password is required
+	return verifyError(c.Sudo, errMsg)
+}
+
+// verifyError turns the stderr of a failed verify() command into an error.
+//
+// sample messages are:
+// sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper
+// sudo: a password is required
+// doas: a tty is required
+// doas: Authentication required
+func verifyError(sudo *inventory.Sudo, errMsg string) error {
+	executable := shared.ElevationSudo
+	if sudo != nil && sudo.Executable != "" {
+		executable = sudo.Executable
+	}
+
 	switch {
 	case strings.Contains(errMsg, "not found"):
-		return errors.New("sudo command is missing on target")
-	case strings.Contains(errMsg, "a password is required"):
-		return errors.New("could not establish connection: sudo password is not supported yet, configure password-less sudo")
+		return errors.New(executable + " command is missing on target")
+	case strings.Contains(errMsg, "a password is required"),
+		strings.Contains(errMsg, "a tty is required"),
+		strings.Contains(errMsg, "Authentication required"):
+		return errors.New("could not establish connection: " + executable + " password is not supported yet, configure password-less " + executable)
 	default:
 		return errors.New("could not establish connection: " + errMsg)
 	}

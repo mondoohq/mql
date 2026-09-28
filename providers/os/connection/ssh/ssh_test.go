@@ -4,6 +4,8 @@
 package ssh
 
 import (
+	"bytes"
+	"errors"
 	"net"
 	"testing"
 
@@ -23,7 +25,88 @@ func TestSSHDefaultSettings(t *testing.T) {
 	}
 	conn.setDefaultSettings()
 	assert.Equal(t, int32(22), conn.conf.Port)
-	assert.Equal(t, "sudo", conn.conf.Sudo.Executable)
+	// the executable is resolved against the target after connecting
+	assert.Equal(t, "", conn.conf.Sudo.Executable)
+}
+
+func probeRunner(t *testing.T, stdout string, err error) (func(string) (*shared.Command, error), *int) {
+	calls := 0
+	return func(cmd string) (*shared.Command, error) {
+		calls++
+		assert.Equal(t, shared.ElevationProbeCommand, cmd)
+		return &shared.Command{Stdout: bytes.NewBufferString(stdout), Stderr: &bytes.Buffer{}}, err
+	}, &calls
+}
+
+func TestResolveElevation(t *testing.T) {
+	t.Run("sudo installed", func(t *testing.T) {
+		// Debian 12
+		sudo := &inventory.Sudo{Active: true}
+		run, calls := probeRunner(t, "/usr/bin/sudo\nmql-elevation-probe-done\n", nil)
+		require.NoError(t, resolveElevation(sudo, run))
+		assert.Equal(t, "sudo", sudo.Executable)
+		assert.Equal(t, 1, *calls)
+	})
+
+	t.Run("sudo and doas installed", func(t *testing.T) {
+		// Debian 12 with opendoas installed
+		sudo := &inventory.Sudo{Active: true}
+		run, _ := probeRunner(t, "/usr/bin/sudo\n/usr/bin/doas\nmql-elevation-probe-done\n", nil)
+		require.NoError(t, resolveElevation(sudo, run))
+		assert.Equal(t, "sudo", sudo.Executable)
+	})
+
+	t.Run("doas only", func(t *testing.T) {
+		// Alpine 3.24
+		sudo := &inventory.Sudo{Active: true}
+		run, _ := probeRunner(t, "/usr/bin/doas\nmql-elevation-probe-done\n", nil)
+		require.NoError(t, resolveElevation(sudo, run))
+		assert.Equal(t, "doas", sudo.Executable)
+	})
+
+	t.Run("neither installed", func(t *testing.T) {
+		sudo := &inventory.Sudo{Active: true}
+		run, _ := probeRunner(t, "mql-elevation-probe-done\n", nil)
+		err := resolveElevation(sudo, run)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "neither sudo nor doas")
+	})
+
+	t.Run("probe could not run falls back to sudo", func(t *testing.T) {
+		sudo := &inventory.Sudo{Active: true}
+		run, _ := probeRunner(t, "", nil)
+		require.NoError(t, resolveElevation(sudo, run))
+		assert.Equal(t, "sudo", sudo.Executable)
+
+		sudo = &inventory.Sudo{Active: true}
+		run, _ = probeRunner(t, "", errors.New("session failed"))
+		require.NoError(t, resolveElevation(sudo, run))
+		assert.Equal(t, "sudo", sudo.Executable)
+	})
+
+	t.Run("configured executable is kept without probing", func(t *testing.T) {
+		sudo := &inventory.Sudo{Active: true, Executable: "sudo"}
+		run, calls := probeRunner(t, "/usr/bin/doas\nmql-elevation-probe-done\n", nil)
+		require.NoError(t, resolveElevation(sudo, run))
+		assert.Equal(t, "sudo", sudo.Executable)
+		assert.Equal(t, 0, *calls)
+	})
+}
+
+func TestVerifyError(t *testing.T) {
+	sudo := &inventory.Sudo{Active: true, Executable: "sudo"}
+	doas := &inventory.Sudo{Active: true, Executable: "doas"}
+
+	assert.EqualError(t, verifyError(sudo, "sh: 1: sudo: not found\n"), "sudo command is missing on target")
+	assert.EqualError(t, verifyError(doas, "sh: doas: not found\n"), "doas command is missing on target")
+	assert.EqualError(t, verifyError(sudo, "sudo: a password is required\n"),
+		"could not establish connection: sudo password is not supported yet, configure password-less sudo")
+	assert.EqualError(t, verifyError(doas, "doas: Authentication required\n"),
+		"could not establish connection: doas password is not supported yet, configure password-less doas")
+	assert.EqualError(t, verifyError(doas, "doas: a tty is required\n"),
+		"could not establish connection: doas password is not supported yet, configure password-less doas")
+	assert.EqualError(t, verifyError(doas, "doas: Operation not permitted\n"),
+		"could not establish connection: doas: Operation not permitted\n")
 }
 
 func TestSSHProviderError(t *testing.T) {

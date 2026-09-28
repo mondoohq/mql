@@ -5,6 +5,7 @@ package local
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"os/exec"
 	"runtime"
@@ -80,9 +81,29 @@ func NewConnection(id uint32, conf *inventory.Config, asset *inventory.Asset) *L
 		res.shell = []string{"powershell", "-c"}
 	} else {
 		res.shell = []string{"sh", "-c"}
+		res.resolveElevation()
 	}
 
 	return &res
+}
+
+// resolveElevation picks sudo or doas when elevation is requested without a
+// configured executable. With neither installed the executable stays empty,
+// which BuildSudoCommand treats as sudo.
+func (p *LocalConnection) resolveElevation() {
+	if p.Sudo == nil || !p.Sudo.Active || p.Sudo.Executable != "" {
+		return
+	}
+	c := &CommandRunner{Shell: p.shell}
+	out, err := c.Exec(shared.ElevationProbeCommand, []string{})
+	if err != nil || out == nil {
+		return
+	}
+	stdout, _ := io.ReadAll(out.Stdout)
+	if executable, _ := shared.ParseElevationProbe(string(stdout)); executable != "" {
+		p.Sudo.Executable = executable
+		log.Debug().Str("executable", executable).Msg("activated privilege elevation for local connection")
+	}
 }
 
 func (p *LocalConnection) Name() string {

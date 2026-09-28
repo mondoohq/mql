@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -247,11 +248,60 @@ func ParseSudo(flags map[string]*llx.Primitive) *inventory.Sudo {
 		return nil
 	}
 
+	// The executable is left empty so the connection picks sudo or doas
+	// from what the target has installed. An executable set in an
+	// inventory file is kept as configured.
 	return &inventory.Sudo{
-		Active:     true,
-		Executable: "sudo",
+		Active: true,
 	}
 }
+
+// Privilege elevation executables that can be detected on a target. Both
+// accept every argument BuildSudoCommand emits: an optional `-u <user>`
+// followed by the command and its arguments.
+const (
+	ElevationSudo = "sudo"
+	ElevationDoas = "doas"
+)
+
+const elevationProbeMarker = "mql-elevation-probe-done"
+
+// ElevationProbeCommand lists the elevation executables installed on a
+// POSIX target. It runs unelevated. The trailing marker shows that a POSIX
+// shell ran the probe, which separates "neither executable is installed"
+// from "the probe could not run", for example on a target without sh.
+const ElevationProbeCommand = "sh -c 'command -v " + ElevationSudo + "; command -v " + ElevationDoas + "; echo " + elevationProbeMarker + "' < /dev/null"
+
+// ParseElevationProbe reads the output of ElevationProbeCommand. It returns
+// the executable to elevate with, preferring sudo when both are installed,
+// and whether the probe ran to completion. An empty executable with
+// probed == true means the target has neither sudo nor doas.
+func ParseElevationProbe(stdout string) (executable string, probed bool) {
+	var hasSudo, hasDoas bool
+	for _, line := range strings.Split(stdout, "\n") {
+		line = strings.TrimSpace(line)
+		if line == elevationProbeMarker {
+			probed = true
+			continue
+		}
+		switch path.Base(line) {
+		case ElevationSudo:
+			hasSudo = true
+		case ElevationDoas:
+			hasDoas = true
+		}
+	}
+	switch {
+	case hasSudo:
+		return ElevationSudo, probed
+	case hasDoas:
+		return ElevationDoas, probed
+	default:
+		return "", probed
+	}
+}
+
+var envAssignmentRegex = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
 
 var shellEscapeRegex = regexp.MustCompile(`[^\w@%+=:,./-]`)
 
@@ -273,7 +323,11 @@ func BuildSudoCommand(sudo *inventory.Sudo, cmd string) string {
 		return cmd
 	}
 
-	sb.WriteString(sudo.Executable)
+	executable := sudo.Executable
+	if executable == "" {
+		executable = ElevationSudo
+	}
+	sb.WriteString(executable)
 
 	if len(sudo.User) > 0 {
 		sb.WriteString(" -u " + sudo.User)
@@ -283,6 +337,11 @@ func BuildSudoCommand(sudo *inventory.Sudo, cmd string) string {
 		sb.WriteString(" " + sudo.Shell + " -c " + cmd)
 	} else {
 		sb.WriteString(" ")
+		// sudo treats leading VAR=value words as environment assignments;
+		// doas would try to execute the first one as the command.
+		if executable == ElevationDoas && envAssignmentRegex.MatchString(cmd) {
+			sb.WriteString("env ")
+		}
 		sb.WriteString(cmd)
 	}
 
