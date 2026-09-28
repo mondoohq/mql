@@ -62,10 +62,10 @@ const defaultSshdConfig = "/etc/ssh/sshd_config"
 // path prefix inside the configuration itself.
 // https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh-server-configuration
 const (
-	windowsProgramData       = `C:\ProgramData`
-	windowsSshdDir           = windowsProgramData + `\ssh`
-	windowsDefaultSshdConfig = windowsSshdDir + `\sshd_config`
-	windowsProgramDataToken  = "__PROGRAMDATA__"
+	windowsProgramData            = `C:\ProgramData`
+	windowsSshdDir                = windowsProgramData + `\ssh`
+	windowsDefaultSshdConfig      = windowsSshdDir + `\sshd_config`
+	windowsProgramDataPlaceholder = "__PROGRAMDATA__"
 )
 
 const sshdEffectiveConfigCommand = "sshd -T"
@@ -160,8 +160,8 @@ func (s *mqlSshdConfig) expandGlob(glob string) ([]string, error) {
 // forward slashes before globbing, so both separators are accepted here.
 // The returned paths use backslashes.
 func expandWindowsSshdGlob(afs *afero.Afero, glob string) ([]string, error) {
-	if len(glob) >= len(windowsProgramDataToken) && strings.EqualFold(glob[:len(windowsProgramDataToken)], windowsProgramDataToken) {
-		glob = windowsProgramData + glob[len(windowsProgramDataToken):]
+	if len(glob) >= len(windowsProgramDataPlaceholder) && strings.EqualFold(glob[:len(windowsProgramDataPlaceholder)], windowsProgramDataPlaceholder) {
+		glob = windowsProgramData + glob[len(windowsProgramDataPlaceholder):]
 	}
 	glob = strings.ReplaceAll(glob, `\`, "/")
 	if !isWindowsAbsPath(glob) {
