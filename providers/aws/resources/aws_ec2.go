@@ -1550,8 +1550,7 @@ func (i *mqlAwsEc2Instance) networkInterfaces() ([]any, error) {
 	conn := i.MqlRuntime.Connection.(*connection.AwsConnection)
 	svc := conn.Ec2(i.Region.Data)
 	ctx := context.Background()
-	filters := conn.Filters.General.ToServerSideEc2Filters()
-	filters = append(filters, ec2types.Filter{Name: aws.String("attachment.instance-id"), Values: []string{i.InstanceId.Data}})
+	filters := []ec2types.Filter{{Name: aws.String("attachment.instance-id"), Values: []string{i.InstanceId.Data}}}
 	params := &ec2.DescribeNetworkInterfacesInput{Filters: filters}
 	res := []any{}
 	paginator := ec2.NewDescribeNetworkInterfacesPaginator(svc, params)
@@ -1561,10 +1560,6 @@ func (i *mqlAwsEc2Instance) networkInterfaces() ([]any, error) {
 			return nil, err
 		}
 		for _, networkingInterface := range nis.NetworkInterfaces {
-			if conn.Filters.General.MatchesExcludeTags(ec2TagsToMap(networkingInterface.TagSet)) {
-				log.Debug().Interface("networkInterface", networkingInterface.NetworkInterfaceId).Msg("excluding network interface due to filters")
-				continue
-			}
 			_, mqlEni, err := buildNetworkInterfaceResource(i.MqlRuntime, i.Region.Data, networkingInterface)
 			if err != nil {
 				return nil, err
@@ -4453,12 +4448,13 @@ func (a *mqlAwsEc2Launchtemplate) imageId() (string, error) {
 // a single server-side EC2 filter and returns them as typed
 // aws.ec2.networkinterface resources. It backs the security-group and subnet
 // backreferences, which both reduce to "which ENIs reference me".
+// Like the other lookups under one parent, it does not take the discovery tag
+// filters (see vpcFilter).
 func networkInterfacesByFilter(runtime *plugin.Runtime, region, filterName, filterValue string) ([]any, error) {
 	conn := runtime.Connection.(*connection.AwsConnection)
 	svc := conn.Ec2(region)
 	ctx := context.Background()
-	filters := conn.Filters.General.ToServerSideEc2Filters()
-	filters = append(filters, ec2types.Filter{Name: aws.String(filterName), Values: []string{filterValue}})
+	filters := []ec2types.Filter{{Name: aws.String(filterName), Values: []string{filterValue}}}
 	params := &ec2.DescribeNetworkInterfacesInput{Filters: filters}
 	res := []any{}
 	paginator := ec2.NewDescribeNetworkInterfacesPaginator(svc, params)
@@ -4472,10 +4468,6 @@ func networkInterfacesByFilter(runtime *plugin.Runtime, region, filterName, filt
 			return nil, err
 		}
 		for _, ni := range nis.NetworkInterfaces {
-			if conn.Filters.General.MatchesExcludeTags(ec2TagsToMap(ni.TagSet)) {
-				log.Debug().Interface("networkInterface", ni.NetworkInterfaceId).Msg("excluding network interface due to filters")
-				continue
-			}
 			_, mqlEni, err := buildNetworkInterfaceResource(runtime, region, ni)
 			if err != nil {
 				return nil, err
