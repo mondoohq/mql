@@ -84,7 +84,7 @@ func NewConnection(id uint32, conf *inventory.Config, asset *inventory.Asset) *L
 			return (&CommandRunner{Shell: res.shell}).Exec(cmd, []string{})
 		})
 		if err != nil {
-			log.Warn().Err(err).Msg("local connection runs commands with sudo, which is expected to fail")
+			log.Warn().Err(err).Msg("privilege elevation probe failed; commands fall back to sudo")
 		}
 	}
 

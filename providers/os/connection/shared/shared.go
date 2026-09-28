@@ -368,6 +368,7 @@ func BuildSudoCommand(sudo *inventory.Sudo, cmd string) string {
 	}
 
 	if len(sudo.Shell) > 0 {
+		// The shell parses leading VAR=value words itself, so doas needs no env here.
 		sb.WriteString(" " + sudo.Shell + " -c " + cmd)
 	} else {
 		sb.WriteString(" ")
