@@ -1,0 +1,45 @@
+# kenv output captured on a FreeBSD 14.5 EC2 instance (t3.medium). The
+# instance ID and the system UUID/serial were replaced with placeholders.
+[commands."uname -s"]
+stdout = "FreeBSD"
+
+[commands."uname -m"]
+stdout = "amd64"
+
+[commands."uname -r"]
+stdout = "14.5-RELEASE"
+
+[commands."kenv"]
+stdout = """COLUMNS="80"
+LINES="25"
+acpi.oem="AMAZON"
+acpi.revision="2"
+boot_serial="YES"
+comconsole_pcidev=""
+console="efi"
+hint.smbios.0.mem="0xbbe6a000"
+hint.uart.0.at="acpi"
+kernel="kernel"
+module_blacklist="drm drm2 radeonkms i915kms amdgpu if_iwlwifi if_rtw88 if_rtw89 nvidia nvidia-drm nvidia-modeset"
+smbios.bios.reldate="10/16/2017"
+smbios.bios.revision="1.0"
+smbios.bios.vendor="Amazon EC2"
+smbios.bios.version="1.0"
+smbios.chassis.maker="Amazon EC2"
+smbios.chassis.tag="Amazon EC2"
+smbios.chassis.type="Other"
+smbios.entry_point_type="v2.1 (32-bit)"
+smbios.memory.enabled="4194304"
+smbios.planar.maker="Amazon EC2"
+smbios.planar.tag="i-0123456789abcdef0"
+smbios.processor.version="Intel(R) Xeon(R) Platinum 8259CL CPU @ 2.50GHz"
+smbios.socket.enabled="1"
+smbios.socket.populated="1"
+smbios.system.maker="Amazon EC2"
+smbios.system.product="t3.medium"
+smbios.system.serial="ec2aaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+smbios.system.uuid="ec2aaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+smbios.version="2.7"
+vfs.root.mountfrom="zfs:zroot/ROOT/default"
+zfs_load="YES"
+"""

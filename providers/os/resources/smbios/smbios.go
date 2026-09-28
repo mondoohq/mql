@@ -87,6 +87,8 @@ func ResolveManager(conn shared.Connection, pf *inventory.Platform) (SmBiosManag
 	} else if pf.IsFamily(inventory.FAMILY_UNIX) {
 		if pf.Name == "aix" {
 			biosM = &AIXSmbiosManager{provider: conn}
+		} else if pf.Name == "freebsd" {
+			biosM = &FreeBSDSmbiosManager{provider: conn}
 		} else {
 			biosM = &LinuxSmbiosManager{provider: conn}
 		}

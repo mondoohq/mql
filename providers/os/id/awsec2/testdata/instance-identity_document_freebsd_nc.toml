@@ -1,0 +1,20 @@
+# FreeBSD reaches IMDS through nc; the responses mirror what a FreeBSD 15.1
+# EC2 instance returned (headers and status lines), with the identity
+# document's account, instance and image IDs replaced by placeholders.
+[commands."uname -s"]
+stdout = "FreeBSD"
+
+[commands."uname -m"]
+stdout = "amd64"
+
+[commands."uname -r"]
+stdout = "15.1-RELEASE-p3"
+
+[commands."printf 'PUT /latest/api/token HTTP/1.0\\r\\nHost: 169.254.169.254\\r\\nX-aws-ec2-metadata-token-ttl-seconds: 21600\\r\\n\\r\\n' | nc -w 5 169.254.169.254 80"]
+stdout = "HTTP/1.0 200 OK\r\nX-Aws-Ec2-Metadata-Token-Ttl-Seconds: 21600\r\nContent-Type: text/plain\r\nContent-Length: 7\r\nDate: Mon, 28 Sep 2026 04:17:58 GMT\r\nServer: EC2ws\r\n\r\nMYTOKEN"
+
+[commands."printf 'GET /latest/%s HTTP/1.0\\r\\nHost: 169.254.169.254\\r\\nX-aws-ec2-metadata-token: %s\\r\\n\\r\\n' 'dynamic/instance-identity/document' 'MYTOKEN' | nc -w 5 169.254.169.254 80"]
+stdout = "HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 474\r\nDate: Mon, 28 Sep 2026 04:17:58 GMT\r\nServer: EC2ws\r\n\r\n{\n  \"accountId\" : \"123456789012\",\n  \"architecture\" : \"x86_64\",\n  \"availabilityZone\" : \"us-west-2a\",\n  \"billingProducts\" : null,\n  \"devpayProductCodes\" : null,\n  \"marketplaceProductCodes\" : null,\n  \"imageId\" : \"ami-0123456789abcdef0\",\n  \"instanceId\" : \"i-1234567890abcdef0\",\n  \"instanceType\" : \"t3.medium\",\n  \"kernelId\" : null,\n  \"pendingTime\" : \"2026-09-28T03:34:52Z\",\n  \"privateIp\" : \"10.0.0.10\",\n  \"ramdiskId\" : null,\n  \"region\" : \"us-west-2\",\n  \"version\" : \"2017-09-30\"\n}"
+
+[commands."printf 'GET /latest/%s HTTP/1.0\\r\\nHost: 169.254.169.254\\r\\nX-aws-ec2-metadata-token: %s\\r\\n\\r\\n' 'meta-data/tags/instance/Name' 'MYTOKEN' | nc -w 5 169.254.169.254 80"]
+stdout = "HTTP/1.0 404 Not Found\r\nContent-Type: text/html\r\nContent-Length: 339\r\nDate: Mon, 28 Sep 2026 04:17:58 GMT\r\nServer: EC2ws\r\n\r\n<?xml version=\"1.0\" encoding=\"iso-8859-1\"?>\n<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Transitional//EN\"\n\t\t \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\">\n<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"en\" lang=\"en\">\n <head>\n  <title>404 - Not Found</title>\n </head>\n <body>\n  <h1>404 - Not Found</h1>\n </body>\n</html>\n"

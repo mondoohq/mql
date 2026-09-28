@@ -103,6 +103,11 @@ func (m *CommandInstanceMetadata) curlDocument(metadataPath string) (string, err
 
 	var commandString string
 	switch {
+	case usesNetcat(m.platform):
+		commandString, err = ncMetadataCmdString(token, metadataPath)
+		if err != nil {
+			return "", err
+		}
 	case m.platform.IsFamily(inventory.FAMILY_UNIX):
 		commandString = unixMetadataCmdString(token, metadataPath)
 	case m.platform.IsFamily(inventory.FAMILY_WINDOWS):
@@ -116,6 +121,9 @@ func (m *CommandInstanceMetadata) curlDocument(metadataPath string) (string, err
 	if err != nil {
 		return "", err
 	}
+	if usesNetcat(m.platform) {
+		return parseRawHTTPResponse(cmd.Stdout)
+	}
 	data, err := io.ReadAll(cmd.Stdout)
 	return strings.TrimSpace(string(data)), err
 }
@@ -127,6 +135,8 @@ func (m *CommandInstanceMetadata) getToken() (string, error) {
 
 	var commandString string
 	switch {
+	case usesNetcat(m.platform):
+		commandString = ncTokenCmdString()
 	case m.platform.IsFamily(inventory.FAMILY_UNIX):
 		commandString = unixTokenCmdString()
 	case m.platform.IsFamily(inventory.FAMILY_WINDOWS):
@@ -138,6 +148,14 @@ func (m *CommandInstanceMetadata) getToken() (string, error) {
 	cmd, err := m.conn.RunCommand(commandString)
 	if err != nil {
 		return "", err
+	}
+	if usesNetcat(m.platform) {
+		token, err := parseRawHTTPResponse(cmd.Stdout)
+		if err != nil {
+			return "", err
+		}
+		m.token = token
+		return token, nil
 	}
 	data, err := io.ReadAll(cmd.Stdout)
 	return strings.TrimSpace(string(data)), err
