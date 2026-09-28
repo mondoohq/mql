@@ -769,8 +769,11 @@ func (c *Connection) verify() error {
 	var out *shared.Command
 	var err error
 	if c.Sudo != nil {
-		// Wrap sudo command, to see proper error messages. We set /dev/null to disable stdin
-		command := "sh -c '" + shared.BuildSudoCommand(c.Sudo, "echo 'hi'") + " < /dev/null'"
+		// Check sudo works, with proper error messages. /dev/null disables
+		// stdin so a sudo that wants a password fails instead of hanging; it
+		// is appended outside the quoted command so the redirect is the outer
+		// shell's, not something sudo is asked to run.
+		command := shared.BuildSudoCommand(c.Sudo, "echo hi") + " < /dev/null"
 		out, err = c.runRawCommand(command)
 	} else {
 		out, err = c.runRawCommand("echo 'hi'")
