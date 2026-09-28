@@ -10349,6 +10349,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"sudo.version": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSudo).GetVersion()).ToDataRes(types.String)
 	},
+	"sudo.implementation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSudo).GetImplementation()).ToDataRes(types.String)
+	},
 	"sudo.plugins": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSudo).GetPlugins()).ToDataRes(types.Array(types.Resource("sudo.plugin")))
 	},
@@ -28591,6 +28594,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"sudo.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlSudo).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"sudo.implementation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSudo).Implementation, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"sudo.plugins": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -70822,6 +70829,7 @@ type mqlSudo struct {
 	Path            plugin.TValue[string]
 	Installed       plugin.TValue[bool]
 	Version         plugin.TValue[string]
+	Implementation  plugin.TValue[string]
 	Plugins         plugin.TValue[[]any]
 	PolicyPlugin    plugin.TValue[*mqlSudoPlugin]
 	IoPlugins       plugin.TValue[[]any]
@@ -70884,6 +70892,12 @@ func (c *mqlSudo) GetInstalled() *plugin.TValue[bool] {
 func (c *mqlSudo) GetVersion() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Version, func() (string, error) {
 		return c.version()
+	})
+}
+
+func (c *mqlSudo) GetImplementation() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Implementation, func() (string, error) {
+		return c.implementation()
 	})
 }
 

@@ -9239,7 +9239,22 @@ sudo @defaults("version path") {
   // Whether sudo is installed and executable
   installed() bool
   // Version string reported by `sudo -V` (e.g., "1.9.5p3")
+  //
+  // The version of the implementation named by `implementation`: a
+  // sudo.ws release such as "1.9.5p3", or a sudo-rs release such as
+  // "0.2.13". The two number independently, so compare a version only
+  // after checking `implementation`. A distribution package revision that
+  // sudo-rs appends (e.g., "-0ubuntu1.2") is not included.
   version() string
+  // Which sudo implementation the binary is: "sudo" or "sudo-rs"
+  //
+  // "sudo" is the C implementation from sudo.ws. "sudo-rs" is the Rust
+  // reimplementation that recent Ubuntu releases install as `sudo`. It
+  // reads the same sudoers files but supports a subset of the options, has
+  // no plugins, and rejects settings such as `logfile`, `log_input`,
+  // `log_output`, and `requiretty`. Null when sudo is not installed or
+  // `sudo -V` output is not recognized.
+  implementation() string
   // All sudo plugins reported by `sudo -V`
   plugins() []sudo.plugin
   // Policy plugin (typically sudoers_policy). Null when none is loaded.

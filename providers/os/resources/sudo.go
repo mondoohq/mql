@@ -215,6 +215,18 @@ func (s *mqlSudo) version() (string, error) {
 	return info.Version, nil
 }
 
+func (s *mqlSudo) implementation() (string, error) {
+	info, err := s.versionInfo()
+	if err != nil {
+		return "", err
+	}
+	if info.Implementation == "" {
+		s.Implementation = plugin.TValue[string]{State: plugin.StateIsSet | plugin.StateIsNull}
+		return "", nil
+	}
+	return info.Implementation, nil
+}
+
 func (s *mqlSudo) plugins() ([]any, error) {
 	info, err := s.versionInfo()
 	if err != nil {

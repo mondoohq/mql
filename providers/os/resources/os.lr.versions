@@ -3929,6 +3929,7 @@ sshd.config.permitRootLogin 10.0.5
 sudo 13.19.1
 sudo.approvalPlugins 13.19.1
 sudo.auditPlugins 13.19.1
+sudo.implementation 14.6.1
 sudo.installed 13.19.1
 sudo.ioPlugins 13.19.1
 sudo.path 13.19.1
