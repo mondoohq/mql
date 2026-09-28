@@ -345,6 +345,7 @@ const (
 	ResourceYumRepo                                       string = "yum.repo"
 	ResourceYumConfig                                     string = "yum.config"
 	ResourceApt                                           string = "apt"
+	ResourceAptConfig                                     string = "apt.config"
 	ResourceAptRepo                                       string = "apt.repo"
 	ResourcePkg                                           string = "pkg"
 	ResourcePkgRepo                                       string = "pkg.repo"
@@ -1986,6 +1987,10 @@ func init() {
 		"apt": {
 			// to override args, implement: initApt(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createApt,
+		},
+		"apt.config": {
+			// to override args, implement: initAptConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAptConfig,
 		},
 		"apt.repo": {
 			// to override args, implement: initAptRepo(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -11056,6 +11061,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"apt.repos": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlApt).GetRepos()).ToDataRes(types.Array(types.Resource("apt.repo")))
+	},
+	"apt.config.params": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptConfig).GetParams()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"apt.config.allowInsecureRepositories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptConfig).GetAllowInsecureRepositories()).ToDataRes(types.Bool)
+	},
+	"apt.config.allowWeakRepositories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptConfig).GetAllowWeakRepositories()).ToDataRes(types.Bool)
+	},
+	"apt.config.allowDowngradeToInsecureRepositories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptConfig).GetAllowDowngradeToInsecureRepositories()).ToDataRes(types.Bool)
+	},
+	"apt.config.checkDate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptConfig).GetCheckDate()).ToDataRes(types.Bool)
+	},
+	"apt.config.installRecommends": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptConfig).GetInstallRecommends()).ToDataRes(types.Bool)
+	},
+	"apt.config.installSuggests": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptConfig).GetInstallSuggests()).ToDataRes(types.Bool)
 	},
 	"apt.repo.type": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAptRepo).GetType()).ToDataRes(types.String)
@@ -29713,6 +29739,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"apt.repos": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlApt).Repos, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"apt.config.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptConfig).__id, ok = v.Value.(string)
+		return
+	},
+	"apt.config.params": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptConfig).Params, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"apt.config.allowInsecureRepositories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptConfig).AllowInsecureRepositories, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"apt.config.allowWeakRepositories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptConfig).AllowWeakRepositories, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"apt.config.allowDowngradeToInsecureRepositories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptConfig).AllowDowngradeToInsecureRepositories, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"apt.config.checkDate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptConfig).CheckDate, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"apt.config.installRecommends": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptConfig).InstallRecommends, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"apt.config.installSuggests": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptConfig).InstallSuggests, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"apt.repo.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -74622,6 +74680,129 @@ func (c *mqlApt) GetRepos() *plugin.TValue[[]any] {
 		}
 
 		return c.repos()
+	})
+}
+
+// mqlAptConfig for the apt.config resource
+type mqlAptConfig struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAptConfigInternal it will be used here
+	Params                               plugin.TValue[map[string]any]
+	AllowInsecureRepositories            plugin.TValue[bool]
+	AllowWeakRepositories                plugin.TValue[bool]
+	AllowDowngradeToInsecureRepositories plugin.TValue[bool]
+	CheckDate                            plugin.TValue[bool]
+	InstallRecommends                    plugin.TValue[bool]
+	InstallSuggests                      plugin.TValue[bool]
+}
+
+// createAptConfig creates a new instance of this resource
+func createAptConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAptConfig{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("apt.config", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAptConfig) MqlName() string {
+	return "apt.config"
+}
+
+func (c *mqlAptConfig) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAptConfig) GetParams() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Params, func() (map[string]any, error) {
+		return c.params()
+	})
+}
+
+func (c *mqlAptConfig) GetAllowInsecureRepositories() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AllowInsecureRepositories, func() (bool, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return false, vargParams.Error
+		}
+
+		return c.allowInsecureRepositories(vargParams.Data)
+	})
+}
+
+func (c *mqlAptConfig) GetAllowWeakRepositories() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AllowWeakRepositories, func() (bool, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return false, vargParams.Error
+		}
+
+		return c.allowWeakRepositories(vargParams.Data)
+	})
+}
+
+func (c *mqlAptConfig) GetAllowDowngradeToInsecureRepositories() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AllowDowngradeToInsecureRepositories, func() (bool, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return false, vargParams.Error
+		}
+
+		return c.allowDowngradeToInsecureRepositories(vargParams.Data)
+	})
+}
+
+func (c *mqlAptConfig) GetCheckDate() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.CheckDate, func() (bool, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return false, vargParams.Error
+		}
+
+		return c.checkDate(vargParams.Data)
+	})
+}
+
+func (c *mqlAptConfig) GetInstallRecommends() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.InstallRecommends, func() (bool, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return false, vargParams.Error
+		}
+
+		return c.installRecommends(vargParams.Data)
+	})
+}
+
+func (c *mqlAptConfig) GetInstallSuggests() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.InstallSuggests, func() (bool, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return false, vargParams.Error
+		}
+
+		return c.installSuggests(vargParams.Data)
 	})
 }
 

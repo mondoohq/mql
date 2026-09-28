@@ -10321,10 +10321,40 @@ yum.config {
 // one-line format and the deb822 `.sources` format. Audit repository
 // trust from there: each `apt.repo` reports whether it is marked
 // `trusted` (signature checks bypassed) and the `signedBy` keyring that
-// pins which key may sign it.
+// pins which key may sign it. `apt.config` holds APT's configuration.
 apt {
   // All configured APT repositories
   repos() []apt.repo
+}
+
+// APT configuration
+//
+// APT's effective configuration, as APT itself resolves it: its built-in
+// defaults merged with `/etc/apt/apt.conf` and every file in
+// `/etc/apt/apt.conf.d/`, read from `apt-config dump`. `params` holds every
+// option with its full name as the key (e.g. `Acquire::http::Proxy`) and
+// the unquoted value; a list option such as `DPkg::Pre-Invoke` holds its
+// items joined by newlines. The bool fields audit repository trust and
+// package selection: they parse values the way APT does (`1`/`0`,
+// `true`/`false`, `yes`/`no`, `on`/`off`) and fall back to APT's
+// documented default when the option is not set. Reading the configuration
+// needs `apt-config`; where it cannot run, `params` and the bool fields are
+// an error rather than defaults.
+apt.config {
+  // Effective APT configuration, every option as a key/value string
+  params() map[string]string
+  // Whether repositories without a valid signature can be used (Acquire::AllowInsecureRepositories, default false)
+  allowInsecureRepositories(params) bool
+  // Whether repositories signed only with weak algorithms can be used (Acquire::AllowWeakRepositories, default false)
+  allowWeakRepositories(params) bool
+  // Whether a signed repository may become unsigned (Acquire::AllowDowngradeToInsecureRepositories, default false)
+  allowDowngradeToInsecureRepositories(params) bool
+  // Whether the Date of repository metadata is checked against the system clock (Acquire::Check-Date, default true)
+  checkDate(params) bool
+  // Whether recommended packages are installed with a package (APT::Install-Recommends, default true)
+  installRecommends(params) bool
+  // Whether suggested packages are installed with a package (APT::Install-Suggests, default false)
+  installSuggests(params) bool
 }
 
 // APT software repository

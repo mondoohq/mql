@@ -120,6 +120,14 @@ apparmor.profile.name 13.2.4
 apparmor.profiles 13.2.4
 apparmor.version 13.2.4
 apt 13.22.2
+apt.config 14.8.1
+apt.config.allowDowngradeToInsecureRepositories 14.8.1
+apt.config.allowInsecureRepositories 14.8.1
+apt.config.allowWeakRepositories 14.8.1
+apt.config.checkDate 14.8.1
+apt.config.installRecommends 14.8.1
+apt.config.installSuggests 14.8.1
+apt.config.params 14.8.1
 apt.repo 13.22.2
 apt.repo.components 13.22.2
 apt.repo.distribution 13.22.2
