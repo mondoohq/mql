@@ -776,6 +776,38 @@ func blockCallType(typ types.Type, schema resources.ResourcesSchema) types.Type 
 	return types.Block
 }
 
+// globKeywordFields are the field names that the compiler reads as a keyword
+// when they stand alone as an expression: `return` starts a return statement
+// and `empty` is the empty value. A schema may still declare a field of that
+// name (os `file.empty`, mongo `empty`, os `nginx.conf.location.return`).
+var globKeywordFields = map[string]struct{}{
+	"return": {},
+	"empty":  {},
+}
+
+// globFieldExpression builds the expression that reads one field for a
+// `{ * }` expansion. A bare identifier is what a user would type, except for
+// a field named like a keyword, which is read through the block binding as
+// `_.name` so it resolves to the field instead of the keyword.
+func globFieldExpression(field string) *parser.Expression {
+	name := field
+	if _, ok := globKeywordFields[name]; !ok {
+		return &parser.Expression{
+			Operand: &parser.Operand{
+				Value: &parser.Value{Ident: &name},
+			},
+		}
+	}
+
+	self := "_"
+	return &parser.Expression{
+		Operand: &parser.Operand{
+			Value: &parser.Value{Ident: &self},
+			Calls: []*parser.Call{{Ident: &name}},
+		},
+	}
+}
+
 // compileBlock on a context
 func (c *compiler) compileBlock(expressions []*parser.Expression, typ types.Type, bindingRef uint64) (types.Type, error) {
 	// For resource, users may indicate to query all fields. It also works for list of resources.
@@ -796,12 +828,7 @@ func (c *compiler) compileBlock(expressions []*parser.Expression, typ types.Type
 			expressions = []*parser.Expression{}
 			keys := sortx.Keys(fields)
 			for _, v := range keys {
-				name := v
-				expressions = append(expressions, &parser.Expression{
-					Operand: &parser.Operand{
-						Value: &parser.Value{Ident: &name},
-					},
-				})
+				expressions = append(expressions, globFieldExpression(v))
 			}
 		}
 	}
