@@ -66,3 +66,22 @@ func findService(srvs []*services.Service, name string) *services.Service {
 	}
 	return nil
 }
+
+// Get-Service's ServiceControllerStatus values, as they arrive in the JSON.
+// 3 is StopPending: a service that is still stopping is not stopped yet.
+func TestWindowsServiceState(t *testing.T) {
+	for status, want := range map[int]services.State{
+		1: services.ServiceStopped,
+		2: services.ServiceStartPending,
+		3: services.ServiceStopPending,
+		4: services.ServiceRunning,
+		5: services.ServiceContinuePending,
+		6: services.ServicePausePending,
+		7: services.ServicePaused,
+		0: services.ServiceUnknown,
+	} {
+		s := services.WindowsService{Status: status}
+		assert.Equal(t, want, s.State(), "status %d", status)
+		assert.Equal(t, status == 4, s.IsRunning(), "status %d", status)
+	}
+}

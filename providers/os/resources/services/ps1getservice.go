@@ -57,7 +57,7 @@ func (s WindowsService) State() State {
 	case 2:
 		res = ServiceStartPending
 	case 3:
-		res = ServiceStopped
+		res = ServiceStopPending
 	case 4:
 		res = ServiceRunning
 	case 5:
