@@ -18,8 +18,8 @@ var Config = plugin.Provider{
 	Version: "14.0.1",
 	Requires: []plugin.ProviderDep{
 		// Every root carries `asset`, which core owns (ADR 042).
-		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "14.0.1"},
-		{ID: "go.mondoo.com/mql/providers/network", Name: "network", MinVersion: "14.0.1"},
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+		{ID: "go.mondoo.com/mql/providers/network", Name: "network", MinVersion: "13.0.0"},
 	},
 	ConnectionTypes: []string{provider.ConnectionType},
 	Platforms:       resources.Platforms,

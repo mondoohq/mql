@@ -21,9 +21,9 @@ var Config = plugin.Provider{
 	Requires: []plugin.ProviderDep{
 		// Every root carries `asset`, which core owns, so rooting this provider
 		// makes core a peer it calls (ADR 042).
-		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "14.0.1"},
-		{ID: "go.mondoo.com/mql/providers/network", Name: "network", MinVersion: "14.0.1"},
-		{ID: "go.mondoo.com/mql/providers/os", Name: "os", MinVersion: "14.0.1"},
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+		{ID: "go.mondoo.com/mql/providers/network", Name: "network", MinVersion: "13.0.0"},
+		{ID: "go.mondoo.com/mql/providers/os", Name: "os", MinVersion: "13.0.0"},
 	},
 	ConnectionTypes: []string{provider.ConnectionType},
 	Platforms:       resources.Platforms,

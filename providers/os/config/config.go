@@ -17,8 +17,8 @@ var Config = plugin.Provider{
 	ID:      "go.mondoo.com/mql/providers/os",
 	Version: "14.9.1",
 	Requires: []plugin.ProviderDep{
-		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "14.9.1"},
-		{ID: "go.mondoo.com/mql/providers/network", Name: "network", MinVersion: "14.9.1"},
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+		{ID: "go.mondoo.com/mql/providers/network", Name: "network", MinVersion: "13.0.0"},
 	},
 	// Every connection this provider serves - a host over SSH, a container
 	// image, a mounted filesystem - exposes an OS, so `_` answers with the
