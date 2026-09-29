@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -169,6 +170,19 @@ func TestDecodeCLIXML_PassThrough(t *testing.T) {
 	for _, in := range tests {
 		assert.Equal(t, []byte(in), powershell.DecodeCLIXML([]byte(in)))
 	}
+}
+
+// powershell.exe writes stderr in the console's OEM code page. Captured on
+// Windows 11 (code page 437) from Write-Error with "café äöüß": the letters
+// arrive as the bytes 82 84 94 81 E1, which are not valid UTF-8.
+func TestDecodeCLIXML_OEMCodePage(t *testing.T) {
+	in := readCLIXML(t, "win11-oem437-write-error.txt")
+	require.False(t, utf8.Valid(in), "the capture must hold OEM bytes")
+	got := string(powershell.DecodeCLIXML(in))
+	assert.True(t, strings.HasPrefix(got, "$ProgressPreference='SilentlyContinue';Write-Error"), got)
+	assert.Contains(t, got, " : Pfad nicht gefunden: café äöüß\r\n")
+	assert.Contains(t, got, "+ FullyQualifiedErrorId : Microsoft.PowerShell.Commands.WriteErrorException")
+	assert.NotContains(t, got, "_x000D_")
 }
 
 func TestDecodeCLIXML_MalformedIsUnchanged(t *testing.T) {

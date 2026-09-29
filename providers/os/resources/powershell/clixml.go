@@ -11,8 +11,10 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf16"
+	"unicode/utf8"
 
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"golang.org/x/text/encoding/charmap"
 )
 
 // clixmlHeader is the line Windows PowerShell writes to stderr before it
@@ -50,6 +52,13 @@ func IsCLIXML(b []byte) bool {
 // Each record ends in a line break, and trailing whitespace is trimmed from
 // the result: PowerShell's error view ends in a blank line.
 //
+// powershell.exe writes stderr in the console's OEM code page, not UTF-8, and
+// an XML parser rejects bytes that are not UTF-8. Input that is not valid
+// UTF-8 is therefore read as code page 850 first, so an accented character in
+// an error message (every localized message on a German or French host) does
+// not leave the whole serialization undecoded. 850 and 437, the Western
+// European and US defaults, agree on every accented letter.
+//
 // Input that does not start with the CLIXML header, or that fails to parse,
 // is returned unchanged.
 func DecodeCLIXML(b []byte) []byte {
@@ -57,8 +66,15 @@ func DecodeCLIXML(b []byte) []byte {
 		return b
 	}
 
+	src := b
+	if !utf8.Valid(src) {
+		if dec, err := charmap.CodePage850.NewDecoder().Bytes(src); err == nil {
+			src = dec
+		}
+	}
+
 	var out strings.Builder
-	rest := string(b)
+	rest := string(src)
 	for rest != "" {
 		start := strings.Index(rest, "<Objs")
 		if start < 0 {
