@@ -17,7 +17,7 @@ versionx.Satisfies(v, ">= 1.0.0", "< 2.0.0")
 1. **Epoch** (`1:2.4.52`, `1!2.0`) — a higher epoch wins outright. That is what an epoch is for.
    A missing epoch is 0, as Debian policy and rpm specify, so `1:8.2p1-4ubuntu0.13` sorts above
    `8.5`. To compare the upstream release instead, strip the epoch on purpose:
-   `WithoutEpoch()` in Go, `version(…).withoutEpoch` in MQL.
+   `StripEpoch()` in Go, `version(…).stripEpoch` in MQL.
 2. **Release** — everything before the first `-`, compared component-wise on `.`, each component
    as alternating digit / non-digit runs. Missing trailing components are zeros, so `1.2` and
    `1.2.0` are the same version. No cap on component count.

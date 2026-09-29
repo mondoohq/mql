@@ -1140,29 +1140,29 @@ func TestVersion(t *testing.T) {
 	})
 
 	// An epoch'd package against an upstream bound. The comparison keeps Debian's
-	// rule (a missing epoch is 0), so the plain form is false; withoutEpoch is how a
+	// rule (a missing epoch is 0), so the plain form is false; stripEpoch is how a
 	// query says it means the upstream release. Versions are the openssh-server
 	// packages from #11109.
-	t.Run("withoutEpoch", func(t *testing.T) {
+	t.Run("stripEpoch", func(t *testing.T) {
 		x.TestSimple(t, []testutils.SimpleTest{
 			{
-				Code:        "version('1:8.2p1-4ubuntu0.13').withoutEpoch",
+				Code:        "version('1:8.2p1-4ubuntu0.13').stripEpoch",
 				ResultIndex: 0, Expectation: "8.2p1-4ubuntu0.13",
 			},
 			{
-				Code:        "version('5!1.2.3').withoutEpoch",
+				Code:        "version('5!1.2.3').stripEpoch",
 				ResultIndex: 0, Expectation: "1.2.3",
 			},
 			{
-				Code:        "version('1.2.3').withoutEpoch",
+				Code:        "version('1.2.3').stripEpoch",
 				ResultIndex: 0, Expectation: "1.2.3",
 			},
 			{
-				Code:        "version('1632431095:1.2.2-r7').withoutEpoch",
+				Code:        "version('1632431095:1.2.2-r7').stripEpoch",
 				ResultIndex: 0, Expectation: "1632431095:1.2.2-r7",
 			},
 			{
-				Code:        "version('').withoutEpoch",
+				Code:        "version('').stripEpoch",
 				ResultIndex: 0, Expectation: "",
 			},
 			{
@@ -1170,23 +1170,23 @@ func TestVersion(t *testing.T) {
 				ResultIndex: 2, Expectation: false,
 			},
 			{
-				Code:        "version('1:8.2p1-4ubuntu0.13').withoutEpoch < version('8.5')",
+				Code:        "version('1:8.2p1-4ubuntu0.13').stripEpoch < version('8.5')",
 				ResultIndex: 2, Expectation: true,
 			},
 			{
-				Code:        "version('1:8.4p1-5+deb11u7').withoutEpoch < semver('8.5')",
+				Code:        "version('1:8.4p1-5+deb11u7').stripEpoch < semver('8.5')",
 				ResultIndex: 2, Expectation: true,
 			},
 			{
-				Code:        "version('1:9.2p1-2+deb12u10').withoutEpoch < version('8.5')",
+				Code:        "version('1:9.2p1-2+deb12u10').stripEpoch < version('8.5')",
 				ResultIndex: 2, Expectation: false,
 			},
 			{
-				Code:        "version('1:8.2p1-4ubuntu0.13').withoutEpoch.inRange('8.0', '8.4')",
+				Code:        "version('1:8.2p1-4ubuntu0.13').stripEpoch.inRange('8.0', '8.4')",
 				ResultIndex: 0, Expectation: true,
 			},
 			{
-				Code:        "version('').withoutEpoch < version('8.5')",
+				Code:        "version('').stripEpoch < version('8.5')",
 				ResultIndex: 2, Expectation: true,
 			},
 		})

@@ -86,25 +86,25 @@ func versionEpoch(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*R
 	return IntData(int64(versionx.Parse(raw).Epoch())), 0, nil
 }
 
-// versionWithoutEpoch implements `version(x).withoutEpoch`: the same version with its
+// versionStripEpoch implements `version(x).stripEpoch`: the same version with its
 // deb/rpm or PEP 440 epoch removed, so "1:8.2p1-4ubuntu0.13" becomes "8.2p1-4ubuntu0.13".
 //
 // Comparisons keep the packaging rule that a missing epoch is 0, which is what Debian
 // policy and rpm specify, so `version('1:8.2p1') < version('8.5')` is false. A query that
 // means "the upstream release is older than 8.5" has to say so, and this is how:
-// `version('1:8.2p1').withoutEpoch < version('8.5')`. An empty version stays empty
+// `version('1:8.2p1').stripEpoch < version('8.5')`. An empty version stays empty
 // rather than erroring, so it keeps sorting below every bound.
-func versionWithoutEpoch(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
+func versionStripEpoch(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
 	if bind.Value == nil {
 		return &RawData{Type: types.Version, Error: bind.Error}, 0, nil
 	}
 
 	raw, ok := bind.Value.(string)
 	if !ok {
-		return &RawData{Type: types.Version, Error: errors.New("`withoutEpoch` expects a version")}, 0, nil
+		return &RawData{Type: types.Version, Error: errors.New("`stripEpoch` expects a version")}, 0, nil
 	}
 
-	return VersionData(versionx.Parse(raw).WithoutEpoch().String()), 0, nil
+	return VersionData(versionx.Parse(raw).StripEpoch().String()), 0, nil
 }
 
 // versionInRange implements `version(x).inRange(lower, upper)`. Each argument is a

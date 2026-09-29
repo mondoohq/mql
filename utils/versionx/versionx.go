@@ -250,7 +250,7 @@ func (v Version) Epoch() int { return v.epoch }
 // does not. An apk build stamp is not an epoch (see [maxPlausibleEpoch]).
 func (v Version) HasEpoch() bool { return v.kind == KindDebian || v.kind == KindPython }
 
-// WithoutEpoch returns v with its epoch removed: "1:8.2p1-4" becomes "8.2p1-4". A
+// StripEpoch returns v with its epoch removed: "1:8.2p1-4" becomes "8.2p1-4". A
 // version without an epoch is returned as is, and so is an apk build stamp, which
 // [Compare] already ignores.
 //
@@ -258,7 +258,7 @@ func (v Version) HasEpoch() bool { return v.kind == KindDebian || v.kind == Kind
 // rpm read a missing epoch as 0, so "1:8.2p1" sorts above "8.5" and [Compare] keeps it
 // that way. A caller that means "the upstream release is older than 8.5" strips the
 // epoch on purpose.
-func (v Version) WithoutEpoch() Version {
+func (v Version) StripEpoch() Version {
 	if !v.HasEpoch() {
 		return v
 	}
