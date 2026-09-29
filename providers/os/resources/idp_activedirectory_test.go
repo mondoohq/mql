@@ -254,6 +254,28 @@ enabled = true
 `)))
 	})
 
+	t.Run("enabled = false switches off a listed domain", func(t *testing.T) {
+		assert.Equal(t, "", sssdADDomain(parse(`
+[sssd]
+domains = ad.example.com
+[domain/ad.example.com]
+id_provider = ad
+enabled = False
+`)))
+	})
+
+	t.Run("a disabled listed domain falls through to the next one", func(t *testing.T) {
+		assert.Equal(t, "two.example.com", sssdADDomain(parse(`
+[sssd]
+domains = one.example.com, two.example.com
+[domain/one.example.com]
+id_provider = ad
+enabled = false
+[domain/two.example.com]
+id_provider = ad
+`)))
+	})
+
 	t.Run("an LDAP identity provider is not Active Directory", func(t *testing.T) {
 		assert.Equal(t, "", sssdADDomain(parse(`
 [sssd]
@@ -298,6 +320,26 @@ func TestSambaADDomain(t *testing.T) {
 		"a realm without security = ads is not a membership")
 	assert.Equal(t, "", sambaADDomain(parse("[share]\n  security = ads\n  realm = AD.EXAMPLE.COM\n")),
 		"only the global section counts")
+
+	// Roles and aliases as testparm reports them; security = auto resolves to
+	// ads on a member server (lp_find_security).
+	for _, tt := range []struct {
+		conf string
+		want string
+		msg  string
+	}{
+		{"server role = active directory domain controller\nrealm = CORP.EXAMPLE.COM\nworkgroup = CORP", "CORP.EXAMPLE.COM", "an AD domain controller has no security line"},
+		{"server role = dc\nrealm = CORP.EXAMPLE.COM", "CORP.EXAMPLE.COM", "dc is an alias for the AD domain controller role"},
+		{"server role = member server\nrealm = AD.EXAMPLE.COM", "AD.EXAMPLE.COM", "a member server resolves security = auto to ads"},
+		{"serverrole = Member\nsecurity = AUTO\nrealm = AD.EXAMPLE.COM", "AD.EXAMPLE.COM", "parameter names ignore spaces, values ignore case"},
+		{"server role = member server\nsecurity = domain\nrealm = AD.EXAMPLE.COM", "", "security = domain is an NT4 membership"},
+		{"server role = standalone server\nrealm = AD.EXAMPLE.COM", "", "a standalone server is not a member"},
+		{"server role = classic primary domain controller\nrealm = NT4.EXAMPLE.COM", "", "a classic PDC is not Active Directory"},
+		{"realm = AD.EXAMPLE.COM", "", "a realm alone is not a membership"},
+		{"server role = active directory domain controller", "", "no realm, no domain"},
+	} {
+		assert.Equal(t, tt.want, sambaADDomain(parse("[global]\n"+tt.conf+"\n")), tt.msg)
+	}
 }
 
 // conf.d snippets are merged after sssd.conf in name order, and a later one

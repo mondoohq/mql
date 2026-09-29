@@ -252,12 +252,16 @@ func readSssdConfig(fsys afero.Fs) (confSections, error) {
 // sssdADDomain returns the Active Directory domain of the first active SSSD
 // domain that uses the ad identity provider, or "". A domain is active when
 // it is listed in domains of the [sssd] section, or has enabled = true in its
-// own section. Its Active Directory domain is ad_domain, which defaults to
-// the SSSD domain's name.
+// own section, and enabled = false in its own section switches it off even
+// when it is listed (confdb_get_enabled_domain_list). Its Active Directory
+// domain is ad_domain, which defaults to the SSSD domain's name.
 func sssdADDomain(c confSections) string {
 	adDomain := func(name string) string {
 		sec, ok := c["domain/"+name]
 		if !ok || !strings.EqualFold(sec["id_provider"], sssdADProvider) {
+			return ""
+		}
+		if strings.EqualFold(sec["enabled"], "false") {
 			return ""
 		}
 		if d := sec["ad_domain"]; d != "" {
@@ -290,15 +294,33 @@ func sssdADDomain(c confSections) string {
 	return ""
 }
 
-// sambaADDomain returns the Active Directory domain Samba is a member of, or
-// "". A member of an Active Directory domain runs with security = ads, and its
-// realm is the domain's DNS name in upper case.
+// sambaADDomain returns the Active Directory domain Samba belongs to, or "".
+// Its realm is the domain's DNS name in upper case. Samba is in an Active
+// Directory domain when it runs with security = ads, or leaves security unset
+// (auto) with a server role that implies it: a member server resolves auto to
+// ads, and an Active Directory domain controller needs no security line at
+// all. An explicit security = domain is an NT4-style membership, not Active
+// Directory. Samba ignores case and spaces in parameter names.
 func sambaADDomain(c confSections) string {
-	global := c["global"]
-	if !strings.EqualFold(global["security"], "ads") {
+	global := map[string]string{}
+	for k, v := range c["global"] {
+		global[strings.ReplaceAll(k, " ", "")] = v
+	}
+	realm := global["realm"]
+	if realm == "" {
 		return ""
 	}
-	return global["realm"]
+
+	switch strings.ToLower(global["security"]) {
+	case "ads":
+		return realm
+	case "", "auto":
+		switch strings.ToLower(strings.Join(strings.Fields(global["serverrole"]), " ")) {
+		case "member server", "member", "active directory domain controller", "dc":
+			return realm
+		}
+	}
+	return ""
 }
 
 // confSections is an ini-style configuration: section name to lower-cased

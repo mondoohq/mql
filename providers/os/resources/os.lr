@@ -16790,8 +16790,10 @@ private idp.entra @defaults("deviceId tenantId joinType") {
 // own configuration without contacting a domain controller. On Windows, the
 // machine's domain role, domain, and forest from the local security
 // authority; on macOS, the binding of the opendirectoryd Active Directory
-// plugin (dsconfigad); on Linux, SSSD configured with the ad identity provider
-// (as realmd and adcli join a domain) or Samba winbind with security = ads.
+// plugin (dsconfigad); on Linux, an enabled SSSD domain with the ad identity
+// provider (as realmd and adcli join a domain), or Samba as a member
+// (security = ads, as winbind joins) or as an Active Directory domain
+// controller.
 // The resource is only returned for a member, so idp.activeDirectory not
 // being null means the device is joined to a domain.
 private idp.activeDirectory @defaults("domain forest") {
