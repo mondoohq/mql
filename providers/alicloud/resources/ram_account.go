@@ -18,7 +18,8 @@ import (
 )
 
 // ramAccountState memoizes the account-level identity reads served by IMS, so
-// the four SSO fields share one GetUserSsoSettings call.
+// the four SSO fields share one GetUserSsoSettings call. It is embedded in
+// mqlAlicloudRamInternal (ram_identity.go).
 type ramAccountState struct {
 	ssoOnce sync.Once
 	sso     *imsclient.GetUserSsoSettingsResponseBodyUserSsoSettings
