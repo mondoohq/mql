@@ -164,17 +164,18 @@ func TestMigrateProvidersURLReportsAnUnwritableConfig(t *testing.T) {
 	assert.False(t, res.Migrated)
 }
 
-// A write that cannot happen has to be reported, not reported as a migration
-// that did. This provokes it portably -- the config is gone by the time the
-// write is attempted -- so the contract is covered on Windows too, where a
-// directory cannot be made unwritable with chmod.
-func TestMigrateProvidersURLReportsAFailedWrite(t *testing.T) {
+// A rewrite that cannot happen has to be reported, not reported as a
+// migration that did. This provokes it portably -- the config is gone by the
+// time the rewrite opens it -- so the contract is covered on Windows too, where
+// a directory cannot be made unwritable with chmod. What fails is the open, not
+// the write itself.
+func TestMigrateProvidersURLReportsAFailedRewrite(t *testing.T) {
 	path := writeConfig(t, "mondoo.yml", "providers_url: https://mirror.example.de/providers\n")
 	require.NoError(t, os.Remove(path))
 
 	res, err := MigrateProvidersURL()
 	require.Error(t, err)
-	assert.False(t, res.Migrated, "a failed write must not be reported as a migration")
+	assert.False(t, res.Migrated, "a failed rewrite must not be reported as a migration")
 }
 
 // The migration replaces the file rather than editing in place, so the
