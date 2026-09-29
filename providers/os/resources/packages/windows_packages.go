@@ -171,7 +171,7 @@ $roots | Where-Object { Test-Path $_.Path } | ForEach-Object {
     $scope = $_.Scope
     $sid = $_.Sid
     Get-ItemProperty $_.Path -ErrorAction SilentlyContinue |
-    Select-Object -Property DisplayName,DisplayVersion,Publisher,EstimatedSize,InstallSource,UninstallString,InstallLocation,InstallDate,PSPath,
+    Select-Object -Property DisplayName,DisplayVersion,Publisher,EstimatedSize,InstallSource,UninstallString,InstallLocation,DisplayIcon,InstallDate,PSPath,
       @{Name='InstallScope';Expression={$scope}}, @{Name='InstallUser';Expression={$sid}}
 } | ConvertTo-Json -Compress
 `
@@ -525,6 +525,12 @@ func (w *WinPkgManager) getLocalInstalledApps() ([]Package, error) {
 	// under a root that knows the concrete SID HKCU could not attribute.
 	packages = mergeDedupedRegistryPackages(packages)
 
+	// Drop entries a newer registration of the same product in the same
+	// directory has superseded. See windows_superseded.go. The process runs
+	// on the scanned host, so machine-wide %VAR% references can be expanded
+	// from its own environment.
+	packages = dropSupersededUninstallEntries(packages, expandMachineEnvFromProcess)
+
 	// Google Update (Omaha) tracks the authoritative version for the
 	// products it manages (Chrome, Drive, Earth, GCPW, ...) independently of
 	// Add/Remove Programs, whose DisplayVersion can go stale. See
@@ -834,6 +840,7 @@ func (w *WinPkgManager) getProfileInstalledApps(p windowsProfile, reader nativeR
 			pkg.InstallScope = scope
 			pkg.InstallUser = user
 			pkg.regDedupKey = registryDedupKey(view, uninstallString, c.Name)
+			pkg.uninstallEvidence = uninstallEvidenceFromItems(items)
 			packages = append(packages, *pkg)
 		}
 	}
@@ -1130,6 +1137,10 @@ func (w *WinPkgManager) getFsInstalledApps() ([]Package, error) {
 		}
 	}
 
+	// No environment of the offline target to expand %VAR% references
+	// from: paths that carry one are left out of the comparison.
+	packages = dropSupersededUninstallEntries(packages, nil)
+
 	// Google Update (Omaha) tracks the authoritative version for the
 	// products it manages independently of Add/Remove Programs. See
 	// applyOmahaVersions. Read through the already-loaded SOFTWARE hive,
@@ -1239,6 +1250,9 @@ func getPackageFromRegistryKey(key registry.RegistryKeyChild, platform *inventor
 		return nil, "", err
 	}
 	pkg, uninstallString := getPackageFromRegistryKeyItems(items, platform, arch)
+	if pkg != nil {
+		pkg.uninstallEvidence = uninstallEvidenceFromItems(items)
+	}
 	return pkg, uninstallString, nil
 }
 
@@ -1520,6 +1534,9 @@ func ParseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 		EstimatedSize   int    `json:"EstimatedSize"`
 		UninstallString string `json:"UninstallString"`
 		InstallLocation string `json:"InstallLocation"`
+		// DisplayIcon is only read to locate the product's directory when
+		// InstallLocation is absent; see windows_superseded.go.
+		DisplayIcon string `json:"DisplayIcon"`
 		// InstallDate is the YYYYMMDD value set by most MSI installers.
 		// Many entries omit it (especially per-user installs and
 		// non-MSI publishers) — parseWinInstallDate returns the zero
@@ -1584,6 +1601,11 @@ func ParseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 		pkg.InstallDate = parseWinInstallDate(entry.InstallDate)
 		pkg.InstallScope = entry.InstallScope
 		pkg.InstallUser = entry.InstallUser
+		pkg.uninstallEvidence = &uninstallEvidence{
+			installLocation: entry.InstallLocation,
+			uninstallString: entry.UninstallString,
+			displayIcon:     entry.DisplayIcon,
+		}
 
 		dedupKey := registryDedupKey(registryView(entry.PSPath), entry.UninstallString, registryPathLeaf(entry.PSPath))
 		if idx, dup := seen[dedupKey]; dup {
@@ -1596,7 +1618,9 @@ func ParseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 		pkgs = append(pkgs, *pkg)
 	}
 
-	return pkgs, nil
+	// Get-ItemProperty already returns REG_EXPAND_SZ values expanded, so
+	// there is nothing left to expand here. See windows_superseded.go.
+	return dropSupersededUninstallEntries(pkgs, nil), nil
 }
 
 // registryPathLeaf returns the final path segment of a registry path or

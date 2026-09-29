@@ -94,6 +94,12 @@ type Package struct {
 	// two different roots, never serialized and never reaches the mql
 	// schema.
 	regDedupKey string
+
+	// uninstallEvidence carries the path-bearing values of the Windows
+	// Uninstall entry this package was read from (see
+	// windows_superseded.go). Unexported and cleared once
+	// dropSupersededUninstallEntries has used it; never serialized.
+	uninstallEvidence *uninstallEvidence
 }
 
 // MacOSApp describes a macOS application bundle.
