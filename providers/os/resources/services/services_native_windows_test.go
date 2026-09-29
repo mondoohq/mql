@@ -87,6 +87,7 @@ func TestNativeServicesMatchPowerShell(t *testing.T) {
 // connection returns the Service Control Manager listing rather than falling
 // back to PowerShell.
 func TestNativeServicesUsedForLocalConnection(t *testing.T) {
+	t.Setenv(windowsNativeEnvVar, "on")
 	mgr := &WindowsServiceManager{conn: local.NewConnection(0, &inventory.Config{}, &inventory.Asset{})}
 	listed, err := mgr.List()
 	require.NoError(t, err)
@@ -95,13 +96,7 @@ func TestNativeServicesUsedForLocalConnection(t *testing.T) {
 	require.Len(t, listed, len(native))
 }
 
-// sameState compares two readings of a service's state. The PowerShell path
-// reports a stopping service as stopped, so a stop-pending native reading
-// matches a stopped one.
+// sameState compares two readings of a service's state.
 func sameState(ps, native *Service) bool {
-	nativeState := native.State
-	if nativeState == ServiceStopPending && ps.State == ServiceStopped {
-		nativeState = ServiceStopped
-	}
-	return ps.State == nativeState && ps.Running == native.Running
+	return ps.State == native.State && ps.Running == native.Running
 }

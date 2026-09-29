@@ -7,6 +7,11 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/local"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -85,4 +90,39 @@ func TestNewSCMService(t *testing.T) {
 		assert.False(t, s.Enabled)
 		assert.True(t, s.Installed)
 	})
+}
+
+func TestWindowsNativeEnabled(t *testing.T) {
+	for value, want := range map[string]bool{
+		"":      false,
+		"off":   false,
+		"0":     false,
+		"false": false,
+		"yes":   false,
+		"on":    true,
+		"ON":    true,
+		" on ":  true,
+		"true":  true,
+		"1":     true,
+	} {
+		t.Setenv(windowsNativeEnvVar, value)
+		assert.Equal(t, want, windowsNativeEnabled(), "%s=%q", windowsNativeEnvVar, value)
+	}
+}
+
+// The native path is only taken when it is asked for and mql runs on the
+// Windows machine it scans. Without the variable every scan uses Get-Service,
+// which is what makes the native path safe to ship before it is proven.
+func TestUseNativeWindowsServices(t *testing.T) {
+	localConn := local.NewConnection(0, &inventory.Config{}, &inventory.Asset{})
+
+	t.Setenv(windowsNativeEnvVar, "")
+	assert.False(t, useNativeWindowsServices(localConn, "windows"), "off unless asked for")
+
+	t.Setenv(windowsNativeEnvVar, "on")
+	assert.True(t, useNativeWindowsServices(localConn, "windows"))
+	assert.False(t, useNativeWindowsServices(localConn, "linux"), "only on Windows")
+	mockConn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/alpine-container.toml"))
+	require.NoError(t, err)
+	assert.False(t, useNativeWindowsServices(mockConn, "windows"), "only on a local scan")
 }

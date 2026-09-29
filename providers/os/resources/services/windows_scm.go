@@ -3,6 +3,36 @@
 
 package services
 
+import (
+	"os"
+	"strings"
+
+	"go.mondoo.com/mql/providers/os/connection/shared"
+)
+
+// windowsNativeEnvVar switches on the native Windows code paths, which call
+// Windows APIs directly on a local scan instead of starting PowerShell. They
+// are new, so they stay off unless this is set to on, true or 1, and a scan
+// behaves exactly as before without it.
+const windowsNativeEnvVar = "MONDOO_WINDOWS_NATIVE"
+
+// windowsNativeEnabled reports whether MONDOO_WINDOWS_NATIVE is on.
+func windowsNativeEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(windowsNativeEnvVar))) {
+	case "on", "true", "1":
+		return true
+	}
+	return false
+}
+
+// useNativeWindowsServices reports whether services are listed through the
+// Service Control Manager: only when MONDOO_WINDOWS_NATIVE is on and mql runs
+// on the Windows machine it scans (goos is runtime.GOOS). Every other scan
+// uses Get-Service.
+func useNativeWindowsServices(conn shared.Connection, goos string) bool {
+	return windowsNativeEnabled() && goos == "windows" && conn.Type() == shared.Type_Local
+}
+
 // Values the Windows Service Control Manager reports for a service's
 // dwCurrentState, from SERVICE_STATUS_PROCESS:
 // https://learn.microsoft.com/en-us/windows/win32/api/winsvc/ns-winsvc-service_status_process

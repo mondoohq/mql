@@ -142,10 +142,11 @@ try { Get-CimInstance -ClassName Win32_Service -Property Name,Description -Error
 Get-Service | Select-Object -Property Status, Name, DisplayName, StartType, @{Name='Description';Expression={$d[$_.Name]}} | ConvertTo-Json`
 
 func (s *WindowsServiceManager) List() ([]*Service, error) {
-	// When mql runs on the Windows machine it scans, ask the Service Control
-	// Manager directly instead of starting PowerShell. If that fails for any
-	// service, use Get-Service for the whole list so nothing goes missing.
-	if s.conn.Type() == shared.Type_Local && runtime.GOOS == "windows" {
+	// With MONDOO_WINDOWS_NATIVE on and mql running on the Windows machine it
+	// scans, ask the Service Control Manager directly instead of starting
+	// PowerShell. If that fails for any service, use Get-Service for the whole
+	// list so nothing goes missing.
+	if useNativeWindowsServices(s.conn, runtime.GOOS) {
 		res, err := listNativeWindowsServices()
 		if err == nil {
 			return res, nil
