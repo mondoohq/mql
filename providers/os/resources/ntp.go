@@ -66,8 +66,8 @@ func (s *mqlNtpConf) id() (string, error) {
 
 func (s *mqlNtpConf) file() (*mqlFile, error) {
 	path := defaultNtpConf
-	conn := s.MqlRuntime.Connection.(shared.Connection)
-	if pf := conn.Asset().Platform; pf != nil && pf.Name == "solaris" {
+	conn, ok := s.MqlRuntime.Connection.(shared.Connection)
+	if ok && conn.Asset() != nil && conn.Asset().Platform != nil && conn.Asset().Platform.Name == "solaris" {
 		o, err := CreateResource(s.MqlRuntime, "command", map[string]*llx.RawData{
 			"command": llx.StringData(solarisNtpConfCommand),
 		})
