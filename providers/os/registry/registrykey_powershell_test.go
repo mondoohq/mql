@@ -373,6 +373,34 @@ func TestWindowsRegistryKeyItemQwordExact(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// From #8655: the numeric-kind shape older recordings still replay (kind 11,
+// no type), at the values a float64 cannot hold. The raw value and the string
+// fallback must agree with the number digit for digit.
+func TestWindowsRegistryKeyQwordPrecision(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		raw  string
+		want int64
+	}{
+		{"2^53 + 1, the first integer float64 cannot hold", "9007199254740993", 9007199254740993},
+		{"FILETIME with significant low digits", "133712345678901234", 133712345678901234},
+		{"int64 max", "9223372036854775807", 9223372036854775807},
+		{"int64 min", "-9223372036854775808", -9223372036854775808},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := `[{"key":"T","value":{"kind":11,"data":` + tc.raw + `}}]`
+
+			items, err := ParsePowershellRegistryKeyItems(strings.NewReader(data))
+			require.NoError(t, err)
+			require.Len(t, items, 1)
+
+			assert.Equal(t, tc.want, items[0].Value.Number)
+			assert.Equal(t, tc.want, items[0].GetRawValue())
+			assert.Equal(t, tc.raw, items[0].String())
+		})
+	}
+}
+
 // A byte outside 0..255 is not a REG_BINARY byte.
 func TestWindowsRegistryKeyItemBinaryOutOfRange(t *testing.T) {
 	const payload = `[{"key":"Bin","value":{"data":[1,256],"type":"REG_BINARY","kind":null}}]`
