@@ -23,6 +23,7 @@ import (
 // flattened preference field reads the same GetSecurityPreference response, so
 // querying all of them costs one call rather than one each.
 type mqlAlicloudRamInternal struct {
+	ramAccountState
 	preferenceOnce sync.Once
 	preference     *ramclient.GetSecurityPreferenceResponseBodySecurityPreference
 	preferenceErr  error

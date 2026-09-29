@@ -10,7 +10,9 @@ import (
 
 	actiontrailclient "github.com/alibabacloud-go/actiontrail-20200706/v3/client"
 	albclient "github.com/alibabacloud-go/alb-20200616/v2/client"
+	casclient "github.com/alibabacloud-go/cas-20200407/v4/client"
 	cbnclient "github.com/alibabacloud-go/cbn-20170912/v2/client"
+	cloudapiclient "github.com/alibabacloud-go/cloudapi-20160714/v5/client"
 	cloudfwclient "github.com/alibabacloud-go/cloudfw-20171207/v11/client"
 	cloudssoclient "github.com/alibabacloud-go/cloudsso-20210515/client"
 	configclient "github.com/alibabacloud-go/config-20200907/v4/client"
@@ -23,10 +25,12 @@ import (
 	esclient "github.com/alibabacloud-go/elasticsearch-20170613/v6/client"
 	essclient "github.com/alibabacloud-go/ess-20220222/v2/client"
 	fcclient "github.com/alibabacloud-go/fc-20230330/v4/client"
+	imsclient "github.com/alibabacloud-go/ims-20190815/v4/client"
 	kmsclient "github.com/alibabacloud-go/kms-20160120/v4/client"
 	nasclient "github.com/alibabacloud-go/nas-20170626/v4/client"
 	nlbclient "github.com/alibabacloud-go/nlb-20220430/v4/client"
 	polardbclient "github.com/alibabacloud-go/polardb-20170801/v9/client"
+	privatelinkclient "github.com/alibabacloud-go/privatelink-20200415/v5/client"
 	rkvclient "github.com/alibabacloud-go/r-kvstore-20150101/v7/client"
 	ramclient "github.com/alibabacloud-go/ram-20150501/v2/client"
 	rdsclient "github.com/alibabacloud-go/rds-20140815/v16/client"
@@ -45,13 +49,19 @@ import (
 
 // endpoint builds the public Alibaba Cloud service endpoint for a region. A few
 // services do not follow the usual <service>.<region>.aliyuncs.com layout: RAM,
-// ActionTrail, Resource Management, and Cloud Enterprise Network (cbn) are
+// IMS, ActionTrail, Resource Management, and Cloud Enterprise Network (cbn) are
 // global (region-less), Cloud Config is a center service reached through
-// cn-shanghai, and Log Service (SLS) puts the region ahead of a fixed log host.
+// cn-shanghai, Certificate Management Service answers its China center on the
+// bare cas host, and Log Service (SLS) puts the region ahead of a fixed log
+// host.
 func endpoint(service, region string) string {
 	switch service {
-	case "ram", "actiontrail", "resourcemanager", "cbn":
+	case "ram", "ims", "actiontrail", "resourcemanager", "cbn":
 		return service + ".aliyuncs.com"
+	case "cas":
+		if region == "cn-hangzhou" {
+			return "cas.aliyuncs.com"
+		}
 	case "config":
 		// Cloud Config is a center service; cn-shanghai serves the China and
 		// international-Alibaba partition.
@@ -88,6 +98,55 @@ func (c *AlicloudConnection) cachedClient(key string, build func() (any, error))
 	}
 	c.clients[key] = client
 	return client, nil
+}
+
+// ImsClient returns the global Identity Management Service client, which serves
+// the account-level identity settings RAM does not: root identity security,
+// identity providers, and user-based SSO. IMS has no regional endpoints.
+func (c *AlicloudConnection) ImsClient() (*imsclient.Client, error) {
+	client, err := c.cachedClient("ims", func() (any, error) {
+		return imsclient.NewClient(c.config("ims", c.region))
+	})
+	if err != nil {
+		return nil, err
+	}
+	return client.(*imsclient.Client), nil
+}
+
+// CasClient returns a Certificate Management Service client for one of the two
+// center regions. Certificates are held in the center that owns the account, so
+// callers read both.
+func (c *AlicloudConnection) CasClient(region string) (*casclient.Client, error) {
+	client, err := c.cachedClient("cas/"+region, func() (any, error) {
+		return casclient.NewClient(c.config("cas", region))
+	})
+	if err != nil {
+		return nil, err
+	}
+	return client.(*casclient.Client), nil
+}
+
+// ApiGatewayClient returns the API Gateway client for a region. The service's
+// endpoint prefix is apigateway.
+func (c *AlicloudConnection) ApiGatewayClient(region string) (*cloudapiclient.Client, error) {
+	client, err := c.cachedClient("apigateway/"+region, func() (any, error) {
+		return cloudapiclient.NewClient(c.config("apigateway", region))
+	})
+	if err != nil {
+		return nil, err
+	}
+	return client.(*cloudapiclient.Client), nil
+}
+
+// PrivateLinkClient returns the PrivateLink client for a region.
+func (c *AlicloudConnection) PrivateLinkClient(region string) (*privatelinkclient.Client, error) {
+	client, err := c.cachedClient("privatelink/"+region, func() (any, error) {
+		return privatelinkclient.NewClient(c.config("privatelink", region))
+	})
+	if err != nil {
+		return nil, err
+	}
+	return client.(*privatelinkclient.Client), nil
 }
 
 // CenClient returns the Cloud Enterprise Network client. CEN is a global

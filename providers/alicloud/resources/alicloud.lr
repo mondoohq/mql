@@ -16,7 +16,8 @@ option root = "alicloud"
 // Kubernetes, Function Compute, NAS file storage, Web Application Firewall,
 // Cloud Firewall, Anti-DDoS, Security Center, Key Management Service,
 // ActionTrail, Log Service, Cloud Config, CloudSSO, Cloud Enterprise Network,
-// and Resource Directory resources.
+// Resource Directory, API Gateway, Certificate Management Service, and
+// PrivateLink resources.
 alicloud @root {
   // Account (UID) that the active credential belongs to
   accountId() string
@@ -78,6 +79,37 @@ alicloud.ram {
   loginNetworkMasks() []string
   // Console session duration in hours before re-authentication is required
   loginSessionDuration() int
+  // Whether multi-factor authentication is enabled on the account's root identity
+  //
+  // The root identity is the Alibaba Cloud account itself rather than a RAM
+  // user. It holds every permission in the account and no policy can restrict
+  // it, so it should never sign in on a password alone.
+  rootMfaEnabled() bool
+  // Number of access keys held by the account's root identity
+  //
+  // A root access key carries every permission in the account and cannot be
+  // scoped by a policy, so any value above zero is a finding. Programmatic
+  // access belongs to RAM users and roles.
+  rootAccessKeyCount() int
+  // SAML identity providers the account trusts for role-based single sign-on
+  //
+  // A RAM role whose trust policy names a provider can be assumed by any
+  // identity that provider asserts, so each provider extends the account's
+  // trust to an external directory.
+  samlProviders() []alicloud.ram.samlProvider
+  // OpenID Connect identity providers the account trusts for role-based single sign-on
+  //
+  // A RAM role whose trust policy names a provider can be assumed with an ID
+  // token that provider issues to one of its client IDs.
+  oidcProviders() []alicloud.ram.oidcProvider
+  // Whether user-based SAML single sign-on to RAM users is enabled
+  ssoEnabled() bool
+  // Whether RAM users signing in through user-based SSO must use the auxiliary domain
+  ssoLoginWithDomain() bool
+  // Auxiliary domain used for user-based SAML single sign-on
+  ssoAuxiliaryDomain() string
+  // Signature algorithm for SAML authentication requests under user-based SSO
+  ssoAuthnSignAlgorithm() string
 }
 
 // Resource Access Management user
@@ -194,6 +226,11 @@ alicloud.ram.accessKey {
   status string
   // Time the access key was created
   createDate time
+  // Time the access key was last used to call an API
+  //
+  // Null when the key has never been used. A key unused for months is a
+  // standing credential nobody depends on, and should be disabled or deleted.
+  lastUsedDate() time
 }
 
 // Resource Access Management user group
@@ -448,6 +485,53 @@ private alicloud.ram.passwordPolicy {
   maxLoginAttempts int
 }
 
+// RAM SAML identity provider
+//
+// An external SAML 2.0 identity provider the account trusts for role-based
+// single sign-on, keyed by samlProviderName. Any RAM role whose trust policy
+// names the provider's arn can be assumed by an identity the provider asserts.
+alicloud.ram.samlProvider @defaults("samlProviderName") {
+  // Provider name, used as the lookup key
+  samlProviderName string
+  // Alibaba Cloud Resource Name of the provider, as named in role trust policies
+  arn string
+  // Provider description
+  description string
+  // Time the provider was created
+  createDate time
+  // Time the provider was last modified
+  updateDate time
+}
+
+// RAM OpenID Connect identity provider
+//
+// An external OpenID Connect identity provider the account trusts for
+// role-based single sign-on, keyed by oidcProviderName. Exposes the issuer URL,
+// the client IDs whose ID tokens are accepted, and the certificate fingerprints
+// the issuer is verified against. A provider with no fingerprint, or a client
+// ID shared with an unrelated application, widens who can assume the roles
+// that trust it.
+alicloud.ram.oidcProvider @defaults("oidcProviderName issuerUrl") {
+  // Provider name, used as the lookup key
+  oidcProviderName string
+  // Alibaba Cloud Resource Name of the provider, as named in role trust policies
+  arn string
+  // Provider description
+  description string
+  // Issuer URL of the identity provider
+  issuerUrl string
+  // Client IDs whose ID tokens the provider accepts
+  clientIds []string
+  // Fingerprints of the issuer's HTTPS certificates
+  fingerprints []string
+  // Validity window in hours within which an accepted ID token must have been issued
+  issuanceLimitTime int
+  // Time the provider was created
+  createDate time
+  // Time the provider was last modified
+  updateDate time
+}
+
 // Elastic Compute Service (ECS)
 //
 // Compute resources in a region, including virtual machine instances,
@@ -483,6 +567,17 @@ alicloud.ecs {
   // user data of every instance launched from it, so a weakness in a template
   // is reproduced on each new instance rather than existing on one.
   launchTemplates() []alicloud.ecs.launchTemplate
+  // Automatic snapshot policies across all enabled regions
+  //
+  // A policy decides when a disk's snapshots are taken, how long they are kept,
+  // and whether a copy is kept in another region. A disk no policy applies to
+  // has no scheduled backup.
+  autoSnapshotPolicies() []alicloud.ecs.autoSnapshotPolicy
+  // Default disk encryption setting for each enabled region
+  //
+  // With encryption by default on, every new cloud disk in the region is
+  // encrypted even when the request that created it did not ask for it.
+  diskEncryptionDefaults() []alicloud.ecs.diskEncryptionDefault
 }
 
 // Elastic Compute Service launch template
@@ -849,6 +944,75 @@ alicloud.ecs.instance @defaults("instanceId instanceName status instanceType") {
   userData() string
 }
 
+// Elastic Compute Service automatic snapshot policy
+//
+// A single automatic snapshot policy, keyed by autoSnapshotPolicyId within its
+// region. Exposes the schedule (timePoints and repeatWeekdays), how long
+// snapshots are kept, how many disks the policy applies to, and whether copies
+// are kept in other regions. For example
+// `alicloud.ecs.autoSnapshotPolicies.all(retentionDays == -1 || retentionDays >= 7)`
+// checks that every policy keeps its snapshots for at least a week.
+alicloud.ecs.autoSnapshotPolicy @defaults("name autoSnapshotPolicyId retentionDays status") {
+  // Region ID the policy resides in, for example cn-hangzhou
+  regionId string
+  // Policy ID, used as the lookup key
+  autoSnapshotPolicyId string
+  // Policy name
+  name string
+  // Policy status
+  //
+  // For example Normal or Expire.
+  status string
+  // Policy type
+  //
+  // For example Custom or System.
+  type string
+  // Hours of the day, from 0 to 23, at which snapshots are taken
+  timePoints []int
+  // Days of the week, from 1 (Monday) to 7 (Sunday), on which snapshots are taken
+  repeatWeekdays []int
+  // Days snapshots are kept, or -1 when they are kept until deleted
+  retentionDays int
+  // Number of disks the policy applies to
+  diskCount int
+  // Number of extended volumes the policy applies to
+  volumeCount int
+  // Whether snapshots are also copied to other regions
+  crossRegionCopyEnabled bool
+  // Regions snapshots are copied to
+  targetCopyRegions []string
+  // Days copied snapshots are kept in the target regions, or -1 when they are kept until deleted
+  copiedSnapshotsRetentionDays int
+  // Whether copied snapshots are encrypted in the target regions
+  copyEncrypted bool
+  // Time the policy was created
+  creationTime time
+  // Resource group ID of the policy
+  resourceGroupId string
+  // Resource group the policy belongs to
+  resourceGroup() alicloud.resourceManager.resourceGroup
+  // Tags on the policy, as key-value pairs
+  tags map[string]string
+}
+
+// Elastic Compute Service default disk encryption setting
+//
+// Whether cloud disks in one region are encrypted by default, keyed by
+// regionId, and the KMS key new disks are encrypted with when the request
+// names none. For example
+// `alicloud.ecs.diskEncryptionDefaults.all(enabled)` checks that encryption by
+// default is on in every enabled region.
+alicloud.ecs.diskEncryptionDefault @defaults("regionId enabled") {
+  // Region ID, for example cn-hangzhou
+  regionId string
+  // Whether new cloud disks in the region are encrypted by default
+  enabled bool
+  // KMS key new disks are encrypted with when the request names none
+  //
+  // Null when the region uses the service-managed default key.
+  kmsKey() alicloud.kms.key
+}
+
 // Elastic Compute Service disk
 //
 // A single block-storage disk (cloud disk or local disk), keyed by the
@@ -921,6 +1085,10 @@ alicloud.ecs.disk @defaults("diskId diskName category size status") {
   // encrypted disk with an unencrypted snapshot has its contents readable
   // outside the protection the disk itself has.
   snapshots() []alicloud.ecs.snapshot
+  // Automatic snapshot policy applied to the disk
+  //
+  // Null when no policy applies, in which case the disk has no scheduled backup.
+  autoSnapshotPolicy() alicloud.ecs.autoSnapshotPolicy
 }
 
 // Elastic Compute Service image
@@ -8769,4 +8937,346 @@ alicloud.es.instance @defaults("description instanceId esVersion status") {
   // Index names or patterns included in each automatic snapshot. Null when the
   // snapshot setting names no indices.
   snapshotIndices() []string
+}
+
+// Alibaba Cloud API Gateway
+//
+// API groups published through API Gateway in every enabled region, and the
+// APIs each group serves. Reports how each API authenticates its callers,
+// whether it answers on the internet, and the HTTPS policy and custom domains
+// of the group that publishes it. For example
+// `alicloud.apigateway.groups { apis.none(authType == "ANONYMOUS" && visibility == "PUBLIC") }`
+// finds groups serving public APIs that anyone can call.
+alicloud.apigateway {
+  // API groups across all enabled regions
+  groups() []alicloud.apigateway.group
+}
+
+// API Gateway API group
+//
+// A single API group, keyed by groupId within its region. Exposes the group's
+// HTTPS security policy, the default and VPC domains it answers on, the custom
+// domains bound to it with their certificates, and the APIs it serves.
+alicloud.apigateway.group @defaults("groupName groupId httpsPolicy") {
+  // Region ID the group resides in, for example cn-hangzhou
+  regionId string
+  // Group ID, used as the lookup key
+  groupId string
+  // Group name
+  groupName string
+  // Group description
+  description string
+  // Base path prepended to every API path in the group
+  basePath string
+  // HTTPS security policy, which sets the TLS versions and cipher suites the group accepts
+  //
+  // For example HTTPS2_TLS1_2 accepts TLS 1.2 and later only, while a policy
+  // ending in TLS1_0 still accepts TLS 1.0.
+  httpsPolicy string
+  // Default second-level domain assigned to the group
+  subDomain string
+  // ID of the API Gateway instance that hosts the group
+  instanceId string
+  // Type of the hosting instance, for example VPC_SHARED or VPC_DEDICATED
+  instanceType string
+  // Maximum requests per second the group accepts
+  trafficLimit int
+  // Content compliance status of the group, for example NORMAL or LOCKED
+  illegalStatus string
+  // Billing status of the group, for example NORMAL or LOCKED
+  billingStatus string
+  // Time the group was created
+  createdTime time
+  // Time the group was last modified
+  modifiedTime time
+  // Tags on the group, as key-value pairs
+  tags map[string]string
+  // Group status
+  status() string
+  // Second-level domain the group answers on inside a VPC
+  vpcDomain() string
+  // Whether the default second-level domain is disabled
+  //
+  // When false, the group's APIs stay reachable on the service-assigned domain
+  // in addition to any custom domain.
+  innerDomainDisabled() bool
+  // Custom domains bound to the group
+  customDomains() []alicloud.apigateway.customDomain
+  // APIs defined in the group
+  apis() []alicloud.apigateway.api
+}
+
+// API Gateway custom domain
+//
+// A custom domain bound to an API group, keyed by domainName within the group.
+// Exposes the SSL certificate the domain serves and its validity window, and
+// whether plain HTTP requests are redirected to HTTPS.
+alicloud.apigateway.customDomain @defaults("domainName bindingStatus certificateName") {
+  // Domain name
+  domainName string
+  // Domain type, for example INTERNET or INTRANET
+  domainType string
+  // Binding status of the domain, for example BINDING or BOUND
+  bindingStatus string
+  // Stage the domain is bound to, for example RELEASE
+  stageName string
+  // Name of the SSL certificate the domain serves
+  certificateName string
+  // Start of the certificate's validity window
+  certificateValidFrom time
+  // End of the certificate's validity window
+  certificateValidUntil time
+  // Whether plain HTTP requests are redirected to HTTPS
+  httpRedirectToHttps bool
+}
+
+// API Gateway API
+//
+// A single API, keyed by apiId within its group. Exposes the request method and
+// path, whether the API is public or private, the stages it is deployed to,
+// and, from the API's definition, how callers are authenticated and whether
+// the API answers on the internet.
+alicloud.apigateway.api @defaults("apiName apiId visibility") {
+  // Region ID the API resides in, for example cn-hangzhou
+  regionId string
+  // API ID, used as the lookup key
+  apiId string
+  // API name
+  apiName string
+  // API description
+  description string
+  // HTTP method callers use, for example GET
+  apiMethod string
+  // Request path callers use
+  apiPath string
+  // Visibility of the API
+  //
+  // PUBLIC APIs can be listed and authorized for any caller. PRIVATE APIs can
+  // be called only by applications the owner authorizes.
+  visibility string
+  // Stages the API is deployed to, for example RELEASE, PRE, and TEST
+  deployedStages []string
+  // Time the API was created
+  createdTime time
+  // Time the API was last modified
+  modifiedTime time
+  // Group that serves the API
+  group() alicloud.apigateway.group
+  // How callers are authenticated
+  //
+  // APP requires a signed request from an authorized application, APPOPENID
+  // requires an OpenID Connect ID token, and ANONYMOUS lets anyone call the
+  // API without identifying themselves.
+  authType() string
+  // How an application may present its AppCode, for example HEADER or DEFAULT
+  appCodeAuthType() string
+  // Signature algorithm accepted for application requests, for example HmacSHA256
+  allowSignatureMethod() string
+  // Whether each request must carry a nonce, which blocks replayed requests
+  forceNonceCheck() bool
+  // Whether the API is unreachable from the internet
+  internetDisabled() bool
+  // Protocols callers may use, for example HTTP, HTTPS, or HTTP,HTTPS
+  requestProtocol() string
+  // Protocol used to reach the backend service, for example HTTP or FunctionCompute
+  backendProtocol() string
+  // Whether the backend service is reached through a VPC connection
+  backendVpcEnabled() bool
+}
+
+// Alibaba Cloud Certificate Management Service
+//
+// SSL certificates held in the account, both issued through the service and
+// uploaded to it. For example
+// `alicloud.cas.certificates.all(notAfter > time.now + 30 * time.day)` checks
+// that no certificate expires within the next 30 days.
+alicloud.cas {
+  // SSL certificates held in the account
+  certificates() []alicloud.cas.certificate
+}
+
+// SSL certificate
+//
+// A single SSL certificate, keyed by certificateId. Exposes the subject names
+// the certificate covers, the issuing authority, its validity window and
+// expiry state, and whether it was uploaded rather than issued through the
+// service.
+alicloud.cas.certificate @defaults("name commonName notAfter") {
+  // Certificate ID, used as the lookup key
+  certificateId int
+  // Certificate name
+  name string
+  // Common name in the certificate subject
+  commonName string
+  // Every domain name the certificate covers
+  subjectAlternativeNames []string
+  // Certificate authority that issued the certificate
+  issuer string
+  // Key algorithm, for example RSA or ECC
+  algorithm string
+  // Certificate fingerprint
+  fingerprint string
+  // Certificate serial number
+  serialNumber string
+  // Date the certificate becomes valid
+  notBefore time
+  // Date the certificate expires
+  notAfter time
+  // Whether the certificate has expired
+  expired bool
+  // Certificate status
+  status string
+  // Whether the certificate was uploaded rather than issued through the service
+  uploaded bool
+  // Resource group ID of the certificate
+  resourceGroupId string
+  // Resource group the certificate belongs to
+  resourceGroup() alicloud.resourceManager.resourceGroup
+}
+
+// Alibaba Cloud PrivateLink
+//
+// Endpoint services the account publishes to other VPCs and accounts, and the
+// endpoints through which the account's own VPCs reach services. For example
+// `alicloud.privatelink.endpointServices.none(autoAcceptEnabled)` checks that
+// no service accepts connections without review.
+alicloud.privatelink {
+  // Endpoint services published by the account across all enabled regions
+  endpointServices() []alicloud.privatelink.endpointService
+  // Endpoints in the account's VPCs across all enabled regions
+  endpoints() []alicloud.privatelink.endpoint
+}
+
+// PrivateLink endpoint service
+//
+// A service the account publishes for private access from other VPCs, keyed by
+// serviceId within its region. Exposes whether connection requests are accepted
+// automatically, the accounts and principals allowed to connect, and the
+// endpoints connected to it, including those in other accounts.
+alicloud.privatelink.endpointService @defaults("serviceName serviceId autoAcceptEnabled") {
+  // Region ID the service resides in, for example cn-hangzhou
+  regionId string
+  // Service ID, used as the lookup key
+  serviceId string
+  // Service name that consumers connect to
+  serviceName string
+  // Service description
+  description string
+  // Service type, for example Interface or Reverse
+  serviceType string
+  // Type of the backend resource serving the service, for example slb, alb, or nlb
+  serviceResourceType string
+  // Domain name of the service
+  serviceDomain string
+  // Service status, for example Active
+  serviceStatus string
+  // Business status of the service, for example Normal or FinancialLocked
+  serviceBusinessStatus string
+  // Whether connection requests are accepted without review
+  //
+  // With automatic acceptance, any account on the allowlist connects as soon as
+  // it creates an endpoint, with no approval by the service owner.
+  autoAcceptEnabled bool
+  // Whether a connection resolves to the backend in the caller's own zone first
+  zoneAffinityEnabled bool
+  // Party billed for the service traffic, Endpoint or EndpointService
+  payer string
+  // IP version the service accepts, for example IPv4 or DualStack
+  addressIpVersion string
+  // Time the service was created
+  createTime time
+  // Resource group ID of the service
+  resourceGroupId string
+  // Resource group the service belongs to
+  resourceGroup() alicloud.resourceManager.resourceGroup
+  // Tags on the service, as key-value pairs
+  tags map[string]string
+  // Alibaba Cloud account IDs allowed to connect to the service
+  allowedAccountIds() []string
+  // RAM principal ARNs allowed to connect to the service
+  allowedPrincipalArns() []string
+  // Endpoint connections to the service
+  connections() []alicloud.privatelink.endpointConnection
+}
+
+// PrivateLink endpoint connection
+//
+// A connection from one endpoint to an endpoint service, keyed by endpointId
+// within the service. Exposes the account and VPC that own the endpoint, which
+// may belong to another account, and whether the connection is accepted.
+alicloud.privatelink.endpointConnection @defaults("endpointId endpointOwnerId connectionStatus") {
+  // Endpoint ID
+  endpointId string
+  // Alibaba Cloud account ID that owns the endpoint
+  endpointOwnerId string
+  // Region ID of the endpoint
+  endpointRegionId string
+  // VPC ID of the endpoint, which may belong to another account
+  endpointVpcId string
+  // Connection status, for example Connected, Pending, or Disconnected
+  connectionStatus string
+  // Connection bandwidth in Mbit/s
+  bandwidth int
+  // Time the connection was last modified
+  modifiedTime time
+}
+
+// PrivateLink endpoint
+//
+// An endpoint in one of the account's VPCs, keyed by endpointId within its
+// region. Exposes the service the endpoint reaches, the endpoint policy that
+// limits what it may be used for, and the security groups that filter its
+// traffic.
+alicloud.privatelink.endpoint @defaults("endpointName endpointId serviceName endpointStatus") {
+  // Region ID the endpoint resides in, for example cn-hangzhou
+  regionId string
+  // Endpoint ID, used as the lookup key
+  endpointId string
+  // Endpoint name
+  endpointName string
+  // Endpoint description
+  description string
+  // Endpoint type, for example Interface or Reverse
+  endpointType string
+  // Endpoint status, for example Active
+  endpointStatus string
+  // Business status of the endpoint, for example Normal or FinancialLocked
+  endpointBusinessStatus string
+  // Connection status, for example Connected, Pending, or Disconnected
+  connectionStatus string
+  // Domain name of the endpoint
+  endpointDomain string
+  // ID of the endpoint service the endpoint connects to
+  serviceId string
+  // Name of the endpoint service the endpoint connects to
+  serviceName string
+  // Region ID of the endpoint service
+  serviceRegionId string
+  // Endpoint service the endpoint connects to
+  //
+  // Null when the service is published by another account or by Alibaba Cloud.
+  endpointService() alicloud.privatelink.endpointService
+  // VPC the endpoint resides in
+  vpc() alicloud.vpc.network
+  // Endpoint policy document
+  //
+  // A RAM policy that limits the principals and actions allowed through the
+  // endpoint. A policy allowing every principal every action places no limit.
+  policyDocument string
+  // Whether a connection resolves to the service in the endpoint's own zone first
+  zoneAffinityEnabled bool
+  // Whether managed protection is on, so only the creator can modify or delete the endpoint through STS
+  protectedEnabled bool
+  // IP version the endpoint uses, for example IPv4 or DualStack
+  addressIpVersion string
+  // Time the endpoint was created
+  createTime time
+  // Resource group ID of the endpoint
+  resourceGroupId string
+  // Resource group the endpoint belongs to
+  resourceGroup() alicloud.resourceManager.resourceGroup
+  // Tags on the endpoint, as key-value pairs
+  tags map[string]string
+  // Security groups that filter the endpoint's traffic
+  securityGroups() []alicloud.ecs.securitygroup
 }

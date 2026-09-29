@@ -97,9 +97,10 @@ type mqlAlicloudEcsInstanceInternal struct {
 // mqlAlicloudEcsDiskInternal caches the identifiers needed to resolve the
 // disk's typed instance and KMS key references without a repeat API call.
 type mqlAlicloudEcsDiskInternal struct {
-	cacheRegion     string
-	cacheInstanceID string
-	cacheKmsKeyID   string
+	cacheRegion               string
+	cacheInstanceID           string
+	cacheKmsKeyID             string
+	cacheAutoSnapshotPolicyID string
 }
 
 // mqlAlicloudEcsSecuritygroupPermissionInternal caches the identifiers needed
@@ -610,6 +611,7 @@ func (r *mqlAlicloudEcs) disks() ([]any, error) {
 				mqlDisk.cacheRegion = region
 				mqlDisk.cacheInstanceID = strDeref(disk.InstanceId)
 				mqlDisk.cacheKmsKeyID = strDeref(disk.KMSKeyId)
+				mqlDisk.cacheAutoSnapshotPolicyID = strDeref(disk.AutoSnapshotPolicyId)
 				res = append(res, mqlDisk)
 			}
 

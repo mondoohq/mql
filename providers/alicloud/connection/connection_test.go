@@ -81,6 +81,21 @@ func TestEndpoint(t *testing.T) {
 		assert.Equal(t, "resourcemanager.aliyuncs.com", endpoint("resourcemanager", "ap-southeast-1"))
 	})
 
+	t.Run("IMS is global", func(t *testing.T) {
+		assert.Equal(t, "ims.aliyuncs.com", endpoint("ims", "cn-hangzhou"))
+		assert.Equal(t, "ims.aliyuncs.com", endpoint("ims", "ap-southeast-1"))
+	})
+
+	t.Run("Certificate Management Service answers its China center on the bare host", func(t *testing.T) {
+		assert.Equal(t, "cas.aliyuncs.com", endpoint("cas", "cn-hangzhou"))
+		assert.Equal(t, "cas.ap-southeast-1.aliyuncs.com", endpoint("cas", "ap-southeast-1"))
+	})
+
+	t.Run("API Gateway and PrivateLink follow the usual layout", func(t *testing.T) {
+		assert.Equal(t, "apigateway.cn-beijing.aliyuncs.com", endpoint("apigateway", "cn-beijing"))
+		assert.Equal(t, "privatelink.eu-central-1.aliyuncs.com", endpoint("privatelink", "eu-central-1"))
+	})
+
 	t.Run("Cloud Enterprise Network is global", func(t *testing.T) {
 		// CEN spans regions by design, so its endpoint carries none. Falling
 		// back to the usual layout would address a host that does not serve it.
