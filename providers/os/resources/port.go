@@ -13,6 +13,7 @@ import (
 	"net/netip"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,6 +38,11 @@ func (p *mqlPorts) list() ([]any, error) {
 	pf := conn.Asset().Platform
 
 	switch {
+	// Solaris 11.4 ships /etc/os-release and is detected into the linux
+	// family, so it must be matched by name before the family test sends it
+	// to /proc/net/tcp, which Solaris does not have.
+	case pf.Name == "solaris":
+		return p.listSolaris()
 	case pf.IsFamily("linux"):
 		return p.listLinux()
 	case pf.IsFamily("windows"):
@@ -900,6 +906,130 @@ func (p *mqlPorts) parseAixPorts(r io.Reader) ([]any, error) {
 		// leaving the lazy process() accessor to be called per row.
 		portObj := obj.(*mqlPort)
 		portObj.Process.State = plugin.StateIsSet | plugin.StateIsNull
+
+		res = append(res, obj)
+	}
+
+	return res, nil
+}
+
+// Solaris Implementation
+
+// Solaris netstat state tokens mapped onto the canonical TCP_STATES vocabulary.
+// A socket bound to a port but neither listening nor connected reads "close",
+// which is how Linux reports the same socket. UDP follows the FreeBSD mapping:
+// an unconnected socket is "close", a connected one "established".
+var solarisPortStates = map[string]string{
+	"LISTEN":       TCP_STATES[10],
+	"ESTABLISHED":  TCP_STATES[1],
+	"SYN_SENT":     TCP_STATES[2],
+	"SYN_RECEIVED": TCP_STATES[3],
+	"FIN_WAIT_1":   TCP_STATES[4],
+	"FIN_WAIT_2":   TCP_STATES[5],
+	"TIME_WAIT":    TCP_STATES[6],
+	"CLOSED":       TCP_STATES[7],
+	"BOUND":        TCP_STATES[7],
+	"CLOSE_WAIT":   TCP_STATES[8],
+	"LAST_ACK":     TCP_STATES[9],
+	"CLOSING":      TCP_STATES[11],
+	"Idle":         TCP_STATES[7],
+	"Connected":    TCP_STATES[1],
+}
+
+// solarisPortState translates one Solaris netstat state token. Anything
+// unrecognised passes through unchanged rather than reading as no state.
+func solarisPortState(raw string) string {
+	if state, ok := solarisPortStates[raw]; ok {
+		return state
+	}
+	return raw
+}
+
+// listSolaris reads sockets from netstat. Solaris 11.2 and later accept -u,
+// which adds the owning user and pid to every row; older releases reject it
+// and the plain listing still carries every socket, only without an owner.
+func (p *mqlPorts) listSolaris() ([]any, error) {
+	conn := p.MqlRuntime.Connection.(shared.Connection)
+
+	var executedCmd *shared.Command
+	var err error
+	for _, cmd := range []string{"netstat -anu", "netstat -an"} {
+		executedCmd, err = conn.RunCommand(cmd)
+		if err != nil {
+			return nil, err
+		}
+		if executedCmd.ExitStatus == 0 {
+			break
+		}
+	}
+	if executedCmd.ExitStatus != 0 {
+		stderr, _ := io.ReadAll(executedCmd.Stderr)
+		return nil, errors.New("failed to retrieve network connections: " + string(stderr))
+	}
+
+	entries, err := ports.ParseSolarisNetstat(executedCmd.Stdout)
+	if err != nil {
+		return nil, err
+	}
+
+	// Only the -u listing names owners; without it there is nothing to join
+	// against, so users and processes are not loaded.
+	var usersByName map[string]*mqlUser
+	var processes map[int64]*mqlProcess
+	if slices.ContainsFunc(entries, func(e ports.SolarisPort) bool { return e.Pid > 0 }) {
+		usersObj, err := CreateResource(p.MqlRuntime, "users", map[string]*llx.RawData{})
+		if err != nil {
+			return nil, err
+		}
+		allUsers := usersObj.(*mqlUsers)
+		if err := allUsers.refreshCache(nil); err != nil {
+			return nil, err
+		}
+		usersByName = allUsers.usersByName
+
+		processes, err = p.processesByPid()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	res := []any{}
+	for i := range entries {
+		entry := entries[i]
+
+		args := map[string]*llx.RawData{
+			"protocol":      llx.StringData(entry.Protocol),
+			"port":          llx.IntData(entry.LocalPort),
+			"address":       llx.StringData(entry.LocalAddress),
+			"state":         llx.StringData(solarisPortState(entry.State)),
+			"remoteAddress": llx.StringData(entry.RemoteAddress),
+			"remotePort":    llx.IntData(entry.RemotePort),
+		}
+
+		mqlUser := usersByName[entry.User]
+		if mqlUser != nil {
+			args["user"] = llx.ResourceData(mqlUser, "user")
+		}
+		var mqlProcess *mqlProcess
+		if entry.Pid > 0 {
+			mqlProcess = processes[entry.Pid]
+		}
+		if mqlProcess != nil {
+			args["process"] = llx.ResourceData(mqlProcess, "process")
+		}
+
+		obj, err := CreateResource(p.MqlRuntime, "port", args)
+		if err != nil {
+			return nil, err
+		}
+
+		portObj := obj.(*mqlPort)
+		if mqlProcess == nil {
+			portObj.Process.State = plugin.StateIsSet | plugin.StateIsNull
+		}
+		if mqlUser == nil {
+			portObj.User.State = plugin.StateIsSet | plugin.StateIsNull
+		}
 
 		res = append(res, obj)
 	}

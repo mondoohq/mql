@@ -1,0 +1,81 @@
+
+UDP: IPv4
+   Local Address        Remote Address      State      Send Buf     TxOverflows     Recv Buf     RxOverflows
+-------------------- -------------------- ---------- ------------ --------------- ------------ ---------------
+      *.*                                 Unbound           57344               0        57344               0 
+      *.*                                 Unbound           57344               0        57344               0 
+      *.*                                 Unbound           57344               0        57344               0 
+      *.*                                 Unbound           57344               0        57344               0 
+      *.*                                 Unbound           57344               0        57344               0 
+      *.*                                 Unbound           57344               0        57344               0 
+      *.68                                Idle              57344               0        57344               0 
+      *.546                               Idle              57344               0        57344               0 
+10.77.1.190.68                            Idle              57344               0        57344               0 
+      *.*                                 Unbound           57344               0        57344               0 
+      *.*                                 Unbound           57344               0        57344               0 
+      *.123                               Idle              57344               0        57344               0 
+      *.123                               Idle              57344               0        57344               0 
+127.0.0.1.123                             Idle              57344               0        57344               0 
+10.77.1.190.123                           Idle              57344               0        57344               0 
+      *.111                               Idle              57344               0        57344               0 
+      *.*                                 Unbound           57344               0        57344               0 
+      *.53791                             Idle              57344               0        57344               0 
+      *.111                               Idle              57344               0        57344               0 
+      *.*                                 Unbound           57344               0        57344               0 
+      *.34782                             Idle              57344               0        57344               0 
+
+UDP: IPv6
+   Local Address                     Remote Address                   State      If    Send Buf     TxOverflows     Recv Buf     RxOverflows
+--------------------------------- --------------------------------- ---------- ----- ------------ --------------- ------------ ---------------
+      *.*                                                           Unbound                 57344               0        57344               0 
+      *.*                                                           Unbound                 57344               0        57344               0 
+      *.*                                                           Unbound                 57344               0        57344               0 
+      *.546                                                         Idle                    57344               0        57344               0 
+      *.*                                                           Unbound                 57344               0        57344               0 
+      *.123                                                         Idle                    57344               0        57344               0 
+::1.123                                                             Idle                    57344               0        57344               0 
+      *.111                                                         Idle                    57344               0        57344               0 
+      *.*                                                           Unbound                 57344               0        57344               0 
+      *.53791                                                       Idle                    57344               0        57344               0 
+
+TCP: IPv4
+   Local Address        Remote Address     Swind  Send-Q  Rwind  Recv-Q    State
+-------------------- -------------------- ------- ------ ------- ------ -----------
+127.0.0.1.5999             *.*                  0      0  256000      0 LISTEN
+127.0.0.1.4999             *.*                  0      0  256000      0 LISTEN
+      *.22                 *.*                  0      0  256000      0 LISTEN
+      *.111                *.*                  0      0  256000      0 LISTEN
+      *.*                  *.*                  0      0  256000      0 IDLE
+      *.111                *.*                  0      0  256000      0 LISTEN
+      *.*                  *.*                  0      0  256000      0 IDLE
+10.77.1.190.22       203.0.113.70.50938    131072     71  256320      0 ESTABLISHED
+
+TCP: IPv6
+   Local Address                     Remote Address                  Swind  Send-Q  Rwind  Recv-Q   State      If
+--------------------------------- --------------------------------- ------- ------ ------- ------ ----------- -----
+::1.5999                                *.*                               0      0  256000      0 LISTEN      
+      *.22                              *.*                               0      0  256000      0 LISTEN      
+      *.111                             *.*                               0      0  256000      0 LISTEN      
+      *.*                               *.*                               0      0  256000      0 IDLE        
+
+Active UNIX domain sockets
+Type       Local Address                           Remote Address
+stream-ord  (socketpair)                            (socketpair)
+stream-ord  (socketpair)                            (socketpair)
+stream-ord  (socketpair)                            (socketpair)
+stream-ord /system/volatile/inetd.uds
+stream-ord /var/run/dbus/system_bus_socket
+stream-ord                                         /var/run/dbus/system_bus_socket
+stream-ord /var/run/dbus/system_bus_socket
+stream-ord                                         /var/run/dbus/system_bus_socket
+stream-ord /system/volatile/hald/dbus-0MivU6JjaM
+stream-ord                                         /system/volatile/hald/dbus-0MivU6JjaM
+stream-ord /system/volatile/hald/dbus-0MivU6JjaM
+stream-ord /system/volatile/hald/dbus-DHhPEvXPfi
+stream-ord /system/volatile/rad/radsocket-unauth
+stream-ord /system/volatile/rad/radsocket
+stream-ord /system/volatile/rad/radsocket-unauth-http
+stream-ord /system/volatile/rad/radsocket-http
+stream-ord  (socketpair)                            (socketpair)
+stream-ord  (socketpair)                            (socketpair)
+stream-ord /var/run/dbus/system_bus_socket

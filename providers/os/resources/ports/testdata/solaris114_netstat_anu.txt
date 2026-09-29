@@ -1,0 +1,81 @@
+
+UDP: IPv4
+   Local Address        Remote Address      User    Pid      Command      State       Send Buf     TxOverflows     Recv Buf     RxOverflows
+-------------------- -------------------- -------- ------ ------------- ----------  ------------ --------------- ------------ ---------------
+      *.*                                 root        105 in.mpathd      Unbound           57344               0        57344               0 
+      *.*                                 root        105 in.mpathd      Unbound           57344               0        57344               0 
+      *.*                                 root        105 in.mpathd      Unbound           57344               0        57344               0 
+      *.*                                 root        105 in.mpathd      Unbound           57344               0        57344               0 
+      *.*                                 root        298 rcm_daemon     Unbound           57344               0        57344               0 
+      *.*                                 root        298 rcm_daemon     Unbound           57344               0        57344               0 
+      *.68                                netadm      511 dhcpagent      Idle              57344               0        57344               0 
+      *.546                               netadm      511 dhcpagent      Idle              57344               0        57344               0 
+10.77.1.190.68                            netadm      511 dhcpagent      Idle              57344               0        57344               0 
+      *.*                                 root        634 nwamd          Unbound           57344               0        57344               0 
+      *.*                                 root        634 nwamd          Unbound           57344               0        57344               0 
+      *.123                               _ntp        845 ntpd           Idle              57344               0        57344               0 
+      *.123                               _ntp        845 ntpd           Idle              57344               0        57344               0 
+127.0.0.1.123                             _ntp        845 ntpd           Idle              57344               0        57344               0 
+10.77.1.190.123                           _ntp        845 ntpd           Idle              57344               0        57344               0 
+      *.111                               daemon     1066 rpcbind        Idle              57344               0        57344               0 
+      *.*                                 daemon     1066 rpcbind        Unbound           57344               0        57344               0 
+      *.53791                             daemon     1066 rpcbind        Idle              57344               0        57344               0 
+      *.111                               daemon     1066 rpcbind        Idle              57344               0        57344               0 
+      *.*                                 daemon     1066 rpcbind        Unbound           57344               0        57344               0 
+      *.34782                             daemon     1066 rpcbind        Idle              57344               0        57344               0 
+
+UDP: IPv6
+   Local Address                     Remote Address                   User    Pid      Command       State      If    Send Buf     TxOverflows     Recv Buf     RxOverflows
+--------------------------------- --------------------------------- -------- ------ -------------- ---------- ----- ------------ --------------- ------------ ---------------
+      *.*                                                           root        105 in.mpathd      Unbound                 57344               0        57344               0 
+      *.*                                                           root        105 in.mpathd      Unbound                 57344               0        57344               0 
+      *.*                                                           root        298 rcm_daemon     Unbound                 57344               0        57344               0 
+      *.546                                                         netadm      511 dhcpagent      Idle                    57344               0        57344               0 
+      *.*                                                           root        634 nwamd          Unbound                 57344               0        57344               0 
+      *.123                                                         _ntp        845 ntpd           Idle                    57344               0        57344               0 
+::1.123                                                             _ntp        845 ntpd           Idle                    57344               0        57344               0 
+      *.111                                                         daemon     1066 rpcbind        Idle                    57344               0        57344               0 
+      *.*                                                           daemon     1066 rpcbind        Unbound                 57344               0        57344               0 
+      *.53791                                                       daemon     1066 rpcbind        Idle                    57344               0        57344               0 
+
+TCP: IPv4
+   Local Address        Remote Address      User     Pid     Command     Swind  Send-Q  Rwind  Recv-Q    State
+-------------------- -------------------- -------- ------ ------------- ------- ------ ------- ------ -----------
+127.0.0.1.5999             *.*            root        105 in.mpathd           0      0  256000      0 LISTEN
+127.0.0.1.4999             *.*            netadm      511 dhcpagent           0      0  256000      0 LISTEN
+      *.22                 *.*            root        771 sshd                0      0  256000      0 LISTEN
+      *.111                *.*            daemon     1066 rpcbind             0      0  256000      0 LISTEN
+      *.*                  *.*            daemon     1066 rpcbind             0      0  256000      0 IDLE
+      *.111                *.*            daemon     1066 rpcbind             0      0  256000      0 LISTEN
+      *.*                  *.*            daemon     1066 rpcbind             0      0  256000      0 IDLE
+10.77.1.190.22       203.0.113.70.50937   root        771 sshd           131072      0  256320     36 ESTABLISHED
+
+TCP: IPv6
+   Local Address                     Remote Address                   User    Pid      Command      Swind  Send-Q  Rwind  Recv-Q   State      If
+--------------------------------- --------------------------------- -------- ------ -------------- ------- ------ ------- ------ ----------- -----
+::1.5999                                *.*                         root        105 in.mpathd            0      0  256000      0 LISTEN      
+      *.22                              *.*                         root        771 sshd                 0      0  256000      0 LISTEN      
+      *.111                             *.*                         daemon     1066 rpcbind              0      0  256000      0 LISTEN      
+      *.*                               *.*                         daemon     1066 rpcbind              0      0  256000      0 IDLE        
+
+Active UNIX domain sockets
+         Address Type       User        Pid Command                   Vnode             Conn Local Addr           Remote Addr
+ffffa70025963e78 stream-ord root       2062 sshd-session   0000000000000000 0000000000000000  (socketpair)         (socketpair)
+ffffa70025963170 stream-ord root       2059 sshd-session   0000000000000000 0000000000000000  (socketpair)         (socketpair)
+ffffa70025962468 stream-ord root       2062 sshd-session   0000000000000000 0000000000000000  (socketpair)         (socketpair)
+ffffa700259628c0 stream-ord root       1079 inetd          ffffa70029e18c80 0000000000000000 /system/volatile/inetd.uds
+ffffa700259635c8 stream-ord root        314 dbus-daemon    0000000000000000 0000000000000000 /var/run/dbus/system_bus_socket
+ffffa70025963a20 stream-ord root        880 rmvolmgr       0000000000000000 ffffa7002516a780                      /var/run/dbus/system_bus_socket
+ffffa700259642d0 stream-ord root        314 dbus-daemon    0000000000000000 0000000000000000 /var/run/dbus/system_bus_socket
+ffffa70025964728 stream-ord root        455 hald           0000000000000000 ffffa7002516a780                      /var/run/dbus/system_bus_socket
+ffffa700247f4008 stream-ord root        455 hald           0000000000000000 0000000000000000 /system/volatile/hald/dbus-0MivU6JjaM
+ffffa700247f4460 stream-ord root        458 hald-runner    0000000000000000 ffffa70025875340                      /system/volatile/hald/dbus-0MivU6JjaM
+ffffa700247f48b8 stream-ord root        455 hald           ffffa70025875340 0000000000000000 /system/volatile/hald/dbus-0MivU6JjaM
+ffffa700247f4d10 stream-ord root        455 hald           ffffa700252c0900 0000000000000000 /system/volatile/hald/dbus-DHhPEvXPfi
+ffffa700247f5168 stream-ord root        330 rad            ffffa70027730d80 0000000000000000 /system/volatile/rad/radsocket-unauth
+ffffa700247f55c0 stream-ord root        330 rad            ffffa70027703040 0000000000000000 /system/volatile/rad/radsocket
+ffffa700247f5a18 stream-ord root        330 rad            ffffa70027703240 0000000000000000 /system/volatile/rad/radsocket-unauth-http
+ffffa700247f6720 stream-ord root        330 rad            ffffa70027703440 0000000000000000 /system/volatile/rad/radsocket-http
+ffffa700247f5e70 stream-ord root        314 dbus-daemon    0000000000000000 0000000000000000  (socketpair)         (socketpair)
+ffffa700247f62c8 stream-ord root        314 dbus-daemon    0000000000000000 0000000000000000  (socketpair)         (socketpair)
+ffffa700247f6b78 stream-ord root        314 dbus-daemon    ffffa7002516a780 0000000000000000 /var/run/dbus/system_bus_socket
