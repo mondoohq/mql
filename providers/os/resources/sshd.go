@@ -510,14 +510,14 @@ func (s *mqlSshdConfig) effectiveConfigCommand() (string, error) {
 		// PowerShell. Both strip double quotes, cmd.exe does not strip single
 		// quotes, and a Windows path cannot contain a double quote.
 		if strings.EqualFold(path, windowsDefaultSshdConfig) {
-			return sshdEffectiveConfigCommand, nil
+			return command, nil
 		}
 		// Inside double quotes cmd.exe still expands %VAR% and PowerShell
 		// expands $var, $(...) and backtick escapes; & | < > stay literal.
 		if strings.ContainsAny(path, "\"%$`") {
 			return "", fmt.Errorf("cannot run sshd -T for %q: the path contains a character the Windows shell would expand", path)
 		}
-		return sshdEffectiveConfigCommand + ` -f "` + path + `"`, nil
+		return command + ` -f "` + path + `"`, nil
 	}
 	if path == defaultSshdConfig {
 		return command, nil
