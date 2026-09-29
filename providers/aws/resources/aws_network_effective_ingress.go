@@ -337,6 +337,10 @@ type mqlAwsEc2Internal struct {
 	// boolean so a group that only references itself is not counted as used.
 	securityGroupRefs    map[string][]string
 	securityGroupRefsErr error
+
+	// lockedSnapshots holds the snapshot locks of each region, read once per
+	// region and shared by every snapshot in it.
+	lockedSnapshots lockedSnapshotCache
 }
 
 // securityGroupReferences returns the map of referenced group ID to referencing

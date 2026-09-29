@@ -86,10 +86,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/macie2"
 	"github.com/aws/aws-sdk-go-v2/service/memorydb"
 	"github.com/aws/aws-sdk-go-v2/service/mq"
+	"github.com/aws/aws-sdk-go-v2/service/mwaa"
 	"github.com/aws/aws-sdk-go-v2/service/neptune"
 	"github.com/aws/aws-sdk-go-v2/service/neptunegraph"
 	"github.com/aws/aws-sdk-go-v2/service/networkfirewall"
 	"github.com/aws/aws-sdk-go-v2/service/opensearch"
+	"github.com/aws/aws-sdk-go-v2/service/opensearchserverless"
 	"github.com/aws/aws-sdk-go-v2/service/organizations"
 	"github.com/aws/aws-sdk-go-v2/service/personalize"
 	"github.com/aws/aws-sdk-go-v2/service/pipes"
@@ -97,6 +99,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ram"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	"github.com/aws/aws-sdk-go-v2/service/redshift"
+	"github.com/aws/aws-sdk-go-v2/service/redshiftserverless"
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	"github.com/aws/aws-sdk-go-v2/service/route53domains"
 	"github.com/aws/aws-sdk-go-v2/service/route53resolver"
@@ -403,6 +406,18 @@ func (t *AwsConnection) TimestreamLiveAnalytics(region string) *timestreamwrite.
 
 func (t *AwsConnection) Dsql(region string) *dsql.Client {
 	return regionalClient(t, "dsql", region, dsql.NewFromConfig)
+}
+
+func (t *AwsConnection) OpenSearchServerless(region string) *opensearchserverless.Client {
+	return regionalClient(t, "opensearchserverless", region, opensearchserverless.NewFromConfig)
+}
+
+func (t *AwsConnection) RedshiftServerless(region string) *redshiftserverless.Client {
+	return regionalClient(t, "redshiftserverless", region, redshiftserverless.NewFromConfig)
+}
+
+func (t *AwsConnection) Mwaa(region string) *mwaa.Client {
+	return regionalClient(t, "mwaa", region, mwaa.NewFromConfig)
 }
 
 func (t *AwsConnection) NeptuneGraph(region string) *neptunegraph.Client {

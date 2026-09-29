@@ -1353,6 +1353,20 @@ func (a *mqlAwsS3Bucket) kmsKey() (*mqlAwsKmsKey, error) {
 	return mqlKey.(*mqlAwsKmsKey), nil
 }
 
+// s3BlockedEncryptionTypes lists the encryption types a rule blocks, or nil
+// when S3 reported no setting for the rule, so an unreported setting reads as
+// null rather than as nothing blocked.
+func s3BlockedEncryptionTypes(blocked *s3types.BlockedEncryptionTypes) []any {
+	if blocked == nil {
+		return nil
+	}
+	res := make([]any, 0, len(blocked.EncryptionType))
+	for _, t := range blocked.EncryptionType {
+		res = append(res, string(t))
+	}
+	return res
+}
+
 func (a *mqlAwsS3Bucket) encryptionRules() ([]any, error) {
 	bucketArn := a.Arn.Data
 
@@ -1384,6 +1398,11 @@ func (a *mqlAwsS3Bucket) encryptionRules() ([]any, error) {
 			"sseAlgorithm":     llx.StringData(sseAlgorithm),
 			"kmsMasterKeyId":   llx.StringData(kmsMasterKeyId),
 			"bucketKeyEnabled": llx.BoolData(bucketKeyEnabled),
+		}
+		if blocked := s3BlockedEncryptionTypes(rule.BlockedEncryptionTypes); blocked != nil {
+			args["blockedEncryptionTypes"] = llx.ArrayData(blocked, types.String)
+		} else {
+			args["blockedEncryptionTypes"] = llx.NilData
 		}
 
 		mqlRule, err := CreateResource(a.MqlRuntime, "aws.s3.bucket.encryptionRule", args)

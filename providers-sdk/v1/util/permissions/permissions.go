@@ -341,6 +341,9 @@ var awsServiceNameOverrides = map[string]string{
 	"eventbridge":              "events",
 	"sfn":                      "states",
 	"ssoadmin":                 "sso",
+	"opensearchserverless":     "aoss",
+	"redshiftserverless":       "redshift-serverless",
+	"mwaa":                     "airflow",
 }
 
 // awsPermissionOverrides maps a generated "service:Action" permission to the
@@ -370,6 +373,7 @@ var awsPermissionOverrides = map[string]string{
 	"apigateway:GetApis":              "apigateway:GET",
 	"apigateway:GetAuthorizers":       "apigateway:GET",
 	"apigateway:GetDeployments":       "apigateway:GET",
+	"apigateway:GetResources":         "apigateway:GET",
 	"apigateway:GetDomainNames":       "apigateway:GET",
 	"apigateway:GetRequestValidators": "apigateway:GET",
 	"apigateway:GetRestApis":          "apigateway:GET",
@@ -714,6 +718,9 @@ func awsConnectionMethodToService(method string) string {
 		"qbusiness":                "qbusiness",
 		"bedrockagentcorecontrol":  "bedrockagentcorecontrol",
 		"personalize":              "personalize",
+		"opensearchserverless":     "opensearchserverless",
+		"redshiftserverless":       "redshiftserverless",
+		"mwaa":                     "mwaa",
 	}
 	if svc, ok := knownMethods[lower]; ok {
 		return svc

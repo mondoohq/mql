@@ -3086,6 +3086,7 @@ func (a *mqlAwsEc2) getSnapshots(conn *connection.AwsConnection) []*jobpool.Job 
 
 type mqlAwsEc2SnapshotInternal struct {
 	cacheKmsKeyId *string
+	snapshotLock  snapshotLockState
 
 	cvpOnce   sync.Once
 	cvp       []ec2types.CreateVolumePermission

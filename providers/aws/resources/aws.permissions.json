@@ -1,12 +1,13 @@
 {
   "provider": "aws",
-  "version": "14.0.1",
-  "generated_at": "2026-09-28T14:56:59-07:00",
+  "version": "14.1.0",
+  "generated_at": "2026-09-28T21:39:52-07:00",
   "permissions": [
     "access-analyzer:GetFindingV2",
     "access-analyzer:ListAnalyzers",
     "access-analyzer:ListArchiveRules",
     "access-analyzer:ListFindings",
+    "access-analyzer:ValidatePolicy",
     "account:GetAlternateContact",
     "account:GetContactInformation",
     "account:ListRegions",
@@ -15,6 +16,15 @@
     "acm:GetCertificate",
     "acm:ListCertificates",
     "acm:ListTagsForCertificate",
+    "airflow:GetEnvironment",
+    "airflow:ListEnvironments",
+    "aoss:BatchGetCollection",
+    "aoss:GetAccessPolicy",
+    "aoss:GetSecurityPolicy",
+    "aoss:ListAccessPolicies",
+    "aoss:ListCollections",
+    "aoss:ListSecurityPolicies",
+    "aoss:ListTagsForResource",
     "apigateway:GET",
     "appflow:DescribeConnectorProfiles",
     "appflow:DescribeFlow",
@@ -68,6 +78,7 @@
     "autoscaling:DescribeAutoScalingGroups",
     "autoscaling:DescribeLaunchConfigurations",
     "backup:DescribeBackupVault",
+    "backup:DescribeGlobalSettings",
     "backup:DescribeRecoveryPoint",
     "backup:GetBackupPlan",
     "backup:GetBackupSelection",
@@ -77,6 +88,7 @@
     "backup:ListBackupPlans",
     "backup:ListBackupSelections",
     "backup:ListBackupVaults",
+    "backup:ListLegalHolds",
     "backup:ListRecoveryPointsByBackupVault",
     "backup:ListScanJobs",
     "backup:ListTags",
@@ -315,6 +327,7 @@
     "ec2:DescribeKeyPairs",
     "ec2:DescribeLaunchTemplateVersions",
     "ec2:DescribeLaunchTemplates",
+    "ec2:DescribeLockedSnapshots",
     "ec2:DescribeManagedPrefixLists",
     "ec2:DescribeNatGateways",
     "ec2:DescribeNetworkAcls",
@@ -360,6 +373,8 @@
     "ec2:GetSnapshotBlockPublicAccessState",
     "ec2:GetTransitGatewayRouteTableAssociations",
     "ec2:GetTransitGatewayRouteTablePropagations",
+    "ec2:GetVerifiedAccessEndpointPolicy",
+    "ec2:GetVerifiedAccessGroupPolicy",
     "ec2:SearchTransitGatewayRoutes",
     "ecr-public:DescribeImages",
     "ecr-public:DescribeRepositories",
@@ -369,11 +384,15 @@
     "ecr:BatchGetRepositoryScanningConfiguration",
     "ecr:DescribeImageScanFindings",
     "ecr:DescribeImages",
+    "ecr:DescribePullThroughCacheRules",
     "ecr:DescribeRegistry",
     "ecr:DescribeRepositories",
+    "ecr:DescribeRepositoryCreationTemplates",
     "ecr:GetLifecyclePolicy",
+    "ecr:GetRegistryPolicy",
     "ecr:GetRegistryScanningConfiguration",
     "ecr:GetRepositoryPolicy",
+    "ecr:GetSigningConfiguration",
     "ecr:ListTagsForResource",
     "ecs:DescribeCapacityProviders",
     "ecs:DescribeClusters",
@@ -756,6 +775,9 @@
     "rds:DescribeOptionGroups",
     "rds:DescribePendingMaintenanceActions",
     "rds:ListTagsForResource",
+    "redshift-serverless:ListNamespaces",
+    "redshift-serverless:ListTagsForResource",
+    "redshift-serverless:ListWorkgroups",
     "redshift:DescribeClusterParameters",
     "redshift:DescribeClusterSnapshots",
     "redshift:DescribeClusterSubnetGroups",
@@ -1089,6 +1111,12 @@
       "source_file": "aws_iam_accessanalyzer.go"
     },
     {
+      "permission": "access-analyzer:ValidatePolicy",
+      "service": "access-analyzer",
+      "action": "ValidatePolicy",
+      "source_file": "aws_iam_policy_validation.go"
+    },
+    {
       "permission": "account:GetAlternateContact",
       "service": "account",
       "action": "GetAlternateContact",
@@ -1137,10 +1165,70 @@
       "source_file": "aws_acm.go"
     },
     {
+      "permission": "airflow:GetEnvironment",
+      "service": "airflow",
+      "action": "GetEnvironment",
+      "source_file": "aws_mwaa.go"
+    },
+    {
+      "permission": "airflow:ListEnvironments",
+      "service": "airflow",
+      "action": "ListEnvironments",
+      "source_file": "aws_mwaa.go"
+    },
+    {
+      "permission": "aoss:BatchGetCollection",
+      "service": "aoss",
+      "action": "BatchGetCollection",
+      "source_file": "aws_opensearchserverless.go"
+    },
+    {
+      "permission": "aoss:GetAccessPolicy",
+      "service": "aoss",
+      "action": "GetAccessPolicy",
+      "source_file": "aws_opensearchserverless.go"
+    },
+    {
+      "permission": "aoss:GetSecurityPolicy",
+      "service": "aoss",
+      "action": "GetSecurityPolicy",
+      "source_file": "aws_opensearchserverless.go"
+    },
+    {
+      "permission": "aoss:ListAccessPolicies",
+      "service": "aoss",
+      "action": "ListAccessPolicies",
+      "source_file": "aws_opensearchserverless.go"
+    },
+    {
+      "permission": "aoss:ListCollections",
+      "service": "aoss",
+      "action": "ListCollections",
+      "source_file": "aws_opensearchserverless.go"
+    },
+    {
+      "permission": "aoss:ListSecurityPolicies",
+      "service": "aoss",
+      "action": "ListSecurityPolicies",
+      "source_file": "aws_opensearchserverless.go"
+    },
+    {
+      "permission": "aoss:ListTagsForResource",
+      "service": "aoss",
+      "action": "ListTagsForResource",
+      "source_file": "aws_opensearchserverless.go"
+    },
+    {
       "permission": "apigateway:GET",
       "service": "apigateway",
       "action": "GetApiKeys",
       "source_file": "aws_apigateway.go"
+    },
+    {
+      "permission": "apigateway:GET",
+      "service": "apigateway",
+      "action": "GetResources",
+      "source_file": "aws_apigateway_methods.go"
     },
     {
       "permission": "apigateway:GET",
@@ -1464,7 +1552,19 @@
       "permission": "backup:DescribeBackupVault",
       "service": "backup",
       "action": "DescribeBackupVault",
+      "source_file": "aws_backup_settings.go"
+    },
+    {
+      "permission": "backup:DescribeBackupVault",
+      "service": "backup",
+      "action": "DescribeBackupVault",
       "source_file": "aws_backups.go"
+    },
+    {
+      "permission": "backup:DescribeGlobalSettings",
+      "service": "backup",
+      "action": "DescribeGlobalSettings",
+      "source_file": "aws_backup_settings.go"
     },
     {
       "permission": "backup:DescribeRecoveryPoint",
@@ -1519,6 +1619,12 @@
       "service": "backup",
       "action": "ListBackupVaults",
       "source_file": "aws_backups.go"
+    },
+    {
+      "permission": "backup:ListLegalHolds",
+      "service": "backup",
+      "action": "ListLegalHolds",
+      "source_file": "aws_backup_settings.go"
     },
     {
       "permission": "backup:ListRecoveryPointsByBackupVault",
@@ -2985,6 +3091,12 @@
       "source_file": "aws_ec2.go"
     },
     {
+      "permission": "ec2:DescribeLockedSnapshots",
+      "service": "ec2",
+      "action": "DescribeLockedSnapshots",
+      "source_file": "aws_ec2_snapshot_lock.go"
+    },
+    {
       "permission": "ec2:DescribeManagedPrefixLists",
       "service": "ec2",
       "action": "DescribeManagedPrefixLists",
@@ -3303,6 +3415,18 @@
       "source_file": "aws_ec2_transitgateway_routes.go"
     },
     {
+      "permission": "ec2:GetVerifiedAccessEndpointPolicy",
+      "service": "ec2",
+      "action": "GetVerifiedAccessEndpointPolicy",
+      "source_file": "aws_verifiedaccess_policy.go"
+    },
+    {
+      "permission": "ec2:GetVerifiedAccessGroupPolicy",
+      "service": "ec2",
+      "action": "GetVerifiedAccessGroupPolicy",
+      "source_file": "aws_verifiedaccess_policy.go"
+    },
+    {
       "permission": "ec2:SearchTransitGatewayRoutes",
       "service": "ec2",
       "action": "SearchTransitGatewayRoutes",
@@ -3357,10 +3481,22 @@
       "source_file": "aws_ecr.go"
     },
     {
+      "permission": "ecr:DescribePullThroughCacheRules",
+      "service": "ecr",
+      "action": "DescribePullThroughCacheRules",
+      "source_file": "aws_ecr_registry.go"
+    },
+    {
       "permission": "ecr:DescribeRegistry",
       "service": "ecr",
       "action": "DescribeRegistry",
       "source_file": "aws_ecr.go"
+    },
+    {
+      "permission": "ecr:DescribeRegistry",
+      "service": "ecr",
+      "action": "DescribeRegistry",
+      "source_file": "aws_ecr_registry.go"
     },
     {
       "permission": "ecr:DescribeRepositories",
@@ -3369,10 +3505,22 @@
       "source_file": "aws_ecr.go"
     },
     {
+      "permission": "ecr:DescribeRepositoryCreationTemplates",
+      "service": "ecr",
+      "action": "DescribeRepositoryCreationTemplates",
+      "source_file": "aws_ecr_registry.go"
+    },
+    {
       "permission": "ecr:GetLifecyclePolicy",
       "service": "ecr",
       "action": "GetLifecyclePolicy",
       "source_file": "aws_ecr.go"
+    },
+    {
+      "permission": "ecr:GetRegistryPolicy",
+      "service": "ecr",
+      "action": "GetRegistryPolicy",
+      "source_file": "aws_ecr_registry.go"
     },
     {
       "permission": "ecr:GetRegistryScanningConfiguration",
@@ -3385,6 +3533,12 @@
       "service": "ecr",
       "action": "GetRepositoryPolicy",
       "source_file": "aws_ecr.go"
+    },
+    {
+      "permission": "ecr:GetSigningConfiguration",
+      "service": "ecr",
+      "action": "GetSigningConfiguration",
+      "source_file": "aws_ecr_registry.go"
     },
     {
       "permission": "ecr:ListTagsForResource",
@@ -5791,6 +5945,24 @@
       "service": "rds",
       "action": "ListTagsForResource",
       "source_file": "aws_rds.go"
+    },
+    {
+      "permission": "redshift-serverless:ListNamespaces",
+      "service": "redshift-serverless",
+      "action": "ListNamespaces",
+      "source_file": "aws_redshiftserverless.go"
+    },
+    {
+      "permission": "redshift-serverless:ListTagsForResource",
+      "service": "redshift-serverless",
+      "action": "ListTagsForResource",
+      "source_file": "aws_redshiftserverless.go"
+    },
+    {
+      "permission": "redshift-serverless:ListWorkgroups",
+      "service": "redshift-serverless",
+      "action": "ListWorkgroups",
+      "source_file": "aws_redshiftserverless.go"
     },
     {
       "permission": "redshift:DescribeClusterParameters",

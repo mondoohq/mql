@@ -472,6 +472,7 @@ func newMqlVerifiedAccessEndpoint(runtime *plugin.Runtime, ep ec2types.VerifiedA
 type mqlAwsVerifiedaccessEndpointInternal struct {
 	cacheDomainCertificateArn string
 	securityGroupIdHandler
+	verifiedAccessPolicyCache
 }
 
 func (a *mqlAwsVerifiedaccessEndpoint) id() (string, error) {

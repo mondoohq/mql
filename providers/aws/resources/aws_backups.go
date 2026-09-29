@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
@@ -28,6 +29,10 @@ func (a *mqlAwsBackup) id() (string, error) {
 type mqlAwsBackupVaultInternal struct {
 	lazyTags
 	cacheEncryptionKeyArn string
+
+	detailLock    sync.Mutex
+	detailFetched bool
+	detail        *backup.DescribeBackupVaultOutput
 }
 
 func (a *mqlAwsBackupVault) id() (string, error) {
@@ -164,14 +169,17 @@ func (a *mqlAwsBackup) getVaults(conn *connection.AwsConnection) []*jobpool.Job 
 				for _, v := range page.BackupVaultList {
 					mqlGroup, err := CreateResource(a.MqlRuntime, "aws.backup.vault",
 						map[string]*llx.RawData{
-							"arn":              llx.StringDataPtr(v.BackupVaultArn),
-							"createdAt":        llx.TimeDataPtr(v.CreationDate),
-							"locked":           llx.BoolDataPtr(v.Locked),
-							"lockedAt":         llx.TimeDataPtr(v.LockDate),
-							"maxRetentionDays": llx.IntDataPtr(v.MaxRetentionDays),
-							"minRetentionDays": llx.IntDataPtr(v.MinRetentionDays),
-							"name":             llx.StringDataPtr(v.BackupVaultName),
-							"region":           llx.StringData(region),
+							"arn":               llx.StringDataPtr(v.BackupVaultArn),
+							"createdAt":         llx.TimeDataPtr(v.CreationDate),
+							"locked":            llx.BoolDataPtr(v.Locked),
+							"lockedAt":          llx.TimeDataPtr(v.LockDate),
+							"maxRetentionDays":  llx.IntDataPtr(v.MaxRetentionDays),
+							"minRetentionDays":  llx.IntDataPtr(v.MinRetentionDays),
+							"name":              llx.StringDataPtr(v.BackupVaultName),
+							"region":            llx.StringData(region),
+							"vaultType":         llx.StringDataPtr(nonEmptyEnum(v.VaultType)),
+							"vaultState":        llx.StringDataPtr(nonEmptyEnum(v.VaultState)),
+							"encryptionKeyType": llx.StringDataPtr(nonEmptyEnum(v.EncryptionKeyType)),
 						})
 					if err != nil {
 						return nil, err
@@ -206,12 +214,21 @@ func initAwsBackupVault(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 		return args, nil, nil
 	}
 
+	conn := runtime.Connection.(*connection.AwsConnection)
 	var name, region string
+	var accountID *string
 	if args["arn"] != nil {
+		vaultArn := args["arn"].Value.(string)
 		var err error
-		name, region, err = backupVaultNameFromArn(args["arn"].Value.(string))
+		name, region, err = backupVaultNameFromArn(vaultArn)
 		if err != nil {
 			return nil, nil, err
+		}
+		// A restore access vault points at a logically air-gapped vault that
+		// may belong to another account; naming that account is what lets the
+		// describe call find it.
+		if owner := backupVaultAccountFromArn(vaultArn); owner != "" && owner != conn.AccountId() {
+			accountID = &owner
 		}
 	} else if args["name"] != nil && args["region"] != nil {
 		name = args["name"].Value.(string)
@@ -220,10 +237,10 @@ func initAwsBackupVault(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 		return nil, nil, errors.New("arn, or name and region, required to fetch aws backup vault")
 	}
 
-	conn := runtime.Connection.(*connection.AwsConnection)
 	svc := conn.Backup(region)
 	vault, err := svc.DescribeBackupVault(context.Background(), &backup.DescribeBackupVaultInput{
-		BackupVaultName: &name,
+		BackupVaultName:      &name,
+		BackupVaultAccountId: accountID,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -237,7 +254,12 @@ func initAwsBackupVault(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 	// encryptionKey accessor, which reads the ARN back off the internal cache.
 	// Seeding it here is what makes that accessor resolve on this path as well
 	// as on the listing path.
-	res.(*mqlAwsBackupVault).cacheEncryptionKeyArn = convert.ToValue(vault.EncryptionKeyArn)
+	mqlVault := res.(*mqlAwsBackupVault)
+	mqlVault.cacheEncryptionKeyArn = convert.ToValue(vault.EncryptionKeyArn)
+	// The describe output is what the detail fields read, so seed it rather
+	// than describe the vault a second time.
+	mqlVault.detail = vault
+	mqlVault.detailFetched = true
 	return nil, res, nil
 }
 
@@ -248,15 +270,28 @@ func initAwsBackupVault(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 // instead of passed as an argument.
 func backupVaultArgs(vault *backup.DescribeBackupVaultOutput, region string) map[string]*llx.RawData {
 	return map[string]*llx.RawData{
-		"arn":              llx.StringDataPtr(vault.BackupVaultArn),
-		"name":             llx.StringDataPtr(vault.BackupVaultName),
-		"region":           llx.StringData(region),
-		"createdAt":        llx.TimeDataPtr(vault.CreationDate),
-		"locked":           llx.BoolDataPtr(vault.Locked),
-		"lockedAt":         llx.TimeDataPtr(vault.LockDate),
-		"maxRetentionDays": llx.IntDataPtr(vault.MaxRetentionDays),
-		"minRetentionDays": llx.IntDataPtr(vault.MinRetentionDays),
+		"arn":               llx.StringDataPtr(vault.BackupVaultArn),
+		"name":              llx.StringDataPtr(vault.BackupVaultName),
+		"region":            llx.StringData(region),
+		"createdAt":         llx.TimeDataPtr(vault.CreationDate),
+		"locked":            llx.BoolDataPtr(vault.Locked),
+		"lockedAt":          llx.TimeDataPtr(vault.LockDate),
+		"maxRetentionDays":  llx.IntDataPtr(vault.MaxRetentionDays),
+		"minRetentionDays":  llx.IntDataPtr(vault.MinRetentionDays),
+		"vaultType":         llx.StringDataPtr(nonEmptyEnum(vault.VaultType)),
+		"vaultState":        llx.StringDataPtr(nonEmptyEnum(vault.VaultState)),
+		"encryptionKeyType": llx.StringDataPtr(nonEmptyEnum(vault.EncryptionKeyType)),
 	}
+}
+
+// backupVaultAccountFromArn returns the account ID in a backup vault ARN, or
+// an empty string when the ARN does not parse.
+func backupVaultAccountFromArn(vaultArn string) string {
+	parsed, err := arn.Parse(vaultArn)
+	if err != nil {
+		return ""
+	}
+	return parsed.AccountID
 }
 
 // newMqlBackupRecoveryPoint builds a recovery point resource. Both the vault

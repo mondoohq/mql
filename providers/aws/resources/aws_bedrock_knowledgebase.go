@@ -170,6 +170,20 @@ func (a *mqlAwsBedrockKnowledgeBaseVectorStore) credentialsSecret() (*mqlAwsSecr
 	return res.(*mqlAwsSecretsmanagerSecret), nil
 }
 
+func (a *mqlAwsBedrockKnowledgeBaseVectorStore) opensearchServerlessCollection() (*mqlAwsOpensearchserverlessCollection, error) {
+	collectionArn := a.OpensearchServerlessCollectionArn.Data
+	if collectionArn == "" {
+		a.OpensearchServerlessCollection.State = plugin.StateIsNull | plugin.StateIsSet
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, ResourceAwsOpensearchserverlessCollection,
+		map[string]*llx.RawData{"arn": llx.StringData(collectionArn)})
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAwsOpensearchserverlessCollection), nil
+}
+
 func (a *mqlAwsBedrockKnowledgeBaseVectorStore) opensearchDomain() (*mqlAwsOpensearchDomain, error) {
 	if a.cacheOpensearchDomainArn == "" {
 		a.OpensearchDomain.State = plugin.StateIsNull | plugin.StateIsSet

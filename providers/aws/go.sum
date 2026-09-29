@@ -227,6 +227,8 @@ github.com/aws/aws-sdk-go-v2/service/memorydb v1.42.1 h1:LCzpCTjsbBAB3rYub+zBz0y
 github.com/aws/aws-sdk-go-v2/service/memorydb v1.42.1/go.mod h1:xCZLG9u1YGs1gRK24KaDbTI0JRO95SQPQshc8ETui9A=
 github.com/aws/aws-sdk-go-v2/service/mq v1.45.1 h1:zq9sZsRQ2em2BZFcogdCkPYEU5YBFtg120K+dfc9amU=
 github.com/aws/aws-sdk-go-v2/service/mq v1.45.1/go.mod h1:DeFn1Wiiee6BBtOAL5gBoYVOEtlQ11Jx3WfI2M0dyRA=
+github.com/aws/aws-sdk-go-v2/service/mwaa v1.48.1 h1:uMwt98MLs//DubOvEqPGmttfIo4o1tuVFPyzqYSKsdc=
+github.com/aws/aws-sdk-go-v2/service/mwaa v1.48.1/go.mod h1:gQxWOk8kXG0nN/Po0TMabyg8zix5r/R1vyYhUiMcVKY=
 github.com/aws/aws-sdk-go-v2/service/neptune v1.53.1 h1:JTpXQ3sgTgL9+nLv8v+9+NbKxnX+Ia677lvVlC9ka88=
 github.com/aws/aws-sdk-go-v2/service/neptune v1.53.1/go.mod h1:tWrDT5AwPiXYVDUTbb16g/QMj0vSY5dx3BKZVH5JaUQ=
 github.com/aws/aws-sdk-go-v2/service/neptunegraph v1.31.0 h1:GsKj7jOxZ0twp1YxU2Bqb0oLsTiUcWOcXBjH60CRWmY=
@@ -235,6 +237,8 @@ github.com/aws/aws-sdk-go-v2/service/networkfirewall v1.74.0 h1:c0ycxhkBXmbmOljq
 github.com/aws/aws-sdk-go-v2/service/networkfirewall v1.74.0/go.mod h1:7x9mYxOP5eK3I5/+WdmzyHmzxtL6vp9zYiDbaTHgHzI=
 github.com/aws/aws-sdk-go-v2/service/opensearch v1.82.0 h1:ilufDQuVK5rhpIuh0Yg5412wRI0S3i3TJyqqNkyMHDM=
 github.com/aws/aws-sdk-go-v2/service/opensearch v1.82.0/go.mod h1:CvcpFSN88bS6cblIDsSvlcCa12N8y/6POG0e9+1boJo=
+github.com/aws/aws-sdk-go-v2/service/opensearchserverless v1.40.1 h1:r0ib1hTOLSlGXFMH+GZRmtZ6GUbrk4NsNQSqADyMbaY=
+github.com/aws/aws-sdk-go-v2/service/opensearchserverless v1.40.1/go.mod h1:OiKwNUjyzpYJDFs8A6qKtxVhgaAQBokZpNcGHVlruh4=
 github.com/aws/aws-sdk-go-v2/service/organizations v1.60.1 h1:A/GDJqobBrVGu5/BnD5rQAq8LNss9TS78d9eeGnLncs=
 github.com/aws/aws-sdk-go-v2/service/organizations v1.60.1/go.mod h1:NdiEqRmcl9tcUF7op+S04yRPKEFt+fkKO45BuIl47Gg=
 github.com/aws/aws-sdk-go-v2/service/personalize v1.56.1 h1:3ybLdeif6F8Nlspoz4VOXEl6axiXA77ZPHFRIbFfQmk=
@@ -249,6 +253,8 @@ github.com/aws/aws-sdk-go-v2/service/rds v1.129.1 h1:tLLKlVNRH6YIWCIq/9a8b6LMamB
 github.com/aws/aws-sdk-go-v2/service/rds v1.129.1/go.mod h1:ISB8224E71TShRfUITcXvgbjlq0MVx/KWpvF0jbiFmg=
 github.com/aws/aws-sdk-go-v2/service/redshift v1.71.1 h1:2MUcFpAvn+QXFo092Fm3UY/9+BMV+NPzOgj6P3fRsUQ=
 github.com/aws/aws-sdk-go-v2/service/redshift v1.71.1/go.mod h1:0r3O/tPkpqb+onK4Tbt52aKx5JVksx0KpD0A57twMjI=
+github.com/aws/aws-sdk-go-v2/service/redshiftserverless v1.44.1 h1:zQ4kyFg9LnOQgyJ7rn+Bk3H+CGymXQTQk4ieIe64a9w=
+github.com/aws/aws-sdk-go-v2/service/redshiftserverless v1.44.1/go.mod h1:kPqVD1wrn/shDHqBbNVEYBMyfKSR6sFL4T7Y6qN+eOc=
 github.com/aws/aws-sdk-go-v2/service/route53 v1.70.1 h1:M30ocYvHPt4GiQH9KHG89/O/EKYpxT2bFwASOBmPtBw=
 github.com/aws/aws-sdk-go-v2/service/route53 v1.70.1/go.mod h1:120WTsKTWzoFwIpk9W1qJt7Uq51pRztY+pRcdLSiQxM=
 github.com/aws/aws-sdk-go-v2/service/route53domains v1.44.1 h1:+3GcyCgLz85rsqfn/YxELGdfCQTNAt/ZMc9Ib5+zVKo=

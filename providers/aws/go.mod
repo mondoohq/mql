@@ -101,10 +101,12 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/macie2 v1.59.1
 	github.com/aws/aws-sdk-go-v2/service/memorydb v1.42.1
 	github.com/aws/aws-sdk-go-v2/service/mq v1.45.1
+	github.com/aws/aws-sdk-go-v2/service/mwaa v1.48.1
 	github.com/aws/aws-sdk-go-v2/service/neptune v1.53.1
 	github.com/aws/aws-sdk-go-v2/service/neptunegraph v1.31.0
 	github.com/aws/aws-sdk-go-v2/service/networkfirewall v1.74.0
 	github.com/aws/aws-sdk-go-v2/service/opensearch v1.82.0
+	github.com/aws/aws-sdk-go-v2/service/opensearchserverless v1.40.1
 	github.com/aws/aws-sdk-go-v2/service/organizations v1.60.1
 	github.com/aws/aws-sdk-go-v2/service/personalize v1.56.1
 	github.com/aws/aws-sdk-go-v2/service/pipes v1.32.1
@@ -112,6 +114,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ram v1.45.1
 	github.com/aws/aws-sdk-go-v2/service/rds v1.129.1
 	github.com/aws/aws-sdk-go-v2/service/redshift v1.71.1
+	github.com/aws/aws-sdk-go-v2/service/redshiftserverless v1.44.1
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.70.1
 	github.com/aws/aws-sdk-go-v2/service/route53domains v1.44.1
 	github.com/aws/aws-sdk-go-v2/service/route53resolver v1.54.1
