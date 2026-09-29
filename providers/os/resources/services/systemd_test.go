@@ -5,6 +5,7 @@ package services
 
 import (
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -94,6 +95,11 @@ func TestParseServiceSystemDUnitFilesPhoton(t *testing.T) {
 }
 
 func TestSystemdFS(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// testdata/systemd relies on symlinks with absolute Unix targets, which
+		// a Windows checkout turns into plain files.
+		t.Skip("testdata/systemd needs Unix symlinks")
+	}
 	s := SystemdFSServiceManager{
 		Fs: mountedfs.NewMountedFs("testdata/systemd"),
 	}
