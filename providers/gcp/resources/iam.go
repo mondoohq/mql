@@ -792,7 +792,27 @@ func (g *mqlGcpProjectIamService) denyPolicies() ([]any, error) {
 	}
 	projectId := g.ProjectId.Data
 
-	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
+	return listDenyPolicies(g.MqlRuntime, "projects/"+projectId)
+}
+
+// denyPolicyParent returns the IAM v2 ListPolicies parent for the deny
+// policies attached to a Cloud Resource Manager node.
+//
+// IAM v2 wants the URL-encoded resource path of the policy's attachment point,
+// with its path separators percent-encoded as %2F. For "projects/my-project"
+// this yields
+// "policies/cloudresourcemanager.googleapis.com%2Fprojects%2Fmy-project/denypolicies".
+func denyPolicyParent(attachmentPoint string) string {
+	encoded := strings.ReplaceAll("cloudresourcemanager.googleapis.com/"+attachmentPoint, "/", "%2F")
+	return "policies/" + encoded + "/denypolicies"
+}
+
+// listDenyPolicies lists the deny policies attached to a Cloud Resource
+// Manager node: "projects/{id}", "folders/{id}", or "organizations/{id}".
+// The policy names embed the attachment point, so policies attached to two
+// nodes never share a cache id.
+func listDenyPolicies(runtime *plugin.Runtime, attachmentPoint string) ([]any, error) {
+	conn := runtime.Connection.(*connection.GcpConnection)
 	creds, err := conn.Credentials(iamv2.DefaultAuthScopes()...)
 	if err != nil {
 		return nil, err
@@ -805,12 +825,7 @@ func (g *mqlGcpProjectIamService) denyPolicies() ([]any, error) {
 	}
 	defer client.Close()
 
-	// IAM v2 ListPolicies wants the URL-encoded resource path of the policy's
-	// attachment point. For a project that point is the Cloud Resource Manager
-	// project resource, whose path separators must be percent-encoded as %2F.
-	// The %% in the format string emits a literal %, so for project "my-project"
-	// this yields: "policies/cloudresourcemanager.googleapis.com%2Fprojects%2Fmy-project/denypolicies".
-	parent := fmt.Sprintf("policies/cloudresourcemanager.googleapis.com%%2Fprojects%%2F%s/denypolicies", projectId)
+	parent := denyPolicyParent(attachmentPoint)
 
 	var policies []any
 	it := client.ListPolicies(ctx, &iamv2pb.ListPoliciesRequest{Parent: parent})
@@ -822,7 +837,6 @@ func (g *mqlGcpProjectIamService) denyPolicies() ([]any, error) {
 		if err != nil {
 			return nil, err
 		}
-
 		rules := make([]any, 0, len(p.Rules))
 		for _, r := range p.Rules {
 			rule := map[string]any{"description": r.Description}
@@ -847,12 +861,12 @@ func (g *mqlGcpProjectIamService) denyPolicies() ([]any, error) {
 			rules = append(rules, ruleDict)
 		}
 
-		denyRules, err := newMqlIamDenyRules(g.MqlRuntime, p.Name, p.Rules)
+		denyRules, err := newMqlIamDenyRules(runtime, p.Name, p.Rules)
 		if err != nil {
 			return nil, err
 		}
 
-		mqlPolicy, err := CreateResource(g.MqlRuntime, "gcp.project.iamService.denyPolicy", map[string]*llx.RawData{
+		mqlPolicy, err := CreateResource(runtime, "gcp.project.iamService.denyPolicy", map[string]*llx.RawData{
 			"name":        llx.StringData(p.Name),
 			"uid":         llx.StringData(p.Uid),
 			"displayName": llx.StringData(p.DisplayName),
@@ -869,6 +883,42 @@ func (g *mqlGcpProjectIamService) denyPolicies() ([]any, error) {
 		policies = append(policies, mqlPolicy)
 	}
 	return policies, nil
+}
+
+// denyPolicies on an organization or folder reads the same deny policy type
+// as a project. A refusal there is classified rather than failing the query
+// with an unattributed error.
+func (g *mqlGcpOrganization) denyPolicies() ([]any, error) {
+	if g.Id.Error != nil {
+		return nil, g.Id.Error
+	}
+	attachment := organizationResourceName(g.Id.Data)
+	res, err := listDenyPolicies(g.MqlRuntime, attachment)
+	if err != nil {
+		return listRefusal(err, "could not list organization deny policies", "iam.denypolicies.list")
+	}
+	return res, nil
+}
+
+func (g *mqlGcpFolder) denyPolicies() ([]any, error) {
+	if g.Id.Error != nil {
+		return nil, g.Id.Error
+	}
+	res, err := listDenyPolicies(g.MqlRuntime, folderResourceName(g.Id.Data))
+	if err != nil {
+		return listRefusal(err, "could not list folder deny policies", "iam.denypolicies.list")
+	}
+	return res, nil
+}
+
+// organizationResourceName returns "organizations/{id}" for an organization
+// id given with or without the prefix. gcp.organization carries the prefixed
+// form, but a bare number must not be double-prefixed or left bare.
+func organizationResourceName(id string) string {
+	if strings.HasPrefix(id, "organizations/") {
+		return id
+	}
+	return "organizations/" + id
 }
 
 func (g *mqlGcpProjectIamServiceServiceAccount) iamPolicy() ([]any, error) {

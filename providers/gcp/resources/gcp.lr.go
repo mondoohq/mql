@@ -22,6 +22,7 @@ const (
 	ResourceGcpOrganizationPrincipalAccessBoundaryPolicy                               string = "gcp.organization.principalAccessBoundaryPolicy"
 	ResourceGcpOrganizationPolicyBinding                                               string = "gcp.organization.policyBinding"
 	ResourceGcpOrganizationNetworkSecurityProfile                                      string = "gcp.organization.networkSecurityProfile"
+	ResourceGcpOrganizationFirewallEndpoint                                            string = "gcp.organization.firewallEndpoint"
 	ResourceGcpOrganizationNetworkSecurityProfileGroup                                 string = "gcp.organization.networkSecurityProfileGroup"
 	ResourceGcpCloudIdentityGroup                                                      string = "gcp.cloudIdentity.group"
 	ResourceGcpCloudIdentityGroupSecuritySettings                                      string = "gcp.cloudIdentity.group.securitySettings"
@@ -70,6 +71,7 @@ const (
 	ResourceGcpProjectComputeServiceAttachedDisk                                       string = "gcp.project.computeService.attachedDisk"
 	ResourceGcpProjectComputeServiceSnapshot                                           string = "gcp.project.computeService.snapshot"
 	ResourceGcpProjectComputeServiceImage                                              string = "gcp.project.computeService.image"
+	ResourceGcpProjectComputeServiceMachineImage                                       string = "gcp.project.computeService.machineImage"
 	ResourceGcpProjectComputeServiceFirewall                                           string = "gcp.project.computeService.firewall"
 	ResourceGcpProjectComputeServiceNetwork                                            string = "gcp.project.computeService.network"
 	ResourceGcpProjectComputeServiceSubnetwork                                         string = "gcp.project.computeService.subnetwork"
@@ -270,6 +272,9 @@ const (
 	ResourceGcpProjectFirestoreServiceDatabase                                         string = "gcp.project.firestoreService.database"
 	ResourceGcpProjectFirestoreServiceDatabaseIndex                                    string = "gcp.project.firestoreService.database.index"
 	ResourceGcpProjectFirestoreServiceDatabaseBackupSchedule                           string = "gcp.project.firestoreService.database.backupSchedule"
+	ResourceGcpProjectFirebaseRulesService                                             string = "gcp.project.firebaseRulesService"
+	ResourceGcpProjectFirebaseRulesServiceRelease                                      string = "gcp.project.firebaseRulesService.release"
+	ResourceGcpProjectFirebaseRulesServiceRuleset                                      string = "gcp.project.firebaseRulesService.ruleset"
 	ResourceGcpProjectSpannerService                                                   string = "gcp.project.spannerService"
 	ResourceGcpProjectSpannerServiceInstance                                           string = "gcp.project.spannerService.instance"
 	ResourceGcpProjectSpannerServiceInstanceDatabase                                   string = "gcp.project.spannerService.instance.database"
@@ -435,6 +440,8 @@ const (
 	ResourceGcpSccNotificationConfig                                                   string = "gcp.scc.notificationConfig"
 	ResourceGcpSccMuteConfig                                                           string = "gcp.scc.muteConfig"
 	ResourceGcpSccBigQueryExport                                                       string = "gcp.scc.bigQueryExport"
+	ResourceGcpSccSecurityHealthAnalyticsCustomModule                                  string = "gcp.scc.securityHealthAnalyticsCustomModule"
+	ResourceGcpSccEventThreatDetectionCustomModule                                     string = "gcp.scc.eventThreatDetectionCustomModule"
 	ResourceGcpAccesscontextmanagerAccessPolicy                                        string = "gcp.accesscontextmanager.accessPolicy"
 	ResourceGcpAccesscontextmanagerGcpUserAccessBinding                                string = "gcp.accesscontextmanager.gcpUserAccessBinding"
 	ResourceGcpAccesscontextmanagerAccessLevel                                         string = "gcp.accesscontextmanager.accessLevel"
@@ -490,6 +497,9 @@ const (
 	ResourceGcpProjectNetworkSecurityServiceTlsInspectionPolicy                        string = "gcp.project.networkSecurityService.tlsInspectionPolicy"
 	ResourceGcpProjectNetworkSecurityServiceAddressGroup                               string = "gcp.project.networkSecurityService.addressGroup"
 	ResourceGcpProjectNetworkSecurityServiceUrlList                                    string = "gcp.project.networkSecurityService.urlList"
+	ResourceGcpProjectNetworkSecurityServiceFirewallEndpointAssociation                string = "gcp.project.networkSecurityService.firewallEndpointAssociation"
+	ResourceGcpProjectNetworkSecurityServiceGatewaySecurityPolicy                      string = "gcp.project.networkSecurityService.gatewaySecurityPolicy"
+	ResourceGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule                  string = "gcp.project.networkSecurityService.gatewaySecurityPolicy.rule"
 	ResourceGcpProjectGkeBackupService                                                 string = "gcp.project.gkeBackupService"
 	ResourceGcpProjectGkeBackupServiceBackupPlan                                       string = "gcp.project.gkeBackupService.backupPlan"
 	ResourceGcpProjectGkeBackupServiceRestorePlan                                      string = "gcp.project.gkeBackupService.restorePlan"
@@ -577,6 +587,10 @@ func init() {
 		"gcp.organization.networkSecurityProfile": {
 			// to override args, implement: initGcpOrganizationNetworkSecurityProfile(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGcpOrganizationNetworkSecurityProfile,
+		},
+		"gcp.organization.firewallEndpoint": {
+			// to override args, implement: initGcpOrganizationFirewallEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpOrganizationFirewallEndpoint,
 		},
 		"gcp.organization.networkSecurityProfileGroup": {
 			// to override args, implement: initGcpOrganizationNetworkSecurityProfileGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -769,6 +783,10 @@ func init() {
 		"gcp.project.computeService.image": {
 			Init:   initGcpProjectComputeServiceImage,
 			Create: createGcpProjectComputeServiceImage,
+		},
+		"gcp.project.computeService.machineImage": {
+			// to override args, implement: initGcpProjectComputeServiceMachineImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectComputeServiceMachineImage,
 		},
 		"gcp.project.computeService.firewall": {
 			Init:   initGcpProjectComputeServiceFirewall,
@@ -1570,6 +1588,18 @@ func init() {
 			// to override args, implement: initGcpProjectFirestoreServiceDatabaseBackupSchedule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGcpProjectFirestoreServiceDatabaseBackupSchedule,
 		},
+		"gcp.project.firebaseRulesService": {
+			Init:   initGcpProjectFirebaseRulesService,
+			Create: createGcpProjectFirebaseRulesService,
+		},
+		"gcp.project.firebaseRulesService.release": {
+			// to override args, implement: initGcpProjectFirebaseRulesServiceRelease(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectFirebaseRulesServiceRelease,
+		},
+		"gcp.project.firebaseRulesService.ruleset": {
+			// to override args, implement: initGcpProjectFirebaseRulesServiceRuleset(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectFirebaseRulesServiceRuleset,
+		},
 		"gcp.project.spannerService": {
 			Init:   initGcpProjectSpannerService,
 			Create: createGcpProjectSpannerService,
@@ -2230,6 +2260,14 @@ func init() {
 			// to override args, implement: initGcpSccBigQueryExport(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGcpSccBigQueryExport,
 		},
+		"gcp.scc.securityHealthAnalyticsCustomModule": {
+			// to override args, implement: initGcpSccSecurityHealthAnalyticsCustomModule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpSccSecurityHealthAnalyticsCustomModule,
+		},
+		"gcp.scc.eventThreatDetectionCustomModule": {
+			// to override args, implement: initGcpSccEventThreatDetectionCustomModule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpSccEventThreatDetectionCustomModule,
+		},
 		"gcp.accesscontextmanager.accessPolicy": {
 			// to override args, implement: initGcpAccesscontextmanagerAccessPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGcpAccesscontextmanagerAccessPolicy,
@@ -2449,6 +2487,18 @@ func init() {
 		"gcp.project.networkSecurityService.urlList": {
 			// to override args, implement: initGcpProjectNetworkSecurityServiceUrlList(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createGcpProjectNetworkSecurityServiceUrlList,
+		},
+		"gcp.project.networkSecurityService.firewallEndpointAssociation": {
+			// to override args, implement: initGcpProjectNetworkSecurityServiceFirewallEndpointAssociation(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectNetworkSecurityServiceFirewallEndpointAssociation,
+		},
+		"gcp.project.networkSecurityService.gatewaySecurityPolicy": {
+			// to override args, implement: initGcpProjectNetworkSecurityServiceGatewaySecurityPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectNetworkSecurityServiceGatewaySecurityPolicy,
+		},
+		"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule": {
+			// to override args, implement: initGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule,
 		},
 		"gcp.project.gkeBackupService": {
 			Init:   initGcpProjectGkeBackupService,
@@ -2849,6 +2899,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.organization.essentialContacts": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganization).GetEssentialContacts()).ToDataRes(types.Array(types.Resource("gcp.essentialContact")))
 	},
+	"gcp.organization.denyPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganization).GetDenyPolicies()).ToDataRes(types.Array(types.Resource("gcp.project.iamService.denyPolicy")))
+	},
+	"gcp.organization.firewallEndpoints": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganization).GetFirewallEndpoints()).ToDataRes(types.Array(types.Resource("gcp.organization.firewallEndpoint")))
+	},
+	"gcp.organization.sccSecurityHealthAnalyticsCustomModules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganization).GetSccSecurityHealthAnalyticsCustomModules()).ToDataRes(types.Array(types.Resource("gcp.scc.securityHealthAnalyticsCustomModule")))
+	},
+	"gcp.organization.sccEventThreatDetectionCustomModules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganization).GetSccEventThreatDetectionCustomModules()).ToDataRes(types.Array(types.Resource("gcp.scc.eventThreatDetectionCustomModule")))
+	},
 	"gcp.organization.role.organizationId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganizationRole).GetOrganizationId()).ToDataRes(types.String)
 	},
@@ -3001,6 +3063,39 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.organization.networkSecurityProfile.updated": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganizationNetworkSecurityProfile).GetUpdated()).ToDataRes(types.Time)
+	},
+	"gcp.organization.firewallEndpoint.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetName()).ToDataRes(types.String)
+	},
+	"gcp.organization.firewallEndpoint.zone": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetZone()).ToDataRes(types.String)
+	},
+	"gcp.organization.firewallEndpoint.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.organization.firewallEndpoint.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetState()).ToDataRes(types.String)
+	},
+	"gcp.organization.firewallEndpoint.reconciling": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetReconciling()).ToDataRes(types.Bool)
+	},
+	"gcp.organization.firewallEndpoint.associatedNetworks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetAssociatedNetworks()).ToDataRes(types.Array(types.Resource("gcp.project.computeService.network")))
+	},
+	"gcp.organization.firewallEndpoint.billingProject": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetBillingProject()).ToDataRes(types.Resource("gcp.project"))
+	},
+	"gcp.organization.firewallEndpoint.jumboFramesEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetJumboFramesEnabled()).ToDataRes(types.Bool)
+	},
+	"gcp.organization.firewallEndpoint.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.organization.firewallEndpoint.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetCreated()).ToDataRes(types.Time)
+	},
+	"gcp.organization.firewallEndpoint.updated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpOrganizationFirewallEndpoint).GetUpdated()).ToDataRes(types.Time)
 	},
 	"gcp.organization.networkSecurityProfileGroup.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpOrganizationNetworkSecurityProfileGroup).GetName()).ToDataRes(types.String)
@@ -3566,6 +3661,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.folder.firewallPolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpFolder).GetFirewallPolicies()).ToDataRes(types.Array(types.Resource("gcp.hierarchicalFirewallPolicy")))
 	},
+	"gcp.folder.denyPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpFolder).GetDenyPolicies()).ToDataRes(types.Array(types.Resource("gcp.project.iamService.denyPolicy")))
+	},
+	"gcp.folder.sccSecurityHealthAnalyticsCustomModules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpFolder).GetSccSecurityHealthAnalyticsCustomModules()).ToDataRes(types.Array(types.Resource("gcp.scc.securityHealthAnalyticsCustomModule")))
+	},
+	"gcp.folder.sccEventThreatDetectionCustomModules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpFolder).GetSccEventThreatDetectionCustomModules()).ToDataRes(types.Array(types.Resource("gcp.scc.eventThreatDetectionCustomModule")))
+	},
 	"gcp.projects.parentId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjects).GetParentId()).ToDataRes(types.String)
 	},
@@ -3769,6 +3873,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.sccFindings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProject).GetSccFindings()).ToDataRes(types.Array(types.Resource("gcp.scc.finding")))
+	},
+	"gcp.project.sccSecurityHealthAnalyticsCustomModules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProject).GetSccSecurityHealthAnalyticsCustomModules()).ToDataRes(types.Array(types.Resource("gcp.scc.securityHealthAnalyticsCustomModule")))
+	},
+	"gcp.project.sccEventThreatDetectionCustomModules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProject).GetSccEventThreatDetectionCustomModules()).ToDataRes(types.Array(types.Resource("gcp.scc.eventThreatDetectionCustomModule")))
+	},
+	"gcp.project.firebaseRules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProject).GetFirebaseRules()).ToDataRes(types.Resource("gcp.project.firebaseRulesService"))
 	},
 	"gcp.project.eventarc": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProject).GetEventarc()).ToDataRes(types.Resource("gcp.project.eventarcService"))
@@ -4018,6 +4131,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.computeService.images": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeService).GetImages()).ToDataRes(types.Array(types.Resource("gcp.project.computeService.image")))
+	},
+	"gcp.project.computeService.machineImages": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeService).GetMachineImages()).ToDataRes(types.Array(types.Resource("gcp.project.computeService.machineImage")))
 	},
 	"gcp.project.computeService.firewalls": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeService).GetFirewalls()).ToDataRes(types.Array(types.Resource("gcp.project.computeService.firewall")))
@@ -5134,6 +5250,60 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.computeService.image.managedBy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceImage).GetManagedBy()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.machineImage.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceMachineImage).GetId()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.machineImage.projectId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceMachineImage).GetProjectId()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.machineImage.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceMachineImage).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.machineImage.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceMachineImage).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.machineImage.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceMachineImage).GetStatus()).ToDataRes(types.String)
+	},
+	"gcp.project.computeService.machineImage.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceMachineImage).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.computeService.machineImage.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceMachineImage).GetCreated()).ToDataRes(types.Time)
+	},
+	"gcp.project.computeService.machineImage.storageLocations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceMachineImage).GetStorageLocations()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.computeService.machineImage.guestFlush": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceMachineImage).GetGuestFlush()).ToDataRes(types.Bool)
+	},
+	"gcp.project.computeService.machineImage.totalStorageBytes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceMachineImage).GetTotalStorageBytes()).ToDataRes(types.Int)
+	},
+	"gcp.project.computeService.machineImage.satisfiesPzi": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceMachineImage).GetSatisfiesPzi()).ToDataRes(types.Bool)
+	},
+	"gcp.project.computeService.machineImage.satisfiesPzs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceMachineImage).GetSatisfiesPzs()).ToDataRes(types.Bool)
+	},
+	"gcp.project.computeService.machineImage.sourceInstance": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceMachineImage).GetSourceInstance()).ToDataRes(types.Resource("gcp.project.computeService.instance"))
+	},
+	"gcp.project.computeService.machineImage.kmsKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceMachineImage).GetKmsKey()).ToDataRes(types.Resource("gcp.project.kmsService.keyring.cryptokey"))
+	},
+	"gcp.project.computeService.machineImage.machineImageEncryption": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceMachineImage).GetMachineImageEncryption()).ToDataRes(types.Resource("gcp.project.computeService.customerEncryptionKey"))
+	},
+	"gcp.project.computeService.machineImage.iamPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceMachineImage).GetIamPolicy()).ToDataRes(types.Array(types.Resource("gcp.resourcemanager.binding")))
+	},
+	"gcp.project.computeService.machineImage.public": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceMachineImage).GetPublic()).ToDataRes(types.Bool)
+	},
+	"gcp.project.computeService.machineImage.managedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectComputeServiceMachineImage).GetManagedBy()).ToDataRes(types.String)
 	},
 	"gcp.project.computeService.firewall.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectComputeServiceFirewall).GetId()).ToDataRes(types.String)
@@ -11144,6 +11314,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.secretmanagerService.secret.resourcePath": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectSecretmanagerServiceSecret).GetResourcePath()).ToDataRes(types.String)
 	},
+	"gcp.project.secretmanagerService.secret.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectSecretmanagerServiceSecret).GetLocation()).ToDataRes(types.String)
+	},
 	"gcp.project.secretmanagerService.secret.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectSecretmanagerServiceSecret).GetName()).ToDataRes(types.String)
 	},
@@ -11350,6 +11523,48 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.firestoreService.database.backupSchedule.updated": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectFirestoreServiceDatabaseBackupSchedule).GetUpdated()).ToDataRes(types.Time)
+	},
+	"gcp.project.firebaseRulesService.projectId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectFirebaseRulesService).GetProjectId()).ToDataRes(types.String)
+	},
+	"gcp.project.firebaseRulesService.releases": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectFirebaseRulesService).GetReleases()).ToDataRes(types.Array(types.Resource("gcp.project.firebaseRulesService.release")))
+	},
+	"gcp.project.firebaseRulesService.rulesets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectFirebaseRulesService).GetRulesets()).ToDataRes(types.Array(types.Resource("gcp.project.firebaseRulesService.ruleset")))
+	},
+	"gcp.project.firebaseRulesService.release.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectFirebaseRulesServiceRelease).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.firebaseRulesService.release.service": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectFirebaseRulesServiceRelease).GetService()).ToDataRes(types.String)
+	},
+	"gcp.project.firebaseRulesService.release.ruleset": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectFirebaseRulesServiceRelease).GetRuleset()).ToDataRes(types.Resource("gcp.project.firebaseRulesService.ruleset"))
+	},
+	"gcp.project.firebaseRulesService.release.database": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectFirebaseRulesServiceRelease).GetDatabase()).ToDataRes(types.Resource("gcp.project.firestoreService.database"))
+	},
+	"gcp.project.firebaseRulesService.release.bucket": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectFirebaseRulesServiceRelease).GetBucket()).ToDataRes(types.Resource("gcp.project.storageService.bucket"))
+	},
+	"gcp.project.firebaseRulesService.release.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectFirebaseRulesServiceRelease).GetCreated()).ToDataRes(types.Time)
+	},
+	"gcp.project.firebaseRulesService.release.updated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectFirebaseRulesServiceRelease).GetUpdated()).ToDataRes(types.Time)
+	},
+	"gcp.project.firebaseRulesService.ruleset.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectFirebaseRulesServiceRuleset).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.firebaseRulesService.ruleset.services": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectFirebaseRulesServiceRuleset).GetServices()).ToDataRes(types.Array(types.String))
+	},
+	"gcp.project.firebaseRulesService.ruleset.files": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectFirebaseRulesServiceRuleset).GetFiles()).ToDataRes(types.Array(types.Dict))
+	},
+	"gcp.project.firebaseRulesService.ruleset.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectFirebaseRulesServiceRuleset).GetCreated()).ToDataRes(types.Time)
 	},
 	"gcp.project.spannerService.projectId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectSpannerService).GetProjectId()).ToDataRes(types.String)
@@ -16889,6 +17104,39 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.scc.bigQueryExport.mostRecentEditor": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpSccBigQueryExport).GetMostRecentEditor()).ToDataRes(types.String)
 	},
+	"gcp.scc.securityHealthAnalyticsCustomModule.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpSccSecurityHealthAnalyticsCustomModule).GetName()).ToDataRes(types.String)
+	},
+	"gcp.scc.securityHealthAnalyticsCustomModule.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpSccSecurityHealthAnalyticsCustomModule).GetDisplayName()).ToDataRes(types.String)
+	},
+	"gcp.scc.securityHealthAnalyticsCustomModule.enablementState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpSccSecurityHealthAnalyticsCustomModule).GetEnablementState()).ToDataRes(types.String)
+	},
+	"gcp.scc.securityHealthAnalyticsCustomModule.severity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpSccSecurityHealthAnalyticsCustomModule).GetSeverity()).ToDataRes(types.String)
+	},
+	"gcp.scc.securityHealthAnalyticsCustomModule.customConfig": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpSccSecurityHealthAnalyticsCustomModule).GetCustomConfig()).ToDataRes(types.Dict)
+	},
+	"gcp.scc.eventThreatDetectionCustomModule.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpSccEventThreatDetectionCustomModule).GetName()).ToDataRes(types.String)
+	},
+	"gcp.scc.eventThreatDetectionCustomModule.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpSccEventThreatDetectionCustomModule).GetDisplayName()).ToDataRes(types.String)
+	},
+	"gcp.scc.eventThreatDetectionCustomModule.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpSccEventThreatDetectionCustomModule).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.scc.eventThreatDetectionCustomModule.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpSccEventThreatDetectionCustomModule).GetType()).ToDataRes(types.String)
+	},
+	"gcp.scc.eventThreatDetectionCustomModule.enablementState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpSccEventThreatDetectionCustomModule).GetEnablementState()).ToDataRes(types.String)
+	},
+	"gcp.scc.eventThreatDetectionCustomModule.config": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpSccEventThreatDetectionCustomModule).GetConfig()).ToDataRes(types.Dict)
+	},
 	"gcp.accesscontextmanager.accessPolicy.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpAccesscontextmanagerAccessPolicy).GetName()).ToDataRes(types.String)
 	},
@@ -18089,6 +18337,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gcp.project.networkSecurityService.urlLists": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectNetworkSecurityService).GetUrlLists()).ToDataRes(types.Array(types.Resource("gcp.project.networkSecurityService.urlList")))
 	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityService).GetFirewallEndpointAssociations()).ToDataRes(types.Array(types.Resource("gcp.project.networkSecurityService.firewallEndpointAssociation")))
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityService).GetGatewaySecurityPolicies()).ToDataRes(types.Array(types.Resource("gcp.project.networkSecurityService.gatewaySecurityPolicy")))
+	},
 	"gcp.project.networkSecurityService.authorizationPolicy.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectNetworkSecurityServiceAuthorizationPolicy).GetName()).ToDataRes(types.String)
 	},
@@ -18235,6 +18489,90 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"gcp.project.networkSecurityService.urlList.updated": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectNetworkSecurityServiceUrlList).GetUpdated()).ToDataRes(types.Time)
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.zone": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).GetZone()).ToDataRes(types.String)
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).GetState()).ToDataRes(types.String)
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.disabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).GetDisabled()).ToDataRes(types.Bool)
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.reconciling": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).GetReconciling()).ToDataRes(types.Bool)
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.network": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).GetNetwork()).ToDataRes(types.Resource("gcp.project.computeService.network"))
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.firewallEndpoint": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).GetFirewallEndpoint()).ToDataRes(types.Resource("gcp.organization.firewallEndpoint"))
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.tlsInspectionPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).GetTlsInspectionPolicy()).ToDataRes(types.Resource("gcp.project.networkSecurityService.tlsInspectionPolicy"))
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).GetCreated()).ToDataRes(types.Time)
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.updated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).GetUpdated()).ToDataRes(types.Time)
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.location": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy).GetLocation()).ToDataRes(types.String)
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.tlsInspectionPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy).GetTlsInspectionPolicy()).ToDataRes(types.Resource("gcp.project.networkSecurityService.tlsInspectionPolicy"))
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rules": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy).GetRules()).ToDataRes(types.Array(types.Resource("gcp.project.networkSecurityService.gatewaySecurityPolicy.rule")))
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy).GetCreated()).ToDataRes(types.Time)
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.updated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy).GetUpdated()).ToDataRes(types.Time)
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).GetName()).ToDataRes(types.String)
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).GetDescription()).ToDataRes(types.String)
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.priority": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).GetPriority()).ToDataRes(types.Int)
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.basicProfile": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).GetBasicProfile()).ToDataRes(types.String)
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.sessionMatcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).GetSessionMatcher()).ToDataRes(types.String)
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.applicationMatcher": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).GetApplicationMatcher()).ToDataRes(types.String)
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.tlsInspectionEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).GetTlsInspectionEnabled()).ToDataRes(types.Bool)
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.created": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).GetCreated()).ToDataRes(types.Time)
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.updated": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).GetUpdated()).ToDataRes(types.Time)
 	},
 	"gcp.project.gkeBackupService.projectId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGcpProjectGkeBackupService).GetProjectId()).ToDataRes(types.String)
@@ -19877,6 +20215,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpOrganization).EssentialContacts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"gcp.organization.denyPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganization).DenyPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.firewallEndpoints": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganization).FirewallEndpoints, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.sccSecurityHealthAnalyticsCustomModules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganization).SccSecurityHealthAnalyticsCustomModules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.sccEventThreatDetectionCustomModules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganization).SccEventThreatDetectionCustomModules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"gcp.organization.role.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpOrganizationRole).__id, ok = v.Value.(string)
 		return
@@ -20099,6 +20453,54 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.organization.networkSecurityProfile.updated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpOrganizationNetworkSecurityProfile).Updated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.firewallEndpoint.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.organization.firewallEndpoint.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.firewallEndpoint.zone": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).Zone, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.firewallEndpoint.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.firewallEndpoint.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.firewallEndpoint.reconciling": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).Reconciling, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.firewallEndpoint.associatedNetworks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).AssociatedNetworks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.firewallEndpoint.billingProject": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).BillingProject, ok = plugin.RawToTValue[*mqlGcpProject](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.firewallEndpoint.jumboFramesEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).JumboFramesEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.firewallEndpoint.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.firewallEndpoint.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.organization.firewallEndpoint.updated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpOrganizationFirewallEndpoint).Updated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"gcp.organization.networkSecurityProfileGroup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -20925,6 +21327,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpFolder).FirewallPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"gcp.folder.denyPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpFolder).DenyPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.folder.sccSecurityHealthAnalyticsCustomModules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpFolder).SccSecurityHealthAnalyticsCustomModules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.folder.sccEventThreatDetectionCustomModules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpFolder).SccEventThreatDetectionCustomModules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"gcp.projects.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjects).__id, ok = v.Value.(string)
 		return
@@ -21203,6 +21617,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.sccFindings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProject).SccFindings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.sccSecurityHealthAnalyticsCustomModules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProject).SccSecurityHealthAnalyticsCustomModules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.sccEventThreatDetectionCustomModules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProject).SccEventThreatDetectionCustomModules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.firebaseRules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProject).FirebaseRules, ok = plugin.RawToTValue[*mqlGcpProjectFirebaseRulesService](v.Value, v.Error)
 		return
 	},
 	"gcp.project.eventarc": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -21563,6 +21989,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.computeService.images": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeService).Images, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImages": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeService).MachineImages, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"gcp.project.computeService.firewalls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -23135,6 +23565,82 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.computeService.image.managedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectComputeServiceImage).ManagedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImage.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.computeService.machineImage.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImage.projectId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).ProjectId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImage.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImage.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImage.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImage.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImage.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImage.storageLocations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).StorageLocations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImage.guestFlush": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).GuestFlush, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImage.totalStorageBytes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).TotalStorageBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImage.satisfiesPzi": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).SatisfiesPzi, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImage.satisfiesPzs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).SatisfiesPzs, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImage.sourceInstance": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).SourceInstance, ok = plugin.RawToTValue[*mqlGcpProjectComputeServiceInstance](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImage.kmsKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).KmsKey, ok = plugin.RawToTValue[*mqlGcpProjectKmsServiceKeyringCryptokey](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImage.machineImageEncryption": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).MachineImageEncryption, ok = plugin.RawToTValue[*mqlGcpProjectComputeServiceCustomerEncryptionKey](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImage.iamPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).IamPolicy, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImage.public": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).Public, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.computeService.machineImage.managedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectComputeServiceMachineImage).ManagedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"gcp.project.computeService.firewall.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -31929,6 +32435,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectSecretmanagerServiceSecret).ResourcePath, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"gcp.project.secretmanagerService.secret.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectSecretmanagerServiceSecret).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"gcp.project.secretmanagerService.secret.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectSecretmanagerServiceSecret).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -32223,6 +32733,74 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.firestoreService.database.backupSchedule.updated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectFirestoreServiceDatabaseBackupSchedule).Updated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.firebaseRulesService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectFirebaseRulesService).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.firebaseRulesService.projectId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectFirebaseRulesService).ProjectId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.firebaseRulesService.releases": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectFirebaseRulesService).Releases, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.firebaseRulesService.rulesets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectFirebaseRulesService).Rulesets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.firebaseRulesService.release.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectFirebaseRulesServiceRelease).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.firebaseRulesService.release.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectFirebaseRulesServiceRelease).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.firebaseRulesService.release.service": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectFirebaseRulesServiceRelease).Service, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.firebaseRulesService.release.ruleset": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectFirebaseRulesServiceRelease).Ruleset, ok = plugin.RawToTValue[*mqlGcpProjectFirebaseRulesServiceRuleset](v.Value, v.Error)
+		return
+	},
+	"gcp.project.firebaseRulesService.release.database": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectFirebaseRulesServiceRelease).Database, ok = plugin.RawToTValue[*mqlGcpProjectFirestoreServiceDatabase](v.Value, v.Error)
+		return
+	},
+	"gcp.project.firebaseRulesService.release.bucket": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectFirebaseRulesServiceRelease).Bucket, ok = plugin.RawToTValue[*mqlGcpProjectStorageServiceBucket](v.Value, v.Error)
+		return
+	},
+	"gcp.project.firebaseRulesService.release.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectFirebaseRulesServiceRelease).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.firebaseRulesService.release.updated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectFirebaseRulesServiceRelease).Updated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.firebaseRulesService.ruleset.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectFirebaseRulesServiceRuleset).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.firebaseRulesService.ruleset.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectFirebaseRulesServiceRuleset).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.firebaseRulesService.ruleset.services": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectFirebaseRulesServiceRuleset).Services, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.firebaseRulesService.ruleset.files": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectFirebaseRulesServiceRuleset).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.firebaseRulesService.ruleset.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectFirebaseRulesServiceRuleset).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"gcp.project.spannerService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -40269,6 +40847,58 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpSccBigQueryExport).MostRecentEditor, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"gcp.scc.securityHealthAnalyticsCustomModule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpSccSecurityHealthAnalyticsCustomModule).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.scc.securityHealthAnalyticsCustomModule.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpSccSecurityHealthAnalyticsCustomModule).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.scc.securityHealthAnalyticsCustomModule.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpSccSecurityHealthAnalyticsCustomModule).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.scc.securityHealthAnalyticsCustomModule.enablementState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpSccSecurityHealthAnalyticsCustomModule).EnablementState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.scc.securityHealthAnalyticsCustomModule.severity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpSccSecurityHealthAnalyticsCustomModule).Severity, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.scc.securityHealthAnalyticsCustomModule.customConfig": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpSccSecurityHealthAnalyticsCustomModule).CustomConfig, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"gcp.scc.eventThreatDetectionCustomModule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpSccEventThreatDetectionCustomModule).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.scc.eventThreatDetectionCustomModule.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpSccEventThreatDetectionCustomModule).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.scc.eventThreatDetectionCustomModule.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpSccEventThreatDetectionCustomModule).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.scc.eventThreatDetectionCustomModule.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpSccEventThreatDetectionCustomModule).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.scc.eventThreatDetectionCustomModule.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpSccEventThreatDetectionCustomModule).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.scc.eventThreatDetectionCustomModule.enablementState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpSccEventThreatDetectionCustomModule).EnablementState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.scc.eventThreatDetectionCustomModule.config": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpSccEventThreatDetectionCustomModule).Config, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
 	"gcp.accesscontextmanager.accessPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpAccesscontextmanagerAccessPolicy).__id, ok = v.Value.(string)
 		return
@@ -42065,6 +42695,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGcpProjectNetworkSecurityService).UrlLists, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityService).FirewallEndpointAssociations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityService).GatewaySecurityPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"gcp.project.networkSecurityService.authorizationPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectNetworkSecurityServiceAuthorizationPolicy).__id, ok = v.Value.(string)
 		return
@@ -42283,6 +42921,130 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"gcp.project.networkSecurityService.urlList.updated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGcpProjectNetworkSecurityServiceUrlList).Updated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.zone": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).Zone, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.disabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).Disabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.reconciling": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).Reconciling, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.network": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).Network, ok = plugin.RawToTValue[*mqlGcpProjectComputeServiceNetwork](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.firewallEndpoint": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).FirewallEndpoint, ok = plugin.RawToTValue[*mqlGcpOrganizationFirewallEndpoint](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.tlsInspectionPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).TlsInspectionPolicy, ok = plugin.RawToTValue[*mqlGcpProjectNetworkSecurityServiceTlsInspectionPolicy](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.firewallEndpointAssociation.updated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation).Updated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.location": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy).Location, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.tlsInspectionPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy).TlsInspectionPolicy, ok = plugin.RawToTValue[*mqlGcpProjectNetworkSecurityServiceTlsInspectionPolicy](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rules": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy).Rules, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.updated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy).Updated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).__id, ok = v.Value.(string)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.priority": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).Priority, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.basicProfile": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).BasicProfile, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.sessionMatcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).SessionMatcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.applicationMatcher": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).ApplicationMatcher, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.tlsInspectionEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).TlsInspectionEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.created": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).Created, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"gcp.project.networkSecurityService.gatewaySecurityPolicy.rule.updated": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule).Updated, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"gcp.project.gkeBackupService.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -44542,38 +45304,42 @@ type mqlGcpOrganization struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlGcpOrganizationInternal
-	Id                              plugin.TValue[string]
-	CustomerId                      plugin.TValue[string]
-	Name                            plugin.TValue[string]
-	State                           plugin.TValue[string]
-	IamPolicy                       plugin.TValue[[]any]
-	AuditConfig                     plugin.TValue[[]any]
-	OrgPolicies                     plugin.TValue[[]any]
-	Created                         plugin.TValue[*time.Time]
-	Updated                         plugin.TValue[*time.Time]
-	DeleteTime                      plugin.TValue[*time.Time]
-	AccessApprovalSettings          plugin.TValue[*mqlGcpAccessApprovalSettings]
-	Folders                         plugin.TValue[*mqlGcpFolders]
-	Projects                        plugin.TValue[*mqlGcpProjects]
-	SccSources                      plugin.TValue[[]any]
-	SccFindings                     plugin.TValue[[]any]
-	SccNotificationConfigs          plugin.TValue[[]any]
-	SccMuteConfigs                  plugin.TValue[[]any]
-	SccBigQueryExports              plugin.TValue[[]any]
-	SccOrganizationSettings         plugin.TValue[*mqlGcpSccOrganizationSettings]
-	AccessPolicies                  plugin.TValue[[]any]
-	GcpUserAccessBindings           plugin.TValue[[]any]
-	CustomConstraints               plugin.TValue[[]any]
-	CloudIdentityGroups             plugin.TValue[[]any]
-	WorkforcePools                  plugin.TValue[[]any]
-	NetworkSecurityProfiles         plugin.TValue[[]any]
-	NetworkSecurityProfileGroups    plugin.TValue[[]any]
-	CustomRoles                     plugin.TValue[[]any]
-	FirewallPolicies                plugin.TValue[[]any]
-	PrincipalAccessBoundaryPolicies plugin.TValue[[]any]
-	PolicyBindings                  plugin.TValue[[]any]
-	Logging                         plugin.TValue[*mqlGcpOrganizationLoggingService]
-	EssentialContacts               plugin.TValue[[]any]
+	Id                                      plugin.TValue[string]
+	CustomerId                              plugin.TValue[string]
+	Name                                    plugin.TValue[string]
+	State                                   plugin.TValue[string]
+	IamPolicy                               plugin.TValue[[]any]
+	AuditConfig                             plugin.TValue[[]any]
+	OrgPolicies                             plugin.TValue[[]any]
+	Created                                 plugin.TValue[*time.Time]
+	Updated                                 plugin.TValue[*time.Time]
+	DeleteTime                              plugin.TValue[*time.Time]
+	AccessApprovalSettings                  plugin.TValue[*mqlGcpAccessApprovalSettings]
+	Folders                                 plugin.TValue[*mqlGcpFolders]
+	Projects                                plugin.TValue[*mqlGcpProjects]
+	SccSources                              plugin.TValue[[]any]
+	SccFindings                             plugin.TValue[[]any]
+	SccNotificationConfigs                  plugin.TValue[[]any]
+	SccMuteConfigs                          plugin.TValue[[]any]
+	SccBigQueryExports                      plugin.TValue[[]any]
+	SccOrganizationSettings                 plugin.TValue[*mqlGcpSccOrganizationSettings]
+	AccessPolicies                          plugin.TValue[[]any]
+	GcpUserAccessBindings                   plugin.TValue[[]any]
+	CustomConstraints                       plugin.TValue[[]any]
+	CloudIdentityGroups                     plugin.TValue[[]any]
+	WorkforcePools                          plugin.TValue[[]any]
+	NetworkSecurityProfiles                 plugin.TValue[[]any]
+	NetworkSecurityProfileGroups            plugin.TValue[[]any]
+	CustomRoles                             plugin.TValue[[]any]
+	FirewallPolicies                        plugin.TValue[[]any]
+	PrincipalAccessBoundaryPolicies         plugin.TValue[[]any]
+	PolicyBindings                          plugin.TValue[[]any]
+	Logging                                 plugin.TValue[*mqlGcpOrganizationLoggingService]
+	EssentialContacts                       plugin.TValue[[]any]
+	DenyPolicies                            plugin.TValue[[]any]
+	FirewallEndpoints                       plugin.TValue[[]any]
+	SccSecurityHealthAnalyticsCustomModules plugin.TValue[[]any]
+	SccEventThreatDetectionCustomModules    plugin.TValue[[]any]
 }
 
 // createGcpOrganization creates a new instance of this resource
@@ -45042,6 +45808,70 @@ func (c *mqlGcpOrganization) GetEssentialContacts() *plugin.TValue[[]any] {
 		}
 
 		return c.essentialContacts()
+	})
+}
+
+func (c *mqlGcpOrganization) GetDenyPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DenyPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.organization", c.__id, "denyPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.denyPolicies()
+	})
+}
+
+func (c *mqlGcpOrganization) GetFirewallEndpoints() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.FirewallEndpoints, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.organization", c.__id, "firewallEndpoints")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.firewallEndpoints()
+	})
+}
+
+func (c *mqlGcpOrganization) GetSccSecurityHealthAnalyticsCustomModules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SccSecurityHealthAnalyticsCustomModules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.organization", c.__id, "sccSecurityHealthAnalyticsCustomModules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.sccSecurityHealthAnalyticsCustomModules()
+	})
+}
+
+func (c *mqlGcpOrganization) GetSccEventThreatDetectionCustomModules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SccEventThreatDetectionCustomModules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.organization", c.__id, "sccEventThreatDetectionCustomModules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.sccEventThreatDetectionCustomModules()
 	})
 }
 
@@ -45545,6 +46375,129 @@ func (c *mqlGcpOrganizationNetworkSecurityProfile) GetCreated() *plugin.TValue[*
 }
 
 func (c *mqlGcpOrganizationNetworkSecurityProfile) GetUpdated() *plugin.TValue[*time.Time] {
+	return &c.Updated
+}
+
+// mqlGcpOrganizationFirewallEndpoint for the gcp.organization.firewallEndpoint resource
+type mqlGcpOrganizationFirewallEndpoint struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGcpOrganizationFirewallEndpointInternal
+	Name               plugin.TValue[string]
+	Zone               plugin.TValue[string]
+	Description        plugin.TValue[string]
+	State              plugin.TValue[string]
+	Reconciling        plugin.TValue[bool]
+	AssociatedNetworks plugin.TValue[[]any]
+	BillingProject     plugin.TValue[*mqlGcpProject]
+	JumboFramesEnabled plugin.TValue[bool]
+	Labels             plugin.TValue[map[string]any]
+	Created            plugin.TValue[*time.Time]
+	Updated            plugin.TValue[*time.Time]
+}
+
+// createGcpOrganizationFirewallEndpoint creates a new instance of this resource
+func createGcpOrganizationFirewallEndpoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpOrganizationFirewallEndpoint{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.organization.firewallEndpoint", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) MqlName() string {
+	return "gcp.organization.firewallEndpoint"
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) GetZone() *plugin.TValue[string] {
+	return &c.Zone
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) GetReconciling() *plugin.TValue[bool] {
+	return &c.Reconciling
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) GetAssociatedNetworks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AssociatedNetworks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.organization.firewallEndpoint", c.__id, "associatedNetworks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.associatedNetworks()
+	})
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) GetBillingProject() *plugin.TValue[*mqlGcpProject] {
+	return plugin.GetOrCompute[*mqlGcpProject](&c.BillingProject, func() (*mqlGcpProject, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.organization.firewallEndpoint", c.__id, "billingProject")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProject), nil
+			}
+		}
+
+		return c.billingProject()
+	})
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) GetJumboFramesEnabled() *plugin.TValue[bool] {
+	return &c.JumboFramesEnabled
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlGcpOrganizationFirewallEndpoint) GetUpdated() *plugin.TValue[*time.Time] {
 	return &c.Updated
 }
 
@@ -47316,25 +48269,28 @@ type mqlGcpFolder struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlGcpFolderInternal
-	Id                   plugin.TValue[string]
-	Name                 plugin.TValue[string]
-	Created              plugin.TValue[*time.Time]
-	Updated              plugin.TValue[*time.Time]
-	ParentId             plugin.TValue[string]
-	ParentFolder         plugin.TValue[*mqlGcpFolder]
-	ParentOrganization   plugin.TValue[*mqlGcpOrganization]
-	ManagementProject    plugin.TValue[string]
-	ManagementProjectRef plugin.TValue[*mqlGcpProject]
-	State                plugin.TValue[string]
-	DeleteTime           plugin.TValue[*time.Time]
-	Folders              plugin.TValue[*mqlGcpFolders]
-	Projects             plugin.TValue[*mqlGcpProjects]
-	OrgPolicies          plugin.TValue[[]any]
-	IamPolicy            plugin.TValue[[]any]
-	AuditConfig          plugin.TValue[[]any]
-	Logging              plugin.TValue[*mqlGcpFolderLoggingService]
-	EssentialContacts    plugin.TValue[[]any]
-	FirewallPolicies     plugin.TValue[[]any]
+	Id                                      plugin.TValue[string]
+	Name                                    plugin.TValue[string]
+	Created                                 plugin.TValue[*time.Time]
+	Updated                                 plugin.TValue[*time.Time]
+	ParentId                                plugin.TValue[string]
+	ParentFolder                            plugin.TValue[*mqlGcpFolder]
+	ParentOrganization                      plugin.TValue[*mqlGcpOrganization]
+	ManagementProject                       plugin.TValue[string]
+	ManagementProjectRef                    plugin.TValue[*mqlGcpProject]
+	State                                   plugin.TValue[string]
+	DeleteTime                              plugin.TValue[*time.Time]
+	Folders                                 plugin.TValue[*mqlGcpFolders]
+	Projects                                plugin.TValue[*mqlGcpProjects]
+	OrgPolicies                             plugin.TValue[[]any]
+	IamPolicy                               plugin.TValue[[]any]
+	AuditConfig                             plugin.TValue[[]any]
+	Logging                                 plugin.TValue[*mqlGcpFolderLoggingService]
+	EssentialContacts                       plugin.TValue[[]any]
+	FirewallPolicies                        plugin.TValue[[]any]
+	DenyPolicies                            plugin.TValue[[]any]
+	SccSecurityHealthAnalyticsCustomModules plugin.TValue[[]any]
+	SccEventThreatDetectionCustomModules    plugin.TValue[[]any]
 }
 
 // createGcpFolder creates a new instance of this resource
@@ -47582,6 +48538,54 @@ func (c *mqlGcpFolder) GetFirewallPolicies() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlGcpFolder) GetDenyPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DenyPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.folder", c.__id, "denyPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.denyPolicies()
+	})
+}
+
+func (c *mqlGcpFolder) GetSccSecurityHealthAnalyticsCustomModules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SccSecurityHealthAnalyticsCustomModules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.folder", c.__id, "sccSecurityHealthAnalyticsCustomModules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.sccSecurityHealthAnalyticsCustomModules()
+	})
+}
+
+func (c *mqlGcpFolder) GetSccEventThreatDetectionCustomModules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SccEventThreatDetectionCustomModules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.folder", c.__id, "sccEventThreatDetectionCustomModules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.sccEventThreatDetectionCustomModules()
+	})
+}
+
 // mqlGcpProjects for the gcp.projects resource
 type mqlGcpProjects struct {
 	MqlRuntime *plugin.Runtime
@@ -47670,98 +48674,101 @@ type mqlGcpProject struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlGcpProjectInternal
-	Id                       plugin.TValue[string]
-	Name                     plugin.TValue[string]
-	ParentId                 plugin.TValue[string]
-	ParentFolder             plugin.TValue[*mqlGcpFolder]
-	ParentOrganization       plugin.TValue[*mqlGcpOrganization]
-	State                    plugin.TValue[string]
-	CreateTime               plugin.TValue[*time.Time]
-	Labels                   plugin.TValue[map[string]any]
-	DeleteTime               plugin.TValue[*time.Time]
-	Number                   plugin.TValue[string]
-	IamPolicy                plugin.TValue[[]any]
-	HasPublicIamBinding      plugin.TValue[bool]
-	PrimitiveRoleBindings    plugin.TValue[[]any]
-	AuditConfig              plugin.TValue[[]any]
-	DataAccessLoggingEnabled plugin.TValue[bool]
-	OrgPolicies              plugin.TValue[[]any]
-	OrgPolicyConstraints     plugin.TValue[[]any]
-	Services                 plugin.TValue[[]any]
-	Recommendations          plugin.TValue[[]any]
-	Insights                 plugin.TValue[[]any]
-	PrivilegedAccessManager  plugin.TValue[*mqlGcpProjectPrivilegedAccessManagerService]
-	NetworkConnectivity      plugin.TValue[*mqlGcpProjectNetworkConnectivityService]
-	NetworkManagement        plugin.TValue[*mqlGcpProjectNetworkManagementService]
-	Gke                      plugin.TValue[*mqlGcpProjectGkeService]
-	Compute                  plugin.TValue[*mqlGcpProjectComputeService]
-	Pubsub                   plugin.TValue[*mqlGcpProjectPubsubService]
-	Kms                      plugin.TValue[*mqlGcpProjectKmsService]
-	EssentialContacts        plugin.TValue[[]any]
-	ApiKeys                  plugin.TValue[[]any]
-	Logging                  plugin.TValue[*mqlGcpProjectLoggingservice]
-	Sql                      plugin.TValue[*mqlGcpProjectSqlService]
-	Iam                      plugin.TValue[*mqlGcpProjectIamService]
-	CommonInstanceMetadata   plugin.TValue[map[string]any]
-	Dns                      plugin.TValue[*mqlGcpProjectDnsService]
-	Bigquery                 plugin.TValue[*mqlGcpProjectBigqueryService]
-	CloudFunctions           plugin.TValue[[]any]
-	CloudFunctionsV2         plugin.TValue[[]any]
-	Dataproc                 plugin.TValue[*mqlGcpProjectDataprocService]
-	CloudRun                 plugin.TValue[*mqlGcpProjectCloudRunService]
-	AccessApprovalSettings   plugin.TValue[*mqlGcpAccessApprovalSettings]
-	Storage                  plugin.TValue[*mqlGcpProjectStorageService]
-	Monitoring               plugin.TValue[*mqlGcpProjectMonitoringService]
-	BinaryAuthorization      plugin.TValue[*mqlGcpProjectBinaryAuthorizationControl]
-	Redis                    plugin.TValue[*mqlGcpProjectRedisService]
-	Secretmanager            plugin.TValue[*mqlGcpProjectSecretmanagerService]
-	Firestore                plugin.TValue[*mqlGcpProjectFirestoreService]
-	Spanner                  plugin.TValue[*mqlGcpProjectSpannerService]
-	Bigtable                 plugin.TValue[*mqlGcpProjectBigtableService]
-	Alloydb                  plugin.TValue[*mqlGcpProjectAlloydbService]
-	CertificateAuthority     plugin.TValue[*mqlGcpProjectCertificateAuthorityService]
-	CertificateManager       plugin.TValue[*mqlGcpProjectCertificateManagerService]
-	Filestore                plugin.TValue[*mqlGcpProjectFilestoreService]
-	CloudTasks               plugin.TValue[*mqlGcpProjectCloudTasksService]
-	CloudScheduler           plugin.TValue[*mqlGcpProjectCloudSchedulerService]
-	AppEngine                plugin.TValue[*mqlGcpProjectAppEngineService]
-	CloudDeploy              plugin.TValue[*mqlGcpProjectCloudDeployService]
-	Dataflow                 plugin.TValue[*mqlGcpProjectDataflowService]
-	ArtifactRegistry         plugin.TValue[*mqlGcpProjectArtifactRegistryService]
-	Backupdr                 plugin.TValue[*mqlGcpProjectBackupdrService]
-	Vertexai                 plugin.TValue[*mqlGcpProjectVertexaiService]
-	ModelArmor               plugin.TValue[*mqlGcpProjectModelArmorService]
-	IdentityPlatform         plugin.TValue[*mqlGcpProjectIdentityPlatformService]
-	DiscoveryEngine          plugin.TValue[*mqlGcpProjectDiscoveryEngineService]
-	Documentai               plugin.TValue[*mqlGcpProjectDocumentaiService]
-	SccFindings              plugin.TValue[[]any]
-	Eventarc                 plugin.TValue[*mqlGcpProjectEventarcService]
-	Dlp                      plugin.TValue[*mqlGcpProjectDlpService]
-	Batch                    plugin.TValue[*mqlGcpProjectBatchService]
-	Ids                      plugin.TValue[*mqlGcpProjectIdsService]
-	GkeBackup                plugin.TValue[*mqlGcpProjectGkeBackupService]
-	ContainerAnalysis        plugin.TValue[*mqlGcpProjectContainerAnalysisService]
-	CloudBuild               plugin.TValue[*mqlGcpProjectCloudBuildService]
-	AssetInventory           plugin.TValue[*mqlGcpProjectAssetService]
-	Iap                      plugin.TValue[*mqlGcpProjectIapService]
-	SourceRepositories       plugin.TValue[*mqlGcpProjectSourceRepositoriesService]
-	Memcache                 plugin.TValue[*mqlGcpProjectMemcacheService]
-	Datastream               plugin.TValue[*mqlGcpProjectDatastreamService]
-	Memorystore              plugin.TValue[*mqlGcpProjectMemorystoreService]
-	ApiGateway               plugin.TValue[*mqlGcpProjectApiGatewayService]
-	Workstations             plugin.TValue[*mqlGcpProjectWorkstationsService]
-	Workbench                plugin.TValue[*mqlGcpProjectWorkbenchService]
-	Notebooks                plugin.TValue[*mqlGcpProjectNotebooksService]
-	Composer                 plugin.TValue[*mqlGcpProjectComposerService]
-	Healthcare               plugin.TValue[*mqlGcpProjectHealthcareService]
-	OsConfig                 plugin.TValue[*mqlGcpProjectOsConfigService]
-	NetworkSecurity          plugin.TValue[*mqlGcpProjectNetworkSecurityService]
-	Dataplex                 plugin.TValue[*mqlGcpProjectDataplexService]
-	Workflows                plugin.TValue[*mqlGcpProjectWorkflowsService]
-	CloudDomains             plugin.TValue[*mqlGcpProjectCloudDomainsService]
-	Liens                    plugin.TValue[[]any]
-	TagBindings              plugin.TValue[[]any]
-	ManagedBy                plugin.TValue[string]
+	Id                                      plugin.TValue[string]
+	Name                                    plugin.TValue[string]
+	ParentId                                plugin.TValue[string]
+	ParentFolder                            plugin.TValue[*mqlGcpFolder]
+	ParentOrganization                      plugin.TValue[*mqlGcpOrganization]
+	State                                   plugin.TValue[string]
+	CreateTime                              plugin.TValue[*time.Time]
+	Labels                                  plugin.TValue[map[string]any]
+	DeleteTime                              plugin.TValue[*time.Time]
+	Number                                  plugin.TValue[string]
+	IamPolicy                               plugin.TValue[[]any]
+	HasPublicIamBinding                     plugin.TValue[bool]
+	PrimitiveRoleBindings                   plugin.TValue[[]any]
+	AuditConfig                             plugin.TValue[[]any]
+	DataAccessLoggingEnabled                plugin.TValue[bool]
+	OrgPolicies                             plugin.TValue[[]any]
+	OrgPolicyConstraints                    plugin.TValue[[]any]
+	Services                                plugin.TValue[[]any]
+	Recommendations                         plugin.TValue[[]any]
+	Insights                                plugin.TValue[[]any]
+	PrivilegedAccessManager                 plugin.TValue[*mqlGcpProjectPrivilegedAccessManagerService]
+	NetworkConnectivity                     plugin.TValue[*mqlGcpProjectNetworkConnectivityService]
+	NetworkManagement                       plugin.TValue[*mqlGcpProjectNetworkManagementService]
+	Gke                                     plugin.TValue[*mqlGcpProjectGkeService]
+	Compute                                 plugin.TValue[*mqlGcpProjectComputeService]
+	Pubsub                                  plugin.TValue[*mqlGcpProjectPubsubService]
+	Kms                                     plugin.TValue[*mqlGcpProjectKmsService]
+	EssentialContacts                       plugin.TValue[[]any]
+	ApiKeys                                 plugin.TValue[[]any]
+	Logging                                 plugin.TValue[*mqlGcpProjectLoggingservice]
+	Sql                                     plugin.TValue[*mqlGcpProjectSqlService]
+	Iam                                     plugin.TValue[*mqlGcpProjectIamService]
+	CommonInstanceMetadata                  plugin.TValue[map[string]any]
+	Dns                                     plugin.TValue[*mqlGcpProjectDnsService]
+	Bigquery                                plugin.TValue[*mqlGcpProjectBigqueryService]
+	CloudFunctions                          plugin.TValue[[]any]
+	CloudFunctionsV2                        plugin.TValue[[]any]
+	Dataproc                                plugin.TValue[*mqlGcpProjectDataprocService]
+	CloudRun                                plugin.TValue[*mqlGcpProjectCloudRunService]
+	AccessApprovalSettings                  plugin.TValue[*mqlGcpAccessApprovalSettings]
+	Storage                                 plugin.TValue[*mqlGcpProjectStorageService]
+	Monitoring                              plugin.TValue[*mqlGcpProjectMonitoringService]
+	BinaryAuthorization                     plugin.TValue[*mqlGcpProjectBinaryAuthorizationControl]
+	Redis                                   plugin.TValue[*mqlGcpProjectRedisService]
+	Secretmanager                           plugin.TValue[*mqlGcpProjectSecretmanagerService]
+	Firestore                               plugin.TValue[*mqlGcpProjectFirestoreService]
+	Spanner                                 plugin.TValue[*mqlGcpProjectSpannerService]
+	Bigtable                                plugin.TValue[*mqlGcpProjectBigtableService]
+	Alloydb                                 plugin.TValue[*mqlGcpProjectAlloydbService]
+	CertificateAuthority                    plugin.TValue[*mqlGcpProjectCertificateAuthorityService]
+	CertificateManager                      plugin.TValue[*mqlGcpProjectCertificateManagerService]
+	Filestore                               plugin.TValue[*mqlGcpProjectFilestoreService]
+	CloudTasks                              plugin.TValue[*mqlGcpProjectCloudTasksService]
+	CloudScheduler                          plugin.TValue[*mqlGcpProjectCloudSchedulerService]
+	AppEngine                               plugin.TValue[*mqlGcpProjectAppEngineService]
+	CloudDeploy                             plugin.TValue[*mqlGcpProjectCloudDeployService]
+	Dataflow                                plugin.TValue[*mqlGcpProjectDataflowService]
+	ArtifactRegistry                        plugin.TValue[*mqlGcpProjectArtifactRegistryService]
+	Backupdr                                plugin.TValue[*mqlGcpProjectBackupdrService]
+	Vertexai                                plugin.TValue[*mqlGcpProjectVertexaiService]
+	ModelArmor                              plugin.TValue[*mqlGcpProjectModelArmorService]
+	IdentityPlatform                        plugin.TValue[*mqlGcpProjectIdentityPlatformService]
+	DiscoveryEngine                         plugin.TValue[*mqlGcpProjectDiscoveryEngineService]
+	Documentai                              plugin.TValue[*mqlGcpProjectDocumentaiService]
+	SccFindings                             plugin.TValue[[]any]
+	SccSecurityHealthAnalyticsCustomModules plugin.TValue[[]any]
+	SccEventThreatDetectionCustomModules    plugin.TValue[[]any]
+	FirebaseRules                           plugin.TValue[*mqlGcpProjectFirebaseRulesService]
+	Eventarc                                plugin.TValue[*mqlGcpProjectEventarcService]
+	Dlp                                     plugin.TValue[*mqlGcpProjectDlpService]
+	Batch                                   plugin.TValue[*mqlGcpProjectBatchService]
+	Ids                                     plugin.TValue[*mqlGcpProjectIdsService]
+	GkeBackup                               plugin.TValue[*mqlGcpProjectGkeBackupService]
+	ContainerAnalysis                       plugin.TValue[*mqlGcpProjectContainerAnalysisService]
+	CloudBuild                              plugin.TValue[*mqlGcpProjectCloudBuildService]
+	AssetInventory                          plugin.TValue[*mqlGcpProjectAssetService]
+	Iap                                     plugin.TValue[*mqlGcpProjectIapService]
+	SourceRepositories                      plugin.TValue[*mqlGcpProjectSourceRepositoriesService]
+	Memcache                                plugin.TValue[*mqlGcpProjectMemcacheService]
+	Datastream                              plugin.TValue[*mqlGcpProjectDatastreamService]
+	Memorystore                             plugin.TValue[*mqlGcpProjectMemorystoreService]
+	ApiGateway                              plugin.TValue[*mqlGcpProjectApiGatewayService]
+	Workstations                            plugin.TValue[*mqlGcpProjectWorkstationsService]
+	Workbench                               plugin.TValue[*mqlGcpProjectWorkbenchService]
+	Notebooks                               plugin.TValue[*mqlGcpProjectNotebooksService]
+	Composer                                plugin.TValue[*mqlGcpProjectComposerService]
+	Healthcare                              plugin.TValue[*mqlGcpProjectHealthcareService]
+	OsConfig                                plugin.TValue[*mqlGcpProjectOsConfigService]
+	NetworkSecurity                         plugin.TValue[*mqlGcpProjectNetworkSecurityService]
+	Dataplex                                plugin.TValue[*mqlGcpProjectDataplexService]
+	Workflows                               plugin.TValue[*mqlGcpProjectWorkflowsService]
+	CloudDomains                            plugin.TValue[*mqlGcpProjectCloudDomainsService]
+	Liens                                   plugin.TValue[[]any]
+	TagBindings                             plugin.TValue[[]any]
+	ManagedBy                               plugin.TValue[string]
 }
 
 // createGcpProject creates a new instance of this resource
@@ -48729,6 +49736,54 @@ func (c *mqlGcpProject) GetSccFindings() *plugin.TValue[[]any] {
 	})
 }
 
+func (c *mqlGcpProject) GetSccSecurityHealthAnalyticsCustomModules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SccSecurityHealthAnalyticsCustomModules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project", c.__id, "sccSecurityHealthAnalyticsCustomModules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.sccSecurityHealthAnalyticsCustomModules()
+	})
+}
+
+func (c *mqlGcpProject) GetSccEventThreatDetectionCustomModules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SccEventThreatDetectionCustomModules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project", c.__id, "sccEventThreatDetectionCustomModules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.sccEventThreatDetectionCustomModules()
+	})
+}
+
+func (c *mqlGcpProject) GetFirebaseRules() *plugin.TValue[*mqlGcpProjectFirebaseRulesService] {
+	return plugin.GetOrCompute[*mqlGcpProjectFirebaseRulesService](&c.FirebaseRules, func() (*mqlGcpProjectFirebaseRulesService, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project", c.__id, "firebaseRules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectFirebaseRulesService), nil
+			}
+		}
+
+		return c.firebaseRules()
+	})
+}
+
 func (c *mqlGcpProject) GetEventarc() *plugin.TValue[*mqlGcpProjectEventarcService] {
 	return plugin.GetOrCompute[*mqlGcpProjectEventarcService](&c.Eventarc, func() (*mqlGcpProjectEventarcService, error) {
 		if c.MqlRuntime.HasRecording {
@@ -49684,6 +50739,7 @@ type mqlGcpProjectComputeService struct {
 	Snapshots                  plugin.TValue[[]any]
 	Disks                      plugin.TValue[[]any]
 	Images                     plugin.TValue[[]any]
+	MachineImages              plugin.TValue[[]any]
 	Firewalls                  plugin.TValue[[]any]
 	Networks                   plugin.TValue[[]any]
 	HasDefaultNetwork          plugin.TValue[bool]
@@ -49839,6 +50895,22 @@ func (c *mqlGcpProjectComputeService) GetImages() *plugin.TValue[[]any] {
 		}
 
 		return c.images()
+	})
+}
+
+func (c *mqlGcpProjectComputeService) GetMachineImages() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MachineImages, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.computeService", c.__id, "machineImages")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.machineImages()
 	})
 }
 
@@ -53507,6 +54579,180 @@ func (c *mqlGcpProjectComputeServiceImage) GetPublic() *plugin.TValue[bool] {
 }
 
 func (c *mqlGcpProjectComputeServiceImage) GetManagedBy() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.ManagedBy, func() (string, error) {
+		return c.managedBy()
+	})
+}
+
+// mqlGcpProjectComputeServiceMachineImage for the gcp.project.computeService.machineImage resource
+type mqlGcpProjectComputeServiceMachineImage struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGcpProjectComputeServiceMachineImageInternal
+	Id                     plugin.TValue[string]
+	ProjectId              plugin.TValue[string]
+	Name                   plugin.TValue[string]
+	Description            plugin.TValue[string]
+	Status                 plugin.TValue[string]
+	Labels                 plugin.TValue[map[string]any]
+	Created                plugin.TValue[*time.Time]
+	StorageLocations       plugin.TValue[[]any]
+	GuestFlush             plugin.TValue[bool]
+	TotalStorageBytes      plugin.TValue[int64]
+	SatisfiesPzi           plugin.TValue[bool]
+	SatisfiesPzs           plugin.TValue[bool]
+	SourceInstance         plugin.TValue[*mqlGcpProjectComputeServiceInstance]
+	KmsKey                 plugin.TValue[*mqlGcpProjectKmsServiceKeyringCryptokey]
+	MachineImageEncryption plugin.TValue[*mqlGcpProjectComputeServiceCustomerEncryptionKey]
+	IamPolicy              plugin.TValue[[]any]
+	Public                 plugin.TValue[bool]
+	ManagedBy              plugin.TValue[string]
+}
+
+// createGcpProjectComputeServiceMachineImage creates a new instance of this resource
+func createGcpProjectComputeServiceMachineImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectComputeServiceMachineImage{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.computeService.machineImage", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) MqlName() string {
+	return "gcp.project.computeService.machineImage"
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) GetProjectId() *plugin.TValue[string] {
+	return &c.ProjectId
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) GetStorageLocations() *plugin.TValue[[]any] {
+	return &c.StorageLocations
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) GetGuestFlush() *plugin.TValue[bool] {
+	return &c.GuestFlush
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) GetTotalStorageBytes() *plugin.TValue[int64] {
+	return &c.TotalStorageBytes
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) GetSatisfiesPzi() *plugin.TValue[bool] {
+	return &c.SatisfiesPzi
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) GetSatisfiesPzs() *plugin.TValue[bool] {
+	return &c.SatisfiesPzs
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) GetSourceInstance() *plugin.TValue[*mqlGcpProjectComputeServiceInstance] {
+	return plugin.GetOrCompute[*mqlGcpProjectComputeServiceInstance](&c.SourceInstance, func() (*mqlGcpProjectComputeServiceInstance, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.computeService.machineImage", c.__id, "sourceInstance")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectComputeServiceInstance), nil
+			}
+		}
+
+		return c.sourceInstance()
+	})
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) GetKmsKey() *plugin.TValue[*mqlGcpProjectKmsServiceKeyringCryptokey] {
+	return plugin.GetOrCompute[*mqlGcpProjectKmsServiceKeyringCryptokey](&c.KmsKey, func() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.computeService.machineImage", c.__id, "kmsKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectKmsServiceKeyringCryptokey), nil
+			}
+		}
+
+		return c.kmsKey()
+	})
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) GetMachineImageEncryption() *plugin.TValue[*mqlGcpProjectComputeServiceCustomerEncryptionKey] {
+	return &c.MachineImageEncryption
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) GetIamPolicy() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.IamPolicy, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.computeService.machineImage", c.__id, "iamPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.iamPolicy()
+	})
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) GetPublic() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Public, func() (bool, error) {
+		return c.public()
+	})
+}
+
+func (c *mqlGcpProjectComputeServiceMachineImage) GetManagedBy() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.ManagedBy, func() (string, error) {
 		return c.managedBy()
 	})
@@ -74197,6 +75443,7 @@ type mqlGcpProjectSecretmanagerServiceSecret struct {
 	mqlGcpProjectSecretmanagerServiceSecretInternal
 	ProjectId                        plugin.TValue[string]
 	ResourcePath                     plugin.TValue[string]
+	Location                         plugin.TValue[string]
 	Name                             plugin.TValue[string]
 	CreateTime                       plugin.TValue[*time.Time]
 	Labels                           plugin.TValue[map[string]any]
@@ -74269,6 +75516,10 @@ func (c *mqlGcpProjectSecretmanagerServiceSecret) GetProjectId() *plugin.TValue[
 
 func (c *mqlGcpProjectSecretmanagerServiceSecret) GetResourcePath() *plugin.TValue[string] {
 	return &c.ResourcePath
+}
+
+func (c *mqlGcpProjectSecretmanagerServiceSecret) GetLocation() *plugin.TValue[string] {
+	return &c.Location
 }
 
 func (c *mqlGcpProjectSecretmanagerServiceSecret) GetName() *plugin.TValue[string] {
@@ -74911,6 +76162,272 @@ func (c *mqlGcpProjectFirestoreServiceDatabaseBackupSchedule) GetCreated() *plug
 
 func (c *mqlGcpProjectFirestoreServiceDatabaseBackupSchedule) GetUpdated() *plugin.TValue[*time.Time] {
 	return &c.Updated
+}
+
+// mqlGcpProjectFirebaseRulesService for the gcp.project.firebaseRulesService resource
+type mqlGcpProjectFirebaseRulesService struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGcpProjectFirebaseRulesServiceInternal
+	ProjectId plugin.TValue[string]
+	Releases  plugin.TValue[[]any]
+	Rulesets  plugin.TValue[[]any]
+}
+
+// createGcpProjectFirebaseRulesService creates a new instance of this resource
+func createGcpProjectFirebaseRulesService(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectFirebaseRulesService{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.firebaseRulesService", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectFirebaseRulesService) MqlName() string {
+	return "gcp.project.firebaseRulesService"
+}
+
+func (c *mqlGcpProjectFirebaseRulesService) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectFirebaseRulesService) GetProjectId() *plugin.TValue[string] {
+	return &c.ProjectId
+}
+
+func (c *mqlGcpProjectFirebaseRulesService) GetReleases() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Releases, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.firebaseRulesService", c.__id, "releases")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.releases()
+	})
+}
+
+func (c *mqlGcpProjectFirebaseRulesService) GetRulesets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Rulesets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.firebaseRulesService", c.__id, "rulesets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.rulesets()
+	})
+}
+
+// mqlGcpProjectFirebaseRulesServiceRelease for the gcp.project.firebaseRulesService.release resource
+type mqlGcpProjectFirebaseRulesServiceRelease struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGcpProjectFirebaseRulesServiceReleaseInternal
+	Name     plugin.TValue[string]
+	Service  plugin.TValue[string]
+	Ruleset  plugin.TValue[*mqlGcpProjectFirebaseRulesServiceRuleset]
+	Database plugin.TValue[*mqlGcpProjectFirestoreServiceDatabase]
+	Bucket   plugin.TValue[*mqlGcpProjectStorageServiceBucket]
+	Created  plugin.TValue[*time.Time]
+	Updated  plugin.TValue[*time.Time]
+}
+
+// createGcpProjectFirebaseRulesServiceRelease creates a new instance of this resource
+func createGcpProjectFirebaseRulesServiceRelease(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectFirebaseRulesServiceRelease{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.firebaseRulesService.release", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectFirebaseRulesServiceRelease) MqlName() string {
+	return "gcp.project.firebaseRulesService.release"
+}
+
+func (c *mqlGcpProjectFirebaseRulesServiceRelease) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectFirebaseRulesServiceRelease) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectFirebaseRulesServiceRelease) GetService() *plugin.TValue[string] {
+	return &c.Service
+}
+
+func (c *mqlGcpProjectFirebaseRulesServiceRelease) GetRuleset() *plugin.TValue[*mqlGcpProjectFirebaseRulesServiceRuleset] {
+	return plugin.GetOrCompute[*mqlGcpProjectFirebaseRulesServiceRuleset](&c.Ruleset, func() (*mqlGcpProjectFirebaseRulesServiceRuleset, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.firebaseRulesService.release", c.__id, "ruleset")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectFirebaseRulesServiceRuleset), nil
+			}
+		}
+
+		return c.ruleset()
+	})
+}
+
+func (c *mqlGcpProjectFirebaseRulesServiceRelease) GetDatabase() *plugin.TValue[*mqlGcpProjectFirestoreServiceDatabase] {
+	return plugin.GetOrCompute[*mqlGcpProjectFirestoreServiceDatabase](&c.Database, func() (*mqlGcpProjectFirestoreServiceDatabase, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.firebaseRulesService.release", c.__id, "database")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectFirestoreServiceDatabase), nil
+			}
+		}
+
+		return c.database()
+	})
+}
+
+func (c *mqlGcpProjectFirebaseRulesServiceRelease) GetBucket() *plugin.TValue[*mqlGcpProjectStorageServiceBucket] {
+	return plugin.GetOrCompute[*mqlGcpProjectStorageServiceBucket](&c.Bucket, func() (*mqlGcpProjectStorageServiceBucket, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.firebaseRulesService.release", c.__id, "bucket")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectStorageServiceBucket), nil
+			}
+		}
+
+		return c.bucket()
+	})
+}
+
+func (c *mqlGcpProjectFirebaseRulesServiceRelease) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlGcpProjectFirebaseRulesServiceRelease) GetUpdated() *plugin.TValue[*time.Time] {
+	return &c.Updated
+}
+
+// mqlGcpProjectFirebaseRulesServiceRuleset for the gcp.project.firebaseRulesService.ruleset resource
+type mqlGcpProjectFirebaseRulesServiceRuleset struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGcpProjectFirebaseRulesServiceRulesetInternal
+	Name     plugin.TValue[string]
+	Services plugin.TValue[[]any]
+	Files    plugin.TValue[[]any]
+	Created  plugin.TValue[*time.Time]
+}
+
+// createGcpProjectFirebaseRulesServiceRuleset creates a new instance of this resource
+func createGcpProjectFirebaseRulesServiceRuleset(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectFirebaseRulesServiceRuleset{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.firebaseRulesService.ruleset", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectFirebaseRulesServiceRuleset) MqlName() string {
+	return "gcp.project.firebaseRulesService.ruleset"
+}
+
+func (c *mqlGcpProjectFirebaseRulesServiceRuleset) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectFirebaseRulesServiceRuleset) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectFirebaseRulesServiceRuleset) GetServices() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Services, func() ([]any, error) {
+		return c.services()
+	})
+}
+
+func (c *mqlGcpProjectFirebaseRulesServiceRuleset) GetFiles() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Files, func() ([]any, error) {
+		return c.files()
+	})
+}
+
+func (c *mqlGcpProjectFirebaseRulesServiceRuleset) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
 }
 
 // mqlGcpProjectSpannerService for the gcp.project.spannerService resource
@@ -94129,6 +95646,149 @@ func (c *mqlGcpSccBigQueryExport) GetMostRecentEditor() *plugin.TValue[string] {
 	return &c.MostRecentEditor
 }
 
+// mqlGcpSccSecurityHealthAnalyticsCustomModule for the gcp.scc.securityHealthAnalyticsCustomModule resource
+type mqlGcpSccSecurityHealthAnalyticsCustomModule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpSccSecurityHealthAnalyticsCustomModuleInternal it will be used here
+	Name            plugin.TValue[string]
+	DisplayName     plugin.TValue[string]
+	EnablementState plugin.TValue[string]
+	Severity        plugin.TValue[string]
+	CustomConfig    plugin.TValue[any]
+}
+
+// createGcpSccSecurityHealthAnalyticsCustomModule creates a new instance of this resource
+func createGcpSccSecurityHealthAnalyticsCustomModule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpSccSecurityHealthAnalyticsCustomModule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.scc.securityHealthAnalyticsCustomModule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpSccSecurityHealthAnalyticsCustomModule) MqlName() string {
+	return "gcp.scc.securityHealthAnalyticsCustomModule"
+}
+
+func (c *mqlGcpSccSecurityHealthAnalyticsCustomModule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpSccSecurityHealthAnalyticsCustomModule) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpSccSecurityHealthAnalyticsCustomModule) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlGcpSccSecurityHealthAnalyticsCustomModule) GetEnablementState() *plugin.TValue[string] {
+	return &c.EnablementState
+}
+
+func (c *mqlGcpSccSecurityHealthAnalyticsCustomModule) GetSeverity() *plugin.TValue[string] {
+	return &c.Severity
+}
+
+func (c *mqlGcpSccSecurityHealthAnalyticsCustomModule) GetCustomConfig() *plugin.TValue[any] {
+	return &c.CustomConfig
+}
+
+// mqlGcpSccEventThreatDetectionCustomModule for the gcp.scc.eventThreatDetectionCustomModule resource
+type mqlGcpSccEventThreatDetectionCustomModule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpSccEventThreatDetectionCustomModuleInternal it will be used here
+	Name            plugin.TValue[string]
+	DisplayName     plugin.TValue[string]
+	Description     plugin.TValue[string]
+	Type            plugin.TValue[string]
+	EnablementState plugin.TValue[string]
+	Config          plugin.TValue[any]
+}
+
+// createGcpSccEventThreatDetectionCustomModule creates a new instance of this resource
+func createGcpSccEventThreatDetectionCustomModule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpSccEventThreatDetectionCustomModule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.scc.eventThreatDetectionCustomModule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpSccEventThreatDetectionCustomModule) MqlName() string {
+	return "gcp.scc.eventThreatDetectionCustomModule"
+}
+
+func (c *mqlGcpSccEventThreatDetectionCustomModule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpSccEventThreatDetectionCustomModule) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpSccEventThreatDetectionCustomModule) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlGcpSccEventThreatDetectionCustomModule) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpSccEventThreatDetectionCustomModule) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlGcpSccEventThreatDetectionCustomModule) GetEnablementState() *plugin.TValue[string] {
+	return &c.EnablementState
+}
+
+func (c *mqlGcpSccEventThreatDetectionCustomModule) GetConfig() *plugin.TValue[any] {
+	return &c.Config
+}
+
 // mqlGcpAccesscontextmanagerAccessPolicy for the gcp.accesscontextmanager.accessPolicy resource
 type mqlGcpAccesscontextmanagerAccessPolicy struct {
 	MqlRuntime *plugin.Runtime
@@ -98692,13 +100352,15 @@ type mqlGcpProjectNetworkSecurityService struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlGcpProjectNetworkSecurityServiceInternal
-	ProjectId             plugin.TValue[string]
-	AuthorizationPolicies plugin.TValue[[]any]
-	ServerTlsPolicies     plugin.TValue[[]any]
-	ClientTlsPolicies     plugin.TValue[[]any]
-	TlsInspectionPolicies plugin.TValue[[]any]
-	AddressGroups         plugin.TValue[[]any]
-	UrlLists              plugin.TValue[[]any]
+	ProjectId                    plugin.TValue[string]
+	AuthorizationPolicies        plugin.TValue[[]any]
+	ServerTlsPolicies            plugin.TValue[[]any]
+	ClientTlsPolicies            plugin.TValue[[]any]
+	TlsInspectionPolicies        plugin.TValue[[]any]
+	AddressGroups                plugin.TValue[[]any]
+	UrlLists                     plugin.TValue[[]any]
+	FirewallEndpointAssociations plugin.TValue[[]any]
+	GatewaySecurityPolicies      plugin.TValue[[]any]
 }
 
 // createGcpProjectNetworkSecurityService creates a new instance of this resource
@@ -98835,6 +100497,38 @@ func (c *mqlGcpProjectNetworkSecurityService) GetUrlLists() *plugin.TValue[[]any
 		}
 
 		return c.urlLists()
+	})
+}
+
+func (c *mqlGcpProjectNetworkSecurityService) GetFirewallEndpointAssociations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.FirewallEndpointAssociations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.networkSecurityService", c.__id, "firewallEndpointAssociations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.firewallEndpointAssociations()
+	})
+}
+
+func (c *mqlGcpProjectNetworkSecurityService) GetGatewaySecurityPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.GatewaySecurityPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.networkSecurityService", c.__id, "gatewaySecurityPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.gatewaySecurityPolicies()
 	})
 }
 
@@ -99344,6 +101038,338 @@ func (c *mqlGcpProjectNetworkSecurityServiceUrlList) GetCreated() *plugin.TValue
 }
 
 func (c *mqlGcpProjectNetworkSecurityServiceUrlList) GetUpdated() *plugin.TValue[*time.Time] {
+	return &c.Updated
+}
+
+// mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation for the gcp.project.networkSecurityService.firewallEndpointAssociation resource
+type mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociationInternal
+	Name                plugin.TValue[string]
+	Zone                plugin.TValue[string]
+	State               plugin.TValue[string]
+	Disabled            plugin.TValue[bool]
+	Reconciling         plugin.TValue[bool]
+	Network             plugin.TValue[*mqlGcpProjectComputeServiceNetwork]
+	FirewallEndpoint    plugin.TValue[*mqlGcpOrganizationFirewallEndpoint]
+	TlsInspectionPolicy plugin.TValue[*mqlGcpProjectNetworkSecurityServiceTlsInspectionPolicy]
+	Labels              plugin.TValue[map[string]any]
+	Created             plugin.TValue[*time.Time]
+	Updated             plugin.TValue[*time.Time]
+}
+
+// createGcpProjectNetworkSecurityServiceFirewallEndpointAssociation creates a new instance of this resource
+func createGcpProjectNetworkSecurityServiceFirewallEndpointAssociation(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.networkSecurityService.firewallEndpointAssociation", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation) MqlName() string {
+	return "gcp.project.networkSecurityService.firewallEndpointAssociation"
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation) GetZone() *plugin.TValue[string] {
+	return &c.Zone
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation) GetDisabled() *plugin.TValue[bool] {
+	return &c.Disabled
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation) GetReconciling() *plugin.TValue[bool] {
+	return &c.Reconciling
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation) GetNetwork() *plugin.TValue[*mqlGcpProjectComputeServiceNetwork] {
+	return plugin.GetOrCompute[*mqlGcpProjectComputeServiceNetwork](&c.Network, func() (*mqlGcpProjectComputeServiceNetwork, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.networkSecurityService.firewallEndpointAssociation", c.__id, "network")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectComputeServiceNetwork), nil
+			}
+		}
+
+		return c.network()
+	})
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation) GetFirewallEndpoint() *plugin.TValue[*mqlGcpOrganizationFirewallEndpoint] {
+	return plugin.GetOrCompute[*mqlGcpOrganizationFirewallEndpoint](&c.FirewallEndpoint, func() (*mqlGcpOrganizationFirewallEndpoint, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.networkSecurityService.firewallEndpointAssociation", c.__id, "firewallEndpoint")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpOrganizationFirewallEndpoint), nil
+			}
+		}
+
+		return c.firewallEndpoint()
+	})
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation) GetTlsInspectionPolicy() *plugin.TValue[*mqlGcpProjectNetworkSecurityServiceTlsInspectionPolicy] {
+	return plugin.GetOrCompute[*mqlGcpProjectNetworkSecurityServiceTlsInspectionPolicy](&c.TlsInspectionPolicy, func() (*mqlGcpProjectNetworkSecurityServiceTlsInspectionPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.networkSecurityService.firewallEndpointAssociation", c.__id, "tlsInspectionPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectNetworkSecurityServiceTlsInspectionPolicy), nil
+			}
+		}
+
+		return c.tlsInspectionPolicy()
+	})
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceFirewallEndpointAssociation) GetUpdated() *plugin.TValue[*time.Time] {
+	return &c.Updated
+}
+
+// mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy for the gcp.project.networkSecurityService.gatewaySecurityPolicy resource
+type mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyInternal
+	Name                plugin.TValue[string]
+	Location            plugin.TValue[string]
+	Description         plugin.TValue[string]
+	TlsInspectionPolicy plugin.TValue[*mqlGcpProjectNetworkSecurityServiceTlsInspectionPolicy]
+	Rules               plugin.TValue[[]any]
+	Created             plugin.TValue[*time.Time]
+	Updated             plugin.TValue[*time.Time]
+}
+
+// createGcpProjectNetworkSecurityServiceGatewaySecurityPolicy creates a new instance of this resource
+func createGcpProjectNetworkSecurityServiceGatewaySecurityPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.networkSecurityService.gatewaySecurityPolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy) MqlName() string {
+	return "gcp.project.networkSecurityService.gatewaySecurityPolicy"
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy) GetLocation() *plugin.TValue[string] {
+	return &c.Location
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy) GetTlsInspectionPolicy() *plugin.TValue[*mqlGcpProjectNetworkSecurityServiceTlsInspectionPolicy] {
+	return plugin.GetOrCompute[*mqlGcpProjectNetworkSecurityServiceTlsInspectionPolicy](&c.TlsInspectionPolicy, func() (*mqlGcpProjectNetworkSecurityServiceTlsInspectionPolicy, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.networkSecurityService.gatewaySecurityPolicy", c.__id, "tlsInspectionPolicy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGcpProjectNetworkSecurityServiceTlsInspectionPolicy), nil
+			}
+		}
+
+		return c.tlsInspectionPolicy()
+	})
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy) GetRules() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Rules, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gcp.project.networkSecurityService.gatewaySecurityPolicy", c.__id, "rules")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.rules()
+	})
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicy) GetUpdated() *plugin.TValue[*time.Time] {
+	return &c.Updated
+}
+
+// mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule for the gcp.project.networkSecurityService.gatewaySecurityPolicy.rule resource
+type mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRuleInternal it will be used here
+	Name                 plugin.TValue[string]
+	Description          plugin.TValue[string]
+	Priority             plugin.TValue[int64]
+	Enabled              plugin.TValue[bool]
+	BasicProfile         plugin.TValue[string]
+	SessionMatcher       plugin.TValue[string]
+	ApplicationMatcher   plugin.TValue[string]
+	TlsInspectionEnabled plugin.TValue[bool]
+	Created              plugin.TValue[*time.Time]
+	Updated              plugin.TValue[*time.Time]
+}
+
+// createGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule creates a new instance of this resource
+func createGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("gcp.project.networkSecurityService.gatewaySecurityPolicy.rule", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule) MqlName() string {
+	return "gcp.project.networkSecurityService.gatewaySecurityPolicy.rule"
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule) GetPriority() *plugin.TValue[int64] {
+	return &c.Priority
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule) GetEnabled() *plugin.TValue[bool] {
+	return &c.Enabled
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule) GetBasicProfile() *plugin.TValue[string] {
+	return &c.BasicProfile
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule) GetSessionMatcher() *plugin.TValue[string] {
+	return &c.SessionMatcher
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule) GetApplicationMatcher() *plugin.TValue[string] {
+	return &c.ApplicationMatcher
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule) GetTlsInspectionEnabled() *plugin.TValue[bool] {
+	return &c.TlsInspectionEnabled
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule) GetCreated() *plugin.TValue[*time.Time] {
+	return &c.Created
+}
+
+func (c *mqlGcpProjectNetworkSecurityServiceGatewaySecurityPolicyRule) GetUpdated() *plugin.TValue[*time.Time] {
 	return &c.Updated
 }
 

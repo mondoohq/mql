@@ -220,3 +220,17 @@ func TestDurationToString(t *testing.T) {
 		assert.Equal(t, "0s", durationToString(d))
 	})
 }
+
+func TestSecretManagerRegionalAddressing(t *testing.T) {
+	assert.Equal(t, "", secretManagerEndpoint(""), "the global endpoint is the client default")
+	assert.Equal(t, "secretmanager.us-central1.rep.googleapis.com:443", secretManagerEndpoint("us-central1"))
+
+	assert.Equal(t, "projects/p", secretManagerParent("p", ""))
+	assert.Equal(t, "projects/p/locations/europe-west4", secretManagerParent("p", "europe-west4"))
+
+	assert.Equal(t, "", secretLocationFromName("projects/p/secrets/s"))
+	assert.Equal(t, "", secretLocationFromName("projects/p/secrets/s/versions/1"))
+	assert.Equal(t, "us-east1", secretLocationFromName("projects/p/locations/us-east1/secrets/s"))
+	assert.Equal(t, "us-east1", secretLocationFromName("projects/p/locations/us-east1/secrets/s/versions/3"))
+	assert.Equal(t, "", secretLocationFromName(""))
+}

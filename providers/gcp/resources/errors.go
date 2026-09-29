@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -167,4 +170,47 @@ func isInapplicable(err error) bool {
 		}
 	}
 	return false
+}
+
+// classifyRefusal maps a refused call onto an ADR 046 error kind, naming the
+// permission the call needed. It returns nil when err is not a refusal, so the
+// caller returns the error unchanged.
+//
+// An API that is not enabled is NotApplicable, whichever transport reported
+// it: GCP answers a disabled API with a 403 carrying the not-enabled marker.
+// Every other 403 or PermissionDenied is Forbidden. A 404 is left alone,
+// because on these APIs it is as likely a malformed parent as a real absence.
+func classifyRefusal(err error, permissions ...string) error {
+	if err == nil {
+		return nil
+	}
+	if saysServiceDisabled(err) {
+		return llx.NotApplicable(err)
+	}
+	if gerr, ok := googleAPIError(err); ok {
+		if gerr.Code == http.StatusForbidden {
+			return llx.Forbidden(err, llx.WithPermissions(permissions...))
+		}
+		return nil
+	}
+	if s, ok := grpcStatusOf(err); ok && s.Code() == codes.PermissionDenied {
+		return llx.Forbidden(err, llx.WithPermissions(permissions...))
+	}
+	return nil
+}
+
+// listRefusal is the return path of a list accessor whose call failed. A
+// refusal is logged and read as an empty list unless structured errors are
+// on, in which case it is returned classified. Anything else is returned as
+// is.
+func listRefusal(err error, msg string, permissions ...string) ([]any, error) {
+	rerr := classifyRefusal(err, permissions...)
+	if rerr == nil {
+		return nil, err
+	}
+	if !plugin.StructuredErrors() {
+		log.Warn().Err(err).Msg(msg)
+		return nil, nil
+	}
+	return nil, rerr
 }

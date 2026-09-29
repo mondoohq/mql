@@ -88,9 +88,13 @@ func firewallRuleOpenIngress(isAllow bool, direction string, disabled bool, sour
 // that apply to an instance and admit ingress from any address.
 //
 // Only policies associated with one of the instance's networks are considered,
-// because an unassociated policy enforces nothing.
+// because an unassociated policy enforces nothing. A regional policy is
+// enforced only on instances in its region, so one from another region is
+// skipped. When the instance's region is unknown every regional policy is
+// kept, which can only over-report reachability, never hide it.
 func openIngressPolicyRulesForInstance(
 	svc *mqlGcpProjectComputeService,
+	instanceRegion string,
 	instanceNetworks, instanceServiceAccounts map[string]bool,
 ) ([]any, error) {
 	policies := svc.GetFirewallPolicies()
@@ -102,6 +106,9 @@ func openIngressPolicyRulesForInstance(
 	for _, p := range policies.Data {
 		policy, ok := p.(*mqlGcpProjectComputeServiceFirewallPolicy)
 		if !ok {
+			continue
+		}
+		if !policyAppliesInRegion(policy.cacheRegionUrl, instanceRegion) {
 			continue
 		}
 		associations := policy.GetAssociations()
@@ -156,6 +163,28 @@ func openIngressPolicyRulesForInstance(
 		}
 	}
 	return openRules, nil
+}
+
+// policyAppliesInRegion reports whether a network firewall policy is enforced
+// on an instance in instanceRegion. A global policy (empty policyRegionUrl)
+// applies everywhere; a regional one only in its own region. An unknown
+// instance region keeps the policy.
+func policyAppliesInRegion(policyRegionUrl, instanceRegion string) bool {
+	if policyRegionUrl == "" || instanceRegion == "" {
+		return true
+	}
+	return RegionNameFromRegionUrl(policyRegionUrl) == instanceRegion
+}
+
+// regionFromZoneName returns the region a zone belongs to, for example
+// "us-central1" for "us-central1-a". It returns "" for a name that does not
+// have the region-letter shape.
+func regionFromZoneName(zone string) string {
+	i := strings.LastIndex(zone, "-")
+	if i <= 0 || i == len(zone)-1 {
+		return ""
+	}
+	return zone[:i]
 }
 
 // policyRuleOpenIngress reports whether a network firewall policy rule admits
@@ -750,8 +779,12 @@ func (g *mqlGcpProjectComputeServiceInstance) exposure() (*mqlGcpProjectComputeS
 	// and they are evaluated ahead of the legacy rules above. A VPC migrated to
 	// them can have no legacy rules at all, in which case reading only those
 	// reports internetReachable: false for a genuinely reachable instance.
+	instanceRegion := ""
+	if zone := g.GetZone(); zone.Error == nil && zone.Data != nil && zone.Data.Name.Error == nil {
+		instanceRegion = regionFromZoneName(zone.Data.Name.Data)
+	}
 	openPolicyRules, err := openIngressPolicyRulesForInstance(
-		svc.(*mqlGcpProjectComputeService), instanceNetworks, instanceServiceAccounts)
+		svc.(*mqlGcpProjectComputeService), instanceRegion, instanceNetworks, instanceServiceAccounts)
 	if err != nil {
 		return nil, err
 	}

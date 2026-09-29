@@ -1181,6 +1181,21 @@ var gcpPermissionOverrides = map[string]map[string]string{
 		"GetCryptoKey": "cloudkms.cryptoKeys.get",
 		"GetIamPolicy": "cloudkms.cryptoKeys.getIamPolicy",
 	},
+	"networksecurity": {
+		// Gateway security policy rules are a nested collection whose REST
+		// resource is just "Rules"; the generic derivation yields the
+		// non-existent networksecurity.rules.list.
+		"Rules.List": "networksecurity.gatewaySecurityPolicyRules.list",
+	},
+	"securitycenter": {
+		// Security Command Center permissions are all lowercase; the generic
+		// derivation keeps the method's camel case.
+		"ListEffectiveSecurityHealthAnalyticsCustomModules": "securitycenter.effectivesecurityhealthanalyticscustommodules.list",
+		// Event Threat Detection custom modules are governed by the Security
+		// Command Center Management permissions even through the v1 API; no
+		// securitycenter.*eventthreatdetectioncustommodules permission exists.
+		"ListEffectiveEventThreatDetectionCustomModules": "securitycentermanagement.effectiveEventThreatDetectionCustomModules.list",
+	},
 	"secretmanager": {
 		"ListSecretVersions": "secretmanager.versions.list",
 		"GetIamPolicy":       "secretmanager.secrets.getIamPolicy",
@@ -1218,6 +1233,13 @@ var gcpPermissionOverrides = map[string]map[string]string{
 	"compute": {
 		"NetworkFirewallPolicies.Get":  "compute.firewallPolicies.get",
 		"NetworkFirewallPolicies.List": "compute.firewallPolicies.list",
+		// Regional network firewall policies are governed by the
+		// compute.regionFirewallPolicies namespace; the generic derivation
+		// yields the non-existent compute.regionNetworkFirewallPolicies.*. The
+		// aggregated list is only read for its regional scopes, the global
+		// ones being covered by NetworkFirewallPolicies.List.
+		"NetworkFirewallPolicies.AggregatedList": "compute.regionFirewallPolicies.list",
+		"RegionNetworkFirewallPolicies.Get":      "compute.regionFirewallPolicies.get",
 		// Reading the members of a zonal or regional instance group is governed
 		// by compute.instanceGroups.list; there is no distinct listInstances or
 		// regionInstanceGroups permission namespace in GCP IAM.

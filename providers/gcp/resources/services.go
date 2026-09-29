@@ -71,6 +71,7 @@ const (
 	service_datastream          = "datastream.googleapis.com"
 	service_memorystore         = "memorystore.googleapis.com"
 	service_documentai          = "documentai.googleapis.com"
+	service_firebaserules       = "firebaserules.googleapis.com"
 )
 
 func serviceName(name string) string {

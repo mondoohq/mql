@@ -2131,6 +2131,11 @@ func (g *mqlGcpProjectComputeServiceNetwork) firewallPolicyRef() (*mqlGcpProject
 		if policy.SelfLink.Error == nil && policy.SelfLink.Data == url {
 			return policy, nil
 		}
+		// The network's firewallPolicy is a global policy. A regional policy
+		// may share its name, so the fallback matches never consider one.
+		if policy.cacheRegionUrl != "" {
+			continue
+		}
 		if policy.Name.Error == nil && policy.Name.Data == lastSegment {
 			return policy, nil
 		}

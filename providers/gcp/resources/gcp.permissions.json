@@ -1,7 +1,7 @@
 {
   "provider": "gcp",
-  "version": "14.1.0",
-  "generated_at": "2026-09-28T09:40:52-07:00",
+  "version": "14.2.0",
+  "generated_at": "2026-09-28T21:39:52-07:00",
   "permissions": [
     "accessapproval.settings.get",
     "aiplatform.batchPredictionJobs.list",
@@ -113,6 +113,8 @@
     "compute.instances.list",
     "compute.interconnectAttachments.list",
     "compute.interconnects.list",
+    "compute.machineImages.getIamPolicy",
+    "compute.machineImages.list",
     "compute.machineTypes.get",
     "compute.machineTypes.list",
     "compute.networkEndpointGroups.list",
@@ -121,6 +123,8 @@
     "compute.packetMirrorings.list",
     "compute.projects.get",
     "compute.publicAdvertisedPrefixes.list",
+    "compute.regionFirewallPolicies.get",
+    "compute.regionFirewallPolicies.list",
     "compute.regionSecurityPolicies.get",
     "compute.regions.get",
     "compute.regions.list",
@@ -191,6 +195,9 @@
     "eventarc.channels.list",
     "eventarc.triggers.list",
     "file.instances.list",
+    "firebaserules.releases.list",
+    "firebaserules.rulesets.get",
+    "firebaserules.rulesets.list",
     "gkebackup.backupPlans.list",
     "gkebackup.restorePlans.list",
     "iam.denypolicies.list",
@@ -238,6 +245,12 @@
     "networksecurity.addressGroups.list",
     "networksecurity.authorizationPolicies.list",
     "networksecurity.clientTlsPolicies.list",
+    "networksecurity.firewallEndpointAssociations.list",
+    "networksecurity.firewallEndpoints.get",
+    "networksecurity.firewallEndpoints.list",
+    "networksecurity.gatewaySecurityPolicies.list",
+    "networksecurity.gatewaySecurityPolicyRules.list",
+    "networksecurity.locations.list",
     "networksecurity.securityProfileGroups.list",
     "networksecurity.securityProfiles.list",
     "networksecurity.serverTlsPolicies.list",
@@ -272,9 +285,12 @@
     "run.operations.list",
     "run.services.getIamPolicy",
     "run.services.list",
+    "secretmanager.locations.list",
     "secretmanager.secrets.getIamPolicy",
     "secretmanager.secrets.list",
     "secretmanager.versions.list",
+    "securitycenter.effectivesecurityhealthanalyticscustommodules.list",
+    "securitycentermanagement.effectiveEventThreatDetectionCustomModules.list",
     "serviceusage.services.get",
     "serviceusage.services.list",
     "source.repos.list",
@@ -981,6 +997,18 @@
       "source_file": "compute_networking.go"
     },
     {
+      "permission": "compute.machineImages.getIamPolicy",
+      "service": "compute",
+      "action": "MachineImages.GetIamPolicy",
+      "source_file": "compute_machine_images.go"
+    },
+    {
+      "permission": "compute.machineImages.list",
+      "service": "compute",
+      "action": "MachineImages.List",
+      "source_file": "compute_machine_images.go"
+    },
+    {
       "permission": "compute.machineTypes.get",
       "service": "compute",
       "action": "MachineTypes.Get",
@@ -1033,6 +1061,18 @@
       "service": "compute",
       "action": "PublicAdvertisedPrefixes.List",
       "source_file": "compute_networking.go"
+    },
+    {
+      "permission": "compute.regionFirewallPolicies.get",
+      "service": "compute",
+      "action": "RegionNetworkFirewallPolicies.Get",
+      "source_file": "compute_instance_groups_firewall_policies.go"
+    },
+    {
+      "permission": "compute.regionFirewallPolicies.list",
+      "service": "compute",
+      "action": "NetworkFirewallPolicies.AggregatedList",
+      "source_file": "compute_instance_groups_firewall_policies.go"
     },
     {
       "permission": "compute.regionSecurityPolicies.get",
@@ -1497,6 +1537,24 @@
       "source_file": "filestore.go"
     },
     {
+      "permission": "firebaserules.releases.list",
+      "service": "firebaserules",
+      "action": "Releases.List",
+      "source_file": "firebaserules.go"
+    },
+    {
+      "permission": "firebaserules.rulesets.get",
+      "service": "firebaserules",
+      "action": "Rulesets.Get",
+      "source_file": "firebaserules.go"
+    },
+    {
+      "permission": "firebaserules.rulesets.list",
+      "service": "firebaserules",
+      "action": "Rulesets.List",
+      "source_file": "firebaserules.go"
+    },
+    {
       "permission": "gkebackup.backupPlans.list",
       "service": "gkebackup",
       "action": "ListBackupPlans",
@@ -1785,6 +1843,42 @@
       "source_file": "networksecurity.go"
     },
     {
+      "permission": "networksecurity.firewallEndpointAssociations.list",
+      "service": "networksecurity",
+      "action": "FirewallEndpointAssociations.List",
+      "source_file": "networksecurity_ngfw.go"
+    },
+    {
+      "permission": "networksecurity.firewallEndpoints.get",
+      "service": "networksecurity",
+      "action": "FirewallEndpoints.Get",
+      "source_file": "networksecurity_ngfw.go"
+    },
+    {
+      "permission": "networksecurity.firewallEndpoints.list",
+      "service": "networksecurity",
+      "action": "FirewallEndpoints.List",
+      "source_file": "networksecurity_ngfw.go"
+    },
+    {
+      "permission": "networksecurity.gatewaySecurityPolicies.list",
+      "service": "networksecurity",
+      "action": "GatewaySecurityPolicies.List",
+      "source_file": "networksecurity_ngfw.go"
+    },
+    {
+      "permission": "networksecurity.gatewaySecurityPolicyRules.list",
+      "service": "networksecurity",
+      "action": "Rules.List",
+      "source_file": "networksecurity_ngfw.go"
+    },
+    {
+      "permission": "networksecurity.locations.list",
+      "service": "networksecurity",
+      "action": "Locations.List",
+      "source_file": "networksecurity_ngfw.go"
+    },
+    {
       "permission": "networksecurity.securityProfileGroups.list",
       "service": "networksecurity",
       "action": "SecurityProfileGroups.List",
@@ -2058,6 +2152,12 @@
       "source_file": "cloudrun.go"
     },
     {
+      "permission": "secretmanager.locations.list",
+      "service": "secretmanager",
+      "action": "ListLocations",
+      "source_file": "secretmanager.go"
+    },
+    {
       "permission": "secretmanager.secrets.getIamPolicy",
       "service": "secretmanager",
       "action": "GetIamPolicy",
@@ -2074,6 +2174,18 @@
       "service": "secretmanager",
       "action": "ListSecretVersions",
       "source_file": "secretmanager.go"
+    },
+    {
+      "permission": "securitycenter.effectivesecurityhealthanalyticscustommodules.list",
+      "service": "securitycenter",
+      "action": "ListEffectiveSecurityHealthAnalyticsCustomModules",
+      "source_file": "securitycenter_custom_modules.go"
+    },
+    {
+      "permission": "securitycentermanagement.effectiveEventThreatDetectionCustomModules.list",
+      "service": "securitycenter",
+      "action": "ListEffectiveEventThreatDetectionCustomModules",
+      "source_file": "securitycenter_custom_modules.go"
     },
     {
       "permission": "serviceusage.services.get",
