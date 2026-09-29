@@ -44,7 +44,8 @@ func (r *mqlDigitaloceanDatabase) logsinks() ([]interface{}, error) {
 // settings stay null when the API reports no value: port 0 and a retention of
 // 0 days are both readings an audit would act on, and neither is what "the
 // API did not say" means. The CA, client key, and client certificate the sink
-// is configured with are credentials and are deliberately dropped.
+// is configured with are credentials and are deliberately dropped, and so is
+// a password embedded in the sink URL.
 func logsinkArgs(databaseID string, s *godo.DatabaseLogsink) (map[string]*llx.RawData, error) {
 	id, err := resourceID("digitalocean.database.logsink", databaseID, s.ID)
 	if err != nil {
@@ -62,7 +63,7 @@ func logsinkArgs(databaseID string, s *godo.DatabaseLogsink) (map[string]*llx.Ra
 	)
 	if cfg := s.Config; cfg != nil {
 		server = cfg.Server
-		url = cfg.URL
+		url = redactURLPassword(cfg.URL)
 		format = cfg.Format
 		indexPrefix = cfg.IndexPrefix
 		tlsEnabled = cfg.TLS

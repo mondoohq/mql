@@ -64,6 +64,20 @@ func databaseArgs(db *godo.Database) map[string]*llx.RawData {
 		privConnSslEnabled = &ssl
 	}
 
+	// OpenSearch clusters publish a Dashboards endpoint beside the API
+	// endpoint. Its URI embeds the admin password like the others, so only
+	// host, port and TLS are read. A cluster without one reports no TLS
+	// setting rather than a plaintext endpoint.
+	dashHost := ""
+	dashPort := int64(0)
+	var dashSslEnabled *bool
+	if db.UIConnection != nil {
+		dashHost = db.UIConnection.Host
+		dashPort = int64(db.UIConnection.Port)
+		ssl := db.UIConnection.SSL
+		dashSslEnabled = &ssl
+	}
+
 	dbNames := make([]interface{}, len(db.DBNames))
 	for i, n := range db.DBNames {
 		dbNames[i] = n
@@ -140,6 +154,9 @@ func databaseArgs(db *godo.Database) map[string]*llx.RawData {
 		"standbyConnectionPort":            llx.IntData(standbyPort),
 		"standbyPrivateConnectionHost":     llx.StringData(standbyPrivHost),
 		"standbyPrivateConnectionPort":     llx.IntData(standbyPrivPort),
+		"dashboardConnectionHost":          llx.StringData(dashHost),
+		"dashboardConnectionPort":          llx.IntData(dashPort),
+		"dashboardConnectionSslEnabled":    llx.BoolDataPtr(dashSslEnabled),
 	}
 }
 
@@ -580,6 +597,12 @@ type mqlDigitaloceanKubernetesClusterInternal struct {
 	clusterUserOnce  sync.Once
 	clusterUserValue *godo.KubernetesClusterUser
 	clusterUserErr   error
+
+	// The most recent clusterlint run feeds lintCompletedAt and
+	// lintDiagnostics, so it is read at most once per cluster.
+	clusterlintOnce  sync.Once
+	clusterlintValue *clusterlintResults
+	clusterlintErr   error
 }
 
 // newMqlKubernetesCluster builds a DOKS cluster resource, caching the VPC
