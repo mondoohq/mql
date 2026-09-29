@@ -22,6 +22,9 @@ type mqlAwsApigatewayRestapiInternal struct {
 	resourcesLock    sync.Mutex
 	resourcesFetched bool
 	resourcesCache   []any
+	// resourcesDenied records a refused GetResources read, so resources and
+	// methods each report their own field as null rather than empty.
+	resourcesDenied bool
 }
 
 // apigatewayMethodSpec is the part of an embedded method the schema reads,
@@ -77,11 +80,15 @@ func apigatewayMethodSpecs(methods map[string]types.Method) []apigatewayMethodSp
 }
 
 // fetchResources lists the REST API's resources with their methods embedded,
-// once, and shares the result between resources and methods.
+// once, and shares the result between resources and methods. A nil list with
+// a nil error means the read was refused and structured errors are off.
 func (a *mqlAwsApigatewayRestapi) fetchResources() ([]any, error) {
 	a.resourcesLock.Lock()
 	defer a.resourcesLock.Unlock()
 	if a.resourcesFetched {
+		if a.resourcesDenied {
+			return nil, nil
+		}
 		return a.resourcesCache, nil
 	}
 
@@ -102,8 +109,8 @@ func (a *mqlAwsApigatewayRestapi) fetchResources() ([]any, error) {
 			if Is400AccessDeniedError(err) {
 				if !plugin.StructuredErrors() {
 					a.resourcesFetched = true
-					a.resourcesCache = res
-					return res, nil
+					a.resourcesDenied = true
+					return nil, nil
 				}
 				return nil, llx.Forbidden(err, llx.WithPermissions("apigateway:GET"))
 			}
@@ -168,13 +175,25 @@ func (a *mqlAwsApigatewayRestapi) newApigatewayResource(r types.Resource) (plugi
 }
 
 func (a *mqlAwsApigatewayRestapi) resources() ([]any, error) {
-	return a.fetchResources()
+	resources, err := a.fetchResources()
+	if err != nil {
+		return nil, err
+	}
+	if resources == nil {
+		a.Resources.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return resources, nil
 }
 
 func (a *mqlAwsApigatewayRestapi) methods() ([]any, error) {
 	resources, err := a.fetchResources()
 	if err != nil {
 		return nil, err
+	}
+	if resources == nil {
+		a.Methods.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 	res := []any{}
 	for _, r := range resources {

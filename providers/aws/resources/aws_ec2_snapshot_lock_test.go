@@ -138,3 +138,25 @@ func TestSnapshotLockFieldsLockedAndUnlocked(t *testing.T) {
 
 	assert.Equal(t, 1, calls, "both snapshots share one regional walk")
 }
+
+func TestLocksForRegionRetriesAfterTransientError(t *testing.T) {
+	calls := 0
+	rt := testRuntime()
+	rt.Connection = stubAwsConn(t, func(params any) (any, error) {
+		calls++
+		if calls == 1 {
+			return nil, awsAPIErr(503, "RequestLimitExceeded", "Request limit exceeded.")
+		}
+		return &ec2.DescribeLockedSnapshotsOutput{
+			Snapshots: []ec2types.LockedSnapshotsInfo{{SnapshotId: aws.String("snap-a"), LockState: ec2types.LockStateGovernance}},
+		}, nil
+	})
+	ec2Res := &mqlAwsEc2{MqlRuntime: rt}
+
+	_, err := ec2Res.locksForRegion("us-east-1")
+	require.Error(t, err)
+	locks, err := ec2Res.locksForRegion("us-east-1")
+	require.NoError(t, err, "a failed read is not cached")
+	assert.Equal(t, ec2types.LockStateGovernance, locks["snap-a"].LockState)
+	assert.Equal(t, 2, calls)
+}

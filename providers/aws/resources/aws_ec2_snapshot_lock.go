@@ -24,10 +24,13 @@ type lockedSnapshotCache struct {
 	regions map[string]*lockedSnapshotRegion
 }
 
+// lockedSnapshotRegion keeps a region's locks once they were read. A failed
+// read is not kept, so a transient error (throttling, a timeout) is retried
+// by the next snapshot instead of blanking every snapshot in the region.
 type lockedSnapshotRegion struct {
-	once  sync.Once
-	locks map[string]ec2types.LockedSnapshotsInfo
-	err   error
+	lock    sync.Mutex
+	fetched bool
+	locks   map[string]ec2types.LockedSnapshotsInfo
 }
 
 func (c *lockedSnapshotCache) region(region string) *lockedSnapshotRegion {
@@ -58,33 +61,37 @@ func indexLockedSnapshots(infos []ec2types.LockedSnapshotsInfo, into map[string]
 // locksForRegion returns the snapshot locks of a region, reading them once.
 func (a *mqlAwsEc2) locksForRegion(region string) (map[string]ec2types.LockedSnapshotsInfo, error) {
 	r := a.lockedSnapshots.region(region)
-	r.once.Do(func() {
-		conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
-		svc := conn.Ec2(region)
-		ctx := context.Background()
-		locks := map[string]ec2types.LockedSnapshotsInfo{}
-		var nextToken *string
-		for {
-			out, err := svc.DescribeLockedSnapshots(ctx, &ec2.DescribeLockedSnapshotsInput{
-				NextToken: nextToken,
-			})
-			if err != nil {
-				r.err = err
-				return
-			}
-			indexLockedSnapshots(out.Snapshots, locks)
-			if out.NextToken == nil || *out.NextToken == "" {
-				break
-			}
-			if nextToken != nil && *nextToken == *out.NextToken {
-				// A cursor that does not advance would loop forever.
-				break
-			}
-			nextToken = out.NextToken
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	if r.fetched {
+		return r.locks, nil
+	}
+
+	conn := a.MqlRuntime.Connection.(*connection.AwsConnection)
+	svc := conn.Ec2(region)
+	ctx := context.Background()
+	locks := map[string]ec2types.LockedSnapshotsInfo{}
+	var nextToken *string
+	for {
+		out, err := svc.DescribeLockedSnapshots(ctx, &ec2.DescribeLockedSnapshotsInput{
+			NextToken: nextToken,
+		})
+		if err != nil {
+			return nil, err
 		}
-		r.locks = locks
-	})
-	return r.locks, r.err
+		indexLockedSnapshots(out.Snapshots, locks)
+		if out.NextToken == nil || *out.NextToken == "" {
+			break
+		}
+		if nextToken != nil && *nextToken == *out.NextToken {
+			// A cursor that does not advance would loop forever.
+			break
+		}
+		nextToken = out.NextToken
+	}
+	r.locks = locks
+	r.fetched = true
+	return r.locks, nil
 }
 
 type snapshotLockState struct {

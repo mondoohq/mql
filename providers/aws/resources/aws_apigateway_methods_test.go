@@ -89,3 +89,24 @@ func TestApigatewayMethodAuthorizerResolvesFromApiList(t *testing.T) {
 	assert.Nil(t, auth)
 	assert.True(t, missing.Authorizer.IsNull())
 }
+
+func TestApigatewayResourcesDeniedIsNull(t *testing.T) {
+	rt := testRuntime()
+	calls := 0
+	rt.Connection = stubAwsConn(t, func(params any) (any, error) {
+		calls++
+		return nil, awsAPIErr(403, "AccessDeniedException", "not authorized to perform apigateway:GET")
+	})
+	api := &mqlAwsApigatewayRestapi{MqlRuntime: rt, Id: setString("abc123"), Region: setString("us-east-1")}
+
+	res, err := api.resources()
+	require.NoError(t, err)
+	assert.Nil(t, res)
+	assert.True(t, api.Resources.IsNull(), "a refused read is null, not an empty list")
+
+	methods, err := api.methods()
+	require.NoError(t, err)
+	assert.Nil(t, methods)
+	assert.True(t, api.Methods.IsNull())
+	assert.Equal(t, 1, calls, "methods reuses the refused read")
+}
