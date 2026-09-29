@@ -196,13 +196,13 @@ func solarisOwner(fields []string) (string, int64) {
 // fillSolarisEndpoints splits both endpoints. v6 comes from the section title,
 // not the address, because the wildcard `*.22` reads the same in both families.
 func fillSolarisEndpoints(entry SolarisPort, local string, remote string, v6 bool) (SolarisPort, bool) {
-	entry.LocalAddress, entry.LocalPort = splitAixAddress(local, v6)
+	entry.LocalAddress, entry.LocalPort = splitDottedEndpoint(local, v6)
 	if entry.LocalPort == 0 {
 		// never bound: no port to report
 		return SolarisPort{}, false
 	}
 	if remote != "" {
-		entry.RemoteAddress, entry.RemotePort = splitAixAddress(remote, v6)
+		entry.RemoteAddress, entry.RemotePort = splitDottedEndpoint(remote, v6)
 	}
 	return entry, true
 }

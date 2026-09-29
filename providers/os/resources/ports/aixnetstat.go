@@ -71,8 +71,8 @@ func ParseAixNetstat(r io.Reader) ([]AixPort, error) {
 		}
 
 		v6 := strings.HasSuffix(proto, "6")
-		localAddr, localPort := splitAixAddress(fields[protoIdx+3], v6)
-		remoteAddr, remotePort := splitAixAddress(fields[protoIdx+4], v6)
+		localAddr, localPort := splitDottedEndpoint(fields[protoIdx+3], v6)
+		remoteAddr, remotePort := splitDottedEndpoint(fields[protoIdx+4], v6)
 
 		state := ""
 		if len(fields) > protoIdx+5 {
@@ -120,21 +120,22 @@ func findAixProto(fields []string) (int, string, bool) {
 	return 0, "", false
 }
 
-// splitAixAddress splits a BSD-style `address.port` endpoint. `v6` is the row's
-// address family, needed because AIX writes the wildcard as a bare `*` on v6
-// rows too, where it means every v6 interface rather than every v4 one.
+// splitDottedEndpoint splits a BSD-style `address.port` endpoint, the form both
+// AIX and Solaris netstat write. `v6` is the row's address family, needed
+// because both write the wildcard as a bare `*` on v6 rows too, where it means
+// every v6 interface rather than every v4 one.
 //
 // The separator is the LAST dot, so IPv4 (`10.10.20.15.22`) and IPv6
 // (`2001:db8::15.443`) both split correctly. Wildcards are normalised to the
 // forms the other platforms emit, so a consumer comparing addresses across
-// platforms does not have to special-case AIX:
+// platforms does not have to special-case AIX or Solaris:
 //
 //	*.22 (v4) -> 0.0.0.0, port 22 — bound to every interface
 //	*.25 (v6) -> [::],    port 25 — same, v6
 //	*.*       -> "",      port 0  — no endpoint (an unconnected socket's peer)
 //
 // An IPv6 literal is bracketed to match the Windows rows.
-func splitAixAddress(s string, v6 bool) (string, int64) {
+func splitDottedEndpoint(s string, v6 bool) (string, int64) {
 	if s == "" || s == "*.*" {
 		return "", 0
 	}

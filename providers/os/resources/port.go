@@ -932,6 +932,7 @@ var solarisPortStates = map[string]string{
 	"CLOSE_WAIT":   TCP_STATES[8],
 	"LAST_ACK":     TCP_STATES[9],
 	"CLOSING":      TCP_STATES[11],
+	"Unbound":      TCP_STATES[7],
 	"Idle":         TCP_STATES[7],
 	"Connected":    TCP_STATES[1],
 }
