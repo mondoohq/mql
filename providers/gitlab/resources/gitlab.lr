@@ -3024,12 +3024,41 @@ private gitlab.settings.systemHook @defaults("url sslVerification tokenPresent")
   // receiver treats as genuine. The token value is write-only and is never
   // returned. Null on instances that do not report token presence.
   tokenPresent bool
+  // Whether a signing token is configured on the hook
+  //
+  // With a signing token, GitLab signs each payload so the receiver can verify
+  // both its origin and that it was not altered in transit. The token value is
+  // write-only and is never returned. Null on instances that do not report
+  // signing token presence.
+  signingTokenPresent bool
   // URL variables interpolated into the hook URL
   //
   // Keyed by variable name, with the value substituted into `{name}`
   // placeholders in the hook url. Values GitLab treats as secret are redacted,
   // so they may be empty or masked.
   urlVariables map[string]string
+  // Branch filter for push events
+  pushEventsBranchFilter string
+  // Strategy used to filter branches for push events: all_branches, wildcard, or regex
+  branchFilterStrategy string
+  // Custom payload template configured for this hook (empty when the default payload is used)
+  customWebhookTemplate string
+  // Custom HTTP headers sent with the hook request
+  //
+  // Keyed by header name (for example an `Authorization` or custom `X-*`
+  // header) with the configured header value. GitLab redacts the values of
+  // headers it treats as secret, so those entries may be empty or masked.
+  customHeaders map[string]string
+  // Delivery health of the hook
+  //
+  // One of executable (delivering normally), disabled (permanently turned off
+  // after repeated delivery failures), or temporarily_disabled (auto-paused
+  // after recent failures, with disabledUntil giving the resume time). A hook
+  // that is not executable no longer delivers the instance events it was set
+  // up to forward.
+  alertStatus string
+  // Time until which the hook is disabled (set by GitLab when too many failures occur)
+  disabledUntil time
   // Hook creation time
   createdAt time
 }

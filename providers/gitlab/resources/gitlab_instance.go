@@ -231,6 +231,10 @@ func (s *mqlGitlabSettings) systemHooks() ([]any, error) {
 		for _, v := range hook.URLVariables {
 			urlVariables[v.Key] = v.Value
 		}
+		customHeaders := map[string]any{}
+		for _, h := range hook.CustomHeaders {
+			customHeaders[h.Key] = h.Value
+		}
 
 		mqlHook, err := CreateResource(s.MqlRuntime, "gitlab.settings.systemHook", map[string]*llx.RawData{
 			"id":                     llx.IntData(hook.ID),
@@ -243,7 +247,14 @@ func (s *mqlGitlabSettings) systemHooks() ([]any, error) {
 			"mergeRequestsEvents":    llx.BoolData(hook.MergeRequestsEvents),
 			"repositoryUpdateEvents": llx.BoolDataPtr(presence[i].RepositoryUpdateEvents),
 			"tokenPresent":           llx.BoolDataPtr(presence[i].TokenPresent),
+			"signingTokenPresent":    llx.BoolDataPtr(presence[i].SigningTokenPresent),
 			"urlVariables":           llx.MapData(urlVariables, types.String),
+			"pushEventsBranchFilter": llx.StringData(hook.PushEventsBranchFilter),
+			"branchFilterStrategy":   llx.StringData(hook.BranchFilterStrategy),
+			"customWebhookTemplate":  llx.StringData(hook.CustomWebhookTemplate),
+			"customHeaders":          llx.MapData(customHeaders, types.String),
+			"alertStatus":            llx.StringData(hook.AlertStatus),
+			"disabledUntil":          llx.TimeDataPtr(hook.DisabledUntil),
 			"createdAt":              llx.TimeDataPtr(hook.CreatedAt),
 		})
 		if err != nil {

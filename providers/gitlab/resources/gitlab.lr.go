@@ -3279,8 +3279,29 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gitlab.settings.systemHook.tokenPresent": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabSettingsSystemHook).GetTokenPresent()).ToDataRes(types.Bool)
 	},
+	"gitlab.settings.systemHook.signingTokenPresent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettingsSystemHook).GetSigningTokenPresent()).ToDataRes(types.Bool)
+	},
 	"gitlab.settings.systemHook.urlVariables": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabSettingsSystemHook).GetUrlVariables()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gitlab.settings.systemHook.pushEventsBranchFilter": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettingsSystemHook).GetPushEventsBranchFilter()).ToDataRes(types.String)
+	},
+	"gitlab.settings.systemHook.branchFilterStrategy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettingsSystemHook).GetBranchFilterStrategy()).ToDataRes(types.String)
+	},
+	"gitlab.settings.systemHook.customWebhookTemplate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettingsSystemHook).GetCustomWebhookTemplate()).ToDataRes(types.String)
+	},
+	"gitlab.settings.systemHook.customHeaders": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettingsSystemHook).GetCustomHeaders()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gitlab.settings.systemHook.alertStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettingsSystemHook).GetAlertStatus()).ToDataRes(types.String)
+	},
+	"gitlab.settings.systemHook.disabledUntil": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettingsSystemHook).GetDisabledUntil()).ToDataRes(types.Time)
 	},
 	"gitlab.settings.systemHook.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabSettingsSystemHook).GetCreatedAt()).ToDataRes(types.Time)
@@ -7372,8 +7393,36 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGitlabSettingsSystemHook).TokenPresent, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"gitlab.settings.systemHook.signingTokenPresent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettingsSystemHook).SigningTokenPresent, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"gitlab.settings.systemHook.urlVariables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGitlabSettingsSystemHook).UrlVariables, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.systemHook.pushEventsBranchFilter": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettingsSystemHook).PushEventsBranchFilter, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.systemHook.branchFilterStrategy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettingsSystemHook).BranchFilterStrategy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.systemHook.customWebhookTemplate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettingsSystemHook).CustomWebhookTemplate, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.systemHook.customHeaders": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettingsSystemHook).CustomHeaders, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.systemHook.alertStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettingsSystemHook).AlertStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.systemHook.disabledUntil": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettingsSystemHook).DisabledUntil, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"gitlab.settings.systemHook.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -16648,7 +16697,14 @@ type mqlGitlabSettingsSystemHook struct {
 	MergeRequestsEvents    plugin.TValue[bool]
 	RepositoryUpdateEvents plugin.TValue[bool]
 	TokenPresent           plugin.TValue[bool]
+	SigningTokenPresent    plugin.TValue[bool]
 	UrlVariables           plugin.TValue[map[string]any]
+	PushEventsBranchFilter plugin.TValue[string]
+	BranchFilterStrategy   plugin.TValue[string]
+	CustomWebhookTemplate  plugin.TValue[string]
+	CustomHeaders          plugin.TValue[map[string]any]
+	AlertStatus            plugin.TValue[string]
+	DisabledUntil          plugin.TValue[*time.Time]
 	CreatedAt              plugin.TValue[*time.Time]
 }
 
@@ -16729,8 +16785,36 @@ func (c *mqlGitlabSettingsSystemHook) GetTokenPresent() *plugin.TValue[bool] {
 	return &c.TokenPresent
 }
 
+func (c *mqlGitlabSettingsSystemHook) GetSigningTokenPresent() *plugin.TValue[bool] {
+	return &c.SigningTokenPresent
+}
+
 func (c *mqlGitlabSettingsSystemHook) GetUrlVariables() *plugin.TValue[map[string]any] {
 	return &c.UrlVariables
+}
+
+func (c *mqlGitlabSettingsSystemHook) GetPushEventsBranchFilter() *plugin.TValue[string] {
+	return &c.PushEventsBranchFilter
+}
+
+func (c *mqlGitlabSettingsSystemHook) GetBranchFilterStrategy() *plugin.TValue[string] {
+	return &c.BranchFilterStrategy
+}
+
+func (c *mqlGitlabSettingsSystemHook) GetCustomWebhookTemplate() *plugin.TValue[string] {
+	return &c.CustomWebhookTemplate
+}
+
+func (c *mqlGitlabSettingsSystemHook) GetCustomHeaders() *plugin.TValue[map[string]any] {
+	return &c.CustomHeaders
+}
+
+func (c *mqlGitlabSettingsSystemHook) GetAlertStatus() *plugin.TValue[string] {
+	return &c.AlertStatus
+}
+
+func (c *mqlGitlabSettingsSystemHook) GetDisabledUntil() *plugin.TValue[*time.Time] {
+	return &c.DisabledUntil
 }
 
 func (c *mqlGitlabSettingsSystemHook) GetCreatedAt() *plugin.TValue[*time.Time] {

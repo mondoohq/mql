@@ -72,6 +72,7 @@ func listRawPages(c *gitlab.Client, path string, perPage int64) ([]json.RawMessa
 // though not every tier answers with every attribute.
 type hookPosture struct {
 	TokenPresent           *bool `json:"token_present"`
+	SigningTokenPresent    *bool `json:"signing_token_present"`
 	RepositoryUpdateEvents *bool `json:"repository_update_events"`
 }
 
