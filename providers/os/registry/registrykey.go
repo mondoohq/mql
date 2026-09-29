@@ -200,13 +200,23 @@ type keyKindRaw struct {
 }
 
 // registryInt64 reads a whole number out of decoded JSON data exactly.
+//
+// Get-ItemProperty returns a REG_QWORD at or above 2^63 as UInt64, so such a
+// value arrives above the int64 range. Its 64 bits are kept as int64, which is
+// what the native path does (int64 of GetIntegerValue).
 func registryInt64(v any) (int64, bool) {
 	n, ok := v.(json.Number)
 	if !ok {
 		return 0, false
 	}
-	i, err := n.Int64()
-	return i, err == nil
+	if i, err := n.Int64(); err == nil {
+		return i, true
+	}
+	u, err := strconv.ParseUint(n.String(), 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return int64(u), true
 }
 
 func (k *RegistryKeyValue) UnmarshalJSON(b []byte) error {
