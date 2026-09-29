@@ -31,6 +31,11 @@ type neti struct {
 func Interfaces(conn shared.Connection, pf *inventory.Platform) ([]Interface, error) {
 	n := &neti{conn, pf}
 
+	// Solaris 11.4 ships /etc/os-release and is detected into the linux
+	// family, so it is matched by name first.
+	if pf.Name == "solaris" {
+		return n.detectSolarisInterfaces()
+	}
 	if pf.IsFamily(inventory.FAMILY_LINUX) {
 		return n.detectLinuxInterfaces()
 	}
