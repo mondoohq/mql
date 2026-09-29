@@ -255,29 +255,38 @@ func macOSApplicationPackages(conn shared.Connection, platform *inventory.Platfo
 	return pkgs
 }
 
-// logUnreportedApplications says how many application bundles were found on
-// disk that system_profiler did not report, so a partial report is visible.
+// logUnreportedApplications says how many application bundles were found in
+// the application folders that system_profiler did not report, so a partial
+// report is visible.
 //
 // With Spotlight indexing off, system_profiler still exits cleanly and prints
 // a well-formed report, but only of the applications outside /System: every
 // application macOS ships is missing from it. Those come from the folder
 // listing instead, and nothing else would show that the report was partial.
+//
+// Cryptex bundles are not counted. system_profiler never reports them, so
+// they are added on every scan and say nothing about the report.
 func logUnreportedApplications(reported, added []sysProfilerItem) {
-	if len(added) == 0 {
+	addedFolders, addedSystem := 0, 0
+	for _, entry := range added {
+		if strings.HasPrefix(entry.Path, cryptexRoot+"/") {
+			continue
+		}
+		addedFolders++
+		if strings.HasPrefix(entry.Path, "/System/") {
+			addedSystem++
+		}
+	}
+	if addedFolders == 0 {
 		return
 	}
-	reportedSystem, addedSystem := 0, 0
+	reportedSystem := 0
 	for _, entry := range reported {
 		if strings.HasPrefix(entry.Path, "/System/") {
 			reportedSystem++
 		}
 	}
-	for _, entry := range added {
-		if strings.HasPrefix(entry.Path, "/System/") && !strings.HasPrefix(entry.Path, cryptexRoot+"/") {
-			addedSystem++
-		}
-	}
-	ev := log.Debug().Int("reported", len(reported)).Int("added", len(added))
+	ev := log.Debug().Int("reported", len(reported)).Int("added", addedFolders)
 	if len(reported) > 0 && reportedSystem == 0 && addedSystem > 0 {
 		ev.Msg("system_profiler reported no applications under /System, Spotlight indexing may be off; added the applications found on disk")
 		return

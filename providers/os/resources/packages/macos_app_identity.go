@@ -489,12 +489,12 @@ func readDirEntries(fs afero.Fs, dir string) ([]os.FileInfo, error) {
 //     "Picture in Picture" and is shown as "PIPAgent", Visual Studio Code.app
 //     declares "Code".
 //
-// Checked against system_profiler on a macOS 26 Mac: this rule names 536 of
+// Checked against system_profiler on a macOS 26 Mac: this rule names 537 of
 // the 543 bundles it reports the same way, where only reading
-// LSHasLocalizedDisplayName named 525. Four of the other seven are spellings
-// of the user's language (see below); for the rest (Image Playground,
-// AirPlayUIAgent, GPG Suite Updater) system_profiler's name comes from
-// somewhere the bundle's own files do not say.
+// LSHasLocalizedDisplayName named 525. Four of the other six are spellings
+// of the user's language (see below); for the rest (AirPlayUIAgent,
+// GPG Suite Updater) system_profiler's name comes from somewhere the
+// bundle's own files do not say.
 //
 // The localized name is read in the bundle's own development language, not
 // the user's, so the same application gets the same name on every Mac:
@@ -504,7 +504,7 @@ func appDisplayName(conn shared.Connection, path string, info infoPlist) string 
 	folder := bundleName(path)
 	if isTruthy(info.HasLocalizedDisplayName) {
 		loc := localizedInfoStrings(conn, path, info.DevelopmentRegion)
-		for _, name := range []string{loc["CFBundleDisplayName"], loc["CFBundleName"], info.DisplayName, info.BundleName} {
+		for _, name := range []string{macOSString(loc, "CFBundleDisplayName"), macOSString(loc, "CFBundleName"), info.DisplayName, info.BundleName} {
 			if name = cleanDisplayName(name); name != "" {
 				return name
 			}
@@ -513,13 +513,26 @@ func appDisplayName(conn shared.Connection, path string, info infoPlist) string 
 	}
 	if display := cleanDisplayName(info.DisplayName); display != "" && display == folder {
 		loc := localizedInfoStrings(conn, path, info.DevelopmentRegion)
-		for _, name := range []string{loc["CFBundleDisplayName"], loc["CFBundleName"]} {
+		for _, name := range []string{macOSString(loc, "CFBundleDisplayName"), macOSString(loc, "CFBundleName")} {
 			if name = cleanDisplayName(name); name != "" {
 				return name
 			}
 		}
 	}
 	return folder
+}
+
+// macOSString returns a localized string, preferring its macOS variant. A
+// bundle shared across Apple's platforms can carry a platform-specific
+// value next to the generic one, under the key with a "-macos" suffix:
+// Image Playground's InfoPlist.loctable has CFBundleDisplayName
+// "Playground" and CFBundleDisplayName-macos "Image Playground", and macOS
+// shows the latter.
+func macOSString(loc map[string]string, key string) string {
+	if v := cleanDisplayName(loc[key+"-macos"]); v != "" {
+		return v
+	}
+	return loc[key]
 }
 
 // isTruthy reads a plist flag that bundles store as a boolean, a number or a

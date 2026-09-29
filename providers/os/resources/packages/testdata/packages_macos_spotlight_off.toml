@@ -98,6 +98,26 @@ stdout = """<?xml version="1.0" encoding="UTF-8"?>
 			</dict>
 			<dict>
 				<key>_name</key>
+				<string>Image Playground</string>
+				<key>arch_kind</key>
+				<string>arch_arm</string>
+				<key>lastModified</key>
+				<date>2026-04-30T19:33:17Z</date>
+				<key>obtained_from</key>
+				<string>apple</string>
+				<key>path</key>
+				<string>/System/Applications/Image Playground.app</string>
+				<key>signed_by</key>
+				<array>
+					<string>Software Signing</string>
+					<string>Apple Code Signing Certification Authority</string>
+					<string>Apple Root CA</string>
+				</array>
+				<key>version</key>
+				<string>1.0</string>
+			</dict>
+			<dict>
+				<key>_name</key>
 				<string>Terminal</string>
 				<key>arch_kind</key>
 				<string>arch_arm_i64</string>
@@ -404,6 +424,38 @@ data = [202, 254, 186, 190, 0, 0, 0, 2, 1, 0, 0, 7, 0, 0, 0, 3, 0, 0, 64, 0, 0, 
 
 [files."/System/Applications/FindMy.app/Contents/Resources/InfoPlist.loctable"]
 data = [98, 112, 108, 105, 115, 116, 48, 48, 210, 1, 2, 3, 7, 82, 101, 110, 85, 101, 110, 95, 71, 66, 210, 4, 5, 6, 6, 95, 16, 19, 67, 70, 66, 117, 110, 100, 108, 101, 68, 105, 115, 112, 108, 97, 121, 78, 97, 109, 101, 92, 67, 70, 66, 117, 110, 100, 108, 101, 78, 97, 109, 101, 87, 70, 105, 110, 100, 32, 77, 121, 210, 4, 5, 6, 6, 8, 13, 16, 22, 27, 49, 62, 70, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 75]
+
+[files."/System/Applications/Image Playground.app"]
+content = ""
+
+[files."/System/Applications/Image Playground.app/Contents/Info.plist"]
+content = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Image Playground</string>
+	<key>CFBundleExecutable</key>
+	<string>Image Playground</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.apple.GenerativePlaygroundApp</string>
+	<key>CFBundleName</key>
+	<string>Image Playground</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>148.5.1</string>
+</dict>
+</plist>
+"""
+
+[files."/System/Applications/Image Playground.app/Contents/MacOS/Image Playground"]
+data = [207, 250, 237, 254, 12, 0, 0, 1, 2, 0, 0, 128, 2, 0, 0, 0, 57, 0, 0, 0, 24, 25, 0, 0, 133, 0, 32, 0, 0, 0, 0, 0, 25, 0, 0, 0, 72, 0, 0, 0, 95, 95, 80, 65, 71, 69, 90, 69, 82, 79, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0, 120, 7, 0, 0, 95, 95, 84, 69, 88, 84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+[files."/System/Applications/Image Playground.app/Contents/Resources/InfoPlist.loctable"]
+data = [98, 112, 108, 105, 115, 116, 48, 48, 210, 1, 2, 3, 9, 82, 101, 110, 85, 101, 110, 95, 71, 66, 211, 4, 5, 6, 7, 8, 8, 95, 16, 19, 67, 70, 66, 117, 110, 100, 108, 101, 68, 105, 115, 112, 108, 97, 121, 78, 97, 109, 101, 95, 16, 25, 67, 70, 66, 117, 110, 100, 108, 101, 68, 105, 115, 112, 108, 97, 121, 78, 97, 109, 101, 45, 109, 97, 99, 111, 115, 92, 67, 70, 66, 117, 110, 100, 108, 101, 78, 97, 109, 101, 90, 80, 108, 97, 121, 103, 114, 111, 117, 110, 100, 95, 16, 16, 73, 109, 97, 103, 101, 32, 80, 108, 97, 121, 103, 114, 111, 117, 110, 100, 211, 4, 5, 6, 7, 8, 8, 8, 13, 16, 22, 29, 51, 79, 92, 103, 122, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 129]
 
 [files."/System/Applications/Utilities"]
 content = ""

@@ -243,7 +243,7 @@ func TestMacOSPackagesFromPartialReport(t *testing.T) {
 	withSpotlight, err := listMacOSAppsOn(t, conn)
 	require.NoError(t, err)
 	want := byFilePath(t, withSpotlight)
-	require.Len(t, want, 14)
+	require.Len(t, want, 15)
 
 	conn, err = mock.New(0, &inventory.Asset{}, mock.WithPath(spotlightOffFixture),
 		mock.WithData(&mock.TomlData{Commands: map[string]*mock.Command{sysProfilerAppsCmd: {Stdout: partialReport(t)}}}))
@@ -300,6 +300,7 @@ func TestAppDisplayNameOfAppleBundles(t *testing.T) {
 	}{
 		{"/System/Applications/FindMy.app", "Find My", "CFBundleDisplayName FindMy, localized in InfoPlist.loctable"},
 		{"/System/Applications/VoiceMemos.app", "Voice Memos", "CFBundleDisplayName VoiceMemos, localized"},
+		{"/System/Applications/Image Playground.app", "Image Playground", "CFBundleDisplayName-macos wins over the generic Playground"},
 		{"/System/Library/CoreServices/TipsSpotlightHandler.app", "Tips", "only the localized display name differs"},
 		{"/System/Library/Input Methods/DictationIM.app", "Dictation", "input method"},
 		{"/System/Library/CoreServices/PIPAgent.app", "PIPAgent", "CFBundleDisplayName Picture in Picture is not the directory name"},
@@ -325,26 +326,53 @@ func TestCryptexSystemPath(t *testing.T) {
 	assert.False(t, ok)
 }
 
-// A partial report is visible in the debug log.
+// A partial report is visible in the debug log, and a complete one does not
+// claim Spotlight is off.
 func TestLogUnreportedApplications(t *testing.T) {
 	var buf bytes.Buffer
 	prev := log.Logger
 	log.Logger = zerolog.New(&buf).Level(zerolog.DebugLevel)
 	defer func() { log.Logger = prev }()
 
-	outside := []sysProfilerItem{{Path: "/Applications/VLC.app"}}
-	system := []sysProfilerItem{{Path: "/System/Library/CoreServices/Siri.app"}, {Path: "/System/Applications/FindMy.app"}}
+	vlc := sysProfilerItem{Path: "/Applications/Slack.app"}
+	siri := sysProfilerItem{Path: "/System/Library/CoreServices/Siri.app"}
+	findMy := sysProfilerItem{Path: "/System/Applications/FindMy.app"}
+	safari := sysProfilerItem{Path: "/System/Cryptexes/App/System/Applications/Safari.app"}
 
-	logUnreportedApplications(outside, system)
-	assert.Contains(t, buf.String(), "Spotlight indexing may be off")
-	assert.Contains(t, buf.String(), `"added":2`)
+	t.Run("partial report", func(t *testing.T) {
+		buf.Reset()
+		logUnreportedApplications([]sysProfilerItem{vlc}, []sysProfilerItem{safari, siri, findMy})
+		assert.Contains(t, buf.String(), "Spotlight indexing may be off")
+		assert.Contains(t, buf.String(), `"added":2`, "cryptex bundles are not counted")
+	})
+	t.Run("complete report, only cryptex bundles added", func(t *testing.T) {
+		buf.Reset()
+		logUnreportedApplications([]sysProfilerItem{vlc, siri, findMy}, []sysProfilerItem{safari})
+		assert.Empty(t, buf.String())
+	})
+	t.Run("complete report, a few bundles missed", func(t *testing.T) {
+		buf.Reset()
+		logUnreportedApplications([]sysProfilerItem{vlc, siri}, []sysProfilerItem{safari, findMy})
+		assert.NotContains(t, buf.String(), "Spotlight")
+		assert.Contains(t, buf.String(), `"added":1`)
+	})
+	t.Run("nothing added", func(t *testing.T) {
+		buf.Reset()
+		logUnreportedApplications([]sysProfilerItem{vlc}, nil)
+		assert.Empty(t, buf.String())
+	})
+}
 
-	buf.Reset()
-	logUnreportedApplications(append(outside, system[0]), system[1:])
-	assert.NotContains(t, buf.String(), "Spotlight")
-	assert.Contains(t, buf.String(), `"added":1`)
+// A full, Spotlight-on report of real bundles never says Spotlight is off.
+func TestFullReportDoesNotClaimSpotlightOff(t *testing.T) {
+	var buf bytes.Buffer
+	prev := log.Logger
+	log.Logger = zerolog.New(&buf).Level(zerolog.DebugLevel)
+	defer func() { log.Logger = prev }()
 
-	buf.Reset()
-	logUnreportedApplications(outside, nil)
-	assert.Empty(t, buf.String())
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath(spotlightOffFixture))
+	require.NoError(t, err)
+	_, err = listMacOSAppsOn(t, conn)
+	require.NoError(t, err)
+	assert.NotContains(t, buf.String(), "Spotlight indexing may be off")
 }
