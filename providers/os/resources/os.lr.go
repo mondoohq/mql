@@ -540,6 +540,8 @@ const (
 	ResourceEdrProduct                                    string = "edr.product"
 	ResourceMdm                                           string = "mdm"
 	ResourceMdmIntune                                     string = "mdm.intune"
+	ResourceWinget                                        string = "winget"
+	ResourceWingetSource                                  string = "winget.source"
 	ResourceIdp                                           string = "idp"
 	ResourceIdpEntra                                      string = "idp.entra"
 	ResourceCloud                                         string = "cloud"
@@ -2767,6 +2769,14 @@ func init() {
 		"mdm.intune": {
 			Init:   initMdmIntune,
 			Create: createMdmIntune,
+		},
+		"winget": {
+			// to override args, implement: initWinget(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWinget,
+		},
+		"winget.source": {
+			// to override args, implement: initWingetSource(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWingetSource,
 		},
 		"idp": {
 			// to override args, implement: initIdp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -15474,6 +15484,48 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"mdm.intune.tenantId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMdmIntune).GetTenantId()).ToDataRes(types.String)
+	},
+	"winget.installed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWinget).GetInstalled()).ToDataRes(types.Bool)
+	},
+	"winget.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWinget).GetVersion()).ToDataRes(types.String)
+	},
+	"winget.architecture": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWinget).GetArchitecture()).ToDataRes(types.String)
+	},
+	"winget.packageFullName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWinget).GetPackageFullName()).ToDataRes(types.String)
+	},
+	"winget.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWinget).GetPath()).ToDataRes(types.String)
+	},
+	"winget.enabledByPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWinget).GetEnabledByPolicy()).ToDataRes(types.Bool)
+	},
+	"winget.missingDependencies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWinget).GetMissingDependencies()).ToDataRes(types.Array(types.String))
+	},
+	"winget.systemUsable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWinget).GetSystemUsable()).ToDataRes(types.Bool)
+	},
+	"winget.sources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWinget).GetSources()).ToDataRes(types.Array(types.Resource("winget.source")))
+	},
+	"winget.source.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWingetSource).GetName()).ToDataRes(types.String)
+	},
+	"winget.source.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWingetSource).GetUrl()).ToDataRes(types.String)
+	},
+	"winget.source.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWingetSource).GetType()).ToDataRes(types.String)
+	},
+	"winget.source.origin": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWingetSource).GetOrigin()).ToDataRes(types.String)
+	},
+	"winget.source.explicit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWingetSource).GetExplicit()).ToDataRes(types.Bool)
 	},
 	"idp.joined": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIdp).GetJoined()).ToDataRes(types.Bool)
@@ -36403,6 +36455,70 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"mdm.intune.tenantId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMdmIntune).TenantId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"winget.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).__id, ok = v.Value.(string)
+		return
+	},
+	"winget.installed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).Installed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"winget.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"winget.architecture": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).Architecture, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"winget.packageFullName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).PackageFullName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"winget.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"winget.enabledByPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).EnabledByPolicy, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"winget.missingDependencies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).MissingDependencies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"winget.systemUsable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).SystemUsable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"winget.sources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).Sources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"winget.source.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWingetSource).__id, ok = v.Value.(string)
+		return
+	},
+	"winget.source.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWingetSource).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"winget.source.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWingetSource).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"winget.source.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWingetSource).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"winget.source.origin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWingetSource).Origin, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"winget.source.explicit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWingetSource).Explicit, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"idp.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -93488,6 +93604,192 @@ func (c *mqlMdmIntune) GetDeviceId() *plugin.TValue[string] {
 
 func (c *mqlMdmIntune) GetTenantId() *plugin.TValue[string] {
 	return &c.TenantId
+}
+
+// mqlWinget for the winget resource
+type mqlWinget struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlWingetInternal
+	Installed           plugin.TValue[bool]
+	Version             plugin.TValue[string]
+	Architecture        plugin.TValue[string]
+	PackageFullName     plugin.TValue[string]
+	Path                plugin.TValue[string]
+	EnabledByPolicy     plugin.TValue[bool]
+	MissingDependencies plugin.TValue[[]any]
+	SystemUsable        plugin.TValue[bool]
+	Sources             plugin.TValue[[]any]
+}
+
+// createWinget creates a new instance of this resource
+func createWinget(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWinget{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("winget", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWinget) MqlName() string {
+	return "winget"
+}
+
+func (c *mqlWinget) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWinget) GetInstalled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Installed, func() (bool, error) {
+		return c.installed()
+	})
+}
+
+func (c *mqlWinget) GetVersion() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Version, func() (string, error) {
+		return c.version()
+	})
+}
+
+func (c *mqlWinget) GetArchitecture() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Architecture, func() (string, error) {
+		return c.architecture()
+	})
+}
+
+func (c *mqlWinget) GetPackageFullName() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.PackageFullName, func() (string, error) {
+		return c.packageFullName()
+	})
+}
+
+func (c *mqlWinget) GetPath() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Path, func() (string, error) {
+		return c.path()
+	})
+}
+
+func (c *mqlWinget) GetEnabledByPolicy() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnabledByPolicy, func() (bool, error) {
+		return c.enabledByPolicy()
+	})
+}
+
+func (c *mqlWinget) GetMissingDependencies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MissingDependencies, func() ([]any, error) {
+		return c.missingDependencies()
+	})
+}
+
+func (c *mqlWinget) GetSystemUsable() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SystemUsable, func() (bool, error) {
+		return c.systemUsable()
+	})
+}
+
+func (c *mqlWinget) GetSources() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Sources, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("winget", c.__id, "sources")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.sources()
+	})
+}
+
+// mqlWingetSource for the winget.source resource
+type mqlWingetSource struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlWingetSourceInternal it will be used here
+	Name     plugin.TValue[string]
+	Url      plugin.TValue[string]
+	Type     plugin.TValue[string]
+	Origin   plugin.TValue[string]
+	Explicit plugin.TValue[bool]
+}
+
+// createWingetSource creates a new instance of this resource
+func createWingetSource(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWingetSource{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("winget.source", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWingetSource) MqlName() string {
+	return "winget.source"
+}
+
+func (c *mqlWingetSource) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWingetSource) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlWingetSource) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlWingetSource) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlWingetSource) GetOrigin() *plugin.TValue[string] {
+	return &c.Origin
+}
+
+func (c *mqlWingetSource) GetExplicit() *plugin.TValue[bool] {
+	return &c.Explicit
 }
 
 // mqlIdp for the idp resource
