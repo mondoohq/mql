@@ -202,11 +202,11 @@ func parseSolarisDatalinks(macs string, classes string) []Interface {
 		if !ok {
 			continue
 		}
-		value = strings.ReplaceAll(value, `\:`, ":")
-		if _, err := net.ParseMAC(normalizeSolarisMAC(value)); err != nil {
+		mac := normalizeSolarisMAC(strings.ReplaceAll(value, `\:`, ":"))
+		if _, err := net.ParseMAC(mac); err != nil {
 			continue
 		}
-		get(link).SetMAC(normalizeSolarisMAC(value))
+		get(link).SetMAC(mac)
 	}
 
 	for line := range strings.SplitSeq(classes, "\n") {
