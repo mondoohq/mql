@@ -13,7 +13,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 // Windows measures a command line in UTF-16 code units. Neither obvious
@@ -65,17 +64,24 @@ func TestUtf16Len_DiffersFromBytesAndRunes(t *testing.T) {
 // would panic instead of returning an error.
 func TestRunCommandRejectsOverLongCommand(t *testing.T) {
 	conn := &Connection{}
-	cmd := strings.Repeat("a", powershell.MaxCommandLength+1)
+	cmd := strings.Repeat("a", maxCommandLength+1)
 
 	res, err := conn.RunCommand(cmd)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "would be truncated before it ran",
+	assert.Contains(t, err.Error(), "so it would not run",
 		"the error has to say why, or it reads like a transport failure")
-	assert.Contains(t, err.Error(), strconv.Itoa(powershell.MaxCommandLength+1),
+	assert.Contains(t, err.Error(), strconv.Itoa(maxCommandLength+1),
 		"the error names the actual length")
 	require.NotNil(t, res, "the command result is still returned for timing")
 	assert.Equal(t, cmd, res.Command)
+}
+
+// The limit is the measured one, not cmd.exe's 8191: over WinRM on Windows 11
+// an 8160-character command runs and an 8161-character one fails with "The
+// command line is too long.", because cmd.exe counts its own path and /c.
+func TestMaxCommandLengthLeavesRoomForCmdExe(t *testing.T) {
+	assert.Equal(t, 8160, maxCommandLength)
 }
 
 // The boundary case. A command exactly at the limit is allowed through, which
@@ -89,7 +95,7 @@ func TestRunCommandAllowsCommandAtTheLimit(t *testing.T) {
 	}()
 
 	conn := &Connection{}
-	_, _ = conn.RunCommand(strings.Repeat("a", powershell.MaxCommandLength))
+	_, _ = conn.RunCommand(strings.Repeat("a", maxCommandLength))
 
 	t.Fatal("expected to reach the client rather than return from the guard")
 }
@@ -100,9 +106,9 @@ func TestRunCommandAllowsCommandAtTheLimit(t *testing.T) {
 // exact case a rune-based check would wave through to be truncated.
 func TestRunCommandCountsUtf16NotRunes(t *testing.T) {
 	conn := &Connection{}
-	cmd := strings.Repeat("😀", powershell.MaxCommandLength/2+1)
+	cmd := strings.Repeat("😀", maxCommandLength/2+1)
 
-	require.Less(t, utf8.RuneCountInString(cmd), powershell.MaxCommandLength,
+	require.Less(t, utf8.RuneCountInString(cmd), maxCommandLength,
 		"the fixture must be short in runes, or it proves nothing")
 
 	_, err := conn.RunCommand(cmd)

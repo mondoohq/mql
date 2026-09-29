@@ -23,6 +23,14 @@ import (
 
 var _ shared.Connection = (*Connection)(nil)
 
+// maxCommandLength is the longest command WinRM runs. cmd.exe caps its whole
+// command line at powershell.MaxCommandLength (8191) UTF-16 units, and that
+// line includes cmd.exe's own path and /c, which WinRM puts in front of the
+// command: 31 characters for the default C:\Windows\System32\cmd.exe. Measured
+// over WinRM on Windows 11: an 8160-character command runs, 8161 does not. A
+// host whose system root is longer than C:\Windows fails a little earlier.
+const maxCommandLength = powershell.MaxCommandLength - len(`C:\Windows\System32\cmd.exe /c `)
+
 func VerifyConfig(config *inventory.Config) (*winrm.Endpoint, error) {
 	if config.Type != string(shared.Type_Winrm) {
 		return nil, errors.New("only winrm backend for winrm transport supported")
@@ -159,15 +167,16 @@ func (p *Connection) RunCommand(command string) (*shared.Command, error) {
 		res.Stats.Duration = time.Since(res.Stats.Start)
 	}()
 
-	if n := utf16Len(command); n > powershell.MaxCommandLength {
+	if n := utf16Len(command); n > maxCommandLength {
 		// Past this the command never runs: WinRM hands it to cmd.exe, which
-		// truncates, and stdout comes back empty with a zero exit. A caller
-		// parsing that output reports whatever an empty string means to it --
+		// refuses it. On Windows 11 that is exit 1 and "The command line is
+		// too long." on stderr, with empty stdout; a caller that only parses
+		// stdout reports whatever an empty string means to it --
 		// "unexpected end of JSON input" -- and never learns the command was
-		// too long. Say so instead.
+		// too long. Say so instead, before the round trip.
 		err := fmt.Errorf(
-			"command is %d characters, over the %d WinRM allows, so it would be truncated before it ran: %.120s",
-			n, powershell.MaxCommandLength, command)
+			"command is %d characters, over the %d WinRM allows, so it would not run: %.120s",
+			n, maxCommandLength, command)
 		log.Error().Err(err).Msg("winrm command too long")
 		return res, err
 	}
