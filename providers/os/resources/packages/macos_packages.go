@@ -4,6 +4,7 @@
 package packages
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -72,6 +73,16 @@ type infoPlist struct {
 
 // parse macos system version property list
 func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, input io.Reader) ([]Package, error) {
+	items, err := parseSysProfilerApplications(input)
+	if err != nil {
+		return nil, err
+	}
+	return macOSApplicationPackages(conn, platform, items), nil
+}
+
+// parseSysProfilerApplications decodes the applications from the output of
+// `system_profiler SPApplicationsDataType -xml`.
+func parseSysProfilerApplications(input io.Reader) ([]sysProfilerItem, error) {
 	var r io.ReadSeeker
 	r, ok := input.(io.ReadSeeker)
 
@@ -94,8 +105,13 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 	if len(data) != 1 {
 		return nil, errors.New("format not supported")
 	}
+	return data[0].Items, nil
+}
 
-	items := data[0].Items
+// macOSApplicationPackages turns the applications system_profiler reported
+// into packages, adding the bundles it did not report from the cryptexes and
+// the application folders.
+func macOSApplicationPackages(conn shared.Connection, platform *inventory.Platform, items []sysProfilerItem) []Package {
 	items = append(items, cryptexApplications(conn, items)...)
 	items = append(items, folderApplications(conn, items)...)
 
@@ -234,7 +250,7 @@ func ParseMacOSPackages(conn shared.Connection, platform *inventory.Platform, in
 		pkgs = append(pkgs, pkg)
 	}
 
-	return pkgs, nil
+	return pkgs
 }
 
 // MacOS
@@ -252,17 +268,54 @@ func (mpm *MacOSPkgManager) Format() string {
 }
 
 func (mpm *MacOSPkgManager) List() ([]Package, error) {
-	cmd, err := mpm.conn.RunCommand("system_profiler SPApplicationsDataType -xml")
-	if err != nil {
-		return nil, fmt.Errorf("could not read package list")
-	}
-
-	pkgs, err := ParseMacOSPackages(mpm.conn, mpm.platform, cmd.Stdout)
-	if err != nil {
-		return nil, err
+	items, spErr := mpm.sysProfilerApplications()
+	pkgs := macOSApplicationPackages(mpm.conn, mpm.platform, items)
+	if spErr != nil {
+		// system_profiler finds applications through Spotlight. With indexing
+		// turned off it reports nothing, or fails outright, while the bundles
+		// are still on disk. The application folders are listed either way, so
+		// only give up when they came up empty too.
+		if len(pkgs) == 0 {
+			return nil, spErr
+		}
+		log.Debug().Err(spErr).Int("applications", len(pkgs)).
+			Msg("system_profiler listed no applications, using the application folders")
+	} else if len(items) == 0 && len(pkgs) > 0 {
+		log.Debug().Int("applications", len(pkgs)).
+			Msg("system_profiler listed no applications, Spotlight indexing may be off; using the application folders")
 	}
 	applyMacOSReceiptInstallDates(pkgs, readMacOSReceipts(mpm.conn))
 	return pkgs, nil
+}
+
+// sysProfilerApplications returns the applications system_profiler reports.
+// An error means it reported nothing usable: the command could not run, it
+// exited with an error and no output, or its output could not be read.
+func (mpm *MacOSPkgManager) sysProfilerApplications() ([]sysProfilerItem, error) {
+	cmd, err := mpm.conn.RunCommand("system_profiler SPApplicationsDataType -xml")
+	if err != nil {
+		return nil, fmt.Errorf("could not read package list: %w", err)
+	}
+	var out []byte
+	if cmd.Stdout != nil {
+		if out, err = io.ReadAll(cmd.Stdout); err != nil {
+			return nil, fmt.Errorf("could not read package list: %w", err)
+		}
+	}
+	if len(bytes.TrimSpace(out)) == 0 {
+		stderr := ""
+		if cmd.Stderr != nil {
+			if b, err := io.ReadAll(cmd.Stderr); err == nil {
+				stderr = strings.TrimSpace(string(b))
+			}
+		}
+		return nil, fmt.Errorf("system_profiler reported no applications (exit status %d): %s", cmd.ExitStatus, stderr)
+	}
+	items, err := parseSysProfilerApplications(bytes.NewReader(out))
+	if err != nil {
+		return nil, fmt.Errorf("could not parse system_profiler output: %w", err)
+	}
+	return items, nil
 }
 
 func (mpm *MacOSPkgManager) Available() (map[string]PackageUpdate, error) {
