@@ -432,9 +432,9 @@ func initGcpProjectSecretmanagerServiceSecret(runtime *plugin.Runtime, args map[
 		wantLocation, _ = raw.Value.(string)
 	}
 	for _, s := range secrets.Data {
-		secret := s.(*mqlGcpProjectSecretmanagerServiceSecret)
-		if secret.Name.Data == nameVal && secret.Location.Data == wantLocation {
-			return args, secret, nil
+		candidate := s.(*mqlGcpProjectSecretmanagerServiceSecret)
+		if candidate.Name.Data == nameVal && candidate.Location.Data == wantLocation {
+			return args, candidate, nil
 		}
 	}
 
