@@ -835,7 +835,7 @@ private digitalocean.database.topic @defaults("name state replicationFactor") {
   //
   // -1 sets no size limit. Null when not reported.
   retentionBytes() int
-  // How old records are removed (delete, compact, or compact_delete); empty when not reported
+  // How old records are removed (delete, compact, or compact_delete); null when not reported
   cleanupPolicy() string
 }
 

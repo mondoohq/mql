@@ -118,11 +118,54 @@ func (r *mqlDigitaloceanDatabase) fetchEngineConfig() (*engineConfig, error) {
 	return r.engineConfigValue, r.engineConfigErr
 }
 
-// secretShapedConfigKeys are substrings that mark a configuration setting
-// whose value may be a credential. No engine configuration godo models today
-// carries one, but engineConfig publishes the whole struct, so a setting added
-// by a later SDK release would otherwise reach the dict unreviewed.
-var secretShapedConfigKeys = []string{"password", "secret", "token", "credential", "private_key", "api_key"}
+// isSecretShapedConfigKey reports whether a configuration setting's name
+// marks a value that may be a credential. No engine configuration godo models
+// today carries one, but engineConfig publishes the whole struct, so a setting
+// added by a later SDK release would otherwise reach the dict unreviewed.
+//
+// Names are matched by segment rather than by substring, because real
+// settings contain credential words without holding one:
+// innodb_ft_min_token_size is a length and sql_require_primary_key a flag.
+func isSecretShapedConfigKey(name string) bool {
+	segs := strings.FieldsFunc(strings.ToLower(name), func(r rune) bool {
+		return r == '_' || r == '.' || r == '-'
+	})
+	for i, seg := range segs {
+		switch seg {
+		case "password", "passwd", "secret", "credential", "credentials":
+			return true
+		}
+		// A token or key is a credential only as the final segment, and a
+		// key only when qualified as one (api_key, access_key, ...).
+		if i != len(segs)-1 {
+			continue
+		}
+		if seg == "token" {
+			return true
+		}
+		if seg == "key" && i > 0 {
+			switch segs[i-1] {
+			case "api", "access", "private", "secret", "auth":
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// redactSecretShapedKeys removes secret-shaped settings from a decoded
+// configuration, descending into nested blocks (PgBouncer, TimescaleDB).
+func redactSecretShapedKeys(m map[string]any) {
+	for k, v := range m {
+		if isSecretShapedConfigKey(k) {
+			delete(m, k)
+			continue
+		}
+		if nested, ok := v.(map[string]any); ok {
+			redactSecretShapedKeys(nested)
+		}
+	}
+}
 
 // engineConfigDict converts an engine configuration struct to a dict keyed by
 // the API setting names, dropping any setting whose name looks like a
@@ -137,15 +180,7 @@ func engineConfigDict(cfg any) (map[string]any, error) {
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return nil, err
 	}
-	for k := range out {
-		lk := strings.ToLower(k)
-		for _, s := range secretShapedConfigKeys {
-			if strings.Contains(lk, s) {
-				delete(out, k)
-				break
-			}
-		}
-	}
+	redactSecretShapedKeys(out)
 	return out, nil
 }
 
@@ -449,7 +484,8 @@ func (r *mqlDigitaloceanDatabaseTopic) cleanupPolicy() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if cfg == nil {
+	if cfg == nil || cfg.CleanupPolicy == "" {
+		r.CleanupPolicy.State = plugin.StateIsSet | plugin.StateIsNull
 		return "", nil
 	}
 	return cfg.CleanupPolicy, nil

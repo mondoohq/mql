@@ -121,6 +121,34 @@ func TestEngineConfigDictDropsSecretShapedKeys(t *testing.T) {
 		"secret-shaped settings are dropped and unreported settings stay absent")
 }
 
+func TestIsSecretShapedConfigKey(t *testing.T) {
+	for _, k := range []string{"admin_password", "auth_token", "api_key", "backup.secret_key", "credentials"} {
+		assert.True(t, isSecretShapedConfigKey(k), k)
+	}
+	// Real settings that contain a credential word without holding one.
+	for _, k := range []string{"innodb_ft_min_token_size", "sql_require_primary_key", "redis_notify_keyspace_events", "redis_ssl"} {
+		assert.False(t, isSecretShapedConfigKey(k), k)
+	}
+}
+
+func TestEngineConfigDictNestedAndRealKeys(t *testing.T) {
+	type nested struct {
+		Pass string `json:"auth_password,omitempty"`
+		Mode string `json:"pool_mode,omitempty"`
+	}
+	type fake struct {
+		Tok *int    `json:"innodb_ft_min_token_size,omitempty"`
+		PK  *bool   `json:"sql_require_primary_key,omitempty"`
+		Pgb *nested `json:"pgbouncer,omitempty"`
+	}
+	n, tr := 3, true
+	out, err := engineConfigDict(&fake{Tok: &n, PK: &tr, Pgb: &nested{Pass: "p", Mode: "session"}})
+	require.NoError(t, err)
+	assert.Equal(t, float64(3), out["innodb_ft_min_token_size"])
+	assert.Equal(t, true, out["sql_require_primary_key"])
+	assert.Equal(t, map[string]any{"pool_mode": "session"}, out["pgbouncer"])
+}
+
 func TestEngineConfigDictKafkaBigInt(t *testing.T) {
 	cfg := &godo.KafkaConfig{}
 	require.NoError(t, json.Unmarshal([]byte(`{"log_retention_ms": 604800000, "auto_create_topics_enable": false}`), cfg))
@@ -309,6 +337,20 @@ func TestTopicsAndDetail(t *testing.T) {
 	cp, err := ev.cleanupPolicy()
 	require.NoError(t, err)
 	assert.Equal(t, "compact", cp)
+}
+
+func TestTopicCleanupPolicyUnreportedIsNull(t *testing.T) {
+	rt := statusRuntime(t, map[string]route{
+		"/v2/databases/db1/topics/t": {200, `{"topic":{"name":"t","state":"active","replication_factor":3,"config":{}}}`},
+	})
+	tp := &mqlDigitaloceanDatabaseTopic{
+		MqlRuntime: rt,
+		DatabaseId: plugin.TValue[string]{Data: "db1", State: plugin.StateIsSet},
+		Name:       plugin.TValue[string]{Data: "t", State: plugin.StateIsSet},
+	}
+	_, err := tp.cleanupPolicy()
+	require.NoError(t, err)
+	assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, tp.CleanupPolicy.State)
 }
 
 // ----- Clusterlint -----
