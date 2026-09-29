@@ -542,6 +542,7 @@ const (
 	ResourceMdmIntune                                     string = "mdm.intune"
 	ResourceIdp                                           string = "idp"
 	ResourceIdpEntra                                      string = "idp.entra"
+	ResourceIdpActiveDirectory                            string = "idp.activeDirectory"
 	ResourceCloud                                         string = "cloud"
 	ResourceCloudInstance                                 string = "cloudInstance"
 	ResourceIpAddress                                     string = "ipAddress"
@@ -2775,6 +2776,10 @@ func init() {
 		"idp.entra": {
 			Init:   initIdpEntra,
 			Create: createIdpEntra,
+		},
+		"idp.activeDirectory": {
+			Init:   initIdpActiveDirectory,
+			Create: createIdpActiveDirectory,
 		},
 		"cloud": {
 			// to override args, implement: initCloud(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -15481,6 +15486,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"idp.entra": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIdp).GetEntra()).ToDataRes(types.Resource("idp.entra"))
 	},
+	"idp.activeDirectory": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIdp).GetActiveDirectory()).ToDataRes(types.Resource("idp.activeDirectory"))
+	},
 	"idp.entra.deviceId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIdpEntra).GetDeviceId()).ToDataRes(types.String)
 	},
@@ -15489,6 +15497,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"idp.entra.joinType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIdpEntra).GetJoinType()).ToDataRes(types.String)
+	},
+	"idp.activeDirectory.domain": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIdpActiveDirectory).GetDomain()).ToDataRes(types.String)
+	},
+	"idp.activeDirectory.forest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIdpActiveDirectory).GetForest()).ToDataRes(types.String)
 	},
 	"cloud.provider": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloud).GetProvider()).ToDataRes(types.String)
@@ -36417,6 +36431,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlIdp).Entra, ok = plugin.RawToTValue[*mqlIdpEntra](v.Value, v.Error)
 		return
 	},
+	"idp.activeDirectory": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIdp).ActiveDirectory, ok = plugin.RawToTValue[*mqlIdpActiveDirectory](v.Value, v.Error)
+		return
+	},
 	"idp.entra.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIdpEntra).__id, ok = v.Value.(string)
 		return
@@ -36431,6 +36449,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"idp.entra.joinType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIdpEntra).JoinType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"idp.activeDirectory.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIdpActiveDirectory).__id, ok = v.Value.(string)
+		return
+	},
+	"idp.activeDirectory.domain": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIdpActiveDirectory).Domain, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"idp.activeDirectory.forest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIdpActiveDirectory).Forest, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"cloud.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -93495,8 +93525,9 @@ type mqlIdp struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlIdpInternal
-	Joined plugin.TValue[bool]
-	Entra  plugin.TValue[*mqlIdpEntra]
+	Joined          plugin.TValue[bool]
+	Entra           plugin.TValue[*mqlIdpEntra]
+	ActiveDirectory plugin.TValue[*mqlIdpActiveDirectory]
 }
 
 // createIdp creates a new instance of this resource
@@ -93558,6 +93589,22 @@ func (c *mqlIdp) GetEntra() *plugin.TValue[*mqlIdpEntra] {
 	})
 }
 
+func (c *mqlIdp) GetActiveDirectory() *plugin.TValue[*mqlIdpActiveDirectory] {
+	return plugin.GetOrCompute[*mqlIdpActiveDirectory](&c.ActiveDirectory, func() (*mqlIdpActiveDirectory, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("idp", c.__id, "activeDirectory")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIdpActiveDirectory), nil
+			}
+		}
+
+		return c.activeDirectory()
+	})
+}
+
 // mqlIdpEntra for the idp.entra resource
 type mqlIdpEntra struct {
 	MqlRuntime *plugin.Runtime
@@ -93610,6 +93657,55 @@ func (c *mqlIdpEntra) GetTenantId() *plugin.TValue[string] {
 
 func (c *mqlIdpEntra) GetJoinType() *plugin.TValue[string] {
 	return &c.JoinType
+}
+
+// mqlIdpActiveDirectory for the idp.activeDirectory resource
+type mqlIdpActiveDirectory struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlIdpActiveDirectoryInternal it will be used here
+	Domain plugin.TValue[string]
+	Forest plugin.TValue[string]
+}
+
+// createIdpActiveDirectory creates a new instance of this resource
+func createIdpActiveDirectory(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIdpActiveDirectory{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("idp.activeDirectory", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIdpActiveDirectory) MqlName() string {
+	return "idp.activeDirectory"
+}
+
+func (c *mqlIdpActiveDirectory) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIdpActiveDirectory) GetDomain() *plugin.TValue[string] {
+	return &c.Domain
+}
+
+func (c *mqlIdpActiveDirectory) GetForest() *plugin.TValue[string] {
+	return &c.Forest
 }
 
 // mqlCloud for the cloud resource

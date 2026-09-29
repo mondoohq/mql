@@ -37,17 +37,17 @@ func TestIdpResultSet_UndetectedIsNull(t *testing.T) {
 
 	t.Run("detection ran and found nothing", func(t *testing.T) {
 		i := newIdp()
-		require.NoError(t, idpResult{detected: true}.set(i))
+		require.NoError(t, idpResult{entraRead: true}.set(i))
 		assert.Equal(t, plugin.StateIsSet, i.Joined.State, "joined is a measured false")
 		assert.False(t, i.Joined.Data)
 		assert.Equal(t, null, i.Entra.State)
 	})
 }
 
-// populate must not report a measured non-membership on a platform whose
-// identity is never read. Windows Server is the case that matters: it can be
-// Entra-joined, but only client editions are asked for their device
-// certificates, so the absent labels there say nothing.
+// populate must not report a membership it did not read. Windows Server is the
+// case that matters for Entra: it can be Entra-joined, but only client
+// editions are asked for their device certificates, so the labels there say
+// nothing and joined rests on Active Directory alone.
 func TestIdpPopulate_PlatformsWithoutDetection(t *testing.T) {
 	null := plugin.StateIsSet | plugin.StateIsNull
 	// Made-up identifiers.
@@ -56,9 +56,11 @@ func TestIdpPopulate_PlatformsWithoutDetection(t *testing.T) {
 		detwin.LabelEntraTenantID: "11223344-5566-7788-99aa-bbccddeeff00",
 	}
 
-	newIdp := func(t *testing.T, pf *inventory.Platform) *mqlIdp {
+	// The Active Directory query answers for a machine in a workgroup.
+	workgroup := mock.WithData(adCommandOutput(`{"DomainRole":0,"Flat":null,"Dns":null,"Forest":null}`, 0))
+	newIdp := func(t *testing.T, pf *inventory.Platform, opts ...mock.Option) *mqlIdp {
 		t.Helper()
-		conn, err := mock.New(0, &inventory.Asset{Platform: pf})
+		conn, err := mock.New(0, &inventory.Asset{Platform: pf}, opts...)
 		require.NoError(t, err)
 		return &mqlIdp{MqlRuntime: &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}}
 	}
@@ -75,18 +77,20 @@ func TestIdpPopulate_PlatformsWithoutDetection(t *testing.T) {
 		return pf
 	}
 
-	t.Run("Windows Server is null, not false", func(t *testing.T) {
-		i := newIdp(t, windows("3", "Windows Server 2022 Datacenter", labels))
+	t.Run("Windows Server ignores Entra labels", func(t *testing.T) {
+		i := newIdp(t, windows("3", "Windows Server 2022 Datacenter", labels), workgroup)
 		require.NoError(t, i.populate())
-		assert.Equal(t, null, i.Joined.State)
+		assert.Equal(t, plugin.StateIsSet, i.Joined.State, "Active Directory was read")
+		assert.False(t, i.Joined.Data)
 		assert.Equal(t, null, i.Entra.State)
 	})
 
-	t.Run("Linux is null, not false", func(t *testing.T) {
-		i := newIdp(t, &inventory.Platform{Name: "ubuntu", Family: []string{"linux", "unix", "os"}})
+	t.Run("FreeBSD is null, not false", func(t *testing.T) {
+		i := newIdp(t, &inventory.Platform{Name: "freebsd", Family: []string{"bsd", "unix", "os"}})
 		require.NoError(t, i.populate())
 		assert.Equal(t, null, i.Joined.State)
 		assert.Equal(t, null, i.Entra.State)
+		assert.Equal(t, null, i.ActiveDirectory.State)
 	})
 
 	t.Run("a workstation reports its membership", func(t *testing.T) {
@@ -113,7 +117,7 @@ func TestIdpPopulate_PlatformsWithoutDetection(t *testing.T) {
 	})
 
 	t.Run("a workstation with no identity reports a measured false", func(t *testing.T) {
-		i := newIdp(t, windows("1", "Windows 11 Enterprise", nil))
+		i := newIdp(t, windows("1", "Windows 11 Enterprise", nil), workgroup)
 		require.NoError(t, i.populate())
 		assert.Equal(t, plugin.StateIsSet, i.Joined.State)
 		assert.False(t, i.Joined.Data)

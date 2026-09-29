@@ -16666,19 +16666,25 @@ private mdm.intune @defaults("deviceId tenantId") {
 // when the device does not belong to it. Independent of MDM enrollment: a
 // device can belong to an identity provider without being enrolled in an MDM
 // service, and the other way round. Microsoft Entra ID is detected on Windows
-// client editions today; others (for example Active Directory, FreeIPA,
-// LDAP/Kerberos realms, or JumpCloud) can be added as fields later. This is
-// the device's own identity, not the user-facing federation an `idp` resource
-// describes in the SaaS providers.
+// client editions, and Active Directory on Windows, macOS, and Linux. Others
+// (for example FreeIPA, LDAP/Kerberos realms, or JumpCloud) can be added as
+// fields later. This is the device's own identity, not the user-facing
+// federation an `idp` resource describes in the SaaS providers.
 idp @defaults("joined") @maturity("preview") {
   // Whether the device belongs to any recognized identity provider
   //
-  // False when detection ran and found no membership. Null where no identity
-  // provider is detected at all, such as Linux, macOS, and Windows Server: no
-  // lookup happened there, so the device may well be a member.
+  // True when the device belongs to at least one. False when every identity
+  // provider looked for on the platform was read and none has the device as
+  // a member. Null where no identity provider is read, and where Active
+  // Directory membership is looked for but cannot be read, such as a Linux
+  // scan without root, which cannot read sssd.conf, or a scan of a Windows
+  // disk image: no complete lookup happened there, so the device may well be
+  // a member.
   joined() bool
   // Microsoft Entra ID membership, null when the device has no Entra device identity
   entra() idp.entra
+  // Active Directory domain membership, null when the device is not a member of a domain
+  activeDirectory() idp.activeDirectory
 }
 
 // Microsoft Entra ID membership
@@ -16704,6 +16710,29 @@ private idp.entra @defaults("deviceId tenantId joinType") {
   // join) belongs to a user profile rather than the machine, so a device that
   // is only registered is not reported here.
   joinType string
+}
+
+// Active Directory domain membership
+//
+// The Active Directory domain the device is joined to, read from the device's
+// own configuration without contacting a domain controller. On Windows, the
+// machine's domain role, domain, and forest from the local security
+// authority; on macOS, the binding of the opendirectoryd Active Directory
+// plugin (dsconfigad); on Linux, SSSD configured with the ad identity provider
+// (as realmd and adcli join a domain) or Samba winbind with security = ads.
+// The resource is only returned for a member, so idp.activeDirectory not
+// being null means the device is joined to a domain.
+private idp.activeDirectory @defaults("domain forest") {
+  // DNS name of the Active Directory domain, in lower case
+  //
+  // For example `corp.example.com`. On Windows, a domain without a DNS name
+  // reports its NetBIOS name.
+  domain string
+  // DNS name of the Active Directory forest the domain belongs to, in lower case
+  //
+  // Read on Windows and macOS. Null on Linux, where neither SSSD nor Samba
+  // keeps the forest in its configuration.
+  forest string
 }
 
 // Cloud-asset metadata

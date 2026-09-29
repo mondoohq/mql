@@ -133,7 +133,7 @@ func TestMdmAndIdp_DeviceKinds(t *testing.T) {
 		assert.Equal(t, full.EntraTenantID, m.Intune.Data.TenantId.Data)
 
 		d := newIdp()
-		require.NoError(t, idpResult{detected: true, entra: entraFromIdentity(full)}.set(d))
+		require.NoError(t, idpResult{entraRead: true, entra: entraFromIdentity(full)}.set(d))
 		assertMember(t, d, full)
 	})
 
@@ -145,7 +145,7 @@ func TestMdmAndIdp_DeviceKinds(t *testing.T) {
 		assert.Equal(t, null, m.Intune.State)
 
 		d := newIdp()
-		require.NoError(t, idpResult{detected: true, entra: entraFromIdentity(entraOnly)}.set(d))
+		require.NoError(t, idpResult{entraRead: true, entra: entraFromIdentity(entraOnly)}.set(d))
 		assertMember(t, d, entraOnly)
 	})
 
@@ -158,7 +158,7 @@ func TestMdmAndIdp_DeviceKinds(t *testing.T) {
 
 		// Identity detection ran and found nothing: a measured non-membership.
 		d := newIdp()
-		require.NoError(t, idpResult{detected: true}.set(d))
+		require.NoError(t, idpResult{entraRead: true}.set(d))
 		assertNotMember(t, d)
 	})
 
@@ -170,7 +170,7 @@ func TestMdmAndIdp_DeviceKinds(t *testing.T) {
 		assert.Equal(t, null, m.Intune.State)
 
 		d := newIdp()
-		require.NoError(t, idpResult{detected: true, entra: entraFromIdentity(detwin.DeviceIdentity{})}.set(d))
+		require.NoError(t, idpResult{entraRead: true, entra: entraFromIdentity(detwin.DeviceIdentity{})}.set(d))
 		assertNotMember(t, d)
 	})
 
@@ -183,7 +183,7 @@ func TestMdmAndIdp_DeviceKinds(t *testing.T) {
 
 	t.Run("an Intune tenant without an Entra device ID is not a membership", func(t *testing.T) {
 		d := newIdp()
-		require.NoError(t, idpResult{detected: true, entra: entraFromIdentity(detwin.DeviceIdentity{IntuneDeviceID: full.IntuneDeviceID, EntraTenantID: full.EntraTenantID})}.set(d))
+		require.NoError(t, idpResult{entraRead: true, entra: entraFromIdentity(detwin.DeviceIdentity{IntuneDeviceID: full.IntuneDeviceID, EntraTenantID: full.EntraTenantID})}.set(d))
 		assertNotMember(t, d)
 	})
 

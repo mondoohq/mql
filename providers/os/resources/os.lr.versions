@@ -1448,6 +1448,9 @@ ibm.bob.skill.sha256 13.13.1
 ibm.bob.skill.source 13.13.1
 ibm.bob.skills 13.13.1
 idp 14.5.1
+idp.activeDirectory 14.9.1
+idp.activeDirectory.domain 14.9.1
+idp.activeDirectory.forest 14.9.1
 idp.entra 14.5.1
 idp.entra.deviceId 14.5.1
 idp.entra.joinType 14.6.1
