@@ -18,6 +18,12 @@ type mqlDigitaloceanDatabaseInternal struct {
 	backupsErr    error
 	backupsLock   sync.Mutex
 	backupsDone   bool
+
+	// The engine configuration feeds engineConfig and every per-engine
+	// setting, so it is read at most once per cluster.
+	engineConfigOnce  sync.Once
+	engineConfigValue *engineConfig
+	engineConfigErr   error
 }
 
 func (r *mqlDigitaloceanDatabaseBackup) id() (string, error) {

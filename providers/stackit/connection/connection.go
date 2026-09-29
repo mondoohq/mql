@@ -16,12 +16,15 @@ import (
 	alb "github.com/stackitcloud/stackit-sdk-go/services/alb/v2api"
 	albwaf "github.com/stackitcloud/stackit-sdk-go/services/albwaf/v1betaapi"
 	authorization "github.com/stackitcloud/stackit-sdk-go/services/authorization/v2api"
+	cdn "github.com/stackitcloud/stackit-sdk-go/services/cdn/v1api"
 	certificates "github.com/stackitcloud/stackit-sdk-go/services/certificates/v2api"
 	dns "github.com/stackitcloud/stackit-sdk-go/services/dns/v1api"
+	git "github.com/stackitcloud/stackit-sdk-go/services/git/v1betaapi"
 	iaas "github.com/stackitcloud/stackit-sdk-go/services/iaas/v2api"
 	kms "github.com/stackitcloud/stackit-sdk-go/services/kms/v1api"
 	loadbalancer "github.com/stackitcloud/stackit-sdk-go/services/loadbalancer/v2api"
 	logme "github.com/stackitcloud/stackit-sdk-go/services/logme/v2api"
+	logs "github.com/stackitcloud/stackit-sdk-go/services/logs/v1api"
 	mariadb "github.com/stackitcloud/stackit-sdk-go/services/mariadb/v2api"
 	modelserving "github.com/stackitcloud/stackit-sdk-go/services/modelserving/v1api"
 	mongodbflex "github.com/stackitcloud/stackit-sdk-go/services/mongodbflex/v2api"
@@ -29,6 +32,7 @@ import (
 	observability "github.com/stackitcloud/stackit-sdk-go/services/observability/v1api"
 	opensearch "github.com/stackitcloud/stackit-sdk-go/services/opensearch/v2api"
 	postgresflex "github.com/stackitcloud/stackit-sdk-go/services/postgresflex/v2api"
+	postgresflexv3 "github.com/stackitcloud/stackit-sdk-go/services/postgresflex/v3api"
 	rabbitmq "github.com/stackitcloud/stackit-sdk-go/services/rabbitmq/v2api"
 	redis "github.com/stackitcloud/stackit-sdk-go/services/redis/v2api"
 	resourcemanager "github.com/stackitcloud/stackit-sdk-go/services/resourcemanager/v0api"
@@ -36,11 +40,14 @@ import (
 	serverbackup "github.com/stackitcloud/stackit-sdk-go/services/serverbackup/v2api"
 	serverupdate "github.com/stackitcloud/stackit-sdk-go/services/serverupdate/v2api"
 	serviceaccount "github.com/stackitcloud/stackit-sdk-go/services/serviceaccount/v2api"
+	serviceenablement "github.com/stackitcloud/stackit-sdk-go/services/serviceenablement/v2api"
 	sfs "github.com/stackitcloud/stackit-sdk-go/services/sfs/v1api"
 	ske "github.com/stackitcloud/stackit-sdk-go/services/ske/v2api"
 	sqlserverflex "github.com/stackitcloud/stackit-sdk-go/services/sqlserverflex/v2api"
+	sqlserverflexv3 "github.com/stackitcloud/stackit-sdk-go/services/sqlserverflex/v3api"
 	telemetrylink "github.com/stackitcloud/stackit-sdk-go/services/telemetrylink/v1betaapi"
 	telemetryrouter "github.com/stackitcloud/stackit-sdk-go/services/telemetryrouter/v1betaapi"
+	valkey "github.com/stackitcloud/stackit-sdk-go/services/valkey/v2api"
 	vpn "github.com/stackitcloud/stackit-sdk-go/services/vpn/v1api"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -83,6 +90,28 @@ type StackitConnection struct {
 	securityGroupsOnce sync.Once
 	securityGroups     map[string]iaas.SecurityGroup
 	securityGroupsErr  error
+
+	cdnOnce                 sync.Once
+	cdnClient               *cdn.APIClient
+	cdnErr                  error
+	gitOnce                 sync.Once
+	gitClient               *git.APIClient
+	gitErr                  error
+	logsOnce                sync.Once
+	logsClient              *logs.APIClient
+	logsErr                 error
+	valkeyOnce              sync.Once
+	valkeyClient            *valkey.APIClient
+	valkeyErr               error
+	serviceEnablementOnce   sync.Once
+	serviceEnablementClient *serviceenablement.APIClient
+	serviceEnablementErr    error
+	postgresFlexV3Once      sync.Once
+	postgresFlexV3Client    *postgresflexv3.APIClient
+	postgresFlexV3Err       error
+	sqlServerFlexV3Once     sync.Once
+	sqlServerFlexV3Client   *sqlserverflexv3.APIClient
+	sqlServerFlexV3Err      error
 
 	iaasOnce             sync.Once
 	iaasClient           *iaas.APIClient
@@ -631,6 +660,64 @@ func (c *StackitConnection) Vpn() (*vpn.APIClient, error) {
 		c.vpnClient, c.vpnErr = vpn.NewAPIClient(c.configOptsGlobal...)
 	})
 	return c.vpnClient, c.vpnErr
+}
+
+// The clients below serve global endpoints; every method takes the region
+// (where it has one) as a per-call parameter, so they are built without a
+// bound region.
+
+func (c *StackitConnection) CDN() (*cdn.APIClient, error) {
+	c.cdnOnce.Do(func() {
+		c.cdnClient, c.cdnErr = cdn.NewAPIClient(c.configOptsGlobal...)
+	})
+	return c.cdnClient, c.cdnErr
+}
+
+func (c *StackitConnection) Git() (*git.APIClient, error) {
+	c.gitOnce.Do(func() {
+		c.gitClient, c.gitErr = git.NewAPIClient(c.configOptsGlobal...)
+	})
+	return c.gitClient, c.gitErr
+}
+
+func (c *StackitConnection) Logs() (*logs.APIClient, error) {
+	c.logsOnce.Do(func() {
+		c.logsClient, c.logsErr = logs.NewAPIClient(c.configOptsGlobal...)
+	})
+	return c.logsClient, c.logsErr
+}
+
+func (c *StackitConnection) Valkey() (*valkey.APIClient, error) {
+	c.valkeyOnce.Do(func() {
+		c.valkeyClient, c.valkeyErr = valkey.NewAPIClient(c.configOptsGlobal...)
+	})
+	return c.valkeyClient, c.valkeyErr
+}
+
+func (c *StackitConnection) ServiceEnablement() (*serviceenablement.APIClient, error) {
+	c.serviceEnablementOnce.Do(func() {
+		c.serviceEnablementClient, c.serviceEnablementErr = serviceenablement.NewAPIClient(c.configOptsGlobal...)
+	})
+	return c.serviceEnablementClient, c.serviceEnablementErr
+}
+
+// PostgresFlexV3 is the v3 API of Postgres Flex. The instance record there
+// carries the network access scope and customer-managed encryption the v2
+// record lacks; the v2 client stays in place for the fields already shipped.
+func (c *StackitConnection) PostgresFlexV3() (*postgresflexv3.APIClient, error) {
+	c.postgresFlexV3Once.Do(func() {
+		c.postgresFlexV3Client, c.postgresFlexV3Err = postgresflexv3.NewAPIClient(c.configOpts...)
+	})
+	return c.postgresFlexV3Client, c.postgresFlexV3Err
+}
+
+// SqlServerFlexV3 is the v3 API of SQLServer Flex, used alongside the v2
+// client for the same reason as PostgresFlexV3.
+func (c *StackitConnection) SqlServerFlexV3() (*sqlserverflexv3.APIClient, error) {
+	c.sqlServerFlexV3Once.Do(func() {
+		c.sqlServerFlexV3Client, c.sqlServerFlexV3Err = sqlserverflexv3.NewAPIClient(c.configOpts...)
+	})
+	return c.sqlServerFlexV3Client, c.sqlServerFlexV3Err
 }
 
 func (c *StackitConnection) Asset() *inventory.Asset { return c.asset }

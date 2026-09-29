@@ -735,6 +735,108 @@ digitalocean.database @defaults("id name engine") {
   standbyPrivateConnectionPort int
   // Destinations the cluster ships its service logs to
   logsinks() []digitalocean.database.logsink
+  // Public host of the OpenSearch Dashboards endpoint; empty when the cluster publishes no dashboards endpoint
+  dashboardConnectionHost string
+  // Public port of the OpenSearch Dashboards endpoint; zero when the cluster publishes no dashboards endpoint
+  dashboardConnectionPort int
+  // Whether the OpenSearch Dashboards endpoint enforces TLS/SSL; null when the cluster publishes no dashboards endpoint
+  dashboardConnectionSslEnabled bool
+  // Engine configuration settings applied to the cluster
+  //
+  // The advanced settings DigitalOcean exposes for the cluster's engine,
+  // keyed by the API setting name (for example `redis_ssl`,
+  // `enable_security_audit`, `sql_require_primary_key`, or
+  // `log_min_duration_statement`). Only settings the operator or the
+  // platform has set are present. Null for engines without a
+  // configuration endpoint. Setting names that look like credentials
+  // are never included.
+  engineConfig() dict
+  // Whether clients must connect over TLS (Redis and Valkey only)
+  //
+  // False means the cluster also accepts plaintext connections, which
+  // send the AUTH password and every key in the clear. Null for other
+  // engines and when the setting is not reported.
+  sslRequired() bool
+  // Default Pub/Sub channel permission for new ACL users (Redis and Valkey only)
+  //
+  // Either allchannels, which lets every new user publish and subscribe
+  // to any channel, or resetchannels, which grants no channels until they
+  // are granted explicitly. Null for other engines and when the setting
+  // is not reported.
+  aclChannelsDefault() string
+  // Whether the OpenSearch security audit log is enabled (OpenSearch only)
+  //
+  // The audit log records authentication events and access to indices.
+  // Null for other engines and when the setting is not reported.
+  securityAuditEnabled() bool
+  // Whether index deletion must name each index explicitly (OpenSearch only)
+  //
+  // False lets a single request delete indices through wildcards or
+  // `_all`. Null for other engines and when the setting is not reported.
+  destructiveActionsRequireName() bool
+  // Remote hosts the cluster may reindex data from (OpenSearch only)
+  //
+  // Each entry is a host:port pattern. Any host on this list can be read
+  // into the cluster through the reindex API. Null for other engines and
+  // when the setting is not reported.
+  reindexRemoteAllowlist() []string
+  // Whether producers can create topics implicitly (Kafka only)
+  //
+  // True lets any client with produce or consume rights create a topic
+  // by naming it, bypassing review of the topic's retention and
+  // replication settings. Null for other engines and when the setting is
+  // not reported.
+  autoCreateTopicsEnabled() bool
+  // Whether the slow query log is enabled (MySQL only)
+  //
+  // Null for other engines and when the setting is not reported.
+  slowQueryLogEnabled() bool
+  // Whether every table must have a primary key (MySQL only)
+  //
+  // Null for other engines and when the setting is not reported.
+  requirePrimaryKey() bool
+  // Topics hosted on the cluster (Kafka only)
+  //
+  // Empty for other engines.
+  topics() []digitalocean.database.topic
+}
+
+// Topic on a DigitalOcean managed Kafka cluster
+//
+// One topic hosted on a Kafka cluster, selected by `name`. Reports the
+// `replicationFactor` and `minInsyncReplicas` that decide how many node
+// failures a write survives, `underReplicatedPartitions` counting the
+// partitions whose in-sync replicas have fallen below the replication
+// factor, and the `retentionMs`, `retentionBytes`, and `cleanupPolicy`
+// that decide how long records are kept. The topic names match the
+// `topic` entries in each user's `kafkaAcls`.
+private digitalocean.database.topic @defaults("name state replicationFactor") {
+  // ID of the parent database cluster
+  databaseId string
+  // Parent database cluster
+  database() digitalocean.database
+  // Topic name
+  name string
+  // Topic state (active, configuring, deleting, or unknown)
+  state string
+  // Number of nodes each partition is replicated to
+  replicationFactor int
+  // Number of partitions in the topic
+  partitionCount() int
+  // Number of partitions with fewer in-sync replicas than the replication factor
+  underReplicatedPartitions() int
+  // Minimum number of in-sync replicas that must acknowledge a write; null when not reported
+  minInsyncReplicas() int
+  // Time records are kept before deletion, in milliseconds
+  //
+  // -1 keeps records forever. Null when not reported.
+  retentionMs() int
+  // Maximum size a partition grows to before old records are deleted, in bytes
+  //
+  // -1 sets no size limit. Null when not reported.
+  retentionBytes() int
+  // How old records are removed (delete, compact, or compact_delete); null when not reported
+  cleanupPolicy() string
 }
 
 // Log sink on a DigitalOcean managed database cluster
@@ -764,6 +866,8 @@ private digitalocean.database.logsink @defaults("name type tlsEnabled") {
   // Port of a syslog sink; null on search-cluster sinks
   port int
   // Endpoint URL of a search-cluster sink; empty on syslog sinks
+  //
+  // A password embedded in the URL is removed.
   url string
   // Whether log delivery to this sink is encrypted with TLS
   tlsEnabled bool
@@ -1411,6 +1515,43 @@ digitalocean.kubernetes.cluster @defaults("id name version") {
   // control-plane firewall is a source address list rather than a set of
   // cloud-firewall rules.
   exposure() digitalocean.network.exposure
+  // Time the most recent clusterlint run completed; null when the cluster has never been linted
+  lintCompletedAt() time
+  // Diagnostics reported by the most recent clusterlint run
+  //
+  // Clusterlint is DigitalOcean's best-practice checker for workloads
+  // running on the cluster, covering security (privileged containers,
+  // containers running as root, host path mounts), reliability, and
+  // upgrade blockers. The results are those of the last stored run,
+  // which may predate the workloads now on the cluster; compare with
+  // `lintCompletedAt`. Null when the cluster has never been linted.
+  lintDiagnostics() []digitalocean.kubernetes.lintDiagnostic
+}
+
+// Clusterlint diagnostic on a DigitalOcean Kubernetes cluster
+//
+// One finding from the most recent clusterlint run on a DOKS cluster.
+// `checkName` names the clusterlint check (for example
+// `privileged-containers` or `run-as-non-root`), `severity` is one of
+// error, warning, or suggestion, and `objectKind`, `objectNamespace`, and
+// `objectName` identify the Kubernetes object the finding is about.
+private digitalocean.kubernetes.lintDiagnostic @defaults("checkName severity objectKind objectName") {
+  // ID of the cluster the diagnostic was reported on
+  clusterId string
+  // Clusterlint check that produced the diagnostic
+  checkName string
+  // Severity (error, warning, or suggestion)
+  severity string
+  // Description of the problem and how to fix it
+  message string
+  // Kind of the Kubernetes object the diagnostic is about
+  objectKind string
+  // Name of the Kubernetes object the diagnostic is about
+  objectName string
+  // Namespace of the Kubernetes object; empty for cluster-scoped objects
+  objectNamespace string
+  // Objects that own the reported object, each written as "<kind>/<name>"
+  owners []string
 }
 
 // DigitalOcean Kubernetes node pool
@@ -1865,6 +2006,70 @@ digitalocean.app @defaults("id name") {
   inProgressDeployment() digitalocean.app.deployment
   // Third-party services the app forwards its logs to
   logDestinations() []digitalocean.app.logDestination
+  // Services, workers, jobs, static sites, and functions the app is built from
+  components() []digitalocean.app.component
+}
+
+// Component of an App Platform application
+//
+// One service, worker, job, static site, or functions component declared
+// in an app spec, selected by `name`. Reports where the component's code
+// comes from: a Git repository (`repository` and `branch`) or a container
+// image (`imageRegistryType`, `imageRegistry`, `repository`, `imageTag`,
+// and `imageDigest`), and whether `deployOnPush` ships every new commit
+// or image push straight to production. An image referenced by tag
+// rather than digest runs whatever the tag points to at deploy time.
+// `registryCredentialsConfigured` reports whether pull credentials are
+// set for a private registry; the credentials themselves are never
+// exposed. Also reports sizing, autoscaling bounds, the HTTP and internal
+// ports, and the public `routes` the ingress sends to the component.
+// Database components are not included.
+private digitalocean.app.component @defaults("name type sourceType") {
+  // ID of the app the component belongs to
+  appId string
+  // Component name
+  name string
+  // Component type (service, worker, job, static_site, or functions)
+  type string
+  // Where the component's code comes from
+  //
+  // One of github, gitlab, bitbucket, git, or image. Empty when the spec
+  // declares no source.
+  sourceType string
+  // Source repository
+  //
+  // The owner/name repository for github, gitlab, and bitbucket sources,
+  // the clone URL for a git source, or the image repository for an image
+  // source. Credentials embedded in a clone URL are removed.
+  repository string
+  // Branch the component builds from; empty for image sources
+  branch string
+  // Whether a new commit or image push is deployed automatically
+  deployOnPush bool
+  // Registry type of an image source (DOCR, DOCKER_HUB, or GHCR); empty for Git sources
+  imageRegistryType string
+  // Registry name or account of an image source; empty for Git sources and DOCR
+  imageRegistry string
+  // Image tag the component deploys; empty when the image is referenced by digest or the source is Git
+  imageTag string
+  // Image digest the component deploys; empty when the image is referenced by tag or the source is Git
+  imageDigest string
+  // Whether pull credentials are configured for the image registry
+  registryCredentialsConfigured bool
+  // Instance size slug; empty for static sites and functions
+  instanceSizeSlug string
+  // Fixed number of instances; zero when the component autoscales or has no instances
+  instanceCount int
+  // Minimum number of instances when autoscaling; null when the component does not autoscale
+  autoscalingMinInstances int
+  // Maximum number of instances when autoscaling; null when the component does not autoscale
+  autoscalingMaxInstances int
+  // Port the service listens on for HTTP traffic; null for components other than services and when the platform default applies
+  httpPort int
+  // Ports the service exposes only to other components of the app
+  internalPorts []int
+  // Public path prefixes the ingress routes to the component
+  routes []string
 }
 
 // Log-forwarding destination of an App Platform application
@@ -1891,6 +2096,8 @@ private digitalocean.app.logDestination @defaults("name provider tlsInsecure") {
   // "custom" when the destination is a self-hosted endpoint.
   provider string
   // Address logs are delivered to for a self-hosted destination; empty for a managed service
+  //
+  // A password embedded in the address is removed.
   endpoint string
   // Whether certificate verification is disabled on the delivery connection
   //
@@ -2081,8 +2288,8 @@ digitalocean.alertPolicy @defaults("uuid type enabled") {
   // Slack notification targets
   //
   // One entry per configured Slack destination. Each dict has a
-  // `channel` (the Slack channel name) and a `url` (the incoming
-  // webhook URL that receives the alert).
+  // `channel` (the Slack channel name). The incoming webhook URL is
+  // withheld because anyone holding it can post to the channel.
   alertSlack []dict
 }
 

@@ -791,20 +791,12 @@ func (r *mqlDigitalocean) alertPolicies() ([]interface{}, error) {
 		}
 
 		emails := make([]interface{}, 0)
-		slacks := make([]interface{}, 0)
 		if p.Alerts.Email != nil {
 			for _, e := range p.Alerts.Email {
 				emails = append(emails, e)
 			}
 		}
-		if p.Alerts.Slack != nil {
-			for _, s := range p.Alerts.Slack {
-				slacks = append(slacks, map[string]interface{}{
-					"channel": s.Channel,
-					"url":     s.URL,
-				})
-			}
-		}
+		slacks := alertSlackTargets(p.Alerts.Slack)
 
 		res, err := CreateResource(r.MqlRuntime, "digitalocean.alertPolicy", map[string]*llx.RawData{
 			"uuid":        llx.StringData(p.UUID),
@@ -825,6 +817,20 @@ func (r *mqlDigitalocean) alertPolicies() ([]interface{}, error) {
 		all = append(all, res)
 	}
 	return all, nil
+}
+
+// alertSlackTargets lists the Slack destinations of an alert policy.
+//
+// The incoming webhook URL is a bearer credential: anyone holding it can post
+// to the channel. Only the channel is reported.
+func alertSlackTargets(slack []godo.SlackDetails) []interface{} {
+	out := make([]interface{}, 0, len(slack))
+	for _, s := range slack {
+		out = append(out, map[string]interface{}{
+			"channel": s.Channel,
+		})
+	}
+	return out
 }
 
 func (r *mqlDigitaloceanAlertPolicy) id() (string, error) {

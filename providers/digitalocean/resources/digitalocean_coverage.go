@@ -585,22 +585,25 @@ func logDestinationTarget(d *godo.AppLogDestinationSpec) (provider, endpoint str
 	if d == nil {
 		return "", "", os
 	}
+	// Endpoints are written as URLs that may embed a password in their
+	// userinfo, so every endpoint goes through redactURLPassword.
 	switch {
 	case d.Papertrail != nil:
-		return "papertrail", d.Papertrail.Endpoint, os
+		return "papertrail", redactURLPassword(d.Papertrail.Endpoint), os
 	case d.Datadog != nil:
-		return "datadog", d.Datadog.Endpoint, os
+		return "datadog", redactURLPassword(d.Datadog.Endpoint), os
 	case d.Logtail != nil:
 		return "logtail", "", os
 	case d.OpenSearch != nil:
+		ep := redactURLPassword(d.OpenSearch.Endpoint)
 		os = opensearchTarget{
-			endpoint:    d.OpenSearch.Endpoint,
+			endpoint:    ep,
 			indexName:   d.OpenSearch.IndexName,
 			clusterName: d.OpenSearch.ClusterName,
 		}
-		return "opensearch", d.OpenSearch.Endpoint, os
+		return "opensearch", ep, os
 	}
-	return "custom", d.Endpoint, os
+	return "custom", redactURLPassword(d.Endpoint), os
 }
 
 // logDestinationHeaderKeys returns the names of the headers attached to

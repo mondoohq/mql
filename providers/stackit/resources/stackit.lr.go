@@ -104,6 +104,7 @@ const (
 	ResourceStackitSecretsManagerApproleSecretId           string = "stackit.secretsManager.approle.secretId"
 	ResourceStackitObservability                           string = "stackit.observability"
 	ResourceStackitObservabilityInstance                   string = "stackit.observability.instance"
+	ResourceStackitObservabilityScrapeConfig               string = "stackit.observability.scrapeConfig"
 	ResourceStackitTelemetry                               string = "stackit.telemetry"
 	ResourceStackitTelemetryRouter                         string = "stackit.telemetry.router"
 	ResourceStackitTelemetryRouterDestination              string = "stackit.telemetry.router.destination"
@@ -136,6 +137,21 @@ const (
 	ResourceStackitVpnGatewayBgpPeer                       string = "stackit.vpn.gateway.bgpPeer"
 	ResourceStackitVpnGatewayConnection                    string = "stackit.vpn.gateway.connection"
 	ResourceStackitVpnTunnel                               string = "stackit.vpn.tunnel"
+	ResourceStackitCdn                                     string = "stackit.cdn"
+	ResourceStackitCdnDistribution                         string = "stackit.cdn.distribution"
+	ResourceStackitCdnDistributionDomain                   string = "stackit.cdn.distribution.domain"
+	ResourceStackitGit                                     string = "stackit.git"
+	ResourceStackitGitInstance                             string = "stackit.git.instance"
+	ResourceStackitGitAuthentication                       string = "stackit.git.authentication"
+	ResourceStackitLogs                                    string = "stackit.logs"
+	ResourceStackitLogsInstance                            string = "stackit.logs.instance"
+	ResourceStackitLogsAccessToken                         string = "stackit.logs.accessToken"
+	ResourceStackitValkey                                  string = "stackit.valkey"
+	ResourceStackitValkeyInstance                          string = "stackit.valkey.instance"
+	ResourceStackitValkeyInstanceBackup                    string = "stackit.valkey.instance.backup"
+	ResourceStackitValkeyOffering                          string = "stackit.valkey.offering"
+	ResourceStackitValkeyOfferingPlan                      string = "stackit.valkey.offering.plan"
+	ResourceStackitServiceEnablement                       string = "stackit.serviceEnablement"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -494,6 +510,10 @@ func init() {
 			Init:   initStackitObservabilityInstance,
 			Create: createStackitObservabilityInstance,
 		},
+		"stackit.observability.scrapeConfig": {
+			// to override args, implement: initStackitObservabilityScrapeConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitObservabilityScrapeConfig,
+		},
 		"stackit.telemetry": {
 			// to override args, implement: initStackitTelemetry(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createStackitTelemetry,
@@ -621,6 +641,66 @@ func init() {
 		"stackit.vpn.tunnel": {
 			// to override args, implement: initStackitVpnTunnel(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createStackitVpnTunnel,
+		},
+		"stackit.cdn": {
+			// to override args, implement: initStackitCdn(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitCdn,
+		},
+		"stackit.cdn.distribution": {
+			// to override args, implement: initStackitCdnDistribution(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitCdnDistribution,
+		},
+		"stackit.cdn.distribution.domain": {
+			// to override args, implement: initStackitCdnDistributionDomain(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitCdnDistributionDomain,
+		},
+		"stackit.git": {
+			// to override args, implement: initStackitGit(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitGit,
+		},
+		"stackit.git.instance": {
+			// to override args, implement: initStackitGitInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitGitInstance,
+		},
+		"stackit.git.authentication": {
+			// to override args, implement: initStackitGitAuthentication(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitGitAuthentication,
+		},
+		"stackit.logs": {
+			// to override args, implement: initStackitLogs(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitLogs,
+		},
+		"stackit.logs.instance": {
+			// to override args, implement: initStackitLogsInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitLogsInstance,
+		},
+		"stackit.logs.accessToken": {
+			// to override args, implement: initStackitLogsAccessToken(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitLogsAccessToken,
+		},
+		"stackit.valkey": {
+			// to override args, implement: initStackitValkey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitValkey,
+		},
+		"stackit.valkey.instance": {
+			Init:   initStackitValkeyInstance,
+			Create: createStackitValkeyInstance,
+		},
+		"stackit.valkey.instance.backup": {
+			// to override args, implement: initStackitValkeyInstanceBackup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitValkeyInstanceBackup,
+		},
+		"stackit.valkey.offering": {
+			// to override args, implement: initStackitValkeyOffering(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitValkeyOffering,
+		},
+		"stackit.valkey.offering.plan": {
+			// to override args, implement: initStackitValkeyOfferingPlan(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitValkeyOfferingPlan,
+		},
+		"stackit.serviceEnablement": {
+			// to override args, implement: initStackitServiceEnablement(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createStackitServiceEnablement,
 		},
 	}
 }
@@ -806,6 +886,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"stackit.iam": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackit).GetIam()).ToDataRes(types.Resource("stackit.iam"))
+	},
+	"stackit.cdn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackit).GetCdn()).ToDataRes(types.Resource("stackit.cdn"))
+	},
+	"stackit.git": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackit).GetGit()).ToDataRes(types.Resource("stackit.git"))
+	},
+	"stackit.logs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackit).GetLogs()).ToDataRes(types.Resource("stackit.logs"))
+	},
+	"stackit.valkey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackit).GetValkey()).ToDataRes(types.Resource("stackit.valkey"))
+	},
+	"stackit.serviceEnablements": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackit).GetServiceEnablements()).ToDataRes(types.Array(types.Resource("stackit.serviceEnablement")))
 	},
 	"stackit.project.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitProject).GetId()).ToDataRes(types.String)
@@ -2244,6 +2339,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"stackit.postgresFlex.instance.backups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitPostgresFlexInstance).GetBackups()).ToDataRes(types.Array(types.Resource("stackit.postgresFlex.instance.backup")))
 	},
+	"stackit.postgresFlex.instance.accessScope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitPostgresFlexInstance).GetAccessScope()).ToDataRes(types.String)
+	},
+	"stackit.postgresFlex.instance.encryptionKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitPostgresFlexInstance).GetEncryptionKey()).ToDataRes(types.Resource("stackit.kms.key"))
+	},
+	"stackit.postgresFlex.instance.encryptionKeyRing": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitPostgresFlexInstance).GetEncryptionKeyRing()).ToDataRes(types.Resource("stackit.kms.keyRing"))
+	},
+	"stackit.postgresFlex.instance.encryptionKeyVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitPostgresFlexInstance).GetEncryptionKeyVersion()).ToDataRes(types.Int)
+	},
+	"stackit.postgresFlex.instance.encryptionKeyServiceAccount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitPostgresFlexInstance).GetEncryptionKeyServiceAccount()).ToDataRes(types.Resource("stackit.serviceAccount"))
+	},
+	"stackit.postgresFlex.instance.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitPostgresFlexInstance).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"stackit.postgresFlex.instance.deletable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitPostgresFlexInstance).GetDeletable()).ToDataRes(types.Bool)
+	},
+	"stackit.postgresFlex.instance.backupRetentionDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitPostgresFlexInstance).GetBackupRetentionDays()).ToDataRes(types.Int)
+	},
 	"stackit.postgresFlex.instance.user.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitPostgresFlexInstanceUser).GetId()).ToDataRes(types.String)
 	},
@@ -2420,6 +2539,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"stackit.sqlServerFlex.instance.backups": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitSqlServerFlexInstance).GetBackups()).ToDataRes(types.Array(types.Resource("stackit.sqlServerFlex.instance.backup")))
+	},
+	"stackit.sqlServerFlex.instance.accessScope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSqlServerFlexInstance).GetAccessScope()).ToDataRes(types.String)
+	},
+	"stackit.sqlServerFlex.instance.encryptionKey": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSqlServerFlexInstance).GetEncryptionKey()).ToDataRes(types.Resource("stackit.kms.key"))
+	},
+	"stackit.sqlServerFlex.instance.encryptionKeyRing": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSqlServerFlexInstance).GetEncryptionKeyRing()).ToDataRes(types.Resource("stackit.kms.keyRing"))
+	},
+	"stackit.sqlServerFlex.instance.encryptionKeyVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSqlServerFlexInstance).GetEncryptionKeyVersion()).ToDataRes(types.Int)
+	},
+	"stackit.sqlServerFlex.instance.encryptionKeyServiceAccount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSqlServerFlexInstance).GetEncryptionKeyServiceAccount()).ToDataRes(types.Resource("stackit.serviceAccount"))
+	},
+	"stackit.sqlServerFlex.instance.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSqlServerFlexInstance).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"stackit.sqlServerFlex.instance.deletable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitSqlServerFlexInstance).GetDeletable()).ToDataRes(types.Bool)
 	},
 	"stackit.sqlServerFlex.instance.user.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitSqlServerFlexInstanceUser).GetId()).ToDataRes(types.String)
@@ -3402,6 +3542,66 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"stackit.observability.instance.grafanaGenericOauthAllowAssignAdmin": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitObservabilityInstance).GetGrafanaGenericOauthAllowAssignAdmin()).ToDataRes(types.Bool)
 	},
+	"stackit.observability.instance.scrapeConfigs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityInstance).GetScrapeConfigs()).ToDataRes(types.Array(types.Resource("stackit.observability.scrapeConfig")))
+	},
+	"stackit.observability.instance.metricsRetentionRaw": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityInstance).GetMetricsRetentionRaw()).ToDataRes(types.String)
+	},
+	"stackit.observability.instance.metricsRetention5m": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityInstance).GetMetricsRetention5m()).ToDataRes(types.String)
+	},
+	"stackit.observability.instance.metricsRetention1h": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityInstance).GetMetricsRetention1h()).ToDataRes(types.String)
+	},
+	"stackit.observability.instance.logsRetention": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityInstance).GetLogsRetention()).ToDataRes(types.String)
+	},
+	"stackit.observability.instance.tracesRetention": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityInstance).GetTracesRetention()).ToDataRes(types.String)
+	},
+	"stackit.observability.scrapeConfig.jobName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityScrapeConfig).GetJobName()).ToDataRes(types.String)
+	},
+	"stackit.observability.scrapeConfig.scheme": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityScrapeConfig).GetScheme()).ToDataRes(types.String)
+	},
+	"stackit.observability.scrapeConfig.metricsPath": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityScrapeConfig).GetMetricsPath()).ToDataRes(types.String)
+	},
+	"stackit.observability.scrapeConfig.scrapeInterval": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityScrapeConfig).GetScrapeInterval()).ToDataRes(types.String)
+	},
+	"stackit.observability.scrapeConfig.scrapeTimeout": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityScrapeConfig).GetScrapeTimeout()).ToDataRes(types.String)
+	},
+	"stackit.observability.scrapeConfig.sampleLimit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityScrapeConfig).GetSampleLimit()).ToDataRes(types.Int)
+	},
+	"stackit.observability.scrapeConfig.honorLabels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityScrapeConfig).GetHonorLabels()).ToDataRes(types.Bool)
+	},
+	"stackit.observability.scrapeConfig.honorTimestamps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityScrapeConfig).GetHonorTimestamps()).ToDataRes(types.Bool)
+	},
+	"stackit.observability.scrapeConfig.insecureSkipVerify": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityScrapeConfig).GetInsecureSkipVerify()).ToDataRes(types.Bool)
+	},
+	"stackit.observability.scrapeConfig.basicAuthConfigured": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityScrapeConfig).GetBasicAuthConfigured()).ToDataRes(types.Bool)
+	},
+	"stackit.observability.scrapeConfig.bearerTokenConfigured": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityScrapeConfig).GetBearerTokenConfigured()).ToDataRes(types.Bool)
+	},
+	"stackit.observability.scrapeConfig.oauth2Configured": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityScrapeConfig).GetOauth2Configured()).ToDataRes(types.Bool)
+	},
+	"stackit.observability.scrapeConfig.targets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityScrapeConfig).GetTargets()).ToDataRes(types.Array(types.String))
+	},
+	"stackit.observability.scrapeConfig.serviceDiscoveryUrls": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitObservabilityScrapeConfig).GetServiceDiscoveryUrls()).ToDataRes(types.Array(types.String))
+	},
 	"stackit.telemetry.routers": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitTelemetry).GetRouters()).ToDataRes(types.Array(types.Resource("stackit.telemetry.router")))
 	},
@@ -4194,6 +4394,426 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"stackit.vpn.tunnel.negotiatedPhase2Encapsulation": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlStackitVpnTunnel).GetNegotiatedPhase2Encapsulation()).ToDataRes(types.String)
 	},
+	"stackit.cdn.distributions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdn).GetDistributions()).ToDataRes(types.Array(types.Resource("stackit.cdn.distribution")))
+	},
+	"stackit.cdn.distribution.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetId()).ToDataRes(types.String)
+	},
+	"stackit.cdn.distribution.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetStatus()).ToDataRes(types.String)
+	},
+	"stackit.cdn.distribution.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"stackit.cdn.distribution.updatedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetUpdatedAt()).ToDataRes(types.Time)
+	},
+	"stackit.cdn.distribution.errors": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetErrors()).ToDataRes(types.Array(types.String))
+	},
+	"stackit.cdn.distribution.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"stackit.cdn.distribution.backendType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetBackendType()).ToDataRes(types.String)
+	},
+	"stackit.cdn.distribution.originUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetOriginUrl()).ToDataRes(types.String)
+	},
+	"stackit.cdn.distribution.originRequestHeaderNames": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetOriginRequestHeaderNames()).ToDataRes(types.Array(types.String))
+	},
+	"stackit.cdn.distribution.bucketUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetBucketUrl()).ToDataRes(types.String)
+	},
+	"stackit.cdn.distribution.bucketRegion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetBucketRegion()).ToDataRes(types.String)
+	},
+	"stackit.cdn.distribution.tls10Enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetTls10Enabled()).ToDataRes(types.Bool)
+	},
+	"stackit.cdn.distribution.tls11Enabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetTls11Enabled()).ToDataRes(types.Bool)
+	},
+	"stackit.cdn.distribution.wafMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetWafMode()).ToDataRes(types.String)
+	},
+	"stackit.cdn.distribution.wafType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetWafType()).ToDataRes(types.String)
+	},
+	"stackit.cdn.distribution.wafParanoiaLevel": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetWafParanoiaLevel()).ToDataRes(types.String)
+	},
+	"stackit.cdn.distribution.wafDisabledRuleIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetWafDisabledRuleIds()).ToDataRes(types.Array(types.String))
+	},
+	"stackit.cdn.distribution.wafDisabledRuleGroupIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetWafDisabledRuleGroupIds()).ToDataRes(types.Array(types.String))
+	},
+	"stackit.cdn.distribution.wafDisabledRuleCollectionIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetWafDisabledRuleCollectionIds()).ToDataRes(types.Array(types.String))
+	},
+	"stackit.cdn.distribution.wafLogOnlyRuleIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetWafLogOnlyRuleIds()).ToDataRes(types.Array(types.String))
+	},
+	"stackit.cdn.distribution.wafAllowedHttpMethods": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetWafAllowedHttpMethods()).ToDataRes(types.Array(types.String))
+	},
+	"stackit.cdn.distribution.blockedCountries": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetBlockedCountries()).ToDataRes(types.Array(types.String))
+	},
+	"stackit.cdn.distribution.blockedIps": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetBlockedIps()).ToDataRes(types.Array(types.String))
+	},
+	"stackit.cdn.distribution.regions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetRegions()).ToDataRes(types.Array(types.String))
+	},
+	"stackit.cdn.distribution.logSinkType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetLogSinkType()).ToDataRes(types.String)
+	},
+	"stackit.cdn.distribution.logSinkPushUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetLogSinkPushUrl()).ToDataRes(types.String)
+	},
+	"stackit.cdn.distribution.forwardHostHeader": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetForwardHostHeader()).ToDataRes(types.Bool)
+	},
+	"stackit.cdn.distribution.monthlyLimitBytes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetMonthlyLimitBytes()).ToDataRes(types.Int)
+	},
+	"stackit.cdn.distribution.domains": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistribution).GetDomains()).ToDataRes(types.Array(types.Resource("stackit.cdn.distribution.domain")))
+	},
+	"stackit.cdn.distribution.domain.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistributionDomain).GetName()).ToDataRes(types.String)
+	},
+	"stackit.cdn.distribution.domain.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistributionDomain).GetType()).ToDataRes(types.String)
+	},
+	"stackit.cdn.distribution.domain.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistributionDomain).GetStatus()).ToDataRes(types.String)
+	},
+	"stackit.cdn.distribution.domain.certificateType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistributionDomain).GetCertificateType()).ToDataRes(types.String)
+	},
+	"stackit.cdn.distribution.domain.errors": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitCdnDistributionDomain).GetErrors()).ToDataRes(types.Array(types.String))
+	},
+	"stackit.git.instances": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGit).GetInstances()).ToDataRes(types.Array(types.Resource("stackit.git.instance")))
+	},
+	"stackit.git.instance.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitInstance).GetId()).ToDataRes(types.String)
+	},
+	"stackit.git.instance.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitInstance).GetName()).ToDataRes(types.String)
+	},
+	"stackit.git.instance.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitInstance).GetUrl()).ToDataRes(types.String)
+	},
+	"stackit.git.instance.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitInstance).GetState()).ToDataRes(types.String)
+	},
+	"stackit.git.instance.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitInstance).GetVersion()).ToDataRes(types.String)
+	},
+	"stackit.git.instance.flavor": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitInstance).GetFlavor()).ToDataRes(types.String)
+	},
+	"stackit.git.instance.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitInstance).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"stackit.git.instance.acl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitInstance).GetAcl()).ToDataRes(types.Array(types.String))
+	},
+	"stackit.git.instance.localLoginEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitInstance).GetLocalLoginEnabled()).ToDataRes(types.Bool)
+	},
+	"stackit.git.instance.commitSignaturesEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitInstance).GetCommitSignaturesEnabled()).ToDataRes(types.Bool)
+	},
+	"stackit.git.instance.defaultEmailNotifications": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitInstance).GetDefaultEmailNotifications()).ToDataRes(types.String)
+	},
+	"stackit.git.instance.authentications": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitInstance).GetAuthentications()).ToDataRes(types.Array(types.Resource("stackit.git.authentication")))
+	},
+	"stackit.git.authentication.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitAuthentication).GetId()).ToDataRes(types.String)
+	},
+	"stackit.git.authentication.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitAuthentication).GetName()).ToDataRes(types.String)
+	},
+	"stackit.git.authentication.provider": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitAuthentication).GetProvider()).ToDataRes(types.String)
+	},
+	"stackit.git.authentication.autoDiscoverUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitAuthentication).GetAutoDiscoverUrl()).ToDataRes(types.String)
+	},
+	"stackit.git.authentication.clientId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitAuthentication).GetClientId()).ToDataRes(types.String)
+	},
+	"stackit.git.authentication.scopes": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitAuthentication).GetScopes()).ToDataRes(types.Array(types.String))
+	},
+	"stackit.git.authentication.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitAuthentication).GetStatus()).ToDataRes(types.String)
+	},
+	"stackit.git.authentication.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitGitAuthentication).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"stackit.logs.instances": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogs).GetInstances()).ToDataRes(types.Array(types.Resource("stackit.logs.instance")))
+	},
+	"stackit.logs.instance.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsInstance).GetId()).ToDataRes(types.String)
+	},
+	"stackit.logs.instance.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsInstance).GetName()).ToDataRes(types.String)
+	},
+	"stackit.logs.instance.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsInstance).GetDescription()).ToDataRes(types.String)
+	},
+	"stackit.logs.instance.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsInstance).GetStatus()).ToDataRes(types.String)
+	},
+	"stackit.logs.instance.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsInstance).GetCreatedAt()).ToDataRes(types.Time)
+	},
+	"stackit.logs.instance.retentionDays": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsInstance).GetRetentionDays()).ToDataRes(types.Int)
+	},
+	"stackit.logs.instance.acl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsInstance).GetAcl()).ToDataRes(types.Array(types.String))
+	},
+	"stackit.logs.instance.ingestUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsInstance).GetIngestUrl()).ToDataRes(types.String)
+	},
+	"stackit.logs.instance.ingestOtlpUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsInstance).GetIngestOtlpUrl()).ToDataRes(types.String)
+	},
+	"stackit.logs.instance.queryUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsInstance).GetQueryUrl()).ToDataRes(types.String)
+	},
+	"stackit.logs.instance.queryRangeUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsInstance).GetQueryRangeUrl()).ToDataRes(types.String)
+	},
+	"stackit.logs.instance.datasourceUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsInstance).GetDatasourceUrl()).ToDataRes(types.String)
+	},
+	"stackit.logs.instance.accessTokens": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsInstance).GetAccessTokens()).ToDataRes(types.Array(types.Resource("stackit.logs.accessToken")))
+	},
+	"stackit.logs.accessToken.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsAccessToken).GetId()).ToDataRes(types.String)
+	},
+	"stackit.logs.accessToken.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsAccessToken).GetName()).ToDataRes(types.String)
+	},
+	"stackit.logs.accessToken.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsAccessToken).GetDescription()).ToDataRes(types.String)
+	},
+	"stackit.logs.accessToken.creator": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsAccessToken).GetCreator()).ToDataRes(types.String)
+	},
+	"stackit.logs.accessToken.permissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsAccessToken).GetPermissions()).ToDataRes(types.Array(types.String))
+	},
+	"stackit.logs.accessToken.expires": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsAccessToken).GetExpires()).ToDataRes(types.Bool)
+	},
+	"stackit.logs.accessToken.validUntil": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsAccessToken).GetValidUntil()).ToDataRes(types.Time)
+	},
+	"stackit.logs.accessToken.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitLogsAccessToken).GetStatus()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instances": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkey).GetInstances()).ToDataRes(types.Array(types.Resource("stackit.valkey.instance")))
+	},
+	"stackit.valkey.offerings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkey).GetOfferings()).ToDataRes(types.Array(types.Resource("stackit.valkey.offering")))
+	},
+	"stackit.valkey.instance.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetId()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetName()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetStatus()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetState()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.lastOperationType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetLastOperationType()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.lastOperationDescription": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetLastOperationDescription()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.region": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetRegion()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.planName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetPlanName()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.planId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetPlanId()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.offeringName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetOfferingName()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.offeringVersion": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetOfferingVersion()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.cfGuid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetCfGuid()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.cfOrganizationGuid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetCfOrganizationGuid()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.cfSpaceGuid": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetCfSpaceGuid()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.dashboardUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetDashboardUrl()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.imageUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetImageUrl()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.sgwAcl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetSgwAcl()).ToDataRes(types.Array(types.String))
+	},
+	"stackit.valkey.instance.internetReachable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetInternetReachable()).ToDataRes(types.Bool)
+	},
+	"stackit.valkey.instance.syslog": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetSyslog()).ToDataRes(types.Array(types.String))
+	},
+	"stackit.valkey.instance.graphite": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetGraphite()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.monitoringEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetMonitoringEnabled()).ToDataRes(types.Bool)
+	},
+	"stackit.valkey.instance.monitoringInstance": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetMonitoringInstance()).ToDataRes(types.Resource("stackit.observability.instance"))
+	},
+	"stackit.valkey.instance.maxDiskThreshold": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetMaxDiskThreshold()).ToDataRes(types.Int)
+	},
+	"stackit.valkey.instance.snapshot": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetSnapshot()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.maxmemoryPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetMaxmemoryPolicy()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.notifyKeyspaceEvents": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetNotifyKeyspaceEvents()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.maxClients": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetMaxClients()).ToDataRes(types.Int)
+	},
+	"stackit.valkey.instance.minReplicasToWrite": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetMinReplicasToWrite()).ToDataRes(types.Int)
+	},
+	"stackit.valkey.instance.backups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetBackups()).ToDataRes(types.Array(types.Resource("stackit.valkey.instance.backup")))
+	},
+	"stackit.valkey.instance.offering": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetOffering()).ToDataRes(types.Resource("stackit.valkey.offering"))
+	},
+	"stackit.valkey.instance.plan": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstance).GetPlan()).ToDataRes(types.Resource("stackit.valkey.offering.plan"))
+	},
+	"stackit.valkey.instance.backup.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstanceBackup).GetId()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.backup.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstanceBackup).GetStatus()).ToDataRes(types.String)
+	},
+	"stackit.valkey.instance.backup.size": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstanceBackup).GetSize()).ToDataRes(types.Int)
+	},
+	"stackit.valkey.instance.backup.downloadable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstanceBackup).GetDownloadable()).ToDataRes(types.Bool)
+	},
+	"stackit.valkey.instance.backup.triggeredAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstanceBackup).GetTriggeredAt()).ToDataRes(types.Time)
+	},
+	"stackit.valkey.instance.backup.finishedAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyInstanceBackup).GetFinishedAt()).ToDataRes(types.Time)
+	},
+	"stackit.valkey.offering.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyOffering).GetName()).ToDataRes(types.String)
+	},
+	"stackit.valkey.offering.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyOffering).GetVersion()).ToDataRes(types.String)
+	},
+	"stackit.valkey.offering.latest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyOffering).GetLatest()).ToDataRes(types.Bool)
+	},
+	"stackit.valkey.offering.lifecycle": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyOffering).GetLifecycle()).ToDataRes(types.String)
+	},
+	"stackit.valkey.offering.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyOffering).GetDescription()).ToDataRes(types.String)
+	},
+	"stackit.valkey.offering.documentationUrl": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyOffering).GetDocumentationUrl()).ToDataRes(types.String)
+	},
+	"stackit.valkey.offering.quotaCount": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyOffering).GetQuotaCount()).ToDataRes(types.Int)
+	},
+	"stackit.valkey.offering.plans": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyOffering).GetPlans()).ToDataRes(types.Array(types.Resource("stackit.valkey.offering.plan")))
+	},
+	"stackit.valkey.offering.plan.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyOfferingPlan).GetId()).ToDataRes(types.String)
+	},
+	"stackit.valkey.offering.plan.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyOfferingPlan).GetName()).ToDataRes(types.String)
+	},
+	"stackit.valkey.offering.plan.skuName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyOfferingPlan).GetSkuName()).ToDataRes(types.String)
+	},
+	"stackit.valkey.offering.plan.free": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyOfferingPlan).GetFree()).ToDataRes(types.Bool)
+	},
+	"stackit.valkey.offering.plan.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitValkeyOfferingPlan).GetDescription()).ToDataRes(types.String)
+	},
+	"stackit.serviceEnablement.serviceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitServiceEnablement).GetServiceId()).ToDataRes(types.String)
+	},
+	"stackit.serviceEnablement.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitServiceEnablement).GetState()).ToDataRes(types.String)
+	},
+	"stackit.serviceEnablement.enablement": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitServiceEnablement).GetEnablement()).ToDataRes(types.String)
+	},
+	"stackit.serviceEnablement.scope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitServiceEnablement).GetScope()).ToDataRes(types.String)
+	},
+	"stackit.serviceEnablement.lifecycle": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitServiceEnablement).GetLifecycle()).ToDataRes(types.String)
+	},
+	"stackit.serviceEnablement.labels": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitServiceEnablement).GetLabels()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"stackit.serviceEnablement.errorAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitServiceEnablement).GetErrorAction()).ToDataRes(types.String)
+	},
+	"stackit.serviceEnablement.errorReason": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitServiceEnablement).GetErrorReason()).ToDataRes(types.String)
+	},
+	"stackit.serviceEnablement.hardDependencies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitServiceEnablement).GetHardDependencies()).ToDataRes(types.Array(types.Resource("stackit.serviceEnablement")))
+	},
+	"stackit.serviceEnablement.softDependencies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlStackitServiceEnablement).GetSoftDependencies()).ToDataRes(types.Array(types.Resource("stackit.serviceEnablement")))
+	},
 }
 
 func GetData(resource plugin.Resource, field string, args map[string]*llx.RawData) *plugin.DataRes {
@@ -4360,6 +4980,26 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"stackit.iam": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackit).Iam, ok = plugin.RawToTValue[*mqlStackitIam](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackit).Cdn, ok = plugin.RawToTValue[*mqlStackitCdn](v.Value, v.Error)
+		return
+	},
+	"stackit.git": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackit).Git, ok = plugin.RawToTValue[*mqlStackitGit](v.Value, v.Error)
+		return
+	},
+	"stackit.logs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackit).Logs, ok = plugin.RawToTValue[*mqlStackitLogs](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackit).Valkey, ok = plugin.RawToTValue[*mqlStackitValkey](v.Value, v.Error)
+		return
+	},
+	"stackit.serviceEnablements": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackit).ServiceEnablements, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"stackit.project.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -6458,6 +7098,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlStackitPostgresFlexInstance).Backups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"stackit.postgresFlex.instance.accessScope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitPostgresFlexInstance).AccessScope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.postgresFlex.instance.encryptionKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitPostgresFlexInstance).EncryptionKey, ok = plugin.RawToTValue[*mqlStackitKmsKey](v.Value, v.Error)
+		return
+	},
+	"stackit.postgresFlex.instance.encryptionKeyRing": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitPostgresFlexInstance).EncryptionKeyRing, ok = plugin.RawToTValue[*mqlStackitKmsKeyRing](v.Value, v.Error)
+		return
+	},
+	"stackit.postgresFlex.instance.encryptionKeyVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitPostgresFlexInstance).EncryptionKeyVersion, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"stackit.postgresFlex.instance.encryptionKeyServiceAccount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitPostgresFlexInstance).EncryptionKeyServiceAccount, ok = plugin.RawToTValue[*mqlStackitServiceAccount](v.Value, v.Error)
+		return
+	},
+	"stackit.postgresFlex.instance.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitPostgresFlexInstance).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"stackit.postgresFlex.instance.deletable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitPostgresFlexInstance).Deletable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.postgresFlex.instance.backupRetentionDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitPostgresFlexInstance).BackupRetentionDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
 	"stackit.postgresFlex.instance.user.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackitPostgresFlexInstanceUser).__id, ok = v.Value.(string)
 		return
@@ -6724,6 +7396,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"stackit.sqlServerFlex.instance.backups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackitSqlServerFlexInstance).Backups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.sqlServerFlex.instance.accessScope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSqlServerFlexInstance).AccessScope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.sqlServerFlex.instance.encryptionKey": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSqlServerFlexInstance).EncryptionKey, ok = plugin.RawToTValue[*mqlStackitKmsKey](v.Value, v.Error)
+		return
+	},
+	"stackit.sqlServerFlex.instance.encryptionKeyRing": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSqlServerFlexInstance).EncryptionKeyRing, ok = plugin.RawToTValue[*mqlStackitKmsKeyRing](v.Value, v.Error)
+		return
+	},
+	"stackit.sqlServerFlex.instance.encryptionKeyVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSqlServerFlexInstance).EncryptionKeyVersion, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"stackit.sqlServerFlex.instance.encryptionKeyServiceAccount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSqlServerFlexInstance).EncryptionKeyServiceAccount, ok = plugin.RawToTValue[*mqlStackitServiceAccount](v.Value, v.Error)
+		return
+	},
+	"stackit.sqlServerFlex.instance.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSqlServerFlexInstance).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"stackit.sqlServerFlex.instance.deletable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitSqlServerFlexInstance).Deletable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"stackit.sqlServerFlex.instance.user.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -8170,6 +8870,90 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlStackitObservabilityInstance).GrafanaGenericOauthAllowAssignAdmin, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"stackit.observability.instance.scrapeConfigs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityInstance).ScrapeConfigs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.instance.metricsRetentionRaw": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityInstance).MetricsRetentionRaw, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.instance.metricsRetention5m": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityInstance).MetricsRetention5m, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.instance.metricsRetention1h": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityInstance).MetricsRetention1h, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.instance.logsRetention": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityInstance).LogsRetention, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.instance.tracesRetention": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityInstance).TracesRetention, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.scrapeConfig.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityScrapeConfig).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.observability.scrapeConfig.jobName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityScrapeConfig).JobName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.scrapeConfig.scheme": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityScrapeConfig).Scheme, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.scrapeConfig.metricsPath": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityScrapeConfig).MetricsPath, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.scrapeConfig.scrapeInterval": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityScrapeConfig).ScrapeInterval, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.scrapeConfig.scrapeTimeout": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityScrapeConfig).ScrapeTimeout, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.scrapeConfig.sampleLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityScrapeConfig).SampleLimit, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.scrapeConfig.honorLabels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityScrapeConfig).HonorLabels, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.scrapeConfig.honorTimestamps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityScrapeConfig).HonorTimestamps, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.scrapeConfig.insecureSkipVerify": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityScrapeConfig).InsecureSkipVerify, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.scrapeConfig.basicAuthConfigured": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityScrapeConfig).BasicAuthConfigured, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.scrapeConfig.bearerTokenConfigured": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityScrapeConfig).BearerTokenConfigured, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.scrapeConfig.oauth2Configured": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityScrapeConfig).Oauth2Configured, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.scrapeConfig.targets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityScrapeConfig).Targets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.observability.scrapeConfig.serviceDiscoveryUrls": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitObservabilityScrapeConfig).ServiceDiscoveryUrls, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"stackit.telemetry.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlStackitTelemetry).__id, ok = v.Value.(string)
 		return
@@ -9354,6 +10138,626 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlStackitVpnTunnel).NegotiatedPhase2Encapsulation, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"stackit.cdn.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdn).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.cdn.distributions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdn).Distributions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.cdn.distribution.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.updatedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.errors": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).Errors, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.backendType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).BackendType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.originUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).OriginUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.originRequestHeaderNames": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).OriginRequestHeaderNames, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.bucketUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).BucketUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.bucketRegion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).BucketRegion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.tls10Enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).Tls10Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.tls11Enabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).Tls11Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.wafMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).WafMode, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.wafType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).WafType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.wafParanoiaLevel": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).WafParanoiaLevel, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.wafDisabledRuleIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).WafDisabledRuleIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.wafDisabledRuleGroupIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).WafDisabledRuleGroupIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.wafDisabledRuleCollectionIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).WafDisabledRuleCollectionIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.wafLogOnlyRuleIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).WafLogOnlyRuleIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.wafAllowedHttpMethods": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).WafAllowedHttpMethods, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.blockedCountries": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).BlockedCountries, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.blockedIps": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).BlockedIps, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.regions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).Regions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.logSinkType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).LogSinkType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.logSinkPushUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).LogSinkPushUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.forwardHostHeader": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).ForwardHostHeader, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.monthlyLimitBytes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).MonthlyLimitBytes, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.domains": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistribution).Domains, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.domain.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistributionDomain).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.cdn.distribution.domain.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistributionDomain).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.domain.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistributionDomain).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.domain.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistributionDomain).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.domain.certificateType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistributionDomain).CertificateType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.cdn.distribution.domain.errors": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitCdnDistributionDomain).Errors, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.git.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGit).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.git.instances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGit).Instances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.git.instance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitInstance).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.git.instance.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitInstance).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.git.instance.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitInstance).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.git.instance.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitInstance).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.git.instance.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitInstance).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.git.instance.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitInstance).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.git.instance.flavor": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitInstance).Flavor, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.git.instance.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitInstance).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"stackit.git.instance.acl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitInstance).Acl, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.git.instance.localLoginEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitInstance).LocalLoginEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.git.instance.commitSignaturesEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitInstance).CommitSignaturesEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.git.instance.defaultEmailNotifications": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitInstance).DefaultEmailNotifications, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.git.instance.authentications": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitInstance).Authentications, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.git.authentication.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitAuthentication).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.git.authentication.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitAuthentication).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.git.authentication.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitAuthentication).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.git.authentication.provider": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitAuthentication).Provider, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.git.authentication.autoDiscoverUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitAuthentication).AutoDiscoverUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.git.authentication.clientId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitAuthentication).ClientId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.git.authentication.scopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitAuthentication).Scopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.git.authentication.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitAuthentication).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.git.authentication.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitGitAuthentication).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogs).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.logs.instances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogs).Instances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.instance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsInstance).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.logs.instance.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsInstance).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.instance.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsInstance).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.instance.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsInstance).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.instance.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsInstance).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.instance.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsInstance).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.instance.retentionDays": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsInstance).RetentionDays, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.instance.acl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsInstance).Acl, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.instance.ingestUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsInstance).IngestUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.instance.ingestOtlpUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsInstance).IngestOtlpUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.instance.queryUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsInstance).QueryUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.instance.queryRangeUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsInstance).QueryRangeUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.instance.datasourceUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsInstance).DatasourceUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.instance.accessTokens": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsInstance).AccessTokens, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.accessToken.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsAccessToken).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.logs.accessToken.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsAccessToken).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.accessToken.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsAccessToken).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.accessToken.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsAccessToken).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.accessToken.creator": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsAccessToken).Creator, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.accessToken.permissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsAccessToken).Permissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.accessToken.expires": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsAccessToken).Expires, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.accessToken.validUntil": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsAccessToken).ValidUntil, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"stackit.logs.accessToken.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitLogsAccessToken).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkey).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.valkey.instances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkey).Instances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.offerings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkey).Offerings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.valkey.instance.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.lastOperationType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).LastOperationType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.lastOperationDescription": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).LastOperationDescription, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.region": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).Region, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.planName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).PlanName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.planId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).PlanId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.offeringName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).OfferingName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.offeringVersion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).OfferingVersion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.cfGuid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).CfGuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.cfOrganizationGuid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).CfOrganizationGuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.cfSpaceGuid": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).CfSpaceGuid, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.dashboardUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).DashboardUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.imageUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).ImageUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.sgwAcl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).SgwAcl, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.internetReachable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).InternetReachable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.syslog": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).Syslog, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.graphite": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).Graphite, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.monitoringEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).MonitoringEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.monitoringInstance": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).MonitoringInstance, ok = plugin.RawToTValue[*mqlStackitObservabilityInstance](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.maxDiskThreshold": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).MaxDiskThreshold, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.snapshot": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).Snapshot, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.maxmemoryPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).MaxmemoryPolicy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.notifyKeyspaceEvents": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).NotifyKeyspaceEvents, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.maxClients": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).MaxClients, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.minReplicasToWrite": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).MinReplicasToWrite, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.backups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).Backups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.offering": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).Offering, ok = plugin.RawToTValue[*mqlStackitValkeyOffering](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.plan": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstance).Plan, ok = plugin.RawToTValue[*mqlStackitValkeyOfferingPlan](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.backup.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstanceBackup).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.valkey.instance.backup.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstanceBackup).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.backup.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstanceBackup).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.backup.size": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstanceBackup).Size, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.backup.downloadable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstanceBackup).Downloadable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.backup.triggeredAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstanceBackup).TriggeredAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.instance.backup.finishedAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyInstanceBackup).FinishedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.offering.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyOffering).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.valkey.offering.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyOffering).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.offering.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyOffering).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.offering.latest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyOffering).Latest, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.offering.lifecycle": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyOffering).Lifecycle, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.offering.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyOffering).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.offering.documentationUrl": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyOffering).DocumentationUrl, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.offering.quotaCount": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyOffering).QuotaCount, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.offering.plans": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyOffering).Plans, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.offering.plan.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyOfferingPlan).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.valkey.offering.plan.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyOfferingPlan).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.offering.plan.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyOfferingPlan).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.offering.plan.skuName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyOfferingPlan).SkuName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.offering.plan.free": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyOfferingPlan).Free, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"stackit.valkey.offering.plan.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitValkeyOfferingPlan).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.serviceEnablement.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitServiceEnablement).__id, ok = v.Value.(string)
+		return
+	},
+	"stackit.serviceEnablement.serviceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitServiceEnablement).ServiceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.serviceEnablement.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitServiceEnablement).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.serviceEnablement.enablement": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitServiceEnablement).Enablement, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.serviceEnablement.scope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitServiceEnablement).Scope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.serviceEnablement.lifecycle": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitServiceEnablement).Lifecycle, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.serviceEnablement.labels": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitServiceEnablement).Labels, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"stackit.serviceEnablement.errorAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitServiceEnablement).ErrorAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.serviceEnablement.errorReason": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitServiceEnablement).ErrorReason, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"stackit.serviceEnablement.hardDependencies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitServiceEnablement).HardDependencies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"stackit.serviceEnablement.softDependencies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlStackitServiceEnablement).SoftDependencies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 }
 
 func SetData(resource plugin.Resource, field string, val *llx.RawData) error {
@@ -9421,6 +10825,11 @@ type mqlStackit struct {
 	AlbWafs              plugin.TValue[[]any]
 	Kms                  plugin.TValue[*mqlStackitKms]
 	Iam                  plugin.TValue[*mqlStackitIam]
+	Cdn                  plugin.TValue[*mqlStackitCdn]
+	Git                  plugin.TValue[*mqlStackitGit]
+	Logs                 plugin.TValue[*mqlStackitLogs]
+	Valkey               plugin.TValue[*mqlStackitValkey]
+	ServiceEnablements   plugin.TValue[[]any]
 }
 
 // createStackit creates a new instance of this resource
@@ -10055,6 +11464,86 @@ func (c *mqlStackit) GetIam() *plugin.TValue[*mqlStackitIam] {
 		}
 
 		return c.iam()
+	})
+}
+
+func (c *mqlStackit) GetCdn() *plugin.TValue[*mqlStackitCdn] {
+	return plugin.GetOrCompute[*mqlStackitCdn](&c.Cdn, func() (*mqlStackitCdn, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit", c.__id, "cdn")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitCdn), nil
+			}
+		}
+
+		return c.cdn()
+	})
+}
+
+func (c *mqlStackit) GetGit() *plugin.TValue[*mqlStackitGit] {
+	return plugin.GetOrCompute[*mqlStackitGit](&c.Git, func() (*mqlStackitGit, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit", c.__id, "git")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitGit), nil
+			}
+		}
+
+		return c.git()
+	})
+}
+
+func (c *mqlStackit) GetLogs() *plugin.TValue[*mqlStackitLogs] {
+	return plugin.GetOrCompute[*mqlStackitLogs](&c.Logs, func() (*mqlStackitLogs, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit", c.__id, "logs")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitLogs), nil
+			}
+		}
+
+		return c.logs()
+	})
+}
+
+func (c *mqlStackit) GetValkey() *plugin.TValue[*mqlStackitValkey] {
+	return plugin.GetOrCompute[*mqlStackitValkey](&c.Valkey, func() (*mqlStackitValkey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit", c.__id, "valkey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitValkey), nil
+			}
+		}
+
+		return c.valkey()
+	})
+}
+
+func (c *mqlStackit) GetServiceEnablements() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ServiceEnablements, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit", c.__id, "serviceEnablements")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.serviceEnablements()
 	})
 }
 
@@ -15111,20 +16600,28 @@ type mqlStackitPostgresFlexInstance struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlStackitPostgresFlexInstanceInternal
-	Id                plugin.TValue[string]
-	Name              plugin.TValue[string]
-	Status            plugin.TValue[string]
-	Region            plugin.TValue[string]
-	Version           plugin.TValue[string]
-	Flavor            plugin.TValue[any]
-	Acl               plugin.TValue[[]any]
-	Replicas          plugin.TValue[int64]
-	Storage           plugin.TValue[any]
-	BackupSchedule    plugin.TValue[string]
-	Options           plugin.TValue[map[string]any]
-	InternetReachable plugin.TValue[bool]
-	Users             plugin.TValue[[]any]
-	Backups           plugin.TValue[[]any]
+	Id                          plugin.TValue[string]
+	Name                        plugin.TValue[string]
+	Status                      plugin.TValue[string]
+	Region                      plugin.TValue[string]
+	Version                     plugin.TValue[string]
+	Flavor                      plugin.TValue[any]
+	Acl                         plugin.TValue[[]any]
+	Replicas                    plugin.TValue[int64]
+	Storage                     plugin.TValue[any]
+	BackupSchedule              plugin.TValue[string]
+	Options                     plugin.TValue[map[string]any]
+	InternetReachable           plugin.TValue[bool]
+	Users                       plugin.TValue[[]any]
+	Backups                     plugin.TValue[[]any]
+	AccessScope                 plugin.TValue[string]
+	EncryptionKey               plugin.TValue[*mqlStackitKmsKey]
+	EncryptionKeyRing           plugin.TValue[*mqlStackitKmsKeyRing]
+	EncryptionKeyVersion        plugin.TValue[int64]
+	EncryptionKeyServiceAccount plugin.TValue[*mqlStackitServiceAccount]
+	Labels                      plugin.TValue[map[string]any]
+	Deletable                   plugin.TValue[bool]
+	BackupRetentionDays         plugin.TValue[int64]
 }
 
 // createStackitPostgresFlexInstance creates a new instance of this resource
@@ -15257,6 +16754,84 @@ func (c *mqlStackitPostgresFlexInstance) GetBackups() *plugin.TValue[[]any] {
 		}
 
 		return c.backups()
+	})
+}
+
+func (c *mqlStackitPostgresFlexInstance) GetAccessScope() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AccessScope, func() (string, error) {
+		return c.accessScope()
+	})
+}
+
+func (c *mqlStackitPostgresFlexInstance) GetEncryptionKey() *plugin.TValue[*mqlStackitKmsKey] {
+	return plugin.GetOrCompute[*mqlStackitKmsKey](&c.EncryptionKey, func() (*mqlStackitKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.postgresFlex.instance", c.__id, "encryptionKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitKmsKey), nil
+			}
+		}
+
+		return c.encryptionKey()
+	})
+}
+
+func (c *mqlStackitPostgresFlexInstance) GetEncryptionKeyRing() *plugin.TValue[*mqlStackitKmsKeyRing] {
+	return plugin.GetOrCompute[*mqlStackitKmsKeyRing](&c.EncryptionKeyRing, func() (*mqlStackitKmsKeyRing, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.postgresFlex.instance", c.__id, "encryptionKeyRing")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitKmsKeyRing), nil
+			}
+		}
+
+		return c.encryptionKeyRing()
+	})
+}
+
+func (c *mqlStackitPostgresFlexInstance) GetEncryptionKeyVersion() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.EncryptionKeyVersion, func() (int64, error) {
+		return c.encryptionKeyVersion()
+	})
+}
+
+func (c *mqlStackitPostgresFlexInstance) GetEncryptionKeyServiceAccount() *plugin.TValue[*mqlStackitServiceAccount] {
+	return plugin.GetOrCompute[*mqlStackitServiceAccount](&c.EncryptionKeyServiceAccount, func() (*mqlStackitServiceAccount, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.postgresFlex.instance", c.__id, "encryptionKeyServiceAccount")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitServiceAccount), nil
+			}
+		}
+
+		return c.encryptionKeyServiceAccount()
+	})
+}
+
+func (c *mqlStackitPostgresFlexInstance) GetLabels() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Labels, func() (map[string]any, error) {
+		return c.labels()
+	})
+}
+
+func (c *mqlStackitPostgresFlexInstance) GetDeletable() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Deletable, func() (bool, error) {
+		return c.deletable()
+	})
+}
+
+func (c *mqlStackitPostgresFlexInstance) GetBackupRetentionDays() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.BackupRetentionDays, func() (int64, error) {
+		return c.backupRetentionDays()
 	})
 }
 
@@ -15845,22 +17420,29 @@ type mqlStackitSqlServerFlexInstance struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlStackitSqlServerFlexInstanceInternal
-	Id                  plugin.TValue[string]
-	Name                plugin.TValue[string]
-	Status              plugin.TValue[string]
-	Region              plugin.TValue[string]
-	Version             plugin.TValue[string]
-	Flavor              plugin.TValue[any]
-	Acl                 plugin.TValue[[]any]
-	Replicas            plugin.TValue[int64]
-	Storage             plugin.TValue[any]
-	BackupSchedule      plugin.TValue[string]
-	Options             plugin.TValue[map[string]any]
-	Edition             plugin.TValue[string]
-	BackupRetentionDays plugin.TValue[int64]
-	InternetReachable   plugin.TValue[bool]
-	Users               plugin.TValue[[]any]
-	Backups             plugin.TValue[[]any]
+	Id                          plugin.TValue[string]
+	Name                        plugin.TValue[string]
+	Status                      plugin.TValue[string]
+	Region                      plugin.TValue[string]
+	Version                     plugin.TValue[string]
+	Flavor                      plugin.TValue[any]
+	Acl                         plugin.TValue[[]any]
+	Replicas                    plugin.TValue[int64]
+	Storage                     plugin.TValue[any]
+	BackupSchedule              plugin.TValue[string]
+	Options                     plugin.TValue[map[string]any]
+	Edition                     plugin.TValue[string]
+	BackupRetentionDays         plugin.TValue[int64]
+	InternetReachable           plugin.TValue[bool]
+	Users                       plugin.TValue[[]any]
+	Backups                     plugin.TValue[[]any]
+	AccessScope                 plugin.TValue[string]
+	EncryptionKey               plugin.TValue[*mqlStackitKmsKey]
+	EncryptionKeyRing           plugin.TValue[*mqlStackitKmsKeyRing]
+	EncryptionKeyVersion        plugin.TValue[int64]
+	EncryptionKeyServiceAccount plugin.TValue[*mqlStackitServiceAccount]
+	Labels                      plugin.TValue[map[string]any]
+	Deletable                   plugin.TValue[bool]
 }
 
 // createStackitSqlServerFlexInstance creates a new instance of this resource
@@ -16005,6 +17587,78 @@ func (c *mqlStackitSqlServerFlexInstance) GetBackups() *plugin.TValue[[]any] {
 		}
 
 		return c.backups()
+	})
+}
+
+func (c *mqlStackitSqlServerFlexInstance) GetAccessScope() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AccessScope, func() (string, error) {
+		return c.accessScope()
+	})
+}
+
+func (c *mqlStackitSqlServerFlexInstance) GetEncryptionKey() *plugin.TValue[*mqlStackitKmsKey] {
+	return plugin.GetOrCompute[*mqlStackitKmsKey](&c.EncryptionKey, func() (*mqlStackitKmsKey, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.sqlServerFlex.instance", c.__id, "encryptionKey")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitKmsKey), nil
+			}
+		}
+
+		return c.encryptionKey()
+	})
+}
+
+func (c *mqlStackitSqlServerFlexInstance) GetEncryptionKeyRing() *plugin.TValue[*mqlStackitKmsKeyRing] {
+	return plugin.GetOrCompute[*mqlStackitKmsKeyRing](&c.EncryptionKeyRing, func() (*mqlStackitKmsKeyRing, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.sqlServerFlex.instance", c.__id, "encryptionKeyRing")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitKmsKeyRing), nil
+			}
+		}
+
+		return c.encryptionKeyRing()
+	})
+}
+
+func (c *mqlStackitSqlServerFlexInstance) GetEncryptionKeyVersion() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.EncryptionKeyVersion, func() (int64, error) {
+		return c.encryptionKeyVersion()
+	})
+}
+
+func (c *mqlStackitSqlServerFlexInstance) GetEncryptionKeyServiceAccount() *plugin.TValue[*mqlStackitServiceAccount] {
+	return plugin.GetOrCompute[*mqlStackitServiceAccount](&c.EncryptionKeyServiceAccount, func() (*mqlStackitServiceAccount, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.sqlServerFlex.instance", c.__id, "encryptionKeyServiceAccount")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitServiceAccount), nil
+			}
+		}
+
+		return c.encryptionKeyServiceAccount()
+	})
+}
+
+func (c *mqlStackitSqlServerFlexInstance) GetLabels() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Labels, func() (map[string]any, error) {
+		return c.labels()
+	})
+}
+
+func (c *mqlStackitSqlServerFlexInstance) GetDeletable() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Deletable, func() (bool, error) {
+		return c.deletable()
 	})
 }
 
@@ -19603,6 +21257,12 @@ type mqlStackitObservabilityInstance struct {
 	GrafanaUseStackitSso                plugin.TValue[bool]
 	GrafanaGenericOauthEnabled          plugin.TValue[bool]
 	GrafanaGenericOauthAllowAssignAdmin plugin.TValue[bool]
+	ScrapeConfigs                       plugin.TValue[[]any]
+	MetricsRetentionRaw                 plugin.TValue[string]
+	MetricsRetention5m                  plugin.TValue[string]
+	MetricsRetention1h                  plugin.TValue[string]
+	LogsRetention                       plugin.TValue[string]
+	TracesRetention                     plugin.TValue[string]
 }
 
 // createStackitObservabilityInstance creates a new instance of this resource
@@ -19714,6 +21374,161 @@ func (c *mqlStackitObservabilityInstance) GetGrafanaGenericOauthAllowAssignAdmin
 	return plugin.GetOrCompute[bool](&c.GrafanaGenericOauthAllowAssignAdmin, func() (bool, error) {
 		return c.grafanaGenericOauthAllowAssignAdmin()
 	})
+}
+
+func (c *mqlStackitObservabilityInstance) GetScrapeConfigs() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ScrapeConfigs, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.observability.instance", c.__id, "scrapeConfigs")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.scrapeConfigs()
+	})
+}
+
+func (c *mqlStackitObservabilityInstance) GetMetricsRetentionRaw() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.MetricsRetentionRaw, func() (string, error) {
+		return c.metricsRetentionRaw()
+	})
+}
+
+func (c *mqlStackitObservabilityInstance) GetMetricsRetention5m() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.MetricsRetention5m, func() (string, error) {
+		return c.metricsRetention5m()
+	})
+}
+
+func (c *mqlStackitObservabilityInstance) GetMetricsRetention1h() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.MetricsRetention1h, func() (string, error) {
+		return c.metricsRetention1h()
+	})
+}
+
+func (c *mqlStackitObservabilityInstance) GetLogsRetention() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.LogsRetention, func() (string, error) {
+		return c.logsRetention()
+	})
+}
+
+func (c *mqlStackitObservabilityInstance) GetTracesRetention() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.TracesRetention, func() (string, error) {
+		return c.tracesRetention()
+	})
+}
+
+// mqlStackitObservabilityScrapeConfig for the stackit.observability.scrapeConfig resource
+type mqlStackitObservabilityScrapeConfig struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlStackitObservabilityScrapeConfigInternal it will be used here
+	JobName               plugin.TValue[string]
+	Scheme                plugin.TValue[string]
+	MetricsPath           plugin.TValue[string]
+	ScrapeInterval        plugin.TValue[string]
+	ScrapeTimeout         plugin.TValue[string]
+	SampleLimit           plugin.TValue[int64]
+	HonorLabels           plugin.TValue[bool]
+	HonorTimestamps       plugin.TValue[bool]
+	InsecureSkipVerify    plugin.TValue[bool]
+	BasicAuthConfigured   plugin.TValue[bool]
+	BearerTokenConfigured plugin.TValue[bool]
+	Oauth2Configured      plugin.TValue[bool]
+	Targets               plugin.TValue[[]any]
+	ServiceDiscoveryUrls  plugin.TValue[[]any]
+}
+
+// createStackitObservabilityScrapeConfig creates a new instance of this resource
+func createStackitObservabilityScrapeConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitObservabilityScrapeConfig{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.observability.scrapeConfig", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitObservabilityScrapeConfig) MqlName() string {
+	return "stackit.observability.scrapeConfig"
+}
+
+func (c *mqlStackitObservabilityScrapeConfig) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitObservabilityScrapeConfig) GetJobName() *plugin.TValue[string] {
+	return &c.JobName
+}
+
+func (c *mqlStackitObservabilityScrapeConfig) GetScheme() *plugin.TValue[string] {
+	return &c.Scheme
+}
+
+func (c *mqlStackitObservabilityScrapeConfig) GetMetricsPath() *plugin.TValue[string] {
+	return &c.MetricsPath
+}
+
+func (c *mqlStackitObservabilityScrapeConfig) GetScrapeInterval() *plugin.TValue[string] {
+	return &c.ScrapeInterval
+}
+
+func (c *mqlStackitObservabilityScrapeConfig) GetScrapeTimeout() *plugin.TValue[string] {
+	return &c.ScrapeTimeout
+}
+
+func (c *mqlStackitObservabilityScrapeConfig) GetSampleLimit() *plugin.TValue[int64] {
+	return &c.SampleLimit
+}
+
+func (c *mqlStackitObservabilityScrapeConfig) GetHonorLabels() *plugin.TValue[bool] {
+	return &c.HonorLabels
+}
+
+func (c *mqlStackitObservabilityScrapeConfig) GetHonorTimestamps() *plugin.TValue[bool] {
+	return &c.HonorTimestamps
+}
+
+func (c *mqlStackitObservabilityScrapeConfig) GetInsecureSkipVerify() *plugin.TValue[bool] {
+	return &c.InsecureSkipVerify
+}
+
+func (c *mqlStackitObservabilityScrapeConfig) GetBasicAuthConfigured() *plugin.TValue[bool] {
+	return &c.BasicAuthConfigured
+}
+
+func (c *mqlStackitObservabilityScrapeConfig) GetBearerTokenConfigured() *plugin.TValue[bool] {
+	return &c.BearerTokenConfigured
+}
+
+func (c *mqlStackitObservabilityScrapeConfig) GetOauth2Configured() *plugin.TValue[bool] {
+	return &c.Oauth2Configured
+}
+
+func (c *mqlStackitObservabilityScrapeConfig) GetTargets() *plugin.TValue[[]any] {
+	return &c.Targets
+}
+
+func (c *mqlStackitObservabilityScrapeConfig) GetServiceDiscoveryUrls() *plugin.TValue[[]any] {
+	return &c.ServiceDiscoveryUrls
 }
 
 // mqlStackitTelemetry for the stackit.telemetry resource
@@ -22917,5 +24732,1532 @@ func (c *mqlStackitVpnTunnel) GetNegotiatedPhase2IntegrityAlgorithm() *plugin.TV
 func (c *mqlStackitVpnTunnel) GetNegotiatedPhase2Encapsulation() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.NegotiatedPhase2Encapsulation, func() (string, error) {
 		return c.negotiatedPhase2Encapsulation()
+	})
+}
+
+// mqlStackitCdn for the stackit.cdn resource
+type mqlStackitCdn struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlStackitCdnInternal it will be used here
+	Distributions plugin.TValue[[]any]
+}
+
+// createStackitCdn creates a new instance of this resource
+func createStackitCdn(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitCdn{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.cdn", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitCdn) MqlName() string {
+	return "stackit.cdn"
+}
+
+func (c *mqlStackitCdn) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitCdn) GetDistributions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Distributions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.cdn", c.__id, "distributions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.distributions()
+	})
+}
+
+// mqlStackitCdnDistribution for the stackit.cdn.distribution resource
+type mqlStackitCdnDistribution struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlStackitCdnDistributionInternal
+	Id                           plugin.TValue[string]
+	Status                       plugin.TValue[string]
+	CreatedAt                    plugin.TValue[*time.Time]
+	UpdatedAt                    plugin.TValue[*time.Time]
+	Errors                       plugin.TValue[[]any]
+	Labels                       plugin.TValue[map[string]any]
+	BackendType                  plugin.TValue[string]
+	OriginUrl                    plugin.TValue[string]
+	OriginRequestHeaderNames     plugin.TValue[[]any]
+	BucketUrl                    plugin.TValue[string]
+	BucketRegion                 plugin.TValue[string]
+	Tls10Enabled                 plugin.TValue[bool]
+	Tls11Enabled                 plugin.TValue[bool]
+	WafMode                      plugin.TValue[string]
+	WafType                      plugin.TValue[string]
+	WafParanoiaLevel             plugin.TValue[string]
+	WafDisabledRuleIds           plugin.TValue[[]any]
+	WafDisabledRuleGroupIds      plugin.TValue[[]any]
+	WafDisabledRuleCollectionIds plugin.TValue[[]any]
+	WafLogOnlyRuleIds            plugin.TValue[[]any]
+	WafAllowedHttpMethods        plugin.TValue[[]any]
+	BlockedCountries             plugin.TValue[[]any]
+	BlockedIps                   plugin.TValue[[]any]
+	Regions                      plugin.TValue[[]any]
+	LogSinkType                  plugin.TValue[string]
+	LogSinkPushUrl               plugin.TValue[string]
+	ForwardHostHeader            plugin.TValue[bool]
+	MonthlyLimitBytes            plugin.TValue[int64]
+	Domains                      plugin.TValue[[]any]
+}
+
+// createStackitCdnDistribution creates a new instance of this resource
+func createStackitCdnDistribution(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitCdnDistribution{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.cdn.distribution", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitCdnDistribution) MqlName() string {
+	return "stackit.cdn.distribution"
+}
+
+func (c *mqlStackitCdnDistribution) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitCdnDistribution) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlStackitCdnDistribution) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlStackitCdnDistribution) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlStackitCdnDistribution) GetUpdatedAt() *plugin.TValue[*time.Time] {
+	return &c.UpdatedAt
+}
+
+func (c *mqlStackitCdnDistribution) GetErrors() *plugin.TValue[[]any] {
+	return &c.Errors
+}
+
+func (c *mqlStackitCdnDistribution) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlStackitCdnDistribution) GetBackendType() *plugin.TValue[string] {
+	return &c.BackendType
+}
+
+func (c *mqlStackitCdnDistribution) GetOriginUrl() *plugin.TValue[string] {
+	return &c.OriginUrl
+}
+
+func (c *mqlStackitCdnDistribution) GetOriginRequestHeaderNames() *plugin.TValue[[]any] {
+	return &c.OriginRequestHeaderNames
+}
+
+func (c *mqlStackitCdnDistribution) GetBucketUrl() *plugin.TValue[string] {
+	return &c.BucketUrl
+}
+
+func (c *mqlStackitCdnDistribution) GetBucketRegion() *plugin.TValue[string] {
+	return &c.BucketRegion
+}
+
+func (c *mqlStackitCdnDistribution) GetTls10Enabled() *plugin.TValue[bool] {
+	return &c.Tls10Enabled
+}
+
+func (c *mqlStackitCdnDistribution) GetTls11Enabled() *plugin.TValue[bool] {
+	return &c.Tls11Enabled
+}
+
+func (c *mqlStackitCdnDistribution) GetWafMode() *plugin.TValue[string] {
+	return &c.WafMode
+}
+
+func (c *mqlStackitCdnDistribution) GetWafType() *plugin.TValue[string] {
+	return &c.WafType
+}
+
+func (c *mqlStackitCdnDistribution) GetWafParanoiaLevel() *plugin.TValue[string] {
+	return &c.WafParanoiaLevel
+}
+
+func (c *mqlStackitCdnDistribution) GetWafDisabledRuleIds() *plugin.TValue[[]any] {
+	return &c.WafDisabledRuleIds
+}
+
+func (c *mqlStackitCdnDistribution) GetWafDisabledRuleGroupIds() *plugin.TValue[[]any] {
+	return &c.WafDisabledRuleGroupIds
+}
+
+func (c *mqlStackitCdnDistribution) GetWafDisabledRuleCollectionIds() *plugin.TValue[[]any] {
+	return &c.WafDisabledRuleCollectionIds
+}
+
+func (c *mqlStackitCdnDistribution) GetWafLogOnlyRuleIds() *plugin.TValue[[]any] {
+	return &c.WafLogOnlyRuleIds
+}
+
+func (c *mqlStackitCdnDistribution) GetWafAllowedHttpMethods() *plugin.TValue[[]any] {
+	return &c.WafAllowedHttpMethods
+}
+
+func (c *mqlStackitCdnDistribution) GetBlockedCountries() *plugin.TValue[[]any] {
+	return &c.BlockedCountries
+}
+
+func (c *mqlStackitCdnDistribution) GetBlockedIps() *plugin.TValue[[]any] {
+	return &c.BlockedIps
+}
+
+func (c *mqlStackitCdnDistribution) GetRegions() *plugin.TValue[[]any] {
+	return &c.Regions
+}
+
+func (c *mqlStackitCdnDistribution) GetLogSinkType() *plugin.TValue[string] {
+	return &c.LogSinkType
+}
+
+func (c *mqlStackitCdnDistribution) GetLogSinkPushUrl() *plugin.TValue[string] {
+	return &c.LogSinkPushUrl
+}
+
+func (c *mqlStackitCdnDistribution) GetForwardHostHeader() *plugin.TValue[bool] {
+	return &c.ForwardHostHeader
+}
+
+func (c *mqlStackitCdnDistribution) GetMonthlyLimitBytes() *plugin.TValue[int64] {
+	return &c.MonthlyLimitBytes
+}
+
+func (c *mqlStackitCdnDistribution) GetDomains() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Domains, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.cdn.distribution", c.__id, "domains")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.domains()
+	})
+}
+
+// mqlStackitCdnDistributionDomain for the stackit.cdn.distribution.domain resource
+type mqlStackitCdnDistributionDomain struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlStackitCdnDistributionDomainInternal it will be used here
+	Name            plugin.TValue[string]
+	Type            plugin.TValue[string]
+	Status          plugin.TValue[string]
+	CertificateType plugin.TValue[string]
+	Errors          plugin.TValue[[]any]
+}
+
+// createStackitCdnDistributionDomain creates a new instance of this resource
+func createStackitCdnDistributionDomain(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitCdnDistributionDomain{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.cdn.distribution.domain", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitCdnDistributionDomain) MqlName() string {
+	return "stackit.cdn.distribution.domain"
+}
+
+func (c *mqlStackitCdnDistributionDomain) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitCdnDistributionDomain) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlStackitCdnDistributionDomain) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlStackitCdnDistributionDomain) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlStackitCdnDistributionDomain) GetCertificateType() *plugin.TValue[string] {
+	return &c.CertificateType
+}
+
+func (c *mqlStackitCdnDistributionDomain) GetErrors() *plugin.TValue[[]any] {
+	return &c.Errors
+}
+
+// mqlStackitGit for the stackit.git resource
+type mqlStackitGit struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlStackitGitInternal it will be used here
+	Instances plugin.TValue[[]any]
+}
+
+// createStackitGit creates a new instance of this resource
+func createStackitGit(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitGit{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.git", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitGit) MqlName() string {
+	return "stackit.git"
+}
+
+func (c *mqlStackitGit) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitGit) GetInstances() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Instances, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.git", c.__id, "instances")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.instances()
+	})
+}
+
+// mqlStackitGitInstance for the stackit.git.instance resource
+type mqlStackitGitInstance struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlStackitGitInstanceInternal it will be used here
+	Id                        plugin.TValue[string]
+	Name                      plugin.TValue[string]
+	Url                       plugin.TValue[string]
+	State                     plugin.TValue[string]
+	Version                   plugin.TValue[string]
+	Flavor                    plugin.TValue[string]
+	CreatedAt                 plugin.TValue[*time.Time]
+	Acl                       plugin.TValue[[]any]
+	LocalLoginEnabled         plugin.TValue[bool]
+	CommitSignaturesEnabled   plugin.TValue[bool]
+	DefaultEmailNotifications plugin.TValue[string]
+	Authentications           plugin.TValue[[]any]
+}
+
+// createStackitGitInstance creates a new instance of this resource
+func createStackitGitInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitGitInstance{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.git.instance", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitGitInstance) MqlName() string {
+	return "stackit.git.instance"
+}
+
+func (c *mqlStackitGitInstance) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitGitInstance) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlStackitGitInstance) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlStackitGitInstance) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlStackitGitInstance) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlStackitGitInstance) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlStackitGitInstance) GetFlavor() *plugin.TValue[string] {
+	return &c.Flavor
+}
+
+func (c *mqlStackitGitInstance) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlStackitGitInstance) GetAcl() *plugin.TValue[[]any] {
+	return &c.Acl
+}
+
+func (c *mqlStackitGitInstance) GetLocalLoginEnabled() *plugin.TValue[bool] {
+	return &c.LocalLoginEnabled
+}
+
+func (c *mqlStackitGitInstance) GetCommitSignaturesEnabled() *plugin.TValue[bool] {
+	return &c.CommitSignaturesEnabled
+}
+
+func (c *mqlStackitGitInstance) GetDefaultEmailNotifications() *plugin.TValue[string] {
+	return &c.DefaultEmailNotifications
+}
+
+func (c *mqlStackitGitInstance) GetAuthentications() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Authentications, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.git.instance", c.__id, "authentications")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.authentications()
+	})
+}
+
+// mqlStackitGitAuthentication for the stackit.git.authentication resource
+type mqlStackitGitAuthentication struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlStackitGitAuthenticationInternal it will be used here
+	Id              plugin.TValue[string]
+	Name            plugin.TValue[string]
+	Provider        plugin.TValue[string]
+	AutoDiscoverUrl plugin.TValue[string]
+	ClientId        plugin.TValue[string]
+	Scopes          plugin.TValue[[]any]
+	Status          plugin.TValue[string]
+	CreatedAt       plugin.TValue[*time.Time]
+}
+
+// createStackitGitAuthentication creates a new instance of this resource
+func createStackitGitAuthentication(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitGitAuthentication{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.git.authentication", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitGitAuthentication) MqlName() string {
+	return "stackit.git.authentication"
+}
+
+func (c *mqlStackitGitAuthentication) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitGitAuthentication) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlStackitGitAuthentication) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlStackitGitAuthentication) GetProvider() *plugin.TValue[string] {
+	return &c.Provider
+}
+
+func (c *mqlStackitGitAuthentication) GetAutoDiscoverUrl() *plugin.TValue[string] {
+	return &c.AutoDiscoverUrl
+}
+
+func (c *mqlStackitGitAuthentication) GetClientId() *plugin.TValue[string] {
+	return &c.ClientId
+}
+
+func (c *mqlStackitGitAuthentication) GetScopes() *plugin.TValue[[]any] {
+	return &c.Scopes
+}
+
+func (c *mqlStackitGitAuthentication) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlStackitGitAuthentication) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+// mqlStackitLogs for the stackit.logs resource
+type mqlStackitLogs struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlStackitLogsInternal it will be used here
+	Instances plugin.TValue[[]any]
+}
+
+// createStackitLogs creates a new instance of this resource
+func createStackitLogs(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitLogs{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.logs", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitLogs) MqlName() string {
+	return "stackit.logs"
+}
+
+func (c *mqlStackitLogs) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitLogs) GetInstances() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Instances, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.logs", c.__id, "instances")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.instances()
+	})
+}
+
+// mqlStackitLogsInstance for the stackit.logs.instance resource
+type mqlStackitLogsInstance struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlStackitLogsInstanceInternal it will be used here
+	Id            plugin.TValue[string]
+	Name          plugin.TValue[string]
+	Description   plugin.TValue[string]
+	Status        plugin.TValue[string]
+	CreatedAt     plugin.TValue[*time.Time]
+	RetentionDays plugin.TValue[int64]
+	Acl           plugin.TValue[[]any]
+	IngestUrl     plugin.TValue[string]
+	IngestOtlpUrl plugin.TValue[string]
+	QueryUrl      plugin.TValue[string]
+	QueryRangeUrl plugin.TValue[string]
+	DatasourceUrl plugin.TValue[string]
+	AccessTokens  plugin.TValue[[]any]
+}
+
+// createStackitLogsInstance creates a new instance of this resource
+func createStackitLogsInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitLogsInstance{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.logs.instance", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitLogsInstance) MqlName() string {
+	return "stackit.logs.instance"
+}
+
+func (c *mqlStackitLogsInstance) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitLogsInstance) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlStackitLogsInstance) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlStackitLogsInstance) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlStackitLogsInstance) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlStackitLogsInstance) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
+}
+
+func (c *mqlStackitLogsInstance) GetRetentionDays() *plugin.TValue[int64] {
+	return &c.RetentionDays
+}
+
+func (c *mqlStackitLogsInstance) GetAcl() *plugin.TValue[[]any] {
+	return &c.Acl
+}
+
+func (c *mqlStackitLogsInstance) GetIngestUrl() *plugin.TValue[string] {
+	return &c.IngestUrl
+}
+
+func (c *mqlStackitLogsInstance) GetIngestOtlpUrl() *plugin.TValue[string] {
+	return &c.IngestOtlpUrl
+}
+
+func (c *mqlStackitLogsInstance) GetQueryUrl() *plugin.TValue[string] {
+	return &c.QueryUrl
+}
+
+func (c *mqlStackitLogsInstance) GetQueryRangeUrl() *plugin.TValue[string] {
+	return &c.QueryRangeUrl
+}
+
+func (c *mqlStackitLogsInstance) GetDatasourceUrl() *plugin.TValue[string] {
+	return &c.DatasourceUrl
+}
+
+func (c *mqlStackitLogsInstance) GetAccessTokens() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessTokens, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.logs.instance", c.__id, "accessTokens")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.accessTokens()
+	})
+}
+
+// mqlStackitLogsAccessToken for the stackit.logs.accessToken resource
+type mqlStackitLogsAccessToken struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlStackitLogsAccessTokenInternal it will be used here
+	Id          plugin.TValue[string]
+	Name        plugin.TValue[string]
+	Description plugin.TValue[string]
+	Creator     plugin.TValue[string]
+	Permissions plugin.TValue[[]any]
+	Expires     plugin.TValue[bool]
+	ValidUntil  plugin.TValue[*time.Time]
+	Status      plugin.TValue[string]
+}
+
+// createStackitLogsAccessToken creates a new instance of this resource
+func createStackitLogsAccessToken(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitLogsAccessToken{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.logs.accessToken", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitLogsAccessToken) MqlName() string {
+	return "stackit.logs.accessToken"
+}
+
+func (c *mqlStackitLogsAccessToken) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitLogsAccessToken) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlStackitLogsAccessToken) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlStackitLogsAccessToken) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlStackitLogsAccessToken) GetCreator() *plugin.TValue[string] {
+	return &c.Creator
+}
+
+func (c *mqlStackitLogsAccessToken) GetPermissions() *plugin.TValue[[]any] {
+	return &c.Permissions
+}
+
+func (c *mqlStackitLogsAccessToken) GetExpires() *plugin.TValue[bool] {
+	return &c.Expires
+}
+
+func (c *mqlStackitLogsAccessToken) GetValidUntil() *plugin.TValue[*time.Time] {
+	return &c.ValidUntil
+}
+
+func (c *mqlStackitLogsAccessToken) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+// mqlStackitValkey for the stackit.valkey resource
+type mqlStackitValkey struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlStackitValkeyInternal
+	Instances plugin.TValue[[]any]
+	Offerings plugin.TValue[[]any]
+}
+
+// createStackitValkey creates a new instance of this resource
+func createStackitValkey(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitValkey{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.valkey", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitValkey) MqlName() string {
+	return "stackit.valkey"
+}
+
+func (c *mqlStackitValkey) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitValkey) GetInstances() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Instances, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.valkey", c.__id, "instances")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.instances()
+	})
+}
+
+func (c *mqlStackitValkey) GetOfferings() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Offerings, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.valkey", c.__id, "offerings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.offerings()
+	})
+}
+
+// mqlStackitValkeyInstance for the stackit.valkey.instance resource
+type mqlStackitValkeyInstance struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlStackitValkeyInstanceInternal
+	Id                       plugin.TValue[string]
+	Name                     plugin.TValue[string]
+	Status                   plugin.TValue[string]
+	State                    plugin.TValue[string]
+	LastOperationType        plugin.TValue[string]
+	LastOperationDescription plugin.TValue[string]
+	Region                   plugin.TValue[string]
+	PlanName                 plugin.TValue[string]
+	PlanId                   plugin.TValue[string]
+	OfferingName             plugin.TValue[string]
+	OfferingVersion          plugin.TValue[string]
+	CfGuid                   plugin.TValue[string]
+	CfOrganizationGuid       plugin.TValue[string]
+	CfSpaceGuid              plugin.TValue[string]
+	DashboardUrl             plugin.TValue[string]
+	ImageUrl                 plugin.TValue[string]
+	SgwAcl                   plugin.TValue[[]any]
+	InternetReachable        plugin.TValue[bool]
+	Syslog                   plugin.TValue[[]any]
+	Graphite                 plugin.TValue[string]
+	MonitoringEnabled        plugin.TValue[bool]
+	MonitoringInstance       plugin.TValue[*mqlStackitObservabilityInstance]
+	MaxDiskThreshold         plugin.TValue[int64]
+	Snapshot                 plugin.TValue[string]
+	MaxmemoryPolicy          plugin.TValue[string]
+	NotifyKeyspaceEvents     plugin.TValue[string]
+	MaxClients               plugin.TValue[int64]
+	MinReplicasToWrite       plugin.TValue[int64]
+	Backups                  plugin.TValue[[]any]
+	Offering                 plugin.TValue[*mqlStackitValkeyOffering]
+	Plan                     plugin.TValue[*mqlStackitValkeyOfferingPlan]
+}
+
+// createStackitValkeyInstance creates a new instance of this resource
+func createStackitValkeyInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitValkeyInstance{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.valkey.instance", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitValkeyInstance) MqlName() string {
+	return "stackit.valkey.instance"
+}
+
+func (c *mqlStackitValkeyInstance) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitValkeyInstance) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlStackitValkeyInstance) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlStackitValkeyInstance) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlStackitValkeyInstance) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlStackitValkeyInstance) GetLastOperationType() *plugin.TValue[string] {
+	return &c.LastOperationType
+}
+
+func (c *mqlStackitValkeyInstance) GetLastOperationDescription() *plugin.TValue[string] {
+	return &c.LastOperationDescription
+}
+
+func (c *mqlStackitValkeyInstance) GetRegion() *plugin.TValue[string] {
+	return &c.Region
+}
+
+func (c *mqlStackitValkeyInstance) GetPlanName() *plugin.TValue[string] {
+	return &c.PlanName
+}
+
+func (c *mqlStackitValkeyInstance) GetPlanId() *plugin.TValue[string] {
+	return &c.PlanId
+}
+
+func (c *mqlStackitValkeyInstance) GetOfferingName() *plugin.TValue[string] {
+	return &c.OfferingName
+}
+
+func (c *mqlStackitValkeyInstance) GetOfferingVersion() *plugin.TValue[string] {
+	return &c.OfferingVersion
+}
+
+func (c *mqlStackitValkeyInstance) GetCfGuid() *plugin.TValue[string] {
+	return &c.CfGuid
+}
+
+func (c *mqlStackitValkeyInstance) GetCfOrganizationGuid() *plugin.TValue[string] {
+	return &c.CfOrganizationGuid
+}
+
+func (c *mqlStackitValkeyInstance) GetCfSpaceGuid() *plugin.TValue[string] {
+	return &c.CfSpaceGuid
+}
+
+func (c *mqlStackitValkeyInstance) GetDashboardUrl() *plugin.TValue[string] {
+	return &c.DashboardUrl
+}
+
+func (c *mqlStackitValkeyInstance) GetImageUrl() *plugin.TValue[string] {
+	return &c.ImageUrl
+}
+
+func (c *mqlStackitValkeyInstance) GetSgwAcl() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SgwAcl, func() ([]any, error) {
+		return c.sgwAcl()
+	})
+}
+
+func (c *mqlStackitValkeyInstance) GetInternetReachable() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.InternetReachable, func() (bool, error) {
+		return c.internetReachable()
+	})
+}
+
+func (c *mqlStackitValkeyInstance) GetSyslog() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Syslog, func() ([]any, error) {
+		return c.syslog()
+	})
+}
+
+func (c *mqlStackitValkeyInstance) GetGraphite() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Graphite, func() (string, error) {
+		return c.graphite()
+	})
+}
+
+func (c *mqlStackitValkeyInstance) GetMonitoringEnabled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.MonitoringEnabled, func() (bool, error) {
+		return c.monitoringEnabled()
+	})
+}
+
+func (c *mqlStackitValkeyInstance) GetMonitoringInstance() *plugin.TValue[*mqlStackitObservabilityInstance] {
+	return plugin.GetOrCompute[*mqlStackitObservabilityInstance](&c.MonitoringInstance, func() (*mqlStackitObservabilityInstance, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.valkey.instance", c.__id, "monitoringInstance")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitObservabilityInstance), nil
+			}
+		}
+
+		return c.monitoringInstance()
+	})
+}
+
+func (c *mqlStackitValkeyInstance) GetMaxDiskThreshold() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MaxDiskThreshold, func() (int64, error) {
+		return c.maxDiskThreshold()
+	})
+}
+
+func (c *mqlStackitValkeyInstance) GetSnapshot() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Snapshot, func() (string, error) {
+		return c.snapshot()
+	})
+}
+
+func (c *mqlStackitValkeyInstance) GetMaxmemoryPolicy() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.MaxmemoryPolicy, func() (string, error) {
+		return c.maxmemoryPolicy()
+	})
+}
+
+func (c *mqlStackitValkeyInstance) GetNotifyKeyspaceEvents() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.NotifyKeyspaceEvents, func() (string, error) {
+		return c.notifyKeyspaceEvents()
+	})
+}
+
+func (c *mqlStackitValkeyInstance) GetMaxClients() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MaxClients, func() (int64, error) {
+		return c.maxClients()
+	})
+}
+
+func (c *mqlStackitValkeyInstance) GetMinReplicasToWrite() *plugin.TValue[int64] {
+	return plugin.GetOrCompute[int64](&c.MinReplicasToWrite, func() (int64, error) {
+		return c.minReplicasToWrite()
+	})
+}
+
+func (c *mqlStackitValkeyInstance) GetBackups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Backups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.valkey.instance", c.__id, "backups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.backups()
+	})
+}
+
+func (c *mqlStackitValkeyInstance) GetOffering() *plugin.TValue[*mqlStackitValkeyOffering] {
+	return plugin.GetOrCompute[*mqlStackitValkeyOffering](&c.Offering, func() (*mqlStackitValkeyOffering, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.valkey.instance", c.__id, "offering")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitValkeyOffering), nil
+			}
+		}
+
+		return c.offering()
+	})
+}
+
+func (c *mqlStackitValkeyInstance) GetPlan() *plugin.TValue[*mqlStackitValkeyOfferingPlan] {
+	return plugin.GetOrCompute[*mqlStackitValkeyOfferingPlan](&c.Plan, func() (*mqlStackitValkeyOfferingPlan, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.valkey.instance", c.__id, "plan")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlStackitValkeyOfferingPlan), nil
+			}
+		}
+
+		return c.plan()
+	})
+}
+
+// mqlStackitValkeyInstanceBackup for the stackit.valkey.instance.backup resource
+type mqlStackitValkeyInstanceBackup struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlStackitValkeyInstanceBackupInternal it will be used here
+	Id           plugin.TValue[string]
+	Status       plugin.TValue[string]
+	Size         plugin.TValue[int64]
+	Downloadable plugin.TValue[bool]
+	TriggeredAt  plugin.TValue[*time.Time]
+	FinishedAt   plugin.TValue[*time.Time]
+}
+
+// createStackitValkeyInstanceBackup creates a new instance of this resource
+func createStackitValkeyInstanceBackup(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitValkeyInstanceBackup{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.valkey.instance.backup", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitValkeyInstanceBackup) MqlName() string {
+	return "stackit.valkey.instance.backup"
+}
+
+func (c *mqlStackitValkeyInstanceBackup) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitValkeyInstanceBackup) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlStackitValkeyInstanceBackup) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlStackitValkeyInstanceBackup) GetSize() *plugin.TValue[int64] {
+	return &c.Size
+}
+
+func (c *mqlStackitValkeyInstanceBackup) GetDownloadable() *plugin.TValue[bool] {
+	return &c.Downloadable
+}
+
+func (c *mqlStackitValkeyInstanceBackup) GetTriggeredAt() *plugin.TValue[*time.Time] {
+	return &c.TriggeredAt
+}
+
+func (c *mqlStackitValkeyInstanceBackup) GetFinishedAt() *plugin.TValue[*time.Time] {
+	return &c.FinishedAt
+}
+
+// mqlStackitValkeyOffering for the stackit.valkey.offering resource
+type mqlStackitValkeyOffering struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlStackitValkeyOfferingInternal
+	Name             plugin.TValue[string]
+	Version          plugin.TValue[string]
+	Latest           plugin.TValue[bool]
+	Lifecycle        plugin.TValue[string]
+	Description      plugin.TValue[string]
+	DocumentationUrl plugin.TValue[string]
+	QuotaCount       plugin.TValue[int64]
+	Plans            plugin.TValue[[]any]
+}
+
+// createStackitValkeyOffering creates a new instance of this resource
+func createStackitValkeyOffering(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitValkeyOffering{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.valkey.offering", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitValkeyOffering) MqlName() string {
+	return "stackit.valkey.offering"
+}
+
+func (c *mqlStackitValkeyOffering) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitValkeyOffering) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlStackitValkeyOffering) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlStackitValkeyOffering) GetLatest() *plugin.TValue[bool] {
+	return &c.Latest
+}
+
+func (c *mqlStackitValkeyOffering) GetLifecycle() *plugin.TValue[string] {
+	return &c.Lifecycle
+}
+
+func (c *mqlStackitValkeyOffering) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlStackitValkeyOffering) GetDocumentationUrl() *plugin.TValue[string] {
+	return &c.DocumentationUrl
+}
+
+func (c *mqlStackitValkeyOffering) GetQuotaCount() *plugin.TValue[int64] {
+	return &c.QuotaCount
+}
+
+func (c *mqlStackitValkeyOffering) GetPlans() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Plans, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.valkey.offering", c.__id, "plans")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.plans()
+	})
+}
+
+// mqlStackitValkeyOfferingPlan for the stackit.valkey.offering.plan resource
+type mqlStackitValkeyOfferingPlan struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlStackitValkeyOfferingPlanInternal it will be used here
+	Id          plugin.TValue[string]
+	Name        plugin.TValue[string]
+	SkuName     plugin.TValue[string]
+	Free        plugin.TValue[bool]
+	Description plugin.TValue[string]
+}
+
+// createStackitValkeyOfferingPlan creates a new instance of this resource
+func createStackitValkeyOfferingPlan(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitValkeyOfferingPlan{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.valkey.offering.plan", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitValkeyOfferingPlan) MqlName() string {
+	return "stackit.valkey.offering.plan"
+}
+
+func (c *mqlStackitValkeyOfferingPlan) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitValkeyOfferingPlan) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlStackitValkeyOfferingPlan) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlStackitValkeyOfferingPlan) GetSkuName() *plugin.TValue[string] {
+	return &c.SkuName
+}
+
+func (c *mqlStackitValkeyOfferingPlan) GetFree() *plugin.TValue[bool] {
+	return &c.Free
+}
+
+func (c *mqlStackitValkeyOfferingPlan) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+// mqlStackitServiceEnablement for the stackit.serviceEnablement resource
+type mqlStackitServiceEnablement struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlStackitServiceEnablementInternal
+	ServiceId        plugin.TValue[string]
+	State            plugin.TValue[string]
+	Enablement       plugin.TValue[string]
+	Scope            plugin.TValue[string]
+	Lifecycle        plugin.TValue[string]
+	Labels           plugin.TValue[map[string]any]
+	ErrorAction      plugin.TValue[string]
+	ErrorReason      plugin.TValue[string]
+	HardDependencies plugin.TValue[[]any]
+	SoftDependencies plugin.TValue[[]any]
+}
+
+// createStackitServiceEnablement creates a new instance of this resource
+func createStackitServiceEnablement(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlStackitServiceEnablement{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("stackit.serviceEnablement", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlStackitServiceEnablement) MqlName() string {
+	return "stackit.serviceEnablement"
+}
+
+func (c *mqlStackitServiceEnablement) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlStackitServiceEnablement) GetServiceId() *plugin.TValue[string] {
+	return &c.ServiceId
+}
+
+func (c *mqlStackitServiceEnablement) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlStackitServiceEnablement) GetEnablement() *plugin.TValue[string] {
+	return &c.Enablement
+}
+
+func (c *mqlStackitServiceEnablement) GetScope() *plugin.TValue[string] {
+	return &c.Scope
+}
+
+func (c *mqlStackitServiceEnablement) GetLifecycle() *plugin.TValue[string] {
+	return &c.Lifecycle
+}
+
+func (c *mqlStackitServiceEnablement) GetLabels() *plugin.TValue[map[string]any] {
+	return &c.Labels
+}
+
+func (c *mqlStackitServiceEnablement) GetErrorAction() *plugin.TValue[string] {
+	return &c.ErrorAction
+}
+
+func (c *mqlStackitServiceEnablement) GetErrorReason() *plugin.TValue[string] {
+	return &c.ErrorReason
+}
+
+func (c *mqlStackitServiceEnablement) GetHardDependencies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.HardDependencies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.serviceEnablement", c.__id, "hardDependencies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.hardDependencies()
+	})
+}
+
+func (c *mqlStackitServiceEnablement) GetSoftDependencies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SoftDependencies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("stackit.serviceEnablement", c.__id, "softDependencies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.softDependencies()
 	})
 }

@@ -52,6 +52,7 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/ons"
 	"github.com/oracle/oci-go-sdk/v65/opensearch"
 	"github.com/oracle/oci-go-sdk/v65/operatoraccesscontrol"
+	"github.com/oracle/oci-go-sdk/v65/osmanagementhub"
 	"github.com/oracle/oci-go-sdk/v65/psql"
 	"github.com/oracle/oci-go-sdk/v65/queue"
 	"github.com/oracle/oci-go-sdk/v65/redis"
@@ -378,6 +379,10 @@ func (c *OciConnection) SecurityAttributeClient(region string) (*securityattribu
 
 func (c *OciConnection) WafClient(region string) (*waf.WafClient, error) {
 	return regionalClient(c, "waf", region, waf.NewWafClientWithConfigurationProvider)
+}
+
+func (c *OciConnection) OsManagementHubManagedInstanceClient(region string) (*osmanagementhub.ManagedInstanceClient, error) {
+	return regionalClient(c, "osmanagementhub-managedinstance", region, osmanagementhub.NewManagedInstanceClientWithConfigurationProvider)
 }
 
 func (c *OciConnection) DnsClient(region string) (*dns.DnsClient, error) {

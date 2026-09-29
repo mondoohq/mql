@@ -30,6 +30,9 @@ type mqlStackitPostgresFlexInstanceInternal struct {
 	fetched atomic.Bool
 	detail  *postgresflex.Instance
 	lock    sync.Mutex
+
+	// v3 holds the v3 API's record of the instance (dbaas_flex_v3.go).
+	v3 flexV3Detail
 }
 
 func (r *mqlStackitPostgresFlex) instances() ([]any, error) {
@@ -724,6 +727,11 @@ type mqlStackitObservabilityInstanceInternal struct {
 	grafanaFetched atomic.Bool
 	grafana        *observability.GrafanaConfigs
 	grafanaLock    sync.Mutex
+
+	// The three metrics retention fields share one call (observability_config.go).
+	retentionFetched atomic.Bool
+	retention        *observability.GetMetricsStorageRetentionResponse
+	retentionLock    sync.Mutex
 }
 
 func (r *mqlStackitObservability) instances() ([]any, error) {
@@ -1586,6 +1594,9 @@ type mqlStackitSqlServerFlexInstanceInternal struct {
 	fetched atomic.Bool
 	detail  *sqlserverflex.Instance
 	lock    sync.Mutex
+
+	// v3 holds the v3 API's record of the instance (dbaas_flex_v3.go).
+	v3 flexV3Detail
 }
 
 func (r *mqlStackitSqlServerFlex) instances() ([]any, error) {

@@ -282,6 +282,47 @@ func isAccessDenied(err error) bool {
 		strings.Contains(msg, "status 403")
 }
 
+// refusal classifies a refused STACKIT API call (see isAccessDenied) as an
+// ADR 046 error kind: a 401 means the credential was not accepted, a 403 that
+// it lacks the permission. Anything else is returned unchanged, since an
+// unclassified error is better than a wrong kind.
+func refusal(err error) error {
+	if err == nil {
+		return nil
+	}
+	status := 0
+	var oerr *oapierror.GenericOpenAPIError
+	if errors.As(err, &oerr) {
+		status = oerr.StatusCode
+	} else {
+		msg := err.Error()
+		switch {
+		case strings.Contains(msg, "status 401"):
+			status = http.StatusUnauthorized
+		case strings.Contains(msg, "status 403"):
+			status = http.StatusForbidden
+		}
+	}
+	switch status {
+	case http.StatusUnauthorized:
+		return llx.Unauthenticated(err)
+	case http.StatusForbidden:
+		return llx.Forbidden(err)
+	}
+	return err
+}
+
+// deniedList answers a list call the API refused. Until structured errors
+// are enabled it keeps the provider's established empty-list answer; with
+// them it returns the classified refusal, so a missing permission is not
+// mistaken for an empty project.
+func deniedList(err error) ([]any, error) {
+	if !plugin.StructuredErrors() {
+		return []any{}, nil
+	}
+	return nil, refusal(err)
+}
+
 // isNotFound returns true for HTTP 404. Use this for optional sub-resources
 // where "not configured" is a legitimate state distinct from access-denied.
 func isNotFound(err error) bool {

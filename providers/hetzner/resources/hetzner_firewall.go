@@ -5,6 +5,8 @@ package resources
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/hetznercloud/hcloud-go/v2/hcloud"
 	"go.mondoo.com/mql/llx"
@@ -19,6 +21,7 @@ type mqlHetznerFirewallInternal struct {
 	// AppliedToResources), so labelSelectorTargets() can surface the
 	// effective blast radius without a refetch.
 	cacheLabelSelectorServerIDs []int64
+	cacheRules                  []hcloud.FirewallRule
 }
 
 func (r *mqlHetznerFirewall) id() (string, error) {
@@ -128,6 +131,7 @@ func newMqlHetznerFirewall(runtime *plugin.Runtime, fw *hcloud.Firewall) (*mqlHe
 	m := res.(*mqlHetznerFirewall)
 	m.cacheServerIDs = serverIDs
 	m.cacheLabelSelectorServerIDs = labelSelectorServerIDs
+	m.cacheRules = fw.Rules
 	return m, nil
 }
 
@@ -197,4 +201,133 @@ func serverRefs(runtime *plugin.Runtime, ids []int64) ([]any, error) {
 		out = append(out, ref)
 	}
 	return out, nil
+}
+
+func (m *mqlHetznerFirewall) inboundRules() ([]any, error) {
+	return m.rulesWithDirection(hcloud.FirewallRuleDirectionIn)
+}
+
+func (m *mqlHetznerFirewall) outboundRules() ([]any, error) {
+	return m.rulesWithDirection(hcloud.FirewallRuleDirectionOut)
+}
+
+// rulesWithDirection builds the rule resources for one direction. The index
+// in each __id is the rule's position in the firewall's full rule list, so an
+// inbound and an outbound rule never share one, and two identical rules stay
+// two resources.
+func (m *mqlHetznerFirewall) rulesWithDirection(direction hcloud.FirewallRuleDirection) ([]any, error) {
+	out := []any{}
+	for i, r := range m.cacheRules {
+		if r.Direction != direction {
+			continue
+		}
+		res, err := newMqlHetznerFirewallRule(m, i, r)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res)
+	}
+	return out, nil
+}
+
+// --- firewall.rule sub-resource ---
+
+// mqlHetznerFirewallRuleInternal keeps the firewall the rule was read from.
+// Holding the parent itself, rather than its id, lets firewall() answer
+// without the per-rule GetByID an init-by-id would cost.
+type mqlHetznerFirewallRuleInternal struct {
+	cacheFirewall *mqlHetznerFirewall
+}
+
+func firewallRuleID(firewallID int64, index int) string {
+	return fmt.Sprintf("hetzner.firewall/%d/rule/%d", firewallID, index)
+}
+
+func newMqlHetznerFirewallRule(fw *mqlHetznerFirewall, index int, r hcloud.FirewallRule) (*mqlHetznerFirewallRule, error) {
+	srcs := make([]string, 0, len(r.SourceIPs))
+	for _, ip := range r.SourceIPs {
+		srcs = append(srcs, ip.String())
+	}
+	dsts := make([]string, 0, len(r.DestinationIPs))
+	for _, ip := range r.DestinationIPs {
+		dsts = append(dsts, ip.String())
+	}
+
+	portStart := llx.NilData
+	portEnd := llx.NilData
+	if r.Port != nil {
+		if start, end, ok := parseFirewallPortRange(*r.Port); ok {
+			portStart = llx.IntData(start)
+			portEnd = llx.IntData(end)
+		}
+	}
+
+	res, err := CreateResource(fw.MqlRuntime, "hetzner.firewall.rule", map[string]*llx.RawData{
+		"__id":           llx.StringData(firewallRuleID(fw.Id.Data, index)),
+		"direction":      llx.StringData(string(r.Direction)),
+		"protocol":       llx.StringData(string(r.Protocol)),
+		"port":           llx.StringDataPtr(r.Port),
+		"portStart":      portStart,
+		"portEnd":        portEnd,
+		"sourceIps":      stringArrayData(srcs),
+		"destinationIps": stringArrayData(dsts),
+		"description":    llx.StringDataPtr(r.Description),
+		"openToInternet": llx.BoolData(firewallRuleAdmitsAnySource(r)),
+	})
+	if err != nil {
+		return nil, err
+	}
+	m := res.(*mqlHetznerFirewallRule)
+	m.cacheFirewall = fw
+	return m, nil
+}
+
+// firewallRuleAdmitsAnySource reports whether a rule is an inbound rule whose
+// source admits any address, the same verdict firewallRuleOpenToInternet gives
+// for the rule's dict form.
+func firewallRuleAdmitsAnySource(r hcloud.FirewallRule) bool {
+	if r.Direction != hcloud.FirewallRuleDirectionIn {
+		return false
+	}
+	for _, ip := range r.SourceIPs {
+		if ones, _ := ip.Mask.Size(); ones == 0 && ip.IP.IsUnspecified() {
+			return true
+		}
+	}
+	return false
+}
+
+// parseFirewallPortRange turns a Hetzner firewall port ("22", "1024-5000", or
+// "any") into the first and last port it covers. An unparseable value reports
+// ok=false, so the bounds stay null rather than claiming a range the rule may
+// not have.
+func parseFirewallPortRange(port string) (int64, int64, bool) {
+	port = strings.TrimSpace(port)
+	if strings.EqualFold(port, "any") {
+		return 1, 65535, true
+	}
+	startStr, endStr, isRange := strings.Cut(port, "-")
+	start, err := strconv.ParseInt(strings.TrimSpace(startStr), 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	end := start
+	if isRange {
+		end, err = strconv.ParseInt(strings.TrimSpace(endStr), 10, 64)
+		if err != nil {
+			return 0, 0, false
+		}
+	}
+	if start < 1 || end > 65535 || start > end {
+		return 0, 0, false
+	}
+	return start, end, true
+}
+
+func (m *mqlHetznerFirewallRule) firewall() (*mqlHetznerFirewall, error) {
+	if m.cacheFirewall == nil {
+		m.Firewall.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return m.cacheFirewall, nil
 }
