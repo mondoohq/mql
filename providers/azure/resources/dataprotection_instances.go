@@ -299,17 +299,38 @@ func (a *mqlAzureSubscriptionDataProtectionServiceBackupVaultBackupInstance) dis
 }
 
 func (a *mqlAzureSubscriptionDataProtectionServiceBackupVaultBackupInstance) storageAccount() (*mqlAzureSubscriptionStorageServiceAccount, error) {
-	if a.DatasourceId.Data == "" || !backupDatasourceIs(a.DatasourceType.Data, "Microsoft.Storage/storageAccounts") {
+	datasourceID := a.DatasourceId.Data
+	if datasourceID == "" || !backupDatasourceIs(a.DatasourceType.Data, "Microsoft.Storage/storageAccounts") {
 		a.StorageAccount.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
-	res, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionStorageServiceAccount, map[string]*llx.RawData{
-		"id": llx.StringData(a.DatasourceId.Data),
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	// Only this subscription's storage accounts can be resolved from its list;
+	// an account elsewhere, or one that no longer exists, is reported as null.
+	resourceID, err := ParseResourceID(datasourceID)
+	if err != nil || !strings.EqualFold(resourceID.SubscriptionID, conn.SubId()) {
+		a.StorageAccount.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := NewResource(a.MqlRuntime, ResourceAzureSubscriptionStorageService, map[string]*llx.RawData{
+		"subscriptionId": llx.StringData(conn.SubId()),
 	})
 	if err != nil {
 		return nil, err
 	}
-	return res.(*mqlAzureSubscriptionStorageServiceAccount), nil
+	accounts := res.(*mqlAzureSubscriptionStorageService).GetAccounts()
+	if accounts.Error != nil {
+		return nil, accounts.Error
+	}
+	account, found := findByID[*mqlAzureSubscriptionStorageServiceAccount](accounts.Data, datasourceID)
+	if !found {
+		a.StorageAccount.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return account, nil
 }
 
 // resourceGuardArgs builds the Resource Guard args.

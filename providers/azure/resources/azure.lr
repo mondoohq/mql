@@ -818,7 +818,7 @@ azure.subscription.computeService.vm @defaults("name location properties.hardwar
   // VM extensions
   //
   // Deprecated in favor of installedExtensions, which reports each extension with its publisher, type, version, upgrade settings, and where its protected settings come from.
-  extensions() @maturity("deprecated") []dict
+  extensions() @maturity("deprecated") @replaced_by("azure.subscription.computeService.vm.installedExtensions") []dict
   // Extensions installed on the VM
   //
   // Extensions run inside the guest as root or SYSTEM. Each entry carries the
@@ -1702,7 +1702,7 @@ azure.subscription.computeService.vmScaleSet @defaults("name location orchestrat
   // Extensions installed on the scale set (each dict describes one extension)
   //
   // Deprecated in favor of installedExtensions, which reports each extension with its publisher, type, version, upgrade settings, and where its protected settings come from.
-  extensions() @maturity("deprecated") []dict
+  extensions() @maturity("deprecated") @replaced_by("azure.subscription.computeService.vmScaleSet.installedExtensions") []dict
   // Extensions in the scale set model, installed on every instance
   //
   // Each entry carries the publisher, extension type, handler version,

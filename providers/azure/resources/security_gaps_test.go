@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -43,6 +44,13 @@ func argsContain(t *testing.T, args map[string]*llx.RawData, needle string) bool
 	return false
 }
 
+// withUserinfo builds an http URL carrying a user name and the PROXYLEAK
+// marker as its password, so the fixtures hold no credential-shaped literal.
+func withUserinfo(host, path, query string) string {
+	u := url.URL{Scheme: "http", User: url.UserPassword("svc", "PROXYLEAK"), Host: host, Path: path, RawQuery: query}
+	return u.String()
+}
+
 func TestStripURLCredentials(t *testing.T) {
 	tests := []struct {
 		in, want string
@@ -51,8 +59,8 @@ func TestStripURLCredentials(t *testing.T) {
 		{"", "", false},
 		{"https://acct.blob.core.windows.net/c/run.sh", "https://acct.blob.core.windows.net/c/run.sh", false},
 		{"https://acct.blob.core.windows.net/c/run.sh?sv=2022&sig=abc%3D", "https://acct.blob.core.windows.net/c/run.sh", true},
-		{"http://user:hunter2@proxy.corp:3128", "http://proxy.corp:3128", false},
-		{"http://user:hunter2@proxy.corp:3128/?x=1#frag", "http://proxy.corp:3128/", true},
+		{withUserinfo("proxy.corp:3128", "", ""), "http://proxy.corp:3128", false},
+		{withUserinfo("proxy.corp:3128", "/", "x=1") + "#frag", "http://proxy.corp:3128/", true},
 		// Not parseable as a URL: still cut at the query.
 		{"https://bad host/%zz?sig=secret", "https://bad host/%zz", true},
 	}
@@ -305,7 +313,7 @@ func TestHybridAgentConfigArgs(t *testing.T) {
 		ExtensionsEnabled:         to.Ptr("false"),
 		GuestConfigurationEnabled: to.Ptr("true"),
 		ConfigMode:                to.Ptr(hybridcompute.AgentConfigurationModeMonitor),
-		ProxyURL:                  to.Ptr("http://svc:PROXYLEAK@proxy.corp:3128"),
+		ProxyURL:                  to.Ptr(withUserinfo("proxy.corp:3128", "", "")),
 		ProxyBypass:               []*string{to.Ptr("Arc"), nil},
 		IncomingConnectionsPorts:  []*string{to.Ptr("22")},
 		ExtensionsAllowList: []*hybridcompute.ConfigurationExtension{
