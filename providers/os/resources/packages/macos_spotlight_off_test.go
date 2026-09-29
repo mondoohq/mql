@@ -4,15 +4,21 @@
 package packages
 
 import (
+	"bytes"
 	"errors"
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/package-url/packageurl-go"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/mock"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	plist "howett.net/plist"
 )
 
 const sysProfilerAppsCmd = "system_profiler SPApplicationsDataType -xml"
@@ -186,4 +192,159 @@ func TestMacOSPackagesWithoutSpotlightOrApplications(t *testing.T) {
 	require.NoError(t, err)
 	_, err = listMacOSAppsOn(t, conn)
 	require.Error(t, err)
+}
+
+const spotlightOffFixture = "./testdata/packages_macos_spotlight_off.toml"
+
+// partialReport is what system_profiler prints with Spotlight indexing off:
+// a well-formed report that exits cleanly, but lists only the applications
+// outside /System. It is derived from the fixture's Spotlight-on report by
+// dropping the entries under /System.
+func partialReport(t *testing.T) string {
+	t.Helper()
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath(spotlightOffFixture))
+	require.NoError(t, err)
+	cmd, err := conn.RunCommand(sysProfilerAppsCmd)
+	require.NoError(t, err)
+	var data []map[string]any
+	_, err = plist.Unmarshal(mustReadAll(t, cmd.Stdout), &data)
+	require.NoError(t, err)
+	require.Len(t, data, 1)
+
+	var kept []any
+	for _, item := range data[0]["_items"].([]any) {
+		if path, _ := item.(map[string]any)["path"].(string); !strings.HasPrefix(path, "/System/") {
+			kept = append(kept, item)
+		}
+	}
+	require.NotEmpty(t, kept)
+	require.Less(t, len(kept), len(data[0]["_items"].([]any)))
+	data[0]["_items"] = kept
+	out, err := plist.MarshalIndent(data, plist.XMLFormat, "\t")
+	require.NoError(t, err)
+	return string(out)
+}
+
+func mustReadAll(t *testing.T, r io.Reader) []byte {
+	t.Helper()
+	b, err := io.ReadAll(r)
+	require.NoError(t, err)
+	return b
+}
+
+// With Spotlight indexing off, system_profiler reports the applications
+// outside /System and nothing else, and says nothing about it. The
+// applications macOS ships come from the folder listing instead, under the
+// names, versions and identities system_profiler gives them when Spotlight
+// is on.
+func TestMacOSPackagesFromPartialReport(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath(spotlightOffFixture))
+	require.NoError(t, err)
+	withSpotlight, err := listMacOSAppsOn(t, conn)
+	require.NoError(t, err)
+	want := byFilePath(t, withSpotlight)
+	require.Len(t, want, 14)
+
+	conn, err = mock.New(0, &inventory.Asset{}, mock.WithPath(spotlightOffFixture),
+		mock.WithData(&mock.TomlData{Commands: map[string]*mock.Command{sysProfilerAppsCmd: {Stdout: partialReport(t)}}}))
+	require.NoError(t, err)
+	partial, err := listMacOSAppsOn(t, conn)
+	require.NoError(t, err)
+	got := byFilePath(t, partial)
+	require.Len(t, got, len(want))
+
+	for path, w := range want {
+		g, ok := got[path]
+		require.True(t, ok, "missing from a partial report: %s", path)
+		assert.Equal(t, w.Name, g.Name, path)
+		assert.Equal(t, w.Version, g.Version, path)
+		assert.Equal(t, w.Arch, g.Arch, path)
+		assert.Equal(t, w.InstallScope, g.InstallScope, path)
+		assert.Equal(t, w.MacOS.BundleID, g.MacOS.BundleID, path)
+		assert.Equal(t, w.MacOS.AppStore, g.MacOS.AppStore, path)
+		if strings.HasPrefix(path, "/System/") {
+			// Only system_profiler knows the signer and the Gatekeeper origin.
+			assert.Equal(t, withoutTeamID(t, w.PUrl), g.PUrl, path)
+			assert.Empty(t, g.Origin, path)
+		} else {
+			assert.Equal(t, w, g, path)
+		}
+	}
+
+	// What went missing from the partial report on a real Mac.
+	for path, name := range map[string]string{
+		"/System/Applications/FindMy.app":                                 "Find My",
+		"/System/Applications/VoiceMemos.app":                             "Voice Memos",
+		"/System/Library/CoreServices/Siri.app":                           "Siri",
+		"/System/Library/CoreServices/PeopleViewService.app":              "Contacts",
+		"/System/Library/CoreServices/Finder.app":                         "Finder",
+		"/System/Library/CoreServices/Applications/Directory Utility.app": "Directory Utility",
+		"/System/Library/Input Methods/DictationIM.app":                   "Dictation",
+	} {
+		assert.Equal(t, name, got[path].Name, path)
+	}
+}
+
+// Finder shows the localized name of a bundle whose directory still carries
+// its CFBundleDisplayName, and the directory name of every other bundle
+// without LSHasLocalizedDisplayName. The expected names are what
+// system_profiler reported for these bundles.
+func TestAppDisplayNameOfAppleBundles(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath(spotlightOffFixture))
+	require.NoError(t, err)
+
+	cases := []struct {
+		path string
+		want string
+		why  string
+	}{
+		{"/System/Applications/FindMy.app", "Find My", "CFBundleDisplayName FindMy, localized in InfoPlist.loctable"},
+		{"/System/Applications/VoiceMemos.app", "Voice Memos", "CFBundleDisplayName VoiceMemos, localized"},
+		{"/System/Library/CoreServices/TipsSpotlightHandler.app", "Tips", "only the localized display name differs"},
+		{"/System/Library/Input Methods/DictationIM.app", "Dictation", "input method"},
+		{"/System/Library/CoreServices/PIPAgent.app", "PIPAgent", "CFBundleDisplayName Picture in Picture is not the directory name"},
+		{"/System/Library/Input Methods/AinuIM.app", "AinuIM", "CFBundleDisplayName Ainu Input Method is not the directory name"},
+		{"/System/Library/CoreServices/screencaptureui.app", "screencaptureui", "no CFBundleDisplayName in Info.plist"},
+		{"/System/Library/CoreServices/PeopleViewService.app", "Contacts", "LSHasLocalizedDisplayName"},
+		{"/Applications/zoom.us.app", "Zoom", "CFBundleDisplayName zoom.us, localized in en.lproj/InfoPlist.strings"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.why, func(t *testing.T) {
+			info, isBundle := readInfoPlist(conn, tc.path)
+			require.True(t, isBundle)
+			assert.Equal(t, tc.want, appDisplayName(conn, tc.path, info))
+		})
+	}
+}
+
+func TestCryptexSystemPath(t *testing.T) {
+	p, ok := cryptexSystemPath("/System/Cryptexes/App/System/Library/CoreServices/Web App.app")
+	assert.True(t, ok)
+	assert.Equal(t, "/System/Library/CoreServices/Web App.app", p)
+	_, ok = cryptexSystemPath("/System/Library/CoreServices/Finder.app")
+	assert.False(t, ok)
+}
+
+// A partial report is visible in the debug log.
+func TestLogUnreportedApplications(t *testing.T) {
+	var buf bytes.Buffer
+	prev := log.Logger
+	log.Logger = zerolog.New(&buf).Level(zerolog.DebugLevel)
+	defer func() { log.Logger = prev }()
+
+	outside := []sysProfilerItem{{Path: "/Applications/VLC.app"}}
+	system := []sysProfilerItem{{Path: "/System/Library/CoreServices/Siri.app"}, {Path: "/System/Applications/FindMy.app"}}
+
+	logUnreportedApplications(outside, system)
+	assert.Contains(t, buf.String(), "Spotlight indexing may be off")
+	assert.Contains(t, buf.String(), `"added":2`)
+
+	buf.Reset()
+	logUnreportedApplications(append(outside, system[0]), system[1:])
+	assert.NotContains(t, buf.String(), "Spotlight")
+	assert.Contains(t, buf.String(), `"added":1`)
+
+	buf.Reset()
+	logUnreportedApplications(outside, nil)
+	assert.Empty(t, buf.String())
 }
