@@ -10,12 +10,15 @@ require (
 	github.com/stackitcloud/stackit-sdk-go/services/alb v0.18.0
 	github.com/stackitcloud/stackit-sdk-go/services/albwaf v0.13.4
 	github.com/stackitcloud/stackit-sdk-go/services/authorization v0.15.4
+	github.com/stackitcloud/stackit-sdk-go/services/cdn v1.21.0
 	github.com/stackitcloud/stackit-sdk-go/services/certificates v1.9.2
 	github.com/stackitcloud/stackit-sdk-go/services/dns v0.23.1
+	github.com/stackitcloud/stackit-sdk-go/services/git v0.14.2
 	github.com/stackitcloud/stackit-sdk-go/services/iaas v1.14.5
 	github.com/stackitcloud/stackit-sdk-go/services/kms v1.13.1
 	github.com/stackitcloud/stackit-sdk-go/services/loadbalancer v1.15.2
 	github.com/stackitcloud/stackit-sdk-go/services/logme v1.3.1
+	github.com/stackitcloud/stackit-sdk-go/services/logs v0.10.2
 	github.com/stackitcloud/stackit-sdk-go/services/mariadb v1.3.1
 	github.com/stackitcloud/stackit-sdk-go/services/modelserving v0.13.1
 	github.com/stackitcloud/stackit-sdk-go/services/mongodbflex v1.12.2
@@ -30,11 +33,13 @@ require (
 	github.com/stackitcloud/stackit-sdk-go/services/serverbackup v1.7.3
 	github.com/stackitcloud/stackit-sdk-go/services/serverupdate v1.5.6
 	github.com/stackitcloud/stackit-sdk-go/services/serviceaccount v0.21.0
+	github.com/stackitcloud/stackit-sdk-go/services/serviceenablement v1.7.2
 	github.com/stackitcloud/stackit-sdk-go/services/sfs v0.11.3
 	github.com/stackitcloud/stackit-sdk-go/services/ske v1.21.2
 	github.com/stackitcloud/stackit-sdk-go/services/sqlserverflex v1.18.1
 	github.com/stackitcloud/stackit-sdk-go/services/telemetrylink v0.6.0
 	github.com/stackitcloud/stackit-sdk-go/services/telemetryrouter v0.6.0
+	github.com/stackitcloud/stackit-sdk-go/services/valkey v0.3.1
 	github.com/stackitcloud/stackit-sdk-go/services/vpn v0.15.2
 	github.com/stretchr/testify v1.12.1
 	go.mondoo.com/mql v0.0.0-20260928074600-21f1ad7c03c3

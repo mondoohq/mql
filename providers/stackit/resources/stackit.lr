@@ -105,6 +105,20 @@ stackit @root {
   kms() stackit.kms
   // Project-level IAM bindings (members) and roles
   iam() stackit.iam
+  // Content delivery network namespace (CDN distributions)
+  cdn() stackit.cdn
+  // STACKIT Git namespace (managed Git instances)
+  git() stackit.git
+  // STACKIT Logs namespace (managed log storage instances)
+  logs() stackit.logs
+  // Valkey managed namespace
+  valkey() stackit.valkey
+  // Enablement state of every STACKIT service in the project and region
+  //
+  // One entry per service the platform offers, whether it is enabled,
+  // being enabled, or disabled. Use it to find services switched on in a
+  // project that nobody inventories.
+  serviceEnablements() []stackit.serviceEnablement
 }
 
 // STACKIT project metadata
@@ -1886,6 +1900,44 @@ private stackit.postgresFlex.instance @defaults("id name version status") {
   // Proof that the backup schedule produces backups and how the last ones
   // ended. Empty when none exist or the credential cannot list them.
   backups() []stackit.postgresFlex.instance.backup
+  // Network access scope of the instance endpoint
+  //
+  // PUBLIC when the instance is reachable over a public address (still
+  // subject to acl), SNA when it is reachable only from a STACKIT Network
+  // Area. Null when the service reports no scope.
+  accessScope() string
+  // Customer-managed key that encrypts the instance data (nullable)
+  //
+  // The Key Management Service key the service wraps the instance's data
+  // key with. Null when the instance uses platform-managed encryption, and
+  // null when the key lives in a key ring this project cannot read.
+  encryptionKey() stackit.kms.key
+  // Key ring that holds the customer-managed encryption key (nullable)
+  //
+  // Null when the instance uses platform-managed encryption or the ring is
+  // not readable from this project.
+  encryptionKeyRing() stackit.kms.keyRing
+  // Version of the customer-managed key the instance data is wrapped with
+  //
+  // Null when the instance uses platform-managed encryption.
+  encryptionKeyVersion() int
+  // Service account the service uses to access the customer-managed key (nullable)
+  //
+  // Null when the instance uses platform-managed encryption or the account
+  // does not belong to this project.
+  encryptionKeyServiceAccount() stackit.serviceAccount
+  // User-defined labels
+  labels() map[string]string
+  // Whether the service allows the instance to be deleted
+  //
+  // False marks an instance protected against deletion. Null when the
+  // service does not report it.
+  deletable() bool
+  // Days backups are retained
+  //
+  // The service accepts 32 to 90 days. Null when the service reports no
+  // retention.
+  backupRetentionDays() int
 }
 
 // STACKIT Postgres Flex database user
@@ -2134,6 +2186,39 @@ private stackit.sqlServerFlex.instance @defaults("id name version status") {
   // Proof that the backup schedule produces backups and how the last ones
   // ended. Empty when none exist or the credential cannot list them.
   backups() []stackit.sqlServerFlex.instance.backup
+  // Network access scope of the instance endpoint
+  //
+  // PUBLIC when the instance is reachable over a public address (still
+  // subject to acl), SNA when it is reachable only from a STACKIT Network
+  // Area. Null when the service reports no scope.
+  accessScope() string
+  // Customer-managed key that encrypts the instance data (nullable)
+  //
+  // The Key Management Service key the service wraps the instance's data
+  // key with. Null when the instance uses platform-managed encryption, and
+  // null when the key lives in a key ring this project cannot read.
+  encryptionKey() stackit.kms.key
+  // Key ring that holds the customer-managed encryption key (nullable)
+  //
+  // Null when the instance uses platform-managed encryption or the ring is
+  // not readable from this project.
+  encryptionKeyRing() stackit.kms.keyRing
+  // Version of the customer-managed key the instance data is wrapped with
+  //
+  // Null when the instance uses platform-managed encryption.
+  encryptionKeyVersion() int
+  // Service account the service uses to access the customer-managed key (nullable)
+  //
+  // Null when the instance uses platform-managed encryption or the account
+  // does not belong to this project.
+  encryptionKeyServiceAccount() stackit.serviceAccount
+  // User-defined labels
+  labels() map[string]string
+  // Whether the service allows the instance to be deleted
+  //
+  // False marks an instance protected against deletion. Null when the
+  // service does not report it.
+  deletable() bool
 }
 
 // STACKIT SQLServer Flex database user
@@ -3574,6 +3659,79 @@ private stackit.observability.instance @defaults("id name status planName") {
   // administrator rights, so a compromised or loosely scoped provider
   // becomes an admin path into the instance.
   grafanaGenericOauthAllowAssignAdmin() bool
+  // Prometheus scrape jobs configured on the instance
+  //
+  // Each job names the targets the instance pulls metrics from, over which
+  // scheme, and whether certificate verification or authentication is in
+  // place.
+  scrapeConfigs() []stackit.observability.scrapeConfig
+  // Retention of raw metric samples (for example 90d)
+  //
+  // Null when the retention settings cannot be read.
+  metricsRetentionRaw() string
+  // Retention of the 5-minute metric downsampling (for example 90d)
+  //
+  // Null when the retention settings cannot be read.
+  metricsRetention5m() string
+  // Retention of the 1-hour metric downsampling (for example 90d)
+  //
+  // Null when the retention settings cannot be read.
+  metricsRetention1h() string
+  // Retention of stored logs (for example 7d)
+  //
+  // Null when the logs settings cannot be read.
+  logsRetention() string
+  // Retention of stored traces (for example 7d)
+  //
+  // Null when the traces settings cannot be read.
+  tracesRetention() string
+}
+
+// Prometheus scrape job on a STACKIT Observability instance
+//
+// One scrape job, keyed by its `jobName` within the instance. `scheme`
+// and `insecureSkipVerify` answer whether metrics are pulled in plain text
+// or over TLS that accepts any certificate; the `*Configured` flags say
+// which authentication the job presents to its targets. Passwords, bearer
+// tokens, and OAuth client secrets are never exposed.
+private stackit.observability.scrapeConfig @defaults("jobName scheme targets") {
+  // Job name, unique within the instance
+  jobName string
+  // Protocol the targets are scraped over (http or https)
+  //
+  // Null when the job does not set it, in which case Prometheus uses http.
+  scheme string
+  // HTTP path metrics are read from; null when the job uses the default /metrics
+  metricsPath string
+  // Interval between scrapes (for example 5m)
+  scrapeInterval string
+  // Timeout of a single scrape (for example 2m)
+  scrapeTimeout string
+  // Maximum number of samples accepted per scrape; null when the job sets no limit
+  sampleLimit int
+  // Whether labels exposed by the target override the server-side labels
+  //
+  // Null when the job does not set it.
+  honorLabels bool
+  // Whether timestamps exposed by the target are kept
+  //
+  // Null when the job does not set it.
+  honorTimestamps bool
+  // Whether the job skips verification of the targets' TLS certificates
+  //
+  // True accepts any certificate, so the scrape can be intercepted. Null
+  // when the job carries no TLS settings.
+  insecureSkipVerify bool
+  // Whether the job authenticates to its targets with HTTP basic auth
+  basicAuthConfigured bool
+  // Whether the job authenticates to its targets with a bearer token
+  bearerTokenConfigured bool
+  // Whether the job authenticates to its targets through OAuth 2.0
+  oauth2Configured bool
+  // Static target addresses (host:port) the job scrapes
+  targets []string
+  // HTTP service-discovery endpoints the job reads its targets from
+  serviceDiscoveryUrls []string
 }
 
 // STACKIT Telemetry namespace
@@ -4672,4 +4830,491 @@ private stackit.vpn.tunnel @defaults("remoteAddress") {
   //
   // Null when the status could not be read.
   negotiatedPhase2Encapsulation() string
+}
+
+// STACKIT CDN namespace
+//
+// Content delivery network distributions in the project. Query
+// `distributions` to audit which origins are published through the CDN,
+// with which TLS versions, and under which web application firewall mode.
+stackit.cdn {
+  // CDN distributions
+  distributions() []stackit.cdn.distribution
+}
+
+// STACKIT CDN distribution
+//
+// Single CDN distribution, keyed by its UUID `id`. Covers the origin it
+// serves (an HTTP origin or an Object Storage bucket), the legacy TLS
+// versions it still accepts (`tls10Enabled`, `tls11Enabled`), the web
+// application firewall mode, tier, paranoia level, and rule exclusions,
+// the country and IP block lists, the edge regions, the log sink requests
+// are shipped to, and the `domains` it answers on with their certificate
+// type.
+private stackit.cdn.distribution @defaults("id status backendType wafMode") {
+  // Distribution UUID
+  id string
+  // Lifecycle status (CREATING, ACTIVE, UPDATING, DELETING, ERROR)
+  status string
+  // When the distribution was created
+  createdAt time
+  // When the distribution was last updated
+  updatedAt time
+  // Errors the service reports for the distribution, in English
+  errors []string
+  // User-defined labels
+  labels map[string]string
+  // Kind of origin the distribution serves (http or bucket)
+  backendType string
+  // URL of the HTTP origin; empty for a bucket origin
+  originUrl string
+  // Names of the headers the CDN adds to requests it sends to the HTTP origin
+  //
+  // Only the names are exposed. The values often carry a shared secret the
+  // origin uses to recognize the CDN.
+  originRequestHeaderNames []string
+  // URL of the Object Storage bucket origin; empty for an HTTP origin
+  bucketUrl string
+  // Region of the Object Storage bucket origin; empty for an HTTP origin
+  bucketRegion string
+  // Whether the distribution accepts TLS 1.0 connections
+  tls10Enabled bool
+  // Whether the distribution accepts TLS 1.1 connections
+  tls11Enabled bool
+  // Web application firewall mode (ENABLED, DISABLED, LOG_ONLY)
+  //
+  // LOG_ONLY records matches without blocking them.
+  wafMode string
+  // Web application firewall tier (FREE, PREMIUM)
+  wafType string
+  // Web application firewall paranoia level (L1 to L4)
+  //
+  // Higher levels enable stricter rules. Null when the distribution sets
+  // no level.
+  wafParanoiaLevel string
+  // IDs of the firewall rules explicitly disabled
+  wafDisabledRuleIds []string
+  // IDs of the firewall rule groups explicitly disabled
+  wafDisabledRuleGroupIds []string
+  // IDs of the firewall rule collections explicitly disabled
+  wafDisabledRuleCollectionIds []string
+  // IDs of the firewall rules set to log matches without blocking
+  wafLogOnlyRuleIds []string
+  // HTTP methods the firewall lets through; empty when unrestricted
+  wafAllowedHttpMethods []string
+  // Countries (ISO 3166-1 alpha-2 codes) whose requests are blocked
+  blockedCountries []string
+  // Client IP addresses whose requests are blocked
+  blockedIps []string
+  // Edge regions the distribution is served from (EU, US, AF, SA, ASIA)
+  regions []string
+  // Kind of log sink request logs are shipped to (loki or otlp)
+  //
+  // Empty when no log sink is configured.
+  logSinkType string
+  // Endpoint request logs are pushed to; empty when no log sink is configured
+  logSinkPushUrl string
+  // Whether the client's Host header is forwarded to the origin
+  forwardHostHeader bool
+  // Monthly traffic limit in bytes; null when unlimited
+  monthlyLimitBytes int
+  // Domains the distribution answers on
+  domains() []stackit.cdn.distribution.domain
+}
+
+// Domain of a STACKIT CDN distribution
+//
+// One host name a distribution answers on, keyed by `name` within the
+// distribution. `type` separates the managed CDN domain from custom
+// domains, and `certificateType` says whether STACKIT manages the TLS
+// certificate or the customer supplied one.
+private stackit.cdn.distribution.domain @defaults("name type status certificateType") {
+  // Host name
+  name string
+  // Domain kind (managed or custom)
+  type string
+  // Lifecycle status (CREATING, ACTIVE, UPDATING, DELETING, ERROR)
+  status string
+  // Who provides the TLS certificate (managed or custom)
+  certificateType string
+  // Errors the service reports for the domain, in English
+  errors []string
+}
+
+// STACKIT Git namespace
+//
+// Managed Git instances in the project. Query `instances` to
+// audit who can reach each instance and how users sign in.
+stackit.git {
+  // STACKIT Git instances
+  instances() []stackit.git.instance
+}
+
+// STACKIT Git instance
+//
+// Single managed Git instance, keyed by its UUID `id`. Covers the `url`
+// it serves, the `acl` of networks allowed to reach it, whether local
+// (password) logins and commit signatures are enabled, the deployed
+// version and flavor, and the external identity providers users can sign
+// in through.
+private stackit.git.instance @defaults("id name state url") {
+  // Instance UUID
+  id string
+  // Instance name
+  name string
+  // URL the instance is reached at
+  url string
+  // Lifecycle state (Creating, WaitingForResources, Updating, Ready, Deleting, Error)
+  state string
+  // Deployed STACKIT Git version
+  version string
+  // Instance flavor (sizing tier)
+  flavor string
+  // When the instance was created
+  createdAt time
+  // CIDR ranges allowed to reach the instance
+  //
+  // Empty when no restriction is configured, which leaves the instance
+  // reachable from any address.
+  acl []string
+  // Whether users can sign in with a local username and password
+  //
+  // Null when the instance does not report the setting.
+  localLoginEnabled bool
+  // Whether commit signatures are enabled
+  //
+  // Null when the instance does not report the setting.
+  commitSignaturesEnabled bool
+  // Default email notification setting for new users (enabled, disabled, onmention, andyourown)
+  //
+  // Null when the instance does not report the setting.
+  defaultEmailNotifications string
+  // External identity providers users can sign in through
+  authentications() []stackit.git.authentication
+}
+
+// Identity provider configured on a STACKIT Git instance
+//
+// One OpenID Connect sign-in source, keyed by its UUID `id` within the
+// instance: the `provider` kind, the discovery URL of the identity
+// provider, the client ID the instance uses, and the scopes it requests.
+// The client secret is never exposed.
+private stackit.git.authentication @defaults("name provider status") {
+  // Authentication UUID
+  id string
+  // Name of the sign-in source
+  name string
+  // OAuth 2.0 provider kind
+  provider string
+  // OpenID Connect discovery URL of the identity provider
+  autoDiscoverUrl string
+  // Client ID the instance uses with the identity provider
+  clientId string
+  // Scopes requested from the identity provider
+  scopes []string
+  // Status of the sign-in source
+  status string
+  // When the sign-in source was created
+  createdAt time
+}
+
+// STACKIT Logs namespace
+//
+// Managed log storage instances in the project. Query `instances` to
+// audit their retention, network access, and the access tokens that can
+// read or write them.
+stackit.logs {
+  // STACKIT Logs instances
+  instances() []stackit.logs.instance
+}
+
+// STACKIT Logs instance
+//
+// Single managed log storage instance, keyed by its UUID `id`. Covers the
+// `retentionDays` logs are kept for, the `acl` of networks allowed to
+// reach it, the ingest and query endpoints, and its `accessTokens`.
+private stackit.logs.instance @defaults("id name status retentionDays") {
+  // Instance UUID
+  id string
+  // Display name
+  name string
+  // Description
+  description string
+  // Lifecycle status (active, reconciling, deleting)
+  status string
+  // When the instance was created
+  createdAt time
+  // Days logs are retained
+  retentionDays int
+  // CIDR ranges allowed to reach the instance
+  //
+  // Empty when no restriction is configured, which leaves the endpoints
+  // reachable from any address that holds a token.
+  acl []string
+  // URL logs are ingested at
+  ingestUrl string
+  // URL logs are ingested at over OpenTelemetry (OTLP)
+  ingestOtlpUrl string
+  // URL logs are queried at
+  queryUrl string
+  // URL log ranges are queried at
+  queryRangeUrl string
+  // URL to use as a Grafana data source
+  datasourceUrl string
+  // Access tokens issued for the instance
+  accessTokens() []stackit.logs.accessToken
+}
+
+// Access token of a STACKIT Logs instance
+//
+// One token, keyed by its UUID `id` within the instance, with the
+// `permissions` it grants (read, write), whether it `expires`, its
+// `validUntil` date, and its `status`. A token that never expires and
+// grants write access is a standing credential to the log stream. The
+// token value is never exposed.
+private stackit.logs.accessToken @defaults("name permissions status validUntil") {
+  // Token UUID
+  id string
+  // Display name
+  name string
+  // Description
+  description string
+  // User who created the token
+  creator string
+  // Access the token grants (read, write)
+  permissions []string
+  // Whether the token expires
+  expires bool
+  // Last day the token is valid; null when it never expires
+  validUntil time
+  // Token status (active, expired)
+  status string
+}
+
+// STACKIT Valkey namespace
+//
+// Managed Valkey (open-source Redis-compatible key-value store) instances
+// in the project, and the engine catalog they are provisioned from.
+stackit.valkey {
+  // Valkey instances
+  instances() []stackit.valkey.instance
+  // Engine offerings the service currently provides
+  //
+  // The catalog of engine versions and plans, where a version is marked
+  // latest or carries a lifecycle state and a plan is marked free. Empty
+  // when the catalog cannot be read.
+  offerings() []stackit.valkey.offering
+}
+
+// STACKIT Valkey managed instance
+//
+// Single managed Valkey instance in the project, keyed by its UUID `id`
+// (for example `stackit.valkey.instance(id: "...")`). Exposes the plan
+// and engine version, the `sgwAcl` of networks allowed to connect and
+// whether that leaves the instance reachable from the internet, where
+// logs and metrics are shipped, persistence and eviction settings, and
+// its backups.
+private stackit.valkey.instance @defaults("id name state planName") {
+  init(id? string)
+  // Instance UUID
+  id string
+  // Instance name
+  name string
+  // Outcome of the last provisioning operation
+  //
+  // One of "in progress", "succeeded", or "failed". Reports how the last
+  // create, update, or delete went (see lastOperationType), not whether
+  // the instance is running; read state for that.
+  status string
+  // Instance lifecycle state
+  //
+  // One of active, failed, stopped, creating, deleting, or updating.
+  state string
+  // Kind of the last provisioning operation (create, update, delete)
+  lastOperationType string
+  // Description of the last provisioning operation, including the failure reason when it failed
+  lastOperationDescription string
+  // Region the instance runs in
+  region string
+  // Plan name (sizing tier)
+  planName string
+  // Plan UUID
+  planId string
+  // Service offering name
+  offeringName string
+  // Engine version of the service offering
+  //
+  // Null when the API reports no version for the instance.
+  offeringVersion string
+  // Cloud Foundry service instance GUID
+  cfGuid string
+  // Cloud Foundry organization GUID
+  cfOrganizationGuid string
+  // Cloud Foundry space GUID
+  cfSpaceGuid string
+  // Dashboard URL (empty if not provisioned)
+  dashboardUrl string
+  // Engine image URL
+  imageUrl string
+  // CIDR allow-list of client networks permitted to reach the instance
+  //
+  // From the sgw_acl parameter. Empty when no allow-list is configured,
+  // which leaves the instance reachable from any address.
+  sgwAcl() []string
+  // Whether the instance accepts connections from any address
+  //
+  // True when the sgw_acl allow-list is empty or admits any address
+  // (0.0.0.0/0 or ::/0).
+  internetReachable() bool
+  // Remote syslog endpoints the instance forwards its logs to
+  //
+  // Empty when none is configured.
+  syslog() []string
+  // Graphite endpoint the instance ships metrics to
+  //
+  // Host and port of an external Graphite receiver. Empty when metrics
+  // stay on the platform.
+  graphite() string
+  // Whether the instance ships metrics to a STACKIT Observability instance
+  //
+  // Null when the parameter is absent.
+  monitoringEnabled() bool
+  // Observability instance the instance ships metrics to (nullable)
+  //
+  // Null when monitoring is not configured or the referenced instance is
+  // not readable from this project.
+  monitoringInstance() stackit.observability.instance
+  // Disk usage percentage at which the node halts to protect data
+  //
+  // Null when the parameter is absent.
+  maxDiskThreshold() int
+  // RDB snapshot schedule
+  //
+  // The save specification (for example `900 1 300 10`). Empty when
+  // persistence is not configured, so the dataset is memory-only.
+  snapshot() string
+  // Eviction policy applied at the memory limit
+  //
+  // Any policy other than noeviction silently drops keys under memory
+  // pressure. Empty when the parameter is absent.
+  maxmemoryPolicy() string
+  // Keyspace event classes broadcast to subscribers
+  //
+  // A non-empty value announces key activity to any connected subscriber.
+  notifyKeyspaceEvents() string
+  // Maximum number of simultaneous client connections
+  //
+  // Null when the parameter is absent.
+  maxClients() int
+  // Replicas that must be connected for the primary to accept writes
+  //
+  // 0 disables the check. Null when the parameter is absent.
+  minReplicasToWrite() int
+  // Backups taken of the instance
+  //
+  // Empty when none exist or the credential cannot list them.
+  backups() []stackit.valkey.instance.backup
+  // Catalog offering the instance runs (nullable)
+  //
+  // Matched by offeringVersion against the engine catalog. Null when the
+  // catalog does not list the version or cannot be read.
+  offering() stackit.valkey.offering
+  // Catalog plan the instance runs on (nullable)
+  //
+  // Matched by planId against the engine catalog. Null when the catalog
+  // does not list the plan or cannot be read.
+  plan() stackit.valkey.offering.plan
+}
+
+// Backup of a STACKIT Valkey instance
+//
+// One backup the service took of the instance, keyed by its numeric `id`
+// rendered as a string.
+private stackit.valkey.instance.backup @defaults("id status finishedAt") {
+  // Backup identifier
+  id string
+  // Backup status as reported by the service
+  status string
+  // Backup size in bytes
+  //
+  // Null when the service reports no size.
+  size int
+  // Whether the backup can be downloaded through the API
+  //
+  // Null when the service reports no setting.
+  downloadable bool
+  // When the backup was triggered
+  triggeredAt time
+  // When the backup finished
+  finishedAt time
+}
+
+// Catalog offering for STACKIT Valkey
+//
+// One engine version the service provides, keyed by `name` and
+// `version`. `latest` marks the current release and `lifecycle` carries
+// the state the service assigns to older ones.
+private stackit.valkey.offering @defaults("name version latest lifecycle") {
+  // Offering name
+  name string
+  // Engine version
+  version string
+  // Whether this is the latest version the service provides
+  latest bool
+  // Lifecycle state the service assigns to the version; empty when none
+  lifecycle string
+  // Description
+  description string
+  // Documentation link
+  documentationUrl string
+  // Number of instances of this offering the project may create
+  quotaCount int
+  // Plans available for the offering
+  plans() []stackit.valkey.offering.plan
+}
+
+// Plan within a STACKIT Valkey offering
+//
+// One sizing plan of an engine offering, keyed by UUID `id`. `free` marks
+// the trial plan, which carries no availability commitment.
+private stackit.valkey.offering.plan @defaults("name skuName free") {
+  // Plan UUID
+  id string
+  // Plan name
+  name string
+  // SKU name the plan is billed under
+  skuName string
+  // Whether this is the free plan
+  free bool
+  // Description
+  description string
+}
+
+// Enablement state of a STACKIT service in the project
+//
+// One service, keyed by `serviceId`, with its enablement `state`
+// (ENABLED, ENABLING, DISABLED, DISABLING), whether enabling it needs a
+// request or happens automatically, its visibility scope, and the services
+// it depends on.
+private stackit.serviceEnablement @defaults("serviceId state") {
+  // Service identifier
+  serviceId string
+  // Enablement state (ENABLED, ENABLING, DISABLED, DISABLING)
+  state string
+  // How the service is enabled (AUTO or REQUEST)
+  enablement string
+  // Visibility of the service (PUBLIC or PRIVATE)
+  scope string
+  // Lifecycle model of the service (PROJECT or FLEX)
+  lifecycle string
+  // User-defined labels
+  labels map[string]string
+  // Action that failed on the service (ENABLE or DISABLE); empty when none failed
+  errorAction string
+  // Reason the last enable or disable action failed; empty when none failed
+  errorReason string
+  // Services enabled together with this one
+  hardDependencies() []stackit.serviceEnablement
+  // Services this one depends on that notify it when disabled
+  softDependencies() []stackit.serviceEnablement
 }
