@@ -257,7 +257,22 @@ func macOSApplicationPackages(conn shared.Connection, platform *inventory.Platfo
 
 // logUnreportedApplications says how many application bundles were found in
 // the application folders that system_profiler did not report, so a partial
-// report is visible.
+// report is visible. See unreportedApplications.
+func logUnreportedApplications(reported, added []sysProfilerItem) {
+	count, systemMissing := unreportedApplications(reported, added)
+	if count == 0 {
+		return
+	}
+	ev := log.Debug().Int("reported", len(reported)).Int("added", count)
+	if systemMissing {
+		ev.Msg("system_profiler reported no applications under /System, Spotlight indexing may be off; added the applications found on disk")
+		return
+	}
+	ev.Msg("added applications found on disk that system_profiler did not report")
+}
+
+// unreportedApplications counts the added bundles system_profiler could have
+// reported, and says whether its report looks partial.
 //
 // With Spotlight indexing off, system_profiler still exits cleanly and prints
 // a well-formed report, but only of the applications outside /System: every
@@ -266,32 +281,26 @@ func macOSApplicationPackages(conn shared.Connection, platform *inventory.Platfo
 //
 // Cryptex bundles are not counted. system_profiler never reports them, so
 // they are added on every scan and say nothing about the report.
-func logUnreportedApplications(reported, added []sysProfilerItem) {
-	addedFolders, addedSystem := 0, 0
+func unreportedApplications(reported, added []sysProfilerItem) (count int, systemMissing bool) {
+	addedSystem := 0
 	for _, entry := range added {
 		if strings.HasPrefix(entry.Path, cryptexRoot+"/") {
 			continue
 		}
-		addedFolders++
+		count++
 		if strings.HasPrefix(entry.Path, "/System/") {
 			addedSystem++
 		}
 	}
-	if addedFolders == 0 {
-		return
+	if len(reported) == 0 || addedSystem == 0 {
+		return count, false
 	}
-	reportedSystem := 0
 	for _, entry := range reported {
 		if strings.HasPrefix(entry.Path, "/System/") {
-			reportedSystem++
+			return count, false
 		}
 	}
-	ev := log.Debug().Int("reported", len(reported)).Int("added", addedFolders)
-	if len(reported) > 0 && reportedSystem == 0 && addedSystem > 0 {
-		ev.Msg("system_profiler reported no applications under /System, Spotlight indexing may be off; added the applications found on disk")
-		return
-	}
-	ev.Msg("added applications found on disk that system_profiler did not report")
+	return count, true
 }
 
 // MacOS
