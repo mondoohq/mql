@@ -358,6 +358,7 @@ func (upm *UnixProcessManager) runList() ([]*OSProcess, error) {
 	log.Debug().Int("processes", len(entries)).Msg("found processes")
 
 	isFreeBSD := upm.platform.Name == "freebsd"
+	isSolaris := upm.platform.Name == "solaris"
 	var comms map[int64]string
 	if isFreeBSD {
 		comms = upm.freebsdComms()
@@ -365,6 +366,9 @@ func (upm *UnixProcessManager) runList() ([]*OSProcess, error) {
 	var ps []*OSProcess
 	for i := range entries {
 		p := entries[i].ToOSProcess()
+		if isSolaris {
+			p.State = solarisProcessState(entries[i].Stat)
+		}
 		if isFreeBSD {
 			p.State = freebsdProcessState(entries[i].Stat)
 			if comm, ok := comms[p.Pid]; ok {
@@ -441,6 +445,31 @@ func freebsdProcessState(stat string) string {
 		return ""
 	}
 	if name, ok := freebsdRunStates[stat[0]]; ok {
+		return stat[:1] + " (" + name + ")"
+	}
+	return stat[:1]
+}
+
+// solarisRunStates names the one-letter state of the SVR4 ps `s` column on
+// Solaris, as documented in ps(1). The labels follow the Linux
+// /proc/<pid>/status wording where the meaning is the same.
+var solarisRunStates = map[byte]string{
+	'O': "running",      // on a processor
+	'R': "runnable",     // on a run queue
+	'S': "sleeping",     // waiting for an event
+	'T': "stopped",      // stopped by a job control signal or traced
+	'W': "cpu cap wait", // waiting for CPU usage to drop below its cap
+	'Z': "zombie",       // dead, not yet reaped
+}
+
+// solarisProcessState turns the Solaris ps state letter into the
+// "<letter> (<name>)" form Linux reports, for example "S (sleeping)". An
+// undocumented letter is kept as is, and an empty value stays empty.
+func solarisProcessState(stat string) string {
+	if stat == "" {
+		return ""
+	}
+	if name, ok := solarisRunStates[stat[0]]; ok {
 		return stat[:1] + " (" + name + ")"
 	}
 	return stat[:1]

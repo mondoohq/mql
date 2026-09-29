@@ -9,6 +9,7 @@ import (
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 )
 
 func initNtpConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -33,6 +34,25 @@ func initNtpConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[str
 
 const defaultNtpConf = "/etc/ntp.conf"
 
+// Solaris keeps its ntp configuration under /etc/inet, and the file ntpd reads
+// is an SMF property of the ntp service: the Oracle Cloud image points it at
+// /etc/inet/ntp.linklocal.
+const (
+	solarisDefaultNtpConf = "/etc/inet/ntp.conf"
+	solarisNtpConfCommand = "svcprop -p config/configfile svc:/network/ntp:default"
+)
+
+// solarisNtpConfPath picks the file ntpd reads from the output of
+// solarisNtpConfCommand, falling back to the Solaris default when the property
+// is unset or the service does not exist.
+func solarisNtpConfPath(svcpropOut string, exitCode int64) string {
+	path := strings.TrimSpace(svcpropOut)
+	if exitCode != 0 || !strings.HasPrefix(path, "/") || strings.ContainsAny(path, "\n ") {
+		return solarisDefaultNtpConf
+	}
+	return path
+}
+
 func (s *mqlNtpConf) id() (string, error) {
 	file := s.GetFile()
 	if file.Error != nil {
@@ -45,8 +65,25 @@ func (s *mqlNtpConf) id() (string, error) {
 }
 
 func (s *mqlNtpConf) file() (*mqlFile, error) {
+	path := defaultNtpConf
+	conn := s.MqlRuntime.Connection.(shared.Connection)
+	if pf := conn.Asset().Platform; pf != nil && pf.Name == "solaris" {
+		o, err := CreateResource(s.MqlRuntime, "command", map[string]*llx.RawData{
+			"command": llx.StringData(solarisNtpConfCommand),
+		})
+		if err != nil {
+			return nil, err
+		}
+		cmd := o.(*mqlCommand)
+		exit := cmd.GetExitcode()
+		if exit.Error != nil {
+			return nil, exit.Error
+		}
+		path = solarisNtpConfPath(cmd.GetStdout().Data, exit.Data)
+	}
+
 	f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
-		"path": llx.StringData(defaultNtpConf),
+		"path": llx.StringData(path),
 	})
 	if err != nil {
 		return nil, err

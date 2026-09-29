@@ -70,6 +70,10 @@ const (
 
 const sshdEffectiveConfigCommand = "sshd -T"
 
+// Solaris and illumos install sshd in /usr/lib/ssh, which is on no user's
+// PATH, not even root's.
+const solarisSshdEffectiveConfigCommand = "/usr/lib/ssh/sshd -T"
+
 func (s *mqlSshdConfig) id() (string, error) {
 	file := s.GetFile()
 	if file.Error != nil {
@@ -88,6 +92,14 @@ func (s *mqlSshdConfig) isWindows() bool {
 		return false
 	}
 	return conn.Asset().Platform.IsFamily(inventory.FAMILY_WINDOWS)
+}
+
+func (s *mqlSshdConfig) isSolaris() bool {
+	conn, ok := s.MqlRuntime.Connection.(shared.Connection)
+	if !ok || conn.Asset() == nil || conn.Asset().Platform == nil {
+		return false
+	}
+	return conn.Asset().Platform.Name == "solaris"
 }
 
 func (s *mqlSshdConfig) file() (*mqlFile, error) {
@@ -483,8 +495,12 @@ func (s *mqlSshdConfig) effectiveConfigCommand() (string, error) {
 	if file.Error != nil {
 		return "", file.Error
 	}
+	command := sshdEffectiveConfigCommand
+	if s.isSolaris() {
+		command = solarisSshdEffectiveConfigCommand
+	}
 	if file.Data == nil || file.Data.Path.Data == "" {
-		return sshdEffectiveConfigCommand, nil
+		return command, nil
 	}
 	path := file.Data.Path.Data
 	if s.isWindows() {
@@ -504,9 +520,9 @@ func (s *mqlSshdConfig) effectiveConfigCommand() (string, error) {
 		return sshdEffectiveConfigCommand + ` -f "` + path + `"`, nil
 	}
 	if path == defaultSshdConfig {
-		return sshdEffectiveConfigCommand, nil
+		return command, nil
 	}
-	return sshdEffectiveConfigCommand + " -f " + shared.ShellEscape(path), nil
+	return command + " -f " + shared.ShellEscape(path), nil
 }
 
 func effectiveConfigEntrySlice(params map[string]string, key string) ([]any, error) {

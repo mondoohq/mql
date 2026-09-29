@@ -114,6 +114,29 @@ kexalgorithms sntrup761x25519-sha512,mlkem768x25519-sha256,curve25519-sha256
 	assert.Equal(t, []any{"sntrup761x25519-sha512", "mlkem768x25519-sha256", "curve25519-sha256"}, kexs.Data)
 }
 
+// Solaris 11.4 is detected into the linux family, and its sshd is not on the
+// PATH: a bare `sshd -T` fails there with "command not found".
+func TestSshdConfigEffectiveAlgorithmsSolaris(t *testing.T) {
+	runtime := sshdEffectiveConfigMockRuntimeOn(t, &inventory.Platform{
+		Name:    "solaris",
+		Family:  []string{"linux", "unix", "os"},
+		Version: "11.4",
+	}, map[string]*mock.Command{
+		solarisSshdEffectiveConfigCommand: {
+			Command:    solarisSshdEffectiveConfigCommand,
+			Stdout:     "ciphers chacha20-poly1305@openssh.com,aes128-gcm@openssh.com\n",
+			ExitStatus: 0,
+		},
+	})
+
+	raw, err := CreateResource(runtime, ResourceSshdConfig, nil)
+	require.NoError(t, err)
+
+	ciphers := raw.(*mqlSshdConfig).GetEffectiveCiphers()
+	require.NoError(t, ciphers.Error)
+	assert.Equal(t, []any{"chacha20-poly1305@openssh.com", "aes128-gcm@openssh.com"}, ciphers.Data)
+}
+
 func TestSshdConfigEffectiveAlgorithmsCustomPath(t *testing.T) {
 	command := sshdEffectiveConfigCommand + " -f '/tmp/sshd config'"
 	runtime := sshdEffectiveConfigMockRuntime(t, map[string]*mock.Command{
@@ -154,14 +177,17 @@ func TestSshdConfigEffectiveAlgorithmsCommandFailure(t *testing.T) {
 
 func sshdEffectiveConfigMockRuntime(t *testing.T, commands map[string]*mock.Command) *plugin.Runtime {
 	t.Helper()
+	return sshdEffectiveConfigMockRuntimeOn(t, &inventory.Platform{
+		Name:    "linux",
+		Family:  []string{"linux", "unix", "os"},
+		Version: "test",
+	}, commands)
+}
 
-	asset := &inventory.Asset{
-		Platform: &inventory.Platform{
-			Name:    "linux",
-			Family:  []string{"linux", "unix", "os"},
-			Version: "test",
-		},
-	}
+func sshdEffectiveConfigMockRuntimeOn(t *testing.T, platform *inventory.Platform, commands map[string]*mock.Command) *plugin.Runtime {
+	t.Helper()
+
+	asset := &inventory.Asset{Platform: platform}
 	conn, err := mock.New(0, asset, mock.WithData(&mock.TomlData{
 		Commands: commands,
 		Files:    map[string]*mock.MockFileData{},

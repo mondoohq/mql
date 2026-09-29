@@ -77,3 +77,12 @@ func TestNtpConfEmptyAndBareDirectives(t *testing.T) {
 	// malformed ntp.conf in the first place.
 	assert.Equal(t, []any{"", ""}, servers)
 }
+
+func TestSolarisNtpConfPath(t *testing.T) {
+	// verbatim from an Oracle Solaris 11.4.86 image on OCI
+	assert.Equal(t, "/etc/inet/ntp.linklocal", solarisNtpConfPath("/etc/inet/ntp.linklocal\n", 0))
+	// the property is unset, or the service is not installed
+	assert.Equal(t, "/etc/inet/ntp.conf", solarisNtpConfPath("", 1))
+	assert.Equal(t, "/etc/inet/ntp.conf", solarisNtpConfPath("svcprop: Pattern 'svc:/network/ntp:default' doesn't match any entities\n", 1))
+	assert.Equal(t, "/etc/inet/ntp.conf", solarisNtpConfPath("\"\"\n", 0))
+}

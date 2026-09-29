@@ -65,6 +65,11 @@ func TestSolarisProcessList(t *testing.T) {
 	require.NotNil(t, init)
 	assert.Equal(t, "init", init.Executable)
 	assert.Equal(t, "/usr/sbin/init", init.Command)
+	assert.Equal(t, "S (sleeping)", init.State)
+
+	sched := byPid[0]
+	require.NotNil(t, sched)
+	assert.Equal(t, "T (stopped)", sched.State)
 
 	sshd := byPid[892]
 	require.NotNil(t, sshd)
