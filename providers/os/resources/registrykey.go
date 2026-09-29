@@ -444,7 +444,11 @@ func (k *mqlRegistrykey) powershellChildren(path string) ([]registry.RegistryKey
 		return nil, exitcode.Error
 	}
 	if exitcode.Data != 0 {
-		return nil, errors.New("could not retrieve registry key")
+		absent, err := classifyRegistryStderr(path, cmd.GetStderr().Data)
+		if absent {
+			return nil, nil
+		}
+		return nil, err
 	}
 
 	stdout := cmd.GetStdout()

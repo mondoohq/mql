@@ -132,9 +132,13 @@ func GetRegistryKeyItemScript(path string) string {
 	return fmt.Sprintf(getRegistryKeyItemScript, powershell.SingleQuote(path))
 }
 
-// getRegistryKeyChildItemsScript represents a registry key item and its children
+// getRegistryKeyChildItemsScript lists the immediate child keys of a registry
+// key. The key itself is opened first with -ErrorAction Stop, so a key that is
+// refused or missing fails with its error record on stderr, which the resource
+// classifies, instead of listing as a key with no children.
 const getRegistryKeyChildItemsScript = `
 $path = %s
+$null = Get-Item ('Registry::' + $path) -ErrorAction Stop
 $children = Get-ChildItem -Path ('Registry::' + $path) -ea SilentlyContinue
 
 $properties = @()

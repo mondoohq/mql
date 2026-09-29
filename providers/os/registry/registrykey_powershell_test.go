@@ -46,6 +46,18 @@ func TestWindowsRegistryKeyChildParser(t *testing.T) {
 // script is the only thing that bounds the depth, and a recursive enumeration
 // both breaks that contract and can return an unbounded JSON document for a
 // large hive.
+// The key is opened with -ErrorAction Stop before its children are listed,
+// so a refused or missing key fails with an error record the resource
+// classifies, instead of Get-ChildItem's SilentlyContinue listing it as a key
+// with no children.
+func TestGetRegistryKeyChildItemsScriptFailsOnAnUnreadableKey(t *testing.T) {
+	script := GetRegistryKeyChildItemsScript(`HKEY_LOCAL_MACHINE\SECURITY`)
+	open := strings.Index(script, "Get-Item ('Registry::' + $path) -ErrorAction Stop")
+	list := strings.Index(script, "Get-ChildItem")
+	require.GreaterOrEqual(t, open, 0, "the key must be opened with -ErrorAction Stop")
+	assert.Less(t, open, list, "the key must be opened before its children are listed")
+}
+
 func TestGetRegistryKeyChildItemsScriptEnumeratesOneLevel(t *testing.T) {
 	script := GetRegistryKeyChildItemsScript(`HKEY_LOCAL_MACHINE\SOFTWARE\Example`)
 
