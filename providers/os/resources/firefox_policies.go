@@ -243,13 +243,15 @@ func (f *mqlFirefoxPolicies) readRegistryValues(path string) ([]firefox.Registry
 		if name.Error != nil || name.Data == "" {
 			continue
 		}
+		// a value that could not be read fails the read: skipping it would
+		// report its policy as not set
 		kind := prop.GetType()
 		if kind.Error != nil {
-			continue
+			return nil, kind.Error
 		}
 		data := prop.GetData()
 		if data.Error != nil {
-			continue
+			return nil, data.Error
 		}
 		res = append(res, firefox.RegistryValue{
 			Name: name.Data,

@@ -4,6 +4,9 @@
 package resources
 
 import (
+	"errors"
+	"github.com/stretchr/testify/assert"
+	"go.mondoo.com/mql/providers/os/registry"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -110,4 +113,23 @@ func TestRegistrykeyPropertyID_PerUser(t *testing.T) {
 		require.Equal(t, `HKEY_USERS\S-1-5-21-1-2-3-1001\Software\Policies - Bar`, idA)
 		require.NotEqual(t, idA, idB, "different users with the same property must have distinct ids")
 	})
+}
+
+// The typed Windows resources read Value.Number directly, so a value that
+// could not be read has to fail their read instead of arriving as 0: on a host
+// where AppLocker blocks reg.exe under Constrained Language Mode, every value is
+// untyped and LSA would otherwise report limitBlankPasswordUse as false.
+func TestRegistryValueError(t *testing.T) {
+	path := `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Lsa`
+	readable := registry.RegistryKeyItem{Key: "LimitBlankPasswordUse", Value: registry.RegistryKeyValue{Kind: registry.DWORD, Number: 1}}
+	unread := registry.RegistryKeyItem{Key: "NoLMHash", Value: registry.RegistryKeyValue{Err: errors.New("could not determine the registry value type")}}
+
+	require.NoError(t, registryValueError(path, nil))
+	require.NoError(t, registryValueError(path, []registry.RegistryKeyItem{readable}))
+
+	err := registryValueError(path, []registry.RegistryKeyItem{readable, unread})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "NoLMHash")
+	assert.Contains(t, err.Error(), path)
+	assert.Contains(t, err.Error(), "could not determine the registry value type")
 }

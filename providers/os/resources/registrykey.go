@@ -172,7 +172,35 @@ func (k *mqlRegistrykey) powershellExists(path string) (bool, error) {
 }
 
 // GetEntries returns a list of registry key property resources
+// getEntries returns the values of the key and fails when any of them could
+// not be read. The typed Windows resources (LSA, Schannel, the spooler, ...)
+// read Value.Number and Value.String directly, so an unread value would reach
+// them as 0 or "" and report a setting as off. Only items() tolerates a
+// per-value failure, because it can hand the error to that value's fields.
 func (k *mqlRegistrykey) getEntries() ([]registry.RegistryKeyItem, error) {
+	entries, err := k.readEntries()
+	if err != nil {
+		return nil, err
+	}
+	if err := registryValueError(k.Path.Data, entries); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+// registryValueError returns the error of the first value of a key that could
+// not be read, or nil.
+func registryValueError(path string, entries []registry.RegistryKeyItem) error {
+	for i := range entries {
+		if entries[i].Value.Err != nil {
+			return fmt.Errorf("could not read registry value %s of %s: %w", entries[i].Key, path, entries[i].Value.Err)
+		}
+	}
+	return nil
+}
+
+// readEntries returns the values of the key, each carrying its own read error.
+func (k *mqlRegistrykey) readEntries() ([]registry.RegistryKeyItem, error) {
 	conn := k.MqlRuntime.Connection.(shared.Connection)
 
 	if k.isUserHive() {
@@ -246,11 +274,6 @@ func (k *mqlRegistrykey) properties() (map[string]any, error) {
 	res := map[string]any{}
 	for i := range entries {
 		rkey := entries[i]
-		// the map has no place for one value's error, and an empty string
-		// would report an unread value as configured to nothing
-		if rkey.Value.Err != nil {
-			return nil, fmt.Errorf("could not read registry value %s of %s: %w", rkey.Key, k.Path.Data, rkey.Value.Err)
-		}
 		res[rkey.Key] = rkey.String()
 	}
 
@@ -259,7 +282,7 @@ func (k *mqlRegistrykey) properties() (map[string]any, error) {
 
 // items returns a list of registry key property resources
 func (k *mqlRegistrykey) items() ([]any, error) {
-	entries, err := k.getEntries()
+	entries, err := k.readEntries()
 	if err != nil {
 		return nil, err
 	}
