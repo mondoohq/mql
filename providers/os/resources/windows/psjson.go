@@ -83,6 +83,51 @@ func psWrapElement(data []byte) []byte {
 	return append(out, ']')
 }
 
+// PSString decodes a value PowerShell means as a string.
+//
+// Two object shapes stand in for one. A calculated property whose expression
+// yields nothing serializes as an empty object rather than as null, which
+// decodes to "". And Get-Content attaches PSPath, PSChildName and other note
+// properties to the strings it returns, which ConvertTo-Json in Windows
+// PowerShell 5.1 writes as {"value":"...","PSPath":...}; that decodes to the
+// value. A plain string field fails the whole decode on either shape.
+type PSString string
+
+func (s *PSString) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) > 0 && data[0] == '{' {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(data, &fields); err != nil {
+			return err
+		}
+		v, ok := psLookupField(fields, "value")
+		if !ok {
+			*s = ""
+			return nil
+		}
+		data = bytes.TrimSpace(v)
+	}
+	if len(data) == 0 || data[0] != '"' {
+		*s = ""
+		return nil
+	}
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*s = PSString(v)
+	return nil
+}
+
+// StringPtr returns the string, or nil when s is nil.
+func (s *PSString) StringPtr() *string {
+	if s == nil {
+		return nil
+	}
+	str := string(*s)
+	return &str
+}
+
 // PSInt64Array decodes a list of integers out of any of the shapes PowerShell
 // produces for one. See psUnwrapList for why a plain []int64 tag is not enough.
 type PSInt64Array []int64

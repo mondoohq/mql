@@ -2883,6 +2883,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gitlab.project.package.files": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabProjectPackage).GetFiles()).ToDataRes(types.Array(types.Resource("gitlab.project.package.file")))
 	},
+	"gitlab.project.package.creator": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabProjectPackage).GetCreator()).ToDataRes(types.Resource("gitlab.user"))
+	},
+	"gitlab.project.package.pipeline": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabProjectPackage).GetPipeline()).ToDataRes(types.Resource("gitlab.project.pipeline"))
+	},
 	"gitlab.project.package.file.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabProjectPackageFile).GetId()).ToDataRes(types.Int)
 	},
@@ -3273,8 +3279,29 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"gitlab.settings.systemHook.tokenPresent": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabSettingsSystemHook).GetTokenPresent()).ToDataRes(types.Bool)
 	},
+	"gitlab.settings.systemHook.signingTokenPresent": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettingsSystemHook).GetSigningTokenPresent()).ToDataRes(types.Bool)
+	},
 	"gitlab.settings.systemHook.urlVariables": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabSettingsSystemHook).GetUrlVariables()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gitlab.settings.systemHook.pushEventsBranchFilter": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettingsSystemHook).GetPushEventsBranchFilter()).ToDataRes(types.String)
+	},
+	"gitlab.settings.systemHook.branchFilterStrategy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettingsSystemHook).GetBranchFilterStrategy()).ToDataRes(types.String)
+	},
+	"gitlab.settings.systemHook.customWebhookTemplate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettingsSystemHook).GetCustomWebhookTemplate()).ToDataRes(types.String)
+	},
+	"gitlab.settings.systemHook.customHeaders": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettingsSystemHook).GetCustomHeaders()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"gitlab.settings.systemHook.alertStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettingsSystemHook).GetAlertStatus()).ToDataRes(types.String)
+	},
+	"gitlab.settings.systemHook.disabledUntil": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlGitlabSettingsSystemHook).GetDisabledUntil()).ToDataRes(types.Time)
 	},
 	"gitlab.settings.systemHook.createdAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlGitlabSettingsSystemHook).GetCreatedAt()).ToDataRes(types.Time)
@@ -6770,6 +6797,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGitlabProjectPackage).Files, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"gitlab.project.package.creator": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabProjectPackage).Creator, ok = plugin.RawToTValue[*mqlGitlabUser](v.Value, v.Error)
+		return
+	},
+	"gitlab.project.package.pipeline": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabProjectPackage).Pipeline, ok = plugin.RawToTValue[*mqlGitlabProjectPipeline](v.Value, v.Error)
+		return
+	},
 	"gitlab.project.package.file.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGitlabProjectPackageFile).__id, ok = v.Value.(string)
 		return
@@ -7358,8 +7393,36 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlGitlabSettingsSystemHook).TokenPresent, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"gitlab.settings.systemHook.signingTokenPresent": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettingsSystemHook).SigningTokenPresent, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"gitlab.settings.systemHook.urlVariables": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlGitlabSettingsSystemHook).UrlVariables, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.systemHook.pushEventsBranchFilter": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettingsSystemHook).PushEventsBranchFilter, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.systemHook.branchFilterStrategy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettingsSystemHook).BranchFilterStrategy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.systemHook.customWebhookTemplate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettingsSystemHook).CustomWebhookTemplate, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.systemHook.customHeaders": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettingsSystemHook).CustomHeaders, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.systemHook.alertStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettingsSystemHook).AlertStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"gitlab.settings.systemHook.disabledUntil": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlGitlabSettingsSystemHook).DisabledUntil, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"gitlab.settings.systemHook.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -15020,6 +15083,8 @@ type mqlGitlabProjectPackage struct {
 	WebPath          plugin.TValue[string]
 	Project          plugin.TValue[*mqlGitlabProject]
 	Files            plugin.TValue[[]any]
+	Creator          plugin.TValue[*mqlGitlabUser]
+	Pipeline         plugin.TValue[*mqlGitlabProjectPipeline]
 }
 
 // createGitlabProjectPackage creates a new instance of this resource
@@ -15124,6 +15189,38 @@ func (c *mqlGitlabProjectPackage) GetFiles() *plugin.TValue[[]any] {
 		}
 
 		return c.files()
+	})
+}
+
+func (c *mqlGitlabProjectPackage) GetCreator() *plugin.TValue[*mqlGitlabUser] {
+	return plugin.GetOrCompute[*mqlGitlabUser](&c.Creator, func() (*mqlGitlabUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gitlab.project.package", c.__id, "creator")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGitlabUser), nil
+			}
+		}
+
+		return c.creator()
+	})
+}
+
+func (c *mqlGitlabProjectPackage) GetPipeline() *plugin.TValue[*mqlGitlabProjectPipeline] {
+	return plugin.GetOrCompute[*mqlGitlabProjectPipeline](&c.Pipeline, func() (*mqlGitlabProjectPipeline, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("gitlab.project.package", c.__id, "pipeline")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlGitlabProjectPipeline), nil
+			}
+		}
+
+		return c.pipeline()
 	})
 }
 
@@ -16600,7 +16697,14 @@ type mqlGitlabSettingsSystemHook struct {
 	MergeRequestsEvents    plugin.TValue[bool]
 	RepositoryUpdateEvents plugin.TValue[bool]
 	TokenPresent           plugin.TValue[bool]
+	SigningTokenPresent    plugin.TValue[bool]
 	UrlVariables           plugin.TValue[map[string]any]
+	PushEventsBranchFilter plugin.TValue[string]
+	BranchFilterStrategy   plugin.TValue[string]
+	CustomWebhookTemplate  plugin.TValue[string]
+	CustomHeaders          plugin.TValue[map[string]any]
+	AlertStatus            plugin.TValue[string]
+	DisabledUntil          plugin.TValue[*time.Time]
 	CreatedAt              plugin.TValue[*time.Time]
 }
 
@@ -16681,8 +16785,36 @@ func (c *mqlGitlabSettingsSystemHook) GetTokenPresent() *plugin.TValue[bool] {
 	return &c.TokenPresent
 }
 
+func (c *mqlGitlabSettingsSystemHook) GetSigningTokenPresent() *plugin.TValue[bool] {
+	return &c.SigningTokenPresent
+}
+
 func (c *mqlGitlabSettingsSystemHook) GetUrlVariables() *plugin.TValue[map[string]any] {
 	return &c.UrlVariables
+}
+
+func (c *mqlGitlabSettingsSystemHook) GetPushEventsBranchFilter() *plugin.TValue[string] {
+	return &c.PushEventsBranchFilter
+}
+
+func (c *mqlGitlabSettingsSystemHook) GetBranchFilterStrategy() *plugin.TValue[string] {
+	return &c.BranchFilterStrategy
+}
+
+func (c *mqlGitlabSettingsSystemHook) GetCustomWebhookTemplate() *plugin.TValue[string] {
+	return &c.CustomWebhookTemplate
+}
+
+func (c *mqlGitlabSettingsSystemHook) GetCustomHeaders() *plugin.TValue[map[string]any] {
+	return &c.CustomHeaders
+}
+
+func (c *mqlGitlabSettingsSystemHook) GetAlertStatus() *plugin.TValue[string] {
+	return &c.AlertStatus
+}
+
+func (c *mqlGitlabSettingsSystemHook) GetDisabledUntil() *plugin.TValue[*time.Time] {
+	return &c.DisabledUntil
 }
 
 func (c *mqlGitlabSettingsSystemHook) GetCreatedAt() *plugin.TValue[*time.Time] {

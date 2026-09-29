@@ -3031,6 +3031,14 @@ private aws.iam.policy @defaults("arn name") {
   // principal has used, and totalAuthenticatedEntities counts the principals
   // that did use each service.
   lastAccessedServices() []aws.iam.serviceLastAccessed
+  // IAM Access Analyzer policy validation findings for the default version
+  //
+  // The default version document validated as an identity policy. Each entry
+  // has `findingType` (ERROR, SECURITY_WARNING, WARNING, or SUGGESTION),
+  // `issueCode`, `findingDetails`, `learnMoreLink`, and `locations`, a list
+  // of `{path, span}` entries pointing into the document. A SECURITY_WARNING
+  // flags an overly permissive grant, such as iam:PassRole on every resource.
+  validationFindings() []dict
 
   // Tags for the policy
   tags() map[string]string
@@ -3361,6 +3369,17 @@ private aws.iam.accessAnalyzer.analyzer @defaults("name type region status") {
   // "external sharing is being hidden". Empty for analyzer types that do not
   // support archive rules, such as the unused-access analyzers.
   archiveRules() []aws.iam.accessAnalyzer.archiveRule
+  // Days without use after which a permission is reported as unused
+  //
+  // Null for analyzers that are not unused-access analyzers.
+  unusedAccessAge int
+  // Accounts and resources the unused-access analyzer leaves out
+  //
+  // Each entry has `accountIds` (a list of account IDs) and `resourceTags`
+  // (a list of tag maps); a principal in a listed account, or carrying all
+  // tags of one listed map, produces no unused-access findings. Empty for
+  // analyzers that are not unused-access analyzers or exclude nothing.
+  unusedAccessExclusions []dict
 }
 
 // IAM Access Analyzer archive rule
@@ -10675,6 +10694,11 @@ private aws.eventbridge.eventBus @defaults("arn name") {
   rules() []aws.eventbridge.rule
   // Resource policy document attached to the event bus (JSON); empty if no policy is attached
   policy() string
+  // AWS service principal that created the event bus on behalf of the account
+  //
+  // Set when an AWS service created and manages the event bus, for example
+  // `events.amazonaws.com`. Null for event buses the account created itself.
+  managedBy string
 }
 
 // Amazon EventBridge rule
@@ -10701,6 +10725,11 @@ private aws.eventbridge.rule @defaults("arn name state") {
   tags() map[string]string
   // Targets that matched events are delivered to
   eventTargets() []aws.eventbridge.rule.target
+  // AWS service principal that created the rule on behalf of the account
+  //
+  // Set when an AWS service created and manages the rule. Null for rules the
+  // account created itself.
+  managedBy string
 }
 
 // Amazon EventBridge rule target
@@ -13264,6 +13293,12 @@ private aws.s3.bucket.encryptionRule @defaults("sseAlgorithm bucketKeyEnabled") 
   kmsMasterKeyId string
   // Whether an S3 Bucket Key is used for SSE-KMS
   bucketKeyEnabled bool
+  // Server-side encryption types blocked for writes to the bucket
+  //
+  // A PutObject or CopyObject request using a listed type is rejected.
+  // Currently only SSE-C can be blocked. NONE means no type is blocked. Null
+  // when S3 reports no setting for the rule.
+  blockedEncryptionTypes []string
 }
 
 // Amazon S3 bucket replication rule
@@ -13900,6 +13935,64 @@ aws.backup @defaults("vaults") {
   scanJobs() []aws.backup.scanJob
   // Backup access points that expose recovery point contents through S3 APIs
   accessPoints() []aws.backup.accessPoint
+  // Account-level AWS Backup settings
+  globalSettings() aws.backup.globalSettings
+  // Legal holds across all enabled regions
+  legalHolds() []aws.backup.legalHold
+}
+
+// AWS Backup global settings
+//
+// Account-level AWS Backup settings, reported to the organization management
+// account. `crossAccountBackupEnabled` reports whether backups may be copied
+// to other accounts in the organization, `multiPartyApprovalEnabled` whether
+// multi-party approval can be used to recover logically air-gapped vaults,
+// and `delegatedAdministratorEnabled` whether a member account may
+// administer AWS Backup for the organization. `settings` carries every
+// setting as the service reports it.
+private aws.backup.globalSettings @defaults("crossAccountBackupEnabled multiPartyApprovalEnabled") {
+  // Every global setting, keyed by name (for example isCrossAccountBackupEnabled)
+  settings map[string]string
+  // Whether backups may be copied to other accounts in the organization
+  //
+  // Null when the service does not report the setting.
+  crossAccountBackupEnabled bool
+  // Whether multi-party approval is enabled for the organization
+  //
+  // Null when the service does not report the setting.
+  multiPartyApprovalEnabled bool
+  // Whether a delegated administrator account may manage AWS Backup
+  //
+  // Null when the service does not report the setting.
+  delegatedAdministratorEnabled bool
+  // Time the settings were last updated
+  updatedAt time
+}
+
+// AWS Backup legal hold
+//
+// A hold that keeps the recovery points it selects from being deleted, even
+// after their retention period ends, until the hold is canceled. `status`
+// reports whether the hold is in force and `cancelledAt` when it was lifted.
+private aws.backup.legalHold @defaults("title status region") {
+  // ARN of the legal hold
+  arn string
+  // Identifier of the legal hold
+  id string
+  // Title of the legal hold
+  title string
+  // Description of the legal hold
+  description string
+  // Status of the legal hold
+  //
+  // One of CREATING, ACTIVE, CANCELING, or CANCELED.
+  status string
+  // Region where the legal hold exists
+  region string
+  // Time the legal hold was created
+  createdAt time
+  // Time the legal hold was canceled
+  cancelledAt time
 }
 
 // AWS Backup access point
@@ -13982,6 +14075,30 @@ private aws.backup.vault @defaults("name region") {
   // True when an Allow statement grants a wildcard principal access that is not
   // scoped by a source-restricting condition.
   isPublic() bool
+  // Type of the vault
+  //
+  // One of BACKUP_VAULT, LOGICALLY_AIR_GAPPED_BACKUP_VAULT, or
+  // RESTORE_ACCESS_BACKUP_VAULT. A logically air-gapped vault is locked in
+  // compliance mode and encrypted with a key the account does not control.
+  vaultType string
+  // State of the vault: CREATING, AVAILABLE, or FAILED
+  vaultState string
+  // Kind of KMS key encrypting the vault
+  //
+  // AWS_OWNED_KMS_KEY or CUSTOMER_MANAGED_KMS_KEY.
+  encryptionKeyType string
+  // Vault this restore access vault gives access to
+  //
+  // Set for a RESTORE_ACCESS_BACKUP_VAULT, where it names the logically
+  // air-gapped vault whose recovery points it exposes, which may belong to
+  // another account. Null for other vault types.
+  sourceBackupVault() aws.backup.vault
+  // ARN of the multi-party approval team associated with the vault
+  //
+  // Empty when no approval team is associated.
+  mpaApprovalTeamArn() string
+  // ARN of the multi-party approval session associated with the vault
+  mpaSessionArn() string
 
   // Tags for the backup vault
   tags() map[string]string
@@ -17143,6 +17260,124 @@ aws.ecr {
   replicationConfiguration() dict
   // Registry-level scanning configuration
   scanningConfiguration() aws.ecr.scanningConfiguration
+  // Private registry of each enabled region
+  //
+  // Carries the registry permissions policy and the image signing
+  // configuration, which are set per region.
+  registries() []aws.ecr.registry
+  // Pull-through cache rules across all enabled regions
+  pullThroughCacheRules() []aws.ecr.pullThroughCacheRule
+  // Repository creation templates across all enabled regions
+  repositoryCreationTemplates() []aws.ecr.repositoryCreationTemplate
+}
+
+// Amazon ECR private registry in one region
+//
+// The registry-wide settings ECR keeps per region. `policy` is the registry
+// permissions policy, which can grant other accounts rights to replicate into
+// the registry or to create repositories through pull-through cache rules;
+// `signingRules` is the managed image signing configuration, which decides
+// which pushed images are signed and with which signing profile.
+private aws.ecr.registry @defaults("registryId region") {
+  // ID of the registry (the account ID)
+  registryId string
+  // Region of the registry
+  region string
+  // Registry permissions policy (JSON string)
+  //
+  // Null when the registry has no policy.
+  policy() string
+  // Managed signing rules of the registry
+  //
+  // Each entry has `signingProfileArn` (the AWS Signer profile used to sign)
+  // and `repositoryFilters`, a list of `{filter, filterType}` entries that
+  // scope which repositories the rule signs. Empty when no signing is
+  // configured.
+  signingRules() []dict
+  // Replication configuration of the registry
+  //
+  // Same shape as aws.ecr.replicationConfiguration: a `rules` list whose
+  // entries carry `destinations` and `repositoryFilters`. Null when
+  // replication is not configured.
+  replicationConfiguration dict
+}
+
+// Amazon ECR pull-through cache rule
+//
+// A rule that makes ECR fetch and cache images from an upstream registry on
+// first pull, into repositories under `ecrRepositoryPrefix`. The upstream
+// registry decides what content can enter the account, and `credential`
+// resolves the Secrets Manager secret holding the upstream credentials.
+private aws.ecr.pullThroughCacheRule @defaults("ecrRepositoryPrefix upstreamRegistryUrl region") {
+  // Repository prefix the rule caches into
+  ecrRepositoryPrefix string
+  // URL of the upstream registry, for example registry-1.docker.io
+  upstreamRegistryUrl string
+  // Kind of upstream registry
+  //
+  // One of ecr, ecr-public, quay, k8s, docker-hub, github-container-registry,
+  // azure-container-registry, gitlab-container-registry, or chainguard.
+  upstreamRegistry string
+  // Upstream repository prefix mapped to the ECR repository prefix
+  upstreamRepositoryPrefix string
+  // ID of the registry the rule belongs to
+  registryId string
+  // Region of the rule
+  region string
+  // Secret holding the credentials for the upstream registry
+  //
+  // Null for upstream registries that need no authentication.
+  credential() aws.secretsmanager.secret
+  // IAM role ECR assumes to reach a private ECR upstream registry
+  customRole() aws.iam.role
+  // Time the rule was created
+  createdAt time
+  // Time the rule was last updated
+  updatedAt time
+}
+
+// Amazon ECR repository creation template
+//
+// Settings ECR applies to repositories it creates on your behalf, through
+// pull-through cache, replication, or create-on-push, when the repository
+// name matches `prefix`. The template decides the new repository's tag
+// mutability, encryption, repository policy, and lifecycle policy, so a weak
+// template produces weak repositories.
+private aws.ecr.repositoryCreationTemplate @defaults("prefix region") {
+  // Repository name prefix the template applies to (ROOT matches every repository)
+  prefix string
+  // Region of the template
+  region string
+  // Description of the template
+  description string
+  // Repository creation paths the template applies to
+  //
+  // Any of PULL_THROUGH_CACHE, REPLICATION, and CREATE_ON_PUSH.
+  appliedFor []string
+  // Tag mutability setting of repositories created from the template
+  //
+  // One of MUTABLE, IMMUTABLE, MUTABLE_WITH_EXCLUSION, or IMMUTABLE_WITH_EXCLUSION.
+  imageTagMutability string
+  // Encryption type of repositories created from the template
+  //
+  // One of AES256, KMS, or KMS_DSSE.
+  encryptionType string
+  // KMS key encrypting repositories created from the template
+  //
+  // Null unless encryptionType is KMS or KMS_DSSE with a customer managed key.
+  kmsKey() aws.kms.key
+  // Repository policy applied to repositories created from the template (JSON string)
+  repositoryPolicy string
+  // Lifecycle policy applied to repositories created from the template (JSON string)
+  lifecyclePolicy string
+  // IAM role ECR assumes when creating repositories from the template
+  customRole() aws.iam.role
+  // Tags applied to repositories created from the template
+  resourceTags map[string]string
+  // Time the template was created
+  createdAt time
+  // Time the template was last updated
+  updatedAt time
 }
 
 // AWS Elastic Container Registry repository
@@ -17603,6 +17838,85 @@ private aws.apigateway.restapi @defaults("name id") {
   securityPolicy string
   // Resource policy for the API (JSON string)
   policy string
+  // Resources (paths) of the REST API, each with the methods defined on it
+  resources() []aws.apigateway.resource
+  // Methods across every resource of the REST API
+  //
+  // The methods of every entry in resources, in one list, so an
+  // authorization check can cover the whole API without walking the path
+  // tree.
+  methods() []aws.apigateway.method
+}
+
+// Resource (path) of an API Gateway REST API
+//
+// One path in a REST API's resource tree, such as `/orders/{id}`, and the
+// HTTP methods defined on it. `path` is the full request path and `methods`
+// lists each method with its authorization settings.
+private aws.apigateway.resource @defaults("path") {
+  // Identifier of the resource
+  id string
+  // Identifier of the REST API the resource belongs to
+  restApiId string
+  // Full request path of the resource, for example /orders/{id}
+  path string
+  // Last segment of the request path
+  pathPart string
+  // Identifier of the parent resource, empty for the root resource
+  parentId string
+  // Region where the resource exists
+  region string
+  // Methods defined on the resource
+  methods []aws.apigateway.method
+}
+
+// Method of an API Gateway REST API
+//
+// One HTTP method on one path of a REST API and how its callers are
+// authorized. `authorizationType` is NONE, AWS_IAM, CUSTOM, or
+// COGNITO_USER_POOLS; a method with authorizationType NONE and apiKeyRequired
+// false can be invoked by anyone who can reach the API. `authorizer` resolves
+// the Lambda or Cognito authorizer for CUSTOM and COGNITO_USER_POOLS methods,
+// and `requestValidator` the validator applied to the request.
+private aws.apigateway.method @defaults("httpMethod path authorizationType") {
+  // HTTP verb of the method, for example GET, POST, or ANY
+  httpMethod string
+  // Request path of the resource the method is defined on
+  path string
+  // Identifier of the resource the method is defined on
+  resourceId string
+  // Identifier of the REST API the method belongs to
+  restApiId string
+  // Region where the method exists
+  region string
+  // How callers are authorized to invoke the method
+  //
+  // One of NONE, AWS_IAM, CUSTOM, or COGNITO_USER_POOLS.
+  authorizationType string
+  // Authorizer that validates callers of the method
+  //
+  // Null unless authorizationType is CUSTOM or COGNITO_USER_POOLS.
+  authorizer() aws.apigateway.authorizer
+  // OAuth scopes an access token must carry to invoke the method
+  //
+  // Only enforced for COGNITO_USER_POOLS methods.
+  authorizationScopes []string
+  // Whether callers must present an API key
+  apiKeyRequired bool
+  // Request validator applied to the method
+  //
+  // Null when the method does not validate requests.
+  requestValidator() aws.apigateway.requestValidator
+  // Operation name of the method, used in generated client SDKs
+  operationName string
+  // Type of backend integration
+  //
+  // One of HTTP, HTTP_PROXY, AWS, AWS_PROXY, or MOCK. Null when the method has no integration.
+  integrationType string
+  // Network path to the backend integration
+  //
+  // INTERNET or VPC_LINK. Null when the method has no integration.
+  integrationConnectionType string
 }
 
 // Access-log configuration of an API Gateway REST API stage
@@ -19644,6 +19958,13 @@ private aws.ec2.clientVpnConnectionLogOptions @defaults("enabled") {
   // Empty when connection logging is disabled or the endpoint writes to a
   // stream it names per connection rather than a fixed one.
   cloudWatchLogStream string
+  // Whether connection logs include the authorization policy evaluation context
+  //
+  // When true, each connection log entry records how the endpoint's
+  // authorization policy was evaluated for the connection, which is what an
+  // audit of a policy running in shadow mode reads. Null when the endpoint
+  // does not report the setting.
+  includeAuthorizationPolicyContext bool
 }
 
 // Login banner of an EC2 Client VPN endpoint
@@ -19758,6 +20079,32 @@ private aws.ec2.clientVpnEndpoint @defaults("id status region") {
   transitGateway() aws.ec2.transitgateway
   // Availability Zones the Transit Gateway association spans
   transitGatewayAvailabilityZones []string
+  // Device trust providers used for device posture evaluation
+  //
+  // Each entry carries trustProviderType (such as crowdstrike, jamf, or
+  // jumpcloud), tenantId, and publicSigningKeyUrl, the URL of the key
+  // that verifies the identity token the provider issues for a device. Empty
+  // when device posture evaluation is not configured on the endpoint, so
+  // connecting devices are not checked against any trust provider.
+  deviceTrustProviders []dict
+  // Cedar authorization policy document of the endpoint
+  //
+  // The policy, written in the Cedar policy language, that decides which
+  // connections the endpoint allows. Null when the endpoint has no
+  // authorization policy.
+  authorizationPolicyDocument() string
+  // State of the endpoint's authorization policy
+  //
+  // One of creating, updating, active, failed, or deleting. Null when the
+  // endpoint has no authorization policy.
+  authorizationPolicyStatus() string
+  // Whether the authorization policy runs in shadow mode
+  //
+  // When true, the policy is evaluated and its results are logged, but access
+  // is not enforced, so the policy does not block any connection. False when
+  // the policy is enforced. Null when the endpoint has no authorization
+  // policy.
+  authorizationPolicyInShadowMode() bool
   // Tags on the endpoint
   tags map[string]string
 }
@@ -20178,6 +20525,31 @@ private aws.ec2.snapshot @defaults("id region volumeSize state") {
   sharedWithAccounts() []string
   // Whether the snapshot is shared outside this account, either publicly or with specific accounts
   sharedExternally() bool
+  // Lock state of the snapshot
+  //
+  // One of compliance, governance, compliance-cooloff, or expired. A locked
+  // snapshot cannot be deleted until the lock expires; in compliance mode not
+  // even the account root user can remove the lock once the cooling-off
+  // period ends. Null when the snapshot has never been locked.
+  lockState() string
+  // Duration of the lock, in days
+  //
+  // Null when the snapshot is not locked or the lock was set with an
+  // explicit expiration date.
+  lockDuration() int
+  // Time the lock was created
+  lockCreatedAt() time
+  // Time the lock duration started
+  lockDurationStartAt() time
+  // Time the lock expires
+  lockExpiresAt() time
+  // Cooling-off period of a compliance-mode lock, in hours
+  //
+  // During the cooling-off period the lock can still be changed or removed by
+  // a user with the right permissions.
+  coolOffPeriod() int
+  // Time the cooling-off period ends
+  coolOffPeriodExpiresAt() time
 }
 
 // Amazon EC2 (EBS) volume
@@ -25022,6 +25394,13 @@ private aws.kinesis.stream @defaults("name status region") {
   tags() map[string]string
   // Enhanced fan-out consumers registered with the stream
   consumers() []aws.kinesis.streamConsumer
+  // How records are distributed across the stream's shards
+  //
+  // AUTO when Kinesis Data Streams places records with service-managed
+  // algorithms and ignores partition keys, or USER_PARTITION_KEY when the
+  // partition key supplied by producers decides the shard. Null for streams
+  // in provisioned capacity mode, which do not report a strategy.
+  recordDistributionStrategy() string
 }
 
 // Amazon Kinesis enhanced fan-out stream consumer
@@ -26214,6 +26593,10 @@ private aws.glue.database @defaults("name region") {
   // Region where the database exists
   region string
   // Tables in the database
+  //
+  // Includes federated tables, which reference an entity outside the Glue
+  // Data Catalog and carry a federatedTable value. When the federation
+  // source cannot be read, only the non-federated tables are listed.
   tables() []aws.glue.database.table
 }
 
@@ -30349,6 +30732,13 @@ private aws.verifiedaccess.group @defaults("verifiedAccessGroupId verifiedAccess
   owner string
   // Tags for the group
   tags map[string]string
+  // Access policy of the group (Cedar policy text)
+  //
+  // Evaluated for every request to the endpoints in the group. Null when no
+  // policy is set.
+  policyDocument() string
+  // Whether the group access policy is enabled
+  policyEnabled() bool
 }
 
 // AWS Verified Access endpoint
@@ -30391,6 +30781,13 @@ private aws.verifiedaccess.endpoint @defaults("verifiedAccessEndpointId applicat
   serverSideEncryption aws.verifiedaccess.sseSpecification
   // Tags for the endpoint
   tags map[string]string
+  // Access policy of the endpoint (Cedar policy text)
+  //
+  // Evaluated for every request to the endpoint, in addition to the policy
+  // of its group. Null when no policy is set.
+  policyDocument() string
+  // Whether the endpoint access policy is enabled
+  policyEnabled() bool
 }
 
 // Server-side encryption specification of an AWS Verified Access resource
@@ -30775,7 +31172,8 @@ private aws.bedrock.marketplaceModelEndpoint @defaults("endpointArn modelSourceI
 // servers and runtimes holds deployed agents, while memories, browsers,
 // codeInterpreters, oauth2CredentialProviders,
 // apiKeyCredentialProviders, and workloadIdentities hold the supporting
-// infrastructure.
+// infrastructure. paymentManagers and paymentCredentialProviders hold the
+// AgentCore Payments setup agents use to pay through payment providers.
 private aws.bedrock.agentCore {
   // MCP gateways in the account
   gateways() []aws.bedrock.agentCore.gateway
@@ -30797,6 +31195,123 @@ private aws.bedrock.agentCore {
   capacityProviders() []aws.bedrock.agentCore.capacityProvider
   // Consent portals where end users grant agents access to their resources
   consentPortals() []aws.bedrock.agentCore.consentPortal
+  // Payment managers that let agents make payments through AgentCore Payments
+  paymentManagers() []aws.bedrock.agentCore.paymentManager
+  // Payment credential providers that hold payment-provider credentials in AgentCore Identity
+  paymentCredentialProviders() []aws.bedrock.agentCore.paymentCredentialProvider
+}
+
+// Amazon Bedrock AgentCore payment manager
+//
+// Payment manager that authorizes agents to make payments and groups the
+// payment connectors they pay through. `authorizerType` reports how inbound
+// requests are authenticated, `iamRole` the role the manager assumes, and
+// `kmsKey` the customer-managed key protecting sensitive payment data at
+// rest. `connectors` lists the payment-provider integrations under the
+// manager.
+private aws.bedrock.agentCore.paymentManager @defaults("name status authorizerType") {
+  // ARN of the payment manager
+  arn string
+  // Unique identifier of the payment manager
+  id string
+  // Name of the payment manager
+  name string
+  // Region where the payment manager exists
+  region string
+  // Description of the payment manager
+  description string
+  // Lifecycle status of the payment manager
+  //
+  // One of CREATING, READY, UPDATING, DELETING, CREATE_FAILED, UPDATE_FAILED, or DELETE_FAILED.
+  status string
+  // How inbound requests to the payment manager are authorized
+  //
+  // One of CUSTOM_JWT (bearer token) or AWS_IAM (IAM credentials).
+  authorizerType string
+  // IAM role associated with the payment manager
+  iamRole() aws.iam.role
+  // Customer-managed KMS key encrypting sensitive payment manager data at rest
+  kmsKey() aws.kms.key
+  // Workload identity of the payment manager in AgentCore Identity
+  workloadIdentity() aws.bedrock.agentCore.workloadIdentity
+  // Tags on the payment manager
+  tags() map[string]string
+  // Time the payment manager was created
+  createdAt time
+  // Time the payment manager was last updated
+  updatedAt time
+  // Payment connectors under the payment manager
+  connectors() []aws.bedrock.agentCore.paymentConnector
+}
+
+// Amazon Bedrock AgentCore payment connector
+//
+// Integration between a payment manager and a payment provider. `type`
+// names the provider, and `provisionMode` reports who owns the connector's
+// credentials: MANUAL when the account supplied the credential providers,
+// QUICK_CREATE when AgentCore provisioned and manages them.
+// `credentialsUpdatedAt` reports when service-managed credentials were last
+// provisioned or rotated, which supports credential-age checks, and
+// `credentialProviders` resolves the credential providers the connector
+// authenticates with.
+private aws.bedrock.agentCore.paymentConnector @defaults("name type status provisionMode") {
+  // Unique identifier of the payment connector
+  id string
+  // Name of the payment connector
+  name string
+  // Region where the payment connector exists
+  region string
+  // Lifecycle status of the payment connector
+  //
+  // One of CREATING, UPDATING, DELETING, READY, CREATE_FAILED, UPDATE_FAILED,
+  // DELETE_FAILED, AWS_MARKETPLACE_SUBSCRIPTION_REQUIRED, or PENDING_AUTHENTICATION.
+  status string
+  // Payment provider the connector integrates with
+  //
+  // One of CoinbaseCDP or StripePrivy.
+  type string
+  // How the connector's credentials were provisioned
+  //
+  // MANUAL when the account supplied the credential providers and owns the
+  // credentials, or QUICK_CREATE when AgentCore provisioned them and the
+  // credentials are service-managed. Connectors created before the setting
+  // existed report MANUAL.
+  provisionMode string
+  // Description of the payment connector
+  description() string
+  // Time the payment connector was created
+  createdAt() time
+  // Time the payment connector was last updated
+  updatedAt time
+  // Time the connector's current service-managed credentials took effect
+  //
+  // Set when the credentials are provisioned and updated by each rotation.
+  // Null for connectors whose provisionMode is MANUAL.
+  credentialsUpdatedAt() time
+  // Credential providers the connector authenticates to the payment provider with
+  credentialProviders() []aws.bedrock.agentCore.paymentCredentialProvider
+}
+
+// Amazon Bedrock AgentCore payment credential provider
+//
+// Credential provider in AgentCore Identity that stores the authentication
+// credentials for a payment provider. `vendor` names the payment provider,
+// and `createdAt` and `updatedAt` support credential-age checks.
+private aws.bedrock.agentCore.paymentCredentialProvider @defaults("name vendor") {
+  // ARN of the payment credential provider
+  arn string
+  // Name of the payment credential provider
+  name string
+  // Region where the payment credential provider exists
+  region string
+  // Payment provider the stored credentials belong to
+  //
+  // One of CoinbaseCDP or StripePrivy.
+  vendor string
+  // Time the payment credential provider was created
+  createdAt time
+  // Time the payment credential provider was last updated
+  updatedAt time
 }
 
 // Amazon Bedrock AgentCore gateway
@@ -31832,6 +32347,61 @@ private aws.bedrock.knowledgeBase @defaults("name status") {
   dataSources() @maturity("deprecated") @replaced_by("aws.bedrock.knowledgeBase.dataSourceDetails") []dict
   // Data sources connected to the knowledge base
   dataSourceDetails() []aws.bedrock.knowledgeBase.dataSource
+  // VPC configurations the knowledge base uses to reach private resources
+  vpcConfigurations() []aws.bedrock.knowledgeBase.vpcConfiguration
+}
+
+// VPC configuration of an Amazon Bedrock knowledge base
+//
+// Private network path a knowledge base uses to reach a resource, such as a
+// self-hosted vector store or data source, from inside a VPC. `vpc` and
+// `subnets` resolve where the knowledge base connects from, `resourceTarget`,
+// `protocol`, and `port` identify what it connects to, and `resolutionMode`
+// reports whether the target name is resolved publicly or inside the VPC.
+// `tlsServerName` reports the name matched against the target's TLS
+// certificate for an HTTPS connection. The `id` selects the configuration
+// within its knowledge base.
+private aws.bedrock.knowledgeBase.vpcConfiguration @defaults("name status resourceTarget protocol port") {
+  // Unique identifier of the VPC configuration
+  id string
+  // Region where the VPC configuration exists
+  region string
+  // Name of the VPC configuration
+  name string
+  // Description of the VPC configuration
+  description string
+  // Lifecycle status of the VPC configuration
+  //
+  // One of CREATING, CREATED, DELETING, CREATE_FAILED, or DELETE_FAILED.
+  status string
+  // Additional detail about the status, such as the cause of a failure
+  statusMessage string
+  // Protocol used to connect to the resource
+  //
+  // One of HTTP or HTTPS.
+  protocol string
+  // Port on which the resource is reached
+  port int
+  // Private IPv4 address or DNS name of the resource
+  resourceTarget string
+  // How the resource target is resolved
+  //
+  // One of PUBLIC or IN_VPC.
+  resolutionMode string
+  // HTTP Host header value sent when invoking the resource
+  hostHeader string
+  // Name matched against the Subject Alternative Names on the resource's TLS certificate
+  //
+  // Present when protocol is HTTPS.
+  tlsServerName string
+  // VPC the knowledge base connects through to reach the resource
+  vpc() aws.vpc
+  // Subnets the knowledge base uses to connect to the resource
+  subnets() []aws.vpc.subnet
+  // Time the VPC configuration was created
+  createdAt time
+  // Time the VPC configuration was last updated
+  updatedAt() time
 }
 
 // Vector store backing an Amazon Bedrock knowledge base
@@ -31840,7 +32410,7 @@ private aws.bedrock.knowledgeBase @defaults("name status") {
 // to the account resources behind it. `type` selects which fields carry
 // values: an RDS store populates `rdsCluster` and `credentialsSecret`, an
 // OpenSearch Managed Cluster store populates `opensearchDomain`, an
-// OpenSearch Serverless store populates `opensearchServerlessCollectionArn`,
+// OpenSearch Serverless store populates `opensearchServerlessCollection`,
 // a Neptune Analytics store populates `neptuneGraphArn`, an S3 Vectors store
 // populates `s3VectorBucketArn`, and the third-party stores (Pinecone, MongoDB
 // Atlas, Redis Enterprise Cloud) populate `endpoint` and
@@ -31869,7 +32439,12 @@ private aws.bedrock.knowledgeBase.vectorStore @defaults("type endpoint vectorInd
   // OpenSearch domain holding the vectors, for an OpenSearch Managed Cluster store
   opensearchDomain() aws.opensearch.domain
   // ARN of the OpenSearch Serverless collection holding the vectors
-  opensearchServerlessCollectionArn string
+  //
+  // Deprecated in favor of opensearchServerlessCollection, which resolves the
+  // same ARN to the collection.
+  opensearchServerlessCollectionArn @maturity("deprecated") @replaced_by("aws.bedrock.knowledgeBase.vectorStore.opensearchServerlessCollection") string
+  // OpenSearch Serverless collection holding the vectors, for an OpenSearch Serverless store
+  opensearchServerlessCollection() aws.opensearchserverless.collection
   // ARN of the Neptune Analytics graph holding the vectors
   neptuneGraphArn string
   // ARN of the S3 vector bucket holding the vectors
@@ -33255,4 +33830,391 @@ private aws.directconnect.gateway @defaults("id name state") {
   //
   // Null on a gateway that has no prefix pool allocations.
   totalPrefixPoolAllocations int
+}
+
+// Amazon OpenSearch Serverless
+//
+// OpenSearch Serverless collections and the policies that govern them across
+// every enabled region. `collections` lists each collection with its type,
+// endpoints, and encryption key. `securityPolicies` lists the network
+// policies, which decide whether a collection is reachable from the internet
+// or only through VPC endpoints, and the encryption policies, which choose
+// between an AWS owned key and a customer managed KMS key. `accessPolicies`
+// lists the data access policies that grant principals permissions on
+// collections and indexes.
+aws.opensearchserverless @defaults("collections") {
+  // Collections across all enabled regions
+  collections() []aws.opensearchserverless.collection
+  // Network and encryption policies across all enabled regions
+  securityPolicies() []aws.opensearchserverless.securityPolicy
+  // Data access policies across all enabled regions
+  accessPolicies() []aws.opensearchserverless.accessPolicy
+}
+
+// Amazon OpenSearch Serverless collection
+//
+// A collection of OpenSearch indexes served without managing clusters. Who
+// can reach it is decided by the network security policies that match its
+// name, who can read or write it by the data access policies, and how it is
+// encrypted by the encryption policy; `kmsKey` resolves the key the
+// encryption policy assigned. The `arn` selects a collection.
+private aws.opensearchserverless.collection @defaults("name type status region") {
+  // ARN of the collection
+  arn string
+  // Identifier of the collection
+  id string
+  // Name of the collection
+  name string
+  // Region of the collection
+  region string
+  // Status of the collection
+  //
+  // One of CREATING, UPDATING, DELETING, ACTIVE, FAILED, or UPDATE_FAILED.
+  status string
+  // Type of the collection: SEARCH, TIMESERIES, or VECTORSEARCH
+  type string
+  // Description of the collection
+  description string
+  // Endpoint for OpenSearch API requests to the collection
+  collectionEndpoint string
+  // Endpoint for OpenSearch Dashboards of the collection
+  dashboardEndpoint string
+  // Whether standby replicas keep the collection available across Availability Zones
+  standbyReplicasEnabled bool
+  // Whether deletion protection is enabled
+  deletionProtectionEnabled bool
+  // KMS key encrypting the collection
+  //
+  // Null when the collection is encrypted with an AWS owned key.
+  kmsKey() aws.kms.key
+  // Name of the collection group the collection belongs to
+  collectionGroupName string
+  // Time the collection was created
+  createdAt time
+  // Time the collection was last modified
+  updatedAt time
+  // Tags for the collection
+  tags() map[string]string
+}
+
+// Amazon OpenSearch Serverless security policy
+//
+// A network or encryption policy, selected by `type` and `name`. A network
+// policy decides how the collections and dashboards it matches can be
+// reached: `allowFromPublic` reports whether any of its rules opens them to
+// the internet, and `sourceVpcEndpointIds` and `sourceServices` list the
+// private paths it allows. An encryption policy decides the key for the
+// collections it matches: `awsOwnedKey` reports an AWS owned key, and
+// `kmsKey` resolves a customer managed key. `resources` lists the collection
+// and dashboard patterns the policy matches.
+private aws.opensearchserverless.securityPolicy @defaults("name type region") {
+  // Name of the policy
+  name string
+  // Type of the policy: network or encryption
+  type string
+  // Region of the policy
+  region string
+  // Description of the policy
+  description string
+  // Version of the policy
+  policyVersion string
+  // Time the policy was created
+  createdAt time
+  // Time the policy was last modified
+  updatedAt time
+  // Policy document
+  //
+  // For a network policy, a list of rule sets, each with `Rules` (a list of
+  // `{ResourceType, Resource}` entries), `AllowFromPublic`, `SourceVPCEs`,
+  // and `SourceServices`. For an encryption policy, `Rules`, `AWSOwnedKey`,
+  // and `KmsARN`.
+  policy() dict
+  // Collection and dashboard patterns the policy matches, for example collection/logs-*
+  resources() []string
+  // Whether any rule of the network policy allows access from the internet
+  //
+  // Null for encryption policies.
+  allowFromPublic() bool
+  // OpenSearch Serverless VPC endpoints the network policy allows access through
+  //
+  // Null for encryption policies.
+  sourceVpcEndpointIds() []string
+  // AWS services the network policy allows private access from, for example bedrock.amazonaws.com
+  //
+  // Null for encryption policies.
+  sourceServices() []string
+  // Whether the encryption policy uses an AWS owned key
+  //
+  // Null for network policies.
+  awsOwnedKey() bool
+  // Customer managed KMS key the encryption policy assigns
+  //
+  // Null for network policies and for encryption policies using an AWS owned key.
+  kmsKey() aws.kms.key
+}
+
+// Amazon OpenSearch Serverless data access policy
+//
+// A policy that grants principals permissions on collections and indexes.
+// `principals` lists every IAM principal and SAML identity the policy grants
+// to, `permissions` the granted actions (for example aoss:ReadDocument or
+// aoss:*), and `resources` the collection and index patterns they apply to.
+private aws.opensearchserverless.accessPolicy @defaults("name region") {
+  // Name of the policy
+  name string
+  // Type of the policy: data
+  type string
+  // Region of the policy
+  region string
+  // Description of the policy
+  description string
+  // Version of the policy
+  policyVersion string
+  // Time the policy was created
+  createdAt time
+  // Time the policy was last modified
+  updatedAt time
+  // Policy document
+  //
+  // A list of rule sets, each with `Rules` (a list of
+  // `{ResourceType, Resource, Permission}` entries), `Principal`, and an
+  // optional `Description`.
+  policy() dict
+  // Principals the policy grants permissions to
+  //
+  // IAM role and user ARNs, and SAML identities of the form
+  // saml/<account>/<provider>/user/<name> or .../group/<name>.
+  principals() []string
+  // Permissions the policy grants, for example aoss:ReadDocument
+  permissions() []string
+  // Collection and index patterns the policy applies to, for example index/logs-*/*
+  resources() []string
+}
+
+// Amazon Redshift Serverless
+//
+// Redshift Serverless workgroups and namespaces across every enabled region.
+// `workgroups` lists the compute and network side of each deployment, with
+// public accessibility, VPC routing, and the subnets and security groups it
+// is reachable through; `namespaces` lists the storage side, with the KMS
+// key, admin credentials, IAM roles, and exported audit logs.
+aws.redshiftserverless @defaults("workgroups") {
+  // Workgroups across all enabled regions
+  workgroups() []aws.redshiftserverless.workgroup
+  // Namespaces across all enabled regions
+  namespaces() []aws.redshiftserverless.namespace
+}
+
+// Amazon Redshift Serverless workgroup
+//
+// The compute resources of a Redshift Serverless deployment and how they are
+// reached. `publiclyAccessible` reports whether the endpoint is reachable
+// from outside the VPC, `enhancedVpcRouting` whether data traffic is forced
+// through the VPC, and `configParameters` holds settings such as require_ssl
+// and enable_user_activity_logging. `namespace` resolves the namespace
+// holding the data.
+private aws.redshiftserverless.workgroup @defaults("name status region") {
+  // ARN of the workgroup
+  arn string
+  // Identifier of the workgroup
+  id string
+  // Name of the workgroup
+  name string
+  // Region of the workgroup
+  region string
+  // Status of the workgroup: CREATING, AVAILABLE, MODIFYING, or DELETING
+  status string
+  // Namespace the workgroup serves
+  namespace() aws.redshiftserverless.namespace
+  // Whether the workgroup endpoint can be reached from outside the VPC
+  publiclyAccessible bool
+  // Whether network traffic is routed through the VPC
+  enhancedVpcRouting bool
+  // DNS address of the workgroup endpoint
+  endpointAddress string
+  // Port the workgroup accepts connections on
+  port int
+  // Subnets the workgroup is deployed in
+  subnets() []aws.vpc.subnet
+  // Security groups controlling access to the workgroup
+  securityGroups() []aws.ec2.securitygroup
+  // Configuration parameters of the workgroup, keyed by parameter name
+  //
+  // For example require_ssl, enable_user_activity_logging, search_path, and
+  // max_query_execution_time.
+  configParameters map[string]string
+  // Base data warehouse capacity, in Redshift Processing Units (RPUs)
+  baseCapacity int
+  // Maximum data warehouse capacity, in RPUs
+  maxCapacity int
+  // IDs of VPCs in other accounts allowed to create endpoints to the workgroup
+  crossAccountVpcIds []string
+  // Custom domain name of the workgroup
+  customDomainName string
+  // Certificate served for the custom domain name
+  customDomainCertificate() aws.acm.certificate
+  // Time the custom domain certificate expires
+  customDomainCertificateExpiresAt time
+  // IP address type of the workgroup: ipv4 or dualstack
+  ipAddressType string
+  // Name of the release track of the workgroup: current or trailing
+  trackName string
+  // Redshift version of the workgroup
+  workgroupVersion string
+  // Patch version of the workgroup
+  patchVersion string
+  // Time the workgroup was created
+  createdAt time
+  // Tags for the workgroup
+  tags() map[string]string
+}
+
+// Amazon Redshift Serverless namespace
+//
+// The database objects, users, and storage of a Redshift Serverless
+// deployment. `kmsKey` resolves the key encrypting the data,
+// `adminPasswordSecret` the Secrets Manager secret holding the admin password
+// when Redshift manages it, `iamRoles` and `defaultIamRole` the roles the
+// database can assume, and `logExports` the audit logs exported to
+// CloudWatch.
+private aws.redshiftserverless.namespace @defaults("name status region") {
+  // ARN of the namespace
+  arn string
+  // Identifier of the namespace
+  id string
+  // Name of the namespace
+  name string
+  // Region of the namespace
+  region string
+  // Status of the namespace: AVAILABLE, MODIFYING, or DELETING
+  status string
+  // Name of the first database created in the namespace
+  dbName string
+  // Name of the admin user
+  adminUsername string
+  // KMS key encrypting the namespace
+  //
+  // Null when the namespace is encrypted with an AWS owned key.
+  kmsKey() aws.kms.key
+  // Secret holding the admin password
+  //
+  // Null when the admin password is not managed by Redshift in Secrets Manager.
+  adminPasswordSecret() aws.secretsmanager.secret
+  // KMS key encrypting the admin password secret
+  adminPasswordSecretKmsKey() aws.kms.key
+  // IAM roles the namespace can assume
+  iamRoles() []aws.iam.role
+  // IAM role used by default when a command names no role
+  defaultIamRole() aws.iam.role
+  // Logs exported to CloudWatch
+  //
+  // Any of useractivitylog, userlog, and connectionlog.
+  logExports []string
+  // Time the namespace was created
+  createdAt time
+  // Tags for the namespace
+  tags() map[string]string
+}
+
+// Amazon Managed Workflows for Apache Airflow (MWAA)
+//
+// Managed Apache Airflow environments across every enabled region. Each
+// entry in `environments` reports how its web server can be reached, the
+// execution role its workflows run as, the KMS key and source bucket holding
+// its DAGs, and which Airflow logs it ships to CloudWatch.
+aws.mwaa @defaults("environments") {
+  // Environments across all enabled regions
+  environments() []aws.mwaa.environment
+}
+
+// Amazon MWAA environment
+//
+// A managed Apache Airflow environment. `webserverAccessMode` reports
+// whether the Airflow UI is reachable from the internet (PUBLIC_ONLY) or
+// only from the VPC (PRIVATE_ONLY); `executionRole` resolves the role every
+// workflow runs as; `sourceBucket` the S3 bucket DAGs, plugins, and
+// requirements are loaded from, where write access means code execution in
+// the environment; and `logConfigurations` which Airflow components log to
+// CloudWatch, and at which level.
+private aws.mwaa.environment @defaults("name status region") {
+  // ARN of the environment
+  arn string
+  // Name of the environment
+  name string
+  // Region of the environment
+  region string
+  // Status of the environment, for example AVAILABLE, CREATING, or UPDATE_FAILED
+  status string
+  // Apache Airflow version of the environment
+  airflowVersion string
+  // Environment class, for example mw1.small
+  environmentClass string
+  // Who can reach the Airflow web server
+  //
+  // One of PRIVATE_ONLY, PUBLIC_ONLY, or PUBLIC_AND_PRIVATE.
+  webserverAccessMode string
+  // URL of the Airflow web server
+  webserverUrl string
+  // Who manages the VPC endpoints of the environment: SERVICE or CUSTOMER
+  endpointManagement string
+  // KMS key encrypting the environment
+  //
+  // Null when the environment is encrypted with an AWS owned key.
+  kmsKey() aws.kms.key
+  // IAM role the workflows of the environment run as
+  executionRole() aws.iam.role
+  // Service-linked role MWAA uses to manage the environment
+  serviceRole() aws.iam.role
+  // S3 bucket holding the DAGs, plugins, and requirements of the environment
+  sourceBucket() aws.s3.bucket
+  // Path of the DAG folder in the source bucket
+  dagS3Path string
+  // Path of the plugins archive in the source bucket
+  pluginsS3Path string
+  // Path of the requirements file in the source bucket
+  requirementsS3Path string
+  // Path of the startup script in the source bucket
+  startupScriptS3Path string
+  // CloudWatch logging of each Airflow component
+  logConfigurations []aws.mwaa.environment.logConfiguration
+  // Subnets the environment runs in
+  subnets() []aws.vpc.subnet
+  // Security groups attached to the environment
+  securityGroups() []aws.ec2.securitygroup
+  // Apache Airflow configuration overrides, keyed by option name
+  //
+  // For example webserver.expose_config or core.default_timezone.
+  airflowConfigurationOptions map[string]string
+  // Minimum number of workers
+  minWorkers int
+  // Maximum number of workers
+  maxWorkers int
+  // Minimum number of web servers
+  minWebservers int
+  // Maximum number of web servers
+  maxWebservers int
+  // Number of schedulers
+  schedulers int
+  // Start of the weekly maintenance window, for example TUE:03:30
+  weeklyMaintenanceWindowStart string
+  // VPC endpoint service name of the web server, when endpoints are customer managed
+  webserverVpcEndpointService string
+  // VPC endpoint service name of the metadata database, when endpoints are customer managed
+  databaseVpcEndpointService string
+  // Time the environment was created
+  createdAt time
+  // Tags for the environment
+  tags map[string]string
+}
+
+// CloudWatch logging of one Amazon MWAA Airflow component
+private aws.mwaa.environment.logConfiguration @defaults("module enabled logLevel") {
+  // Airflow component: DagProcessing, Scheduler, Task, WebServer, or Worker
+  module string
+  // Whether the component sends logs to CloudWatch
+  enabled bool
+  // Minimum level of the logs sent: CRITICAL, ERROR, WARNING, INFO, or DEBUG
+  logLevel string
+  // CloudWatch log group receiving the logs
+  logGroup() aws.cloudwatch.loggroup
 }

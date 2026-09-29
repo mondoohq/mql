@@ -112,6 +112,14 @@ gcp.organization @defaults("name") {
   logging() gcp.organization.loggingService
   // Essential Contacts configured at the organization level for security, technical, and other notification categories
   essentialContacts() []gcp.essentialContact
+  // IAM deny policies attached to the organization, which block permissions for every project beneath it
+  denyPolicies() []gcp.project.iamService.denyPolicy
+  // Cloud NGFW Enterprise firewall endpoints deployed in the organization, one per zone
+  firewallEndpoints() []gcp.organization.firewallEndpoint
+  // Security Health Analytics custom modules in effect on the organization, including inherited ones
+  sccSecurityHealthAnalyticsCustomModules() []gcp.scc.securityHealthAnalyticsCustomModule
+  // Event Threat Detection custom modules in effect on the organization, including inherited ones
+  sccEventThreatDetectionCustomModules() []gcp.scc.eventThreatDetectionCustomModule
 }
 
 // Google Cloud (GCP) IAM custom role defined at the organization level
@@ -317,6 +325,44 @@ private gcp.organization.networkSecurityProfile @defaults("name type") {
   // Time the security profile was created
   created time
   // Time the security profile was last updated
+  updated time
+}
+
+// Cloud NGFW Enterprise firewall endpoint
+//
+// Zonal firewall endpoint deployed at the organization level that performs
+// Layer 7 inspection (intrusion prevention, TLS inspection) for the VPC
+// networks associated with it. `state` reports whether the endpoint is
+// ACTIVE, `associatedNetworks` lists the networks whose traffic it
+// inspects, and `billingProject` is the project charged for it. An ACTIVE
+// endpoint with no associated networks inspects nothing. Selected by the
+// full resource name, for example
+// `organizations/123/locations/us-central1-a/firewallEndpoints/my-endpoint`.
+private gcp.organization.firewallEndpoint @defaults("name state") {
+  // Full resource name of the firewall endpoint
+  name string
+  // Zone the firewall endpoint is deployed in
+  zone string
+  // Optional human-readable description
+  description string
+  // Current state of the endpoint
+  //
+  // One of STATE_UNSPECIFIED, CREATING, ACTIVE, DELETING, or INACTIVE (down
+  // or in an error state).
+  state string
+  // Whether a configuration change is still being applied
+  reconciling bool
+  // VPC networks associated with the endpoint once traffic routing is configured
+  associatedNetworks() []gcp.project.computeService.network
+  // Project charged for the firewall endpoint
+  billingProject() gcp.project
+  // Whether jumbo frames are enabled on the endpoint
+  jumboFramesEnabled bool
+  // User-defined key/value labels for organizing the resource
+  labels map[string]string
+  // Time the firewall endpoint was created
+  created time
+  // Time the firewall endpoint was last updated
   updated time
 }
 
@@ -901,6 +947,12 @@ private gcp.folder @defaults("name") {
   essentialContacts() []gcp.essentialContact
   // Hierarchical firewall policies defined on the folder, which override project rules below it
   firewallPolicies() []gcp.hierarchicalFirewallPolicy
+  // IAM deny policies attached to the folder, which block permissions for every project beneath it
+  denyPolicies() []gcp.project.iamService.denyPolicy
+  // Security Health Analytics custom modules in effect on the folder, including inherited ones
+  sccSecurityHealthAnalyticsCustomModules() []gcp.scc.securityHealthAnalyticsCustomModule
+  // Event Threat Detection custom modules in effect on the folder, including inherited ones
+  sccEventThreatDetectionCustomModules() []gcp.scc.eventThreatDetectionCustomModule
 }
 
 // Google Cloud (GCP) projects
@@ -1067,6 +1119,12 @@ gcp.project @defaults("name number") {
   documentai() gcp.project.documentaiService
   // Security Command Center findings for this project (active findings only)
   sccFindings() []gcp.scc.finding
+  // Security Health Analytics custom modules in effect on the project, including inherited ones
+  sccSecurityHealthAnalyticsCustomModules() []gcp.scc.securityHealthAnalyticsCustomModule
+  // Event Threat Detection custom modules in effect on the project, including inherited ones
+  sccEventThreatDetectionCustomModules() []gcp.scc.eventThreatDetectionCustomModule
+  // Firebase Security Rules releases and rulesets guarding Firestore and Cloud Storage for Firebase
+  firebaseRules() gcp.project.firebaseRulesService
   // GCP Eventarc resources
   eventarc() gcp.project.eventarcService
   // GCP Cloud DLP resources
@@ -1380,6 +1438,8 @@ private gcp.project.computeService {
   disks() []gcp.project.computeService.disk
   // Google Compute Engine images in a project
   images() []gcp.project.computeService.image
+  // Google Compute Engine machine images in a project
+  machineImages() []gcp.project.computeService.machineImage
   // Google Compute Engine firewalls in a project
   firewalls() []gcp.project.computeService.firewall
   // Google Compute Engine VPC network in a project
@@ -1420,7 +1480,7 @@ private gcp.project.computeService {
   instanceGroups() []gcp.project.computeService.instanceGroup
   // Instance group managers (managed instance groups)
   instanceGroupManagers() []gcp.project.computeService.instanceGroupManager
-  // Network firewall policies
+  // Network firewall policies, both global and regional
   firewallPolicies() []gcp.project.computeService.firewallPolicy
   // Health checks
   healthChecks() []gcp.project.computeService.healthCheck
@@ -2526,6 +2586,66 @@ private gcp.project.computeService.image @defaults("id name") {
   // IAM policy bindings for this image (includes allUsers / allAuthenticatedUsers grants when the image is publicly shared)
   iamPolicy() []gcp.resourcemanager.binding
   // Whether the image's IAM policy grants any role to allUsers or allAuthenticatedUsers
+  public() bool
+  // Infrastructure-management system that provisioned the resource
+  //
+  // Value derived from the provenance labels and annotations Google and IaC
+  // tools apply: "terraform", "config-connector", or "cloud-composer". Empty
+  // when the resource carries no management signal.
+  managedBy() string
+}
+
+// Google Compute Engine machine image
+//
+// Compute Engine machine image, a snapshot of a whole VM (every attached
+// disk plus the instance properties, metadata, and service accounts) that
+// can recreate or clone the instance. Surfaces the `status`,
+// `storageLocations`, the `sourceInstance` it was captured from, and
+// whether a `guestFlush` was used for an application-consistent capture.
+// Audit encryption through `machineImageEncryption` and `kmsKey`, and
+// sharing through `iamPolicy` and the `public` predicate, which returns
+// true when the machine image is shared with `allUsers` or
+// `allAuthenticatedUsers`.
+private gcp.project.computeService.machineImage @defaults("name status") {
+  // Unique identifier
+  id string
+  // Project ID
+  projectId string
+  // Name of the resource
+  name string
+  // Optional description
+  description string
+  // Status of the machine image
+  //
+  // One of CREATING, DELETING, INVALID, READY, or UPLOADING.
+  status string
+  // Machine image labels
+  labels map[string]string
+  // Creation timestamp
+  created time
+  // Cloud Storage locations where the machine image is stored
+  storageLocations []string
+  // Whether the capture flushed the guest file system for an application-consistent image
+  guestFlush bool
+  // Total size of the stored machine image in bytes
+  totalStorageBytes int
+  // Whether the machine image satisfies Google's Protected Zone Integration requirements
+  satisfiesPzi bool
+  // Whether the machine image satisfies Google's Protected Zone Separation requirements
+  satisfiesPzs bool
+  // Instance the machine image was captured from
+  sourceInstance() gcp.project.computeService.instance
+  // Customer-managed KMS key used for machine image encryption (null when Google-managed or customer-supplied)
+  kmsKey() gcp.project.kmsService.keyring.cryptokey
+  // Encryption key protecting the machine image
+  //
+  // Null when the machine image uses Google-managed encryption. Distinguishes
+  // a customer-managed key, which resolves through `kmsKey`, from a
+  // customer-supplied key, which reports only `sha256`.
+  machineImageEncryption gcp.project.computeService.customerEncryptionKey
+  // IAM policy bindings for this machine image (includes allUsers / allAuthenticatedUsers grants when the machine image is publicly shared)
+  iamPolicy() []gcp.resourcemanager.binding
+  // Whether the machine image's IAM policy grants any role to allUsers or allAuthenticatedUsers
   public() bool
   // Infrastructure-management system that provisioned the resource
   //
@@ -9667,7 +9787,7 @@ private gcp.project.binaryAuthorizationControl.attestor.publicKey @defaults("id 
 private gcp.project.secretmanagerService {
   // Project ID
   projectId string
-  // List of secrets in the current project
+  // Secrets in the current project, both global and regional
   secrets() []gcp.project.secretmanagerService.secret
 }
 
@@ -9681,8 +9801,14 @@ private gcp.project.secretmanagerService {
 private gcp.project.secretmanagerService.secret @defaults("name createTime") {
   // Project ID
   projectId string
-  // Full resource path (projects/*/secrets/*)
+  // Full resource path (projects/*/secrets/* or projects/*/locations/*/secrets/*)
   resourcePath string
+  // Location of a regional secret
+  //
+  // The region the secret is stored in, such as `us-central1`, for a secret
+  // created on a regional endpoint. Empty for a global secret, whose
+  // placement is governed by `replication`.
+  location string
   // Secret name
   name string
   // Time the secret was created
@@ -9924,6 +10050,67 @@ private gcp.project.firestoreService.database.backupSchedule @defaults("name") {
   created time
   // Last update time
   updated time
+}
+
+// Firebase Security Rules for a project
+//
+// Firebase Security Rules configured in the project: the `releases` that
+// put a ruleset into effect for Cloud Firestore or Cloud Storage for
+// Firebase, and every `rulesets` version that was ever created. The rules a
+// client is held to are those of the ruleset a release points at, so audit
+// the releases rather than the full ruleset history.
+private gcp.project.firebaseRulesService {
+  // Project ID
+  projectId string
+  // Releases binding a ruleset to the service it protects
+  releases() []gcp.project.firebaseRulesService.release
+  // Every ruleset version created in the project, including ones no release uses
+  rulesets() []gcp.project.firebaseRulesService.ruleset
+}
+
+// Firebase Security Rules release
+//
+// Binding that puts a ruleset into effect for one target. The `service`
+// is derived from the release name: `cloud.firestore` releases protect a
+// Firestore database, resolved through `database`, and `firebase.storage`
+// releases protect a Cloud Storage bucket, resolved through `bucket`. The
+// `ruleset` holds the rules source in force.
+private gcp.project.firebaseRulesService.release @defaults("name service") {
+  // Full resource name of the release
+  name string
+  // Service the release protects
+  //
+  // `cloud.firestore` for Cloud Firestore, `firebase.storage` for Cloud
+  // Storage for Firebase, or empty for a release whose name matches neither.
+  service string
+  // Ruleset the release puts into effect
+  ruleset() gcp.project.firebaseRulesService.ruleset
+  // Firestore database the release protects, null when the release does not target Firestore
+  database() gcp.project.firestoreService.database
+  // Cloud Storage bucket the release protects, null when the release does not target Cloud Storage
+  bucket() gcp.project.storageService.bucket
+  // Time the release was created
+  created time
+  // Time the release was last updated
+  updated time
+}
+
+// Firebase Security Rules ruleset
+//
+// Immutable version of Firebase Security Rules source. `files` holds the
+// rules source, one entry per file with its `name`, `content`, and
+// `fingerprint`, and `services` names the services the rules are written
+// for. Selected by the full resource name, for example
+// `projects/my-project/rulesets/a1b2c3`.
+private gcp.project.firebaseRulesService.ruleset @defaults("name created") {
+  // Full resource name of the ruleset
+  name string
+  // Services the rules are written for, such as cloud.firestore or firebase.storage
+  services() []string
+  // Rules source files, each with `name`, `content`, and `fingerprint`
+  files() []dict
+  // Time the ruleset was created
+  created time
 }
 
 // Google Cloud (GCP) Spanner
@@ -10400,10 +10587,20 @@ private gcp.project.bigtableService.table @defaults("name") {
   // Automated backup policy
   //
   // Keys `retentionPeriod` and `frequency` (both durations) set how long
-  // automated backups are kept and how often they run, and `locations`
-  // lists the backup storage locations. Null when automated backups are
-  // disabled.
+  // automated backups are kept and how often they run, `keepHotDuration`
+  // (a duration) sets how long backups stay HOT, and `locations` lists the
+  // backup storage locations. A duration key is absent when the policy does
+  // not set it. Null when the table configures no policy or explicitly
+  // disables automated backups. See effectiveAutomatedBackupPolicy for the
+  // policy actually in force.
   automatedBackupPolicy dict
+  // Whether the table explicitly opts out of automated backups
+  automatedBackupsDisabled bool
+  // Automated backup policy in force on the table
+  //
+  // The policy Bigtable applies, which may be a system default when the
+  // table configures none. Null when Bigtable reports no effective policy.
+  effectiveAutomatedBackupPolicy gcp.project.bigtableService.table.backupPolicy
   // Change stream configuration
   //
   // The `retentionPeriod` key gives the duration for which change stream
@@ -10415,6 +10612,33 @@ private gcp.project.bigtableService.table @defaults("name") {
   // data older than this moves to the infrequent-access (HDD) tier. Null
   // when tiered storage is not configured.
   tieredStorageConfig dict
+}
+
+// Google Cloud (GCP) Bigtable table automated backup policy
+//
+// How often Bigtable backs up the table (`frequencySeconds`), how long each
+// backup is kept (`retentionPeriodSeconds`), how long it stays a HOT backup
+// (`keepHotDurationSeconds`), the zones backups may be created in
+// (`locations`), and whether automated backups are turned off (`disabled`).
+private gcp.project.bigtableService.table.backupPolicy @defaults("disabled frequencySeconds retentionPeriodSeconds") {
+  // Time between automated backups, in seconds
+  //
+  // Null when the policy does not set it.
+  frequencySeconds int
+  // How long each automated backup is retained, in seconds
+  //
+  // Null when the policy does not set it.
+  retentionPeriodSeconds int
+  // How long each automated backup stays a HOT backup, in seconds
+  //
+  // Null when backups are STANDARD backups.
+  keepHotDurationSeconds int
+  // Zones where automated backups may be created, in the form projects/PROJECT/locations/ZONE
+  //
+  // Empty when backups may be created in every zone of the instance.
+  locations []string
+  // Whether automated backups are turned off
+  disabled bool
 }
 
 // Google Cloud (GCP) Bigtable app profile
@@ -12461,6 +12685,79 @@ private gcp.project.cloudTasksService.queue @defaults("name state") {
   appEngineRoutingOverride dict
   // IAM policy bindings on the queue (who can enqueue, lease, or manage tasks)
   iamPolicy() []gcp.resourcemanager.binding
+  // HTTP target settings applied to every task dispatched from the queue
+  //
+  // Overrides for the destination URI, HTTP method, headers, and the
+  // service account whose OIDC or OAuth token authenticates each request.
+  // Null when the queue sets no HTTP target.
+  httpTarget gcp.project.cloudTasksService.queue.httpTargetConfig
+  // Customer-managed Cloud KMS key encrypting the queue and its tasks
+  //
+  // Cloud Tasks applies one CMEK setting per project and location, so every
+  // queue in the same location reports the same key. Null when the location
+  // uses Google-managed encryption.
+  kmsKey() gcp.project.kmsService.keyring.cryptokey
+}
+
+// Google Cloud (GCP) Cloud Tasks queue HTTP target
+//
+// Queue-level overrides for HTTP tasks. The `uri*` fields rewrite the
+// scheme, host, port, path, or query of each task's URL, and
+// `uriOverrideEnforceMode` says whether they replace a task's own values
+// (ALWAYS) or only fill in missing ones (IF_NOT_EXISTS). `httpMethod` and
+// `headerOverrides` replace the method and headers of every task. The
+// `oidcServiceAccount` and `oauthServiceAccount` fields name the identity
+// every task runs as.
+private gcp.project.cloudTasksService.queue.httpTargetConfig @defaults("httpMethod uriHost") {
+  // HTTP method used for every task (POST, GET, HEAD, PUT, DELETE, PATCH, OPTIONS)
+  //
+  // HTTP_METHOD_UNSPECIFIED when each task keeps its own method.
+  httpMethod string
+  // Headers set on every task, keyed by header name
+  headerOverrides map[string]string
+  // Scheme override (HTTP or HTTPS)
+  //
+  // Null when the queue does not override the scheme.
+  uriScheme string
+  // Host override
+  //
+  // Null when the queue does not override the host.
+  uriHost string
+  // Port override
+  //
+  // Null when the queue does not override the port.
+  uriPort int
+  // URI path override
+  //
+  // Null when the queue does not override the path.
+  uriPath string
+  // URI query override
+  //
+  // Null when the queue does not override the query string.
+  uriQuery string
+  // How the URI overrides apply (ALWAYS, IF_NOT_EXISTS, or URI_OVERRIDE_ENFORCE_MODE_UNSPECIFIED)
+  //
+  // ALWAYS replaces each task's own values, IF_NOT_EXISTS only fills in
+  // values the task leaves empty. Null when the queue sets no URI override.
+  uriOverrideEnforceMode string
+  // Service account whose OIDC token authenticates each task
+  //
+  // Null when the queue does not use an OIDC token.
+  oidcServiceAccount() gcp.project.iamService.serviceAccount
+  // Audience of the OIDC token
+  //
+  // Null when the queue does not use an OIDC token. Empty when the target
+  // URI is used as the audience.
+  oidcAudience string
+  // Service account whose OAuth token authenticates each task
+  //
+  // Null when the queue does not use an OAuth token.
+  oauthServiceAccount() gcp.project.iamService.serviceAccount
+  // OAuth scope of the token
+  //
+  // Null when the queue does not use an OAuth token. Empty when the default
+  // cloud-platform scope applies.
+  oauthScope string
 }
 
 // Google Cloud (GCP) Cloud Scheduler
@@ -16051,6 +16348,65 @@ private gcp.scc.bigQueryExport @defaults("name") {
   mostRecentEditor string
 }
 
+// Google Cloud Security Command Center Security Health Analytics custom module
+//
+// Security Health Analytics custom detector in effect on an organization,
+// folder, or project, including modules inherited from an ancestor. The
+// `enablementState` reports whether the module runs at this scope,
+// `severity` the severity of the findings it raises, and `customConfig`
+// the detection logic: the CEL `predicate`, the `resourceSelector`
+// naming the resource types scanned, the `customOutput` properties, and
+// the `description` and `recommendation` attached to findings.
+private gcp.scc.securityHealthAnalyticsCustomModule @defaults("displayName enablementState") {
+  // Full resource name of the effective custom module
+  name string
+  // Display name of the custom module
+  displayName string
+  // Whether the module runs at this scope
+  //
+  // One of ENABLEMENT_STATE_UNSPECIFIED, ENABLED, or DISABLED.
+  enablementState string
+  // Severity assigned to findings the module raises
+  //
+  // One of SEVERITY_UNSPECIFIED, CRITICAL, HIGH, MEDIUM, or LOW.
+  severity string
+  // Detection logic of the module
+  //
+  // Keys: `predicate` (the CEL expression with `expression`, `title`,
+  // `description`, and `location`), `resourceSelector` (with `resourceTypes`),
+  // `customOutput` (with `properties`), `severity`, `description`, and
+  // `recommendation`.
+  customConfig dict
+}
+
+// Google Cloud Security Command Center Event Threat Detection custom module
+//
+// Event Threat Detection custom detector in effect on an organization,
+// folder, or project, including modules inherited from an ancestor. The
+// `type` names the detector template the module is built on (for example
+// CONFIGURABLE_BAD_IP or CUSTOM_BAD_DOMAIN), `config` holds its
+// template-specific settings, and `enablementState` reports whether it
+// runs at this scope.
+private gcp.scc.eventThreatDetectionCustomModule @defaults("displayName type enablementState") {
+  // Full resource name of the effective custom module
+  name string
+  // Display name of the custom module
+  displayName string
+  // Description of the custom module
+  description string
+  // Detector template the module is built on
+  type string
+  // Whether the module runs at this scope
+  //
+  // One of ENABLEMENT_STATE_UNSPECIFIED, ENABLED, or DISABLED.
+  enablementState string
+  // Template-specific settings of the module
+  //
+  // Shape depends on `type`, for example `ips` and `metadata` (with
+  // `severity`, `description`, and `recommendation`) for a bad-IP detector.
+  config dict
+}
+
 // Google Cloud Access Context Manager access policy
 //
 // VPC Service Controls access policy, the top-level container for all
@@ -17626,6 +17982,10 @@ private gcp.project.networkSecurityService {
   addressGroups() []gcp.project.networkSecurityService.addressGroup
   // URL lists used for URL-based filtering
   urlLists() []gcp.project.networkSecurityService.urlList
+  // Cloud NGFW Enterprise associations that route a VPC network's traffic through a firewall endpoint
+  firewallEndpointAssociations() []gcp.project.networkSecurityService.firewallEndpointAssociation
+  // Secure Web Proxy gateway security policies and their rules
+  gatewaySecurityPolicies() []gcp.project.networkSecurityService.gatewaySecurityPolicy
 }
 
 // Network Security authorization policy
@@ -17822,6 +18182,98 @@ private gcp.project.networkSecurityService.urlList @defaults("name") {
   // Time the URL list was created
   created time
   // Time the URL list was last updated
+  updated time
+}
+
+// Cloud NGFW Enterprise firewall endpoint association
+//
+// Binding of a VPC network to a zonal firewall endpoint, which routes the
+// network's traffic in that zone through the endpoint for Layer 7
+// inspection. `disabled` reports an association that no longer intercepts
+// traffic, `state` its lifecycle, and `tlsInspectionPolicy` the policy used
+// to decrypt TLS traffic when set. Selected by the full resource name.
+private gcp.project.networkSecurityService.firewallEndpointAssociation @defaults("name state") {
+  // Full resource name of the association
+  name string
+  // Zone the association applies in
+  zone string
+  // Current state of the association
+  //
+  // One of STATE_UNSPECIFIED, CREATING, ACTIVE, DELETING, INACTIVE (down or
+  // in an error state), or ORPHAN (the project holding the association was
+  // deleted).
+  state string
+  // Whether the association is disabled, in which case traffic is not intercepted
+  disabled bool
+  // Whether a configuration change is still being applied
+  reconciling bool
+  // VPC network whose traffic is routed through the firewall endpoint
+  network() gcp.project.computeService.network
+  // Firewall endpoint the network is associated with
+  firewallEndpoint() gcp.organization.firewallEndpoint
+  // TLS inspection policy used to decrypt traffic for inspection, null when TLS is not inspected
+  tlsInspectionPolicy() gcp.project.networkSecurityService.tlsInspectionPolicy
+  // User-defined key/value labels for organizing the resource
+  labels map[string]string
+  // Time the association was created
+  created time
+  // Time the association was last updated
+  updated time
+}
+
+// Secure Web Proxy gateway security policy
+//
+// Policy attached to a Secure Web Proxy that decides which egress web
+// traffic is allowed. Its `rules` are evaluated in priority order, and
+// `tlsInspectionPolicy` names the policy used to decrypt HTTPS traffic for
+// rules that enable TLS inspection. Selected by the full resource name, for
+// example `projects/my-project/locations/us-central1/gatewaySecurityPolicies/my-policy`.
+private gcp.project.networkSecurityService.gatewaySecurityPolicy @defaults("name") {
+  // Full resource name of the gateway security policy
+  name string
+  // Region the policy lives in
+  location string
+  // Optional human-readable description
+  description string
+  // TLS inspection policy used by rules that enable TLS inspection, null when none is set
+  tlsInspectionPolicy() gcp.project.networkSecurityService.tlsInspectionPolicy
+  // Rules of the policy, evaluated in priority order
+  rules() []gcp.project.networkSecurityService.gatewaySecurityPolicy.rule
+  // Time the policy was created
+  created time
+  // Time the policy was last updated
+  updated time
+}
+
+// Secure Web Proxy gateway security policy rule
+//
+// One rule of a gateway security policy: the `sessionMatcher` and
+// `applicationMatcher` CEL expressions select traffic, and `basicProfile`
+// allows or denies it. Rules with a lower `priority` number win.
+// `tlsInspectionEnabled` reports whether matching HTTPS traffic is
+// decrypted for inspection.
+private gcp.project.networkSecurityService.gatewaySecurityPolicy.rule @defaults("priority basicProfile") {
+  // Full resource name of the rule
+  name string
+  // Optional human-readable description
+  description string
+  // Priority of the rule, where a lower number takes precedence
+  priority int
+  // Whether the rule is enforced
+  enabled bool
+  // Action applied to matching traffic
+  //
+  // One of BASIC_PROFILE_UNSPECIFIED, ALLOW, or DENY.
+  basicProfile string
+  // CEL expression matching on session criteria such as the source and destination host
+  sessionMatcher string
+  // CEL expression matching on application-level criteria such as the request path, empty when unused
+  applicationMatcher string
+  // Whether matching HTTPS traffic is decrypted for inspection
+  tlsInspectionEnabled bool
+  // Time the rule was created
+  created time
+  // Time the rule was last updated
   updated time
 }
 

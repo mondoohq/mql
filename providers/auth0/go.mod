@@ -8,6 +8,7 @@ require (
 	github.com/auth0/go-auth0 v1.50.0
 	github.com/cockroachdb/errors v1.14.0
 	github.com/rs/zerolog v1.35.1
+	github.com/stretchr/testify v1.12.1
 	go.mondoo.com/mql v0.0.0-20260928074600-21f1ad7c03c3
 )
 
@@ -96,6 +97,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/net v0.59.0 // indirect

@@ -25,7 +25,10 @@ option root = "datadog"
 // orgConnections the other Datadog organizations this one shares data with.
 // The integration fields cover the standing credentials Datadog holds
 // against outside providers, spanning AWS, Google Cloud, Azure, Okta,
-// Cloudflare, Fastly and Confluent Cloud.
+// Cloudflare, Fastly, Confluent Cloud, Snowflake and Databricks. workflows
+// lists the Workflow Automation workflows and the identities they run as, and
+// securityInboxRules the rules that decide which security findings reach the
+// Security Inbox.
 datadog @root {
   // Organization the credentials authenticate against
   org() datadog.organization
@@ -75,6 +78,10 @@ datadog @root {
   integrationFastlyAccounts() []datadog.integration.fastly
   // Configured Confluent Cloud integrations
   integrationConfluentAccounts() []datadog.integration.confluent
+  // Configured Snowflake integrations
+  integrationSnowflakeAccounts() []datadog.integration.snowflake
+  // Configured Databricks integrations
+  integrationDatabricksAccounts() []datadog.integration.databricks
   // Datadog teams (groups of users)
   teams() []datadog.team
   // Sensitive Data Scanner groups (PII redaction rule containers)
@@ -109,6 +116,126 @@ datadog @root {
   orgConnections() []datadog.orgConnection
   // Execution policies governing what Datadog may run on Agent hosts
   executionPolicies() []datadog.executionPolicy
+  // Workflow Automation workflows, published and unpublished
+  workflows() []datadog.workflow
+  // Rules that decide which security findings reach the Security Inbox
+  //
+  // Covers both the rules Datadog manages, where isDefault is true, and the
+  // rules the organization created.
+  securityInboxRules() []datadog.securityInboxRule
+}
+
+// Datadog Workflow Automation workflow
+//
+// Workflow that chains actions against Datadog and connected systems, run on
+// a trigger or by hand. runAsUserMode records which identity a run acts as:
+// the workflow owner, a service account, or the person who started the run.
+// A workflow that runs as its owner or as a service account lets anyone who
+// can trigger it act with that identity's permissions, so owner and runAsUser
+// together name whose access a run borrows. sensitivePrivileges marks
+// workflows allowed to run actions governed by execution policies, which is
+// where remote actions on Agent hosts are permitted. published separates
+// workflows whose automatic triggers fire from drafts that only run by hand.
+// The `id` selects a workflow, for example
+// datadog.workflows.where(id == "c9b7f1f0-0000-0000-0000-000000000000").
+datadog.workflow @defaults("name published runAsUserMode") {
+  // Identifier of the workflow
+  id string
+  // Name of the workflow
+  name string
+  // Description of the workflow
+  description string
+  // Whether the workflow is published
+  //
+  // Automatic triggers such as schedules fire only for a published workflow.
+  // An unpublished workflow runs only when started by hand.
+  published bool
+  // Tags applied to the workflow
+  tags []string
+  // Whether the workflow may run actions that require sensitive privileges
+  //
+  // Only the workflow owner can change this. It allows the workflow to run
+  // actions that execution policies govern.
+  sensitivePrivileges bool
+  // Identity a run of the workflow acts as
+  //
+  // One of owner, service_account, or initiator. Datadog may add further
+  // modes.
+  runAsUserMode string
+  // When the workflow was created
+  createdAt time
+  // When the workflow was last updated
+  updatedAt time
+  // User that owns the workflow
+  //
+  // Null when the workflow reports no owner, or the owning account has been
+  // removed from the organization.
+  owner() datadog.user
+  // User that created the workflow
+  //
+  // Null when the workflow reports no creator, or the creating account has
+  // been removed from the organization.
+  createdBy() datadog.user
+  // User or service account a run of the workflow acts as
+  //
+  // Null when the workflow reports no run-as identity, or the account has been
+  // removed from the organization.
+  runAsUser() datadog.user
+}
+
+// Datadog Security Inbox rule
+//
+// Rule that decides which security findings are surfaced in the Security
+// Inbox. Each rule matches findings by findingTypes and an optional search
+// query, and enabled records whether it is in effect. isDefault separates the
+// rules Datadog manages, whose name, scope and description are fixed and whose
+// only setting is enabled, from the rules the organization created. A
+// disabled default rule stops a whole class of findings, such as secrets or
+// attack paths, from reaching the inbox, so
+// datadog.securityInboxRules.where(isDefault).all(enabled) checks that none
+// has been switched off. createdBy and modifiedBy name the users who wrote
+// and last changed a rule. The `id` selects a rule, for example
+// datadog.securityInboxRules.where(id == "secret_default_rule").
+datadog.securityInboxRule @defaults("name isDefault enabled") {
+  // Identifier of the rule
+  //
+  // A UUID for a rule the organization created, and a fixed name such as
+  // secret_default_rule for a rule Datadog manages.
+  id string
+  // Name of the rule
+  name string
+  // Whether Datadog manages the rule
+  isDefault bool
+  // Whether the rule is enabled
+  enabled bool
+  // Description attached to the rule's action
+  description string
+  // Security finding types the rule applies to
+  //
+  // Values include api_security, attack_path,
+  // host_and_container_vulnerability, iac_misconfiguration, identity_risk,
+  // library_vulnerability, misconfiguration, runtime_code_vulnerability,
+  // secret, static_code_vulnerability, and workload_activity. Datadog may add
+  // further types.
+  findingTypes []string
+  // Search query further narrowing the findings the rule matches
+  //
+  // Null when the rule matches every finding of its findingTypes.
+  query string
+  // When the rule was created
+  createdAt time
+  // When the rule was last modified
+  modifiedAt time
+  // User that created the rule
+  //
+  // Null when Datadog created the rule, or the creating account has been
+  // removed from the organization.
+  createdBy() datadog.user
+  // User that last modified the rule
+  //
+  // Null when Datadog last modified the rule, or the modifying account has
+  // been removed from the organization.
+  modifiedBy() datadog.user
 }
 
 // Datadog Execution Policy
@@ -966,6 +1093,12 @@ datadog.apiKey @defaults("id name") {
   // configuration changes from Datadog, so a key with it enabled carries more
   // than submit-only access.
   remoteConfigReadEnabled bool
+  // Whether the key may enroll a Private Action Runner
+  //
+  // A Private Action Runner executes Workflow Automation and App Builder
+  // actions inside a private network, so a key allowed to enroll one can stand
+  // up a runner that acts on internal systems.
+  privateActionRunnerEnrollEnabled bool
   // User that created the key
   //
   // Null when the creating account has been removed from the organization.
@@ -1427,6 +1560,12 @@ datadog.integration.gcp @defaults("clientEmail isCspmEnabled") {
   isPerProjectQuotaEnabled bool
   // Whether the global location is included in collection
   isGlobalLocationEnabled bool
+  // Whether organization and folder resources are collected
+  //
+  // When enabled, Datadog scans the organization and folder level resources
+  // of the organization the service account belongs to, beyond the projects
+  // listed in accessibleProjects.
+  isOrgFolderResourceCollectionEnabled bool
   // Whether hosts are muted while they are shutting down
   automute bool
   // Tags limiting which hosts are collected
@@ -1556,4 +1695,65 @@ datadog.integration.confluent @defaults("id") {
   // `enableCustomMetrics` (whether custom metrics are collected for it),
   // and `tags`.
   resources []dict
+}
+
+// Snowflake integration
+//
+// A Snowflake account Datadog connects to with key pair authentication.
+// `accountIdentifier` names the Snowflake account and `username` the Snowflake
+// user Datadog signs in as, whose grants bound what Datadog can read.
+// `dataflows` records which collections are switched on, such as
+// snowflake-security-logs and snowflake-query-history-logs. The private key
+// is never exposed.
+datadog.integration.snowflake @defaults("name accountIdentifier username") {
+  // Identifier of the Snowflake account entry
+  id string
+  // Name given to the integration
+  name string
+  // Snowflake account identifier the integration connects to
+  accountIdentifier string
+  // Snowflake user Datadog authenticates as
+  username string
+  // Credential type the integration authenticates with
+  //
+  // snowflake_private_key for key pair authentication. Null when Datadog
+  // reports no authentication. Datadog may add further types.
+  authType string
+  // Collections configured for the account, keyed by name
+  //
+  // Each value records whether that collection is enabled. A collection
+  // Datadog reports without an enabled state is left out.
+  dataflows map[string]bool
+}
+
+// Databricks integration
+//
+// A Databricks workspace Datadog connects to. `workspaceUrl` names the
+// workspace and `authType` records whether the link uses a personal access
+// token, OAuth for a service principal, or a Private Action Runner, which
+// determines what can be rotated and where the credential lives. `clientId`
+// names the service principal for OAuth. `dataflows` records which
+// collections are switched on. The token and client secret are never
+// exposed.
+datadog.integration.databricks @defaults("name workspaceUrl authType") {
+  // Identifier of the Databricks account entry
+  id string
+  // Name given to the integration
+  name string
+  // URL of the Databricks workspace
+  workspaceUrl string
+  // Credential type the integration authenticates with
+  //
+  // One of bearer_token, databricks_oauth, or private_action_runner. Null when
+  // Datadog reports no authentication. Datadog may add further types.
+  authType string
+  // Client ID of the service principal used with OAuth
+  //
+  // Null unless authType is databricks_oauth.
+  clientId string
+  // Collections configured for the workspace, keyed by name
+  //
+  // Each value records whether that collection is enabled. A collection
+  // Datadog reports without an enabled state is left out.
+  dataflows map[string]bool
 }

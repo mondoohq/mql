@@ -16,14 +16,16 @@ import (
 
 // The MQL type names exposed as public consts for ease of reference.
 const (
-	ResourceTailscale          string = "tailscale"
-	ResourceTailscaleDevice    string = "tailscale.device"
-	ResourceTailscaleUser      string = "tailscale.user"
-	ResourceTailscaleAclPolicy string = "tailscale.aclPolicy"
-	ResourceTailscaleAuthKey   string = "tailscale.authKey"
-	ResourceTailscaleWebhook   string = "tailscale.webhook"
-	ResourceTailscaleService   string = "tailscale.service"
-	ResourceTailscaleLogstream string = "tailscale.logstream"
+	ResourceTailscale                         string = "tailscale"
+	ResourceTailscaleDevice                   string = "tailscale.device"
+	ResourceTailscaleUser                     string = "tailscale.user"
+	ResourceTailscaleAclPolicy                string = "tailscale.aclPolicy"
+	ResourceTailscaleAclPolicyExternalTailnet string = "tailscale.aclPolicy.externalTailnet"
+	ResourceTailscaleAuthKey                  string = "tailscale.authKey"
+	ResourceTailscaleWebhook                  string = "tailscale.webhook"
+	ResourceTailscaleService                  string = "tailscale.service"
+	ResourceTailscaleOrganizationTailnet      string = "tailscale.organizationTailnet"
+	ResourceTailscaleLogstream                string = "tailscale.logstream"
 )
 
 var resourceFactories map[string]plugin.ResourceFactory
@@ -46,6 +48,10 @@ func init() {
 			// to override args, implement: initTailscaleAclPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createTailscaleAclPolicy,
 		},
+		"tailscale.aclPolicy.externalTailnet": {
+			// to override args, implement: initTailscaleAclPolicyExternalTailnet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createTailscaleAclPolicyExternalTailnet,
+		},
 		"tailscale.authKey": {
 			Init:   initTailscaleAuthKey,
 			Create: createTailscaleAuthKey,
@@ -57,6 +63,10 @@ func init() {
 		"tailscale.service": {
 			Init:   initTailscaleService,
 			Create: createTailscaleService,
+		},
+		"tailscale.organizationTailnet": {
+			// to override args, implement: initTailscaleOrganizationTailnet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createTailscaleOrganizationTailnet,
 		},
 		"tailscale.logstream": {
 			// to override args, implement: initTailscaleLogstream(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -192,6 +202,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"tailscale.logstreams": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscale).GetLogstreams()).ToDataRes(types.Array(types.Resource("tailscale.logstream")))
+	},
+	"tailscale.organizationTailnets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscale).GetOrganizationTailnets()).ToDataRes(types.Array(types.Resource("tailscale.organizationTailnet")))
 	},
 	"tailscale.device.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleDevice).GetId()).ToDataRes(types.String)
@@ -412,6 +425,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"tailscale.aclPolicy.raw": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleAclPolicy).GetRaw()).ToDataRes(types.String)
 	},
+	"tailscale.aclPolicy.externalTailnets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAclPolicy).GetExternalTailnets()).ToDataRes(types.Array(types.Resource("tailscale.aclPolicy.externalTailnet")))
+	},
+	"tailscale.aclPolicy.externalTailnet.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAclPolicyExternalTailnet).GetName()).ToDataRes(types.String)
+	},
+	"tailscale.aclPolicy.externalTailnet.externalId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAclPolicyExternalTailnet).GetExternalId()).ToDataRes(types.String)
+	},
+	"tailscale.aclPolicy.externalTailnet.allowIncomingConnections": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAclPolicyExternalTailnet).GetAllowIncomingConnections()).ToDataRes(types.Bool)
+	},
+	"tailscale.aclPolicy.externalTailnet.allowExternalReferencesTo": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleAclPolicyExternalTailnet).GetAllowExternalReferencesTo()).ToDataRes(types.Array(types.String))
+	},
 	"tailscale.authKey.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleAuthKey).GetId()).ToDataRes(types.String)
 	},
@@ -505,6 +533,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"tailscale.service.name": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleService).GetName()).ToDataRes(types.String)
 	},
+	"tailscale.service.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleService).GetDisplayName()).ToDataRes(types.String)
+	},
 	"tailscale.service.addresses": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleService).GetAddresses()).ToDataRes(types.Array(types.String))
 	},
@@ -519,6 +550,21 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"tailscale.service.annotations": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleService).GetAnnotations()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"tailscale.organizationTailnet.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleOrganizationTailnet).GetId()).ToDataRes(types.String)
+	},
+	"tailscale.organizationTailnet.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleOrganizationTailnet).GetDisplayName()).ToDataRes(types.String)
+	},
+	"tailscale.organizationTailnet.orgId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleOrganizationTailnet).GetOrgId()).ToDataRes(types.String)
+	},
+	"tailscale.organizationTailnet.dnsName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleOrganizationTailnet).GetDnsName()).ToDataRes(types.String)
+	},
+	"tailscale.organizationTailnet.createdAt": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlTailscaleOrganizationTailnet).GetCreatedAt()).ToDataRes(types.Time)
 	},
 	"tailscale.logstream.logType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlTailscaleLogstream).GetLogType()).ToDataRes(types.String)
@@ -647,6 +693,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"tailscale.logstreams": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscale).Logstreams, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.organizationTailnets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscale).OrganizationTailnets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"tailscale.device.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -953,6 +1003,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlTailscaleAclPolicy).Raw, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"tailscale.aclPolicy.externalTailnets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAclPolicy).ExternalTailnets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.aclPolicy.externalTailnet.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAclPolicyExternalTailnet).__id, ok = v.Value.(string)
+		return
+	},
+	"tailscale.aclPolicy.externalTailnet.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAclPolicyExternalTailnet).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.aclPolicy.externalTailnet.externalId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAclPolicyExternalTailnet).ExternalId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.aclPolicy.externalTailnet.allowIncomingConnections": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAclPolicyExternalTailnet).AllowIncomingConnections, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"tailscale.aclPolicy.externalTailnet.allowExternalReferencesTo": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleAclPolicyExternalTailnet).AllowExternalReferencesTo, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"tailscale.authKey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscaleAuthKey).__id, ok = v.Value.(string)
 		return
@@ -1089,6 +1163,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlTailscaleService).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"tailscale.service.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleService).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"tailscale.service.addresses": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscaleService).Addresses, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -1107,6 +1185,30 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"tailscale.service.annotations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlTailscaleService).Annotations, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"tailscale.organizationTailnet.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleOrganizationTailnet).__id, ok = v.Value.(string)
+		return
+	},
+	"tailscale.organizationTailnet.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleOrganizationTailnet).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.organizationTailnet.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleOrganizationTailnet).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.organizationTailnet.orgId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleOrganizationTailnet).OrgId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.organizationTailnet.dnsName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleOrganizationTailnet).DnsName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"tailscale.organizationTailnet.createdAt": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlTailscaleOrganizationTailnet).CreatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
 	"tailscale.logstream.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -1206,6 +1308,7 @@ type mqlTailscale struct {
 	Webhooks                               plugin.TValue[[]any]
 	Services                               plugin.TValue[[]any]
 	Logstreams                             plugin.TValue[[]any]
+	OrganizationTailnets                   plugin.TValue[[]any]
 }
 
 // createTailscale creates a new instance of this resource
@@ -1430,6 +1533,22 @@ func (c *mqlTailscale) GetLogstreams() *plugin.TValue[[]any] {
 		}
 
 		return c.logstreams()
+	})
+}
+
+func (c *mqlTailscale) GetOrganizationTailnets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.OrganizationTailnets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("tailscale", c.__id, "organizationTailnets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.organizationTailnets()
 	})
 }
 
@@ -1835,6 +1954,7 @@ type mqlTailscaleAclPolicy struct {
 	RandomizeClientPort    plugin.TValue[bool]
 	Etag                   plugin.TValue[string]
 	Raw                    plugin.TValue[string]
+	ExternalTailnets       plugin.TValue[[]any]
 }
 
 // createTailscaleAclPolicy creates a new instance of this resource
@@ -1966,6 +2086,81 @@ func (c *mqlTailscaleAclPolicy) GetRaw() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Raw, func() (string, error) {
 		return c.raw()
 	})
+}
+
+func (c *mqlTailscaleAclPolicy) GetExternalTailnets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ExternalTailnets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("tailscale.aclPolicy", c.__id, "externalTailnets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.externalTailnets()
+	})
+}
+
+// mqlTailscaleAclPolicyExternalTailnet for the tailscale.aclPolicy.externalTailnet resource
+type mqlTailscaleAclPolicyExternalTailnet struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlTailscaleAclPolicyExternalTailnetInternal it will be used here
+	Name                      plugin.TValue[string]
+	ExternalId                plugin.TValue[string]
+	AllowIncomingConnections  plugin.TValue[bool]
+	AllowExternalReferencesTo plugin.TValue[[]any]
+}
+
+// createTailscaleAclPolicyExternalTailnet creates a new instance of this resource
+func createTailscaleAclPolicyExternalTailnet(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlTailscaleAclPolicyExternalTailnet{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("tailscale.aclPolicy.externalTailnet", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlTailscaleAclPolicyExternalTailnet) MqlName() string {
+	return "tailscale.aclPolicy.externalTailnet"
+}
+
+func (c *mqlTailscaleAclPolicyExternalTailnet) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlTailscaleAclPolicyExternalTailnet) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlTailscaleAclPolicyExternalTailnet) GetExternalId() *plugin.TValue[string] {
+	return &c.ExternalId
+}
+
+func (c *mqlTailscaleAclPolicyExternalTailnet) GetAllowIncomingConnections() *plugin.TValue[bool] {
+	return &c.AllowIncomingConnections
+}
+
+func (c *mqlTailscaleAclPolicyExternalTailnet) GetAllowExternalReferencesTo() *plugin.TValue[[]any] {
+	return &c.AllowExternalReferencesTo
 }
 
 // mqlTailscaleAuthKey for the tailscale.authKey resource
@@ -2242,6 +2437,7 @@ type mqlTailscaleService struct {
 	__id       string
 	// optional: if you define mqlTailscaleServiceInternal it will be used here
 	Name        plugin.TValue[string]
+	DisplayName plugin.TValue[string]
 	Addresses   plugin.TValue[[]any]
 	Ports       plugin.TValue[[]any]
 	Tags        plugin.TValue[[]any]
@@ -2290,6 +2486,10 @@ func (c *mqlTailscaleService) GetName() *plugin.TValue[string] {
 	return &c.Name
 }
 
+func (c *mqlTailscaleService) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
 func (c *mqlTailscaleService) GetAddresses() *plugin.TValue[[]any] {
 	return &c.Addresses
 }
@@ -2308,6 +2508,70 @@ func (c *mqlTailscaleService) GetComment() *plugin.TValue[string] {
 
 func (c *mqlTailscaleService) GetAnnotations() *plugin.TValue[map[string]any] {
 	return &c.Annotations
+}
+
+// mqlTailscaleOrganizationTailnet for the tailscale.organizationTailnet resource
+type mqlTailscaleOrganizationTailnet struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlTailscaleOrganizationTailnetInternal it will be used here
+	Id          plugin.TValue[string]
+	DisplayName plugin.TValue[string]
+	OrgId       plugin.TValue[string]
+	DnsName     plugin.TValue[string]
+	CreatedAt   plugin.TValue[*time.Time]
+}
+
+// createTailscaleOrganizationTailnet creates a new instance of this resource
+func createTailscaleOrganizationTailnet(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlTailscaleOrganizationTailnet{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("tailscale.organizationTailnet", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlTailscaleOrganizationTailnet) MqlName() string {
+	return "tailscale.organizationTailnet"
+}
+
+func (c *mqlTailscaleOrganizationTailnet) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlTailscaleOrganizationTailnet) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlTailscaleOrganizationTailnet) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlTailscaleOrganizationTailnet) GetOrgId() *plugin.TValue[string] {
+	return &c.OrgId
+}
+
+func (c *mqlTailscaleOrganizationTailnet) GetDnsName() *plugin.TValue[string] {
+	return &c.DnsName
+}
+
+func (c *mqlTailscaleOrganizationTailnet) GetCreatedAt() *plugin.TValue[*time.Time] {
+	return &c.CreatedAt
 }
 
 // mqlTailscaleLogstream for the tailscale.logstream resource

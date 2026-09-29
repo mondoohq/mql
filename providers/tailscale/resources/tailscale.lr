@@ -69,6 +69,14 @@ tailscale @root {
   //
   // Returns at most two entries: one with `logType == "configuration"` and one with `logType == "network"`. Entries are omitted when no destination is configured for that log type. Use this resource to assert that an organization is exporting tailnet audit and flow logs to a SIEM or object store.
   logstreams() []tailscale.logstream
+  // Tailnets in the organization that owns this tailnet
+  //
+  // Every tailnet in the organization, including the original tailnet and
+  // any API-only tailnets. API-only tailnets have no human users and do
+  // not appear in the admin console, so this list is where they become
+  // visible. Reading it requires an OAuth client with the `tailnets:read`
+  // scope; any other credential is refused.
+  organizationTailnets() []tailscale.organizationTailnet
 }
 
 // Tailscale device (also called a node or machine)
@@ -379,6 +387,38 @@ tailscale.aclPolicy @defaults("tailnet") {
   etag string
   // Raw HuJSON representation of the policy
   raw() string
+  // Other tailnets this tailnet shares nodes with
+  //
+  // Each entry names an outside tailnet declared in the policy's
+  // `externalTailnets` section, sorted by `name`. An entry with
+  // `allowIncomingConnections` set lets nodes of that tailnet open
+  // connections into this one, subject to the grants that reference it.
+  // Empty when the policy declares no external tailnets.
+  externalTailnets() []tailscale.aclPolicy.externalTailnet
+}
+
+// External tailnet declared in the ACL policy
+//
+// Outside tailnet this tailnet shares nodes with, declared under the
+// alias `name`. Grants reach its members through `group://<name>/<group>`
+// and `tag://<name>/<tag>` selectors. Both tailnets declare each other,
+// and each side controls what it accepts.
+private tailscale.aclPolicy.externalTailnet @defaults("name externalId allowIncomingConnections") {
+  // Alias the policy uses for the external tailnet in grant selectors
+  name string
+  // Unique tailnet ID of the external tailnet
+  externalId string
+  // Whether the external tailnet may send traffic into this tailnet
+  //
+  // True on the sharing side: nodes of the external tailnet can open
+  // connections to the nodes this tailnet's grants expose to them.
+  // False on a tailnet that only reaches out to the external one.
+  allowIncomingConnections bool
+  // Local groups and tags the external tailnet may reference in its own policy
+  //
+  // Entries such as `group:eng` or `tag:prod`. A grant in the external
+  // tailnet that references a group or tag not listed here is ignored.
+  allowExternalReferencesTo []string
 }
 
 // Tailscale tailnet key
@@ -534,6 +574,8 @@ private tailscale.service @defaults("name ports") {
   init(name? string)
   // Name of the service, including the 'svc:' prefix
   name string
+  // Human-readable display name of the service
+  displayName string
   // Tailscale IP addresses assigned to the service, including both IPv4 and IPv6 addresses
   addresses []string
   // Protocol and port ranges the service accepts
@@ -548,6 +590,27 @@ private tailscale.service @defaults("name ports") {
   comment string
   // Arbitrary key/value annotations attached to the service
   annotations map[string]string
+}
+
+// Tailscale organization tailnet
+//
+// Tailnet belonging to the same organization as the scanned tailnet,
+// identified by `id`. `displayName` is the name shown for the tailnet,
+// `dnsName` the DNS suffix its devices' names end in, and `createdAt`
+// when it was created. An unfamiliar or recently created API-only
+// tailnet is a network with no human users that is administered only
+// through the API.
+private tailscale.organizationTailnet @defaults("id displayName dnsName") {
+  // Unique identifier of the tailnet
+  id string
+  // Display name of the tailnet
+  displayName string
+  // Identifier of the organization the tailnet belongs to
+  orgId string
+  // DNS suffix used for the fully qualified names of the tailnet's devices, such as `tail1234.ts.net`
+  dnsName string
+  // Time the tailnet was created
+  createdAt time
 }
 
 // Tailscale log stream destination

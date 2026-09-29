@@ -1270,9 +1270,15 @@ func discoverProject(conn *connection.GcpConnection, gcpProject *mqlGcpProject, 
 			}
 			for i := range secrets.Data {
 				secret := secrets.Data[i].(*mqlGcpProjectSecretmanagerServiceSecret)
+				// A regional secret is placed in its location, so it cannot
+				// share a platform id with a global secret of the same name.
+				assetRegion := "global"
+				if secret.Location.Data != "" {
+					assetRegion = secret.Location.Data
+				}
 				assetList = append(assetList, &inventory.Asset{
 					PlatformIds: []string{
-						connection.NewResourcePlatformID("secretmanager", gcpProject.Id.Data, "global", "secret", secret.Name.Data),
+						connection.NewResourcePlatformID("secretmanager", gcpProject.Id.Data, assetRegion, "secret", secret.Name.Data),
 					},
 					Name: secret.Name.Data,
 					Platform: &inventory.Platform{
@@ -1281,7 +1287,7 @@ func discoverProject(conn *connection.GcpConnection, gcpProject *mqlGcpProject, 
 						Runtime:               "gcp",
 						Kind:                  "gcp-object",
 						Family:                []string{"google"},
-						TechnologyUrlSegments: connection.ResourceTechnologyUrl("secretmanager", gcpProject.Id.Data, "global", "secret", secret.Name.Data),
+						TechnologyUrlSegments: connection.ResourceTechnologyUrl("secretmanager", gcpProject.Id.Data, assetRegion, "secret", secret.Name.Data),
 					},
 					Labels:      mapStrInterfaceToMapStrStr(secret.GetLabels().Data),
 					Connections: []*inventory.Config{conn.Conf.Clone(inventory.WithoutDiscovery(), inventory.WithParentConnectionId(conn.Conf.Id))},

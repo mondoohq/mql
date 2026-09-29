@@ -112,26 +112,6 @@ func (a *PSStringArray) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, (*[]string)(a))
 }
 
-// PSString decodes a value PowerShell means as a string. A calculated
-// property whose expression yields nothing serializes as an empty object
-// rather than as null, so a plain string field fails the whole decode on a
-// server that has, for example, never scavenged.
-type PSString string
-
-func (s *PSString) UnmarshalJSON(data []byte) error {
-	data = bytes.TrimSpace(data)
-	if len(data) == 0 || bytes.Equal(data, []byte("null")) || data[0] == '{' || data[0] == '[' {
-		*s = ""
-		return nil
-	}
-	var v string
-	if err := json.Unmarshal(data, &v); err != nil {
-		return err
-	}
-	*s = PSString(v)
-	return nil
-}
-
 // PSTimeSpan decodes a .NET TimeSpan. ConvertTo-Json renders one as an object
 // of Ticks/Days/Hours/TotalSeconds rather than a number, so the value a caller
 // wants has to be read out of it.

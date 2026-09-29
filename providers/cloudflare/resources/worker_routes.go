@@ -210,6 +210,8 @@ func workerBindingTarget(b workers.ScriptScriptAndVersionSettingGetResponseBindi
 		return b.ID
 	case "pipelines":
 		return b.Pipeline
+	case "k2":
+		return b.Stream
 	case "workflow":
 		return b.WorkflowName
 	case "secrets_store_secret":

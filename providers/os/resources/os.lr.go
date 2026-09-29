@@ -345,6 +345,7 @@ const (
 	ResourceYumRepo                                       string = "yum.repo"
 	ResourceYumConfig                                     string = "yum.config"
 	ResourceApt                                           string = "apt"
+	ResourceAptConfig                                     string = "apt.config"
 	ResourceAptRepo                                       string = "apt.repo"
 	ResourcePkg                                           string = "pkg"
 	ResourcePkgRepo                                       string = "pkg.repo"
@@ -539,8 +540,11 @@ const (
 	ResourceEdrProduct                                    string = "edr.product"
 	ResourceMdm                                           string = "mdm"
 	ResourceMdmIntune                                     string = "mdm.intune"
+	ResourceWinget                                        string = "winget"
+	ResourceWingetSource                                  string = "winget.source"
 	ResourceIdp                                           string = "idp"
 	ResourceIdpEntra                                      string = "idp.entra"
+	ResourceIdpActiveDirectory                            string = "idp.activeDirectory"
 	ResourceCloud                                         string = "cloud"
 	ResourceCloudInstance                                 string = "cloudInstance"
 	ResourceIpAddress                                     string = "ipAddress"
@@ -1987,6 +1991,10 @@ func init() {
 			// to override args, implement: initApt(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createApt,
 		},
+		"apt.config": {
+			// to override args, implement: initAptConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAptConfig,
+		},
 		"apt.repo": {
 			// to override args, implement: initAptRepo(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createAptRepo,
@@ -2763,6 +2771,14 @@ func init() {
 			Init:   initMdmIntune,
 			Create: createMdmIntune,
 		},
+		"winget": {
+			// to override args, implement: initWinget(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWinget,
+		},
+		"winget.source": {
+			// to override args, implement: initWingetSource(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createWingetSource,
+		},
 		"idp": {
 			// to override args, implement: initIdp(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createIdp,
@@ -2770,6 +2786,10 @@ func init() {
 		"idp.entra": {
 			Init:   initIdpEntra,
 			Create: createIdpEntra,
+		},
+		"idp.activeDirectory": {
+			Init:   initIdpActiveDirectory,
+			Create: createIdpActiveDirectory,
 		},
 		"cloud": {
 			// to override args, implement: initCloud(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -10349,6 +10369,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"sudo.version": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSudo).GetVersion()).ToDataRes(types.String)
 	},
+	"sudo.implementation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSudo).GetImplementation()).ToDataRes(types.String)
+	},
 	"sudo.plugins": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSudo).GetPlugins()).ToDataRes(types.Array(types.Resource("sudo.plugin")))
 	},
@@ -11053,6 +11076,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"apt.repos": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlApt).GetRepos()).ToDataRes(types.Array(types.Resource("apt.repo")))
+	},
+	"apt.config.params": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptConfig).GetParams()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"apt.config.allowInsecureRepositories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptConfig).GetAllowInsecureRepositories()).ToDataRes(types.Bool)
+	},
+	"apt.config.allowWeakRepositories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptConfig).GetAllowWeakRepositories()).ToDataRes(types.Bool)
+	},
+	"apt.config.allowDowngradeToInsecureRepositories": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptConfig).GetAllowDowngradeToInsecureRepositories()).ToDataRes(types.Bool)
+	},
+	"apt.config.checkDate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptConfig).GetCheckDate()).ToDataRes(types.Bool)
+	},
+	"apt.config.installRecommends": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptConfig).GetInstallRecommends()).ToDataRes(types.Bool)
+	},
+	"apt.config.installSuggests": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAptConfig).GetInstallSuggests()).ToDataRes(types.Bool)
 	},
 	"apt.repo.type": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAptRepo).GetType()).ToDataRes(types.String)
@@ -15446,11 +15490,56 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"mdm.intune.tenantId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMdmIntune).GetTenantId()).ToDataRes(types.String)
 	},
+	"winget.installed": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWinget).GetInstalled()).ToDataRes(types.Bool)
+	},
+	"winget.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWinget).GetVersion()).ToDataRes(types.String)
+	},
+	"winget.architecture": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWinget).GetArchitecture()).ToDataRes(types.String)
+	},
+	"winget.packageFullName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWinget).GetPackageFullName()).ToDataRes(types.String)
+	},
+	"winget.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWinget).GetPath()).ToDataRes(types.String)
+	},
+	"winget.enabledByPolicy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWinget).GetEnabledByPolicy()).ToDataRes(types.Bool)
+	},
+	"winget.missingDependencies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWinget).GetMissingDependencies()).ToDataRes(types.Array(types.String))
+	},
+	"winget.systemUsable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWinget).GetSystemUsable()).ToDataRes(types.Bool)
+	},
+	"winget.sources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWinget).GetSources()).ToDataRes(types.Array(types.Resource("winget.source")))
+	},
+	"winget.source.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWingetSource).GetName()).ToDataRes(types.String)
+	},
+	"winget.source.url": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWingetSource).GetUrl()).ToDataRes(types.String)
+	},
+	"winget.source.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWingetSource).GetType()).ToDataRes(types.String)
+	},
+	"winget.source.origin": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWingetSource).GetOrigin()).ToDataRes(types.String)
+	},
+	"winget.source.explicit": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWingetSource).GetExplicit()).ToDataRes(types.Bool)
+	},
 	"idp.joined": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIdp).GetJoined()).ToDataRes(types.Bool)
 	},
 	"idp.entra": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIdp).GetEntra()).ToDataRes(types.Resource("idp.entra"))
+	},
+	"idp.activeDirectory": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIdp).GetActiveDirectory()).ToDataRes(types.Resource("idp.activeDirectory"))
 	},
 	"idp.entra.deviceId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIdpEntra).GetDeviceId()).ToDataRes(types.String)
@@ -15460,6 +15549,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"idp.entra.joinType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlIdpEntra).GetJoinType()).ToDataRes(types.String)
+	},
+	"idp.activeDirectory.domain": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIdpActiveDirectory).GetDomain()).ToDataRes(types.String)
+	},
+	"idp.activeDirectory.forest": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlIdpActiveDirectory).GetForest()).ToDataRes(types.String)
 	},
 	"cloud.provider": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlCloud).GetProvider()).ToDataRes(types.String)
@@ -28596,6 +28691,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlSudo).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"sudo.implementation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSudo).Implementation, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"sudo.plugins": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlSudo).Plugins, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -29706,6 +29805,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"apt.repos": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlApt).Repos, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"apt.config.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptConfig).__id, ok = v.Value.(string)
+		return
+	},
+	"apt.config.params": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptConfig).Params, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"apt.config.allowInsecureRepositories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptConfig).AllowInsecureRepositories, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"apt.config.allowWeakRepositories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptConfig).AllowWeakRepositories, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"apt.config.allowDowngradeToInsecureRepositories": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptConfig).AllowDowngradeToInsecureRepositories, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"apt.config.checkDate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptConfig).CheckDate, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"apt.config.installRecommends": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptConfig).InstallRecommends, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"apt.config.installSuggests": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAptConfig).InstallSuggests, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"apt.repo.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -36340,6 +36471,70 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMdmIntune).TenantId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"winget.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).__id, ok = v.Value.(string)
+		return
+	},
+	"winget.installed": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).Installed, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"winget.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"winget.architecture": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).Architecture, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"winget.packageFullName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).PackageFullName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"winget.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"winget.enabledByPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).EnabledByPolicy, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"winget.missingDependencies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).MissingDependencies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"winget.systemUsable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).SystemUsable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"winget.sources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWinget).Sources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"winget.source.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWingetSource).__id, ok = v.Value.(string)
+		return
+	},
+	"winget.source.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWingetSource).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"winget.source.url": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWingetSource).Url, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"winget.source.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWingetSource).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"winget.source.origin": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWingetSource).Origin, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"winget.source.explicit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWingetSource).Explicit, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"idp.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIdp).__id, ok = v.Value.(string)
 		return
@@ -36350,6 +36545,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"idp.entra": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIdp).Entra, ok = plugin.RawToTValue[*mqlIdpEntra](v.Value, v.Error)
+		return
+	},
+	"idp.activeDirectory": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIdp).ActiveDirectory, ok = plugin.RawToTValue[*mqlIdpActiveDirectory](v.Value, v.Error)
 		return
 	},
 	"idp.entra.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -36366,6 +36565,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"idp.entra.joinType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlIdpEntra).JoinType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"idp.activeDirectory.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIdpActiveDirectory).__id, ok = v.Value.(string)
+		return
+	},
+	"idp.activeDirectory.domain": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIdpActiveDirectory).Domain, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"idp.activeDirectory.forest": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlIdpActiveDirectory).Forest, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"cloud.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -70831,6 +71042,7 @@ type mqlSudo struct {
 	Path            plugin.TValue[string]
 	Installed       plugin.TValue[bool]
 	Version         plugin.TValue[string]
+	Implementation  plugin.TValue[string]
 	Plugins         plugin.TValue[[]any]
 	PolicyPlugin    plugin.TValue[*mqlSudoPlugin]
 	IoPlugins       plugin.TValue[[]any]
@@ -70893,6 +71105,12 @@ func (c *mqlSudo) GetInstalled() *plugin.TValue[bool] {
 func (c *mqlSudo) GetVersion() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.Version, func() (string, error) {
 		return c.version()
+	})
+}
+
+func (c *mqlSudo) GetImplementation() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Implementation, func() (string, error) {
+		return c.implementation()
 	})
 }
 
@@ -74608,6 +74826,129 @@ func (c *mqlApt) GetRepos() *plugin.TValue[[]any] {
 		}
 
 		return c.repos()
+	})
+}
+
+// mqlAptConfig for the apt.config resource
+type mqlAptConfig struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlAptConfigInternal it will be used here
+	Params                               plugin.TValue[map[string]any]
+	AllowInsecureRepositories            plugin.TValue[bool]
+	AllowWeakRepositories                plugin.TValue[bool]
+	AllowDowngradeToInsecureRepositories plugin.TValue[bool]
+	CheckDate                            plugin.TValue[bool]
+	InstallRecommends                    plugin.TValue[bool]
+	InstallSuggests                      plugin.TValue[bool]
+}
+
+// createAptConfig creates a new instance of this resource
+func createAptConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAptConfig{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("apt.config", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAptConfig) MqlName() string {
+	return "apt.config"
+}
+
+func (c *mqlAptConfig) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAptConfig) GetParams() *plugin.TValue[map[string]any] {
+	return plugin.GetOrCompute[map[string]any](&c.Params, func() (map[string]any, error) {
+		return c.params()
+	})
+}
+
+func (c *mqlAptConfig) GetAllowInsecureRepositories() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AllowInsecureRepositories, func() (bool, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return false, vargParams.Error
+		}
+
+		return c.allowInsecureRepositories(vargParams.Data)
+	})
+}
+
+func (c *mqlAptConfig) GetAllowWeakRepositories() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AllowWeakRepositories, func() (bool, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return false, vargParams.Error
+		}
+
+		return c.allowWeakRepositories(vargParams.Data)
+	})
+}
+
+func (c *mqlAptConfig) GetAllowDowngradeToInsecureRepositories() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AllowDowngradeToInsecureRepositories, func() (bool, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return false, vargParams.Error
+		}
+
+		return c.allowDowngradeToInsecureRepositories(vargParams.Data)
+	})
+}
+
+func (c *mqlAptConfig) GetCheckDate() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.CheckDate, func() (bool, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return false, vargParams.Error
+		}
+
+		return c.checkDate(vargParams.Data)
+	})
+}
+
+func (c *mqlAptConfig) GetInstallRecommends() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.InstallRecommends, func() (bool, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return false, vargParams.Error
+		}
+
+		return c.installRecommends(vargParams.Data)
+	})
+}
+
+func (c *mqlAptConfig) GetInstallSuggests() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.InstallSuggests, func() (bool, error) {
+		vargParams := c.GetParams()
+		if vargParams.Error != nil {
+			return false, vargParams.Error
+		}
+
+		return c.installSuggests(vargParams.Data)
 	})
 }
 
@@ -93295,13 +93636,200 @@ func (c *mqlMdmIntune) GetTenantId() *plugin.TValue[string] {
 	return &c.TenantId
 }
 
+// mqlWinget for the winget resource
+type mqlWinget struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlWingetInternal
+	Installed           plugin.TValue[bool]
+	Version             plugin.TValue[string]
+	Architecture        plugin.TValue[string]
+	PackageFullName     plugin.TValue[string]
+	Path                plugin.TValue[string]
+	EnabledByPolicy     plugin.TValue[bool]
+	MissingDependencies plugin.TValue[[]any]
+	SystemUsable        plugin.TValue[bool]
+	Sources             plugin.TValue[[]any]
+}
+
+// createWinget creates a new instance of this resource
+func createWinget(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWinget{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("winget", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWinget) MqlName() string {
+	return "winget"
+}
+
+func (c *mqlWinget) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWinget) GetInstalled() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Installed, func() (bool, error) {
+		return c.installed()
+	})
+}
+
+func (c *mqlWinget) GetVersion() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Version, func() (string, error) {
+		return c.version()
+	})
+}
+
+func (c *mqlWinget) GetArchitecture() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Architecture, func() (string, error) {
+		return c.architecture()
+	})
+}
+
+func (c *mqlWinget) GetPackageFullName() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.PackageFullName, func() (string, error) {
+		return c.packageFullName()
+	})
+}
+
+func (c *mqlWinget) GetPath() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Path, func() (string, error) {
+		return c.path()
+	})
+}
+
+func (c *mqlWinget) GetEnabledByPolicy() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.EnabledByPolicy, func() (bool, error) {
+		return c.enabledByPolicy()
+	})
+}
+
+func (c *mqlWinget) GetMissingDependencies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MissingDependencies, func() ([]any, error) {
+		return c.missingDependencies()
+	})
+}
+
+func (c *mqlWinget) GetSystemUsable() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.SystemUsable, func() (bool, error) {
+		return c.systemUsable()
+	})
+}
+
+func (c *mqlWinget) GetSources() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Sources, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("winget", c.__id, "sources")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.sources()
+	})
+}
+
+// mqlWingetSource for the winget.source resource
+type mqlWingetSource struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlWingetSourceInternal it will be used here
+	Name     plugin.TValue[string]
+	Url      plugin.TValue[string]
+	Type     plugin.TValue[string]
+	Origin   plugin.TValue[string]
+	Explicit plugin.TValue[bool]
+}
+
+// createWingetSource creates a new instance of this resource
+func createWingetSource(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlWingetSource{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("winget.source", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlWingetSource) MqlName() string {
+	return "winget.source"
+}
+
+func (c *mqlWingetSource) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlWingetSource) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlWingetSource) GetUrl() *plugin.TValue[string] {
+	return &c.Url
+}
+
+func (c *mqlWingetSource) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlWingetSource) GetOrigin() *plugin.TValue[string] {
+	return &c.Origin
+}
+
+func (c *mqlWingetSource) GetExplicit() *plugin.TValue[bool] {
+	return &c.Explicit
+}
+
 // mqlIdp for the idp resource
 type mqlIdp struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlIdpInternal
-	Joined plugin.TValue[bool]
-	Entra  plugin.TValue[*mqlIdpEntra]
+	Joined          plugin.TValue[bool]
+	Entra           plugin.TValue[*mqlIdpEntra]
+	ActiveDirectory plugin.TValue[*mqlIdpActiveDirectory]
 }
 
 // createIdp creates a new instance of this resource
@@ -93363,6 +93891,22 @@ func (c *mqlIdp) GetEntra() *plugin.TValue[*mqlIdpEntra] {
 	})
 }
 
+func (c *mqlIdp) GetActiveDirectory() *plugin.TValue[*mqlIdpActiveDirectory] {
+	return plugin.GetOrCompute[*mqlIdpActiveDirectory](&c.ActiveDirectory, func() (*mqlIdpActiveDirectory, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("idp", c.__id, "activeDirectory")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlIdpActiveDirectory), nil
+			}
+		}
+
+		return c.activeDirectory()
+	})
+}
+
 // mqlIdpEntra for the idp.entra resource
 type mqlIdpEntra struct {
 	MqlRuntime *plugin.Runtime
@@ -93415,6 +93959,55 @@ func (c *mqlIdpEntra) GetTenantId() *plugin.TValue[string] {
 
 func (c *mqlIdpEntra) GetJoinType() *plugin.TValue[string] {
 	return &c.JoinType
+}
+
+// mqlIdpActiveDirectory for the idp.activeDirectory resource
+type mqlIdpActiveDirectory struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlIdpActiveDirectoryInternal it will be used here
+	Domain plugin.TValue[string]
+	Forest plugin.TValue[string]
+}
+
+// createIdpActiveDirectory creates a new instance of this resource
+func createIdpActiveDirectory(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlIdpActiveDirectory{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("idp.activeDirectory", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlIdpActiveDirectory) MqlName() string {
+	return "idp.activeDirectory"
+}
+
+func (c *mqlIdpActiveDirectory) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlIdpActiveDirectory) GetDomain() *plugin.TValue[string] {
+	return &c.Domain
+}
+
+func (c *mqlIdpActiveDirectory) GetForest() *plugin.TValue[string] {
+	return &c.Forest
 }
 
 // mqlCloud for the cloud resource

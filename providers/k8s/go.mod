@@ -13,7 +13,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	go.mondoo.com/mql v0.0.0-20260928074600-21f1ad7c03c3
 	k8s.io/api v0.37.1
-	k8s.io/apiextensions-apiserver v0.37.0
+	k8s.io/apiextensions-apiserver v0.37.1
 	k8s.io/apimachinery v0.37.1
 	k8s.io/client-go v0.37.1
 	k8s.io/klog/v2 v2.140.0
@@ -29,7 +29,7 @@ require (
 	github.com/distribution/reference v0.6.0
 	golang.org/x/oauth2 v0.37.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/kube-aggregator v0.37.0
+	k8s.io/kube-aggregator v0.37.1
 	sigs.k8s.io/gateway-api v1.6.2
 	sigs.k8s.io/yaml v1.6.0
 )

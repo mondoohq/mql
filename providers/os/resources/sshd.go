@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/sshd"
@@ -53,6 +55,19 @@ func initSshdConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 
 const defaultSshdConfig = "/etc/ssh/sshd_config"
 
+// On Windows, OpenSSH Server reads %ProgramData%\ssh\sshd_config and
+// resolves relative Include paths against %ProgramData%\ssh. Win32-OpenSSH
+// compiles SSHDIR as "__PROGRAMDATA__\\ssh" and substitutes the token with
+// the ProgramData folder at runtime, so the same token may also appear as a
+// path prefix inside the configuration itself.
+// https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh-server-configuration
+const (
+	windowsProgramData            = `C:\ProgramData`
+	windowsSshdDir                = windowsProgramData + `\ssh`
+	windowsDefaultSshdConfig      = windowsSshdDir + `\sshd_config`
+	windowsProgramDataPlaceholder = "__PROGRAMDATA__"
+)
+
 const sshdEffectiveConfigCommand = "sshd -T"
 
 func (s *mqlSshdConfig) id() (string, error) {
@@ -64,9 +79,23 @@ func (s *mqlSshdConfig) id() (string, error) {
 	return file.Data.Path.Data, nil
 }
 
+// isWindows reports whether the connected asset is a Windows system, where
+// sshd uses a different configuration directory and commands run under cmd.exe
+// (WinRM) or PowerShell (local) rather than a POSIX shell.
+func (s *mqlSshdConfig) isWindows() bool {
+	conn, ok := s.MqlRuntime.Connection.(shared.Connection)
+	if !ok || conn.Asset() == nil || conn.Asset().Platform == nil {
+		return false
+	}
+	return conn.Asset().Platform.IsFamily(inventory.FAMILY_WINDOWS)
+}
+
 func (s *mqlSshdConfig) file() (*mqlFile, error) {
 	path := defaultSshdConfig
-	if conn, ok := s.MqlRuntime.Connection.(shared.Connection); ok {
+	if s.isWindows() {
+		path = windowsDefaultSshdConfig
+	} else if conn, ok := s.MqlRuntime.Connection.(shared.Connection); ok {
+		// Vendor defaults such as /usr/etc/ssh exist only on Linux.
 		path = resolveVendorConfigPath(conn.FileSystem(), defaultSshdConfig)
 	}
 
@@ -118,7 +147,85 @@ var reGlob = regexp.MustCompile(`.*\*.*`)
 func (s *mqlSshdConfig) expandGlob(glob string) ([]string, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
 	afs := &afero.Afero{Fs: conn.FileSystem()}
+	if s.isWindows() {
+		return expandWindowsSshdGlob(afs, glob)
+	}
 	return expandSshdGlob(afs, glob)
+}
+
+// expandWindowsSshdGlob expands an sshd_config Include pattern the way
+// Win32-OpenSSH does. A pattern is absolute when it starts with a slash, a
+// backslash, a drive letter, or the __PROGRAMDATA__ token; anything else is
+// resolved from %ProgramData%\ssh. Win32-OpenSSH converts the pattern to
+// forward slashes before globbing, so both separators are accepted here.
+// The returned paths use backslashes.
+func expandWindowsSshdGlob(afs *afero.Afero, glob string) ([]string, error) {
+	if len(glob) >= len(windowsProgramDataPlaceholder) && strings.EqualFold(glob[:len(windowsProgramDataPlaceholder)], windowsProgramDataPlaceholder) {
+		glob = windowsProgramData + glob[len(windowsProgramDataPlaceholder):]
+	}
+	glob = strings.ReplaceAll(glob, `\`, "/")
+	if !isWindowsAbsPath(glob) {
+		glob = strings.ReplaceAll(windowsSshdDir, `\`, "/") + "/" + glob
+	}
+
+	var paths []string
+	if !reGlob.MatchString(glob) {
+		paths = []string{glob}
+	} else {
+		segments := strings.Split(glob, "/")
+		// The first segment is the root: a drive ("C:") or empty for a
+		// root-relative path ("/foo").
+		paths = []string{segments[0] + "/"}
+		for _, segment := range segments[1:] {
+			if segment == "" {
+				continue
+			}
+			if !reGlob.MatchString(segment) {
+				for i := range paths {
+					paths[i] = pathpkg.Join(paths[i], segment)
+				}
+				continue
+			}
+
+			var nuPaths []string
+			for _, dir := range paths {
+				files, err := afs.ReadDir(dir)
+				if err != nil {
+					if os.IsNotExist(err) {
+						continue
+					}
+					return nil, err
+				}
+				for _, file := range files {
+					name := file.Name()
+					// Win32-OpenSSH uses the OpenBSD glob, which compares
+					// names case-sensitively even on NTFS.
+					match, err := filepath.Match(segment, name)
+					if err != nil {
+						return nil, err
+					}
+					if match {
+						nuPaths = append(nuPaths, pathpkg.Join(dir, name))
+					}
+				}
+			}
+			paths = nuPaths
+		}
+	}
+
+	for i := range paths {
+		paths[i] = strings.ReplaceAll(paths[i], "/", `\`)
+	}
+	return paths, nil
+}
+
+// isWindowsAbsPath mirrors Win32-OpenSSH's is_absolute_path for a pattern
+// already converted to forward slashes: "/abc" or "c:/abc".
+func isWindowsAbsPath(p string) bool {
+	if strings.HasPrefix(p, "/") {
+		return true
+	}
+	return len(p) >= 2 && p[1] == ':' && ((p[0] >= 'a' && p[0] <= 'z') || (p[0] >= 'A' && p[0] <= 'Z'))
 }
 
 // expandSshdGlob expands an sshd_config Include glob against afs. Relative
@@ -376,10 +483,30 @@ func (s *mqlSshdConfig) effectiveConfigCommand() (string, error) {
 	if file.Error != nil {
 		return "", file.Error
 	}
-	if file.Data == nil || file.Data.Path.Data == "" || file.Data.Path.Data == defaultSshdConfig {
+	if file.Data == nil || file.Data.Path.Data == "" {
 		return sshdEffectiveConfigCommand, nil
 	}
-	return sshdEffectiveConfigCommand + " -f " + shared.ShellEscape(file.Data.Path.Data), nil
+	path := file.Data.Path.Data
+	if s.isWindows() {
+		// sshd.exe defaults to %ProgramData%\ssh\sshd_config, the same file
+		// this resource reads, so -f is only needed for a custom path.
+		// WinRM runs commands under cmd.exe and a local scan under
+		// PowerShell. Both strip double quotes, cmd.exe does not strip single
+		// quotes, and a Windows path cannot contain a double quote.
+		if strings.EqualFold(path, windowsDefaultSshdConfig) {
+			return sshdEffectiveConfigCommand, nil
+		}
+		// Inside double quotes cmd.exe still expands %VAR% and PowerShell
+		// expands $var, $(...) and backtick escapes; & | < > stay literal.
+		if strings.ContainsAny(path, "\"%$`") {
+			return "", fmt.Errorf("cannot run sshd -T for %q: the path contains a character the Windows shell would expand", path)
+		}
+		return sshdEffectiveConfigCommand + ` -f "` + path + `"`, nil
+	}
+	if path == defaultSshdConfig {
+		return sshdEffectiveConfigCommand, nil
+	}
+	return sshdEffectiveConfigCommand + " -f " + shared.ShellEscape(path), nil
 }
 
 func effectiveConfigEntrySlice(params map[string]string, key string) ([]any, error) {

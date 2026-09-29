@@ -55,6 +55,28 @@ func TestSplitIncludeArgs(t *testing.T) {
 			args: `"/etc/ssh/my configs/*.conf"`,
 			want: []string{"/etc/ssh/my configs/*.conf"},
 		},
+		{
+			// Win32-OpenSSH: a backslash before an ordinary character is
+			// literal in argv_split, so Windows paths survive unquoted.
+			name: "windows path keeps its backslashes",
+			args: `C:\ProgramData\ssh\sshd_config.d\*.conf`,
+			want: []string{`C:\ProgramData\ssh\sshd_config.d\*.conf`},
+		},
+		{
+			name: "quoted windows path containing a space",
+			args: `"C:\Program Files\OpenSSH\extra.conf"`,
+			want: []string{`C:\Program Files\OpenSSH\extra.conf`},
+		},
+		{
+			name: "escaped space joins one argument",
+			args: `/etc/ssh/my\ configs/*.conf`,
+			want: []string{"/etc/ssh/my configs/*.conf"},
+		},
+		{
+			name: "escaped backslash collapses to one",
+			args: `C:\\ssh\\a.conf`,
+			want: []string{`C:\ssh\a.conf`},
+		},
 	}
 
 	for _, tc := range tests {

@@ -91,6 +91,11 @@ func newMqlAuth0Client(runtime *plugin.Runtime, c *management.Client) (plugin.Re
 		}
 	}
 
+	myOrg, err := newMqlAuth0ClientMyOrganization(runtime, c.ClientID, c.MyOrganizationConfiguration)
+	if err != nil {
+		return nil, err
+	}
+
 	r, err := CreateResource(runtime, "auth0.client", map[string]*llx.RawData{
 		"id":                         llx.StringDataPtr(c.ClientID),
 		"name":                       llx.StringDataPtr(c.Name),
@@ -115,6 +120,8 @@ func newMqlAuth0Client(runtime *plugin.Runtime, c *management.Client) (plugin.Re
 		"jwtConfiguration":           llx.DictData(jwt),
 		"clientMetadata":             llx.MapData(meta, types.String),
 		"authenticationMethods":      llx.ArrayData(authMethods, types.String),
+		"anonymousSessionsEnabled":   llx.BoolDataPtr(anonymousSessionsActive(c.AnonymousSessions)),
+		"myOrganization":             myOrg,
 	})
 	if err != nil {
 		return nil, err
@@ -182,4 +189,65 @@ func (c *mqlAuth0Client) enabledConnections() ([]any, error) {
 
 func (r *mqlAuth0Client) id() (string, error) {
 	return "auth0.client/" + r.Id.Data, nil
+}
+
+// anonymousSessionsActive returns whether the client may create anonymous
+// sessions, or nil when the API did not report the setting.
+func anonymousSessionsActive(a *management.ClientAnonymousSessions) *bool {
+	if a == nil {
+		return nil
+	}
+	return a.Active
+}
+
+// mqlAuth0ClientMyOrganizationConfigurationInternal caches the raw invitation
+// landing client ID so the accessor can resolve it into an auth0.client.
+type mqlAuth0ClientMyOrganizationConfigurationInternal struct {
+	cacheInvitationLandingClientId *string
+}
+
+// myOrganizationArgs maps the SDK My Organization configuration to the MQL
+// field values, preserving absent settings as null.
+func myOrganizationArgs(cfg *management.MyOrganizationConfiguration) map[string]*llx.RawData {
+	strategies := llx.NilData
+	if cfg.AllowedStrategies != nil {
+		strategies = llx.ArrayData(strList(cfg.AllowedStrategies), types.String)
+	}
+	return map[string]*llx.RawData{
+		"enforcePermissionCeiling":         llx.BoolDataPtr(cfg.EnforcePermissionCeiling),
+		"enforceSelfAssignmentRestriction": llx.BoolDataPtr(cfg.EnforceSelfAssignmentRestriction),
+		"allowedStrategies":                strategies,
+		"connectionDeletionBehavior":       llx.StringDataPtr(cfg.ConnectionDeletionBehavior),
+	}
+}
+
+// newMqlAuth0ClientMyOrganization builds the My Organization sub-resource for a
+// client, or a null value when the client has no such configuration.
+func newMqlAuth0ClientMyOrganization(runtime *plugin.Runtime, clientID *string, cfg *management.MyOrganizationConfiguration) (*llx.RawData, error) {
+	if cfg == nil || clientID == nil || *clientID == "" {
+		return llx.NilData, nil
+	}
+	args := myOrganizationArgs(cfg)
+	args["__id"] = llx.StringData("auth0.client/" + *clientID + "/myOrganization")
+	r, err := CreateResource(runtime, "auth0.client.myOrganizationConfiguration", args)
+	if err != nil {
+		return nil, err
+	}
+	r.(*mqlAuth0ClientMyOrganizationConfiguration).cacheInvitationLandingClientId = cfg.InvitationLandingClientID
+	return llx.ResourceData(r, "auth0.client.myOrganizationConfiguration"), nil
+}
+
+// invitationLandingClient resolves the application used as the invitation
+// landing page into an auth0.client.
+func (m *mqlAuth0ClientMyOrganizationConfiguration) invitationLandingClient() (*mqlAuth0Client, error) {
+	if m.cacheInvitationLandingClientId == nil || *m.cacheInvitationLandingClientId == "" {
+		m.InvitationLandingClient.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	r, err := NewResource(m.MqlRuntime, "auth0.client",
+		map[string]*llx.RawData{"id": llx.StringDataPtr(m.cacheInvitationLandingClientId)})
+	if err != nil {
+		return nil, err
+	}
+	return r.(*mqlAuth0Client), nil
 }

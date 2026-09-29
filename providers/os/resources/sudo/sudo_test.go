@@ -325,3 +325,46 @@ Sudoers policy plugin version 1.9.5
 	assert.Equal(t, "1.9.5", got.Version)
 	assert.Len(t, got.Plugins, 1)
 }
+
+// sudoRsVOutput is `sudo -V` on Ubuntu 26.04, where /usr/bin/sudo resolves
+// through update-alternatives to sudo-rs (/usr/lib/cargo/bin/sudo).
+const sudoRsVOutput = "sudo-rs 0.2.13-0ubuntu1.2\n"
+
+// ubuntu2404SudoVOutput is the head of `sudo -V` run as root on Ubuntu 24.04
+// (sudo 1.9.15p5), configure options elided.
+const ubuntu2404SudoVOutput = `Sudo version 1.9.15p5
+Configure options: --build=x86_64-linux-gnu --prefix=/usr --with-pam --with-logging=syslog
+Sudoers policy plugin version 1.9.15p5
+Sudoers file grammar version 50
+
+Sudoers path: /etc/sudoers
+Authentication methods: 'pam'
+`
+
+func TestParseVersionOutput_Implementation(t *testing.T) {
+	cases := []struct {
+		name     string
+		in       string
+		wantImpl string
+		wantVer  string
+	}{
+		{"sudo-rs on Ubuntu 26.04 drops package revision", sudoRsVOutput, sudo.ImplementationSudoRs, "0.2.13"},
+		{"sudo-rs upstream build", "sudo-rs 0.2.8\n", sudo.ImplementationSudoRs, "0.2.8"},
+		{"sudo on Ubuntu 24.04", ubuntu2404SudoVOutput, sudo.ImplementationSudo, "1.9.15p5"},
+		{"sudo on Debian 12", fullSudoVOutput, sudo.ImplementationSudo, "1.9.13p3"},
+		{"unrecognized banner", "nothing to see here\n", "", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := sudo.ParseVersionOutput(c.in)
+			assert.Equal(t, c.wantImpl, got.Implementation)
+			assert.Equal(t, c.wantVer, got.Version)
+		})
+	}
+}
+
+func TestParseVersionOutput_SudoRsHasNoPlugins(t *testing.T) {
+	got := sudo.ParseVersionOutput(sudoRsVOutput)
+	assert.Empty(t, got.Plugins)
+	assert.False(t, got.PythonSupport)
+}

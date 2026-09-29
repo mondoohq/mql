@@ -868,6 +868,9 @@ func storageAccountToMql(runtime *plugin.Runtime, account *storage.Account) (*mq
 	var enableHttpsTrafficOnly *bool
 	var allowSharedKeyAccess *bool
 	var allowCrossTenantReplication *bool
+	var allowCrossTenantDelegationSas *bool
+	var sasRequireUserBound *bool
+	var sasRequireUserBoundAction *string
 	var isLocalUserEnabled *bool
 	var isSftpEnabled *bool
 	var isHnsEnabled *bool
@@ -897,6 +900,8 @@ func storageAccountToMql(runtime *plugin.Runtime, account *storage.Account) (*mq
 		enableHttpsTrafficOnly = account.Properties.EnableHTTPSTrafficOnly
 		allowSharedKeyAccess = account.Properties.AllowSharedKeyAccess
 		allowCrossTenantReplication = account.Properties.AllowCrossTenantReplication
+		allowCrossTenantDelegationSas = account.Properties.AllowCrossTenantDelegationSas
+		sasRequireUserBound, sasRequireUserBoundAction = sasPolicyUserBoundDelegation(account.Properties.SasPolicy)
 		isLocalUserEnabled = account.Properties.IsLocalUserEnabled
 		isSftpEnabled = account.Properties.IsSftpEnabled
 		isHnsEnabled = account.Properties.IsHnsEnabled
@@ -1073,58 +1078,61 @@ func storageAccountToMql(runtime *plugin.Runtime, account *storage.Account) (*mq
 		kind = string(*account.Kind)
 	}
 	args := map[string]*llx.RawData{
-		"id":                                 llx.StringDataPtr(account.ID),
-		"name":                               llx.StringDataPtr(account.Name),
-		"location":                           llx.StringDataPtr(account.Location),
-		"tags":                               llx.MapData(convert.PtrMapStrToInterface(account.Tags), types.String),
-		"type":                               llx.StringDataPtr(account.Type),
-		"properties":                         llx.DictData(properties),
-		"principalId":                        llx.StringDataPtr(accountIdentity.PrincipalID),
-		"tenantId":                           llx.StringDataPtr(accountIdentity.TenantID),
-		"sku":                                llx.DictData(sku),
-		"kind":                               llx.StringData(kind),
-		"minimumTlsVersion":                  llx.StringDataPtr(minimumTlsVersion),
-		"allowBlobPublicAccess":              llx.BoolDataPtr(allowBlobPublicAccess),
-		"enableHttpsTrafficOnly":             llx.BoolDataPtr(enableHttpsTrafficOnly),
-		"publicNetworkAccess":                llx.StringDataPtr(publicNetworkAccess),
-		"allowSharedKeyAccess":               llx.BoolDataPtr(allowSharedKeyAccess),
-		"allowCrossTenantReplication":        llx.BoolDataPtr(allowCrossTenantReplication),
-		"isLocalUserEnabled":                 llx.BoolDataPtr(isLocalUserEnabled),
-		"isSftpEnabled":                      llx.BoolDataPtr(isSftpEnabled),
-		"isHnsEnabled":                       llx.BoolDataPtr(isHnsEnabled),
-		"networkRuleDefaultAction":           llx.StringData(networkRuleDefaultAction),
-		"networkRuleBypass":                  llx.StringData(networkRuleBypass),
-		"networkRuleIpRanges":                llx.ArrayData(networkRuleIpRanges, types.String),
-		"networkRuleVirtualNetworkSubnetIds": llx.ArrayData(networkRuleVirtualNetworkSubnetIds, types.String),
-		"provisioningState":                  llx.StringDataPtr(provisioningState),
-		"creationTime":                       llx.TimeDataPtr(creationTime),
-		"accessTier":                         llx.StringDataPtr(accessTier),
-		"primaryLocation":                    llx.StringDataPtr(primaryLocation),
-		"statusOfPrimary":                    llx.StringDataPtr(statusOfPrimary),
-		"secondaryLocation":                  llx.StringDataPtr(secondaryLocation),
-		"statusOfSecondary":                  llx.StringDataPtr(statusOfSecondary),
-		"defaultToOAuthAuthentication":       llx.BoolDataPtr(defaultToOAuthAuthentication),
-		"enableNfsV3":                        llx.BoolDataPtr(enableNfsV3),
-		"largeFileSharesState":               llx.StringDataPtr(largeFileSharesState),
-		"lastGeoFailoverTime":                llx.TimeDataPtr(lastGeoFailoverTime),
-		"allowedCopyScope":                   llx.StringData(allowedCopyScope),
-		"requireInfrastructureEncryption":    llx.BoolData(requireInfraEnc),
-		"serviceKeyTypes":                    llx.MapData(serviceKeyTypes, types.String),
-		"sasExpirationPeriod":                llx.StringData(sasExpirationPeriod),
-		"sasExpirationAction":                llx.StringData(sasExpirationAction),
-		"keyExpirationPeriodInDays":          llx.IntData(keyExpirationPeriodInDays),
-		"sharedKeyAccessByService":           llx.MapData(sharedKeyAccessByService, types.String),
-		"key1CreationTime":                   llx.TimeDataPtr(key1CreationTime),
-		"key2CreationTime":                   llx.TimeDataPtr(key2CreationTime),
-		"filesDirectoryServiceOptions":       llx.StringDataPtr(filesDirectoryServiceOptions),
-		"filesDefaultSharePermission":        llx.StringDataPtr(filesDefaultSharePermission),
-		"filesActiveDirectoryDomainName":     llx.StringDataPtr(filesADDomainName),
-		"filesActiveDirectoryForestName":     llx.StringDataPtr(filesADForestName),
-		"filesActiveDirectoryAccountType":    llx.StringDataPtr(filesADAccountType),
-		"enableExtendedGroups":               llx.BoolDataPtr(enableExtendedGroups),
-		"dnsEndpointType":                    llx.StringDataPtr(dnsEndpointType),
-		"immutableStorageEnabled":            llx.BoolData(immutableEnabled),
-		"immutableStoragePolicyPeriodDays":   llx.IntData(immutablePeriodDays),
+		"id":                                   llx.StringDataPtr(account.ID),
+		"name":                                 llx.StringDataPtr(account.Name),
+		"location":                             llx.StringDataPtr(account.Location),
+		"tags":                                 llx.MapData(convert.PtrMapStrToInterface(account.Tags), types.String),
+		"type":                                 llx.StringDataPtr(account.Type),
+		"properties":                           llx.DictData(properties),
+		"principalId":                          llx.StringDataPtr(accountIdentity.PrincipalID),
+		"tenantId":                             llx.StringDataPtr(accountIdentity.TenantID),
+		"sku":                                  llx.DictData(sku),
+		"kind":                                 llx.StringData(kind),
+		"minimumTlsVersion":                    llx.StringDataPtr(minimumTlsVersion),
+		"allowBlobPublicAccess":                llx.BoolDataPtr(allowBlobPublicAccess),
+		"enableHttpsTrafficOnly":               llx.BoolDataPtr(enableHttpsTrafficOnly),
+		"publicNetworkAccess":                  llx.StringDataPtr(publicNetworkAccess),
+		"allowSharedKeyAccess":                 llx.BoolDataPtr(allowSharedKeyAccess),
+		"allowCrossTenantReplication":          llx.BoolDataPtr(allowCrossTenantReplication),
+		"allowCrossTenantDelegationSas":        llx.BoolDataPtr(allowCrossTenantDelegationSas),
+		"isLocalUserEnabled":                   llx.BoolDataPtr(isLocalUserEnabled),
+		"isSftpEnabled":                        llx.BoolDataPtr(isSftpEnabled),
+		"isHnsEnabled":                         llx.BoolDataPtr(isHnsEnabled),
+		"networkRuleDefaultAction":             llx.StringData(networkRuleDefaultAction),
+		"networkRuleBypass":                    llx.StringData(networkRuleBypass),
+		"networkRuleIpRanges":                  llx.ArrayData(networkRuleIpRanges, types.String),
+		"networkRuleVirtualNetworkSubnetIds":   llx.ArrayData(networkRuleVirtualNetworkSubnetIds, types.String),
+		"provisioningState":                    llx.StringDataPtr(provisioningState),
+		"creationTime":                         llx.TimeDataPtr(creationTime),
+		"accessTier":                           llx.StringDataPtr(accessTier),
+		"primaryLocation":                      llx.StringDataPtr(primaryLocation),
+		"statusOfPrimary":                      llx.StringDataPtr(statusOfPrimary),
+		"secondaryLocation":                    llx.StringDataPtr(secondaryLocation),
+		"statusOfSecondary":                    llx.StringDataPtr(statusOfSecondary),
+		"defaultToOAuthAuthentication":         llx.BoolDataPtr(defaultToOAuthAuthentication),
+		"enableNfsV3":                          llx.BoolDataPtr(enableNfsV3),
+		"largeFileSharesState":                 llx.StringDataPtr(largeFileSharesState),
+		"lastGeoFailoverTime":                  llx.TimeDataPtr(lastGeoFailoverTime),
+		"allowedCopyScope":                     llx.StringData(allowedCopyScope),
+		"requireInfrastructureEncryption":      llx.BoolData(requireInfraEnc),
+		"serviceKeyTypes":                      llx.MapData(serviceKeyTypes, types.String),
+		"sasExpirationPeriod":                  llx.StringData(sasExpirationPeriod),
+		"sasExpirationAction":                  llx.StringData(sasExpirationAction),
+		"sasRequireUserBoundUserDelegationSas": llx.BoolDataPtr(sasRequireUserBound),
+		"sasRequireUserBoundUserDelegationSasAction":       llx.StringDataPtr(sasRequireUserBoundAction),
+		"keyExpirationPeriodInDays":                        llx.IntData(keyExpirationPeriodInDays),
+		"sharedKeyAccessByService":                         llx.MapData(sharedKeyAccessByService, types.String),
+		"key1CreationTime":                                 llx.TimeDataPtr(key1CreationTime),
+		"key2CreationTime":                                 llx.TimeDataPtr(key2CreationTime),
+		"filesDirectoryServiceOptions":                     llx.StringDataPtr(filesDirectoryServiceOptions),
+		"filesDefaultSharePermission":                      llx.StringDataPtr(filesDefaultSharePermission),
+		"filesActiveDirectoryDomainName":                   llx.StringDataPtr(filesADDomainName),
+		"filesActiveDirectoryForestName":                   llx.StringDataPtr(filesADForestName),
+		"filesActiveDirectoryAccountType":                  llx.StringDataPtr(filesADAccountType),
+		"enableExtendedGroups":                             llx.BoolDataPtr(enableExtendedGroups),
+		"dnsEndpointType":                                  llx.StringDataPtr(dnsEndpointType),
+		"immutableStorageEnabled":                          llx.BoolData(immutableEnabled),
+		"immutableStoragePolicyPeriodDays":                 llx.IntData(immutablePeriodDays),
 		"immutableStoragePolicyAllowProtectedAppendWrites": llx.BoolData(immutableAllowAppend),
 		"immutableStoragePolicyState":                      llx.StringData(immutableState),
 		"routingChoice":                                    llx.StringData(routingChoice),
@@ -1720,4 +1728,14 @@ func (a *mqlAzureSubscriptionStorageServiceAccount) localUsers() ([]any, error) 
 		}
 	}
 	return res, nil
+}
+
+// sasPolicyUserBoundDelegation returns the user-bound user delegation SAS
+// requirement and its violation action from a SAS policy. Both are nil when
+// the policy is absent or does not set them.
+func sasPolicyUserBoundDelegation(sas *storage.SasPolicy) (*bool, *string) {
+	if sas == nil {
+		return nil, nil
+	}
+	return sas.RequireUserBoundUserDelegationSas, (*string)(sas.RequireUserBoundUserDelegationSasAction)
 }

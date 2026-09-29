@@ -8754,4 +8754,19 @@ alicloud.es.instance @defaults("description instanceId esVersion status") {
   // True when either the cluster endpoint or the Kibana console answers
   // publicly. False means both are confined to the VPC.
   internetExposed() bool
+  // Whether automatic snapshots are enabled
+  //
+  // False means the cluster takes no scheduled backups, so deleted or
+  // corrupted indices can only be recovered from a manual snapshot.
+  autoSnapshotEnabled() bool
+  // Schedule of the automatic snapshots
+  //
+  // A Quartz cron expression, for example `0 0 01 ? * * *` for a daily
+  // snapshot at 01:00.
+  autoSnapshotSchedule() string
+  // Indices the automatic snapshots cover
+  //
+  // Index names or patterns included in each automatic snapshot. Null when the
+  // snapshot setting names no indices.
+  snapshotIndices() []string
 }

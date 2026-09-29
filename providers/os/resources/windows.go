@@ -305,8 +305,27 @@ func initWindowsServerFeature(runtime *plugin.Runtime, args map[string]*llx.RawD
 	return nil, nil, errors.New("could not find feature " + name)
 }
 
+// isWindowsWorkstation reports whether the platform detector identified the
+// asset as a Windows client edition (ProductType WinNT, product-type "1").
+// Server editions report "3" (ServerNT) or "2" (LanmanNT, domain controller).
+// An absent label means the edition is unknown, which is not a workstation.
+func isWindowsWorkstation(conn shared.Connection) bool {
+	asset := conn.Asset()
+	if asset == nil || asset.Platform == nil {
+		return false
+	}
+	return asset.Platform.Labels["windows.mondoo.com/product-type"] == "1"
+}
+
 func (w *mqlWindows) serverFeatures() ([]any, error) {
 	conn := w.MqlRuntime.Connection.(shared.Connection)
+
+	// Server roles and features exist only on Windows Server. Client editions
+	// do not ship the ServerManager module, so Get-WindowsFeature is not a
+	// command there; a client has no server features rather than an error.
+	if isWindowsWorkstation(conn) {
+		return []any{}, nil
+	}
 
 	// query features
 	encodedCmd := powershell.Encode(windows.QUERY_FEATURES)

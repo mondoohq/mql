@@ -341,6 +341,9 @@ var awsServiceNameOverrides = map[string]string{
 	"eventbridge":              "events",
 	"sfn":                      "states",
 	"ssoadmin":                 "sso",
+	"opensearchserverless":     "aoss",
+	"redshiftserverless":       "redshift-serverless",
+	"mwaa":                     "airflow",
 }
 
 // awsPermissionOverrides maps a generated "service:Action" permission to the
@@ -370,6 +373,7 @@ var awsPermissionOverrides = map[string]string{
 	"apigateway:GetApis":              "apigateway:GET",
 	"apigateway:GetAuthorizers":       "apigateway:GET",
 	"apigateway:GetDeployments":       "apigateway:GET",
+	"apigateway:GetResources":         "apigateway:GET",
 	"apigateway:GetDomainNames":       "apigateway:GET",
 	"apigateway:GetRequestValidators": "apigateway:GET",
 	"apigateway:GetRestApis":          "apigateway:GET",
@@ -714,6 +718,9 @@ func awsConnectionMethodToService(method string) string {
 		"qbusiness":                "qbusiness",
 		"bedrockagentcorecontrol":  "bedrockagentcorecontrol",
 		"personalize":              "personalize",
+		"opensearchserverless":     "opensearchserverless",
+		"redshiftserverless":       "redshiftserverless",
+		"mwaa":                     "mwaa",
 	}
 	if svc, ok := knownMethods[lower]; ok {
 		return svc
@@ -1181,6 +1188,21 @@ var gcpPermissionOverrides = map[string]map[string]string{
 		"GetCryptoKey": "cloudkms.cryptoKeys.get",
 		"GetIamPolicy": "cloudkms.cryptoKeys.getIamPolicy",
 	},
+	"networksecurity": {
+		// Gateway security policy rules are a nested collection whose REST
+		// resource is just "Rules"; the generic derivation yields the
+		// non-existent networksecurity.rules.list.
+		"Rules.List": "networksecurity.gatewaySecurityPolicyRules.list",
+	},
+	"securitycenter": {
+		// Security Command Center permissions are all lowercase; the generic
+		// derivation keeps the method's camel case.
+		"ListEffectiveSecurityHealthAnalyticsCustomModules": "securitycenter.effectivesecurityhealthanalyticscustommodules.list",
+		// Event Threat Detection custom modules are governed by the Security
+		// Command Center Management permissions even through the v1 API; no
+		// securitycenter.*eventthreatdetectioncustommodules permission exists.
+		"ListEffectiveEventThreatDetectionCustomModules": "securitycentermanagement.effectiveEventThreatDetectionCustomModules.list",
+	},
 	"secretmanager": {
 		"ListSecretVersions": "secretmanager.versions.list",
 		"GetIamPolicy":       "secretmanager.secrets.getIamPolicy",
@@ -1218,6 +1240,13 @@ var gcpPermissionOverrides = map[string]map[string]string{
 	"compute": {
 		"NetworkFirewallPolicies.Get":  "compute.firewallPolicies.get",
 		"NetworkFirewallPolicies.List": "compute.firewallPolicies.list",
+		// Regional network firewall policies are governed by the
+		// compute.regionFirewallPolicies namespace; the generic derivation
+		// yields the non-existent compute.regionNetworkFirewallPolicies.*. The
+		// aggregated list is only read for its regional scopes, the global
+		// ones being covered by NetworkFirewallPolicies.List.
+		"NetworkFirewallPolicies.AggregatedList": "compute.regionFirewallPolicies.list",
+		"RegionNetworkFirewallPolicies.Get":      "compute.regionFirewallPolicies.get",
 		// Reading the members of a zonal or regional instance group is governed
 		// by compute.instanceGroups.list; there is no distinct listInstances or
 		// regionInstanceGroups permission namespace in GCP IAM.
@@ -2269,6 +2298,27 @@ var azurePermissionOverrides = map[string]string{
 	// Elastic SAN: volume groups are nested under elasticSans/, which the
 	// VolumeGroupsClient name does not carry.
 	"Microsoft.ElasticSan/volumeGroups/read": "Microsoft.ElasticSan/elasticSans/volumeGroups/read",
+	// Automation: every client is named after the singular child type, which
+	// sits under automationAccounts/.
+	"Microsoft.Automation/account/read":                  "Microsoft.Automation/automationAccounts/read",
+	"Microsoft.Automation/certificate/read":              "Microsoft.Automation/automationAccounts/certificates/read",
+	"Microsoft.Automation/credential/read":               "Microsoft.Automation/automationAccounts/credentials/read",
+	"Microsoft.Automation/variable/read":                 "Microsoft.Automation/automationAccounts/variables/read",
+	"Microsoft.Automation/runbook/read":                  "Microsoft.Automation/automationAccounts/runbooks/read",
+	"Microsoft.Automation/webhook/read":                  "Microsoft.Automation/automationAccounts/webhooks/read",
+	"Microsoft.Automation/hybridRunbookWorkerGroup/read": "Microsoft.Automation/automationAccounts/hybridRunbookWorkerGroups/read",
+	// API Management backends sit under service/.
+	"Microsoft.ApiManagement/backend/read": "Microsoft.ApiManagement/service/backends/read",
+	// VM run commands are children of the VM.
+	"Microsoft.Compute/virtualMachineRunCommands/read": "Microsoft.Compute/virtualMachines/runCommands/read",
+	// Data Protection: instances, policies and Resource Guard proxies are
+	// children of a backup vault.
+	"Microsoft.DataProtection/backupInstances/read":       "Microsoft.DataProtection/backupVaults/backupInstances/read",
+	"Microsoft.DataProtection/backupPolicies/read":        "Microsoft.DataProtection/backupVaults/backupPolicies/read",
+	"Microsoft.DataProtection/dppResourceGuardProxy/read": "Microsoft.DataProtection/backupVaults/backupResourceGuardProxies/read",
+	// SQL Managed Instance security settings are children of the instance.
+	"Microsoft.Sql/managedServerSecurityAlertPolicies/read":      "Microsoft.Sql/managedInstances/securityAlertPolicies/read",
+	"Microsoft.Sql/managedInstanceVulnerabilityAssessments/read": "Microsoft.Sql/managedInstances/vulnerabilityAssessments/read",
 }
 
 // azurePermission constructs the RBAC permission string.

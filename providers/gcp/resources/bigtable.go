@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/bigtable"
 	"github.com/rs/zerolog/log"
@@ -455,15 +456,9 @@ func (g *mqlGcpProjectBigtableServiceInstance) tables() ([]any, error) {
 			}
 		}
 
-		var automatedBackupPolicy map[string]any
-		if abp, ok := tableInfo.AutomatedBackupConfig.(*bigtable.TableAutomatedBackupPolicy); ok && abp != nil {
-			automatedBackupPolicy = map[string]any{
-				"retentionPeriod": fmt.Sprintf("%v", abp.RetentionPeriod),
-				"frequency":       fmt.Sprintf("%v", abp.Frequency),
-				// []string is not JSON-native inside a dict.
-				"locations": convert.SliceAnyToInterface(abp.Locations),
-			}
-		}
+		configuredPolicy, _ := tableInfo.AutomatedBackupConfig.(*bigtable.TableAutomatedBackupPolicy)
+		automatedBackupPolicy := bigtableAutomatedBackupPolicyDict(configuredPolicy)
+		automatedBackupsDisabled := configuredPolicy != nil && configuredPolicy.Disabled
 
 		var changeStreamConfig map[string]any
 		if tableInfo.ChangeStreamRetention != 0 {
@@ -488,24 +483,100 @@ func (g *mqlGcpProjectBigtableServiceInstance) tables() ([]any, error) {
 			deletionProtection = true
 		}
 
-		mqlTable, err := CreateResource(g.MqlRuntime, "gcp.project.bigtableService.table", map[string]*llx.RawData{
-			"projectId":             llx.StringData(projectId),
-			"instanceName":          llx.StringData(instanceName),
-			"name":                  llx.StringData(tableName),
-			"columnFamilies":        llx.DictData(columnFamilies),
-			"granularity":           llx.StringData("MILLIS"),
-			"deletionProtection":    llx.BoolData(deletionProtection),
-			"automatedBackupPolicy": llx.DictData(automatedBackupPolicy),
-			"changeStreamConfig":    llx.DictData(changeStreamConfig),
-			"tieredStorageConfig":   llx.DictData(tieredStorageConfig),
-		})
+		tableId := fmt.Sprintf("gcp.project/%s/bigtableService/%s/table/%s", projectId, instanceName, tableName)
+		tableArgs := map[string]*llx.RawData{
+			"projectId":                llx.StringData(projectId),
+			"instanceName":             llx.StringData(instanceName),
+			"name":                     llx.StringData(tableName),
+			"columnFamilies":           llx.DictData(columnFamilies),
+			"granularity":              llx.StringData("MILLIS"),
+			"deletionProtection":       llx.BoolData(deletionProtection),
+			"automatedBackupPolicy":    llx.DictData(automatedBackupPolicy),
+			"automatedBackupsDisabled": llx.BoolData(automatedBackupsDisabled),
+			"changeStreamConfig":       llx.DictData(changeStreamConfig),
+			"tieredStorageConfig":      llx.DictData(tieredStorageConfig),
+		}
+		var effectivePolicy plugin.Resource
+		if ep := tableInfo.EffectiveAutomatedBackupPolicy; ep != nil {
+			args := bigtableBackupPolicyArgs(ep)
+			args["__id"] = llx.StringData(tableId + "/effectiveAutomatedBackupPolicy")
+			effectivePolicy, err = CreateResource(g.MqlRuntime, "gcp.project.bigtableService.table.backupPolicy", args)
+			if err != nil {
+				return nil, err
+			}
+			tableArgs["effectiveAutomatedBackupPolicy"] = llx.ResourceData(effectivePolicy, "gcp.project.bigtableService.table.backupPolicy")
+		}
+
+		mqlTable, err := CreateResource(g.MqlRuntime, "gcp.project.bigtableService.table", tableArgs)
 		if err != nil {
 			return nil, err
+		}
+		if effectivePolicy == nil {
+			mqlTable.(*mqlGcpProjectBigtableServiceTable).EffectiveAutomatedBackupPolicy.State = plugin.StateIsNull | plugin.StateIsSet
 		}
 		res = append(res, mqlTable)
 	}
 
 	return res, nil
+}
+
+// bigtableOptionalDuration reads an optional.Duration, which the SDK leaves as
+// a nil interface when the API response does not set it.
+func bigtableOptionalDuration(d any) (time.Duration, bool) {
+	switch v := d.(type) {
+	case time.Duration:
+		return v, true
+	case *time.Duration:
+		if v != nil {
+			return *v, true
+		}
+	}
+	return 0, false
+}
+
+// bigtableAutomatedBackupPolicyDict renders a table's configured automated
+// backup policy. It returns nil when the table has no policy or explicitly
+// disables automated backups, and omits duration keys the policy leaves unset.
+func bigtableAutomatedBackupPolicyDict(abp *bigtable.TableAutomatedBackupPolicy) map[string]any {
+	if abp == nil || abp.Disabled {
+		return nil
+	}
+	res := map[string]any{
+		// []string is not JSON-native inside a dict.
+		"locations": convert.SliceAnyToInterface(abp.Locations),
+	}
+	if d, ok := bigtableOptionalDuration(abp.RetentionPeriod); ok {
+		res["retentionPeriod"] = d.String()
+	}
+	if d, ok := bigtableOptionalDuration(abp.Frequency); ok {
+		res["frequency"] = d.String()
+	}
+	if d, ok := bigtableOptionalDuration(abp.KeepHotDuration); ok {
+		res["keepHotDuration"] = d.String()
+	}
+	return res
+}
+
+// bigtableBackupPolicyArgs maps an automated backup policy onto the fields of
+// gcp.project.bigtableService.table.backupPolicy. Unset durations are null.
+func bigtableBackupPolicyArgs(abp *bigtable.TableAutomatedBackupPolicy) map[string]*llx.RawData {
+	seconds := func(d any) *llx.RawData {
+		if v, ok := bigtableOptionalDuration(d); ok {
+			return llx.IntData(int64(v / time.Second))
+		}
+		return llx.NilData
+	}
+	locations := abp.Locations
+	if locations == nil {
+		locations = []string{}
+	}
+	return map[string]*llx.RawData{
+		"frequencySeconds":       seconds(abp.Frequency),
+		"retentionPeriodSeconds": seconds(abp.RetentionPeriod),
+		"keepHotDurationSeconds": seconds(abp.KeepHotDuration),
+		"locations":              llx.ArrayData(convert.SliceAnyToInterface(locations), types.String),
+		"disabled":               llx.BoolData(abp.Disabled),
+	}
 }
 
 func (g *mqlGcpProjectBigtableServiceTable) id() (string, error) {

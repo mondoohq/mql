@@ -996,6 +996,8 @@ alicloud.ecs.snapshot.usage 13.5.1
 alicloud.ecs.snapshots 13.5.1
 alicloud.es 13.4.1
 alicloud.es.instance 13.4.1
+alicloud.es.instance.autoSnapshotEnabled 14.0.1
+alicloud.es.instance.autoSnapshotSchedule 14.0.1
 alicloud.es.instance.createdAt 13.4.1
 alicloud.es.instance.dedicatedMaster 13.4.1
 alicloud.es.instance.description 13.4.1
@@ -1020,6 +1022,7 @@ alicloud.es.instance.publicPort 13.4.1
 alicloud.es.instance.regionId 13.4.1
 alicloud.es.instance.resourceGroup 13.4.1
 alicloud.es.instance.resourceGroupId 13.4.1
+alicloud.es.instance.snapshotIndices 14.0.1
 alicloud.es.instance.status 13.4.1
 alicloud.es.instance.tags 13.4.1
 alicloud.es.instance.updatedAt 13.4.1

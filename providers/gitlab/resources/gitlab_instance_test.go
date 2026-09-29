@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -326,6 +327,60 @@ func TestDecodeHooksKeepsUnreportedRepositoryUpdateEventsNull(t *testing.T) {
 	assert.False(t, *presence[1].RepositoryUpdateEvents)
 	assert.Nil(t, presence[2].RepositoryUpdateEvents,
 		"a hook tier that does not carry the attribute must read null, not 'trigger switched off'")
+}
+
+func TestDecodeHooksKeepsUnreportedSigningTokenPresenceNull(t *testing.T) {
+	raw := []json.RawMessage{
+		json.RawMessage(`{"id":1,"signing_token_present":true}`),
+		json.RawMessage(`{"id":2,"signing_token_present":false}`),
+		json.RawMessage(`{"id":3}`),
+	}
+
+	_, presence, err := decodeHooks[gitlab.Hook](raw)
+	require.NoError(t, err)
+	require.Len(t, presence, 3)
+
+	require.NotNil(t, presence[0].SigningTokenPresent)
+	assert.True(t, *presence[0].SigningTokenPresent)
+	require.NotNil(t, presence[1].SigningTokenPresent)
+	assert.False(t, *presence[1].SigningTokenPresent, "a hook with no signing token must read false, not null")
+	assert.Nil(t, presence[2].SigningTokenPresent,
+		"an instance that does not report signing_token_present must read null, not 'payloads unsigned'")
+}
+
+func TestDecodeSystemHookDeliveryHealthAndFilters(t *testing.T) {
+	raw := []json.RawMessage{
+		json.RawMessage(`{
+			"id": 4,
+			"alert_status": "temporarily_disabled",
+			"disabled_until": "2026-09-28T12:00:00Z",
+			"branch_filter_strategy": "wildcard",
+			"push_events_branch_filter": "release/*",
+			"custom_webhook_template": "{\"event\":\"{{object_kind}}\"}",
+			"custom_headers": [{"key": "X-Audit-Source", "value": "gitlab"}]
+		}`),
+		json.RawMessage(`{"id": 5, "alert_status": "executable"}`),
+	}
+
+	hooks, _, err := decodeHooks[gitlab.Hook](raw)
+	require.NoError(t, err)
+	require.Len(t, hooks, 2)
+
+	paused := hooks[0]
+	assert.Equal(t, "temporarily_disabled", paused.AlertStatus)
+	require.NotNil(t, paused.DisabledUntil)
+	assert.Equal(t, time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC), paused.DisabledUntil.UTC())
+	assert.Equal(t, "wildcard", paused.BranchFilterStrategy)
+	assert.Equal(t, "release/*", paused.PushEventsBranchFilter)
+	assert.Equal(t, `{"event":"{{object_kind}}"}`, paused.CustomWebhookTemplate)
+	require.Len(t, paused.CustomHeaders, 1)
+	assert.Equal(t, "X-Audit-Source", paused.CustomHeaders[0].Key)
+	assert.Equal(t, "gitlab", paused.CustomHeaders[0].Value)
+
+	healthy := hooks[1]
+	assert.Equal(t, "executable", healthy.AlertStatus)
+	assert.Nil(t, healthy.DisabledUntil, "a hook that is not paused must have a null disabledUntil, not year 1")
+	assert.Empty(t, healthy.CustomHeaders)
 }
 
 func TestDecodeHooksWorksForEveryHookTier(t *testing.T) {

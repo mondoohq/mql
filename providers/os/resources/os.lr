@@ -74,6 +74,7 @@ alias os.base.vscode = vscode
 alias os.base.vulnmgmt = vulnmgmt
 alias os.base.warp = warp
 alias os.base.windsurf = windsurf
+alias os.base.winget = winget
 alias os.base.yum = yum
 alias os.base.zed = zed
 alias os.unix.aide = aide
@@ -1688,7 +1689,8 @@ sshd {}
 // hardening checks, `permitRootLogin` for root-access policy, and
 // `blocks` for the conditional Match blocks. Compare the configured
 // values (`ciphers`) against the effective ones (`effectiveCiphers`) to
-// catch overrides applied at runtime.
+// catch overrides applied at runtime. The default file is
+// /etc/ssh/sshd_config, or C:\ProgramData\ssh\sshd_config on Windows.
 sshd.config {
   init(path? string)
   // File of this SSH server configuration
@@ -9252,7 +9254,22 @@ sudo @defaults("version path") {
   // Whether sudo is installed and executable
   installed() bool
   // Version string reported by `sudo -V` (e.g., "1.9.5p3")
+  //
+  // The version of the implementation named by `implementation`: a
+  // sudo.ws release such as "1.9.5p3", or a sudo-rs release such as
+  // "0.2.13". The two number independently, so compare a version only
+  // after checking `implementation`. A distribution package revision that
+  // sudo-rs appends (e.g., "-0ubuntu1.2") is not included.
   version() string
+  // Which sudo implementation the binary is: "sudo" or "sudo-rs"
+  //
+  // "sudo" is the C implementation from sudo.ws. "sudo-rs" is the Rust
+  // reimplementation that recent Ubuntu releases install as `sudo`. It
+  // reads the same sudoers files but supports a subset of the options, has
+  // no plugins, and rejects settings such as `logfile`, `log_input`,
+  // `log_output`, and `requiretty`. Null when sudo is not installed or
+  // `sudo -V` output is not recognized.
+  implementation() string
   // All sudo plugins reported by `sudo -V`
   plugins() []sudo.plugin
   // Policy plugin (typically sudoers_policy). Null when none is loaded.
@@ -10305,10 +10322,40 @@ yum.config {
 // one-line format and the deb822 `.sources` format. Audit repository
 // trust from there: each `apt.repo` reports whether it is marked
 // `trusted` (signature checks bypassed) and the `signedBy` keyring that
-// pins which key may sign it.
+// pins which key may sign it. `apt.config` holds APT's configuration.
 apt {
   // All configured APT repositories
   repos() []apt.repo
+}
+
+// APT configuration
+//
+// APT's effective configuration, as APT itself resolves it: its built-in
+// defaults merged with `/etc/apt/apt.conf` and every file in
+// `/etc/apt/apt.conf.d/`, read from `apt-config dump`. `params` holds every
+// option with its full name as the key (e.g. `Acquire::http::Proxy`) and
+// the unquoted value; a list option such as `DPkg::Pre-Invoke` holds its
+// items joined by newlines. The bool fields audit repository trust and
+// package selection: they parse values the way APT does (`1`/`0`,
+// `true`/`false`, `yes`/`no`, `on`/`off`) and fall back to APT's
+// documented default when the option is not set. Reading the configuration
+// needs `apt-config`; where it cannot run, `params` and the bool fields are
+// an error rather than defaults.
+apt.config {
+  // Effective APT configuration, every option as a key/value string
+  params() map[string]string
+  // Whether repositories without a valid signature can be used (Acquire::AllowInsecureRepositories, default false)
+  allowInsecureRepositories(params) bool
+  // Whether repositories signed only with weak algorithms can be used (Acquire::AllowWeakRepositories, default false)
+  allowWeakRepositories(params) bool
+  // Whether a signed repository may become unsigned (Acquire::AllowDowngradeToInsecureRepositories, default false)
+  allowDowngradeToInsecureRepositories(params) bool
+  // Whether the Date of repository metadata is checked against the system clock (Acquire::Check-Date, default true)
+  checkDate(params) bool
+  // Whether recommended packages are installed with a package (APT::Install-Recommends, default true)
+  installRecommends(params) bool
+  // Whether suggested packages are installed with a package (APT::Install-Suggests, default false)
+  installSuggests(params) bool
 }
 
 // APT software repository
@@ -16611,6 +16658,77 @@ private mdm.intune @defaults("deviceId tenantId") {
   tenantId string
 }
 
+// Windows Package Manager (winget)
+//
+// Whether winget is installed on a Windows host and whether it can run as the
+// SYSTEM account, where it often cannot. installed, version, and path come from
+// the Microsoft.DesktopAppInstaller package that ships winget.exe, found in the
+// AppX package repository and the WindowsApps folder without running winget.
+// missingDependencies lists the framework packages its manifest requires that
+// the machine does not have, and systemUsable combines these checks, for
+// example `winget.installed && winget.systemUsable`. sources lists the package
+// sources winget uses for the SYSTEM account. On any other platform installed
+// and systemUsable are false.
+winget @defaults("installed version systemUsable") @maturity("preview") {
+  // Whether a winget.exe the machine can run is present
+  installed() bool
+  // Version of winget.exe
+  //
+  // The product version of winget.exe, which is what `winget --version`
+  // reports, for example 1.29.380.0. It can be higher than the App Installer
+  // package version in packageFullName. When the file version cannot be read,
+  // the package version is reported. Null when winget is not installed.
+  version() string
+  // Processor architecture of the App Installer package, for example x64 or arm64
+  architecture() string
+  // Full name of the App Installer package
+  //
+  // For example Microsoft.DesktopAppInstaller_1.29.380.0_x64__8wekyb3d8bbwe.
+  packageFullName() string
+  // Path to winget.exe, null when winget is not installed
+  path() string
+  // Whether Group Policy allows winget to run
+  //
+  // False when the EnableAppInstaller or
+  // EnableWindowsPackageManagerCommandLineInterfaces policy is set to disabled.
+  enabledByPolicy() bool
+  // Framework packages App Installer requires that are not present
+  //
+  // Each entry names a PackageDependency from the package manifest that no
+  // package on the machine satisfies with the same architecture (or neutral)
+  // and at least the required version, as `<name> >= <minVersion>`. Null when
+  // winget is not installed or its manifest cannot be read.
+  missingDependencies() []string
+  // Whether winget can run as the SYSTEM account
+  //
+  // True when winget.exe is present for an architecture the machine runs, every
+  // framework package the manifest requires is present, and Group Policy does
+  // not disable winget. False whenever Group Policy disables winget. Otherwise
+  // null when the package manifest cannot be read. This is a read-only check:
+  // winget is not started.
+  systemUsable() bool
+  // Package sources winget uses for the SYSTEM account
+  //
+  // The defaults (msstore, winget, winget-font) unless Group Policy disables
+  // them, sources added by Group Policy, and sources added or removed for the
+  // SYSTEM account, filtered by the allowed-sources policy.
+  sources() []winget.source
+}
+
+// winget package source
+private winget.source @defaults("name url") {
+  // Source name, for example winget or msstore
+  name string
+  // Source URL
+  url string
+  // Source type, for example Microsoft.PreIndexed.Package or Microsoft.Rest
+  type string
+  // Where the source is defined: default, policy, or user
+  origin string
+  // Whether the source is only used when named explicitly
+  explicit bool
+}
+
 // Identity provider this device belongs to
 //
 // The identity providers the device is joined to, bound to, or registered
@@ -16620,19 +16738,25 @@ private mdm.intune @defaults("deviceId tenantId") {
 // when the device does not belong to it. Independent of MDM enrollment: a
 // device can belong to an identity provider without being enrolled in an MDM
 // service, and the other way round. Microsoft Entra ID is detected on Windows
-// client editions today; others (for example Active Directory, FreeIPA,
-// LDAP/Kerberos realms, or JumpCloud) can be added as fields later. This is
-// the device's own identity, not the user-facing federation an `idp` resource
-// describes in the SaaS providers.
+// client editions, and Active Directory on Windows, macOS, and Linux. Others
+// (for example FreeIPA, LDAP/Kerberos realms, or JumpCloud) can be added as
+// fields later. This is the device's own identity, not the user-facing
+// federation an `idp` resource describes in the SaaS providers.
 idp @defaults("joined") @maturity("preview") {
   // Whether the device belongs to any recognized identity provider
   //
-  // False when detection ran and found no membership. Null where no identity
-  // provider is detected at all, such as Linux, macOS, and Windows Server: no
-  // lookup happened there, so the device may well be a member.
+  // True when the device belongs to at least one. False when every identity
+  // provider looked for on the platform was read and none has the device as
+  // a member. Null where no identity provider is read, and where Active
+  // Directory membership is looked for but cannot be read, such as a Linux
+  // scan without root, which cannot read sssd.conf, or a scan of a Windows
+  // disk image: no complete lookup happened there, so the device may well be
+  // a member.
   joined() bool
   // Microsoft Entra ID membership, null when the device has no Entra device identity
   entra() idp.entra
+  // Active Directory domain membership, null when the device is not a member of a domain
+  activeDirectory() idp.activeDirectory
 }
 
 // Microsoft Entra ID membership
@@ -16658,6 +16782,31 @@ private idp.entra @defaults("deviceId tenantId joinType") {
   // join) belongs to a user profile rather than the machine, so a device that
   // is only registered is not reported here.
   joinType string
+}
+
+// Active Directory domain membership
+//
+// The Active Directory domain the device is joined to, read from the device's
+// own configuration without contacting a domain controller. On Windows, the
+// machine's domain role, domain, and forest from the local security
+// authority; on macOS, the binding of the opendirectoryd Active Directory
+// plugin (dsconfigad); on Linux, an enabled SSSD domain with the ad identity
+// provider (as realmd and adcli join a domain), or Samba as a member
+// (security = ads, as winbind joins) or as an Active Directory domain
+// controller.
+// The resource is only returned for a member, so idp.activeDirectory not
+// being null means the device is joined to a domain.
+private idp.activeDirectory @defaults("domain forest") {
+  // DNS name of the Active Directory domain, in lower case
+  //
+  // For example `corp.example.com`. On Windows, a domain without a DNS name
+  // reports its NetBIOS name.
+  domain string
+  // DNS name of the Active Directory forest the domain belongs to, in lower case
+  //
+  // Read on Windows and macOS. Null on Linux, where neither SSSD nor Samba
+  // keeps the forest in its configuration.
+  forest string
 }
 
 // Cloud-asset metadata

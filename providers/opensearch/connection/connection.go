@@ -118,11 +118,17 @@ func (c *OpensearchConnection) Context() context.Context {
 // Client returns the shared OpenSearch client, dialing on first use.
 func (c *OpensearchConnection) Client() (*opensearch.Client, error) {
 	c.clientOnce.Do(func() {
+		// Talk to the configured address only. opensearch-go v5 otherwise
+		// discovers nodes on start (GET /_nodes/http) and routes to their
+		// publish addresses, which are often unreachable from the scanner
+		// when the cluster sits behind a load balancer or proxy.
+		discoverNodes := false
 		cfg := opensearch.Config{
-			Addresses:          []string{c.address()},
-			Username:           c.user,
-			Password:           c.password,
-			InsecureSkipVerify: c.tlsInsecure,
+			Addresses:            []string{c.address()},
+			Username:             c.user,
+			Password:             c.password,
+			InsecureSkipVerify:   c.tlsInsecure,
+			DiscoverNodesOnStart: &discoverNodes,
 		}
 		if c.tlsCA != "" {
 			pem, err := os.ReadFile(c.tlsCA)

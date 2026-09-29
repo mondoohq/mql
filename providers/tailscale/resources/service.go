@@ -47,6 +47,7 @@ func createTailscaleServiceResource(runtime *plugin.Runtime, svc *tsclient.Servi
 
 	return CreateResource(runtime, "tailscale.service", map[string]*llx.RawData{
 		"name":        llx.StringData(svc.Name),
+		"displayName": llx.StringData(svc.DisplayName),
 		"addresses":   llx.ArrayData(convert.SliceAnyToInterface(svc.Addrs), types.String),
 		"ports":       llx.ArrayData(convert.SliceAnyToInterface(svc.Ports), types.String),
 		"tags":        llx.ArrayData(convert.SliceAnyToInterface(svc.Tags), types.String),

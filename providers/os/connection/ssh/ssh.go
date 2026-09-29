@@ -31,6 +31,7 @@ import (
 	"go.mondoo.com/mql/providers/os/connection/ssh/scp"
 	"go.mondoo.com/mql/providers/os/connection/ssh/sftp"
 	"go.mondoo.com/mql/providers/os/connection/ssh/signers"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 	"go.mondoo.com/mql/utils/multierr"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
@@ -95,12 +96,18 @@ func NewConnection(id uint32, conf *inventory.Config, asset *inventory.Asset) (*
 	if conf.Sudo != nil && conf.Sudo.Active {
 		// the id command may not be available, eg. if ssh is used with windows
 		out, _ := res.RunCommand("id -u")
-		stdout, _ := io.ReadAll(out.Stdout)
+		var stdout []byte
+		if out != nil {
+			stdout, _ = io.ReadAll(out.Stdout)
+		}
 		// just check for the explicit positive case, otherwise just activate sudo
 		// we check sudo in VerifyConnection
-		if string(stdout) != "0" {
-			// configure sudo
-			log.Debug().Msg("activated sudo for ssh connection")
+		if strings.TrimSpace(string(stdout)) != "0" {
+			if err := shared.ResolveElevation(conf.Sudo, res.runRawCommand); err != nil {
+				res.Close()
+				return nil, err
+			}
+			log.Debug().Str("executable", conf.Sudo.Executable).Msg("activated privilege elevation for ssh connection")
 			res.Sudo = conf.Sudo
 		} else {
 			log.Debug().Msg("deactivated sudo for ssh connection since user is root")
@@ -142,7 +149,9 @@ func (c *Connection) RunCommand(command string) (*shared.Command, error) {
 	if c.Sudo != nil && c.Sudo.Active {
 		command = shared.BuildSudoCommand(c.Sudo, command)
 	}
-	return c.runRawCommand(command)
+	res, err := c.runRawCommand(command)
+	powershell.DecodeStderr(res)
+	return res, err
 }
 
 func (c *Connection) runRawCommand(command string) (*shared.Command, error) {
@@ -340,10 +349,6 @@ func (c *Connection) setDefaultSettings() {
 		c.conf.Port = 22
 	}
 
-	// we need to check if an executable was provided, otherwise fallback to use sudo
-	if c.conf.Sudo != nil && c.conf.Sudo.Active && c.conf.Sudo.Executable == "" {
-		c.conf.Sudo.Executable = "sudo"
-	}
 }
 
 func (c *Connection) Connect() error {
@@ -786,14 +791,29 @@ func (c *Connection) verify() error {
 	stderr, _ := io.ReadAll(out.Stderr)
 	errMsg := string(stderr)
 
-	// sample messages are:
-	// sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper
-	// sudo: a password is required
+	return verifyError(c.Sudo, errMsg)
+}
+
+// verifyError turns the stderr of a failed verify() command into an error.
+//
+// sample messages are:
+// sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper
+// sudo: a password is required
+// doas: a tty is required
+// doas: Authentication required
+func verifyError(sudo *inventory.Sudo, errMsg string) error {
+	executable := shared.ElevationSudo
+	if sudo != nil && sudo.Executable != "" {
+		executable = sudo.Executable
+	}
+
 	switch {
 	case strings.Contains(errMsg, "not found"):
-		return errors.New("sudo command is missing on target")
-	case strings.Contains(errMsg, "a password is required"):
-		return errors.New("could not establish connection: sudo password is not supported yet, configure password-less sudo")
+		return errors.New(executable + " command is missing on target")
+	case strings.Contains(errMsg, "a password is required"),
+		strings.Contains(errMsg, "a tty is required"),
+		strings.Contains(errMsg, "Authentication required"):
+		return errors.New("could not establish connection: " + executable + " password is not supported yet, configure password-less " + executable)
 	default:
 		return errors.New("could not establish connection: " + errMsg)
 	}

@@ -201,7 +201,9 @@ func dockerClient(runtime *plugin.Runtime) (*client.Client, error) {
 
 	// Honor DOCKER_HOST and the active docker CLI context (rootless / remote),
 	// not just DOCKER_HOST. See dockerclient.FromDockerEnv for the why.
-	cl, err := dockerclient.NewDockerClient()
+	// Negotiate up front so a daemon older than the client library's minimum
+	// API version is still reachable. See dockerclient.NewNegotiatedDockerClient.
+	cl, err := dockerclient.NewNegotiatedDockerClient(context.Background())
 	if err != nil {
 		return nil, err
 	}

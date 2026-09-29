@@ -175,3 +175,35 @@ func TestFlagParser(t *testing.T) {
 		assert.Equal(t, test.flags, fs.actual, test.cmd)
 	}
 }
+
+// POSIX command lines keep shell-style splitting. Captured from Debian 12 and
+// RHEL 9 EC2 instances, over SSH (ps) and on the host (/proc).
+func TestParseCommandPOSIX(t *testing.T) {
+	tests := []testSet{
+		// a process without a command line has no flags
+		{cmd: "", flags: map[string]string{}},
+		{cmd: "   ", flags: map[string]string{}},
+		// kernel threads: /proc falls back to comm, ps brackets the name
+		{cmd: "kthreadd", flags: map[string]string{}},
+		{cmd: "[kthreadd]", flags: map[string]string{}},
+		{
+			// a backslash escapes the next character, and -- ends the flags
+			cmd:   `/sbin/agetty -o -p -- \u --noclear - linux`,
+			flags: map[string]string{"o": "", "p": ""},
+		},
+		{
+			cmd:   "/usr/bin/python3 -Es /usr/sbin/tuned -l -P",
+			flags: map[string]string{"es": "/usr/sbin/tuned", "l": "", "p": ""},
+		},
+		{
+			// quotes group an argument that contains a space
+			cmd:   `/usr/bin/tool --name "a b" C:\x`,
+			flags: map[string]string{"name": "a b", "C:x": ""},
+		},
+	}
+	for _, test := range tests {
+		fs := FlagSet{}
+		require.NoError(t, fs.ParseCommand(test.cmd))
+		assert.Equal(t, test.flags, fs.Map(), test.cmd)
+	}
+}

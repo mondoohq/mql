@@ -76,3 +76,60 @@ func TestDecodeClusterAgentIsReceptive(t *testing.T) {
 	assert.True(t, agents[0].IsReceptive)
 	assert.False(t, agents[1].IsReceptive)
 }
+
+// gitlab.project.package.creator reads creator_id (decoded from client-go
+// v3.14.0) and pipeline reads the package's last build pipeline. A package
+// with creator_id: null and no pipeline key must resolve both to null, and the
+// deprecated pipelines array must not stand in for pipeline.
+func TestPackageProvenance(t *testing.T) {
+	var pkgs []*gitlab.Package
+	require.NoError(t, json.Unmarshal([]byte(`[
+		{
+			"id": 1,
+			"name": "com/mycompany/my-app",
+			"version": "1.0-SNAPSHOT",
+			"package_type": "maven",
+			"creator_id": 7,
+			"pipeline": {"id": 123, "status": "success", "ref": "main", "web_url": "https://gitlab.example.com/acme/app/-/pipelines/123"},
+			"pipelines": []
+		},
+		{
+			"id": 2,
+			"name": "legacy",
+			"version": "0.1.0",
+			"package_type": "npm",
+			"creator_id": null,
+			"pipelines": [{"id": 99}]
+		}
+	]`), &pkgs))
+	require.Len(t, pkgs, 2)
+
+	creator, pipeline := packageProvenance(pkgs[0])
+	assert.Equal(t, int64(7), creator)
+	require.NotNil(t, pipeline)
+	assert.Equal(t, int64(123), pipeline.ID)
+	assert.Equal(t, "https://gitlab.example.com/acme/app/-/pipelines/123", pipeline.WebURL)
+
+	creator, pipeline = packageProvenance(pkgs[1])
+	assert.Equal(t, int64(0), creator)
+	assert.Nil(t, pipeline)
+
+	creator, pipeline = packageProvenance(nil)
+	assert.Equal(t, int64(0), creator)
+	assert.Nil(t, pipeline)
+}
+
+func TestPipelineProjectPath(t *testing.T) {
+	cases := map[string]string{
+		"https://gitlab.example.com/acme/app/-/pipelines/123":        "acme/app",
+		"https://gitlab.example.com/acme/sub/deep/app/-/pipelines/1": "acme/sub/deep/app",
+		"https://gitlab.example.com/acme/app/-/pipelines/123/":       "acme/app",
+		"https://gitlab.example.com/acme/app/-/jobs/5":               "",
+		"https://gitlab.example.com/-/pipelines/5":                   "",
+		"":             "",
+		"://not a url": "",
+	}
+	for in, want := range cases {
+		assert.Equal(t, want, pipelineProjectPath(in), in)
+	}
+}

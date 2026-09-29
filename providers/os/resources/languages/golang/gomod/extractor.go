@@ -219,13 +219,22 @@ func (m *goMod) Transitive() languages.Packages {
 	return all
 }
 
-// resolveReplace checks if a module has a replace directive and returns the replacement.
+// resolveReplace checks if a module has a replace directive and returns the
+// replacement's module path and version.
+//
+// A replacement WITH a version is a MODULE replacement (a fork or a version
+// bump): `rep.Path` is a module path and correctly names the package.
+//
+// A replacement WITHOUT a version is a LOCAL/filesystem replacement
+// (`=> ./staging/apimachinery`, `=> ../foo`): per the go.mod grammar a
+// directory replacement never carries a version, so `rep.Path` is a filesystem
+// path, not a module path. It must NOT become the package name/purl — a package
+// keyed on `../apimachinery` instead of `k8s.io/apimachinery` cannot be matched
+// against advisories. Keep the ORIGINAL module path (and its declared version);
+// the local source is in-tree, so the original identifier is the right one.
 func (m *goMod) resolveReplace(path, version string) (string, string) {
-	if rep, ok := m.Replace[path]; ok {
-		if rep.Version != "" {
-			return rep.Path, rep.Version
-		}
-		return rep.Path, version
+	if rep, ok := m.Replace[path]; ok && rep.Version != "" {
+		return rep.Path, rep.Version
 	}
 	return path, version
 }

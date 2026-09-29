@@ -5,7 +5,9 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 
 	cloudtasks "cloud.google.com/go/cloudtasks/apiv2"
 	"cloud.google.com/go/cloudtasks/apiv2/cloudtaskspb"
@@ -14,6 +16,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers/gcp/connection"
+	"go.mondoo.com/mql/types"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	locationpb "google.golang.org/genproto/googleapis/cloud/location"
@@ -68,6 +71,7 @@ func (g *mqlGcpProjectCloudTasksService) queues() ([]any, error) {
 		return nil, err
 	}
 
+	cmek := &cloudTasksCmekCache{projectId: projectId, keys: map[string]string{}}
 	var res []any
 	for _, location := range locations {
 		it := client.ListQueues(ctx, &cloudtaskspb.ListQueuesRequest{
@@ -106,13 +110,26 @@ func (g *mqlGcpProjectCloudTasksService) queues() ([]any, error) {
 			if retryConfig != nil {
 				queueArgs["retryConfig"] = llx.ResourceData(retryConfig, "gcp.retryConfig")
 			}
+			httpTarget, err := newCloudTasksHttpTarget(g.MqlRuntime, projectId, queue.Name, queue.HttpTarget)
+			if err != nil {
+				return nil, err
+			}
+			if httpTarget != nil {
+				queueArgs["httpTarget"] = llx.ResourceData(httpTarget, "gcp.project.cloudTasksService.queue.httpTargetConfig")
+			}
 			mqlQueue, err := CreateResource(g.MqlRuntime, "gcp.project.cloudTasksService.queue", queueArgs)
 			if err != nil {
 				return nil, err
 			}
+			mqlQ := mqlQueue.(*mqlGcpProjectCloudTasksServiceQueue)
 			if retryConfig == nil {
-				mqlQueue.(*mqlGcpProjectCloudTasksServiceQueue).RetryConfig.State = plugin.StateIsNull | plugin.StateIsSet
+				mqlQ.RetryConfig.State = plugin.StateIsNull | plugin.StateIsSet
 			}
+			if httpTarget == nil {
+				mqlQ.HttpTarget.State = plugin.StateIsNull | plugin.StateIsSet
+			}
+			mqlQ.cacheLocation = location
+			mqlQ.cmek = cmek
 			res = append(res, mqlQueue)
 		}
 	}
@@ -146,6 +163,192 @@ func (g *mqlGcpProjectCloudTasksServiceQueue) id() (string, error) {
 		return "", g.ProjectId.Error
 	}
 	return fmt.Sprintf("gcp.project/%s/cloudTasksService.queue/%s", g.ProjectId.Data, g.Name.Data), nil
+}
+
+type mqlGcpProjectCloudTasksServiceQueueInternal struct {
+	cacheLocation string
+	cmek          *cloudTasksCmekCache
+}
+
+// cloudTasksCmekCache holds the CMEK key per location for one project. Cloud
+// Tasks configures CMEK per project and location, so every queue in a location
+// shares one GetCmekConfig call.
+type cloudTasksCmekCache struct {
+	projectId string
+	mu        sync.Mutex
+	keys      map[string]string
+}
+
+func (c *cloudTasksCmekCache) kmsKeyName(runtime *plugin.Runtime, location string) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if key, ok := c.keys[location]; ok {
+		return key, nil
+	}
+
+	conn := runtime.Connection.(*connection.GcpConnection)
+	creds, err := conn.Credentials(cloudtasks.DefaultAuthScopes()...)
+	if err != nil {
+		return "", err
+	}
+	ctx := context.Background()
+	client, err := cloudtasks.NewClient(ctx, option.WithCredentials(creds), connection.GRPCClientTraceOption())
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+
+	cfg, err := client.GetCmekConfig(ctx, &cloudtaskspb.GetCmekConfigRequest{
+		Name: fmt.Sprintf("projects/%s/locations/%s/cmekConfig", c.projectId, location),
+	})
+	if err != nil {
+		if s, ok := grpcStatusOf(err); ok {
+			switch s.Code() {
+			case codes.NotFound:
+				// No CMEK config exists for the location: Google-managed encryption.
+				c.keys[location] = ""
+				return "", nil
+			case codes.PermissionDenied:
+				if saysServiceDisabled(err) {
+					return "", llx.NotApplicable(err)
+				}
+				return "", llx.Forbidden(err, llx.WithPermissions("cloudtasks.cmekConfig.get"))
+			}
+		}
+		return "", err
+	}
+	c.keys[location] = cfg.GetKmsKey()
+	return c.keys[location], nil
+}
+
+func (g *mqlGcpProjectCloudTasksServiceQueue) kmsKey() (*mqlGcpProjectKmsServiceKeyringCryptokey, error) {
+	if g.cmek == nil || g.cacheLocation == "" {
+		return nil, errors.New("cloud tasks queue was not created from a queue listing, cannot resolve its location")
+	}
+	keyName, err := g.cmek.kmsKeyName(g.MqlRuntime, g.cacheLocation)
+	if err != nil {
+		return nil, err
+	}
+	return newKmsCryptoKeyRef(g.MqlRuntime, &g.KmsKey, keyName)
+}
+
+type mqlGcpProjectCloudTasksServiceQueueHttpTargetConfigInternal struct {
+	projectId                     string
+	cacheOidcServiceAccountEmail  string
+	cacheOauthServiceAccountEmail string
+}
+
+// cloudTasksHttpTarget is the flattened form of a queue-level HttpTarget.
+// Nil pointers mean the queue does not set that value.
+type cloudTasksHttpTarget struct {
+	httpMethod             string
+	headerOverrides        map[string]any
+	uriScheme              *string
+	uriHost                *string
+	uriPort                *int64
+	uriPath                *string
+	uriQuery               *string
+	uriOverrideEnforceMode *string
+	oidcServiceAccount     string
+	oidcAudience           *string
+	oauthServiceAccount    string
+	oauthScope             *string
+}
+
+// convertCloudTasksHttpTarget flattens a queue's HttpTarget. It returns nil
+// when the queue has no HTTP target.
+func convertCloudTasksHttpTarget(ht *cloudtaskspb.HttpTarget) *cloudTasksHttpTarget {
+	if ht == nil {
+		return nil
+	}
+	res := &cloudTasksHttpTarget{
+		httpMethod:      ht.GetHttpMethod().String(),
+		headerOverrides: map[string]any{},
+	}
+	for _, h := range ht.GetHeaderOverrides() {
+		if hdr := h.GetHeader(); hdr != nil {
+			res.headerOverrides[hdr.GetKey()] = hdr.GetValue()
+		}
+	}
+	if uo := ht.GetUriOverride(); uo != nil {
+		if uo.Scheme != nil {
+			scheme := uo.GetScheme().String()
+			res.uriScheme = &scheme
+		}
+		res.uriHost = uo.Host
+		res.uriPort = uo.Port
+		if po := uo.GetPathOverride(); po != nil {
+			path := po.GetPath()
+			res.uriPath = &path
+		}
+		if qo := uo.GetQueryOverride(); qo != nil {
+			query := qo.GetQueryParams()
+			res.uriQuery = &query
+		}
+		mode := uo.GetUriOverrideEnforceMode().String()
+		res.uriOverrideEnforceMode = &mode
+	}
+	if oidc := ht.GetOidcToken(); oidc != nil {
+		res.oidcServiceAccount = oidc.GetServiceAccountEmail()
+		audience := oidc.GetAudience()
+		res.oidcAudience = &audience
+	}
+	if oauth := ht.GetOauthToken(); oauth != nil {
+		res.oauthServiceAccount = oauth.GetServiceAccountEmail()
+		scope := oauth.GetScope()
+		res.oauthScope = &scope
+	}
+	return res
+}
+
+func newCloudTasksHttpTarget(runtime *plugin.Runtime, projectId, queueName string, ht *cloudtaskspb.HttpTarget) (*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig, error) {
+	t := convertCloudTasksHttpTarget(ht)
+	if t == nil {
+		return nil, nil
+	}
+	res, err := CreateResource(runtime, "gcp.project.cloudTasksService.queue.httpTargetConfig", map[string]*llx.RawData{
+		"__id":                   llx.StringData(queueName + "/httpTarget"),
+		"httpMethod":             llx.StringData(t.httpMethod),
+		"headerOverrides":        llx.MapData(t.headerOverrides, types.String),
+		"uriScheme":              llx.StringDataPtr(t.uriScheme),
+		"uriHost":                llx.StringDataPtr(t.uriHost),
+		"uriPort":                llx.IntDataPtr(t.uriPort),
+		"uriPath":                llx.StringDataPtr(t.uriPath),
+		"uriQuery":               llx.StringDataPtr(t.uriQuery),
+		"uriOverrideEnforceMode": llx.StringDataPtr(t.uriOverrideEnforceMode),
+		"oidcAudience":           llx.StringDataPtr(t.oidcAudience),
+		"oauthScope":             llx.StringDataPtr(t.oauthScope),
+	})
+	if err != nil {
+		return nil, err
+	}
+	mqlT := res.(*mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig)
+	mqlT.projectId = projectId
+	mqlT.cacheOidcServiceAccountEmail = t.oidcServiceAccount
+	mqlT.cacheOauthServiceAccountEmail = t.oauthServiceAccount
+	return mqlT, nil
+}
+
+func (g *mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig) oidcServiceAccount() (*mqlGcpProjectIamServiceServiceAccount, error) {
+	sa, err := resolveServiceAccountRef(g.MqlRuntime, g.cacheOidcServiceAccountEmail, g.projectId)
+	if err != nil {
+		return nil, err
+	}
+	if sa == nil {
+		g.OidcServiceAccount.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return sa, nil
+}
+
+func (g *mqlGcpProjectCloudTasksServiceQueueHttpTargetConfig) oauthServiceAccount() (*mqlGcpProjectIamServiceServiceAccount, error) {
+	sa, err := resolveServiceAccountRef(g.MqlRuntime, g.cacheOauthServiceAccountEmail, g.projectId)
+	if err != nil {
+		return nil, err
+	}
+	if sa == nil {
+		g.OauthServiceAccount.State = plugin.StateIsSet | plugin.StateIsNull
+	}
+	return sa, nil
 }
 
 func (g *mqlGcpProjectCloudTasksServiceQueue) iamPolicy() ([]any, error) {

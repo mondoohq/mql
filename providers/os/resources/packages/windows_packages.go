@@ -4,6 +4,7 @@
 package packages
 
 import (
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -137,6 +138,14 @@ const (
 // getInstalledApps for the entire asset over one vanished hive. Scoped to
 // this one call only -- every other statement here should still surface a
 // real failure.
+//
+// Get-ItemProperty expands REG_EXPAND_SZ values with the environment of the
+// identity running the script, so another user's %LOCALAPPDATA%\App\app.exe
+// comes back as a path in the scanning identity's profile. For entries read
+// from another user's hive (Raw), RawIcon, RawLocation and RawUninstall carry
+// the three path values unexpanded; dropSupersededUninstallEntries uses those,
+// and a path still holding a %VAR% is not evidence. For every other entry
+// they yield nothing, which Windows PowerShell 5.1 writes as {}.
 const installedAppsScript = `
 $callingSid = $null
 try { $callingSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value } catch {}
@@ -161,18 +170,21 @@ if ($plKey) {
         foreach ($sid in $plKey.GetSubKeyNames()) {
             if ($skipSids.ContainsKey($sid)) { continue }
             if (-not (Test-Path "Registry::HKEY_USERS\$sid")) { continue }
-            $roots.Add(@{ Path = "Registry::HKEY_USERS\$sid\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"; Scope = 'user'; Sid = $sid })
-            $roots.Add(@{ Path = "Registry::HKEY_USERS\$sid\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"; Scope = 'user'; Sid = $sid })
+            $roots.Add(@{ Path = "Registry::HKEY_USERS\$sid\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"; Scope = 'user'; Sid = $sid; Raw = 1 })
+            $roots.Add(@{ Path = "Registry::HKEY_USERS\$sid\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"; Scope = 'user'; Sid = $sid; Raw = 1 })
         }
     } finally { $plKey.Close() }
 }
 
+$rv = { param($p, $n) if ($raw) { [string](Get-Item -LiteralPath $p).GetValue($n, $null, 'DoNotExpandEnvironmentNames') } }
 $roots | Where-Object { Test-Path $_.Path } | ForEach-Object {
     $scope = $_.Scope
     $sid = $_.Sid
+    $raw = $_.Raw
     Get-ItemProperty $_.Path -ErrorAction SilentlyContinue |
-    Select-Object -Property DisplayName,DisplayVersion,Publisher,EstimatedSize,InstallSource,UninstallString,InstallLocation,InstallDate,PSPath,
-      @{Name='InstallScope';Expression={$scope}}, @{Name='InstallUser';Expression={$sid}}
+    Select-Object -Property DisplayName,DisplayVersion,Publisher,EstimatedSize,InstallSource,UninstallString,InstallLocation,DisplayIcon,InstallDate,PSPath,
+      @{Name='InstallScope';Expression={$scope}}, @{Name='InstallUser';Expression={$sid}},
+      @{N='RawIcon';E={& $rv $_.PSPath 'DisplayIcon'}}, @{N='RawLocation';E={& $rv $_.PSPath 'InstallLocation'}}, @{N='RawUninstall';E={& $rv $_.PSPath 'UninstallString'}}
 } | ConvertTo-Json -Compress
 `
 
@@ -525,6 +537,13 @@ func (w *WinPkgManager) getLocalInstalledApps() ([]Package, error) {
 	// under a root that knows the concrete SID HKCU could not attribute.
 	packages = mergeDedupedRegistryPackages(packages)
 
+	// Drop entries a newer registration of the same product in the same
+	// directory has superseded. See windows_superseded.go. The process runs
+	// on the scanned host, so machine-wide %VAR% references can be expanded
+	// from its own environment.
+	packages = dropSupersededUninstallEntries(packages, expandMachineEnvFromProcess,
+		fsFileVersionReader(w.conn.FileSystem(), nativeWindowsPath))
+
 	// Google Update (Omaha) tracks the authoritative version for the
 	// products it manages (Chrome, Drive, Earth, GCPW, ...) independently of
 	// Add/Remove Programs, whose DisplayVersion can go stale. See
@@ -834,6 +853,7 @@ func (w *WinPkgManager) getProfileInstalledApps(p windowsProfile, reader nativeR
 			pkg.InstallScope = scope
 			pkg.InstallUser = user
 			pkg.regDedupKey = registryDedupKey(view, uninstallString, c.Name)
+			pkg.uninstallEvidence = uninstallEvidenceFromItems(items)
 			packages = append(packages, *pkg)
 		}
 	}
@@ -1025,10 +1045,15 @@ func (w *WinPkgManager) getInstalledApps() ([]Package, error) {
 		return nil, errors.New("failed to retrieve installed apps: " + string(stderr))
 	}
 
-	packages, err := ParseWindowsAppPackages(w.platform, cmd.Stdout)
+	packages, err := parseWindowsAppPackages(w.platform, cmd.Stdout)
 	if err != nil {
 		return nil, err
 	}
+	// Get-ItemProperty already returns REG_EXPAND_SZ values expanded, so
+	// there is nothing left to expand. File versions for the file-version
+	// rule are read with one more PowerShell run, only when that rule has
+	// candidates. See windows_superseded.go.
+	packages = dropSupersededUninstallEntries(packages, nil, w.remoteFileVersions)
 
 	// Google Update (Omaha) tracks the authoritative version for the
 	// products it manages independently of Add/Remove Programs. See
@@ -1129,6 +1154,11 @@ func (w *WinPkgManager) getFsInstalledApps() ([]Package, error) {
 			packages = append(packages, *p)
 		}
 	}
+
+	// No environment of the offline target to expand %VAR% references
+	// from: paths that carry one are left out of the comparison.
+	packages = dropSupersededUninstallEntries(packages, nil,
+		fsFileVersionReader(w.conn.FileSystem(), mountedSystemDrivePath))
 
 	// Google Update (Omaha) tracks the authoritative version for the
 	// products it manages independently of Add/Remove Programs. See
@@ -1239,6 +1269,9 @@ func getPackageFromRegistryKey(key registry.RegistryKeyChild, platform *inventor
 		return nil, "", err
 	}
 	pkg, uninstallString := getPackageFromRegistryKeyItems(items, platform, arch)
+	if pkg != nil {
+		pkg.uninstallEvidence = uninstallEvidenceFromItems(items)
+	}
 	return pkg, uninstallString, nil
 }
 
@@ -1501,7 +1534,50 @@ func (w *WinPkgManager) List() ([]Package, error) {
 	return collapsePackages(pkgs), nil
 }
 
+// ParseWindowsAppPackages parses installedAppsScript's output and drops
+// superseded entries by the directory rule (see windows_superseded.go). It
+// has no access to the target's files, so the file-version rule does not
+// run here.
 func ParseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]Package, error) {
+	pkgs, err := parseWindowsAppPackages(platform, input)
+	if err != nil {
+		return nil, err
+	}
+	return dropSupersededUninstallEntries(pkgs, nil, nil), nil
+}
+
+// psOptionalString is a string an installedAppsScript calculated property may
+// leave empty. Windows PowerShell 5.1 writes a calculated property whose
+// expression yields nothing as {} rather than null, so only a JSON string is a
+// value; null, {} and anything else are absent.
+type psOptionalString struct{ v *string }
+
+func (s *psOptionalString) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || data[0] != '"' {
+		s.v = nil
+		return nil
+	}
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	s.v = &v
+	return nil
+}
+
+// rawOr returns the unexpanded value when the script sent one, else the
+// expanded value.
+func rawOr(raw psOptionalString, expanded string) string {
+	if raw.v != nil {
+		return *raw.v
+	}
+	return expanded
+}
+
+// parseWindowsAppPackages parses installedAppsScript's output, keeping each
+// package's uninstall evidence for dropSupersededUninstallEntries.
+func parseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]Package, error) {
 	data, err := io.ReadAll(input)
 	if err != nil {
 		return nil, err
@@ -1520,6 +1596,9 @@ func ParseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 		EstimatedSize   int    `json:"EstimatedSize"`
 		UninstallString string `json:"UninstallString"`
 		InstallLocation string `json:"InstallLocation"`
+		// DisplayIcon is only read to locate the product's directory when
+		// InstallLocation is absent; see windows_superseded.go.
+		DisplayIcon string `json:"DisplayIcon"`
 		// InstallDate is the YYYYMMDD value set by most MSI installers.
 		// Many entries omit it (especially per-user installs and
 		// non-MSI publishers) — parseWinInstallDate returns the zero
@@ -1530,6 +1609,11 @@ func ParseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 		// itself (see its doc comment), not derived from PSPath here.
 		InstallScope string `json:"InstallScope"`
 		InstallUser  string `json:"InstallUser"`
+		// RawIcon, RawLocation and RawUninstall are the unexpanded path
+		// values of an entry from another user's hive, absent otherwise.
+		RawIcon      psOptionalString `json:"RawIcon"`
+		RawLocation  psOptionalString `json:"RawLocation"`
+		RawUninstall psOptionalString `json:"RawUninstall"`
 	}
 
 	var entries []powershellUninstallEntry
@@ -1584,6 +1668,11 @@ func ParseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 		pkg.InstallDate = parseWinInstallDate(entry.InstallDate)
 		pkg.InstallScope = entry.InstallScope
 		pkg.InstallUser = entry.InstallUser
+		pkg.uninstallEvidence = &uninstallEvidence{
+			installLocation: rawOr(entry.RawLocation, entry.InstallLocation),
+			uninstallString: rawOr(entry.RawUninstall, entry.UninstallString),
+			displayIcon:     rawOr(entry.RawIcon, entry.DisplayIcon),
+		}
 
 		dedupKey := registryDedupKey(registryView(entry.PSPath), entry.UninstallString, registryPathLeaf(entry.PSPath))
 		if idx, dup := seen[dedupKey]; dup {

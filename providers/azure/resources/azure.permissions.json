@@ -1,11 +1,12 @@
 {
   "provider": "azure",
-  "version": "14.0.0",
-  "generated_at": "2026-09-23T15:11:21-07:00",
+  "version": "14.1.0",
+  "generated_at": "2026-09-28T21:39:52-07:00",
   "permissions": [
     "Microsoft.Advisor/recommendations/read",
     "Microsoft.ApiManagement/service/apis/policies/read",
     "Microsoft.ApiManagement/service/apis/read",
+    "Microsoft.ApiManagement/service/backends/read",
     "Microsoft.ApiManagement/service/namedValues/read",
     "Microsoft.ApiManagement/service/policies/read",
     "Microsoft.ApiManagement/service/products/policies/read",
@@ -33,10 +34,13 @@
     "Microsoft.Authorization/roleDefinitions/read",
     "Microsoft.Authorization/roleEligibilitySchedules/read",
     "Microsoft.Authorization/roleManagementPolicies/read",
-    "Microsoft.Automation/account/read",
-    "Microsoft.Automation/certificate/read",
-    "Microsoft.Automation/credential/read",
-    "Microsoft.Automation/variable/read",
+    "Microsoft.Automation/automationAccounts/certificates/read",
+    "Microsoft.Automation/automationAccounts/credentials/read",
+    "Microsoft.Automation/automationAccounts/hybridRunbookWorkerGroups/read",
+    "Microsoft.Automation/automationAccounts/read",
+    "Microsoft.Automation/automationAccounts/runbooks/read",
+    "Microsoft.Automation/automationAccounts/variables/read",
+    "Microsoft.Automation/automationAccounts/webhooks/read",
     "Microsoft.Batch/batchAccounts/pools/read",
     "Microsoft.Batch/batchAccounts/read",
     "Microsoft.Cache/redis/firewallRules/read",
@@ -76,6 +80,7 @@
     "Microsoft.Compute/virtualMachineScaleSets/read",
     "Microsoft.Compute/virtualMachineScaleSets/virtualMachines/read",
     "Microsoft.Compute/virtualMachines/read",
+    "Microsoft.Compute/virtualMachines/runCommands/read",
     "Microsoft.ContainerInstance/containerGroups/read",
     "Microsoft.ContainerRegistry/registries/cacheRules/read",
     "Microsoft.ContainerRegistry/registries/connectedRegistries/read",
@@ -109,7 +114,11 @@
     "Microsoft.DataFactory/factories/managedvirtualnetworks/managedprivateendpoints/read",
     "Microsoft.DataFactory/factories/managedvirtualnetworks/read",
     "Microsoft.DataFactory/factories/read",
+    "Microsoft.DataProtection/backupVaults/backupInstances/read",
+    "Microsoft.DataProtection/backupVaults/backupPolicies/read",
+    "Microsoft.DataProtection/backupVaults/backupResourceGuardProxies/read",
     "Microsoft.DataProtection/backupVaults/read",
+    "Microsoft.DataProtection/resourceGuards/read",
     "Microsoft.Databricks/workspaces/read",
     "Microsoft.DesktopVirtualization/hostPools/read",
     "Microsoft.Devices/resource/read",
@@ -293,6 +302,8 @@
     "Microsoft.Signalr/signalr/read",
     "Microsoft.Sql/managedInstances/databases/read",
     "Microsoft.Sql/managedInstances/read",
+    "Microsoft.Sql/managedInstances/securityAlertPolicies/read",
+    "Microsoft.Sql/managedInstances/vulnerabilityAssessments/read",
     "Microsoft.Sql/servers/administrators/read",
     "Microsoft.Sql/servers/advancedThreatProtectionSettings/read",
     "Microsoft.Sql/servers/auditingSettings/read",
@@ -368,6 +379,12 @@
       "service": "Microsoft.ApiManagement",
       "action": "NewListByServicePager",
       "source_file": "apimanagement_depth.go"
+    },
+    {
+      "permission": "Microsoft.ApiManagement/service/backends/read",
+      "service": "Microsoft.ApiManagement",
+      "action": "NewListByServicePager",
+      "source_file": "apimanagement_backends.go"
     },
     {
       "permission": "Microsoft.ApiManagement/service/namedValues/read",
@@ -538,28 +555,46 @@
       "source_file": "iam_pim.go"
     },
     {
-      "permission": "Microsoft.Automation/account/read",
+      "permission": "Microsoft.Automation/automationAccounts/certificates/read",
+      "service": "Microsoft.Automation",
+      "action": "NewListByAutomationAccountPager",
+      "source_file": "automation.go"
+    },
+    {
+      "permission": "Microsoft.Automation/automationAccounts/credentials/read",
+      "service": "Microsoft.Automation",
+      "action": "NewListByAutomationAccountPager",
+      "source_file": "automation.go"
+    },
+    {
+      "permission": "Microsoft.Automation/automationAccounts/hybridRunbookWorkerGroups/read",
+      "service": "Microsoft.Automation",
+      "action": "NewListByAutomationAccountPager",
+      "source_file": "automation_runbooks.go"
+    },
+    {
+      "permission": "Microsoft.Automation/automationAccounts/read",
       "service": "Microsoft.Automation",
       "action": "NewListPager",
       "source_file": "automation.go"
     },
     {
-      "permission": "Microsoft.Automation/certificate/read",
+      "permission": "Microsoft.Automation/automationAccounts/runbooks/read",
+      "service": "Microsoft.Automation",
+      "action": "NewListByAutomationAccountPager",
+      "source_file": "automation_runbooks.go"
+    },
+    {
+      "permission": "Microsoft.Automation/automationAccounts/variables/read",
       "service": "Microsoft.Automation",
       "action": "NewListByAutomationAccountPager",
       "source_file": "automation.go"
     },
     {
-      "permission": "Microsoft.Automation/credential/read",
+      "permission": "Microsoft.Automation/automationAccounts/webhooks/read",
       "service": "Microsoft.Automation",
       "action": "NewListByAutomationAccountPager",
-      "source_file": "automation.go"
-    },
-    {
-      "permission": "Microsoft.Automation/variable/read",
-      "service": "Microsoft.Automation",
-      "action": "NewListByAutomationAccountPager",
-      "source_file": "automation.go"
+      "source_file": "automation_runbooks.go"
     },
     {
       "permission": "Microsoft.Batch/batchAccounts/pools/read",
@@ -802,6 +837,12 @@
       "source_file": "compute.go"
     },
     {
+      "permission": "Microsoft.Compute/virtualMachines/runCommands/read",
+      "service": "Microsoft.Compute",
+      "action": "NewListByVirtualMachinePager",
+      "source_file": "compute_runcommands.go"
+    },
+    {
       "permission": "Microsoft.ContainerInstance/containerGroups/read",
       "service": "Microsoft.ContainerInstance",
       "action": "NewListPager",
@@ -1000,10 +1041,34 @@
       "source_file": "datafactory.go"
     },
     {
+      "permission": "Microsoft.DataProtection/backupVaults/backupInstances/read",
+      "service": "Microsoft.DataProtection",
+      "action": "NewListPager",
+      "source_file": "dataprotection_instances.go"
+    },
+    {
+      "permission": "Microsoft.DataProtection/backupVaults/backupPolicies/read",
+      "service": "Microsoft.DataProtection",
+      "action": "NewListPager",
+      "source_file": "dataprotection_instances.go"
+    },
+    {
+      "permission": "Microsoft.DataProtection/backupVaults/backupResourceGuardProxies/read",
+      "service": "Microsoft.DataProtection",
+      "action": "NewListPager",
+      "source_file": "dataprotection_instances.go"
+    },
+    {
       "permission": "Microsoft.DataProtection/backupVaults/read",
       "service": "Microsoft.DataProtection",
       "action": "NewGetInSubscriptionPager",
       "source_file": "dataprotection.go"
+    },
+    {
+      "permission": "Microsoft.DataProtection/resourceGuards/read",
+      "service": "Microsoft.DataProtection",
+      "action": "Get",
+      "source_file": "dataprotection_instances.go"
     },
     {
       "permission": "Microsoft.Databricks/workspaces/read",
@@ -2149,6 +2214,18 @@
       "permission": "Microsoft.Sql/managedInstances/read",
       "service": "Microsoft.Sql",
       "action": "NewListPager",
+      "source_file": "sql_managedinstance.go"
+    },
+    {
+      "permission": "Microsoft.Sql/managedInstances/securityAlertPolicies/read",
+      "service": "Microsoft.Sql",
+      "action": "Get",
+      "source_file": "sql_managedinstance.go"
+    },
+    {
+      "permission": "Microsoft.Sql/managedInstances/vulnerabilityAssessments/read",
+      "service": "Microsoft.Sql",
+      "action": "Get",
       "source_file": "sql_managedinstance.go"
     },
     {

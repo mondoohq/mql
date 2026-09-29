@@ -76,7 +76,18 @@ func (p *mqlProcess) flags() (map[string]any, error) {
 	}
 
 	fs := processes.FlagSet{}
-	err := fs.ParseCommand(cmd.Data)
+	var err error
+	if isWindowsAsset(p.MqlRuntime.Connection.(shared.Connection)) {
+		// executable is only a hint for finding the end of an unquoted
+		// program path, so a failure to read it is not a failure of flags
+		exe := p.GetExecutable()
+		if exe.Error != nil {
+			log.Debug().Err(exe.Error).Msg("process executable unavailable, splitting argv[0] without it")
+		}
+		err = fs.ParseWindowsCommand(cmd.Data, exe.Data)
+	} else {
+		err = fs.ParseCommand(cmd.Data)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -87,6 +98,11 @@ func (p *mqlProcess) flags() (map[string]any, error) {
 		res[k] = flags[k]
 	}
 	return res, nil
+}
+
+func isWindowsAsset(conn shared.Connection) bool {
+	asset := conn.Asset()
+	return asset != nil && asset.Platform != nil && asset.Platform.IsFamily("windows")
 }
 
 type ProcessCallbackTrigger func()

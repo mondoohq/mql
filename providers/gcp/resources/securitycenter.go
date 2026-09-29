@@ -432,7 +432,9 @@ func (g *mqlGcpOrganization) sccParent() (string, *connection.GcpConnection, err
 		return "", nil, g.Id.Error
 	}
 	conn := g.MqlRuntime.Connection.(*connection.GcpConnection)
-	return "organizations/" + g.Id.Data, conn, nil
+	// gcp.organization carries its id as "organizations/{id}" already;
+	// prefixing it again addressed "organizations/organizations/{id}".
+	return organizationResourceName(g.Id.Data), conn, nil
 }
 
 func (g *mqlGcpOrganization) sccSources() ([]any, error) {

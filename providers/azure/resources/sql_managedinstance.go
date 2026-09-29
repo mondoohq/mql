@@ -162,36 +162,43 @@ func (a *mqlAzureSubscriptionSqlService) managedInstances() ([]any, error) {
 				privateEndpointConnectionCount = int64(len(p.PrivateEndpointConnections))
 			}
 
-			mqlMi, err := CreateResource(a.MqlRuntime, "azure.subscription.sqlService.managedInstance",
-				map[string]*llx.RawData{
-					"id":                               llx.StringDataPtr(mi.ID),
-					"name":                             llx.StringDataPtr(mi.Name),
-					"location":                         llx.StringDataPtr(mi.Location),
-					"tags":                             llx.MapData(convert.PtrMapStrToInterface(mi.Tags), types.String),
-					"skuName":                          llx.StringData(skuName),
-					"skuTier":                          llx.StringData(skuTier),
-					"skuFamily":                        llx.StringData(skuFamily),
-					"vCores":                           llx.IntData(vCores),
-					"storageSizeInGB":                  llx.IntData(storageSizeInGB),
-					"provisioningState":                llx.StringData(provisioningState),
-					"state":                            llx.StringData(state),
-					"fullyQualifiedDomainName":         llx.StringData(fullyQualifiedDomainName),
-					"dnsZone":                          llx.StringData(dnsZone),
-					"administratorLogin":               llx.StringData(administratorLogin),
-					"licenseType":                      llx.StringData(licenseType),
-					"minimalTlsVersion":                llx.StringData(minimalTlsVersion),
-					"proxyOverride":                    llx.StringData(proxyOverride),
-					"publicDataEndpointEnabled":        llx.BoolData(publicDataEndpointEnabled),
-					"zoneRedundant":                    llx.BoolData(zoneRedundant),
-					"currentBackupStorageRedundancy":   llx.StringData(currentBackupStorageRedundancy),
-					"requestedBackupStorageRedundancy": llx.StringData(requestedBackupStorageRedundancy),
-					"identityType":                     llx.StringData(identityType),
-					"maintenanceConfigurationId":       llx.StringData(maintenanceConfigurationId),
-					"timezoneId":                       llx.StringData(timezoneId),
-					"collation":                        llx.StringData(collation),
-					"instancePoolId":                   llx.StringData(instancePoolId),
-					"privateEndpointConnectionCount":   llx.IntData(privateEndpointConnectionCount),
-				})
+			miArgs := map[string]*llx.RawData{
+				"id":                               llx.StringDataPtr(mi.ID),
+				"name":                             llx.StringDataPtr(mi.Name),
+				"location":                         llx.StringDataPtr(mi.Location),
+				"tags":                             llx.MapData(convert.PtrMapStrToInterface(mi.Tags), types.String),
+				"skuName":                          llx.StringData(skuName),
+				"skuTier":                          llx.StringData(skuTier),
+				"skuFamily":                        llx.StringData(skuFamily),
+				"vCores":                           llx.IntData(vCores),
+				"storageSizeInGB":                  llx.IntData(storageSizeInGB),
+				"provisioningState":                llx.StringData(provisioningState),
+				"state":                            llx.StringData(state),
+				"fullyQualifiedDomainName":         llx.StringData(fullyQualifiedDomainName),
+				"dnsZone":                          llx.StringData(dnsZone),
+				"administratorLogin":               llx.StringData(administratorLogin),
+				"licenseType":                      llx.StringData(licenseType),
+				"minimalTlsVersion":                llx.StringData(minimalTlsVersion),
+				"proxyOverride":                    llx.StringData(proxyOverride),
+				"publicDataEndpointEnabled":        llx.BoolData(publicDataEndpointEnabled),
+				"zoneRedundant":                    llx.BoolData(zoneRedundant),
+				"currentBackupStorageRedundancy":   llx.StringData(currentBackupStorageRedundancy),
+				"requestedBackupStorageRedundancy": llx.StringData(requestedBackupStorageRedundancy),
+				"identityType":                     llx.StringData(identityType),
+				"maintenanceConfigurationId":       llx.StringData(maintenanceConfigurationId),
+				"timezoneId":                       llx.StringData(timezoneId),
+				"collation":                        llx.StringData(collation),
+				"instancePoolId":                   llx.StringData(instancePoolId),
+				"privateEndpointConnectionCount":   llx.IntData(privateEndpointConnectionCount),
+			}
+			var admins *sql.ManagedInstanceExternalAdministrator
+			if mi.Properties != nil {
+				admins = mi.Properties.Administrators
+			}
+			for k, v := range managedInstanceAdminArgs(admins) {
+				miArgs[k] = v
+			}
+			mqlMi, err := CreateResource(a.MqlRuntime, "azure.subscription.sqlService.managedInstance", miArgs)
 			if err != nil {
 				return nil, err
 			}
@@ -318,4 +325,185 @@ func (a *mqlAzureSubscriptionSqlServiceManagedInstance) databases() ([]any, erro
 		}
 	}
 	return res, nil
+}
+
+// managedInstanceAdminArgs flattens the managed instance's Microsoft Entra
+// administrator onto the instance args. Every field is null when the instance
+// reports no Entra administrator configuration.
+func managedInstanceAdminArgs(admins *sql.ManagedInstanceExternalAdministrator) map[string]*llx.RawData {
+	if admins == nil {
+		return map[string]*llx.RawData{
+			"azureAdOnlyAuthentication": llx.NilData,
+			"azureAdAdminLogin":         llx.NilData,
+			"azureAdAdminSid":           llx.NilData,
+			"azureAdAdminTenantId":      llx.NilData,
+			"azureAdAdminPrincipalType": llx.NilData,
+			"azureAdAdminType":          llx.NilData,
+		}
+	}
+	return map[string]*llx.RawData{
+		"azureAdOnlyAuthentication": llx.BoolDataPtr(admins.AzureADOnlyAuthentication),
+		"azureAdAdminLogin":         llx.StringDataPtr(admins.Login),
+		"azureAdAdminSid":           llx.StringDataPtr(admins.Sid),
+		"azureAdAdminTenantId":      llx.StringDataPtr(admins.TenantID),
+		"azureAdAdminPrincipalType": llx.StringDataPtr(stringEnumPtr(admins.PrincipalType)),
+		"azureAdAdminType":          llx.StringDataPtr(stringEnumPtr(admins.AdministratorType)),
+	}
+}
+
+// managedInstanceScope returns the resource group and instance name the
+// instance's sub-resource calls need.
+func (a *mqlAzureSubscriptionSqlServiceManagedInstance) managedInstanceScope() (subscriptionID, resourceGroup, name string, err error) {
+	resourceID, err := ParseResourceID(a.Id.Data)
+	if err != nil {
+		return "", "", "", err
+	}
+	name, err = resourceID.Component("managedInstances")
+	if err != nil {
+		return "", "", "", err
+	}
+	return resourceID.SubscriptionID, resourceID.ResourceGroup, name, nil
+}
+
+func (a *mqlAzureSubscriptionSqlServiceManagedInstance) securityAlertPolicy() (*mqlAzureSubscriptionSqlServiceManagedInstanceSecurityAlertPolicy, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	subID, rg, name, err := a.managedInstanceScope()
+	if err != nil {
+		return nil, err
+	}
+	client, err := sql.NewManagedServerSecurityAlertPoliciesClient(subID, conn.Token(), &arm.ClientOptions{
+		ClientOptions: conn.ClientOptions(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Get(context.Background(), rg, name, sql.SecurityAlertPolicyNameDefault, nil)
+	if err != nil {
+		if isAzureFeatureUnavailable(err) {
+			a.SecurityAlertPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, classifyAzureRefusal(err, "Microsoft.Sql/managedInstances/securityAlertPolicies/read")
+	}
+	if resp.ID == nil {
+		a.SecurityAlertPolicy.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	args := managedInstanceSecurityAlertPolicyArgs(&resp.ManagedServerSecurityAlertPolicy)
+	res, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionSqlServiceManagedInstanceSecurityAlertPolicy, args)
+	if err != nil {
+		return nil, err
+	}
+	sysData, err := convert.JsonToDict(resp.SystemData)
+	if err != nil {
+		return nil, err
+	}
+	policy := res.(*mqlAzureSubscriptionSqlServiceManagedInstanceSecurityAlertPolicy)
+	policy.cacheSystemData = sysData
+	return policy, nil
+}
+
+// managedInstanceSecurityAlertPolicyArgs builds the policy args. The storage
+// account access key is write-only in Azure and is never copied.
+func managedInstanceSecurityAlertPolicyArgs(policy *sql.ManagedServerSecurityAlertPolicy) map[string]*llx.RawData {
+	var (
+		state, storageEndpoint         *string
+		disabledAlerts, emailAddresses = []any{}, []any{}
+		emailAccountAdmins             *bool
+		retentionDays                  *int32
+		creationTime                   *time.Time
+	)
+	if p := policy.Properties; p != nil {
+		state = stringEnumPtr(p.State)
+		storageEndpoint = p.StorageEndpoint
+		disabledAlerts = strPtrsToAny(p.DisabledAlerts)
+		emailAddresses = strPtrsToAny(p.EmailAddresses)
+		emailAccountAdmins = p.EmailAccountAdmins
+		retentionDays = p.RetentionDays
+		creationTime = p.CreationTime
+	}
+	return map[string]*llx.RawData{
+		"id":                 llx.StringDataPtr(policy.ID),
+		"state":              llx.StringDataPtr(state),
+		"disabledAlerts":     llx.ArrayData(disabledAlerts, types.String),
+		"emailAddresses":     llx.ArrayData(emailAddresses, types.String),
+		"emailAccountAdmins": llx.BoolDataPtr(emailAccountAdmins),
+		"storageEndpoint":    llx.StringDataPtr(storageEndpoint),
+		"retentionDays":      llx.IntDataPtr(retentionDays),
+		"creationTime":       llx.TimeDataPtr(creationTime),
+	}
+}
+
+type mqlAzureSubscriptionSqlServiceManagedInstanceSecurityAlertPolicyInternal struct {
+	cacheSystemData any
+}
+
+func (a *mqlAzureSubscriptionSqlServiceManagedInstanceSecurityAlertPolicy) id() (string, error) {
+	return a.Id.Data, nil
+}
+
+func (a *mqlAzureSubscriptionSqlServiceManagedInstanceSecurityAlertPolicy) systemMetadata() (*mqlAzureSubscriptionSystemData, error) {
+	return systemMetadataFromRaw(a.MqlRuntime, a.Id.Data, a.cacheSystemData, &a.SystemMetadata)
+}
+
+func (a *mqlAzureSubscriptionSqlServiceManagedInstance) vulnerabilityAssessment() (*mqlAzureSubscriptionSqlServiceManagedInstanceVulnerabilityAssessment, error) {
+	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	subID, rg, name, err := a.managedInstanceScope()
+	if err != nil {
+		return nil, err
+	}
+	client, err := sql.NewManagedInstanceVulnerabilityAssessmentsClient(subID, conn.Token(), &arm.ClientOptions{
+		ClientOptions: conn.ClientOptions(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Get(context.Background(), rg, name, sql.VulnerabilityAssessmentNameDefault, nil)
+	if err != nil {
+		if isAzureFeatureUnavailable(err) {
+			a.VulnerabilityAssessment.State = plugin.StateIsSet | plugin.StateIsNull
+			return nil, nil
+		}
+		return nil, classifyAzureRefusal(err, "Microsoft.Sql/managedInstances/vulnerabilityAssessments/read")
+	}
+	if resp.ID == nil {
+		a.VulnerabilityAssessment.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res, err := CreateResource(a.MqlRuntime, ResourceAzureSubscriptionSqlServiceManagedInstanceVulnerabilityAssessment,
+		managedInstanceVulnerabilityAssessmentArgs(&resp.ManagedInstanceVulnerabilityAssessment))
+	if err != nil {
+		return nil, err
+	}
+	return res.(*mqlAzureSubscriptionSqlServiceManagedInstanceVulnerabilityAssessment), nil
+}
+
+// managedInstanceVulnerabilityAssessmentArgs builds the assessment args. The
+// storage account key and container SAS key are never copied.
+func managedInstanceVulnerabilityAssessmentArgs(va *sql.ManagedInstanceVulnerabilityAssessment) map[string]*llx.RawData {
+	var (
+		storageContainerPath    *string
+		recurringScansEnabled   *bool
+		emailSubscriptionAdmins *bool
+		recurringScanEmails     = []any{}
+	)
+	if p := va.Properties; p != nil {
+		storageContainerPath = p.StorageContainerPath
+		if rs := p.RecurringScans; rs != nil {
+			recurringScansEnabled = rs.IsEnabled
+			emailSubscriptionAdmins = rs.EmailSubscriptionAdmins
+			recurringScanEmails = strPtrsToAny(rs.Emails)
+		}
+	}
+	return map[string]*llx.RawData{
+		"id":                      llx.StringDataPtr(va.ID),
+		"storageContainerPath":    llx.StringDataPtr(storageContainerPath),
+		"recurringScansEnabled":   llx.BoolDataPtr(recurringScansEnabled),
+		"recurringScanEmails":     llx.ArrayData(recurringScanEmails, types.String),
+		"emailSubscriptionAdmins": llx.BoolDataPtr(emailSubscriptionAdmins),
+	}
+}
+
+func (a *mqlAzureSubscriptionSqlServiceManagedInstanceVulnerabilityAssessment) id() (string, error) {
+	return a.Id.Data, nil
 }

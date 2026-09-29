@@ -72,6 +72,19 @@ auth0.tenant @defaults("friendlyName") @maturity("experimental") {
   // Raw flag payload as returned by the API, keyed by flag name (for example
   // enableApisSection, changePwdFlowV1, disableClickjackProtectionHeaders).
   flags dict
+  // Whether the end user is prompted before an OIDC logout completes
+  //
+  // When false, OIDC RP-initiated logout skips the confirmation prompt.
+  oidcLogoutPromptEnabled bool
+  // Anonymous session lifetime in minutes
+  //
+  // How long an anonymous (not yet authenticated) session stays valid. Null
+  // when anonymous sessions are not enabled for the tenant.
+  anonymousSessionLifetime int
+  // Whether anonymous session requests set the auth0_anon cookie
+  //
+  // Null when anonymous sessions are not enabled for the tenant.
+  anonymousSessionCookieEnabled bool
 }
 
 // Auth0 application
@@ -163,6 +176,37 @@ auth0.client @defaults("name appType") @maturity("experimental") {
   authenticationMethods []string
   // Identity connections this application is enabled on
   enabledConnections() []auth0.connection
+  // Whether this application may create anonymous sessions
+  //
+  // Null when anonymous sessions are not enabled for the tenant.
+  anonymousSessionsEnabled bool
+  // Self-service organization (My Organization) settings for this application
+  //
+  // Governs what organization administrators can do through the My
+  // Organization API when using this application, including whether they can
+  // grant permissions they do not hold themselves (enforcePermissionCeiling)
+  // or assign permissions to themselves (enforceSelfAssignmentRestriction).
+  // Null when the feature is not configured for the application.
+  myOrganization auth0.client.myOrganizationConfiguration
+}
+
+// Self-service organization settings for an Auth0 application
+private auth0.client.myOrganizationConfiguration @defaults("enforcePermissionCeiling enforceSelfAssignmentRestriction") {
+  // Whether organization admins can only assign permissions they hold themselves
+  enforcePermissionCeiling bool
+  // Whether organization admins are prevented from assigning permissions to themselves
+  enforceSelfAssignmentRestriction bool
+  // Connection strategies allowed when creating organization connections
+  //
+  // For example okta or samlp.
+  allowedStrategies []string
+  // How deleting an organization connection is handled
+  //
+  // One of allow (connections can always be deleted) or allow_if_empty
+  // (connections can be deleted only when no users are linked to them).
+  connectionDeletionBehavior string
+  // Application used as the landing page for invitations
+  invitationLandingClient() auth0.client
 }
 
 // Auth0 identity connection
@@ -544,6 +588,32 @@ auth0.resourceServer @defaults("name identifier") @maturity("experimental") {
   // One of all_clients or public_clients. Empty when proof-of-possession is
   // not required.
   proofOfPossessionRequiredFor string
+  // Access token lifetime in seconds for anonymous sessions
+  //
+  // Null when anonymous sessions are not enabled for the tenant.
+  tokenLifetimeForAnonymousAccessTokens int
+  // Authorization policy for user-initiated flows
+  //
+  // One of allow_all (any application may obtain user access tokens),
+  // deny_all, or require_client_grant (only applications with a user client
+  // grant for this API). Null when no policy is configured.
+  userPolicy string
+  // Authorization policy for client-initiated (machine-to-machine) flows
+  //
+  // One of deny_all or require_client_grant (only applications with a client
+  // grant for this API). Null when no policy is configured.
+  clientPolicy string
+  // Authorization policy for anonymous-user flows
+  //
+  // One of deny_all or require_client_grant (only applications with an
+  // anonymous_user client grant for this API). Auth0 treats an unset policy as
+  // deny_all. Null when the feature is not enabled for the tenant.
+  anonymousUserPolicy string
+  // Custom claims added to access tokens issued for this API
+  //
+  // Keyed by claim name, with the expression that resolves the claim value.
+  // Null when the feature is not enabled for the tenant.
+  accessTokenCustomClaims map[string]string
 }
 
 // Auth0 client grant
@@ -581,7 +651,7 @@ auth0.clientGrant @defaults("audience") @maturity("experimental") {
   organizationUsage string
   // Subject type for the grant
   //
-  // One of client or user. Defaults to client.
+  // One of client, user, or anonymous_user. Defaults to client.
   subjectType string
 }
 

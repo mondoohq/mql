@@ -311,6 +311,29 @@ var applicationFolders = []string{
 	"/System/Applications",
 }
 
+// systemApplicationFolders hold the applications macOS ships outside
+// /System/Applications: Finder, Siri, Dock, Control Center, the input
+// methods, the services, and the rest of what system_profiler reports under
+// /System/Library. They are listed the same way as applicationFolders, which
+// reaches CoreServices/Applications and the Image Capture subfolders.
+//
+// Checked against system_profiler on a macOS 26 Mac with Spotlight on: it
+// reports 218 applications under /System/Library, and these folders hold 157
+// of them and nothing it does not report. Of the other 61, one has no
+// Info.plist and 60 are helpers embedded in individual frameworks
+// (Frameworks/*.framework/Versions/A/Resources/...), each at its own depth.
+// Finding those means listing about 25,000 framework directories on that Mac,
+// which is not worth it for helpers that ship and are patched with the OS.
+// Listing these six folders takes about 110 directory reads.
+var systemApplicationFolders = []string{
+	"/System/Library/CoreServices",
+	"/System/Library/Input Methods",
+	"/System/Library/Services",
+	"/System/Library/Image Capture",
+	"/System/Library/Classroom",
+	"/System/Library/ColorSync",
+}
+
 // usersRoot holds the home directories. Each user's ~/Applications is listed
 // the same way as applicationFolders.
 const usersRoot = "/Users"
@@ -343,10 +366,15 @@ func folderApplications(conn shared.Connection, reported []sysProfilerItem) []sy
 	for _, entry := range reported {
 		if entry.Path != "" {
 			seen[filepath.Clean(entry.Path)] = struct{}{}
+			// A cryptex bundle is also reachable under the system volume path
+			// it is firmlinked to. Don't list it a second time from there.
+			if alias, ok := cryptexSystemPath(entry.Path); ok {
+				seen[alias] = struct{}{}
+			}
 		}
 	}
 
-	folders := append([]string{}, applicationFolders...)
+	folders := append(append([]string{}, applicationFolders...), systemApplicationFolders...)
 	if users, err := readDirNames(fs, usersRoot); err == nil {
 		for _, user := range users {
 			if strings.HasPrefix(user, ".") {
@@ -408,6 +436,21 @@ func folderApplications(conn shared.Connection, reported []sysProfilerItem) []sy
 	return items
 }
 
+// cryptexSystemPath returns the system volume path of a bundle on a cryptex,
+// /System/Library/CoreServices/X.app for
+// /System/Cryptexes/App/System/Library/CoreServices/X.app.
+func cryptexSystemPath(path string) (string, bool) {
+	rest, ok := strings.CutPrefix(filepath.Clean(path), cryptexRoot+"/")
+	if !ok {
+		return "", false
+	}
+	_, rel, ok := strings.Cut(rest, "/")
+	if !ok {
+		return "", false
+	}
+	return "/" + rel, true
+}
+
 func isAppBundleName(name string) bool {
 	return strings.EqualFold(filepath.Ext(name), ".app")
 }
@@ -433,23 +476,63 @@ func readDirEntries(fs afero.Fs, dir string) ([]os.FileInfo, error) {
 // appDisplayName names an application bundle the way Finder and
 // system_profiler do, for an application only the folder listing found.
 //
-// A bundle that sets LSHasLocalizedDisplayName is shown by its localized name
-// ("Webex" for "Cisco WebEx Start.app", "Logi Options+" for
-// "logioptionsplus.app"); every other bundle by its directory name without
-// .app. The localized name is read in the bundle's own development language,
-// not the user's, so the same application gets the same name on every Mac.
+// Finder shows a bundle's localized name in two cases, and its directory name
+// without .app otherwise:
+//
+//   - The bundle sets LSHasLocalizedDisplayName ("Webex" for
+//     "Cisco WebEx Start.app", "Logi Options+" for "logioptionsplus.app").
+//   - The directory still carries the bundle's own CFBundleDisplayName, that
+//     is, nobody renamed it. Apple's applications work this way: FindMy.app
+//     declares CFBundleDisplayName "FindMy" and is shown as "Find My", from its
+//     localized strings. A bundle whose directory name differs from its
+//     CFBundleDisplayName keeps the directory name: PIPAgent.app declares
+//     "Picture in Picture" and is shown as "PIPAgent", Visual Studio Code.app
+//     declares "Code".
+//
+// Checked against system_profiler on a macOS 26 Mac: this rule names 537 of
+// the 543 bundles it reports the same way, where only reading
+// LSHasLocalizedDisplayName named 525. Four of the other six are spellings
+// of the user's language (see below); for the rest (AirPlayUIAgent,
+// GPG Suite Updater) system_profiler's name comes from somewhere the
+// bundle's own files do not say.
+//
+// The localized name is read in the bundle's own development language, not
+// the user's, so the same application gets the same name on every Mac:
+// system_profiler on a British English system says "Control Centre" where
+// this says "Control Center".
 func appDisplayName(conn shared.Connection, path string, info infoPlist) string {
 	folder := bundleName(path)
-	if !isTruthy(info.HasLocalizedDisplayName) {
+	if isTruthy(info.HasLocalizedDisplayName) {
+		loc := localizedInfoStrings(conn, path, info.DevelopmentRegion)
+		for _, name := range []string{macOSString(loc, "CFBundleDisplayName"), macOSString(loc, "CFBundleName"), info.DisplayName, info.BundleName} {
+			if name = cleanDisplayName(name); name != "" {
+				return name
+			}
+		}
 		return folder
 	}
-	loc := localizedInfoStrings(conn, path, info.DevelopmentRegion)
-	for _, name := range []string{loc["CFBundleDisplayName"], loc["CFBundleName"], info.DisplayName, info.BundleName} {
-		if name = cleanDisplayName(name); name != "" {
-			return name
+	if display := cleanDisplayName(info.DisplayName); display != "" && display == folder {
+		loc := localizedInfoStrings(conn, path, info.DevelopmentRegion)
+		for _, name := range []string{macOSString(loc, "CFBundleDisplayName"), macOSString(loc, "CFBundleName")} {
+			if name = cleanDisplayName(name); name != "" {
+				return name
+			}
 		}
 	}
 	return folder
+}
+
+// macOSString returns a localized string, preferring its macOS variant. A
+// bundle shared across Apple's platforms can carry a platform-specific
+// value next to the generic one, under the key with a "-macos" suffix:
+// Image Playground's InfoPlist.loctable has CFBundleDisplayName
+// "Playground" and CFBundleDisplayName-macos "Image Playground", and macOS
+// shows the latter.
+func macOSString(loc map[string]string, key string) string {
+	if v := cleanDisplayName(loc[key+"-macos"]); v != "" {
+		return v
+	}
+	return loc[key]
 }
 
 // isTruthy reads a plist flag that bundles store as a boolean, a number or a

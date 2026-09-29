@@ -207,6 +207,8 @@ func (a *mqlAwsIamAccessAnalyzer) getAnalyzers(conn *connection.AwsConnection) [
 								"createdAt":              llx.TimeDataPtr(analyzer.CreatedAt),
 								"lastResourceAnalyzed":   llx.StringDataPtr(analyzer.LastResourceAnalyzed),
 								"lastResourceAnalyzedAt": llx.TimeDataPtr(analyzer.LastResourceAnalyzedAt),
+								"unusedAccessAge":        llx.IntDataPtr(unusedAccessAge(analyzer.Configuration)),
+								"unusedAccessExclusions": llx.ArrayData(unusedAccessExclusions(analyzer.Configuration), types.Dict),
 							})
 						if err != nil {
 							return nil, err

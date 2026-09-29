@@ -6,6 +6,8 @@ package resources
 import (
 	"context"
 
+	"github.com/auth0/go-auth0/management"
+
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
@@ -48,7 +50,24 @@ func initAuth0Tenant(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 	args["defaultDirectory"] = llx.StringDataPtr(t.DefaultDirectory)
 	args["enabledLocales"] = llx.ArrayData(strList(t.EnabledLocales), types.String)
 	args["flags"] = llx.DictData(flags)
+	oidcPrompt, anonLifetime, anonCookie := tenantSessionSettings(t.Sessions)
+	args["oidcLogoutPromptEnabled"] = llx.BoolDataPtr(oidcPrompt)
+	args["anonymousSessionLifetime"] = llx.IntDataPtr(anonLifetime)
+	args["anonymousSessionCookieEnabled"] = llx.BoolDataPtr(anonCookie)
 	return args, nil, nil
+}
+
+// tenantSessionSettings returns the OIDC logout prompt flag and the anonymous
+// session lifetime and cookie flag, each nil when the API did not report it.
+func tenantSessionSettings(s *management.TenantSessions) (oidcLogoutPrompt *bool, anonymousLifetime *int, anonymousCookie *bool) {
+	if s == nil {
+		return nil, nil, nil
+	}
+	if s.Anonymous != nil {
+		anonymousLifetime = s.Anonymous.LifetimeInMinutes
+		anonymousCookie = s.Anonymous.ActivateCookie
+	}
+	return s.OIDCLogoutPromptEnabled, anonymousLifetime, anonymousCookie
 }
 
 // auth0conn returns the Auth0 connection backing this runtime.

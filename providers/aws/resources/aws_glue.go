@@ -707,26 +707,65 @@ func (a *mqlAwsGlueDatabase) tables() ([]any, error) {
 
 	svc := conn.Glue(region)
 	ctx := context.Background()
-	res := []any{}
 
+	// GetTables leaves federated tables out unless asked for them, so request
+	// ALL. A database whose federation source cannot be reached, or an endpoint
+	// that rejects the parameter, would otherwise hide every table in the
+	// database; list the non-federated ones instead.
+	tables, err := listGlueTables(ctx, svc, dbName, catalogId, glue_types.TableResourceShareTypeAll)
+	if err != nil && shouldRetryGlueTablesWithoutShareType(err) {
+		log.Debug().Err(err).Str("database", dbName).Str("region", region).
+			Msg("glue>tables>listing all tables failed, listing non-federated tables only")
+		tables, err = listGlueTables(ctx, svc, dbName, catalogId, "")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]any, 0, len(tables))
+	for _, table := range tables {
+		mqlTable, err := newMqlAwsGlueDatabaseTable(a.MqlRuntime, region, table)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlTable)
+	}
+	return res, nil
+}
+
+func listGlueTables(ctx context.Context, svc glue.GetTablesAPIClient, dbName, catalogId string, shareType glue_types.TableResourceShareType) ([]glue_types.Table, error) {
+	tables := []glue_types.Table{}
 	paginator := glue.NewGetTablesPaginator(svc, &glue.GetTablesInput{
-		DatabaseName: &dbName,
-		CatalogId:    &catalogId,
+		DatabaseName:      &dbName,
+		CatalogId:         &catalogId,
+		ResourceShareType: shareType,
 	})
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
 			return nil, err
 		}
-		for _, table := range page.TableList {
-			mqlTable, err := newMqlAwsGlueDatabaseTable(a.MqlRuntime, region, table)
-			if err != nil {
-				return nil, err
-			}
-			res = append(res, mqlTable)
-		}
+		tables = append(tables, page.TableList...)
 	}
-	return res, nil
+	return tables, nil
+}
+
+// shouldRetryGlueTablesWithoutShareType reports whether a GetTables call that
+// asked for ALL tables failed in a way the default (non-federated) listing can
+// still answer: the federation source failed, or the endpoint rejected the
+// input. Access denied and everything else is returned as is, since the
+// default listing would fail the same way.
+func shouldRetryGlueTablesWithoutShareType(err error) bool {
+	var fedErr *glue_types.FederationSourceException
+	if errors.As(err, &fedErr) {
+		return true
+	}
+	var fedRetryErr *glue_types.FederationSourceRetryableException
+	if errors.As(err, &fedRetryErr) {
+		return true
+	}
+	var inputErr *glue_types.InvalidInputException
+	return errors.As(err, &inputErr)
 }
 
 func newMqlAwsGlueDatabaseTable(runtime *plugin.Runtime, region string, table glue_types.Table) (*mqlAwsGlueDatabaseTable, error) {

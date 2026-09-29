@@ -102,6 +102,15 @@ type (
 		WarpAuthNonBrowser401          *bool      `json:"warp_auth_non_browser_401"`
 		CreatedAt                      *time.Time `json:"created_at"`
 		UpdatedAt                      *time.Time `json:"updated_at"`
+		// ServiceTokenInactivity is nil when the organization does not report
+		// the setting, so its fields read as null rather than as disabled.
+		ServiceTokenInactivity *accessServiceTokenInactivity `json:"service_token_inactivity"`
+	}
+
+	accessServiceTokenInactivity struct {
+		Enabled                 *bool   `json:"enabled"`
+		Action                  *string `json:"action"`
+		InactivityThresholdDays *int64  `json:"inactivity_threshold_days"`
 	}
 
 	accessIdp struct {
@@ -417,6 +426,15 @@ func (c *mqlCloudflareOne) serviceTokens() ([]any, error) {
 	return result, nil
 }
 
+// serviceTokenInactivity returns the organization's service-token inactivity
+// settings, or an all-nil value when the organization does not report them.
+func (o accessOrganization) serviceTokenInactivity() accessServiceTokenInactivity {
+	if o.ServiceTokenInactivity == nil {
+		return accessServiceTokenInactivity{}
+	}
+	return *o.ServiceTokenInactivity
+}
+
 func (c *mqlCloudflareOne) organization() (*mqlCloudflareOneOrganization, error) {
 	conn := c.MqlRuntime.Connection.(*connection.CloudflareConnection)
 
@@ -432,20 +450,24 @@ func (c *mqlCloudflareOne) organization() (*mqlCloudflareOneOrganization, error)
 		return nil, err
 	}
 	org := env.Result
+	inactivity := org.serviceTokenInactivity()
 
 	res, err := NewResource(c.MqlRuntime, "cloudflare.one.organization", map[string]*llx.RawData{
-		"__id":                           llx.StringData("cloudflare.one.organization@" + c.AccountID),
-		"name":                           llx.StringData(org.Name),
-		"authDomain":                     llx.StringData(org.AuthDomain),
-		"isUiReadOnly":                   llx.BoolDataPtr(org.IsUIReadOnly),
-		"userSeatExpirationInactiveTime": llx.StringData(org.UserSeatExpirationInactiveTime),
-		"autoRedirectToIdentity":         llx.BoolDataPtr(org.AutoRedirectToIdentity),
-		"sessionDuration":                llx.StringDataPtr(org.SessionDuration),
-		"warpAuthSessionDuration":        llx.StringDataPtr(org.WarpAuthSessionDuration),
-		"allowAuthenticateViaWarp":       llx.BoolDataPtr(org.AllowAuthenticateViaWarp),
-		"warpAuthNonBrowser401":          llx.BoolDataPtr(org.WarpAuthNonBrowser401),
-		"createdAt":                      llx.TimeDataPtr(org.CreatedAt),
-		"updatedAt":                      llx.TimeDataPtr(org.UpdatedAt),
+		"__id":                                llx.StringData("cloudflare.one.organization@" + c.AccountID),
+		"name":                                llx.StringData(org.Name),
+		"authDomain":                          llx.StringData(org.AuthDomain),
+		"isUiReadOnly":                        llx.BoolDataPtr(org.IsUIReadOnly),
+		"userSeatExpirationInactiveTime":      llx.StringData(org.UserSeatExpirationInactiveTime),
+		"autoRedirectToIdentity":              llx.BoolDataPtr(org.AutoRedirectToIdentity),
+		"sessionDuration":                     llx.StringDataPtr(org.SessionDuration),
+		"warpAuthSessionDuration":             llx.StringDataPtr(org.WarpAuthSessionDuration),
+		"allowAuthenticateViaWarp":            llx.BoolDataPtr(org.AllowAuthenticateViaWarp),
+		"warpAuthNonBrowser401":               llx.BoolDataPtr(org.WarpAuthNonBrowser401),
+		"createdAt":                           llx.TimeDataPtr(org.CreatedAt),
+		"updatedAt":                           llx.TimeDataPtr(org.UpdatedAt),
+		"serviceTokenInactivityEnabled":       llx.BoolDataPtr(inactivity.Enabled),
+		"serviceTokenInactivityAction":        llx.StringDataPtr(inactivity.Action),
+		"serviceTokenInactivityThresholdDays": llx.IntDataPtr(inactivity.InactivityThresholdDays),
 	})
 	if err != nil {
 		return nil, err

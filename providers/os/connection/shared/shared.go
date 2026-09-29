@@ -7,10 +7,13 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/cockroachdb/errors"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
@@ -247,11 +250,92 @@ func ParseSudo(flags map[string]*llx.Primitive) *inventory.Sudo {
 		return nil
 	}
 
+	// The executable is left empty so the connection picks sudo or doas
+	// from what the target has installed. An executable set in an
+	// inventory file is kept as configured.
 	return &inventory.Sudo{
-		Active:     true,
-		Executable: "sudo",
+		Active: true,
 	}
 }
+
+// Privilege elevation executables that can be detected on a target. Both
+// accept every argument BuildSudoCommand emits: an optional `-u <user>`
+// followed by the command and its arguments.
+const (
+	ElevationSudo = "sudo"
+	ElevationDoas = "doas"
+)
+
+const elevationProbeMarker = "mql-elevation-probe-done"
+
+// ElevationProbeCommand lists the elevation executables installed on a
+// POSIX target. It runs unelevated. The trailing marker shows that a POSIX
+// shell ran the probe, which separates "neither executable is installed"
+// from "the probe could not run", for example on a target without sh.
+const ElevationProbeCommand = "sh -c 'command -v " + ElevationSudo + "; command -v " + ElevationDoas + "; echo " + elevationProbeMarker + "' < /dev/null"
+
+// ParseElevationProbe reads the output of ElevationProbeCommand. It returns
+// the executable to elevate with, preferring sudo when both are installed,
+// and whether the probe ran to completion. An empty executable with
+// probed == true means the target has neither sudo nor doas.
+func ParseElevationProbe(stdout string) (executable string, probed bool) {
+	var hasSudo, hasDoas bool
+	for _, line := range strings.Split(stdout, "\n") {
+		line = strings.TrimSpace(line)
+		if line == elevationProbeMarker {
+			probed = true
+			continue
+		}
+		switch path.Base(line) {
+		case ElevationSudo:
+			hasSudo = true
+		case ElevationDoas:
+			hasDoas = true
+		}
+	}
+	switch {
+	case hasSudo:
+		return ElevationSudo, probed
+	case hasDoas:
+		return ElevationDoas, probed
+	default:
+		return "", probed
+	}
+}
+
+// ResolveElevation picks the executable used to elevate commands. An
+// executable configured in the inventory is kept as is. Otherwise the target
+// is probed for sudo, then doas. When the probe shows that neither is
+// installed, it returns an error: every command and file read would be
+// prefixed with a missing executable, so no query could return correct data.
+// When the probe cannot run at all, sudo is used as before.
+//
+// run must execute the command without elevation.
+func ResolveElevation(sudo *inventory.Sudo, run func(string) (*Command, error)) error {
+	if sudo.Executable != "" {
+		return nil
+	}
+
+	var stdout []byte
+	out, err := run(ElevationProbeCommand)
+	if err == nil && out != nil {
+		stdout, _ = io.ReadAll(out.Stdout)
+	}
+
+	executable, probed := ParseElevationProbe(string(stdout))
+	switch {
+	case executable != "":
+		sudo.Executable = executable
+	case probed:
+		return errors.New("cannot elevate privileges: neither sudo nor doas is installed on the target")
+	default:
+		log.Debug().Msg("could not probe the target for sudo or doas, using sudo")
+		sudo.Executable = ElevationSudo
+	}
+	return nil
+}
+
+var envAssignmentRegex = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
 
 var shellEscapeRegex = regexp.MustCompile(`[^\w@%+=:,./-]`)
 
@@ -273,16 +357,26 @@ func BuildSudoCommand(sudo *inventory.Sudo, cmd string) string {
 		return cmd
 	}
 
-	sb.WriteString(sudo.Executable)
+	executable := sudo.Executable
+	if executable == "" {
+		executable = ElevationSudo
+	}
+	sb.WriteString(executable)
 
 	if len(sudo.User) > 0 {
 		sb.WriteString(" -u " + sudo.User)
 	}
 
 	if len(sudo.Shell) > 0 {
+		// The shell parses leading VAR=value words itself, so doas needs no env here.
 		sb.WriteString(" " + sudo.Shell + " -c " + cmd)
 	} else {
 		sb.WriteString(" ")
+		// sudo treats leading VAR=value words as environment assignments;
+		// doas would try to execute the first one as the command.
+		if executable == ElevationDoas && envAssignmentRegex.MatchString(cmd) {
+			sb.WriteString("env ")
+		}
 		sb.WriteString(cmd)
 	}
 

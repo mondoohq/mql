@@ -147,45 +147,52 @@ func (a *mqlAzureSubscriptionComputeService) hybridMachines() ([]any, error) {
 				id = &normalized
 			}
 
-			mqlMachine, err := CreateResource(a.MqlRuntime, "azure.subscription.computeService.hybridMachine",
-				map[string]*llx.RawData{
-					"id":                         llx.StringDataPtr(id),
-					"name":                       llx.StringDataPtr(m.Name),
-					"location":                   llx.StringDataPtr(m.Location),
-					"tags":                       llx.MapData(convert.PtrMapStrToInterface(m.Tags), types.String),
-					"type":                       llx.StringDataPtr(m.Type),
-					"status":                     llx.StringDataPtr(status),
-					"lastStatusChange":           llx.TimeDataPtr(lastStatusChange),
-					"agentVersion":               llx.StringDataPtr(agentVersion),
-					"osName":                     llx.StringDataPtr(osName),
-					"osSku":                      llx.StringDataPtr(osSku),
-					"osEdition":                  llx.StringDataPtr(osEdition),
-					"osVersion":                  llx.StringDataPtr(osVersion),
-					"osType":                     llx.StringDataPtr(osType),
-					"displayName":                llx.StringDataPtr(displayName),
-					"machineFqdn":                llx.StringDataPtr(machineFqdn),
-					"dnsFqdn":                    llx.StringDataPtr(dnsFqdn),
-					"domainName":                 llx.StringDataPtr(domainName),
-					"adFqdn":                     llx.StringDataPtr(adFqdn),
-					"vmId":                       llx.StringDataPtr(vmID),
-					"vmUuid":                     llx.StringDataPtr(vmUUID),
-					"provisioningState":          llx.StringDataPtr(provisioningState),
-					"parentClusterResourceId":    llx.StringDataPtr(parentClusterResourceID),
-					"privateLinkScopeResourceId": llx.StringDataPtr(privateLinkScopeResourceID),
-					"identityKeyStore":           llx.StringDataPtr(identityKeyStore),
-					"tpmEkCertificate":           llx.StringDataPtr(tpmEkCertificate),
-					"statusReason":               llx.StringDataPtr(statusReason),
-					"firmwareType":               llx.StringDataPtr(firmwareType),
-					"firmwareSerialNumber":       llx.StringDataPtr(firmwareSerialNumber),
-					"numberOfCpuSockets":         llx.IntDataPtr(numberOfCPUSockets),
-					"totalPhysicalMemoryInBytes": llx.IntDataPtr(totalPhysicalMemoryInBytes),
-					"processors":                 llx.ArrayData(processorsDict, types.Dict),
-					"disks":                      llx.ArrayData(disksDict, types.Dict),
-					"detectedProperties":         llx.MapData(detectedProperties, types.String),
-					"cloudMetadata":              llx.DictData(cloudMetadataDict),
-					"licenseProfile":             llx.DictData(licenseProfileDict),
-					"properties":                 llx.DictData(properties),
-				})
+			machineArgs := map[string]*llx.RawData{
+				"id":                         llx.StringDataPtr(id),
+				"name":                       llx.StringDataPtr(m.Name),
+				"location":                   llx.StringDataPtr(m.Location),
+				"tags":                       llx.MapData(convert.PtrMapStrToInterface(m.Tags), types.String),
+				"type":                       llx.StringDataPtr(m.Type),
+				"status":                     llx.StringDataPtr(status),
+				"lastStatusChange":           llx.TimeDataPtr(lastStatusChange),
+				"agentVersion":               llx.StringDataPtr(agentVersion),
+				"osName":                     llx.StringDataPtr(osName),
+				"osSku":                      llx.StringDataPtr(osSku),
+				"osEdition":                  llx.StringDataPtr(osEdition),
+				"osVersion":                  llx.StringDataPtr(osVersion),
+				"osType":                     llx.StringDataPtr(osType),
+				"displayName":                llx.StringDataPtr(displayName),
+				"machineFqdn":                llx.StringDataPtr(machineFqdn),
+				"dnsFqdn":                    llx.StringDataPtr(dnsFqdn),
+				"domainName":                 llx.StringDataPtr(domainName),
+				"adFqdn":                     llx.StringDataPtr(adFqdn),
+				"vmId":                       llx.StringDataPtr(vmID),
+				"vmUuid":                     llx.StringDataPtr(vmUUID),
+				"provisioningState":          llx.StringDataPtr(provisioningState),
+				"parentClusterResourceId":    llx.StringDataPtr(parentClusterResourceID),
+				"privateLinkScopeResourceId": llx.StringDataPtr(privateLinkScopeResourceID),
+				"identityKeyStore":           llx.StringDataPtr(identityKeyStore),
+				"tpmEkCertificate":           llx.StringDataPtr(tpmEkCertificate),
+				"statusReason":               llx.StringDataPtr(statusReason),
+				"firmwareType":               llx.StringDataPtr(firmwareType),
+				"firmwareSerialNumber":       llx.StringDataPtr(firmwareSerialNumber),
+				"numberOfCpuSockets":         llx.IntDataPtr(numberOfCPUSockets),
+				"totalPhysicalMemoryInBytes": llx.IntDataPtr(totalPhysicalMemoryInBytes),
+				"processors":                 llx.ArrayData(processorsDict, types.Dict),
+				"disks":                      llx.ArrayData(disksDict, types.Dict),
+				"detectedProperties":         llx.MapData(detectedProperties, types.String),
+				"cloudMetadata":              llx.DictData(cloudMetadataDict),
+				"licenseProfile":             llx.DictData(licenseProfileDict),
+				"properties":                 llx.DictData(properties),
+			}
+			var agentConfig *hybridcompute.AgentConfiguration
+			if m.Properties != nil {
+				agentConfig = m.Properties.AgentConfiguration
+			}
+			for k, v := range hybridAgentConfigArgs(agentConfig) {
+				machineArgs[k] = v
+			}
+			mqlMachine, err := CreateResource(a.MqlRuntime, "azure.subscription.computeService.hybridMachine", machineArgs)
 			if err != nil {
 				return nil, err
 			}
@@ -370,4 +377,72 @@ func initAzureSubscriptionComputeServiceHybridMachine(runtime *plugin.Runtime, a
 	}
 
 	return nil, nil, errors.New("azure hybrid machine does not exist")
+}
+
+// parseAgentBool reads the "true"/"false" strings the Connected Machine agent
+// reports for its switches. Anything else, including an absent value, is nil.
+func parseAgentBool(v *string) *bool {
+	if v == nil {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(*v)) {
+	case "true":
+		b := true
+		return &b
+	case "false":
+		b := false
+		return &b
+	}
+	return nil
+}
+
+// agentExtensionList renders the agent's extension allow or block list in the
+// "publisher/type" form the agent itself is configured with.
+func agentExtensionList(list []*hybridcompute.ConfigurationExtension) []any {
+	res := []any{}
+	for _, e := range list {
+		if e == nil {
+			continue
+		}
+		publisher := convert.ToValue(e.Publisher)
+		typ := convert.ToValue(e.Type)
+		if publisher == "" && typ == "" {
+			continue
+		}
+		res = append(res, publisher+"/"+typ)
+	}
+	return res
+}
+
+// hybridAgentConfigArgs flattens the Connected Machine agent configuration
+// onto the machine's args. The proxy URL loses any user information and query
+// string, since a proxy URL can embed its password.
+func hybridAgentConfigArgs(cfg *hybridcompute.AgentConfiguration) map[string]*llx.RawData {
+	if cfg == nil {
+		return map[string]*llx.RawData{
+			"extensionsEnabled":         llx.NilData,
+			"extensionsAllowList":       llx.ArrayData([]any{}, types.String),
+			"extensionsBlockList":       llx.ArrayData([]any{}, types.String),
+			"guestConfigurationEnabled": llx.NilData,
+			"incomingConnectionsPorts":  llx.ArrayData([]any{}, types.String),
+			"agentConfigMode":           llx.NilData,
+			"proxyUrl":                  llx.NilData,
+			"proxyBypass":               llx.ArrayData([]any{}, types.String),
+		}
+	}
+	var proxyURL *string
+	if cfg.ProxyURL != nil {
+		clean, _ := stripURLCredentials(*cfg.ProxyURL)
+		proxyURL = &clean
+	}
+	return map[string]*llx.RawData{
+		"extensionsEnabled":         llx.BoolDataPtr(parseAgentBool(cfg.ExtensionsEnabled)),
+		"extensionsAllowList":       llx.ArrayData(agentExtensionList(cfg.ExtensionsAllowList), types.String),
+		"extensionsBlockList":       llx.ArrayData(agentExtensionList(cfg.ExtensionsBlockList), types.String),
+		"guestConfigurationEnabled": llx.BoolDataPtr(parseAgentBool(cfg.GuestConfigurationEnabled)),
+		"incomingConnectionsPorts":  llx.ArrayData(strPtrsToAny(cfg.IncomingConnectionsPorts), types.String),
+		"agentConfigMode":           llx.StringDataPtr(stringEnumPtr(cfg.ConfigMode)),
+		"proxyUrl":                  llx.StringDataPtr(proxyURL),
+		"proxyBypass":               llx.ArrayData(strPtrsToAny(cfg.ProxyBypass), types.String),
+	}
 }

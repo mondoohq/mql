@@ -23,7 +23,24 @@ func TestSSHDefaultSettings(t *testing.T) {
 	}
 	conn.setDefaultSettings()
 	assert.Equal(t, int32(22), conn.conf.Port)
-	assert.Equal(t, "sudo", conn.conf.Sudo.Executable)
+	// the executable is resolved against the target after connecting
+	assert.Equal(t, "", conn.conf.Sudo.Executable)
+}
+
+func TestVerifyError(t *testing.T) {
+	sudo := &inventory.Sudo{Active: true, Executable: "sudo"}
+	doas := &inventory.Sudo{Active: true, Executable: "doas"}
+
+	assert.EqualError(t, verifyError(sudo, "sh: 1: sudo: not found\n"), "sudo command is missing on target")
+	assert.EqualError(t, verifyError(doas, "sh: doas: not found\n"), "doas command is missing on target")
+	assert.EqualError(t, verifyError(sudo, "sudo: a password is required\n"),
+		"could not establish connection: sudo password is not supported yet, configure password-less sudo")
+	assert.EqualError(t, verifyError(doas, "doas: Authentication required\n"),
+		"could not establish connection: doas password is not supported yet, configure password-less doas")
+	assert.EqualError(t, verifyError(doas, "doas: a tty is required\n"),
+		"could not establish connection: doas password is not supported yet, configure password-less doas")
+	assert.EqualError(t, verifyError(doas, "doas: Operation not permitted\n"),
+		"could not establish connection: doas: Operation not permitted\n")
 }
 
 func TestSSHProviderError(t *testing.T) {

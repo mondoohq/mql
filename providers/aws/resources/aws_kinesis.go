@@ -187,6 +187,9 @@ type mqlAwsKinesisStreamInternal struct {
 	cachedOpenShards int64
 	cachedConsumers  int64
 	cachedEnhMonitor []any
+	// cachedRecordDist is nil when the stream reports no record distribution
+	// strategy, which is the case for provisioned streams.
+	cachedRecordDist *string
 	lock             sync.Mutex
 }
 
@@ -231,6 +234,7 @@ func (a *mqlAwsKinesisStream) fetchStreamDetails() error {
 		if desc.ConsumerCount != nil {
 			a.cachedConsumers = int64(*desc.ConsumerCount)
 		}
+		a.cachedRecordDist = nonEmptyEnum(desc.RecordDistributionStrategy)
 		var err2 error
 		a.cachedEnhMonitor, err2 = convert.JsonToDictSlice(desc.EnhancedMonitoring)
 		if err2 != nil {
@@ -313,6 +317,17 @@ func (a *mqlAwsKinesisStream) enhancedMonitoring() ([]any, error) {
 		return nil, err
 	}
 	return a.cachedEnhMonitor, nil
+}
+
+func (a *mqlAwsKinesisStream) recordDistributionStrategy() (string, error) {
+	if err := a.fetchStreamDetails(); err != nil {
+		return "", err
+	}
+	if a.cachedRecordDist == nil {
+		a.RecordDistributionStrategy.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *a.cachedRecordDist, nil
 }
 
 func (a *mqlAwsKinesisStream) consumers() ([]any, error) {

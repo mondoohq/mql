@@ -12,7 +12,11 @@ import (
 
 // VersionInfo is the structured result of parsing `sudo -V` output.
 type VersionInfo struct {
-	// Sudo version reported on the first line (e.g., "1.9.5p3")
+	// Which sudo implementation produced the output: ImplementationSudo or
+	// ImplementationSudoRs. Empty when the output matches neither banner.
+	Implementation string
+	// Upstream version of that implementation (e.g., "1.9.5p3" for sudo,
+	// "0.2.13" for sudo-rs)
 	Version string
 	// Plugins discovered in the output
 	Plugins []Plugin
@@ -21,6 +25,15 @@ type VersionInfo struct {
 	// has a python_* name.
 	PythonSupport bool
 }
+
+// Implementation names reported in VersionInfo.Implementation.
+const (
+	// ImplementationSudo is the C sudo maintained at sudo.ws.
+	ImplementationSudo = "sudo"
+	// ImplementationSudoRs is the Rust reimplementation, which recent Ubuntu
+	// releases install as `sudo`.
+	ImplementationSudoRs = "sudo-rs"
+)
 
 // Plugin describes a single sudo plugin reported by `sudo -V`.
 type Plugin struct {
@@ -56,6 +69,12 @@ var (
 	// "Sudo version 1.9.5p2"
 	reVersionLine = regexp.MustCompile(`^Sudo\s+version\s+(\S+)`)
 
+	// "sudo-rs 0.2.13-0ubuntu1.2" (sudo-rs answers -V with one line and
+	// has no plugin architecture). Distribution builds append the package
+	// revision after a hyphen; upstream versions have none, so everything
+	// from the first hyphen on is dropped to keep the version comparable.
+	reSudoRsVersionLine = regexp.MustCompile(`^sudo-rs\s+([^\s-]+)`)
+
 	// "Configure options: ... --enable-python ..."
 	reConfigureLine = regexp.MustCompile(`^Configure options:\s*(.*)$`)
 
@@ -85,6 +104,12 @@ func ParseVersionOutput(output string) VersionInfo {
 
 		if info.Version == "" {
 			if m := reVersionLine.FindStringSubmatch(line); m != nil {
+				info.Implementation = ImplementationSudo
+				info.Version = m[1]
+				continue
+			}
+			if m := reSudoRsVersionLine.FindStringSubmatch(line); m != nil {
+				info.Implementation = ImplementationSudoRs
 				info.Version = m[1]
 				continue
 			}

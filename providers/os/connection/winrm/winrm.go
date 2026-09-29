@@ -17,6 +17,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/vault"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/connection/winrm/cat"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 var _ shared.Connection = (*Connection)(nil)
@@ -143,6 +144,7 @@ func (p *Connection) RunCommand(command string) (*shared.Command, error) {
 	}
 
 	res.ExitStatus = exitCode
+	powershell.DecodeStderr(res)
 	return res, nil
 }
 

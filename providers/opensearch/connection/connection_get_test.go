@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -33,10 +34,17 @@ func newServerConn(t *testing.T, handler http.HandlerFunc) *OpensearchConnection
 }
 
 func TestGetDecodesBody(t *testing.T) {
+	// opensearch-go v5 sends its own health checks (GET /) around the
+	// request, so record only the request Get sent.
+	var mu sync.Mutex
 	var gotPath, gotUser, gotPass string
 	conn := newServerConn(t, func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		gotUser, gotPass, _ = r.BasicAuth()
+		if r.URL.Path != "/" {
+			mu.Lock()
+			gotPath = r.URL.Path
+			gotUser, gotPass, _ = r.BasicAuth()
+			mu.Unlock()
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"cluster_name":"prod","status":"green"}`))
 	})
@@ -48,6 +56,8 @@ func TestGetDecodesBody(t *testing.T) {
 	if err := conn.Get("/_cluster/health", &out); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
+	mu.Lock()
+	defer mu.Unlock()
 	if gotPath != "/_cluster/health" {
 		t.Errorf("path = %q", gotPath)
 	}

@@ -62,6 +62,8 @@ jobs:
       # the refusal reach Slack instead of dying in a collapsed log.
       blocked: ${{ steps.providers.outputs.blocked }}
       promotions: ${{ steps.providers.outputs.promotions }}
+      # `<provider> <version>` per line, so `notify` can name what it released.
+      versions: ${{ steps.providers.outputs.versions }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -125,6 +127,7 @@ jobs:
             # on v13, so REPO_VERSION became a multi-line string that can never equal
             # DIST_VERSION, and every provider would rebuild on every push.
             REPO_VERSION=$(grep -m1 -E '^[[:space:]]*Version:' config/config.go | cut -f2 -d\")
+            versions="${versions:+$versions$'\n'}$p $REPO_VERSION"
 
             # Compare against the pointer for the channel this version belongs to.
             # A pre-release publishes to preview and never changes latest.json, so
@@ -189,6 +192,9 @@ jobs:
           {
             echo "promotions<<__MQL_EOF__"
             echo "${promotions:-}"
+            echo "__MQL_EOF__"
+            echo "versions<<__MQL_EOF__"
+            echo "${versions:-}"
             echo "__MQL_EOF__"
           } >> $GITHUB_OUTPUT
 
@@ -387,6 +393,7 @@ jobs:
           BLOCKED: ${{ needs.scoping.outputs.blocked }}
           PROMOTIONS: ${{ needs.scoping.outputs.promotions }}
           BUILD_LIST: ${{ needs.scoping.outputs.build_list }}
+          VERSIONS: ${{ needs.scoping.outputs.versions }}
           SCOPING: ${{ needs.scoping.result }}
           BUILD: ${{ needs.provider-build.result }}
           INDEX: ${{ needs.provider-index.result }}
@@ -420,17 +427,28 @@ jobs:
           gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/jobs" \
             --jq '.jobs[] | [.name, (.conclusion // "running")] | @tsv' > jobs.tsv || : > jobs.tsv
           printf '%s' "${BUILD_LIST:-[]}" | jq -r '.[]' > planned.txt 2>/dev/null || : > planned.txt
+          printf '%s\n' "${VERSIONS:-}" > versions.txt
 
-          ok=0; bad=0; failed=""
+          # Named with their version, because "1 of 1" alone does not say what
+          # shipped. A provider with no recorded version (a forced build of a
+          # builtin) is named without one.
+          ok=0; bad=0; released=""; failed=""
           while IFS= read -r prov; do
             [ -n "$prov" ] || continue
             res=$(awk -F'\t' -v p="$prov" '$1==p{print $2; exit}' jobs.tsv)
+            ver=$(awk -v p="$prov" '$1==p{print $2; exit}' versions.txt)
+            label="$prov${ver:+ $ver}"
             case "$res" in
-              success|skipped) ok=$((ok+1)) ;;
+              success|skipped) ok=$((ok+1)); released="${released:+$released, }$label" ;;
               "")              ;;
-              *)               bad=$((bad+1)); failed="${failed:+$failed, }$prov" ;;
+              *)               bad=$((bad+1)); failed="${failed:+$failed, }$label" ;;
             esac
           done < planned.txt
+
+          # Past this many, name a count instead: a full release is 80+ providers.
+          max_named=5
+          [ "$ok" -le "$max_named" ] || released="$ok providers, see the run"
+          [ "$bad" -le "$max_named" ] || failed="$bad providers, see the run"
 
           # Most runs on providers/** touch provider code without bumping a
           # version, so the "nothing to release" branch fired on 22 of 30
@@ -458,10 +476,16 @@ jobs:
             header=":x: Providers released - $ok of $planned, $bad failed"
             mention="<!here> "
             detail="*Failed:* $(esc "$failed")"
+            if [ -n "$released" ]; then
+              detail="$detail\n*Released:* $(esc "$released")"
+            fi
           else
             header=":rocket: Providers released - $ok of $planned"
             mention=""
             detail=":package: *stable* - this is what a default install gets"
+            if [ -n "$released" ]; then
+              detail="*Released:* $(esc "$released")\n$detail"
+            fi
           fi
 
           if [ -n "${PROMOTIONS:-}" ]; then
@@ -482,6 +506,13 @@ jobs:
 
           emit post "$post"
           emit header "$header"
+          # The notification preview shows only `text`, so name the providers
+          # there too, not just in the blocks.
+          if [ "$ok" -le "$max_named" ]; then
+            emit text "$(esc "$header")${released:+ ($(esc "$released"))}"
+          else
+            emit text "$(esc "$header")"
+          fi
           emit mention "$mention"
           emit detail "$detail"
           emit build_status "$(status "$BUILD")"
@@ -504,7 +535,7 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: "${{ env.SLACK_BOT_CHANNEL_ID }}"
-            text: "${{ steps.meta.outputs.mention }}${{ steps.meta.outputs.header }}"
+            text: "${{ steps.meta.outputs.mention }}${{ steps.meta.outputs.text }}"
             blocks:
               - type: "header"
                 text:
