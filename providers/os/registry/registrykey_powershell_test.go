@@ -354,16 +354,23 @@ func TestWindowsRegistryKeyItemQwordExact(t *testing.T) {
 	const payload = `[
 	  {"key":"QwordFiletime","value":{"data":133700000000000001,"type":"REG_QWORD","kind":null}},
 	  {"key":"QwordMax","value":{"data":9223372036854775807,"type":"REG_QWORD","kind":null}},
-	  {"key":"QwordNegative","value":{"data":-1,"type":"REG_QWORD","kind":null}}
+	  {"key":"QwordNegative","value":{"data":-1,"type":"REG_QWORD","kind":null}},
+	  {"key":"QwordUint64","value":{"data":18446744073709551615,"type":"REG_QWORD","kind":null}}
 	]`
 
 	items, err := ParsePowershellRegistryKeyItems(strings.NewReader(payload))
 	require.NoError(t, err)
-	require.Len(t, items, 3)
+	require.Len(t, items, 4)
 	assert.Equal(t, int64(133700000000000001), items[0].Value.Number)
 	assert.Equal(t, "133700000000000001", items[0].Value.String)
 	assert.Equal(t, int64(9223372036854775807), items[1].Value.Number)
 	assert.Equal(t, int64(-1), items[2].Value.Number)
+	// 0xFFFFFFFFFFFFFFFF: Get-ItemProperty returns a UInt64 at or above 2^63,
+	// captured on Windows 11. Its bits are kept, as the native path keeps them.
+	assert.Equal(t, int64(-1), items[3].Value.Number)
+	// A number past 64 bits is not a REG_QWORD.
+	_, err = ParsePowershellRegistryKeyItems(strings.NewReader(`[{"key":"Q","value":{"data":18446744073709551616,"type":"REG_QWORD","kind":null}}]`))
+	assert.Error(t, err)
 }
 
 // A byte outside 0..255 is not a REG_BINARY byte.
