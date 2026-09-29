@@ -15,10 +15,10 @@ var Config = plugin.Provider{
 	// A connection reports the concrete kind through ConnectRes.Root.
 	Root:    "gitlab.group",
 	ID:      "go.mondoo.com/mql/providers/gitlab",
-	Version: "14.1.0",
+	Version: "14.1.1",
 	// Every root carries `asset`, which core owns (ADR 042).
 	Requires: []plugin.ProviderDep{
-		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "14.1.1"},
 	},
 	ConnectionTypes: []string{
 		provider.ConnectionType,

@@ -15,9 +15,9 @@ import (
 var Config = plugin.Provider{
 	Name:    "aws",
 	ID:      "go.mondoo.com/mql/providers/aws",
-	Version: "14.1.0",
+	Version: "14.1.1",
 	Requires: []plugin.ProviderDep{
-		{ID: "go.mondoo.com/mql/providers/network", Name: "network", MinVersion: "13.0.0"},
+		{ID: "go.mondoo.com/mql/providers/network", Name: "network", MinVersion: "14.1.1"},
 	},
 	ConnectionTypes: []string{provider.DefaultConnectionType, string(awsec2ebsconn.EBSConnectionType)},
 	// Throttling is per service and per region, and an organization scan spreads

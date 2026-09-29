@@ -17,13 +17,13 @@ var Config = plugin.Provider{
 	// reports the concrete kind through ConnectRes.Root.
 	Root:    "k8s",
 	ID:      "go.mondoo.com/mql/providers/k8s",
-	Version: "14.0.0",
+	Version: "14.0.1",
 	Requires: []plugin.ProviderDep{
 		// Every root carries `asset`, which core owns, so rooting this provider
 		// makes core a peer it calls (ADR 042).
-		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "13.0.0"},
-		{ID: "go.mondoo.com/mql/providers/network", Name: "network", MinVersion: "13.0.0"},
-		{ID: "go.mondoo.com/mql/providers/os", Name: "os", MinVersion: "13.0.0"},
+		{ID: "go.mondoo.com/mql/providers/core", Name: "core", MinVersion: "14.0.1"},
+		{ID: "go.mondoo.com/mql/providers/network", Name: "network", MinVersion: "14.0.1"},
+		{ID: "go.mondoo.com/mql/providers/os", Name: "os", MinVersion: "14.0.1"},
 	},
 	ConnectionTypes: []string{provider.ConnectionType},
 	Platforms:       resources.Platforms,
