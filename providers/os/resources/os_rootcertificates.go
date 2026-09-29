@@ -20,6 +20,13 @@ var BsdCertFiles = []string{
 	"/etc/openssl/certs/ca-certificates.crt", // NetBSD
 }
 
+// The bundle paths Go's crypto/x509 reads on Solaris and illumos.
+var SolarisCertFiles = []string{
+	"/etc/certs/ca-certificates.crt",     // Solaris 11.2+
+	"/etc/ssl/certs/ca-certificates.crt", // Joyent SmartOS
+	"/etc/ssl/cacert.pem",                // OmniOS
+}
+
 var LinuxCertFiles = []string{
 	"/etc/ssl/certs/ca-certificates.crt",                // Debian/Ubuntu/Gentoo etc.
 	"/etc/pki/tls/certs/ca-bundle.crt",                  // Fedora/RHEL 6
@@ -47,7 +54,11 @@ func initOsRootCertificates(runtime *plugin.Runtime, args map[string]*llx.RawDat
 	platform := conn.Asset().Platform
 
 	var paths []string
-	if platform.IsFamily("linux") {
+	// Solaris 11.4 ships /etc/os-release and is detected into the linux
+	// family, so it is matched by name first.
+	if platform.Name == "solaris" {
+		paths = SolarisCertFiles
+	} else if platform.IsFamily("linux") {
 		paths = LinuxCertFiles
 	} else if platform.IsFamily("bsd") {
 		paths = BsdCertFiles

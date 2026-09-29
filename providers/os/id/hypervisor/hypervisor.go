@@ -74,6 +74,11 @@ func Hypervisor(conn shared.Connection, pf *inventory.Platform) (hypervisor stri
 
 	hype := &hyper{conn, pf}
 
+	// Solaris 11.4 ships /etc/os-release and is detected into the linux
+	// family, so it is matched by name first.
+	if pf.Name == "solaris" {
+		return hype.detectSolarisHypervisor()
+	}
 	if pf.IsFamily(inventory.FAMILY_LINUX) {
 		return hype.detectLinuxHypervisor()
 	}

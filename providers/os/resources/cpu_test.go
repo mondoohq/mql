@@ -228,6 +228,7 @@ func TestGetCpuInfoSolaris114TwoCore(t *testing.T) {
 	assert.Equal(t, "AMD EPYC 9J14 96-Core Processor", info.Model)
 	assert.Equal(t, int64(1), info.ProcessorCount)
 	assert.Equal(t, int64(2), info.Cores)
+	assert.Equal(t, int64(2600), info.MaxClockSpeed)
 }
 
 // Verbatim psrinfo -pv from a 1 OCPU Oracle Solaris 11.4.86 instance. psrinfo
@@ -296,6 +297,26 @@ func TestGetCpuInfoSolarisMixedSockets(t *testing.T) {
 
 	assert.Equal(t, int64(2), info.ProcessorCount)
 	assert.Equal(t, int64(5), info.Cores)
+	assert.Equal(t, int64(2000), info.MaxClockSpeed)
+}
+
+// SPARC puts the clock inside the chip line rather than an x86 line.
+func TestGetCpuInfoSolarisSparcClock(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{
+			"psrinfo -pv": {
+				Stdout: "The physical processor has 16 cores and 128 virtual processors (0-127)\n" +
+					"  The core has 8 virtual processors (0-7)\n" +
+					"    SPARC-T5 (chipid 0, clock 3600 MHz)\n",
+			},
+		},
+	}))
+	require.NoError(t, err)
+
+	info, err := getCpuInfoSolaris(conn)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3600), info.MaxClockSpeed)
+	assert.Equal(t, int64(16), info.Cores)
 }
 
 func TestGetCpuInfoSolarisCommandFailure(t *testing.T) {

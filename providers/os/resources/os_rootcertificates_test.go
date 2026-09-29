@@ -108,3 +108,22 @@ func TestOsRootCertificates_NoBundle(t *testing.T) {
 
 	assert.Empty(t, initedPaths(t, runtime))
 }
+
+// Solaris 11.4 is detected into the linux family, but keeps its bundle under
+// /etc/certs, which no Linux path names: os.rootCertificates read zero roots
+// on a host that trusts 186.
+func TestOsRootCertificates_Solaris(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:    "solaris",
+			Version: "11.4",
+			Family:  []string{"linux", "unix", "os"},
+		},
+	}, mock.WithData(&mock.TomlData{Files: map[string]*mock.MockFileData{
+		"/etc/certs/ca-certificates.crt": bundleFile(0o644),
+	}}))
+	require.NoError(t, err)
+	runtime := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+
+	assert.Equal(t, []string{"/etc/certs/ca-certificates.crt"}, initedPaths(t, runtime))
+}

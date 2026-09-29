@@ -363,6 +363,12 @@ func getCpuInfoAIX(conn shared.Connection) (*cpuInfo, error) {
 //	The physical processor has 1 virtual processor (0)
 var solarisCoreCountRegex = regexp.MustCompile(`\bhas (\d+) cores?\b`)
 
+// The clock psrinfo -pv prints on the implementation line of a socket:
+//
+//	x86 (AuthenticAMD A10F11 family 25 model 17 step 1 clock 2600 MHz)
+//	SPARC-T5 (chipid 0, clock 3600 MHz)
+var solarisClockRegex = regexp.MustCompile(`\bclock (\d+) MHz\b`)
+
 // solarisSocketCores returns the number of physical cores described by a single
 // "The physical processor has ..." line from psrinfo -pv.
 func solarisSocketCores(line string) int64 {
@@ -409,6 +415,12 @@ func getCpuInfoSolaris(conn shared.Connection) (*cpuInfo, error) {
 		if strings.HasPrefix(trimmed, "The physical processor has") {
 			sockets++
 			totalCores += solarisSocketCores(trimmed)
+		}
+
+		if m := solarisClockRegex.FindStringSubmatch(trimmed); m != nil {
+			if mhz, err := strconv.ParseInt(m[1], 10, 64); err == nil && mhz > info.MaxClockSpeed {
+				info.MaxClockSpeed = mhz
+			}
 		}
 
 		// The indented model line (deepest indent, no parens) e.g.:
