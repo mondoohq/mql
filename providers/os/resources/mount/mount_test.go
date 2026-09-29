@@ -190,3 +190,45 @@ func TestFstab(t *testing.T) {
 
 	assert.Equal(t, expected, entries)
 }
+
+// Captured from `mount -v` on Oracle Solaris 11.4.86 with a nosuid,noexec
+// tmpfs on /mnt/tmp and a read-only lofs on /mnt/ro.
+func TestMountSolarisParser(t *testing.T) {
+	mock, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "solaris", Family: []string{"unix"}},
+	}, mock.WithPath("./testdata/solaris114.toml"))
+	require.NoError(t, err)
+
+	f, err := mock.RunCommand("mount -v")
+	require.NoError(t, err)
+
+	entries := mount.ParseSolarisMountCmd(f.Stdout)
+	require.Equal(t, 30, len(entries))
+
+	root := findMountpoint(entries, "/")
+	require.NotNil(t, root)
+	assert.Equal(t, "rpool/ROOT/11.4.86.201.2", root.Device)
+	assert.Equal(t, "zfs", root.FSType)
+	assert.Equal(t, map[string]string{
+		"rw": "", "setuid": "", "devices": "", "rstchown": "", "dev": "3610002",
+	}, root.Options)
+
+	tmp := findMountpoint(entries, "/mnt/tmp")
+	require.NotNil(t, tmp)
+	assert.Equal(t, "swap", tmp.Device)
+	assert.Equal(t, "tmpfs", tmp.FSType)
+	assert.Contains(t, tmp.Options, "nosetuid")
+	assert.Contains(t, tmp.Options, "noexec")
+	assert.Contains(t, tmp.Options, "nodevices")
+	assert.Equal(t, "10m", tmp.Options["size"])
+
+	ro := findMountpoint(entries, "/mnt/ro")
+	require.NotNil(t, ro)
+	assert.Equal(t, "lofs", ro.FSType)
+	assert.Contains(t, ro.Options, "ro")
+	assert.NotContains(t, ro.Options, "rw")
+	assert.NotContains(t, ro.Options, "read-only")
+
+	// the epoch-dated root and the dated rest both parse
+	assert.NotNil(t, findMountpoint(entries, "/var/share"))
+}

@@ -116,3 +116,20 @@ func TestManagerPrefersTheMountCommand(t *testing.T) {
 	// come from the command.
 	assert.Equal(t, 25, len(mounts))
 }
+
+// Solaris 11.4 ships /etc/os-release and is detected into the linux family.
+// The linux manager's `mount` parser matched none of its lines and the
+// /proc/mounts fallback does not exist there, so the list failed outright.
+func TestManagerSolaris(t *testing.T) {
+	mock, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "solaris", Family: []string{"linux", "unix", "os"}},
+	}, mock.WithPath("./testdata/solaris114.toml"))
+	require.NoError(t, err)
+
+	mm, err := mount.ResolveManager(mock)
+	require.NoError(t, err)
+	mounts, err := mm.List()
+	require.NoError(t, err)
+
+	assert.Equal(t, 30, len(mounts))
+}

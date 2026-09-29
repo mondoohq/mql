@@ -1,0 +1,32 @@
+[commands."mount -v"]
+stdout = """rpool/ROOT/11.4.86.201.2 on / type zfs read/write/setuid/devices/rstchown/dev=3610002 on Thu Jan  1 00:00:00 1970
+/dev on /dev type dev read/write/setuid/devices/rstchown/dev=ffe40000 on Tue Sep 29 20:34:00 2026
+fd on /dev/fd type fd read/write/setuid/devices/rstchown/dev=ffe00001 on Tue Sep 29 20:34:00 2026
+/devices on /devices type devfs read/write/setuid/devices/rstchown/dev=ffec0000 on Tue Sep 29 20:34:00 2026
+sharefs on /etc/dfs/sharetab type sharefs read/write/setuid/devices/rstchown/dev=ffd80001 on Tue Sep 29 20:34:00 2026
+mnttab on /etc/mnttab type mntfs read/write/setuid/devices/rstchown/dev=ffd40001 on Tue Sep 29 20:34:00 2026
+proc on /proc type proc read/write/setuid/devices/rstchown/dev=fff00000 on Tue Sep 29 20:34:00 2026
+ctfs on /system/contract type ctfs read/write/setuid/devices/rstchown/dev=ffd00001 on Tue Sep 29 20:34:00 2026
+objfs on /system/object type objfs read/write/setuid/devices/rstchown/dev=ffcc0001 on Tue Sep 29 20:34:00 2026
+swap on /system/volatile type tmpfs read/write/setuid/devices/rstchown/xattr/dev=ffc80001 on Tue Sep 29 20:34:00 2026
+swap on /tmp type tmpfs read/write/setuid/devices/rstchown/xattr/dev=ffc80002 on Tue Sep 29 20:34:00 2026
+rpool/ROOT/11.4.86.201.2/var on /var type zfs read/write/setuid/devices/rstchown/nonbmand/exec/xattr/atime/dev=3610003 on Tue Sep 29 20:34:00 2026
+/usr/lib/libc/libc_hwcap2.so.1 on /lib/libc.so.1 type lofs read/write/setuid/devices/rstchown/dev=3610002 on Tue Sep 29 20:34:04 2026
+rpool/VARSHARE on /var/share type zfs read/write/nosetuid/devices/rstchown/nonbmand/noexec/noxattr/atime/dev=361000a on Tue Sep 29 20:34:08 2026
+rpool/VARSHARE/tmp on /var/tmp type zfs read/write/setuid/devices/rstchown/nonbmand/exec/xattr/atime/dev=361000b on Tue Sep 29 20:34:08 2026
+rpool/VARSHARE/kvol on /var/share/kvol type zfs read/write/nosetuid/devices/rstchown/nonbmand/noexec/noxattr/atime/dev=361000c on Tue Sep 29 20:34:08 2026
+rpool/VARSHARE/cores on /var/share/cores type zfs read/write/nosetuid/devices/rstchown/nonbmand/noexec/noxattr/atime/dev=361000d on Tue Sep 29 20:34:09 2026
+rpool/VARSHARE/crash on /var/share/crash type zfs read/write/nosetuid/devices/rstchown/nonbmand/noexec/noxattr/atime/dev=361000e on Tue Sep 29 20:34:09 2026
+rpool/export on /export type zfs read/write/setuid/devices/rstchown/nonbmand/exec/xattr/atime/dev=3610013 on Tue Sep 29 20:34:27 2026
+rpool/export/home on /export/home type zfs read/write/setuid/devices/rstchown/nonbmand/exec/xattr/atime/dev=3610014 on Tue Sep 29 20:34:27 2026
+rpool/export/home/opc on /export/home/opc type zfs read/write/setuid/devices/rstchown/nonbmand/exec/xattr/atime/dev=3610015 on Tue Sep 29 20:34:27 2026
+rpool on /rpool type zfs read/write/setuid/devices/rstchown/nonbmand/exec/xattr/atime/dev=3610016 on Tue Sep 29 20:34:27 2026
+rpool/VARSHARE/pkg on /var/share/pkg type zfs read/write/nosetuid/devices/rstchown/nonbmand/noexec/noxattr/atime/dev=3610017 on Tue Sep 29 20:34:27 2026
+rpool/VARSHARE/sstore on /var/share/sstore/repo type zfs read/write/nosetuid/devices/rstchown/nonbmand/noexec/noxattr/atime/dev=3610018 on Tue Sep 29 20:34:28 2026
+rpool/VARSHARE/pkg/repositories on /var/share/pkg/repositories type zfs read/write/nosetuid/devices/rstchown/nonbmand/noexec/noxattr/atime/dev=3610019 on Tue Sep 29 20:34:28 2026
+rpool/VARSHARE/zones on /system/zones type zfs read/write/setuid/devices/rstchown/nonbmand/exec/xattr/atime/dev=361001a on Tue Sep 29 20:34:35 2026
+mqltest on /mqltest type zfs read/write/setuid/devices/rstchown/nonbmand/exec/xattr/atime/dev=361001c on Tue Sep 29 20:46:48 2026
+mqltest/fs on /mqltest/fs type zfs read/write/setuid/devices/rstchown/nonbmand/exec/xattr/atime/dev=361001d on Tue Sep 29 20:46:48 2026
+swap on /mnt/tmp type tmpfs read/write/nosetuid/nodevices/rstchown/noexec/xattr/size=10m/dev=ffc80004 on Tue Sep 29 20:51:47 2026
+/usr/share on /mnt/ro type lofs read-only/setuid/devices/rstchown/dev=3610002 on Tue Sep 29 20:51:47 2026
+"""

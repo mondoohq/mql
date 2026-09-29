@@ -35,7 +35,11 @@ func ResolveManager(conn shared.Connection) (OperatingSystemMountManager, error)
 		return nil, errors.New("missing platform information")
 	}
 
-	if pf.IsFamily("windows") {
+	// Solaris 11.4 ships /etc/os-release and is detected into the linux
+	// family, so it is matched by name first.
+	if pf.Name == "solaris" {
+		mm = &SolarisMountManager{conn: conn}
+	} else if pf.IsFamily("windows") {
 		mm = &WindowsMountManager{conn: conn}
 	} else if pf.IsFamily("linux") {
 		mm = &LinuxMountManager{conn: conn}
@@ -119,4 +123,30 @@ func (s *UnixMountManager) List() ([]MountPoint, error) {
 	}
 
 	return ParseUnixMountCmd(cmd.Stdout), nil
+}
+
+type SolarisMountManager struct {
+	conn shared.Connection
+}
+
+func (s *SolarisMountManager) Name() string {
+	return "Solaris Mount Manager"
+}
+
+func (s *SolarisMountManager) List() ([]MountPoint, error) {
+	cmd, err := s.conn.RunCommand("mount -v")
+	if err != nil {
+		return nil, errors.Wrap(err, "could not run mount command")
+	}
+	if cmd.ExitStatus != 0 {
+		return nil, errors.Newf("the mount command exited with %d", cmd.ExitStatus)
+	}
+
+	mounts := ParseSolarisMountCmd(cmd.Stdout)
+	// A running system always has a root mount, so an empty result means the
+	// output was not understood, not that nothing is mounted.
+	if len(mounts) == 0 {
+		return nil, errors.New("the mount command reported no mounts")
+	}
+	return mounts, nil
 }

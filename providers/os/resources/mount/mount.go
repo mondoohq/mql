@@ -19,7 +19,40 @@ var (
 	linuxMountEntry     = regexp.MustCompile(`^(\S+)\son\s(\S+)\stype\s(\S+)\s\((\S+)\)$`)
 	unixMountEntry      = regexp.MustCompile(`^(\S+)\son\s(\S+)\s\((.*)\)$`)
 	linuxProcMountEntry = regexp.MustCompile(`^(\S+)\s(\S+)\s(\S+)\s(\S+)\s0\s0$`)
+	// rpool/ROOT/s11 on / type zfs read/write/setuid/devices/dev=3610002 on Thu Jan  1 00:00:00 1970
+	solarisMountEntry = regexp.MustCompile(`^(\S+) on (\S+) type (\S+) (.+) on (?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) .*$`)
 )
+
+// ParseSolarisMountCmd parses Solaris `mount -v`. Plain `mount` on Solaris
+// writes the mount point first and leaves out the filesystem type, so -v is
+// the form that carries every column.
+//
+// Options are slash-separated and spell the access mode as "read/write" or
+// "read-only"; the first would otherwise split into two bogus options. They
+// are rewritten to rw and ro, the names the mount command itself accepts. Every
+// other option keeps its Solaris name (nosetuid, nodevices, noexec).
+func ParseSolarisMountCmd(r io.Reader) []MountPoint {
+	res := []MountPoint{}
+
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		m := solarisMountEntry.FindStringSubmatch(scanner.Text())
+		if m == nil {
+			continue
+		}
+		opts := m[4]
+		opts = strings.Replace(opts, "read/write", "rw", 1)
+		opts = strings.Replace(opts, "read-only", "ro", 1)
+		res = append(res, MountPoint{
+			Device:     m[1],
+			MountPoint: m[2],
+			FSType:     m[3],
+			Options:    parseOptions(strings.ReplaceAll(opts, "/", ",")),
+		})
+	}
+
+	return res
+}
 
 func ParseLinuxMountCmd(r io.Reader) []MountPoint {
 	res := []MountPoint{}
