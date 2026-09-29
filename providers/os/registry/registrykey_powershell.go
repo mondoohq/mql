@@ -66,18 +66,21 @@ func ParsePowershellRegistryKeyChildren(r io.Reader) ([]RegistryKeyChild, error)
 // not restrict those, so it reports the type on hardened and unhardened hosts
 // alike. GetValueKind() is kept as a fallback for values reg.exe did not
 // report; when neither produces a type the value is emitted without one and
-// the Go decoder fails the read rather than reporting the value as empty.
+// the Go decoder fails the read rather than reporting the value as empty. Such
+// a value also carries the session's language mode, so the decoder can tell a
+// refusal (Constrained Language Mode) from anything else.
+//
+// A key that cannot be opened fails Get-Item with -ErrorAction Stop, so stderr
+// holds that one error record: its CategoryInfo (PermissionDenied,
+// ObjectNotFound) is what the resource classifies. A Write-Error of its own
+// would add a record that echoes the whole encoded script.
 //
 // Value *data* still comes from Get-ItemProperty: reg.exe prints REG_EXPAND_SZ
 // values unexpanded, so sourcing data from it would change what every existing
 // query returns.
 const getRegistryKeyItemScript = `
 $path = %s
-$reg = Get-Item ('Registry::' + $path)
-if ($reg -eq $null) {
-  Write-Error "Could not find registry key"
-  exit 1
-}
+$reg = Get-Item ('Registry::' + $path) -ErrorAction Stop
 $regExe = $env:SystemRoot + '\System32\reg.exe'
 $types = @{}
 & $regExe query $path 2>$null | ForEach-Object {
@@ -106,8 +109,10 @@ $reg.Property | ForEach-Object {
       $data = $(Get-ItemProperty ('Registry::' + $path)) | Select-Object -ExpandProperty $_
     }
     $kind = $null
+    $languageMode = $null
     if ($type -eq $null) {
       try { $kind = $reg.GetValueKind($fetchKeyValue) } catch { $kind = $null }
+      if ($kind -eq $null) { $languageMode = [string]$ExecutionContext.SessionState.LanguageMode }
     }
     $entry = New-Object psobject -Property @{
       "key" = $_
@@ -115,6 +120,7 @@ $reg.Property | ForEach-Object {
         "data" = $data;
         "kind" = $kind;
         "type" = $type;
+        "languageMode" = $languageMode;
       }
     }
     $properties += $entry

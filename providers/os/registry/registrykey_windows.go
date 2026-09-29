@@ -59,9 +59,9 @@ func IsUserHiveLoaded(sid string) bool {
 	return true
 }
 
-func GetNativeRegistryKeyItems(path string) ([]RegistryKeyItem, error) {
-	log.Debug().Str("path", path).Msg("search registry key values using native registry api")
-	key, path, err := parseRegistryKeyPath(path)
+func GetNativeRegistryKeyItems(fullPath string) ([]RegistryKeyItem, error) {
+	log.Debug().Str("path", fullPath).Msg("search registry key values using native registry api")
+	key, path, err := parseRegistryKeyPath(fullPath)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func GetNativeRegistryKeyItems(path string) ([]RegistryKeyItem, error) {
 	if err != nil && registry.ErrNotExist == err {
 		return nil, status.Error(codes.NotFound, "registry key not found: "+path)
 	} else if err != nil {
-		return nil, err
+		return nil, classifyOpenKeyError(fullPath, err)
 	}
 	defer regKey.Close()
 
@@ -140,7 +140,7 @@ func GetNativeRegistryKeyChildren(fullPath string) ([]RegistryKeyChild, error) {
 	if err != nil && registry.ErrNotExist == err {
 		return nil, status.Error(codes.NotFound, "registry key not found: "+path)
 	} else if err != nil {
-		return nil, err
+		return nil, classifyOpenKeyError(fullPath, err)
 	}
 	defer regKey.Close()
 

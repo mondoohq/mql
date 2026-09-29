@@ -11,6 +11,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/mock"
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -53,33 +54,94 @@ func (k *mqlRegistrykey) isUserHive() bool {
 	return k.UserSid.Data != ""
 }
 
+// registryApplicable reports a registry read on an asset that is known not to
+// be Windows as not applicable. An asset without a platform is left to try.
+func registryApplicable(conn shared.Connection) error {
+	asset := conn.Asset()
+	if asset == nil || asset.Platform == nil || asset.Platform.Name == "" {
+		return nil
+	}
+	if asset.Platform.IsFamily(inventory.FAMILY_WINDOWS) {
+		return nil
+	}
+	return llx.NotApplicable(errors.New("the Windows registry is only available on Windows"))
+}
+
+// classifyRegistryStderr reads the error record a failed registry script left
+// on stderr, decoded from CLIXML by the transport. It reports whether the key
+// is absent, and otherwise returns the failure: forbidden when the record's
+// category is PermissionDenied, unclassified with the record's message for
+// anything else. The category and the exception type are identifiers, which
+// Windows does not translate, so this holds on a localized host.
+func classifyRegistryStderr(path string, stderr string) (absent bool, err error) {
+	// the SSH, WinRM and local transports decode CLIXML already; others do not
+	stderr = string(powershell.DecodeCLIXML([]byte(stderr)))
+	switch {
+	case strings.Contains(stderr, "ObjectNotFound") || strings.Contains(stderr, "PathNotFound"):
+		return true, nil
+	case strings.Contains(stderr, "PermissionDenied") ||
+		strings.Contains(stderr, "SecurityException") ||
+		strings.Contains(stderr, "UnauthorizedAccessException"):
+		return false, llx.Forbidden(fmt.Errorf("could not read registry key %s: %s", path, powershellErrorMessage(stderr)))
+	}
+	msg := powershellErrorMessage(stderr)
+	if msg == "" {
+		return false, fmt.Errorf("could not read registry key %s", path)
+	}
+	return false, fmt.Errorf("could not read registry key %s: %s", path, msg)
+}
+
+// powershellErrorMessage returns the first line of a PowerShell error record,
+// the message, without the "Get-Item : " prefix that names the command.
+func powershellErrorMessage(stderr string) string {
+	for _, line := range strings.Split(stderr, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if cmd, msg, ok := strings.Cut(line, " : "); ok && !strings.ContainsAny(cmd, " \t") {
+			return strings.TrimSpace(msg)
+		}
+		return line
+	}
+	return ""
+}
+
 // userHiveReader resolves how to read this key's per-user hive natively on a
 // local Windows host. It returns either a non-empty livePath to read directly
 // (the user is logged in, so HKEY_USERS\<sid> is live) or a non-nil handler to
 // read sub-paths through (the hive was loaded from NTUSER.DAT). When the hive
 // can't be read at all — no loader, missing NTUSER.DAT, or a load failure — it
-// returns ok=false, and callers treat the key as absent rather than erroring, so
-// a check degrades to a vacuous pass instead of a false positive.
-func (k *mqlRegistrykey) userHiveReader(conn shared.Connection) (livePath string, rh *registry.RegistryHandler, ok bool) {
+// returns ok=false, and callers treat the key as absent.
+//
+// A hive that exists but fails to load is not an absence: with structured
+// errors (ADR 046) the load failure is returned. v13 treats it as absent too.
+func (k *mqlRegistrykey) userHiveReader(conn shared.Connection) (livePath string, rh *registry.RegistryHandler, ok bool, err error) {
 	sid := k.UserSid.Data
 	if registry.IsUserHiveLoaded(sid) {
-		return userHivePath(sid, k.Path.Data), nil, true
+		return userHivePath(sid, k.Path.Data), nil, true, nil
 	}
 	loader, isLoader := conn.(userHiveLoader)
 	if !isLoader || k.NtuserDat.Data == "" {
-		return "", nil, false
+		return "", nil, false, nil
 	}
 	h := loader.UserHiveRegistryHandler()
 	if err := h.LoadUserHive(sid, k.NtuserDat.Data); err != nil {
 		log.Debug().Err(err).Str("sid", sid).Str("ntuserDat", k.NtuserDat.Data).
 			Msg("could not load user registry hive")
-		return "", nil, false
+		if !plugin.StructuredErrors() {
+			return "", nil, false, nil
+		}
+		return "", nil, false, fmt.Errorf("could not load the registry hive of %s from %s: %w", sid, k.NtuserDat.Data, err)
 	}
-	return "", h, true
+	return "", h, true, nil
 }
 
 func (k *mqlRegistrykey) nativeUserHiveItems(conn shared.Connection) ([]registry.RegistryKeyItem, error) {
-	livePath, rh, ok := k.userHiveReader(conn)
+	livePath, rh, ok, err := k.userHiveReader(conn)
+	if err != nil {
+		return nil, err
+	}
 	if !ok {
 		return nil, nil
 	}
@@ -90,7 +152,10 @@ func (k *mqlRegistrykey) nativeUserHiveItems(conn shared.Connection) ([]registry
 }
 
 func (k *mqlRegistrykey) nativeUserHiveChildren(conn shared.Connection) ([]registry.RegistryKeyChild, error) {
-	livePath, rh, ok := k.userHiveReader(conn)
+	livePath, rh, ok, err := k.userHiveReader(conn)
+	if err != nil {
+		return nil, err
+	}
 	if !ok {
 		return nil, nil
 	}
@@ -102,6 +167,9 @@ func (k *mqlRegistrykey) nativeUserHiveChildren(conn shared.Connection) ([]regis
 
 func (k *mqlRegistrykey) exists() (bool, error) {
 	conn := k.MqlRuntime.Connection.(shared.Connection)
+	if err := registryApplicable(conn); err != nil {
+		return false, err
+	}
 
 	// per-user hive read: resolve against the live HKEY_USERS\<sid> hive or the
 	// profile's NTUSER.DAT loaded on demand (local Windows), else fall back to the
@@ -156,17 +224,14 @@ func (k *mqlRegistrykey) powershellExists(path string) (bool, error) {
 		return false, exit.Error
 	}
 	if exit.Data != 0 {
-		stderr := cmd.GetStderr()
-		_, isMock := k.MqlRuntime.Connection.(*mock.Connection)
-		// this would be an expected error and would ensure that we do not throw an error on windows systems
-		// TODO: revisit how this is handled for non-english systems
-		if strings.Contains(stderr.Data, "not exist") ||
-			strings.Contains(stderr.Data, "ObjectNotFound") ||
-			isMock {
+		if _, isMock := k.MqlRuntime.Connection.(*mock.Connection); isMock {
 			return false, nil
 		}
-
-		return false, errors.New("could not retrieve registry key")
+		absent, err := classifyRegistryStderr(path, cmd.GetStderr().Data)
+		if absent {
+			return false, nil
+		}
+		return false, err
 	}
 	return true, nil
 }
@@ -202,6 +267,9 @@ func registryValueError(path string, entries []registry.RegistryKeyItem) error {
 // readEntries returns the values of the key, each carrying its own read error.
 func (k *mqlRegistrykey) readEntries() ([]registry.RegistryKeyItem, error) {
 	conn := k.MqlRuntime.Connection.(shared.Connection)
+	if err := registryApplicable(conn); err != nil {
+		return nil, err
+	}
 
 	if k.isUserHive() {
 		if conn.Type() == shared.Type_Local && runtime.GOOS == "windows" {
@@ -234,17 +302,14 @@ func (k *mqlRegistrykey) powershellItems(path string) ([]registry.RegistryKeyIte
 		return nil, exit.Error
 	}
 	if exit.Data != 0 {
-		stderr := cmd.GetStderr()
-		_, isMock := k.MqlRuntime.Connection.(*mock.Connection)
-		// this would be an expected error and would ensure that we do not throw an error on windows systems
-		// TODO: revisit how this is handled for non-english systems
-		if strings.Contains(stderr.Data, "not exist") ||
-			strings.Contains(stderr.Data, "ObjectNotFound") ||
-			isMock {
+		if _, isMock := k.MqlRuntime.Connection.(*mock.Connection); isMock {
 			return nil, nil
 		}
-
-		return nil, errors.New("could not retrieve registry key")
+		absent, err := classifyRegistryStderr(path, cmd.GetStderr().Data)
+		if absent {
+			return nil, nil
+		}
+		return nil, err
 	}
 
 	stdout := cmd.GetStdout()
@@ -333,6 +398,9 @@ func (k *mqlRegistrykey) items() ([]any, error) {
 // otherwise, and against the per-user hive when one is selected.
 func (k *mqlRegistrykey) getChildren() ([]registry.RegistryKeyChild, error) {
 	conn := k.MqlRuntime.Connection.(shared.Connection)
+	if err := registryApplicable(conn); err != nil {
+		return nil, err
+	}
 	switch {
 	case k.isUserHive() && conn.Type() == shared.Type_Local && runtime.GOOS == "windows":
 		return k.nativeUserHiveChildren(conn)
@@ -428,12 +496,20 @@ func initRegistrykeyProperty(runtime *plugin.Runtime, args map[string]*llx.RawDa
 	}
 	key := obj.(*mqlRegistrykey)
 
-	// An unreadable key (exists.Error != nil) is intentionally treated the same
-	// as a missing one: the defaults below mark the property absent so the
-	// lookup fails cleanly instead of erroring the whole check. (The previous
-	// `if err != nil` here inspected a stale, always-nil err from the
-	// CreateResource above and was dead code.)
+	// A key that could not be read is not a missing key. With structured
+	// errors (ADR 046) every field of the property carries the failure, so a
+	// refused key does not make `exists == false` pass. The fields carry it
+	// rather than init returning it: an init error crosses the plugin boundary
+	// as a bare message and loses its kind. v13 treats an unreadable key as
+	// missing: the defaults below mark the property absent.
 	exists := key.GetExists()
+	if exists.Error != nil && plugin.StructuredErrors() {
+		args["exists"] = &llx.RawData{Type: types.Bool, Error: exists.Error}
+		args["data"] = &llx.RawData{Type: types.Dict, Error: exists.Error}
+		args["value"] = &llx.RawData{Type: types.String, Error: exists.Error}
+		args["type"] = &llx.RawData{Type: types.String, Error: exists.Error}
+		return args, nil, nil
+	}
 
 	// set default values
 	args["exists"] = llx.BoolFalse
