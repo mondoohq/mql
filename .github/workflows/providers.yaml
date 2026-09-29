@@ -137,11 +137,30 @@ jobs:
               *-*) POINTER="preview.json" ;;
               *)   POINTER="latest.json" ;;
             esac
-            STATUS_CODE=$(curl -s -o /dev/null -I -w "%{http_code}" https://releases.mondoo.com/providers/${p}/${POINTER})
+            # releases.mondoo.com is read once per provider, so a single DNS or
+            # network blip used to fail the whole job (curl exit 6 after 50 of
+            # ~150 providers). Retry every error a few times first. A 404 is not
+            # an error to curl without --fail, so "unreleased" is not retried.
+            CURL_OPTS=(--silent --show-error --retry 5 --retry-delay 3 --retry-all-errors --connect-timeout 10 --max-time 30)
+            POINTER_URL="https://releases.mondoo.com/providers/${p}/${POINTER}"
+            if ! STATUS_CODE=$(curl "${CURL_OPTS[@]}" -o /dev/null -I -w "%{http_code}" "$POINTER_URL"); then
+              echo "::error::could not reach $POINTER_URL after retries"
+              exit 1
+            fi
             if [ "$STATUS_CODE" -eq "404" ]; then
               DIST_VERSION="unreleased"
             else
-              DIST_VERSION=$(curl -s https://releases.mondoo.com/providers/${p}/${POINTER} | jq -r .version)
+              if ! DIST_BODY=$(curl "${CURL_OPTS[@]}" --fail "$POINTER_URL"); then
+                echo "::error::could not read $POINTER_URL (HTTP $STATUS_CODE) after retries"
+                exit 1
+              fi
+              DIST_VERSION=$(echo "$DIST_BODY" | jq -r .version)
+              # A pointer without a version would never equal the local one and
+              # republish the provider on every push. Stop instead.
+              if [ -z "$DIST_VERSION" ] || [ "$DIST_VERSION" = "null" ]; then
+                echo "::error::$POINTER_URL has no version"
+                exit 1
+              fi
             fi
             printf "PROVIDER $p:\n  Local version: $REPO_VERSION\n  Remote version: $DIST_VERSION (from $POINTER)\n"
 
