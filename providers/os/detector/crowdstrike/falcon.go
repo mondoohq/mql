@@ -45,15 +45,18 @@ const (
 var windowsSensorKeys = []string{windowsSensorKey, windowsLegacySensorKey}
 
 // Identity is the identity of a Falcon sensor. Both fields are normalized to
-// 32 lowercase hex characters, the form the Falcon API uses. Either can be
-// empty when the sensor does not expose it.
+// 32 lowercase hex characters, the form the Falcon API uses for a device's
+// `device_id` and `cid`. Either can be empty: AID is empty on a sensor that is
+// installed but has not registered with the Falcon cloud yet, and CID is empty
+// when the sensor does not expose it to the reader.
 type Identity struct {
 	AID string
 	CID string
 }
 
 // Detect returns the identity of the Falcon sensor on the host, or nil when
-// no sensor is installed or its identity cannot be read. Reading the identity
+// no sensor is installed or neither ID can be read. A sensor that is installed
+// but not registered yet has a CID and no AID. Reading the identity
 // requires administrative privileges on every platform; without them Detect
 // returns nil. It never returns an error: sensor detection is best-effort and
 // must not fail platform detection.
@@ -85,11 +88,22 @@ func Detect(conn shared.Connection, pf *inventory.Platform) *Identity {
 		return nil
 	}
 
-	if id == nil || id.AID == "" {
-		// A CID without an AID does not identify a host.
+	if id == nil || (id.AID == "" && id.CID == "") {
 		return nil
 	}
 	return id
+}
+
+// Resolve returns the sensor identity for the host: the one platform
+// detection recorded in the labels, or, when the platform carries none, the
+// one Detect reads from the host. Everything that reports the sensor identity
+// goes through Resolve, so the labels, the platform ID and the edr resource
+// cannot disagree.
+func Resolve(conn shared.Connection, pf *inventory.Platform) *Identity {
+	if id := FromLabels(pf); id != nil {
+		return id
+	}
+	return Detect(conn, pf)
 }
 
 // ApplyLabels detects the Falcon sensor identity and records it in the
@@ -102,7 +116,9 @@ func ApplyLabels(conn shared.Connection, pf *inventory.Platform) {
 	if pf.Labels == nil {
 		pf.Labels = map[string]string{}
 	}
-	pf.Labels[LabelAID] = id.AID
+	if id.AID != "" {
+		pf.Labels[LabelAID] = id.AID
+	}
 	if id.CID != "" {
 		pf.Labels[LabelCID] = id.CID
 	}
@@ -115,11 +131,11 @@ func FromLabels(pf *inventory.Platform) *Identity {
 	if pf == nil || pf.Labels == nil {
 		return nil
 	}
-	aid := pf.Labels[LabelAID]
-	if aid == "" {
+	id := &Identity{AID: pf.Labels[LabelAID], CID: pf.Labels[LabelCID]}
+	if id.AID == "" && id.CID == "" {
 		return nil
 	}
-	return &Identity{AID: aid, CID: pf.Labels[LabelCID]}
+	return id
 }
 
 // PlatformID returns the platform identifier for the host the sensor runs on,
@@ -194,12 +210,17 @@ func parseMacosAgentInfo(out string) *Identity {
 }
 
 // windowsIdentityScript reads the sensor identity from the registry and
-// prints it as `aid=<hex>` and `cid=<hex>` lines. It prints nothing when the
-// sensor key is absent or not readable (the key requires administrative
-// privileges).
+// prints it as `aid=<hex>` and `cid=<hex>` lines. AG and CU are each taken from
+// the first sensor key that holds them, the same order CrowdStrike's own
+// sensor repair script reads CU in. It prints nothing when no sensor key is
+// present or readable (the keys require administrative privileges).
+//
+// A REG_BINARY value comes back as a byte array; each byte is printed as two
+// lowercase hex digits in stored order, which is the form the Falcon API uses.
 var windowsIdentityScript = func() string {
 	var b strings.Builder
 	b.WriteString(`$ErrorActionPreference = 'SilentlyContinue'
+$aid = $null; $cid = $null
 foreach ($p in @(`)
 	for i, key := range windowsSensorKeys {
 		if i > 0 {
@@ -210,11 +231,11 @@ foreach ($p in @(`)
 	b.WriteString(`)) {
   if (-not (Test-Path -LiteralPath $p)) { continue }
   $k = Get-ItemProperty -LiteralPath $p
-  if ($null -eq $k.` + windowsAIDValue + `) { continue }
-  'aid=' + (($k.` + windowsAIDValue + ` | ForEach-Object { $_.ToString('x2') }) -join '')
-  if ($null -ne $k.` + windowsCIDValue + `) { 'cid=' + (($k.` + windowsCIDValue + ` | ForEach-Object { $_.ToString('x2') }) -join '') }
-  break
+  if ($null -eq $aid -and $null -ne $k.` + windowsAIDValue + `) { $aid = ($k.` + windowsAIDValue + ` | ForEach-Object { $_.ToString('x2') }) -join '' }
+  if ($null -eq $cid -and $null -ne $k.` + windowsCIDValue + `) { $cid = ($k.` + windowsCIDValue + ` | ForEach-Object { $_.ToString('x2') }) -join '' }
 }
+if ($null -ne $aid) { 'aid=' + $aid }
+if ($null -ne $cid) { 'cid=' + $cid }
 `)
 	return b.String()
 }()

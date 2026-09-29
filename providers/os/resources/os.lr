@@ -16589,15 +16589,19 @@ private edr.product @defaults("name vendor installed healthy") {
   // ID the vendor's console uses for this agent
   //
   // For example the CrowdStrike Falcon agent ID (AID), or the Microsoft
-  // Defender for Endpoint machine ID. Null when the agent's ID is not detected
-  // yet, including a Defender device not onboarded to Defender for Endpoint;
-  // more vendors will follow.
+  // Defender for Endpoint machine ID. The Falcon AID is 32 lowercase hex
+  // characters without dashes, the form the Falcon API reports as device_id.
+  // Null when the agent's ID is not detected yet, including a Falcon sensor
+  // that has not registered with the Falcon cloud and a Defender device not
+  // onboarded to Defender for Endpoint; more vendors will follow.
   agentId string
   // Customer, tenant, or account the agent reports to
   //
   // For example the CrowdStrike Falcon customer ID (CID), or the ID of the
   // organization a Microsoft Defender for Endpoint sensor is onboarded to.
-  // Null when it is not detected yet.
+  // The Falcon CID is 32 lowercase hex characters without dashes and without
+  // the two-character checksum suffix of the installer's customer ID, the form
+  // the Falcon API reports as cid. Null when it is not detected yet.
   tenantId string
   // Signals that identified the agent
   //

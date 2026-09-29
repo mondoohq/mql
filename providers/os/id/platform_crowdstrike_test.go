@@ -45,4 +45,24 @@ func TestGatherPlatformInfoCrowdStrikeAID(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, info.IDs, "an AID is only unique within a customer")
 	})
+
+	t.Run("sensor that is not registered yet yields no id", func(t *testing.T) {
+		info, err := gatherPlatformInfo(conn, linux(map[string]string{crowdstrike.LabelCID: cid}), ids.IdDetector_CrowdStrikeAID)
+		require.NoError(t, err)
+		assert.Empty(t, info.IDs)
+	})
+
+	t.Run("reads the sensor when detection recorded no labels", func(t *testing.T) {
+		falconctl := "/opt/CrowdStrike/falconctl"
+		sensor, err := mock.New(0, &inventory.Asset{}, mock.WithData(&mock.TomlData{
+			Files: map[string]*mock.MockFileData{falconctl: {Path: falconctl, StatData: mock.FileInfo{Mode: 0o750}}},
+			Commands: map[string]*mock.Command{
+				falconctl + " -g --aid --cid": {Stdout: `cid="` + cid + `", aid="` + aid + `".` + "\n"},
+			},
+		}))
+		require.NoError(t, err)
+		info, err := gatherPlatformInfo(sensor, linux(nil), ids.IdDetector_CrowdStrikeAID)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"//platformid.api.mondoo.app/runtime/crowdstrike/cids/" + cid + "/aids/" + aid}, info.IDs)
+	})
 }

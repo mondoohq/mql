@@ -4,6 +4,7 @@
 package crowdstrike
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -116,16 +117,25 @@ func TestParseLinuxFalconctl(t *testing.T) {
 }
 
 func TestParseMacosAgentInfo(t *testing.T) {
+	// The layout `falconctl stats agent_info` prints on the Falcon sensor for
+	// macOS: the AID and CID in UUID form, upper case, mixed with other keys.
 	out := `agent_info:
-  version: 7.10.18302.0
+  version: 6.35.14801.0
   agentID: FEDCBA98-7654-3210-FEDC-BA9876543210
   customerID: 01234567-89AB-CDEF-0123-456789ABCDEF
-  sensor_operational: true
+  Sensor operational: true
 `
 	assert.Equal(t, Identity{AID: "fedcba9876543210fedcba9876543210", CID: testCID}, *parseMacosAgentInfo(out))
 
+	// spelled out keys, as some sensor versions print them
+	spelled := "Agent Info:\n  Agent ID: FEDCBA98-7654-3210-FEDC-BA9876543210\n  Customer ID: 01234567-89AB-CDEF-0123-456789ABCDEF\n"
+	assert.Equal(t, Identity{AID: "fedcba9876543210fedcba9876543210", CID: testCID}, *parseMacosAgentInfo(spelled))
+
 	noCID := "agent_info:\n  agentID: FEDCBA98-7654-3210-FEDC-BA9876543210\n"
 	assert.Equal(t, Identity{AID: "fedcba9876543210fedcba9876543210"}, *parseMacosAgentInfo(noCID))
+
+	unregistered := "agent_info:\n  customerID: 01234567-89AB-CDEF-0123-456789ABCDEF\n  Sensor operational: false\n"
+	assert.Equal(t, Identity{CID: testCID}, *parseMacosAgentInfo(unregistered))
 
 	assert.Equal(t, Identity{}, *parseMacosAgentInfo("Error: operation requires root\n"))
 }
@@ -133,6 +143,7 @@ func TestParseMacosAgentInfo(t *testing.T) {
 func TestParseWindowsScriptOutput(t *testing.T) {
 	assert.Equal(t, Identity{AID: testAID, CID: testCID}, *parseWindowsScriptOutput("aid=" + testAID + "\r\ncid=" + testCID + "\r\n"))
 	assert.Equal(t, Identity{AID: testAID}, *parseWindowsScriptOutput("aid=" + testAID + "\r\n"))
+	assert.Equal(t, Identity{CID: testCID}, *parseWindowsScriptOutput("cid=" + testCID + "\r\n"))
 	assert.Equal(t, Identity{}, *parseWindowsScriptOutput(""))
 }
 
@@ -160,9 +171,16 @@ func TestDetectLinux(t *testing.T) {
 		assert.Equal(t, 1, conn.calls)
 	})
 
-	t.Run("aid not set", func(t *testing.T) {
+	t.Run("installed but not registered yet", func(t *testing.T) {
 		conn := newConn(t, []string{linuxFalconctl}, map[string]*mock.Command{
 			linuxCommand: {Stdout: `cid="` + testCID + `", aid is not set.`},
+		})
+		assert.Equal(t, &Identity{CID: testCID}, Detect(conn, linuxPlatform))
+	})
+
+	t.Run("installed without a cid", func(t *testing.T) {
+		conn := newConn(t, []string{linuxFalconctl}, map[string]*mock.Command{
+			linuxCommand: {Stdout: "cid is not set, aid is not set.\n"},
 		})
 		assert.Nil(t, Detect(conn, linuxPlatform))
 	})
@@ -218,6 +236,13 @@ func TestDetectWindows(t *testing.T) {
 		assert.Equal(t, &Identity{AID: testAID, CID: testCID}, Detect(conn, windowsPlatform))
 	})
 
+	t.Run("not registered yet", func(t *testing.T) {
+		conn := newConn(t, nil, map[string]*mock.Command{
+			windowsCommand: {Stdout: "cid=" + testCID + "\r\n"},
+		})
+		assert.Equal(t, &Identity{CID: testCID}, Detect(conn, windowsPlatform))
+	})
+
 	t.Run("sensor absent or not admin", func(t *testing.T) {
 		// the script prints nothing when the key is absent or unreadable
 		conn := newConn(t, nil, map[string]*mock.Command{
@@ -229,6 +254,13 @@ func TestDetectWindows(t *testing.T) {
 	t.Run("script reads both sensor key locations", func(t *testing.T) {
 		assert.Contains(t, windowsIdentityScript, `'HKLM:\SYSTEM\CrowdStrike\{9b03c1d9-3138-44ed-9fae-d9f4c034b88d}\{16e0423f-7058-48c9-a204-725362b67639}\Default'`)
 		assert.Contains(t, windowsIdentityScript, `'HKLM:\SYSTEM\CurrentControlSet\Services\CSAgent\Sim'`)
+		assert.Less(t, strings.Index(windowsIdentityScript, `\Default'`), strings.Index(windowsIdentityScript, `\Sim'`),
+			"the current key is read before the legacy one")
+	})
+
+	t.Run("script prints each value as lowercase hex in stored byte order", func(t *testing.T) {
+		assert.Contains(t, windowsIdentityScript, `$k.AG | ForEach-Object { $_.ToString('x2') }) -join ''`)
+		assert.Contains(t, windowsIdentityScript, `$k.CU | ForEach-Object { $_.ToString('x2') }) -join ''`)
 	})
 }
 
@@ -256,11 +288,60 @@ func TestApplyLabels(t *testing.T) {
 		assert.Equal(t, "", FromLabels(pf).PlatformID(), "no platform id without a cid")
 	})
 
+	t.Run("only a cid label for a sensor that is not registered yet", func(t *testing.T) {
+		conn := newConn(t, []string{linuxFalconctl}, map[string]*mock.Command{
+			linuxCommand: {Stdout: `cid="` + testCID + `", aid is not set.`},
+		})
+		pf := &inventory.Platform{Name: "ubuntu", Family: linuxPlatform.Family}
+		ApplyLabels(conn, pf)
+		assert.Equal(t, map[string]string{LabelCID: testCID}, pf.Labels)
+		assert.Equal(t, &Identity{CID: testCID}, FromLabels(pf))
+		assert.Equal(t, "", FromLabels(pf).PlatformID(), "no platform id without an aid")
+	})
+
 	t.Run("no labels without sensor", func(t *testing.T) {
 		conn := newConn(t, nil, nil)
 		pf := &inventory.Platform{Name: "ubuntu", Family: linuxPlatform.Family}
 		ApplyLabels(conn, pf)
 		assert.Nil(t, pf.Labels)
 		assert.Nil(t, FromLabels(pf))
+	})
+}
+
+func TestResolve(t *testing.T) {
+	sensorConn := func(t *testing.T) *countingConn {
+		return newConn(t, []string{linuxFalconctl}, map[string]*mock.Command{
+			linuxCommand: {Stdout: `cid="` + testCID + `", aid="` + testAID + `".`},
+		})
+	}
+
+	t.Run("labels win and run no command", func(t *testing.T) {
+		conn := sensorConn(t)
+		pf := &inventory.Platform{Name: "ubuntu", Family: linuxPlatform.Family, Labels: map[string]string{
+			LabelAID: "fedcba9876543210fedcba9876543210",
+			LabelCID: testCID,
+		}}
+		assert.Equal(t, &Identity{AID: "fedcba9876543210fedcba9876543210", CID: testCID}, Resolve(conn, pf))
+		assert.Zero(t, conn.calls)
+	})
+
+	t.Run("reads the host when the platform has no labels", func(t *testing.T) {
+		conn := sensorConn(t)
+		pf := &inventory.Platform{Name: "ubuntu", Family: linuxPlatform.Family}
+		assert.Equal(t, &Identity{AID: testAID, CID: testCID}, Resolve(conn, pf))
+		assert.Nil(t, pf.Labels, "resolving does not write labels")
+	})
+
+	t.Run("resolves the same identity the labels carry", func(t *testing.T) {
+		conn := sensorConn(t)
+		pf := &inventory.Platform{Name: "ubuntu", Family: linuxPlatform.Family}
+		ApplyLabels(conn, pf)
+		assert.Equal(t, Detect(conn, pf), Resolve(conn, pf))
+	})
+
+	t.Run("no sensor", func(t *testing.T) {
+		conn := newConn(t, nil, nil)
+		assert.Nil(t, Resolve(conn, &inventory.Platform{Name: "ubuntu", Family: linuxPlatform.Family}))
+		assert.Equal(t, "", Resolve(conn, nil).PlatformID())
 	})
 }

@@ -21,35 +21,40 @@ func detectWindows(conn shared.Connection) *Identity {
 	return powershellDetectWindows(conn)
 }
 
+// detectWindowsFromRegistry takes AG and CU each from the first sensor key
+// that holds them, like the powershell path does.
 func detectWindowsFromRegistry() *Identity {
+	id := &Identity{}
 	for _, path := range windowsSensorKeys {
-		if id := readSensorKey(path); id != nil {
-			return id
-		}
+		readSensorKey(path, id)
 	}
-	return nil
+	if id.AID == "" && id.CID == "" {
+		return nil
+	}
+	return id
 }
 
-// readSensorKey reads the sensor identity from one registry key, or returns nil
-// when the key or its AID value is absent or unreadable.
-func readSensorKey(path string) *Identity {
+// readSensorKey fills the IDs still missing from id with the values of one
+// registry key. An absent or unreadable key or value leaves them unchanged.
+func readSensorKey(path string, id *Identity) {
 	key, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.QUERY_VALUE)
 	if err != nil {
 		// absent sensor, or not running with administrative privileges
 		if !errors.Is(err, registry.ErrNotExist) {
 			log.Debug().Err(err).Str("key", path).Msg("could not open CrowdStrike Falcon sensor key")
 		}
-		return nil
+		return
 	}
 	defer key.Close()
 
-	aid, _, err := key.GetBinaryValue(windowsAIDValue)
-	if err != nil {
-		return nil
+	if id.AID == "" {
+		if aid, _, err := key.GetBinaryValue(windowsAIDValue); err == nil {
+			id.AID = binaryToID(aid)
+		}
 	}
-	id := &Identity{AID: binaryToID(aid)}
-	if cid, _, err := key.GetBinaryValue(windowsCIDValue); err == nil {
-		id.CID = binaryToID(cid)
+	if id.CID == "" {
+		if cid, _, err := key.GetBinaryValue(windowsCIDValue); err == nil {
+			id.CID = binaryToID(cid)
+		}
 	}
-	return id
 }

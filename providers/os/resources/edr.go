@@ -406,20 +406,27 @@ func defenderMode(amRunningMode string) string {
 	return ""
 }
 
-// enrichFalconIdentity reports the Falcon sensor's agent and customer IDs. They
-// are detected once, with the platform; reading them back through the same
-// helper platform detection wrote them with keeps these fields and the labels
-// from ever disagreeing.
+// enrichFalconIdentity reports the Falcon sensor's agent and customer IDs.
+// crowdstrike.Resolve is the same helper the platform labels and the platform
+// ID come from: it reads the IDs platform detection recorded, and reads them
+// from the host only when the platform carries none. So these fields and the
+// labels cannot disagree. An unregistered sensor has a customer ID and no
+// agent ID yet, which leaves agentId null.
 func (e *mqlEdr) enrichFalconIdentity(args map[string]*llx.RawData) {
 	conn, ok := e.MqlRuntime.Connection.(shared.Connection)
 	if !ok || conn.Asset() == nil {
 		return
 	}
-	id := crowdstrike.FromLabels(conn.Asset().Platform)
+	applyFalconIdentity(crowdstrike.Resolve(conn, conn.Asset().Platform), args)
+}
+
+func applyFalconIdentity(id *crowdstrike.Identity, args map[string]*llx.RawData) {
 	if id == nil {
 		return
 	}
-	args["agentId"] = llx.StringData(id.AID)
+	if id.AID != "" {
+		args["agentId"] = llx.StringData(id.AID)
+	}
 	if id.CID != "" {
 		args["tenantId"] = llx.StringData(id.CID)
 	}

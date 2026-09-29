@@ -92,6 +92,32 @@ func TestEnrichFalconIdentity(t *testing.T) {
 		assert.Equal(t, "fedcba9876543210fedcba9876543210", args["tenantId"].Value)
 	})
 
+	t.Run("falcon that is not registered yet reports only its customer ID", func(t *testing.T) {
+		args := map[string]*llx.RawData{}
+		newEdr(t, map[string]string{crowdstrike.LabelCID: "fedcba9876543210fedcba9876543210"}).enrich(falcon, args)
+		assert.Nil(t, args["agentId"].Value)
+		assert.Equal(t, "fedcba9876543210fedcba9876543210", args["tenantId"].Value)
+	})
+
+	t.Run("falcon reads the sensor when the platform carries no labels", func(t *testing.T) {
+		falconctl := "/opt/CrowdStrike/falconctl"
+		conn, err := mock.New(0, &inventory.Asset{Platform: &inventory.Platform{
+			Name:   "ubuntu",
+			Family: []string{"debian", "linux", "unix", "os"},
+		}}, mock.WithData(&mock.TomlData{
+			Files: map[string]*mock.MockFileData{falconctl: {Path: falconctl, StatData: mock.FileInfo{Mode: 0o750}}},
+			Commands: map[string]*mock.Command{
+				falconctl + " -g --aid --cid": {Stdout: `cid="0123456789ABCDEF0123456789ABCDEF-E2", aid="4d7f5b8b9e0b4c2a8d1e2f3a4b5c6d7e".` + "\n"},
+			},
+		}))
+		require.NoError(t, err)
+		e := &mqlEdr{MqlRuntime: &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}}
+		args := map[string]*llx.RawData{}
+		e.enrich(falcon, args)
+		assert.Equal(t, "4d7f5b8b9e0b4c2a8d1e2f3a4b5c6d7e", args["agentId"].Value)
+		assert.Equal(t, "0123456789abcdef0123456789abcdef", args["tenantId"].Value, "lowercase, checksum suffix stripped")
+	})
+
 	t.Run("falcon without detected IDs is null", func(t *testing.T) {
 		args := map[string]*llx.RawData{}
 		newEdr(t, nil).enrich(falcon, args)

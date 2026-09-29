@@ -245,15 +245,9 @@ func gatherPlatformInfo(conn shared.Connection, pf *inventory.Platform, idDetect
 		}
 		return &platformInfo{}, nil
 	case ids.IdDetector_CrowdStrikeAID:
-		falcon := crowdstrike.FromLabels(pf)
-		if falcon == nil {
-			falcon = crowdstrike.Detect(conn, pf)
-		}
-		if falcon == nil {
-			// no sensor on this host
-			return &platformInfo{}, nil
-		}
-		if identifier := falcon.PlatformID(); identifier != "" {
+		// PlatformID is "" without a sensor, and for a sensor that has no
+		// AID (not registered yet) or no CID.
+		if identifier := crowdstrike.Resolve(conn, pf).PlatformID(); identifier != "" {
 			return &platformInfo{
 				IDs:                []string{identifier},
 				Name:               "",
