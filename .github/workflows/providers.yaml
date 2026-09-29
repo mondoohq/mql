@@ -168,19 +168,22 @@ jobs:
             # own pointer by minutes. Confirm a difference there before building,
             # or a push in that window would republish a version that is out.
             if [ "$DIST_VERSION" != "$REPO_VERSION" ]; then
+              # One GET for the status and the body. No --fail: with it, a 404
+              # would be retried as an error, and a network failure could not be
+              # told apart from "unreleased". 5xx is retried by --retry anyway.
               POINTER_URL="$PROVIDERS_URL/${p}/${POINTER}"
-              if ! STATUS_CODE=$(curl "${CURL_OPTS[@]}" -o /dev/null -w "%{http_code}" "$POINTER_URL"); then
+              if ! RESPONSE=$(curl "${CURL_OPTS[@]}" -w '\n%{http_code}' "$POINTER_URL"); then
                 echo "::error::could not reach $POINTER_URL after retries"
                 exit 1
               fi
-              if [ "$STATUS_CODE" -eq "404" ]; then
+              STATUS_CODE=${RESPONSE##*$'\n'}
+              if [ "$STATUS_CODE" = "404" ]; then
                 DIST_VERSION="unreleased"
+              elif [ "$STATUS_CODE" != "200" ]; then
+                echo "::error::could not read $POINTER_URL: HTTP $STATUS_CODE after retries"
+                exit 1
               else
-                if ! DIST_BODY=$(curl "${CURL_OPTS[@]}" --fail "$POINTER_URL"); then
-                  echo "::error::could not read $POINTER_URL (HTTP $STATUS_CODE) after retries"
-                  exit 1
-                fi
-                DIST_VERSION=$(echo "$DIST_BODY" | jq -r .version)
+                DIST_VERSION=$(echo "${RESPONSE%$'\n'*}" | jq -r .version)
                 # A pointer without a version would never equal the local one and
                 # republish the provider on every push. Stop instead.
                 if [ -z "$DIST_VERSION" ] || [ "$DIST_VERSION" = "null" ]; then
