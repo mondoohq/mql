@@ -143,6 +143,11 @@ var regionalAccessors = map[string]func(*OciConnection, string) (endpointer, err
 	"DnsClient":                 func(c *OciConnection, r string) (endpointer, error) { return c.DnsClient(r) },
 	"BastionClient":             func(c *OciConnection, r string) (endpointer, error) { return c.BastionClient(r) },
 
+	// Operating system management
+	"OsManagementHubManagedInstanceClient": func(c *OciConnection, r string) (endpointer, error) {
+		return c.OsManagementHubManagedInstanceClient(r)
+	},
+
 	// Zero Trust Packet Routing and the security attributes its policies name.
 	// Both answer tenancy-wide, but they are built per region like everything
 	// else so a caller already inside a regional fan-out does not need a second

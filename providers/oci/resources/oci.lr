@@ -223,6 +223,43 @@ private oci.identity.domain @defaults("name type state") {
   //
   // Configured alongside the keep-me-signed-in settings.
   termsOfUsePromptDisabled() bool
+  // Identity providers users of the domain can sign in through
+  //
+  // External SAML, social, X.509, and Kerberos providers the domain trusts to
+  // authenticate its users. A provider that creates accounts on first sign-in
+  // and assigns groups from the assertion decides who holds the domain's
+  // group-based access, so its `jitUserProv*` settings matter as much as its
+  // signing configuration.
+  identityProviders() []oci.identity.domain.identityProvider
+  // Whether the domain's signing certificate can be read without signing in
+  //
+  // When true, anyone can download the certificate the domain signs its
+  // tokens with, which lets an application validate tokens without
+  // authenticating to the domain first.
+  signingCertPublicAccess() bool
+  // Whether users must sign in again before changing a security factor
+  //
+  // When false, a user whose session is taken over can change the account's
+  // password, email, or multi-factor enrollment without proving their
+  // identity again.
+  reAuthWhenChangingMyAuthenticationFactors() bool
+  // Factors a user re-authenticates with before changing a security factor
+  reAuthFactors() []string
+  // Access Oracle support representatives have to the domain
+  //
+  // One of none, readOnly, or readWrite. A value other than none lets Oracle
+  // support sign in to the domain's services.
+  customerSupportAccess() string
+  // Days audit events are retained before they are purged
+  //
+  // Null when the domain uses the service default of 30 days.
+  auditEventRetentionPeriodInDays() int
+  // Whether service administrators are prevented from listing other users
+  serviceAdminCannotListOtherUsers() bool
+  // Maximum lifetime of an IAM user principal session token
+  //
+  // Null when the domain uses the service default.
+  userPrincipalSessionTokenMaxExpiry() int
   // Domain lifecycle state (CREATING, ACTIVE, DELETING, INACTIVE, FAILED)
   state string
   // Domain creation time
@@ -231,6 +268,86 @@ private oci.identity.domain @defaults("name type state") {
   freeformTags map[string]string
   // Defined tags for governance and cost tracking
   definedTags map[string]map[string]string
+}
+
+// Identity provider trusted by an OCI identity domain
+//
+// An external provider the domain accepts sign-ins from. `type` separates
+// SAML, SOCIAL, X509, IWA (Kerberos), and LOCAL providers. For SAML,
+// `partnerProviderId` is the provider's entity ID, `idpSsoUrl` where users are
+// sent to sign in, `signatureHashAlgorithm` the digest used to sign requests,
+// and `requiresEncryptedAssertion` whether assertions must be encrypted.
+// `userMappingMethod` and `userMappingStoreAttribute` decide which domain user
+// an assertion signs in as. The `jitUserProv*` fields describe just-in-time
+// provisioning: whether the provider may create accounts
+// (`jitUserProvCreateUserEnabled`), update them, and grant group membership
+// from the assertion (`jitUserProvGroupAssertionAttributeEnabled`) or from a
+// fixed list (`jitUserProvAssignedGroups`).
+private oci.identity.domain.identityProvider @defaults("name type enabled") {
+  // Identity provider SCIM identifier
+  id string
+  // Identity provider OCID
+  ocid string
+  // Provider name
+  name string
+  // Description
+  description string
+  // Whether the provider is enabled
+  enabled bool
+  // Provider type (SAML, SOCIAL, X509, IWA, LOCAL)
+  type string
+  // Whether the provider is shown on the sign-in page
+  shownOnLoginPage bool
+  // Entity ID of the provider
+  partnerProviderId string
+  // Entity ID the domain presents to the provider
+  tenantProviderId string
+  // Single sign-on URL of the provider
+  idpSsoUrl string
+  // Hash algorithm used to sign requests to the provider (SHA-1, SHA-256)
+  signatureHashAlgorithm string
+  // Whether the provider must encrypt its assertions
+  requiresEncryptedAssertion bool
+  // Whether the provider must authenticate the user again rather than reuse a session
+  requireForceAuthn bool
+  // Whether the holder-of-key subject confirmation is required
+  samlHoKRequired bool
+  // Whether the signing certificate is included in the request signature
+  includeSigningCertInSignature bool
+  // Binding used to send authentication requests (Redirect, Post)
+  authnRequestBinding string
+  // Whether single logout is enabled
+  logoutEnabled bool
+  // NameID format requested from the provider
+  nameIdFormat string
+  // Authentication contexts requested from the provider
+  requestedAuthenticationContext []string
+  // How an assertion is matched to a domain user (NameIDToUserAttribute, AssertionAttributeToUserAttribute, CorrelationPolicyRule)
+  userMappingMethod string
+  // Domain user attribute an assertion is matched against
+  userMappingStoreAttribute string
+  // Assertion attribute matched to the user
+  assertionAttribute string
+  // Whether just-in-time user provisioning is enabled
+  jitUserProvEnabled bool
+  // Whether just-in-time provisioning may create users
+  jitUserProvCreateUserEnabled bool
+  // Whether just-in-time provisioning updates user attributes on each sign-in
+  jitUserProvAttributeUpdateEnabled bool
+  // Whether group membership is taken from an assertion attribute
+  jitUserProvGroupAssertionAttributeEnabled bool
+  // Whether provisioned users are added to a fixed list of groups
+  jitUserProvGroupStaticListEnabled bool
+  // How provisioned group memberships are applied (Overwrite, Merge)
+  jitUserProvGroupAssignmentMethod string
+  // How assertion group values map to domain groups (implicit, explicit)
+  jitUserProvGroupMappingMode string
+  // Assertion attribute carrying group names
+  jitUserProvGroupSAMLAttributeName string
+  // Groups every provisioned user is added to
+  jitUserProvAssignedGroups() []oci.identity.domain.group
+  // When the provider was created
+  created time
 }
 
 // Oracle Cloud Infrastructure (OCI) identity domain user
@@ -1407,6 +1524,11 @@ private oci.compute.instance @defaults("name") {
   cisBenchmarkScanResult() oci.vulnerabilityScanning.hostCisBenchmarkScanResult
   // Most recent endpoint protection scan result for this instance
   endpointProtectionScanResult() oci.vulnerabilityScanning.hostEndpointProtectionScanResult
+  // OS Management Hub record for this instance
+  //
+  // Reports the updates the instance is missing. Null when the instance is not
+  // registered with OS Management Hub.
+  managedInstance() oci.osManagementHub.managedInstance
 }
 
 // Shielded-instance and confidential-computing settings of a compute instance
@@ -7731,6 +7853,34 @@ private oci.waf.policy @defaults("name") {
   name string
   // Compartment containing the policy
   compartment() oci.compartment
+  // Actions the policy's rules can take
+  //
+  // Every rule, and the access control default, names one of these. An action
+  // of type CHECK records the match and continues, ALLOW skips the remaining
+  // modules, and RETURN_HTTP_RESPONSE blocks the request with a fixed response.
+  actions() []oci.waf.policy.action
+  // Action taken on a request no request access control rule matches
+  //
+  // Null when the policy has no request access control module, in which case
+  // every request proceeds to the next module.
+  requestAccessControlDefaultAction() oci.waf.policy.action
+  // Rules the policy evaluates, across all of its modules
+  //
+  // Each rule's `module` names where it sits: requestAccessControl,
+  // requestRateLimiting, requestProtection, responseAccessControl, or
+  // responseProtection. Within a module the rules are listed in evaluation
+  // order. A policy with no requestProtection rules inspects no request for
+  // injection, cross-site scripting, or other attack signatures.
+  rules() []oci.waf.policy.rule
+  // Largest request body, in bytes, the protection rules inspect
+  //
+  // Null when the policy does not set a limit.
+  requestProtectionBodyInspectionSizeLimitInBytes() int
+  // Action taken on a request whose body exceeds the inspection limit
+  //
+  // Null when no action is set, in which case the uninspected part of the body
+  // passes without evaluation.
+  requestProtectionBodyInspectionSizeLimitExceededAction() oci.waf.policy.action
   // Lifecycle state (e.g., CREATING, UPDATING, ACTIVE, DELETING, DELETED, FAILED)
   state string
   // Creation time
@@ -7747,6 +7897,104 @@ private oci.waf.policy @defaults("name") {
   // `Oracle-Tags` namespace records the creating principal in `CreatedBy`
   // and the creation time in `CreatedOn`.
   systemTags map[string]dict
+}
+
+// Action defined in an OCI Web Application Firewall policy
+//
+// A named outcome the policy's rules refer to. `type` is CHECK, ALLOW, or
+// RETURN_HTTP_RESPONSE; a RETURN_HTTP_RESPONSE action also carries the
+// `responseCode` and `responseHeaders` it answers a blocked request with.
+private oci.waf.policy.action @defaults("name type") {
+  // Action name, unique within the policy
+  name string
+  // Action type (CHECK, ALLOW, RETURN_HTTP_RESPONSE)
+  type string
+  // HTTP status code returned to the client
+  //
+  // Null unless `type` is RETURN_HTTP_RESPONSE.
+  responseCode int
+  // HTTP headers added to the response, keyed by header name
+  responseHeaders map[string]string
+}
+
+// Rule in an OCI Web Application Firewall policy
+//
+// A single rule from one of the policy's modules. `module` names the module
+// and `type` the rule kind (ACCESS_CONTROL, PROTECTION, or
+// REQUEST_RATE_LIMITING). `condition` is the expression, written in
+// `conditionLanguage`, that selects the requests the rule applies to; an empty
+// condition matches every request. A protection rule lists the
+// `protectionCapabilities` it checks and the argument and header limits it
+// enforces, and a rate-limiting rule lists its `rateLimits`.
+private oci.waf.policy.rule @defaults("module name type") {
+  // Module the rule belongs to
+  //
+  // One of requestAccessControl, requestRateLimiting, requestProtection,
+  // responseAccessControl, or responseProtection.
+  module string
+  // Rule name
+  name string
+  // Rule type (ACCESS_CONTROL, PROTECTION, REQUEST_RATE_LIMITING)
+  type string
+  // Action taken when the rule matches
+  action() oci.waf.policy.action
+  // Condition selecting the requests the rule applies to
+  //
+  // Empty when the rule applies to every request.
+  condition string
+  // Language the condition is written in (JMESPATH)
+  conditionLanguage string
+  // Protection capabilities the rule checks requests against
+  //
+  // Empty on rules that are not PROTECTION rules.
+  protectionCapabilities() []oci.waf.policy.protectionCapability
+  // Whether the rule inspects the request body
+  //
+  // Null on rules that are not PROTECTION rules.
+  isBodyInspectionEnabled bool
+  // Maximum number of arguments a request may carry
+  maxNumberOfArguments int
+  // Maximum length of a single argument
+  maxSingleArgumentLength int
+  // Maximum combined length of all arguments
+  maxTotalArgumentLength int
+  // Maximum number of HTTP request headers
+  maxHttpRequestHeaders int
+  // Maximum length of a single HTTP request header
+  maxHttpRequestHeaderLength int
+  // HTTP methods the rule allows
+  allowedHttpMethods []string
+  // Request rate limits the rule enforces
+  //
+  // Each entry has `periodInSeconds`, `requestsLimit`, and
+  // `actionDurationInSeconds`, the time the action stays in force once the
+  // limit is reached. Empty on rules that are not REQUEST_RATE_LIMITING rules.
+  rateLimits []dict
+}
+
+// Protection capability checked by an OCI Web Application Firewall rule
+//
+// A signature set, identified by `key` and `version`, that a protection rule
+// evaluates, for example `key` 941110 for a cross-site scripting filter.
+// `excludedArgs` and `excludedRequestCookies` list the request parts the
+// capability skips.
+private oci.waf.policy.protectionCapability @defaults("key version") {
+  // Capability key
+  key string
+  // Capability version
+  version int
+  // Action taken when the capability matches
+  //
+  // Null when the capability uses the rule's action.
+  action() oci.waf.policy.action
+  // Collaborative score at which the rule's action is taken
+  //
+  // Null on capabilities that are not collaborative.
+  collaborativeActionThreshold int
+  // Request arguments the capability does not inspect
+  excludedArgs []string
+  // Request cookies the capability does not inspect
+  excludedRequestCookies []string
 }
 
 // Oracle Cloud Infrastructure (OCI) Functions
@@ -8163,6 +8411,13 @@ oci.database {
   backups() []oci.database.backup
   // Autonomous database backups across all regions
   autonomousDatabaseBackups() []oci.database.autonomousDatabaseBackup
+  // Database homes on DB systems and VM clusters
+  dbHomes() []oci.database.dbHome
+  // Databases in every database home
+  //
+  // The container databases running on DB systems and VM clusters, each with
+  // its automatic backup configuration and the key that encrypts it.
+  databases() []oci.database.database
 }
 
 // Management and user interface URLs for an Autonomous Database
@@ -8209,7 +8464,13 @@ private oci.database.backup @defaults("name") {
   // Compartment containing the backup
   compartment() oci.compartment
   // OCID of the source database (not the DB system)
-  databaseId string
+  //
+  // Deprecated in favor of database, which resolves to the database itself.
+  databaseId @maturity("deprecated") @replaced_by("oci.database.backup.database") string
+  // Database the backup was taken from
+  //
+  // Null when the database no longer exists.
+  database() oci.database.database
   // Availability domain where the backup is stored
   availabilityDomain string
   // Backup type (INCREMENTAL, FULL, VIRTUAL_FULL)
@@ -8394,6 +8655,10 @@ private oci.database.dbSystem @defaults("name") {
   // Null when the system has no maintenance window configured, which is a
   // different fact from a window scheduled for no months and no days.
   maintenanceSchedule() oci.database.maintenanceWindow
+  // Database homes installed on the DB system
+  dbHomes() []oci.database.dbHome
+  // Databases running on the DB system
+  databases() []oci.database.database
   // Lifecycle state
   //
   // For example: PROVISIONING, AVAILABLE, UPDATING, TERMINATING, TERMINATED, FAILED, MIGRATED, MAINTENANCE_IN_PROGRESS, NEEDS_ATTENTION, UPGRADING.
@@ -8414,6 +8679,148 @@ private oci.database.dbSystem @defaults("name") {
   // `Oracle-Tags` namespace records the creating principal in `CreatedBy`
   // and the creation time in `CreatedOn`.
   systemTags map[string]dict
+}
+
+// Oracle Cloud Infrastructure (OCI) database home
+//
+// Oracle Database software installation on a DB system or VM cluster, which
+// the databases in `databases` run from. `dbVersion` and `oneOffPatches`
+// report the release and interim patches applied, and
+// `isUnifiedAuditingEnabled` whether databases created in the home record
+// their audit trail through unified auditing.
+private oci.database.dbHome @defaults("name dbVersion") {
+  // Database home OCID
+  id string
+  // Display name
+  name string
+  // Compartment containing the database home
+  compartment() oci.compartment
+  // DB system the home is installed on
+  //
+  // Null for a home on a VM cluster.
+  dbSystem() oci.database.dbSystem
+  // Oracle Database version
+  dbVersion string
+  // Interim patches applied to the home
+  oneOffPatches []string
+  // Whether unified auditing is enabled
+  isUnifiedAuditingEnabled bool
+  // KMS key the home's databases are encrypted with
+  kmsKey() oci.kms.key
+  // Lifecycle state (PROVISIONING, AVAILABLE, UPDATING, TERMINATING, TERMINATED, FAILED)
+  state string
+  // Detail behind the lifecycle state
+  lifecycleDetails string
+  // Creation time
+  created time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+  // System tags
+  //
+  // Tags applied automatically by Oracle, keyed by namespace. The
+  // `Oracle-Tags` namespace records the creating principal in `CreatedBy`
+  // and the creation time in `CreatedOn`.
+  systemTags map[string]dict
+  // Databases running from the home
+  databases() []oci.database.database
+}
+
+// Oracle Cloud Infrastructure (OCI) database
+//
+// Oracle Database running in a database home on a DB system or VM cluster.
+// `autoBackupEnabled` reports whether Oracle takes automatic backups, with
+// `backupRecoveryWindowInDays` the period they cover and `backupDestinations`
+// where they are written. `lastBackup` and `lastFailedBackup` show whether the
+// backups are actually succeeding. `kmsKey` is the customer-managed key that
+// encrypts the database, null when Oracle manages the key.
+private oci.database.database @defaults("name dbUniqueName state") {
+  // Database OCID
+  id string
+  // Database name
+  name string
+  // Unique database name
+  dbUniqueName string
+  // Name of the pluggable database created with the database
+  pdbName string
+  // Compartment containing the database
+  compartment() oci.compartment
+  // Database home the database runs from
+  dbHome() oci.database.dbHome
+  // DB system the database runs on
+  //
+  // Null for a database on a VM cluster.
+  dbSystem() oci.database.dbSystem
+  // Whether the database is a container database
+  isCdb bool
+  // Workload type (OLTP, DSS)
+  dbWorkload string
+  // Character set
+  characterSet string
+  // National character set
+  ncharacterSet string
+  // Customer-managed KMS key encrypting the database
+  //
+  // Null when the database is encrypted with an Oracle-managed key.
+  kmsKey() oci.kms.key
+  // Vault holding the customer-managed key
+  kmsVault() oci.kms.vault
+  // Whether automatic backups are enabled
+  //
+  // False when the database has no backup configuration.
+  autoBackupEnabled bool
+  // Days of automatic backups kept for point-in-time recovery
+  //
+  // Null when the database has no backup configuration.
+  backupRecoveryWindowInDays int
+  // Time window automatic incremental backups start in (for example SLOT_TWO)
+  autoBackupWindow string
+  // Time window automatic full backups start in
+  autoFullBackupWindow string
+  // Day of the week automatic full backups are taken
+  autoFullBackupDay string
+  // What happens to the backups when the database is terminated
+  //
+  // One of DELETE_IMMEDIATELY or DELETE_AFTER_RETENTION_PERIOD.
+  backupDeletionPolicy string
+  // Where automatic backups are written
+  //
+  // Each entry has a `type` (OBJECT_STORE, LOCAL, NFS, RECOVERY_APPLIANCE,
+  // DBRS, AWS_S3), the destination `id`, `isRemote` and `remoteRegion` for a backup
+  // copied to another region, `isRetentionLockEnabled`,
+  // `isZeroDataLossEnabled`, and `backupRetentionPolicyOnTerminate`.
+  backupDestinations []dict
+  // When the last backup completed
+  //
+  // Null when the database has never been backed up.
+  lastBackup time
+  // Duration of the last backup, in seconds
+  lastBackupDurationInSeconds int
+  // When the last backup failed
+  //
+  // Null when no backup has failed.
+  lastFailedBackup time
+  // Release update applied to the database
+  patchVersion string
+  // Lifecycle state (e.g., PROVISIONING, AVAILABLE, UPDATING, BACKUP_IN_PROGRESS, TERMINATING, TERMINATED, FAILED)
+  state string
+  // Detail behind the lifecycle state
+  lifecycleDetails string
+  // Creation time
+  created time
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+  // System tags
+  //
+  // Tags applied automatically by Oracle, keyed by namespace. The
+  // `Oracle-Tags` namespace records the creating principal in `CreatedBy`
+  // and the creation time in `CreatedOn`.
+  systemTags map[string]dict
+  // Backups taken of the database
+  backups() []oci.database.backup
 }
 
 // Maintenance window of a database system
@@ -12189,4 +12596,92 @@ private oci.lockbox.accessRequest @defaults("name state accessDuration") {
   // `Oracle-Tags` namespace records the creating principal in `CreatedBy`
   // and the creation time in `CreatedOn`.
   systemTags map[string]dict
+}
+
+// Oracle Cloud Infrastructure (OCI) OS Management Hub
+//
+// Patch and package management for compute instances and on-premises hosts.
+// `managedInstances` lists every host registered with the service together
+// with the updates it is missing, so an instance with outstanding security
+// updates or a pending reboot can be found without signing in to it.
+oci.osManagementHub {
+  // Hosts registered with OS Management Hub
+  managedInstances() []oci.osManagementHub.managedInstance
+}
+
+// Oracle Cloud Infrastructure (OCI) OS Management Hub managed instance
+//
+// A host OS Management Hub manages, keyed by its OCID, which for an OCI
+// compute instance is the instance OCID. `securityUpdatesAvailable` counts
+// the security errata the host has not applied, `isRebootRequired` reports an
+// update waiting for a reboot to take effect, and `timeLastCheckin` whether
+// the agent is still reporting at all. `status` is NORMAL for a host that
+// checks in, and UNREACHABLE when the agent has stopped reporting.
+private oci.osManagementHub.managedInstance @defaults("name status osFamily") {
+  // Managed instance OCID
+  id string
+  // Display name
+  name string
+  // Description
+  description string
+  // Compartment containing the managed instance
+  compartment() oci.compartment
+  // Compute instance the managed instance is
+  //
+  // Null for a host outside OCI compute, such as an on-premises server.
+  instance() oci.compute.instance
+  // Where the host runs (ON_PREMISE, OCI_COMPUTE, AZURE, EC2, GCP)
+  location string
+  // Agent status (NORMAL, UNREACHABLE, ERROR, WARNING, REGISTRATION_ERROR, DELETING, ONBOARDING, REBOOTING)
+  status string
+  // Operating system family (for example ORACLE_LINUX_9, WINDOWS_SERVER_2022)
+  osFamily string
+  // Operating system name
+  osName() string
+  // Operating system version
+  osVersion() string
+  // Running kernel version
+  osKernelVersion() string
+  // Effective kernel version after Ksplice live patches
+  //
+  // Null when Ksplice is not in use.
+  kspliceEffectiveKernelVersion() string
+  // CPU architecture (X86_64, AARCH64, I686, NOARCH, SRC)
+  architecture string
+  // Whether an applied update needs a reboot to take effect
+  isRebootRequired bool
+  // Updates available to install
+  updatesAvailable int
+  // Security updates available to install
+  securityUpdatesAvailable() int
+  // Bug fix updates available to install
+  bugUpdatesAvailable() int
+  // Enhancement updates available to install
+  enhancementUpdatesAvailable() int
+  // Other updates available to install
+  otherUpdatesAvailable() int
+  // Packages installed on the host
+  installedPackages() int
+  // Windows updates installed on the host
+  installedWindowsUpdates() int
+  // Whether the host is a management station
+  isManagementStation bool
+  // Whether the host is managed by Autonomous Linux
+  isManagedByAutonomousLinux bool
+  // Whether the software sources are managed by OS Management Hub
+  areSourcesManaged() bool
+  // Notification topic for the host's job results
+  notificationTopic() oci.ons.topic
+  // Version of the management agent
+  agentVersion string
+  // When the host last checked in
+  timeLastCheckin() time
+  // When the host last booted
+  timeLastBoot time
+  // When the host's installed software list was last refreshed
+  timeLastSoftwareRefresh() time
+  // When the managed instance was registered
+  created() time
+  // When the managed instance was last updated
+  timeUpdated() time
 }

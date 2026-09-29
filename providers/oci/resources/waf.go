@@ -177,7 +177,9 @@ func (o *mqlOciWaf) policies() ([]any, error) {
 				if err != nil {
 					return nil, err
 				}
-				res = append(res, mqlInstance)
+				mqlPolicy := mqlInstance.(*mqlOciWafPolicy)
+				mqlPolicy.cacheRegion = region
+				res = append(res, mqlPolicy)
 			}
 
 			return res, nil
@@ -221,4 +223,8 @@ func (o *mqlOciWafPolicy) id() (string, error) {
 
 type mqlOciWafPolicyInternal struct {
 	ociCompartmentRef
+	// WAF policies are regional, so the detail fetch has to go back to the
+	// region the policy was listed in.
+	cacheRegion string
+	detail      ociLazy[*waf.WebAppFirewallPolicy]
 }

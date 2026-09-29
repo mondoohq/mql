@@ -201,6 +201,10 @@ type mqlOciIdentityDomainInternal struct {
 	// The domain's keep-me-signed-in settings, read once and shared by the six
 	// fields that report parts of them.
 	kmsi ociRetryLazy[*identitydomains.KmsiSetting]
+
+	// The domain's settings record, read once and shared by the fields that
+	// report parts of it.
+	settings ociRetryLazy[*identitydomains.Setting]
 }
 
 func (o *mqlOciIdentityDomain) id() (string, error) {
