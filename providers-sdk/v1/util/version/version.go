@@ -381,7 +381,8 @@ func logChanges(changes int, conf *providerConf) {
 }
 
 var (
-	reVersion = regexp.MustCompile(`Version:\s*"([^"]+)"`)
+	// \b keeps this from matching the dependencies' `MinVersion:` fields.
+	reVersion = regexp.MustCompile(`\bVersion:\s*"([^"]+)"`)
 	reName    = regexp.MustCompile(`Name:\s*"([^"]+)",`)
 )
 
@@ -555,11 +556,7 @@ func applyVersionBump(conf *providerConf) (*providerConf, error) {
 		return nil, err
 	}
 
-	res := reVersion.ReplaceAllStringFunc(conf.content, func(v string) string {
-		return "Version: \"" + version + "\""
-	})
-
-	raw, err := format.Source([]byte(res))
+	raw, err := format.Source([]byte(setVersion(conf.content, version)))
 	if err != nil {
 		return nil, err
 	}
@@ -578,6 +575,13 @@ func applyVersionBump(conf *providerConf) (*providerConf, error) {
 	}
 
 	return conf, nil
+}
+
+// setVersion replaces the provider's own Version in the config content.
+// Dependency MinVersions stay untouched: they name the lowest version of
+// another provider this one works with, not this provider's version.
+func setVersion(content string, version string) string {
+	return reVersion.ReplaceAllString(content, `Version: "`+version+`"`)
 }
 
 func bumpVersion(version string) (string, error) {
