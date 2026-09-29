@@ -18,8 +18,9 @@ import (
 )
 
 type mqlWingetInternal struct {
-	lock    sync.Mutex
-	fetched bool
+	lock     sync.Mutex
+	fetched  bool
+	fetchErr error
 }
 
 func (w *mqlWinget) id() (string, error) {
@@ -56,13 +57,18 @@ type wingetResult struct {
 //     registration, so it relies on these frameworks being staged machine-wide)
 //   - Group Policy does not disable winget or its command line
 //
-// It is null when the manifest cannot be read, since the dependencies are then
-// unknown.
+// A disabling policy makes it false on its own. Otherwise it is null when the
+// manifest cannot be read, since the dependencies are then unknown.
+//
+// version is the product version of winget.exe, which is what winget --version
+// reports. The package version can trail it: App Installer
+// 1.29.379.0_arm64 ships winget 1.29.380. When the file version cannot be
+// read, the package version stands in.
 func computeWinget(s *windows.WingetState) wingetResult {
 	enabled := s.Policy.Enabled()
 	res := wingetResult{
 		enabledByPolicy: &enabled,
-		sources:         windows.ResolveWingetSources(s.Policy, s.UserSources),
+		sources:         windows.ResolveWingetSources(s.Policy, s.UserSources.StringPtr()),
 	}
 
 	cand, id, ok := windows.SelectWingetCandidate(s.Candidates, s.MachineArch)
@@ -73,16 +79,26 @@ func computeWinget(s *windows.WingetState) wingetResult {
 	}
 
 	res.installed = true
-	res.version = &id.Version
+	version := strings.TrimSpace(string(cand.ExeVersion))
+	if version == "" {
+		version = id.Version
+	}
+	res.version = &version
 	res.architecture = &id.Architecture
 	res.packageFullName = &cand.FullName
 	exe := strings.TrimRight(cand.Root, `\`) + `\winget.exe`
 	res.path = &exe
 
-	if strings.TrimSpace(cand.Manifest) == "" {
+	if !enabled {
+		f := false
+		res.systemUsable = &f
+	}
+
+	manifest := string(cand.Manifest)
+	if strings.TrimSpace(manifest) == "" {
 		return res
 	}
-	deps, err := windows.ParseAppxDependencies(cand.Manifest)
+	deps, err := windows.ParseAppxDependencies(manifest)
 	if err != nil {
 		return res
 	}
@@ -141,20 +157,27 @@ func (r wingetResult) set(w *mqlWinget) error {
 }
 
 // populate reads winget's state once and sets every field, so every accessor
-// shares one command and one error path.
+// shares one command and one error path. A failure is kept too, so a host
+// where the read fails runs the command once, not once per field.
 func (w *mqlWinget) populate() error {
 	w.lock.Lock()
 	defer w.lock.Unlock()
-	if w.fetched {
-		return nil
+	if !w.fetched {
+		w.fetchErr = w.fetch()
+		w.fetched = true
 	}
+	return w.fetchErr
+}
 
+func (w *mqlWinget) fetch() error {
 	conn, ok := w.MqlRuntime.Connection.(shared.Connection)
 	if !ok {
 		return errors.New("winget is not supported on this connection")
 	}
 
-	var res wingetResult
+	// winget does not exist off Windows, so it is neither installed nor usable
+	f := false
+	res := wingetResult{systemUsable: &f}
 	platform := conn.Asset().Platform
 	if platform != nil && platform.IsFamily(inventory.FAMILY_WINDOWS) {
 		s, err := readWingetState(conn)
@@ -164,11 +187,7 @@ func (w *mqlWinget) populate() error {
 		res = computeWinget(s)
 	}
 
-	if err := res.set(w); err != nil {
-		return err
-	}
-	w.fetched = true
-	return nil
+	return res.set(w)
 }
 
 func readWingetState(conn shared.Connection) (*windows.WingetState, error) {

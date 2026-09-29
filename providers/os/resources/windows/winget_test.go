@@ -143,6 +143,23 @@ func TestParseWingetState(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// Windows PowerShell 5.1 writes file contents read with Get-Content as objects
+// unless the script casts them to [string]. The payload must still decode, and
+// the file text must come through.
+func TestParseWingetStatePowerShell51Strings(t *testing.T) {
+	in := `{"MachineArch":"ARM64","Packages":["` + wingetArm64 + `"],` +
+		`"Candidates":[{"FullName":"` + wingetArm64 + `","Root":"C:\\Program Files\\WindowsApps\\` + wingetArm64 + `","HasExe":true,` +
+		`"ExeVersion":"1.29.380.0","Manifest":` + psGetContentString + `}],` +
+		`"Policy":null,"UserSources":` + psGetContentString + `}`
+	s, err := ParseWingetState(strings.NewReader(in))
+	require.NoError(t, err)
+	require.Len(t, s.Candidates, 1)
+	assert.Equal(t, PSString("<Package/>\r\n"), s.Candidates[0].Manifest)
+	assert.Equal(t, PSString("1.29.380.0"), s.Candidates[0].ExeVersion)
+	require.NotNil(t, s.UserSources)
+	assert.Equal(t, PSString("<Package/>\r\n"), *s.UserSources)
+}
+
 func TestParseAppxDependencies(t *testing.T) {
 	deps, err := ParseAppxDependencies(loadWingetManifest(t))
 	require.NoError(t, err)

@@ -16668,14 +16668,16 @@ private mdm.intune @defaults("deviceId tenantId") {
 // the machine does not have, and systemUsable combines these checks, for
 // example `winget.installed && winget.systemUsable`. sources lists the package
 // sources winget uses for the SYSTEM account. On any other platform installed
-// is false.
+// and systemUsable are false.
 winget @defaults("installed version systemUsable") @maturity("preview") {
   // Whether a winget.exe the machine can run is present
   installed() bool
-  // Version of the App Installer package that provides winget.exe
+  // Version of winget.exe
   //
-  // The package version, which matches the winget release, for example
-  // 1.29.380.0. Null when winget is not installed.
+  // The product version of winget.exe, which is what `winget --version`
+  // reports, for example 1.29.380.0. It can be higher than the App Installer
+  // package version in packageFullName. When the file version cannot be read,
+  // the package version is reported. Null when winget is not installed.
   version() string
   // Processor architecture of the App Installer package, for example x64 or arm64
   architecture() string
@@ -16701,8 +16703,9 @@ winget @defaults("installed version systemUsable") @maturity("preview") {
   //
   // True when winget.exe is present for an architecture the machine runs, every
   // framework package the manifest requires is present, and Group Policy does
-  // not disable winget. Null when the package manifest cannot be read. This is
-  // a read-only check: winget is not started.
+  // not disable winget. False whenever Group Policy disables winget. Otherwise
+  // null when the package manifest cannot be read. This is a read-only check:
+  // winget is not started.
   systemUsable() bool
   // Package sources winget uses for the SYSTEM account
   //

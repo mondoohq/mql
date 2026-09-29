@@ -30,7 +30,7 @@ func wingetFixtureState(t *testing.T, packages ...string) *windows.WingetState {
 			FullName: testWingetX64,
 			Root:     `C:\Program Files\WindowsApps\` + testWingetX64,
 			HasExe:   true,
-			Manifest: string(manifest),
+			Manifest: windows.PSString(manifest),
 		}},
 	}
 }
@@ -80,6 +80,39 @@ func TestComputeWinget_ManifestUnreadable(t *testing.T) {
 	assert.True(t, r.installed)
 	assert.Nil(t, r.missingDependencies)
 	assert.Nil(t, r.systemUsable)
+}
+
+// A disabling policy settles systemUsable even when the dependencies are
+// unknown.
+func TestComputeWinget_DisabledByPolicyManifestUnreadable(t *testing.T) {
+	s := wingetFixtureState(t, testWingetX64)
+	s.Candidates[0].Manifest = ""
+	zero := int64(0)
+	s.Policy = &windows.WingetPolicy{EnableAppInstaller: &zero}
+	r := computeWinget(s)
+	assert.Nil(t, r.missingDependencies)
+	require.NotNil(t, r.systemUsable)
+	assert.False(t, *r.systemUsable)
+}
+
+// version reports winget.exe's product version, which can be ahead of the
+// package version (App Installer 1.29.379.0_arm64 ships winget 1.29.380).
+func TestComputeWinget_VersionFromExe(t *testing.T) {
+	s := wingetFixtureState(t, testWingetX64)
+	s.Candidates[0].ExeVersion = "1.29.381.0"
+	r := computeWinget(s)
+	require.NotNil(t, r.version)
+	assert.Equal(t, "1.29.381.0", *r.version)
+	require.NotNil(t, r.packageFullName)
+	assert.Equal(t, testWingetX64, *r.packageFullName)
+}
+
+func TestComputeWinget_VersionFallsBackToPackage(t *testing.T) {
+	s := wingetFixtureState(t, testWingetX64)
+	s.Candidates[0].ExeVersion = "  "
+	r := computeWinget(s)
+	require.NotNil(t, r.version)
+	assert.Equal(t, "1.29.380.0", *r.version)
 }
 
 func TestComputeWinget_NotInstalled(t *testing.T) {

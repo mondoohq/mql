@@ -25,13 +25,19 @@ import (
 //     name) plus the directory names under WindowsApps. Either source can be
 //     unreadable on its own; the union covers both.
 //   - Candidates: every Microsoft.DesktopAppInstaller package found above, with
-//     its install folder, whether winget.exe is in it, and the text of its
-//     AppxManifest.xml.
+//     its install folder, whether winget.exe is in it, the product version of
+//     that winget.exe, and the text of its AppxManifest.xml.
 //   - Policy: the App Installer Group Policy values.
 //   - UserSources: the source list winget keeps for the SYSTEM account when it
-//     runs outside its package (the way SYSTEM runs it, by path).
+//     runs outside its package (the way SYSTEM runs it, by path). It is read
+//     through Sysnative when that exists, because a 32-bit PowerShell sees
+//     SysWOW64 in place of System32.
 //
 // Every read is best effort; a missing key or file leaves its value null.
+//
+// File contents are cast to [string]: Get-Content attaches PSPath and other
+// note properties to the strings it returns, and ConvertTo-Json in Windows
+// PowerShell 5.1 writes such a string as {"value":"...","PSPath":...}.
 const PSGetWingetState = `
 $ErrorActionPreference = 'SilentlyContinue'
 $arch = (Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment').PROCESSOR_ARCHITECTURE
@@ -55,11 +61,16 @@ foreach ($n in @($names.Keys | Where-Object { $_ -like 'Microsoft.DesktopAppInst
   if (-not $root) { $root = Join-Path $apps $n }
   $manifest = $null
   $mp = Join-Path $root 'AppxManifest.xml'
-  if (Test-Path -LiteralPath $mp -PathType Leaf) { $manifest = Get-Content -LiteralPath $mp -Raw }
+  if (Test-Path -LiteralPath $mp -PathType Leaf) { $manifest = [string](Get-Content -LiteralPath $mp -Raw) }
+  $exe = Join-Path $root 'winget.exe'
+  $hasExe = [bool](Test-Path -LiteralPath $exe -PathType Leaf)
+  $exeVersion = $null
+  if ($hasExe) { $exeVersion = [string](Get-Item -LiteralPath $exe).VersionInfo.ProductVersion }
   $cands += [PSCustomObject]@{
     FullName = $n
     Root = $root
-    HasExe = [bool](Test-Path -LiteralPath (Join-Path $root 'winget.exe') -PathType Leaf)
+    HasExe = $hasExe
+    ExeVersion = $exeVersion
     Manifest = $manifest
   }
 }
@@ -89,9 +100,11 @@ if (Test-Path $gp) {
     AllowedSources = @(& $list 'AllowedSources')
   }
 }
-$us = Join-Path $env:windir 'System32\config\systemprofile\AppData\Local\Microsoft\WinGet\Settings\defaultState\user_sources'
+$sys = Join-Path $env:windir 'Sysnative'
+if (-not (Test-Path -LiteralPath $sys)) { $sys = Join-Path $env:windir 'System32' }
+$us = Join-Path $sys 'config\systemprofile\AppData\Local\Microsoft\WinGet\Settings\defaultState\user_sources'
 $userSources = $null
-if (Test-Path -LiteralPath $us -PathType Leaf) { $userSources = Get-Content -LiteralPath $us -Raw }
+if (Test-Path -LiteralPath $us -PathType Leaf) { $userSources = [string](Get-Content -LiteralPath $us -Raw) }
 [PSCustomObject]@{
   MachineArch = $arch
   Packages = @($names.Keys)
@@ -104,10 +117,11 @@ if (Test-Path -LiteralPath $us -PathType Leaf) { $userSources = Get-Content -Lit
 // WingetCandidate is one Microsoft.DesktopAppInstaller package found on disk
 // or in the package repository.
 type WingetCandidate struct {
-	FullName string `json:"FullName"`
-	Root     string `json:"Root"`
-	HasExe   bool   `json:"HasExe"`
-	Manifest string `json:"Manifest"`
+	FullName   string   `json:"FullName"`
+	Root       string   `json:"Root"`
+	HasExe     bool     `json:"HasExe"`
+	ExeVersion PSString `json:"ExeVersion"`
+	Manifest   PSString `json:"Manifest"`
 }
 
 type wingetCandidateList []WingetCandidate
@@ -150,7 +164,7 @@ type WingetState struct {
 	Packages    PSStringArray       `json:"Packages"`
 	Candidates  wingetCandidateList `json:"Candidates"`
 	Policy      *WingetPolicy       `json:"Policy"`
-	UserSources *string             `json:"UserSources"`
+	UserSources *PSString           `json:"UserSources"`
 }
 
 // ParseWingetState decodes the JSON emitted by PSGetWingetState. Empty output

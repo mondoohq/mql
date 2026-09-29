@@ -60,3 +60,52 @@ func TestPSUnwrapListRejectsGarbage(t *testing.T) {
 	var got PSInt64Array
 	assert.Error(t, json.Unmarshal([]byte(`{"value":[1,`), &got))
 }
+
+// psGetContentString is the shape Windows PowerShell 5.1 gives a Get-Content
+// result in ConvertTo-Json: the string plus the note properties Get-Content
+// attaches (key names captured from a Windows 11 host, PSDrive and PSProvider
+// trimmed).
+const psGetContentString = `{"value":"<Package/>\r\n",` +
+	`"PSPath":"Microsoft.PowerShell.Core\\FileSystem::C:\\Program Files\\WindowsApps\\App\\AppxManifest.xml",` +
+	`"PSParentPath":"Microsoft.PowerShell.Core\\FileSystem::C:\\Program Files\\WindowsApps\\App",` +
+	`"PSChildName":"AppxManifest.xml","PSDrive":{"Name":"C","Root":"C:\\"},` +
+	`"PSProvider":{"Name":"FileSystem"},"ReadCount":1}`
+
+func TestPSString(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  PSString
+	}{
+		{name: "plain string", input: `"<Package/>"`, want: "<Package/>"},
+		{name: "Get-Content string in PowerShell 5.1", input: psGetContentString, want: "<Package/>\r\n"},
+		{name: "wrapper with lower-case key", input: `{"Value":"x"}`, want: "x"},
+		{name: "wrapper holding null", input: `{"value":null}`, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got PSString
+			require.NoError(t, json.Unmarshal([]byte(tt.input), &got))
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestPSStringNullStaysAbsent(t *testing.T) {
+	var got struct {
+		S *PSString `json:"S"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(`{"S":null}`), &got))
+	assert.Nil(t, got.S)
+	assert.Nil(t, got.S.StringPtr())
+}
+
+// Objects that carry no string value keep decoding to "": an empty calculated
+// property serializes as {} (a DNS server that has never scavenged).
+func TestPSStringObjectWithoutStringValue(t *testing.T) {
+	for _, in := range []string{`{}`, `{"PSPath":"x"}`, `{"value":1}`, `[]`} {
+		got := PSString("prior")
+		require.NoError(t, json.Unmarshal([]byte(in), &got), in)
+		assert.Equal(t, PSString(""), got, in)
+	}
+}
