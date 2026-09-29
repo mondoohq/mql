@@ -21,8 +21,10 @@ var (
 	SOLARIS_PKG_REGEX = regexp.MustCompile(`^(.*)\s+([\w\-]+)$`)
 	// FMRI format: pkg://publisher/name@version[,-]branch:timestamp
 	// Branch is optional - some packages go directly from version to timestamp
+	// A publisher prefix may contain periods and hyphens (my-repo.example.com),
+	// not only word characters.
 	// Note: hyphen must be at end of character class to be literal, not a range operator
-	SOLARIS_FMRI_REGEX = regexp.MustCompile(`^pkg:\/\/([\w]+)/(.*)@([^,:-]+)(?:[,-]([^:]+))?:(.*)$`)
+	SOLARIS_FMRI_REGEX = regexp.MustCompile(`^pkg:\/\/([\w.-]+)/(.*)@([^,:-]+)(?:[,-]([^:]+))?:(.*)$`)
 )
 
 type SolarisPackage struct {

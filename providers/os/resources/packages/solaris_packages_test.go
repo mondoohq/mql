@@ -68,6 +68,16 @@ func TestFmriParser(t *testing.T) {
 	assert.Equal(t, "solaris", sp.Publisher)
 	assert.Equal(t, "1.8.0.311.11", sp.Version)
 	assert.Equal(t, "", sp.Branch)
+
+	// A publisher prefix may contain periods and hyphens. Verbatim from
+	// `pkg list -Hv` on Solaris 11.4.86 with a local repository added as
+	// publisher my-pub.test.
+	sp, err = ParseSolarisFmri("pkg://my-pub.test/site/hello@1.2.3-0.1:20260929T210609Z")
+	require.NoError(t, err)
+	assert.Equal(t, "my-pub.test", sp.Publisher)
+	assert.Equal(t, "site/hello", sp.Name)
+	assert.Equal(t, "1.2.3", sp.Version)
+	assert.Equal(t, "0.1", sp.Branch)
 }
 
 func TestSolarisPackageParser(t *testing.T) {
