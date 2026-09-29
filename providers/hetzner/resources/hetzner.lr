@@ -484,9 +484,10 @@ private hetzner.volume @defaults("id name size") {
 // load balancers attach to for internal traffic. Select a network by its
 // numeric id, for example hetzner.network(id: 4711). The ipRange field holds the
 // overall CIDR, subnets carves it into per-zone ranges, and staticRoutes lists
-// the next-hop entries with the gateway resolved to a server. Inspect servers and loadBalancers to see what is attached,
-// and exposeRoutesToVswitch to check whether the network's routes are advertised
-// to a connected vSwitch.
+// the next-hop entries with the gateway resolved to a server. Inspect servers and
+// loadBalancers to see what is attached, members for each attachment's IP,
+// subnet, and status, and exposeRoutesToVswitch to check whether the network's
+// routes are advertised to a connected vSwitch.
 private hetzner.network @defaults("id name ipRange") {
   init(id? int)
   // Network ID
@@ -521,6 +522,13 @@ private hetzner.network @defaults("id name ipRange") {
   servers() []hetzner.server
   // Load balancers attached to this network
   loadBalancers() []hetzner.loadBalancer
+  // Servers and load balancers attached to this network, with their attachment state
+  //
+  // Each member reports its private IP, alias IPs, the subnet it sits in, and
+  // the attachment `status`. A member in status `error` may run with an
+  // outdated network configuration and may be unreachable on the network. For
+  // example, `hetzner.networks.all(members.all(status == "ok"))`.
+  members() []hetzner.network.member
   // Whether routes are exposed to vSwitch
   exposeRoutesToVswitch bool
   // Resource protection (delete)
@@ -559,6 +567,35 @@ private hetzner.network.route @defaults("destination gateway") {
   // server in the project holds it, which is what a gateway pointing at a
   // vSwitch or at hardware outside the project looks like.
   gatewayServer() hetzner.server
+}
+
+// Resource attached to a Hetzner Cloud network
+//
+// A server or load balancer attached to a project network, with its private
+// IP, alias IPs, the subnet it sits in, and the state of the attachment. The
+// `server` or `loadBalancer` field resolves the attached resource according
+// to `type`.
+private hetzner.network.member @defaults("type ip status") {
+  // Network the resource is attached to
+  network() hetzner.network
+  // Member type (server or load_balancer)
+  type string
+  // Private IP address on the network
+  ip string
+  // Alias IPs on the network
+  aliasIps []string
+  // Subnet the member's IP belongs to, in CIDR notation
+  subnet string
+  // Attachment status (ok, attaching, detaching, updating, error)
+  //
+  // `error` means the last operation on the attachment failed: the member's
+  // network configuration may be out of date and it may be unreachable within
+  // the network.
+  status string
+  // Attached server; null when the member is not a server
+  server() hetzner.server
+  // Attached load balancer; null when the member is not a load balancer
+  loadBalancer() hetzner.loadBalancer
 }
 
 // Hetzner Cloud floating IP
@@ -827,9 +864,10 @@ private hetzner.loadBalancerType @defaults("id name") {
 // Hetzner Cloud firewall
 //
 // A stateful, project-level firewall rule set applied to servers
-// directly or by label selector. Surfaces the firewall `rules` (each
-// with direction, protocol, port, and the `sourceIps`/`destinationIps`
-// CIDRs), the `servers()` the firewall is directly applied to, the
+// directly or by label selector. Surfaces the `inboundRules` and
+// `outboundRules` (each with direction, protocol, port range, the
+// `sourceIps`/`destinationIps` CIDRs, and whether it opens the port to the
+// internet), the `servers` the firewall is directly applied to, the
 // `labelSelectors` it targets, applied `labels`, and the creation
 // timestamp. Select a firewall by id with `hetzner.firewall(id: 123)`.
 hetzner.firewall @defaults("id name") {
@@ -842,12 +880,26 @@ hetzner.firewall @defaults("id name") {
   created time
   // Firewall rules
   //
-  // Each rule is a dict with `direction` (in or out), `protocol` (tcp,
-  // udp, icmp, esp, or gre), `sourceIps` and `destinationIps` (lists of
+  // Deprecated in favor of inboundRules and outboundRules, which carry the
+  // same rules with the port range parsed and the open-to-internet verdict
+  // computed. Each rule is a dict with `direction` (in or out), `protocol`
+  // (tcp, udp, icmp, esp, or gre), `sourceIps` and `destinationIps` (lists of
   // CIDR blocks the rule matches), and optional `port` and `description`.
-  // An inbound rule whose `sourceIps` contains 0.0.0.0/0 or ::/0 opens the
-  // port to the entire internet.
-  rules []dict
+  rules @maturity("deprecated") []dict
+  // Inbound rules
+  //
+  // The rules with direction `in`, in the order the firewall holds them. Each
+  // rule admits traffic from its `sourceIps` on its protocol and port range.
+  // For example, `hetzner.firewalls.all(inboundRules.none(openToInternet &&
+  // portStart <= 22 && portEnd >= 22))` asserts that no firewall opens SSH to
+  // the internet.
+  inboundRules() []hetzner.firewall.rule
+  // Outbound rules
+  //
+  // The rules with direction `out`, in the order the firewall holds them. An
+  // empty list means the firewall places no restriction on outbound traffic
+  // (see egressRestricted).
+  outboundRules() []hetzner.firewall.rule
   // Whether the rule set restricts outbound traffic
   //
   // Hetzner firewalls permit all outbound traffic unless the rule set holds
@@ -874,6 +926,47 @@ hetzner.firewall @defaults("id name") {
   // remove_from_resources, each with a status and a finish time. A rule set
   // that widened shortly before an exposure finding is traceable only here.
   actions() []hetzner.action
+}
+
+// Hetzner Cloud firewall rule
+//
+// One rule of a Hetzner Cloud firewall: its direction, protocol, port range,
+// and the source or destination CIDR blocks it matches. `portStart` and
+// `portEnd` bound the port range, so a rule written as a range such as
+// `20-30` is still caught by a check for port 22. `openToInternet` flags an
+// inbound rule that admits traffic from any address.
+private hetzner.firewall.rule @defaults("direction protocol port openToInternet") {
+  // Firewall the rule belongs to
+  firewall() hetzner.firewall
+  // Direction (in or out)
+  direction string
+  // Protocol (tcp, udp, icmp, esp, or gre)
+  protocol string
+  // Port or port range as configured
+  //
+  // A single port (`443`), a range (`1024-5000`), or `any`. Null for
+  // protocols without ports (icmp, esp, gre).
+  port string
+  // First port the rule matches
+  //
+  // 1 when the port is `any`. Null for protocols without ports.
+  portStart int
+  // Last port the rule matches
+  //
+  // 65535 when the port is `any`, equal to portStart for a single port. Null
+  // for protocols without ports.
+  portEnd int
+  // Source CIDR blocks an inbound rule admits traffic from
+  sourceIps []string
+  // Destination CIDR blocks an outbound rule admits traffic to
+  destinationIps []string
+  // Rule description; null when none is set
+  description string
+  // Whether the rule admits inbound traffic from any address
+  //
+  // True for an inbound rule whose `sourceIps` contains 0.0.0.0/0 or ::/0.
+  // Always false for outbound rules.
+  openToInternet bool
 }
 
 // Hetzner Cloud TLS certificate
