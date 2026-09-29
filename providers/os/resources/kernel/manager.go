@@ -44,8 +44,12 @@ func ResolveManager(conn shared.Connection) (OSKernelManager, error) {
 
 	platform := conn.Asset().Platform
 
-	// check darwin before unix since darwin is also a unix
-	if platform.IsFamily("darwin") {
+	// check darwin before unix since darwin is also a unix. Solaris 11.4 ships
+	// /etc/os-release and is detected into the linux family, so it is matched
+	// by name before the linux test.
+	if platform.Name == "solaris" {
+		kmm = &SolarisKernelManager{conn: conn}
+	} else if platform.IsFamily("darwin") {
 		kmm = &OSXKernelManager{conn: conn}
 	} else if platform.IsFamily("linux") {
 		kmm = &LinuxKernelManager{conn: conn}
