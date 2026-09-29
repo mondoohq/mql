@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"debug/pe"
 	"encoding/binary"
+	"io"
 	"strings"
 	"testing"
 
@@ -28,10 +29,13 @@ func buildPE(t *testing.T, major, minor, build, private uint16, withVersion bool
 	const rsrcRVA = 0x1000
 	le := binary.LittleEndian
 
+	write := func(w io.Writer, v any) {
+		require.NoError(t, binary.Write(w, le, v))
+	}
 	rsrc := &bytes.Buffer{}
 	dir := func(id, offset uint32) {
-		binary.Write(rsrc, le, [4]uint32{0, 0, 0, 1 << 16}) // one id entry
-		binary.Write(rsrc, le, [2]uint32{id, offset})
+		write(rsrc, [4]uint32{0, 0, 0, 1 << 16}) // one id entry
+		write(rsrc, [2]uint32{id, offset})
 	}
 	typeID := uint32(peResourceTypeVersion)
 	if !withVersion {
@@ -41,10 +45,10 @@ func buildPE(t *testing.T, major, minor, build, private uint16, withVersion bool
 	dir(1, 0x80000000|48)
 	dir(0x409, 72)
 	vi := &bytes.Buffer{}
-	binary.Write(vi, le, [3]uint16{0, 52, 0})
+	write(vi, [3]uint16{0, 52, 0})
 	vi.Write(vsVersionInfoKey)
 	vi.Write([]byte{0, 0}) // pad to 32 bits
-	binary.Write(vi, le, [13]uint32{
+	write(vi, [13]uint32{
 		peFixedFileInfoSignature, 0x10000,
 		uint32(major)<<16 | uint32(minor), uint32(build)<<16 | uint32(private),
 		uint32(major)<<16 | uint32(minor), uint32(build)<<16 | uint32(private),
@@ -52,7 +56,7 @@ func buildPE(t *testing.T, major, minor, build, private uint16, withVersion bool
 	})
 	viBytes := vi.Bytes()
 	le.PutUint16(viBytes[0:], uint16(len(viBytes)))
-	binary.Write(rsrc, le, [4]uint32{rsrcRVA + 88, uint32(len(viBytes)), 0, 0})
+	write(rsrc, [4]uint32{rsrcRVA + 88, uint32(len(viBytes)), 0, 0})
 	require.Equal(t, 88, rsrc.Len())
 	rsrc.Write(viBytes)
 	for rsrc.Len()%0x200 != 0 {
@@ -65,7 +69,7 @@ func buildPE(t *testing.T, major, minor, build, private uint16, withVersion bool
 	le.PutUint32(dos[0x3c:], 0x40)
 	out.Write(dos)
 	out.WriteString("PE\x00\x00")
-	binary.Write(out, le, pe.FileHeader{
+	write(out, pe.FileHeader{
 		Machine:              pe.IMAGE_FILE_MACHINE_AMD64,
 		NumberOfSections:     1,
 		SizeOfOptionalHeader: uint16(binary.Size(pe.OptionalHeader64{})),
@@ -80,7 +84,7 @@ func buildPE(t *testing.T, major, minor, build, private uint16, withVersion bool
 		NumberOfRvaAndSizes: 16,
 	}
 	oh.DataDirectory[peResourceDirectoryEntry] = pe.DataDirectory{VirtualAddress: rsrcRVA, Size: uint32(rsrc.Len())}
-	binary.Write(out, le, oh)
+	write(out, oh)
 	sh := pe.SectionHeader32{
 		VirtualSize:      uint32(rsrc.Len()),
 		VirtualAddress:   rsrcRVA,
@@ -89,7 +93,7 @@ func buildPE(t *testing.T, major, minor, build, private uint16, withVersion bool
 		Characteristics:  0x40000040,
 	}
 	copy(sh.Name[:], ".rsrc")
-	binary.Write(out, le, sh)
+	write(out, sh)
 	for out.Len() < 0x200 {
 		out.WriteByte(0)
 	}

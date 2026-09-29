@@ -4,13 +4,13 @@
 package packages
 
 import (
+	"bytes"
 	"debug/pe"
 	"encoding/binary"
 	"encoding/json"
 	"io"
 	"regexp"
 	"strings"
-	"unicode/utf16"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
@@ -29,14 +29,8 @@ const (
 	peMaxExecutableSize      = 1 << 30
 )
 
-var vsVersionInfoKey = func() []byte {
-	u := utf16.Encode([]rune("VS_VERSION_INFO\x00"))
-	b := make([]byte, 2*len(u))
-	for i, c := range u {
-		binary.LittleEndian.PutUint16(b[2*i:], c)
-	}
-	return b
-}()
+// vsVersionInfoKey is "VS_VERSION_INFO" with its terminator, in UTF-16LE.
+var vsVersionInfoKey = []byte("V\x00S\x00_\x00V\x00E\x00R\x00S\x00I\x00O\x00N\x00_\x00I\x00N\x00F\x00O\x00\x00\x00")
 
 // peFileVersion returns the file version from a PE image's version resource
 // (VS_FIXEDFILEINFO dwFileVersionMS/LS), the value Windows shows as "File
@@ -154,7 +148,7 @@ func peFileVersion(r io.ReaderAt) ([]uint64, bool) {
 	if !ok {
 		return nil, false
 	}
-	if binary.LittleEndian.Uint16(vi[2:]) < fixedLen || string(vi[6:6+len(vsVersionInfoKey)]) != string(vsVersionInfoKey) {
+	if binary.LittleEndian.Uint16(vi[2:]) < fixedLen || !bytes.Equal(vi[6:6+len(vsVersionInfoKey)], vsVersionInfoKey) {
 		return nil, false
 	}
 	fixed := vi[fixedOff:]
