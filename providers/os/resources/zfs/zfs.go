@@ -6,6 +6,7 @@ package zfs
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -13,12 +14,15 @@ import (
 
 // Pool represents a parsed ZFS storage pool.
 type Pool struct {
-	Name          string
-	GUID          string
-	Size          int64
-	Allocated     int64
-	Free          int64
-	Fragmentation int64
+	Name      string
+	GUID      string
+	Size      int64
+	Allocated int64
+	Free      int64
+	// Fragmentation is nil when the pool does not report it: Oracle Solaris
+	// has no such property, and OpenZFS writes "-" without the
+	// spacemap_histogram feature.
+	Fragmentation *int64
 	PercentUsed   int64
 	Dedupratio    float64
 	Health        string
@@ -133,9 +137,12 @@ func poolsFromProperties(byName map[string]map[string]string) ([]Pool, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parsing pool %q free: %w", name, err)
 		}
-		pool.Fragmentation, err = parseInt(props["fragmentation"])
-		if err != nil {
-			return nil, fmt.Errorf("parsing pool %q fragmentation: %w", name, err)
+		if frag, ok := props["fragmentation"]; ok && frag != "-" && frag != "" {
+			n, err := strconv.ParseInt(strings.TrimSuffix(frag, "%"), 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("parsing pool %q fragmentation: %w", name, err)
+			}
+			pool.Fragmentation = &n
 		}
 		pool.PercentUsed, err = parseInt(props["capacity"])
 		if err != nil {
@@ -339,16 +346,26 @@ func parseGetJSON(jsonOutput string, command string) (map[string]map[string]stri
 // name, property, value, source. A value may itself contain tabs (user
 // properties), so the value is everything between the second and the last
 // column.
+//
+// A value may also contain a newline, which splits its row across lines:
+// Oracle Solaris images carry a `com.oracle.diskimage:original_guid` user
+// property whose value ends in one. A line with fewer than four columns is
+// therefore joined with the lines after it until the row is complete.
 func parseGetText(output string) (map[string]map[string]string, error) {
 	byName := map[string]map[string]string{}
+	pending := ""
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSuffix(line, "\r")
-		if line == "" {
+		if pending != "" {
+			line = pending + "\n" + line
+			pending = ""
+		} else if line == "" {
 			continue
 		}
 		cols := strings.Split(line, "\t")
 		if len(cols) < 4 {
-			return nil, fmt.Errorf("unexpected line %q", line)
+			pending = line
+			continue
 		}
 		name := cols[0]
 		props, ok := byName[name]
@@ -357,6 +374,9 @@ func parseGetText(output string) (map[string]map[string]string, error) {
 			byName[name] = props
 		}
 		props[cols[1]] = strings.Join(cols[2:len(cols)-1], "\t")
+	}
+	if strings.TrimSpace(pending) != "" {
+		return nil, fmt.Errorf("unexpected line %q", pending)
 	}
 	return byName, nil
 }
@@ -442,6 +462,46 @@ func convertVdev(sv zpoolStatusVdev) (Vdev, error) {
 // 2.3; older releases print "invalid option 'j'" and exit 2.
 func IsJSONUnsupported(stderr string) bool {
 	return strings.Contains(stderr, "invalid option 'j'")
+}
+
+// ParseVdevsTextSolaris parses the output of a plain `zpool status '<pool>'`
+// on Oracle Solaris, whose zpool status has neither -p, -s nor -P. It lists
+// disks by their bare device name (c0t5000CCA0D0E1F2A3d0), which Solaris
+// resolves under /dev/dsk, and file vdevs by their absolute path.
+func ParseVdevsTextSolaris(statusOutput string) ([]Vdev, error) {
+	vdevs, err := ParseVdevsText(statusOutput, statusOutput)
+	if err != nil {
+		return nil, err
+	}
+	solarisDiskPaths(vdevs)
+	return vdevs, nil
+}
+
+func solarisDiskPaths(vdevs []Vdev) {
+	for i := range vdevs {
+		v := &vdevs[i]
+		if len(v.Devices) > 0 {
+			solarisDiskPaths(v.Devices)
+			continue
+		}
+		if v.Path != "" && !strings.HasPrefix(v.Path, "/") {
+			v.Path = "/dev/dsk/" + v.Path
+			v.Type = leafVdevType(v.Path)
+		}
+	}
+}
+
+var solarisPoolVersion = regexp.MustCompile(`running ZFS pool version (\d+)`)
+
+// ParseSolarisPoolVersion reads the pool version from `zpool upgrade -v`
+// ("This system is currently running ZFS pool version 53."). Oracle Solaris
+// has no `zfs version`; the pool version is how it names its ZFS release.
+func ParseSolarisPoolVersion(output string) (string, bool) {
+	m := solarisPoolVersion.FindStringSubmatch(output)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
 }
 
 // ParseVdevsText parses the text output of `zpool status -ps '<pool>'` and
@@ -639,12 +699,22 @@ func parseInt(s string) (int64, error) {
 	return strconv.ParseInt(s, 10, 64)
 }
 
-// parseRatio parses a ZFS ratio like "1.50x" or "1.50" to float64.
+// parseRatio parses a ZFS ratio like "1.50x" or "1.50" to float64. Oracle
+// Solaris `zpool get -p` writes dedupratio in hundredths without a decimal
+// point ("300" for 3.00x); OpenZFS always writes the point, so a bare integer
+// is read as hundredths.
 func parseRatio(s string) (float64, error) {
 	if s == "-" || s == "" {
 		return 0, nil
 	}
 	s = strings.TrimSuffix(s, "x")
+	if !strings.Contains(s, ".") {
+		n, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		return float64(n) / 100, nil
+	}
 	return strconv.ParseFloat(s, 64)
 }
 

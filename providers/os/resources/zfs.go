@@ -107,7 +107,20 @@ func (z *mqlZfs) version() (string, error) {
 		return "", err
 	}
 	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
+	if exit := cmd.GetExitcode(); exit.Error != nil {
+		return "", exit.Error
+	} else if exit.Data != 0 {
+		// Oracle Solaris has no `zfs version`. It names its ZFS release by
+		// the pool version instead.
+		if strings.Contains(cmd.Stderr.Data, "unrecognized command 'version'") {
+			out, _, err := runZfsCommand(z.MqlRuntime, "zpool upgrade -v", "zfs version")
+			if err != nil {
+				return "", err
+			}
+			if v, ok := zfs.ParseSolarisPoolVersion(out); ok {
+				return v, nil
+			}
+		}
 		return "", errors.New("could not retrieve zfs version: " + cmd.Stderr.Data)
 	}
 	version := strings.TrimSpace(cmd.Stdout.Data)
@@ -119,6 +132,10 @@ func (z *mqlZfs) version() (string, error) {
 
 func (z *mqlZfs) pools() ([]any, error) {
 	out, err := runZfsJSONOrText(z.MqlRuntime, "zfs pools", "zpool get -jp all", "zpool get -Hp all")
+	if err != nil && strings.Contains(err.Error(), "missing property argument") {
+		// Oracle Solaris zpool get requires the pool names.
+		out, err = solarisPoolProperties(z.MqlRuntime)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +159,7 @@ func (z *mqlZfs) pools() ([]any, error) {
 			"sizeBytes":      llx.IntData(p.Size),
 			"allocatedBytes": llx.IntData(p.Allocated),
 			"freeBytes":      llx.IntData(p.Free),
-			"fragmentation":  llx.IntData(p.Fragmentation),
+			"fragmentation":  llx.IntDataPtr(p.Fragmentation),
 			"percentUsed":    llx.IntData(p.PercentUsed),
 			"dedupratio":     llx.FloatData(p.Dedupratio),
 			"readonly":       llx.BoolData(p.Readonly),
@@ -201,6 +218,30 @@ func (z *mqlZfs) datasets() ([]any, error) {
 	return res, nil
 }
 
+// solarisPoolProperties runs `zpool get -Hp all` with every pool named, which
+// Oracle Solaris requires.
+func solarisPoolProperties(runtime *plugin.Runtime) (zfsOutput, error) {
+	names, _, err := runZfsCommand(runtime, "zpool list -H -o name", "zfs pools")
+	if err != nil {
+		return zfsOutput{}, err
+	}
+	cmd := "zpool get -Hp all"
+	for name := range strings.FieldsSeq(names) {
+		if !validZfsName.MatchString(name) {
+			return zfsOutput{}, fmt.Errorf("invalid zfs pool name: %q", name)
+		}
+		cmd += fmt.Sprintf(" %q", name)
+	}
+	if cmd == "zpool get -Hp all" {
+		return zfsOutput{text: []string{""}}, nil
+	}
+	out, _, err := runZfsCommand(runtime, cmd, "zfs pools")
+	if err != nil {
+		return zfsOutput{}, err
+	}
+	return zfsOutput{text: []string{out}}, nil
+}
+
 // zfs.pool
 
 func (p *mqlZfsPool) id() (string, error) {
@@ -251,14 +292,22 @@ func (p *mqlZfsPool) vdevs() ([]any, error) {
 		fmt.Sprintf("zpool status -ps %q", p.Name.Data),
 		fmt.Sprintf("zpool status -Pps %q", p.Name.Data),
 	)
-	if err != nil {
-		return nil, err
-	}
 
 	var vdevs []zfs.Vdev
-	if out.isJSON() {
+	switch {
+	case err != nil && strings.Contains(err.Error(), "invalid option"):
+		// Oracle Solaris zpool status has neither -p, -s nor -P.
+		var text string
+		text, _, err = runZfsCommand(p.MqlRuntime, fmt.Sprintf("zpool status %q", p.Name.Data), "zfs pool vdevs")
+		if err != nil {
+			return nil, err
+		}
+		vdevs, err = zfs.ParseVdevsTextSolaris(text)
+	case err != nil:
+		return nil, err
+	case out.isJSON():
 		vdevs, err = zfs.ParseVdevs(out.json)
-	} else {
+	default:
 		vdevs, err = zfs.ParseVdevsText(out.text[0], out.text[1])
 	}
 	if err != nil {

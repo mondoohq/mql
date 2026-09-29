@@ -17636,6 +17636,9 @@ private mdadm.device @defaults("name state") {
 // encryption.
 zfs @defaults("pools") {
   // ZFS version string
+  //
+  // The OpenZFS release, for example `zfs-2.2.2-1`. Oracle Solaris names its
+  // ZFS release by the pool version instead, for example `53`.
   version() string
   // ZFS storage pools
   pools() []zfs.pool
@@ -17666,6 +17669,9 @@ zfs.pool @defaults("name health sizeBytes") {
   // Free space in bytes
   freeBytes int
   // Fragmentation percentage
+  //
+  // Null when the pool does not report it: Oracle Solaris has no such
+  // property, and OpenZFS reports none without the spacemap_histogram feature.
   fragmentation int
   // Percentage of pool space used (0-100)
   percentUsed int

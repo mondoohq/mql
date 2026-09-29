@@ -1,0 +1,14 @@
+    pool: mqltest
+      id: 13795439755298816899
+   state: ONLINE
+    scan: none requested
+  config:
+
+	NAME               STATE      READ WRITE CKSUM
+	mqltest            ONLINE        0     0     0
+	  mirror-0         ONLINE        0     0     0
+	    /var/tmp/zt/a  ONLINE        0     0     0
+	    /var/tmp/zt/b  ONLINE        0     0     0
+	  /var/tmp/zt/c    ONLINE        0     0     0
+
+  errors: No known data errors
