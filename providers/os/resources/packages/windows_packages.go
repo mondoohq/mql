@@ -4,6 +4,7 @@
 package packages
 
 import (
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -137,6 +138,14 @@ const (
 // getInstalledApps for the entire asset over one vanished hive. Scoped to
 // this one call only -- every other statement here should still surface a
 // real failure.
+//
+// Get-ItemProperty expands REG_EXPAND_SZ values with the environment of the
+// identity running the script, so another user's %LOCALAPPDATA%\App\app.exe
+// comes back as a path in the scanning identity's profile. For entries read
+// from another user's hive (Raw), RawIcon, RawLocation and RawUninstall carry
+// the three path values unexpanded; dropSupersededUninstallEntries uses those,
+// and a path still holding a %VAR% is not evidence. For every other entry
+// they yield nothing, which Windows PowerShell 5.1 writes as {}.
 const installedAppsScript = `
 $callingSid = $null
 try { $callingSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value } catch {}
@@ -161,18 +170,21 @@ if ($plKey) {
         foreach ($sid in $plKey.GetSubKeyNames()) {
             if ($skipSids.ContainsKey($sid)) { continue }
             if (-not (Test-Path "Registry::HKEY_USERS\$sid")) { continue }
-            $roots.Add(@{ Path = "Registry::HKEY_USERS\$sid\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"; Scope = 'user'; Sid = $sid })
-            $roots.Add(@{ Path = "Registry::HKEY_USERS\$sid\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"; Scope = 'user'; Sid = $sid })
+            $roots.Add(@{ Path = "Registry::HKEY_USERS\$sid\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"; Scope = 'user'; Sid = $sid; Raw = 1 })
+            $roots.Add(@{ Path = "Registry::HKEY_USERS\$sid\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"; Scope = 'user'; Sid = $sid; Raw = 1 })
         }
     } finally { $plKey.Close() }
 }
 
+$rv = { param($p, $n) if ($raw) { [string](Get-Item -LiteralPath $p).GetValue($n, $null, 'DoNotExpandEnvironmentNames') } }
 $roots | Where-Object { Test-Path $_.Path } | ForEach-Object {
     $scope = $_.Scope
     $sid = $_.Sid
+    $raw = $_.Raw
     Get-ItemProperty $_.Path -ErrorAction SilentlyContinue |
     Select-Object -Property DisplayName,DisplayVersion,Publisher,EstimatedSize,InstallSource,UninstallString,InstallLocation,DisplayIcon,InstallDate,PSPath,
-      @{Name='InstallScope';Expression={$scope}}, @{Name='InstallUser';Expression={$sid}}
+      @{Name='InstallScope';Expression={$scope}}, @{Name='InstallUser';Expression={$sid}},
+      @{N='RawIcon';E={& $rv $_.PSPath 'DisplayIcon'}}, @{N='RawLocation';E={& $rv $_.PSPath 'InstallLocation'}}, @{N='RawUninstall';E={& $rv $_.PSPath 'UninstallString'}}
 } | ConvertTo-Json -Compress
 `
 
@@ -1534,6 +1546,35 @@ func ParseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 	return dropSupersededUninstallEntries(pkgs, nil, nil), nil
 }
 
+// psOptionalString is a string an installedAppsScript calculated property may
+// leave empty. Windows PowerShell 5.1 writes a calculated property whose
+// expression yields nothing as {} rather than null, so only a JSON string is a
+// value; null, {} and anything else are absent.
+type psOptionalString struct{ v *string }
+
+func (s *psOptionalString) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || data[0] != '"' {
+		s.v = nil
+		return nil
+	}
+	var v string
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	s.v = &v
+	return nil
+}
+
+// rawOr returns the unexpanded value when the script sent one, else the
+// expanded value.
+func rawOr(raw psOptionalString, expanded string) string {
+	if raw.v != nil {
+		return *raw.v
+	}
+	return expanded
+}
+
 // parseWindowsAppPackages parses installedAppsScript's output, keeping each
 // package's uninstall evidence for dropSupersededUninstallEntries.
 func parseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]Package, error) {
@@ -1568,6 +1609,11 @@ func parseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 		// itself (see its doc comment), not derived from PSPath here.
 		InstallScope string `json:"InstallScope"`
 		InstallUser  string `json:"InstallUser"`
+		// RawIcon, RawLocation and RawUninstall are the unexpanded path
+		// values of an entry from another user's hive, absent otherwise.
+		RawIcon      psOptionalString `json:"RawIcon"`
+		RawLocation  psOptionalString `json:"RawLocation"`
+		RawUninstall psOptionalString `json:"RawUninstall"`
 	}
 
 	var entries []powershellUninstallEntry
@@ -1623,9 +1669,9 @@ func parseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 		pkg.InstallScope = entry.InstallScope
 		pkg.InstallUser = entry.InstallUser
 		pkg.uninstallEvidence = &uninstallEvidence{
-			installLocation: entry.InstallLocation,
-			uninstallString: entry.UninstallString,
-			displayIcon:     entry.DisplayIcon,
+			installLocation: rawOr(entry.RawLocation, entry.InstallLocation),
+			uninstallString: rawOr(entry.RawUninstall, entry.UninstallString),
+			displayIcon:     rawOr(entry.RawIcon, entry.DisplayIcon),
 		}
 
 		dedupKey := registryDedupKey(registryView(entry.PSPath), entry.UninstallString, registryPathLeaf(entry.PSPath))

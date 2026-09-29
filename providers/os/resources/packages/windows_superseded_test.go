@@ -4,6 +4,8 @@
 package packages
 
 import (
+	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -419,5 +421,69 @@ func TestWindowsNumericVersion(t *testing.T) {
 	for _, v := range []string{"", "131.0b9", "1.0-beta", "2024 R2", "99999999999999999999999"} {
 		_, ok := windowsNumericVersion(v)
 		assert.False(t, ok, v)
+	}
+}
+
+// otherUserApp builds an Uninstall entry from another user's hive (B) as
+// installedAppsScript emits it over a remote connection. displayIcon is what
+// Get-ItemProperty returns, already expanded with the scanning identity's
+// environment; rawIcon is the unexpanded value, or "" for an entry the script
+// read expanded, whose Raw* properties Windows PowerShell 5.1 writes as {}.
+func otherUserApp(key, version, uninstall, displayIcon, rawIcon string) string {
+	const sid = "S-1-5-21-1000-1000-1000-1002"
+	raw := `,"RawIcon":{},"RawLocation":{},"RawUninstall":{}`
+	if rawIcon != "" {
+		raw = `,"RawIcon":` + strconv.Quote(rawIcon) + `,"RawLocation":"","RawUninstall":` + strconv.Quote(uninstall)
+	}
+	return `{"DisplayName":"Example App","DisplayVersion":"` + version + `","Publisher":"Example",` +
+		`"UninstallString":` + strconv.Quote(uninstall) + `,"InstallLocation":"","DisplayIcon":` + strconv.Quote(displayIcon) + `,` +
+		`"PSPath":"Microsoft.PowerShell.Core\\Registry::HKEY_USERS\\` + sid + `\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\` + key + `",` +
+		`"InstallScope":"user","InstallUser":"` + sid + `"` + raw + `}`
+}
+
+// B's old EXE install names its program with %LOCALAPPDATA%. Expanded by the
+// scanning admin's PowerShell, that is the admin's copy, which is already at
+// 2.0 and would line up with B's newer, directory-less entry. The unexpanded
+// value keeps the per-user variable, so the file is never read and B's 1.0
+// entry is kept: B's own copy may still be 1.0.
+func TestDropSuperseded_OtherUserPerUserPathIsNotEvidence(t *testing.T) {
+	adminCopy := `C:\Users\admin\AppData\Local\Programs\App\app.exe`
+	files := map[string]string{adminCopy: "2.0.0.0"}
+	entries := []string{
+		otherUserApp("ExampleApp", "1.0", `C:\Users\admin\AppData\Local\Programs\App\uninst.exe`, adminCopy, `%LOCALAPPDATA%\Programs\App\app.exe`),
+		otherUserApp("{11111111-2222-3333-4444-555555555555}", "2.0", "MsiExec.exe /I{11111111-2222-3333-4444-555555555555}", "", ""),
+	}
+
+	pkgs, asked := dropWithFileVersions(t, files, entries...)
+	assert.Empty(t, asked, "a path that still holds a per-user variable must not be read")
+	assert.ElementsMatch(t, []string{"Example App 1.0", "Example App 2.0"}, namesAndVersions(pkgs))
+}
+
+// An unexpanded value that is already a literal path into B's profile is
+// still evidence, read from B's profile.
+func TestDropSuperseded_OtherUserLiteralPathIsEvidence(t *testing.T) {
+	bCopy := `C:\Users\b\AppData\Local\Programs\App\app.exe`
+	files := map[string]string{bCopy: "2.0.0.0"}
+	entries := []string{
+		otherUserApp("ExampleApp", "1.0", `C:\Users\b\AppData\Local\Programs\App\uninst.exe`, bCopy, bCopy),
+		otherUserApp("{11111111-2222-3333-4444-555555555555}", "2.0", "MsiExec.exe /I{11111111-2222-3333-4444-555555555555}", "", ""),
+	}
+
+	pkgs, asked := dropWithFileVersions(t, files, entries...)
+	assert.Equal(t, []string{bCopy}, asked)
+	assert.Equal(t, []string{"Example App 2.0"}, namesAndVersions(pkgs))
+}
+
+func TestPSOptionalString(t *testing.T) {
+	ptr := func(v string) *string { return &v }
+	for in, want := range map[string]*string{
+		`"%LOCALAPPDATA%\\App"`: ptr(`%LOCALAPPDATA%\App`),
+		`""`:                    ptr(""),
+		`null`:                  nil,
+		`{}`:                    nil,
+	} {
+		var got psOptionalString
+		require.NoError(t, json.Unmarshal([]byte(in), &got), in)
+		assert.Equal(t, want, got.v, in)
 	}
 }
