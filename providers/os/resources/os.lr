@@ -74,6 +74,7 @@ alias os.base.vscode = vscode
 alias os.base.vulnmgmt = vulnmgmt
 alias os.base.warp = warp
 alias os.base.windsurf = windsurf
+alias os.base.winget = winget
 alias os.base.yum = yum
 alias os.base.zed = zed
 alias os.unix.aide = aide
