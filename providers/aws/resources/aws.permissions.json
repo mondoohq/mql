@@ -1,7 +1,7 @@
 {
   "provider": "aws",
   "version": "14.0.1",
-  "generated_at": "2026-09-28T09:40:52-07:00",
+  "generated_at": "2026-09-28T14:56:59-07:00",
   "permissions": [
     "access-analyzer:GetFindingV2",
     "access-analyzer:ListAnalyzers",
@@ -349,6 +349,7 @@
     "ec2:DescribeVpnConnections",
     "ec2:DescribeVpnGateways",
     "ec2:GetAllowedImagesSettings",
+    "ec2:GetClientVpnEndpointAuthorizationPolicy",
     "ec2:GetEbsDefaultKmsKeyId",
     "ec2:GetEbsEncryptionByDefault",
     "ec2:GetImageBlockPublicAccessState",
@@ -3234,6 +3235,12 @@
       "service": "ec2",
       "action": "GetAllowedImagesSettings",
       "source_file": "aws_ec2_account_settings.go"
+    },
+    {
+      "permission": "ec2:GetClientVpnEndpointAuthorizationPolicy",
+      "service": "ec2",
+      "action": "GetClientVpnEndpointAuthorizationPolicy",
+      "source_file": "aws_ec2_clientvpn.go"
     },
     {
       "permission": "ec2:GetEbsDefaultKmsKeyId",

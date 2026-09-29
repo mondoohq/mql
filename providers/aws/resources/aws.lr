@@ -19654,6 +19654,13 @@ private aws.ec2.clientVpnConnectionLogOptions @defaults("enabled") {
   // Empty when connection logging is disabled or the endpoint writes to a
   // stream it names per connection rather than a fixed one.
   cloudWatchLogStream string
+  // Whether connection logs include the authorization policy evaluation context
+  //
+  // When true, each connection log entry records how the endpoint's
+  // authorization policy was evaluated for the connection, which is what an
+  // audit of a policy running in shadow mode reads. Null when the endpoint
+  // does not report the setting.
+  includeAuthorizationPolicyContext bool
 }
 
 // Login banner of an EC2 Client VPN endpoint
@@ -19768,6 +19775,32 @@ private aws.ec2.clientVpnEndpoint @defaults("id status region") {
   transitGateway() aws.ec2.transitgateway
   // Availability Zones the Transit Gateway association spans
   transitGatewayAvailabilityZones []string
+  // Device trust providers used for device posture evaluation
+  //
+  // Each entry carries trustProviderType (such as crowdstrike, jamf, or
+  // jumpcloud), tenantId, and publicSigningKeyUrl, the URL of the key
+  // that verifies the identity token the provider issues for a device. Empty
+  // when device posture evaluation is not configured on the endpoint, so
+  // connecting devices are not checked against any trust provider.
+  deviceTrustProviders []dict
+  // Cedar authorization policy document of the endpoint
+  //
+  // The policy, written in the Cedar policy language, that decides which
+  // connections the endpoint allows. Null when the endpoint has no
+  // authorization policy.
+  authorizationPolicyDocument() string
+  // State of the endpoint's authorization policy
+  //
+  // One of creating, updating, active, failed, or deleting. Null when the
+  // endpoint has no authorization policy.
+  authorizationPolicyStatus() string
+  // Whether the authorization policy runs in shadow mode
+  //
+  // When true, the policy is evaluated and its results are logged, but access
+  // is not enforced, so the policy does not block any connection. False when
+  // the policy is enforced. Null when the endpoint has no authorization
+  // policy.
+  authorizationPolicyInShadowMode() bool
   // Tags on the endpoint
   tags map[string]string
 }

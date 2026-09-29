@@ -3469,9 +3469,13 @@ aws.ec2.clientVpnConnectionLogOptions 13.53.4
 aws.ec2.clientVpnConnectionLogOptions.cloudWatchLogGroup 13.53.4
 aws.ec2.clientVpnConnectionLogOptions.cloudWatchLogStream 13.53.4
 aws.ec2.clientVpnConnectionLogOptions.enabled 13.53.4
+aws.ec2.clientVpnConnectionLogOptions.includeAuthorizationPolicyContext 14.0.2
 aws.ec2.clientVpnEndpoint 13.6.3
 aws.ec2.clientVpnEndpoint.arn 13.6.3
 aws.ec2.clientVpnEndpoint.authenticationOptions 13.6.3
+aws.ec2.clientVpnEndpoint.authorizationPolicyDocument 14.0.2
+aws.ec2.clientVpnEndpoint.authorizationPolicyInShadowMode 14.0.2
+aws.ec2.clientVpnEndpoint.authorizationPolicyStatus 14.0.2
 aws.ec2.clientVpnEndpoint.clientConnect 13.53.4
 aws.ec2.clientVpnEndpoint.clientConnectOptions 13.6.3
 aws.ec2.clientVpnEndpoint.clientLoginBannerOptions 13.6.3
@@ -3479,6 +3483,7 @@ aws.ec2.clientVpnEndpoint.connectionLogOptions 13.6.3
 aws.ec2.clientVpnEndpoint.connectionLogging 13.53.4
 aws.ec2.clientVpnEndpoint.createdAt 13.6.3
 aws.ec2.clientVpnEndpoint.description 13.6.3
+aws.ec2.clientVpnEndpoint.deviceTrustProviders 14.0.2
 aws.ec2.clientVpnEndpoint.dnsServers 13.6.3
 aws.ec2.clientVpnEndpoint.id 13.6.3
 aws.ec2.clientVpnEndpoint.loginBanner 13.53.4

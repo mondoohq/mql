@@ -24407,6 +24407,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.ec2.clientVpnConnectionLogOptions.cloudWatchLogStream": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2ClientVpnConnectionLogOptions).GetCloudWatchLogStream()).ToDataRes(types.String)
 	},
+	"aws.ec2.clientVpnConnectionLogOptions.includeAuthorizationPolicyContext": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2ClientVpnConnectionLogOptions).GetIncludeAuthorizationPolicyContext()).ToDataRes(types.Bool)
+	},
 	"aws.ec2.clientVpnLoginBannerOptions.enabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2ClientVpnLoginBannerOptions).GetEnabled()).ToDataRes(types.Bool)
 	},
@@ -24499,6 +24502,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.ec2.clientVpnEndpoint.transitGatewayAvailabilityZones": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2ClientVpnEndpoint).GetTransitGatewayAvailabilityZones()).ToDataRes(types.Array(types.String))
+	},
+	"aws.ec2.clientVpnEndpoint.deviceTrustProviders": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2ClientVpnEndpoint).GetDeviceTrustProviders()).ToDataRes(types.Array(types.Dict))
+	},
+	"aws.ec2.clientVpnEndpoint.authorizationPolicyDocument": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2ClientVpnEndpoint).GetAuthorizationPolicyDocument()).ToDataRes(types.String)
+	},
+	"aws.ec2.clientVpnEndpoint.authorizationPolicyStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2ClientVpnEndpoint).GetAuthorizationPolicyStatus()).ToDataRes(types.String)
+	},
+	"aws.ec2.clientVpnEndpoint.authorizationPolicyInShadowMode": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2ClientVpnEndpoint).GetAuthorizationPolicyInShadowMode()).ToDataRes(types.Bool)
 	},
 	"aws.ec2.clientVpnEndpoint.tags": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2ClientVpnEndpoint).GetTags()).ToDataRes(types.Map(types.String, types.String))
@@ -66009,6 +66024,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsEc2ClientVpnConnectionLogOptions).CloudWatchLogStream, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"aws.ec2.clientVpnConnectionLogOptions.includeAuthorizationPolicyContext": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ClientVpnConnectionLogOptions).IncludeAuthorizationPolicyContext, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
 	"aws.ec2.clientVpnLoginBannerOptions.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEc2ClientVpnLoginBannerOptions).__id, ok = v.Value.(string)
 		return
@@ -66143,6 +66162,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.ec2.clientVpnEndpoint.transitGatewayAvailabilityZones": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEc2ClientVpnEndpoint).TransitGatewayAvailabilityZones, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.clientVpnEndpoint.deviceTrustProviders": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ClientVpnEndpoint).DeviceTrustProviders, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.clientVpnEndpoint.authorizationPolicyDocument": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ClientVpnEndpoint).AuthorizationPolicyDocument, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.clientVpnEndpoint.authorizationPolicyStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ClientVpnEndpoint).AuthorizationPolicyStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.clientVpnEndpoint.authorizationPolicyInShadowMode": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2ClientVpnEndpoint).AuthorizationPolicyInShadowMode, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"aws.ec2.clientVpnEndpoint.tags": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -159613,9 +159648,10 @@ type mqlAwsEc2ClientVpnConnectionLogOptions struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsEc2ClientVpnConnectionLogOptionsInternal
-	Enabled             plugin.TValue[bool]
-	CloudWatchLogGroup  plugin.TValue[*mqlAwsCloudwatchLoggroup]
-	CloudWatchLogStream plugin.TValue[string]
+	Enabled                           plugin.TValue[bool]
+	CloudWatchLogGroup                plugin.TValue[*mqlAwsCloudwatchLoggroup]
+	CloudWatchLogStream               plugin.TValue[string]
+	IncludeAuthorizationPolicyContext plugin.TValue[bool]
 }
 
 // createAwsEc2ClientVpnConnectionLogOptions creates a new instance of this resource
@@ -159672,6 +159708,10 @@ func (c *mqlAwsEc2ClientVpnConnectionLogOptions) GetCloudWatchLogGroup() *plugin
 
 func (c *mqlAwsEc2ClientVpnConnectionLogOptions) GetCloudWatchLogStream() *plugin.TValue[string] {
 	return &c.CloudWatchLogStream
+}
+
+func (c *mqlAwsEc2ClientVpnConnectionLogOptions) GetIncludeAuthorizationPolicyContext() *plugin.TValue[bool] {
+	return &c.IncludeAuthorizationPolicyContext
 }
 
 // mqlAwsEc2ClientVpnLoginBannerOptions for the aws.ec2.clientVpnLoginBannerOptions resource
@@ -159824,6 +159864,10 @@ type mqlAwsEc2ClientVpnEndpoint struct {
 	AuthenticationOptions           plugin.TValue[[]any]
 	TransitGateway                  plugin.TValue[*mqlAwsEc2Transitgateway]
 	TransitGatewayAvailabilityZones plugin.TValue[[]any]
+	DeviceTrustProviders            plugin.TValue[[]any]
+	AuthorizationPolicyDocument     plugin.TValue[string]
+	AuthorizationPolicyStatus       plugin.TValue[string]
+	AuthorizationPolicyInShadowMode plugin.TValue[bool]
 	Tags                            plugin.TValue[map[string]any]
 }
 
@@ -160010,6 +160054,28 @@ func (c *mqlAwsEc2ClientVpnEndpoint) GetTransitGateway() *plugin.TValue[*mqlAwsE
 
 func (c *mqlAwsEc2ClientVpnEndpoint) GetTransitGatewayAvailabilityZones() *plugin.TValue[[]any] {
 	return &c.TransitGatewayAvailabilityZones
+}
+
+func (c *mqlAwsEc2ClientVpnEndpoint) GetDeviceTrustProviders() *plugin.TValue[[]any] {
+	return &c.DeviceTrustProviders
+}
+
+func (c *mqlAwsEc2ClientVpnEndpoint) GetAuthorizationPolicyDocument() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AuthorizationPolicyDocument, func() (string, error) {
+		return c.authorizationPolicyDocument()
+	})
+}
+
+func (c *mqlAwsEc2ClientVpnEndpoint) GetAuthorizationPolicyStatus() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.AuthorizationPolicyStatus, func() (string, error) {
+		return c.authorizationPolicyStatus()
+	})
+}
+
+func (c *mqlAwsEc2ClientVpnEndpoint) GetAuthorizationPolicyInShadowMode() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.AuthorizationPolicyInShadowMode, func() (bool, error) {
+		return c.authorizationPolicyInShadowMode()
+	})
 }
 
 func (c *mqlAwsEc2ClientVpnEndpoint) GetTags() *plugin.TValue[map[string]any] {

@@ -40,7 +40,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/batch v1.77.1
 	github.com/aws/aws-sdk-go-v2/service/bedrock v1.73.1
 	github.com/aws/aws-sdk-go-v2/service/bedrockagent v1.67.0
-	github.com/aws/aws-sdk-go-v2/service/bedrockagentcorecontrol v1.70.0
+	github.com/aws/aws-sdk-go-v2/service/bedrockagentcorecontrol v1.71.0
 	github.com/aws/aws-sdk-go-v2/service/budgets v1.52.1
 	github.com/aws/aws-sdk-go-v2/service/cloudformation v1.81.1
 	github.com/aws/aws-sdk-go-v2/service/cloudfront v1.73.1
@@ -68,12 +68,12 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/drs v1.50.1
 	github.com/aws/aws-sdk-go-v2/service/dsql v1.22.1
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.69.1
-	github.com/aws/aws-sdk-go-v2/service/ec2 v1.336.1
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.337.0
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.66.1
 	github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.47.1
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.99.1
 	github.com/aws/aws-sdk-go-v2/service/efs v1.49.1
-	github.com/aws/aws-sdk-go-v2/service/eks v1.101.0
+	github.com/aws/aws-sdk-go-v2/service/eks v1.102.0
 	github.com/aws/aws-sdk-go-v2/service/elasticache v1.62.0
 	github.com/aws/aws-sdk-go-v2/service/elasticbeanstalk v1.43.1
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancing v1.41.1
@@ -86,7 +86,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/fsx v1.74.1
 	github.com/aws/aws-sdk-go-v2/service/globalaccelerator v1.44.1
 	github.com/aws/aws-sdk-go-v2/service/glue v1.164.0
-	github.com/aws/aws-sdk-go-v2/service/guardduty v1.95.0
+	github.com/aws/aws-sdk-go-v2/service/guardduty v1.96.0
 	github.com/aws/aws-sdk-go-v2/service/iam v1.64.1
 	github.com/aws/aws-sdk-go-v2/service/identitystore v1.46.0
 	github.com/aws/aws-sdk-go-v2/service/inspector2 v1.60.1
@@ -128,7 +128,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/signer v1.41.1
 	github.com/aws/aws-sdk-go-v2/service/sns v1.47.2
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.52.1
-	github.com/aws/aws-sdk-go-v2/service/ssm v1.78.1
+	github.com/aws/aws-sdk-go-v2/service/ssm v1.79.0
 	github.com/aws/aws-sdk-go-v2/service/ssoadmin v1.49.1
 	github.com/aws/aws-sdk-go-v2/service/storagegateway v1.52.1
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.1
