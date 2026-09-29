@@ -22,11 +22,12 @@ const (
 	hklmWowUninstall = `Microsoft.PowerShell.Core\\Registry::HKEY_LOCAL_MACHINE\\SOFTWARE\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\`
 )
 
-// sevenZipExe23 is the entry 7-Zip's EXE installer registers under its fixed
-// key "Uninstall\7-Zip". DisplayName, DisplayVersion and the directory are
-// as observed on a Windows 11 host that was then upgraded with the MSI. The
-// UninstallString and DisplayIcon were not captured from that host; they
-// follow the shape this installer writes.
+// The two Uninstall entries captured from a Windows 11 host after 7-Zip was
+// upgraded from its EXE installer (23.01) to its MSI (26.03). The files in
+// C:\Program Files\7-Zip on that host: 7z.exe, 7zFM.exe and 7zG.exe at
+// 26.03, Uninstall.exe at 23.01.
+
+// sevenZipExe23 is the EXE installer's entry, under its fixed key "7-Zip".
 const sevenZipExe23 = `{
 	"DisplayName": "7-Zip 23.01 (x64)",
 	"DisplayVersion": "23.01",
@@ -39,27 +40,53 @@ const sevenZipExe23 = `{
 	"InstallUser": ""
 }`
 
-// sevenZipMsi26 is the entry the 7-Zip MSI registers under its product code
-// key, on the same host after the upgrade. DisplayName, DisplayVersion and
-// directory are as observed; the product code and UninstallString were not
-// captured from that host and follow 7-Zip's MSI product-code scheme.
+// sevenZipMsi26 is the MSI's entry, under its product code. It has an empty
+// InstallLocation and no DisplayIcon value at all, so nothing in it names a
+// directory.
 const sevenZipMsi26 = `{
 	"DisplayName": "7-Zip 26.03 (x64 edition)",
 	"DisplayVersion": "26.03.00.0",
 	"Publisher": "Igor Pavlov",
 	"UninstallString": "MsiExec.exe /I{23170F69-40C1-2702-2603-000001000000}",
-	"InstallLocation": "C:\\Program Files\\7-Zip\\",
-	"DisplayIcon": null,
+	"InstallLocation": "",
 	"PSPath": "` + hklmUninstall + `{23170F69-40C1-2702-2603-000001000000}",
 	"InstallScope": "machine",
 	"InstallUser": ""
 }`
+
+const sevenZipFM = `C:\Program Files\7-Zip\7zFM.exe`
+
+// sevenZipMsi26InDir is a variant of the captured MSI entry that DOES name
+// the directory, for exercising the directory rule on its own.
+var sevenZipMsi26InDir = strings.Replace(sevenZipMsi26, `"InstallLocation": ""`, `"InstallLocation": "C:\\Program Files\\7-Zip\\"`, 1)
 
 func parseEntries(t *testing.T, entries ...string) []Package {
 	t.Helper()
 	pkgs, err := ParseWindowsAppPackages(winX64Platform(), strings.NewReader("["+strings.Join(entries, ",")+"]"))
 	require.NoError(t, err)
 	return pkgs
+}
+
+// dropWithFileVersions runs the full filter, both rules, over the entries
+// with the given file versions on the target. It records which files the
+// filter asked for.
+func dropWithFileVersions(t *testing.T, files map[string]string, entries ...string) (pkgs []Package, asked []string) {
+	t.Helper()
+	raw, err := parseWindowsAppPackages(winX64Platform(), strings.NewReader("["+strings.Join(entries, ",")+"]"))
+	require.NoError(t, err)
+	reader := func(paths []string) map[string][]uint64 {
+		asked = append(asked, paths...)
+		out := map[string][]uint64{}
+		for _, p := range paths {
+			if v, ok := files[p]; ok {
+				parsed, ok := windowsNumericVersion(v)
+				require.True(t, ok, v)
+				out[p] = parsed
+			}
+		}
+		return out
+	}
+	return dropSupersededUninstallEntries(raw, nil, reader), asked
 }
 
 func namesAndVersions(pkgs []Package) []string {
@@ -70,46 +97,109 @@ func namesAndVersions(pkgs []Package) []string {
 	return out
 }
 
-// The observed case: the EXE's 23.01 entry and the MSI's 26.03 entry share
-// C:\Program Files\7-Zip\, which holds only the 26.03 files.
-func TestSupersededEntries_SevenZipExeToMsiUpgrade(t *testing.T) {
+// The captured pair: the MSI entry names no directory, so the directory rule
+// alone can't decide and both entries stay.
+func TestSupersededEntries_SevenZipDirectoryRuleAloneDoesNotFire(t *testing.T) {
+	pkgs := parseEntries(t, sevenZipExe23, sevenZipMsi26)
+	assert.ElementsMatch(t, []string{"7-Zip 23.01 (x64) 23.01", "7-Zip 26.03 (x64 edition) 26.03.00.0"}, namesAndVersions(pkgs))
+}
+
+// The captured pair with the captured files: 7zFM.exe, the EXE entry's
+// DisplayIcon, is at 26.03, above the entry's own 23.01 and equal to the MSI
+// entry's version. The EXE registration is stale.
+func TestSupersededEntries_SevenZipFileVersionRule(t *testing.T) {
+	files := map[string]string{
+		sevenZipFM:                             "26.3.0.0",
+		`C:\Program Files\7-Zip\Uninstall.exe`: "23.1.0.0",
+	}
 	for _, order := range [][]string{{sevenZipExe23, sevenZipMsi26}, {sevenZipMsi26, sevenZipExe23}} {
-		pkgs := parseEntries(t, order...)
+		pkgs, asked := dropWithFileVersions(t, files, order...)
 		require.Len(t, pkgs, 1, "the stale 23.01 registration must be dropped: %v", namesAndVersions(pkgs))
 		assert.Equal(t, "7-Zip 26.03 (x64 edition)", pkgs[0].Name)
 		assert.Equal(t, "26.03.00.0", pkgs[0].Version)
 		assert.Nil(t, pkgs[0].uninstallEvidence, "path evidence must not outlive the filter")
+		assert.Equal(t, []string{sevenZipFM}, asked, "only the main executable is read, never the uninstaller")
 	}
 }
 
-// The MSI entry carries no InstallLocation. Its UninstallString names no
-// directory (MsiExec.exe /I{GUID}); DisplayIcon decides.
-func TestSupersededEntries_MsiWithoutInstallLocation(t *testing.T) {
-	t.Run("icon in the product directory places it there", func(t *testing.T) {
-		msi := strings.Replace(sevenZipMsi26, `"InstallLocation": "C:\\Program Files\\7-Zip\\"`, `"InstallLocation": ""`, 1)
-		msi = strings.Replace(msi, `"DisplayIcon": null`, `"DisplayIcon": "C:\\Program Files\\7-Zip\\7zFM.exe,0"`, 1)
+func TestSupersededEntries_FileVersionRuleKeepsBoth(t *testing.T) {
+	both := []string{"7-Zip 23.01 (x64) 23.01", "7-Zip 26.03 (x64 edition) 26.03.00.0"}
+
+	t.Run("file version equals the entry's own version", func(t *testing.T) {
+		pkgs, _ := dropWithFileVersions(t, map[string]string{sevenZipFM: "23.1.0.0"}, sevenZipExe23, sevenZipMsi26)
+		assert.ElementsMatch(t, both, namesAndVersions(pkgs))
+	})
+	t.Run("file version lines up with the other entry but is not above the entry's own", func(t *testing.T) {
+		// 26.3 is a leading run of 26.03.2, but below the entry's own 26.03.1.
+		exe := strings.Replace(sevenZipExe23, `"DisplayVersion": "23.01"`, `"DisplayVersion": "26.03.1"`, 1)
+		exe = strings.Replace(exe, `"7-Zip 23.01 (x64)"`, `"7-Zip 26.03.1 (x64)"`, 1)
+		msi := strings.Replace(sevenZipMsi26, `"DisplayVersion": "26.03.00.0"`, `"DisplayVersion": "26.03.2"`, 1)
+		pkgs, asked := dropWithFileVersions(t, map[string]string{sevenZipFM: "26.3"}, exe, msi)
+		assert.Len(t, pkgs, 2, namesAndVersions(pkgs))
+		assert.Equal(t, []string{sevenZipFM}, asked)
+	})
+	t.Run("file can't be read", func(t *testing.T) {
+		pkgs, asked := dropWithFileVersions(t, map[string]string{}, sevenZipExe23, sevenZipMsi26)
+		assert.ElementsMatch(t, both, namesAndVersions(pkgs))
+		assert.Equal(t, []string{sevenZipFM}, asked)
+	})
+	t.Run("file version matches neither entry", func(t *testing.T) {
+		pkgs, _ := dropWithFileVersions(t, map[string]string{sevenZipFM: "25.1.0.0"}, sevenZipExe23, sevenZipMsi26)
+		assert.ElementsMatch(t, both, namesAndVersions(pkgs))
+	})
+	t.Run("file version above the other entry", func(t *testing.T) {
+		pkgs, _ := dropWithFileVersions(t, map[string]string{sevenZipFM: "26.4.0.0"}, sevenZipExe23, sevenZipMsi26)
+		assert.ElementsMatch(t, both, namesAndVersions(pkgs))
+	})
+	t.Run("DisplayIcon is the uninstaller", func(t *testing.T) {
+		exe := strings.Replace(sevenZipExe23, `"DisplayIcon": "C:\\Program Files\\7-Zip\\7zFM.exe"`, `"DisplayIcon": "C:\\Program Files\\7-Zip\\Uninstall.exe,0"`, 1)
+		pkgs, asked := dropWithFileVersions(t, map[string]string{`C:\Program Files\7-Zip\Uninstall.exe`: "26.3.0.0"}, exe, sevenZipMsi26)
+		assert.ElementsMatch(t, both, namesAndVersions(pkgs))
+		assert.Empty(t, asked)
+	})
+	t.Run("no DisplayIcon on the entry with a directory", func(t *testing.T) {
+		exe := strings.Replace(sevenZipExe23, `"DisplayIcon": "C:\\Program Files\\7-Zip\\7zFM.exe",`, ``, 1)
+		pkgs, asked := dropWithFileVersions(t, map[string]string{sevenZipFM: "26.3.0.0"}, exe, sevenZipMsi26)
+		assert.ElementsMatch(t, both, namesAndVersions(pkgs))
+		assert.Empty(t, asked)
+	})
+	t.Run("different product", func(t *testing.T) {
+		msi := strings.Replace(sevenZipMsi26, `"7-Zip 26.03 (x64 edition)"`, `"7-Zip Extra 26.03 (x64 edition)"`, 1)
+		pkgs, asked := dropWithFileVersions(t, map[string]string{sevenZipFM: "26.3.0.0"}, sevenZipExe23, msi)
+		assert.Len(t, pkgs, 2)
+		assert.Empty(t, asked)
+	})
+}
+
+// The directory rule, on variants of the captured entries that name the
+// directory. No file is read when the directory rule decides.
+func TestSupersededEntries_DirectoryRule(t *testing.T) {
+	t.Run("MSI entry naming the directory", func(t *testing.T) {
+		for _, order := range [][]string{{sevenZipExe23, sevenZipMsi26InDir}, {sevenZipMsi26InDir, sevenZipExe23}} {
+			pkgs, asked := dropWithFileVersions(t, map[string]string{sevenZipFM: "26.3.0.0"}, order...)
+			require.Len(t, pkgs, 1, namesAndVersions(pkgs))
+			assert.Equal(t, "26.03.00.0", pkgs[0].Version)
+			assert.Empty(t, asked)
+		}
+	})
+
+	t.Run("MSI icon in the product directory places it there", func(t *testing.T) {
+		msi := strings.Replace(sevenZipMsi26, `"InstallLocation": "",`, `"InstallLocation": "", "DisplayIcon": "C:\\Program Files\\7-Zip\\7zFM.exe,0",`, 1)
 		pkgs := parseEntries(t, sevenZipExe23, msi)
 		require.Len(t, pkgs, 1, namesAndVersions(pkgs))
 		assert.Equal(t, "26.03.00.0", pkgs[0].Version)
 	})
 
-	t.Run("no icon: no directory, both kept", func(t *testing.T) {
-		msi := strings.Replace(sevenZipMsi26, `"InstallLocation": "C:\\Program Files\\7-Zip\\"`, `"InstallLocation": null`, 1)
-		pkgs := parseEntries(t, sevenZipExe23, msi)
-		assert.ElementsMatch(t, []string{"7-Zip 23.01 (x64) 23.01", "7-Zip 26.03 (x64 edition) 26.03.00.0"}, namesAndVersions(pkgs))
-	})
-
-	t.Run("icon cached by Windows Installer: no directory, both kept", func(t *testing.T) {
-		msi := strings.Replace(sevenZipMsi26, `"InstallLocation": "C:\\Program Files\\7-Zip\\"`, `"InstallLocation": ""`, 1)
-		msi = strings.Replace(msi, `"DisplayIcon": null`, `"DisplayIcon": "C:\\WINDOWS\\Installer\\{23170F69-40C1-2702-2603-000001000000}\\7zFM.exe"`, 1)
+	t.Run("MSI icon cached by Windows Installer names no directory", func(t *testing.T) {
+		msi := strings.Replace(sevenZipMsi26, `"InstallLocation": "",`, `"InstallLocation": "", "DisplayIcon": "C:\\WINDOWS\\Installer\\{23170F69-40C1-2702-2603-000001000000}\\7zFM.exe",`, 1)
 		pkgs := parseEntries(t, sevenZipExe23, msi)
 		assert.Len(t, pkgs, 2, namesAndVersions(pkgs))
 	})
 
-	t.Run("EXE entry without InstallLocation falls back to its uninstaller", func(t *testing.T) {
+	t.Run("EXE entry without InstallLocation falls back to its uninstaller's directory", func(t *testing.T) {
 		exe := strings.Replace(sevenZipExe23, `"InstallLocation": "C:\\Program Files\\7-Zip\\"`, `"InstallLocation": ""`, 1)
 		exe = strings.Replace(exe, `"DisplayIcon": "C:\\Program Files\\7-Zip\\7zFM.exe"`, `"DisplayIcon": ""`, 1)
-		pkgs := parseEntries(t, exe, sevenZipMsi26)
+		pkgs := parseEntries(t, exe, sevenZipMsi26InDir)
 		require.Len(t, pkgs, 1, namesAndVersions(pkgs))
 		assert.Equal(t, "26.03.00.0", pkgs[0].Version)
 	})
@@ -128,13 +218,13 @@ func TestSupersededEntries_DifferentDirectoriesKept(t *testing.T) {
 			"PSPath": "` + hklmWowUninstall + `7-Zip",
 			"InstallScope": "machine"
 		}`
-		pkgs := parseEntries(t, x86, sevenZipMsi26)
+		pkgs := parseEntries(t, x86, sevenZipMsi26InDir)
 		assert.ElementsMatch(t, []string{"7-Zip 23.01 23.01", "7-Zip 26.03 (x64 edition) 26.03.00.0"}, namesAndVersions(pkgs))
 	})
 
 	t.Run("same architecture, different directory", func(t *testing.T) {
 		other := strings.ReplaceAll(sevenZipExe23, `C:\\Program Files\\7-Zip\\`, `D:\\Tools\\7-Zip\\`)
-		pkgs := parseEntries(t, other, sevenZipMsi26)
+		pkgs := parseEntries(t, other, sevenZipMsi26InDir)
 		assert.Len(t, pkgs, 2, namesAndVersions(pkgs))
 	})
 }
@@ -163,6 +253,26 @@ func TestSupersededEntries_DotNetUnchanged(t *testing.T) {
 	}, namesAndVersions(pkgs))
 }
 
+// The file-version rule never reads a file for .NET entries or for
+// side-by-side installs, and leaves them as they are.
+func TestSupersededEntries_FileVersionRuleLeavesDotNetAndSideBySide(t *testing.T) {
+	// The bundle host's MSI entries name no directory; its bundle entry's
+	// uninstaller is in the Package Cache. Nothing changes and nothing is read.
+	pkgs, asked := dropWithFileVersions(t, map[string]string{}, strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(bundleHost), "["), "]"))
+	assert.Len(t, pkgs, 4)
+	assert.Empty(t, asked)
+
+	// An x86 7-Zip in Program Files (x86) next to the x64 MSI: different
+	// architecture, so not the same product entry, and no file is read.
+	x86 := `{"DisplayName":"7-Zip 23.01","DisplayVersion":"23.01","Publisher":"Igor Pavlov",
+		"UninstallString":"\"C:\\Program Files (x86)\\7-Zip\\Uninstall.exe\"","InstallLocation":"C:\\Program Files (x86)\\7-Zip\\",
+		"DisplayIcon":"C:\\Program Files (x86)\\7-Zip\\7zFM.exe",
+		"PSPath":"` + hklmWowUninstall + `7-Zip","InstallScope":"machine"}`
+	pkgs, asked = dropWithFileVersions(t, map[string]string{`C:\Program Files (x86)\7-Zip\7zFM.exe`: "26.3.0.0"}, x86, sevenZipMsi26)
+	assert.Len(t, pkgs, 2, namesAndVersions(pkgs))
+	assert.Empty(t, asked)
+}
+
 // A version that does not order leaves the whole group alone.
 func TestSupersededEntries_UnorderableVersionsKept(t *testing.T) {
 	release := `{"DisplayName":"Mozilla Firefox (x64 en-US)","DisplayVersion":"130.0.1","Publisher":"Mozilla",
@@ -180,26 +290,27 @@ func TestSupersededEntries_UnorderableVersionsKept(t *testing.T) {
 func TestSupersededEntries_IdentityMustAgree(t *testing.T) {
 	t.Run("different product", func(t *testing.T) {
 		other := strings.Replace(sevenZipExe23, `"7-Zip 23.01 (x64)"`, `"7-Zip Helper 23.01 (x64)"`, 1)
-		assert.Len(t, parseEntries(t, other, sevenZipMsi26), 2)
+		assert.Len(t, parseEntries(t, other, sevenZipMsi26InDir), 2)
 	})
 	t.Run("different publisher", func(t *testing.T) {
 		other := strings.Replace(sevenZipExe23, `"Igor Pavlov"`, `"Someone Else"`, 1)
-		assert.Len(t, parseEntries(t, other, sevenZipMsi26), 2)
+		assert.Len(t, parseEntries(t, other, sevenZipMsi26InDir), 2)
 	})
 	t.Run("different install user", func(t *testing.T) {
 		other := strings.Replace(sevenZipExe23, `"InstallScope": "machine"`, `"InstallScope": "user"`, 1)
 		other = strings.Replace(other, `"InstallUser": ""`, `"InstallUser": "S-1-5-21-1-2-3-1001"`, 1)
-		assert.Len(t, parseEntries(t, other, sevenZipMsi26), 2)
+		assert.Len(t, parseEntries(t, other, sevenZipMsi26InDir), 2)
 	})
 	t.Run("equal versions are not superseded", func(t *testing.T) {
 		same := strings.Replace(sevenZipExe23, `"DisplayVersion": "23.01"`, `"DisplayVersion": "26.03"`, 1)
 		same = strings.Replace(same, `"7-Zip 23.01 (x64)"`, `"7-Zip 26.03 (x64)"`, 1)
-		assert.Len(t, parseEntries(t, same, sevenZipMsi26), 2)
+		assert.Len(t, parseEntries(t, same, sevenZipMsi26InDir), 2)
 	})
 }
 
-// The local native path reads the same values through the registry API, where
-// REG_EXPAND_SZ values arrive unexpanded.
+// The local native path reads the registry API, where REG_EXPAND_SZ values
+// arrive unexpanded. A variant of the captured entries: the EXE's uninstaller
+// written with %ProgramFiles%, the MSI naming the directory.
 func TestSupersededEntries_NativeRegistryItems(t *testing.T) {
 	sz := func(k, v string) registry.RegistryKeyItem {
 		return registry.RegistryKeyItem{Key: k, Value: registry.RegistryKeyValue{Kind: registry.SZ, String: v}}
@@ -229,13 +340,13 @@ func TestSupersededEntries_NativeRegistryItems(t *testing.T) {
 	}
 
 	expand := func(s string) string { return strings.ReplaceAll(s, "%ProgramFiles%", `C:\Program Files`) }
-	got := dropSupersededUninstallEntries(build(), expand)
+	got := dropSupersededUninstallEntries(build(), expand, nil)
 	require.Len(t, got, 1)
 	assert.Equal(t, "26.03.00.0", got[0].Version)
 
 	// Without an expansion the %ProgramFiles% path is unresolved: no
 	// directory, so nothing is dropped.
-	assert.Len(t, dropSupersededUninstallEntries(build(), nil), 2)
+	assert.Len(t, dropSupersededUninstallEntries(build(), nil, nil), 2)
 }
 
 func TestExpandMachineEnvFromProcess(t *testing.T) {

@@ -18,50 +18,63 @@ import (
 // Windows keeps one Uninstall registry entry per installer registration, not
 // per installed product. When an upgrade is done by a DIFFERENT installer
 // technology than the original install, the new installer registers its own
-// entry and never removes the old one. Observed on a Windows 11 host after
-// upgrading 7-Zip from its EXE installer (23.01) to its MSI (26.03), which
-// leaves the EXE's entry under its fixed key "Uninstall\7-Zip" and adds the
-// MSI's under its product code:
+// entry and never removes the old one. Captured on a Windows 11 host after
+// upgrading 7-Zip from its EXE installer (23.01) to its MSI (26.03):
 //
-//	DisplayName                DisplayVersion
-//	7-Zip 23.01 (x64)          23.01
-//	7-Zip 26.03 (x64 edition)  26.03.00.0
+//	key "7-Zip"
+//	  DisplayName "7-Zip 23.01 (x64)", DisplayVersion "23.01"
+//	  InstallLocation "C:\Program Files\7-Zip\"
+//	  UninstallString "\"C:\Program Files\7-Zip\Uninstall.exe\""
+//	  DisplayIcon "C:\Program Files\7-Zip\7zFM.exe"
+//	key "{23170F69-40C1-2702-2603-000001000000}"
+//	  DisplayName "7-Zip 26.03 (x64 edition)", DisplayVersion "26.03.00.0"
+//	  InstallLocation "", UninstallString "MsiExec.exe /I{23170F69-...}"
+//	  no DisplayIcon
 //
-// Both entries point at C:\Program Files\7-Zip\, which holds only the 26.03
-// files. Reporting one package per entry reports a 23.01 install that no
-// longer exists, and with it every vulnerability fixed since 23.01.
+// C:\Program Files\7-Zip held 7z.exe, 7zFM.exe and 7zG.exe at 26.03 and
+// Uninstall.exe at 23.01. Reporting one package per entry reports a 23.01
+// install that no longer exists, and with it every vulnerability fixed since.
 //
 // dropSupersededUninstallEntries removes such stale entries using only what
-// the device itself says, never a list of products:
+// the device itself says, never a list of products. Two entries are the
+// SAME PRODUCT when productIdentity agrees: the DisplayName, case-folded,
+// with a trailing architecture qualifier removed ("(x64)", "(x64 edition)",
+// "(64-bit)", ...) and with every word removed that spells the entry's OWN
+// version (a dotted number whose components are a leading run of the
+// DisplayVersion's). "7-Zip 23.01 (x64)" at 23.01 and "7-Zip 26.03 (x64
+// edition)" at 26.03.00.0 are both "7-zip"; "Java 8 Update 381" at 8.0.3810.9
+// keeps its "381". Publisher, architecture and install scope/user must also
+// agree. All versions involved must be purely numeric and dotted
+// (windowsNumericVersion).
 //
-//   - Same product. productIdentity: the DisplayName, case-folded, with a
-//     trailing architecture qualifier removed ("(x64)", "(x64 edition)",
-//     "(64-bit)", ...) and with every word removed that spells the entry's
-//     OWN version (a dotted number whose components are a leading run of the
-//     DisplayVersion's). "7-Zip 23.01 (x64)" at 23.01 and "7-Zip 26.03 (x64
-//     edition)" at 26.03.00.0 are both "7-zip". A number that is not the
-//     entry's own version stays part of the name, so "Java 8 Update 381" at
-//     8.0.3810.9 keeps its "381". Publisher, architecture and install
-//     scope/user must also agree.
-//   - Same directory. uninstallEntryDir: InstallLocation; if absent, the
-//     directory of the executable in UninstallString; if that yields none
-//     (MsiExec.exe /X{GUID} names no directory), the directory of the file
-//     in DisplayIcon. Compared case-insensitively, without a trailing
-//     backslash, and only when fully resolved (see normalizeWindowsDir).
-//   - Orderable versions. Every version in the group must be purely numeric
-//     and dotted (windowsNumericVersion). The entries below the highest are
-//     dropped; the highest, and any tie with it, are kept.
+// Rule 1, same directory. uninstallEntryDir gives each entry a directory:
+// InstallLocation; else the directory of the executable in UninstallString
+// (MsiExec.exe /I{GUID} names none); else the directory of the DisplayIcon
+// file. Compared case-insensitively without a trailing backslash, and only
+// when fully resolved (see normalizeWindowsDir). Among same-product entries
+// in one directory the entries below the highest version are dropped; ties
+// are kept, and a group with any unorderable version is left alone.
+//
+// Rule 2, file version. Rule 1 can't decide the captured pair: the MSI entry
+// names no directory. For same-product entries A and B where B names no
+// directory and A's DisplayIcon is a program (mainExecutable: an .exe outside
+// the Windows directory and not an uninstaller, since an uninstaller keeps
+// the old version), the version resource of that program is read. If its
+// file version is above A's DisplayVersion and lines up with B's
+// (versionsLineUp: one a leading run of the other, "26.3.0.0" and
+// "26.03.00.0"), A's registration is stale and is dropped. A file that can't
+// be read, carries no version, or doesn't line up drops nothing. Files are
+// read only for entries that meet every other condition, in one batch.
 //
 // Everything else keeps the behaviour of reporting one package per entry:
 // entries in different directories (real side-by-side installs: several
 // JDKs, Python per minor version, an x86 build in Program Files (x86) beside
-// an x64 build in Program Files), entries whose directory cannot be
-// determined, groups with any version that does not order, and the .NET
-// installer family, whose runtimes are designed to coexist under one shared
-// dotnet root.
+// an x64 build in Program Files), entries with no evidence either rule can
+// use, and the .NET installer family, whose runtimes are designed to coexist
+// under one shared dotnet root.
 //
 // Dropped entries are logged at debug level, naming the entry that
-// superseded them and the directory they shared.
+// superseded them, the evidence and the rule.
 
 // uninstallEvidence is what an Uninstall entry says about where the product
 // lives on disk, kept raw until dropSupersededUninstallEntries resolves it.
@@ -409,13 +422,67 @@ func isDotNetInstallerEntry(name string) bool {
 	return false
 }
 
-// dropSupersededUninstallEntries removes Add/Remove-Programs entries that an
-// entry for the same product at a higher version, installed into the same
-// directory, has superseded. See the rules at the top of this file.
+// fileVersionReader returns the version resource's file version of each of
+// the given files, keyed by the path as given. A file that is missing, can't
+// be read, or carries no version resource is absent from the result.
+type fileVersionReader func(paths []string) map[string][]uint64
+
+// uninstallerBinary matches file names of uninstallers ("Uninstall.exe",
+// "unins000.exe", "Uninst.exe", "uninstaller.exe"). An upgrade that switches
+// installer technology leaves the old uninstaller behind, so its version
+// says nothing about what is installed.
+var uninstallerBinary = regexp.MustCompile(`(?i)unins`)
+
+// mainExecutable returns the program an entry's DisplayIcon names, when it is
+// usable as evidence of the installed version: an absolute .exe path outside
+// the Windows directory and outside the shared roots (see
+// normalizeWindowsDir), and not an uninstaller. Returns "" otherwise.
+func mainExecutable(ev *uninstallEvidence, expandEnv func(string) string) string {
+	if ev == nil {
+		return ""
+	}
+	icon := iconFilePath(ev.displayIcon)
+	if icon == "" {
+		return ""
+	}
+	if expandEnv != nil {
+		icon = expandEnv(icon)
+	}
+	icon = strings.ReplaceAll(icon, "/", `\`)
+	if strings.Contains(icon, "%") || !strings.HasSuffix(strings.ToLower(icon), ".exe") {
+		return ""
+	}
+	base := icon[strings.LastIndexByte(icon, '\\')+1:]
+	if uninstallerBinary.MatchString(base) {
+		return ""
+	}
+	if normalizeWindowsDir(parentDir(icon), nil) == "" {
+		return ""
+	}
+	return icon
+}
+
+// versionsLineUp reports whether a file version and a DisplayVersion name the
+// same release: one is a leading run of the other and the shorter has at
+// least two components ("26.3.0.0" and "26.03.00.0", "26.03" and
+// "26.03.00.0").
+func versionsLineUp(a, b []uint64) bool {
+	if min(len(a), len(b)) < 2 {
+		return false
+	}
+	return isLeadingRun(a, b) || isLeadingRun(b, a)
+}
+
+// dropSupersededUninstallEntries removes Add/Remove-Programs entries that
+// another entry for the same product at a higher version has superseded. See
+// the rules at the top of this file.
+//
 // expandEnv, when non-nil, expands %VAR% references in the entries' paths.
-// Order of the kept packages is preserved, and the raw path evidence is
-// cleared from every package on the way out.
-func dropSupersededUninstallEntries(pkgs []Package, expandEnv func(string) string) []Package {
+// readVersions, when non-nil, enables the file-version rule; it is called at
+// most once, and only with the executables of entries the directory rule
+// could not decide. Order of the kept packages is preserved, and the raw path
+// evidence is cleared from every package on the way out.
+func dropSupersededUninstallEntries(pkgs []Package, expandEnv func(string) string, readVersions fileVersionReader) []Package {
 	type member struct {
 		idx     int
 		version []uint64
@@ -423,28 +490,32 @@ func dropSupersededUninstallEntries(pkgs []Package, expandEnv func(string) strin
 	}
 	groups := map[string][]member{}
 	dirs := make([]string, len(pkgs))
+	ids := make([]string, len(pkgs))
 	for i := range pkgs {
 		p := &pkgs[i]
 		if p.Format != "windows/app" || p.uninstallEvidence == nil || isDotNetInstallerEntry(p.Name) {
-			continue
-		}
-		dir := uninstallEntryDir(p.uninstallEvidence, expandEnv)
-		if dir == "" {
 			continue
 		}
 		id := productIdentity(p.Name, p.Version)
 		if id == "" {
 			continue
 		}
+		ids[i] = strings.Join([]string{
+			id, p.Arch, strings.ToLower(strings.TrimSpace(p.Vendor)), p.InstallScope, p.InstallUser,
+		}, "\x00")
+		dir := uninstallEntryDir(p.uninstallEvidence, expandEnv)
+		if dir == "" {
+			continue
+		}
 		dirs[i] = dir
 		v, ok := windowsNumericVersion(p.Version)
-		key := strings.Join([]string{
-			id, dir, p.Arch, strings.ToLower(strings.TrimSpace(p.Vendor)), p.InstallScope, p.InstallUser,
-		}, "\x00")
+		key := ids[i] + "\x00" + dir
 		groups[key] = append(groups[key], member{idx: i, version: v, ok: ok})
 	}
 
+	// Rule 1: same product, same directory, lower version.
 	drop := map[int]int{} // dropped index -> index of the entry that superseded it
+	reason := map[int]string{}
 	for _, members := range groups {
 		if len(members) < 2 {
 			continue
@@ -468,6 +539,84 @@ func dropSupersededUninstallEntries(pkgs []Package, expandEnv func(string) strin
 		for _, m := range members {
 			if compareWindowsNumericVersions(m.version, best.version) < 0 {
 				drop[m.idx] = best.idx
+				reason[m.idx] = "a newer entry for the same product is registered in the same directory"
+			}
+		}
+	}
+
+	// Rule 2: an entry whose own main executable carries the version of a
+	// same-product entry that names no directory at all.
+	if readVersions != nil {
+		type candidate struct {
+			exe    string
+			idx    int
+			own    []uint64
+			others []int
+		}
+		byID := map[string][]int{}
+		for i := range pkgs {
+			if ids[i] != "" {
+				byID[ids[i]] = append(byID[ids[i]], i)
+			}
+		}
+		var cands []candidate
+		for _, members := range byID {
+			var dirless []int
+			for _, i := range members {
+				if dirs[i] == "" {
+					dirless = append(dirless, i)
+				}
+			}
+			if len(dirless) == 0 {
+				continue
+			}
+			for _, i := range members {
+				if _, gone := drop[i]; gone {
+					continue
+				}
+				exe := mainExecutable(pkgs[i].uninstallEvidence, expandEnv)
+				own, ok := windowsNumericVersion(pkgs[i].Version)
+				if exe == "" || !ok {
+					continue
+				}
+				var others []int
+				for _, j := range dirless {
+					if j == i {
+						continue
+					}
+					if v, ok := windowsNumericVersion(pkgs[j].Version); ok && compareWindowsNumericVersions(v, own) > 0 {
+						others = append(others, j)
+					}
+				}
+				if len(others) > 0 {
+					cands = append(cands, candidate{exe: exe, idx: i, own: own, others: others})
+				}
+			}
+		}
+		if len(cands) > 0 {
+			paths := make([]string, 0, len(cands))
+			seen := map[string]struct{}{}
+			for _, c := range cands {
+				if _, dup := seen[c.exe]; !dup {
+					seen[c.exe] = struct{}{}
+					paths = append(paths, c.exe)
+				}
+			}
+			versions := readVersions(paths)
+			for _, c := range cands {
+				fv, ok := versions[c.exe]
+				if !ok || compareWindowsNumericVersions(fv, c.own) <= 0 {
+					continue
+				}
+				for _, j := range c.others {
+					bv, _ := windowsNumericVersion(pkgs[j].Version)
+					if versionsLineUp(fv, bv) {
+						drop[c.idx] = j
+						dirs[c.idx] = c.exe
+						reason[c.idx] = "its own executable carries the version of a newer entry for the same product"
+						break
+					}
+				}
 			}
 		}
 	}
@@ -480,8 +629,9 @@ func dropSupersededUninstallEntries(pkgs []Package, expandEnv func(string) strin
 				Str("version", pkgs[i].Version).
 				Str("superseded_by_name", pkgs[by].Name).
 				Str("superseded_by_version", pkgs[by].Version).
-				Str("install_dir", dirs[i]).
-				Msg("dropping superseded Add/Remove-Programs entry: a newer entry for the same product is registered in the same directory")
+				Str("evidence", dirs[i]).
+				Str("reason", reason[i]).
+				Msg("dropping superseded Add/Remove-Programs entry")
 			continue
 		}
 		p := pkgs[i]
