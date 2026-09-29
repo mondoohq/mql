@@ -136,6 +136,27 @@ func TestParseWindowsCommand(t *testing.T) {
 			executable: "agent",
 			flags:      map[string]string{"config": `C:\agent.yml`},
 		},
+		{
+			// reproduced on Windows 11: ping.exe run from a folder named
+			// "ping 1" reported the flag "1\ping.exe"
+			name:       "folder named like the program",
+			cmd:        `C:\mqlprobe\ping 1\ping.exe`,
+			executable: "ping",
+			flags:      map[string]string{},
+		},
+		{
+			name:       "folder named like the program, with arguments",
+			cmd:        `C:\Program Files\Python 3\python.exe -m pip`,
+			executable: "python",
+			flags:      map[string]string{"m": "pip"},
+		},
+		{
+			// the bare image name ends argv[0] before a later .exe argument
+			name:       "no extension, argument ending in .exe",
+			cmd:        `C:\Tools\wrapper --run C:\x\child.exe --flag`,
+			executable: "wrapper",
+			flags:      map[string]string{"run": `C:\x\child.exe`, "flag": ""},
+		},
 	}
 
 	for _, tc := range tests {

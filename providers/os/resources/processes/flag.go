@@ -156,8 +156,18 @@ func (f *FlagSet) Map() map[string]string {
 // runnable command line: CreateProcess tries each space-delimited prefix in
 // turn. Splitting it at the first space would report the rest of the path as
 // an argument, so the program ends at the first space-delimited prefix that
-// ends in .exe or .com or names the process image, and only when none does at
-// the first space.
+// matches, trying in order:
+//
+//  1. the process image with its extension ("...\ping.exe" for ping), which
+//     is exact whenever the command line starts with the executable's path
+//  2. the process image without an extension ("...\agent" for agent)
+//  3. any .exe or .com, when the image name is unknown or not in the line
+//  4. the first space
+//
+// Checking the image with its extension first keeps a folder named like the
+// program, "C:\Tools\ping 1\ping.exe", from ending the path at "C:\Tools\ping".
+// Checking the bare image before any .exe keeps an argument that ends in .exe
+// from being read as part of the program.
 func splitWindowsArgv0(cmd string, executable string) (string, string) {
 	cmd = strings.TrimLeft(cmd, " \t")
 	if cmd == "" {
@@ -180,11 +190,23 @@ func splitWindowsArgv0(cmd string, executable string) (string, string) {
 	ends = append(ends, len(cmd))
 
 	executable = strings.ToLower(executable)
-	for _, end := range ends {
-		prefix := cmd[:end]
+	program := func(prefix string) bool {
 		ext := strings.ToLower(filepathExt(prefix))
-		if ext == ".exe" || ext == ".com" || (executable != "" && windowsImageName(prefix) == executable) {
-			return prefix, cmd[end:]
+		return ext == ".exe" || ext == ".com"
+	}
+	image := func(prefix string) bool {
+		return executable != "" && windowsImageName(prefix) == executable
+	}
+	rules := []func(string) bool{
+		func(prefix string) bool { return image(prefix) && program(prefix) },
+		func(prefix string) bool { return image(prefix) && filepathExt(prefix) == "" },
+		program,
+	}
+	for _, rule := range rules {
+		for _, end := range ends {
+			if rule(cmd[:end]) {
+				return cmd[:end], cmd[end:]
+			}
 		}
 	}
 	return cmd[:ends[0]], cmd[ends[0]:]
