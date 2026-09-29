@@ -319,16 +319,58 @@ func TestWindowsRegistryKeyItemKinds(t *testing.T) {
 }
 
 // TestWindowsRegistryKeyItemUndeterminedKind covers the failure this fix exists
-// for: a value whose type could not be established must fail the read loudly
-// instead of decoding as NONE and reporting the value as empty. A key that
-// cannot be read must not look like a key that configures nothing.
+// for: a value whose type could not be established must fail loudly instead of
+// decoding as NONE and reporting the value as empty. The failure belongs to
+// that value: on a Windows 11 host under Constrained Language Mode, reg.exe
+// printed a value named 日本 as "??", so it alone went untyped, and failing the
+// decode then dropped the 15 values beside it.
 func TestWindowsRegistryKeyItemUndeterminedKind(t *testing.T) {
-	const payload = `[{"key":"ProductPolicy","value":{"data":"something","type":null,"kind":null}}]`
+	const payload = `[
+	  {"key":"ValSz","value":{"data":"hello","type":"REG_SZ","kind":null}},
+	  {"key":"日本","value":{"data":7,"type":null,"kind":null}},
+	  {"key":"ValDword","value":{"data":1,"type":"REG_DWORD","kind":null}}
+	]`
 
 	items, err := ParsePowershellRegistryKeyItems(strings.NewReader(payload))
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "could not determine the registry value type")
-	assert.Empty(t, items)
+	require.NoError(t, err)
+	require.Len(t, items, 3)
+
+	assert.NoError(t, items[0].Value.Err)
+	assert.Equal(t, "hello", items[0].Value.String)
+
+	require.Error(t, items[1].Value.Err)
+	assert.Contains(t, items[1].Value.Err.Error(), "could not determine the registry value type")
+	assert.Equal(t, NONE, items[1].Value.Kind)
+	assert.Empty(t, items[1].Value.String)
+
+	assert.NoError(t, items[2].Value.Err)
+	assert.Equal(t, int64(1), items[2].Value.Number)
+}
+
+// TestWindowsRegistryKeyItemQwordExact reads REG_QWORD values that a float64
+// cannot hold, as captured on a Windows 11 host: a FILETIME-sized value lost
+// its low digit, and the int64 maximum overflows on amd64.
+func TestWindowsRegistryKeyItemQwordExact(t *testing.T) {
+	const payload = `[
+	  {"key":"QwordFiletime","value":{"data":133700000000000001,"type":"REG_QWORD","kind":null}},
+	  {"key":"QwordMax","value":{"data":9223372036854775807,"type":"REG_QWORD","kind":null}},
+	  {"key":"QwordNegative","value":{"data":-1,"type":"REG_QWORD","kind":null}}
+	]`
+
+	items, err := ParsePowershellRegistryKeyItems(strings.NewReader(payload))
+	require.NoError(t, err)
+	require.Len(t, items, 3)
+	assert.Equal(t, int64(133700000000000001), items[0].Value.Number)
+	assert.Equal(t, "133700000000000001", items[0].Value.String)
+	assert.Equal(t, int64(9223372036854775807), items[1].Value.Number)
+	assert.Equal(t, int64(-1), items[2].Value.Number)
+}
+
+// A byte outside 0..255 is not a REG_BINARY byte.
+func TestWindowsRegistryKeyItemBinaryOutOfRange(t *testing.T) {
+	const payload = `[{"key":"Bin","value":{"data":[1,256],"type":"REG_BINARY","kind":null}}]`
+	_, err := ParsePowershellRegistryKeyItems(strings.NewReader(payload))
+	assert.Error(t, err)
 }
 
 // TestWindowsRegistryKeyItemNumericKindOnly keeps the pre-reg.exe output shape

@@ -4,6 +4,7 @@
 package registry
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -131,6 +132,10 @@ type RegistryKeyValue struct {
 	Number      int64
 	String      string
 	MultiString []string
+	// Err is set when the value's type could not be established, so its data
+	// could not be read. It belongs to this value alone: the key's other
+	// values still decode.
+	Err error
 }
 
 type RegistryKeyChild struct {
@@ -190,20 +195,38 @@ type keyKindRaw struct {
 	Kind *int
 	// Type is the reg.exe type name, e.g. REG_DWORD.
 	Type string
+	// Data holds numbers as json.Number, so a REG_QWORD keeps all 64 bits.
 	Data any
+}
+
+// registryInt64 reads a whole number out of decoded JSON data exactly.
+func registryInt64(v any) (int64, bool) {
+	n, ok := v.(json.Number)
+	if !ok {
+		return 0, false
+	}
+	i, err := n.Int64()
+	return i, err == nil
 }
 
 func (k *RegistryKeyValue) UnmarshalJSON(b []byte) error {
 	var raw keyKindRaw
 
-	// try to unmarshal the type
-	err := json.Unmarshal(b, &raw)
-	if err != nil {
+	// try to unmarshal the type. UseNumber keeps numbers out of float64,
+	// which cannot hold a REG_QWORD above 2^53 (FILETIME timestamps are).
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	if err := dec.Decode(&raw); err != nil {
 		return err
 	}
 	kind, err := resolveRegistryValueKind(raw.Type, raw.Kind)
 	if err != nil {
-		return err
+		// A value reg.exe could not name (a name outside the console code
+		// page) has no type under Constrained Language Mode. Failing the
+		// decode would discard every other value of the key with it, so the
+		// failure stays with this value.
+		k.Err = err
+		return nil
 	}
 	k.Kind = kind
 
@@ -234,19 +257,18 @@ func (k *RegistryKeyValue) UnmarshalJSON(b []byte) error {
 		}
 		data := make([]byte, len(rawData))
 		for i, v := range rawData {
-			val, ok := v.(float64)
-			if !ok {
+			val, ok := registryInt64(v)
+			if !ok || val < 0 || val > 255 {
 				return fmt.Errorf("registry key value is not a byte array: %v", raw.Data)
 			}
 			data[i] = byte(val)
 		}
 		k.Binary = data
 	case DWORD: // A number that is a valid UInt32
-		data, ok := raw.Data.(float64)
+		number, ok := registryInt64(raw.Data)
 		if !ok {
 			return fmt.Errorf("registry key value is not a number: %v", raw.Data)
 		}
-		number := int64(data)
 		// string fallback
 		k.Number = number
 		k.String = strconv.FormatInt(number, 10)
@@ -291,11 +313,10 @@ func (k *RegistryKeyValue) UnmarshalJSON(b []byte) error {
 	case RESOURCE_REQUIREMENTS_LIST:
 		log.Warn().Msg("RESOURCE_REQUIREMENTS_LIST for registry key is not supported")
 	case QWORD: // A number that is a valid UInt64
-		data, ok := raw.Data.(float64)
+		number, ok := registryInt64(raw.Data)
 		if !ok {
 			return fmt.Errorf("registry key value is not a number: %v", raw.Data)
 		}
-		number := int64(data)
 		// string fallback
 		k.Number = number
 		k.String = strconv.FormatInt(number, 10)

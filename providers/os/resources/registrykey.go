@@ -16,6 +16,7 @@ import (
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/registry"
 	"go.mondoo.com/mql/providers/os/resources/powershell"
+	"go.mondoo.com/mql/types"
 	"go.mondoo.com/ranger-rpc/codes"
 	"go.mondoo.com/ranger-rpc/status"
 )
@@ -245,6 +246,11 @@ func (k *mqlRegistrykey) properties() (map[string]any, error) {
 	res := map[string]any{}
 	for i := range entries {
 		rkey := entries[i]
+		// the map has no place for one value's error, and an empty string
+		// would report an unread value as configured to nothing
+		if rkey.Value.Err != nil {
+			return nil, fmt.Errorf("could not read registry value %s of %s: %w", rkey.Key, k.Path.Data, rkey.Value.Err)
+		}
 		res[rkey.Key] = rkey.String()
 	}
 
@@ -267,12 +273,24 @@ func (k *mqlRegistrykey) items() ([]any, error) {
 	// shared across users) and so direct reads resolve the same hive.
 	items := make([]any, len(entries))
 	for i, entry := range entries {
+		value := llx.StringData(entry.String())
+		typ := llx.StringData(entry.Kind())
+		data := llx.DictData(entry.GetRawValue())
+		// A value whose type could not be read exists, but its type and data
+		// are unknown: each of those fields carries the error rather than a
+		// NONE that reads as "empty".
+		if entry.Value.Err != nil {
+			err := fmt.Errorf("could not read registry value %s of %s: %w", entry.Key, k.Path.Data, entry.Value.Err)
+			value = &llx.RawData{Type: types.String, Error: err}
+			typ = &llx.RawData{Type: types.String, Error: err}
+			data = &llx.RawData{Type: types.Dict, Error: err}
+		}
 		o, err := CreateResource(k.MqlRuntime, "registrykey.property", map[string]*llx.RawData{
 			"path":      llx.StringData(k.Path.Data),
 			"name":      llx.StringData(entry.Key),
-			"value":     llx.StringData(entry.String()),
-			"type":      llx.StringData(entry.Kind()),
-			"data":      llx.DictData(entry.GetRawValue()),
+			"value":     value,
+			"type":      typ,
+			"data":      data,
 			"exists":    llx.BoolData(true),
 			"userSid":   llx.StringData(k.UserSid.Data),
 			"ntuserDat": llx.StringData(k.NtuserDat.Data),
