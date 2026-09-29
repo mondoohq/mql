@@ -815,8 +815,24 @@ azure.subscription.computeService.vm @defaults("name location properties.hardwar
   //
   // Empty when no user data is set. Treat as sensitive: secrets and bootstrap credentials are sometimes embedded here.
   userData() string
-  // VM extension
-  extensions() []dict
+  // VM extensions
+  //
+  // Deprecated in favor of installedExtensions, which reports each extension with its publisher, type, version, upgrade settings, and where its protected settings come from.
+  extensions() @maturity("deprecated") []dict
+  // Extensions installed on the VM
+  //
+  // Extensions run inside the guest as root or SYSTEM. Each entry carries the
+  // publisher, extension type, handler version, upgrade settings, and public
+  // settings, for example
+  // `installedExtensions.where(publisher == "Microsoft.Compute" && extensionType == "CustomScriptExtension")`.
+  installedExtensions() []azure.subscription.computeService.vm.extension
+  // Managed run commands on the VM
+  //
+  // A run command executes a script inside the guest as root or SYSTEM, or as
+  // `runAsUser` when set, so every entry is code that was pushed to the VM
+  // through the Azure control plane. Each entry reports where the script came
+  // from and how its last execution ended.
+  runCommands() []azure.subscription.computeService.vm.runCommand
   // Whether the Microsoft Defender for Endpoint (MDE) extension is installed on the VM
   mdeInstalled() bool
   // Whether the Azure Monitor Agent (AMA) extension is installed on the VM
@@ -896,6 +912,32 @@ azure.subscription.computeService.vm @defaults("name location properties.hardwar
   enableAutomaticUpdates bool
   // Patch mode for the OS ("Manual", "AutomaticByOS", "AutomaticByPlatform", "ImageDefault")
   patchMode string
+  // Patch assessment mode ("ImageDefault" or "AutomaticByPlatform")
+  //
+  // AutomaticByPlatform has Azure assess the VM for missing patches on a
+  // schedule. ImageDefault leaves assessment to the operator, so the patch
+  // counts below may be stale or absent. Null when the VM reports no OS profile.
+  patchAssessmentMode string
+  // Status of the most recent patch assessment ("InProgress", "Failed", "Succeeded", "CompletedWithWarnings", or "Unknown")
+  //
+  // Null when the VM has never reported a patch assessment.
+  patchAssessmentStatus() string
+  // When the most recent patch assessment was last updated
+  //
+  // Null when the VM has never reported a patch assessment.
+  patchAssessmentTime() time
+  // Critical and security patches that the most recent assessment found available and not installed
+  //
+  // Null when the VM has never reported a patch assessment.
+  pendingCriticalAndSecurityPatchCount() int
+  // Patches other than critical and security ones that the most recent assessment found available and not installed
+  //
+  // Null when the VM has never reported a patch assessment.
+  pendingOtherPatchCount() int
+  // Whether partially installed patches are waiting for a reboot to complete
+  //
+  // Null when the VM has never reported a patch assessment.
+  rebootPending() bool
   // Whether extension operations are permitted on the VM
   //
   // Extensions run inside the guest as root or SYSTEM, so while this is true
@@ -979,6 +1021,111 @@ private azure.subscription.computeService.vm.imageReference @defaults("publisher
   sharedGalleryImageId string
   // Community-gallery image unique ID; empty when not deployed from a community gallery
   communityGalleryImageId string
+}
+
+// Extension installed on an Azure virtual machine
+//
+// Extension handler installed on a VM, identified by `name`, with its
+// `publisher`, `extensionType`, handler version, upgrade settings, and
+// public `settings`. Protected settings are write-only in Azure and are never
+// returned; `protectedSettingsInKeyVault` reports whether they are supplied
+// by reference from a Key Vault secret instead.
+private azure.subscription.computeService.vm.extension @defaults("name publisher extensionType provisioningState") {
+  // ARM resource ID of the extension
+  id string
+  // Extension name
+  name string
+  // Location of the extension
+  location string
+  // Extension tags
+  tags map[string]string
+  // Extension handler publisher (for example "Microsoft.Azure.Monitor")
+  publisher string
+  // Extension type (for example "AzureMonitorLinuxAgent" or "CustomScriptExtension")
+  extensionType string
+  // Major and minor version of the extension handler
+  typeHandlerVersion string
+  // Whether the extension uses a newer minor version if one is available at deployment time
+  autoUpgradeMinorVersion bool
+  // Whether the platform upgrades the extension automatically when a newer version is released
+  enableAutomaticUpgrade bool
+  // Whether operational failures of the extension are suppressed
+  suppressFailures bool
+  // Provisioning state of the extension
+  provisioningState string
+  // Tag that forces the extension handler to run again even when its settings are unchanged
+  forceUpdateTag string
+  // Public JSON settings passed to the extension handler
+  //
+  // Query strings are removed from URL values and values under keys that
+  // name a password, secret, key, token, or SAS are replaced with
+  // "<redacted>", because such settings sometimes carry credentials that
+  // belonged in the protected settings.
+  settings dict
+  // Whether the protected settings are supplied from a Key Vault secret
+  protectedSettingsInKeyVault bool
+  // Names of the extensions that must be provisioned before this one
+  provisionAfterExtensions []string
+}
+
+// Managed run command on an Azure virtual machine
+//
+// Script that Azure runs inside the guest of a VM, identified by `name`.
+// The source is one of an inline script (`hasInlineScript`), a download
+// location (`scriptUri`), a built-in command (`commandId`), or a gallery
+// script (`galleryScriptId`). `runAsUser` names the account the script runs
+// as; when empty it runs as root or SYSTEM. `executionState` and `exitCode`
+// report how the last execution ended. Script content, parameters, output,
+// and credentials are never reported.
+private azure.subscription.computeService.vm.runCommand @defaults("name executionState runAsUser") {
+  // ARM resource ID of the run command
+  id string
+  // Run command name
+  name string
+  // Location of the run command
+  location string
+  // Run command tags
+  tags map[string]string
+  // Source of the script ("inlineScript", "scriptUri", "commandId", "galleryScript", or empty when none is set)
+  scriptSource string
+  // Whether the script is supplied inline in the run command
+  hasInlineScript bool
+  // Location the script is downloaded from, with any query string removed
+  //
+  // Empty when the script is not downloaded from a URI.
+  scriptUri string
+  // Whether the script download location carries a shared access signature
+  scriptUriHasSasToken bool
+  // Built-in command run by the run command (for example "RunShellScript"); empty for custom scripts
+  commandId string
+  // Resource ID of the gallery script version the run command executes
+  galleryScriptId string
+  // Shell the script runs in on Windows ("Default" or "Powershell7")
+  scriptShell string
+  // Account on the VM that runs the script; empty means root or SYSTEM
+  runAsUser string
+  // Seconds the script may run before it is stopped
+  timeoutInSeconds int
+  // Whether provisioning completes as soon as the script starts, without waiting for it to finish
+  asyncExecution bool
+  // Whether a failing script fails the deployment
+  treatFailureAsDeploymentFailure bool
+  // Whether script output is uploaded to a storage blob
+  outputBlobConfigured bool
+  // Whether script errors are uploaded to a storage blob
+  errorBlobConfigured bool
+  // Provisioning state of the run command
+  provisioningState string
+  // State of the last execution ("Pending", "Running", "Succeeded", "Failed", "TimedOut", "Canceled", or "Unknown")
+  executionState string
+  // Exit code returned by the last execution
+  exitCode int
+  // When the last execution started
+  startTime time
+  // When the last execution ended
+  endTime time
+  // Creation and last-modification provenance recorded by Azure Resource Manager
+  systemMetadata() azure.subscription.systemData
 }
 
 // Azure Arc-enabled server
@@ -1076,6 +1223,33 @@ azure.subscription.computeService.hybridMachine @defaults("name location osName 
   cloudMetadata dict
   // Windows license / ESU attestation profile
   licenseProfile dict
+  // Whether the Connected Machine agent accepts extension installs and updates
+  //
+  // Extensions run as root or SYSTEM on the machine, so while this is true
+  // anyone who can write the Azure resource can run code on the server.
+  // Null when the agent has not reported its configuration.
+  extensionsEnabled bool
+  // Extensions the agent allows to be installed, as "publisher/type"
+  //
+  // When the list is not empty, every extension not on it is refused.
+  extensionsAllowList []string
+  // Extensions the agent refuses to install, as "publisher/type"
+  extensionsBlockList []string
+  // Whether the agent's guest configuration service is enabled
+  //
+  // Null when the agent has not reported its configuration.
+  guestConfigurationEnabled bool
+  // Local ports the agent is allowed to listen on for incoming connections
+  incomingConnectionsPorts []string
+  // Agent configuration mode ("full" or "monitor")
+  //
+  // Monitor mode is a Microsoft-maintained lockdown that disables remote
+  // connectivity and allows only monitoring extensions.
+  agentConfigMode string
+  // Proxy the agent connects to Azure through, with any credentials removed
+  proxyUrl string
+  // Services the agent reaches without going through the proxy
+  proxyBypass []string
   // Raw HybridCompute machine properties
   properties dict
   // Creation and last-modification provenance recorded by Azure Resource Manager
@@ -1526,7 +1700,15 @@ azure.subscription.computeService.vmScaleSet @defaults("name location orchestrat
   // VMs that belong to this scale set
   instances() []azure.subscription.computeService.vmScaleSet.instance
   // Extensions installed on the scale set (each dict describes one extension)
-  extensions() []dict
+  //
+  // Deprecated in favor of installedExtensions, which reports each extension with its publisher, type, version, upgrade settings, and where its protected settings come from.
+  extensions() @maturity("deprecated") []dict
+  // Extensions in the scale set model, installed on every instance
+  //
+  // Each entry carries the publisher, extension type, handler version,
+  // upgrade settings, and public settings, for example
+  // `installedExtensions.where(extensionType == "CustomScript")`.
+  installedExtensions() []azure.subscription.computeService.vmScaleSet.extension
   // Managed identity configuration (type, system- and user-assigned identities)
   //
   // Deprecated in favor of resourceIdentity, which carries the managed
@@ -1545,6 +1727,48 @@ azure.subscription.computeService.vmScaleSet @defaults("name location orchestrat
   systemAssignedIdentity() azure.subscription.managedIdentity
   // User-assigned managed identities attached to the scale set
   userAssignedIdentities() []azure.subscription.managedIdentity
+}
+
+// Extension in an Azure Virtual Machine Scale Set model
+//
+// Extension handler the scale set installs on each of its instances,
+// identified by `name`, with its `publisher`, `extensionType`, handler
+// version, upgrade settings, and public `settings`. Protected settings are
+// write-only in Azure and are never returned; `protectedSettingsInKeyVault`
+// reports whether they are supplied by reference from a Key Vault secret
+// instead.
+private azure.subscription.computeService.vmScaleSet.extension @defaults("name publisher extensionType provisioningState") {
+  // ARM resource ID of the extension
+  id string
+  // Extension name
+  name string
+  // Extension handler publisher (for example "Microsoft.Azure.Monitor")
+  publisher string
+  // Extension type (for example "AzureMonitorLinuxAgent" or "CustomScript")
+  extensionType string
+  // Major and minor version of the extension handler
+  typeHandlerVersion string
+  // Whether the extension uses a newer minor version if one is available at deployment time
+  autoUpgradeMinorVersion bool
+  // Whether the platform upgrades the extension automatically when a newer version is released
+  enableAutomaticUpgrade bool
+  // Whether operational failures of the extension are suppressed
+  suppressFailures bool
+  // Provisioning state of the extension
+  provisioningState string
+  // Tag that forces the extension handler to run again even when its settings are unchanged
+  forceUpdateTag string
+  // Public JSON settings passed to the extension handler
+  //
+  // Query strings are removed from URL values and values under keys that
+  // name a password, secret, key, token, or SAS are replaced with
+  // "<redacted>", because such settings sometimes carry credentials that
+  // belonged in the protected settings.
+  settings dict
+  // Whether the protected settings are supplied from a Key Vault secret
+  protectedSettingsInKeyVault bool
+  // Names of the extensions that must be provisioned before this one
+  provisionAfterExtensions []string
 }
 
 // Azure scale set VM instance
@@ -7471,6 +7695,16 @@ azure.subscription.webService.appsite @defaults("id name location") {
   virtualNetworkSubnet() azure.subscription.networkService.subnet
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
+  // App Service plan the app runs on
+  //
+  // The plan decides the SKU tier, zone redundancy, and whether the app shares
+  // workers with other apps. Null when the plan is not in this subscription.
+  appServicePlan() azure.subscription.webService.appServicePlan
+  // App Service Environment the app is deployed into
+  //
+  // Null when the app runs on multi-tenant App Service rather than in an
+  // isolated App Service Environment.
+  hostingEnvironment() azure.subscription.webService.hostingEnvironment
 }
 
 // Azure Web app site outbound VNet routing configuration
@@ -9230,6 +9464,74 @@ azure.subscription.sqlService.managedInstance @defaults("name location state vCo
   subnet() azure.subscription.networkService.subnet
   // Managed databases hosted on this instance
   databases() []azure.subscription.sqlService.managedInstance.database
+  // Whether only Microsoft Entra ID authentication is allowed
+  //
+  // When true, SQL logins, including the administratorLogin, cannot sign in.
+  // Null when the instance reports no Entra administrator configuration.
+  azureAdOnlyAuthentication bool
+  // Login name of the Microsoft Entra administrator
+  //
+  // Empty when no Entra administrator is configured.
+  azureAdAdminLogin string
+  // Object ID of the Microsoft Entra administrator
+  azureAdAdminSid string
+  // Tenant ID of the Microsoft Entra administrator
+  azureAdAdminTenantId string
+  // Principal type of the Microsoft Entra administrator ("User", "Group", or "Application")
+  azureAdAdminPrincipalType string
+  // Type of the instance administrator ("ActiveDirectory")
+  azureAdAdminType string
+  // Instance-level security alert (threat detection) policy
+  securityAlertPolicy() azure.subscription.sqlService.managedInstance.securityAlertPolicy
+  // Instance-level vulnerability assessment configuration
+  //
+  // Null when vulnerability assessment has never been configured on the instance.
+  vulnerabilityAssessment() azure.subscription.sqlService.managedInstance.vulnerabilityAssessment
+}
+
+// Azure SQL Managed Instance security alert (threat detection) policy
+//
+// Microsoft Defender for SQL threat detection policy of a managed instance.
+// `state` says whether alerts are raised, `disabledAlerts` which alert types
+// are suppressed, and `emailAddresses` and `emailAccountAdmins` who is told.
+private azure.subscription.sqlService.managedInstance.securityAlertPolicy @defaults("state") {
+  // Resource ID of the policy
+  id string
+  // Alert policy state ("Enabled" or "Disabled")
+  state string
+  // Alert types disabled for this policy (for example "Sql_Injection" or "Access_Anomaly")
+  disabledAlerts []string
+  // Email addresses that receive alert notifications
+  emailAddresses []string
+  // Whether subscription administrators receive alert email
+  emailAccountAdmins bool
+  // Storage account blob endpoint that holds threat detection audit logs
+  storageEndpoint string
+  // Days threat detection logs are retained in storage (0 means unlimited)
+  retentionDays int
+  // When the policy was created
+  creationTime time
+  // Creation and last-modification provenance recorded by Azure Resource Manager
+  systemMetadata() azure.subscription.systemData
+}
+
+// Azure SQL Managed Instance vulnerability assessment
+//
+// Vulnerability assessment configuration of a managed instance: where scan
+// results are stored (`storageContainerPath`), whether recurring scans run
+// (`recurringScansEnabled`), and who receives the scan reports. Storage
+// credentials are never reported.
+private azure.subscription.sqlService.managedInstance.vulnerabilityAssessment @defaults("recurringScansEnabled") {
+  // Resource ID of the vulnerability assessment
+  id string
+  // Blob container path that holds scan results
+  storageContainerPath string
+  // Whether recurring scans are enabled
+  recurringScansEnabled bool
+  // Email addresses that receive scan reports
+  recurringScanEmails []string
+  // Whether scan reports are also sent to subscription administrators
+  emailSubscriptionAdmins bool
 }
 
 // Azure SQL Managed Instance database
@@ -17591,6 +17893,8 @@ azure.subscription.apiManagementService.service @defaults("name location skuName
   namedValues() []azure.subscription.apiManagementService.service.namedValue
   // Subscriptions issuing keys against the gateway
   subscriptions() []azure.subscription.apiManagementService.service.subscription
+  // Backends the gateway forwards API calls to
+  backends() []azure.subscription.apiManagementService.service.backend
   // Policy applied to every API on the gateway, as raw XML
   //
   // The global policy is the outermost scope in the policy chain, so
@@ -17769,6 +18073,54 @@ private azure.subscription.apiManagementService.service.subscription @defaults("
   startDate time
   // When the subscription expires
   expirationDate time
+}
+
+// Backend service behind an API Management gateway
+//
+// Service the gateway forwards API calls to, selected by `name`. `url` and
+// `protocol` say where calls go, `validateCertificateChain` and
+// `validateCertificateName` whether the gateway checks the backend's TLS
+// certificate, and the `*Configured` fields whether the gateway presents
+// credentials to the backend. Credential values are never reported.
+private azure.subscription.apiManagementService.service.backend @defaults("name url protocol") {
+  // Full resource ID of the backend
+  id string
+  // Backend identifier used in resource paths
+  name string
+  // Backend title
+  title string
+  // Backend description
+  description string
+  // Runtime URL of the backend, with any user information and query string removed
+  url string
+  // Backend communication protocol ("http" or "soap")
+  protocol string
+  // Backend type ("Single" or "Pool")
+  backendType string
+  // Management URI of the Azure resource behind the backend, such as a Function app or Logic App
+  resourceId string
+  // Whether the gateway validates the backend's TLS certificate chain
+  //
+  // Null when the backend sets no TLS options, in which case the gateway
+  // validates the chain.
+  validateCertificateChain bool
+  // Whether the gateway validates the host name in the backend's TLS certificate
+  //
+  // Null when the backend sets no TLS options, in which case the gateway
+  // validates the name.
+  validateCertificateName bool
+  // Whether the gateway sends an Authorization header to the backend
+  authorizationHeaderConfigured bool
+  // Whether the gateway adds credential headers to backend requests
+  credentialHeadersConfigured bool
+  // Whether the gateway adds credential query parameters to backend requests
+  credentialQueryConfigured bool
+  // Whether the gateway presents a client certificate to the backend
+  clientCertificateConfigured bool
+  // Proxy the gateway reaches the backend through, with any credentials removed
+  proxyUrl string
+  // Whether the proxy requires a user name and password
+  proxyCredentialsConfigured bool
 }
 
 // Microsoft Purview
@@ -20275,6 +20627,15 @@ azure.subscription.automationService.account @defaults("id name location publicN
   credentials() []azure.subscription.automationService.account.credential
   // Certificates stored in the account
   certificates() []azure.subscription.automationService.account.certificate
+  // Runbooks in the account
+  runbooks() []azure.subscription.automationService.account.runbook
+  // Webhooks that start runbooks in the account
+  //
+  // Anyone holding a webhook's URL can start its runbook without
+  // authenticating, so a webhook that never expires is a standing credential.
+  webhooks() []azure.subscription.automationService.account.webhook
+  // Hybrid Runbook Worker groups that run the account's jobs on machines outside Azure Automation
+  hybridWorkerGroups() []azure.subscription.automationService.account.hybridWorkerGroup
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
 }
@@ -20331,6 +20692,107 @@ private azure.subscription.automationService.account.certificate @defaults("name
   description string
   // When the certificate was created
   creationTime time
+  // Creation and last-modification provenance recorded by Azure Resource Manager
+  systemMetadata() azure.subscription.systemData
+}
+
+// Azure Automation runbook
+//
+// Script or workflow an Automation account runs, selected by `name`.
+// `runbookType` says what language it is written in, `state` whether a
+// published version exists, and `logVerbose` and `logProgress` whether its
+// jobs write detailed records to the job history.
+private azure.subscription.automationService.account.runbook @defaults("name runbookType state") {
+  // Runbook resource ID
+  id string
+  // Runbook name
+  name string
+  // Runbook location
+  location string
+  // Runbook tags
+  tags map[string]string
+  // Runbook type
+  //
+  // One of "PowerShell", "PowerShell72", "PowerShellWorkflow",
+  // "GraphPowerShell", "GraphPowerShellWorkflow", "Graph", "Python2",
+  // "Python3", "Python", or "Script".
+  runbookType string
+  // Runbook state ("New", "Edit", or "Published")
+  state string
+  // Runtime environment the runbook runs in
+  runtimeEnvironment string
+  // Whether verbose records are written to the job history
+  logVerbose bool
+  // Whether progress records are written to the job history
+  logProgress bool
+  // Level of activity tracing written to the job history
+  logActivityTrace int
+  // Runbook description
+  description string
+  // Provisioning state of the runbook
+  provisioningState string
+  // When the runbook was created
+  creationTime time
+  // When the runbook was last modified
+  lastModifiedTime time
+  // Identity that last modified the runbook
+  lastModifiedBy string
+  // Creation and last-modification provenance recorded by Azure Resource Manager
+  systemMetadata() azure.subscription.systemData
+}
+
+// Azure Automation webhook
+//
+// HTTP endpoint that starts a runbook, selected by `name`. Whoever holds the
+// webhook URL can start the runbook without authenticating, so `isEnabled`
+// and `expiryTime` bound how long that URL works. The URL and the parameters
+// passed to the runbook are never reported.
+private azure.subscription.automationService.account.webhook @defaults("name isEnabled expiryTime") {
+  // Webhook resource ID
+  id string
+  // Webhook name
+  name string
+  // Whether the webhook accepts calls
+  isEnabled bool
+  // When the webhook stops accepting calls
+  expiryTime time
+  // When the webhook was last called
+  lastInvokedTime time
+  // Webhook description
+  description string
+  // When the webhook was created
+  creationTime time
+  // When the webhook was last modified
+  lastModifiedTime time
+  // Identity that last modified the webhook
+  lastModifiedBy string
+  // Runbook the webhook starts
+  runbook() azure.subscription.automationService.account.runbook
+  // Hybrid Runbook Worker group the started job runs on
+  //
+  // Null when the job runs in Azure Automation.
+  hybridWorkerGroup() azure.subscription.automationService.account.hybridWorkerGroup
+  // Creation and last-modification provenance recorded by Azure Resource Manager
+  systemMetadata() azure.subscription.systemData
+}
+
+// Azure Automation Hybrid Runbook Worker group
+//
+// Group of machines outside Azure Automation that run the account's jobs,
+// selected by `name`. `groupType` says whether the group was created by a
+// user or by a solution, and `credential` is the Run As credential the
+// group's jobs use, when one is set.
+private azure.subscription.automationService.account.hybridWorkerGroup @defaults("name groupType") {
+  // Hybrid Runbook Worker group resource ID
+  id string
+  // Group name
+  name string
+  // Group type ("User" or "System")
+  groupType string
+  // Run As credential jobs on the group use
+  //
+  // Null when jobs run as the worker's local system account.
+  credential() azure.subscription.automationService.account.credential
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
 }
@@ -20451,6 +20913,8 @@ private azure.subscription.dataProtectionService {
   subscriptionId string
   // Backup vaults in the subscription
   backupVaults() []azure.subscription.dataProtectionService.backupVault
+  // Resource Guards in the subscription
+  resourceGuards() []azure.subscription.dataProtectionService.resourceGuard
 }
 
 // Azure Backup vault
@@ -20567,6 +21031,115 @@ azure.subscription.dataProtectionService.backupVault @defaults("id name location
   resourceGuardOperationRequests []string
   // Whether an alert is raised for every backup job failure ("Enabled" or "Disabled")
   alertsForAllJobFailures string
+  // Creation and last-modification provenance recorded by Azure Resource Manager
+  systemMetadata() azure.subscription.systemData
+  // Resources the vault protects
+  backupInstances() []azure.subscription.dataProtectionService.backupVault.backupInstance
+  // Backup policies defined in the vault
+  backupPolicies() []azure.subscription.dataProtectionService.backupVault.backupPolicy
+  // Resource Guard that authorizes destructive operations on the vault
+  //
+  // The guard is often kept in a separate subscription so that nobody who
+  // administers the vault also controls it. Null when no Resource Guard
+  // protects the vault.
+  resourceGuard() azure.subscription.dataProtectionService.resourceGuard
+}
+
+// Resource protected by an Azure Backup vault
+//
+// Backup instance binding one protected resource to a backup policy,
+// selected by `name`. `protectionStatus` and `currentProtectionState` say
+// whether backups are actually being taken, and `policy` which schedule and
+// retention apply. `datasourceId` names the protected resource; for managed
+// disks and storage accounts it is also reachable as `disk` and
+// `storageAccount`.
+private azure.subscription.dataProtectionService.backupVault.backupInstance @defaults("name datasourceType protectionStatus") {
+  // Backup instance resource ID
+  id string
+  // Backup instance name
+  name string
+  // Backup instance tags
+  tags map[string]string
+  // Friendly name of the backup instance
+  friendlyName string
+  // Type of the protected datasource (for example "Microsoft.Compute/disks" or "Microsoft.Storage/storageAccounts/blobServices")
+  datasourceType string
+  // ARM resource ID of the protected resource
+  datasourceId string
+  // Region of the protected resource
+  datasourceLocation string
+  // Protection status of the backup instance
+  //
+  // One of "ConfiguringProtection", "ConfiguringProtectionFailed",
+  // "ProtectionConfigured", "ProtectionStopped", "SoftDeleted", or
+  // "SoftDeleting".
+  protectionStatus string
+  // Current protection state, for example "ProtectionConfigured", "BackupSchedulesSuspended", "ProtectionStopped", or "ProtectionError"
+  currentProtectionState string
+  // Provisioning state of the backup instance
+  provisioningState string
+  // Backup policy applied to the protected resource
+  policy() azure.subscription.dataProtectionService.backupVault.backupPolicy
+  // Managed disk the instance protects; null when the datasource is not a managed disk
+  disk() azure.subscription.computeService.disk
+  // Storage account the instance protects; null when the datasource is not a storage account
+  storageAccount() azure.subscription.storageService.account
+  // Creation and last-modification provenance recorded by Azure Resource Manager
+  systemMetadata() azure.subscription.systemData
+}
+
+// Backup policy in an Azure Backup vault
+//
+// Schedule and retention applied to the resources bound to it, selected by
+// `name`. `datasourceTypes` says which kinds of resource the policy can
+// protect, and `retentionRules` how long each datastore keeps recovery
+// points.
+private azure.subscription.dataProtectionService.backupVault.backupPolicy @defaults("name datasourceTypes") {
+  // Backup policy resource ID
+  id string
+  // Backup policy name
+  name string
+  // Types of datasource the policy can protect
+  datasourceTypes []string
+  // Retention rules of the policy
+  //
+  // Each entry carries the rule `name`, `isDefault`, the `dataStoreType` the
+  // rule applies to ("OperationalStore", "VaultStore", or "ArchiveStore"),
+  // and `deleteAfter`, the ISO 8601 duration a recovery point is kept.
+  retentionRules []dict
+  // ISO 8601 duration the default retention rule keeps recovery points
+  //
+  // Empty when the policy has no default retention rule.
+  defaultRetentionDuration string
+  // Creation and last-modification provenance recorded by Azure Resource Manager
+  systemMetadata() azure.subscription.systemData
+}
+
+// Azure Resource Guard
+//
+// Guard that makes destructive operations on a Backup vault or Recovery
+// Services vault require a second authorization, outside the vault's own
+// RBAC. `protectedOperations` lists the operations the guard covers and
+// `vaultCriticalOperationExclusionList` the ones exempted from it.
+private azure.subscription.dataProtectionService.resourceGuard @defaults("name location provisioningState") {
+  // Resource Guard resource ID
+  id string
+  // Resource Guard name
+  name string
+  // Azure region the guard lives in
+  location string
+  // Resource Guard tags
+  tags map[string]string
+  // Resource Guard description
+  description string
+  // Provisioning state of the guard
+  provisioningState string
+  // Whether auto-approvals are allowed for operations the guard protects
+  allowAutoApprovals bool
+  // Vault critical operations the guard protects
+  protectedOperations []string
+  // Vault critical operations exempted from the guard
+  vaultCriticalOperationExclusionList []string
   // Creation and last-modification provenance recorded by Azure Resource Manager
   systemMetadata() azure.subscription.systemData
 }

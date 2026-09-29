@@ -2269,6 +2269,27 @@ var azurePermissionOverrides = map[string]string{
 	// Elastic SAN: volume groups are nested under elasticSans/, which the
 	// VolumeGroupsClient name does not carry.
 	"Microsoft.ElasticSan/volumeGroups/read": "Microsoft.ElasticSan/elasticSans/volumeGroups/read",
+	// Automation: every client is named after the singular child type, which
+	// sits under automationAccounts/.
+	"Microsoft.Automation/account/read":                  "Microsoft.Automation/automationAccounts/read",
+	"Microsoft.Automation/certificate/read":              "Microsoft.Automation/automationAccounts/certificates/read",
+	"Microsoft.Automation/credential/read":               "Microsoft.Automation/automationAccounts/credentials/read",
+	"Microsoft.Automation/variable/read":                 "Microsoft.Automation/automationAccounts/variables/read",
+	"Microsoft.Automation/runbook/read":                  "Microsoft.Automation/automationAccounts/runbooks/read",
+	"Microsoft.Automation/webhook/read":                  "Microsoft.Automation/automationAccounts/webhooks/read",
+	"Microsoft.Automation/hybridRunbookWorkerGroup/read": "Microsoft.Automation/automationAccounts/hybridRunbookWorkerGroups/read",
+	// API Management backends sit under service/.
+	"Microsoft.ApiManagement/backend/read": "Microsoft.ApiManagement/service/backends/read",
+	// VM run commands are children of the VM.
+	"Microsoft.Compute/virtualMachineRunCommands/read": "Microsoft.Compute/virtualMachines/runCommands/read",
+	// Data Protection: instances, policies and Resource Guard proxies are
+	// children of a backup vault.
+	"Microsoft.DataProtection/backupInstances/read":       "Microsoft.DataProtection/backupVaults/backupInstances/read",
+	"Microsoft.DataProtection/backupPolicies/read":        "Microsoft.DataProtection/backupVaults/backupPolicies/read",
+	"Microsoft.DataProtection/dppResourceGuardProxy/read": "Microsoft.DataProtection/backupVaults/backupResourceGuardProxies/read",
+	// SQL Managed Instance security settings are children of the instance.
+	"Microsoft.Sql/managedServerSecurityAlertPolicies/read":      "Microsoft.Sql/managedInstances/securityAlertPolicies/read",
+	"Microsoft.Sql/managedInstanceVulnerabilityAssessments/read": "Microsoft.Sql/managedInstances/vulnerabilityAssessments/read",
 }
 
 // azurePermission constructs the RBAC permission string.

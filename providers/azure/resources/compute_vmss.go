@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
@@ -243,6 +245,11 @@ func vmScaleSetToMql(runtime *plugin.Runtime, vmss compute.VirtualMachineScaleSe
 type mqlAzureSubscriptionComputeServiceVmScaleSetInternal struct {
 	cacheUserAssignedIdentityIds []string
 	cacheSystemData              any
+
+	extensionsMu     sync.Mutex
+	extensionsLoaded atomic.Bool
+	extensionsList   []*compute.VirtualMachineScaleSetExtension
+	extensionsErr    error
 }
 
 func (a *mqlAzureSubscriptionComputeServiceVmScaleSet) userAssignedIdentities() ([]any, error) {
@@ -357,6 +364,40 @@ func (a *mqlAzureSubscriptionComputeServiceVmScaleSetInstance) systemMetadata() 
 }
 
 func (a *mqlAzureSubscriptionComputeServiceVmScaleSet) extensions() ([]any, error) {
+	list, err := a.fetchExtensions()
+	if err != nil {
+		return nil, err
+	}
+	res := []any{}
+	for _, ext := range list {
+		d, err := convert.JsonToDict(ext.Properties)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, d)
+	}
+	return res, nil
+}
+
+// fetchExtensions lists the scale set's extensions once and shares the result
+// between extensions and installedExtensions.
+func (a *mqlAzureSubscriptionComputeServiceVmScaleSet) fetchExtensions() ([]*compute.VirtualMachineScaleSetExtension, error) {
+	if a.extensionsLoaded.Load() {
+		return a.extensionsList, a.extensionsErr
+	}
+	a.extensionsMu.Lock()
+	defer a.extensionsMu.Unlock()
+	if a.extensionsLoaded.Load() {
+		return a.extensionsList, a.extensionsErr
+	}
+	list, err := a.loadExtensions()
+	a.extensionsList = list
+	a.extensionsErr = err
+	a.extensionsLoaded.Store(true)
+	return list, err
+}
+
+func (a *mqlAzureSubscriptionComputeServiceVmScaleSet) loadExtensions() ([]*compute.VirtualMachineScaleSetExtension, error) {
 	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
 	ctx := context.Background()
 	token := conn.Token()
@@ -379,29 +420,24 @@ func (a *mqlAzureSubscriptionComputeServiceVmScaleSet) extensions() ([]any, erro
 	}
 
 	pager := client.NewListPager(resourceID.ResourceGroup, vmssName, nil)
-	res := []any{}
+	res := []*compute.VirtualMachineScaleSetExtension{}
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
 			var respErr *azcore.ResponseError
-			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
+			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden && !plugin.StructuredErrors() {
 				log.Warn().Err(err).Msgf("could not list virtual machine scale set extensions for %s due to access denied", vmssName)
 				return res, nil
 			}
-			return nil, err
+			return nil, classifyAzureRefusal(err, "Microsoft.Compute/virtualMachineScaleSets/extensions/read")
 		}
 		for _, ext := range page.Value {
 			if ext == nil {
 				continue
 			}
-			d, err := convert.JsonToDict(ext.Properties)
-			if err != nil {
-				return nil, err
-			}
-			res = append(res, d)
+			res = append(res, ext)
 		}
 	}
-
 	return res, nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -292,6 +293,7 @@ func vmToMql(runtime *plugin.Runtime, vm compute.VirtualMachine) (*mqlAzureSubsc
 		"provisionVMAgent":              llx.BoolDataPtr(provisionVMAgent),
 		"enableAutomaticUpdates":        llx.BoolDataPtr(enableAutomaticUpdates),
 		"patchMode":                     llx.StringData(patchMode),
+		"patchAssessmentMode":           llx.StringDataPtr(vmPatchAssessmentMode(vm.Properties)),
 		"imageReference":                llx.ResourceData(mqlImageRef, mqlImageRef.MqlName()),
 		"bootDiagnosticsEnabled":        llx.BoolData(bootDiagnosticsEnabled),
 		"bootDiagnosticsStorageUri":     llx.StringData(bootDiagnosticsStorageUri),
@@ -328,34 +330,59 @@ func (a *mqlAzureSubscriptionComputeServiceVm) systemAssignedIdentity() (*mqlAzu
 }
 
 func (a *mqlAzureSubscriptionComputeServiceVm) state() (string, error) {
-	conn := a.MqlRuntime.Connection.(*connection.AzureConnection)
-	// id is a Azure resource ID
-	id := a.Id.Data
-	resourceID, err := ParseResourceID(id)
+	view, err := a.fetchInstanceView()
 	if err != nil {
 		return "", err
 	}
+	return getState(*view), nil
+}
 
+// fetchInstanceView reads the VM's instance view once and shares it between
+// the power state and the patch assessment fields, so asking for several of
+// them costs a single API call.
+func (a *mqlAzureSubscriptionComputeServiceVm) fetchInstanceView() (*compute.VirtualMachineInstanceView, error) {
+	if a.instanceViewLoaded.Load() {
+		return a.instanceView, a.instanceViewErr
+	}
+	a.instanceViewMu.Lock()
+	defer a.instanceViewMu.Unlock()
+	if a.instanceViewLoaded.Load() {
+		return a.instanceView, a.instanceViewErr
+	}
+
+	view, err := a.loadInstanceView()
+	a.instanceView = view
+	a.instanceViewErr = err
+	a.instanceViewLoaded.Store(true)
+	return view, err
+}
+
+func (a *mqlAzureSubscriptionComputeServiceVm) loadInstanceView() (*compute.VirtualMachineInstanceView, error) {
+	conn, ok := a.MqlRuntime.Connection.(*connection.AzureConnection)
+	if !ok {
+		return nil, errors.New("invalid connection provided, it is not an Azure connection")
+	}
+	// id is a Azure resource ID
+	resourceID, err := ParseResourceID(a.Id.Data)
+	if err != nil {
+		return nil, err
+	}
 	vm, err := resourceID.Component("virtualMachines")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	ctx := context.Background()
-	token := conn.Token()
-
-	client, err := compute.NewVirtualMachinesClient(resourceID.SubscriptionID, token, &arm.ClientOptions{
+	client, err := compute.NewVirtualMachinesClient(resourceID.SubscriptionID, conn.Token(), &arm.ClientOptions{
 		ClientOptions: conn.ClientOptions(),
 	})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-
-	view, err := client.InstanceView(ctx, resourceID.ResourceGroup, vm, &compute.VirtualMachinesClientInstanceViewOptions{})
+	view, err := client.InstanceView(context.Background(), resourceID.ResourceGroup, vm, &compute.VirtualMachinesClientInstanceViewOptions{})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return getState(view.VirtualMachineInstanceView), nil
+	return &view.VirtualMachineInstanceView, nil
 }
 
 func (a *mqlAzureSubscriptionComputeServiceVm) isRunning() (bool, error) {
@@ -367,6 +394,11 @@ func (a *mqlAzureSubscriptionComputeServiceVm) isRunning() (bool, error) {
 }
 
 type mqlAzureSubscriptionComputeServiceVmInternal struct {
+	instanceViewMu     sync.Mutex
+	instanceViewLoaded atomic.Bool
+	instanceView       *compute.VirtualMachineInstanceView
+	instanceViewErr    error
+
 	extensionsOnce               sync.Once
 	extensionsList               []*compute.VirtualMachineExtension
 	extensionsError              error
@@ -404,11 +436,11 @@ func (a *mqlAzureSubscriptionComputeServiceVm) fetchExtensions() ([]*compute.Vir
 		resp, err := client.List(context.Background(), resourceID.ResourceGroup, vm, &compute.VirtualMachineExtensionsClientListOptions{})
 		if err != nil {
 			var respErr *azcore.ResponseError
-			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden {
+			if errors.As(err, &respErr) && respErr.StatusCode == http.StatusForbidden && !plugin.StructuredErrors() {
 				log.Warn().Str("vm", a.Id.Data).Err(err).Msg("could not list VM extensions due to access denied")
 				return
 			}
-			a.extensionsError = err
+			a.extensionsError = classifyAzureRefusal(err, "Microsoft.Compute/virtualMachines/extensions/read")
 			return
 		}
 		a.extensionsList = resp.Value
