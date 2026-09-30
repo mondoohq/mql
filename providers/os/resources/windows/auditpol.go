@@ -354,8 +354,10 @@ func ParseAuditpol(r io.Reader) ([]AuditpolEntry, error) {
 			ExclusionSetting: strings.TrimSpace(record[5]),
 		}
 		if len(record) >= 7 {
-			// a value this parser doesn't know leaves the setting unknown
-			// rather than guessed
+			// The backup format's Setting Value column is authoritative: a
+			// blank or unknown value leaves the setting unknown rather than
+			// guessed, and the localized text is deliberately not tried as
+			// a fallback for these rows.
 			if v, err := strconv.ParseUint(strings.TrimSpace(record[6]), 10, 32); err == nil && AuditFlags(v)&^(AuditSuccess|AuditFailure) == 0 {
 				f := AuditFlags(v)
 				entry.Flags = &f
