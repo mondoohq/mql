@@ -40,9 +40,12 @@ jobs:
         id: find-packages
         shell: pwsh
         run: |
-          # Find all _windows_test.go files and extract unique package directories
+          # Every test file that only builds on Windows: named *_windows_test.go,
+          # or carrying a windows build constraint (windows_routes_native_test.go
+          # has one but not the name, so a name filter alone never ran it).
           $repoRoot = (Get-Location).Path -replace '\\','/'
-          $packages = Get-ChildItem -Path providers/os, providers-sdk/v1/plugin, utils/sysproxy -Recurse -Filter "*_windows_test.go" |
+          $packages = Get-ChildItem -Path providers/os, providers-sdk/v1/plugin, utils/sysproxy -Recurse -Filter "*_test.go" |
+            Where-Object { $_.Name -like "*_windows_test.go" -or (Select-String -Path $_.FullName -Pattern '^//go:build .*(?<![!\w])windows\b' -Quiet) } |
             ForEach-Object {
               $rel = ($_.DirectoryName -replace '\\','/').Replace($repoRoot + '/', '')
               "./$rel/..."
@@ -74,3 +77,37 @@ jobs:
         with:
           name: windows-test-output
           path: windows-test-output.txt
+
+  # go vet of the Windows build of the os provider. The lint job runs with the
+  # runner's GOOS (linux), so //go:build windows files were never vetted; this
+  # job vets them with the analyzers .golangci.yaml enables plus unsafeptr,
+  # which catches Win32 structs read at byte offsets instead of through their
+  # fields.
+  windows-vet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Import environment variables from file
+        run: cat ".github/env" >> $GITHUB_ENV
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "${{ env.golang-version }}"
+          check-latest: true
+          cache: false
+
+      # The snapshot mock the device tests use is generated, not committed.
+      - name: Generate mocks
+        run: |
+          make prep/tools/mockgen
+          go generate ./providers/os/...
+
+      - name: go vet (GOOS=windows)
+        env:
+          GOOS: windows
+          GOARCH: amd64
+        run: go vet -structtag -lostcancel -unsafeptr ./providers/os/...

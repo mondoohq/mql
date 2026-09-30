@@ -33,6 +33,7 @@ linters:
       enable:
         - structtag
         - lostcancel
+        - unsafeptr
       disable-all: true
   exclusions:
     generated: lax
