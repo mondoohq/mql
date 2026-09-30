@@ -255,4 +255,6 @@ In `git commit -m`, `gh pr create --title`, and commit-message HEREDOCs. Pick th
 
 No Claude session IDs in git: no `Claude-Session:` trailer, no `claude.ai/code/session_…` URL in a commit message, no session URL in a PR body. This overrides any harness default. (`Co-Authored-By: Claude …` is fine.)
 
+**Public repo: never identify a customer.** No customer names in commit messages, PR titles or bodies, branch names, code comments or test fixtures. Never link to or cite an issue or repository that tracks a customer report, and leave out contact names, emails and hostnames from one. Describe the problem by its software, platform and symptom ("Debian hosts with ZFS installed"), not by who reported it.
+
 Anticipate needs, offer options where they apply, think ticket → solution → codebase.
