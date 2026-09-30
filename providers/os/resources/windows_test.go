@@ -123,3 +123,86 @@ func TestInitOptionalFeatureUsesTargetedLookup(t *testing.T) {
 	assert.Equal(t, int64(2), args["state"].Value)
 	assert.Equal(t, true, args["enabled"].Value)
 }
+
+func newOptionalFeatureRuntime(t *testing.T, commands map[string]*mock.Command) (*plugin.Runtime, *optionalFeatureRecordingConnection) {
+	t.Helper()
+	mockConn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:   "windows",
+			Family: []string{"windows"},
+		},
+	}, mock.WithData(&mock.TomlData{Commands: commands}))
+	require.NoError(t, err)
+
+	conn := &optionalFeatureRecordingConnection{Connection: mockConn}
+	return &plugin.Runtime{
+		Connection: conn,
+		Resources:  &syncx.Map[plugin.Resource]{},
+	}, conn
+}
+
+// Every lookup of a feature runs the resource's init, so the same name read
+// from several checks must not start Get-WindowsOptionalFeature each time.
+func TestInitOptionalFeatureQueriesEachNameOnce(t *testing.T) {
+	smbCmd := powershell.Encode(windows.OptionalFeatureQuery("SMB1Protocol"))
+	telnetCmd := powershell.Encode(windows.OptionalFeatureQuery("TelnetClient"))
+	runtime, conn := newOptionalFeatureRuntime(t, map[string]*mock.Command{
+		smbCmd:    {Stdout: `{"FeatureName": "SMB1Protocol", "DisplayName": "SMB 1.0/CIFS File Sharing Support", "Description": "SMB 1.0", "State": 0}`},
+		telnetCmd: {Stdout: `{"FeatureName": "TelnetClient", "DisplayName": "Telnet Client", "Description": "Telnet", "State": 2}`},
+	})
+
+	for range 3 {
+		args, _, err := initWindowsOptionalFeature(runtime, map[string]*llx.RawData{
+			"name": llx.StringData("SMB1Protocol"),
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "SMB1Protocol", args["name"].Value)
+		assert.Equal(t, false, args["enabled"].Value)
+		assert.Equal(t, int64(0), args["state"].Value)
+		assert.Equal(t, "SMB 1.0/CIFS File Sharing Support", args["displayName"].Value)
+	}
+
+	args, _, err := initWindowsOptionalFeature(runtime, map[string]*llx.RawData{
+		"name": llx.StringData("TelnetClient"),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, true, args["enabled"].Value)
+
+	assert.Equal(t, []string{smbCmd, telnetCmd}, conn.commands, "one query per distinct name")
+}
+
+// A name the image does not have fails every lookup, but is queried once.
+func TestInitOptionalFeatureRemembersNotFound(t *testing.T) {
+	missingCmd := powershell.Encode(windows.OptionalFeatureQuery("NoSuchFeature"))
+	runtime, conn := newOptionalFeatureRuntime(t, map[string]*mock.Command{
+		missingCmd: {ExitStatus: 1, Stderr: "Get-WindowsOptionalFeature : Feature name NoSuchFeature is unknown."},
+	})
+
+	for range 2 {
+		_, _, err := initWindowsOptionalFeature(runtime, map[string]*llx.RawData{
+			"name": llx.StringData("NoSuchFeature"),
+		})
+		require.EqualError(t, err, "could not find feature NoSuchFeature")
+	}
+	assert.Equal(t, []string{missingCmd}, conn.commands)
+}
+
+// DISM expands `*` and `?` in -FeatureName, so only an exact name match counts,
+// also when the outcome comes from the cache.
+func TestInitOptionalFeatureRequiresExactName(t *testing.T) {
+	wildcardCmd := powershell.Encode(windows.OptionalFeatureQuery("SMB1*"))
+	runtime, conn := newOptionalFeatureRuntime(t, map[string]*mock.Command{
+		wildcardCmd: {Stdout: `[
+			{"FeatureName": "SMB1Protocol", "State": 0},
+			{"FeatureName": "SMB1Protocol-Client", "State": 0}
+		]`},
+	})
+
+	for range 2 {
+		_, _, err := initWindowsOptionalFeature(runtime, map[string]*llx.RawData{
+			"name": llx.StringData("SMB1*"),
+		})
+		require.EqualError(t, err, "could not find feature SMB1*")
+	}
+	assert.Equal(t, []string{wildcardCmd}, conn.commands)
+}

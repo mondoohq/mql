@@ -201,6 +201,23 @@ type mqlWindowsInternal struct {
 	// unpopulated slice must not be mistaken for a genuine empty result.
 	hotfixesRaw    []packages.PowershellWinHotFix
 	hotfixesRawSet bool
+
+	// optionalFeatureLookups holds the outcome of every
+	// windows.optionalFeature(name: …) lookup on this runtime, keyed by the
+	// exact name. The resource's init runs on every lookup, before the
+	// resource cache is consulted, so without it each check that reads the
+	// same feature (a benchmark reads SMB1Protocol from several checks and
+	// filters) started Get-WindowsOptionalFeature again.
+	optionalFeatureLookups map[string]optionalFeatureLookup
+}
+
+// optionalFeatureLookup is one cached windows.optionalFeature(name: …)
+// outcome: the feature's fields, or notFound when the image has no feature of
+// that exact name. Errors from running or parsing the query are not cached,
+// so a transient failure does not stick for the rest of the scan.
+type optionalFeatureLookup struct {
+	feature  windows.WindowsOptionalFeature
+	notFound bool
 }
 
 func (w *mqlWindows) hotfixes() ([]any, error) {
@@ -393,41 +410,68 @@ func initWindowsOptionalFeature(runtime *plugin.Runtime, args map[string]*llx.Ra
 		return args, nil, nil
 	}
 
-	encodedCmd := powershell.Encode(windows.OptionalFeatureQuery(name))
-	executedCmd, err := conn.RunCommand(encodedCmd)
+	obj, err := NewResource(runtime, "windows", nil)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	// a non-zero exit means the feature name is unknown
-	if executedCmd.ExitStatus != 0 {
+	lookup, err := obj.(*mqlWindows).lookupOptionalFeature(conn, name)
+	if err != nil {
+		return nil, nil, err
+	}
+	if lookup.notFound {
 		return nil, nil, errors.New("could not find feature " + name)
 	}
 
-	features, err := windows.ParseWindowsOptionalFeatures(executedCmd.Stdout)
+	feature := lookup.feature
+	return map[string]*llx.RawData{
+		"name":        llx.StringData(feature.Name),
+		"displayName": llx.StringData(feature.DisplayName),
+		"description": llx.StringData(feature.Description),
+		"enabled":     llx.BoolData(feature.Enabled),
+		"state":       llx.IntData(feature.State),
+	}, nil, nil
+}
+
+// lookupOptionalFeature runs the targeted query for one feature name once per
+// runtime and remembers the outcome (see optionalFeatureLookups). Concurrent
+// lookups of the same name wait for the first instead of querying again.
+func (w *mqlWindows) lookupOptionalFeature(conn shared.Connection, name string) (optionalFeatureLookup, error) {
+	w.lock.Lock()
+	defer w.lock.Unlock()
+
+	if lookup, ok := w.optionalFeatureLookups[name]; ok {
+		return lookup, nil
+	}
+
+	executedCmd, err := conn.RunCommand(powershell.Encode(windows.OptionalFeatureQuery(name)))
 	if err != nil {
-		return nil, nil, err
+		return optionalFeatureLookup{}, err
 	}
 
-	// DISM treats `*`/`?` in -FeatureName as wildcards, so a wildcard-ish name
-	// can return more than one feature (or none matching exactly); require an
-	// exact name match to keep the historic "could not find feature" behavior.
-	for i := range features {
-		feature := features[i]
-		if feature.Name != name {
-			continue
+	lookup := optionalFeatureLookup{notFound: true}
+	// a non-zero exit means the feature name is unknown
+	if executedCmd.ExitStatus == 0 {
+		features, err := windows.ParseWindowsOptionalFeatures(executedCmd.Stdout)
+		if err != nil {
+			return optionalFeatureLookup{}, err
 		}
-		return map[string]*llx.RawData{
-			"name":        llx.StringData(feature.Name),
-			"displayName": llx.StringData(feature.DisplayName),
-			"description": llx.StringData(feature.Description),
-			"enabled":     llx.BoolData(feature.Enabled),
-			"state":       llx.IntData(feature.State),
-		}, nil, nil
+		// DISM treats `*`/`?` in -FeatureName as wildcards, so a wildcard-ish
+		// name can return more than one feature (or none matching exactly);
+		// require an exact name match to keep the historic "could not find
+		// feature" behavior.
+		for i := range features {
+			if features[i].Name == name {
+				lookup = optionalFeatureLookup{feature: features[i]}
+				break
+			}
+		}
 	}
 
-	// if the feature cannot be found we return an error
-	return nil, nil, errors.New("could not find feature " + name)
+	if w.optionalFeatureLookups == nil {
+		w.optionalFeatureLookups = map[string]optionalFeatureLookup{}
+	}
+	w.optionalFeatureLookups[name] = lookup
+	return lookup, nil
 }
 
 // optionalFeatureDetails carries the display name and description of every
