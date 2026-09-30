@@ -35,6 +35,9 @@ type WindowsService struct {
 	Name        string
 	DisplayName string
 	StartType   int
+	// Description is the service's own description (Win32_Service), not its
+	// display name. Empty when the service has none or it could not be read.
+	Description string
 }
 
 // State returns the State value for a Windows service
@@ -89,7 +92,7 @@ func (s WindowsService) Enabled() bool {
 func (s WindowsService) Service() *Service {
 	return &Service{
 		Name:        s.Name,
-		Description: s.DisplayName,
+		Description: s.Description,
 		Installed:   true,
 		Running:     s.IsRunning(),
 		Enabled:     s.Enabled(),
@@ -126,8 +129,18 @@ func (s *WindowsServiceManager) Name() string {
 	return "Windows Service Manager"
 }
 
+// windowsServicesScript lists the services with Get-Service (status and start
+// type as before) and adds each one's description from Win32_Service, which
+// Get-Service does not return. Win32_Service resolves localized descriptions.
+// One process: the description lookup runs in the same PowerShell. If
+// Win32_Service cannot be read, the descriptions are empty and the rest of
+// the list is unaffected.
+const windowsServicesScript = `$d = @{}
+try { Get-CimInstance -ClassName Win32_Service -Property Name,Description -ErrorAction Stop | ForEach-Object { $d[$_.Name] = $_.Description } } catch {}
+Get-Service | Select-Object -Property Status, Name, DisplayName, StartType, @{Name='Description';Expression={$d[$_.Name]}} | ConvertTo-Json`
+
 func (s *WindowsServiceManager) List() ([]*Service, error) {
-	c, err := s.conn.RunCommand(powershell.Wrap("Get-Service | Select-Object -Property Status, Name, DisplayName, StartType | ConvertTo-Json"))
+	c, err := s.conn.RunCommand(powershell.Encode(windowsServicesScript))
 	if err != nil {
 		return nil, err
 	}
