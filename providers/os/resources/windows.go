@@ -93,6 +93,17 @@ func initWindowsSingletonChild[T plugin.Resource](
 func (s *mqlWindows) computerInfo() (map[string]any, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
 
+	// Behind MONDOO_WINDOWS_NATIVE on a local Windows scan: the keys
+	// Get-ComputerInfo reports that can be read without PowerShell (registry,
+	// Win32 APIs, in-process WMI). On any error, Get-ComputerInfo as before.
+	if shared.WindowsNative(conn) {
+		info, err := windows.NativeComputerInfo()
+		if err == nil {
+			return info, nil
+		}
+		log.Debug().Err(err).Msg("could not read computer info natively, falling back to PowerShell")
+	}
+
 	cmd := windows.PSGetComputerInfo
 
 	// encode the powershell command
