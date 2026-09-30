@@ -4,9 +4,12 @@
 package processes
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -15,7 +18,14 @@ import (
 )
 
 const (
-	Ps1GetProcess = "Get-Process -IncludeUserName | Select-Object Name, Description, Id, PriorityClass, PM, NPM, CPU, VirtualMemorySize, Responding, SessionId, StartTime, TotalProcessorTime, UserName, Path | ConvertTo-Json"
+	// Ps1GetProcess lists every process. It must not use -IncludeUserName: that
+	// switch needs elevation and ends Get-Process with a terminating error for a
+	// non-elevated agent, so the whole list failed for a user name nothing reads.
+	Ps1GetProcess = "Get-Process | Select-Object Name, Description, Id, PriorityClass, PM, NPM, CPU, VirtualMemorySize, Responding, SessionId, StartTime, TotalProcessorTime, Path | ConvertTo-Json"
+
+	// ps1GetProcessByID reads one process; a pid that does not exist prints
+	// nothing and exits 0.
+	ps1GetProcessByID = "Get-Process -Id %d -ErrorAction SilentlyContinue | Select-Object Name, Id, Path | ConvertTo-Json"
 )
 
 // Get-Process -IncludeUserName | Select-Object -Property *
@@ -176,16 +186,89 @@ func (wpm *WindowsProcessManager) List() ([]*OSProcess, error) {
 	return ps, nil
 }
 
+// Exists reports whether a process with the pid is running.
 func (wpm *WindowsProcessManager) Exists(pid int64) (bool, error) {
-	return false, errors.New("not implemented")
+	if shared.WindowsNative(wpm.conn) {
+		if exists, ok := nativeProcessExists(pid); ok {
+			return exists, nil
+		}
+	}
+	p, err := wpm.processByID(pid)
+	if err != nil {
+		return false, err
+	}
+	return p != nil, nil
 }
 
+// Process returns the process with the pid, and an error when there is none.
 func (wpm *WindowsProcessManager) Process(pid int64) (*OSProcess, error) {
-	return nil, errors.New("not implemented")
+	if shared.WindowsNative(wpm.conn) {
+		// A process the agent may not query (a protected process, or pid 0
+		// and 4) is answered by the PowerShell path below.
+		if p, ok := nativeProcess(pid); ok {
+			return p, nil
+		}
+	}
+	p, err := wpm.processByID(pid)
+	if err != nil {
+		return nil, err
+	}
+	if p == nil {
+		return nil, fmt.Errorf("process %d does not exist", pid)
+	}
+	return p, nil
+}
+
+// processByID reads one process over PowerShell; nil means it does not exist.
+func (wpm *WindowsProcessManager) processByID(pid int64) (*OSProcess, error) {
+	c, err := wpm.conn.RunCommand(powershell.Encode(fmt.Sprintf(ps1GetProcessByID, pid)))
+	if err != nil {
+		return nil, fmt.Errorf("processes> could not run command: %w", err)
+	}
+	if c.ExitStatus != 0 {
+		stderr, _ := io.ReadAll(c.Stderr)
+		return nil, errors.New("failed to retrieve process " + strconv.FormatInt(pid, 10) + ": " + string(stderr))
+	}
+	return parseWindowsProcessByID(c.Stdout, pid)
+}
+
+// parseWindowsProcessByID decodes ps1GetProcessByID output. No output means
+// the pid does not exist.
+func parseWindowsProcessByID(r io.Reader, pid int64) (*OSProcess, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil, nil
+	}
+	entries, err := powershell.UnmarshalList[WindowsProcess](data)
+	if err != nil {
+		return nil, err
+	}
+	for i := range entries {
+		if entries[i].ID == pid {
+			return entries[i].ToOSProcess(), nil
+		}
+	}
+	return nil, nil
 }
 
 func (wpm *WindowsProcessManager) ListSocketInodesByProcess() (map[int64]plugin.TValue[[]int64], error) {
 	// This function is always invoked when listing processes (for unix and windows). If we return an error
 	// here, we break process listing. Instead we return an empty map
 	return map[int64]plugin.TValue[[]int64]{}, nil
+}
+
+// processName is Get-Process's Name for an image path: the file name, with a
+// trailing .exe removed and any other extension kept.
+func processName(path string) string {
+	name := path
+	if i := strings.LastIndexAny(name, `\/`); i >= 0 {
+		name = name[i+1:]
+	}
+	if len(name) > 4 && strings.EqualFold(name[len(name)-4:], ".exe") {
+		name = name[:len(name)-4]
+	}
+	return name
 }
