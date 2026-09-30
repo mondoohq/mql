@@ -64,6 +64,11 @@ type Connection struct {
 	// slots limits the commands that run at once on Windows (command_slots.go)
 	slotsOnce sync.Once
 	slots     chan struct{}
+	// persistent PowerShell sessions (windows_session.go)
+	sessionsOnce sync.Once
+	sessionPool  *psSessionPool
+	// openSession replaces openPSSession in tests
+	openSession func() (*psSession, error)
 	// rawRunner replaces runRawCommand in tests
 	rawRunner func(command string) (*shared.Command, error)
 }
@@ -168,6 +173,10 @@ func (c *Connection) RunCommand(command string) (*shared.Command, error) {
 	release := c.acquireCommandSlot(command)
 	defer release()
 	if !sudo {
+		if res, ok := c.runInSession(command); ok {
+			powershell.DecodeStderr(res)
+			return res, nil
+		}
 		if res, ok, err := c.runPowershellDirect(command); ok {
 			powershell.DecodeStderr(res)
 			return res, err
@@ -361,6 +370,9 @@ func (c *Connection) extractOwnership(stat os.FileInfo) (uid, gid int64) {
 }
 
 func (c *Connection) Close() {
+	if c.sessionPool != nil {
+		c.sessionPool.closeAll()
+	}
 	if c.SSHClient != nil {
 		c.SSHClient.Close()
 	}
