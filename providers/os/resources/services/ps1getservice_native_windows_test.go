@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -93,4 +94,22 @@ func asciiFold(s string) string {
 		}
 		return r
 	}, s)
+}
+
+// Timing of the two paths on this machine, for the record; not an assertion.
+func TestNativeWindowsServicesTiming(t *testing.T) {
+	const runs = 5
+	var native, ps time.Duration
+	for i := 0; i < runs; i++ {
+		start := time.Now()
+		_, err := nativeWindowsServices()
+		require.NoError(t, err)
+		native += time.Since(start)
+
+		start = time.Now()
+		_, err = exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", windowsServicesScript).Output()
+		require.NoError(t, err)
+		ps += time.Since(start)
+	}
+	t.Logf("mean over %d runs: native %v, PowerShell %v", runs, native/runs, ps/runs)
 }
