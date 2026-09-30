@@ -44,7 +44,10 @@ major is ahead of what stable serves (e.g. `14.0.0` while `latest.json` is on
 ## Publishing a provider
 
 `.github/workflows/providers.yaml` ("Build & Release Providers") runs on every
-push to `main` or `v13` that touches `providers/**`. Its scoping step compares
+push to `main` or `v13` that changes a provider's `config/config.go`, where its
+`Version:` lives, and on a manual run. A feature merge without a bump does not
+start it. At most one run per branch is active, and one more waits; a newer run
+replaces the waiting one. Its scoping step compares
 each provider's `Version:` in `config/config.go` against the pointer for that
 version's channel, and builds and publishes every provider whose version
 differs. **The version bump is the release.** Merging a fix without a bump

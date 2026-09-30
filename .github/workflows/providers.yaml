@@ -3,7 +3,13 @@ name: "Build & Release Providers"
 on:
   push:
     branches: ["v13", "main"]
-    paths: ["providers/**"]
+    # Only a change to a provider's config, where its Version lives, can be a
+    # release. Any providers/** change used to start a run, and with runners
+    # slow to arrive every feature merge queued the same pending builds again
+    # (22 of 30 runs had nothing to release). Scoping still builds only
+    # providers whose version differs from the published one, so a release
+    # that was lost is picked up by the next bump, or by a manual run.
+    paths: ["providers/*/config/config.go"]
   workflow_dispatch:
     inputs:
       providers:
@@ -463,9 +469,9 @@ jobs:
           [ "$ok" -le "$max_named" ] || released="$ok providers, see the run"
           [ "$bad" -le "$max_named" ] || failed="$bad providers, see the run"
 
-          # Most runs on providers/** touch provider code without bumping a
-          # version, so the "nothing to release" branch fired on 22 of 30
-          # consecutive runs. A channel that is mostly no-ops trains people to
+          # Before the trigger was narrowed to config.go, most runs touched
+          # provider code without bumping a version, so the "nothing to
+          # release" branch fired on 22 of 30 consecutive runs. A channel that is mostly no-ops trains people to
           # stop reading it, which costs exactly the messages this job exists to
           # deliver. Each branch decides whether it is worth interrupting for.
           post=true
