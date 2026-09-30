@@ -12,11 +12,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
@@ -219,4 +222,69 @@ func TestRegistryValuesNativeMatchPowerShell(t *testing.T) {
 	assert.Equal(t, int64(5000000000), byName["Qword"].GetRawValue())
 	assert.Equal(t, int64(42), byName["DwordBigEndian"].GetRawValue())
 	assert.Equal(t, "AB", byName["Link"].String())
+}
+
+// testKeyTree creates, under HKEY_CURRENT_USER, a key with no values and no
+// subkeys, a key with only a subkey, and a key with a value, and returns their
+// full paths and a path that does not exist. The tree is removed at the end of
+// the test.
+func testKeyTree(t *testing.T) (empty, onlySubkeys, withValues, missing string) {
+	t.Helper()
+	root := fmt.Sprintf(`Software\MondooMqlTest-%d`, time.Now().UnixNano())
+	create := func(path string) registry.Key {
+		k, _, err := registry.CreateKey(registry.CURRENT_USER, path, registry.ALL_ACCESS)
+		require.NoError(t, err)
+		return k
+	}
+	create(root + `\Empty`).Close()
+	create(root + `\OnlySubkeys\Child`).Close()
+	v := create(root + `\WithValues`)
+	require.NoError(t, v.SetDWordValue("Setting", 1))
+	v.Close()
+	t.Cleanup(func() {
+		for _, p := range []string{`\Empty`, `\OnlySubkeys\Child`, `\OnlySubkeys`, `\WithValues`, ``} {
+			_ = registry.DeleteKey(registry.CURRENT_USER, root+p)
+		}
+	})
+	hkcu := `HKEY_CURRENT_USER\` + root
+	return hkcu + `\Empty`, hkcu + `\OnlySubkeys`, hkcu + `\WithValues`, hkcu + `\Missing`
+}
+
+// A key exists whether or not it holds values or subkeys.
+func TestNativeRegistryKeyExists(t *testing.T) {
+	empty, onlySubkeys, withValues, missing := testKeyTree(t)
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{empty, true},
+		{onlySubkeys, true},
+		{withValues, true},
+		{missing, false},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			got, err := NativeRegistryKeyExists(tc.path)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// The PowerShell probe that remote scans use (GetRegistryKeyItemScript) and
+// the native check agree on every kind of key: the probe exits 0 exactly when
+// the native check reports the key as existing.
+func TestNativeRegistryKeyExists_MatchesPowerShell(t *testing.T) {
+	if _, err := exec.LookPath("powershell.exe"); err != nil {
+		t.Skip("powershell.exe not available")
+	}
+	empty, onlySubkeys, withValues, missing := testKeyTree(t)
+	for _, path := range []string{empty, onlySubkeys, withValues, missing} {
+		t.Run(path, func(t *testing.T) {
+			native, err := NativeRegistryKeyExists(path)
+			require.NoError(t, err)
+			argv := strings.Fields(powershell.Encode(GetRegistryKeyItemScript(path)))
+			err = exec.Command(argv[0], argv[1:]...).Run()
+			assert.Equal(t, native, err == nil, "native exists=%v, PowerShell probe error=%v", native, err)
+		})
+	}
 }

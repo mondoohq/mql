@@ -210,37 +210,41 @@ func (k *mqlRegistrykey) exists() (bool, error) {
 	if err := registryApplicable(conn); err != nil {
 		return false, err
 	}
+	local := conn.Type() == shared.Type_Local && runtime.GOOS == "windows"
+
+	// A key exists when it can be opened, whether or not it holds values or
+	// subkeys: an empty key such as a policy root without settings exists, as
+	// the PowerShell probe (Get-Item) reports it for remote targets.
 
 	// per-user hive read: resolve against the live HKEY_USERS\<sid> hive or the
 	// profile's NTUSER.DAT loaded on demand (local Windows), else fall back to the
 	// live hive over PowerShell (remote).
 	if k.isUserHive() {
-		if conn.Type() == shared.Type_Local && runtime.GOOS == "windows" {
-			items, err := k.nativeUserHiveItems(conn)
+		if local {
+			livePath, rh, ok, err := k.userHiveReader(conn)
 			if err != nil {
-				if std, ok := status.FromError(err); ok && std.Code() == codes.NotFound {
-					return false, nil
-				}
 				return false, err
 			}
-			return len(items) > 0, nil
+			if !ok {
+				// The hive cannot be read at all; see userHiveReader.
+				return false, nil
+			}
+			if rh != nil {
+				return rh.UserHiveKeyExists(k.UserSid.Data, k.readPath())
+			}
+			return registry.NativeRegistryKeyExists(livePath)
 		}
 		return k.powershellExists(userHivePath(k.UserSid.Data, k.readPath()))
 	}
 
-	// if we are running locally on windows, we can use native api
-	if conn.Type() == shared.Type_Local && runtime.GOOS == "windows" {
-		items, err := registry.GetNativeRegistryKeyItems(k.readPath())
-		if err == nil && len(items) > 0 {
-			return true, nil
+	// Locally on Windows the native API answers; PowerShell is only the
+	// fallback for a key the native API cannot open (for example access denied).
+	if local {
+		exists, err := registry.NativeRegistryKeyExists(k.readPath())
+		if err == nil {
+			return exists, nil
 		}
-		std, ok := status.FromError(err)
-		if ok && std.Code() == codes.NotFound {
-			return false, nil
-		}
-		if err != nil {
-			return false, err
-		}
+		log.Debug().Err(err).Str("path", k.Path.Data).Msg("native registry key check failed, falling back to PowerShell")
 	}
 
 	return k.powershellExists(k.readPath())

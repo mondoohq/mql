@@ -52,6 +52,29 @@ func IsUserHiveLoaded(sid string) bool {
 	return true
 }
 
+// NativeRegistryKeyExists reports whether the key at fullPath exists. It only
+// opens the key: a key exists whether or not it holds values or subkeys, so
+// its values are not read (a value the native reader cannot decode must not
+// make an existing key look absent). A key that is not there is false with no
+// error; any other failure is returned classified as when reading the key
+// (access denied is forbidden), so that the caller can report it or fall back
+// to another reader.
+func NativeRegistryKeyExists(fullPath string) (bool, error) {
+	key, path, err := parseRegistryKeyPath(fullPath)
+	if err != nil {
+		return false, err
+	}
+	regKey, err := registry.OpenKey(key, path, registry.QUERY_VALUE)
+	if errors.Is(err, registry.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, classifyOpenKeyError(fullPath, err)
+	}
+	regKey.Close()
+	return true, nil
+}
+
 func GetNativeRegistryKeyItems(fullPath string) ([]RegistryKeyItem, error) {
 	log.Debug().Str("path", fullPath).Msg("search registry key values using native registry api")
 	key, path, err := parseRegistryKeyPath(fullPath)

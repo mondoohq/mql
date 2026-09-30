@@ -16,6 +16,10 @@ func IsUserHiveLoaded(sid string) bool {
 	return false
 }
 
+func NativeRegistryKeyExists(path string) (bool, error) {
+	return false, errors.New("native registry key existence not supported on non-windows platforms")
+}
+
 func GetNativeRegistryKeyItems(path string) ([]RegistryKeyItem, error) {
 	return nil, errors.New("native registry key items not supported on non-windows platforms")
 }

@@ -110,6 +110,17 @@ func (r *RegistryHandler) GetUserHiveKeyItems(sid, path string) ([]RegistryKeyIt
 	return GetNativeRegistryKeyItems(regPath)
 }
 
+// UserHiveKeyExists reports whether the key at `path` (relative to the hive
+// root) exists in a user hive previously loaded with LoadUserHive, with the
+// semantics of NativeRegistryKeyExists: values and subkeys do not matter.
+func (r *RegistryHandler) UserHiveKeyExists(sid, path string) (bool, error) {
+	regPath, err := r.userHiveKeyPath(sid, path)
+	if err != nil {
+		return false, err
+	}
+	return NativeRegistryKeyExists(regPath)
+}
+
 // GetUserHiveKeyChildren returns the child keys at `path` (relative to the hive
 // root) for a user hive previously loaded with LoadUserHive.
 func (r *RegistryHandler) GetUserHiveKeyChildren(sid, path string) ([]RegistryKeyChild, error) {
