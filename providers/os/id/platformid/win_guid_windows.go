@@ -10,8 +10,9 @@ import (
 	"errors"
 	"runtime"
 
-	wmi "github.com/StackExchange/wmi"
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/wmiquery"
 )
 
 func windowsMachineId(conn shared.Connection) (string, error) {
@@ -23,9 +24,12 @@ func windowsMachineId(conn shared.Connection) (string, error) {
 		}
 
 		// query wmi to retrieve information
+		// on an error, or a panic in the WMI library, fall back to PowerShell
+		// instead of failing the platform ID
 		var entries []win32ComputerSystemProduct
-		if err := wmi.Query(wmiMachineIDQuery, &entries); err != nil {
-			return "", err
+		if err := wmiquery.Query(wmiMachineIDQuery, &entries); err != nil {
+			log.Debug().Err(err).Msg("could not query the machine UUID via WMI, falling back to PowerShell")
+			return PowershellWindowsMachineId(conn)
 		}
 
 		if len(entries) != 1 || entries[0].UUID == nil {

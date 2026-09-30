@@ -11,8 +11,9 @@ import (
 	"runtime"
 	"strconv"
 
-	wmi "github.com/StackExchange/wmi"
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/wmiquery"
 )
 
 const wmiOSQuery = "SELECT Name, Caption, Manufacturer, OSArchitecture, Version, BuildNumber, Description, OSType, ProductType, SerialNumber FROM Win32_OperatingSystem"
@@ -34,10 +35,12 @@ func GetWmiInformation(conn shared.Connection) (*WmicOSInformation, error) {
 			ProductType    *int
 		}
 
-		// query wmi to retrieve information
+		// query wmi to retrieve information; on an error, or a panic in the
+		// WMI library, fall back to PowerShell instead of failing detection
 		var entries []win32_OperatingSystem
-		if err := wmi.Query(wmiOSQuery, &entries); err != nil {
-			return nil, err
+		if err := wmiquery.Query(wmiOSQuery, &entries); err != nil {
+			log.Debug().Err(err).Msg("could not query the OS via WMI, falling back to PowerShell")
+			return powershellGetWmiInformation(conn)
 		}
 
 		if len(entries) != 1 || entries[0].Version == nil {
