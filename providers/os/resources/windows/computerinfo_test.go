@@ -106,3 +106,60 @@ func TestParseCustomComputerInfoAbsentSources(t *testing.T) {
 	assert.Nil(t, info["CsPhyicallyInstalledMemory"])
 	assert.Nil(t, info["OsUptime"])
 }
+
+// TestParseCustomComputerInfoMatchesGetComputerInfo holds the fallback to the
+// answer Get-ComputerInfo gives on the same host, for the keys queries read:
+// OsProductType and WindowsInstallationType gate policies, OsLanguage picks
+// locale-dependent expected values, and CsProcessors and CsTotalPhysicalMemory
+// size the hardware. Each pair of fixtures is real captured output of
+// PSGetComputerInfoCustom and of PSGetComputerInfo from one host; the de-DE
+// host is the case that used to break: its OsLanguage came out as the LCID
+// 1031 instead of de-DE, and CsProcessors was always null.
+func TestParseCustomComputerInfoMatchesGetComputerInfo(t *testing.T) {
+	tests := []struct {
+		custom, primary string
+		language        string
+	}{
+		{custom: "testdata/custom-computer-info-2022.json", primary: "testdata/computer-info-2022-host.json", language: "en-US"},
+		{custom: "testdata/custom-computer-info-2022-de.json", primary: "testdata/computer-info-2022-de.json", language: "de-DE"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.custom, func(t *testing.T) {
+			f, err := os.Open(tt.custom)
+			require.NoError(t, err)
+			defer f.Close()
+			custom, err := ParseCustomComputerInfo(f)
+			require.NoError(t, err)
+
+			p, err := os.Open(tt.primary)
+			require.NoError(t, err)
+			defer p.Close()
+			primary, err := ParseComputerInfo(p)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.language, primary["OsLanguage"], "fixture sanity: the host's language")
+			for _, key := range []string{
+				"OsProductType", "WindowsInstallationType", "OsLanguage", "OsLocale",
+				"CsProcessors", "CsTotalPhysicalMemory",
+			} {
+				assert.Equal(t, primary[key], custom[key], key)
+			}
+			procs, ok := custom["CsProcessors"].([]any)
+			require.True(t, ok, "CsProcessors must be a list, as Get-ComputerInfo reports it")
+			require.NotEmpty(t, procs)
+			assert.Contains(t, procs[0], "NumberOfCores")
+		})
+	}
+}
+
+// Output of the fallback script from before it resolved culture names has no
+// OsLanguageName: the LCID must not stand in for a culture name, so the field
+// is null rather than a number no query can compare with.
+func TestParseCustomComputerInfoWithoutCultureNames(t *testing.T) {
+	info, err := ParseCustomComputerInfo(strings.NewReader(`{"Os": {"OSLanguage": 1031, "Locale": "0407"}}`))
+	require.NoError(t, err)
+	assert.Nil(t, info["OsLanguage"])
+	assert.Nil(t, info["OsLocale"])
+	assert.Nil(t, info["CsProcessors"])
+}

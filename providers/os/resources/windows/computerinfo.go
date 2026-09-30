@@ -29,6 +29,37 @@ function Get-CustomComputerInfo {
     if ($capacity) { $physicalMemoryKB = [int64]($capacity / 1024) }
     $uptime = $null
     if ($os.LastBootUpTime) { $uptime = (Get-Date) - $os.LastBootUpTime }
+    # Get-ComputerInfo reports OsLanguage and OsLocale as culture names
+    # (de-DE), while Win32_OperatingSystem carries an LCID (1031) and a hex
+    # LCID string ("0407"). Resolve them the way Get-ComputerInfo does, through
+    # .NET's CultureInfo; an LCID it cannot resolve stays null.
+    $osLanguageName = $null
+    if ($os.OSLanguage) { try { $osLanguageName = [System.Globalization.CultureInfo]::GetCultureInfo([int]$os.OSLanguage).Name } catch {} }
+    $osLocaleName = $null
+    if ($os.Locale) { try { $osLocaleName = [System.Globalization.CultureInfo]::GetCultureInfo([Convert]::ToInt32($os.Locale, 16)).Name } catch {} }
+    # Get-ComputerInfo's CsProcessors: one object per Win32_Processor, with
+    # these properties. Win32_ComputerSystem has no processor list.
+    $processors = @(Get-CimInstance -ClassName Win32_Processor -ErrorAction SilentlyContinue | ForEach-Object {
+        [PSCustomObject]@{
+            Name = $_.Name
+            Manufacturer = $_.Manufacturer
+            Description = $_.Description
+            Architecture = $_.Architecture
+            AddressWidth = $_.AddressWidth
+            DataWidth = $_.DataWidth
+            MaxClockSpeed = $_.MaxClockSpeed
+            CurrentClockSpeed = $_.CurrentClockSpeed
+            NumberOfCores = $_.NumberOfCores
+            NumberOfLogicalProcessors = $_.NumberOfLogicalProcessors
+            ProcessorID = $_.ProcessorId
+            SocketDesignation = $_.SocketDesignation
+            ProcessorType = $_.ProcessorType
+            Role = $_.Role
+            Status = $_.Status
+            CpuStatus = $_.CpuStatus
+            Availability = $_.Availability
+        }
+    })
     $result = [PSCustomObject]@{
         Bios = $bios
         ComputerSystem = $computerSystem
@@ -39,6 +70,9 @@ function Get-CustomComputerInfo {
         Hal = $hal
         PhysicalMemoryKB = $physicalMemoryKB
         Uptime = $uptime
+        OsLanguageName = $osLanguageName
+        OsLocaleName = $osLocaleName
+        Processors = $processors
     }
     return $result
 }
@@ -92,6 +126,19 @@ type CustomComputerInfo struct {
 	// It used to be filled in with the boot timestamp, so a field documented
 	// as a duration carried a point in time.
 	Uptime any `json:"Uptime"`
+	// OsLanguageName and OsLocaleName are what OsLanguage and OsLocale report:
+	// culture names such as de-DE. They used to be filled in with
+	// Win32_OperatingSystem's OSLanguage (an LCID, 1031) and Locale (a hex
+	// LCID string, "0407"), so every query comparing OsLanguage with a culture
+	// name took its default branch on the fallback path, on non-English hosts
+	// with the wrong answer.
+	OsLanguageName any `json:"OsLanguageName"`
+	OsLocaleName   any `json:"OsLocaleName"`
+	// Processors is what CsProcessors reports: one object per Win32_Processor
+	// with Get-ComputerInfo's property names. It used to be read from
+	// Win32_ComputerSystem, which has no processor list, so it was always
+	// null.
+	Processors any `json:"Processors"`
 }
 
 // biosFirmwareType maps the firmware_type environment variable to the
@@ -198,7 +245,7 @@ func ParseCustomComputerInfo(r io.Reader) (map[string]any, error) {
 		"CsPowerSupplyState":            customComputerInfo.ComputerSystem["PowerSupplyState"],
 		"CsPrimaryOwnerContact":         customComputerInfo.ComputerSystem["PrimaryOwnerContact"],
 		"CsPrimaryOwnerName":            customComputerInfo.ComputerSystem["PrimaryOwnerName"],
-		"CsProcessors":                  customComputerInfo.ComputerSystem["Processor"],
+		"CsProcessors":                  customComputerInfo.Processors,
 		"CsResetCapability":             customComputerInfo.ComputerSystem["ResetCapability"],
 		"CsResetCount":                  customComputerInfo.ComputerSystem["ResetCount"],
 		"CsResetLimit":                  customComputerInfo.ComputerSystem["ResetLimit"],
@@ -237,10 +284,10 @@ func ParseCustomComputerInfo(r io.Reader) (map[string]any, error) {
 		"OsHotFixes":                                 customComputerInfo.Os["HotFixes"],
 		"OsInUseVirtualMemory":                       customComputerInfo.Os["InUseVirtualMemory"],
 		"OsInstallDate":                              customComputerInfo.Os["InstallDate"],
-		"OsLanguage":                                 customComputerInfo.Os["OSLanguage"],
+		"OsLanguage":                                 customComputerInfo.OsLanguageName,
 		"OsLastBootUpTime":                           customComputerInfo.Os["LastBootUpTime"],
 		"OsLocalDateTime":                            customComputerInfo.Os["LocalDateTime"],
-		"OsLocale":                                   customComputerInfo.Os["Locale"],
+		"OsLocale":                                   customComputerInfo.OsLocaleName,
 		"OsLocaleID":                                 customComputerInfo.Os["LocaleID"],
 		"OsManufacturer":                             customComputerInfo.Os["Manufacturer"],
 		"OsMaxNumberOfProcesses":                     customComputerInfo.Os["MaxNumberOfProcesses"],
