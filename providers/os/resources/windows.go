@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -477,6 +478,15 @@ func (w *mqlWindows) lookupOptionalFeature(conn shared.Connection, name string) 
 
 // queryOptionalFeature runs the query for one feature name.
 func (w *mqlWindows) queryOptionalFeature(conn shared.Connection, name string) (optionalFeatureLookup, error) {
+	if shared.WindowsNative(conn) {
+		feature, found, err := windows.NativeOptionalFeature(name)
+		if err == nil {
+			lookup := optionalFeatureLookup{feature: feature, notFound: !found}
+			return lookup, nil
+		}
+		log.Debug().Err(err).Str("feature", name).Msg("native DISM lookup failed, falling back to PowerShell")
+	}
+
 	executedCmd, err := conn.RunCommand(powershell.Encode(windows.OptionalFeatureQuery(name)))
 	if err != nil {
 		return optionalFeatureLookup{}, err
@@ -533,6 +543,14 @@ type mqlWindowsOptionalFeatureInternal struct {
 func (w *mqlWindows) optionalFeatures() ([]any, error) {
 	conn := w.MqlRuntime.Connection.(shared.Connection)
 
+	if shared.WindowsNative(conn) {
+		features, err := windows.NativeOptionalFeatures()
+		if err == nil {
+			return w.optionalFeatureResources(features)
+		}
+		log.Debug().Err(err).Msg("native DISM feature list failed, falling back to PowerShell")
+	}
+
 	// query features
 	encodedCmd := powershell.Encode(windows.QUERY_OPTIONAL_FEATURES)
 	executedCmd, err := conn.RunCommand(encodedCmd)
@@ -552,8 +570,12 @@ func (w *mqlWindows) optionalFeatures() ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	return w.optionalFeatureResources(features)
+}
 
-	// convert features to MQL resource
+// optionalFeatureResources turns an enumeration into windows.optionalFeature
+// resources that share one lazily loaded set of details.
+func (w *mqlWindows) optionalFeatureResources(features []windows.WindowsOptionalFeature) ([]any, error) {
 	details := &optionalFeatureDetails{}
 	mqlFeatures := make([]any, len(features))
 	for i, feature := range features {
@@ -600,6 +622,20 @@ func (f *mqlWindowsOptionalFeature) fetchDetails() (windows.WindowsOptionalFeatu
 	name := f.GetName()
 	if name.Error != nil {
 		return empty, name.Error
+	}
+
+	conn := f.MqlRuntime.Connection.(shared.Connection)
+	if shared.WindowsNative(conn) {
+		// DismGetFeatureInfo answers one feature at a time, so the details of an
+		// enumeration are read feature by feature, each only when asked for.
+		feature, found, err := windows.NativeOptionalFeature(name.Data)
+		if err == nil {
+			if !found {
+				return empty, errors.New("could not find feature " + name.Data)
+			}
+			return feature, nil
+		}
+		log.Debug().Err(err).Str("feature", name.Data).Msg("native DISM details failed, falling back to PowerShell")
 	}
 
 	if f.details == nil {
