@@ -5,10 +5,11 @@ package windows
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"io"
 	"strings"
+
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 // CertificatesScript enumerates the certificates in the Windows certificate
@@ -121,8 +122,8 @@ func ParseCertificates(r io.Reader) ([]Certificate, error) {
 		return []Certificate{}, nil
 	}
 
-	var certs []Certificate
-	if err := json.Unmarshal([]byte(trimmed), &certs); err != nil {
+	certs, err := powershell.UnmarshalList[Certificate]([]byte(trimmed))
+	if err != nil {
 		return nil, errors.New("failed to parse certificates: " + err.Error())
 	}
 	return certs, nil

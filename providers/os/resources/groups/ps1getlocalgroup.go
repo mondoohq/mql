@@ -4,7 +4,6 @@
 package groups
 
 import (
-	"encoding/json"
 	"io"
 
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -31,8 +30,7 @@ func ParseWindowsLocalGroups(r io.Reader) ([]WindowsLocalGroup, error) {
 		return nil, err
 	}
 
-	var localGroups []WindowsLocalGroup
-	err = json.Unmarshal(data, &localGroups)
+	localGroups, err := powershell.UnmarshalList[WindowsLocalGroup](data)
 	if err != nil {
 		return nil, err
 	}

@@ -4,8 +4,9 @@
 package windows
 
 import (
-	"encoding/json"
 	"io"
+
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 const QUERY_FEATURES = "Get-WindowsFeature | Select-Object -Property Path,Name,DisplayName,Description,Installed,InstallState,FeatureType,DependsOn,Parent,SubFeatures | ConvertTo-Json"
@@ -34,8 +35,7 @@ func ParseWindowsFeatures(input io.Reader) ([]WindowsFeature, error) {
 		return []WindowsFeature{}, nil
 	}
 
-	var winFeatures []WindowsFeature
-	err = json.Unmarshal(data, &winFeatures)
+	winFeatures, err := powershell.UnmarshalList[WindowsFeature](data)
 	if err != nil {
 		return nil, err
 	}

@@ -324,13 +324,12 @@ func bitlockerResult(stdout []byte, exitStatus int, stderr []byte) ([]BitLockerV
 }
 
 func ParseWindowsBitlockerStatus(r io.Reader) ([]BitLockerVolumeStatus, error) {
-	var volumeStatus []powershellBitlockerVolumeStatus
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
 
-	err = json.Unmarshal(data, &volumeStatus)
+	volumeStatus, err := powershell.UnmarshalList[powershellBitlockerVolumeStatus](data)
 	if err != nil {
 		return nil, err
 	}

@@ -4,7 +4,6 @@
 package services
 
 import (
-	"encoding/json"
 	"io"
 
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -107,8 +106,7 @@ func ParseWindowsService(r io.Reader) ([]*Service, error) {
 		return nil, err
 	}
 
-	var srvs []WindowsService
-	err = json.Unmarshal(data, &srvs)
+	srvs, err := powershell.UnmarshalList[WindowsService](data)
 	if err != nil {
 		return nil, err
 	}

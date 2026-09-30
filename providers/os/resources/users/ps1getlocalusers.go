@@ -4,7 +4,6 @@
 package users
 
 import (
-	"encoding/json"
 	"io"
 
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -180,8 +179,7 @@ func ParseWindowsLocalUsers(r io.Reader) ([]WindowsLocalUser, error) {
 		return nil, err
 	}
 
-	var localUsers []WindowsLocalUser
-	err = json.Unmarshal(data, &localUsers)
+	localUsers, err := powershell.UnmarshalList[WindowsLocalUser](data)
 	if err != nil {
 		return nil, err
 	}

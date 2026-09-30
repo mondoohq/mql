@@ -4,7 +4,6 @@
 package processes
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -133,8 +132,7 @@ func ParseWindowsProcesses(r io.Reader) ([]WindowsProcess, error) {
 		return nil, err
 	}
 
-	var processes []WindowsProcess
-	err = json.Unmarshal(data, &processes)
+	processes, err := powershell.UnmarshalList[WindowsProcess](data)
 	if err != nil {
 		return nil, err
 	}
