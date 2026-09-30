@@ -24,6 +24,8 @@ type sshMockConn struct {
 
 func (c *sshMockConn) ServerVersion() string { return c.serverVersion }
 
+func (c *sshMockConn) Type() shared.ConnectionType { return shared.Type_SSH }
+
 func (c *sshMockConn) RunCommand(command string) (*shared.Command, error) {
 	c.commands = append(c.commands, command)
 	return c.Connection.RunCommand(command)
@@ -77,4 +79,18 @@ func TestDetectOSWindowsSSHServer(t *testing.T) {
 		assert.Equal(t, "ubuntu", pf.Name)
 		assert.Contains(t, pf.Family, "linux")
 	})
+}
+
+// versionOnlyConn announces an SSH server version without being an SSH
+// connection.
+type versionOnlyConn struct{ *mock.Connection }
+
+func (versionOnlyConn) ServerVersion() string { return "SSH-2.0-OpenSSH_for_Windows_8.1" }
+
+func TestIsWindowsSSHServerOnlyForSSH(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{}, mock.WithPath("./testdata/detect-windows2022.toml"))
+	require.NoError(t, err)
+	assert.False(t, isWindowsSSHServer(versionOnlyConn{conn}), "only an SSH connection can be an OpenSSH for Windows server")
+	assert.True(t, isWindowsSSHServer(&sshMockConn{Connection: conn, serverVersion: "SSH-2.0-OpenSSH_for_Windows_8.1"}))
+	assert.False(t, isWindowsSSHServer(&sshMockConn{Connection: conn, serverVersion: "SSH-2.0-OpenSSH_9.6"}))
 }

@@ -68,6 +68,9 @@ type sshServerVersioner interface {
 // OpenSSH server that ships with Windows. That server announces itself as
 // OpenSSH_for_Windows; OpenSSH on other systems does not.
 func isWindowsSSHServer(conn shared.Connection) bool {
+	if conn.Type() != shared.Type_SSH {
+		return false
+	}
 	v, ok := conn.(sshServerVersioner)
 	if !ok {
 		return false
