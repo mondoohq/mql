@@ -6,6 +6,7 @@ package groups
 import (
 	"io"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
@@ -143,13 +144,24 @@ func (s *WindowsGroupManager) Group(id string) (*Group, error) {
 }
 
 func (s *WindowsGroupManager) List() ([]*Group, error) {
-	c, err := s.conn.RunCommand(GetLocalGroupsCommand())
-	if err != nil {
-		return nil, err
+	var winGroups []WindowsLocalGroup
+	if shared.WindowsNative(s.conn) {
+		native, err := nativeWindowsLocalGroups()
+		if err == nil {
+			winGroups = native
+		} else {
+			log.Debug().Err(err).Msg("native Windows groups failed, falling back to PowerShell")
+		}
 	}
-	winGroups, err := ParseWindowsLocalGroups(c.Stdout)
-	if err != nil {
-		return nil, err
+	if winGroups == nil {
+		c, err := s.conn.RunCommand(GetLocalGroupsCommand())
+		if err != nil {
+			return nil, err
+		}
+		winGroups, err = ParseWindowsLocalGroups(c.Stdout)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	res := []*Group{}

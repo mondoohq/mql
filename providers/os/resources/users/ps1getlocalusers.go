@@ -6,6 +6,7 @@ package users
 import (
 	"io"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
@@ -205,6 +206,17 @@ func (s *WindowsUserManager) User(id string) (*User, error) {
 }
 
 func (s *WindowsUserManager) List() ([]*User, error) {
+	if shared.WindowsNative(s.conn) {
+		native, err := nativeWindowsLocalUsers()
+		if err == nil {
+			res := []*User{}
+			for i := range native {
+				res = append(res, winToUser(native[i]))
+			}
+			return res, nil
+		}
+		log.Debug().Err(err).Msg("native Windows users failed, falling back to PowerShell")
+	}
 	// getLocalUsersScript is 5,294 characters, about 14,000 once Encode has
 	// widened it to UTF-16 and base64 encoded it, well past MaxCommandLength.
 	// Over WinRM the command is routed through cmd.exe and rejected before
