@@ -90,9 +90,9 @@ type toolPackageSpec struct {
 
 // toolPackageSpecs is keyed by MQL resource name.
 var toolPackageSpecs = map[string]toolPackageSpec{
-	"claude.code":    {packageName: "claude-code", binaryNames: []string{"claude"}, vendor: "Anthropic", inferVersion: inferClaudeVersion},
-	"openai.codex":   {packageName: "openai-codex", binaryNames: []string{"codex"}, vendor: "OpenAI", inferVersion: inferCodexVersion},
-	"cursor":         {packageName: "cursor", binaryNames: []string{"cursor"}, managerCandidates: []string{"cursor"}, vendor: "Anysphere"},
+	"claude.code":    {packageName: "claude-code", binaryNames: []string{"claude"}, managerCandidates: []string{"claude-code", "claude-code@latest", "Claude Code", "Claude CLI"}, vendor: "Anthropic", inferVersion: inferClaudeVersion},
+	"openai.codex":   {packageName: "openai-codex", binaryNames: []string{"codex"}, managerCandidates: []string{"codex", "OpenAI.Codex"}, vendor: "OpenAI", inferVersion: inferCodexVersion},
+	"cursor":         {packageName: "cursor", binaryNames: []string{"cursor"}, managerCandidates: []string{"cursor", "Cursor", "Cursor (User)"}, vendor: "Anysphere"},
 	"github.copilot": {packageName: "github-copilot", vendor: "GitHub", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates},
 	// Bare "goose"/"gemini" are intentionally NOT used as binaryNames: "goose"
 	// collides with the widely-packaged pressly/goose DB-migration tool, and
@@ -104,37 +104,42 @@ var toolPackageSpecs = map[string]toolPackageSpec{
 	// daemon, owned by Debian/Ubuntu's zfs-zed. The editor's candidates are its
 	// real package names: the Homebrew cask, and the macOS app and Windows
 	// app/appx names (package(name) matches case-sensitively).
-	"goose":            {packageName: "goose", managerCandidates: []string{"block-goose-cli"}, vendor: "Block"},
+	// Warp's candidate is its macOS app "Warp", not "warp": Arch and Alpine
+	// package GNOME Warp (file transfer) under that name, and package(name)
+	// cannot tell it from the terminal's Homebrew cask.
+	"goose":            {packageName: "goose", managerCandidates: []string{"block-goose-cli", "block-goose"}, vendor: "Block"},
 	"gemini":           {packageName: "gemini", managerCandidates: []string{"gemini-cli"}, vendor: "Google"},
-	"windsurf":         {packageName: "windsurf", binaryNames: []string{"windsurf"}, managerCandidates: []string{"windsurf"}},
+	"windsurf":         {packageName: "windsurf", binaryNames: []string{"windsurf"}, managerCandidates: []string{"windsurf", "Windsurf", "Windsurf (User)"}},
 	"zed":              {packageName: "zed", managerCandidates: []string{"zed", "Zed", "ZedIndustries.Zed"}, vendor: "Zed Industries"},
 	"roo":              {packageName: "roo", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"RooVeterinaryInc.roo-cline"}},
 	"cline":            {packageName: "cline", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"saoudrizwan.claude-dev"}},
-	"kiro":             {packageName: "kiro", binaryNames: []string{"kiro"}, managerCandidates: []string{"kiro"}},
+	"kiro":             {packageName: "kiro", binaryNames: []string{"kiro"}, managerCandidates: []string{"kiro", "Kiro"}},
 	"continuedev":      {packageName: "continuedev", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"Continue.continue"}},
 	"trae":             {packageName: "trae", managerCandidates: []string{"trae"}},
-	"opencode":         {packageName: "opencode", binaryNames: []string{"opencode"}, managerCandidates: []string{"opencode"}},
+	"opencode":         {packageName: "opencode", binaryNames: []string{"opencode"}, managerCandidates: []string{"opencode", "opencode-desktop", "OpenCode"}},
 	"pi":               {packageName: "pi"},
 	"mistral.vibe":     {packageName: "mistral-vibe", vendor: "Mistral AI"},
-	"antigravity":      {packageName: "antigravity", managerCandidates: []string{"antigravity"}, vendor: "Google"},
+	"antigravity":      {packageName: "antigravity", managerCandidates: []string{"antigravity", "Antigravity", "Antigravity (User)", "Antigravity IDE", "Antigravity IDE (User)"}, vendor: "Google"},
 	"ibm.bob":          {packageName: "ibm-bob", vendor: "IBM"},
-	"openclaw":         {packageName: "openclaw"},
+	"openclaw":         {packageName: "openclaw", managerCandidates: []string{"OpenClaw"}},
 	"snowflake.cortex": {packageName: "snowflake-cortex", vendor: "Snowflake"},
 	"junie":            {packageName: "junie", managerCandidates: []string{"junie"}, vendor: "JetBrains", runtime: runtimeIDE, runtimeHostName: "JetBrains IDE"},
 	"augment":          {packageName: "augment", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"augment.vscode-augment"}},
-	"warp":             {packageName: "warp", vendor: "Warp"},
+	"warp":             {packageName: "warp", managerCandidates: []string{"Warp"}, vendor: "Warp"},
 	"kilocode":         {packageName: "kilocode", managerCandidates: []string{"kilocode"}, runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"kilocode.Kilo-Code"}},
 	"openhands":        {packageName: "openhands", binaryNames: []string{"openhands"}, managerCandidates: []string{"openhands"}},
 	"qwen.code":        {packageName: "qwen-code", binaryNames: []string{"qwen"}, vendor: "Alibaba"},
 	// The desktop app installs per user (Windows, macOS), so no package manager
-	// owns it; presence is its configuration directory.
-	"claude.desktop": {packageName: "claude-desktop", vendor: "Anthropic"},
+	// owns it; its app name ("Claude", macOS and Windows) carries the version.
+	// The Homebrew cask "claude" is left out: a macOS Claude Code install also
+	// reports an app named "claude", and package(name) cannot tell them apart.
+	"claude.desktop": {packageName: "claude-desktop", managerCandidates: []string{"Claude"}, vendor: "Anthropic"},
 	// Aider installs with pip/pipx/uv, which OS package managers do not track;
-	// "aider-chat" is its distribution name where one does (AUR, Homebrew).
-	"aider": {packageName: "aider", binaryNames: []string{"aider"}, managerCandidates: []string{"aider-chat"}, configIsFile: true},
+	// "aider-chat" (AUR) and "aider" (Homebrew) are its names where one does.
+	"aider": {packageName: "aider", binaryNames: []string{"aider"}, managerCandidates: []string{"aider-chat", "aider"}, configIsFile: true},
 	// Ollama is a model server rather than a coding agent, but it is installed
 	// and versioned the same way, so it resolves through the same path.
-	"ollama": {packageName: "ollama", binaryNames: []string{"ollama"}, managerCandidates: []string{"ollama"}, vendor: "Ollama", inferVersion: inferOllamaVersion},
+	"ollama": {packageName: "ollama", binaryNames: []string{"ollama"}, managerCandidates: []string{"ollama", "Ollama", "ollama-app"}, vendor: "Ollama", inferVersion: inferOllamaVersion},
 }
 
 // resolveToolPackage returns the real system-package-manager entry that
@@ -248,7 +253,12 @@ func newSyntheticPackage(runtime *plugin.Runtime, id, name, version, vendor, pur
 // forks, tried when resolving the real host editor package for an IDE-plugin
 // agent (mirrors vsCodeEditors in vscode.go). Falls back to an abstract editor
 // package when none is manager-tracked (the common case for user-space installs).
-var vscodeHostCandidates = []string{"code", "code-insiders", "vscodium", "cursor", "windsurf"}
+var vscodeHostCandidates = []string{
+	"code", "code-insiders", "visual-studio-code", "Visual Studio Code", "Microsoft Visual Studio Code", "Microsoft Visual Studio Code (User)", "Microsoft Visual Studio Code (System)",
+	"vscodium", "VSCodium", "VSCodium (User)",
+	"cursor", "Cursor", "Cursor (User)",
+	"windsurf", "Windsurf", "Windsurf (User)",
+}
 
 // resolveRuntimePackage returns the host the tool runs inside — the OS for a
 // standalone agent, the editor for an IDE plugin, the browser for a browser

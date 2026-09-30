@@ -107,23 +107,102 @@ func TestToolBinaryNamesAvoidCollisions(t *testing.T) {
 	}
 }
 
-// Package names as scanned assets report them (product metrics, 2026-09).
-func TestZedPackageCandidates(t *testing.T) {
-	spec := toolPackageSpecs["zed"]
+// Package names as scanned assets report them (product metrics, 2026-09): each
+// real install resolves to its tool, and each lookalike to none.
+func TestToolPackageCandidates(t *testing.T) {
+	owners := func(name string) []string {
+		var res []string
+		for resource, spec := range toolPackageSpecs {
+			if slices.Contains(spec.managerCandidates, name) {
+				res = append(res, resource)
+			}
+		}
+		return res
+	}
 	tests := []struct {
-		name   string
-		editor bool
+		name string
+		tool string // "" when the package is not an AI tool
 	}{
-		{"zed", true},               // pkg:brew/homebrew/cask/zed
-		{"Zed", true},               // pkg:macos/macos/Zed?bundle-id=dev.zed.Zed, pkg:windows/windows/Zed
-		{"ZedIndustries.Zed", true}, // pkg:appx/windows/ZedIndustries.Zed
-		{"zfs-zed", false},          // pkg:deb/debian/zfs-zed, OpenZFS event daemon
-		{"Zed Axis 12.2", false},    // pkg:windows/windows/Zed%20Axis%2012.2
+		{"claude-code", "claude.code"},        // pkg:brew/homebrew/cask/claude-code
+		{"claude-code@latest", "claude.code"}, // pkg:brew/homebrew/cask/claude-code%40latest
+		{"Claude Code", "claude.code"},        // pkg:windows/windows/Claude%20Code
+		{"Claude CLI", "claude.code"},         // pkg:windows/windows/Claude%20CLI
+		{"Claude", "claude.desktop"},          // bundle-id=com.anthropic.claudefordesktop, pkg:appx/windows/Claude
+		{"codex", "openai.codex"},             // pkg:brew/homebrew/core/codex
+		{"OpenAI.Codex", "openai.codex"},      // pkg:appx/windows/OpenAI.Codex
+		{"cursor", "cursor"},                  // pkg:windows/windows/cursor
+		{"Cursor", "cursor"},                  // bundle-id=com.todesktop.230313mzl4w4u92
+		{"Cursor (User)", "cursor"},           // pkg:windows/windows/Cursor%20%28User%29
+		{"block-goose", "goose"},              // pkg:brew/homebrew/cask/block-goose
+		{"gemini-cli", "gemini"},              // pkg:brew/homebrew/core/gemini-cli
+		{"Windsurf", "windsurf"},              // pkg:macos/macos/Windsurf, pkg:windows/windows/Windsurf
+		{"Windsurf (User)", "windsurf"},       // pkg:windows/windows/Windsurf%20%28User%29
+		{"zed", "zed"},                        // pkg:brew/homebrew/cask/zed
+		{"Zed", "zed"},                        // bundle-id=dev.zed.Zed, pkg:windows/windows/Zed
+		{"ZedIndustries.Zed", "zed"},          // pkg:appx/windows/ZedIndustries.Zed
+		{"kiro", "kiro"},                      // pkg:brew/homebrew/cask/kiro
+		{"Kiro", "kiro"},                      // bundle-id=dev.kiro.desktop
+		{"opencode", "opencode"},              // pkg:brew/anomalyco/tap/opencode
+		{"opencode-desktop", "opencode"},      // pkg:brew/homebrew/cask/opencode-desktop
+		{"OpenCode", "opencode"},              // pkg:windows/windows/OpenCode
+		{"antigravity", "antigravity"},        // pkg:brew/homebrew/cask/antigravity
+		{"Antigravity", "antigravity"},        // bundle-id=com.google.antigravity
+		{"Antigravity (User)", "antigravity"}, // pkg:windows/windows/Antigravity%20%28User%29
+		{"Antigravity IDE", "antigravity"},    // bundle-id=com.google.antigravity-ide
+		{"OpenClaw", "openclaw"},              // bundle-id=ai.openclaw.mac
+		{"Warp", "warp"},                      // bundle-id=dev.warp.Warp-Stable
+		{"aider", "aider"},                    // pkg:brew/homebrew/core/aider
+		{"ollama", "ollama"},                  // pkg:brew/homebrew/core/ollama
+		{"Ollama", "ollama"},                  // bundle-id=com.electron.ollama
+		{"ollama-app", "ollama"},              // pkg:brew/homebrew/cask/ollama-app
+
+		{"claude", ""},                       // Claude Code's macOS app AND Claude Desktop's cask
+		{"zfs-zed", ""},                      // pkg:deb/debian/zfs-zed, OpenZFS event daemon
+		{"Zed Axis 12.2", ""},                // pkg:windows/windows/Zed%20Axis%2012.2
+		{"Gemini 2", ""},                     // duplicate-file finder
+		{"warp", ""},                         // GNOME Warp on Arch and Alpine; also the terminal's cask
+		{"goose", ""},                        // Homebrew formula is pressly/goose (DB migrations)
+		{"Cloudflare WARP", ""},              // VPN client
+		{"cortex-agent", ""},                 // Palo Alto Cortex XDR agent
+		{"Cortex XDR 9.1.0.20483", ""},       // Palo Alto Cortex XDR
+		{"adwaita-cursor-theme", ""},         // pkg:rpm/redhat/adwaita-cursor-theme
+		{"node-cli-cursor", ""},              // pkg:deb/ubuntu/node-cli-cursor
+		{"Microsoft.Copilot", ""},            // Microsoft Copilot, not GitHub Copilot
+		{"Claude Code URL Handler", ""},      // bundle-id=com.anthropic.claude-code-url-handler
+		{"Microsoft 365 Copilot", ""},        // Microsoft 365 Copilot
+		{"@anthropic-ai/claude-code", ""},    // npm, not an OS package
+		{"Ollama version 0.34.4", ""},        // version in the name; exact match cannot reach it
+		{"Visual Studio Code", ""},           // a runtime host, not a tool
+		{"Microsoft Visual Studio Code", ""}, // a runtime host, not a tool
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.editor, slices.Contains(spec.managerCandidates, tt.name))
+			var want []string
+			if tt.tool != "" {
+				want = []string{tt.tool}
+			}
+			assert.Equal(t, want, owners(tt.name))
 		})
 	}
-	assert.NotContains(t, spec.binaryNames, "zed", "zfs-zed owns /usr/sbin/zed")
+	assert.NotContains(t, toolPackageSpecs["zed"].binaryNames, "zed", "zfs-zed owns /usr/sbin/zed")
+}
+
+// VS Code and its forks as scanned assets report them, so an IDE-plugin agent
+// resolves its host editor on macOS and Windows too.
+func TestVSCodeHostCandidates(t *testing.T) {
+	for _, name := range []string{
+		"code",                                  // pkg:deb/ubuntu/code, pkg:rpm/fedora/code
+		"visual-studio-code",                    // pkg:brew/homebrew/cask/visual-studio-code
+		"Visual Studio Code",                    // bundle-id=com.microsoft.VSCode
+		"Microsoft Visual Studio Code",          // pkg:windows/windows/Microsoft%20Visual%20Studio%20Code
+		"Microsoft Visual Studio Code (User)",   // user-scope Windows install
+		"Microsoft Visual Studio Code (System)", // system-scope Windows install
+		"vscodium",                              // pkg:brew/homebrew/cask/vscodium
+		"VSCodium",                              // bundle-id=com.vscodium
+		"VSCodium (User)",                       // user-scope Windows install
+		"Cursor",                                // bundle-id=com.todesktop.230313mzl4w4u92
+		"Windsurf",                              // pkg:macos/macos/Windsurf
+	} {
+		assert.Contains(t, vscodeHostCandidates, name)
+	}
 }
