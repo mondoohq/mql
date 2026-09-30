@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	awsconf "github.com/aws/aws-sdk-go-v2/config"
@@ -54,6 +55,12 @@ type Connection struct {
 	UseScpFilesystem bool
 	HostKey          ssh.PublicKey
 	SSHClient        *ssh.Client
+
+	// the shell the server runs commands in, detected once (windows_shell.go)
+	shellOnce sync.Once
+	shell     remoteShell
+	// rawRunner replaces runRawCommand in tests
+	rawRunner func(command string) (*shared.Command, error)
 }
 
 func NewConnection(id uint32, conf *inventory.Config, asset *inventory.Asset) (*Connection, error) {
@@ -148,8 +155,11 @@ func (p *Connection) Capabilities() shared.Capabilities {
 func (c *Connection) RunCommand(command string) (*shared.Command, error) {
 	if c.Sudo != nil && c.Sudo.Active {
 		command = shared.BuildSudoCommand(c.Sudo, command)
+	} else if res, ok, err := c.runPowershellDirect(command); ok {
+		powershell.DecodeStderr(res)
+		return res, err
 	}
-	res, err := c.runRawCommand(command)
+	res, err := c.runRaw(command)
 	powershell.DecodeStderr(res)
 	return res, err
 }
