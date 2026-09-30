@@ -5,8 +5,10 @@ package ssh
 
 import (
 	"encoding/base64"
+	"encoding/binary"
 	"io"
 	"strings"
+	"unicode/utf16"
 
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -62,11 +64,14 @@ func parseShellProbe(stdout string) remoteShell {
 	if strings.Contains(stdout, "Windows_NT") {
 		return shellCmd
 	}
-	lines := strings.Fields(stdout)
-	if len(lines) == 0 {
-		return shellUnknown
+	// the last line that is not empty is what the second part printed
+	var last string
+	for _, line := range strings.Split(stdout, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			last = line
+		}
 	}
-	switch lines[len(lines)-1] {
+	switch last {
 	case "Desktop":
 		return shellWindowsPowerShell
 	case "Core":
@@ -148,12 +153,8 @@ func directPowershell(command string) (string, bool) {
 	if err != nil || len(script)%2 != 0 {
 		return "", false
 	}
-	suffix, err := powershell.ToBase64String(directExitCheck)
-	if err != nil {
-		return "", false
-	}
-	rawSuffix, _ := base64.StdEncoding.DecodeString(suffix)
-	encoded := base64.StdEncoding.EncodeToString(append(script, rawSuffix...))
+	// both halves are UTF-16LE, so the bytes join into one script
+	encoded := base64.StdEncoding.EncodeToString(append(script, directExitCheckUTF16...))
 	return "Invoke-Expression ([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('" + encoded + "')))" +
 		directStreams, true
 }
@@ -163,16 +164,30 @@ const (
 	// statement failed.
 	directExitCheck = "\nif (-not $?) { exit 1 }"
 
-	// directStreams sends warning, verbose and debug records to stderr, as
-	// -EncodedCommand does.
+	// directStreams sends warning (3), verbose (4) and debug (5) records to
+	// stderr, as -EncodedCommand does. Errors (2) are left alone: the console
+	// host already writes them to stderr, as it does for -EncodedCommand.
 	directStreams = " 3>&1 4>&1 5>&1 | ForEach-Object { if ($_ -is [Management.Automation.InformationalRecord]) " +
 		"{ [Console]::Error.WriteLine(($_.GetType().Name -replace 'Record$','').ToUpper() + ': ' + $_.Message) } else { $_ } }"
 )
 
+// directExitCheckUTF16 is directExitCheck as UTF-16LE, the encoding of the
+// script it is appended to.
+var directExitCheckUTF16 = func() []byte {
+	b := make([]byte, 0, 2*len(directExitCheck))
+	for _, u := range utf16.Encode([]rune(directExitCheck)) {
+		b = binary.LittleEndian.AppendUint16(b, u)
+	}
+	return b
+}()
+
 // runPowershellDirect runs command in the server's PowerShell when it is an
 // encoded Windows PowerShell script and the server's shell is Windows
 // PowerShell. ok is false when the command is not one, and the caller runs it
-// as it is.
+// as it is; err is then always nil. When ok is true, res and err are what
+// running the command returned, exactly as runRaw returns them for a command
+// that is not rewritten: err is the command failing to run, and res may be
+// nil with it.
 func (c *Connection) runPowershellDirect(command string) (*shared.Command, bool, error) {
 	direct, ok := directPowershell(command)
 	if !ok || c.remoteShell() != shellWindowsPowerShell {

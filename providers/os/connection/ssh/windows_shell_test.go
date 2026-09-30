@@ -30,6 +30,8 @@ func TestParseShellProbe(t *testing.T) {
 		{"sh", "%OS%\n", shellPosix},
 		{"empty", "", shellUnknown},
 		{"something else", "hello\n", shellUnknown},
+		{"edition inside a line", "%OS%\r\nnot Desktop\r\n", shellUnknown},
+		{"trailing blank lines", "%OS%\r\nDesktop\r\n\r\n", shellWindowsPowerShell},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
