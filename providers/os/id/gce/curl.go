@@ -22,7 +22,7 @@ func (m *CommandInstanceMetadata) curl(metadataPath string) (string, error) {
 	case m.platform.IsFamily(inventory.FAMILY_WINDOWS):
 		commandString = windowsMetadataCmdString(metadataPath)
 	default:
-		return "", errors.New("your platform is not supported by aws metadata identifier resource")
+		return "", errors.New("your platform is not supported by gce metadata identifier resource")
 	}
 
 	cmd, err := m.connection.RunCommand(commandString)
@@ -47,12 +47,10 @@ func windowsMetadataCmdString(metadataPath string) string {
 	if windowsPathNeedsJSONConversion(metadataPath) {
 		pipe = "| ConvertTo-Json"
 	}
-	return powershell.Encode(fmt.Sprintf(`
-$Headers = @{
+	return powershell.Encode(fmt.Sprintf(`$Headers = @{
     "Metadata-Flavor" = "Google"
 }
-Invoke-RestMethod -TimeoutSec 1 -Headers $Headers -URI "%s%s" -UseBasicParsing %s
-`, metadataSvcURL, strings.TrimPrefix(metadataPath, "/"), pipe))
+Invoke-RestMethod -TimeoutSec 1 -Headers $Headers -URI "%s%s" -UseBasicParsing %s`, metadataSvcURL, strings.TrimPrefix(metadataPath, "/"), pipe))
 }
 
 func windowsPathNeedsJSONConversion(path string) bool {

@@ -154,6 +154,6 @@ func (m *CommandInstanceMetadata) Identify() (Identity, error) {
 			PlatformMrn: MondooGcpInstancePlatformMrn(doc.ProjectID, zone, doc.InstanceName),
 		}, nil
 	default:
-		return Identity{}, errors.New("your platform is not supported by azure metadata identifier resource")
+		return Identity{}, errors.New("your platform is not supported by gce metadata identifier resource")
 	}
 }
