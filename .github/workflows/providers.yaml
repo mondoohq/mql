@@ -471,9 +471,10 @@ jobs:
 
           # Before the trigger was narrowed to config.go, most runs touched
           # provider code without bumping a version, so the "nothing to
-          # release" branch fired on 22 of 30 consecutive runs. A channel that is mostly no-ops trains people to
-          # stop reading it, which costs exactly the messages this job exists to
-          # deliver. Each branch decides whether it is worth interrupting for.
+          # release" branch fired on 22 of 30 consecutive runs. A channel
+          # that is mostly no-ops trains people to stop reading it, which
+          # costs exactly the messages this job exists to deliver. Each
+          # branch decides whether it is worth interrupting for.
           post=true
 
           if [ -n "${BLOCKED:-}" ]; then
