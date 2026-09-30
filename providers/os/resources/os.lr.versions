@@ -224,6 +224,7 @@ auditpol.entry.failure 13.22.2
 auditpol.entry.inclusionsetting 9.0.1
 auditpol.entry.machinename 9.0.1
 auditpol.entry.policytarget 9.0.1
+auditpol.entry.setting 14.13.1
 auditpol.entry.subcategory 9.0.1
 auditpol.entry.subcategoryguid 9.0.1
 auditpol.entry.success 13.22.2
@@ -4457,6 +4458,7 @@ windows.auditPolicy.subcategory.guid 13.28.2
 windows.auditPolicy.subcategory.inclusionSetting 13.28.2
 windows.auditPolicy.subcategory.localizedName 13.28.2
 windows.auditPolicy.subcategory.name 13.28.2
+windows.auditPolicy.subcategory.setting 14.13.1
 windows.auditPolicy.subcategory.success 13.28.2
 windows.bitlocker 9.0.1
 windows.bitlocker.available 13.40.10

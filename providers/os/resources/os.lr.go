@@ -10054,6 +10054,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"auditpol.entry.exclusionsetting": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuditpolEntry).GetExclusionsetting()).ToDataRes(types.String)
 	},
+	"auditpol.entry.setting": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAuditpolEntry).GetSetting()).ToDataRes(types.String)
+	},
 	"auditpol.entry.success": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAuditpolEntry).GetSuccess()).ToDataRes(types.Bool)
 	},
@@ -13851,6 +13854,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"windows.auditPolicy.subcategory.failure": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsAuditPolicySubcategory).GetFailure()).ToDataRes(types.Bool)
+	},
+	"windows.auditPolicy.subcategory.setting": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlWindowsAuditPolicySubcategory).GetSetting()).ToDataRes(types.String)
 	},
 	"windows.auditPolicy.subcategory.inclusionSetting": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlWindowsAuditPolicySubcategory).GetInclusionSetting()).ToDataRes(types.String)
@@ -28234,6 +28240,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAuditpolEntry).Exclusionsetting, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"auditpol.entry.setting": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAuditpolEntry).Setting, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"auditpol.entry.success": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAuditpolEntry).Success, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -34072,6 +34082,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"windows.auditPolicy.subcategory.failure": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlWindowsAuditPolicySubcategory).Failure, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"windows.auditPolicy.subcategory.setting": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlWindowsAuditPolicySubcategory).Setting, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"windows.auditPolicy.subcategory.inclusionSetting": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -69438,6 +69452,7 @@ type mqlAuditpolEntry struct {
 	Subcategoryguid  plugin.TValue[string]
 	Inclusionsetting plugin.TValue[string]
 	Exclusionsetting plugin.TValue[string]
+	Setting          plugin.TValue[string]
 	Success          plugin.TValue[bool]
 	Failure          plugin.TValue[bool]
 }
@@ -69501,6 +69516,10 @@ func (c *mqlAuditpolEntry) GetInclusionsetting() *plugin.TValue[string] {
 
 func (c *mqlAuditpolEntry) GetExclusionsetting() *plugin.TValue[string] {
 	return &c.Exclusionsetting
+}
+
+func (c *mqlAuditpolEntry) GetSetting() *plugin.TValue[string] {
+	return &c.Setting
 }
 
 func (c *mqlAuditpolEntry) GetSuccess() *plugin.TValue[bool] {
@@ -87817,6 +87836,7 @@ type mqlWindowsAuditPolicySubcategory struct {
 	LocalizedName    plugin.TValue[string]
 	Success          plugin.TValue[bool]
 	Failure          plugin.TValue[bool]
+	Setting          plugin.TValue[string]
 	InclusionSetting plugin.TValue[string]
 	ExclusionSetting plugin.TValue[string]
 }
@@ -87880,6 +87900,10 @@ func (c *mqlWindowsAuditPolicySubcategory) GetSuccess() *plugin.TValue[bool] {
 
 func (c *mqlWindowsAuditPolicySubcategory) GetFailure() *plugin.TValue[bool] {
 	return &c.Failure
+}
+
+func (c *mqlWindowsAuditPolicySubcategory) GetSetting() *plugin.TValue[string] {
+	return &c.Setting
 }
 
 func (c *mqlWindowsAuditPolicySubcategory) GetInclusionSetting() *plugin.TValue[string] {

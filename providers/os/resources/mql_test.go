@@ -923,6 +923,13 @@ func TestResource_Auditpol(t *testing.T) {
 		{"Security State Change", true, false},      // "Success"
 		{"Security System Extension", false, false}, // "No Auditing"
 	}
+	t.Run("setting is the English setting", func(t *testing.T) {
+		res := testWindowsQuery(t, "auditpol.where(subcategory == 'System Integrity')[0].setting")
+		require.NotEmpty(t, res)
+		assert.Empty(t, res[0].Result().Error)
+		assert.Equal(t, "Success and Failure", res[0].Data.Value)
+	})
+
 	for _, tc := range successFailureCases {
 		t.Run("success for "+tc.subcategory, func(t *testing.T) {
 			res := testWindowsQuery(t, "auditpol.where(subcategory == '"+tc.subcategory+"')[0].success")
@@ -972,6 +979,27 @@ func TestResource_AuditpolGerman(t *testing.T) {
 			require.NotEmpty(t, res)
 			assert.Empty(t, res[0].Result().Error)
 			assert.Equal(t, tc.failure, res[0].Data.Value, "failure")
+		})
+	}
+
+	// setting is the same in every language; inclusionsetting stays localized
+	settingCases := []struct{ guid, setting, inclusion string }{
+		{"0CCE9239-69AE-11D9-BED3-505054503030", "Success and Failure", "Erfolg und Fehler"},
+		{"0CCE922F-69AE-11D9-BED3-505054503030", "Success", "Erfolg"},
+		{"0CCE9234-69AE-11D9-BED3-505054503030", "Failure", "Fehler"},
+		{"0CCE9211-69AE-11D9-BED3-505054503030", "No Auditing", "Keine Überwachung"},
+	}
+	for _, tc := range settingCases {
+		t.Run("setting "+tc.setting, func(t *testing.T) {
+			res := de.TestQuery(t, "auditpol.where(subcategoryguid == '"+tc.guid+"')[0].setting")
+			require.NotEmpty(t, res)
+			assert.Empty(t, res[0].Result().Error)
+			assert.Equal(t, tc.setting, res[0].Data.Value)
+
+			res = de.TestQuery(t, "auditpol.where(subcategoryguid == '"+tc.guid+"')[0].inclusionsetting")
+			require.NotEmpty(t, res)
+			assert.Empty(t, res[0].Result().Error)
+			assert.Equal(t, tc.inclusion, res[0].Data.Value)
 		})
 	}
 
@@ -4074,6 +4102,13 @@ func TestResource_WindowsAuditPolicy(t *testing.T) {
 		}
 	})
 
+	t.Run("setting is the English setting", func(t *testing.T) {
+		res := win.TestQuery(t, "windows.auditPolicy.subcategory('Security State Change').setting")
+		require.NotEmpty(t, res)
+		assert.Empty(t, res[0].Result().Error)
+		assert.Equal(t, "Success", res[0].Data.Value)
+	})
+
 	t.Run("raw settings pass through unchanged", func(t *testing.T) {
 		res := win.TestQuery(t, "windows.auditPolicy.subcategory('Logon').inclusionSetting")
 		require.NotEmpty(t, res)
@@ -4094,6 +4129,11 @@ func TestResource_WindowsAuditPolicy(t *testing.T) {
 		assert.Equal(t, false, res[0].Data.Value)
 
 		res = win.TestQuery(t, "windows.auditPolicy.subcategory('No Such Subcategory').guid")
+		require.NotEmpty(t, res)
+		assert.Empty(t, res[0].Result().Error)
+		assert.Nil(t, res[0].Data.Value)
+
+		res = win.TestQuery(t, "windows.auditPolicy.subcategory('No Such Subcategory').setting")
 		require.NotEmpty(t, res)
 		assert.Empty(t, res[0].Result().Error)
 		assert.Nil(t, res[0].Data.Value)
@@ -4138,6 +4178,18 @@ func TestResource_WindowsAuditPolicyGerman(t *testing.T) {
 		require.NotEmpty(t, res)
 		assert.Empty(t, res[0].Result().Error)
 		assert.Equal(t, "Richtlinienänderungen überwachen", res[0].Data.Value)
+	})
+
+	t.Run("setting is English on a German system", func(t *testing.T) {
+		res := de.TestQuery(t, "windows.auditPolicy.subcategory('Account Lockout').setting")
+		require.NotEmpty(t, res)
+		assert.Empty(t, res[0].Result().Error)
+		assert.Equal(t, "Success and Failure", res[0].Data.Value)
+
+		res = de.TestQuery(t, "windows.auditPolicy.subcategory('Account Lockout').inclusionSetting")
+		require.NotEmpty(t, res)
+		assert.Empty(t, res[0].Result().Error)
+		assert.Equal(t, "Erfolg und Fehler", res[0].Data.Value)
 	})
 
 	t.Run("localized name resolves too", func(t *testing.T) {

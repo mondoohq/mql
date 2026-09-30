@@ -7,48 +7,21 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers/os/resources/windows"
 )
 
-func TestAuditpolInclusionAudits(t *testing.T) {
-	cases := []struct {
-		setting          string
-		success, failure bool
-	}{
-		// English
-		{"Success", true, false},
-		{"Failure", false, true},
-		{"Success and Failure", true, true},
-		{"No Auditing", false, false},
-		// German
-		{"Erfolg", true, false},
-		{"Fehler", false, true},
-		{"Erfolg und Fehler", true, true},
-		// Dutch
-		{"Geslaagd", true, false},
-		{"Mislukt", false, true},
-		{"Geslaagd en mislukt", true, true},
-		// Italian
-		{"Operazione riuscita", true, false},
-		{"Errore", false, true},
-		{"Esito positivo e negativo", true, true},
-		// French (with and without the accent on the capital É)
-		{"Succès", true, false},
-		{"Échec", false, true},
-		{"Echec", false, true},
-		{"Succès et échec", true, true},
-		{"Succès et echec", true, true},
-		// case-insensitive and whitespace-tolerant
-		{"  success and failure  ", true, true},
-		// unrecognized settings audit neither
-		{"unbekannt", false, false},
-		{"", false, false},
-	}
+// A setting that could not be read is null in all three fields, never
+// "No Auditing" and false.
+func TestAuditpolFlagData(t *testing.T) {
+	success, failure, setting := auditpolFlagData(nil)
+	assert.Equal(t, llx.NilData, success)
+	assert.Equal(t, llx.NilData, failure)
+	assert.Equal(t, llx.NilData, setting)
 
-	for _, c := range cases {
-		t.Run(c.setting, func(t *testing.T) {
-			flags := auditpolInclusionAudits(c.setting)
-			assert.Equal(t, c.success, flags.success, "success")
-			assert.Equal(t, c.failure, flags.failure, "failure")
-		})
-	}
+	f := windows.AuditFailure
+	success, failure, setting = auditpolFlagData(&f)
+	assert.Equal(t, false, success.Value)
+	assert.Equal(t, true, failure.Value)
+	assert.Equal(t, "Failure", setting.Value)
 }

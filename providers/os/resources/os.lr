@@ -8994,7 +8994,8 @@ auditpol @maturity("deprecated") {
 // subcategory names and categories in English regardless of the OS display
 // language. This entry carries the subcategory name, GUID, inclusion
 // setting, and exclusion setting as reported by the system, plus the
-// `success` and `failure` booleans derived from the inclusion setting.
+// setting as `success` and `failure` booleans and as the English `setting`,
+// which are the same in every display language.
 auditpol.entry  @defaults("subcategory inclusionsetting exclusionsetting") @maturity("deprecated") {
   // Machine name
   machinename string
@@ -9004,17 +9005,28 @@ auditpol.entry  @defaults("subcategory inclusionsetting exclusionsetting") @matu
   subcategory string
   // Subcategory GUID
   subcategoryguid string
-  // Inclusive setting
-  inclusionsetting string
+  // Inclusive setting, in the OS display language
+  //
+  // Deprecated in favor of `setting`, `success`, and `failure`, which don't
+  // depend on the display language: this is `Success and Failure` on an
+  // English system and `Erfolg und Fehler` on a German one.
+  inclusionsetting @maturity("deprecated") @replaced_by("auditpol.entry.setting") string
   // Exclusive settings
   exclusionsetting string
-  // Whether the inclusion setting audits success events
+  // Audit setting in English, whatever the OS display language
   //
-  // True for "Success" and "Success and Failure".
+  // One of `Success and Failure`, `Success`, `Failure`, or `No Auditing`.
+  // Null when the setting could not be read.
+  setting string
+  // Whether the subcategory audits success events
+  //
+  // True for "Success" and "Success and Failure". Null when the setting could
+  // not be read.
   success() bool
-  // Whether the inclusion setting audits failure events
+  // Whether the subcategory audits failure events
   //
-  // True for "Failure" and "Success and Failure".
+  // True for "Failure" and "Success and Failure". Null when the setting could
+  // not be read.
   failure() bool
 }
 
@@ -14771,8 +14783,9 @@ windows.auditPolicy {
 // name, for example `windows.auditPolicy.subcategory(name: "Logon")`,
 // and also accepts a subcategory GUID or the localized name the system
 // reports. `success` and `failure` indicate whether the subcategory
-// audits success and failure events, derived from the reported audit
-// setting independent of the OS display language. A subcategory that is
+// audits success and failure events, and `setting` names the setting in
+// English; all three are read from the audit policy's numeric setting, so
+// they are the same in every OS display language. A subcategory that is
 // not present on the system audits nothing (`success` and `failure` are
 // false and the reported fields are null) so checks against it fail
 // rather than error.
@@ -14790,14 +14803,26 @@ windows.auditPolicy.subcategory @defaults("name success failure") {
   // Subcategory name as reported by the system in its display language
   localizedName string
   // Whether success events are audited
+  //
+  // Null when the setting could not be read.
   success bool
   // Whether failure events are audited
+  //
+  // Null when the setting could not be read.
   failure bool
+  // Audit setting in English, whatever the OS display language
+  //
+  // One of `Success and Failure`, `Success`, `Failure`, or `No Auditing`.
+  // Null when the setting could not be read, and for a subcategory that is
+  // not present on the system.
+  setting string
   // Audit setting as reported by the system in its display language
   //
-  // One of `Success`, `Failure`, `Success and Failure`, or `No Auditing`,
-  // localized to the OS display language.
-  inclusionSetting string
+  // Deprecated in favor of `setting`, `success`, and `failure`, which don't
+  // depend on the display language. One of `Success`, `Failure`,
+  // `Success and Failure`, or `No Auditing`, localized to the OS display
+  // language.
+  inclusionSetting @maturity("deprecated") @replaced_by("windows.auditPolicy.subcategory.setting") string
   // Per-user audit exclusion setting as reported by the system
   exclusionSetting string
 }

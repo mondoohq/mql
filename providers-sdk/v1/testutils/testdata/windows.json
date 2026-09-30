@@ -30,7 +30,7 @@
       "resources": [
         {
           "Resource": "powershell",
-          "ID": "[Console]::OutputEncoding = [Text.Encoding]::UTF8;auditpol /get /category:* /r",
+          "ID": "[Console]::OutputEncoding = [Text.Encoding]::UTF8\n$f = Join-Path ([IO.Path]::GetTempPath()) ([IO.Path]::GetRandomFileName())\nauditpol /backup /file:$f | Out-Null\nif ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $f)) {\n  Get-Content -LiteralPath $f\n  Remove-Item -LiteralPath $f -ErrorAction SilentlyContinue\n  exit 0\n}\nRemove-Item -LiteralPath $f -ErrorAction SilentlyContinue\nauditpol /get /category:* /r\nexit $LASTEXITCODE",
           "Fields": {
             "exitcode": {
               "type": "\u0005",

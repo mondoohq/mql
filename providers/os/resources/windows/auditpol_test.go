@@ -27,6 +27,7 @@ func TestParseAuditpol(t *testing.T) {
 	// 60 policy rows; the CSV header row is not an entry
 	assert.Equal(t, 60, len(auditpol))
 
+	noAuditing := windows.AuditFlags(0)
 	expected := &windows.AuditpolEntry{
 		MachineName:      "Test",
 		PolicyTarget:     "System",
@@ -34,6 +35,8 @@ func TestParseAuditpol(t *testing.T) {
 		SubcategoryGUID:  "0CCE921F-69AE-11D9-BED3-505054503030",
 		InclusionSetting: "No Auditing",
 		ExclusionSetting: "",
+		// auditpol /get has no numeric setting; the flags come from the text
+		Flags: &noAuditing,
 	}
 	found := findPol(auditpol, "Kernel Object")
 	assert.Equal(t, expected, found)
