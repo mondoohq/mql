@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/powershell"
@@ -27,9 +28,9 @@ func (s *mqlSecpol) policy() (*windows.Secpol, error) {
 		return s._policy, nil
 	}
 
-	out, err := s.runPowershell(windows.SecpolScript)
+	out, err := s.export()
 	if err != nil {
-		return nil, fmt.Errorf("could not run secedit: %w", err)
+		return nil, err
 	}
 
 	policy, err := windows.ParseSecpol(strings.NewReader(out))
@@ -39,6 +40,25 @@ func (s *mqlSecpol) policy() (*windows.Secpol, error) {
 	s._policy = policy
 
 	return policy, nil
+}
+
+// export returns the local security policy as `secedit /export` writes it. On
+// a local Windows scan with MONDOO_WINDOWS_NATIVE set, it is read through the
+// APIs secedit uses, which returns SIDs, so no name needs resolving either;
+// otherwise, or when the native read fails, secedit runs through PowerShell.
+func (s *mqlSecpol) export() (string, error) {
+	if conn, ok := s.MqlRuntime.Connection.(shared.Connection); ok && shared.WindowsNative(conn) {
+		out, err := windows.NativeSecpolExport()
+		if err == nil {
+			return out, nil
+		}
+		log.Debug().Err(err).Msg("secpol: native read failed, falling back to secedit")
+	}
+	out, err := s.runPowershell(windows.SecpolScript)
+	if err != nil {
+		return "", fmt.Errorf("could not run secedit: %w", err)
+	}
+	return out, nil
 }
 
 // resolveSids maps account names to SIDs: an API call on a local Windows scan,
