@@ -4,10 +4,11 @@
 package windows
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 	"strings"
+
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 // DriversScript enumerates the kernel and file system drivers registered with
@@ -103,8 +104,8 @@ func ParseDrivers(r io.Reader) ([]Driver, error) {
 		return []Driver{}, nil
 	}
 
-	var drivers []Driver
-	if err := json.Unmarshal([]byte(trimmed), &drivers); err != nil {
+	drivers, err := powershell.UnmarshalList[Driver]([]byte(trimmed))
+	if err != nil {
 		return nil, errors.New("failed to parse drivers: " + err.Error())
 	}
 	return drivers, nil

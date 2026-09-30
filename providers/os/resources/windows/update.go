@@ -4,11 +4,12 @@
 package windows
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
 	"strings"
+
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 // Windows Update Agent history operation codes (IUpdateHistoryEntry.Operation).
@@ -119,25 +120,7 @@ func ParseWindowsUpdateHistory(input io.Reader) ([]WindowsUpdateHistoryEntry, er
 		return []WindowsUpdateHistoryEntry{}, nil
 	}
 
-	return unmarshalJSONArrayOrObject[WindowsUpdateHistoryEntry](data)
-}
-
-// unmarshalJSONArrayOrObject decodes a JSON array of T, tolerating PowerShell's
-// ConvertTo-Json behavior of emitting a bare object (not a single-element
-// array) when the source collection has exactly one element.
-func unmarshalJSONArrayOrObject[T any](data []byte) ([]T, error) {
-	var arr []T
-	arrErr := json.Unmarshal(data, &arr)
-	if arrErr == nil {
-		return arr, nil
-	}
-
-	var single T
-	if err := json.Unmarshal(data, &single); err != nil {
-		// report the array error, which is the expected shape
-		return nil, arrErr
-	}
-	return []T{single}, nil
+	return powershell.UnmarshalList[WindowsUpdateHistoryEntry](data)
 }
 
 // FilterInstalledHistory returns the succeeded installation entries from a

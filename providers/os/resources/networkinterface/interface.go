@@ -5,7 +5,6 @@ package networkinterface
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -559,20 +558,7 @@ func (i *WindowsInterfaceHandler) ParseNetAdapter(r io.Reader) ([]WindowsInterfa
 		return nil, err
 	}
 
-	var winInterfaces []WindowsInterface
-	err = json.Unmarshal(data, &winInterfaces)
-	if err != nil {
-
-		// try again without array (powershell returns single values different)
-		var winInterface WindowsInterface
-		err = json.Unmarshal(data, &winInterface)
-		if err != nil {
-			return nil, err
-		}
-
-		return []WindowsInterface{winInterface}, nil
-	}
-	return winInterfaces, nil
+	return powershell.UnmarshalList[WindowsInterface](data)
 }
 
 func (i *WindowsInterfaceHandler) ParseNetIpAddresses(r io.Reader) ([]WindowsNetIp, error) {
@@ -581,8 +567,7 @@ func (i *WindowsInterfaceHandler) ParseNetIpAddresses(r io.Reader) ([]WindowsNet
 		return nil, err
 	}
 
-	var winNetIps []WindowsNetIp
-	err = json.Unmarshal(data, &winNetIps)
+	winNetIps, err := powershell.UnmarshalList[WindowsNetIp](data)
 	if err != nil {
 		return nil, err
 	}

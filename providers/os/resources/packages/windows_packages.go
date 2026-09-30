@@ -265,14 +265,12 @@ func ParseWindowsAppxPackages(platform *inventory.Platform, input io.Reader) ([]
 		return nil, err
 	}
 
-	var appxPackages []winAppxPackages
-
 	// handle case where no packages are installed
-	if len(data) == 0 {
+	if len(bytes.TrimSpace(data)) == 0 {
 		return []Package{}, nil
 	}
 
-	err = json.Unmarshal(data, &appxPackages)
+	appxPackages, err := powershell.UnmarshalList[winAppxPackages](data)
 	if err != nil {
 		return nil, err
 	}
@@ -310,12 +308,11 @@ func ParseWindowsHotfixes(input io.Reader) ([]PowershellWinHotFix, error) {
 	}
 
 	// for empty result set do not get the '{}', therefore lets abort here
-	if len(data) == 0 {
+	if len(bytes.TrimSpace(data)) == 0 {
 		return []PowershellWinHotFix{}, nil
 	}
 
-	var powershellWinHotFixPkgs []PowershellWinHotFix
-	err = json.Unmarshal(data, &powershellWinHotFixPkgs)
+	powershellWinHotFixPkgs, err := powershell.UnmarshalList[PowershellWinHotFix](data)
 	if err != nil {
 		return nil, err
 	}
@@ -1622,7 +1619,7 @@ func parseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 	}
 
 	// for empty result set do not get the '{}', therefore lets abort here
-	if len(data) == 0 {
+	if len(bytes.TrimSpace(data)) == 0 {
 		return []Package{}, nil
 	}
 
@@ -1659,8 +1656,7 @@ func parseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 		BundleUpgradeCode json.RawMessage `json:"BundleUpgradeCode"`
 	}
 
-	var entries []powershellUninstallEntry
-	err = json.Unmarshal(data, &entries)
+	entries, err := powershell.UnmarshalList[powershellUninstallEntry](data)
 	if err != nil {
 		return nil, err
 	}
