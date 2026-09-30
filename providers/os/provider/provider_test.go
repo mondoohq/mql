@@ -300,3 +300,20 @@ func TestEnsurePlatformDetected(t *testing.T) {
 		assert.False(t, ok, "detection state outlived the connection")
 	})
 }
+
+func TestParseCLIIdDetector(t *testing.T) {
+	s := &Service{Service: plugin.NewService()}
+	parse := func(t *testing.T, flags map[string]*llx.Primitive) []string {
+		t.Helper()
+		res, err := s.ParseCLI(&plugin.ParseCLIReq{Connector: "local", Flags: flags})
+		require.NoError(t, err)
+		return res.Asset.IdDetector
+	}
+
+	assert.Nil(t, parse(t, nil), "no flag")
+	assert.Nil(t, parse(t, map[string]*llx.Primitive{"id-detector": {Value: []byte("")}}), "empty flag")
+	assert.Equal(t, []string{ids.IdDetector_Hostname},
+		parse(t, map[string]*llx.Primitive{"id-detector": {Value: []byte("hostname")}}), "a single detector")
+	assert.Equal(t, []string{ids.IdDetector_Default, ids.IdDetector_CrowdStrikeAID},
+		parse(t, map[string]*llx.Primitive{"id-detector": {Value: []byte(" default , crowdstrike-aid ")}}), "a list")
+}

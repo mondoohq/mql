@@ -57,42 +57,20 @@ func IdentifyPlatform(conn shared.Connection, req *plugin.ConnectReq, p *invento
 	var relatedIds []string
 
 	// Detect hypervisor for two purposes: auto-adding the BIOS UUID detector
-	// when no idDetectors are provided, and setting p.Kind at the bottom.
+	// to the default id detectors, and setting p.Kind at the bottom.
 	var detectedHypervisor string
 	var isVM bool
-	if len(idDetectors) == 0 || p.Kind == "" {
+	if ids.HasDefault(idDetectors) || p.Kind == "" {
 		detectedHypervisor, isVM = hypervisor.Hypervisor(conn, p)
 		if isVM {
 			log.Debug().Str("hypervisor", detectedHypervisor).Msg("detected hypervisor for ID detection")
 		}
 	}
 
-	if len(idDetectors) == 0 {
-		// fallback to default id detectors
-		//
-		// we want to make sure that we mark assets running in the cloud to `virtualmachine`,
-		// therefore we use the cloud detect detector as our first option.
-
-		switch conn.Type() {
-		case shared.Type_Local:
-			idDetectors = []string{ids.IdDetector_CloudDetect, ids.IdDetector_Hostname}
-			if mql.Features(req.Features).IsActive(mql.SerialNumberAsID) {
-				idDetectors = append(idDetectors, ids.IdDetector_SerialNumber)
-			}
-			// Automatically use BIOS UUID for VMs since serial numbers may not be unique
-			// (e.g., OpenStack passes through the host's serial number to VMs)
-			if mql.Features(req.Features).IsActive(mql.BiosUUIDAsID) || isVM {
-				idDetectors = append(idDetectors, ids.IdDetector_BiosUUID)
-			}
-		case shared.Type_SSH:
-			idDetectors = []string{ids.IdDetector_CloudDetect, ids.IdDetector_Hostname}
-			// Use BIOS UUID for SSH connections when explicitly enabled or when VM is detected
-			if mql.Features(req.Features).IsActive(mql.BiosUUIDAsID) || isVM {
-				idDetectors = append(idDetectors, ids.IdDetector_BiosUUID)
-			}
-		case shared.Type_Tar, shared.Type_FileSystem, shared.Type_DockerSnapshot:
-			idDetectors = []string{ids.IdDetector_Hostname}
-		}
+	// An empty list means the default id detectors, and `default` in a list
+	// stands for them next to the detectors named with it.
+	if ids.HasDefault(idDetectors) {
+		idDetectors = ids.ExpandDefault(idDetectors, DefaultIdDetectors(conn.Type(), req, isVM))
 	}
 	fingerprint.ActiveIdDetectors = idDetectors
 
@@ -159,6 +137,41 @@ func IdentifyPlatform(conn shared.Connection, req *plugin.ConnectReq, p *invento
 
 	log.Debug().Interface("id-detector", idDetectors).Strs("platform-ids", platformIds).Msg("detected platform ids")
 	return &fingerprint, p, nil
+}
+
+// DefaultIdDetectors returns the id detectors a connection of the given type
+// uses when none are requested, or when the request names `default`.
+//
+// We want to make sure that we mark assets running in the cloud as
+// `virtualmachine`, therefore the cloud detect detector is the first option.
+func DefaultIdDetectors(connType shared.ConnectionType, req *plugin.ConnectReq, isVM bool) []string {
+	var features []byte
+	if req != nil {
+		features = req.Features
+	}
+	switch connType {
+	case shared.Type_Local:
+		res := []string{ids.IdDetector_CloudDetect, ids.IdDetector_Hostname}
+		if mql.Features(features).IsActive(mql.SerialNumberAsID) {
+			res = append(res, ids.IdDetector_SerialNumber)
+		}
+		// Automatically use BIOS UUID for VMs since serial numbers may not be unique
+		// (e.g., OpenStack passes through the host's serial number to VMs)
+		if mql.Features(features).IsActive(mql.BiosUUIDAsID) || isVM {
+			res = append(res, ids.IdDetector_BiosUUID)
+		}
+		return res
+	case shared.Type_SSH:
+		res := []string{ids.IdDetector_CloudDetect, ids.IdDetector_Hostname}
+		// Use BIOS UUID for SSH connections when explicitly enabled or when VM is detected
+		if mql.Features(features).IsActive(mql.BiosUUIDAsID) || isVM {
+			res = append(res, ids.IdDetector_BiosUUID)
+		}
+		return res
+	case shared.Type_Tar, shared.Type_FileSystem, shared.Type_DockerSnapshot:
+		return []string{ids.IdDetector_Hostname}
+	}
+	return nil
 }
 
 func GatherNameForPlatformId(id string) string {

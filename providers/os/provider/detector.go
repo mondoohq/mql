@@ -36,9 +36,7 @@ func hasDetector(detectors map[string]struct{}, any ...string) bool {
 }
 
 func mapDetectors(raw []string) map[string]struct{} {
-	if len(raw) == 0 {
-		raw = IdDetectors
-	}
+	raw = ids.ExpandDefault(raw, IdDetectors)
 	res := make(map[string]struct{}, len(raw))
 	for _, v := range raw {
 		res[v] = struct{}{}

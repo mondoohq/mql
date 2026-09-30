@@ -36,6 +36,7 @@ import (
 	"go.mondoo.com/mql/providers/os/connection/winrm"
 	"go.mondoo.com/mql/providers/os/detector"
 	"go.mondoo.com/mql/providers/os/id"
+	"go.mondoo.com/mql/providers/os/id/ids"
 	"go.mondoo.com/mql/providers/os/resources"
 	"go.mondoo.com/mql/providers/os/resources/discovery/docker_engine"
 	"go.mondoo.com/mql/providers/os/resources/discovery/mcp_servers"
@@ -299,14 +300,12 @@ func (s *Service) ParseCLI(req *plugin.ParseCLIReq) (*plugin.ParseCLIRes, error)
 		Connections: []*inventory.Config{conf},
 	}
 
-	idDetector := ""
+	// id-detector takes one detector or a comma-separated list. `default`
+	// in the list stands for the detectors used when none are given.
 	if flag, ok := flags["id-detector"]; ok {
-		if string(flag.Value) != "" {
-			idDetector = string(flag.Value)
+		if detectors := ids.Parse(string(flag.Value)); len(detectors) > 0 {
+			asset.IdDetector = detectors
 		}
-	}
-	if idDetector != "" {
-		asset.IdDetector = []string{idDetector}
 	}
 
 	if conf.Options == nil {

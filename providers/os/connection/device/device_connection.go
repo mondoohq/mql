@@ -97,9 +97,7 @@ func NewDeviceConnection(connId uint32, conf *inventory.Config, asset *inventory
 	}
 	deviceConnection.keepMounted = conf.Options[KeepMounted] == "true"
 
-	if len(asset.IdDetector) == 0 {
-		asset.IdDetector = []string{ids.IdDetector_Hostname}
-	}
+	asset.IdDetector = ids.ExpandDefault(asset.IdDetector, []string{ids.IdDetector_Hostname})
 	if !stringx.Contains(asset.IdDetector, ids.IdDetector_MachineID) {
 		asset.IdDetector = append(asset.IdDetector, ids.IdDetector_MachineID)
 	}
