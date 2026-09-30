@@ -207,7 +207,10 @@ type mqlWindowsInternal struct {
 	// exact name. The resource's init runs on every lookup, before the
 	// resource cache is consulted, so without it each check that reads the
 	// same feature (a benchmark reads SMB1Protocol from several checks and
-	// filters) started Get-WindowsOptionalFeature again.
+	// filters) started Get-WindowsOptionalFeature again. It has its own
+	// lock, held while a lookup runs, so that concurrent lookups of a name
+	// wait for the first without blocking the hotfix state behind lock.
+	optionalFeatureLock    sync.Mutex
 	optionalFeatureLookups map[string]optionalFeatureLookup
 }
 
@@ -436,8 +439,8 @@ func initWindowsOptionalFeature(runtime *plugin.Runtime, args map[string]*llx.Ra
 // runtime and remembers the outcome (see optionalFeatureLookups). Concurrent
 // lookups of the same name wait for the first instead of querying again.
 func (w *mqlWindows) lookupOptionalFeature(conn shared.Connection, name string) (optionalFeatureLookup, error) {
-	w.lock.Lock()
-	defer w.lock.Unlock()
+	w.optionalFeatureLock.Lock()
+	defer w.optionalFeatureLock.Unlock()
 
 	if lookup, ok := w.optionalFeatureLookups[name]; ok {
 		return lookup, nil
