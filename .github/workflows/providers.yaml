@@ -35,6 +35,19 @@ on:
         type: number
         required: false
 
+# One release per branch at a time. Scoping builds every provider whose version
+# differs from the published one, so while a release is pending every later
+# merge schedules the same builds again; without this, runs queued behind
+# unavailable runners pile up (13 runs x 9 providers on 2026-09-30) and would
+# all publish the same versions at once when runners return.
+#
+# A new run replaces the one waiting behind the current release, and its own
+# scoping sees every version still unpublished, so nothing is dropped. A run
+# that has started is never cancelled: a publish must not stop halfway.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
