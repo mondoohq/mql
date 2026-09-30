@@ -9,7 +9,6 @@ package registry
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -73,54 +72,39 @@ func GetNativeRegistryKeyItems(fullPath string) ([]RegistryKeyItem, error) {
 		return nil, err
 	}
 	for _, value := range values {
-		stringValue, valtype, err := regKey.GetStringValue(value)
-		if err != registry.ErrUnexpectedType && err != nil {
+		data, valtype, err := readRawRegistryValue(regKey, value)
+		if err != nil {
 			return nil, err
-		}
-
-		regValue := RegistryKeyValue{
-			Kind:   int(valtype),
-			String: stringValue,
-		}
-
-		switch valtype {
-		case registry.SZ, registry.EXPAND_SZ:
-			// covered by GetStringValue, nothing to do
-		case registry.BINARY:
-			binaryValue, _, err := regKey.GetBinaryValue(value)
-			if err != nil {
-				return nil, err
-			}
-			regValue.Binary = binaryValue
-		case registry.DWORD:
-			fallthrough
-		case registry.QWORD:
-			intVal, _, err := regKey.GetIntegerValue(value)
-			if err != nil {
-				return nil, err
-			}
-			regValue.Number = int64(intVal)
-			regValue.String = strconv.FormatInt(int64(intVal), 10)
-		case registry.MULTI_SZ:
-			entries, _, err := regKey.GetStringsValue(value)
-			if err != nil {
-				return nil, err
-			}
-			entries = normalizeMultiSz(entries)
-			regValue.MultiString = entries
-			if len(entries) > 0 {
-				// NOTE: this is to be consistent with the output before we moved to multi-datatype support for registry keys
-				regValue.String = strings.Join(entries, " ")
-			}
-		case registry.DWORD_BIG_ENDIAN, registry.LINK, registry.RESOURCE_LIST, registry.FULL_RESOURCE_DESCRIPTOR, registry.RESOURCE_REQUIREMENTS_LIST:
-			// not supported by golang.org/x/sys/windows/registry
 		}
 		res = append(res, RegistryKeyItem{
 			Key:   value,
-			Value: regValue,
+			Value: decodeRawRegistryValue(valtype, data),
 		})
 	}
 	return res, nil
+}
+
+// readRawRegistryValue returns a value's kind and data as stored. Every kind
+// is read this way, including the ones golang.org/x/sys/windows/registry has
+// no typed getter for (REG_DWORD_BIG_ENDIAN, REG_LINK, the resource lists), so
+// decodeRawRegistryValue gives them the same data the PowerShell path does.
+func readRawRegistryValue(k registry.Key, name string) ([]byte, uint32, error) {
+	n, valtype, err := k.GetValue(name, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	for {
+		buf := make([]byte, n)
+		n, valtype, err = k.GetValue(name, buf)
+		if err == registry.ErrShortBuffer {
+			// the value grew between the two reads
+			continue
+		}
+		if err != nil {
+			return nil, 0, err
+		}
+		return buf[:n], valtype, nil
+	}
 }
 
 func GetNativeRegistryKeyChildren(fullPath string) ([]RegistryKeyChild, error) {

@@ -6,10 +6,18 @@
 package registry
 
 import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
+	"unsafe"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -134,4 +142,78 @@ func TestGetNativeRegistryKeyChildren_Integration(t *testing.T) {
 func TestGetNativeRegistryKeyItems_NotFound(t *testing.T) {
 	_, err := GetNativeRegistryKeyItems(`HKEY_LOCAL_MACHINE\SOFTWARE\NonExistentKey12345`)
 	require.Error(t, err)
+}
+
+var procRegSetValueExW = windows.NewLazySystemDLL("advapi32.dll").NewProc("RegSetValueExW")
+
+// setRawValue stores a value of any kind, including the ones
+// golang.org/x/sys/windows/registry has no setter for.
+func setRawValue(t *testing.T, k registry.Key, name string, kind uint32, data []byte) {
+	t.Helper()
+	pname, err := windows.UTF16PtrFromString(name)
+	require.NoError(t, err)
+	var pdata *byte
+	if len(data) > 0 {
+		pdata = &data[0]
+	}
+	ret, _, _ := procRegSetValueExW.Call(uintptr(k), uintptr(unsafe.Pointer(pname)), 0, uintptr(kind), uintptr(unsafe.Pointer(pdata)), uintptr(len(data)))
+	require.Zero(t, ret, "RegSetValueExW %s", name)
+}
+
+// TestRegistryValuesNativeMatchPowerShell writes one value of every kind to a
+// scratch key, reads the key with the native reader and with the PowerShell
+// collection script the remote path runs, and asserts every value decodes the
+// same on both. A difference is a query that answers differently depending on
+// how the host is reached (REG_EXPAND_SZ used to come back expanded over
+// PowerShell only).
+func TestRegistryValuesNativeMatchPowerShell(t *testing.T) {
+	sub := fmt.Sprintf(`Software\mql-registry-test-%d`, os.Getpid())
+	k, _, err := registry.CreateKey(registry.CURRENT_USER, sub, registry.ALL_ACCESS)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		k.Close()
+		_ = registry.DeleteKey(registry.CURRENT_USER, sub)
+	})
+
+	require.NoError(t, k.SetStringValue("Sz", "hello"))
+	require.NoError(t, k.SetExpandStringValue("ExpandSz", `%SystemRoot%\system32\logfiles\firewall\domainfw.log`))
+	require.NoError(t, k.SetDWordValue("Dword", 42))
+	require.NoError(t, k.SetQWordValue("Qword", 5000000000))
+	require.NoError(t, k.SetStringsValue("MultiSz", []string{"alpha", "beta"}))
+	require.NoError(t, k.SetStringsValue("MultiSzEmpty", []string{}))
+	require.NoError(t, k.SetBinaryValue("Binary", []byte{0xde, 0xad, 0xbe, 0xef}))
+	be := make([]byte, 4)
+	binary.BigEndian.PutUint32(be, 42)
+	setRawValue(t, k, "DwordBigEndian", registry.DWORD_BIG_ENDIAN, be)
+	setRawValue(t, k, "ResourceList", registry.RESOURCE_LIST, []byte{1, 0, 0, 0, 5})
+
+	path := `HKEY_CURRENT_USER\` + sub
+	native, err := GetNativeRegistryKeyItems(path)
+	require.NoError(t, err)
+
+	script := filepath.Join(t.TempDir(), "values.ps1")
+	require.NoError(t, os.WriteFile(script, []byte(GetRegistryKeyItemScript(path)), 0o600))
+	out, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script).Output()
+	require.NoError(t, err)
+	remote, err := ParsePowershellRegistryKeyItems(bytes.NewReader(out))
+	require.NoError(t, err)
+
+	byName := map[string]RegistryKeyItem{}
+	for _, item := range remote {
+		byName[item.Key] = item
+	}
+	require.Len(t, native, 9)
+	for _, n := range native {
+		p, ok := byName[n.Key]
+		require.True(t, ok, "PowerShell did not report %s", n.Key)
+		require.NoError(t, n.Value.Err, n.Key)
+		require.NoError(t, p.Value.Err, n.Key)
+		assert.Equal(t, n.Value.Kind, p.Value.Kind, "%s kind", n.Key)
+		assert.Equal(t, n.Kind(), p.Kind(), "%s type", n.Key)
+		assert.Equal(t, n.String(), p.String(), "%s value", n.Key)
+		assert.Equal(t, n.GetRawValue(), p.GetRawValue(), "%s data", n.Key)
+	}
+	assert.Equal(t, `%SystemRoot%\system32\logfiles\firewall\domainfw.log`, byName["ExpandSz"].String())
+	assert.Equal(t, int64(5000000000), byName["Qword"].GetRawValue())
+	assert.Equal(t, int64(42), byName["DwordBigEndian"].GetRawValue())
 }
