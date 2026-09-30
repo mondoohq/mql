@@ -370,6 +370,9 @@ func (c *Connection) extractOwnership(stat os.FileInfo) (uid, gid int64) {
 }
 
 func (c *Connection) Close() {
+	// waits for a first command that is creating the pool; after this, none
+	// is created
+	c.sessionsOnce.Do(func() {})
 	if c.sessionPool != nil {
 		c.sessionPool.closeAll()
 	}

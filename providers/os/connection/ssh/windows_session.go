@@ -90,7 +90,7 @@ func persistentShellEnabled() bool {
 // sessionExit matches a script that could end the process it runs in: `exit`,
 // [Environment]::Exit and $host.SetShouldExit. Such a script runs from a file
 // in the session, where `exit` ends only the script. A false match only costs
-// that file.
+// that file. [Environment]::Exit matches through its Exit word.
 var sessionExit = regexp.MustCompile(`(?i)\bexit\b|\bSetShouldExit\b`)
 
 // sessionScript is a script a session can run.
@@ -157,7 +157,10 @@ func newSessionMarkers(id string, seq uint64) sessionMarkers {
 // The exit code is what -EncodedCommand would exit with: 1 when the script
 // threw; the code it passed to exit when it called exit (only a file can);
 // else 1 when its last statement failed and 0 when it succeeded.
-func sessionFrame(m sessionMarkers, sessionID string, script sessionScript) string {
+//
+// fileTag names the file a script that may exit runs from; it is unique per
+// command, so no two commands share a file.
+func sessionFrame(m sessionMarkers, fileTag string, script sessionScript) string {
 	encoded := base64.StdEncoding.EncodeToString(append(append([]byte{}, script.utf16...), sessionLastStatus...))
 	decode := "[Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('" + encoded + "'))"
 	start := strings.TrimSuffix(m.start, "\r\n")
@@ -166,7 +169,7 @@ func sessionFrame(m sessionMarkers, sessionID string, script sessionScript) stri
 	var run, cleanup string
 	if script.file {
 		// UTF-8 with a BOM, so Windows PowerShell reads it as UTF-8
-		run = "$__mqlFile = Join-Path $env:TEMP 'mql-" + sessionID + ".ps1'; " +
+		run = "$__mqlFile = Join-Path $env:TEMP 'mql-" + fileTag + ".ps1'; " +
 			"[IO.File]::WriteAllText($__mqlFile, " + decode + ", [Text.Encoding]::UTF8); " +
 			"& $__mqlFile"
 		cleanup = " finally { Remove-Item -LiteralPath $__mqlFile -Force -ErrorAction SilentlyContinue }"
@@ -229,7 +232,7 @@ func newPSSession(t sessionIO) (*psSession, error) {
 func (s *psSession) run(script sessionScript) ([]byte, []byte, int, error) {
 	s.seq++
 	m := newSessionMarkers(s.id, s.seq)
-	if _, err := io.WriteString(s.stdin, sessionFrame(m, s.id, script)+"\r\n"); err != nil {
+	if _, err := io.WriteString(s.stdin, sessionFrame(m, s.id+"-"+strconv.FormatUint(s.seq, 10), script)+"\r\n"); err != nil {
 		return nil, nil, 0, err
 	}
 
@@ -463,6 +466,9 @@ func (c *Connection) runInSession(command string) (*shared.Command, bool) {
 	if err != nil {
 		s.close()
 		pool.fail(fmt.Errorf("session %s: %w", s.id, err))
+		// The script may have run in part before the session broke. Scan
+		// scripts only read, so it runs again, from the start, as a process.
+		log.Debug().Str("session", s.id).Msg("ssh> running the command again as its own process")
 		return nil, false
 	}
 	pool.put(s)
