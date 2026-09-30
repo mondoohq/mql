@@ -50,7 +50,7 @@ type toolPackageSpec struct {
 	// who-owns), and return that real, manager-tracked package. This works
 	// regardless of how the package is named, so it is preferred over
 	// managerCandidates. Leave empty for tools whose binary name collides with
-	// an unrelated package (e.g. bare "goose"/"gemini") to avoid mis-attributing
+	// an unrelated package (e.g. bare "goose"/"gemini"/"zed") to avoid mis-attributing
 	// the wrong install; those rely on managerCandidates instead.
 	binaryNames []string
 	// managerCandidates are names tried against the system package managers via
@@ -100,10 +100,14 @@ var toolPackageSpecs = map[string]toolPackageSpec{
 	// at the wrong package. They fall back to distinctive candidate package
 	// names (the real Gemini CLI ships as npm `@google/gemini-cli`, which no OS
 	// manager owns, so it resolves to an abstract package).
+	// Bare "zed" is not a binaryName either: /usr/sbin/zed is the OpenZFS event
+	// daemon, owned by Debian/Ubuntu's zfs-zed. The editor's candidates are its
+	// real package names: the Homebrew cask, and the macOS app and Windows
+	// app/appx names (package(name) matches case-sensitively).
 	"goose":            {packageName: "goose", managerCandidates: []string{"block-goose-cli"}, vendor: "Block"},
 	"gemini":           {packageName: "gemini", managerCandidates: []string{"gemini-cli"}, vendor: "Google"},
 	"windsurf":         {packageName: "windsurf", binaryNames: []string{"windsurf"}, managerCandidates: []string{"windsurf"}},
-	"zed":              {packageName: "zed", binaryNames: []string{"zed"}, managerCandidates: []string{"zed"}, vendor: "Zed Industries"},
+	"zed":              {packageName: "zed", managerCandidates: []string{"zed", "Zed", "ZedIndustries.Zed"}, vendor: "Zed Industries"},
 	"roo":              {packageName: "roo", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"RooVeterinaryInc.roo-cline"}},
 	"cline":            {packageName: "cline", runtime: runtimeIDE, runtimeHostName: "Visual Studio Code", runtimeHostCandidates: vscodeHostCandidates, vscodeExtensionIDs: []string{"saoudrizwan.claude-dev"}},
 	"kiro":             {packageName: "kiro", binaryNames: []string{"kiro"}, managerCandidates: []string{"kiro"}},

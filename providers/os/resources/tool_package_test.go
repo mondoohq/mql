@@ -5,6 +5,7 @@ package resources
 
 import (
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -88,4 +89,41 @@ func TestSemverLess(t *testing.T) {
 	assert.True(t, semverLess("3.9.0", "3.10.0"), "numeric, not lexical")
 	assert.False(t, semverLess("3.10.0", "3.9.0"))
 	assert.False(t, semverLess("1.0.0", "1.0.0"))
+}
+
+// A binary name owned by an unrelated package attributes that package to the
+// tool: dpkg -S zed on a ZFS host answers zfs-zed.
+func TestToolBinaryNamesAvoidCollisions(t *testing.T) {
+	colliding := map[string]string{
+		"goose":  "pressly/goose DB-migration tool",
+		"gemini": "ambiguous across unrelated packages",
+		"zed":    "OpenZFS event daemon (zfs-zed)",
+	}
+	for resource, spec := range toolPackageSpecs {
+		for _, bin := range spec.binaryNames {
+			owner, ok := colliding[bin]
+			assert.False(t, ok, "%s: binary name %q collides with the %s", resource, bin, owner)
+		}
+	}
+}
+
+// Package names as scanned assets report them (product metrics, 2026-09).
+func TestZedPackageCandidates(t *testing.T) {
+	spec := toolPackageSpecs["zed"]
+	tests := []struct {
+		name   string
+		editor bool
+	}{
+		{"zed", true},               // pkg:brew/homebrew/cask/zed
+		{"Zed", true},               // pkg:macos/macos/Zed?bundle-id=dev.zed.Zed, pkg:windows/windows/Zed
+		{"ZedIndustries.Zed", true}, // pkg:appx/windows/ZedIndustries.Zed
+		{"zfs-zed", false},          // pkg:deb/debian/zfs-zed, OpenZFS event daemon
+		{"Zed Axis 12.2", false},    // pkg:windows/windows/Zed%20Axis%2012.2
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.editor, slices.Contains(spec.managerCandidates, tt.name))
+		})
+	}
+	assert.NotContains(t, spec.binaryNames, "zed", "zfs-zed owns /usr/sbin/zed")
 }
