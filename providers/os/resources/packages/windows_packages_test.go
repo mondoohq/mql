@@ -1613,3 +1613,45 @@ func TestGetDotNetFramework(t *testing.T) {
 		})
 	}
 }
+
+// The native registry reader and the PowerShell path read the same Uninstall
+// key values into the same package fields, InstallDate included (#11254).
+func TestWindowsAppInstallDateNativeAndPowerShellAgree(t *testing.T) {
+	pf := &inventory.Platform{Name: "windows", Version: "10.0.20348", Arch: "amd64", Family: []string{"windows"}}
+	for _, tc := range []struct{ name, raw string }{
+		{"MSI date", "20260909"},
+		{"no date", ""},
+		{"unparseable", "9/9/2026"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sz := func(k, v string) registry.RegistryKeyItem {
+				return registry.RegistryKeyItem{Key: k, Value: registry.RegistryKeyValue{Kind: registry.SZ, String: v}}
+			}
+			items := []registry.RegistryKeyItem{
+				sz("DisplayName", "Amazon SSM Agent"),
+				sz("DisplayVersion", "3.3.1"),
+				sz("Publisher", "Amazon Web Services"),
+				sz("UninstallString", "MsiExec.exe /X{abc}"),
+			}
+			if tc.raw != "" {
+				items = append(items, sz("InstallDate", tc.raw))
+			}
+			native, _ := getPackageFromRegistryKeyItems(items, pf, "amd64")
+			require.NotNil(t, native)
+
+			js := `[{"DisplayName":"Amazon SSM Agent","DisplayVersion":"3.3.1","Publisher":"Amazon Web Services",` +
+				`"UninstallString":"MsiExec.exe /X{abc}","InstallDate":"` + tc.raw + `",` +
+				`"PSPath":"Microsoft.PowerShell.Core\\Registry::HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{abc}"}]`
+			remote, err := ParseWindowsAppPackages(pf, strings.NewReader(js))
+			require.NoError(t, err)
+			require.Len(t, remote, 1)
+
+			assert.Equal(t, remote[0].InstallDate, native.InstallDate)
+			if tc.raw == "20260909" {
+				assert.Equal(t, time.Date(2026, 9, 9, 0, 0, 0, 0, time.UTC), native.InstallDate)
+			} else {
+				assert.True(t, native.InstallDate.IsZero())
+			}
+		})
+	}
+}
