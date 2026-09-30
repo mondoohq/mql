@@ -30,22 +30,32 @@ func (w *windowsRouteDetector) listViaCommands() ([]Route, error) {
 	return w.detectWindowsRoutesViaNetstat()
 }
 
+// getNetRouteScript lists the routes with the first address of each route's
+// interface and address family. The addresses are read once into a table: a
+// Get-NetIPAddress per route (a CIM query each) made the script about 18x
+// slower on a host with 26 routes. The list is passed with -InputObject so a
+// host with one route still gets an array.
+const getNetRouteScript = `$addrs = @{}
+Get-NetIPAddress -ErrorAction SilentlyContinue | ForEach-Object {
+	$key = "$($_.InterfaceIndex)|$([int]$_.AddressFamily)"
+	if (-not $addrs.ContainsKey($key)) { $addrs[$key] = $_.IPAddress }
+}
+$routes = @(Get-NetRoute | ForEach-Object {
+	[PSCustomObject]@{
+		DestinationPrefix = $_.DestinationPrefix
+		NextHop = $_.NextHop
+		InterfaceIndex = $_.InterfaceIndex
+		InterfaceAlias = $_.InterfaceAlias
+		RouteMetric = $_.RouteMetric
+		AddressFamily = [int]$_.AddressFamily
+		InterfaceIP = $addrs["$($_.InterfaceIndex)|$([int]$_.AddressFamily)"]
+	}
+})
+ConvertTo-Json -InputObject $routes`
+
 // detectWindowsRoutesViaPowerShell uses PowerShell Get-NetRoute command
 func (w *windowsRouteDetector) detectWindowsRoutesViaPowerShell() ([]Route, error) {
-	cmd := `Get-NetRoute | ForEach-Object {
-		$route = $_
-		$ifIndex = $route.InterfaceIndex
-		$ifIP = (Get-NetIPAddress -InterfaceIndex $ifIndex -AddressFamily $route.AddressFamily -ErrorAction SilentlyContinue | Select-Object -First 1).IPAddress
-		[PSCustomObject]@{
-			DestinationPrefix = $route.DestinationPrefix
-			NextHop = $route.NextHop
-			InterfaceIndex = $route.InterfaceIndex
-			InterfaceAlias = $route.InterfaceAlias
-			RouteMetric = $route.RouteMetric
-			AddressFamily = $route.AddressFamily
-			InterfaceIP = $ifIP
-		}
-	} | ConvertTo-Json`
+	cmd := getNetRouteScript
 	// runCommand encodes the script for a Windows target; encoding it here
 	// too sent a PowerShell that only started another encoded PowerShell,
 	// which failed over SSH.
