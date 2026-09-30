@@ -6,6 +6,7 @@ package services
 import (
 	"io"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
@@ -138,6 +139,16 @@ try { Get-CimInstance -ClassName Win32_Service -Property Name,Description -Error
 Get-Service | Select-Object -Property Status, Name, DisplayName, StartType, @{Name='Description';Expression={$d[$_.Name]}} | ConvertTo-Json`
 
 func (s *WindowsServiceManager) List() ([]*Service, error) {
+	// The Service Control Manager directly, on the machine the provider runs
+	// on, behind MONDOO_WINDOWS_NATIVE until it has shown the same results as
+	// the PowerShell path. A failure falls back to PowerShell.
+	if shared.WindowsNative(s.conn) {
+		srvs, err := nativeWindowsServices()
+		if err == nil {
+			return srvs, nil
+		}
+		log.Debug().Err(err).Msg("mql[services]> native Windows service list failed, falling back to PowerShell")
+	}
 	c, err := s.conn.RunCommand(powershell.Encode(windowsServicesScript))
 	if err != nil {
 		return nil, err

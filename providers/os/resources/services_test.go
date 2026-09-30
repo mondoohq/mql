@@ -14,6 +14,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/mock"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/services"
 	"go.mondoo.com/mql/utils/syncx"
 )
 
@@ -79,4 +80,33 @@ func TestInitServiceUsesTargetedLookup(t *testing.T) {
 	assert.True(t, svc.Running.Data)
 	assert.True(t, svc.Enabled.Data)
 	assert.Equal(t, []string{showCmd}, conn.commands)
+}
+
+// A value the service manager could not read is null, not false: a service
+// the scanner may not query must not pass as disabled or stopped.
+func TestCreateServiceResourceUnknownIsNull(t *testing.T) {
+	runtime := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+
+	res, err := createServiceResource(runtime, &services.Service{
+		Name: "Locked", Installed: true, Running: true, Type: "windows", ConfigUnknown: true,
+	})
+	require.NoError(t, err)
+	svc := res.(*mqlService)
+	assert.True(t, svc.Running.Data)
+	assert.True(t, svc.Enabled.IsNull(), "enabled of a service whose configuration could not be read")
+	assert.True(t, svc.Description.IsNull(), "description of a service whose configuration could not be read")
+
+	res, err = createServiceResource(runtime, &services.Service{
+		Name: "Hidden", Installed: true, Type: "windows", StatusUnknown: true, ConfigUnknown: true,
+	})
+	require.NoError(t, err)
+	svc = res.(*mqlService)
+	assert.True(t, svc.Running.IsNull(), "running of a service whose state could not be read")
+	assert.True(t, svc.Enabled.IsNull())
+
+	res, err = createServiceResource(runtime, &services.Service{Name: "Known", Installed: true, Enabled: false, Type: "windows"})
+	require.NoError(t, err)
+	svc = res.(*mqlService)
+	assert.False(t, svc.Enabled.IsNull())
+	assert.False(t, svc.Enabled.Data)
 }

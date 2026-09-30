@@ -24,6 +24,12 @@ type Service struct {
 	Masked      bool
 	Static      bool
 	Path        string
+	// StatusUnknown marks a service whose state could not be read: running
+	// and the state are reported as null, not as stopped.
+	StatusUnknown bool
+	// ConfigUnknown marks a service whose configuration could not be read:
+	// enabled and the description are reported as null, not as disabled.
+	ConfigUnknown bool
 }
 
 type State string

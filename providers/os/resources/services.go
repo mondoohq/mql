@@ -68,7 +68,7 @@ func initService(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[str
 }
 
 func createServiceResource(runtime *plugin.Runtime, service *services.Service) (plugin.Resource, error) {
-	return CreateResource(runtime, "service", map[string]*llx.RawData{
+	args := map[string]*llx.RawData{
 		"name":        llx.StringData(service.Name),
 		"description": llx.StringData(service.Description),
 		"installed":   llx.BoolData(service.Installed),
@@ -77,7 +77,17 @@ func createServiceResource(runtime *plugin.Runtime, service *services.Service) (
 		"running":     llx.BoolData(service.Running),
 		"type":        llx.StringData(service.Type),
 		"static":      llx.BoolData(service.Static),
-	})
+	}
+	// A value the service manager could not read is null, never false: a
+	// service the scanner may not query must not pass as disabled or stopped.
+	if service.StatusUnknown {
+		args["running"] = llx.NilData
+	}
+	if service.ConfigUnknown {
+		args["enabled"] = llx.NilData
+		args["description"] = llx.NilData
+	}
+	return CreateResource(runtime, "service", args)
 }
 
 func missingServiceResource(runtime *plugin.Runtime, name string) plugin.Resource {
