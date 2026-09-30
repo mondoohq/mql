@@ -254,6 +254,9 @@ func (k *mqlRegistrykey) exists() (bool, error) {
 // the PowerShell probe through the command resource (used for remote targets and
 // as the non-native fallback).
 func (k *mqlRegistrykey) powershellExists(path string) (bool, error) {
+	if _, exists, ok := k.prefetchedItems(path); ok {
+		return exists, nil
+	}
 	script := powershell.Encode(registry.GetRegistryKeyItemScript(path))
 	o, err := CreateResource(k.MqlRuntime, "command", map[string]*llx.RawData{
 		"command": llx.StringData(script),
@@ -344,6 +347,13 @@ func nativeItemsOrAbsent(items []registry.RegistryKeyItem, err error) ([]registr
 // powershellItems reads the values of a key at an absolute registry path via the
 // PowerShell command resource (used for remote targets and the non-native fallback).
 func (k *mqlRegistrykey) powershellItems(path string) ([]registry.RegistryKeyItem, error) {
+	if items, exists, ok := k.prefetchedItems(path); ok {
+		if !exists {
+			// as the single-key read reports a missing key
+			return nil, nil
+		}
+		return items, nil
+	}
 	script := powershell.Encode(registry.GetRegistryKeyItemScript(path))
 	o, err := CreateResource(k.MqlRuntime, "command", map[string]*llx.RawData{
 		"command": llx.StringData(script),
