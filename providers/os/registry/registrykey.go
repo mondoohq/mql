@@ -77,7 +77,13 @@ func (k RegistryKeyItem) Kind() string {
 	return "<unsupported>"
 }
 
+// GetRawValue returns the value's data, or nil when it has none. A value that
+// failed to decode (Value.Err) has no data either; callers report Value.Err
+// instead of reading this.
 func (k RegistryKeyItem) GetRawValue() any {
+	if k.Value.Err != nil {
+		return nil
+	}
 	switch k.Value.Kind {
 	case NONE:
 		return nil

@@ -5,6 +5,7 @@ package registry
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -15,6 +16,14 @@ import (
 func TestRegistryKeyItemKindNone(t *testing.T) {
 	k := RegistryKeyItem{Value: RegistryKeyValue{Kind: NONE}}
 	assert.Equal(t, "none", k.Kind())
+}
+
+// A value that failed to decode has no data, whatever kind it was read as.
+func TestRegistryKeyItemRawValueOfFailedValue(t *testing.T) {
+	k := RegistryKeyItem{Value: RegistryKeyValue{Kind: DWORD, Number: 7}}
+	assert.Equal(t, int64(7), k.GetRawValue())
+	k.Value.Err = errors.New("broken")
+	assert.Nil(t, k.GetRawValue())
 }
 
 // The MULTI_SZ array is JSON-decoded, so an element is only a string if
