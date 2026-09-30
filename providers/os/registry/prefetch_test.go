@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -283,4 +284,11 @@ func TestPrefetchValuesDecodeLikeSingleRead(t *testing.T) {
 	res, batched := NewPrefetch(f.run, nil).Lookup(`HKLM\SOFTWARE\Policies\A`)
 	require.Equal(t, PrefetchFound, res)
 	require.Equal(t, single, batched)
+}
+
+func TestTruncateKeepsWholeRunes(t *testing.T) {
+	assert.Equal(t, "abc", truncate("abc", 3))
+	assert.Equal(t, "ab…", truncate("abc", 2))
+	assert.Equal(t, "Grüß…", truncate("Grüße", 4))
+	assert.True(t, utf8.ValidString(truncate(strings.Repeat("ü", 100), 80)))
 }

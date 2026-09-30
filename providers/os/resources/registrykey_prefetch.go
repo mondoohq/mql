@@ -48,12 +48,14 @@ func registryPrefetch(runtime *plugin.Runtime) *registry.Prefetch {
 		return nil
 	}
 
+	if p := storedRegistryPrefetch(runtime); p != nil {
+		return p
+	}
+	// the lock only guards creating it, so two reads don't both create one
 	registryPrefetchLock.Lock()
 	defer registryPrefetchLock.Unlock()
-	if r, ok := runtime.Resources.Get(registryPrefetchKey); ok {
-		if pr, ok := r.(*registryPrefetchResource); ok {
-			return pr.prefetch
-		}
+	if p := storedRegistryPrefetch(runtime); p != nil {
+		return p
 	}
 	p := registry.NewPrefetch(func(script string) (io.Reader, int, error) {
 		cmd, err := conn.RunCommand(powershell.Encode(script))
@@ -64,6 +66,15 @@ func registryPrefetch(runtime *plugin.Runtime) *registry.Prefetch {
 	}, nil)
 	runtime.Resources.Set(registryPrefetchKey, &registryPrefetchResource{prefetch: p})
 	return p
+}
+
+func storedRegistryPrefetch(runtime *plugin.Runtime) *registry.Prefetch {
+	if r, ok := runtime.Resources.Get(registryPrefetchKey); ok {
+		if pr, ok := r.(*registryPrefetchResource); ok {
+			return pr.prefetch
+		}
+	}
+	return nil
 }
 
 // prefetchedItems answers a PowerShell read of the key at path from the

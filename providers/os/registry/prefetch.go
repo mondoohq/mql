@@ -380,11 +380,16 @@ func decodeRecordString(s string) (string, error) {
 	return res, nil
 }
 
+// truncate shortens s to at most n runes, so it never splits a character.
 func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
+	i := 0
+	for pos := range s {
+		if i == n {
+			return s[:pos] + "…"
+		}
+		i++
 	}
-	return s[:n] + "…"
+	return s
 }
 
 func (u *prefetchUnit) lookup(parts []string) (PrefetchLookup, []RegistryKeyItem) {
