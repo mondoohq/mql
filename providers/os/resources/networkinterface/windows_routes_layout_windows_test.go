@@ -103,3 +103,45 @@ func TestNativeRoutesMatchGetNetRoute(t *testing.T) {
 	}
 	assert.Equal(t, key(viaPowerShell), key(native))
 }
+
+// GetAdaptersAddresses is judged by its return value alone: a stale thread
+// error must not fail a successful call, and an ERROR_BUFFER_OVERFLOW is
+// retried with the size the API asks for.
+func TestAdapterAddressesBufferUsesReturnValue(t *testing.T) {
+	orig := getAdaptersAddresses
+	t.Cleanup(func() { getAdaptersAddresses = orig })
+
+	calls := 0
+	getAdaptersAddresses = func(buf *byte, size *uint32) uintptr {
+		calls++
+		if calls == 1 {
+			*size = 40000
+			return ERROR_BUFFER_OVERFLOW
+		}
+		return 0
+	}
+	buf, err := adapterAddressesBuffer()
+	require.NoError(t, err)
+	assert.Len(t, buf, 40000)
+	assert.Equal(t, 2, calls)
+
+	getAdaptersAddresses = func(*byte, *uint32) uintptr { return ERROR_NO_DATA }
+	buf, err = adapterAddressesBuffer()
+	require.NoError(t, err)
+	assert.Nil(t, buf)
+
+	getAdaptersAddresses = func(*byte, *uint32) uintptr { return 87 } // ERROR_INVALID_PARAMETER
+	_, err = adapterAddressesBuffer()
+	require.Error(t, err)
+
+	getAdaptersAddresses = func(_ *byte, size *uint32) uintptr { *size += 16; return ERROR_BUFFER_OVERFLOW }
+	_, err = adapterAddressesBuffer()
+	require.Error(t, err)
+}
+
+// On a real host the adapters resolve to names.
+func TestWindowsInterfaceMapLive(t *testing.T) {
+	m, err := (&windowsRouteDetector{}).getWindowsInterfaceMap()
+	require.NoError(t, err)
+	assert.NotEmpty(t, m)
+}

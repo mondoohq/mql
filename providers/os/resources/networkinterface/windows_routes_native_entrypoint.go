@@ -312,45 +312,55 @@ type ipAdapterAddresses struct {
 
 // getWindowsInterfaceMap creates a map of interface index to interface name
 // Uses native Windows GetAdaptersAddresses API https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getadaptersaddresses
-func (w *windowsRouteDetector) getWindowsInterfaceMap() (map[uint32]string, error) {
-	interfaceMap := make(map[uint32]string)
-
-	var size uint32
-	ret, _, err := procGetAdaptersAddresses.Call(
+// getAdaptersAddresses calls GetAdaptersAddresses into buf, updating size;
+// tests replace it. It returns the API's own result code. The error that
+// LazyProc.Call returns is the thread's last error (GetLastError), which the
+// API does not set on success and a goroutine can inherit stale from an
+// unrelated call, so it is never used to decide the outcome.
+var getAdaptersAddresses = func(buf *byte, size *uint32) uintptr {
+	ret, _, _ := procGetAdaptersAddresses.Call(
 		uintptr(syscall.AF_UNSPEC), // Family: AF_UNSPEC = both IPv4 and IPv6
 		uintptr(GAA_FLAG_SKIP_ANYCAST|GAA_FLAG_SKIP_MULTICAST|GAA_FLAG_SKIP_DNS_SERVER),
 		0,
-		0,
-		uintptr(unsafe.Pointer(&size)),
+		uintptr(unsafe.Pointer(buf)),
+		uintptr(unsafe.Pointer(size)),
 	)
-	if err != syscall.Errno(0) {
-		return nil, errors.Errorf("GetAdaptersAddresses (buffer size) failed: %v", err)
-	}
+	return ret
+}
 
-	if ret == ERROR_NO_DATA || (ret == 0 && size == 0) {
+// adapterAddressesBuffer returns the buffer GetAdaptersAddresses filled, or
+// nil when the host has no adapters. It starts with the 15 KB Microsoft
+// recommends and retries with the size the API asks for, since adapters can
+// appear between two calls.
+func adapterAddressesBuffer() ([]byte, error) {
+	size := uint32(15 * 1024)
+	for attempt := 0; attempt < 3; attempt++ {
+		buf := make([]byte, size)
+		switch ret := getAdaptersAddresses(&buf[0], &size); ret {
+		case 0: // ERROR_SUCCESS
+			return buf, nil
+		case ERROR_NO_DATA:
+			return nil, nil
+		case ERROR_BUFFER_OVERFLOW:
+			continue // size now holds what the API needs
+		default:
+			return nil, errors.Errorf("GetAdaptersAddresses failed with error code: %d", ret)
+		}
+	}
+	return nil, errors.New("GetAdaptersAddresses: the buffer size kept changing")
+}
+
+func (w *windowsRouteDetector) getWindowsInterfaceMap() (map[uint32]string, error) {
+	interfaceMap := make(map[uint32]string)
+
+	buf, err := adapterAddressesBuffer()
+	if err != nil {
+		return nil, err
+	}
+	if buf == nil {
 		return interfaceMap, nil
 	}
-	if ret != 0 && ret != ERROR_BUFFER_OVERFLOW && ret != ERROR_INSUFFICIENT_BUFFER {
-		return nil, errors.Errorf("GetAdaptersAddresses failed with error code: %d", ret)
-	}
-
-	buf := make([]byte, size)
 	adapter := (*ipAdapterAddresses)(unsafe.Pointer(&buf[0]))
-
-	ret, _, err = procGetAdaptersAddresses.Call(
-		uintptr(syscall.AF_UNSPEC),
-		uintptr(GAA_FLAG_SKIP_ANYCAST|GAA_FLAG_SKIP_MULTICAST|GAA_FLAG_SKIP_DNS_SERVER),
-		0,
-		uintptr(unsafe.Pointer(adapter)),
-		uintptr(unsafe.Pointer(&size)),
-	)
-	if err != syscall.Errno(0) {
-		return nil, errors.Errorf("GetAdaptersAddresses failed: %v", err)
-	}
-
-	if ret != 0 {
-		return nil, errors.Errorf("GetAdaptersAddresses failed with error code: %d", ret)
-	}
 
 	for adapter != nil {
 		if adapter.IfIndex != 0 {
