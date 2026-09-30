@@ -11,6 +11,7 @@ import (
 
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 	"gopkg.in/yaml.v3"
 )
 
@@ -34,7 +35,7 @@ type InstanceIdentifier interface {
 }
 
 func Resolve(conn shared.Connection, pf *inventory.Platform) (InstanceIdentifier, error) {
-	if pf.IsFamily(inventory.FAMILY_UNIX) {
+	if pf.IsFamily(inventory.FAMILY_UNIX) || pf.IsFamily(inventory.FAMILY_WINDOWS) {
 		return &commandInstanceMetadata{conn, pf}, nil
 	}
 	return nil, fmt.Errorf(
@@ -93,9 +94,35 @@ func (m *commandInstanceMetadata) Identify() (Identity, error) {
 	}, nil
 }
 
+// windowsMetadataScript reads the metadata document on Windows. Windows
+// PowerShell 5.1 aliases `curl` to Invoke-WebRequest, which rejects curl's
+// flags, so the Unix command cannot be reused. It retries like the Unix
+// command (three attempts, one-second connect timeout), returns the raw YAML
+// document, and exits non-zero when the service does not answer.
+const windowsMetadataScript = `$ErrorActionPreference = 'Stop'
+# no proxy for the link-local metadata service (curl's --noproxy '*')
+[System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
+$uri = '` + metadataSvcURL + `'
+for ($i = 1; $i -le 3; $i++) {
+  try {
+    $r = Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec 2
+    [Console]::Out.Write($r.Content)
+    exit 0
+  } catch {
+    if ($i -eq 3) { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }
+    Start-Sleep -Seconds 1
+  }
+}`
+
+func (m *commandInstanceMetadata) metadataCommand() string {
+	if m.platform.IsFamily(inventory.FAMILY_WINDOWS) {
+		return powershell.Encode(windowsMetadataScript)
+	}
+	return fmt.Sprintf("curl --retry 3 --retry-delay 1 --connect-timeout 1 --retry-max-time 5 --max-time 10 --noproxy '*' %s", metadataSvcURL)
+}
+
 func (m *commandInstanceMetadata) fetchMetadata() ([]byte, error) {
-	cmdStr := fmt.Sprintf("curl --retry 3 --retry-delay 1 --connect-timeout 1 --retry-max-time 5 --max-time 10 --noproxy '*' %s", metadataSvcURL)
-	cmd, err := m.conn.RunCommand(cmdStr)
+	cmd, err := m.conn.RunCommand(m.metadataCommand())
 	if err != nil {
 		return nil, err
 	}

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/resources/powershell"
 )
 
 // curl fetches a single metadata path from the instance metadata service
@@ -36,17 +37,22 @@ func unixMetadataCmdString(metadataPath string) string {
 	return fmt.Sprintf(`curl --noproxy '*' -H "Metadata-Flavor: Google" %s%s`, metadataSvcURL, strings.TrimPrefix(metadataPath, "/"))
 }
 
+// windowsMetadataCmdString is the PowerShell command that reads one metadata
+// path. The script is multi-line and quoted, so it is encoded, as the AWS
+// and IBM metadata commands are: passed as plain text through `powershell -c`
+// (what the local connection does with a command) or through the SSH shell,
+// its quotes and line breaks do not survive.
 func windowsMetadataCmdString(metadataPath string) string {
 	pipe := ""
 	if windowsPathNeedsJSONConversion(metadataPath) {
 		pipe = "| ConvertTo-Json"
 	}
-	return fmt.Sprintf(`
+	return powershell.Encode(fmt.Sprintf(`
 $Headers = @{
     "Metadata-Flavor" = "Google"
 }
 Invoke-RestMethod -TimeoutSec 1 -Headers $Headers -URI "%s%s" -UseBasicParsing %s
-`, metadataSvcURL, strings.TrimPrefix(metadataPath, "/"), pipe)
+`, metadataSvcURL, strings.TrimPrefix(metadataPath, "/"), pipe))
 }
 
 func windowsPathNeedsJSONConversion(path string) bool {
