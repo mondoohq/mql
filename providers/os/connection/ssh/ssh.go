@@ -452,6 +452,12 @@ func (c *Connection) PlatformID() (string, error) {
 	return PlatformIdentifier(c.HostKey), nil
 }
 
+// ServerVersion returns the identification string the SSH server sent, such
+// as "SSH-2.0-OpenSSH_for_Windows_9.5".
+func (c *Connection) ServerVersion() string {
+	return c.serverVersion
+}
+
 func PlatformIdentifier(publicKey ssh.PublicKey) string {
 	fingerprint := ssh.FingerprintSHA256(publicKey)
 	fingerprint = strings.Replace(fingerprint, ":", "-", 1)

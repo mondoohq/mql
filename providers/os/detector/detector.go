@@ -6,6 +6,7 @@ package detector
 import (
 	"runtime"
 	"slices"
+	"strings"
 
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -15,20 +16,19 @@ import (
 func DetectOS(conn shared.Connection) (*inventory.Platform, bool) {
 	var res *inventory.Platform
 	var ok bool
-	if conn.Type() == shared.Type_Local && runtime.GOOS == "windows" {
-		res, ok = WindowsFamily.Resolve(conn)
-		// WindowsFamily.Resolve stops one level short of the OperatingSystems
-		// wrapper, so the Family chain ends at "windows" instead of
-		// ["windows", "os"]. Downstream consumers treat `family` containing
-		// "os" as the "asset has installed software" marker; without this
-		// append, the local-Windows shortcut diverges from the equivalent
-		// OperatingSystems.Resolve path (which the rest of the cases — and
-		// the TestWindows* mocks — go through) and produces a different
-		// Family chain. Append "os" explicitly so the shortcut matches.
-		if ok && res != nil && !slices.Contains(res.Family, OperatingSystems.Name) {
-			res.Family = append(res.Family, OperatingSystems.Name)
+	switch {
+	case conn.Type() == shared.Type_Local && runtime.GOOS == "windows":
+		res, ok = resolveWindows(conn)
+	case isWindowsSSHServer(conn):
+		// Resolve Windows first, and fall back to the full tree only if that
+		// fails. The unix families probe with uname, and on Windows every
+		// probe is a PowerShell process that fails to find the command,
+		// which costs 30-60s each while PowerShell searches every module.
+		res, ok = resolveWindows(conn)
+		if !ok {
+			res, ok = OperatingSystems.Resolve(conn)
 		}
-	} else {
+	default:
 		res, ok = OperatingSystems.Resolve(conn)
 	}
 
@@ -38,6 +38,41 @@ func DetectOS(conn shared.Connection) (*inventory.Platform, bool) {
 		crowdstrike.ApplyLabels(conn, res)
 	}
 	return res, ok
+}
+
+// resolveWindows resolves only the Windows family.
+func resolveWindows(conn shared.Connection) (*inventory.Platform, bool) {
+	res, ok := WindowsFamily.Resolve(conn)
+	// WindowsFamily.Resolve stops one level short of the OperatingSystems
+	// wrapper, so the Family chain ends at "windows" instead of
+	// ["windows", "os"]. Downstream consumers treat `family` containing
+	// "os" as the "asset has installed software" marker; without this
+	// append, the Windows shortcut diverges from the equivalent
+	// OperatingSystems.Resolve path (which the rest of the cases — and
+	// the TestWindows* mocks — go through) and produces a different
+	// Family chain. Append "os" explicitly so the shortcut matches.
+	if ok && res != nil && !slices.Contains(res.Family, OperatingSystems.Name) {
+		res.Family = append(res.Family, OperatingSystems.Name)
+	}
+	return res, ok
+}
+
+// sshServerVersioner is implemented by SSH connections. ServerVersion
+// returns the identification string the server sent, such as
+// "SSH-2.0-OpenSSH_for_Windows_9.5".
+type sshServerVersioner interface {
+	ServerVersion() string
+}
+
+// isWindowsSSHServer reports whether conn is an SSH connection to the
+// OpenSSH server that ships with Windows. That server announces itself as
+// OpenSSH_for_Windows; OpenSSH on other systems does not.
+func isWindowsSSHServer(conn shared.Connection) bool {
+	v, ok := conn.(sshServerVersioner)
+	if !ok {
+		return false
+	}
+	return strings.Contains(v.ServerVersion(), "OpenSSH_for_Windows")
 }
 
 // returns a primary family for the platform, e.g. linux, windows, osx, etc
