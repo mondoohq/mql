@@ -4,6 +4,7 @@
 package windows
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 )
@@ -19,9 +20,16 @@ func ParseEnv(r io.Reader) (map[string]any, error) {
 		return nil, err
 	}
 
+	// ConvertTo-Json emits a bare object, not a one-element array, when there
+	// is a single variable.
 	var env []WindowsEnv
-	err = json.Unmarshal(data, &env)
-	if err != nil {
+	if trimmed := bytes.TrimSpace(data); len(trimmed) > 0 && trimmed[0] == '{' {
+		var one WindowsEnv
+		if err := json.Unmarshal(trimmed, &one); err != nil {
+			return nil, err
+		}
+		env = []WindowsEnv{one}
+	} else if err := json.Unmarshal(data, &env); err != nil {
 		return nil, err
 	}
 

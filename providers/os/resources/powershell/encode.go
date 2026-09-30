@@ -109,30 +109,31 @@ func SingleQuote(v string) string {
 // deactivates loading powershell profile
 // https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/powershell
 func Encode(cmd string) string {
-	// avoid messages to stderr that are not required in our execution
-	script := "$ProgressPreference='SilentlyContinue';" + cmd
-
-	encodedScript, err := ToBase64String(script)
-	if err != nil {
-		// Ignore this for now to keep the method interface identical
-		// lets see if this becomes an issue
-		log.Error().Err(err).Msg("could not encode powershell command")
-	}
-	return fmt.Sprintf("powershell.exe -NoProfile -EncodedCommand %s", encodedScript)
+	return encodeWith("powershell.exe", cmd, ToBase64String)
 }
 
 // EncodeUnix is equivalent to Encode for running powershell script on unix systems
 func EncodeUnix(cmd string) string {
+	return encodeWith("pwsh", cmd, ToBase64String)
+}
+
+// encodeWith builds `<interpreter> -NoProfile -EncodedCommand <payload>`.
+//
+// If the script cannot be encoded, it returns a command that fails with a
+// clear message instead of one with an empty payload: `-EncodedCommand ` with
+// nothing after it runs as a no-op that exits 0, which a caller would read as
+// "the queried thing is absent" rather than as an error. The signature stays
+// a plain string so that the many callers keep compiling.
+func encodeWith(interpreter, cmd string, encode func(string) (string, error)) string {
 	// avoid messages to stderr that are not required in our execution
 	script := "$ProgressPreference='SilentlyContinue';" + cmd
 
-	encodedScript, err := ToBase64String(script)
-	if err != nil {
-		// Ignore this for now to keep the method interface identical
-		// lets see if this becomes an issue
+	encodedScript, err := encode(script)
+	if err != nil || encodedScript == "" {
 		log.Error().Err(err).Msg("could not encode powershell command")
+		return interpreter + " -NoProfile -Command \"throw 'mql: could not encode the PowerShell command'\""
 	}
-	return fmt.Sprintf("pwsh -NoProfile -EncodedCommand %s", encodedScript)
+	return fmt.Sprintf("%s -NoProfile -EncodedCommand %s", interpreter, encodedScript)
 }
 
 // ToBase64String encodes a powershell script to a UTF16-LE, base64 encoded string
@@ -150,9 +151,18 @@ func ToBase64String(script string) (string, error) {
 	return base64.StdEncoding.EncodeToString([]byte(encoded)), nil
 }
 
-// Wrap runs a powershell script by calling powershell. Note that this is not encoded and therefore does not support
-// multiline scripts or special characters. You should use Encode for that or ensure the script is a single line and
-// does use semicolons to separate commands.
+// Wrap runs a powershell script by calling powershell. The script is passed
+// as plain text, so it must be a single line (separate commands with
+// semicolons); use Encode for multi-line scripts. A script containing a
+// double quote is encoded automatically, since the quote would end the -c
+// argument.
 func Wrap(cmd string) string {
+	// A double quote in the script would end the -c "..." argument early,
+	// and the rest would reach the shell as separate arguments. Such a script
+	// is encoded instead; every other script keeps the plain form (and the
+	// command string that mock fixtures key on).
+	if strings.Contains(cmd, `"`) {
+		return Encode(cmd)
+	}
 	return fmt.Sprintf("powershell -c \"%s\"", cmd)
 }
