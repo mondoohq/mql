@@ -5,6 +5,7 @@ package ports
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -58,4 +59,43 @@ func TestParseWindowsTCPSlim(t *testing.T) {
 	assert.Equal(t, int64(443), ports[1].RemotePort)
 	assert.Equal(t, State(Established), ports[1].State)
 	assert.Equal(t, int64(4288), ports[1].OwningProcess)
+}
+
+// The Windows ports script returns TCP connections and UDP endpoints together,
+// as captured from a Windows Server 2022 host.
+func TestParseWindowsNetConnections(t *testing.T) {
+	data, err := os.Open("./testdata/windows_connections.json")
+	require.NoError(t, err)
+	defer data.Close()
+
+	conns, err := ParseWindowsNetConnections(data)
+	require.NoError(t, err)
+	require.Len(t, conns.TCP, 2)
+	require.Len(t, conns.UDP, 2)
+
+	assert.Equal(t, State(Listen), conns.TCP[0].State)
+	// A socket that is bound but neither listening nor connected is 100 in the
+	// MSFT_NetTCPConnection enum.
+	assert.Equal(t, State(Bound), conns.TCP[1].State)
+	assert.Equal(t, State(100), conns.TCP[1].State)
+
+	assert.Equal(t, "[::]", conns.UDP[0].LocalAddress)
+	assert.Equal(t, int64(61627), conns.UDP[0].LocalPort)
+	assert.Equal(t, int64(1400), conns.UDP[0].OwningProcess)
+	assert.Equal(t, "0.0.0.0", conns.UDP[1].LocalAddress)
+}
+
+func TestParseWindowsNetConnectionsShapes(t *testing.T) {
+	// No UDP endpoints, and a single TCP connection flattened to an object.
+	conns, err := ParseWindowsNetConnections(strings.NewReader(`{"tcp":{"LocalAddress":"::","LocalPort":135,"RemoteAddress":"::","RemotePort":0,"State":2,"OwningProcess":912},"udp":[]}`))
+	require.NoError(t, err)
+	require.Len(t, conns.TCP, 1)
+	assert.Equal(t, "[::]", conns.TCP[0].LocalAddress)
+	assert.Empty(t, conns.UDP)
+
+	// A single TCP connection piped into ConvertTo-Json arrives as a bare
+	// object, not a one-element array.
+	tcp, err := ParseWindowsNetTCPConnections(strings.NewReader(`{"LocalAddress":"0.0.0.0","LocalPort":22,"RemoteAddress":"0.0.0.0","RemotePort":0,"State":2,"OwningProcess":3016}`))
+	require.NoError(t, err)
+	require.Len(t, tcp, 1)
 }

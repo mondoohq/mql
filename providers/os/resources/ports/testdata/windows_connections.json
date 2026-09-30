@@ -1,0 +1,10 @@
+{
+  "udp": [
+    { "LocalAddress": "::", "LocalPort": 61627, "OwningProcess": 1400 },
+    { "LocalAddress": "0.0.0.0", "LocalPort": 123, "OwningProcess": 1092 }
+  ],
+  "tcp": [
+    { "LocalAddress": "0.0.0.0", "LocalPort": 22, "RemoteAddress": "0.0.0.0", "RemotePort": 0, "State": 2, "OwningProcess": 3016 },
+    { "LocalAddress": "127.0.0.1", "LocalPort": 47123, "RemoteAddress": "0.0.0.0", "RemotePort": 0, "State": 100, "OwningProcess": 3496 }
+  ]
+}

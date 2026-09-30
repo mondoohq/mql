@@ -465,17 +465,7 @@ func (p *mqlPorts) listWindows() ([]any, error) {
 	}
 
 	conn := p.MqlRuntime.Connection.(shared.Connection)
-	// Project only the fields parseWindowsPorts consumes before serializing.
-	// A bare `Get-NetTCPConnection | ConvertTo-Json` emits the full CIM object
-	// per connection (CimClass, CimInstanceProperties, and ~30 null fields);
-	// on a busy host that is a large buffered read + unmarshal that can stall
-	// the provider long enough to miss its heartbeat and get killed (surfaces
-	// as event_name="provider.crashed", resource=port). Select-Object keeps the
-	// payload to the six fields we read; @(...) forces an array so a single
-	// connection still decodes as []WinPort. State is cast to int to match
-	// ports.WinPort.State regardless of how the enum is serialized.
-	encodedCmd := powershell.Encode("@(Get-NetTCPConnection | Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, @{Name='State';Expression={[int]$_.State}}, OwningProcess) | ConvertTo-Json")
-	executedCmd, err := conn.RunCommand(encodedCmd)
+	executedCmd, err := conn.RunCommand(powershell.Encode(windowsPortsScript))
 	if err != nil {
 		return nil, err
 	}
@@ -496,11 +486,25 @@ func (p *mqlPorts) listWindows() ([]any, error) {
 	return list, nil
 }
 
+// windowsPortsScript reads TCP connections and UDP endpoints in one PowerShell
+// process. Only the fields parseWindowsPorts reads are projected: a bare
+// `Get-NetTCPConnection | ConvertTo-Json` emits the full CIM object per
+// connection (CimClass, CimInstanceProperties, and ~30 null fields), and on a
+// busy host that large a read and unmarshal can stall the provider past its
+// heartbeat (event_name="provider.crashed", resource=port). State is cast to
+// int to match ports.WinPort.State however the enum serializes. The lists sit
+// in a hashtable passed with -InputObject: piping into ConvertTo-Json would
+// unroll a one-element list into a bare object.
+const windowsPortsScript = `$tcp = @(Get-NetTCPConnection | Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, @{Name='State';Expression={[int]$_.State}}, OwningProcess)
+$udp = @(Get-NetUDPEndpoint | Select-Object LocalAddress, LocalPort, OwningProcess)
+ConvertTo-Json -Depth 3 -InputObject @{ tcp = $tcp; udp = $udp }`
+
 func (p *mqlPorts) parseWindowsPorts(r io.Reader, processes map[int64]*mqlProcess) ([]any, error) {
-	portList, err := ports.ParseWindowsNetTCPConnections(r)
+	conns, err := ports.ParseWindowsNetConnections(r)
 	if err != nil {
 		return nil, err
 	}
+	portList := conns.TCP
 
 	var res []any
 	for i := range portList {
@@ -563,6 +567,35 @@ func (p *mqlPorts) parseWindowsPorts(r io.Reader, processes map[int64]*mqlProces
 			portObj.Process.State = plugin.StateIsSet | plugin.StateIsNull
 		}
 
+		res = append(res, obj)
+	}
+
+	// UDP endpoints have no state or peer. They read the way Linux reports an
+	// unconnected socket in /proc/net/udp, as the FreeBSD ports do: "close",
+	// with no remote address.
+	for _, ep := range conns.UDP {
+		protocol := "udp4"
+		if strings.Contains(ep.LocalAddress, ":") {
+			protocol = "udp6"
+		}
+		process := processes[ep.OwningProcess]
+		obj, err := CreateResource(p.MqlRuntime, "port", map[string]*llx.RawData{
+			"protocol":      llx.StringData(protocol),
+			"port":          llx.IntData(ep.LocalPort),
+			"address":       llx.StringData(ep.LocalAddress),
+			"user":          llx.ResourceData(nil, "user"),
+			"process":       llx.ResourceData(process, "process"),
+			"state":         llx.StringData(TCP_STATES[7]),
+			"remoteAddress": llx.StringData(""),
+			"remotePort":    llx.IntData(0),
+		})
+		if err != nil {
+			return nil, err
+		}
+		portObj := obj.(*mqlPort)
+		if process == nil {
+			portObj.Process.State = plugin.StateIsSet | plugin.StateIsNull
+		}
 		res = append(res, obj)
 	}
 	return res, nil

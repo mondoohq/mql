@@ -211,3 +211,40 @@ func TestParseProcNet_UnknownUid(t *testing.T) {
 	assert.Equal(t, int64(8765), unknown.Port.Data)
 	assert.Nil(t, unknown.User.Data, "port.user should be null for an unknown uid")
 }
+
+// Windows reports TCP connections and UDP endpoints together. A UDP endpoint
+// reads like an unconnected Linux UDP socket: state "close" and no peer.
+func TestParseWindowsPorts(t *testing.T) {
+	asset := &inventory.Asset{
+		Platform: &inventory.Platform{Name: "windows", Family: []string{"windows", "os"}},
+	}
+	conn, err := mock.New(0, asset, mock.WithData(&mock.TomlData{}))
+	require.NoError(t, err)
+	runtime := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+	raw, err := CreateResource(runtime, "ports", map[string]*llx.RawData{})
+	require.NoError(t, err)
+
+	f, err := os.Open("ports/testdata/windows_connections.json")
+	require.NoError(t, err)
+	defer f.Close()
+	list, err := raw.(*mqlPorts).parseWindowsPorts(f, map[int64]*mqlProcess{})
+	require.NoError(t, err)
+	require.Len(t, list, 4)
+
+	type row struct {
+		protocol, address, state, remoteAddress string
+		port, remotePort                        int64
+	}
+	var got []row
+	for _, x := range list {
+		p := x.(*mqlPort)
+		assert.True(t, p.Process.IsNull(), "no owning process is known, so process is null")
+		got = append(got, row{p.Protocol.Data, p.Address.Data, p.State.Data, p.RemoteAddress.Data, p.Port.Data, p.RemotePort.Data})
+	}
+	assert.Equal(t, []row{
+		{"tcp4", "0.0.0.0", "listen", "0.0.0.0", 22, 0},
+		{"tcp4", "127.0.0.1", "bound", "0.0.0.0", 47123, 0},
+		{"udp6", "[::]", "close", "", 61627, 0},
+		{"udp4", "0.0.0.0", "close", "", 123, 0},
+	}, got)
+}
