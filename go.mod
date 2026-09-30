@@ -7,13 +7,13 @@ require (
 	cloud.google.com/go/secretmanager v1.16.0
 	dario.cat/mergo v1.0.2
 	github.com/99designs/keyring v1.2.2
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.1
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.2
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.14.1
 	github.com/BurntSushi/toml v1.6.0
 	github.com/CycloneDX/cyclonedx-go v0.12.0
 	github.com/GoogleCloudPlatform/berglas/v2 v2.0.2
 	github.com/Masterminds/semver v1.5.0
-	github.com/ProtonMail/go-crypto v1.5.1
+	github.com/ProtonMail/go-crypto v1.5.2
 	github.com/StackExchange/wmi v1.2.1
 	// pin v0.3.0
 	github.com/alecthomas/participle v0.3.0
@@ -22,10 +22,10 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.33.6
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.6
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.1
-	github.com/aws/aws-sdk-go-v2/service/ec2 v1.336.1
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.338.0
 	github.com/aws/aws-sdk-go-v2/service/ec2instanceconnect v1.42.0
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.50.1
-	github.com/aws/aws-sdk-go-v2/service/ssm v1.78.1
+	github.com/aws/aws-sdk-go-v2/service/ssm v1.79.0
 	github.com/aws/smithy-go v1.28.2
 	github.com/awslabs/amazon-ecr-credential-helper/ecr-login v0.12.0
 	github.com/charmbracelet/bubbles v1.0.0
@@ -94,7 +94,7 @@ require (
 	github.com/tliron/glsp v0.2.2
 	github.com/toravir/csd v0.0.0-20200911003203-13ae77ad849c
 	github.com/ulikunitz/xz v0.5.17
-	go.mondoo.com/mondoo-go v0.0.0-20260926001209-2f215544e6f3
+	go.mondoo.com/mondoo-go v0.0.0-20260930001840-7b41eeb5add9
 	go.mondoo.com/ranger-rpc v0.8.1
 	go.uber.org/goleak v1.3.0
 	go.uber.org/mock v0.6.0
@@ -124,7 +124,7 @@ require (
 	github.com/moby/moby/api v1.56.0
 	github.com/moby/moby/client v0.6.0
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260921155816-b14227669459
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc
 	software.sslmate.com/src/go-pkcs12 v0.7.3
 )
 
@@ -140,9 +140,9 @@ require (
 	cloud.google.com/go/monitoring v1.24.3 // indirect
 	cloud.google.com/go/storage v1.59.0 // indirect
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/internal v1.12.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/internal v1.13.0 // indirect
 	github.com/Azure/go-ntlmssp v0.1.1 // indirect
-	github.com/AzureAD/microsoft-authentication-library-for-go v1.10.0 // indirect
+	github.com/AzureAD/microsoft-authentication-library-for-go v1.10.1 // indirect
 	github.com/ChrisTrenkamp/goxpath v0.0.0-20210404020558-97928f7e12b6 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.38.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.54.0 // indirect
@@ -209,7 +209,7 @@ require (
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
-	github.com/goccy/go-json v0.11.1 // indirect
+	github.com/goccy/go-json v0.11.2 // indirect
 	github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
@@ -243,7 +243,6 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/klauspost/compress v1.19.2 // indirect
-	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
@@ -263,7 +262,7 @@ require (
 	github.com/mtibben/percent v0.2.1 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/ncruces/go-strftime v1.0.0 // indirect
+	github.com/ncruces/go-strftime v1.1.0 // indirect
 	github.com/oklog/run v1.2.0 // indirect
 	github.com/olekukonko/cat v0.0.0-20250911104152-50322a0618f6 // indirect
 	github.com/olekukonko/errors v1.3.0 // indirect
@@ -271,7 +270,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	github.com/petermattis/goid v0.0.0-20260918085751-abfca077860b // indirect
-	github.com/pjbgf/sha1cd v0.6.0 // indirect
+	github.com/pjbgf/sha1cd v0.7.0 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
@@ -328,7 +327,7 @@ require (
 	modernc.org/libc v1.77.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
-	modernc.org/sqlite v1.59.0 // indirect
+	modernc.org/sqlite v1.60.1 // indirect
 	moul.io/http2curl v1.0.0 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect

@@ -7,14 +7,14 @@ go 1.26.8
 require (
 	github.com/stretchr/testify v1.12.1
 	github.com/togethercomputer/together-go v0.12.0
-	go.mondoo.com/mql v0.0.0-20260928074600-21f1ad7c03c3
+	go.mondoo.com/mql v0.0.0-20260930201158-264b510a1342
 )
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Microsoft/go-winio v0.6.3-0.20251027160822-ad3df93bed29 // indirect
-	github.com/ProtonMail/go-crypto v1.5.1 // indirect
+	github.com/ProtonMail/go-crypto v1.5.2 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.47.1 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.33.6 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.6 // indirect
@@ -57,7 +57,6 @@ require (
 	github.com/hokaccha/go-prettyjson v0.0.0-20211117102719-0474bc63780f // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.6.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
@@ -67,7 +66,7 @@ require (
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/oklog/run v1.2.0 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
-	github.com/pjbgf/sha1cd v0.6.0 // indirect
+	github.com/pjbgf/sha1cd v0.7.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
@@ -99,7 +98,7 @@ require (
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.50.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260921155816-b14227669459 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect
 	google.golang.org/grpc v1.84.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect

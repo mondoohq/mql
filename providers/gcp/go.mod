@@ -60,7 +60,7 @@ require (
 	github.com/mitchellh/hashstructure/v2 v2.0.2
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.12.1
-	go.mondoo.com/mql v0.0.0-20260928074600-21f1ad7c03c3
+	go.mondoo.com/mql v0.0.0-20260930195616-56252c2ead2a
 	go.mondoo.com/ranger-rpc v0.8.1
 	golang.org/x/oauth2 v0.37.0
 	google.golang.org/api v0.299.0
@@ -70,7 +70,7 @@ require (
 	// v0.0.0-20260807164820-c8921c73eeea as part of its ongoing alias pruning.
 	// Bumping past this pin breaks the gcp provider build until upstream ships
 	// an accesscontextmanager regenerated against the pruned genproto.
-	google.golang.org/genproto v0.0.0-20260921155816-b14227669459
+	google.golang.org/genproto v0.0.0-20260928230214-8a89bd6388cc
 	google.golang.org/protobuf v1.36.12
 )
 
@@ -117,14 +117,14 @@ require (
 	cloud.google.com/go/compute/metadata v0.10.0 // indirect
 	cloud.google.com/go/secretmanager v1.22.0
 	dario.cat/mergo v1.0.2 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.1 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.2 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.14.1 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/internal v1.12.0 // indirect
-	github.com/AzureAD/microsoft-authentication-library-for-go v1.10.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/internal v1.13.0 // indirect
+	github.com/AzureAD/microsoft-authentication-library-for-go v1.10.1 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Microsoft/go-winio v0.6.3-0.20251027160822-ad3df93bed29 // indirect
-	github.com/ProtonMail/go-crypto v1.5.1 // indirect
+	github.com/ProtonMail/go-crypto v1.5.2 // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect
 	github.com/apache/arrow/go/v15 v15.0.2 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.47.1 // indirect
@@ -133,7 +133,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.1 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.4 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.4 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ec2 v1.336.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.338.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ecr v1.66.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ecrpublic v1.47.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.19 // indirect
@@ -165,7 +165,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/gobwas/glob v1.0.0 // indirect
-	github.com/goccy/go-json v0.11.1 // indirect
+	github.com/goccy/go-json v0.11.2 // indirect
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
@@ -197,7 +197,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pierrec/lz4/v4 v4.1.31 // indirect
-	github.com/pjbgf/sha1cd v0.6.0 // indirect
+	github.com/pjbgf/sha1cd v0.7.0 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/rivo/uniseg v0.4.7 // indirect
@@ -228,8 +228,8 @@ require (
 	golang.org/x/time v0.16.0 // indirect
 	golang.org/x/tools v0.50.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260921155816-b14227669459 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260921155816-b14227669459
+	google.golang.org/genproto/googleapis/api v0.0.0-20260928230214-8a89bd6388cc // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc
 	google.golang.org/grpc v1.84.0
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
