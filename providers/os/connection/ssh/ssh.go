@@ -158,11 +158,16 @@ func (p *Connection) Capabilities() shared.Capabilities {
 }
 
 func (c *Connection) RunCommand(command string) (*shared.Command, error) {
-	if c.Sudo != nil && c.Sudo.Active {
+	sudo := c.Sudo != nil && c.Sudo.Active
+	if sudo {
 		command = shared.BuildSudoCommand(c.Sudo, command)
-	} else {
-		release := c.acquireCommandSlot(command)
-		defer release()
+	}
+	// Every path takes a slot. A sudo command does not start with
+	// powershell, so it never probes the shell; it is limited once another
+	// command has found the target to be Windows.
+	release := c.acquireCommandSlot(command)
+	defer release()
+	if !sudo {
 		if res, ok, err := c.runPowershellDirect(command); ok {
 			powershell.DecodeStderr(res)
 			return res, err

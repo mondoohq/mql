@@ -25,7 +25,8 @@ const (
 )
 
 // windowsMaxCommands reads the limit from the connection's options, then the
-// environment, and falls back to the default.
+// environment, and falls back to the default. options may be nil: a nil map
+// reads as empty.
 func windowsMaxCommands(options map[string]string) int {
 	for _, v := range []string{options[windowsMaxCommandsOption], os.Getenv(windowsMaxCommandsEnv)} {
 		v = strings.TrimSpace(v)

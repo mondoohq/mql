@@ -100,6 +100,20 @@ func TestCommandSlotsOnWindows(t *testing.T) {
 		})
 	}
 
+	t.Run("sudo", func(t *testing.T) {
+		r := &concurrencyRunner{shell: "%OS%\r\nDesktop\r\n"}
+		c := &Connection{
+			conf:      &inventory.Config{Options: map[string]string{windowsMaxCommandsOption: "2"}},
+			Sudo:      &inventory.Sudo{Active: true},
+			rawRunner: r.run,
+		}
+		// sudo never probes the shell; another command found it
+		c.shell = parseShellProbe(r.shell)
+		c.shellDetected.Store(true)
+		runConcurrently(t, c, powershell.Encode("Get-Date"))
+		assert.Equal(t, int32(2), r.max.Load())
+	})
+
 	t.Run("no limit", func(t *testing.T) {
 		r := &concurrencyRunner{shell: "%OS%\r\nDesktop\r\n"}
 		c := &Connection{conf: &inventory.Config{Options: map[string]string{windowsMaxCommandsOption: "0"}}, rawRunner: r.run}
