@@ -182,3 +182,26 @@ func TestRunCommandSudoIsNotRewritten(t *testing.T) {
 	require.Len(t, f.sent, 1)
 	assert.True(t, strings.HasPrefix(f.sent[0], "sudo "), f.sent[0])
 }
+
+func TestVerifyDetectsTheShellOnWindows(t *testing.T) {
+	f := &fakeRunner{shell: "%OS%\r\nDesktop\r\n"}
+	c := newFakeConnection(f)
+	c.serverVersion = "SSH-2.0-OpenSSH_for_Windows_9.5"
+	require.NoError(t, c.verify())
+	assert.Equal(t, []string{shellProbe}, f.sent, "the connection check is the probe")
+	assert.True(t, c.shellDetected.Load())
+	assert.Equal(t, shellWindowsPowerShell, c.shell)
+
+	_, err := c.RunCommand(powershell.Encode("Get-Date"))
+	require.NoError(t, err)
+	assert.Equal(t, 1, f.probes(), "no second probe")
+}
+
+func TestVerifyAfterTheShellIsKnown(t *testing.T) {
+	f := &fakeRunner{shell: "%OS%\r\nDesktop\r\n"}
+	c := newFakeConnection(f)
+	c.serverVersion = "SSH-2.0-OpenSSH_for_Windows_9.5"
+	c.remoteShell()
+	require.NoError(t, c.verify())
+	assert.Equal(t, []string{shellProbe, "echo 'hi'"}, f.sent)
+}

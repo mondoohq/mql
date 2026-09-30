@@ -109,8 +109,9 @@ func TestReadFrame(t *testing.T) {
 }
 
 var (
-	frameStart = regexp.MustCompile(`'<<mql-start:([0-9a-f]+:\d+)>>'`)
-	frameB64   = regexp.MustCompile(`FromBase64String\('([^']*)'\)`)
+	frameStart  = regexp.MustCompile(`'<<mql-start:([0-9a-f]+:\d+)>>'`)
+	frameB64    = regexp.MustCompile(`FromBase64String\('([^']*)'\)`)
+	frameStaged = regexp.MustCompile(`ReadAllText\('([^']*)'`)
 )
 
 type fakeReply struct {
@@ -140,9 +141,15 @@ func startFakePowershell(t *testing.T, reply func(script string) fakeReply) sess
 			if tag == nil {
 				continue // the setup line
 			}
-			raw, _ := base64.StdEncoding.DecodeString(frameB64.FindStringSubmatch(line)[1])
-			script, _ := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewDecoder().Bytes(raw)
-			rep := reply(strings.TrimSuffix(string(script), "\n$global:__mqlOk = $?"))
+			var script string
+			if staged := frameStaged.FindStringSubmatch(line); staged != nil {
+				script = "staged " + staged[1]
+			} else {
+				raw, _ := base64.StdEncoding.DecodeString(frameB64.FindStringSubmatch(line)[1])
+				text, _ := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewDecoder().Bytes(raw)
+				script = strings.TrimSuffix(string(text), "\n$global:__mqlOk = $?")
+			}
+			rep := reply(script)
 			if rep.die {
 				stdinR.Close()
 				return
@@ -195,13 +202,100 @@ func TestRunCommandInSession(t *testing.T) {
 	assert.Equal(t, "x : error", string(stderr))
 	assert.Equal(t, 1, res.ExitStatus)
 
+	// a staged script runs from a copy of its file
+	staged := powershell.StagedCommand(`C:\Windows\Temp\users-0123456789ab.ps1`)
+	res, err = c.RunCommand(staged)
+	require.NoError(t, err)
+	assert.Equal(t, staged, res.Command)
+	out, _ := io.ReadAll(res.Stdout)
+	assert.Equal(t, "ran staged C:\\Windows\\Temp\\users-0123456789ab.ps1\r\n", string(out))
+
+	// the server's shell is Windows PowerShell, so plain commands run in the
+	// session too, once the connection check has detected it
+	res, err = c.RunCommand("hostname")
+	require.NoError(t, err)
+	out, _ = io.ReadAll(res.Stdout)
+	assert.Equal(t, "ran hostname\r\n", string(out))
+
 	assert.Equal(t, 1, *opened, "one session serves every command")
 	assert.Equal(t, []string{shellProbe}, raw.sent, "no process per command")
 
-	// commands that are not encoded Windows PowerShell run as processes
-	_, err = c.RunCommand("ipconfig /all")
+	// a command that starts PowerShell itself runs as a process
+	wrapped := powershell.Wrap("Get-Date")
+	_, err = c.RunCommand(wrapped)
 	require.NoError(t, err)
-	assert.Equal(t, "ipconfig /all", raw.sent[len(raw.sent)-1])
+	assert.Equal(t, wrapped, raw.sent[len(raw.sent)-1])
+}
+
+func TestRawCommandsInSessionOnlyForPowershellShell(t *testing.T) {
+	for name, probe := range map[string]string{
+		"cmd.exe": "Windows_NT;$PSVersionTable.PSEdition\r\n",
+		"pwsh":    "%OS%\nCore\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			raw := &fakeRunner{shell: probe}
+			c, _ := sessionConnection(t, raw, echoScript)
+			_, err := c.RunCommand(powershell.Encode("Get-Date"))
+			require.NoError(t, err)
+			_, err = c.RunCommand("hostname")
+			require.NoError(t, err)
+			assert.Equal(t, "hostname", raw.sent[len(raw.sent)-1], "the server's shell runs it")
+		})
+	}
+
+	t.Run("shell not detected yet", func(t *testing.T) {
+		raw := &fakeRunner{shell: "%OS%\r\nDesktop\r\n"}
+		c, opened := sessionConnection(t, raw, echoScript)
+		_, err := c.RunCommand("hostname")
+		require.NoError(t, err)
+		assert.Equal(t, []string{"hostname"}, raw.sent, "a plain command never probes")
+		assert.Equal(t, 0, *opened)
+	})
+}
+
+func TestParseStagedScript(t *testing.T) {
+	s, ok := parseStagedScript(powershell.StagedCommand(`C:\Windows\Temp\iis-0123456789ab.ps1`))
+	require.True(t, ok)
+	assert.Equal(t, `C:\Windows\Temp\iis-0123456789ab.ps1`, s.staged)
+
+	for _, cmd := range []string{
+		powershell.StagedCommand(""),
+		powershell.StagedCommand(`C:\Program Files\x.ps1`),
+		powershell.StagedCommand(`C:\it's.ps1`),
+		powershell.StagedCommand(`C:\x.txt`),
+		powershell.StagedCommand(`C:\x.ps1; Remove-Item C:\y`),
+		powershell.Encode("Get-Date"),
+		"hostname",
+	} {
+		_, ok := parseStagedScript(cmd)
+		assert.False(t, ok, cmd)
+	}
+}
+
+func TestParseRawScript(t *testing.T) {
+	s, ok := parseRawScript("hostname")
+	require.True(t, ok)
+	assert.Equal(t, utf16le("hostname"), s.utf16)
+	assert.False(t, s.file)
+
+	s, ok = parseRawScript("cmd /c exit 3")
+	require.True(t, ok)
+	assert.True(t, s.file, "a command that may exit runs from a file")
+
+	for _, cmd := range []string{"", "  ", powershell.Wrap("Get-Date"), "PowerShell.exe -c x", "pwsh -c x", `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -c x`} {
+		_, ok := parseRawScript(cmd)
+		assert.False(t, ok, cmd)
+	}
+}
+
+func TestSessionFrameStaged(t *testing.T) {
+	m := newSessionMarkers("abc", 7)
+	frame := sessionFrame(m, "abc-7", sessionScript{staged: `C:\Windows\Temp\users-0123456789ab.ps1`})
+	assert.NotContains(t, frame, "\n", "a frame is one line")
+	assert.Contains(t, frame, `[IO.File]::ReadAllText('C:\Windows\Temp\users-0123456789ab.ps1', [Text.Encoding]::Default)`)
+	assert.Contains(t, frame, "mql-abc-7.ps1")
+	assert.Contains(t, frame, "Remove-Item -LiteralPath $__mqlFile")
+	assert.NotContains(t, frame, "Invoke-Expression")
 }
 
 func TestRunCommandInSessionConcurrently(t *testing.T) {

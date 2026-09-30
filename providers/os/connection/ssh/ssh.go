@@ -822,6 +822,8 @@ func (c *Connection) verify() error {
 		// Wrap sudo command, to see proper error messages. We set /dev/null to disable stdin
 		command := "sh -c '" + shared.BuildSudoCommand(c.Sudo, "echo 'hi'") + " < /dev/null'"
 		out, err = c.runRawCommand(command)
+	} else if c.isWindowsSSHServer() {
+		out, err = c.verifyWindows()
 	} else {
 		out, err = c.runRawCommand("echo 'hi'")
 	}

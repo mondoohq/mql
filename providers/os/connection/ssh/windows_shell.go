@@ -88,25 +88,59 @@ func parseShellProbe(stdout string) remoteShell {
 	}
 }
 
-// remoteShell detects the SSH server's shell once per connection. The probe
-// runs on the first PowerShell command only, so a Unix target, which never
-// gets one, never pays for it.
+// remoteShell detects the SSH server's shell once per connection. On an
+// OpenSSH for Windows server the connection check already ran the probe
+// (verify). Anywhere else it runs on the first PowerShell command only, so a
+// Unix target, which never gets one, never pays for it.
 func (c *Connection) remoteShell() remoteShell {
 	c.shellOnce.Do(func() {
 		res, err := c.runRaw(shellProbe)
-		if err != nil || res == nil {
-			log.Debug().Err(err).Msg("ssh> could not detect the remote shell")
-			return
-		}
-		var stdout []byte
-		if res.Stdout != nil {
-			stdout, _ = io.ReadAll(res.Stdout)
-		}
-		c.shell = parseShellProbe(string(stdout))
-		c.shellDetected.Store(true)
-		log.Debug().Str("shell", c.shell.String()).Msg("ssh> detected the remote shell")
+		c.detectShell(res, err)
 	})
 	return c.shell
+}
+
+// detectShell reads the result of shellProbe. Call it inside shellOnce.
+func (c *Connection) detectShell(res *shared.Command, err error) {
+	if err != nil || res == nil {
+		log.Debug().Err(err).Msg("ssh> could not detect the remote shell")
+		return
+	}
+	var stdout []byte
+	if res.Stdout != nil {
+		stdout, _ = io.ReadAll(res.Stdout)
+	}
+	c.shell = parseShellProbe(string(stdout))
+	c.shellDetected.Store(true)
+	log.Debug().Str("shell", c.shell.String()).Msg("ssh> detected the remote shell")
+}
+
+// isWindowsSSHServer reports whether the SSH server is the OpenSSH that
+// ships with Windows, which announces itself as OpenSSH_for_Windows.
+func (c *Connection) isWindowsSSHServer() bool {
+	return strings.Contains(c.serverVersion, "OpenSSH_for_Windows")
+}
+
+// verifyWindows is the connection check on an OpenSSH for Windows server: the
+// shell probe, which every Windows shell runs, so the check also detects the
+// shell. The first PowerShell command would otherwise start another process
+// just for the probe.
+func (c *Connection) verifyWindows() (*shared.Command, error) {
+	var res *shared.Command
+	var err error
+	ran := false
+	c.shellOnce.Do(func() {
+		ran = true
+		res, err = c.runRaw(shellProbe)
+		// detectShell reads stdout; verify needs only the exit status and
+		// stderr
+		c.detectShell(res, err)
+	})
+	if !ran {
+		// the shell is known already, so the check is a plain one
+		return c.runRaw("echo 'hi'")
+	}
+	return res, err
 }
 
 // runRaw runs a command exactly as given. Tests replace it.

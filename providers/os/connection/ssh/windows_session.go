@@ -32,8 +32,12 @@ package ssh
 //
 // A script that could end the session itself (it contains `exit`) runs from a
 // file in %TEMP%, where exit ends only the script, and the file is removed
-// after it. Anything that is not an encoded Windows PowerShell script runs as
-// its own process. When a session breaks (the process ends, the SSH channel closes, a
+// after it. A script staged on the target (powershell.Stage, run with -File)
+// runs from such a file too, a copy of the staged one. Any other command runs
+// in the session only when the SSH server's own shell is Windows PowerShell,
+// which is what would run it otherwise, and then as that shell's -c would. A
+// command that starts PowerShell itself, and anything on a server whose shell
+// is not Windows PowerShell, runs as its own process. When a session breaks (the process ends, the SSH channel closes, a
 // frame cannot be read) the command runs as its own process and the session
 // is dropped; after sessionMaxFailures broken sessions the connection stops
 // using sessions.
@@ -99,6 +103,9 @@ type sessionScript struct {
 	utf16 []byte
 	// file runs the script from a file, because it may call exit.
 	file bool
+	// staged is the path of a script on the target that -File would run
+	// (powershell.StagedCommand); utf16 and file are unused then.
+	staged string
 }
 
 // parseSessionScript decodes an encoded Windows PowerShell command. ok is
@@ -124,10 +131,41 @@ func parseSessionScript(command string) (sessionScript, bool) {
 	return sessionScript{utf16: raw, file: sessionExit.Match(text)}, true
 }
 
+// parseStagedScript reads a command built by powershell.StagedCommand. ok is
+// false for anything else, and for a path the frame could not quote safely.
+func parseStagedScript(command string) (sessionScript, bool) {
+	path, ok := strings.CutPrefix(command, powershell.StagedCommand(""))
+	if !ok || path == "" || !strings.HasSuffix(strings.ToLower(path), ".ps1") ||
+		strings.ContainsAny(path, " \t\r\n\"'`$") {
+		return sessionScript{}, false
+	}
+	return sessionScript{staged: path}, true
+}
+
+// parseRawScript takes a command that is neither encoded nor staged, for a
+// session to run as the server's Windows PowerShell would run it. A command
+// that starts PowerShell itself stays a process of its own: it would read the
+// session's stdin, which carries the frames.
+func parseRawScript(command string) (sessionScript, bool) {
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" {
+		return sessionScript{}, false
+	}
+	if first, _, _ := strings.Cut(strings.ToLower(trimmed), " "); strings.Contains(first, "powershell") || strings.Contains(first, "pwsh") {
+		return sessionScript{}, false
+	}
+	return sessionScript{utf16: utf16le(command), file: sessionExit.MatchString(command)}, true
+}
+
 // sessionLastStatus ends every script: it keeps whether the last statement
 // succeeded, which -EncodedCommand turns into the exit code. A script that
 // calls exit never gets there, which is how the frame tells the two apart.
 var sessionLastStatus = utf16le("\n$global:__mqlOk = $?")
+
+// stagedLastStatus ends a staged script: -File exits 0 when the script runs to
+// its end, whatever its last statement did. It is a PowerShell expression
+// for the line.
+const stagedLastStatus = "[char]10 + '$global:__mqlOk = $true'"
 
 func utf16le(s string) []byte {
 	b, _ := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewEncoder().Bytes([]byte(s))
@@ -166,14 +204,25 @@ func sessionFrame(m sessionMarkers, fileTag string, script sessionScript) string
 	start := strings.TrimSuffix(m.start, "\r\n")
 	errEnd := strings.TrimSuffix(m.errEnd, "\r\n")
 
-	var run, cleanup string
-	if script.file {
-		// UTF-8 with a BOM, so Windows PowerShell reads it as UTF-8
-		run = "$__mqlFile = Join-Path $env:TEMP 'mql-" + fileTag + ".ps1'; " +
-			"[IO.File]::WriteAllText($__mqlFile, " + decode + ", [Text.Encoding]::UTF8); " +
+	// the file a script that may exit runs from, written as UTF-8 with a
+	// BOM, so Windows PowerShell reads it as UTF-8
+	fromFile := func(text string) string {
+		return "$__mqlFile = Join-Path $env:TEMP 'mql-" + fileTag + ".ps1'; " +
+			"[IO.File]::WriteAllText($__mqlFile, " + text + ", [Text.Encoding]::UTF8); " +
 			"& $__mqlFile"
+	}
+	var run, cleanup string
+	switch {
+	case script.staged != "":
+		// A copy of the staged script, with the line that tells an exit from
+		// the end. -File reads a file without a BOM in the ANSI code page,
+		// which is [Text.Encoding]::Default in Windows PowerShell.
+		run = fromFile("[IO.File]::ReadAllText(" + powershell.SingleQuote(script.staged) + ", [Text.Encoding]::Default) + " + stagedLastStatus)
 		cleanup = " finally { Remove-Item -LiteralPath $__mqlFile -Force -ErrorAction SilentlyContinue }"
-	} else {
+	case script.file:
+		run = fromFile(decode)
+		cleanup = " finally { Remove-Item -LiteralPath $__mqlFile -Force -ErrorAction SilentlyContinue }"
+	default:
 		run = "Invoke-Expression (" + decode + ")"
 	}
 
@@ -444,16 +493,36 @@ func (c *Connection) sessions() *psSessionPool {
 	return c.sessionPool
 }
 
-// runInSession runs command in a persistent session when it is an encoded
-// Windows PowerShell script, sessions are on and the target is Windows. ok is
-// false when it did not, and the caller runs the command as a process.
+// sessionScriptFor returns the script a session runs for command, and false
+// when a session must not run it.
+func (c *Connection) sessionScriptFor(command string) (sessionScript, bool) {
+	if script, ok := parseSessionScript(command); ok {
+		return script, c.remoteShell().isWindows()
+	}
+	if script, ok := parseStagedScript(command); ok {
+		return script, c.remoteShell().isWindows()
+	}
+	// Any other command runs in the server's shell. The shell is read here,
+	// not probed: a Unix target never gets a PowerShell command, so it is
+	// never probed, and on Windows the connection check detected it.
+	if c.shellDetected.Load() && c.shell == shellWindowsPowerShell {
+		return parseRawScript(command)
+	}
+	return sessionScript{}, false
+}
+
+// runInSession runs command in a persistent session when sessions are on,
+// the target is Windows and the command is one a session runs: an encoded or
+// staged Windows PowerShell script, or, when the server's shell is Windows
+// PowerShell, any command that does not start PowerShell itself. ok is false
+// when it did not, and the caller runs the command as a process.
 func (c *Connection) runInSession(command string) (*shared.Command, bool) {
 	pool := c.sessions()
 	if pool == nil {
 		return nil, false
 	}
-	script, ok := parseSessionScript(command)
-	if !ok || !c.remoteShell().isWindows() {
+	script, ok := c.sessionScriptFor(command)
+	if !ok {
 		return nil, false
 	}
 	s, err := pool.get()
