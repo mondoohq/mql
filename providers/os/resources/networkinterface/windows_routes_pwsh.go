@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-	"go.mondoo.com/mql/providers/os/resources/powershell"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -18,6 +18,17 @@ const (
 	addressFamilyIPv4 = 2  // AF_INET
 	addressFamilyIPv6 = 23 // AF_INET6
 )
+
+// listViaCommands asks the target for its routes: Get-NetRoute, then netstat.
+// It is the path for every connection except a local one on Windows.
+func (w *windowsRouteDetector) listViaCommands() ([]Route, error) {
+	routes, err := w.detectWindowsRoutesViaPowerShell()
+	if err == nil && len(routes) > 0 {
+		return routes, nil
+	}
+	log.Debug().Err(err).Int("routeCount", len(routes)).Msg("PowerShell Get-NetRoute failed or returned no routes, trying netstat")
+	return w.detectWindowsRoutesViaNetstat()
+}
 
 // detectWindowsRoutesViaPowerShell uses PowerShell Get-NetRoute command
 func (w *windowsRouteDetector) detectWindowsRoutesViaPowerShell() ([]Route, error) {
@@ -35,9 +46,10 @@ func (w *windowsRouteDetector) detectWindowsRoutesViaPowerShell() ([]Route, erro
 			InterfaceIP = $ifIP
 		}
 	} | ConvertTo-Json`
-	command := powershell.Encode(cmd)
-
-	output, err := runCommand(w.conn, w.platform, command)
+	// runCommand encodes the script for a Windows target; encoding it here
+	// too sent a PowerShell that only started another encoded PowerShell,
+	// which failed over SSH.
+	output, err := runCommand(w.conn, w.platform, cmd)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get routes via PowerShell Get-NetRoute")
 	}
@@ -124,9 +136,10 @@ func (w *windowsRouteDetector) detectWindowsRoutesViaNetstat() ([]Route, error) 
 	}
 
 	cmd := `$a = netstat -rn; $a[8..$a.count] | ConvertFrom-String | select p1,p2,p3,p4,p5,p6 | ConvertTo-Json`
-	command := powershell.Encode(cmd)
-
-	output, err := runCommand(w.conn, w.platform, command)
+	// runCommand encodes the script for a Windows target; encoding it here
+	// too sent a PowerShell that only started another encoded PowerShell,
+	// which failed over SSH.
+	output, err := runCommand(w.conn, w.platform, cmd)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get routes via netstat")
 	}
@@ -137,9 +150,10 @@ func (w *windowsRouteDetector) detectWindowsRoutesViaNetstat() ([]Route, error) 
 // getWindowsIPToInterfaceMap uses PowerShell Get-NetIPAddress to create an IP -> Interface Name mapping
 func (w *windowsRouteDetector) getWindowsIPToInterfaceMap() (map[string]string, error) {
 	cmd := `Get-NetIPAddress | Select-Object IPAddress, InterfaceAlias | ConvertTo-Json`
-	command := powershell.Encode(cmd)
-
-	output, err := runCommand(w.conn, w.platform, command)
+	// runCommand encodes the script for a Windows target; encoding it here
+	// too sent a PowerShell that only started another encoded PowerShell,
+	// which failed over SSH.
+	output, err := runCommand(w.conn, w.platform, cmd)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get IP addresses via Get-NetIPAddress")
 	}
