@@ -39,7 +39,7 @@ func TestParseSessionScript(t *testing.T) {
 		require.True(t, ok, script)
 		assert.True(t, s.file, "%q may exit, so it runs from a file", script)
 	}
-	for _, script := range []string{"$LASTEXITCODE", "Get-Item 'HKLM:\\ExitCodes'", "$exitCode = 1"} {
+	for _, script := range []string{"$LASTEXITCODE", "Get-Item 'HKLM:\\ExitCodes'", "$exitCode = 1", "$shouldExitCode = 1"} {
 		s, ok := parseSessionScript(powershell.Encode(script))
 		require.True(t, ok, script)
 		assert.False(t, s.file, script)
@@ -108,15 +108,6 @@ func TestReadFrame(t *testing.T) {
 	})
 }
 
-// fakePowershell plays a session: it reads frames from stdin and answers them
-// like powershell.exe would, with the output that reply returns for the
-// decoded script.
-type fakePowershell struct {
-	stdinR  *io.PipeReader
-	stdoutW *io.PipeWriter
-	stderrW *io.PipeWriter
-}
-
 var (
 	frameStart = regexp.MustCompile(`'<<mql-start:([0-9a-f]+:\d+)>>'`)
 	frameB64   = regexp.MustCompile(`FromBase64String\('([^']*)'\)`)
@@ -129,6 +120,9 @@ type fakeReply struct {
 	die bool
 }
 
+// startFakePowershell plays a session: it reads frames from stdin and answers
+// them like powershell.exe would, with the output that reply returns for the
+// decoded script.
 func startFakePowershell(t *testing.T, reply func(script string) fakeReply) sessionIO {
 	stdinR, stdinW := io.Pipe()
 	stdoutR, stdoutW := io.Pipe()

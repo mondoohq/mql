@@ -91,7 +91,7 @@ func persistentShellEnabled() bool {
 // [Environment]::Exit and $host.SetShouldExit. Such a script runs from a file
 // in the session, where `exit` ends only the script. A false match only costs
 // that file.
-var sessionExit = regexp.MustCompile(`(?i)\bexit\b|shouldexit`)
+var sessionExit = regexp.MustCompile(`(?i)\bexit\b|\bSetShouldExit\b`)
 
 // sessionScript is a script a session can run.
 type sessionScript struct {
