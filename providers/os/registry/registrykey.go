@@ -333,10 +333,13 @@ func (k *RegistryKeyValue) UnmarshalJSON(b []byte) error {
 	case DWORD_BIG_ENDIAN, LINK, RESOURCE_LIST, FULL_RESOURCE_DESCRIPTOR, RESOURCE_REQUIREMENTS_LIST:
 		// .NET's RegistryKey.GetValue, and so Get-ItemProperty, returns these
 		// kinds as their raw bytes. They decode like the stored value does on
-		// the native path, so both paths report the same data.
+		// the native path, so both paths report the same data. Data that is
+		// not a byte array fails this value alone, as a value that does not
+		// fit its kind does, rather than every value of the key.
 		data, err := registryBytes(raw.Data)
 		if err != nil {
-			return err
+			k.Err = err
+			return nil
 		}
 		decoded := decodeRawRegistryValue(uint32(kind), data)
 		decoded.Kind = kind

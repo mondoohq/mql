@@ -121,6 +121,32 @@ func TestDecodeRawRegistryValueMalformed(t *testing.T) {
 	var ps RegistryKeyItem
 	require.NoError(t, json.Unmarshal([]byte(`{"key":"v","value":{"data":[1,2],"type":"REG_DWORD_BIG_ENDIAN","kind":null}}`), &ps))
 	assert.Error(t, ps.Value.Err)
+
+	// data that is not a byte array fails the value, not the key
+	ps = RegistryKeyItem{}
+	require.NoError(t, json.Unmarshal([]byte(`{"key":"v","value":{"data":"garbled","type":"REG_DWORD_BIG_ENDIAN","kind":null}}`), &ps))
+	assert.Error(t, ps.Value.Err)
+	ps = RegistryKeyItem{}
+	require.NoError(t, json.Unmarshal([]byte(`{"key":"v","value":{"data":[1,256],"type":"REG_LINK","kind":null}}`), &ps))
+	assert.Error(t, ps.Value.Err)
+}
+
+// A REG_MULTI_SZ whose last string lacks its NUL keeps that string, as .NET
+// reads it for the PowerShell path.
+func TestUTF16StringsUnterminated(t *testing.T) {
+	units := func(s string) []byte {
+		var out []byte
+		for _, u := range utf16.Encode([]rune(s)) {
+			out = binary.LittleEndian.AppendUint16(out, u)
+		}
+		return out
+	}
+	assert.Equal(t, []string{"a", "b"}, utf16Strings(utf16z(true, "a", "b")))
+	assert.Equal(t, []string{"a", "", "b"}, utf16Strings(utf16z(true, "a", "", "b")))
+	assert.Equal(t, []string{"a", "b"}, utf16Strings(units("a\x00b")))
+	assert.Equal(t, []string{"a", "b"}, utf16Strings(units("a\x00b\x00")))
+	assert.Equal(t, []string{"ab"}, utf16Strings(units("ab")))
+	assert.Nil(t, utf16Strings(nil))
 }
 
 // The collection script reads REG_EXPAND_SZ unexpanded: with

@@ -96,7 +96,8 @@ func utf16String(data []byte) string {
 // utf16Strings decodes a REG_MULTI_SZ value: NUL-separated strings, ended by
 // an extra NUL. It splits the way golang.org/x/sys/windows/registry does, so
 // an empty value decodes as []string{""}, which normalizeMultiSz turns into
-// []string{}.
+// []string{}. A last string without its NUL is kept, as .NET's
+// RegistryKey.GetValue keeps it, so the PowerShell path reads it too.
 func utf16Strings(data []byte) []string {
 	units := utf16Units(data)
 	if len(units) == 0 {
@@ -112,6 +113,9 @@ func utf16Strings(data []byte) []string {
 			res = append(res, string(utf16.Decode(units[from:i])))
 			from = i + 1
 		}
+	}
+	if from < len(units) {
+		res = append(res, string(utf16.Decode(units[from:])))
 	}
 	return res
 }
