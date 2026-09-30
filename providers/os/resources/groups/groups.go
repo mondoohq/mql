@@ -13,6 +13,14 @@ type Group struct {
 	Sid     string
 	Name    string
 	Members []string
+	// MemberSids is parallel to Members on Windows: the SID of each member, so
+	// a member resolves to its user by SID, which survives a renamed account.
+	// Empty where a member's SID could not be read, and on other platforms.
+	MemberSids []string
+	// MembersUnknown is set when the members could not be read (for example
+	// access denied). Members is then empty, but that is not a statement that
+	// the group has none.
+	MembersUnknown bool
 }
 
 type OSGroupManager interface {

@@ -18,6 +18,11 @@ import (
 
 type mqlGroupInternal struct {
 	membersArr []string
+	// memberSids is parallel to membersArr on Windows (groups.Group.MemberSids).
+	memberSids []string
+	// membersUnknown means the members could not be read: members() is an
+	// error, never an empty list.
+	membersUnknown bool
 }
 
 func initGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -102,8 +107,39 @@ func (x *mqlGroup) members() ([]any, error) {
 	// group.members on an otherwise compliant host. Resolve what we can, and log what we
 	// drop so a missing member is diagnosable. Same rationale as file.user/file.group on
 	// an unknown uid/gid.
+	if x.membersUnknown {
+		return nil, errors.New("cannot read the members of group " + x.Name.Data)
+	}
+
 	res := make([]any, 0, len(x.membersArr))
-	for _, name := range x.membersArr {
+	for i, name := range x.membersArr {
+		// Windows members come with their SID, which identifies them even
+		// when the account was renamed. A member that is not a local user (a
+		// domain account, a well-known principal, a deleted account) is still
+		// a member: it is returned as a user with its name and SID, and with
+		// the fields that cannot be known left null.
+		if i < len(x.memberSids) && x.memberSids[i] != "" {
+			sid := x.memberSids[i]
+			if user, ok := users.usersBySid[sid]; ok {
+				res = append(res, user)
+				continue
+			}
+			user, err := CreateResource(x.MqlRuntime, "user", map[string]*llx.RawData{
+				"name":    llx.StringData(name),
+				"sid":     llx.StringData(sid),
+				"uid":     llx.IntData(-1),
+				"gid":     llx.IntData(-1),
+				"home":    llx.NilData,
+				"shell":   llx.NilData,
+				"enabled": llx.NilData,
+			})
+			if err != nil {
+				return nil, err
+			}
+			res = append(res, user)
+			continue
+		}
+
 		user, ok := users.usersByName[name]
 		if !ok {
 			// A trailing comma parses to an empty name and means nothing was there.
@@ -164,6 +200,8 @@ func (x *mqlGroups) list() ([]any, error) {
 
 		g := nu.(*mqlGroup)
 		g.membersArr = group.Members
+		g.memberSids = group.MemberSids
+		g.membersUnknown = group.MembersUnknown
 	}
 
 	return res, x.refreshCache(res)

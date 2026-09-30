@@ -124,6 +124,8 @@ type mqlUsersInternal struct {
 	lock        sync.Mutex
 	usersByID   map[int64]*mqlUser
 	usersByName map[string]*mqlUser
+	// usersBySid indexes the users that have a SID (Windows).
+	usersBySid map[string]*mqlUser
 
 	uidRangeOnce sync.Once
 	uidRange     uidRange
@@ -188,6 +190,7 @@ func (x *mqlUsers) refreshCache(all []any) error {
 
 	x.usersByID = map[int64]*mqlUser{}
 	x.usersByName = map[string]*mqlUser{}
+	x.usersBySid = map[string]*mqlUser{}
 
 	for i := range all {
 		u := all[i].(*mqlUser)
@@ -199,6 +202,11 @@ func (x *mqlUsers) refreshCache(all []any) error {
 		}
 		if _, ok := x.usersByName[u.Name.Data]; !ok {
 			x.usersByName[u.Name.Data] = u
+		}
+		if u.Sid.Data != "" {
+			if _, ok := x.usersBySid[u.Sid.Data]; !ok {
+				x.usersBySid[u.Sid.Data] = u
+			}
 		}
 	}
 

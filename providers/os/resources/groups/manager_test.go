@@ -96,6 +96,22 @@ func TestManagerWindows(t *testing.T) {
 	assert.Equal(t, "S-1-5-32-544", grp.ID)
 	assert.Equal(t, int64(-1), grp.Gid)
 	assert.Equal(t, "Administrators", grp.Name)
+	// The last member is an orphaned SID (a deleted foreign account), which
+	// Get-LocalGroupMember fails on. It is named by its SID.
+	assert.Equal(t, []string{
+		"WIN-HOST\\Administrator",
+		"WIN-HOST\\mqladmin",
+		"S-1-5-21-1111111111-2222222222-3333333333-1105",
+	}, grp.Members)
+	assert.Equal(t, []string{
+		"S-1-5-21-1111111111-2222222222-3333333333-500",
+		"S-1-5-21-1111111111-2222222222-3333333333-1000",
+		"S-1-5-21-1111111111-2222222222-3333333333-1105",
+	}, grp.MemberSids)
+	assert.False(t, grp.MembersUnknown)
+
+	grp = findGroup(groupList, "S-1-5-32-555")
+	assert.Equal(t, "Remote Desktop Users", grp.Name)
 	assert.Equal(t, []string{}, grp.Members)
 
 	assert.Equal(t, 25, len(groupList))

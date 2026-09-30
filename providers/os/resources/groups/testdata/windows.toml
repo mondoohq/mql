@@ -1,3 +1,375 @@
+[commands."powershell.exe -NoProfile -EncodedCommand JABQAHIAbwBnAHIAZQBzAHMAUAByAGUAZgBlAHIAZQBuAGMAZQA9ACcAUwBpAGwAZQBuAHQAbAB5AEMAbwBuAHQAaQBuAHUAZQAnADsACgAkAG8AdQB0ACAAPQAgAGYAbwByAGUAYQBjAGgAIAAoACQAZwAgAGkAbgAgAEAAKABHAGUAdAAtAEwAbwBjAGEAbABHAHIAbwB1AHAAKQApACAAewAKACAAIAAgACAAJABtAGUAbQBiAGUAcgBzACAAPQAgAEAAKAApAAoAIAAgACAAIAAkAGYAYQBpAGwAZQBkACAAPQAgACQAZgBhAGwAcwBlAAoAIAAgACAAIAB0AHIAeQAgAHsACgAgACAAIAAgACAAIAAgACAAZgBvAHIAZQBhAGMAaAAgACgAJABtACAAaQBuACAAQAAoAEcAZQB0AC0ATABvAGMAYQBsAEcAcgBvAHUAcABNAGUAbQBiAGUAcgAgAC0ARwByAG8AdQBwACAAJABnACAALQBFAHIAcgBvAHIAQQBjAHQAaQBvAG4AIABTAHQAbwBwACkAKQAgAHsACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAkAG4AYQBtAGUAIAA9ACAAaQBmACAAKAAkAG0ALgBOAGEAbQBlACkAIAB7ACAAJABtAC4ATgBhAG0AZQAgAH0AIABlAGwAcwBlACAAewAgACQAbQAuAFMASQBEAC4AVgBhAGwAdQBlACAAfQAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACQAbQBlAG0AYgBlAHIAcwAgACsAPQAgAFsAUABTAEMAdQBzAHQAbwBtAE8AYgBqAGUAYwB0AF0AQAB7ACAAUwBpAGQAIAA9ACAAJABtAC4AUwBJAEQALgBWAGEAbAB1AGUAOwAgAE4AYQBtAGUAIAA9ACAAJABuAGEAbQBlACAAfQAKACAAIAAgACAAIAAgACAAIAB9AAoAIAAgACAAIAB9ACAAYwBhAHQAYwBoACAAewAKACAAIAAgACAAIAAgACAAIAAkAG0AZQBtAGIAZQByAHMAIAA9ACAAQAAoACkACgAgACAAIAAgACAAIAAgACAAdAByAHkAIAB7AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAJABhAGQAcwBpACAAPQAgAFsAQQBEAFMASQBdACgAJwBXAGkAbgBOAFQAOgAvAC8ALgAvACcAIAArACAAJABnAC4ATgBhAG0AZQAgACsAIAAnACwAZwByAG8AdQBwACcAKQAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgAGYAbwByAGUAYQBjAGgAIAAoACQAbQAgAGkAbgAgAEAAKAAkAGEAZABzAGkALgBwAHMAYgBhAHMAZQAuAEkAbgB2AG8AawBlACgAJwBNAGUAbQBiAGUAcgBzACcAKQApACkAIAB7AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAkAHQAIAA9ACAAJABtAC4ARwBlAHQAVAB5AHAAZQAoACkACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACQAcwBpAGQAIAA9ACAAJABuAHUAbABsAAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAkAHAAYQB0AGgAIAA9ACAAJABuAHUAbABsAAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAB0AHIAeQAgAHsAIAAkAHMAaQBkACAAPQAgACgATgBlAHcALQBPAGIAagBlAGMAdAAgAFMAeQBzAHQAZQBtAC4AUwBlAGMAdQByAGkAdAB5AC4AUAByAGkAbgBjAGkAcABhAGwALgBTAGUAYwB1AHIAaQB0AHkASQBkAGUAbgB0AGkAZgBpAGUAcgAoACQAdAAuAEkAbgB2AG8AawBlAE0AZQBtAGIAZQByACgAJwBvAGIAagBlAGMAdABTAGkAZAAnACwAIAAnAEcAZQB0AFAAcgBvAHAAZQByAHQAeQAnACwAIAAkAG4AdQBsAGwALAAgACQAbQAsACAAJABuAHUAbABsACkALAAgADAAKQApAC4AVgBhAGwAdQBlACAAfQAgAGMAYQB0AGMAaAAgAHsAIAB9AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAB0AHIAeQAgAHsAIAAkAHAAYQB0AGgAIAA9ACAAWwBzAHQAcgBpAG4AZwBdACQAdAAuAEkAbgB2AG8AawBlAE0AZQBtAGIAZQByACgAJwBBAEQAcwBQAGEAdABoACcALAAgACcARwBlAHQAUAByAG8AcABlAHIAdAB5ACcALAAgACQAbgB1AGwAbAAsACAAJABtACwAIAAkAG4AdQBsAGwAKQAgAH0AIABjAGEAdABjAGgAIAB7ACAAfQAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAaQBmACAAKAAtAG4AbwB0ACAAJABzAGkAZAAgAC0AYQBuAGQAIAAtAG4AbwB0ACAAJABwAGEAdABoACkAIAB7ACAAJABmAGEAaQBsAGUAZAAgAD0AIAAkAHQAcgB1AGUAOwAgAGMAbwBuAHQAaQBuAHUAZQAgAH0ACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACQAcABhAHIAdABzACAAPQAgAEAAKAAoACQAcABhAHQAaAAgAC0AcgBlAHAAbABhAGMAZQAgACcAXgBXAGkAbgBOAFQAOgAvAC8AJwAsACAAJwAnACkALgBTAHAAbABpAHQAKAAnAC8AJwApACAAfAAgAFcAaABlAHIAZQAtAE8AYgBqAGUAYwB0ACAAewAgACQAXwAgAH0AKQAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAaQBmACAAKAAkAHAAYQByAHQAcwAuAEMAbwB1AG4AdAAgAC0AZwBlACAAMgApACAAewAgACQAbgBhAG0AZQAgAD0AIAAkAHAAYQByAHQAcwBbAC0AMgBdACAAKwAgACcAXAAnACAAKwAgACQAcABhAHIAdABzAFsALQAxAF0AIAB9AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIABlAGwAcwBlAGkAZgAgACgAJABwAGEAcgB0AHMALgBDAG8AdQBuAHQAIAAtAGUAcQAgADEAKQAgAHsAIAAkAG4AYQBtAGUAIAA9ACAAJABwAGEAcgB0AHMAWwAwAF0AIAB9AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIABlAGwAcwBlACAAewAgACQAbgBhAG0AZQAgAD0AIAAkAHMAaQBkACAAfQAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAJABtAGUAbQBiAGUAcgBzACAAKwA9ACAAWwBQAFMAQwB1AHMAdABvAG0ATwBiAGoAZQBjAHQAXQBAAHsAIABTAGkAZAAgAD0AIAAkAHMAaQBkADsAIABOAGEAbQBlACAAPQAgACQAbgBhAG0AZQAgAH0ACgAgACAAIAAgACAAIAAgACAAIAAgACAAIAB9AAoAIAAgACAAIAAgACAAIAAgAH0AIABjAGEAdABjAGgAIAB7ACAAJABmAGEAaQBsAGUAZAAgAD0AIAAkAHQAcgB1AGUAIAB9AAoAIAAgACAAIAB9AAoAIAAgACAAIABbAFAAUwBDAHUAcwB0AG8AbQBPAGIAagBlAGMAdABdAEAAewAKACAAIAAgACAAIAAgACAAIABOAGEAbQBlACAAIAAgACAAIAAgACAAIAAgACAAIAAgAD0AIAAkAGcALgBOAGEAbQBlAAoAIAAgACAAIAAgACAAIAAgAEQAZQBzAGMAcgBpAHAAdABpAG8AbgAgACAAIAAgACAAPQAgACQAZwAuAEQAZQBzAGMAcgBpAHAAdABpAG8AbgAKACAAIAAgACAAIAAgACAAIABQAHIAaQBuAGMAaQBwAGEAbABTAG8AdQByAGMAZQAgAD0AIABbAGkAbgB0AF0AJABnAC4AUAByAGkAbgBjAGkAcABhAGwAUwBvAHUAcgBjAGUACgAgACAAIAAgACAAIAAgACAATwBiAGoAZQBjAHQAQwBsAGEAcwBzACAAIAAgACAAIAA9ACAAJABnAC4ATwBiAGoAZQBjAHQAQwBsAGEAcwBzAAoAIAAgACAAIAAgACAAIAAgAFMASQBEACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAPQAgAFsAUABTAEMAdQBzAHQAbwBtAE8AYgBqAGUAYwB0AF0AQAB7AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAQgBpAG4AYQByAHkATABlAG4AZwB0AGgAIAAgACAAIAAgAD0AIABbAGkAbgB0AF0AJABnAC4AUwBJAEQALgBCAGkAbgBhAHIAeQBMAGUAbgBnAHQAaAAKACAAIAAgACAAIAAgACAAIAAgACAAIAAgAEEAYwBjAG8AdQBuAHQARABvAG0AYQBpAG4AUwBpAGQAIAA9ACAAaQBmACAAKAAkAGcALgBTAEkARAAuAEEAYwBjAG8AdQBuAHQARABvAG0AYQBpAG4AUwBpAGQAKQAgAHsAIAAkAGcALgBTAEkARAAuAEEAYwBjAG8AdQBuAHQARABvAG0AYQBpAG4AUwBpAGQALgBWAGEAbAB1AGUAIAB9ACAAZQBsAHMAZQAgAHsAIAAkAG4AdQBsAGwAIAB9AAoAIAAgACAAIAAgACAAIAAgACAAIAAgACAAVgBhAGwAdQBlACAAIAAgACAAIAAgACAAIAAgACAAIAAgAD0AIAAkAGcALgBTAEkARAAuAFYAYQBsAHUAZQAKACAAIAAgACAAIAAgACAAIAB9AAoAIAAgACAAIAAgACAAIAAgAE0AZQBtAGIAZQByAHMAIAAgACAAIAAgACAAIAAgACAAPQAgACQAbQBlAG0AYgBlAHIAcwAKACAAIAAgACAAIAAgACAAIABNAGUAbQBiAGUAcgBzAEUAcgByAG8AcgAgACAAIAAgAD0AIAAkAGYAYQBpAGwAZQBkAAoAIAAgACAAIAB9AAoAfQAKAEMAbwBuAHYAZQByAHQAVABvAC0ASgBzAG8AbgAgAC0ASQBuAHAAdQB0AE8AYgBqAGUAYwB0ACAAQAAoACQAbwB1AHQAKQAgAC0ARABlAHAAdABoACAANAAKAA=="]
+stdout = '''
+[
+  {
+    "Name": "Access Control Assistance Operators",
+    "Description": "Members of this group can remotely query authorization attributes and permissions for resources on this computer.",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-579"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "Administrators",
+    "Description": "Administrators have complete and unrestricted access to the computer/domain",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-544"
+    },
+    "Members": [
+      {
+        "Sid": "S-1-5-21-1111111111-2222222222-3333333333-500",
+        "Name": "WIN-HOST\\Administrator"
+      },
+      {
+        "Sid": "S-1-5-21-1111111111-2222222222-3333333333-1000",
+        "Name": "WIN-HOST\\mqladmin"
+      },
+      {
+        "Sid": "S-1-5-21-1111111111-2222222222-3333333333-1105",
+        "Name": "S-1-5-21-1111111111-2222222222-3333333333-1105"
+      }
+    ],
+    "MembersError": false
+  },
+  {
+    "Name": "Backup Operators",
+    "Description": "Backup Operators can override security restrictions for the sole purpose of backing up or restoring files",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-551"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "Certificate Service DCOM Access",
+    "Description": "Members of this group are allowed to connect to Certification Authorities in the enterprise",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-574"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "Cryptographic Operators",
+    "Description": "Members are authorized to perform cryptographic operations.",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-569"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "Device Owners",
+    "Description": "Members of this group can change system-wide settings.",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-583"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "Distributed COM Users",
+    "Description": "Members are allowed to launch, activate and use Distributed COM objects on this machine.",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-562"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "Event Log Readers",
+    "Description": "Members of this group can read event logs from local machine",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-573"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "Guests",
+    "Description": "Guests have the same access as members of the Users group by default, except for the Guest account which is further restricted",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-546"
+    },
+    "Members": [
+      {
+        "Sid": "S-1-5-21-1111111111-2222222222-3333333333-501",
+        "Name": "WIN-HOST\\Guest"
+      }
+    ],
+    "MembersError": false
+  },
+  {
+    "Name": "Hyper-V Administrators",
+    "Description": "Members of this group have complete and unrestricted access to all features of Hyper-V.",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-578"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "IIS_IUSRS",
+    "Description": "Built-in group used by Internet Information Services.",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-568"
+    },
+    "Members": [
+      {
+        "Sid": "S-1-5-17",
+        "Name": "NT AUTHORITY\\IUSR"
+      }
+    ],
+    "MembersError": false
+  },
+  {
+    "Name": "Network Configuration Operators",
+    "Description": "Members in this group can have some administrative privileges to manage configuration of networking features",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-556"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "Performance Log Users",
+    "Description": "Members of this group may schedule logging of performance counters, enable trace providers, and collect event traces both locally and via remote access to this computer",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-559"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "Performance Monitor Users",
+    "Description": "Members of this group can access performance counter data locally and remotely",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-558"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "Power Users",
+    "Description": "Power Users are included for backwards compatibility and possess limited administrative powers",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-547"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "Print Operators",
+    "Description": "Members can administer printers installed on domain controllers",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-550"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "RDS Endpoint Servers",
+    "Description": "Servers in this group run virtual machines and host sessions where users RemoteApp programs and personal virtual desktops run. This group needs to be populated on servers running RD Connection Broker. RD Session Host servers and RD Virtualization Host servers used in the deployment need to be in this group.",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-576"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "RDS Management Servers",
+    "Description": "Servers in this group can perform routine administrative actions on servers running Remote Desktop Services. This group needs to be populated on all servers in a Remote Desktop Services deployment. The servers running the RDS Central Management service must be included in this group.",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-577"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "RDS Remote Access Servers",
+    "Description": "Servers in this group enable users of RemoteApp programs and personal virtual desktops access to these resources. In Internet-facing deployments, these servers are typically deployed in an edge network. This group needs to be populated on servers running RD Connection Broker. RD Gateway servers and RD Web Access servers used in the deployment need to be in this group.",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-575"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "Remote Desktop Users",
+    "Description": "Members in this group are granted the right to logon remotely",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-555"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "Remote Management Users",
+    "Description": "Members of this group can access WMI resources over management protocols (such as WS-Management via the Windows Remote Management service). This applies only to WMI namespaces that grant access to the user.",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-580"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "Replicator",
+    "Description": "Supports file replication in a domain",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-552"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "Storage Replica Administrators",
+    "Description": "Members of this group have complete and unrestricted access to all features of Storage Replica.",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-582"
+    },
+    "Members": [],
+    "MembersError": false
+  },
+  {
+    "Name": "System Managed Accounts Group",
+    "Description": "Members of this group are managed by the system.",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-581"
+    },
+    "Members": [
+      {
+        "Sid": "S-1-5-21-1111111111-2222222222-3333333333-503",
+        "Name": "WIN-HOST\\DefaultAccount"
+      }
+    ],
+    "MembersError": false
+  },
+  {
+    "Name": "Users",
+    "Description": "Users are prevented from making accidental or intentional system-wide changes and can run most applications",
+    "PrincipalSource": 1,
+    "ObjectClass": "Group",
+    "SID": {
+      "BinaryLength": 16,
+      "AccountDomainSid": null,
+      "Value": "S-1-5-32-545"
+    },
+    "Members": [
+      {
+        "Sid": "S-1-5-21-1111111111-2222222222-3333333333-1002",
+        "Name": "WIN-HOST\\mqloff"
+      },
+      {
+        "Sid": "S-1-5-11",
+        "Name": "NT AUTHORITY\\Authenticated Users"
+      },
+      {
+        "Sid": "S-1-5-4",
+        "Name": "NT AUTHORITY\\INTERACTIVE"
+      }
+    ],
+    "MembersError": false
+  }
+]
+'''
+
 [commands."powershell -c \"Get-LocalGroup | ConvertTo-Json\""]
 stdout = """
 [

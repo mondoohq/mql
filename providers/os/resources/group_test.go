@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/mock"
@@ -66,4 +67,64 @@ func TestGroupMembers_UnresolvableMemberName(t *testing.T) {
 	// The unresolvable name is dropped, but every resolvable member is kept — a fix
 	// that bailed out on the first miss would leave the list short or empty.
 	assert.ElementsMatch(t, []string{"root", "alice"}, names)
+}
+
+// On Windows a group's members come with their SIDs. A member resolves to its
+// user by SID, so a renamed account is still found, and a member that is not a
+// local user (a domain group, a deleted account) is kept as a user with its
+// name and SID instead of being dropped: a check over the Administrators group
+// has to see it.
+func TestGroupMembers_WindowsMembersBySid(t *testing.T) {
+	fixturePath, err := filepath.Abs("testdata/group_dangling_member.toml")
+	require.NoError(t, err)
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Name: "centos", Family: []string{"linux", "unix"}},
+	}, mock.WithPath(fixturePath))
+	require.NoError(t, err)
+	runtime := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+
+	raw, err := CreateResource(runtime, "users", nil)
+	require.NoError(t, err)
+	list := raw.(*mqlUsers).GetList()
+	require.NoError(t, list.Error)
+	var alice *mqlUser
+	for _, u := range list.Data {
+		if u.(*mqlUser).Name.Data == "alice" {
+			alice = u.(*mqlUser)
+		}
+	}
+	require.NotNil(t, alice)
+	alice.Sid = plugin.TValue[string]{Data: "S-1-5-21-1-2-3-500", State: plugin.StateIsSet}
+
+	newGroup := func(name, sid string) *mqlGroup {
+		raw, err := CreateResource(runtime, "group", map[string]*llx.RawData{
+			"name": llx.StringData(name),
+			"sid":  llx.StringData(sid),
+			"gid":  llx.IntData(-1),
+		})
+		require.NoError(t, err)
+		return raw.(*mqlGroup)
+	}
+
+	admins := newGroup("Administrators", "S-1-5-32-544")
+	admins.membersArr = []string{`HOST\Administrator`, `CORP\Domain Admins`, "S-1-5-21-9-9-9-1105"}
+	admins.memberSids = []string{"S-1-5-21-1-2-3-500", "S-1-5-21-5-5-5-512", "S-1-5-21-9-9-9-1105"}
+	members := admins.GetMembers()
+	require.NoError(t, members.Error)
+	require.Len(t, members.Data, 3)
+
+	// Resolved by SID: the local user's name differs from the member name.
+	assert.Same(t, alice, members.Data[0])
+	for i, want := range [][2]string{{`CORP\Domain Admins`, "S-1-5-21-5-5-5-512"}, {"S-1-5-21-9-9-9-1105", "S-1-5-21-9-9-9-1105"}} {
+		u := members.Data[i+1].(*mqlUser)
+		assert.Equal(t, want[0], u.Name.Data)
+		assert.Equal(t, want[1], u.Sid.Data)
+		assert.Equal(t, int64(-1), u.Uid.Data)
+		assert.True(t, u.GetEnabled().IsNull(), "enabled is unknown for a member that is not a local user")
+	}
+
+	// Members that could not be read are an error, never an empty list.
+	rdp := newGroup("Remote Desktop Users", "S-1-5-32-555")
+	rdp.membersUnknown = true
+	assert.Error(t, rdp.GetMembers().Error)
 }
