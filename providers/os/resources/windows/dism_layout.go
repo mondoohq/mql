@@ -57,12 +57,8 @@ const (
 // DismCustomProperty* CustomProperty; UINT CustomPropertyCount.
 var dismFeatureInfoLayout = packedLayout(dismPtr, dismEnum, dismPtr, dismPtr, dismEnum, dismPtr, dismEnum)
 
-const (
-	dismFeatureInfoName = iota
-	dismFeatureInfoState
-	dismFeatureInfoDisplayName
-	dismFeatureInfoDescription
-)
+// The DismFeatureInfo field indexes and the pointer reader are only used by
+// the Windows reader, so they live in dism_windows.go.
 
 // DismPackageFeatureState, the state DISM reports for a feature.
 const (
@@ -112,11 +108,7 @@ func featureStateFromDism(s uint32) (int64, error) {
 	return 0, errors.New("unexpected DISM feature state")
 }
 
-// field reads the pointer-sized or 4-byte member i of the structure at base.
-func (l dismLayout) ptr(base unsafe.Pointer, i int) unsafe.Pointer {
-	return *(*unsafe.Pointer)(unsafe.Add(base, l.offsets[i]))
-}
-
+// uint32 reads the 4-byte member i of the structure at base.
 func (l dismLayout) uint32(base unsafe.Pointer, i int) uint32 {
 	return *(*uint32)(unsafe.Add(base, l.offsets[i]))
 }

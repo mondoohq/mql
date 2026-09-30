@@ -32,6 +32,20 @@ const (
 	dismUnknownFeature = 0x800F080C // the feature name is not in the image
 )
 
+// The DismFeatureInfo members the reader uses, as indexes into
+// dismFeatureInfoLayout.
+const (
+	dismFeatureInfoName = iota
+	dismFeatureInfoState
+	dismFeatureInfoDisplayName
+	dismFeatureInfoDescription
+)
+
+// ptr reads the pointer-sized member i of the structure at base.
+func (l dismLayout) ptr(base unsafe.Pointer, i int) unsafe.Pointer {
+	return *(*unsafe.Pointer)(unsafe.Add(base, l.offsets[i]))
+}
+
 // dismSession is the process's one DISM session on the online image. DISM may
 // be initialized once per process and its sessions are not safe for concurrent
 // use, so the session is opened on first use, kept for the life of the provider
