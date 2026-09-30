@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/local"
 )
 
 func TestFormatDestination(t *testing.T) {
@@ -175,7 +177,11 @@ func TestParseSockaddrInet(t *testing.T) {
 }
 
 func TestList_Integration(t *testing.T) {
-	w := &windowsRouteDetector{}
+	// List reads the routing table natively only for a local connection.
+	w := &windowsRouteDetector{
+		conn:     local.NewConnection(0, &inventory.Config{}, &inventory.Asset{}),
+		platform: windowsPlatform,
+	}
 	routes, err := w.List()
 	require.NoError(t, err)
 	require.NotEmpty(t, routes, "expected at least one route on a Windows machine")

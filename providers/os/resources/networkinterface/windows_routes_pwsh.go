@@ -34,7 +34,9 @@ func (w *windowsRouteDetector) listViaCommands() ([]Route, error) {
 // interface and address family. The addresses are read once into a table: a
 // Get-NetIPAddress per route (a CIM query each) made the script about 18x
 // slower on a host with 26 routes. The list is passed with -InputObject so a
-// host with one route still gets an array.
+// host with one route still gets an array. Both cmdlets key the table with
+// [int]$_.AddressFamily, so the keys match whether a PowerShell version
+// returns the family as the CIM enum or as its number.
 const getNetRouteScript = `$addrs = @{}
 Get-NetIPAddress -ErrorAction SilentlyContinue | ForEach-Object {
 	$key = "$($_.InterfaceIndex)|$([int]$_.AddressFamily)"
