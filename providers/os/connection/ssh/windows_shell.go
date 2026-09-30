@@ -98,6 +98,7 @@ func (c *Connection) remoteShell() remoteShell {
 			stdout, _ = io.ReadAll(res.Stdout)
 		}
 		c.shell = parseShellProbe(string(stdout))
+		c.shellDetected.Store(true)
 		log.Debug().Str("shell", c.shell.String()).Msg("ssh> detected the remote shell")
 	})
 	return c.shell
