@@ -207,11 +207,19 @@ type mqlWindowsInternal struct {
 	// exact name. The resource's init runs on every lookup, before the
 	// resource cache is consulted, so without it each check that reads the
 	// same feature (a benchmark reads SMB1Protocol from several checks and
-	// filters) started Get-WindowsOptionalFeature again. It has its own
-	// lock, held while a lookup runs, so that concurrent lookups of a name
-	// wait for the first without blocking the hotfix state behind lock.
+	// filters) started Get-WindowsOptionalFeature again. optionalFeatureLock
+	// guards only the map; each entry has its own lock, held while its query
+	// runs, so concurrent lookups of one name wait for the first while other
+	// names and the hotfix state behind lock are not held up.
 	optionalFeatureLock    sync.Mutex
-	optionalFeatureLookups map[string]optionalFeatureLookup
+	optionalFeatureLookups map[string]*optionalFeatureEntry
+}
+
+// optionalFeatureEntry is the cache slot for one feature name.
+type optionalFeatureEntry struct {
+	mu     sync.Mutex
+	done   bool
+	lookup optionalFeatureLookup
 }
 
 // optionalFeatureLookup is one cached windows.optionalFeature(name: …)
@@ -437,15 +445,36 @@ func initWindowsOptionalFeature(runtime *plugin.Runtime, args map[string]*llx.Ra
 
 // lookupOptionalFeature runs the targeted query for one feature name once per
 // runtime and remembers the outcome (see optionalFeatureLookups). Concurrent
-// lookups of the same name wait for the first instead of querying again.
+// lookups of the same name wait for the first instead of querying again;
+// lookups of different names run concurrently.
 func (w *mqlWindows) lookupOptionalFeature(conn shared.Connection, name string) (optionalFeatureLookup, error) {
 	w.optionalFeatureLock.Lock()
-	defer w.optionalFeatureLock.Unlock()
-
-	if lookup, ok := w.optionalFeatureLookups[name]; ok {
-		return lookup, nil
+	if w.optionalFeatureLookups == nil {
+		w.optionalFeatureLookups = map[string]*optionalFeatureEntry{}
 	}
+	e, ok := w.optionalFeatureLookups[name]
+	if !ok {
+		e = &optionalFeatureEntry{}
+		w.optionalFeatureLookups[name] = e
+	}
+	w.optionalFeatureLock.Unlock()
 
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.done {
+		return e.lookup, nil
+	}
+	lookup, err := w.queryOptionalFeature(conn, name)
+	if err != nil {
+		// not cached: a transient failure does not stick for the scan
+		return optionalFeatureLookup{}, err
+	}
+	e.lookup, e.done = lookup, true
+	return lookup, nil
+}
+
+// queryOptionalFeature runs the query for one feature name.
+func (w *mqlWindows) queryOptionalFeature(conn shared.Connection, name string) (optionalFeatureLookup, error) {
 	executedCmd, err := conn.RunCommand(powershell.Encode(windows.OptionalFeatureQuery(name)))
 	if err != nil {
 		return optionalFeatureLookup{}, err
@@ -470,10 +499,6 @@ func (w *mqlWindows) lookupOptionalFeature(conn shared.Connection, name string) 
 		}
 	}
 
-	if w.optionalFeatureLookups == nil {
-		w.optionalFeatureLookups = map[string]optionalFeatureLookup{}
-	}
-	w.optionalFeatureLookups[name] = lookup
 	return lookup, nil
 }
 

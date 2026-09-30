@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,11 +21,14 @@ import (
 
 type optionalFeatureRecordingConnection struct {
 	*mock.Connection
+	mu       sync.Mutex
 	commands []string
 }
 
 func (c *optionalFeatureRecordingConnection) RunCommand(command string) (*shared.Command, error) {
+	c.mu.Lock()
 	c.commands = append(c.commands, command)
+	c.mu.Unlock()
 	return c.Connection.RunCommand(command)
 }
 
@@ -169,6 +173,39 @@ func TestInitOptionalFeatureQueriesEachNameOnce(t *testing.T) {
 	assert.Equal(t, true, args["enabled"].Value)
 
 	assert.Equal(t, []string{smbCmd, telnetCmd}, conn.commands, "one query per distinct name")
+}
+
+// Concurrent lookups of one name wait for the first query instead of
+// starting their own, and lookups of other names are not held up by it.
+func TestInitOptionalFeatureConcurrentLookups(t *testing.T) {
+	smbCmd := powershell.Encode(windows.OptionalFeatureQuery("SMB1Protocol"))
+	telnetCmd := powershell.Encode(windows.OptionalFeatureQuery("TelnetClient"))
+	runtime, conn := newOptionalFeatureRuntime(t, map[string]*mock.Command{
+		smbCmd:    {Stdout: `{"FeatureName": "SMB1Protocol", "DisplayName": "SMB 1.0/CIFS File Sharing Support", "Description": "SMB 1.0", "State": 0}`},
+		telnetCmd: {Stdout: `{"FeatureName": "TelnetClient", "DisplayName": "Telnet Client", "Description": "Telnet", "State": 2}`},
+	})
+
+	// the windows resource that holds the cache, as a scan has it by then
+	_, err := NewResource(runtime, "windows", nil)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := range 8 {
+		name := "SMB1Protocol"
+		if i%2 == 1 {
+			name = "TelnetClient"
+		}
+		wg.Go(func() {
+			args, _, err := initWindowsOptionalFeature(runtime, map[string]*llx.RawData{
+				"name": llx.StringData(name),
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, name, args["name"].Value)
+		})
+	}
+	wg.Wait()
+
+	assert.ElementsMatch(t, []string{smbCmd, telnetCmd}, conn.commands, "one query per distinct name")
 }
 
 // A name the image does not have fails every lookup, but is queried once.
