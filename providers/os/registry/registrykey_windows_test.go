@@ -185,7 +185,9 @@ func TestRegistryValuesNativeMatchPowerShell(t *testing.T) {
 	be := make([]byte, 4)
 	binary.BigEndian.PutUint32(be, 42)
 	setRawValue(t, k, "DwordBigEndian", registry.DWORD_BIG_ENDIAN, be)
+	setRawValue(t, k, "Link", registry.LINK, []byte{0x41, 0, 0x42, 0})
 	setRawValue(t, k, "ResourceList", registry.RESOURCE_LIST, []byte{1, 0, 0, 0, 5})
+	setRawValue(t, k, "FullResourceDescriptor", registry.FULL_RESOURCE_DESCRIPTOR, []byte{2, 3})
 
 	path := `HKEY_CURRENT_USER\` + sub
 	native, err := GetNativeRegistryKeyItems(path)
@@ -202,7 +204,7 @@ func TestRegistryValuesNativeMatchPowerShell(t *testing.T) {
 	for _, item := range remote {
 		byName[item.Key] = item
 	}
-	require.Len(t, native, 9)
+	require.Len(t, native, 11)
 	for _, n := range native {
 		p, ok := byName[n.Key]
 		require.True(t, ok, "PowerShell did not report %s", n.Key)
@@ -216,4 +218,5 @@ func TestRegistryValuesNativeMatchPowerShell(t *testing.T) {
 	assert.Equal(t, `%SystemRoot%\system32\logfiles\firewall\domainfw.log`, byName["ExpandSz"].String())
 	assert.Equal(t, int64(5000000000), byName["Qword"].GetRawValue())
 	assert.Equal(t, int64(42), byName["DwordBigEndian"].GetRawValue())
+	assert.Equal(t, "AB", byName["Link"].String())
 }

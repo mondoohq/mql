@@ -63,13 +63,15 @@ func TestRegistryValueEquivalence(t *testing.T) {
 		{"REG_MULTI_SZ single", MULTI_SZ, utf16z(true, "alpha"), `{"data":"alpha","type":"REG_MULTI_SZ","kind":null}`},
 		{"REG_MULTI_SZ empty", MULTI_SZ, utf16z(true), `{"data":[],"type":"REG_MULTI_SZ","kind":null}`},
 		{"REG_BINARY", BINARY, []byte{0xde, 0xad, 0xbe, 0xef}, `{"data":[222,173,190,239],"type":"REG_BINARY","kind":null}`},
-		// .NET returns the kinds below as their raw bytes.
+		// .NET returns REG_DWORD_BIG_ENDIAN as its raw bytes.
 		{"REG_DWORD_BIG_ENDIAN", DWORD_BIG_ENDIAN, be32(42), `{"data":[0,0,0,42],"type":"REG_DWORD_BIG_ENDIAN","kind":null}`},
-		{"REG_LINK", LINK, utf16z(false, `\Registry\Machine\System\ControlSet001`),
-			`{"data":` + jsonBytes(utf16z(false, `\Registry\Machine\System\ControlSet001`)) + `,"type":"REG_LINK","kind":null}`},
-		{"REG_RESOURCE_LIST", RESOURCE_LIST, []byte{1, 0, 0, 0, 5}, `{"data":[1,0,0,0,5],"type":"REG_RESOURCE_LIST","kind":null}`},
-		{"REG_FULL_RESOURCE_DESCRIPTOR", FULL_RESOURCE_DESCRIPTOR, []byte{2, 3}, `{"data":[2,3],"type":"REG_FULL_RESOURCE_DESCRIPTOR","kind":null}`},
-		{"REG_RESOURCE_REQUIREMENTS_LIST", RESOURCE_REQUIREMENTS_LIST, []byte{9}, `{"data":[9],"type":"REG_RESOURCE_REQUIREMENTS_LIST","kind":null}`},
+		// .NET returns no data for REG_LINK and the resource lists; the
+		// script emits the hex reg.exe prints (as observed on Server 2022).
+		{"REG_LINK", LINK, []byte{0x41, 0, 0x42, 0}, `{"data":null,"hex":"41004200","type":"REG_LINK","kind":null}`},
+		{"REG_RESOURCE_LIST", RESOURCE_LIST, []byte{1, 0, 0, 0, 5}, `{"data":null,"hex":"0100000005","type":"REG_RESOURCE_LIST","kind":null}`},
+		{"REG_FULL_RESOURCE_DESCRIPTOR", FULL_RESOURCE_DESCRIPTOR, []byte{2, 3}, `{"data":null,"hex":"0203","type":"REG_FULL_RESOURCE_DESCRIPTOR","kind":null}`},
+		// Byte arrays decode too, should a PowerShell version return them.
+		{"REG_RESOURCE_LIST as bytes", RESOURCE_LIST, []byte{1, 0, 0, 0, 5}, `{"data":[1,0,0,0,5],"type":"REG_RESOURCE_LIST","kind":null}`},
 		{"REG_NONE", NONE, []byte{1, 2}, `{"data":[1,2],"type":"REG_NONE","kind":null}`},
 	}
 
@@ -91,13 +93,19 @@ func TestRegistryValueEquivalence(t *testing.T) {
 	}
 }
 
-func jsonBytes(b []byte) string {
-	nums := make([]int, len(b))
-	for i := range b {
-		nums[i] = int(b[i])
-	}
-	out, _ := json.Marshal(nums)
-	return string(out)
+// REG_RESOURCE_REQUIREMENTS_LIST is the one kind the paths cannot agree on:
+// .NET returns no data for it and reg.exe prints it as REG_NONE, so over
+// PowerShell it reads as an empty value of kind none. The native path reads
+// it as stored.
+func TestResourceRequirementsListOverPowerShell(t *testing.T) {
+	native := RegistryKeyItem{Key: "v", Value: decodeRawRegistryValue(RESOURCE_REQUIREMENTS_LIST, []byte{9})}
+	assert.Equal(t, "resourcerequirementslist", native.Kind())
+	assert.Equal(t, []any{int64(9)}, native.GetRawValue())
+
+	var ps RegistryKeyItem
+	require.NoError(t, json.Unmarshal([]byte(`{"key":"v","value":{"data":null,"hex":null,"type":"REG_NONE","kind":null}}`), &ps))
+	assert.Equal(t, "none", ps.Kind())
+	assert.Nil(t, ps.GetRawValue())
 }
 
 // A value whose data does not fit its kind fails that value alone, on both
@@ -123,4 +131,5 @@ func TestGetRegistryKeyItemScriptReadsExpandStringUnexpanded(t *testing.T) {
 	assert.Contains(t, script, `$reg.GetValue($fetchKeyValue, $null, 'DoNotExpandEnvironmentNames')`)
 	assert.Contains(t, script, `$regData[$matches[1]] = $matches[3]`)
 	assert.Contains(t, script, `if ($printed -ne $null) { $data = $printed }`)
+	assert.Contains(t, script, `"hex" = $hex;`)
 }

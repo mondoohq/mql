@@ -81,6 +81,12 @@ func ParsePowershellRegistryKeyChildren(r io.Reader) ([]RegistryKeyChild, error)
 // script reads it unexpanded too, with RegistryKey.GetValue and
 // DoNotExpandEnvironmentNames. Where language mode refuses that method, it
 // takes the data reg.exe printed, which is unexpanded as well.
+//
+// .NET returns no data at all for REG_LINK and the resource-list kinds
+// (RegistryValueKind.Unknown), so for those the script also emits the hex
+// reg.exe prints, and the decoder reads the value's bytes from it.
+// REG_RESOURCE_REQUIREMENTS_LIST cannot be read this way: reg.exe does not know
+// the type and prints it as REG_NONE, which carries no data on either path.
 const getRegistryKeyItemScript = `
 $path = %s
 $reg = Get-Item ('Registry::' + $path) -ErrorAction Stop
@@ -133,6 +139,10 @@ $reg.Property | ForEach-Object {
         if ($printed -ne $null) { $data = $printed }
       }
     }
+    $hex = $null
+    if ($data -eq $null -and @('REG_LINK', 'REG_RESOURCE_LIST', 'REG_FULL_RESOURCE_DESCRIPTOR') -contains $type) {
+      $hex = $printed
+    }
     $entry = New-Object psobject -Property @{
       "key" = $name
       "value" = New-Object psobject -Property @{
@@ -140,6 +150,7 @@ $reg.Property | ForEach-Object {
         "kind" = $kind;
         "type" = $type;
         "languageMode" = $languageMode;
+        "hex" = $hex;
       }
     }
     $properties += $entry

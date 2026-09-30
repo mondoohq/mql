@@ -5,6 +5,7 @@ package registry
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -213,6 +214,9 @@ type keyKindRaw struct {
 	LanguageMode string
 	// Data holds numbers as json.Number, so a REG_QWORD keeps all 64 bits.
 	Data any
+	// Hex is the value's data as reg.exe prints it, for the kinds .NET
+	// returns no data for (REG_LINK and the resource lists).
+	Hex string
 }
 
 // registryInt64 reads a whole number out of decoded JSON data exactly.
@@ -233,6 +237,16 @@ func registryInt64(v any) (int64, bool) {
 		return 0, false
 	}
 	return int64(u), true
+}
+
+// bytesToJSON gives bytes the form ConvertTo-Json gives a byte[], so they
+// decode through registryBytes like the data .NET returns.
+func bytesToJSON(data []byte) []any {
+	res := make([]any, len(data))
+	for i, b := range data {
+		res[i] = json.Number(strconv.Itoa(int(b)))
+	}
+	return res
 }
 
 // registryBytes reads a byte array out of decoded JSON data: the form
@@ -274,6 +288,14 @@ func (k *RegistryKeyValue) UnmarshalJSON(b []byte) error {
 	}
 	k.Kind = kind
 
+	if raw.Data == nil && raw.Hex != "" {
+		data, err := hex.DecodeString(raw.Hex)
+		if err != nil {
+			k.Err = fmt.Errorf("registry value data %q is not hex: %w", raw.Hex, err)
+			return nil
+		}
+		raw.Data = bytesToJSON(data)
+	}
 	if raw.Data == nil {
 		return nil
 	}
