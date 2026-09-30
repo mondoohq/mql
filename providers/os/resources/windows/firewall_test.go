@@ -292,3 +292,72 @@ func TestParseWindowsFirewallRulesProfiles(t *testing.T) {
 	// rather than claiming the rule applies to no profile.
 	assert.Nil(t, rules[2].Profiles)
 }
+
+// Every firewall query reads the ActiveStore, the effective policy. The
+// cmdlets default to the PersistentStore, which misses every rule and
+// setting delivered by Group Policy.
+func TestFirewallQueriesReadTheActiveStore(t *testing.T) {
+	for name, script := range map[string]string{
+		"settings": FIREWALL_SETTINGS,
+		"profiles": FIREWALL_PROFILES,
+		"rules":    FIREWALL_RULES,
+		"filters":  FIREWALL_RULE_FILTERS,
+	} {
+		assert.Contains(t, script, "ActiveStore", name)
+	}
+	assert.Contains(t, FIREWALL_RULES, "-TracePolicyStore")
+	for _, cmdlet := range []string{"PortFilter", "AddressFilter", "ApplicationFilter", "ServiceFilter", "InterfaceTypeFilter", "SecurityFilter"} {
+		assert.Contains(t, FIREWALL_RULE_FILTERS, "Get-NetFirewall"+cmdlet+" @o|", cmdlet)
+	}
+}
+
+// Output of the four queries from the ActiveStore of a Windows Server 2022
+// host with one rule delivered by (local) Group Policy.
+func TestWindowsFirewallActiveStore2022(t *testing.T) {
+	open := func(name string) *os.File {
+		f, err := os.Open("./testdata/firewall-" + name + "-2022-activestore.json")
+		require.NoError(t, err)
+		t.Cleanup(func() { f.Close() })
+		return f
+	}
+
+	settings, err := ParseWindowsFirewallSettings(open("settings"))
+	require.NoError(t, err)
+	// NotConfigured in the PersistentStore, the effective number here.
+	assert.Equal(t, PSFlexString("300"), settings.MaxSAIdleTimeSeconds)
+
+	profiles, err := ParseWindowsFirewallProfiles(open("profiles"))
+	require.NoError(t, err)
+	require.Len(t, profiles, 3)
+	for _, p := range profiles {
+		// The effective AllowLocalPolicyMerge (1, true), not the
+		// PersistentStore's NotConfigured (2).
+		assert.EqualValues(t, 1, p.AllowLocalFirewallRules, p.Name)
+	}
+
+	rules, err := ParseWindowsFirewallRules(open("rules"))
+	require.NoError(t, err)
+	var gpo *WindowsFirewallRule
+	for i := range rules {
+		if rules[i].InstanceID == "ExampleGpoRule" {
+			gpo = &rules[i]
+		}
+	}
+	require.NotNil(t, gpo, "the rule delivered by Group Policy is listed")
+	assert.Equal(t, "Local Group Policy", gpo.PolicyStoreSource)
+	assert.EqualValues(t, 2, gpo.PolicyStoreSourceType) // GroupPolicy
+	// Several enforcement values arrive joined into one string.
+	assert.Equal(t, "DisabledInProfile, ProfileInactive, Enforced", gpo.EnforcementStatus)
+	for _, r := range rules {
+		if r.InstanceID != "ExampleGpoRule" {
+			assert.Equal(t, "PersistentStore", r.PolicyStoreSource, r.InstanceID)
+		}
+	}
+
+	filters, err := ParseWindowsFirewallRuleFilters(open("rule-filters"))
+	require.NoError(t, err)
+	require.NotNil(t, filters["ExampleGpoRule"])
+	require.NotNil(t, filters["ExampleGpoRule"].Port)
+	assert.Equal(t, PSFlexString("TCP"), filters["ExampleGpoRule"].Port.Protocol)
+	assert.Equal(t, PSStringArray{"4444"}, filters["ExampleGpoRule"].Port.LocalPort)
+}

@@ -1,0 +1,194 @@
+{
+    "Port": [
+        {
+            "InstanceID": "ExampleGpoRule",
+            "Protocol": "TCP",
+            "LocalPort": "4444",
+            "RemotePort": "Any",
+            "IcmpType": "Any"
+        },
+        {
+            "InstanceID": "NETDIS-UPnPHost-Out-TCP",
+            "Protocol": "TCP",
+            "LocalPort": "Any",
+            "RemotePort": "2869",
+            "IcmpType": "Any"
+        },
+        {
+            "InstanceID": "Microsoft-Windows-PeerDist-HostedServer-Out",
+            "Protocol": "TCP",
+            "LocalPort": {
+                "value": [
+                    "80",
+                    "443"
+                ],
+                "Count": 2
+            },
+            "RemotePort": "Any",
+            "IcmpType": "Any"
+        },
+        {
+            "InstanceID": "PlayTo-QWave-Out-TCP-PlayToScope",
+            "Protocol": "TCP",
+            "LocalPort": "Any",
+            "RemotePort": "2177",
+            "IcmpType": "Any"
+        },
+        {
+            "InstanceID": "CoreNet-IPv6-In",
+            "Protocol": "41",
+            "LocalPort": "Any",
+            "RemotePort": "Any",
+            "IcmpType": "Any"
+        },
+        {
+            "InstanceID": "DeliveryOptimization-UDP-In",
+            "Protocol": "UDP",
+            "LocalPort": "7680",
+            "RemotePort": "Any",
+            "IcmpType": "Any"
+        }
+    ],
+    "Address": [
+        {
+            "InstanceID": "ExampleGpoRule",
+            "LocalAddress": "Any",
+            "RemoteAddress": "Any"
+        },
+        {
+            "InstanceID": "NETDIS-UPnPHost-Out-TCP",
+            "LocalAddress": "Any",
+            "RemoteAddress": "Any"
+        },
+        {
+            "InstanceID": "Microsoft-Windows-PeerDist-HostedServer-Out",
+            "LocalAddress": "Any",
+            "RemoteAddress": "Any"
+        },
+        {
+            "InstanceID": "PlayTo-QWave-Out-TCP-PlayToScope",
+            "LocalAddress": "Any",
+            "RemoteAddress": "PlayToDevice"
+        },
+        {
+            "InstanceID": "CoreNet-IPv6-In",
+            "LocalAddress": "Any",
+            "RemoteAddress": "Any"
+        },
+        {
+            "InstanceID": "DeliveryOptimization-UDP-In",
+            "LocalAddress": "Any",
+            "RemoteAddress": "Any"
+        }
+    ],
+    "Application": [
+        {
+            "InstanceID": "ExampleGpoRule",
+            "Program": "Any"
+        },
+        {
+            "InstanceID": "NETDIS-UPnPHost-Out-TCP",
+            "Program": "System"
+        },
+        {
+            "InstanceID": "Microsoft-Windows-PeerDist-HostedServer-Out",
+            "Program": "SYSTEM"
+        },
+        {
+            "InstanceID": "PlayTo-QWave-Out-TCP-PlayToScope",
+            "Program": "C:\\Windows\\system32\\svchost.exe"
+        },
+        {
+            "InstanceID": "CoreNet-IPv6-In",
+            "Program": "System"
+        },
+        {
+            "InstanceID": "DeliveryOptimization-UDP-In",
+            "Program": "C:\\Windows\\system32\\svchost.exe"
+        }
+    ],
+    "Service": [
+        {
+            "InstanceID": "ExampleGpoRule",
+            "Service": "Any"
+        },
+        {
+            "InstanceID": "NETDIS-UPnPHost-Out-TCP",
+            "Service": "Any"
+        },
+        {
+            "InstanceID": "Microsoft-Windows-PeerDist-HostedServer-Out",
+            "Service": "Any"
+        },
+        {
+            "InstanceID": "PlayTo-QWave-Out-TCP-PlayToScope",
+            "Service": "Qwave"
+        },
+        {
+            "InstanceID": "CoreNet-IPv6-In",
+            "Service": "Any"
+        },
+        {
+            "InstanceID": "DeliveryOptimization-UDP-In",
+            "Service": "dosvc"
+        }
+    ],
+    "InterfaceType": [
+        {
+            "InstanceID": "ExampleGpoRule",
+            "InterfaceType": "Any"
+        },
+        {
+            "InstanceID": "NETDIS-UPnPHost-Out-TCP",
+            "InterfaceType": "Any"
+        },
+        {
+            "InstanceID": "Microsoft-Windows-PeerDist-HostedServer-Out",
+            "InterfaceType": "Any"
+        },
+        {
+            "InstanceID": "PlayTo-QWave-Out-TCP-PlayToScope",
+            "InterfaceType": "Any"
+        },
+        {
+            "InstanceID": "CoreNet-IPv6-In",
+            "InterfaceType": "Any"
+        },
+        {
+            "InstanceID": "DeliveryOptimization-UDP-In",
+            "InterfaceType": "Any"
+        }
+    ],
+    "Security": [
+        {
+            "InstanceID": "ExampleGpoRule",
+            "RemoteUser": "Any",
+            "RemoteMachine": "Any"
+        },
+        {
+            "InstanceID": "NETDIS-UPnPHost-Out-TCP",
+            "RemoteUser": "Any",
+            "RemoteMachine": "Any"
+        },
+        {
+            "InstanceID": "Microsoft-Windows-PeerDist-HostedServer-Out",
+            "RemoteUser": "Any",
+            "RemoteMachine": "Any"
+        },
+        {
+            "InstanceID": "PlayTo-QWave-Out-TCP-PlayToScope",
+            "RemoteUser": "Any",
+            "RemoteMachine": "Any"
+        },
+        {
+            "InstanceID": "CoreNet-IPv6-In",
+            "RemoteUser": "Any",
+            "RemoteMachine": "Any"
+        },
+        {
+            "InstanceID": "DeliveryOptimization-UDP-In",
+            "RemoteUser": "Any",
+            "RemoteMachine": "Any"
+        }
+    ]
+}

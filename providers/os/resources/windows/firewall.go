@@ -11,13 +11,25 @@ import (
 	"strings"
 )
 
+// Every firewall query reads the ActiveStore, the policy the firewall
+// enforces: local rules and settings merged with those delivered by Group
+// Policy. The cmdlets default to the PersistentStore, which holds only what
+// was configured locally, so every rule delivered by Group Policy was missing
+// and profile settings showed the local value even where a policy overrides
+// it (for example AllowLocalFirewallRules, the AllowLocalPolicyMerge policy,
+// which voids the local rules when a policy sets it to false).
 const (
-	FIREWALL_PROFILES = "Get-NetFirewallProfile | ConvertTo-Json"
+	FIREWALL_PROFILES = "Get-NetFirewallProfile -PolicyStore ActiveStore | ConvertTo-Json"
 	// Profile is a flags enum. It is cast to a string on the host so the
 	// flag names come back instead of a bit mask, which is what a policy
 	// matches on and what the firewall UI shows.
-	FIREWALL_RULES    = "Get-NetFirewallRule | Select-Object InstanceID,Name,DisplayName,Description,DisplayGroup,Enabled,Direction,Action,EdgeTraversalPolicy,LooseSourceMapping,LocalOnlyMapping,PrimaryStatus,Status,EnforcementStatus,PolicyStoreSource,PolicyStoreSourceType,@{n='Profiles';e={[string]$_.Profile}} | ConvertTo-Json"
-	FIREWALL_SETTINGS = "Get-NetFirewallSetting | ConvertTo-Json"
+	// -TracePolicyStore fills PolicyStoreSource and PolicyStoreSourceType with
+	// where each rule came from (a GPO's name, or PersistentStore). In the
+	// ActiveStore, EnforcementStatus holds several values for some rules
+	// (DisabledInProfile, ProfileInactive, Enforced); they are joined on the
+	// host, so the field stays one string.
+	FIREWALL_RULES    = "Get-NetFirewallRule -PolicyStore ActiveStore -TracePolicyStore | Select-Object InstanceID,Name,DisplayName,Description,DisplayGroup,Enabled,Direction,Action,EdgeTraversalPolicy,LooseSourceMapping,LocalOnlyMapping,PrimaryStatus,Status,@{n='EnforcementStatus';e={@($_.EnforcementStatus) -join ', '}},PolicyStoreSource,PolicyStoreSourceType,@{n='Profiles';e={[string]$_.Profile}} | ConvertTo-Json"
+	FIREWALL_SETTINGS = "Get-NetFirewallSetting -PolicyStore ActiveStore | ConvertTo-Json"
 )
 
 type WindowsFirewallRule struct {
@@ -94,24 +106,26 @@ func ParseWindowsFirewallRules(input io.Reader) ([]WindowsFirewallRule, error) {
 }
 
 type WindowsFirewallSettings struct {
-	Name                                    string `json:"Name"`
-	Exemptions                              int64  `json:"Exemptions"`
-	EnableStatefulFtp                       int64  `json:"EnableStatefulFtp"`
-	EnableStatefulPptp                      int64  `json:"EnableStatefulPptp"`
-	ActiveProfile                           int64  `json:"ActiveProfile"`
-	RequireFullAuthSupport                  int64  `json:"RequireFullAuthSupport"`
-	CertValidationLevel                     int64  `json:"CertValidationLevel"`
-	AllowIPsecThroughNAT                    int64  `json:"AllowIPsecThroughNAT"`
-	MaxSAIdleTimeSeconds                    string `json:"MaxSAIdleTimeSeconds"`
-	KeyEncoding                             int64  `json:"KeyEncoding"`
-	EnablePacketQueuing                     int64  `json:"EnablePacketQueuing"`
-	ElementName                             string `json:"ElementName"`
-	InstanceID                              string `json:"InstanceID"`
-	Profile                                 int64  `json:"Profile"`
-	RemoteMachineTransportAuthorizationList string `json:"RemoteMachineTransportAuthorizationList"`
-	RemoteMachineTunnelAuthorizationList    string `json:"RemoteMachineTunnelAuthorizationList"`
-	RemoteUserTransportAuthorizationList    string `json:"RemoteUserTransportAuthorizationList"`
-	RemoteUserTunnelAuthorizationList       string `json:"RemoteUserTunnelAuthorizationList"`
+	Name                   string `json:"Name"`
+	Exemptions             int64  `json:"Exemptions"`
+	EnableStatefulFtp      int64  `json:"EnableStatefulFtp"`
+	EnableStatefulPptp     int64  `json:"EnableStatefulPptp"`
+	ActiveProfile          int64  `json:"ActiveProfile"`
+	RequireFullAuthSupport int64  `json:"RequireFullAuthSupport"`
+	CertValidationLevel    int64  `json:"CertValidationLevel"`
+	AllowIPsecThroughNAT   int64  `json:"AllowIPsecThroughNAT"`
+	// NotConfigured in the PersistentStore, the effective number of seconds
+	// in the ActiveStore.
+	MaxSAIdleTimeSeconds                    PSFlexString `json:"MaxSAIdleTimeSeconds"`
+	KeyEncoding                             int64        `json:"KeyEncoding"`
+	EnablePacketQueuing                     int64        `json:"EnablePacketQueuing"`
+	ElementName                             string       `json:"ElementName"`
+	InstanceID                              string       `json:"InstanceID"`
+	Profile                                 int64        `json:"Profile"`
+	RemoteMachineTransportAuthorizationList string       `json:"RemoteMachineTransportAuthorizationList"`
+	RemoteMachineTunnelAuthorizationList    string       `json:"RemoteMachineTunnelAuthorizationList"`
+	RemoteUserTransportAuthorizationList    string       `json:"RemoteUserTransportAuthorizationList"`
+	RemoteUserTunnelAuthorizationList       string       `json:"RemoteUserTunnelAuthorizationList"`
 }
 
 func ParseWindowsFirewallSettings(input io.Reader) (*WindowsFirewallSettings, error) {
@@ -174,13 +188,15 @@ func ParseWindowsFirewallProfiles(input io.Reader) ([]WindowsFirewallProfile, er
 // The whole join is one script so that it costs one round trip. It stays
 // well inside PSMaxScriptLength; -Depth is mandatory because the default of
 // 2 renders the multi-valued port and address properties as type names
-// instead of arrays.
-const FIREWALL_RULE_FILTERS = `$p=@(Get-NetFirewallPortFilter|Select-Object InstanceID,Protocol,LocalPort,RemotePort,IcmpType)
-$a=@(Get-NetFirewallAddressFilter|Select-Object InstanceID,LocalAddress,RemoteAddress)
-$ap=@(Get-NetFirewallApplicationFilter|Select-Object InstanceID,Program)
-$s=@(Get-NetFirewallServiceFilter|Select-Object InstanceID,Service)
-$i=@(Get-NetFirewallInterfaceTypeFilter|Select-Object InstanceID,@{n='InterfaceType';e={[string]$_.InterfaceType}})
-$c=@(Get-NetFirewallSecurityFilter|Select-Object InstanceID,RemoteUser,RemoteMachine)
+// instead of arrays. The filters are read from the ActiveStore too, so the
+// rules delivered by Group Policy get their conditions.
+const FIREWALL_RULE_FILTERS = `$o=@{PolicyStore='ActiveStore'}
+$p=@(Get-NetFirewallPortFilter @o|Select-Object InstanceID,Protocol,LocalPort,RemotePort,IcmpType)
+$a=@(Get-NetFirewallAddressFilter @o|Select-Object InstanceID,LocalAddress,RemoteAddress)
+$ap=@(Get-NetFirewallApplicationFilter @o|Select-Object InstanceID,Program)
+$s=@(Get-NetFirewallServiceFilter @o|Select-Object InstanceID,Service)
+$i=@(Get-NetFirewallInterfaceTypeFilter @o|Select-Object InstanceID,@{n='InterfaceType';e={[string]$_.InterfaceType}})
+$c=@(Get-NetFirewallSecurityFilter @o|Select-Object InstanceID,RemoteUser,RemoteMachine)
 [PSCustomObject]@{Port=$p;Address=$a;Application=$ap;Service=$s;InterfaceType=$i;Security=$c}|ConvertTo-Json -Depth 5 -Compress`
 
 // PSFlexString decodes a scalar PowerShell property that does not always

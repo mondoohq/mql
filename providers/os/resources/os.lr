@@ -14464,7 +14464,8 @@ windows.auditPolicy.subcategory @defaults("name success failure") {
 // firewall rule. Use `profiles` to assert that the firewall is enabled and
 // blocks inbound traffic by default on each profile, and `rules` to audit
 // which allow/block rules are active. Backed by the `Get-NetFirewallProfile`
-// and `Get-NetFirewallRule` PowerShell cmdlets.
+// and `Get-NetFirewallRule` PowerShell cmdlets, read from the ActiveStore:
+// the effective policy, local configuration merged with Group Policy.
 windows.firewall {
   // Global firewall settings (Get-NetFirewallSetting), as a dictionary of setting name to value
   settings() dict
@@ -14506,6 +14507,10 @@ windows.firewall.profile {
   // Whether administrators can create firewall rules that allow unsolicited inbound traffic (if 0, such rules are ignored)
   allowInboundRules int
   // Whether local firewall rules should merge into the effective policy along with group policy settings
+  //
+  // The AllowLocalPolicyMerge policy. When a policy sets it to false (0),
+  // the firewall ignores every locally defined rule, including those that
+  // `rules` lists with `policyStoreSource` PersistentStore.
   allowLocalFirewallRules int
   // Whether local IPsec rules should merge into the effective policy along with rules from group policy
   allowLocalIPsecRules int
@@ -14584,11 +14589,22 @@ windows.firewall.rule {
   primaryStatus int
   // Detailed status of the rule
   status string
-  // Whether this object is retrieved from the ActiveStore
+  // How the firewall enforces the rule
+  //
+  // One or more enforcement states, for example `Enforced`. A rule with
+  // several has them joined with ", " (for example
+  // `DisabledInProfile, ProfileInactive, Enforced`).
   enforcementStatus string
-  // Contains the path to the policy store where this rule originally came from
+  // Policy store the rule came from
+  //
+  // The name of the Group Policy object that delivered the rule, or
+  // PersistentStore for a rule configured locally.
   policyStoreSource string
-  // Describes the type of policy store where this rule originally came from
+  // Type of the policy store the rule came from
+  //
+  // 0 (None), 1 (Local), 2 (GroupPolicy), 3 (Dynamic), 4 (Generated),
+  // 5 (Hardcoded), 6 (MDM), 8 (HostFirewallLocal), 9 (HostFirewallGroupPolicy),
+  // 10 (HostFirewallDynamic), or 11 (HostFirewallMDM).
   policyStoreSourceType int
   // Firewall profiles this rule applies to
   //
