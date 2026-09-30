@@ -50,7 +50,8 @@ type SecpolSystemAccess struct {
 	LockoutThreshold         uint32
 	// DOMAIN_PASSWORD_INFORMATION.PasswordProperties
 	PasswordProperties uint32
-	// TurnOffAnonymousBlock (LSA): anonymous SID/name translation
+	// anonymous SID/name translation: the LSA policy object's DACL grants
+	// ANONYMOUS LOGON POLICY_LOOKUP_NAMES
 	AnonymousNameLookup bool
 	Accounts            SecpolAccounts
 }

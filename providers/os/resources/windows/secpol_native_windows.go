@@ -29,6 +29,7 @@ var (
 	procLsaQueryInformationPolicy         = modadvapi32.NewProc("LsaQueryInformationPolicy")
 	procLsaEnumerateAccountsWithUserRight = modadvapi32.NewProc("LsaEnumerateAccountsWithUserRight")
 	procLsaNtStatusToWinError             = modadvapi32.NewProc("LsaNtStatusToWinError")
+	procLsaQuerySecurityObject            = modadvapi32.NewProc("LsaQuerySecurityObject")
 
 	procNetUserModalsGet = modnetapi32.NewProc("NetUserModalsGet")
 
@@ -43,6 +44,7 @@ const (
 	policyViewLocalInformation = 0x0001
 	policyViewAuditInformation = 0x0002
 	policyLookupNames          = 0x0800
+	readControl                = 0x00020000
 
 	policyAuditEventsInformation   = 2 // POLICY_INFORMATION_CLASS
 	policyAccountDomainInformation = 5
@@ -144,7 +146,7 @@ var privilegeRightNames = []string{
 // (an administrator or SYSTEM).
 func NativeSecpolExport() (string, error) {
 	for _, p := range []*windows.LazyProc{
-		procLsaOpenPolicy, procLsaQueryInformationPolicy, procLsaEnumerateAccountsWithUserRight,
+		procLsaOpenPolicy, procLsaQueryInformationPolicy, procLsaEnumerateAccountsWithUserRight, procLsaQuerySecurityObject,
 		procNetUserModalsGet, procSamConnect, procSamOpenDomain, procSamQueryInformationDomain,
 	} {
 		if err := p.Find(); err != nil {
@@ -152,7 +154,7 @@ func NativeSecpolExport() (string, error) {
 		}
 	}
 
-	policy, err := lsaOpenPolicy(policyViewLocalInformation | policyViewAuditInformation | policyLookupNames)
+	policy, err := lsaOpenPolicy(policyViewLocalInformation | policyViewAuditInformation | policyLookupNames | readControl)
 	if err != nil {
 		return "", err
 	}
@@ -165,6 +167,9 @@ func NativeSecpolExport() (string, error) {
 
 	sa, err := systemAccess(domainSid)
 	if err != nil {
+		return "", err
+	}
+	if sa.AnonymousNameLookup, err = anonymousNameLookup(policy); err != nil {
 		return "", err
 	}
 	auditingMode, options, err := auditEvents(policy)
@@ -240,10 +245,6 @@ func systemAccess(domainSid *windows.SID) (SecpolSystemAccess, error) {
 	}
 	sa.PasswordProperties = props
 
-	// "Network access: Allow anonymous SID/Name translation" is LSA's
-	// TurnOffAnonymousBlock; absent means off.
-	sa.AnonymousNameLookup = registryDword(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Control\Lsa`, "TurnOffAnonymousBlock") == 1
-
 	admin, err := wellKnownAccount(domainSid, 500)
 	if err != nil {
 		return sa, err
@@ -257,6 +258,57 @@ func systemAccess(domainSid *windows.SID) (SecpolSystemAccess, error) {
 		GuestName: guest.name, GuestEnabled: guest.enabled,
 	}
 	return sa, nil
+}
+
+// anonymousNameLookup reads "Network access: Allow anonymous SID/Name
+// translation" as secedit does: it is not a registry value but an ACE in the
+// LSA policy object's DACL.
+func anonymousNameLookup(policy uintptr) (bool, error) {
+	var sd *windows.SECURITY_DESCRIPTOR
+	r, _, _ := procLsaQuerySecurityObject.Call(policy, uintptr(windows.DACL_SECURITY_INFORMATION), uintptr(unsafe.Pointer(&sd)))
+	if r != statusSuccess {
+		return false, ntStatusError("LsaQuerySecurityObject", r)
+	}
+	defer procLsaFreeMemory.Call(uintptr(unsafe.Pointer(sd)))
+	return grantsAnonymousLookupNames(sd)
+}
+
+// grantsAnonymousLookupNames reports whether the DACL has the ACE the policy
+// sets: one for ANONYMOUS LOGON (S-1-5-7) with POLICY_LOOKUP_NAMES alone,
+// (A;;0x800;;;AN) when enabled and (D;;0x800;;;AN) when disabled, in front of
+// the ACE that always allows ANONYMOUS LOGON 0x801. The first such ACE
+// decides; without one, the policy is not enabled.
+func grantsAnonymousLookupNames(sd *windows.SECURITY_DESCRIPTOR) (bool, error) {
+	dacl, _, err := sd.DACL()
+	if err != nil {
+		if errors.Is(err, windows.ERROR_OBJECT_NOT_FOUND) {
+			// no DACL: nothing is granted explicitly
+			return false, nil
+		}
+		return false, err
+	}
+	if dacl == nil {
+		return false, nil
+	}
+	anonymous, err := windows.CreateWellKnownSid(windows.WinAnonymousSid)
+	if err != nil {
+		return false, err
+	}
+	for i := uint32(0); i < uint32(dacl.AceCount); i++ {
+		// ACCESS_ALLOWED_ACE and ACCESS_DENIED_ACE share this layout
+		var ace *windows.ACCESS_ALLOWED_ACE
+		if err := windows.GetAce(dacl, i, &ace); err != nil {
+			return false, err
+		}
+		t := ace.Header.AceType
+		if (t != windows.ACCESS_ALLOWED_ACE_TYPE && t != windows.ACCESS_DENIED_ACE_TYPE) || ace.Mask != policyLookupNames {
+			continue
+		}
+		if (*windows.SID)(unsafe.Pointer(&ace.SidStart)).Equals(anonymous) {
+			return t == windows.ACCESS_ALLOWED_ACE_TYPE, nil
+		}
+	}
+	return false, nil
 }
 
 // passwordProperties reads DOMAIN_PASSWORD_INFORMATION.PasswordProperties of
