@@ -50,6 +50,11 @@ func (s remoteShell) String() string {
 	}
 }
 
+// isWindows reports whether the shell only exists on Windows.
+func (s remoteShell) isWindows() bool {
+	return s == shellCmd || s == shellWindowsPowerShell
+}
+
 // shellProbe tells the shells apart in one command, without a double quote
 // that the Windows command line around it would end on:
 //
