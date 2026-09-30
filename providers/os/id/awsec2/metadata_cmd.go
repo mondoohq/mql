@@ -158,7 +158,13 @@ func (m *CommandInstanceMetadata) getToken() (string, error) {
 		return token, nil
 	}
 	data, err := io.ReadAll(cmd.Stdout)
-	return strings.TrimSpace(string(data)), err
+	if err != nil {
+		return "", err
+	}
+	token := strings.TrimSpace(string(data))
+	// An empty token is passed on as before: IMDSv1 answers without one.
+	m.token = token
+	return token, nil
 }
 
 func (m *CommandInstanceMetadata) instanceNameTag() (string, error) {

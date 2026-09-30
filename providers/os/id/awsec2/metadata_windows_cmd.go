@@ -30,7 +30,9 @@ func windowsCurlCmd(token, path string) string {
 	if windowsPathNeedsJSONConversion(path) {
 		pipe = "| ConvertTo-Json"
 	}
-	return fmt.Sprintf(baseWindows, token, path, pipe)
+	// The token has to be a string literal. Unquoted, PowerShell runs it as
+	// a command, which it can't find, and the request goes out without it.
+	return fmt.Sprintf(baseWindows, powershell.SingleQuote(token), path, pipe)
 }
 
 func windowsPathNeedsJSONConversion(path string) bool {
