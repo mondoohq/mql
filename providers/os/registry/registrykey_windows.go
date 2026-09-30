@@ -20,26 +20,20 @@ import (
 
 // parseRegistryKeyPath parses a registry key path into the hive and the path
 // https://learn.microsoft.com/en-us/windows/win32/sysinfo/registry-hives
+//
+// The hive name is matched case-insensitively, as Windows and the PowerShell
+// registry provider do: registrykey resources share one cache entry per key
+// whatever the spelling, so every spelling has to resolve here too.
 func parseRegistryKeyPath(path string) (registry.Key, string, error) {
-	if strings.HasPrefix(path, "HKEY_LOCAL_MACHINE") {
-		return registry.LOCAL_MACHINE, strings.TrimPrefix(path, "HKEY_LOCAL_MACHINE\\"), nil
+	hive, rest, _ := strings.Cut(path, "\\")
+	switch strings.ToUpper(hive) {
+	case "HKEY_LOCAL_MACHINE", "HKLM":
+		return registry.LOCAL_MACHINE, rest, nil
+	case "HKEY_CURRENT_USER", "HKCU":
+		return registry.CURRENT_USER, rest, nil
+	case "HKEY_USERS":
+		return registry.USERS, rest, nil
 	}
-	if strings.HasPrefix(path, "HKLM") {
-		return registry.LOCAL_MACHINE, strings.TrimPrefix(path, "HKLM\\"), nil
-	}
-
-	if strings.HasPrefix(path, "HKEY_CURRENT_USER") {
-		return registry.CURRENT_USER, strings.TrimPrefix(path, "HKEY_CURRENT_USER\\"), nil
-	}
-
-	if strings.HasPrefix(path, "HKCU") {
-		return registry.CURRENT_USER, strings.TrimPrefix(path, "HKCU\\"), nil
-	}
-
-	if strings.HasPrefix(path, "HKEY_USERS") {
-		return registry.USERS, strings.TrimPrefix(path, "HKEY_USERS\\"), nil
-	}
-
 	return registry.LOCAL_MACHINE, "", errors.New("invalid registry key hive: " + path)
 }
 

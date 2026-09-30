@@ -53,6 +53,30 @@ func TestParseRegistryKeyPath(t *testing.T) {
 			wantPath: `.DEFAULT`,
 		},
 		{
+			name:     "hive name in any case",
+			path:     `hklm\SOFTWARE\Microsoft`,
+			wantKey:  registry.LOCAL_MACHINE,
+			wantPath: `SOFTWARE\Microsoft`,
+		},
+		{
+			name:     "long hive name in any case",
+			path:     `Hkey_Current_User\Software`,
+			wantKey:  registry.CURRENT_USER,
+			wantPath: `Software`,
+		},
+		{
+			name:     "hive root",
+			path:     `HKEY_USERS`,
+			wantKey:  registry.USERS,
+			wantPath: ``,
+		},
+		{
+			name:        "a hive name must end at a separator",
+			path:        `HKLMX\Software`,
+			wantErr:     true,
+			errContains: "invalid registry key hive",
+		},
+		{
 			name:        "invalid hive returns error",
 			path:        `HKEY_INVALID\Some\Path`,
 			wantErr:     true,

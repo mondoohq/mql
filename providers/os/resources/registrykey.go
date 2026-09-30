@@ -39,14 +39,39 @@ func userHivePath(sid, subPath string) string {
 	return `HKEY_USERS\` + sid + `\` + subPath
 }
 
+// registryIDPath is the form of a registry key path that the resource ids use.
+// Registry paths are case-insensitive, so every spelling of a key maps to one
+// id: the resources share one cache entry, and a remote scan reads the key
+// with one PowerShell run instead of one per spelling. The path is lower-cased,
+// its separators are collapsed and trimmed, and the HKLM and HKCU
+// abbreviations become the hive's full name. The resource's `path` field keeps
+// the spelling of the query that created it.
+func registryIDPath(path string) string {
+	var parts []string
+	for _, p := range strings.Split(path, `\`) {
+		if p != "" {
+			parts = append(parts, strings.ToLower(p))
+		}
+	}
+	if len(parts) > 0 {
+		switch parts[0] {
+		case "hklm":
+			parts[0] = "hkey_local_machine"
+		case "hkcu":
+			parts[0] = "hkey_current_user"
+		}
+	}
+	return strings.Join(parts, `\`)
+}
+
 func (k *mqlRegistrykey) id() (string, error) {
 	// When reading a per-user hive, `path` is relative to that user's HKCU and is
 	// shared across users — fold the SID into the id so each user's key (and the
 	// properties derived from it) caches separately.
 	if k.UserSid.Data != "" {
-		return userHivePath(k.UserSid.Data, k.Path.Data), nil
+		return registryIDPath(userHivePath(k.UserSid.Data, k.Path.Data)), nil
 	}
-	return k.Path.Data, nil
+	return registryIDPath(k.Path.Data), nil
 }
 
 // isUserHive reports whether this key targets a specific user's registry hive.
@@ -459,11 +484,14 @@ func (k *mqlRegistrykey) powershellChildren(path string) ([]registry.RegistryKey
 }
 
 func (p *mqlRegistrykeyProperty) id() (string, error) {
-	// Fold the SID in for per-user hive reads — see mqlRegistrykey.id.
+	// Fold the SID in for per-user hive reads, and fold the case of the path and
+	// the value name, which the registry treats case-insensitively too — see
+	// mqlRegistrykey.id.
+	name := strings.ToLower(p.Name.Data)
 	if p.UserSid.Data != "" {
-		return userHivePath(p.UserSid.Data, p.Path.Data) + " - " + p.Name.Data, nil
+		return registryIDPath(userHivePath(p.UserSid.Data, p.Path.Data)) + " - " + name, nil
 	}
-	return p.Path.Data + " - " + p.Name.Data, nil
+	return registryIDPath(p.Path.Data) + " - " + name, nil
 }
 
 func initRegistrykeyProperty(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {

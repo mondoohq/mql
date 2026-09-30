@@ -9,13 +9,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/registry"
-
-	"github.com/stretchr/testify/require"
-	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 // When a registrykey.property is created without its fields pre-populated by
@@ -64,11 +64,11 @@ func TestUserHivePath(t *testing.T) {
 // The id of a per-user key/property folds in the SID so that two users reading
 // the same hive-relative path cache (and report) separately.
 func TestRegistrykeyID_PerUser(t *testing.T) {
-	t.Run("plain key keeps the absolute path as id", func(t *testing.T) {
+	t.Run("plain key uses the folded absolute path as id", func(t *testing.T) {
 		k := &mqlRegistrykey{Path: plugin.TValue[string]{Data: `HKLM\Software\Foo`}}
 		id, err := k.id()
 		require.NoError(t, err)
-		require.Equal(t, `HKLM\Software\Foo`, id)
+		require.Equal(t, `hkey_local_machine\software\foo`, id)
 	})
 
 	t.Run("per-user key folds the SID into the id", func(t *testing.T) {
@@ -84,7 +84,7 @@ func TestRegistrykeyID_PerUser(t *testing.T) {
 		require.NoError(t, err)
 		idB, err := b.id()
 		require.NoError(t, err)
-		require.Equal(t, `HKEY_USERS\S-1-5-21-1-2-3-1001\Software\Policies`, idA)
+		require.Equal(t, `hkey_users\s-1-5-21-1-2-3-1001\software\policies`, idA)
 		require.NotEqual(t, idA, idB, "different users with the same hive path must have distinct ids")
 	})
 }
@@ -97,7 +97,7 @@ func TestRegistrykeyPropertyID_PerUser(t *testing.T) {
 		}
 		id, err := p.id()
 		require.NoError(t, err)
-		require.Equal(t, `HKLM\Software\Foo - Bar`, id)
+		require.Equal(t, `hkey_local_machine\software\foo - bar`, id)
 	})
 
 	t.Run("per-user property folds the SID into the id", func(t *testing.T) {
@@ -115,7 +115,7 @@ func TestRegistrykeyPropertyID_PerUser(t *testing.T) {
 		require.NoError(t, err)
 		idB, err := b.id()
 		require.NoError(t, err)
-		require.Equal(t, `HKEY_USERS\S-1-5-21-1-2-3-1001\Software\Policies - Bar`, idA)
+		require.Equal(t, `hkey_users\s-1-5-21-1-2-3-1001\software\policies - bar`, idA)
 		require.NotEqual(t, idA, idB, "different users with the same property must have distinct ids")
 	})
 }
@@ -199,4 +199,68 @@ func TestRegistryApplicable(t *testing.T) {
 	// before detection there is no platform to rule the read out
 	assert.NoError(t, registryApplicable(&mockConn{asset: &inventory.Asset{}}))
 	assert.NoError(t, registryApplicable(&mockConn{}))
+}
+
+// Registry paths and value names are case-insensitive, so every spelling of a
+// key is one resource (#11257): a remote scan then reads it with one PowerShell
+// run instead of one per spelling.
+func TestRegistryIDPath(t *testing.T) {
+	same := []string{
+		`HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient`,
+		`HKEY_LOCAL_MACHINE\Software\Policies\Microsoft\Windows NT\DNSClient`,
+		`hkey_local_machine\software\policies\microsoft\windows nt\dnsclient`,
+		`HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient`,
+		`HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient\`,
+		`HKLM\\SOFTWARE\Policies\\Microsoft\Windows NT\DNSClient`,
+	}
+	for _, p := range same {
+		require.Equal(t, `hkey_local_machine\software\policies\microsoft\windows nt\dnsclient`, registryIDPath(p), p)
+	}
+	require.Equal(t, `hkey_current_user\software`, registryIDPath(`HKCU\Software`))
+	require.Equal(t, `hkey_current_user\software`, registryIDPath(`HKEY_CURRENT_USER\Software`))
+
+	// Different keys stay apart: the fold never drops or joins path segments.
+	different := []string{
+		`HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows NT`,
+		`HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\WindowsNT`,
+		`HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient`,
+		`HKEY_CURRENT_USER\SOFTWARE\Policies\Microsoft\Windows NT`,
+		`HKEY_USERS\SOFTWARE\Policies\Microsoft\Windows NT`,
+	}
+	seen := map[string]string{}
+	for _, p := range different {
+		id := registryIDPath(p)
+		if other, ok := seen[id]; ok {
+			t.Fatalf("%q and %q share the id %q", p, other, id)
+		}
+		seen[id] = p
+	}
+}
+
+func TestRegistrykeyCaseVariantsShareOneResource(t *testing.T) {
+	runtime := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+	create := func(args map[string]*llx.RawData) *mqlRegistrykey {
+		t.Helper()
+		res, err := CreateResource(runtime, "registrykey", args)
+		require.NoError(t, err)
+		return res.(*mqlRegistrykey)
+	}
+
+	a := create(map[string]*llx.RawData{"path": llx.StringData(`HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\System`)})
+	b := create(map[string]*llx.RawData{"path": llx.StringData(`HKLM\Software\Policies\Microsoft\Windows\System`)})
+	require.Same(t, a, b, "two spellings of one key must be one resource")
+	// The first query's spelling is the resource's path.
+	require.Equal(t, `HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\System`, b.Path.Data)
+
+	c := create(map[string]*llx.RawData{"path": llx.StringData(`HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\Explorer`)})
+	require.NotSame(t, a, c, "different keys must not share a resource")
+
+	// Per-user keys: the same user in two spellings is one resource, two users
+	// are two.
+	u1 := create(map[string]*llx.RawData{"path": llx.StringData(`Software\Policies`), "userSid": llx.StringData("S-1-5-21-1-2-3-1001")})
+	u1b := create(map[string]*llx.RawData{"path": llx.StringData(`SOFTWARE\POLICIES`), "userSid": llx.StringData("S-1-5-21-1-2-3-1001")})
+	u2 := create(map[string]*llx.RawData{"path": llx.StringData(`Software\Policies`), "userSid": llx.StringData("S-1-5-21-1-2-3-1002")})
+	require.Same(t, u1, u1b)
+	require.NotSame(t, u1, u2)
+	require.NotSame(t, a, u1)
 }
