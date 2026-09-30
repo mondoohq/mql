@@ -11,7 +11,6 @@ import (
 	"io/fs"
 	"os"
 	"path"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -637,9 +636,9 @@ func (s *SystemdFSServiceManager) readUnit(unitPath string, uInfo *unitInfo) err
 		if err == nil {
 			// If the linkPath is not absolute, use the directory of unitPath and append the
 			// filename.
-			if !filepath.IsAbs(linkPath) {
-				directory := filepath.Dir(unitPath)
-				linkPath = filepath.Join(directory, linkPath)
+			if !path.IsAbs(linkPath) {
+				directory := path.Dir(unitPath)
+				linkPath = path.Join(directory, linkPath)
 			}
 			unitPath = linkPath
 		}

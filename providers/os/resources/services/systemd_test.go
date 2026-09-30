@@ -5,6 +5,7 @@ package services
 
 import (
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -94,6 +95,11 @@ func TestParseServiceSystemDUnitFilesPhoton(t *testing.T) {
 }
 
 func TestSystemdFS(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// mountedfs maps paths and reads symlinks with the local OS's rules, so
+		// it cannot mount a Linux file system on Windows.
+		t.Skip("mountedfs does not support a Linux file system on Windows")
+	}
 	s := SystemdFSServiceManager{
 		Fs: mountedfs.NewMountedFs("testdata/systemd"),
 	}

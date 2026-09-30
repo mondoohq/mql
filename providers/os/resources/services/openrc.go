@@ -6,7 +6,7 @@ package services
 import (
 	"bufio"
 	"io"
-	"path/filepath"
+	"path"
 	"regexp"
 
 	"github.com/spf13/afero"
@@ -89,7 +89,7 @@ func (s *OpenrcServiceManager) List() ([]*Service, error) {
 			Installed: true,
 			Running:   serviceStatusMap[name], // read from status from rc-status command
 			Type:      "openrc",
-			Path:      filepath.Join(iniddPath, name),
+			Path:      path.Join(iniddPath, name),
 		})
 	}
 
@@ -141,7 +141,7 @@ func determineOpenRcRunlevel(fs afero.Fs) (map[string]bool, error) {
 		for i := range levels {
 			level := levels[i]
 
-			levelF, err := fs.Open(filepath.Join(runlevelRoot, level))
+			levelF, err := fs.Open(path.Join(runlevelRoot, level))
 			if err != nil {
 				return nil, err
 			}
