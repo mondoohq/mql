@@ -59,6 +59,10 @@ var dismSession struct {
 	session uint32
 }
 
+// dismOpen returns the session, opening it on first use. The caller must hold
+// dismSession.mu, and keep holding it for the DISM calls that use the
+// session: the lock guards the session's use, not only its opening, so it
+// cannot be taken in here.
 func dismOpen() (uint32, error) {
 	if dismSession.opened {
 		return dismSession.session, dismSession.err
