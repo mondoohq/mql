@@ -12,6 +12,12 @@ import (
 	"go.mondoo.com/mql/providers/ms365/connection"
 )
 
+// riskyUsersFilter selects the users who are currently at risk. A user an admin
+// confirmed as compromised is the most severe case and carries the
+// confirmedCompromised state instead of atRisk, so both states are included.
+// Remediated, dismissed and none are users no longer at risk.
+const riskyUsersFilter = "riskState eq 'atRisk' or riskState eq 'confirmedCompromised'"
+
 // riskyUsers returns a list of risky users
 // requires IdentityRiskyUser.Read.All permission
 // see https://learn.microsoft.com/en-us/graph/api/resources/riskyuser?view=graph-rest-1.0
@@ -23,7 +29,7 @@ func (a *mqlMicrosoftSecurity) riskyUsers() ([]any, error) {
 	}
 	ctx := context.Background()
 
-	filter := "riskState eq 'atRisk'"
+	filter := riskyUsersFilter
 	resp, err := graphClient.IdentityProtection().RiskyUsers().Get(ctx, &identityprotection.RiskyUsersRequestBuilderGetRequestConfiguration{
 		QueryParameters: &identityprotection.RiskyUsersRequestBuilderGetQueryParameters{
 			Filter: &filter,

@@ -7,8 +7,6 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"fmt"
-	"strings"
 	"time"
 
 	abstractions "github.com/microsoft/kiota-abstractions-go"
@@ -288,9 +286,7 @@ func fetchApplicationIdByName(runtime *plugin.Runtime, name string) (*string, er
 		return nil, err
 	}
 
-	// OData escapes embedded single quotes by doubling them, not URL-escaping;
-	// the SDK handles URL encoding of the final filter string.
-	filter := fmt.Sprintf("displayName eq '%s'", strings.ReplaceAll(name, "'", "''"))
+	filter := odataEqFilter("displayName", name)
 	ctx := context.Background()
 	resp, err := graphClient.Applications().Get(ctx, &applications.ApplicationsRequestBuilderGetRequestConfiguration{
 		QueryParameters: &applications.ApplicationsRequestBuilderGetQueryParameters{
@@ -423,44 +419,49 @@ func (a *mqlMicrosoftApplication) owners() ([]any, error) {
 	}
 
 	res := []any{}
-	for _, owner := range owners {
-		ownerId := owner.GetId()
-		if ownerId == nil {
-			continue
-		}
-
+	for _, user := range userOwners(owners) {
 		// if the user is already indexed, we can reuse it
-		userResource, ok := mqlMicrosoftResource.userById(*ownerId)
-		if ok {
+		if userResource, ok := mqlMicrosoftResource.userById(*user.GetId()); ok {
 			res = append(res, userResource)
 			continue
 		}
 
-		// When the owner is a user, build the resource from the data
-		// already on the response — avoids a second Graph round-trip via
-		// initMicrosoftUser when callers read common user fields.
-		if user, ok := owner.(models.Userable); ok {
-			newUser, err := newMqlMicrosoftUser(a.MqlRuntime, user)
-			if err != nil {
-				return nil, err
-			}
-			mqlMicrosoftResource.indexUser(newUser)
-			res = append(res, newUser)
-			continue
-		}
-
-		// non-user owners (groups, service principals) fall back to the
-		// lazy reference so the framework can resolve them on demand.
-		newUserResource, err := a.MqlRuntime.NewResource(a.MqlRuntime, "microsoft.user", map[string]*llx.RawData{
-			"id": llx.StringDataPtr(ownerId),
-		})
+		// Build the resource from the data already on the response, which
+		// avoids a second Graph round-trip via initMicrosoftUser when callers
+		// read common user fields.
+		newUser, err := newMqlMicrosoftUser(a.MqlRuntime, user)
 		if err != nil {
 			return nil, err
 		}
-		mqlMicrosoftResource.indexUser(newUserResource.(*mqlMicrosoftUser))
-		res = append(res, newUserResource)
+		mqlMicrosoftResource.indexUser(newUser)
+		res = append(res, newUser)
 	}
 	return res, nil
+}
+
+// userOwners returns the owners that are users. An application can also be
+// owned by a service principal, which is common for apps created by
+// automation. Such an owner is not a microsoft.user: resolving its id as one
+// asks Graph for /users/{id}, which fails with not found and would fail the
+// whole owners list, so it is skipped.
+func userOwners(owners []models.DirectoryObjectable) []models.Userable {
+	res := make([]models.Userable, 0, len(owners))
+	for _, owner := range owners {
+		if owner == nil || owner.GetId() == nil {
+			continue
+		}
+		user, ok := owner.(models.Userable)
+		if !ok {
+			odataType := ""
+			if t := owner.GetOdataType(); t != nil {
+				odataType = *t
+			}
+			log.Debug().Str("owner", *owner.GetId()).Str("type", odataType).Msg("skipping application owner that is not a user")
+			continue
+		}
+		res = append(res, user)
+	}
+	return res
 }
 
 // newMqlMicrosoftKeyCredential creates a new mqlMicrosoftKeyCredential resource

@@ -4,7 +4,11 @@
 package resources
 
 import (
+	"encoding/json"
 	"sort"
+	"strings"
+
+	"github.com/rs/zerolog/log"
 
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -72,7 +76,7 @@ func convertDlpComplianceRules(runtime *plugin.Runtime, raw []any) ([]any, error
 				"disabled":                  llx.BoolData(dlpBool(m, "Disabled")),
 				"mode":                      llx.StringData(dlpString(m, "Mode")),
 				"priority":                  llx.IntData(dlpInt(m, "Priority")),
-				"sensitiveInformationTypes": llx.ArrayData(dlpSensitiveInfoTypes(m["ContentContainsSensitiveInformation"]), types.String),
+				"sensitiveInformationTypes": llx.ArrayData(dlpRuleSensitiveInfoTypes(m), types.String),
 				"blockAccess":               llx.BoolData(dlpBool(m, "BlockAccess")),
 				"blockAccessScope":          llx.StringData(dlpString(m, "BlockAccessScope")),
 				"notifyUser":                llx.ArrayData(dlpStringSlice(m, "NotifyUser"), types.String),
@@ -109,41 +113,153 @@ func dlpStringSlice(m map[string]any, key string) []any {
 	return res
 }
 
-// dlpSensitiveInfoTypes walks the ContentContainsSensitiveInformation condition
-// — whose shape differs between simple and advanced rules — and collects the
-// distinct sensitive information type names.
-func dlpSensitiveInfoTypes(v any) []any {
-	names := []string{}
-	seen := map[string]struct{}{}
-	var walk func(any)
-	walk = func(node any) {
-		switch t := node.(type) {
-		case map[string]any:
-			for k, val := range t {
-				if k == "Name" || k == "name" {
-					if s, ok := val.(string); ok && s != "" {
-						if _, dup := seen[s]; !dup {
-							seen[s] = struct{}{}
-							names = append(names, s)
-						}
-						continue
-					}
-				}
-				walk(val)
-			}
-		case []any:
-			for _, item := range t {
-				walk(item)
-			}
+// dlpConditionSensitiveInfo is the condition that lists the sensitive
+// information types a rule detects.
+const dlpConditionSensitiveInfo = "ContentContainsSensitiveInformation"
+
+// dlpRuleSensitiveInfoTypes returns the distinct, sorted names of the
+// sensitive information types a DLP rule detects.
+//
+// A simple rule carries them in its ContentContainsSensitiveInformation
+// property. An advanced rule leaves that property empty and carries its
+// conditions as a JSON document in AdvancedRule, where the
+// ContentContainsSensitiveInformation condition can sit at any depth of the
+// SubConditions tree. Both are read.
+func dlpRuleSensitiveInfoTypes(rule map[string]any) []any {
+	c := &dlpSensitiveInfoCollector{seen: map[string]struct{}{}}
+	c.addCondition(rule[dlpConditionSensitiveInfo])
+	if advanced, ok := rule["AdvancedRule"].(string); ok && advanced != "" {
+		var doc any
+		if err := json.Unmarshal([]byte(advanced), &doc); err != nil {
+			log.Debug().Err(err).Str("rule", dlpString(rule, "Name")).Msg("cannot parse DLP advanced rule")
+		} else {
+			c.addAdvancedRule(doc)
 		}
 	}
-	walk(v)
 
 	// sort for deterministic output across runs
-	sort.Strings(names)
-	res := make([]any, 0, len(names))
-	for _, n := range names {
+	sort.Strings(c.names)
+	res := make([]any, 0, len(c.names))
+	for _, n := range c.names {
 		res = append(res, n)
 	}
 	return res
+}
+
+type dlpSensitiveInfoCollector struct {
+	names []string
+	seen  map[string]struct{}
+}
+
+// addAdvancedRule walks an AdvancedRule document
+// ({"Condition": {"Operator": ..., "SubConditions": [...]}}) and reads every
+// ContentContainsSensitiveInformation condition in it.
+func (c *dlpSensitiveInfoCollector) addAdvancedRule(node any) {
+	switch t := node.(type) {
+	case map[string]any:
+		if name, _ := dlpCaseInsensitive(t, "ConditionName").(string); strings.EqualFold(name, dlpConditionSensitiveInfo) {
+			c.addCondition(dlpCaseInsensitive(t, "Value"))
+			return
+		}
+		c.addAdvancedRule(dlpCaseInsensitive(t, "Condition"))
+		c.addAdvancedRule(dlpCaseInsensitive(t, "SubConditions"))
+	case []any:
+		for _, item := range t {
+			c.addAdvancedRule(item)
+		}
+	}
+}
+
+// addCondition reads the value of a ContentContainsSensitiveInformation
+// condition, which comes in two shapes. The simple shape is a list of
+// sensitive information type entries:
+//
+//	[{"name": "Credit Card Number", "mincount": "1", ...}]
+//
+// The grouped shape is a list holding an operator and groups. Each group has a
+// name of its own and lists sensitive information types under sensitivetypes
+// and sensitivity labels under labels:
+//
+//	[{"operator": "And", "groups": [{"operator": "Or", "name": "Default",
+//	  "sensitivetypes": [{"name": "Credit Card Number"}],
+//	  "labels": [{"name": "Confidential"}]}]}]
+//
+// Only sensitive information type entries are collected. Group names and
+// label names are not sensitive information types.
+func (c *dlpSensitiveInfoCollector) addCondition(v any) {
+	for _, entry := range dlpList(v) {
+		m, ok := entry.(map[string]any)
+		if !ok {
+			continue
+		}
+		if groups := dlpCaseInsensitive(m, "groups"); groups != nil {
+			c.addGroups(groups)
+			continue
+		}
+		c.addEntry(m)
+	}
+}
+
+func (c *dlpSensitiveInfoCollector) addGroups(groups any) {
+	for _, g := range dlpList(groups) {
+		gm, ok := g.(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, st := range dlpList(dlpCaseInsensitive(gm, "sensitivetypes")) {
+			c.addEntry(st)
+		}
+		if nested := dlpCaseInsensitive(gm, "groups"); nested != nil {
+			c.addGroups(nested)
+		}
+	}
+}
+
+// addEntry records the name of one sensitive information type entry. Trainable
+// classifiers (classifier type MLModel) share the list but are not sensitive
+// information types, and are named only by their GUID, so they are skipped.
+func (c *dlpSensitiveInfoCollector) addEntry(entry any) {
+	m, ok := entry.(map[string]any)
+	if !ok {
+		return
+	}
+	if ct, _ := dlpCaseInsensitive(m, "classifiertype").(string); strings.EqualFold(ct, "MLModel") {
+		return
+	}
+	s, ok := dlpCaseInsensitive(m, "name").(string)
+	if !ok || s == "" {
+		return
+	}
+	if _, dup := c.seen[s]; dup {
+		return
+	}
+	c.seen[s] = struct{}{}
+	c.names = append(c.names, s)
+}
+
+// dlpList returns v as a list. PowerShell serializes a one-element collection
+// either as a list or as the bare element, so a single map is wrapped.
+func dlpList(v any) []any {
+	switch t := v.(type) {
+	case []any:
+		return t
+	case map[string]any:
+		return []any{t}
+	}
+	return nil
+}
+
+// dlpCaseInsensitive looks up key in m ignoring case. PowerShell hashtables
+// are case-insensitive, so the serialized key casing follows whatever the
+// rule author typed.
+func dlpCaseInsensitive(m map[string]any, key string) any {
+	if v, ok := m[key]; ok {
+		return v
+	}
+	for k, v := range m {
+		if strings.EqualFold(k, key) {
+			return v
+		}
+	}
+	return nil
 }

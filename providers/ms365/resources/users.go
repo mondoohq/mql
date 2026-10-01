@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	abstractions "github.com/microsoft/kiota-abstractions-go"
@@ -206,9 +207,9 @@ func initMicrosoftUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 
 	var filter string
 	if okPrincipalName {
-		filter = fmt.Sprintf("userPrincipalName eq '%s'", rawPrincipalName.Value.(string))
+		filter = odataEqFilter("userPrincipalName", rawPrincipalName.Value.(string))
 	} else if okDisplayName {
-		filter = fmt.Sprintf("displayName eq '%s'", rawDisplayName.Value.(string))
+		filter = odataEqFilter("displayName", rawDisplayName.Value.(string))
 	}
 
 	resp, err := graphClient.Users().Get(ctx, &users.UsersRequestBuilderGetRequestConfiguration{
@@ -224,6 +225,11 @@ func initMicrosoftUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 	val := resp.GetValue()
 	if len(val) == 0 {
 		return nil, nil, errors.New("user not found")
+	}
+	// displayName is not unique. Taking the first match would report one
+	// user's data for a query that named another.
+	if len(val) > 1 {
+		return nil, nil, fmt.Errorf("%d users match %s, look the user up by id or userPrincipalName instead", len(val), filter)
 	}
 
 	// Reuse the filter response directly — it already carries every
@@ -250,6 +256,13 @@ func (a *mqlMicrosoftUser) microsoftParent() (*mqlMicrosoft, error) {
 		return nil, err
 	}
 	return resource.(*mqlMicrosoft), nil
+}
+
+// odataEqFilter builds an OData `field eq 'value'` filter. A single quote
+// inside an OData string literal is escaped by doubling it, so a value like
+// O'Brien neither breaks the request nor changes the filter.
+func odataEqFilter(field, value string) string {
+	return fmt.Sprintf("%s eq '%s'", field, strings.ReplaceAll(value, "'", "''"))
 }
 
 // userAssignedLicenseID is the cache key for a microsoft.user.assignedLicense.
@@ -839,8 +852,8 @@ type temporaryAccessPassMethod struct {
 }
 
 type userAuthentication struct {
-	userID                     string                         `json:"userId"`
-	methodCount                int                            `json:"methodCount"`
+	userID                     string
+	methodCount                int
 	PhoneMethods               []phoneMethod                  `json:"phoneMethods"`
 	Fido2Methods               []fido2Method                  `json:"fido2Methods"`
 	SoftwareMethods            []softwareMethod               `json:"softwareMethods"`
@@ -1248,7 +1261,7 @@ func (m *mqlMicrosoft) loadUserLicenseDetails(ids []string) (map[string]any, map
 		details := []any{}
 		var itemErr error
 		for _, d := range coll.GetValue() {
-			mqlDetail, err := newMqlMicrosoftUserLicenseDetail(m.MqlRuntime, d)
+			mqlDetail, err := newMqlMicrosoftUserLicenseDetail(m.MqlRuntime, id, d)
 			if err != nil {
 				itemErr = err
 				break
@@ -1264,10 +1277,22 @@ func (m *mqlMicrosoft) loadUserLicenseDetails(ids []string) (map[string]any, map
 	return data, res.errs, nil
 }
 
-func newMqlMicrosoftUserLicenseDetail(runtime *plugin.Runtime, d models.LicenseDetailsable) (*mqlMicrosoftUserLicenseDetail, error) {
+// userLicenseDetailID is the cache key for a microsoft.user.licenseDetail.
+//
+// The Graph licenseDetail id is not unique per user: it is derived from the
+// tenant and the SKU, so every user holding the same SKU gets the same id.
+// CreateResource is first-wins, so keying on that id alone would report the
+// first user's servicePlans for everyone else on that SKU. The key carries the
+// user id as well, like userAssignedLicenseID.
+func userLicenseDetailID(userID, licenseDetailID string) string {
+	return userID + "/" + licenseDetailID
+}
+
+func newMqlMicrosoftUserLicenseDetail(runtime *plugin.Runtime, userID string, d models.LicenseDetailsable) (*mqlMicrosoftUserLicenseDetail, error) {
 	if d.GetId() == nil {
 		return nil, errors.New("license detail response is missing an ID")
 	}
+	detailKey := userLicenseDetailID(userID, *d.GetId())
 
 	var skuId, skuPartNumber string
 	if d.GetSkuId() != nil {
@@ -1279,7 +1304,7 @@ func newMqlMicrosoftUserLicenseDetail(runtime *plugin.Runtime, d models.LicenseD
 
 	servicePlans := []any{}
 	for i, sp := range d.GetServicePlans() {
-		planId := fmt.Sprintf("%s-service-plans-%d", *d.GetId(), +i)
+		planId := fmt.Sprintf("%s-service-plans-%d", detailKey, i)
 
 		servicePlan, err := CreateResource(runtime, "microsoft.user.licenseDetail.servicePlanInfo",
 			map[string]*llx.RawData{
@@ -1296,7 +1321,7 @@ func newMqlMicrosoftUserLicenseDetail(runtime *plugin.Runtime, d models.LicenseD
 	}
 
 	data := map[string]*llx.RawData{
-		"__id":          llx.StringDataPtr(d.GetId()),
+		"__id":          llx.StringData(detailKey),
 		"id":            llx.StringDataPtr(d.GetId()),
 		"skuId":         llx.StringData(skuId),
 		"skuPartNumber": llx.StringData(skuPartNumber),
