@@ -1,4 +1,4 @@
-// Copyright (c) Mondoo, Inc.
+// Copyright Mondoo, Inc. 2024, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package packages
@@ -139,7 +139,7 @@ func unpackMsiGUID(packed string) string {
 		return ""
 	}
 	for _, r := range packed {
-		if !(('0' <= r && r <= '9') || ('a' <= r && r <= 'f') || ('A' <= r && r <= 'F')) {
+		if !isHexDigit(r) {
 			return ""
 		}
 	}
@@ -160,6 +160,10 @@ func unpackMsiGUID(packed string) string {
 	g := rev(packed[0:8]) + "-" + rev(packed[8:12]) + "-" + rev(packed[12:16]) + "-" +
 		swapPairs(packed[16:20]) + "-" + swapPairs(packed[20:32])
 	return strings.ToUpper(g)
+}
+
+func isHexDigit(r rune) bool {
+	return ('0' <= r && r <= '9') || ('a' <= r && r <= 'f') || ('A' <= r && r <= 'F')
 }
 
 // msiUpgradeCodesFromKeys builds the ProductCode -> UpgradeCode map from the
