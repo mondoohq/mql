@@ -35,14 +35,11 @@ func GetWindowsESUStatus(conn shared.Connection) (*WindowsESUStatus, error) {
 			log.Debug().Err(err).Msg("could not open ESU registry key, subscription ESU may not be configured")
 		}
 
-		// Check MAK-activated ESU via WMI
-		type softwareLicensingProduct struct {
-			LicenseStatus *int
-		}
-		// A failed WMI query (or a panic in the WMI library) must not read as
-		// "no ESU license": fall back to PowerShell, which reports both values.
-		var products []softwareLicensingProduct
-		if err := wmiquery.Query(esuLicenseQuery, &products); err != nil {
+		// Check MAK-activated ESU via WMI. A failed WMI query (or a panic in
+		// WMI) must not read as "no ESU license": fall back to PowerShell,
+		// which reports both values.
+		products, err := wmiquery.Query(esuLicenseQuery, "LicenseStatus")
+		if err != nil {
 			log.Debug().Err(err).Msg("could not query WMI for ESU license status, falling back to PowerShell")
 			return powershellGetWindowsESUStatus(conn)
 		}

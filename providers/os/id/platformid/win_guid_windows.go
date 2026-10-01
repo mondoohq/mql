@@ -18,25 +18,19 @@ import (
 func windowsMachineId(conn shared.Connection) (string, error) {
 	// if we are running locally on windows, we want to avoid using powershell to be faster
 	if conn.Type() == shared.Type_Local && runtime.GOOS == "windows" {
-		// we always get a list or entries
-		type win32ComputerSystemProduct struct {
-			UUID *string
-		}
-
-		// query wmi to retrieve information
-		// on an error, or a panic in the WMI library, fall back to PowerShell
-		// instead of failing the platform ID
-		var entries []win32ComputerSystemProduct
-		if err := wmiquery.Query(wmiMachineIDQuery, &entries); err != nil {
+		// on an error, or a panic in WMI, fall back to PowerShell instead of
+		// failing the platform ID
+		entries, err := wmiquery.Query(wmiMachineIDQuery, "UUID")
+		if err != nil {
 			log.Debug().Err(err).Msg("could not query the machine UUID via WMI, falling back to PowerShell")
 			return PowershellWindowsMachineId(conn)
 		}
 
-		if len(entries) != 1 || entries[0].UUID == nil {
+		if len(entries) != 1 || entries[0].StringPtr("UUID") == nil {
 			return "", errors.New("could not query machine id on windows")
 		}
 
-		return *entries[0].UUID, nil
+		return entries[0].String("UUID"), nil
 	}
 
 	return PowershellWindowsMachineId(conn)

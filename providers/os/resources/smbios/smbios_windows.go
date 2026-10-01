@@ -7,14 +7,13 @@
 package smbios
 
 import (
-	"fmt"
 	"runtime"
 	"strconv"
 	"time"
 
-	wmi "github.com/StackExchange/wmi"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/wmiquery"
 )
 
 // native WMI on local Windows; PowerShell otherwise or on failure
@@ -30,92 +29,73 @@ func fetchWindowsSmbios(conn shared.Connection) (smbiosWindows, error) {
 }
 
 func nativeWindowsSmbios() (out smbiosWindows, err error) {
-	// the wmi lib can panic on unexpected COM variant types; recover so we
-	// fall back to PowerShell instead of crashing the scan
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("panic querying smbios via WMI: %v", r)
-		}
-	}()
-
-	type win32Bios struct {
-		Manufacturer      string
-		SMBIOSBIOSVersion string
-		ReleaseDate       time.Time
-		SerialNumber      string
-	}
-	var bios []win32Bios
-	if qErr := wmi.Query("SELECT Manufacturer, SMBIOSBIOSVersion, ReleaseDate, SerialNumber FROM Win32_Bios", &bios); qErr != nil {
-		return out, qErr
+	bios, err := wmiquery.Query("SELECT Manufacturer, SMBIOSBIOSVersion, ReleaseDate, SerialNumber FROM Win32_Bios",
+		"Manufacturer", "SMBIOSBIOSVersion", "ReleaseDate", "SerialNumber")
+	if err != nil {
+		return out, err
 	}
 	if len(bios) > 0 {
 		out.Bios = smbiosWinBios{
-			Manufacturer:      bios[0].Manufacturer,
-			SMBIOSBIOSVersion: bios[0].SMBIOSBIOSVersion,
-			SerialNumber:      bios[0].SerialNumber,
+			Manufacturer:      bios[0].String("Manufacturer"),
+			SMBIOSBIOSVersion: bios[0].String("SMBIOSBIOSVersion"),
+			SerialNumber:      bios[0].String("SerialNumber"),
 		}
-		if !bios[0].ReleaseDate.IsZero() {
-			out.Bios.ReleaseDate = bios[0].ReleaseDate.Format(time.RFC3339)
+		if releaseDate, ok := bios[0].Time("ReleaseDate"); ok {
+			out.Bios.ReleaseDate = releaseDate.Format(time.RFC3339)
 		}
 	}
 
-	type win32BaseBoard struct {
-		Manufacturer string
-		Product      string
-		Version      string
-		SerialNumber string
-	}
-	var baseboard []win32BaseBoard
-	if qErr := wmi.Query("SELECT Manufacturer, Product, Version, SerialNumber FROM Win32_BaseBoard", &baseboard); qErr != nil {
-		return out, qErr
+	baseboard, err := wmiquery.Query("SELECT Manufacturer, Product, Version, SerialNumber FROM Win32_BaseBoard",
+		"Manufacturer", "Product", "Version", "SerialNumber")
+	if err != nil {
+		return out, err
 	}
 	if len(baseboard) > 0 {
-		out.BaseBoard = smbiosBaseBoard(baseboard[0])
+		out.BaseBoard = smbiosBaseBoard{
+			Manufacturer: baseboard[0].String("Manufacturer"),
+			Product:      baseboard[0].String("Product"),
+			Version:      baseboard[0].String("Version"),
+			SerialNumber: baseboard[0].String("SerialNumber"),
+		}
 	}
 
-	type win32SystemEnclosure struct {
-		Manufacturer string
-		Model        *string
-		// int32, not uint16: the COM SAFEARRAY returns VT_I4 elements and the
-		// wmi lib panics calling reflect.Value.Uint on them.
-		ChassisTypes   []int32
-		Version        string
-		SerialNumber   string
-		SMBIOSAssetTag string
-	}
-	var chassis []win32SystemEnclosure
-	if qErr := wmi.Query("SELECT Manufacturer, Model, ChassisTypes, Version, SerialNumber, SMBIOSAssetTag FROM Win32_SystemEnclosure", &chassis); qErr != nil {
-		return out, qErr
+	chassis, err := wmiquery.Query("SELECT Manufacturer, Model, ChassisTypes, Version, SerialNumber, SMBIOSAssetTag FROM Win32_SystemEnclosure",
+		"Manufacturer", "Model", "ChassisTypes", "Version", "SerialNumber", "SMBIOSAssetTag")
+	if err != nil {
+		return out, err
 	}
 	for _, ch := range chassis {
-		types := make([]string, 0, len(ch.ChassisTypes))
-		for _, t := range ch.ChassisTypes {
-			types = append(types, strconv.Itoa(int(t)))
+		// ChassisTypes arrives as an array of VT_I4, whatever its documented
+		// uint16 type says; Int64s reads either.
+		chassisTypes, _ := ch.Int64s("ChassisTypes")
+		types := make([]string, 0, len(chassisTypes))
+		for _, t := range chassisTypes {
+			types = append(types, strconv.FormatInt(t, 10))
 		}
 		out.Chassis = append(out.Chassis, smbiosChassis{
-			Manufacturer:   ch.Manufacturer,
-			Model:          ch.Model,
+			Manufacturer:   ch.String("Manufacturer"),
+			Model:          ch.StringPtr("Model"),
 			ChassisTypes:   &smbiosChassisTypes{ChassisTypes: types},
-			Version:        ch.Version,
-			SerialNumber:   ch.SerialNumber,
-			SMBIOSAssetTag: ch.SMBIOSAssetTag,
+			Version:        ch.String("Version"),
+			SerialNumber:   ch.String("SerialNumber"),
+			SMBIOSAssetTag: ch.String("SMBIOSAssetTag"),
 		})
 	}
 
-	type win32ComputerSystemProduct struct {
-		Vendor            string
-		Name              string
-		Version           string
-		SKUNumber         string
-		UUID              string
-		IdentifyingNumber string
-	}
-	var product []win32ComputerSystemProduct
-	if qErr := wmi.Query("SELECT Vendor, Name, Version, SKUNumber, UUID, IdentifyingNumber FROM Win32_ComputerSystemProduct", &product); qErr != nil {
-		return out, qErr
+	product, err := wmiquery.Query("SELECT Vendor, Name, Version, SKUNumber, UUID, IdentifyingNumber FROM Win32_ComputerSystemProduct",
+		"Vendor", "Name", "Version", "SKUNumber", "UUID", "IdentifyingNumber")
+	if err != nil {
+		return out, err
 	}
 	if len(product) > 0 {
-		out.SystemProduct = smbiosSystemProduct(product[0])
+		out.SystemProduct = smbiosSystemProduct{
+			Vendor:            product[0].String("Vendor"),
+			Name:              product[0].String("Name"),
+			Version:           product[0].String("Version"),
+			SKUNumber:         product[0].String("SKUNumber"),
+			UUID:              product[0].String("UUID"),
+			IdentifyingNumber: product[0].String("IdentifyingNumber"),
+		}
 	}
 
 	return out, nil

@@ -14,7 +14,10 @@ require (
 	google.golang.org/api v0.299.0
 )
 
-require github.com/carabiner-dev/spdx3 v0.1.0 // indirect
+require (
+	github.com/carabiner-dev/spdx3 v0.1.0 // indirect
+	github.com/microsoft/wmi v0.44.0 // indirect
+)
 
 require (
 	cloud.google.com/go/auth v0.23.3 // indirect
@@ -32,7 +35,6 @@ require (
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Microsoft/go-winio v0.6.3-0.20251027160822-ad3df93bed29 // indirect
 	github.com/ProtonMail/go-crypto v1.5.2 // indirect
-	github.com/StackExchange/wmi v1.2.1 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/alecthomas/participle v0.3.0 // indirect
 	github.com/alecthomas/participle/v2 v2.1.4 // indirect

@@ -14,7 +14,6 @@ require (
 	github.com/GoogleCloudPlatform/berglas/v2 v2.0.2
 	github.com/Masterminds/semver v1.5.0
 	github.com/ProtonMail/go-crypto v1.5.2
-	github.com/StackExchange/wmi v1.2.1
 	// pin v0.3.0
 	github.com/alecthomas/participle v0.3.0
 	github.com/alecthomas/participle/v2 v2.1.4
@@ -121,6 +120,7 @@ require (
 )
 
 require (
+	github.com/microsoft/wmi v0.44.0
 	github.com/moby/moby/api v1.56.0
 	github.com/moby/moby/client v0.6.0
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
