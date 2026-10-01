@@ -82,3 +82,14 @@ func TestParseServiceLaunchDNonZeroStatus(t *testing.T) {
 	assert.False(t, byName["com.apple.AccessibilityVisualsAgent"].Running)
 	assert.True(t, byName["com.crowdstrike.falcon.UserAgent"].Running)
 }
+
+// A label must not keep the carriage return of a CRLF line ending.
+func TestParseServiceLaunchDCRLF(t *testing.T) {
+	input := "PID\tStatus\tLabel\r\n-\t0\tcom.apple.SafariHistoryServiceAgent\r\n1354\t0\tcom.crowdstrike.falcon.UserAgent\r\n"
+
+	list, err := services.ParseServiceLaunchD(strings.NewReader(input))
+	require.NoError(t, err)
+	require.Len(t, list, 2)
+	assert.Equal(t, "com.apple.SafariHistoryServiceAgent", list[0].Name)
+	assert.Equal(t, "com.crowdstrike.falcon.UserAgent", list[1].Name)
+}
