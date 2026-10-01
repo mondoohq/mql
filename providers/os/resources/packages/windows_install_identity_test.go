@@ -44,6 +44,10 @@ func TestNormalizeGUID(t *testing.T) {
 	assert.Equal(t, "F4FCA927-CEB7-4549-8782-5835BD91078C", normalizeGUID(vcBundleKey))
 	assert.Equal(t, "F4FCA927-CEB7-4549-8782-5835BD91078C", normalizeGUID("f4fca927-ceb7-4549-8782-5835bd91078c"))
 	assert.Equal(t, "", normalizeGUID("Notepad3_is1"))
+	// The packed form Windows Installer uses in key names is not a GUID spelling
+	// this accepts; only unpackMsiGUID turns it into one.
+	assert.Equal(t, "", normalizeGUID(sevenZipPackedProduct))
+	assert.Equal(t, "", normalizeGUID("23170F6940C127022603000001000000"))
 	assert.Equal(t, "", normalizeGUID(""))
 }
 
@@ -218,4 +222,19 @@ func TestMsiUpgradeCodesFromPowershellOutput(t *testing.T) {
 	})
 	assert.Equal(t, "23170F69-40C1-2702-0000-000004000000", got["23170F69-40C1-2702-2603-000001000000"])
 	assert.Equal(t, unpackMsiGUID(vcRuntimePackedUpgrade), got["1E7D98FD-97A9-4EE3-B08E-F53E96DF3491"])
+}
+
+// Windows PowerShell 5.1 emits one element piped into ConvertTo-Json as a bare
+// object (verified on a Windows 11 host); both shapes must parse.
+func TestParseMsiUpgradeCodeRowsAcceptsArrayAndSingleObject(t *testing.T) {
+	array := `[{"U":"` + sevenZipPackedUpgrade + `","P":["` + sevenZipPackedProduct + `"]}]`
+	single := `{"U":"` + sevenZipPackedUpgrade + `","P":["` + sevenZipPackedProduct + `"]}`
+	for _, in := range []string{array, single} {
+		rows, err := parseMsiUpgradeCodeRows([]byte(in))
+		require.NoError(t, err, in)
+		assert.Equal(t, "23170F69-40C1-2702-0000-000004000000",
+			msiUpgradeCodesFromPowershellOutput(rows)["23170F69-40C1-2702-2603-000001000000"], in)
+	}
+	_, err := parseMsiUpgradeCodeRows([]byte(`"nope"`))
+	assert.Error(t, err)
 }

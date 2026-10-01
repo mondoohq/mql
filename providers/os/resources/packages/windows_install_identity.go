@@ -139,7 +139,7 @@ func unpackMsiGUID(packed string) string {
 		return ""
 	}
 	for _, r := range packed {
-		if !strings.ContainsRune("0123456789abcdefABCDEF", r) {
+		if !(('0' <= r && r <= '9') || ('a' <= r && r <= 'f') || ('A' <= r && r <= 'F')) {
 			return ""
 		}
 	}
@@ -214,13 +214,17 @@ type msiUpgradeCodeRow struct {
 }
 
 // msiUpgradeCodesScript dumps the UpgradeCodes key for remote connections.
-// @() keeps a single-value subkey a JSON array; an empty key prints nothing.
+// -InputObject, not a pipe: piping unrolls the array, and Windows PowerShell
+// 5.1 then serializes a host with exactly ONE UpgradeCodes subkey as a bare
+// object instead of a one-element array. @() on P keeps a subkey with a single
+// product a JSON array. An absent key prints nothing.
 const msiUpgradeCodesScript = `
 $k = 'HKLM:\SOFTWARE\Classes\Installer\UpgradeCodes'
 if (Test-Path $k) {
-  @(Get-ChildItem $k -ErrorAction SilentlyContinue | ForEach-Object {
+  $rows = @(Get-ChildItem $k -ErrorAction SilentlyContinue | ForEach-Object {
     [pscustomobject]@{ U = $_.PSChildName; P = @($_.GetValueNames() | Where-Object { $_ }) }
-  }) | ConvertTo-Json -Compress -Depth 3
+  })
+  ConvertTo-Json -InputObject $rows -Compress -Depth 3
 }
 `
 
@@ -317,12 +321,28 @@ func (w *WinPkgManager) msiUpgradeCodesRemote(pkgs []Package) map[string]string 
 	if err != nil || len(bytes.TrimSpace(data)) == 0 {
 		return nil
 	}
-	var rows []msiUpgradeCodeRow
-	if err := json.Unmarshal(data, &rows); err != nil {
+	rows, err := parseMsiUpgradeCodeRows(data)
+	if err != nil {
 		log.Debug().Err(err).Msg("could not parse the Windows Installer UpgradeCodes key")
 		return nil
 	}
 	return msiUpgradeCodesFromPowershellOutput(rows)
+}
+
+// parseMsiUpgradeCodeRows accepts msiUpgradeCodesScript's array, and also a
+// single bare object: that is what ConvertTo-Json emits for one element when
+// the array reaches it through a pipe, which the script avoids but an older
+// copy of it, or another PowerShell, may not.
+func parseMsiUpgradeCodeRows(data []byte) ([]msiUpgradeCodeRow, error) {
+	var rows []msiUpgradeCodeRow
+	if err := json.Unmarshal(data, &rows); err == nil {
+		return rows, nil
+	}
+	var one msiUpgradeCodeRow
+	if err := json.Unmarshal(data, &one); err != nil {
+		return nil, err
+	}
+	return []msiUpgradeCodeRow{one}, nil
 }
 
 // firstJSONString returns a PowerShell-serialized registry value as one
