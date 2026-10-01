@@ -320,10 +320,21 @@ func (k *mqlRegistrykey) readEntries() ([]registry.RegistryKeyItem, error) {
 
 	// if we are running locally on windows, we can use native api
 	if conn.Type() == shared.Type_Local && runtime.GOOS == "windows" {
-		return registry.GetNativeRegistryKeyItems(k.readPath())
+		return nativeItemsOrAbsent(registry.GetNativeRegistryKeyItems(k.readPath()))
 	}
 
 	return k.powershellItems(k.readPath())
+}
+
+// nativeItemsOrAbsent reports a key the native API cannot find as absent (no
+// values, no error), as powershellItems does for ObjectNotFound: otherwise
+// registrykey(...).items on a missing key is null over SSH and an error on a
+// local scan of the same machine.
+func nativeItemsOrAbsent(items []registry.RegistryKeyItem, err error) ([]registry.RegistryKeyItem, error) {
+	if std, ok := status.FromError(err); ok && std.Code() == codes.NotFound {
+		return nil, nil
+	}
+	return items, err
 }
 
 // powershellItems reads the values of a key at an absolute registry path via the

@@ -16,6 +16,8 @@ import (
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/registry"
 	"go.mondoo.com/mql/utils/syncx"
+	"go.mondoo.com/ranger-rpc/codes"
+	"go.mondoo.com/ranger-rpc/status"
 )
 
 // When a registrykey.property is created without its fields pre-populated by
@@ -288,4 +290,21 @@ func TestRegistryReadPath(t *testing.T) {
 	key := res.(*mqlRegistrykey)
 	assert.Equal(t, `HKLM\\SOFTWARE\Policies`, key.Path.Data, "path keeps the query's spelling")
 	assert.Equal(t, `HKLM\SOFTWARE\Policies`, key.readPath())
+}
+
+// A key the native API cannot find is absent, as on the PowerShell path; any
+// other error, and the values of a key that exists, pass through.
+func TestNativeItemsOrAbsent(t *testing.T) {
+	items, err := nativeItemsOrAbsent(nil, status.Error(codes.NotFound, `registry key not found: Software\Policies\Missing`))
+	require.NoError(t, err)
+	assert.Nil(t, items)
+
+	denied := errors.New("Access is denied.")
+	_, err = nativeItemsOrAbsent(nil, denied)
+	assert.Equal(t, denied, err)
+
+	values := []registry.RegistryKeyItem{{Key: "a", Value: registry.RegistryKeyValue{Kind: registry.DWORD, Number: 1}}}
+	items, err = nativeItemsOrAbsent(values, nil)
+	require.NoError(t, err)
+	assert.Equal(t, values, items)
 }
