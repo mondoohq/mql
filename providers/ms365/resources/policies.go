@@ -923,7 +923,7 @@ func mapCredentialRestrictions[T credentialRestrictionConfig](creds []T, restric
 			d["state"] = c.GetState().String()
 		}
 		if c.GetRestrictForAppsCreatedAfterDateTime() != nil {
-			d["restrictForAppsCreatedAfterDateTime"] = *c.GetRestrictForAppsCreatedAfterDateTime()
+			d["restrictForAppsCreatedAfterDateTime"] = c.GetRestrictForAppsCreatedAfterDateTime().UTC().Format(time.RFC3339)
 		}
 		restrictions = append(restrictions, d)
 	}
@@ -976,8 +976,8 @@ func newB2BSetting(runtime *plugin.Runtime, setting models.CrossTenantAccessPoli
 	resource, err := CreateResource(runtime, ResourceMicrosoftCrossTenantAccessPolicyDefaultB2bSetting,
 		map[string]*llx.RawData{
 			"__id":           llx.StringData(settingId),
-			"usersAndGroups": llx.ResourceData(usersAndGroups, string(ResourceMicrosoftCrossTenantAccessPolicyDefaultB2bSettingTargetConfig)),
-			"applications":   llx.ResourceData(applications, string(ResourceMicrosoftCrossTenantAccessPolicyDefaultB2bSettingTargetConfig)),
+			"usersAndGroups": targetConfigData(usersAndGroups),
+			"applications":   targetConfigData(applications),
 		})
 	if err != nil {
 		return nil, err
@@ -994,7 +994,23 @@ func (a *mqlMicrosoftCrossTenantAccessPolicyDefaultB2bSetting) applications() (*
 	return a.Applications.Data, a.Applications.Error
 }
 
+// targetConfigData wraps a target configuration for CreateResource, passing a
+// nil configuration as null so the field reads null instead of an empty
+// resource.
+func targetConfigData(c *mqlMicrosoftCrossTenantAccessPolicyDefaultB2bSettingTargetConfig) *llx.RawData {
+	if c == nil {
+		return llx.NilData
+	}
+	return llx.ResourceData(c, string(ResourceMicrosoftCrossTenantAccessPolicyDefaultB2bSettingTargetConfig))
+}
+
+// newCrossTenantAccessPolicyTarget returns nil for a nil configuration: Graph
+// omits usersAndGroups or applications on a B2B setting that does not
+// configure them.
 func newCrossTenantAccessPolicyTarget(runtime *plugin.Runtime, accessPolicyTargetConfiguration models.CrossTenantAccessPolicyTargetConfigurationable, id string) (*mqlMicrosoftCrossTenantAccessPolicyDefaultB2bSettingTargetConfig, error) {
+	if accessPolicyTargetConfiguration == nil {
+		return nil, nil
+	}
 	var accessType string
 	if accessPolicyTargetConfiguration.GetAccessType() != nil {
 		accessType = accessPolicyTargetConfiguration.GetAccessType().String()
@@ -1002,6 +1018,9 @@ func newCrossTenantAccessPolicyTarget(runtime *plugin.Runtime, accessPolicyTarge
 
 	var targetResources []any
 	for _, target := range accessPolicyTargetConfiguration.GetTargets() {
+		if target == nil {
+			continue
+		}
 		var targetType string
 		if target.GetTargetType() != nil {
 			targetType = target.GetTargetType().String()

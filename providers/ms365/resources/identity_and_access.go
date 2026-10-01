@@ -520,19 +520,62 @@ func (a *mqlMicrosoftIdentityAndAccessAccessReviews) list() ([]any, error) {
 	return accessReviewResources, nil
 }
 
-func newMqlAccessReviewDefinition(runtime *plugin.Runtime, d models.AccessReviewScheduleDefinitionable) (*mqlMicrosoftIdentityAndAccessAccessReviewDefinition, error) {
-	reviewersDict := []any{}
-	if d.GetReviewers() != nil {
-		for _, reviewer := range d.GetReviewers() {
-			reviewerDict := map[string]*llx.RawData{
-				"reviewer":  llx.StringDataPtr(reviewer.GetQuery()),
-				"queryType": llx.StringDataPtr(reviewer.GetQueryType()),
-				"queryRoot": llx.StringDataPtr(reviewer.GetQueryRoot()),
-			}
-
-			reviewersDict = append(reviewersDict, reviewerDict)
-		}
+// stringPtrOrNil dereferences s for use as a dict value, keeping an absent
+// value as nil.
+func stringPtrOrNil(s *string) any {
+	if s == nil {
+		return nil
 	}
+	return *s
+}
+
+// accessReviewReviewersDict builds the deprecated reviewers list: one dict
+// per reviewer scope with `reviewer` (the query), `queryType`, and
+// `queryRoot`.
+func accessReviewReviewersDict(reviewers []models.AccessReviewReviewerScopeable) []any {
+	res := []any{}
+	for _, reviewer := range reviewers {
+		if reviewer == nil {
+			continue
+		}
+		res = append(res, map[string]any{
+			"reviewer":  stringPtrOrNil(reviewer.GetQuery()),
+			"queryType": stringPtrOrNil(reviewer.GetQueryType()),
+			"queryRoot": stringPtrOrNil(reviewer.GetQueryRoot()),
+		})
+	}
+	return res
+}
+
+// accessReviewRecurrenceDict builds the recurrence dict of an access review
+// schedule: `pattern` and `range` with Graph's property names, each nil when
+// the recurrence does not set it.
+func accessReviewRecurrenceDict(recurrence models.PatternedRecurrenceable) (map[string]any, error) {
+	res := map[string]any{"pattern": nil, "range": nil}
+	if recurrence == nil {
+		return res, nil
+	}
+	patternDict, err := kiotaToDict(recurrence.GetPattern())
+	if err != nil {
+		return nil, err
+	}
+	if patternDict != nil {
+		delete(patternDict, "@odata.type")
+		res["pattern"] = patternDict
+	}
+	rangeDict, err := kiotaToDict(recurrence.GetRangeEscaped())
+	if err != nil {
+		return nil, err
+	}
+	if rangeDict != nil {
+		delete(rangeDict, "@odata.type")
+		res["range"] = rangeDict
+	}
+	return res, nil
+}
+
+func newMqlAccessReviewDefinition(runtime *plugin.Runtime, d models.AccessReviewScheduleDefinitionable) (*mqlMicrosoftIdentityAndAccessAccessReviewDefinition, error) {
+	reviewersDict := accessReviewReviewersDict(d.GetReviewers())
 
 	var mqlScope plugin.Resource
 	if scope := d.GetScope(); scope != nil {
@@ -556,28 +599,9 @@ func newMqlAccessReviewDefinition(runtime *plugin.Runtime, d models.AccessReview
 	if d.GetSettings() != nil {
 		settingsId := *d.GetId() + "_settings"
 
-		var patternDict map[string]any
-		var rangeDict map[string]any
-
-		if recurrence := d.GetSettings().GetRecurrence(); recurrence != nil {
-			if pattern := recurrence.GetPattern(); pattern != nil {
-				patternDict, err = convert.JsonToDict(pattern)
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			if recurrenceRange := recurrence.GetRangeEscaped(); recurrenceRange != nil {
-				rangeDict, err = convert.JsonToDict(recurrenceRange)
-				if err != nil {
-					return nil, err
-				}
-			}
-		}
-
-		recurrenceDict := map[string]any{
-			"pattern": patternDict,
-			"range":   rangeDict,
+		recurrenceDict, err := accessReviewRecurrenceDict(d.GetSettings().GetRecurrence())
+		if err != nil {
+			return nil, err
 		}
 
 		targetData := map[string]*llx.RawData{

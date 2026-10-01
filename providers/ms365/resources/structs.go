@@ -357,18 +357,29 @@ func newAuthorizationPolicy(p models.AuthorizationPolicyable) *AuthorizationPoli
 		return nil
 	}
 
-	var roleId string
+	var roleId *string
 	if p.GetGuestUserRoleId() != nil {
-		roleId = p.GetGuestUserRoleId().String()
+		s := p.GetGuestUserRoleId().String()
+		roleId = &s
 	}
 	return &AuthorizationPolicy{
+		PolicyBase: PolicyBase{
+			DirectoryObject: DirectoryObject{
+				Entity: Entity{
+					Id: p.GetId(),
+				},
+				DeletedDateTime: p.GetDeletedDateTime(),
+			},
+			DisplayName: p.GetDisplayName(),
+			Description: p.GetDescription(),
+		},
 		AllowedToSignUpEmailBasedSubscriptions:    p.GetAllowedToSignUpEmailBasedSubscriptions(),
 		AllowedToUseSSPR:                          p.GetAllowedToUseSSPR(),
 		AllowEmailVerifiedUsersToJoinOrganization: p.GetAllowEmailVerifiedUsersToJoinOrganization(),
 		AllowInvitesFrom:                          newAllowInvitesFrom(p.GetAllowInvitesFrom()),
 		BlockMsolPowerShell:                       p.GetBlockMsolPowerShell(),
 		DefaultUserRolePermissions:                newDefaultUserRolePermissions(p.GetDefaultUserRolePermissions()),
-		GuestUserRoleId:                           &roleId,
+		GuestUserRoleId:                           roleId,
 	}
 }
 
@@ -590,8 +601,6 @@ func newDeviceCompliancePolicyAssignments(entries []models.DeviceCompliancePolic
 	return res
 }
 
-type PermissionType int
-
 type PermissionGrantConditionSet struct {
 	Entity
 	// A list of appId values for the client applications to match with, or a list with the single value all to match any client application. Default is the single value all.
@@ -607,7 +616,7 @@ type PermissionGrantConditionSet struct {
 	// The list of id values for the specific permissions to match with, or a list with the single value all to match with any permission. The id of delegated permissions can be found in the oauth2PermissionScopes property of the API's **servicePrincipal** object. The id of application permissions can be found in the appRoles property of the API's **servicePrincipal** object. The id of resource-specific application permissions can be found in the resourceSpecificApplicationPermissions property of the API's **servicePrincipal** object. Default is the single value all.
 	Permissions []string `json:"permissions"`
 	// The permission type of the permission being granted. Possible values: application for application permissions (e.g. app roles), or delegated for delegated permissions. The value delegatedUserConsentable indicates delegated permissions which have not been configured by the API publisher to require admin consent—this value may be used in built-in permission grant policies, but cannot be used in custom permission grant policies. Required.
-	PermissionType *PermissionType `json:"permissionType"`
+	PermissionType *string `json:"permissionType"`
 	// The appId of the resource application (e.g. the API) for which a permission is being granted, or any to match with any resource application or API. Default is any.
 	ResourceApplication *string `json:"resourceApplication"`
 }
@@ -616,9 +625,10 @@ func newPermissionGrantConditionSet(p models.PermissionGrantConditionSetable) Pe
 	if p == nil {
 		return PermissionGrantConditionSet{}
 	}
-	var t PermissionType
+	var permissionType *string
 	if pt := p.GetPermissionType(); pt != nil {
-		t = PermissionType(*pt)
+		s := pt.String()
+		permissionType = &s
 	}
 
 	return PermissionGrantConditionSet{
@@ -631,7 +641,7 @@ func newPermissionGrantConditionSet(p models.PermissionGrantConditionSetable) Pe
 		ClientApplicationTenantIds:                  p.GetClientApplicationTenantIds(),
 		PermissionClassification:                    p.GetPermissionClassification(),
 		Permissions:                                 p.GetPermissions(),
-		PermissionType:                              &t,
+		PermissionType:                              permissionType,
 		ResourceApplication:                         p.GetResourceApplication(),
 	}
 }
@@ -639,6 +649,9 @@ func newPermissionGrantConditionSet(p models.PermissionGrantConditionSetable) Pe
 func newPermissionGrantConditionSets(set []models.PermissionGrantConditionSetable) []PermissionGrantConditionSet {
 	res := []PermissionGrantConditionSet{}
 	for i := range set {
+		if set[i] == nil {
+			continue
+		}
 		res = append(res, newPermissionGrantConditionSet(set[i]))
 	}
 	return res
@@ -675,6 +688,9 @@ func newPermissionGrantPolicy(p models.PermissionGrantPolicyable) *PermissionGra
 func newPermissionGrantPolicies(policies []models.PermissionGrantPolicyable) []*PermissionGrantPolicy {
 	res := []*PermissionGrantPolicy{}
 	for i := range policies {
+		if policies[i] == nil {
+			continue
+		}
 		res = append(res, newPermissionGrantPolicy(policies[i]))
 	}
 	return res
@@ -1071,6 +1087,9 @@ type VerifiedPublisher struct {
 }
 
 func newVerifiedPublisher(p models.VerifiedPublisherable) VerifiedPublisher {
+	if p == nil {
+		return VerifiedPublisher{}
+	}
 	return VerifiedPublisher{
 		DisplayName:         p.GetDisplayName(),
 		VerifiedPublisherId: p.GetVerifiedPublisherId(),

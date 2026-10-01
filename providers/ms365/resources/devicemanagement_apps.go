@@ -156,15 +156,9 @@ func newMobileAppResource(runtime *plugin.Runtime, app models.MobileAppable) (an
 	if v := app.GetPublishingState(); v != nil {
 		publishingState = v.String()
 	}
-	props := map[string]any{}
-	for k, v := range app.GetAdditionalData() {
-		props[k] = v
-	}
-	// Set @odata.type after the AdditionalData loop because that loop carries a
-	// raw "#microsoft.graph.<x>" value that would otherwise overwrite the trimmed
-	// form we set here. Trimmed is what callers expect.
-	if v := app.GetOdataType(); v != nil {
-		props["@odata.type"] = trimOdataType(*v)
+	props, err := mobileAppProperties(app)
+	if err != nil {
+		return nil, err
 	}
 	return CreateResource(runtime, "microsoft.devicemanagement.mobileapp",
 		map[string]*llx.RawData{
@@ -181,6 +175,38 @@ func newMobileAppResource(runtime *plugin.Runtime, app models.MobileAppable) (an
 			"lastModifiedDateTime":  llx.TimeDataPtr(app.GetLastModifiedDateTime()),
 			"properties":            llx.DictData(props),
 		})
+}
+
+// mobileAppBaseProperties are the properties every mobileApp type declares.
+// They are left out of `properties`, which holds what the concrete app type
+// adds (bundleId, appStoreUrl, packageId, installCommandLine, ...).
+var mobileAppBaseProperties = func() map[string]struct{} {
+	res := map[string]struct{}{}
+	for k := range models.NewMobileApp().GetFieldDeserializers() {
+		res[k] = struct{}{}
+	}
+	return res
+}()
+
+// mobileAppProperties returns the type-specific properties of a mobile app,
+// with `@odata.type` trimmed to the bare type name (iosStoreApp,
+// win32LobApp, ...).
+func mobileAppProperties(app models.MobileAppable) (map[string]any, error) {
+	all, err := kiotaToDict(app)
+	if err != nil {
+		return nil, err
+	}
+	props := map[string]any{}
+	for k, v := range all {
+		if _, ok := mobileAppBaseProperties[k]; ok {
+			continue
+		}
+		props[k] = v
+	}
+	if v := app.GetOdataType(); v != nil {
+		props["@odata.type"] = trimOdataType(*v)
+	}
+	return props, nil
 }
 
 func (a *mqlMicrosoftDevicemanagementMobileapp) assignments() ([]any, error) {
