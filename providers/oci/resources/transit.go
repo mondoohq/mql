@@ -198,15 +198,16 @@ func (o *mqlOciNetworkDrg) newDrgAttachment(att core.DrgAttachment) (*mqlOciNetw
 	}
 
 	mqlInstance, err := createOciResourceInCompartment(o.MqlRuntime, "oci.network.drgAttachment", stringValue(att.CompartmentId), map[string]*llx.RawData{
-		"id":             llx.StringDataPtr(att.Id),
-		"name":           llx.StringDataPtr(att.DisplayName),
-		"networkType":    llx.StringData(networkType),
-		"networkId":      llx.StringData(networkID),
-		"isCrossTenancy": llx.BoolDataPtr(att.IsCrossTenancy),
-		"state":          llx.StringData(string(att.LifecycleState)),
-		"created":        llx.TimeDataPtr(created),
-		"freeformTags":   llx.MapData(strMapToAny(att.FreeformTags), types.String),
-		"definedTags":    llx.MapData(definedTagsToAny(att.DefinedTags), types.Any),
+		"id":                             llx.StringDataPtr(att.Id),
+		"name":                           llx.StringDataPtr(att.DisplayName),
+		"networkType":                    llx.StringData(networkType),
+		"networkId":                      llx.StringData(networkID),
+		"isCrossTenancy":                 llx.BoolDataPtr(att.IsCrossTenancy),
+		"state":                          llx.StringData(string(att.LifecycleState)),
+		"created":                        llx.TimeDataPtr(created),
+		"freeformTags":                   llx.MapData(strMapToAny(att.FreeformTags), types.String),
+		"definedTags":                    llx.MapData(definedTagsToAny(att.DefinedTags), types.Any),
+		"preservesOriginalRoutesWithNat": llx.BoolDataPtr(att.DoesPreserveOriginalRoutesWithNat),
 	})
 	if err != nil {
 		return nil, err
@@ -218,6 +219,7 @@ func (o *mqlOciNetworkDrg) newDrgAttachment(att core.DrgAttachment) (*mqlOciNetw
 	}
 	mqlAtt.cacheIpsecConnectionID = ipsecConnID
 	mqlAtt.cacheVirtualCircuitID = virtualCircuitID
+	mqlAtt.cacheDrgNatPolicyID = stringValue(att.DrgNatPolicyId)
 	return mqlAtt, nil
 }
 
@@ -283,6 +285,7 @@ type mqlOciNetworkDrgAttachmentInternal struct {
 	cacheVcnID             string
 	cacheIpsecConnectionID string
 	cacheVirtualCircuitID  string
+	cacheDrgNatPolicyID    string
 }
 
 func (o *mqlOciNetworkDrgAttachment) id() (string, error) {

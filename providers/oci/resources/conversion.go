@@ -17,6 +17,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers-sdk/v1/util/jobpool"
 	"go.mondoo.com/mql/providers/oci/connection"
+	"go.mondoo.com/mql/types"
 )
 
 func stringValue(s *string) string {
@@ -134,6 +135,15 @@ func stringsToAny(in []string) []any {
 		out[i] = s
 	}
 	return out
+}
+
+// stringsOrNull converts an optional []string to a string array, keeping a
+// list the API omitted null rather than reporting it as an empty list.
+func stringsOrNull(in []string) *llx.RawData {
+	if in == nil {
+		return llx.NilData
+	}
+	return llx.ArrayData(stringsToAny(in), types.String)
 }
 
 // dictSlice converts a slice of SDK structs to []dict, keeping an absent one

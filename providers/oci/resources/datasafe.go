@@ -189,6 +189,7 @@ func (o *mqlOciDataSafe) targetDatabases() ([]any, error) {
 					"lifecycleState":        llx.StringData(string(t.LifecycleState)),
 					"lifecycleDetails":      llx.StringData(stringValue(t.LifecycleDetails)),
 					"associatedResourceIds": llx.ArrayData(stringsToAny(t.AssociatedResourceIds), types.String),
+					"features":              stringsOrNull(t.Features),
 					"created":               sdkTimeData(t.TimeCreated),
 					"freeformTags":          llx.MapData(strMapToAny(t.FreeformTags), types.String),
 					"definedTags":           llx.MapData(definedTagsToAny(t.DefinedTags), types.Any),

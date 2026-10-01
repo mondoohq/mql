@@ -1885,6 +1885,8 @@ oci.network {
   publicIps() []oci.network.publicIp
   // Dynamic routing gateways (DRGs)
   drgs() []oci.network.drg
+  // DRG NAT policies
+  drgNatPolicies() []oci.network.drgNatPolicy
   // Local peering gateways (LPGs)
   localPeeringGateways() []oci.network.localPeeringGateway
   // Service gateways
@@ -2490,6 +2492,19 @@ private oci.network.drgAttachment @defaults("name networkType state") {
   virtualCircuit() oci.network.virtualCircuit
   // Whether the attachment and attached network live in a different tenancy than the DRG
   isCrossTenancy bool
+  // NAT policy translating addresses on the attachment
+  //
+  // The DRG NAT policy whose rules translate conflicting source or destination
+  // CIDR ranges for traffic crossing this attachment. Null when the attachment
+  // has no NAT policy.
+  natPolicy() oci.network.drgNatPolicy
+  // Whether original CIDRs are kept alongside translated ones
+  //
+  // By default only the translated CIDRs of the attachment's NAT rules are
+  // imported into the DRG route table, and the original source CIDRs are not
+  // advertised. When true, the original CIDRs are also imported and advertised.
+  // Null when the service does not report the setting.
+  preservesOriginalRoutesWithNat bool
   // Lifecycle state (e.g., ATTACHING, ATTACHED, DETACHING, DETACHED)
   state string
   // Creation time
@@ -2498,6 +2513,47 @@ private oci.network.drgAttachment @defaults("name networkType state") {
   freeformTags map[string]string
   // Defined tags for governance and cost tracking
   definedTags map[string]map[string]string
+}
+
+// Oracle Cloud Infrastructure (OCI) DRG NAT policy
+//
+// Collection of NAT rules attached to DRG attachments so that networks with
+// overlapping or conflicting address ranges can be connected through one DRG.
+// `rules` lists each source and destination translation in priority order;
+// a DRG attachment reaches its policy through `natPolicy`.
+private oci.network.drgNatPolicy @defaults("name state") {
+  // DRG NAT policy OCID
+  id string
+  // Display name
+  name string
+  // Compartment containing the DRG NAT policy
+  compartment() oci.compartment
+  // Lifecycle state (e.g., CREATING, ACTIVE, UPDATING, DELETING, DELETED, FAILED)
+  state string
+  // Creation time
+  created time
+  // NAT rules in the policy
+  rules() []oci.network.drgNatPolicy.rule
+  // Free-form tags for resource management
+  freeformTags map[string]string
+  // Defined tags for governance and cost tracking
+  definedTags map[string]map[string]string
+}
+
+// Oracle Cloud Infrastructure (OCI) DRG NAT rule
+private oci.network.drgNatPolicy.rule @defaults("priority originalSource translatedSource originalDestination translatedDestination") {
+  // Oracle-assigned ID of the rule
+  id string
+  // Priority of the rule within its policy
+  priority int
+  // Original source CIDR range matched for source NAT
+  originalSource string
+  // Source CIDR range that matched traffic is translated to
+  translatedSource string
+  // Original destination CIDR range matched for destination NAT
+  originalDestination string
+  // Destination CIDR range that matched traffic is translated to
+  translatedDestination string
 }
 
 // Oracle Cloud Infrastructure (OCI) local peering gateway (LPG)
@@ -9543,6 +9599,12 @@ private oci.dataSafe.targetDatabase @defaults("displayName databaseType lifecycl
   lifecycleDetails string
   // OCIDs of associated resources like the underlying database, Data Safe private endpoint, etc.
   associatedResourceIds []string
+  // Data Safe features enabled on the target
+  //
+  // Features enabled for the target based on the ORA_DSCS_* roles granted to
+  // the Data Safe service account in the target database. Null when the
+  // service does not report them.
+  features []string
   // Time the target was registered
   created time
   // Free-form tags on the target

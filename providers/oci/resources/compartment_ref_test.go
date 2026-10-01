@@ -314,6 +314,7 @@ func TestHelperTargetsEmbedCompartmentRef(t *testing.T) {
 	var _ ociCompartmentSetter = (*mqlOciNetworkCrossConnect)(nil)              // oci.network.crossConnect
 	var _ ociCompartmentSetter = (*mqlOciNetworkDrg)(nil)                       // oci.network.drg
 	var _ ociCompartmentSetter = (*mqlOciNetworkDrgAttachment)(nil)             // oci.network.drgAttachment
+	var _ ociCompartmentSetter = (*mqlOciNetworkDrgNatPolicy)(nil)              // oci.network.drgNatPolicy
 	var _ ociCompartmentSetter = (*mqlOciNetworkInternetGateway)(nil)           // oci.network.internetGateway
 	var _ ociCompartmentSetter = (*mqlOciNetworkIpsecConnection)(nil)           // oci.network.ipsecConnection
 	var _ ociCompartmentSetter = (*mqlOciNetworkIpsecConnectionTunnel)(nil)     // oci.network.ipsecConnectionTunnel
