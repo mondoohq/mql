@@ -61,13 +61,13 @@ func TestNewSCMService(t *testing.T) {
 	t.Run("running automatic service", func(t *testing.T) {
 		assert.Equal(t, &Service{
 			Name:        "WinDefend",
-			Description: "Microsoft Defender Antivirus Service",
+			Description: "Helps protect users from malware and other potentially unwanted software",
 			State:       ServiceRunning,
 			Type:        "windows",
 			Installed:   true,
 			Running:     true,
 			Enabled:     true,
-		}, newSCMService("WinDefend", "Microsoft Defender Antivirus Service", 4, 2))
+		}, newSCMService("WinDefend", "Helps protect users from malware and other potentially unwanted software", 4, 2))
 	})
 
 	t.Run("stopping service is not running", func(t *testing.T) {

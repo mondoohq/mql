@@ -95,11 +95,11 @@ func scmStartTypeEnabled(startType uint32) bool {
 // newSCMService builds a Service from what the Service Control Manager reports
 // for it. It produces the same shape as WindowsService.Service does for the
 // PowerShell path.
-func newSCMService(name, displayName string, state, startType uint32) *Service {
+func newSCMService(name, description string, state, startType uint32) *Service {
 	s := scmServiceState(state)
 	return &Service{
 		Name:        name,
-		Description: displayName,
+		Description: description,
 		Installed:   true,
 		Running:     s == ServiceRunning,
 		Enabled:     scmStartTypeEnabled(startType),

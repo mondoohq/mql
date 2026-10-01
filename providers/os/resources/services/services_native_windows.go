@@ -18,9 +18,9 @@ import (
 // Manager knows about, the same set Get-Service returns.
 //
 // It asks only for the rights it needs. SC_MANAGER_ENUMERATE_SERVICE returns
-// every service's name, display name and current state in one call, and each
-// service is then opened with SERVICE_QUERY_CONFIG alone to read its start
-// type. Asking for more (SC_MANAGER_ALL_ACCESS, SERVICE_ALL_ACCESS) is refused
+// every service's name and current state in one call, and each service is
+// then opened with SERVICE_QUERY_CONFIG alone to read its start type and
+// description. Asking for more (SC_MANAGER_ALL_ACCESS, SERVICE_ALL_ACCESS) is refused
 // for protected services even to an administrator, among them WinDefend,
 // mpssvc, RpcSs and Schedule.
 //
@@ -46,12 +46,11 @@ func listNativeWindowsServices() ([]*Service, error) {
 	res := make([]*Service, 0, len(entries))
 	for i := range entries {
 		name := windows.UTF16PtrToString(entries[i].ServiceName)
-		displayName := windows.UTF16PtrToString(entries[i].DisplayName)
-		startType, err := queryStartType(scm, name)
+		startType, description, err := queryConfig(scm, name)
 		if err != nil {
 			return nil, fmt.Errorf("could not read the start type of service %q: %w", name, err)
 		}
-		res = append(res, newSCMService(name, displayName, entries[i].ServiceStatusProcess.CurrentState, startType))
+		res = append(res, newSCMService(name, description, entries[i].ServiceStatusProcess.CurrentState, startType))
 	}
 
 	log.Debug().Int("count", len(res)).Msg("listed services through the service control manager")
@@ -83,22 +82,36 @@ func enumServices(scm windows.Handle) ([]byte, uint32, error) {
 	}
 }
 
-// queryStartType opens a service with SERVICE_QUERY_CONFIG only and returns
-// its dwStartType. It reads just QUERY_SERVICE_CONFIG. mgr.Service.Config also
-// loads the service's description, and that fails for services whose
-// description resource cannot be found (IsolationSession, PrintNotify and
-// WaaSMedicSvc on Windows 11), which would fail the whole listing.
-func queryStartType(scm windows.Handle, name string) (uint32, error) {
+// queryConfig opens a service with SERVICE_QUERY_CONFIG only and returns its
+// dwStartType and description. A start type it cannot read fails the call. A
+// description it cannot read is empty instead: the description resource of
+// some services cannot be found (IsolationSession, PrintNotify and
+// WaaSMedicSvc on Windows 11), and that must not fail the whole listing. This
+// is also why it does not use mgr.Service.Config, which fails on it.
+func queryConfig(scm windows.Handle, name string) (uint32, string, error) {
 	namePtr, err := windows.UTF16PtrFromString(name)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	h, err := windows.OpenService(scm, namePtr, windows.SERVICE_QUERY_CONFIG)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	defer windows.CloseServiceHandle(h) //nolint:errcheck
 
+	startType, err := queryStartType(h)
+	if err != nil {
+		return 0, "", err
+	}
+	description, err := queryDescription(h)
+	if err != nil {
+		log.Debug().Err(err).Str("service", name).Msg("could not read the service description")
+	}
+	return startType, description, nil
+}
+
+// queryStartType reads just QUERY_SERVICE_CONFIG and returns its dwStartType.
+func queryStartType(h windows.Handle) (uint32, error) {
 	n := uint32(1024)
 	for {
 		b := make([]byte, n)
@@ -109,6 +122,27 @@ func queryStartType(scm windows.Handle, name string) (uint32, error) {
 		}
 		if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) || n <= uint32(len(b)) {
 			return 0, err
+		}
+	}
+}
+
+// queryDescription reads SERVICE_CONFIG_DESCRIPTION. Windows resolves
+// localized descriptions, as Win32_Service does on the PowerShell path. A
+// service without a description returns "".
+func queryDescription(h windows.Handle) (string, error) {
+	n := uint32(1024)
+	for {
+		b := make([]byte, n)
+		err := windows.QueryServiceConfig2(h, windows.SERVICE_CONFIG_DESCRIPTION, &b[0], n, &n)
+		if err == nil {
+			d := (*windows.SERVICE_DESCRIPTION)(unsafe.Pointer(&b[0]))
+			if d.Description == nil {
+				return "", nil
+			}
+			return windows.UTF16PtrToString(d.Description), nil
+		}
+		if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) || n <= uint32(len(b)) {
+			return "", err
 		}
 	}
 }

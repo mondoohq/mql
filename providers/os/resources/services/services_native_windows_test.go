@@ -17,7 +17,7 @@ import (
 
 // TestNativeServicesMatchPowerShell compares the Service Control Manager
 // listing with Get-Service on the machine running the test. Every service
-// Get-Service reports must be in the native list with the same display name
+// Get-Service reports must be in the native list with the same description
 // and start type, and, allowing for services that change state between the
 // two reads, the same state.
 func TestNativeServicesMatchPowerShell(t *testing.T) {
@@ -40,7 +40,7 @@ func TestNativeServicesMatchPowerShell(t *testing.T) {
 			missing = append(missing, name)
 			continue
 		}
-		require.Equal(t, want.Description, got.Description, "display name of %s", name)
+		require.Equal(t, want.Description, got.Description, "description of %s", name)
 		require.Equal(t, want.Enabled, got.Enabled, "enabled of %s", name)
 		require.Equal(t, want.Installed, got.Installed, "installed of %s", name)
 		require.Equal(t, want.Type, got.Type, "type of %s", name)
