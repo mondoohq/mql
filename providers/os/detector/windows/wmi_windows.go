@@ -25,7 +25,7 @@ func GetWmiInformation(conn shared.Connection) (*WmicOSInformation, error) {
 		// on an error, or a panic in WMI, fall back to PowerShell instead of
 		// failing detection
 		entries, err := wmiquery.Query(wmiOSQuery, "Name", "Caption", "Manufacturer", "OSArchitecture",
-			"Version", "BuildNumber", "Description", "OSType", "ProductType")
+			"Version", "BuildNumber", "Description", "OSType", "ProductType", "SerialNumber")
 		if err != nil {
 			log.Debug().Err(err).Msg("could not query the OS via WMI, falling back to PowerShell")
 			return powershellGetWmiInformation(conn)
@@ -46,6 +46,7 @@ func GetWmiInformation(conn shared.Connection) (*WmicOSInformation, error) {
 			Description:    entry.String("Description"),
 			OSType:         intToString(entry, "OSType"),
 			ProductType:    intToString(entry, "ProductType"),
+			SerialNumber:   entry.String("SerialNumber"),
 		}, nil
 	}
 

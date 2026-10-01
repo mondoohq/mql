@@ -37,4 +37,5 @@ func TestGetWmiInformation_Integration(t *testing.T) {
 	assert.NotEmpty(t, info.Version, "Version should not be empty")
 	assert.NotEmpty(t, info.BuildNumber, "BuildNumber should not be empty")
 	assert.NotEmpty(t, info.Caption, "Caption should not be empty")
+	assert.NotEmpty(t, info.SerialNumber, "SerialNumber should not be empty, as the wmic fallback reports it")
 }
