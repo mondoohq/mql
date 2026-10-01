@@ -264,3 +264,28 @@ func TestRegistrykeyCaseVariantsShareOneResource(t *testing.T) {
 	require.NotSame(t, u1, u2)
 	require.NotSame(t, a, u1)
 }
+
+// Spellings that differ only in separators share one resource, so the key is
+// read with its separators collapsed, whichever spelling created it. On
+// Windows, HKLM\\SOFTWARE (an empty segment after the hive) reads as missing
+// through PowerShell and as an invalid path through RegOpenKeyEx, while the
+// collapsed path reads the key in both.
+func TestRegistryReadPath(t *testing.T) {
+	for in, want := range map[string]string{
+		`HKLM\\SOFTWARE\Microsoft\Windows NT`:  `HKLM\SOFTWARE\Microsoft\Windows NT`,
+		`HKLM\SOFTWARE\\\Microsoft\`:           `HKLM\SOFTWARE\Microsoft`,
+		`\HKEY_LOCAL_MACHINE\Software\`:        `HKEY_LOCAL_MACHINE\Software`,
+		`hkcu\Software\Policies`:               `hkcu\Software\Policies`,
+		`HKEY_LOCAL_MACHINE\SOFTWARE\Policies`: `HKEY_LOCAL_MACHINE\SOFTWARE\Policies`,
+		``:                                     ``,
+	} {
+		assert.Equal(t, want, registryReadPath(in), in)
+	}
+
+	runtime := &plugin.Runtime{Resources: &syncx.Map[plugin.Resource]{}}
+	res, err := CreateResource(runtime, "registrykey", map[string]*llx.RawData{"path": llx.StringData(`HKLM\\SOFTWARE\Policies`)})
+	require.NoError(t, err)
+	key := res.(*mqlRegistrykey)
+	assert.Equal(t, `HKLM\\SOFTWARE\Policies`, key.Path.Data, "path keeps the query's spelling")
+	assert.Equal(t, `HKLM\SOFTWARE\Policies`, key.readPath())
+}
