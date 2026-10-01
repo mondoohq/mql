@@ -100,6 +100,12 @@ type Package struct {
 	// windows_superseded.go). Unexported and cleared once
 	// dropSupersededUninstallEntries has used it; never serialized.
 	uninstallEvidence *uninstallEvidence
+
+	// installIdentity carries the identifiers of the Windows Uninstall entry
+	// this package was read from (ProductCode, UpgradeCode, AppId; see
+	// windows_install_identity.go). Unexported: it only becomes purl
+	// qualifiers, and is never serialized on its own.
+	installIdentity *installIdentity
 }
 
 // MacOSApp describes a macOS application bundle.

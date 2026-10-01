@@ -182,7 +182,7 @@ $roots | Where-Object { Test-Path $_.Path } | ForEach-Object {
     $sid = $_.Sid
     $raw = $_.Raw
     Get-ItemProperty $_.Path -ErrorAction SilentlyContinue |
-    Select-Object -Property DisplayName,DisplayVersion,Publisher,EstimatedSize,InstallSource,UninstallString,InstallLocation,DisplayIcon,InstallDate,PSPath,
+    Select-Object -Property DisplayName,DisplayVersion,Publisher,EstimatedSize,InstallSource,UninstallString,InstallLocation,DisplayIcon,InstallDate,PSPath,WindowsInstaller,BundleUpgradeCode,
       @{Name='InstallScope';Expression={$scope}}, @{Name='InstallUser';Expression={$sid}},
       @{N='RawIcon';E={& $rv $_.PSPath 'DisplayIcon'}}, @{N='RawLocation';E={& $rv $_.PSPath 'InstallLocation'}}, @{N='RawUninstall';E={& $rv $_.PSPath 'UninstallString'}}
 } | ConvertTo-Json -Compress
@@ -469,6 +469,12 @@ type WinPkgManager struct {
 	// result (a host with genuinely no hotfixes) is distinguishable from
 	// "nothing was injected."
 	injectedHotfixes *[]PowershellWinHotFix
+
+	// msiUpgradeCodes maps an installed MSI product's ProductCode to its
+	// UpgradeCode, read by whichever app-listing path ran (see
+	// windows_install_identity.go). Nil when it could not be read; packages
+	// then carry their product_code without an upgrade_code.
+	msiUpgradeCodes map[string]string
 }
 
 // SetHotfixes injects Get-HotFix's already-parsed outcome, so List() reuses
@@ -487,6 +493,14 @@ func (w *WinPkgManager) Format() string {
 
 func (w *WinPkgManager) getLocalInstalledApps() ([]Package, error) {
 	callingSid := currentUserSID()
+	w.msiUpgradeCodes = msiUpgradeCodesFromKeys(
+		func() ([]registry.RegistryKeyChild, error) {
+			return registry.GetNativeRegistryKeyChildren(msiUpgradeCodesKey)
+		},
+		func(child string) ([]registry.RegistryKeyItem, error) {
+			return registry.GetNativeRegistryKeyItems(msiUpgradeCodesKey + `\` + child)
+		},
+	)
 
 	pkgs := []string{
 		"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
@@ -854,6 +868,7 @@ func (w *WinPkgManager) getProfileInstalledApps(p windowsProfile, reader nativeR
 			pkg.InstallUser = user
 			pkg.regDedupKey = registryDedupKey(view, uninstallString, c.Name)
 			pkg.uninstallEvidence = uninstallEvidenceFromItems(items)
+			pkg.installIdentity = installIdentityFromItems(c.Name, items)
 			packages = append(packages, *pkg)
 		}
 	}
@@ -1049,6 +1064,7 @@ func (w *WinPkgManager) getInstalledApps() ([]Package, error) {
 	if err != nil {
 		return nil, err
 	}
+	w.msiUpgradeCodes = w.msiUpgradeCodesRemote(packages)
 	// Get-ItemProperty already returns REG_EXPAND_SZ values expanded, so
 	// there is nothing left to expand. File versions for the file-version
 	// rule are read with one more PowerShell run, only when that rule has
@@ -1127,6 +1143,14 @@ func (w *WinPkgManager) getFsInstalledApps() ([]Package, error) {
 		log.Debug().Err(err).Msg("could not load SOFTWARE registry key file")
 		return nil, err
 	}
+	w.msiUpgradeCodes = msiUpgradeCodesFromKeys(
+		func() ([]registry.RegistryKeyChild, error) {
+			return rh.GetNativeRegistryKeyChildren(registry.Software, msiUpgradeCodesHiveKey)
+		},
+		func(child string) ([]registry.RegistryKeyItem, error) {
+			return rh.GetNativeRegistryKeyItems(registry.Software, msiUpgradeCodesHiveKey+`\`+child)
+		},
+	)
 	pkgs := []string{
 		"Microsoft\\Windows\\CurrentVersion\\Uninstall",
 		"Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
@@ -1271,6 +1295,7 @@ func getPackageFromRegistryKey(key registry.RegistryKeyChild, platform *inventor
 	pkg, uninstallString := getPackageFromRegistryKeyItems(items, platform, arch)
 	if pkg != nil {
 		pkg.uninstallEvidence = uninstallEvidenceFromItems(items)
+		pkg.installIdentity = installIdentityFromItems(key.Name, items)
 	}
 	return pkg, uninstallString, nil
 }
@@ -1483,7 +1508,7 @@ func (w *WinPkgManager) List() ([]Package, error) {
 		// Add/Remove-Programs entries per install (see collapsePackages)
 		// come from the app-listing path above, which ran regardless of
 		// RunCommand capability.
-		return collapsePackages(pkgs), nil
+		return w.withInstallIdentity(collapsePackages(pkgs)), nil
 	}
 
 	// hotfixes. When the resource layer already resolved windows.hotfixes on
@@ -1531,7 +1556,7 @@ func (w *WinPkgManager) List() ([]Package, error) {
 	// Collapse rows that every version normalization above (.NET's
 	// normalizeDotNetPackedVersion, Omaha's applyOmahaVersions) has made
 	// indistinguishable. See collapsePackages.
-	return collapsePackages(pkgs), nil
+	return w.withInstallIdentity(collapsePackages(pkgs)), nil
 }
 
 // ParseWindowsAppPackages parses installedAppsScript's output and drops
@@ -1543,7 +1568,15 @@ func ParseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 	if err != nil {
 		return nil, err
 	}
-	return dropSupersededUninstallEntries(pkgs, nil, nil), nil
+	pkgs = dropSupersededUninstallEntries(pkgs, nil, nil)
+	// No install-identity qualifiers here: this parser does not collapse the
+	// two entries of one .NET install (collapsePackages runs in List), and
+	// consumers rely on those two having IDENTICAL purls to fold them into one
+	// finding. Two different ProductCodes on them would split it.
+	for i := range pkgs {
+		pkgs[i].installIdentity = nil
+	}
+	return pkgs, nil
 }
 
 // psOptionalString is a string an installedAppsScript calculated property may
@@ -1614,6 +1647,11 @@ func parseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 		RawIcon      psOptionalString `json:"RawIcon"`
 		RawLocation  psOptionalString `json:"RawLocation"`
 		RawUninstall psOptionalString `json:"RawUninstall"`
+		// WindowsInstaller and BundleUpgradeCode identify the entry beyond
+		// its name; see windows_install_identity.go. BundleUpgradeCode is a
+		// REG_MULTI_SZ, so it arrives as an array (or a bare string, or null).
+		WindowsInstaller  *int            `json:"WindowsInstaller"`
+		BundleUpgradeCode json.RawMessage `json:"BundleUpgradeCode"`
 	}
 
 	var entries []powershellUninstallEntry
@@ -1668,6 +1706,11 @@ func parseWindowsAppPackages(platform *inventory.Platform, input io.Reader) ([]P
 		pkg.InstallDate = parseWinInstallDate(entry.InstallDate)
 		pkg.InstallScope = entry.InstallScope
 		pkg.InstallUser = entry.InstallUser
+		pkg.installIdentity = &installIdentity{
+			uninstallKey:      registryPathLeaf(entry.PSPath),
+			windowsInstaller:  entry.WindowsInstaller != nil && *entry.WindowsInstaller == 1,
+			bundleUpgradeCode: firstJSONString(entry.BundleUpgradeCode),
+		}
 		pkg.uninstallEvidence = &uninstallEvidence{
 			installLocation: rawOr(entry.RawLocation, entry.InstallLocation),
 			uninstallString: rawOr(entry.RawUninstall, entry.UninstallString),
@@ -2575,6 +2618,7 @@ func collapsePackages(pkgs []Package) []Package {
 // mergeDedupedRegistryPackages resolves its own collisions on the same
 // principle: prefer the better-attributed row over the emptier one.
 func absorbPackageAttribution(keep *Package, dup Package) {
+	mergeInstallIdentity(keep, dup)
 	if keep.InstallDate.IsZero() && !dup.InstallDate.IsZero() {
 		keep.InstallDate = dup.InstallDate
 	}
