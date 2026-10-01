@@ -12,8 +12,6 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-const esuLicenseQuery = "SELECT LicenseStatus FROM SoftwareLicensingProduct WHERE Name LIKE '%ESU%' AND LicenseStatus = 1"
-
 func GetWindowsESUStatus(conn shared.Connection) (*WindowsESUStatus, error) {
 	log.Debug().Msg("checking Windows 10 ESU status")
 

@@ -41,6 +41,13 @@ func ParseWindowsESUStatus(r io.Reader) (*WindowsESUStatus, error) {
 	return &status, nil
 }
 
+// esuLicenseQuery finds an activated ESU license. It selects one property:
+// SoftwareLicensingProduct computes some of its properties per product, so
+// the same filter with every property (Get-CimInstance -ClassName -Filter)
+// takes about 24 seconds on Windows 10 22H2, and this query about 1.5. The
+// native path (esu_windows.go) runs the same query.
+const esuLicenseQuery = "SELECT LicenseStatus FROM SoftwareLicensingProduct WHERE Name LIKE '%ESU%' AND LicenseStatus = 1"
+
 // powershellGetWindowsESUStatus checks for Windows 10 ESU enrollment via PowerShell.
 // It checks both subscription-based ESU (registry key) and MAK-activated ESU (WMI license).
 func powershellGetWindowsESUStatus(conn shared.Connection) (*WindowsESUStatus, error) {
@@ -53,7 +60,7 @@ if (Test-Path $esuPath) {
         $result.SubscriptionEligible = $true
     }
 }
-$esuProducts = Get-CimInstance -ClassName SoftwareLicensingProduct -Filter "Name LIKE '%ESU%' AND LicenseStatus = 1" -ErrorAction SilentlyContinue
+$esuProducts = Get-CimInstance -Query "` + esuLicenseQuery + `" -ErrorAction SilentlyContinue
 if ($esuProducts) { $result.LicenseActivated = $true }
 $result | ConvertTo-Json -Compress
 `
