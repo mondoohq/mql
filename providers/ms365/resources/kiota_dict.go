@@ -26,6 +26,8 @@ func kiotaToDict(p serialization.Parsable) (map[string]any, error) {
 	if p == nil {
 		return nil, nil
 	}
+	// A non-nil interface can still hold a nil model pointer, which the
+	// check above lets through and Serialize would dereference.
 	if rv := reflect.ValueOf(p); rv.Kind() == reflect.Ptr && rv.IsNil() {
 		return nil, nil
 	}

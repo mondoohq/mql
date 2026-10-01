@@ -347,6 +347,9 @@ type AuthorizationPolicy struct {
 func newAuthorizationPolicys(policies []models.AuthorizationPolicyable) []*AuthorizationPolicy {
 	res := []*AuthorizationPolicy{}
 	for i := range policies {
+		if policies[i] == nil {
+			continue
+		}
 		res = append(res, newAuthorizationPolicy(policies[i]))
 	}
 	return res
