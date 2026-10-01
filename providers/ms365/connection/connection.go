@@ -5,6 +5,9 @@ package connection
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"runtime"
 	"sync"
@@ -67,7 +70,8 @@ func (p *Ms365Connection) AdminPrincipalIDs(load func() (map[string]struct{}, er
 	return set, nil
 }
 
-// The credentials this process has built, by the identity each signs in as.
+// The credentials this process has built, by the identity each signs in as and
+// the key material it signs in with.
 //
 // A credential owns its token cache -- azidentity keeps it inside the instance
 // -- so building one per connection asks Entra for a token per connection, for
@@ -75,20 +79,55 @@ func (p *Ms365Connection) AdminPrincipalIDs(load func() (map[string]struct{}, er
 //
 // Keyed by identity rather than shared outright: an inventory can hold Microsoft
 // 365 assets under several tenants, and handing tenant A's token to tenant B's
-// asset would not fail cleanly, it would read the wrong tenant. The map is
-// bounded by the identities a process signs in as.
+// asset would not fail cleanly, it would read the wrong tenant. The key also
+// carries a fingerprint of the credential itself (see credentialCacheKey), so a
+// rotated secret, or a certificate beside a secret for the same app, builds its
+// own credential instead of reusing the first one seen. The map is bounded by
+// the credentials a process signs in with.
 var (
 	credentialMu    sync.Mutex
 	credentialCache = map[string]azcore.TokenCredential{}
 )
 
+// credentialCacheKey names everything that decides which credential gets
+// built: the tenant and client, the credential type, the secret or certificate
+// bytes and the certificate password, or, without any of those, the sign-in
+// methods the chain tries. The key material goes in as a SHA-256 digest, so the
+// map never holds a secret in its keys.
+func credentialCacheKey(tenantId, clientId string, cred *vault.Credential, methods azauth.CredentialMethods) string {
+	h := sha256.New()
+	// every part is length-prefixed so that no two different inputs can
+	// concatenate to the same stream
+	write := func(b []byte) {
+		var n [8]byte
+		binary.BigEndian.PutUint64(n[:], uint64(len(b)))
+		h.Write(n[:])
+		h.Write(b)
+	}
+	write([]byte(tenantId))
+	write([]byte(clientId))
+	if cred == nil {
+		write([]byte("chain"))
+		for _, m := range methods.Effective() {
+			write([]byte(m.Name()))
+		}
+	} else {
+		write([]byte(cred.Type.String()))
+		write(cred.Secret)
+		write([]byte(cred.Password))
+	}
+	return tenantId + "/" + clientId + "/" + hex.EncodeToString(h.Sum(nil))
+}
+
 // selectMs365Credential builds the credential this connection signs in with, or
-// hands back the one already built for the same tenant and client.
+// hands back the one already built for the same identity and key material. It
+// also returns the cache key, so a caller that finds the credential does not
+// work can forget it.
 //
 // Without a client secret or certificate it falls back to the sign-in chain,
 // which probes every method in turn. A keyless connection that knows how it
 // authenticates can name the method with auth-method and skip straight to it.
-func selectMs365Credential(conf *inventory.Config) (azcore.TokenCredential, error) {
+func selectMs365Credential(conf *inventory.Config) (azcore.TokenCredential, string, error) {
 	tenantId := conf.Options[OptionTenantID]
 	clientId := conf.Options[OptionClientID]
 
@@ -97,7 +136,7 @@ func selectMs365Credential(conf *inventory.Config) (azcore.TokenCredential, erro
 	// a credential someone else built
 	methods, err := azauth.ParseCredentialMethods(conf.Options[OptionAuthMethod])
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	var cred *vault.Credential
@@ -108,11 +147,11 @@ func selectMs365Credential(conf *inventory.Config) (azcore.TokenCredential, erro
 	// held across the build, which is local -- constructing a credential
 	// contacts nothing -- so concurrent connects queue briefly rather than each
 	// building a chain of their own
-	identity := tenantId + "/" + clientId
+	key := credentialCacheKey(tenantId, clientId, cred, methods)
 	credentialMu.Lock()
 	defer credentialMu.Unlock()
-	if cached, ok := credentialCache[identity]; ok {
-		return cached, nil
+	if cached, ok := credentialCache[key]; ok {
+		return cached, key, nil
 	}
 
 	token, err := azauth.GetTokenFromCredential(cred, &azauth.ChainedTokenOptions{
@@ -124,11 +163,49 @@ func selectMs365Credential(conf *inventory.Config) (azcore.TokenCredential, erro
 	if err != nil {
 		// a failed build is not worth remembering: the next connection may be
 		// configured differently, and caching the failure would deny it its own try
-		return nil, err
+		return nil, "", err
 	}
 
-	credentialCache[identity] = token
+	credentialCache[key] = token
+	return token, key, nil
+}
+
+// forgetMs365Credential drops a cached credential that failed to sign in, so the
+// next connection builds a fresh one. It removes the entry only while it still
+// holds the credential that failed.
+func forgetMs365Credential(key string, token azcore.TokenCredential) {
+	credentialMu.Lock()
+	defer credentialMu.Unlock()
+	if cached, ok := credentialCache[key]; ok && cached == token {
+		delete(credentialCache, key)
+	}
+}
+
+// connectMs365Credential selects the credential for conf and proves it with
+// verify. Building a credential contacts nothing, so a wrong secret only shows
+// up here; a credential that fails verify is evicted from the cache rather than
+// handed to every later connection with the same configuration.
+func connectMs365Credential(conf *inventory.Config, verify func(azcore.TokenCredential) error) (azcore.TokenCredential, error) {
+	token, key, err := selectMs365Credential(conf)
+	if err != nil {
+		return nil, errors.Wrap(err, "cannot fetch credentials for ms365 provider")
+	}
+	if err := verify(token); err != nil {
+		forgetMs365Credential(key, token)
+		return nil, errors.Wrap(err, "authentication failed")
+	}
 	return token, nil
+}
+
+// verifyGraphAccess reads the organization with token, the cheapest call that
+// proves the credential signs in to Microsoft Graph.
+func verifyGraphAccess(token azcore.TokenCredential) error {
+	client, err := graphClient(token)
+	if err != nil {
+		return err
+	}
+	_, err = client.Organization().Get(context.Background(), &msgrapgh_org.OrganizationRequestBuilderGetRequestConfiguration{})
+	return err
 }
 
 func NewMs365Connection(id uint32, asset *inventory.Asset, conf *inventory.Config) (*Ms365Connection, error) {
@@ -140,19 +217,9 @@ func NewMs365Connection(id uint32, asset *inventory.Asset, conf *inventory.Confi
 		return nil, errors.New("ms365 provider requires a tenant-id")
 	}
 
-	token, err := selectMs365Credential(conf)
+	token, err := connectMs365Credential(conf, verifyGraphAccess)
 	if err != nil {
-		return nil, errors.Wrap(err, "cannot fetch credentials for ms365 provider")
-	}
-
-	// test connection
-	client, err := graphClient(token)
-	if err != nil {
-		return nil, errors.Wrap(err, "authentication failed")
-	}
-	_, err = client.Organization().Get(context.Background(), &msgrapgh_org.OrganizationRequestBuilderGetRequestConfiguration{})
-	if err != nil {
-		return nil, errors.Wrap(err, "authentication failed")
+		return nil, err
 	}
 	return &Ms365Connection{
 		Connection:    plugin.NewConnection(id, asset),
