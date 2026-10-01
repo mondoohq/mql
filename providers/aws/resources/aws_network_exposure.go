@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
+	elasticache_types "github.com/aws/aws-sdk-go-v2/service/elasticache/types"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/types"
@@ -376,8 +377,41 @@ func (a *mqlAwsElasticacheCluster) exposure() (*mqlAwsNetworkExposure, error) {
 	return buildVpcOnlyExposure(a, a.MqlRuntime)
 }
 
+// serverlessCacheExposureInputs decides the public-access toggle for a
+// serverless cache from its connectionType, and whether its security groups
+// stand between the cache and the internet.
+//
+// A public cache is reached over the internet directly; its security groups
+// only authorize traffic to the VPC endpoint, so they are not consulted. A vpc
+// cache, and one that reports no connection type (ElastiCache's default is
+// vpc), is reachable only through its VPC endpoint. A value this SDK does not
+// know leaves public access unknown rather than guessing.
+func serverlessCacheExposureInputs(connectionType string) (publicAccess *plugin.TValue[bool], securityGroupsApply bool) {
+	switch elasticache_types.ConnectionType(connectionType) {
+	case elasticache_types.ConnectionTypePublic:
+		return knownPublicAccess(true), false
+	case elasticache_types.ConnectionTypeVpc, "":
+		return knownPublicAccess(false), true
+	default:
+		return &plugin.TValue[bool]{State: plugin.StateIsSet | plugin.StateIsNull}, true
+	}
+}
+
 func (a *mqlAwsElasticacheServerlessCache) exposure() (*mqlAwsNetworkExposure, error) {
-	return buildVpcOnlyExposure(a, a.MqlRuntime)
+	arn := a.GetArn()
+	if arn.Error != nil {
+		return nil, arn.Error
+	}
+	connectionType := a.GetConnectionType()
+	if connectionType.Error != nil {
+		return nil, connectionType.Error
+	}
+	publicAccess, securityGroupsApply := serverlessCacheExposureInputs(connectionType.Data)
+	var sgs *plugin.TValue[[]any]
+	if securityGroupsApply {
+		sgs = a.GetSecurityGroups()
+	}
+	return buildNetworkExposure(a.MqlRuntime, arn.Data+"/exposure", publicAccess, sgs)
 }
 
 func (a *mqlAwsMemorydbCluster) exposure() (*mqlAwsNetworkExposure, error) {

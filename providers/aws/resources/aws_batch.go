@@ -397,6 +397,34 @@ func (a *mqlAwsBatchComputeEnvironment) eksKubernetesNamespace() (string, error)
 	return convert.ToValue(a.cacheEks.KubernetesNamespace), nil
 }
 
+// batchEksAccessEntry returns the desired and observed state of the
+// Batch-managed EKS access entry, each nil when the compute environment is not
+// EKS-backed, reports no access entry, or leaves that half unset.
+func batchEksAccessEntry(eks *batch_types.EksConfiguration) (desiredState *string, status *string) {
+	if eks == nil || eks.AccessEntry == nil {
+		return nil, nil
+	}
+	return nonEmptyEnum(eks.AccessEntry.DesiredState), nonEmptyEnum(eks.AccessEntry.Status)
+}
+
+func (a *mqlAwsBatchComputeEnvironment) eksAccessEntryDesiredState() (string, error) {
+	desiredState, _ := batchEksAccessEntry(a.cacheEks)
+	if desiredState == nil {
+		a.EksAccessEntryDesiredState.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *desiredState, nil
+}
+
+func (a *mqlAwsBatchComputeEnvironment) eksAccessEntryStatus() (string, error) {
+	_, status := batchEksAccessEntry(a.cacheEks)
+	if status == nil {
+		a.EksAccessEntryStatus.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
+	}
+	return *status, nil
+}
+
 func (a *mqlAwsBatchComputeEnvironment) updateTerminateJobsOnUpdate() (bool, error) {
 	if a.cacheUpdatePolicy == nil || a.cacheUpdatePolicy.TerminateJobsOnUpdate == nil {
 		return false, nil
@@ -1636,6 +1664,7 @@ func initAwsBatchComputeEnvironment(runtime *plugin.Runtime, args map[string]*ll
 	}
 	mqlCeRes := res.(*mqlAwsBatchComputeEnvironment)
 	mqlCeRes.cacheComputeResources = ce.ComputeResources
+	mqlCeRes.cacheEcsSettings = ce.EcsSettings
 	mqlCeRes.cacheServiceRoleArn = ce.ServiceRole
 	mqlCeRes.cacheEcsClusterArn = ce.EcsClusterArn
 	mqlCeRes.cacheEks = ce.EksConfiguration

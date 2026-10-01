@@ -333,6 +333,7 @@ const (
 	ResourceAwsEcsContainer                                                     string = "aws.ecs.container"
 	ResourceAwsEcsTaskDefinition                                                string = "aws.ecs.taskDefinition"
 	ResourceAwsEcsService                                                       string = "aws.ecs.service"
+	ResourceAwsEcsServiceVpcLatticeConfiguration                                string = "aws.ecs.service.vpcLatticeConfiguration"
 	ResourceAwsEcsTaskSet                                                       string = "aws.ecs.taskSet"
 	ResourceAwsEcsTaskSetNetworkConfiguration                                   string = "aws.ecs.taskSet.networkConfiguration"
 	ResourceAwsEcsServiceDeploymentConfiguration                                string = "aws.ecs.service.deploymentConfiguration"
@@ -2339,6 +2340,10 @@ func init() {
 		"aws.ecs.service": {
 			Init:   initAwsEcsService,
 			Create: createAwsEcsService,
+		},
+		"aws.ecs.service.vpcLatticeConfiguration": {
+			// to override args, implement: initAwsEcsServiceVpcLatticeConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createAwsEcsServiceVpcLatticeConfiguration,
 		},
 		"aws.ecs.taskSet": {
 			// to override args, implement: initAwsEcsTaskSet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -13215,6 +13220,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.guardduty.detector.feature.updatedAt": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsGuarddutyDetectorFeature).GetUpdatedAt()).ToDataRes(types.Time)
 	},
+	"aws.guardduty.detector.feature.managedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsGuarddutyDetectorFeature).GetManagedBy()).ToDataRes(types.String)
+	},
 	"aws.guardduty.detector.feature.additionalConfiguration": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsGuarddutyDetectorFeature).GetAdditionalConfiguration()).ToDataRes(types.Array(types.Dict))
 	},
@@ -15098,6 +15106,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.ecs.service.availabilityZoneRebalancing": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEcsService).GetAvailabilityZoneRebalancing()).ToDataRes(types.String)
+	},
+	"aws.ecs.service.vpcLatticeConfigurations": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEcsService).GetVpcLatticeConfigurations()).ToDataRes(types.Array(types.Resource("aws.ecs.service.vpcLatticeConfiguration")))
+	},
+	"aws.ecs.service.vpcLatticeConfiguration.portName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEcsServiceVpcLatticeConfiguration).GetPortName()).ToDataRes(types.String)
+	},
+	"aws.ecs.service.vpcLatticeConfiguration.iamRole": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEcsServiceVpcLatticeConfiguration).GetIamRole()).ToDataRes(types.Resource("aws.iam.role"))
+	},
+	"aws.ecs.service.vpcLatticeConfiguration.targetGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEcsServiceVpcLatticeConfiguration).GetTargetGroup()).ToDataRes(types.Resource("aws.vpclattice.targetGroup"))
+	},
+	"aws.ecs.service.vpcLatticeConfiguration.alternateTargetGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEcsServiceVpcLatticeConfiguration).GetAlternateTargetGroup()).ToDataRes(types.Resource("aws.vpclattice.targetGroup"))
+	},
+	"aws.ecs.service.vpcLatticeConfiguration.productionListenerRule": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEcsServiceVpcLatticeConfiguration).GetProductionListenerRule()).ToDataRes(types.String)
+	},
+	"aws.ecs.service.vpcLatticeConfiguration.testListenerRule": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEcsServiceVpcLatticeConfiguration).GetTestListenerRule()).ToDataRes(types.String)
 	},
 	"aws.ecs.taskSet.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEcsTaskSet).GetArn()).ToDataRes(types.String)
@@ -19269,6 +19298,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.dynamodb.export.kmsKey": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDynamodbExport).GetKmsKey()).ToDataRes(types.Resource("aws.kms.key"))
 	},
+	"aws.dynamodb.export.filterSpecification": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsDynamodbExport).GetFilterSpecification()).ToDataRes(types.Dict)
+	},
 	"aws.dynamodb.export.arn": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsDynamodbExport).GetArn()).ToDataRes(types.String)
 	},
@@ -20630,6 +20662,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.elasticache.serverlessCache.exposure": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsElasticacheServerlessCache).GetExposure()).ToDataRes(types.Resource("aws.network.exposure"))
+	},
+	"aws.elasticache.serverlessCache.connectionType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsElasticacheServerlessCache).GetConnectionType()).ToDataRes(types.String)
 	},
 	"aws.elasticache.serverlessCache.snapshotRetentionLimit": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsElasticacheServerlessCache).GetSnapshotRetentionLimit()).ToDataRes(types.Int)
@@ -24941,6 +24976,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.ec2.capacityReservation.instanceMatchCriteria": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2CapacityReservation).GetInstanceMatchCriteria()).ToDataRes(types.String)
+	},
+	"aws.ec2.capacityReservation.launchStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsEc2CapacityReservation).GetLaunchStatus()).ToDataRes(types.String)
 	},
 	"aws.ec2.capacityReservation.endDateType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsEc2CapacityReservation).GetEndDateType()).ToDataRes(types.String)
@@ -31137,6 +31175,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"aws.glue.crawler.databaseName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsGlueCrawler).GetDatabaseName()).ToDataRes(types.String)
 	},
+	"aws.glue.crawler.catalogId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsGlueCrawler).GetCatalogId()).ToDataRes(types.String)
+	},
 	"aws.glue.crawler.description": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsGlueCrawler).GetDescription()).ToDataRes(types.String)
 	},
@@ -32789,6 +32830,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.batch.computeEnvironment.eksKubernetesNamespace": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBatchComputeEnvironment).GetEksKubernetesNamespace()).ToDataRes(types.String)
+	},
+	"aws.batch.computeEnvironment.eksAccessEntryDesiredState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBatchComputeEnvironment).GetEksAccessEntryDesiredState()).ToDataRes(types.String)
+	},
+	"aws.batch.computeEnvironment.eksAccessEntryStatus": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsBatchComputeEnvironment).GetEksAccessEntryStatus()).ToDataRes(types.String)
 	},
 	"aws.batch.computeEnvironment.updateTerminateJobsOnUpdate": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsBatchComputeEnvironment).GetUpdateTerminateJobsOnUpdate()).ToDataRes(types.Bool)
@@ -34886,6 +34933,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"aws.transfer.server.protocols": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsTransferServer).GetProtocols()).ToDataRes(types.Array(types.String))
+	},
+	"aws.transfer.server.sftpPorts": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAwsTransferServer).GetSftpPorts()).ToDataRes(types.Array(types.Dict))
 	},
 	"aws.transfer.server.state": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAwsTransferServer).GetState()).ToDataRes(types.String)
@@ -50245,6 +50295,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsGuarddutyDetectorFeature).UpdatedAt, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"aws.guardduty.detector.feature.managedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsGuarddutyDetectorFeature).ManagedBy, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.guardduty.detector.feature.additionalConfiguration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsGuarddutyDetectorFeature).AdditionalConfiguration, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
@@ -53019,6 +53073,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.ecs.service.availabilityZoneRebalancing": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEcsService).AvailabilityZoneRebalancing, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ecs.service.vpcLatticeConfigurations": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsService).VpcLatticeConfigurations, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.ecs.service.vpcLatticeConfiguration.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsServiceVpcLatticeConfiguration).__id, ok = v.Value.(string)
+		return
+	},
+	"aws.ecs.service.vpcLatticeConfiguration.portName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsServiceVpcLatticeConfiguration).PortName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ecs.service.vpcLatticeConfiguration.iamRole": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsServiceVpcLatticeConfiguration).IamRole, ok = plugin.RawToTValue[*mqlAwsIamRole](v.Value, v.Error)
+		return
+	},
+	"aws.ecs.service.vpcLatticeConfiguration.targetGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsServiceVpcLatticeConfiguration).TargetGroup, ok = plugin.RawToTValue[*mqlAwsVpclatticeTargetGroup](v.Value, v.Error)
+		return
+	},
+	"aws.ecs.service.vpcLatticeConfiguration.alternateTargetGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsServiceVpcLatticeConfiguration).AlternateTargetGroup, ok = plugin.RawToTValue[*mqlAwsVpclatticeTargetGroup](v.Value, v.Error)
+		return
+	},
+	"aws.ecs.service.vpcLatticeConfiguration.productionListenerRule": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsServiceVpcLatticeConfiguration).ProductionListenerRule, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ecs.service.vpcLatticeConfiguration.testListenerRule": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEcsServiceVpcLatticeConfiguration).TestListenerRule, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.ecs.taskSet.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -59237,6 +59323,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsDynamodbExport).KmsKey, ok = plugin.RawToTValue[*mqlAwsKmsKey](v.Value, v.Error)
 		return
 	},
+	"aws.dynamodb.export.filterSpecification": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsDynamodbExport).FilterSpecification, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
 	"aws.dynamodb.export.arn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsDynamodbExport).Arn, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -61143,6 +61233,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.elasticache.serverlessCache.exposure": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsElasticacheServerlessCache).Exposure, ok = plugin.RawToTValue[*mqlAwsNetworkExposure](v.Value, v.Error)
+		return
+	},
+	"aws.elasticache.serverlessCache.connectionType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsElasticacheServerlessCache).ConnectionType, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.elasticache.serverlessCache.snapshotRetentionLimit": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -67399,6 +67493,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.ec2.capacityReservation.instanceMatchCriteria": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsEc2CapacityReservation).InstanceMatchCriteria, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.ec2.capacityReservation.launchStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsEc2CapacityReservation).LaunchStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.ec2.capacityReservation.endDateType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -76389,6 +76487,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlAwsGlueCrawler).DatabaseName, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
+	"aws.glue.crawler.catalogId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsGlueCrawler).CatalogId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"aws.glue.crawler.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsGlueCrawler).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
@@ -78795,6 +78897,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.batch.computeEnvironment.eksKubernetesNamespace": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsBatchComputeEnvironment).EksKubernetesNamespace, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.batch.computeEnvironment.eksAccessEntryDesiredState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBatchComputeEnvironment).EksAccessEntryDesiredState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"aws.batch.computeEnvironment.eksAccessEntryStatus": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsBatchComputeEnvironment).EksAccessEntryStatus, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"aws.batch.computeEnvironment.updateTerminateJobsOnUpdate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -81835,6 +81945,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"aws.transfer.server.protocols": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAwsTransferServer).Protocols, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"aws.transfer.server.sftpPorts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAwsTransferServer).SftpPorts, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"aws.transfer.server.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -118358,6 +118472,7 @@ type mqlAwsGuarddutyDetectorFeature struct {
 	Name                    plugin.TValue[string]
 	Status                  plugin.TValue[string]
 	UpdatedAt               plugin.TValue[*time.Time]
+	ManagedBy               plugin.TValue[string]
 	AdditionalConfiguration plugin.TValue[[]any]
 }
 
@@ -118408,6 +118523,10 @@ func (c *mqlAwsGuarddutyDetectorFeature) GetStatus() *plugin.TValue[string] {
 
 func (c *mqlAwsGuarddutyDetectorFeature) GetUpdatedAt() *plugin.TValue[*time.Time] {
 	return &c.UpdatedAt
+}
+
+func (c *mqlAwsGuarddutyDetectorFeature) GetManagedBy() *plugin.TValue[string] {
+	return &c.ManagedBy
 }
 
 func (c *mqlAwsGuarddutyDetectorFeature) GetAdditionalConfiguration() *plugin.TValue[[]any] {
@@ -125443,6 +125562,7 @@ type mqlAwsEcsService struct {
 	PlacementStrategy             plugin.TValue[[]any]
 	PropagateTags                 plugin.TValue[string]
 	AvailabilityZoneRebalancing   plugin.TValue[string]
+	VpcLatticeConfigurations      plugin.TValue[[]any]
 }
 
 // createAwsEcsService creates a new instance of this resource
@@ -125688,6 +125808,127 @@ func (c *mqlAwsEcsService) GetPropagateTags() *plugin.TValue[string] {
 
 func (c *mqlAwsEcsService) GetAvailabilityZoneRebalancing() *plugin.TValue[string] {
 	return &c.AvailabilityZoneRebalancing
+}
+
+func (c *mqlAwsEcsService) GetVpcLatticeConfigurations() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.VpcLatticeConfigurations, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.ecs.service", c.__id, "vpcLatticeConfigurations")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.vpcLatticeConfigurations()
+	})
+}
+
+// mqlAwsEcsServiceVpcLatticeConfiguration for the aws.ecs.service.vpcLatticeConfiguration resource
+type mqlAwsEcsServiceVpcLatticeConfiguration struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlAwsEcsServiceVpcLatticeConfigurationInternal
+	PortName               plugin.TValue[string]
+	IamRole                plugin.TValue[*mqlAwsIamRole]
+	TargetGroup            plugin.TValue[*mqlAwsVpclatticeTargetGroup]
+	AlternateTargetGroup   plugin.TValue[*mqlAwsVpclatticeTargetGroup]
+	ProductionListenerRule plugin.TValue[string]
+	TestListenerRule       plugin.TValue[string]
+}
+
+// createAwsEcsServiceVpcLatticeConfiguration creates a new instance of this resource
+func createAwsEcsServiceVpcLatticeConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlAwsEcsServiceVpcLatticeConfiguration{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("aws.ecs.service.vpcLatticeConfiguration", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlAwsEcsServiceVpcLatticeConfiguration) MqlName() string {
+	return "aws.ecs.service.vpcLatticeConfiguration"
+}
+
+func (c *mqlAwsEcsServiceVpcLatticeConfiguration) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlAwsEcsServiceVpcLatticeConfiguration) GetPortName() *plugin.TValue[string] {
+	return &c.PortName
+}
+
+func (c *mqlAwsEcsServiceVpcLatticeConfiguration) GetIamRole() *plugin.TValue[*mqlAwsIamRole] {
+	return plugin.GetOrCompute[*mqlAwsIamRole](&c.IamRole, func() (*mqlAwsIamRole, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.ecs.service.vpcLatticeConfiguration", c.__id, "iamRole")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsIamRole), nil
+			}
+		}
+
+		return c.iamRole()
+	})
+}
+
+func (c *mqlAwsEcsServiceVpcLatticeConfiguration) GetTargetGroup() *plugin.TValue[*mqlAwsVpclatticeTargetGroup] {
+	return plugin.GetOrCompute[*mqlAwsVpclatticeTargetGroup](&c.TargetGroup, func() (*mqlAwsVpclatticeTargetGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.ecs.service.vpcLatticeConfiguration", c.__id, "targetGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsVpclatticeTargetGroup), nil
+			}
+		}
+
+		return c.targetGroup()
+	})
+}
+
+func (c *mqlAwsEcsServiceVpcLatticeConfiguration) GetAlternateTargetGroup() *plugin.TValue[*mqlAwsVpclatticeTargetGroup] {
+	return plugin.GetOrCompute[*mqlAwsVpclatticeTargetGroup](&c.AlternateTargetGroup, func() (*mqlAwsVpclatticeTargetGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("aws.ecs.service.vpcLatticeConfiguration", c.__id, "alternateTargetGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlAwsVpclatticeTargetGroup), nil
+			}
+		}
+
+		return c.alternateTargetGroup()
+	})
+}
+
+func (c *mqlAwsEcsServiceVpcLatticeConfiguration) GetProductionListenerRule() *plugin.TValue[string] {
+	return &c.ProductionListenerRule
+}
+
+func (c *mqlAwsEcsServiceVpcLatticeConfiguration) GetTestListenerRule() *plugin.TValue[string] {
+	return &c.TestListenerRule
 }
 
 // mqlAwsEcsTaskSet for the aws.ecs.taskSet resource
@@ -142889,18 +143130,19 @@ type mqlAwsDynamodbExport struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAwsDynamodbExportInternal
-	Table          plugin.TValue[*mqlAwsDynamodbTable]
-	S3Bucket       plugin.TValue[*mqlAwsS3Bucket]
-	S3Prefix       plugin.TValue[string]
-	ItemCount      plugin.TValue[int64]
-	Type           plugin.TValue[string]
-	Status         plugin.TValue[string]
-	Format         plugin.TValue[string]
-	StartTime      plugin.TValue[*time.Time]
-	EndTime        plugin.TValue[*time.Time]
-	S3SseAlgorithm plugin.TValue[string]
-	KmsKey         plugin.TValue[*mqlAwsKmsKey]
-	Arn            plugin.TValue[string]
+	Table               plugin.TValue[*mqlAwsDynamodbTable]
+	S3Bucket            plugin.TValue[*mqlAwsS3Bucket]
+	S3Prefix            plugin.TValue[string]
+	ItemCount           plugin.TValue[int64]
+	Type                plugin.TValue[string]
+	Status              plugin.TValue[string]
+	Format              plugin.TValue[string]
+	StartTime           plugin.TValue[*time.Time]
+	EndTime             plugin.TValue[*time.Time]
+	S3SseAlgorithm      plugin.TValue[string]
+	KmsKey              plugin.TValue[*mqlAwsKmsKey]
+	FilterSpecification plugin.TValue[any]
+	Arn                 plugin.TValue[string]
 }
 
 // createAwsDynamodbExport creates a new instance of this resource
@@ -143029,6 +143271,12 @@ func (c *mqlAwsDynamodbExport) GetKmsKey() *plugin.TValue[*mqlAwsKmsKey] {
 		}
 
 		return c.kmsKey()
+	})
+}
+
+func (c *mqlAwsDynamodbExport) GetFilterSpecification() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.FilterSpecification, func() (any, error) {
+		return c.filterSpecification()
 	})
 }
 
@@ -147206,6 +147454,7 @@ type mqlAwsElasticacheServerlessCache struct {
 	KmsKey                 plugin.TValue[*mqlAwsKmsKey]
 	SecurityGroups         plugin.TValue[[]any]
 	Exposure               plugin.TValue[*mqlAwsNetworkExposure]
+	ConnectionType         plugin.TValue[string]
 	SnapshotRetentionLimit plugin.TValue[int64]
 	DailySnapshotTime      plugin.TValue[string]
 	Status                 plugin.TValue[string]
@@ -147317,6 +147566,10 @@ func (c *mqlAwsElasticacheServerlessCache) GetExposure() *plugin.TValue[*mqlAwsN
 
 		return c.exposure()
 	})
+}
+
+func (c *mqlAwsElasticacheServerlessCache) GetConnectionType() *plugin.TValue[string] {
+	return &c.ConnectionType
 }
 
 func (c *mqlAwsElasticacheServerlessCache) GetSnapshotRetentionLimit() *plugin.TValue[int64] {
@@ -162879,6 +163132,7 @@ type mqlAwsEc2CapacityReservation struct {
 	AvailableInstanceCount plugin.TValue[int64]
 	State                  plugin.TValue[string]
 	InstanceMatchCriteria  plugin.TValue[string]
+	LaunchStatus           plugin.TValue[string]
 	EndDateType            plugin.TValue[string]
 	Tenancy                plugin.TValue[string]
 	EbsOptimized           plugin.TValue[bool]
@@ -162962,6 +163216,10 @@ func (c *mqlAwsEc2CapacityReservation) GetState() *plugin.TValue[string] {
 
 func (c *mqlAwsEc2CapacityReservation) GetInstanceMatchCriteria() *plugin.TValue[string] {
 	return &c.InstanceMatchCriteria
+}
+
+func (c *mqlAwsEc2CapacityReservation) GetLaunchStatus() *plugin.TValue[string] {
+	return &c.LaunchStatus
 }
 
 func (c *mqlAwsEc2CapacityReservation) GetEndDateType() *plugin.TValue[string] {
@@ -185797,6 +186055,7 @@ type mqlAwsGlueCrawler struct {
 	Role                       plugin.TValue[string]
 	IamRole                    plugin.TValue[*mqlAwsIamRole]
 	DatabaseName               plugin.TValue[string]
+	CatalogId                  plugin.TValue[string]
 	Description                plugin.TValue[string]
 	Targets                    plugin.TValue[any]
 	Schedule                   plugin.TValue[string]
@@ -185881,6 +186140,10 @@ func (c *mqlAwsGlueCrawler) GetIamRole() *plugin.TValue[*mqlAwsIamRole] {
 
 func (c *mqlAwsGlueCrawler) GetDatabaseName() *plugin.TValue[string] {
 	return &c.DatabaseName
+}
+
+func (c *mqlAwsGlueCrawler) GetCatalogId() *plugin.TValue[string] {
+	return &c.CatalogId
 }
 
 func (c *mqlAwsGlueCrawler) GetDescription() *plugin.TValue[string] {
@@ -191663,6 +191926,8 @@ type mqlAwsBatchComputeEnvironment struct {
 	LaunchTemplateOverrides          plugin.TValue[[]any]
 	EksCluster                       plugin.TValue[*mqlAwsEksCluster]
 	EksKubernetesNamespace           plugin.TValue[string]
+	EksAccessEntryDesiredState       plugin.TValue[string]
+	EksAccessEntryStatus             plugin.TValue[string]
 	UpdateTerminateJobsOnUpdate      plugin.TValue[bool]
 	UpdateJobExecutionTimeoutMinutes plugin.TValue[int64]
 	Uuid                             plugin.TValue[string]
@@ -191960,6 +192225,18 @@ func (c *mqlAwsBatchComputeEnvironment) GetEksCluster() *plugin.TValue[*mqlAwsEk
 func (c *mqlAwsBatchComputeEnvironment) GetEksKubernetesNamespace() *plugin.TValue[string] {
 	return plugin.GetOrCompute[string](&c.EksKubernetesNamespace, func() (string, error) {
 		return c.eksKubernetesNamespace()
+	})
+}
+
+func (c *mqlAwsBatchComputeEnvironment) GetEksAccessEntryDesiredState() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.EksAccessEntryDesiredState, func() (string, error) {
+		return c.eksAccessEntryDesiredState()
+	})
+}
+
+func (c *mqlAwsBatchComputeEnvironment) GetEksAccessEntryStatus() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.EksAccessEntryStatus, func() (string, error) {
+		return c.eksAccessEntryStatus()
 	})
 }
 
@@ -199183,6 +199460,7 @@ type mqlAwsTransferServer struct {
 	IdentityProviderType      plugin.TValue[string]
 	LoggingRole               plugin.TValue[*mqlAwsIamRole]
 	Protocols                 plugin.TValue[[]any]
+	SftpPorts                 plugin.TValue[[]any]
 	State                     plugin.TValue[string]
 	IpAddressType             plugin.TValue[string]
 	SecurityPolicyName        plugin.TValue[string]
@@ -199276,6 +199554,12 @@ func (c *mqlAwsTransferServer) GetLoggingRole() *plugin.TValue[*mqlAwsIamRole] {
 func (c *mqlAwsTransferServer) GetProtocols() *plugin.TValue[[]any] {
 	return plugin.GetOrCompute[[]any](&c.Protocols, func() ([]any, error) {
 		return c.protocols()
+	})
+}
+
+func (c *mqlAwsTransferServer) GetSftpPorts() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.SftpPorts, func() ([]any, error) {
+		return c.sftpPorts()
 	})
 }
 

@@ -1031,6 +1031,8 @@ aws.batch.computeEnvironment.desiredVcpus 13.1.1
 aws.batch.computeEnvironment.ec2Configurations 13.14.1
 aws.batch.computeEnvironment.ec2KeyPair 13.14.1
 aws.batch.computeEnvironment.ecsCluster 13.1.1
+aws.batch.computeEnvironment.eksAccessEntryDesiredState 14.2.1
+aws.batch.computeEnvironment.eksAccessEntryStatus 14.2.1
 aws.batch.computeEnvironment.eksCluster 13.14.1
 aws.batch.computeEnvironment.eksKubernetesNamespace 13.14.1
 aws.batch.computeEnvironment.image 13.14.1
@@ -3385,6 +3387,7 @@ aws.dynamodb.daxClusters 13.3.0
 aws.dynamodb.export 11.15.2
 aws.dynamodb.export.arn 11.15.2
 aws.dynamodb.export.endTime 11.15.2
+aws.dynamodb.export.filterSpecification 14.2.1
 aws.dynamodb.export.format 11.15.2
 aws.dynamodb.export.itemCount 11.15.2
 aws.dynamodb.export.kmsKey 11.15.2
@@ -3501,6 +3504,7 @@ aws.ec2.capacityReservation.id 13.6.3
 aws.ec2.capacityReservation.instanceMatchCriteria 13.6.3
 aws.ec2.capacityReservation.instancePlatform 13.6.3
 aws.ec2.capacityReservation.instanceType 13.6.3
+aws.ec2.capacityReservation.launchStatus 14.2.1
 aws.ec2.capacityReservation.region 13.6.3
 aws.ec2.capacityReservation.state 13.6.3
 aws.ec2.capacityReservation.tags 13.6.3
@@ -4511,6 +4515,14 @@ aws.ecs.service.tags 11.15.2
 aws.ecs.service.taskDefinition 11.15.2
 aws.ecs.service.taskDefinitionRef 13.38.2
 aws.ecs.service.taskSets 11.15.2
+aws.ecs.service.vpcLatticeConfiguration 14.2.1
+aws.ecs.service.vpcLatticeConfiguration.alternateTargetGroup 14.2.1
+aws.ecs.service.vpcLatticeConfiguration.iamRole 14.2.1
+aws.ecs.service.vpcLatticeConfiguration.portName 14.2.1
+aws.ecs.service.vpcLatticeConfiguration.productionListenerRule 14.2.1
+aws.ecs.service.vpcLatticeConfiguration.targetGroup 14.2.1
+aws.ecs.service.vpcLatticeConfiguration.testListenerRule 14.2.1
+aws.ecs.service.vpcLatticeConfigurations 14.2.1
 aws.ecs.task 11.15.2
 aws.ecs.task.arn 11.15.2
 aws.ecs.task.capacityProviderName 13.29.1
@@ -5017,6 +5029,7 @@ aws.elasticache.replicationGroup.userGroupIds 13.49.1
 aws.elasticache.replicationGroups 13.49.1
 aws.elasticache.serverlessCache 11.15.2
 aws.elasticache.serverlessCache.arn 11.15.2
+aws.elasticache.serverlessCache.connectionType 14.2.1
 aws.elasticache.serverlessCache.createdAt 11.15.2
 aws.elasticache.serverlessCache.dailySnapshotTime 11.15.2
 aws.elasticache.serverlessCache.description 11.15.2
@@ -6023,6 +6036,7 @@ aws.glue.connection.updatedAt 13.23.2
 aws.glue.connections 13.23.2
 aws.glue.crawler 11.16.1
 aws.glue.crawler.arn 11.16.1
+aws.glue.crawler.catalogId 14.2.1
 aws.glue.crawler.classifiers 11.16.1
 aws.glue.crawler.configuration 11.16.1
 aws.glue.crawler.crawlElapsedTime 13.26.3
@@ -6231,6 +6245,7 @@ aws.guardduty.detector.coverageStatistics 13.12.1
 aws.guardduty.detector.createdAt 11.15.2
 aws.guardduty.detector.feature 13.12.1
 aws.guardduty.detector.feature.additionalConfiguration 13.12.1
+aws.guardduty.detector.feature.managedBy 14.2.1
 aws.guardduty.detector.feature.name 13.12.1
 aws.guardduty.detector.feature.status 13.12.1
 aws.guardduty.detector.feature.updatedAt 13.12.1
@@ -11274,6 +11289,7 @@ aws.transfer.server.protocols 13.6.3
 aws.transfer.server.region 13.6.3
 aws.transfer.server.securityPolicyName 13.6.3
 aws.transfer.server.serverId 13.6.3
+aws.transfer.server.sftpPorts 14.2.1
 aws.transfer.server.state 13.6.3
 aws.transfer.server.structuredLogDestinations 13.6.3
 aws.transfer.server.tags 13.6.3

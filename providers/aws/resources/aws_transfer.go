@@ -246,6 +246,47 @@ func (a *mqlAwsTransferServer) protocols() ([]any, error) {
 	return protocols, nil
 }
 
+func (a *mqlAwsTransferServer) sftpPorts() ([]any, error) {
+	resp, err := a.fetchDetail()
+	if err != nil {
+		return nil, err
+	}
+	var details *transfertypes.ProtocolDetails
+	if resp.Server != nil {
+		details = resp.Server.ProtocolDetails
+	}
+	ports := transferSftpPorts(details)
+	if ports == nil {
+		a.SftpPorts.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return ports, nil
+}
+
+// transferSftpPorts renders the server's SFTP port list, or nil when the
+// server reports none.
+func transferSftpPorts(details *transfertypes.ProtocolDetails) []any {
+	if details == nil || len(details.SftpPorts) == 0 {
+		return nil
+	}
+	res := make([]any, 0, len(details.SftpPorts))
+	for _, p := range details.SftpPorts {
+		var port any
+		if p.SftpPort != nil {
+			port = int64(*p.SftpPort)
+		}
+		var mode any
+		if p.CommunicationMode != "" {
+			mode = string(p.CommunicationMode)
+		}
+		res = append(res, map[string]any{
+			"port":              port,
+			"communicationMode": mode,
+		})
+	}
+	return res
+}
+
 func (a *mqlAwsTransferServer) ipAddressType() (string, error) {
 	resp, err := a.fetchDetail()
 	if err != nil {

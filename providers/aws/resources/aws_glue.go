@@ -132,6 +132,7 @@ func newMqlAwsGlueCrawler(runtime *plugin.Runtime, region string, accountID stri
 			"name":                       llx.StringDataPtr(crawler.Name),
 			"role":                       llx.StringDataPtr(crawler.Role),
 			"databaseName":               llx.StringDataPtr(crawler.DatabaseName),
+			"catalogId":                  llx.StringDataPtr(nonEmptyEnum(convert.ToValue(crawler.CatalogId))),
 			"description":                llx.StringDataPtr(crawler.Description),
 			"targets":                    llx.DictData(targets),
 			"schedule":                   llx.StringData(schedule),

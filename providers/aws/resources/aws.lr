@@ -7993,6 +7993,12 @@ private aws.guardduty.detector.feature @defaults("name status") {
   status string
   // Time when the feature was last updated
   updatedAt time
+  // What manages the feature configuration
+  //
+  // GUARDDUTY_POLICY when a GuardDuty policy manages the feature, so local
+  // changes to it are overridden. Null when the feature is managed directly
+  // on the detector.
+  managedBy string
   // Sub-feature configuration
   //
   // Per sub-feature enablement carried under a protection feature. Each entry
@@ -10009,6 +10015,43 @@ private aws.ecs.service @defaults("arn name launchType status") {
   propagateTags string
   // Availability Zone rebalancing setting (ENABLED, DISABLED)
   availabilityZoneRebalancing string
+  // VPC Lattice target groups the service registers its tasks with
+  //
+  // Read from the service's primary deployment. Empty when the service uses
+  // no VPC Lattice target groups. Null when the service has no primary
+  // deployment, as with the EXTERNAL deployment controller.
+  vpcLatticeConfigurations() []aws.ecs.service.vpcLatticeConfiguration
+}
+
+// VPC Lattice target group registration of an Amazon ECS service
+//
+// One VPC Lattice target group the service registers its tasks with, through
+// the task definition port mapping named by `portName`. The `iamRole` is the
+// ECS infrastructure role that manages the registration. For blue/green
+// deployments, `alternateTargetGroup`, `productionListenerRule`, and
+// `testListenerRule` name the resources Amazon ECS shifts traffic between.
+private aws.ecs.service.vpcLatticeConfiguration @defaults("portName") {
+  // Name of the task definition port mapping registered in the target group
+  portName string
+  // ECS infrastructure IAM role that manages the VPC Lattice registration
+  iamRole() aws.iam.role
+  // VPC Lattice target group the tasks are registered to
+  //
+  // Null when the target group is not in the scanned account and regions.
+  targetGroup() aws.vpclattice.targetGroup
+  // Alternate VPC Lattice target group used during blue/green deployments
+  //
+  // Null when no blue/green settings are configured, or when the target group
+  // is not in the scanned account and regions.
+  alternateTargetGroup() aws.vpclattice.targetGroup
+  // ARN of the listener rule or listener that routes production traffic
+  //
+  // Null when no blue/green settings are configured.
+  productionListenerRule string
+  // ARN of the listener rule or listener that routes test traffic
+  //
+  // Null when no blue/green settings are configured.
+  testListenerRule string
 }
 
 // Amazon ECS Task Set
@@ -14425,6 +14468,14 @@ private aws.dynamodb.export {
   s3SseAlgorithm() string
   // SSE KMS Key
   kmsKey() aws.kms.key
+  // Item filter applied to the export
+  //
+  // Limits which items and attributes the export writes. Keys:
+  // `filterExpression`, `keyConditionExpression`, `projectionExpression`,
+  // `expressionAttributeNames` (placeholder to attribute name), and
+  // `expressionAttributeValues` (placeholder to value, in DynamoDB JSON such
+  // as `{"S": "active"}`). Null when the export includes every item.
+  filterSpecification() dict
   // ARN for the export
   arn string
 }
@@ -15673,7 +15724,8 @@ private aws.elasticache.cluster @defaults("cacheClusterId region nodeType engine
 // Serverless Redis, Valkey, or Memcached cache that scales capacity
 // automatically, selected by `name`. Exposes the cache engine and version,
 // the KMS key encrypting data at rest, the VPC subnets and security groups
-// that gate access, and snapshot retention, so an audit can confirm
+// that gate access, the connectionType that says whether the endpoint is
+// public, and snapshot retention, so an audit can confirm
 // encryption and network isolation without a provisioned cluster.
 private aws.elasticache.serverlessCache @defaults("name description status engine engineVersion") {
   // ARN for the cache
@@ -15692,8 +15744,20 @@ private aws.elasticache.serverlessCache @defaults("name description status engin
   kmsKey() aws.kms.key
   // A list of VPC security groups associated with the cluster
   securityGroups() []aws.ec2.securitygroup
-  // Security group ingress exposure breakdown (VPC-only service without a public endpoint, so it is not internet-reachable)
+  // Internet exposure of the cache endpoint
+  //
+  // A cache whose connectionType is public is reachable over the internet:
+  // publiclyAccessible and internetReachable are true, because its security
+  // groups only gate the VPC endpoint. A vpc cache is not internet-reachable,
+  // and the breakdown lists the security-group rules that open its VPC
+  // endpoint.
   exposure() aws.network.exposure
+  // How clients reach the cache endpoint
+  //
+  // One of vpc (through a VPC endpoint) or public (over the internet). Set at
+  // creation and never changed. Null when the API does not report it, which
+  // ElastiCache treats as vpc.
+  connectionType string
   // Number of days ElastiCache retains automatic cluster snapshots before deleting them
   snapshotRetentionLimit int
   // Time each day that a cache snapshot is created
@@ -20198,6 +20262,11 @@ private aws.ec2.capacityReservation @defaults("id instanceType state availabilit
   state string
   // Whether the reservation matches running instances: open or targeted
   instanceMatchCriteria string
+  // Whether instances can be launched into the reservation
+  //
+  // One of launchable or unlaunchable (for example, a reservation that is not
+  // yet active). Null when the API does not report it.
+  launchStatus string
   // End date behavior: unlimited or limited
   endDateType string
   // Tenancy: default or dedicated
@@ -26348,6 +26417,12 @@ private aws.glue.crawler @defaults("name state databaseName region") {
   iamRole() aws.iam.role
   // Name of the database where results are stored
   databaseName string
+  // ID of the Data Catalog the crawler writes its output to
+  //
+  // Usually the account ID of the catalog owner, which differs from the
+  // crawler's own account when it writes to a shared catalog. Null when the
+  // API does not report one.
+  catalogId string
   // Description of the crawler
   description string
   // Targets for the crawler
@@ -27952,6 +28027,21 @@ private aws.batch.computeEnvironment @defaults("arn name state status") {
   eksCluster() aws.eks.cluster
   // Kubernetes namespace for EKS-backed compute (EKS orchestration only)
   eksKubernetesNamespace() string
+  // Desired state of the Batch-managed EKS access entry
+  //
+  // One of ENABLED (Batch manages an access entry on the cluster for this
+  // compute environment), DISABLED (Batch removes its access entry), or
+  // INHERIT_FROM_CLUSTER (Batch follows the cluster's authentication mode).
+  // Null for a compute environment that is not EKS-backed or reports no
+  // access entry.
+  eksAccessEntryDesiredState() string
+  // Observed state of the Batch-managed EKS access entry on the cluster
+  //
+  // ACTIVE when an access entry for this compute environment exists on the
+  // cluster and takes precedence over the aws-auth ConfigMap, INACTIVE when
+  // none is present. Null for a compute environment that is not EKS-backed or
+  // reports no access entry.
+  eksAccessEntryStatus() string
   // Whether to terminate running jobs when the compute environment is updated
   updateTerminateJobsOnUpdate() bool
   // Maximum duration (minutes) a job may run during a compute-environment update
@@ -30023,6 +30113,13 @@ private aws.transfer.server @defaults("arn serverId endpointType protocols") {
   loggingRole() aws.iam.role
   // Protocols enabled on the server: SFTP, FTPS, FTP, AS2
   protocols() []string
+  // SFTP ports the server listens on
+  //
+  // Each entry carries `port` and `communicationMode` (SERVER_TALK_FIRST or
+  // CLIENT_TALK_FIRST, which decides whether the server or the client sends
+  // data first). Null when the server reports no SFTP port list, in which
+  // case an SFTP server listens on port 22.
+  sftpPorts() []dict
   // State of the server: ONLINE, OFFLINE, STARTING, STOPPING, START_FAILED, STOP_FAILED
   state string
   // IP address type for the server: IPV4, DUALSTACK
@@ -33579,7 +33676,9 @@ private aws.globalaccelerator.accelerator @defaults("name enabled dnsName") {
   // Static IP addresses assigned to the accelerator
   //
   // Each entry carries `IpFamily`, `IpAddresses` (the anycast addresses the
-  // internet reaches), and `IpAddressFamily`.
+  // internet reaches), `IpAddressFamily`, and `IpAddressDetails`, which pairs
+  // each address (`IpAddress`) with the network zone that serves it
+  // (`NetworkZone`).
   ipSets []dict
   // Deployment status of the accelerator: IN_PROGRESS or DEPLOYED
   status string

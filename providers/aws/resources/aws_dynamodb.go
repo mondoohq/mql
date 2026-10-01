@@ -5,6 +5,7 @@ package resources
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"sync"
@@ -190,6 +191,97 @@ func (a *mqlAwsDynamodbExport) endTime() (*time.Time, error) {
 		return nil, nil
 	}
 	return exp.EndTime, nil
+}
+
+func (a *mqlAwsDynamodbExport) filterSpecification() (any, error) {
+	exp, err := a.fetchExport()
+	if err != nil {
+		return nil, err
+	}
+	var spec *ddtypes.FilterSpecification
+	if exp != nil {
+		spec = exp.FilterSpecification
+	}
+	res := dynamodbFilterSpecificationToDict(spec)
+	if res == nil {
+		a.FilterSpecification.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res, nil
+}
+
+// dynamodbFilterSpecificationToDict renders an export filter as a dict, or nil
+// when the export has none. Expression attribute values are written in
+// DynamoDB JSON ({"S": "x"}, {"N": "1"}, ...) so their type survives.
+func dynamodbFilterSpecificationToDict(spec *ddtypes.FilterSpecification) map[string]any {
+	if spec == nil {
+		return nil
+	}
+	names := make(map[string]any, len(spec.ExpressionAttributeNames))
+	for k, v := range spec.ExpressionAttributeNames {
+		names[k] = v
+	}
+	values := make(map[string]any, len(spec.ExpressionAttributeValues))
+	for k, v := range spec.ExpressionAttributeValues {
+		values[k] = dynamodbAttributeValueToDict(v)
+	}
+	return map[string]any{
+		"filterExpression":          optionalString(spec.FilterExpression),
+		"keyConditionExpression":    optionalString(spec.KeyConditionExpression),
+		"projectionExpression":      optionalString(spec.ProjectionExpression),
+		"expressionAttributeNames":  names,
+		"expressionAttributeValues": values,
+	}
+}
+
+// optionalString returns the pointed-to string, or nil so an unset value reads
+// as null in a dict rather than as an empty string.
+func optionalString(s *string) any {
+	if s == nil {
+		return nil
+	}
+	return *s
+}
+
+// dynamodbAttributeValueToDict renders one attribute value in DynamoDB JSON.
+// Binary values are base64-encoded, as DynamoDB JSON writes them.
+func dynamodbAttributeValueToDict(av ddtypes.AttributeValue) any {
+	switch v := av.(type) {
+	case *ddtypes.AttributeValueMemberS:
+		return map[string]any{"S": v.Value}
+	case *ddtypes.AttributeValueMemberN:
+		return map[string]any{"N": v.Value}
+	case *ddtypes.AttributeValueMemberB:
+		return map[string]any{"B": base64.StdEncoding.EncodeToString(v.Value)}
+	case *ddtypes.AttributeValueMemberBOOL:
+		return map[string]any{"BOOL": v.Value}
+	case *ddtypes.AttributeValueMemberNULL:
+		return map[string]any{"NULL": v.Value}
+	case *ddtypes.AttributeValueMemberSS:
+		return map[string]any{"SS": convert.SliceAnyToInterface(v.Value)}
+	case *ddtypes.AttributeValueMemberNS:
+		return map[string]any{"NS": convert.SliceAnyToInterface(v.Value)}
+	case *ddtypes.AttributeValueMemberBS:
+		bs := make([]any, 0, len(v.Value))
+		for _, b := range v.Value {
+			bs = append(bs, base64.StdEncoding.EncodeToString(b))
+		}
+		return map[string]any{"BS": bs}
+	case *ddtypes.AttributeValueMemberL:
+		list := make([]any, 0, len(v.Value))
+		for _, item := range v.Value {
+			list = append(list, dynamodbAttributeValueToDict(item))
+		}
+		return map[string]any{"L": list}
+	case *ddtypes.AttributeValueMemberM:
+		m := make(map[string]any, len(v.Value))
+		for k, item := range v.Value {
+			m[k] = dynamodbAttributeValueToDict(item)
+		}
+		return map[string]any{"M": m}
+	default:
+		return nil
+	}
 }
 
 func (a *mqlAwsDynamodbExport) s3SseAlgorithm() (string, error) {

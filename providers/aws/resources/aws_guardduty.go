@@ -453,6 +453,7 @@ func (a *mqlAwsGuarddutyDetector) featureConfigurations() ([]any, error) {
 				"name":                    llx.StringData(string(feat.Name)),
 				"status":                  llx.StringData(string(feat.Status)),
 				"updatedAt":               llx.TimeDataPtr(feat.UpdatedAt),
+				"managedBy":               llx.StringDataPtr(nonEmptyEnum(feat.ManagedBy)),
 				"additionalConfiguration": llx.ArrayData(additionalConfig, mqlTypes.Dict),
 			})
 		if err != nil {

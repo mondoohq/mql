@@ -642,6 +642,7 @@ func newMqlAwsElasticacheServerlessCache(runtime *plugin.Runtime, region string,
 			"dailySnapshotTime":      llx.StringDataPtr(cache.DailySnapshotTime),
 			"createdAt":              llx.TimeDataPtr(cache.CreateTime),
 			"status":                 llx.StringDataPtr(cache.Status),
+			"connectionType":         llx.StringDataPtr(nonEmptyEnum(cache.ConnectionType)),
 		})
 	if err != nil {
 		return nil, err

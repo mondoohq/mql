@@ -2389,12 +2389,101 @@ func initAwsEcsService(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 	}
 	res.(*mqlAwsEcsService).cacheClusterArn = convert.ToValue(s.ClusterArn)
 	res.(*mqlAwsEcsService).cacheRoleArn = s.RoleArn
+	res.(*mqlAwsEcsService).cachePrimaryDeployment = primaryEcsDeployment(s.Deployments)
 	return args, res, nil
 }
 
 type mqlAwsEcsServiceInternal struct {
-	cacheClusterArn string
-	cacheRoleArn    *string
+	cacheClusterArn        string
+	cacheRoleArn           *string
+	cachePrimaryDeployment *ecstypes.Deployment
+}
+
+// primaryEcsDeployment returns the deployment carrying the service's current
+// configuration, or nil when there is none (a service using the EXTERNAL
+// deployment controller has task sets instead of deployments).
+func primaryEcsDeployment(deployments []ecstypes.Deployment) *ecstypes.Deployment {
+	for i := range deployments {
+		if convert.ToValue(deployments[i].Status) == "PRIMARY" {
+			return &deployments[i]
+		}
+	}
+	return nil
+}
+
+func (a *mqlAwsEcsService) vpcLatticeConfigurations() ([]any, error) {
+	if a.cachePrimaryDeployment == nil {
+		a.VpcLatticeConfigurations.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	res := []any{}
+	for i, cfg := range a.cachePrimaryDeployment.VpcLatticeConfigurations {
+		args := map[string]*llx.RawData{
+			"__id":     llx.StringData(fmt.Sprintf("%s/vpcLatticeConfiguration/%d", a.Arn.Data, i)),
+			"portName": llx.StringDataPtr(cfg.PortName),
+		}
+		var advanced ecstypes.VpcLatticeAdvancedConfiguration
+		if cfg.AdvancedConfiguration != nil {
+			advanced = *cfg.AdvancedConfiguration
+		}
+		args["productionListenerRule"] = llx.StringDataPtr(advanced.ProductionListenerRule)
+		args["testListenerRule"] = llx.StringDataPtr(advanced.TestListenerRule)
+		mqlCfg, err := CreateResource(a.MqlRuntime, ResourceAwsEcsServiceVpcLatticeConfiguration, args)
+		if err != nil {
+			return nil, err
+		}
+		internal := mqlCfg.(*mqlAwsEcsServiceVpcLatticeConfiguration)
+		internal.cacheRoleArn = cfg.RoleArn
+		internal.cacheTargetGroupArn = convert.ToValue(cfg.TargetGroupArn)
+		internal.cacheAlternateTargetGroupArn = convert.ToValue(advanced.AlternateTargetGroupArn)
+		res = append(res, internal)
+	}
+	return res, nil
+}
+
+type mqlAwsEcsServiceVpcLatticeConfigurationInternal struct {
+	cacheRoleArn                 *string
+	cacheTargetGroupArn          string
+	cacheAlternateTargetGroupArn string
+}
+
+func (a *mqlAwsEcsServiceVpcLatticeConfiguration) iamRole() (*mqlAwsIamRole, error) {
+	return ecsIamRoleRef(a.MqlRuntime, a.cacheRoleArn, &a.IamRole)
+}
+
+func (a *mqlAwsEcsServiceVpcLatticeConfiguration) targetGroup() (*mqlAwsVpclatticeTargetGroup, error) {
+	return ecsVpcLatticeTargetGroupRef(a.MqlRuntime, a.cacheTargetGroupArn, &a.TargetGroup)
+}
+
+func (a *mqlAwsEcsServiceVpcLatticeConfiguration) alternateTargetGroup() (*mqlAwsVpclatticeTargetGroup, error) {
+	return ecsVpcLatticeTargetGroupRef(a.MqlRuntime, a.cacheAlternateTargetGroupArn, &a.AlternateTargetGroup)
+}
+
+// ecsVpcLatticeTargetGroupRef resolves a VPC Lattice target group by ARN.
+// aws.vpclattice.targetGroup has no by-ARN init, so the ARN is matched against
+// the account's target group list, which is enumerated once and cached on the
+// aws.vpclattice singleton. A target group outside the scanned account and
+// regions resolves to null.
+func ecsVpcLatticeTargetGroupRef(runtime *plugin.Runtime, tgArn string, field *plugin.TValue[*mqlAwsVpclatticeTargetGroup]) (*mqlAwsVpclatticeTargetGroup, error) {
+	if tgArn == "" {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	obj, err := CreateResource(runtime, ResourceAwsVpclattice, map[string]*llx.RawData{})
+	if err != nil {
+		return nil, err
+	}
+	targetGroups := obj.(*mqlAwsVpclattice).GetTargetGroups()
+	if targetGroups.Error != nil {
+		return nil, targetGroups.Error
+	}
+	for _, tg := range targetGroups.Data {
+		if mqlTg, ok := tg.(*mqlAwsVpclatticeTargetGroup); ok && mqlTg.Arn.Data == tgArn {
+			return mqlTg, nil
+		}
+	}
+	field.State = plugin.StateIsSet | plugin.StateIsNull
+	return nil, nil
 }
 
 func (a *mqlAwsEcsService) iamRole() (*mqlAwsIamRole, error) {

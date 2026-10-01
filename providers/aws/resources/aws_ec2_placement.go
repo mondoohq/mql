@@ -181,6 +181,7 @@ func buildCapacityReservationResource(runtime *plugin.Runtime, region, accountID
 			"availableInstanceCount": llx.IntDataDefault(cr.AvailableInstanceCount, 0),
 			"state":                  llx.StringData(string(cr.State)),
 			"instanceMatchCriteria":  llx.StringData(string(cr.InstanceMatchCriteria)),
+			"launchStatus":           llx.StringDataPtr(nonEmptyEnum(cr.LaunchStatus)),
 			"endDateType":            llx.StringData(string(cr.EndDateType)),
 			"tenancy":                llx.StringData(string(cr.Tenancy)),
 			"ebsOptimized":           llx.BoolData(convert.ToValue(cr.EbsOptimized)),
