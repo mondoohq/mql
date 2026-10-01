@@ -209,10 +209,12 @@ func TestInitOptionalFeatureConcurrentLookups(t *testing.T) {
 }
 
 // A name the image does not have fails every lookup, but is queried once.
+// Get-WindowsOptionalFeature answers an unknown name with exit 0 and no output
+// (Windows 10, elevated).
 func TestInitOptionalFeatureRemembersNotFound(t *testing.T) {
 	missingCmd := powershell.Encode(windows.OptionalFeatureQuery("NoSuchFeature"))
 	runtime, conn := newOptionalFeatureRuntime(t, map[string]*mock.Command{
-		missingCmd: {ExitStatus: 1, Stderr: "Get-WindowsOptionalFeature : Feature name NoSuchFeature is unknown."},
+		missingCmd: {Stdout: ""},
 	})
 
 	for range 2 {
@@ -242,4 +244,22 @@ func TestInitOptionalFeatureRequiresExactName(t *testing.T) {
 		require.EqualError(t, err, "could not find feature SMB1*")
 	}
 	assert.Equal(t, []string{wildcardCmd}, conn.commands)
+}
+
+// A query that fails (no elevation, a DISM error) is not an absent feature:
+// every lookup reports the failure and queries again, so a transient error
+// does not stick for the rest of the scan.
+func TestInitOptionalFeatureDoesNotCacheFailedQuery(t *testing.T) {
+	smbCmd := powershell.Encode(windows.OptionalFeatureQuery("SMB1Protocol"))
+	runtime, conn := newOptionalFeatureRuntime(t, map[string]*mock.Command{
+		smbCmd: {ExitStatus: 1, Stderr: "Get-WindowsOptionalFeature : The requested operation requires elevation.\r\n    + CategoryInfo          : NotSpecified: (:) [Get-WindowsOptionalFeature], COMException\r\n"},
+	})
+
+	for range 2 {
+		_, _, err := initWindowsOptionalFeature(runtime, map[string]*llx.RawData{
+			"name": llx.StringData("SMB1Protocol"),
+		})
+		require.EqualError(t, err, "could not query optional feature SMB1Protocol: The requested operation requires elevation.")
+	}
+	assert.Equal(t, []string{smbCmd, smbCmd}, conn.commands, "a failed query is run again")
 }

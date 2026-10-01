@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -223,9 +224,10 @@ type optionalFeatureEntry struct {
 }
 
 // optionalFeatureLookup is one cached windows.optionalFeature(name: …)
-// outcome: the feature's fields, or notFound when the image has no feature of
-// that exact name. Errors from running or parsing the query are not cached,
-// so a transient failure does not stick for the rest of the scan.
+// outcome: the feature's fields, or notFound when the query succeeded and the
+// image has no feature of that exact name. A query that fails (an error
+// running it, a non-zero exit, output that does not parse) is not cached, so
+// a transient failure does not stick for the rest of the scan.
 type optionalFeatureLookup struct {
 	feature  windows.WindowsOptionalFeature
 	notFound bool
@@ -480,26 +482,34 @@ func (w *mqlWindows) queryOptionalFeature(conn shared.Connection, name string) (
 		return optionalFeatureLookup{}, err
 	}
 
-	lookup := optionalFeatureLookup{notFound: true}
-	// a non-zero exit means the feature name is unknown
-	if executedCmd.ExitStatus == 0 {
-		features, err := windows.ParseWindowsOptionalFeatures(executedCmd.Stdout)
-		if err != nil {
-			return optionalFeatureLookup{}, err
+	// An unknown name exits 0 with no output. A non-zero exit is a query that
+	// failed (no elevation, a DISM error), not an absent feature: it is
+	// reported, and not cached as not found.
+	if executedCmd.ExitStatus != 0 {
+		var stderr []byte
+		if executedCmd.Stderr != nil {
+			stderr, _ = io.ReadAll(executedCmd.Stderr)
 		}
-		// DISM treats `*`/`?` in -FeatureName as wildcards, so a wildcard-ish
-		// name can return more than one feature (or none matching exactly);
-		// require an exact name match to keep the historic "could not find
-		// feature" behavior.
-		for i := range features {
-			if features[i].Name == name {
-				lookup = optionalFeatureLookup{feature: features[i]}
-				break
-			}
+		msg := powershellErrorMessage(string(powershell.DecodeCLIXML(stderr)))
+		if msg == "" {
+			return optionalFeatureLookup{}, fmt.Errorf("could not query optional feature %s: exit status %d", name, executedCmd.ExitStatus)
 		}
+		return optionalFeatureLookup{}, fmt.Errorf("could not query optional feature %s: %s", name, msg)
 	}
 
-	return lookup, nil
+	features, err := windows.ParseWindowsOptionalFeatures(executedCmd.Stdout)
+	if err != nil {
+		return optionalFeatureLookup{}, err
+	}
+	// DISM treats `*`/`?` in -FeatureName as wildcards, so a wildcard-ish name
+	// can return more than one feature (or none matching exactly); require an
+	// exact name match to keep the historic "could not find feature" behavior.
+	for i := range features {
+		if features[i].Name == name {
+			return optionalFeatureLookup{feature: features[i]}, nil
+		}
+	}
+	return optionalFeatureLookup{notFound: true}, nil
 }
 
 // optionalFeatureDetails carries the display name and description of every
