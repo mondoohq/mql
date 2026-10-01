@@ -528,7 +528,10 @@ claude.userProfile @defaults("id name accessType") {
 //
 // Organizational resources managed through the Claude Admin API:
 // identity, workspaces, members, pending invites, API keys, usage,
-// cost, and rate limits. Requires an admin API key configured via
+// cost, rate limits, customer-managed encryption keys, the Compliance
+// API state, and, for Claude Enterprise organizations, RBAC groups and
+// roles, effective spend limits, plugins, and plugin marketplaces.
+// Requires an admin API key configured via
 // `--admin-token` or the `ANTHROPIC_ADMIN_API_KEY` environment variable.
 claude.organization @defaults("id name") {
   // Organization identifier
@@ -557,6 +560,25 @@ claude.organization @defaults("id name") {
   federationIssuers() []claude.organization.federationIssuer
   // Rules mapping federated identities onto organization access
   federationRules() []claude.organization.federationRule
+  // Customer-managed encryption key configurations
+  externalKeys() []claude.organization.externalKey
+  // State of the organization's Compliance API
+  //
+  // One of enabled or disabled. When enabled, organization activity is
+  // captured and served through the compliance activity feed, which the
+  // `activities` field reads. An organization with a parent reads the
+  // state inherited from the parent's configuration.
+  complianceApiState() string
+  // RBAC groups in the Claude Enterprise tenant
+  rbacGroups() []claude.organization.rbacGroup
+  // RBAC roles in the Claude Enterprise tenant
+  rbacRoles() []claude.organization.rbacRole
+  // Each member's effective spend limit and spend so far, per period
+  effectiveSpendLimits() []claude.organization.effectiveSpendLimit
+  // Plugins created in the organization's and its members' plugin marketplaces
+  plugins() []claude.organization.plugin
+  // Plugin marketplaces the organization's plugins come from
+  pluginMarketplaces() []claude.organization.pluginMarketplace
 }
 
 // Claude organization workspace
@@ -584,12 +606,17 @@ claude.organization.workspace @defaults("id name") {
   allowedInferenceGeos []string
   // Customer-managed encryption key protecting this workspace
   //
-  // Identifier of the key configuration encrypting data stored for the
-  // workspace, which is the AWS KMS key ARN on Claude Platform on AWS.
-  // Null when the workspace relies on Anthropic-managed encryption. The
+  // Deprecated in favor of externalKey, which carries the same
+  // identifier as `externalKey.id` along with the key's provider and
+  // location.
+  externalKeyId @maturity("deprecated") @replaced_by("claude.organization.workspace.externalKey") string
+  // Customer-managed encryption key protecting this workspace
+  //
+  // Key configuration encrypting data stored for the workspace. Null
+  // when the workspace relies on Anthropic-managed encryption. The
   // binding is write-once: a key cannot be detached or replaced once
-  // attached, and rotating the key material leaves this value unchanged.
-  externalKeyId string
+  // attached, and rotating the key material leaves it unchanged.
+  externalKey() claude.organization.externalKey
   // Encryption compartment this workspace belongs to
   //
   // Value a KMS key policy condition names to scope a key to this
@@ -1055,5 +1082,397 @@ claude.organization.activity @defaults("id type actorType actorEmail") {
   // recorded for the same change.
   workosEventId string
   // Timestamp when the activity was created
+  createdAt time
+}
+
+// Claude organization customer-managed encryption key
+//
+// Key configuration that encrypts data stored for the workspaces bound to
+// it, held in the customer's own AWS KMS, Google Cloud KMS, or Azure Key
+// Vault. The `provider` field names the key service, and the location
+// fields that apply to it are set: `kmsArn` and `region` for aws,
+// `keyName` for gcp, and `vaultUri`, `keyName`, `tenantId`, and
+// `clientId` for azure. The `attached` field tells whether any workspace
+// uses the key, and `workspaces` lists the ones that do.
+claude.organization.externalKey @defaults("id displayName provider attached") {
+  // Key configuration identifier
+  //
+  // Prefixed ekey_, or the AWS KMS key ARN for organizations on Claude
+  // Platform on AWS.
+  id string
+  // Display name
+  //
+  // Null when none was set.
+  displayName string
+  // Data residency geo whose validator handles this key's encrypt and decrypt round trips
+  geo string
+  // Key service holding the key
+  //
+  // One of aws, gcp, or azure.
+  provider string
+  // ARN of the AWS KMS key
+  //
+  // Set when provider is aws.
+  kmsArn string
+  // AWS region of the KMS key
+  //
+  // Set when provider is aws.
+  region string
+  // Name of the key
+  //
+  // For gcp, the full resource name of the Cloud KMS key. For azure,
+  // the name of the key within the vault.
+  keyName string
+  // Key Vault URI
+  //
+  // Set when provider is azure, for example
+  // `https://example.vault.azure.net`.
+  vaultUri string
+  // Microsoft Entra tenant the key vault belongs to
+  //
+  // Set when provider is azure.
+  tenantId string
+  // Microsoft Entra application used to reach the key vault
+  //
+  // Set when provider is azure and the organization registered its own
+  // single-tenant application. Null when Anthropic's multitenant
+  // application is used.
+  clientId string
+  // Whether any workspace uses this key to encrypt its data
+  //
+  // Counts live and archived workspaces, since an archived workspace's
+  // data stays encrypted under the key. An unattached key is not used
+  // for encryption.
+  attached bool
+  // Workspaces whose data this key encrypts
+  workspaces() []claude.organization.workspace
+  // Timestamp when the key configuration was created
+  createdAt time
+  // Timestamp when the key configuration was last updated
+  updatedAt time
+}
+
+// Claude Enterprise RBAC group
+//
+// Group of organization members that RBAC roles are attached to, either
+// created in the organization's admin settings or provisioned by the
+// identity provider. Includes the group's members and the roles granting
+// its permissions. The `sourceType` field is direct or scim.
+claude.organization.rbacGroup @defaults("id name sourceType") {
+  // Group identifier
+  id string
+  // Group name
+  //
+  // Names are not required to be unique.
+  name string
+  // How the group was created
+  //
+  // One of direct, for a group created in the admin settings or through
+  // the API, or scim, for a group provisioned by the identity provider.
+  sourceType string
+  // Roles attached to the group
+  roles() []claude.organization.rbacRole
+  // Members of the group
+  members() []claude.organization.rbacGroup.member
+  // Timestamp when the group was created
+  createdAt time
+  // Timestamp when the group was last updated
+  updatedAt time
+}
+
+// Membership of an organization member in an RBAC group
+claude.organization.rbacGroup.member @defaults("email") {
+  // Organization member in the group
+  user() claude.organization.member
+  // Email address of the member
+  email string
+  // Timestamp when the member was added to the group
+  addedAt time
+}
+
+// Claude Enterprise RBAC role
+//
+// Role granting a set of permissions to the RBAC groups it is attached
+// to. Includes the role's permissions, each an action on the
+// organization or on a connector, and the groups holding the role.
+claude.organization.rbacRole @defaults("id name") {
+  // Role identifier
+  id string
+  // Role name
+  name string
+  // Permissions the role grants
+  permissions() []claude.organization.rbacRole.permission
+  // Groups the role is attached to
+  groups() []claude.organization.rbacGroup
+  // Timestamp when the role was created
+  createdAt time
+  // Timestamp when the role was last updated
+  updatedAt time
+}
+
+// Permission granted by an RBAC role
+//
+// One action on one target. The `resourceType` field is organization,
+// connector_tool, connector_scope, connector, or all_connectors. An
+// organization grant carries a product feature such as chat, an admin
+// permission prefixed permission_, or capability_access_all or
+// capability_access_all_ga, which grant every product feature or every
+// generally available one. A connector_tool grant carries use or
+// always_allow, a connector_scope grant carries grant, and connector and
+// all_connectors grants carry a tool access action, grant, interactive,
+// or managed.
+claude.organization.rbacRole.permission @defaults("resourceType action") {
+  // Action the permission grants
+  action string
+  // Kind of target the permission applies to
+  //
+  // One of organization, connector_tool, connector_scope, connector, or
+  // all_connectors.
+  resourceType string
+  // Connector the permission applies to
+  //
+  // Set for connector_tool, connector_scope, and connector grants.
+  connectorId string
+  // Connector tool the permission applies to
+  //
+  // Set for connector_tool grants.
+  toolName string
+  // OAuth scope the role may receive when tokens are minted for the connector
+  //
+  // Set for connector_scope grants.
+  scope string
+}
+
+// Effective spend limit for one organization member and period
+//
+// Spend cap a member resolves for a daily, weekly, or monthly period,
+// with what the member has spent so far in the current period and the
+// scope the cap is inherited from. A member gets one entry per period
+// that resolves a limit. Amounts are in the minor unit of `currency`,
+// which is cents for USD.
+claude.organization.effectiveSpendLimit @defaults("actorEmail period amount periodToDateSpend currency") {
+  // Kind of actor the entry is for
+  //
+  // One of user_actor or scoped_api_key_actor.
+  actorType string
+  // Organization member the entry is for
+  //
+  // Null for a deleted member and for an entry that is not for a
+  // member.
+  user() claude.organization.member
+  // Email address of the member
+  //
+  // Null when the account is unavailable or has been deleted.
+  actorEmail string
+  // Identifier of the scoped admin API key the entry is for
+  //
+  // Set when actorType is scoped_api_key_actor.
+  scopedApiKeyId string
+  // Period the limit resets over
+  //
+  // One of daily, weekly, or monthly.
+  period string
+  // Effective limit, in the minor unit of currency
+  //
+  // Null when no limit applies for this period. Other periods resolve
+  // independently and may still cap the member.
+  amount int
+  // Spend so far in the current period, in the minor unit of currency
+  //
+  // May carry fractions of a minor unit. Reads 0 when the spend reading
+  // is temporarily unavailable.
+  periodToDateSpend float
+  // ISO 4217 code of the organization's billing currency
+  currency string
+  // Kind of scope the entry applies to
+  //
+  // One of user, seat_tier, rbac_group, organization_service,
+  // organization, or workspace.
+  scopeType string
+  // Kind of scope the limit is inherited from
+  //
+  // One of user, seat_tier, rbac_group, organization_service,
+  // organization, or workspace. A user source is a limit set on the
+  // member directly.
+  sourceType string
+  // Seat tier the limit is inherited from
+  //
+  // Set when sourceType is seat_tier.
+  sourceSeatTier string
+  // Service the organization-level limit is inherited from
+  //
+  // Set when sourceType is organization_service.
+  sourceService string
+  // RBAC group the limit is inherited from
+  //
+  // Null unless sourceType is rbac_group.
+  sourceRbacGroup() claude.organization.rbacGroup
+  // Workspace the limit is inherited from
+  //
+  // Null unless sourceType is workspace.
+  sourceWorkspace() claude.organization.workspace
+  // Identifier of the configured spend limit the entry resolves to
+  //
+  // Prefixed spl_.
+  spendLimitId string
+}
+
+// Claude Enterprise plugin
+//
+// Plugin in one of the organization's plugin marketplaces or in a
+// member's personal marketplace, with what its served version contains,
+// how far that version reaches, the result of its content scan, and how
+// it is offered to members. The `reach` field is remote when the plugin
+// declares an MCP server or a CLI, privileged when it declares a hook,
+// monitor, language server, or settings but nothing remote, and contained
+// otherwise. The `installationPreference` field is required,
+// auto_install, available, or not_available.
+claude.organization.plugin @defaults("name displayName reach installationPreference") {
+  // Plugin identifier
+  id string
+  // Lowercase name, unique within its marketplace
+  //
+  // Fixed for an organization-owned plugin. A member-owned plugin's
+  // name changes when its owner renames it.
+  name string
+  // Display name of the served version
+  displayName string
+  // Description of the served version
+  description string
+  // Version string the served version's manifest declares
+  manifestVersion string
+  // Marketplace the plugin lives in
+  marketplace() claude.organization.pluginMarketplace
+  // Kind of owner
+  //
+  // One of organization or user.
+  ownerType string
+  // Member whose personal marketplace holds the plugin
+  //
+  // Null for an organization-owned plugin.
+  owner() claude.organization.member
+  // How far the served version reaches
+  //
+  // One of contained, privileged, or remote. Null when the version
+  // cannot be classified.
+  reach string
+  // Organization-wide installation setting members get
+  //
+  // One of required, auto_install, available, or not_available, and
+  // members in an RBAC group holding its own setting get that instead.
+  // Null for a member-owned plugin, which is shared instead.
+  installationPreference string
+  // Whether installationPreference is the marketplace default rather than a setting of the plugin's own
+  //
+  // Null for a member-owned plugin.
+  installationPreferenceInherited bool
+  // Version served to members
+  servedVersionId string
+  // Whether the served version is pinned
+  //
+  // False while the served version follows each new version.
+  servedVersionPinned bool
+  // Newest version of the plugin
+  latestVersionId string
+  // State of the served version's content scan
+  //
+  // One of processing, completed, or errored. Null when the version has
+  // not been scanned.
+  contentScanStatus string
+  // Verdict of the served version's content scan
+  //
+  // One of pass, warn, fail, or unknown. Set only when
+  // contentScanStatus is completed.
+  contentScanAssessment string
+  // Main mechanism behind a warn or fail verdict
+  //
+  // For example credential-exposure or guardrail-tampering. Null on a
+  // pass and when no mechanism is reported.
+  contentScanReason string
+  // Components the served version contains
+  //
+  // Null when the version's components have not been enumerated.
+  components() []claude.organization.plugin.component
+  // Kind of actor that created the plugin
+  //
+  // One of user_actor or api_actor. Null when no creator is recorded.
+  createdByType string
+  // Member who created the plugin
+  createdBy() claude.organization.member
+  // API key the plugin was created with
+  createdByApiKey() claude.organization.apiKey
+  // Timestamp when the plugin was created
+  createdAt time
+  // Timestamp of the plugin's latest version or served version change
+  updatedAt time
+}
+
+// Component of a Claude Enterprise plugin
+//
+// One part of a plugin's served version. The `type` field is agent, cli,
+// command, hook, mcp_server, or skill.
+claude.organization.plugin.component @defaults("type name") {
+  // Component name
+  name string
+  // Kind of component
+  //
+  // One of agent, cli, command, hook, mcp_server, or skill.
+  type string
+  // Component description
+  description string
+}
+
+// Claude Enterprise plugin marketplace
+//
+// Source of plugins for the organization or for one member, either
+// uploaded by hand or synchronized from a Git repository, with the
+// outcome of its latest synchronization and the default installation
+// setting its plugins get. The `source` field is manual, github, gitlab,
+// or public_git.
+claude.organization.pluginMarketplace @defaults("name source ownerType syncStatus") {
+  // Marketplace identifier
+  //
+  // Prefixed marketplace_.
+  id string
+  // Marketplace name
+  name string
+  // Where the marketplace's plugins come from
+  //
+  // One of manual, for plugins that are uploaded, or github, gitlab, or
+  // public_git, for plugins synchronized from the connected Git
+  // repository.
+  source string
+  // Kind of owner
+  //
+  // One of organization or user.
+  ownerType string
+  // Member whose personal marketplace this is
+  //
+  // Null for an organization marketplace.
+  owner() claude.organization.member
+  // Default installation setting for the marketplace's plugins
+  //
+  // One of required, auto_install, available, or not_available, given
+  // to every plugin without a setting of its own. Null for a member's
+  // personal marketplace.
+  defaultInstallationPreference string
+  // Outcome of the latest synchronization
+  //
+  // One of success, in_progress, failed_content, failed_transient,
+  // failed_auth, or failed_limits. Null until a synchronization is
+  // first attempted, so always for a manual marketplace.
+  syncStatus string
+  // Timestamp when the latest synchronization attempt finished
+  //
+  // Null for a marketplace that is not synchronized from a repository.
+  lastSyncEndedAt time
+  // Commit the latest synchronization read from the repository
+  //
+  // Null until a synchronization has read the repository, and for a
+  // marketplace that is not synchronized from one.
+  lastSyncReadSha string
+  // Plugins in the marketplace
+  plugins() []claude.organization.plugin
+  // Timestamp when the marketplace was created
   createdAt time
 }
