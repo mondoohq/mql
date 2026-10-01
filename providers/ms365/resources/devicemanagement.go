@@ -6,6 +6,7 @@ package resources
 import (
 	"context"
 
+	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/devicemanagement"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"go.mondoo.com/mql/llx"
@@ -14,6 +15,38 @@ import (
 	"go.mondoo.com/mql/providers/ms365/connection"
 	"go.mondoo.com/mql/types"
 )
+
+type mqlMicrosoftDevicemanagementInternal struct {
+	// per-device properties the managedDevices list never returns, fetched
+	// for every listed device in one batched call on first access
+	managedDeviceDetails batchFieldCache
+}
+
+// managedDeviceDetailFields are the managedDevice properties Graph only
+// returns from a single-device GET that selects them; the list call leaves
+// them empty.
+var managedDeviceDetailFields = []string{"udid", "iccid", "notes", "ethernetMacAddress"}
+
+// managedDeviceDetail holds the detail properties of one managed device. A
+// nil pointer means Graph returned no value.
+type managedDeviceDetail struct {
+	udid               *string
+	iccid              *string
+	notes              *string
+	ethernetMacAddress *string
+}
+
+func newManagedDeviceDetail(d models.ManagedDeviceable) managedDeviceDetail {
+	if d == nil {
+		return managedDeviceDetail{}
+	}
+	return managedDeviceDetail{
+		udid:               d.GetUdid(),
+		iccid:              d.GetIccid(),
+		notes:              d.GetNotes(),
+		ethernetMacAddress: d.GetEthernetMacAddress(),
+	}
+}
 
 func (m *mqlMicrosoftDevicemanagementDeviceconfiguration) id() (string, error) {
 	return m.Id.Data, nil
@@ -114,10 +147,6 @@ func newMqlMicrosoftManagedDevice(runtime *plugin.Runtime, u models.ManagedDevic
 			"userDisplayName":              llx.StringDataPtr(u.GetUserDisplayName()),
 			"wiFiMacAddress":               llx.StringDataPtr(u.GetWiFiMacAddress()),
 			"meid":                         llx.StringDataPtr(u.GetMeid()),
-			"iccid":                        llx.StringDataPtr(u.GetIccid()),
-			"udid":                         llx.StringDataPtr(u.GetUdid()),
-			"notes":                        llx.StringDataPtr(u.GetNotes()),
-			"ethernetMacAddress":           llx.StringDataPtr(u.GetEthernetMacAddress()),
 			"enrollmentProfileName":        llx.StringDataPtr(u.GetEnrollmentProfileName()),
 			"windowsProtectionState":       llx.DictData(protectionState),
 			"complianceState":              llx.StringDataPtr(complianceState),
@@ -318,4 +347,110 @@ func (a *mqlMicrosoftDevicemanagement) deviceCompliancePolicies() ([]any, error)
 		res = append(res, mqlResource)
 	}
 	return res, nil
+}
+
+// detail returns the per-device detail properties, fetching them for every
+// listed managed device in one batched Graph call on first access.
+func (a *mqlMicrosoftDevicemanagementManageddevice) detail() (managedDeviceDetail, error) {
+	res, err := CreateResource(a.MqlRuntime, "microsoft.devicemanagement", nil)
+	if err != nil {
+		return managedDeviceDetail{}, err
+	}
+	dm := res.(*mqlMicrosoftDevicemanagement)
+	var ids []string
+	if list := dm.GetManagedDevices(); list.Error == nil {
+		ids = make([]string, 0, len(list.Data))
+		for _, item := range list.Data {
+			ids = append(ids, item.(*mqlMicrosoftDevicemanagementManageddevice).Id.Data)
+		}
+	}
+	v, err := dm.managedDeviceDetails.resolve(a.Id.Data, ids, dm.loadManagedDeviceDetails)
+	if err != nil {
+		return managedDeviceDetail{}, err
+	}
+	if v == nil {
+		return managedDeviceDetail{}, nil
+	}
+	return v.(managedDeviceDetail), nil
+}
+
+// loadManagedDeviceDetails issues one GET per managed device, selecting only
+// the detail properties, through the Graph $batch endpoint.
+func (a *mqlMicrosoftDevicemanagement) loadManagedDeviceDetails(ids []string) (map[string]any, map[string]error, error) {
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	return fetchManagedDeviceDetails(context.Background(), graphClient, ids)
+}
+
+// fetchManagedDeviceDetails reads the detail properties of each managed
+// device, keyed by device id. A per-device failure lands in the error map
+// without failing the others.
+func fetchManagedDeviceDetails(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, ids []string) (map[string]any, map[string]error, error) {
+	reqs := make([]batchItemRequest, 0, len(ids))
+	for _, id := range ids {
+		info, err := graphClient.DeviceManagement().ManagedDevices().ByManagedDeviceId(id).ToGetRequestInformation(ctx,
+			&devicemanagement.ManagedDevicesManagedDeviceItemRequestBuilderGetRequestConfiguration{
+				QueryParameters: &devicemanagement.ManagedDevicesManagedDeviceItemRequestBuilderGetQueryParameters{
+					Select: managedDeviceDetailFields,
+				},
+			})
+		if err != nil {
+			return nil, nil, transformError(err)
+		}
+		reqs = append(reqs, batchItemRequest{key: id, reqInfo: info})
+	}
+	batch, err := batchGet[models.ManagedDeviceable](ctx, graphClient.GetAdapter(), reqs, models.CreateManagedDeviceFromDiscriminatorValue)
+	if err != nil {
+		return nil, nil, err
+	}
+	data := make(map[string]any, len(ids))
+	for id, d := range batch.results {
+		data[id] = newManagedDeviceDetail(d)
+	}
+	return data, batch.errs, nil
+}
+
+func (a *mqlMicrosoftDevicemanagementManageddevice) udid() (string, error) {
+	d, err := a.detail()
+	if err != nil {
+		return "", err
+	}
+	return detailString(&a.Udid, d.udid), nil
+}
+
+func (a *mqlMicrosoftDevicemanagementManageddevice) iccid() (string, error) {
+	d, err := a.detail()
+	if err != nil {
+		return "", err
+	}
+	return detailString(&a.Iccid, d.iccid), nil
+}
+
+func (a *mqlMicrosoftDevicemanagementManageddevice) notes() (string, error) {
+	d, err := a.detail()
+	if err != nil {
+		return "", err
+	}
+	return detailString(&a.Notes, d.notes), nil
+}
+
+func (a *mqlMicrosoftDevicemanagementManageddevice) ethernetMacAddress() (string, error) {
+	d, err := a.detail()
+	if err != nil {
+		return "", err
+	}
+	return detailString(&a.EthernetMacAddress, d.ethernetMacAddress), nil
+}
+
+// detailString returns the value of an optional detail property, marking the
+// field null when Graph returned none so it reads as null rather than "".
+func detailString(field *plugin.TValue[string], v *string) string {
+	if v == nil {
+		field.State = plugin.StateIsSet | plugin.StateIsNull
+		return ""
+	}
+	return *v
 }

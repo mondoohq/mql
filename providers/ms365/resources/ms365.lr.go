@@ -19877,7 +19877,7 @@ func (c *mqlMicrosoftPasswordCredential) GetStartDateTime() *plugin.TValue[*time
 type mqlMicrosoftServiceprincipal struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlMicrosoftServiceprincipalInternal it will be used here
+	mqlMicrosoftServiceprincipalInternal
 	Id                         plugin.TValue[string]
 	Type                       plugin.TValue[string]
 	Name                       plugin.TValue[string]
@@ -20007,7 +20007,19 @@ func (c *mqlMicrosoftServiceprincipal) GetNotes() *plugin.TValue[string] {
 }
 
 func (c *mqlMicrosoftServiceprincipal) GetAssignments() *plugin.TValue[[]any] {
-	return &c.Assignments
+	return plugin.GetOrCompute[[]any](&c.Assignments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.serviceprincipal", c.__id, "assignments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.assignments()
+	})
 }
 
 func (c *mqlMicrosoftServiceprincipal) GetApplicationTemplateId() *plugin.TValue[string] {
@@ -24384,7 +24396,7 @@ func (c *mqlMicrosoftRolemanagementRoleassignment) GetPrincipal() *plugin.TValue
 type mqlMicrosoftDevicemanagement struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlMicrosoftDevicemanagementInternal it will be used here
+	mqlMicrosoftDevicemanagementInternal
 	ManagedDevices                     plugin.TValue[[]any]
 	DeviceConfigurations               plugin.TValue[[]any]
 	DeviceCompliancePolicies           plugin.TValue[[]any]
@@ -26364,19 +26376,27 @@ func (c *mqlMicrosoftDevicemanagementManageddevice) GetMeid() *plugin.TValue[str
 }
 
 func (c *mqlMicrosoftDevicemanagementManageddevice) GetIccid() *plugin.TValue[string] {
-	return &c.Iccid
+	return plugin.GetOrCompute[string](&c.Iccid, func() (string, error) {
+		return c.iccid()
+	})
 }
 
 func (c *mqlMicrosoftDevicemanagementManageddevice) GetUdid() *plugin.TValue[string] {
-	return &c.Udid
+	return plugin.GetOrCompute[string](&c.Udid, func() (string, error) {
+		return c.udid()
+	})
 }
 
 func (c *mqlMicrosoftDevicemanagementManageddevice) GetNotes() *plugin.TValue[string] {
-	return &c.Notes
+	return plugin.GetOrCompute[string](&c.Notes, func() (string, error) {
+		return c.notes()
+	})
 }
 
 func (c *mqlMicrosoftDevicemanagementManageddevice) GetEthernetMacAddress() *plugin.TValue[string] {
-	return &c.EthernetMacAddress
+	return plugin.GetOrCompute[string](&c.EthernetMacAddress, func() (string, error) {
+		return c.ethernetMacAddress()
+	})
 }
 
 func (c *mqlMicrosoftDevicemanagementManageddevice) GetEnrollmentProfileName() *plugin.TValue[string] {

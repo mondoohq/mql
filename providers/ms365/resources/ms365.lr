@@ -1947,7 +1947,7 @@ microsoft.serviceprincipal @defaults("name") {
   // Service principal notes
   notes string
   // List of users and groups assigned to this service principal
-  assignments []microsoft.serviceprincipal.assignment
+  assignments() []microsoft.serviceprincipal.assignment
   // Application template ID
   applicationTemplateId string
   // Verified publisher of the associated application
@@ -3623,7 +3623,19 @@ private microsoft.devicemanagement.configurationPolicy @defaults("name platforms
   createdDateTime time
   // Date and time the policy was last modified
   lastModifiedDateTime time
-  // Configured settings, each a dictionary of settingDefinitionId, settingType, and value
+  // Configured settings
+  //
+  // Each entry is a dict with keys `settingDefinitionId`, `settingType`,
+  // `value`, and `children`. `settingType` is one of `choice`, `simple`,
+  // `choiceCollection`, `simpleCollection`, `group`, `groupCollection`,
+  // `groupInstance`, or `unknown`. `value` holds the selected choice, the simple value, or a
+  // list of either for the collection types, and is null for groups. Secret
+  // values read as `***`. `children` lists the nested settings in the same
+  // shape: the settings under the selected choice (for example the BitLocker or
+  // firewall options that a top-level enable switch unlocks), or the members of
+  // a group. A `groupCollection` has one `groupInstance` child per configured
+  // group instance (such as one firewall rule), whose `children` are that
+  // instance's settings.
   settings() []dict
 }
 
@@ -3886,13 +3898,13 @@ private microsoft.devicemanagement.manageddevice {
   // Mobile Equipment Identifier (MEID)
   meid string
   // Integrated Circuit Card Identifier (ICCID)
-  iccid string
+  iccid() string
   // Unique Device Identifier (UDID) for iOS and macOS devices
-  udid string
+  udid() string
   // Notes on the device created by IT
-  notes string
+  notes() string
   // Ethernet MAC address of the device
-  ethernetMacAddress string
+  ethernetMacAddress() string
   // Name of the enrollment profile assigned to the device
   enrollmentProfileName string
   // Windows Defender protection state of the device

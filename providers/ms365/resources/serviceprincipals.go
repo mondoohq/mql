@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/serviceprincipals"
 	"github.com/rs/zerolog/log"
@@ -210,6 +211,12 @@ var servicePrincipalFields = []string{
 	"passwordCredentials",
 }
 
+type mqlMicrosoftServiceprincipalInternal struct {
+	// ids of the list this service principal was first created from; a
+	// per-principal batched field fetches them together
+	batchPeerIDs []string
+}
+
 func (m *mqlMicrosoftServiceprincipal) id() (string, error) {
 	return m.Id.Data, nil
 }
@@ -277,7 +284,6 @@ func (a *mqlMicrosoft) enterpriseApplications() ([]any, error) {
 	params := &serviceprincipals.ServicePrincipalsRequestBuilderGetQueryParameters{
 		Top:    &top,
 		Filter: &filter,
-		Expand: []string{"appRoleAssignedTo"},
 	}
 	return fetchServicePrincipals(a.MqlRuntime, conn, params, nil)
 }
@@ -309,12 +315,25 @@ func fetchServicePrincipals(runtime *plugin.Runtime, conn *connection.Ms365Conne
 	if err != nil {
 		return nil, transformError(err)
 	}
+	// the ids of this list are the batch peers for per-principal fields such
+	// as assignments, so enterprise applications batch among themselves
+	// instead of pulling in every service principal in the tenant
+	peerIDs := make([]string, 0, len(sps))
+	for _, sp := range sps {
+		if id := sp.GetId(); id != nil {
+			peerIDs = append(peerIDs, *id)
+		}
+	}
+
 	res := []any{}
 	for _, sp := range sps {
 		// create resource
 		mqlResource, err := newMqlMicrosoftServicePrincipal(runtime, sp)
 		if err != nil {
 			return nil, err
+		}
+		if mqlResource.batchPeerIDs == nil {
+			mqlResource.batchPeerIDs = peerIDs
 		}
 
 		// also fill up the index
@@ -331,18 +350,6 @@ func fetchServicePrincipals(runtime *plugin.Runtime, conn *connection.Ms365Conne
 
 func newMqlMicrosoftServicePrincipal(runtime *plugin.Runtime, sp models.ServicePrincipalable) (*mqlMicrosoftServiceprincipal, error) {
 	hideApp := stringx.Contains(sp.GetTags(), "HideApp")
-	assignments := []any{}
-	for _, a := range sp.GetAppRoleAssignedTo() {
-		assignment, err := CreateResource(runtime, "microsoft.serviceprincipal.assignment", map[string]*llx.RawData{
-			"id":          llx.StringDataPtr(a.GetId()),
-			"displayName": llx.StringDataPtr(a.GetPrincipalDisplayName()),
-			"type":        llx.StringDataPtr(a.GetPrincipalType()),
-		})
-		if err != nil {
-			return nil, err
-		}
-		assignments = append(assignments, assignment)
-	}
 
 	var appVerifiedOrganizationID string
 	if sp.GetAppOwnerOrganizationId() != nil {
@@ -415,7 +422,6 @@ func newMqlMicrosoftServicePrincipal(runtime *plugin.Runtime, sp models.ServiceP
 		"assignmentRequired":         llx.BoolDataPtr(sp.GetAppRoleAssignmentRequired()),
 		"visibleToUsers":             llx.BoolData(!hideApp),
 		"notes":                      llx.StringDataPtr(sp.GetNotes()),
-		"assignments":                llx.ArrayData(assignments, types.ResourceLike),
 		"applicationTemplateId":      llx.StringDataPtr(sp.GetApplicationTemplateId()),
 		"loginUrl":                   llx.StringDataPtr(sp.GetLoginUrl()),
 		"logoutUrl":                  llx.StringDataPtr(sp.GetLogoutUrl()),
@@ -458,6 +464,116 @@ func (a *mqlMicrosoftServiceprincipal) isFirstParty() (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+// assignments returns the users, groups, and service principals assigned to
+// this service principal. It is read from /servicePrincipals/{id}/appRoleAssignedTo
+// rather than from an $expand on the list call: $expand on a directory-object
+// relation is capped at 20 entries with no nextLink, and only one of the
+// lists that create this resource asked for it, so whichever list ran first
+// decided whether the cached resource had any assignments at all.
+func (a *mqlMicrosoftServiceprincipal) assignments() ([]any, error) {
+	ms, err := a.microsoftParent()
+	if err != nil {
+		return nil, err
+	}
+	v, err := ms.spBatches.assignments.resolve(a.Id.Data, a.batchPeerIDs, ms.loadServicePrincipalAssignments)
+	if err != nil {
+		return nil, err
+	}
+	if v == nil {
+		return []any{}, nil
+	}
+	return v.([]any), nil
+}
+
+// loadServicePrincipalAssignments fetches appRoleAssignedTo for the given
+// service principals in one batched Graph request, draining any nextLink of
+// each sub-response, and builds the microsoft.serviceprincipal.assignment
+// lists.
+func (m *mqlMicrosoft) loadServicePrincipalAssignments(ids []string) (map[string]any, map[string]error, error) {
+	conn := m.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	assigned, errs, err := fetchAppRoleAssignedTo(context.Background(), graphClient, ids)
+	if err != nil {
+		return nil, nil, err
+	}
+	data := make(map[string]any, len(assigned))
+	for id, list := range assigned {
+		res, err := newMqlServicePrincipalAssignments(m.MqlRuntime, list)
+		if err != nil {
+			errs[id] = err
+			continue
+		}
+		data[id] = res
+	}
+	return data, errs, nil
+}
+
+// fetchAppRoleAssignedTo returns the fully paged appRoleAssignedTo collection
+// of each service principal, keyed by service principal id. A per-principal
+// failure lands in the error map without failing the others.
+func fetchAppRoleAssignedTo(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, ids []string) (map[string][]models.AppRoleAssignmentable, map[string]error, error) {
+	top := int32(999)
+	reqs := make([]batchItemRequest, 0, len(ids))
+	for _, id := range ids {
+		info, err := graphClient.ServicePrincipals().ByServicePrincipalId(id).AppRoleAssignedTo().ToGetRequestInformation(ctx,
+			&serviceprincipals.ItemAppRoleAssignedToRequestBuilderGetRequestConfiguration{
+				QueryParameters: &serviceprincipals.ItemAppRoleAssignedToRequestBuilderGetQueryParameters{Top: &top},
+			})
+		if err != nil {
+			return nil, nil, transformError(err)
+		}
+		reqs = append(reqs, batchItemRequest{key: id, reqInfo: info})
+	}
+
+	batch, err := batchGet[*models.AppRoleAssignmentCollectionResponse](ctx, graphClient.GetAdapter(), reqs, models.CreateAppRoleAssignmentCollectionResponseFromDiscriminatorValue)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	adapter := graphClient.GetAdapter()
+	data := make(map[string][]models.AppRoleAssignmentable, len(ids))
+	errs := make(map[string]error)
+	for _, id := range ids {
+		if e := batch.errs[id]; e != nil {
+			errs[id] = e
+			continue
+		}
+		var assigned []models.AppRoleAssignmentable
+		if coll := batch.results[id]; coll != nil {
+			// a $batch sub-response carries only the first page
+			assigned, err = iterate[models.AppRoleAssignmentable](ctx, coll, adapter, models.CreateAppRoleAssignmentCollectionResponseFromDiscriminatorValue)
+			if err != nil {
+				errs[id] = err
+				continue
+			}
+		}
+		data[id] = assigned
+	}
+	return data, errs, nil
+}
+
+func newMqlServicePrincipalAssignments(runtime *plugin.Runtime, assigned []models.AppRoleAssignmentable) ([]any, error) {
+	res := []any{}
+	for _, a := range assigned {
+		if a == nil || a.GetId() == nil {
+			continue
+		}
+		assignment, err := CreateResource(runtime, "microsoft.serviceprincipal.assignment", map[string]*llx.RawData{
+			"id":          llx.StringDataPtr(a.GetId()),
+			"displayName": llx.StringDataPtr(a.GetPrincipalDisplayName()),
+			"type":        llx.StringDataPtr(a.GetPrincipalType()),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, assignment)
+	}
+	return res, nil
 }
 
 func (a *mqlMicrosoftServiceprincipal) permissions() ([]any, error) {

@@ -113,23 +113,30 @@ func (p *mqlMicrosoftDevicemanagementConfigurationPolicy) settings() ([]any, err
 }
 
 // flattenConfigurationSetting reduces a polymorphic setting instance to a
-// dictionary with its settingDefinitionId, settingType, and a best-effort
-// value. Group-collection settings nest arbitrarily deep, so their value is
-// left null and only the type is reported.
+// dictionary with its settingDefinitionId, settingType, a best-effort value,
+// and the nested settings under it as children, in the same shape.
+//
+// Most real configuration sits below the top level: a choice setting such as
+// "enable BitLocker" carries the dependent options as children of the selected
+// value, and a group setting holds its members as children. A group collection
+// (for example a list of firewall rules) has one groupInstance child per
+// configured instance, whose children are that instance's settings.
 func flattenConfigurationSetting(inst betamodels.DeviceManagementConfigurationSettingInstanceable) map[string]any {
 	d := map[string]any{}
 	if inst == nil {
 		return d
 	}
 	d["settingDefinitionId"] = convert.ToValue(inst.GetSettingDefinitionId())
-	// always present so consumers can rely on the key across all setting types
+	// always present so consumers can rely on the keys across all setting types
 	d["value"] = nil
+	children := []any{}
 
 	switch v := inst.(type) {
 	case betamodels.DeviceManagementConfigurationChoiceSettingInstanceable:
 		d["settingType"] = "choice"
 		if cv := v.GetChoiceSettingValue(); cv != nil {
 			d["value"] = convert.ToValue(cv.GetValue())
+			children = appendConfigurationSettings(children, cv.GetChildren())
 		}
 	case betamodels.DeviceManagementConfigurationSimpleSettingInstanceable:
 		d["settingType"] = "simple"
@@ -138,7 +145,11 @@ func flattenConfigurationSetting(inst betamodels.DeviceManagementConfigurationSe
 		d["settingType"] = "choiceCollection"
 		vals := []any{}
 		for _, cv := range v.GetChoiceSettingCollectionValue() {
+			if cv == nil {
+				continue
+			}
 			vals = append(vals, convert.ToValue(cv.GetValue()))
+			children = appendConfigurationSettings(children, cv.GetChildren())
 		}
 		d["value"] = vals
 	case betamodels.DeviceManagementConfigurationSimpleSettingCollectionInstanceable:
@@ -148,12 +159,40 @@ func flattenConfigurationSetting(inst betamodels.DeviceManagementConfigurationSe
 			vals = append(vals, simpleConfigurationSettingValue(sv))
 		}
 		d["value"] = vals
+	case betamodels.DeviceManagementConfigurationGroupSettingInstanceable:
+		d["settingType"] = "group"
+		if gv := v.GetGroupSettingValue(); gv != nil {
+			children = appendConfigurationSettings(children, gv.GetChildren())
+		}
 	case betamodels.DeviceManagementConfigurationGroupSettingCollectionInstanceable:
 		d["settingType"] = "groupCollection"
+		for _, gv := range v.GetGroupSettingCollectionValue() {
+			if gv == nil {
+				continue
+			}
+			children = append(children, map[string]any{
+				"settingDefinitionId": d["settingDefinitionId"],
+				"settingType":         "groupInstance",
+				"value":               nil,
+				"children":            appendConfigurationSettings([]any{}, gv.GetChildren()),
+			})
+		}
 	default:
 		d["settingType"] = "unknown"
 	}
+	d["children"] = children
 	return d
+}
+
+// appendConfigurationSettings flattens each nested setting instance onto dst.
+func appendConfigurationSettings(dst []any, insts []betamodels.DeviceManagementConfigurationSettingInstanceable) []any {
+	for _, child := range insts {
+		if child == nil {
+			continue
+		}
+		dst = append(dst, flattenConfigurationSetting(child))
+	}
+	return dst
 }
 
 func simpleConfigurationSettingValue(sv betamodels.DeviceManagementConfigurationSimpleSettingValueable) any {
