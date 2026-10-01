@@ -649,17 +649,20 @@ var elxr = &PlatformResolver{
 }
 
 // rhcos is Red Hat Enterprise Linux CoreOS, the immutable rpm-ostree based RHEL
-// variant that OpenShift runs its nodes on. Its os-release carries ID="rhcos"
-// with ID_LIKE="rhel fedora", and /etc/redhat-release reads like stock RHEL
-// ("Red Hat Enterprise Linux release 9.6 (Plow)"), so os-release ID is the only
-// thing that tells the two apart. It has to be resolved before rhel: the RHCOS
-// PRETTY_NAME starts with "Red Hat", which is enough for the rhel resolver to
-// claim the host and report it as plain redhat.
+// variant that OpenShift runs its nodes on. /etc/redhat-release reads like
+// stock RHEL ("Red Hat Enterprise Linux release 9.6 (Plow)"), so os-release is
+// the only thing that tells the two apart. Up to OpenShift 4.18 it carries
+// ID="rhcos". From 4.19 on RHCOS is layered on RHEL image mode and keeps
+// ID="rhel" and the RHEL VERSION_ID, leaving VARIANT_ID=coreos as the marker.
+// Fedora CoreOS shares that VARIANT_ID, so it only counts next to ID="rhel".
+// It has to be resolved before rhel: the RHCOS PRETTY_NAME starts with
+// "Red Hat", which is enough for the rhel resolver to claim the host and
+// report it as plain redhat.
 var rhcos = &PlatformResolver{
 	Name:     "rhcos",
 	IsFamily: false,
 	Detect: func(r *PlatformResolver, pf *inventory.Platform, conn shared.Connection) (bool, error) {
-		if pf.Name != "rhcos" {
+		if pf.Name != "rhcos" && pf.Name != "rhel" {
 			return false, nil
 		}
 
@@ -667,7 +670,14 @@ var rhcos = &PlatformResolver{
 		osr, err := osrd.osrelease()
 		if err != nil {
 			log.Debug().Err(err).Msg("platform> cannot parse os-release on this rhcos system")
-			return true, nil
+			return pf.Name == "rhcos", nil
+		}
+
+		if pf.Name == "rhel" {
+			if osr["VARIANT_ID"] != "coreos" {
+				return false, nil
+			}
+			pf.Name = "rhcos"
 		}
 
 		if len(osr["NAME"]) > 0 {
@@ -690,8 +700,11 @@ var rhcos = &PlatformResolver{
 			pf.Build = osr["OSTREE_VERSION"]
 		}
 
+		// RHCOS follows the OpenShift lifecycle, and the RHEL release can't stand
+		// in for it: RHEL 9.6 underlies OpenShift 4.19, 4.20 and 4.21
 		if len(osr["OPENSHIFT_VERSION"]) > 0 {
 			pf.Metadata["openshift/version"] = osr["OPENSHIFT_VERSION"]
+			pf.Labels["openshift-version"] = osr["OPENSHIFT_VERSION"]
 		}
 
 		return true, nil

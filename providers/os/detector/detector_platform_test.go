@@ -273,6 +273,23 @@ func TestRhcosDetector(t *testing.T) {
 	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
 	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
 	assert.Equal(t, "4.19", di.Metadata["openshift/version"], "openshift version should be identified")
+	assert.Equal(t, "4.19", di.Labels["openshift-version"], "openshift version label should be identified")
+}
+
+// From OpenShift 4.19 on, RHCOS reports ID="rhel" and only VARIANT_ID=coreos
+// tells it apart from stock RHEL.
+func TestRhcos419Detector(t *testing.T) {
+	di, err := detectPlatformFromMock("./testdata/detect-rhcos-4.19.toml")
+	assert.Nil(t, err, "was able to create the provider")
+
+	assert.Equal(t, "rhcos", di.Name, "os name should be identified")
+	assert.Equal(t, "Red Hat Enterprise Linux CoreOS", di.Title, "os title should be identified")
+	assert.Equal(t, "9.6", di.Version, "os version should be the rhel release")
+	assert.Equal(t, "9.6.20250523-0", di.Build, "image build should be identified")
+	assert.Equal(t, "x86_64", di.Arch, "os arch should be identified")
+	assert.Equal(t, []string{"redhat", "linux", "unix", "os"}, di.Family)
+	assert.Equal(t, "4.19", di.Labels["openshift-version"], "openshift version label should be identified")
+	assert.Equal(t, "4.19", di.Metadata["openshift/version"], "openshift version should be identified")
 }
 
 // rpm-ostree systems ship the real file at /usr/lib/os-release and symlink
