@@ -199,7 +199,7 @@ func Discover(runtime *plugin.Runtime) (*inventory.Inventory, error) {
 	if stringx.Contains(targets, connection.DiscoveryGradientaiAgents) {
 		opt := &godo.ListOptions{PerPage: 200}
 		for {
-			agents, resp, err := client.GradientAI.ListAgents(ctx, opt)
+			agents, resp, err := client.AgentPlatform.ListAgents(ctx, opt)
 			if err != nil {
 				return nil, err
 			}

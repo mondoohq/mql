@@ -147,7 +147,7 @@ func (r *mqlDigitaloceanGradientai) agents() ([]interface{}, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	agents, err := paginate(context.Background(), client.GradientAI.ListAgents)
+	agents, err := paginate(context.Background(), client.AgentPlatform.ListAgents)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +281,7 @@ func initDigitaloceanGradientaiAgent(runtime *plugin.Runtime, args map[string]*l
 	if uuid == "" {
 		return nil, nil, errors.New("digitalocean.gradientai.agent requires a uuid or a connected digitalocean-gradientai-agent asset")
 	}
-	agent, _, err := conn.Client().GradientAI.GetAgent(context.Background(), uuid)
+	agent, _, err := conn.Client().AgentPlatform.GetAgent(context.Background(), uuid)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -434,7 +434,7 @@ func (r *mqlDigitaloceanGradientaiAgent) versions() ([]interface{}, error) {
 	client := conn.Client()
 
 	versions, err := paginate(context.Background(), func(c context.Context, o *godo.ListOptions) ([]*godo.AgentVersion, *godo.Response, error) {
-		return client.GradientAI.ListAgentVersions(c, r.Uuid.Data, o)
+		return client.AgentPlatform.ListAgentVersions(c, r.Uuid.Data, o)
 	})
 	if err != nil {
 		return nil, err
@@ -484,7 +484,7 @@ func (r *mqlDigitaloceanGradientaiAgent) apiKeys() ([]interface{}, error) {
 	client := conn.Client()
 
 	keys, err := paginate(context.Background(), func(c context.Context, o *godo.ListOptions) ([]*godo.ApiKeyInfo, *godo.Response, error) {
-		return client.GradientAI.ListAgentAPIKeys(c, r.Uuid.Data, o)
+		return client.AgentPlatform.ListAgentAPIKeys(c, r.Uuid.Data, o)
 	})
 	if err != nil {
 		return nil, err
@@ -519,7 +519,7 @@ func (r *mqlDigitaloceanGradientai) models() ([]interface{}, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	models, err := paginate(context.Background(), client.GradientAI.ListAvailableModels)
+	models, err := paginate(context.Background(), client.AgentPlatform.ListAvailableModels)
 	if err != nil {
 		return nil, err
 	}
@@ -626,7 +626,7 @@ func (r *mqlDigitaloceanGradientai) customModels() ([]interface{}, error) {
 	var all []interface{}
 	opt := &godo.CustomModelListOptions{ListOptions: godo.ListOptions{PerPage: 200}}
 	for {
-		resp, httpResp, err := client.GradientAI.ListCustomModels(context.Background(), opt)
+		resp, httpResp, err := client.AgentPlatform.ListCustomModels(context.Background(), opt)
 		if err != nil {
 			return nil, err
 		}

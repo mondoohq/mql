@@ -20,7 +20,7 @@ func (r *mqlDigitaloceanGradientai) anthropicApiKeys() ([]interface{}, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	keys, err := paginate(context.Background(), client.GradientAI.ListAnthropicAPIKeys)
+	keys, err := paginate(context.Background(), client.AgentPlatform.ListAnthropicAPIKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +62,7 @@ func (r *mqlDigitaloceanGradientaiAnthropicApiKey) agents() ([]interface{}, erro
 	client := conn.Client()
 
 	agents, err := paginate(context.Background(), func(c context.Context, o *godo.ListOptions) ([]*godo.Agent, *godo.Response, error) {
-		return client.GradientAI.ListAgentsByAnthropicAPIKey(c, r.Uuid.Data, o)
+		return client.AgentPlatform.ListAgentsByAnthropicAPIKey(c, r.Uuid.Data, o)
 	})
 	if err != nil {
 		return nil, err
@@ -87,7 +87,7 @@ func (r *mqlDigitaloceanGradientai) openaiApiKeys() ([]interface{}, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	keys, err := paginate(context.Background(), client.GradientAI.ListOpenAIAPIKeys)
+	keys, err := paginate(context.Background(), client.AgentPlatform.ListOpenAIAPIKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +149,7 @@ func (r *mqlDigitaloceanGradientaiOpenaiApiKey) agents() ([]interface{}, error) 
 	client := conn.Client()
 
 	agents, err := paginate(context.Background(), func(c context.Context, o *godo.ListOptions) ([]*godo.Agent, *godo.Response, error) {
-		return client.GradientAI.ListAgentsByOpenAIAPIKey(c, r.Uuid.Data, o)
+		return client.AgentPlatform.ListAgentsByOpenAIAPIKey(c, r.Uuid.Data, o)
 	})
 	if err != nil {
 		return nil, err

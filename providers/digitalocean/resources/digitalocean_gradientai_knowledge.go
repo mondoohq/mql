@@ -46,7 +46,7 @@ func (r *mqlDigitaloceanGradientai) knowledgeBases() ([]interface{}, error) {
 	conn := r.MqlRuntime.Connection.(*connection.DigitaloceanConnection)
 	client := conn.Client()
 
-	kbs, err := paginate(context.Background(), client.GradientAI.ListKnowledgeBases)
+	kbs, err := paginate(context.Background(), client.AgentPlatform.ListKnowledgeBases)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +143,7 @@ func (r *mqlDigitaloceanGradientaiKnowledgeBase) dataSources() ([]interface{}, e
 	client := conn.Client()
 
 	sources, err := paginate(context.Background(), func(c context.Context, o *godo.ListOptions) ([]godo.KnowledgeBaseDataSource, *godo.Response, error) {
-		return client.GradientAI.ListKnowledgeBaseDataSources(c, r.Uuid.Data, o)
+		return client.AgentPlatform.ListKnowledgeBaseDataSources(c, r.Uuid.Data, o)
 	})
 	if err != nil {
 		return nil, err
@@ -208,7 +208,7 @@ func (r *mqlDigitaloceanGradientai) indexingJobs() ([]interface{}, error) {
 	var all []interface{}
 	opt := &godo.ListOptions{PerPage: 200}
 	for {
-		resp, httpResp, err := client.GradientAI.ListIndexingJobs(context.Background(), opt)
+		resp, httpResp, err := client.AgentPlatform.ListIndexingJobs(context.Background(), opt)
 		if err != nil {
 			return nil, err
 		}
