@@ -9,6 +9,8 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 
 	abstractions "github.com/microsoft/kiota-abstractions-go"
+	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
+	"github.com/microsoftgraph/msgraph-sdk-go/directoryobjects"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/rolemanagement"
 	"github.com/rs/zerolog/log"
@@ -220,40 +222,16 @@ func (a *mqlMicrosoftRolemanagementRoledefinition) assignments() ([]any, error) 
 	if err != nil {
 		return nil, err
 	}
-	roleDefinitionId := a.Id.Data
-	filter := "roleDefinitionId eq '" + roleDefinitionId + "'"
-	requestConfig := &rolemanagement.DirectoryRoleAssignmentsRequestBuilderGetRequestConfiguration{
-		QueryParameters: &rolemanagement.DirectoryRoleAssignmentsRequestBuilderGetQueryParameters{
-			Filter: &filter,
-			Expand: []string{"principal"},
-		},
-	}
-	ctx := context.Background()
-	resp, err := graphClient.RoleManagement().Directory().RoleAssignments().Get(ctx, requestConfig)
-	if err != nil {
-		// Graph answers Request_ResourceNotFound when the role definition has
-		// no directory role behind it to hold assignments. Several built-in
-		// definitions are templates a tenant never instantiates, and they are
-		// returned by roleDefinitions all the same, so this is reachable on
-		// every tenant. It means "this role has no assignments to enumerate",
-		// not "the request failed" -- and returning the error would fail the
-		// caller's whole role list, since assignments is resolved per role.
-		if isResourceNotFound(err) {
-			log.Debug().
-				Str("roleDefinitionId", roleDefinitionId).
-				Msg("ms365> role definition has no assignable directory role; reporting no assignments")
-			return []any{}, nil
-		}
-		return nil, transformError(err)
-	}
-	roleAssignments, err := iterate[models.UnifiedRoleAssignmentable](ctx, resp, graphClient.GetAdapter(), models.CreateUnifiedRoleAssignmentCollectionResponseFromDiscriminatorValue)
+
+	rows, err := fetchRoleDefinitionAssignments(context.Background(), graphClient, a.Id.Data)
 	if err != nil {
 		return nil, err
 	}
 
 	res := []any{}
-	for _, roleAssignment := range roleAssignments {
-		directoryPrincipal := roleAssignment.GetPrincipal()
+	for _, row := range rows {
+		roleAssignment := row.assignment
+		directoryPrincipal := row.principal
 		principal, err := convert.JsonToDict(newDirectoryPrincipal(directoryPrincipal))
 		if err != nil {
 			return nil, err
@@ -275,6 +253,115 @@ func (a *mqlMicrosoftRolemanagementRoledefinition) assignments() ([]any, error) 
 			mqlRoleAssignment.cacheRoleDefinitionID = *roleDefinitionID
 		}
 		res = append(res, mqlRoleAssignment)
+	}
+	return res, nil
+}
+
+// roleAssignmentRow is one role assignment with its principal, which is nil
+// when the principal no longer exists in the directory.
+type roleAssignmentRow struct {
+	assignment models.UnifiedRoleAssignmentable
+	principal  models.DirectoryObjectable
+}
+
+// fetchRoleDefinitionAssignments lists the assignments of one role definition
+// with their principals.
+//
+// The list is requested with $expand=principal. Graph fails that whole request
+// with Request_ResourceNotFound when a single assignment points at a deleted
+// principal, so a not-found answer is ambiguous: it can mean one dangling
+// assignment hides every live one. The request is repeated without $expand to
+// tell the cases apart, and the principals are then read in bulk; a principal
+// that is gone is left nil. Only when that second request is also not found
+// does the role have no assignments to list: several built-in definitions are
+// templates a tenant never instantiates, and roleDefinitions returns them all
+// the same.
+func fetchRoleDefinitionAssignments(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, roleDefinitionId string) ([]roleAssignmentRow, error) {
+	filter := "roleDefinitionId eq '" + roleDefinitionId + "'"
+	list := func(expand []string) ([]models.UnifiedRoleAssignmentable, error) {
+		resp, err := graphClient.RoleManagement().Directory().RoleAssignments().Get(ctx, &rolemanagement.DirectoryRoleAssignmentsRequestBuilderGetRequestConfiguration{
+			QueryParameters: &rolemanagement.DirectoryRoleAssignmentsRequestBuilderGetQueryParameters{
+				Filter: &filter,
+				Expand: expand,
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		return iterate[models.UnifiedRoleAssignmentable](ctx, resp, graphClient.GetAdapter(), models.CreateUnifiedRoleAssignmentCollectionResponseFromDiscriminatorValue)
+	}
+
+	assignments, err := list([]string{"principal"})
+	if err == nil {
+		rows := make([]roleAssignmentRow, 0, len(assignments))
+		for _, assignment := range assignments {
+			rows = append(rows, roleAssignmentRow{assignment: assignment, principal: assignment.GetPrincipal()})
+		}
+		return rows, nil
+	}
+	if !isResourceNotFound(err) {
+		return nil, transformError(err)
+	}
+
+	assignments, err = list(nil)
+	if err != nil {
+		if isResourceNotFound(err) {
+			log.Debug().
+				Str("roleDefinitionId", roleDefinitionId).
+				Msg("ms365> role definition has no assignable directory role; reporting no assignments")
+			return []roleAssignmentRow{}, nil
+		}
+		return nil, transformError(err)
+	}
+
+	log.Debug().
+		Str("roleDefinitionId", roleDefinitionId).
+		Msg("ms365> role assignments reference a deleted principal; resolving principals separately")
+
+	principalIds := []string{}
+	for _, assignment := range assignments {
+		if id := assignment.GetPrincipalId(); id != nil && *id != "" {
+			principalIds = append(principalIds, *id)
+		}
+	}
+	principals, err := fetchDirectoryObjectsByIds(ctx, graphClient, principalIds)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]roleAssignmentRow, 0, len(assignments))
+	for _, assignment := range assignments {
+		row := roleAssignmentRow{assignment: assignment}
+		if id := assignment.GetPrincipalId(); id != nil {
+			row.principal = principals[*id]
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+// directoryObjectsByIdsBatchSize is the most ids directoryObjects/getByIds
+// accepts in one request.
+const directoryObjectsByIdsBatchSize = 1000
+
+// fetchDirectoryObjectsByIds reads directory objects by id, keyed by id. An id
+// that no longer exists is simply absent from the result.
+func fetchDirectoryObjectsByIds(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient, ids []string) (map[string]models.DirectoryObjectable, error) {
+	res := map[string]models.DirectoryObjectable{}
+	for start := 0; start < len(ids); start += directoryObjectsByIdsBatchSize {
+		end := min(start+directoryObjectsByIdsBatchSize, len(ids))
+		body := directoryobjects.NewGetByIdsPostRequestBody()
+		body.SetIds(ids[start:end])
+		resp, err := graphClient.DirectoryObjects().GetByIds().PostAsGetByIdsPostResponse(ctx, body, nil)
+		if err != nil {
+			return nil, transformError(err)
+		}
+		for _, obj := range resp.GetValue() {
+			if obj == nil || obj.GetId() == nil {
+				continue
+			}
+			res[*obj.GetId()] = obj
+		}
 	}
 	return res, nil
 }

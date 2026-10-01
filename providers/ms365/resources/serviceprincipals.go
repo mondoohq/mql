@@ -258,6 +258,9 @@ func initMicrosoftServiceprincipal(runtime *plugin.Runtime, args map[string]*llx
 	}
 	microsoftResource := mqlResource.(*mqlMicrosoft)
 	servicePrincipalList := microsoftResource.GetServiceprincipals()
+	if servicePrincipalList.Error != nil {
+		return nil, nil, servicePrincipalList.Error
+	}
 	for i := range servicePrincipalList.Data {
 		sp := servicePrincipalList.Data[i].(*mqlMicrosoftServiceprincipal)
 		if filter(sp) {
@@ -265,8 +268,13 @@ func initMicrosoftServiceprincipal(runtime *plugin.Runtime, args map[string]*llx
 		}
 	}
 
-	return nil, nil, errors.New("service principal not found")
+	return nil, nil, errServicePrincipalNotFound
 }
+
+// errServicePrincipalNotFound is what initMicrosoftServiceprincipal returns
+// when the tenant's full service principal list holds no match, which is how
+// a reference to a deleted service principal surfaces.
+var errServicePrincipalNotFound = errors.New("service principal not found")
 
 // enterprise applications are just service principals with a special tag, attached to them
 // this is the same way the portal UI fetches the enterprise apps by looking for the tag

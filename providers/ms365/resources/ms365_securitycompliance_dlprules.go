@@ -46,6 +46,12 @@ func (r *mqlMs365ExchangeonlineSecurityAndCompliance) dlpRules() ([]any, error) 
 	if err != nil {
 		return nil, err
 	}
+	// a cmdlet that failed leaves its section null; reporting that as an
+	// empty list would claim the tenant has none
+	if report == nil || report.DlpComplianceRule == nil {
+		r.DlpRules.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
 	return convertDlpComplianceRules(r.MqlRuntime, report.DlpComplianceRule)
 }
 

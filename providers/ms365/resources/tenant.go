@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 
+	betamodels "github.com/microsoftgraph/msgraph-beta-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/directory"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/organization"
@@ -352,22 +353,19 @@ func (a *mqlMicrosoftTenant) settings() (*mqlMicrosoftTenantSettings, error) {
 	if err != nil {
 		return nil, transformError(err)
 	}
+	return a.settingsFrom(appsAndServicesConfig)
+}
 
-	settingsId := fmt.Sprintf("%s-settings", a.Id.Data)
-
+// settingsFrom builds the tenant settings from the admin appsAndServices
+// answer. An answer without settings reads null rather than as both switches
+// off: nothing was read, so nothing can be claimed about either.
+func (a *mqlMicrosoftTenant) settingsFrom(appsAndServicesConfig betamodels.AdminAppsAndServicesable) (*mqlMicrosoftTenantSettings, error) {
 	if appsAndServicesConfig == nil || appsAndServicesConfig.GetSettings() == nil {
-		mqlSettings, err := CreateResource(a.MqlRuntime, "microsoft.tenantSettings",
-			map[string]*llx.RawData{
-				"__id":                         llx.StringData(settingsId),
-				"isAppAndServicesTrialEnabled": llx.BoolData(false),
-				"isOfficeStoreEnabled":         llx.BoolData(false),
-			})
-		if err != nil {
-			return nil, err
-		}
-		return mqlSettings.(*mqlMicrosoftTenantSettings), nil
+		a.Settings.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
 	}
 
+	settingsId := fmt.Sprintf("%s-settings", a.Id.Data)
 	mqlSettings, err := CreateResource(a.MqlRuntime, "microsoft.tenantSettings",
 		map[string]*llx.RawData{
 			"__id":                         llx.StringData(settingsId),
@@ -394,14 +392,17 @@ func (a *mqlMicrosoftTenant) formsSettings() (*mqlMicrosoftTenantFormsSettings, 
 		return nil, transformError(err)
 	}
 
-	if formsSetting == nil {
-		return nil, nil
-	}
+	return a.formsSettingsFrom(formsSetting)
+}
 
-	settings := formsSetting.GetSettings()
-	if settings == nil {
+// formsSettingsFrom builds the Forms settings from the admin forms answer. An
+// answer without settings reads null.
+func (a *mqlMicrosoftTenant) formsSettingsFrom(formsSetting betamodels.AdminFormsable) (*mqlMicrosoftTenantFormsSettings, error) {
+	if formsSetting == nil || formsSetting.GetSettings() == nil {
+		a.FormsSettings.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
 	}
+	settings := formsSetting.GetSettings()
 
 	formsSettingId := fmt.Sprintf("%s-forms-settings", a.Id.Data)
 

@@ -28,6 +28,19 @@ const (
 	complianceScope = "https://ps.compliance.protection.outlook.com/.default"
 )
 
+// Both report scripts follow the same two rules, so a failure reads as null or
+// as an error and never as "this tenant has none":
+//
+//   - a failed Connect-* ends the script with a non-zero exit code. Without a
+//     session every cmdlet after it fails, and each would otherwise be reported
+//     as an empty result.
+//   - every section runs its cmdlet with -ErrorAction Stop inside try/catch and
+//     falls back to $null. A cmdlet that fails non-terminating (a missing role,
+//     a cmdlet the tenant's plan lacks) still yields @(), which serializes to []
+//     and reports "none found" as fact; $null serializes to null and the field
+//     reads null instead. List sections keep @(...) INSIDE the try, because
+//     @($null) is a one-element array holding null, not null.
+
 var securityAndComplianceReport = `
 $appId = '%s'
 $organization = '%s'
@@ -36,12 +49,16 @@ $complianceToken = '%s'
 
 Install-Module -Name ExchangeOnlineManagement -Scope CurrentUser -Force
 Import-Module ExchangeOnlineManagement
-Connect-IPPSSession -AccessToken $complianceToken -AppID $appId -Organization $organization -ShowBanner:$false
-$DlpCompliancePolicy = @(Get-DlpCompliancePolicy)
-$DlpComplianceRule = @(Get-DlpComplianceRule)
-# a cmdlet that fails non-terminating still yields @(), which serializes to []
-# and would report "this tenant publishes no label policies" as fact; $null
-# serializes to null and the field reads null instead
+try {
+  Connect-IPPSSession -AccessToken $complianceToken -AppID $appId -Organization $organization -ShowBanner:$false -ErrorAction Stop
+} catch {
+  [Console]::Error.WriteLine("unable to connect to security and compliance powershell: $_")
+  exit 1
+}
+$DlpCompliancePolicy = $null
+try { $DlpCompliancePolicy = @(Get-DlpCompliancePolicy -ErrorAction Stop) } catch { $DlpCompliancePolicy = $null }
+$DlpComplianceRule = $null
+try { $DlpComplianceRule = @(Get-DlpComplianceRule -ErrorAction Stop) } catch { $DlpComplianceRule = $null }
 $LabelPolicy = $null
 try { $LabelPolicy = @(Get-LabelPolicy -ErrorAction Stop) } catch { $LabelPolicy = $null }
 $securityAndCompliance = @{ DlpCompliancePolicy = $DlpCompliancePolicy; DlpComplianceRule = $DlpComplianceRule; LabelPolicy = $LabelPolicy }
@@ -57,38 +74,69 @@ $outlookToken= '%s'
 
 Install-Module -Name ExchangeOnlineManagement -Scope CurrentUser -Force
 Import-Module ExchangeOnlineManagement
-Connect-ExchangeOnline -AccessToken $outlookToken -AppID $appId -Organization $organization -ShowBanner:$false -ShowProgress:$false
-$MailboxAuditBypassAssociation = (Get-MailboxAuditBypassAssociation -ResultSize Unlimited)
+try {
+  Connect-ExchangeOnline -AccessToken $outlookToken -AppID $appId -Organization $organization -ShowBanner:$false -ShowProgress:$false -ErrorAction Stop
+} catch {
+  [Console]::Error.WriteLine("unable to connect to exchange online powershell: $_")
+  exit 1
+}
 
-$MalwareFilterPolicy = (Get-MalwareFilterPolicy)
-$HostedOutboundSpamFilterPolicy = (Get-HostedOutboundSpamFilterPolicy)
-$HostedContentFilterPolicy = (Get-HostedContentFilterPolicy)
-$TransportRule = (Get-TransportRule)
-$RemoteDomain = (Get-RemoteDomain Default)
-$SafeLinksPolicy = (Get-SafeLinksPolicy)
-$SafeAttachmentPolicy = (Get-SafeAttachmentPolicy)
-$OrganizationConfig = (Get-OrganizationConfig)
-$AuthenticationPolicy = (Get-AuthenticationPolicy)
-$AntiPhishPolicy = (Get-AntiPhishPolicy)
-$DkimSigningConfig = (Get-DkimSigningConfig)
-$OwaMailboxPolicy = (Get-OwaMailboxPolicy)
-$AdminAuditLogConfig = (Get-AdminAuditLogConfig)
-$PhishFilterPolicy = (Get-PhishFilterPolicy)
-$QuarantinePolicy = (Get-QuarantinePolicy)
-$JournalRule = (Get-JournalRule)
-$MailboxPlan = (Get-MailboxPlan)
-$RetentionPolicy = (Get-RetentionPolicy)
-$Mailbox = (Get-Mailbox -ResultSize Unlimited | Select-Object Identity, DisplayName, PrimarySmtpAddress, RecipientTypeDetails, AuditEnabled, AuditAdmin, AuditDelegate, AuditOwner, AuditLogAgeLimit)
-$AtpPolicyForO365 = (Get-AtpPolicyForO365)
-$SharingPolicy = (Get-SharingPolicy)
-$RoleAssignmentPolicy = (Get-RoleAssignmentPolicy)
-$ExternalInOutlook = (Get-ExternalInOutlook)
-$ExoMailbox = (Get-EXOMailbox -ResultSize Unlimited -RecipientTypeDetails SharedMailbox | Select-Object Identity, ExternalDirectoryObjectId)
-$TeamsProtectionPolicy = (Get-TeamsProtectionPolicy)
-$ReportSubmissionPolicy = (Get-ReportSubmissionPolicy)
-$TransportConfig = (Get-TransportConfig)
-# see the note on $LabelPolicy: these three answer questions that turn on the
-# result being empty, so a failed cmdlet has to read null rather than empty
+$MailboxAuditBypassAssociation = $null
+try { $MailboxAuditBypassAssociation = @(Get-MailboxAuditBypassAssociation -ResultSize Unlimited -ErrorAction Stop) } catch { $MailboxAuditBypassAssociation = $null }
+$MalwareFilterPolicy = $null
+try { $MalwareFilterPolicy = @(Get-MalwareFilterPolicy -ErrorAction Stop) } catch { $MalwareFilterPolicy = $null }
+$HostedOutboundSpamFilterPolicy = $null
+try { $HostedOutboundSpamFilterPolicy = @(Get-HostedOutboundSpamFilterPolicy -ErrorAction Stop) } catch { $HostedOutboundSpamFilterPolicy = $null }
+$HostedContentFilterPolicy = $null
+try { $HostedContentFilterPolicy = @(Get-HostedContentFilterPolicy -ErrorAction Stop) } catch { $HostedContentFilterPolicy = $null }
+$TransportRule = $null
+try { $TransportRule = @(Get-TransportRule -ErrorAction Stop) } catch { $TransportRule = $null }
+$RemoteDomain = $null
+try { $RemoteDomain = @(Get-RemoteDomain Default -ErrorAction Stop) } catch { $RemoteDomain = $null }
+$SafeLinksPolicy = $null
+try { $SafeLinksPolicy = @(Get-SafeLinksPolicy -ErrorAction Stop) } catch { $SafeLinksPolicy = $null }
+$SafeAttachmentPolicy = $null
+try { $SafeAttachmentPolicy = @(Get-SafeAttachmentPolicy -ErrorAction Stop) } catch { $SafeAttachmentPolicy = $null }
+$OrganizationConfig = $null
+try { $OrganizationConfig = (Get-OrganizationConfig -ErrorAction Stop) } catch { $OrganizationConfig = $null }
+$AuthenticationPolicy = $null
+try { $AuthenticationPolicy = @(Get-AuthenticationPolicy -ErrorAction Stop) } catch { $AuthenticationPolicy = $null }
+$AntiPhishPolicy = $null
+try { $AntiPhishPolicy = @(Get-AntiPhishPolicy -ErrorAction Stop) } catch { $AntiPhishPolicy = $null }
+$DkimSigningConfig = $null
+try { $DkimSigningConfig = @(Get-DkimSigningConfig -ErrorAction Stop) } catch { $DkimSigningConfig = $null }
+$OwaMailboxPolicy = $null
+try { $OwaMailboxPolicy = @(Get-OwaMailboxPolicy -ErrorAction Stop) } catch { $OwaMailboxPolicy = $null }
+$AdminAuditLogConfig = $null
+try { $AdminAuditLogConfig = (Get-AdminAuditLogConfig -ErrorAction Stop) } catch { $AdminAuditLogConfig = $null }
+$PhishFilterPolicy = $null
+try { $PhishFilterPolicy = @(Get-PhishFilterPolicy -ErrorAction Stop) } catch { $PhishFilterPolicy = $null }
+$QuarantinePolicy = $null
+try { $QuarantinePolicy = @(Get-QuarantinePolicy -ErrorAction Stop) } catch { $QuarantinePolicy = $null }
+$JournalRule = $null
+try { $JournalRule = @(Get-JournalRule -ErrorAction Stop) } catch { $JournalRule = $null }
+$MailboxPlan = $null
+try { $MailboxPlan = @(Get-MailboxPlan -ErrorAction Stop) } catch { $MailboxPlan = $null }
+$RetentionPolicy = $null
+try { $RetentionPolicy = @(Get-RetentionPolicy -ErrorAction Stop) } catch { $RetentionPolicy = $null }
+$Mailbox = $null
+try { $Mailbox = @(Get-Mailbox -ResultSize Unlimited -ErrorAction Stop | Select-Object Identity, DisplayName, PrimarySmtpAddress, RecipientTypeDetails, AuditEnabled, AuditAdmin, AuditDelegate, AuditOwner, AuditLogAgeLimit) } catch { $Mailbox = $null }
+$AtpPolicyForO365 = $null
+try { $AtpPolicyForO365 = @(Get-AtpPolicyForO365 -ErrorAction Stop) } catch { $AtpPolicyForO365 = $null }
+$SharingPolicy = $null
+try { $SharingPolicy = @(Get-SharingPolicy -ErrorAction Stop) } catch { $SharingPolicy = $null }
+$RoleAssignmentPolicy = $null
+try { $RoleAssignmentPolicy = @(Get-RoleAssignmentPolicy -ErrorAction Stop) } catch { $RoleAssignmentPolicy = $null }
+$ExternalInOutlook = $null
+try { $ExternalInOutlook = @(Get-ExternalInOutlook -ErrorAction Stop) } catch { $ExternalInOutlook = $null }
+$ExoMailbox = $null
+try { $ExoMailbox = @(Get-EXOMailbox -ResultSize Unlimited -RecipientTypeDetails SharedMailbox -ErrorAction Stop | Select-Object Identity, ExternalDirectoryObjectId) } catch { $ExoMailbox = $null }
+$TeamsProtectionPolicy = $null
+try { $TeamsProtectionPolicy = @(Get-TeamsProtectionPolicy -ErrorAction Stop) } catch { $TeamsProtectionPolicy = $null }
+$ReportSubmissionPolicy = $null
+try { $ReportSubmissionPolicy = @(Get-ReportSubmissionPolicy -ErrorAction Stop) } catch { $ReportSubmissionPolicy = $null }
+$TransportConfig = $null
+try { $TransportConfig = (Get-TransportConfig -ErrorAction Stop) } catch { $TransportConfig = $null }
 $EmailTenantSettings = $null
 try { $EmailTenantSettings = (Get-EmailTenantSettings -ErrorAction Stop) } catch { $EmailTenantSettings = $null }
 $EOPProtectionPolicyRule = $null
@@ -97,34 +145,34 @@ $ATPProtectionPolicyRule = $null
 try { $ATPProtectionPolicyRule = @(Get-ATPProtectionPolicyRule -ErrorAction Stop) } catch { $ATPProtectionPolicyRule = $null }
 
 $exchangeOnline = New-Object PSObject
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name MalwareFilterPolicy -Value @($MalwareFilterPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name HostedOutboundSpamFilterPolicy -Value @($HostedOutboundSpamFilterPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name HostedContentFilterPolicy -Value @($HostedContentFilterPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name TransportRule -Value @($TransportRule)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name RemoteDomain -Value  @($RemoteDomain)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name SafeLinksPolicy -Value @($SafeLinksPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name SafeAttachmentPolicy -Value @($SafeAttachmentPolicy)
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name MalwareFilterPolicy -Value $MalwareFilterPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name HostedOutboundSpamFilterPolicy -Value $HostedOutboundSpamFilterPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name HostedContentFilterPolicy -Value $HostedContentFilterPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name TransportRule -Value $TransportRule
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name RemoteDomain -Value $RemoteDomain
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name SafeLinksPolicy -Value $SafeLinksPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name SafeAttachmentPolicy -Value $SafeAttachmentPolicy
 Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name OrganizationConfig -Value $OrganizationConfig
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name AuthenticationPolicy -Value @($AuthenticationPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name AntiPhishPolicy -Value @($AntiPhishPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name DkimSigningConfig -Value @($DkimSigningConfig)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name OwaMailboxPolicy -Value @($OwaMailboxPolicy)
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name AuthenticationPolicy -Value $AuthenticationPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name AntiPhishPolicy -Value $AntiPhishPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name DkimSigningConfig -Value $DkimSigningConfig
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name OwaMailboxPolicy -Value $OwaMailboxPolicy
 Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name AdminAuditLogConfig -Value $AdminAuditLogConfig
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name PhishFilterPolicy -Value @($PhishFilterPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name QuarantinePolicy -Value @($QuarantinePolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name JournalRule -Value @($JournalRule)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name MailboxPlan -Value @($MailboxPlan)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name RetentionPolicy -Value @($RetentionPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name Mailbox -Value @($Mailbox)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name AtpPolicyForO365 -Value @($AtpPolicyForO365)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name SharingPolicy -Value @($SharingPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name RoleAssignmentPolicy -Value @($RoleAssignmentPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name ExternalInOutlook -Value @($ExternalInOutlook)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name ExoMailbox -Value @($ExoMailbox)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name TeamsProtectionPolicy -Value @($TeamsProtectionPolicy)
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name ReportSubmissionPolicy -Value @($ReportSubmissionPolicy)
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name PhishFilterPolicy -Value $PhishFilterPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name QuarantinePolicy -Value $QuarantinePolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name JournalRule -Value $JournalRule
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name MailboxPlan -Value $MailboxPlan
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name RetentionPolicy -Value $RetentionPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name Mailbox -Value $Mailbox
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name AtpPolicyForO365 -Value $AtpPolicyForO365
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name SharingPolicy -Value $SharingPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name RoleAssignmentPolicy -Value $RoleAssignmentPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name ExternalInOutlook -Value $ExternalInOutlook
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name ExoMailbox -Value $ExoMailbox
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name TeamsProtectionPolicy -Value $TeamsProtectionPolicy
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name ReportSubmissionPolicy -Value $ReportSubmissionPolicy
 Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name TransportConfig -Value $TransportConfig
-Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name MailboxAuditBypassAssociation -Value @($MailboxAuditBypassAssociation)
+Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name MailboxAuditBypassAssociation -Value $MailboxAuditBypassAssociation
 Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name EmailTenantSettings -Value $EmailTenantSettings
 Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name EOPProtectionPolicyRule -Value $EOPProtectionPolicyRule
 Add-Member -InputObject $exchangeOnline -MemberType NoteProperty -Name ATPProtectionPolicyRule -Value $ATPProtectionPolicyRule

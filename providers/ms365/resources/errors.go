@@ -51,6 +51,18 @@ func isResourceNotFound(err error) bool {
 	return graphErrorCode(err) == "Request_ResourceNotFound"
 }
 
+// graphRequestError is the readable message transformError builds for a Graph
+// failure. It keeps the ODataError as its cause so graphErrorCode, and with it
+// isResourceNotFound, still answers for an error that went through
+// transformError, as every resource init does.
+type graphRequestError struct {
+	msg   string
+	cause error
+}
+
+func (e *graphRequestError) Error() string { return e.msg }
+func (e *graphRequestError) Unwrap() error { return e.cause }
+
 func transformError(err error) error {
 	var betaOdataErr *betaodataerrors.ODataError
 	if errors.As(err, &betaOdataErr) {
@@ -58,10 +70,13 @@ func transformError(err error) error {
 
 		errorPayload := betaOdataErr.GetErrorEscaped()
 		if errorPayload != nil && errorPayload.GetMessage() != nil {
-			return fmt.Errorf("an API error while performing request Code: %d, Message: %s", statusCode, *errorPayload.GetMessage())
+			return &graphRequestError{
+				msg:   fmt.Sprintf("an API error while performing request Code: %d, Message: %s", statusCode, *errorPayload.GetMessage()),
+				cause: err,
+			}
 		}
 
-		return fmt.Errorf("an API error occurred with HTTP status code %d", statusCode)
+		return &graphRequestError{msg: fmt.Sprintf("an API error occurred with HTTP status code %d", statusCode), cause: err}
 	}
 
 	oDataErr, ok := err.(*odataerrors.ODataError)
@@ -74,7 +89,10 @@ func transformError(err error) error {
 			if m := err.GetMessage(); m != nil {
 				msg = *m
 			}
-			return errors.Newf("error while performing request. Code: %s, Message: %s", code, msg)
+			return &graphRequestError{
+				msg:   fmt.Sprintf("error while performing request. Code: %s, Message: %s", code, msg),
+				cause: oDataErr,
+			}
 		}
 	}
 	return err
