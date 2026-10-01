@@ -13015,10 +13015,11 @@ azure.subscription.aksService.cluster @defaults("name location kubernetesVersion
   // Keys: `azureKeyVaultKms` (`{enabled, keyId, keyVaultNetworkAccess,
   // keyVaultResourceId}`), `defender` (`{logAnalyticsWorkspaceResourceId,
   // securityMonitoring}`), `imageCleaner` (`{enabled, intervalHours}`),
-  // `workloadIdentity` (`{enabled}`), and `customCATrustCertificates`.
+  // `workloadIdentity` (`{enabled}`), `kubernetesResourceObjectEncryptionProfile`
+  // (`{infrastructureEncryption}`), and `customCATrustCertificates`.
   // Individual states are also exposed as the defenderEnabled,
-  // imageCleanerEnabled, workloadIdentityEnabled, and
-  // azureKeyVaultKmsEnabled fields.
+  // imageCleanerEnabled, workloadIdentityEnabled, azureKeyVaultKmsEnabled,
+  // and kubernetesResourceObjectEncryption fields.
   securityProfile dict
   // Azure AD pod-managed identity configuration
   //
@@ -13088,6 +13089,21 @@ azure.subscription.aksService.cluster @defaults("name location kubernetesVersion
   azureKeyVaultKmsEnabled bool
   // Network access mode for Azure Key Vault KMS ("Public" or "Private")
   azureKeyVaultKmsNetworkAccess string
+  // Encryption at rest of Kubernetes resource objects with service-managed keys
+  //
+  // The infrastructure encryption setting of the cluster security profile,
+  // `Enabled` when Kubernetes resource objects are encrypted at rest with
+  // service-managed keys (https://aka.ms/aks/kubernetesResourceObjectEncryption).
+  // Null when the cluster does not configure this setting.
+  kubernetesResourceObjectEncryption string
+  // Whether cluster-wide FIPS mode is enabled
+  //
+  // Enforces FIPS compliance for all AKS-managed components of the cluster,
+  // including the node operating system, add-ons, and managed containerized
+  // components. When enabled, every node pool must also be FIPS-enabled (see
+  // the enableFIPS field of each node pool). Cluster-wide FIPS is a preview
+  // feature in AKS. Null when the cluster does not report the setting.
+  enableFIPS bool
   // Whether local accounts are disabled (forces AAD-only auth)
   disableLocalAccounts bool
   // Whether public network access is enabled for the cluster ("Enabled" or "Disabled")

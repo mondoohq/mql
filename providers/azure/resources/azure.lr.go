@@ -15810,6 +15810,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"azure.subscription.aksService.cluster.azureKeyVaultKmsNetworkAccess": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionAksServiceCluster).GetAzureKeyVaultKmsNetworkAccess()).ToDataRes(types.String)
 	},
+	"azure.subscription.aksService.cluster.kubernetesResourceObjectEncryption": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionAksServiceCluster).GetKubernetesResourceObjectEncryption()).ToDataRes(types.String)
+	},
+	"azure.subscription.aksService.cluster.enableFIPS": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlAzureSubscriptionAksServiceCluster).GetEnableFIPS()).ToDataRes(types.Bool)
+	},
 	"azure.subscription.aksService.cluster.disableLocalAccounts": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlAzureSubscriptionAksServiceCluster).GetDisableLocalAccounts()).ToDataRes(types.Bool)
 	},
@@ -42732,6 +42738,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"azure.subscription.aksService.cluster.azureKeyVaultKmsNetworkAccess": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlAzureSubscriptionAksServiceCluster).AzureKeyVaultKmsNetworkAccess, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.aksService.cluster.kubernetesResourceObjectEncryption": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionAksServiceCluster).KubernetesResourceObjectEncryption, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"azure.subscription.aksService.cluster.enableFIPS": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlAzureSubscriptionAksServiceCluster).EnableFIPS, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"azure.subscription.aksService.cluster.disableLocalAccounts": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -98962,74 +98976,76 @@ type mqlAzureSubscriptionAksServiceCluster struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlAzureSubscriptionAksServiceClusterInternal
-	Id                                plugin.TValue[string]
-	Name                              plugin.TValue[string]
-	Location                          plugin.TValue[string]
-	KubernetesVersion                 plugin.TValue[string]
-	ProvisioningState                 plugin.TValue[string]
-	PowerState                        plugin.TValue[string]
-	Tags                              plugin.TValue[map[string]any]
-	NodeResourceGroup                 plugin.TValue[string]
-	CreatedAt                         plugin.TValue[*time.Time]
-	RbacEnabled                       plugin.TValue[bool]
-	Fqdn                              plugin.TValue[string]
-	DnsPrefix                         plugin.TValue[string]
-	StorageProfile                    plugin.TValue[any]
-	DiskCsiDriverEnabled              plugin.TValue[bool]
-	WorkloadAutoScalerProfile         plugin.TValue[any]
-	SecurityProfile                   plugin.TValue[any]
-	PodIdentityProfile                plugin.TValue[any]
-	NetworkProfile                    plugin.TValue[any]
-	HttpProxyConfig                   plugin.TValue[any]
-	AddonProfiles                     plugin.TValue[[]any]
-	NodePools                         plugin.TValue[[]any]
-	ApiServerAccessProfile            plugin.TValue[any]
-	FqdnSubdomain                     plugin.TValue[string]
-	PrivateFqdn                       plugin.TValue[string]
-	EnablePrivateCluster              plugin.TValue[bool]
-	EnablePrivateClusterPublicFQDN    plugin.TValue[bool]
-	DisableRunCommand                 plugin.TValue[bool]
-	ApiServerAuthorizedIPRanges       plugin.TValue[[]any]
-	PrivateDnsZone                    plugin.TValue[string]
-	DefenderEnabled                   plugin.TValue[bool]
-	DefenderSecurityGatingEnabled     plugin.TValue[bool]
-	ImageCleanerEnabled               plugin.TValue[bool]
-	ImageCleanerIntervalHours         plugin.TValue[int64]
-	WorkloadIdentityEnabled           plugin.TValue[bool]
-	AzureKeyVaultKmsEnabled           plugin.TValue[bool]
-	AzureKeyVaultKmsNetworkAccess     plugin.TValue[string]
-	DisableLocalAccounts              plugin.TValue[bool]
-	PublicNetworkAccess               plugin.TValue[string]
-	SkuTier                           plugin.TValue[string]
-	AzureKeyVaultKmsKey               plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKey]
-	NetworkPlugin                     plugin.TValue[string]
-	NetworkPolicy                     plugin.TValue[string]
-	OidcIssuerEnabled                 plugin.TValue[bool]
-	NodeResourceGroupRestrictionLevel plugin.TValue[string]
-	ServiceMeshMode                   plugin.TValue[string]
-	SupportPlan                       plugin.TValue[string]
-	AdvancedNetworking                plugin.TValue[*mqlAzureSubscriptionAksServiceClusterAdvancedNetworking]
-	AadProfile                        plugin.TValue[*mqlAzureSubscriptionAksServiceClusterAadProfile]
-	AutoUpgradeProfile                plugin.TValue[*mqlAzureSubscriptionAksServiceClusterAutoUpgradeProfile]
-	ControlPlaneMetricsEnabled        plugin.TValue[bool]
-	IdentityBindings                  plugin.TValue[[]any]
-	Identity                          plugin.TValue[any]
-	ResourceIdentity                  plugin.TValue[*mqlAzureSubscriptionResourceIdentity]
-	PrincipalId                       plugin.TValue[string]
-	SystemAssignedIdentity            plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
-	UserAssignedIdentities            plugin.TValue[[]any]
-	DiskEncryptionSet                 plugin.TValue[*mqlAzureSubscriptionComputeServiceDiskEncryptionSet]
-	KubeletIdentity                   plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
-	ServicePrincipalClientId          plugin.TValue[string]
-	LinuxAdminUsername                plugin.TValue[string]
-	LinuxSshPublicKeys                plugin.TValue[[]any]
-	WindowsAdminUsername              plugin.TValue[string]
-	TrustedAccessRoleBindings         plugin.TValue[[]any]
-	DiagnosticSettings                plugin.TValue[[]any]
-	DiagnosticSettingsCategories      plugin.TValue[[]any]
-	PrivateEndpointConnections        plugin.TValue[[]any]
-	SystemMetadata                    plugin.TValue[*mqlAzureSubscriptionSystemData]
-	InternetReachable                 plugin.TValue[bool]
+	Id                                 plugin.TValue[string]
+	Name                               plugin.TValue[string]
+	Location                           plugin.TValue[string]
+	KubernetesVersion                  plugin.TValue[string]
+	ProvisioningState                  plugin.TValue[string]
+	PowerState                         plugin.TValue[string]
+	Tags                               plugin.TValue[map[string]any]
+	NodeResourceGroup                  plugin.TValue[string]
+	CreatedAt                          plugin.TValue[*time.Time]
+	RbacEnabled                        plugin.TValue[bool]
+	Fqdn                               plugin.TValue[string]
+	DnsPrefix                          plugin.TValue[string]
+	StorageProfile                     plugin.TValue[any]
+	DiskCsiDriverEnabled               plugin.TValue[bool]
+	WorkloadAutoScalerProfile          plugin.TValue[any]
+	SecurityProfile                    plugin.TValue[any]
+	PodIdentityProfile                 plugin.TValue[any]
+	NetworkProfile                     plugin.TValue[any]
+	HttpProxyConfig                    plugin.TValue[any]
+	AddonProfiles                      plugin.TValue[[]any]
+	NodePools                          plugin.TValue[[]any]
+	ApiServerAccessProfile             plugin.TValue[any]
+	FqdnSubdomain                      plugin.TValue[string]
+	PrivateFqdn                        plugin.TValue[string]
+	EnablePrivateCluster               plugin.TValue[bool]
+	EnablePrivateClusterPublicFQDN     plugin.TValue[bool]
+	DisableRunCommand                  plugin.TValue[bool]
+	ApiServerAuthorizedIPRanges        plugin.TValue[[]any]
+	PrivateDnsZone                     plugin.TValue[string]
+	DefenderEnabled                    plugin.TValue[bool]
+	DefenderSecurityGatingEnabled      plugin.TValue[bool]
+	ImageCleanerEnabled                plugin.TValue[bool]
+	ImageCleanerIntervalHours          plugin.TValue[int64]
+	WorkloadIdentityEnabled            plugin.TValue[bool]
+	AzureKeyVaultKmsEnabled            plugin.TValue[bool]
+	AzureKeyVaultKmsNetworkAccess      plugin.TValue[string]
+	KubernetesResourceObjectEncryption plugin.TValue[string]
+	EnableFIPS                         plugin.TValue[bool]
+	DisableLocalAccounts               plugin.TValue[bool]
+	PublicNetworkAccess                plugin.TValue[string]
+	SkuTier                            plugin.TValue[string]
+	AzureKeyVaultKmsKey                plugin.TValue[*mqlAzureSubscriptionKeyVaultServiceKey]
+	NetworkPlugin                      plugin.TValue[string]
+	NetworkPolicy                      plugin.TValue[string]
+	OidcIssuerEnabled                  plugin.TValue[bool]
+	NodeResourceGroupRestrictionLevel  plugin.TValue[string]
+	ServiceMeshMode                    plugin.TValue[string]
+	SupportPlan                        plugin.TValue[string]
+	AdvancedNetworking                 plugin.TValue[*mqlAzureSubscriptionAksServiceClusterAdvancedNetworking]
+	AadProfile                         plugin.TValue[*mqlAzureSubscriptionAksServiceClusterAadProfile]
+	AutoUpgradeProfile                 plugin.TValue[*mqlAzureSubscriptionAksServiceClusterAutoUpgradeProfile]
+	ControlPlaneMetricsEnabled         plugin.TValue[bool]
+	IdentityBindings                   plugin.TValue[[]any]
+	Identity                           plugin.TValue[any]
+	ResourceIdentity                   plugin.TValue[*mqlAzureSubscriptionResourceIdentity]
+	PrincipalId                        plugin.TValue[string]
+	SystemAssignedIdentity             plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
+	UserAssignedIdentities             plugin.TValue[[]any]
+	DiskEncryptionSet                  plugin.TValue[*mqlAzureSubscriptionComputeServiceDiskEncryptionSet]
+	KubeletIdentity                    plugin.TValue[*mqlAzureSubscriptionManagedIdentity]
+	ServicePrincipalClientId           plugin.TValue[string]
+	LinuxAdminUsername                 plugin.TValue[string]
+	LinuxSshPublicKeys                 plugin.TValue[[]any]
+	WindowsAdminUsername               plugin.TValue[string]
+	TrustedAccessRoleBindings          plugin.TValue[[]any]
+	DiagnosticSettings                 plugin.TValue[[]any]
+	DiagnosticSettingsCategories       plugin.TValue[[]any]
+	PrivateEndpointConnections         plugin.TValue[[]any]
+	SystemMetadata                     plugin.TValue[*mqlAzureSubscriptionSystemData]
+	InternetReachable                  plugin.TValue[bool]
 }
 
 // createAzureSubscriptionAksServiceCluster creates a new instance of this resource
@@ -99223,6 +99239,14 @@ func (c *mqlAzureSubscriptionAksServiceCluster) GetAzureKeyVaultKmsEnabled() *pl
 
 func (c *mqlAzureSubscriptionAksServiceCluster) GetAzureKeyVaultKmsNetworkAccess() *plugin.TValue[string] {
 	return &c.AzureKeyVaultKmsNetworkAccess
+}
+
+func (c *mqlAzureSubscriptionAksServiceCluster) GetKubernetesResourceObjectEncryption() *plugin.TValue[string] {
+	return &c.KubernetesResourceObjectEncryption
+}
+
+func (c *mqlAzureSubscriptionAksServiceCluster) GetEnableFIPS() *plugin.TValue[bool] {
+	return &c.EnableFIPS
 }
 
 func (c *mqlAzureSubscriptionAksServiceCluster) GetDisableLocalAccounts() *plugin.TValue[bool] {

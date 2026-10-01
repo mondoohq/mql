@@ -167,6 +167,16 @@ func aksSecurityProfileFlags(sp *clusters.ManagedClusterSecurityProfile) aksSecu
 	return f
 }
 
+// aksKubernetesResourceObjectEncryption returns the infrastructure encryption
+// setting for Kubernetes resource objects, or nil when the cluster does not
+// configure it.
+func aksKubernetesResourceObjectEncryption(sp *clusters.ManagedClusterSecurityProfile) *string {
+	if sp == nil || sp.KubernetesResourceObjectEncryptionProfile == nil {
+		return nil
+	}
+	return (*string)(sp.KubernetesResourceObjectEncryptionProfile.InfrastructureEncryption)
+}
+
 // advancedNetworkingFields flattens the nested Advanced Networking (Cilium)
 // profile into the scalars the resource exposes. Absent sub-blocks mean the
 // feature is off, so every value defaults to its disabled state rather than
@@ -444,6 +454,9 @@ func (a *mqlAzureSubscriptionAksService) clusters() ([]any, error) {
 					"linuxAdminUsername":                llx.StringData(linuxAdminUsername),
 					"linuxSshPublicKeys":                llx.ArrayData(linuxSshPublicKeys, types.String),
 					"windowsAdminUsername":              llx.StringData(windowsAdminUsername),
+
+					"kubernetesResourceObjectEncryption": llx.StringDataPtr(aksKubernetesResourceObjectEncryption(entry.Properties.SecurityProfile)),
+					"enableFIPS":                         llx.BoolDataPtr(entry.Properties.EnableFIPS),
 				})
 			if err != nil {
 				return nil, err

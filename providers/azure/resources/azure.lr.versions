@@ -97,6 +97,7 @@ azure.subscription.aksService.cluster.disableRunCommand 11.4.28
 azure.subscription.aksService.cluster.diskCsiDriverEnabled 13.18.1
 azure.subscription.aksService.cluster.diskEncryptionSet 13.23.1
 azure.subscription.aksService.cluster.dnsPrefix 9.0.1
+azure.subscription.aksService.cluster.enableFIPS 14.2.1
 azure.subscription.aksService.cluster.enablePrivateCluster 11.4.28
 azure.subscription.aksService.cluster.enablePrivateClusterPublicFQDN 11.4.28
 azure.subscription.aksService.cluster.fqdn 9.0.1
@@ -118,6 +119,7 @@ azure.subscription.aksService.cluster.imageCleanerEnabled 11.4.28
 azure.subscription.aksService.cluster.imageCleanerIntervalHours 11.4.28
 azure.subscription.aksService.cluster.internetReachable 13.20.1
 azure.subscription.aksService.cluster.kubeletIdentity 13.22.1
+azure.subscription.aksService.cluster.kubernetesResourceObjectEncryption 14.2.1
 azure.subscription.aksService.cluster.kubernetesVersion 9.0.1
 azure.subscription.aksService.cluster.linuxAdminUsername 13.36.1
 azure.subscription.aksService.cluster.linuxSshPublicKeys 13.36.1
