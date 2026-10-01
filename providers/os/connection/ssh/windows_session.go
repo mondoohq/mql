@@ -461,6 +461,10 @@ func (c *Connection) runInSession(command string) (*shared.Command, bool) {
 		return nil, false
 	}
 
+	// Logged like a command that runs as its own process (runRawCommand), so
+	// a debug log lists every command the scan ran and waited for, whichever
+	// way it ran.
+	log.Debug().Str("command", command).Str("provider", "ssh").Str("session", s.id).Msg("run command")
 	start := time.Now()
 	stdout, stderr, code, err := s.run(script)
 	if err != nil {
