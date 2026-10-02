@@ -7,12 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"path"
 
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
+	"go.mondoo.com/mql/providers/os/resources/haproxy"
 	"go.mondoo.com/mql/providers/os/resources/mongodb"
+	"go.mondoo.com/mql/providers/os/resources/systemd"
 )
 
 // ---------------------------------------------------------------------------
@@ -98,11 +102,69 @@ func (s *mqlMongodbConf) id() (string, error) {
 	return file.Data.Path.Data, nil
 }
 
+// mongodUnits are the systemd services that start mongod: mongod.service from
+// MongoDB's packages and mongodb.service from Debian and Ubuntu's.
+var mongodUnits = []string{"mongod.service", "mongodb.service"}
+
+// mongodConfigPath returns the configuration file mongod is started with, from
+// the -f or --config argument of the running service's process, or else of the
+// service's ExecStart= with its environment expanded. MongoDB's rpm unit runs
+// `mongod $OPTIONS` and takes OPTIONS from /etc/sysconfig/mongod, so the file
+// can be anywhere. It is empty when no service names a file.
+func mongodConfigPath(afs *afero.Afero) string {
+	for _, unit := range mongodUnits {
+		for _, pid := range systemd.ServicePids(afs, unit) {
+			raw, err := afs.ReadFile(path.Join("/proc", pid, "cmdline"))
+			if err != nil {
+				continue
+			}
+			argv := haproxy.SplitProcCmdline(raw)
+			if len(argv) == 0 || path.Base(argv[0]) != "mongod" {
+				continue
+			}
+			if conf := mongodb.ConfigFromArgs(argv[1:]); conf != "" {
+				return conf
+			}
+		}
+	}
+
+	for _, unit := range mongodUnits {
+		env, ok := systemd.ResolveUnitEnv(afs, unit)
+		if !ok || env.ExecStart == "" {
+			continue
+		}
+		argv := haproxy.ExpandSystemdCommand(env.ExecStart, env.Vars)
+		if len(argv) == 0 {
+			continue
+		}
+		if conf := mongodb.ConfigFromArgs(argv[1:]); conf != "" {
+			return conf
+		}
+	}
+	return ""
+}
+
 // file locates the configuration file. It is only reached when the resource
-// was not initialized with an explicit path, so this is always the probe path.
+// was not initialized with an explicit path. The file mongod is started with
+// comes first, then the well-known paths.
 func (s *mqlMongodbConf) file() (*mqlFile, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
 	afs := &afero.Afero{Fs: conn.FileSystem()}
+
+	if path := mongodConfigPath(afs); path != "" {
+		// A file that does not exist would stop mongod from starting, so it
+		// says nothing about the server; one this user cannot stat is still
+		// the right file, and reading it reports the refusal.
+		if _, err := afs.Stat(path); !errors.Is(err, fs.ErrNotExist) {
+			f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
+				"path": llx.StringData(path),
+			})
+			if err != nil {
+				return nil, err
+			}
+			return f.(*mqlFile), nil
+		}
+	}
 
 	for _, path := range mongodbConfPaths {
 		if ok, _ := afs.Exists(path); ok {
