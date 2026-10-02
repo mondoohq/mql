@@ -52,6 +52,10 @@ type apparmorStatus struct {
 	Version   string                        `json:"version"`
 	Profiles  map[string]string             `json:"profiles"`
 	Processes map[string][]apparmorProcInfo `json:"processes"`
+
+	// versionKnown is false when the status was read from the kernel rather
+	// than from aa-status, which is the only source of a status version.
+	versionKnown bool
 }
 
 type apparmorProcInfo struct {
@@ -120,19 +124,146 @@ func (a *mqlApparmor) fetchStatusFromJSON() (*apparmorStatus, error) {
 			continue
 		}
 
-		var status apparmorStatus
-		if err := json.Unmarshal([]byte(cmd.Stdout.Data), &status); err != nil {
+		status, err := parseApparmorStatusJSON(cmd.Stdout.Data)
+		if err != nil {
 			attempts = append(attempts, command+": "+err.Error())
 			continue
 		}
 
-		return &status, nil
+		if status.hasLegacyProcesses() {
+			procs, err := a.listProcesses()
+			if err != nil {
+				return nil, err
+			}
+			status.resolveLegacyProcesses(procs)
+		}
+
+		return status, nil
 	}
 
 	if len(attempts) == 0 {
 		return nil, errors.New("could not retrieve apparmor status")
 	}
 	return nil, errors.New(strings.Join(attempts, "; "))
+}
+
+// parseApparmorStatusJSON decodes the output of aa-status --json.
+//
+// AppArmor 3.0.8 (Debian 12) writes no comma between the process lists of two
+// modes once confined processes exist in more than one of them, for example
+// `...}]"/usr/local/bin/sweepc": [...`. That output is repaired rather than
+// discarded: falling back to the kernel listing loses the status version.
+func parseApparmorStatusJSON(data string) (*apparmorStatus, error) {
+	var status apparmorStatus
+	err := json.Unmarshal([]byte(data), &status)
+	if err != nil {
+		if repairErr := json.Unmarshal([]byte(repairApparmorStatusJSON(data)), &status); repairErr != nil {
+			return nil, err
+		}
+	}
+	status.versionKnown = true
+	return &status, nil
+}
+
+// repairApparmorStatusJSON inserts the comma AppArmor 3.0.8 leaves out
+// between a closing bracket or brace and the next object key. Text inside
+// strings is left untouched.
+func repairApparmorStatusJSON(data string) string {
+	var b strings.Builder
+	b.Grow(len(data) + 8)
+	inString := false
+	escaped := false
+	// valueEnded is true when the last non-space character outside a string
+	// closed an array or object.
+	valueEnded := false
+	for i := 0; i < len(data); i++ {
+		c := data[i]
+		if inString {
+			b.WriteByte(c)
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inString = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			if valueEnded {
+				b.WriteByte(',')
+			}
+			inString = true
+			valueEnded = false
+		case ']', '}':
+			valueEnded = true
+		case ' ', '\t', '\n', '\r':
+		default:
+			valueEnded = false
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
+// hasLegacyProcesses reports whether the process list uses the shape of
+// AppArmor 2.12 and older, which keys each list by profile name and does not
+// name the profile in its entries. The status version does not tell the two
+// shapes apart: AppArmor 2.13 reports version 1 with the newer shape.
+func (s *apparmorStatus) hasLegacyProcesses() bool {
+	for _, procs := range s.Processes {
+		for _, p := range procs {
+			if p.Profile == "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// resolveLegacyProcesses rekeys a legacy process list by executable, taking
+// the profile from the old key and the executable from the running process.
+// A process that exited since aa-status ran is dropped.
+func (s *apparmorStatus) resolveLegacyProcesses(procs []*processmgr.OSProcess) {
+	byPid := make(map[string]*processmgr.OSProcess, len(procs))
+	for _, proc := range procs {
+		byPid[strconv.FormatInt(proc.Pid, 10)] = proc
+	}
+
+	resolved := map[string][]apparmorProcInfo{}
+	for key, entries := range s.Processes {
+		for _, p := range entries {
+			if p.Profile != "" {
+				resolved[key] = append(resolved[key], p)
+				continue
+			}
+			proc, ok := byPid[p.PID]
+			if !ok {
+				continue
+			}
+			executable := apparmorProcessExecutable(proc)
+			resolved[executable] = append(resolved[executable], apparmorProcInfo{
+				Profile: key,
+				PID:     p.PID,
+				Status:  p.Status,
+			})
+		}
+	}
+	s.Processes = resolved
+}
+
+func (a *mqlApparmor) listProcesses() ([]*processmgr.OSProcess, error) {
+	conn, ok := a.MqlRuntime.Connection.(shared.Connection)
+	if !ok {
+		return nil, errors.New("connection does not support process listing")
+	}
+	processManager, err := processmgr.ResolveManager(conn)
+	if err != nil {
+		return nil, err
+	}
+	return processManager.List()
 }
 
 func (a *mqlApparmor) fetchStatusFromKernel() (*apparmorStatus, error) {
@@ -172,11 +303,7 @@ func (a *mqlApparmor) fetchStatusFromKernel() (*apparmorStatus, error) {
 
 	// AppArmor is here, so the confined processes are part of the answer and a
 	// failure to enumerate them is a failure to report.
-	processManager, err := processmgr.ResolveManager(conn)
-	if err != nil {
-		return nil, err
-	}
-	procs, err := processManager.List()
+	procs, err := a.listProcesses()
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +341,10 @@ func readApparmorProcessesFromFS(fs afero.Fs, procs []*processmgr.OSProcess) map
 	processes := map[string][]apparmorProcInfo{}
 	for _, proc := range procs {
 		profile, status, ok := readApparmorCurrentForProcess(fs, proc.Pid)
-		if !ok {
+		// A process without a profile is not confined, and aa-status does
+		// not list it either. A process whose profile is in unconfined mode
+		// carries a "<profile> (unconfined)" label and is kept.
+		if !ok || (profile == "unconfined" && status == "unconfined") {
 			continue
 		}
 
@@ -324,6 +454,11 @@ func (a *mqlApparmor) version() (string, error) {
 			return "", nil
 		}
 		return "", err
+	}
+	// The kernel listing has no status version.
+	if !status.versionKnown {
+		a.Version.State = plugin.StateIsSet | plugin.StateIsNull
+		return "", nil
 	}
 	return status.Version, nil
 }

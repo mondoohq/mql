@@ -51,6 +51,92 @@ func TestParseApparmorStatusEmpty(t *testing.T) {
 	assert.Empty(t, status.Processes)
 }
 
+// AppArmor 3.0.8 (Debian 12) leaves out the comma between the process lists of
+// two modes. Captured from a host running sweepd and sweep-named in enforce mode
+// and sweepc in complain mode.
+func TestParseApparmorStatusJSONMissingComma(t *testing.T) {
+	data, err := os.ReadFile("testdata/apparmor/aa-status-3.0.8-debian12.json")
+	require.NoError(t, err)
+
+	var raw apparmorStatus
+	require.Error(t, json.Unmarshal(data, &raw), "the captured output must be the invalid one")
+
+	status, err := parseApparmorStatusJSON(string(data))
+	require.NoError(t, err)
+	assert.Equal(t, "2", status.Version)
+	assert.True(t, status.versionKnown)
+	assert.Equal(t, "enforce", status.Profiles["sweep-named"])
+	assert.False(t, status.hasLegacyProcesses())
+
+	require.Len(t, status.Processes, 3)
+	sweepc := status.Processes["/usr/local/bin/sweepc"]
+	require.Len(t, sweepc, 1)
+	assert.Equal(t, apparmorProcInfo{Profile: "/usr/local/bin/sweepc", PID: "10279", Status: "complain"}, sweepc[0])
+	sweepn := status.Processes["/usr/local/bin/sweepn"]
+	require.Len(t, sweepn, 1)
+	assert.Equal(t, apparmorProcInfo{Profile: "sweep-named", PID: "10282", Status: "enforce"}, sweepn[0])
+}
+
+func TestRepairApparmorStatusJSON(t *testing.T) {
+	// a bracket and quote inside a string are not a missing comma
+	in := `{"processes": {"/a]\"b": [{"pid": "1"}]"/c": [{"pid": "2"}]}}`
+	assert.Equal(t, `{"processes": {"/a]\"b": [{"pid": "1"}],"/c": [{"pid": "2"}]}}`, repairApparmorStatusJSON(in))
+
+	valid := `{"version": "2", "profiles": {}, "processes": {"/a": [{"pid": "1"}], "/b": []}}`
+	assert.Equal(t, valid, repairApparmorStatusJSON(valid))
+}
+
+func TestParseApparmorStatusJSONInvalid(t *testing.T) {
+	_, err := parseApparmorStatusJSON("apparmor module is not loaded.")
+	assert.Error(t, err)
+}
+
+// AppArmor 2.13 (Debian 10 and 11) reports version 1 and already names the
+// profile in each process entry.
+func TestParseApparmorStatusJSONVersion1CurrentShape(t *testing.T) {
+	data, err := os.ReadFile("testdata/apparmor/aa-status-2.13-debian10.json")
+	require.NoError(t, err)
+
+	status, err := parseApparmorStatusJSON(string(data))
+	require.NoError(t, err)
+	assert.Equal(t, "1", status.Version)
+	assert.False(t, status.hasLegacyProcesses())
+
+	sweepn := status.Processes["/usr/local/bin/sweepn"]
+	require.Len(t, sweepn, 1)
+	assert.Equal(t, "sweep-named", sweepn[0].Profile)
+}
+
+// AppArmor 2.11 (Debian 9) keys each process list by profile name and leaves
+// the profile out of the entries. sweep-named confines /usr/local/bin/sweepn.
+func TestResolveLegacyApparmorProcesses(t *testing.T) {
+	data, err := os.ReadFile("testdata/apparmor/aa-status-2.11-debian9.json")
+	require.NoError(t, err)
+
+	status, err := parseApparmorStatusJSON(string(data))
+	require.NoError(t, err)
+	assert.Equal(t, "1", status.Version)
+	require.True(t, status.hasLegacyProcesses())
+
+	status.resolveLegacyProcesses([]*processmgr.OSProcess{
+		{Pid: 818, Executable: "sweepd", Command: "/usr/local/bin/sweepd"},
+		{Pid: 824, Executable: "sweepn", Command: "/usr/local/bin/sweepn"},
+		// pid 821 (sweepc) exited after aa-status ran
+	})
+
+	require.Len(t, status.Processes, 2)
+	assert.NotContains(t, status.Processes, "sweep-named")
+	assert.NotContains(t, status.Processes, "/usr/local/bin/sweepc")
+
+	sweepn := status.Processes["/usr/local/bin/sweepn"]
+	require.Len(t, sweepn, 1)
+	assert.Equal(t, apparmorProcInfo{Profile: "sweep-named", PID: "824", Status: "enforce"}, sweepn[0])
+
+	sweepd := status.Processes["/usr/local/bin/sweepd"]
+	require.Len(t, sweepd, 1)
+	assert.Equal(t, apparmorProcInfo{Profile: "/usr/local/bin/sweepd", PID: "818", Status: "enforce"}, sweepd[0])
+}
+
 func TestParseApparmorProfileLine(t *testing.T) {
 	name, mode, ok := parseApparmorProfileLine("/usr/sbin/chronyd (enforce)")
 	require.True(t, ok)
@@ -120,17 +206,15 @@ func TestReadApparmorProcessesFromFS(t *testing.T) {
 	}
 
 	processes := readApparmorProcessesFromFS(fs, procs)
-	require.Len(t, processes, 3)
+	require.Len(t, processes, 2)
 
 	chronyd := processes["/usr/sbin/chronyd"]
 	require.Len(t, chronyd, 1)
 	assert.Equal(t, "complain", chronyd[0].Status)
 	assert.Equal(t, "/usr/sbin/chronyd", chronyd[0].Profile)
 
-	firefox := processes["/usr/bin/firefox"]
-	require.Len(t, firefox, 1)
-	assert.Equal(t, "unconfined", firefox[0].Status)
-	assert.Equal(t, "unconfined", firefox[0].Profile)
+	// a process without a profile is not confined, as aa-status sees it
+	assert.NotContains(t, processes, "/usr/bin/firefox")
 
 	portainer := processes["/portainer"]
 	require.Len(t, portainer, 1)
