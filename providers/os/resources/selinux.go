@@ -137,21 +137,17 @@ func (s *mqlSelinux) mode() (string, error) {
 			return "", fmt.Errorf("could not read SELinux mode from %s/enforce: %w", selinuxfsPath, err)
 		}
 	}
-	if err := s.parseConfig(); err != nil {
-		return "", err
-	}
-	return selinuxRuntimeMode(present, enforce, s.cfgMode)
+	return selinuxRuntimeMode(present, enforce)
 }
 
 // selinuxRuntimeMode reports the mode a live kernel enforces from selinuxfs:
 // its enforce file holds "1" for enforcing and "0" for permissive, and the
-// file system is not there while SELinux is disabled. A host that does not
-// have SELinux at all (no configured mode) keeps an empty mode.
-func selinuxRuntimeMode(selinuxfsPresent bool, enforce []byte, configMode string) (string, error) {
+// file system is not there while SELinux is disabled. That includes a host
+// without SELinux at all, which getenforce also reports as disabled: an empty
+// mode there would pass a `mode != "disabled"` check on a kernel that
+// enforces nothing. `installed` is what tells the two hosts apart.
+func selinuxRuntimeMode(selinuxfsPresent bool, enforce []byte) (string, error) {
 	if !selinuxfsPresent {
-		if configMode == "" {
-			return "", nil
-		}
 		return "disabled", nil
 	}
 	switch strings.TrimSpace(string(enforce)) {

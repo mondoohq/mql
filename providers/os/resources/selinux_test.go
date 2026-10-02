@@ -8,6 +8,10 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
+	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/utils/syncx"
 )
 
 func TestParseSelinuxConfig(t *testing.T) {
@@ -214,28 +218,65 @@ func TestSelinuxBooleanFileValue(t *testing.T) {
 	assert.True(t, selinuxBooleanFileValue([]byte("1\n")))
 }
 
-// Debian 9 to 13 with the SELinux packages installed and SELINUX=permissive
-// configured, booted without SELinux: /sys/fs/selinux does not exist and a
-// non-root PATH has no getenforce. The kernel enforces nothing.
+// Without /sys/fs/selinux the kernel enforces nothing, which getenforce
+// reports as "Disabled". Two hosts reach this: Debian 9 to 13 with the SELinux
+// packages installed and SELINUX=permissive configured but booted without
+// SELinux (non-root PATH has no getenforce), and SLES 15 SP7, which ships no
+// SELinux at all (no getenforce, no /etc/selinux/config, no selinux in
+// /sys/kernel/security/lsm).
 func TestSelinuxRuntimeMode(t *testing.T) {
-	mode, err := selinuxRuntimeMode(false, nil, "permissive")
+	mode, err := selinuxRuntimeMode(false, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "disabled", mode)
 
-	// no SELinux on the host at all
-	mode, err = selinuxRuntimeMode(false, nil, "")
-	require.NoError(t, err)
-	assert.Equal(t, "", mode)
-
-	// RHEL with SELinux enabled: the enforce file wins over the config
-	mode, err = selinuxRuntimeMode(true, []byte("1"), "permissive")
+	// RHEL with SELinux enabled: the enforce file is the running mode,
+	// whatever /etc/selinux/config says
+	mode, err = selinuxRuntimeMode(true, []byte("1"))
 	require.NoError(t, err)
 	assert.Equal(t, "enforcing", mode)
 
-	mode, err = selinuxRuntimeMode(true, []byte("0\n"), "enforcing")
+	mode, err = selinuxRuntimeMode(true, []byte("0\n"))
 	require.NoError(t, err)
 	assert.Equal(t, "permissive", mode)
 
-	_, err = selinuxRuntimeMode(true, []byte(""), "enforcing")
+	_, err = selinuxRuntimeMode(true, []byte(""))
 	assert.Error(t, err)
+}
+
+// SLES 15 SP7 as captured live: getenforce is not installed, and neither
+// /etc/selinux/config nor /sys/fs/selinux exists. Leap 15.6 with selinux-tools
+// installed (but SELinux not enabled at boot) has getenforce, which prints
+// "Disabled". Both kernels enforce nothing and must read the same.
+func TestSelinuxModeWithoutSelinux(t *testing.T) {
+	sles15 := &inventory.Asset{
+		Platform: &inventory.Platform{Name: "sles", Version: "15.7", Family: []string{"suse", "linux", "unix"}},
+	}
+	notFound := &mock.Command{Stderr: "sh: getenforce: command not found\n", ExitStatus: 127}
+
+	conn, err := mock.New(0, sles15, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{getenforceCmd: notFound},
+	}))
+	require.NoError(t, err)
+	rt := &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+	res, err := CreateResource(rt, "selinux", nil)
+	require.NoError(t, err)
+	s := res.(*mqlSelinux)
+
+	mode := s.GetMode()
+	require.NoError(t, mode.Error)
+	assert.Equal(t, "disabled", mode.Data)
+	installed := s.GetInstalled()
+	require.NoError(t, installed.Error)
+	assert.False(t, installed.Data)
+
+	conn, err = mock.New(0, sles15, mock.WithData(&mock.TomlData{
+		Commands: map[string]*mock.Command{getenforceCmd: {Stdout: "Disabled\n"}},
+	}))
+	require.NoError(t, err)
+	rt = &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+	res, err = CreateResource(rt, "selinux", nil)
+	require.NoError(t, err)
+	mode = res.(*mqlSelinux).GetMode()
+	require.NoError(t, mode.Error)
+	assert.Equal(t, "disabled", mode.Data)
 }
