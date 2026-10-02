@@ -136,43 +136,81 @@ func (l *mqlLvm) runLvmReport(tool, key, fields string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	if exit == 0 {
-		return stdout, true, nil
-	}
-	if isLvmNotInstalled(exit, stderr) {
-		return "", false, nil
-	}
-	if !isLvmReportFormatUnsupported(stderr) {
-		return "", false, fmt.Errorf("lvm command failed (exit %d): %s", exit, strings.TrimSpace(stderr))
+	if exit != 0 {
+		if isLvmNotInstalled(exit, stderr) {
+			return "", false, nil
+		}
+		if !isLvmReportFormatUnsupported(stderr) {
+			return "", false, lvmCommandFailure(tool, exit, stdout, stderr)
+		}
+
+		stdout, stderr, exit, err = l.runLvmCommand(tool + " --noheadings --nameprefixes --units b --nosuffix -o " + fields)
+		if err != nil {
+			return "", false, err
+		}
+		if exit != 0 {
+			return "", false, lvmCommandFailure(tool, exit, stdout, stderr)
+		}
+		stdout, err = lvmNamePrefixedToJSON(stdout, key)
+		if err != nil {
+			return "", false, err
+		}
 	}
 
-	stdout, stderr, exit, err = l.runLvmCommand(tool + " --noheadings --nameprefixes --units b --nosuffix -o " + fields)
+	refused, err := isLvmReportRefused(stdout, key, stderr)
 	if err != nil {
 		return "", false, err
 	}
-	if exit != 0 {
-		return "", false, fmt.Errorf("lvm command failed (exit %d): %s", exit, strings.TrimSpace(stderr))
+	if refused {
+		if !plugin.StructuredErrors() {
+			// v13 reported a report lvm could not read as an empty list; keep
+			// that until structured errors are the default
+			return "", false, nil
+		}
+		return "", false, llx.Forbidden(fmt.Errorf("%s reported nothing because it could not read the LVM metadata (you must be root): %s", tool, strings.TrimSpace(stderr)))
 	}
-	report, err := lvmNamePrefixedToJSON(stdout, key)
+	return stdout, true, nil
+}
+
+// isLvmReportRefused reports whether an lvm reporting command that exited 0
+// returned no rows only because it was refused access. Run by a non-root
+// user, LVM2 warns and keeps going: it cannot open the lvmetad socket, the
+// device-mapper control node or the block devices, prints "Permission denied"
+// for each on stderr, and reports no rows. RHEL 7 vgs and lvs, and Ubuntu
+// 16.04 vgs and lvs, exit 0 that way.
+func isLvmReportRefused(report, key, stderr string) (bool, error) {
+	if !isLvmPermissionDenied(stderr) {
+		return false, nil
+	}
+	rows, err := decodeLvmReport[json.RawMessage](report, key)
 	if err != nil {
-		return "", false, err
+		return false, err
 	}
-	return report, true, nil
+	return len(rows) == 0, nil
+}
+
+// isLvmPermissionDenied reports whether lvm output names a refused open.
+func isLvmPermissionDenied(output string) bool {
+	return strings.Contains(strings.ToLower(output), "permission denied")
+}
+
+// lvmCommandFailure turns a failed lvm reporting command into an error. A run
+// that names a refused open is forbidden. LVM2 2.03 (RHEL 9 and later) logs
+// that reason in the JSON report on stdout rather than on stderr.
+func lvmCommandFailure(tool string, exit int64, stdout, stderr string) error {
+	err := fmt.Errorf("lvm command failed (exit %d): %s", exit, strings.TrimSpace(stderr))
+	if isLvmPermissionDenied(stderr) || isLvmPermissionDenied(stdout) {
+		return llx.Forbidden(fmt.Errorf("%s could not read the LVM metadata (you must be root): %w", tool, err))
+	}
+	return err
 }
 
 func (l *mqlLvm) runLvmCommand(cmdline string) (string, string, int64, error) {
-	o, err := CreateResource(l.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData(cmdline),
-	})
+	cmd, err := runSbinCommand(l.MqlRuntime, cmdline)
 	if err != nil {
 		return "", "", 0, err
 	}
-	cmd := o.(*mqlCommand)
-	exit := cmd.GetExitcode()
-	if exit.Error != nil {
-		return "", "", 0, exit.Error
-	}
-	return cmd.GetStdout().Data, cmd.GetStderr().Data, exit.Data, nil
+	return cmd.GetStdout().Data, cmd.GetStderr().Data, cmd.GetExitcode().Data, nil
 }
 
 // isLvmReportFormatUnsupported reports whether an lvm reporting command

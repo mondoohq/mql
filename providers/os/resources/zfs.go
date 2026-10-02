@@ -32,15 +32,13 @@ func (z *mqlZfs) id() (string, error) {
 }
 
 // runZfsCommand runs a zfs or zpool command and returns its stdout. A non-zero
-// exit code is returned as an error with the given description.
+// exit code is returned as an error with the given description. A tool that is
+// not on the PATH is looked up in /usr/sbin and /sbin (see runSbinCommand).
 func runZfsCommand(runtime *plugin.Runtime, command string, what string) (string, string, error) {
-	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
-		"command": llx.StringData(command),
-	})
+	cmd, err := runSbinCommand(runtime, command)
 	if err != nil {
 		return "", "", err
 	}
-	cmd := o.(*mqlCommand)
 	if exit := cmd.GetExitcode(); exit.Error != nil {
 		return "", "", exit.Error
 	} else if exit.Data != 0 {
@@ -100,13 +98,10 @@ func runZfsJSONOrText(runtime *plugin.Runtime, what string, jsonCmd string, text
 }
 
 func (z *mqlZfs) version() (string, error) {
-	o, err := CreateResource(z.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData("zfs version"),
-	})
+	cmd, err := runSbinCommand(z.MqlRuntime, "zfs version")
 	if err != nil {
 		return "", err
 	}
-	cmd := o.(*mqlCommand)
 	if exit := cmd.GetExitcode(); exit.Error != nil {
 		return "", exit.Error
 	} else if exit.Data != 0 {

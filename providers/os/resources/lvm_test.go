@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 )
 
 func TestParseLvmPVs(t *testing.T) {
@@ -312,4 +313,78 @@ func TestParseLvmLegacyMatchesJSON(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, fromJSON, 4)
 	assert.Equal(t, fromJSON, fromLegacy)
+}
+
+// vgs run by a non-root user on RHEL 7 (LVM2 2.02.187): it exits 0 with an
+// empty report and names every refused open on stderr.
+const rhel7NonRootVgsStdout = `  {
+      "report": [
+          {
+              "vg": [
+              ]
+          }
+      ]
+  }
+`
+
+const rhel7NonRootVgsStderr = `  WARNING: Running as a non-root user. Functionality may be unavailable.
+  /run/lvm/lvmetad.socket: connect failed: Permission denied
+  WARNING: Failed to connect to lvmetad. Falling back to device scanning.
+  /dev/mapper/control: open failed: Permission denied
+  Failure to communicate with kernel device-mapper driver.
+  Incompatible libdevmapper 1.02.170-RHEL7 (2020-03-24) and kernel driver (unknown version).
+`
+
+func TestIsLvmReportRefused(t *testing.T) {
+	t.Run("non-root RHEL 7 empty report is refused", func(t *testing.T) {
+		refused, err := isLvmReportRefused(rhel7NonRootVgsStdout, "vg", rhel7NonRootVgsStderr)
+		require.NoError(t, err)
+		assert.True(t, refused)
+	})
+
+	t.Run("an empty report without a refusal is a host without LVM", func(t *testing.T) {
+		refused, err := isLvmReportRefused(rhel7NonRootVgsStdout, "vg", "")
+		require.NoError(t, err)
+		assert.False(t, refused)
+	})
+
+	t.Run("rows are reported even when some opens were refused", func(t *testing.T) {
+		report := `{"report": [{"vg": [{"vg_name":"vg-data"}]}]}`
+		refused, err := isLvmReportRefused(report, "vg", rhel7NonRootVgsStderr)
+		require.NoError(t, err)
+		assert.False(t, refused)
+	})
+
+	t.Run("empty --nameprefixes output with a refusal is refused", func(t *testing.T) {
+		report, err := lvmNamePrefixedToJSON("", "lv")
+		require.NoError(t, err)
+		refused, err := isLvmReportRefused(report, "lv", "  /dev/mapper/control: open failed: Permission denied\n")
+		require.NoError(t, err)
+		assert.True(t, refused)
+	})
+}
+
+func TestLvmCommandFailure(t *testing.T) {
+	// LVM2 2.03 on RHEL 9 exits 5 for a non-root user and logs the refused
+	// open in the JSON report on stdout; stderr carries only the warning.
+	stdout := `  {
+      "report": [
+          {
+              "vg": [
+              ]
+          }
+      ]
+      ,
+      "log": [
+          {"log_seq_num":"1", "log_type":"error", "log_context":"processing", "log_object_type":"vg", "log_object_name":"", "log_object_id":"", "log_object_group":"", "log_object_group_id":"", "log_message":"/run/lock/lvm/P_global:aux: open failed: Permission denied", "log_errno":"-1", "log_ret_code":"0"}
+      ]
+  }
+`
+	stderr := "  WARNING: Running as a non-root user. Functionality may be unavailable.\n"
+	err := lvmCommandFailure("vgs", 5, stdout, stderr)
+	assert.ErrorIs(t, err, llx.ErrForbidden)
+
+	err = lvmCommandFailure("vgs", 5, "", "  Volume group \"vg0\" not found\n")
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, llx.ErrForbidden)
 }
