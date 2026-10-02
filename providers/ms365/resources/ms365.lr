@@ -46,6 +46,13 @@ microsoft @root {
   exchangeRoleManagement() @maturity("preview") microsoft.exchangeRoleManagement
   // Microsoft Defender XDR unified role-based access control
   defenderRoleManagement() @maturity("preview") microsoft.defenderRoleManagement
+  // Administrative units in the tenant
+  //
+  // Entra ID administrative units, the directory containers that scope
+  // delegated administration to a subset of users, groups, and devices. Use
+  // them to audit which administrators hold roles scoped to a unit and
+  // whether sensitive accounts sit in restricted management units.
+  administrativeUnits() []microsoft.administrativeUnit
   // Tenant-wide settings
   //
   // Deprecated in favor of `groupSettings`.
@@ -4143,6 +4150,80 @@ private microsoft.defenderRoleManagement.roleAssignment @defaults("id displayNam
   groups() []microsoft.group
   // Assigned service principals
   servicePrincipals() []microsoft.serviceprincipal
+}
+
+// Microsoft Entra ID administrative unit
+//
+// A directory container that restricts the scope of role assignments to its
+// members. Exposes the unit's visibility, whether it is a restricted
+// management unit (isMemberManagementRestricted), its membership type and
+// dynamic membership rule, the member users, groups, and devices, and the
+// role assignments scoped to it (scopedRoleMembers).
+private microsoft.administrativeUnit @defaults("id displayName") {
+  // Administrative unit ID
+  id string
+  // Display name
+  displayName string
+  // Description
+  description string
+  // Visibility of the unit's membership
+  //
+  // HiddenMembership restricts the member list to members of the unit and
+  // administrators with a role scoped to it. Null when the unit uses the
+  // default, public membership.
+  visibility string
+  // Whether this is a restricted management administrative unit
+  //
+  // When true, only administrators with a role scoped to this unit can manage
+  // its members; tenant-level administrators such as Global Administrator
+  // cannot modify them.
+  isMemberManagementRestricted bool
+  // Membership type
+  //
+  // One of Assigned (members are added explicitly) or Dynamic (members are
+  // set by membershipRule).
+  membershipType string
+  // Rule that sets members of a dynamic administrative unit
+  membershipRule string
+  // Processing state of the dynamic membership rule
+  //
+  // One of On or Paused. Paused stops the rule from being evaluated so
+  // membership no longer updates automatically.
+  membershipRuleProcessingState string
+  // Users that are members of the unit
+  members() []microsoft.user
+  // Groups that are members of the unit
+  memberGroups() []microsoft.group
+  // Devices that are members of the unit
+  memberDevices() []microsoft.device
+  // Role assignments scoped to the unit
+  scopedRoleMembers() []microsoft.administrativeUnit.scopedRoleMember
+}
+
+// Directory role assignment scoped to an administrative unit
+//
+// One principal holding a directory role whose permissions apply only to the
+// members of the administrative unit. The role field resolves the role
+// definition, and principalType selects which of user, group, or
+// servicePrincipal holds the assigned principal.
+private microsoft.administrativeUnit.scopedRoleMember @defaults("id principalDisplayName principalType") {
+  // Scoped role membership ID
+  id string
+  // Role definition granted within the administrative unit
+  role() microsoft.rolemanagement.roledefinition
+  // Display name of the assigned principal
+  principalDisplayName string
+  // Type of the assigned principal
+  //
+  // One of user, group, or servicePrincipal. Empty when the principal no
+  // longer exists in the directory.
+  principalType string
+  // The assigned principal, when it is a user
+  user() microsoft.user
+  // The assigned principal, when it is a role-assignable group
+  group() microsoft.group
+  // The assigned principal, when it is a service principal
+  servicePrincipal() microsoft.serviceprincipal
 }
 
 // Microsoft Intune Device Management

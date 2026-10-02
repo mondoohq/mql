@@ -156,6 +156,8 @@ const (
 	ResourceMicrosoftDefenderRoleManagement                                                              string = "microsoft.defenderRoleManagement"
 	ResourceMicrosoftDefenderRoleManagementRoleDefinition                                                string = "microsoft.defenderRoleManagement.roleDefinition"
 	ResourceMicrosoftDefenderRoleManagementRoleAssignment                                                string = "microsoft.defenderRoleManagement.roleAssignment"
+	ResourceMicrosoftAdministrativeUnit                                                                  string = "microsoft.administrativeUnit"
+	ResourceMicrosoftAdministrativeUnitScopedRoleMember                                                  string = "microsoft.administrativeUnit.scopedRoleMember"
 	ResourceMicrosoftDevicemanagement                                                                    string = "microsoft.devicemanagement"
 	ResourceMicrosoftDevicemanagementSettings                                                            string = "microsoft.devicemanagement.settings"
 	ResourceMicrosoftDevicemanagementGroupPolicyConfiguration                                            string = "microsoft.devicemanagement.groupPolicyConfiguration"
@@ -796,6 +798,14 @@ func init() {
 			// to override args, implement: initMicrosoftDefenderRoleManagementRoleAssignment(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftDefenderRoleManagementRoleAssignment,
 		},
+		"microsoft.administrativeUnit": {
+			// to override args, implement: initMicrosoftAdministrativeUnit(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftAdministrativeUnit,
+		},
+		"microsoft.administrativeUnit.scopedRoleMember": {
+			// to override args, implement: initMicrosoftAdministrativeUnitScopedRoleMember(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftAdministrativeUnitScopedRoleMember,
+		},
 		"microsoft.devicemanagement": {
 			// to override args, implement: initMicrosoftDevicemanagement(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftDevicemanagement,
@@ -1198,6 +1208,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.defenderRoleManagement": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoft).GetDefenderRoleManagement()).ToDataRes(types.Resource("microsoft.defenderRoleManagement"))
+	},
+	"microsoft.administrativeUnits": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoft).GetAdministrativeUnits()).ToDataRes(types.Array(types.Resource("microsoft.administrativeUnit")))
 	},
 	"microsoft.settings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoft).GetSettings()).ToDataRes(types.Dict)
@@ -4379,6 +4392,63 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.defenderRoleManagement.roleAssignment.servicePrincipals": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).GetServicePrincipals()).ToDataRes(types.Array(types.Resource("microsoft.serviceprincipal")))
 	},
+	"microsoft.administrativeUnit.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnit).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.administrativeUnit.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnit).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.administrativeUnit.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnit).GetDescription()).ToDataRes(types.String)
+	},
+	"microsoft.administrativeUnit.visibility": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnit).GetVisibility()).ToDataRes(types.String)
+	},
+	"microsoft.administrativeUnit.isMemberManagementRestricted": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnit).GetIsMemberManagementRestricted()).ToDataRes(types.Bool)
+	},
+	"microsoft.administrativeUnit.membershipType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnit).GetMembershipType()).ToDataRes(types.String)
+	},
+	"microsoft.administrativeUnit.membershipRule": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnit).GetMembershipRule()).ToDataRes(types.String)
+	},
+	"microsoft.administrativeUnit.membershipRuleProcessingState": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnit).GetMembershipRuleProcessingState()).ToDataRes(types.String)
+	},
+	"microsoft.administrativeUnit.members": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnit).GetMembers()).ToDataRes(types.Array(types.Resource("microsoft.user")))
+	},
+	"microsoft.administrativeUnit.memberGroups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnit).GetMemberGroups()).ToDataRes(types.Array(types.Resource("microsoft.group")))
+	},
+	"microsoft.administrativeUnit.memberDevices": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnit).GetMemberDevices()).ToDataRes(types.Array(types.Resource("microsoft.device")))
+	},
+	"microsoft.administrativeUnit.scopedRoleMembers": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnit).GetScopedRoleMembers()).ToDataRes(types.Array(types.Resource("microsoft.administrativeUnit.scopedRoleMember")))
+	},
+	"microsoft.administrativeUnit.scopedRoleMember.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnitScopedRoleMember).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.administrativeUnit.scopedRoleMember.role": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnitScopedRoleMember).GetRole()).ToDataRes(types.Resource("microsoft.rolemanagement.roledefinition"))
+	},
+	"microsoft.administrativeUnit.scopedRoleMember.principalDisplayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnitScopedRoleMember).GetPrincipalDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.administrativeUnit.scopedRoleMember.principalType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnitScopedRoleMember).GetPrincipalType()).ToDataRes(types.String)
+	},
+	"microsoft.administrativeUnit.scopedRoleMember.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnitScopedRoleMember).GetUser()).ToDataRes(types.Resource("microsoft.user"))
+	},
+	"microsoft.administrativeUnit.scopedRoleMember.group": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnitScopedRoleMember).GetGroup()).ToDataRes(types.Resource("microsoft.group"))
+	},
+	"microsoft.administrativeUnit.scopedRoleMember.servicePrincipal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAdministrativeUnitScopedRoleMember).GetServicePrincipal()).ToDataRes(types.Resource("microsoft.serviceprincipal"))
+	},
 	"microsoft.devicemanagement.managedDevices": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftDevicemanagement).GetManagedDevices()).ToDataRes(types.Array(types.Resource("microsoft.devicemanagement.manageddevice")))
 	},
@@ -6883,6 +6953,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.defenderRoleManagement": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoft).DefenderRoleManagement, ok = plugin.RawToTValue[*mqlMicrosoftDefenderRoleManagement](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnits": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoft).AdministrativeUnits, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"microsoft.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -11681,6 +11755,90 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).ServicePrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"microsoft.administrativeUnit.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnit).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.administrativeUnit.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnit).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnit.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnit).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnit.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnit).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnit.visibility": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnit).Visibility, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnit.isMemberManagementRestricted": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnit).IsMemberManagementRestricted, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnit.membershipType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnit).MembershipType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnit.membershipRule": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnit).MembershipRule, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnit.membershipRuleProcessingState": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnit).MembershipRuleProcessingState, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnit.members": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnit).Members, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnit.memberGroups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnit).MemberGroups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnit.memberDevices": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnit).MemberDevices, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnit.scopedRoleMembers": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnit).ScopedRoleMembers, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnit.scopedRoleMember.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnitScopedRoleMember).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.administrativeUnit.scopedRoleMember.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnitScopedRoleMember).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnit.scopedRoleMember.role": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnitScopedRoleMember).Role, ok = plugin.RawToTValue[*mqlMicrosoftRolemanagementRoledefinition](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnit.scopedRoleMember.principalDisplayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnitScopedRoleMember).PrincipalDisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnit.scopedRoleMember.principalType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnitScopedRoleMember).PrincipalType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnit.scopedRoleMember.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnitScopedRoleMember).User, ok = plugin.RawToTValue[*mqlMicrosoftUser](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnit.scopedRoleMember.group": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnitScopedRoleMember).Group, ok = plugin.RawToTValue[*mqlMicrosoftGroup](v.Value, v.Error)
+		return
+	},
+	"microsoft.administrativeUnit.scopedRoleMember.servicePrincipal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAdministrativeUnitScopedRoleMember).ServicePrincipal, ok = plugin.RawToTValue[*mqlMicrosoftServiceprincipal](v.Value, v.Error)
+		return
+	},
 	"microsoft.devicemanagement.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftDevicemanagement).__id, ok = v.Value.(string)
 		return
@@ -15274,6 +15432,7 @@ type mqlMicrosoft struct {
 	Roles                    plugin.TValue[*mqlMicrosoftRoles]
 	ExchangeRoleManagement   plugin.TValue[*mqlMicrosoftExchangeRoleManagement]
 	DefenderRoleManagement   plugin.TValue[*mqlMicrosoftDefenderRoleManagement]
+	AdministrativeUnits      plugin.TValue[[]any]
 	Settings                 plugin.TValue[any]
 	GroupSettings            plugin.TValue[[]any]
 	TenantDomainName         plugin.TValue[string]
@@ -15504,6 +15663,22 @@ func (c *mqlMicrosoft) GetDefenderRoleManagement() *plugin.TValue[*mqlMicrosoftD
 		}
 
 		return c.defenderRoleManagement()
+	})
+}
+
+func (c *mqlMicrosoft) GetAdministrativeUnits() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AdministrativeUnits, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft", c.__id, "administrativeUnits")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.administrativeUnits()
 	})
 }
 
@@ -28236,6 +28411,280 @@ func (c *mqlMicrosoftDefenderRoleManagementRoleAssignment) GetServicePrincipals(
 		}
 
 		return c.servicePrincipals()
+	})
+}
+
+// mqlMicrosoftAdministrativeUnit for the microsoft.administrativeUnit resource
+type mqlMicrosoftAdministrativeUnit struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftAdministrativeUnitInternal it will be used here
+	Id                            plugin.TValue[string]
+	DisplayName                   plugin.TValue[string]
+	Description                   plugin.TValue[string]
+	Visibility                    plugin.TValue[string]
+	IsMemberManagementRestricted  plugin.TValue[bool]
+	MembershipType                plugin.TValue[string]
+	MembershipRule                plugin.TValue[string]
+	MembershipRuleProcessingState plugin.TValue[string]
+	Members                       plugin.TValue[[]any]
+	MemberGroups                  plugin.TValue[[]any]
+	MemberDevices                 plugin.TValue[[]any]
+	ScopedRoleMembers             plugin.TValue[[]any]
+}
+
+// createMicrosoftAdministrativeUnit creates a new instance of this resource
+func createMicrosoftAdministrativeUnit(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftAdministrativeUnit{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.administrativeUnit", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftAdministrativeUnit) MqlName() string {
+	return "microsoft.administrativeUnit"
+}
+
+func (c *mqlMicrosoftAdministrativeUnit) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftAdministrativeUnit) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftAdministrativeUnit) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftAdministrativeUnit) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlMicrosoftAdministrativeUnit) GetVisibility() *plugin.TValue[string] {
+	return &c.Visibility
+}
+
+func (c *mqlMicrosoftAdministrativeUnit) GetIsMemberManagementRestricted() *plugin.TValue[bool] {
+	return &c.IsMemberManagementRestricted
+}
+
+func (c *mqlMicrosoftAdministrativeUnit) GetMembershipType() *plugin.TValue[string] {
+	return &c.MembershipType
+}
+
+func (c *mqlMicrosoftAdministrativeUnit) GetMembershipRule() *plugin.TValue[string] {
+	return &c.MembershipRule
+}
+
+func (c *mqlMicrosoftAdministrativeUnit) GetMembershipRuleProcessingState() *plugin.TValue[string] {
+	return &c.MembershipRuleProcessingState
+}
+
+func (c *mqlMicrosoftAdministrativeUnit) GetMembers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Members, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.administrativeUnit", c.__id, "members")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.members()
+	})
+}
+
+func (c *mqlMicrosoftAdministrativeUnit) GetMemberGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MemberGroups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.administrativeUnit", c.__id, "memberGroups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.memberGroups()
+	})
+}
+
+func (c *mqlMicrosoftAdministrativeUnit) GetMemberDevices() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.MemberDevices, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.administrativeUnit", c.__id, "memberDevices")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.memberDevices()
+	})
+}
+
+func (c *mqlMicrosoftAdministrativeUnit) GetScopedRoleMembers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ScopedRoleMembers, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.administrativeUnit", c.__id, "scopedRoleMembers")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.scopedRoleMembers()
+	})
+}
+
+// mqlMicrosoftAdministrativeUnitScopedRoleMember for the microsoft.administrativeUnit.scopedRoleMember resource
+type mqlMicrosoftAdministrativeUnitScopedRoleMember struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftAdministrativeUnitScopedRoleMemberInternal
+	Id                   plugin.TValue[string]
+	Role                 plugin.TValue[*mqlMicrosoftRolemanagementRoledefinition]
+	PrincipalDisplayName plugin.TValue[string]
+	PrincipalType        plugin.TValue[string]
+	User                 plugin.TValue[*mqlMicrosoftUser]
+	Group                plugin.TValue[*mqlMicrosoftGroup]
+	ServicePrincipal     plugin.TValue[*mqlMicrosoftServiceprincipal]
+}
+
+// createMicrosoftAdministrativeUnitScopedRoleMember creates a new instance of this resource
+func createMicrosoftAdministrativeUnitScopedRoleMember(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftAdministrativeUnitScopedRoleMember{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.administrativeUnit.scopedRoleMember", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftAdministrativeUnitScopedRoleMember) MqlName() string {
+	return "microsoft.administrativeUnit.scopedRoleMember"
+}
+
+func (c *mqlMicrosoftAdministrativeUnitScopedRoleMember) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftAdministrativeUnitScopedRoleMember) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftAdministrativeUnitScopedRoleMember) GetRole() *plugin.TValue[*mqlMicrosoftRolemanagementRoledefinition] {
+	return plugin.GetOrCompute[*mqlMicrosoftRolemanagementRoledefinition](&c.Role, func() (*mqlMicrosoftRolemanagementRoledefinition, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.administrativeUnit.scopedRoleMember", c.__id, "role")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftRolemanagementRoledefinition), nil
+			}
+		}
+
+		return c.role()
+	})
+}
+
+func (c *mqlMicrosoftAdministrativeUnitScopedRoleMember) GetPrincipalDisplayName() *plugin.TValue[string] {
+	return &c.PrincipalDisplayName
+}
+
+func (c *mqlMicrosoftAdministrativeUnitScopedRoleMember) GetPrincipalType() *plugin.TValue[string] {
+	return &c.PrincipalType
+}
+
+func (c *mqlMicrosoftAdministrativeUnitScopedRoleMember) GetUser() *plugin.TValue[*mqlMicrosoftUser] {
+	return plugin.GetOrCompute[*mqlMicrosoftUser](&c.User, func() (*mqlMicrosoftUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.administrativeUnit.scopedRoleMember", c.__id, "user")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftUser), nil
+			}
+		}
+
+		return c.user()
+	})
+}
+
+func (c *mqlMicrosoftAdministrativeUnitScopedRoleMember) GetGroup() *plugin.TValue[*mqlMicrosoftGroup] {
+	return plugin.GetOrCompute[*mqlMicrosoftGroup](&c.Group, func() (*mqlMicrosoftGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.administrativeUnit.scopedRoleMember", c.__id, "group")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftGroup), nil
+			}
+		}
+
+		return c.group()
+	})
+}
+
+func (c *mqlMicrosoftAdministrativeUnitScopedRoleMember) GetServicePrincipal() *plugin.TValue[*mqlMicrosoftServiceprincipal] {
+	return plugin.GetOrCompute[*mqlMicrosoftServiceprincipal](&c.ServicePrincipal, func() (*mqlMicrosoftServiceprincipal, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.administrativeUnit.scopedRoleMember", c.__id, "servicePrincipal")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftServiceprincipal), nil
+			}
+		}
+
+		return c.servicePrincipal()
 	})
 }
 

@@ -43,6 +43,8 @@ type mqlMicrosoftInternal struct {
 	spBatches spBatchCaches
 	// per-user audit-log fields resolved in one batched Graph call
 	auditlogBatches auditlogBatchCaches
+	// directory role id to role template id, read once for administrative units
+	dirRoleTemplates directoryRoleTemplateCache
 }
 
 // userBatchCaches holds one cache per per-user field that is resolved through
