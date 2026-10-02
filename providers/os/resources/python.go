@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -261,6 +262,12 @@ func collectPythonPackagesInPaths(runtime *plugin.Runtime, fs afero.Fs, paths []
 func collectPythonPackages(runtime *plugin.Runtime, fs afero.Fs, path string) ([]python.PackageDetails, error) {
 	allResults := []python.PackageDetails{}
 	afs := &afero.Afero{Fs: fs}
+	env := python.SiteMarkerEnvironment(path, pythonOSFamily(runtime))
+	// installers records, for each entry of allResults, the path of its
+	// INSTALLER file ("" when it has none), and anyRequested whether any
+	// entry carries REQUESTED. See markTopLevelWithoutRequested.
+	installers := []string{}
+	anyRequested := false
 
 	fileList, err := afs.ReadDir(path)
 	if err != nil {
@@ -287,6 +294,7 @@ func collectPythonPackages(runtime *plugin.Runtime, fs afero.Fs, path string) ([
 		requestedPackage := false
 
 		requiresTxtPath := ""
+		installerPath := ""
 
 		// in the event the directory entry is itself another directory
 		// go into each directory looking for our parsable payload
@@ -318,6 +326,9 @@ func collectPythonPackages(runtime *plugin.Runtime, fs afero.Fs, path string) ([
 				if packageFile.Name() == "requires.txt" {
 					requiresTxtPath = filepath.Join(dEntry.Name(), packageFile.Name())
 				}
+				if packageFile.Name() == "INSTALLER" {
+					installerPath = filepath.Join(path, dEntry.Name(), packageFile.Name())
+				}
 			}
 			if !foundMeta {
 				// A .dist-info / .egg-info directory with no METADATA or PKG-INFO
@@ -327,7 +338,9 @@ func collectPythonPackages(runtime *plugin.Runtime, fs afero.Fs, path string) ([
 				// that rather than dropping it from the inventory.
 				if ppd := pythonPackageFromDirName(dEntry.Name(), filepath.Join(path, dEntry.Name())); ppd != nil {
 					ppd.IsLeaf = requestedPackage
+					anyRequested = anyRequested || requestedPackage
 					allResults = append(allResults, *ppd)
+					installers = append(installers, installerPath)
 				}
 				continue
 			}
@@ -347,7 +360,7 @@ func collectPythonPackages(runtime *plugin.Runtime, fs afero.Fs, path string) ([
 		if content.Error != nil {
 			return nil, content.Error
 		}
-		ppd, err := wheelegg.ParseMIME(strings.NewReader(content.Data), pythonPackageFilepath)
+		ppd, err := wheelegg.ParseMIMEInEnvironment(strings.NewReader(content.Data), pythonPackageFilepath, env)
 		if err != nil || ppd.Name == "" {
 			// Unparsable or nameless metadata -- fall back to the identity in the
 			// directory name so a corrupt file does not erase the package.
@@ -357,6 +370,7 @@ func collectPythonPackages(runtime *plugin.Runtime, fs afero.Fs, path string) ([
 			}
 		}
 		ppd.IsLeaf = requestedPackage
+		anyRequested = anyRequested || requestedPackage
 
 		// if the MIME data didn't include dependency information, but there was a requires.txt file available,
 		// then use that for dependency info (as pip appears to do)
@@ -370,7 +384,7 @@ func collectPythonPackages(runtime *plugin.Runtime, fs afero.Fs, path string) ([
 			if content.Error != nil {
 				return nil, content.Error
 			}
-			requiresTxtDeps, err := requirements.ParseRequiresTxtDependencies(strings.NewReader(content.Data))
+			requiresTxtDeps, err := requirements.ParseRequiresTxtDependencies(strings.NewReader(content.Data), env)
 			if err != nil {
 				log.Warn().Err(err).Str("dir", pythonPackageFilepath).Msg("failed to parse requires.txt")
 				return nil, err
@@ -380,9 +394,73 @@ func collectPythonPackages(runtime *plugin.Runtime, fs afero.Fs, path string) ([
 		}
 
 		allResults = append(allResults, *ppd)
+		installers = append(installers, installerPath)
 	}
 
+	if !anyRequested {
+		markTopLevelWithoutRequested(afs, allResults, installers)
+	}
 	return allResults, nil
+}
+
+// markTopLevelWithoutRequested picks the top-level packages of a site-packages
+// directory that pip installed before it wrote REQUESTED markers.
+//
+// pip records an explicitly installed package with an empty REQUESTED file
+// since pip 20.2. Older pip (9 on Debian 9, 18 on Debian 10) wrote INSTALLER
+// but no REQUESTED, so every package in the directory read as a dependency
+// and toplevel was empty. When no package in the directory has REQUESTED,
+// the pip-installed packages that no other package there requires are the
+// top-level ones. Packages pip did not install (a distribution's own
+// dist-packages, setup.py installs) are left as they are.
+func markTopLevelWithoutRequested(afs *afero.Afero, pkgs []python.PackageDetails, installers []string) {
+	pipInstalled := make([]bool, len(pkgs))
+	anyPip := false
+	for i, path := range installers {
+		if path == "" {
+			continue
+		}
+		data, err := afs.ReadFile(path)
+		if err != nil || strings.TrimSpace(string(data)) != "pip" {
+			continue
+		}
+		pipInstalled[i] = true
+		anyPip = true
+	}
+	if !anyPip {
+		return
+	}
+
+	required := map[string]bool{}
+	for i := range pkgs {
+		for _, dep := range pkgs[i].Dependencies {
+			required[python.NormalizeName(dep)] = true
+		}
+	}
+	for i := range pkgs {
+		if pipInstalled[i] && !required[python.NormalizeName(pkgs[i].Name)] {
+			pkgs[i].IsLeaf = true
+		}
+	}
+}
+
+// pythonOSFamily names the asset's OS family for environment markers:
+// "linux", "darwin", "windows", or "" when it is none of them.
+func pythonOSFamily(runtime *plugin.Runtime) string {
+	if runtime == nil {
+		return ""
+	}
+	conn, ok := runtime.Connection.(shared.Connection)
+	if !ok || conn.Asset() == nil || conn.Asset().Platform == nil {
+		return ""
+	}
+	pf := conn.Asset().Platform
+	for _, family := range []string{inventory.FAMILY_WINDOWS, inventory.FAMILY_DARWIN, inventory.FAMILY_LINUX} {
+		if pf.IsFamily(family) {
+			return family
+		}
+	}
+	return ""
 }
 
 func newMqlPythonPackage(runtime *plugin.Runtime, ppd python.PackageDetails) (plugin.Resource, error) {
@@ -519,11 +597,15 @@ func (r *mqlPythonPackage) dependencies() ([]any, error) {
 	// on name alone returns every one of them. That both inflates the list and
 	// silently answers questions about the wrong environment: a check asserting
 	// "this app pulls in a patched certifi" would pass on some other venv's copy.
+	//
+	// Names are compared in their PEP 503 normalized form: a requirement on
+	// "zope.interface" is met by the installed "zope-interface".
 	deps := []any{}
 	for _, dep := range r.deps {
+		dep = python.NormalizeName(dep)
 		for i := range pkgs.Data {
 			candidate := pkgs.Data[i].(*mqlPythonPackage)
-			if candidate.Name.Data != dep || candidate.siteDir != r.siteDir {
+			if python.NormalizeName(candidate.Name.Data) != dep || candidate.siteDir != r.siteDir {
 				continue
 			}
 			deps = append(deps, pkgs.Data[i])
