@@ -170,17 +170,12 @@ func (m *SystemdUnitManager) listViaSystemctl() ([]*SystemdUnit, error) {
 		end := min(start+systemdUnitShowChunk, len(concrete))
 
 		chunk := concrete[start:end]
-		showCmd, err := m.conn.RunCommand(buildSystemdUnitShowCommand(chunk))
+		records, exitErr, err := m.showUnits(chunk)
 		if err != nil {
 			return nil, err
 		}
-		if showCmd.ExitStatus != 0 {
-			return nil, systemctlError("systemctl show", showCmd)
-		}
-
-		records, err := parseSystemdShowRecords(showCmd.Stdout)
-		if err != nil {
-			return nil, err
+		if exitErr != nil {
+			return nil, exitErr
 		}
 
 		for _, record := range records {
@@ -261,22 +256,69 @@ func systemctlError(what string, cmd *shared.Command) error {
 	return fmt.Errorf("%s exited %d: %s", what, cmd.ExitStatus, reason)
 }
 
-func (m *SystemdUnitManager) Get(name string) (*SystemdUnit, error) {
-	cmd, err := m.conn.RunCommand(buildSystemdUnitShowCommand([]string{name}))
+// showUnits runs `systemctl show` for units and parses its records. A
+// non-zero exit is returned as exitErr, separately from a failure to run the
+// command at all, so the caller can decide whether to read unit files instead.
+//
+// systemctl exits non-zero when it is asked for a property its release does
+// not know. systemd 219 (RHEL 7) knows none of ProtectKernelLogs, ProtectClock,
+// DynamicUser and the other settings added since, prints the first unit's
+// known properties, and stops there without a word on stderr. Taking that as
+// "systemctl cannot answer" dropped every unit to the unit-file fallback, which
+// has no runtime state, so a running, enabled chronyd read as inactive. When
+// the output proves systemctl is answering, ask again for every property the
+// release has (--all, no property list) and take the ones we know from that.
+func (m *SystemdUnitManager) showUnits(units []string) (records []map[string]string, exitErr error, err error) {
+	cmd, err := m.conn.RunCommand(buildSystemdUnitShowCommand(units))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if cmd.ExitStatus != 0 {
-		// same reason as List: a systemctl that cannot answer must not read as
-		// "there is no such unit"
-		log.Debug().Err(systemctlError("systemctl show", cmd)).Str("unit", name).
-			Msg("mql[systemd]> could not read unit through systemctl, reading the unit file instead")
-		return m.fsFallback().Get(name)
+	if cmd.ExitStatus == 0 {
+		records, err = parseSystemdShowRecords(cmd.Stdout)
+		return records, nil, err
+	}
+	exitErr = systemctlError("systemctl show", cmd)
+
+	partial, err := parseSystemdShowRecords(cmd.Stdout)
+	if err != nil || !hasSystemdUnitRecord(partial) {
+		return nil, exitErr, nil
 	}
 
-	records, err := parseSystemdShowRecords(cmd.Stdout)
+	log.Debug().Err(exitErr).Strs("units", units).
+		Msg("mql[systemd]> systemctl does not know every requested property, reading all properties instead")
+	cmd, err = m.conn.RunCommand(buildSystemdUnitShowAllCommand(units))
+	if err != nil {
+		return nil, nil, err
+	}
+	if cmd.ExitStatus != 0 {
+		return nil, systemctlError("systemctl show --all", cmd), nil
+	}
+	records, err = parseSystemdShowRecords(cmd.Stdout)
+	return records, nil, err
+}
+
+// hasSystemdUnitRecord reports whether systemctl printed at least one unit,
+// which a systemctl that cannot reach systemd never does.
+func hasSystemdUnitRecord(records []map[string]string) bool {
+	for _, record := range records {
+		if record["Id"] != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *SystemdUnitManager) Get(name string) (*SystemdUnit, error) {
+	records, exitErr, err := m.showUnits([]string{name})
 	if err != nil {
 		return nil, err
+	}
+	if exitErr != nil {
+		// same reason as List: a systemctl that cannot answer must not read as
+		// "there is no such unit"
+		log.Debug().Err(exitErr).Str("unit", name).
+			Msg("mql[systemd]> could not read unit through systemctl, reading the unit file instead")
+		return m.fsFallback().Get(name)
 	}
 	if len(records) == 0 {
 		return nil, fmt.Errorf("%w: %s", ErrServiceNotFound, name)
@@ -297,9 +339,21 @@ func (m *SystemdUnitManager) Get(name string) (*SystemdUnit, error) {
 }
 
 func buildSystemdUnitShowCommand(units []string) string {
+	return buildSystemdUnitShowArgs([]string{"--property=" + systemdUnitShowProperties}, units)
+}
+
+// buildSystemdUnitShowAllCommand asks for every property the systemd release
+// has, empty ones included, for a release that does not know some of the
+// properties named in systemdUnitShowProperties.
+func buildSystemdUnitShowAllCommand(units []string) string {
+	return buildSystemdUnitShowArgs([]string{"--all"}, units)
+}
+
+func buildSystemdUnitShowArgs(flags []string, units []string) string {
 	// "--" keeps a unit name that begins with a dash from being read as a flag;
 	// the name reaches Get straight from a query, so it is not ours to trust
-	args := []string{"systemctl", "show", "--property=" + systemdUnitShowProperties, "--"}
+	args := append([]string{"systemctl", "show"}, flags...)
+	args = append(args, "--")
 	args = append(args, units...)
 
 	escaped := make([]string, len(args))
@@ -541,6 +595,9 @@ func (m *SystemdFSUnitManager) List() ([]*SystemdUnit, error) {
 }
 
 func (m *SystemdFSUnitManager) Get(name string) (*SystemdUnit, error) {
+	// systemctl reads a name without a unit type as a service, and so does a
+	// query: systemd.unit("chronyd") is chronyd.service
+	name = withSystemdUnitType(name)
 	for _, searchPath := range systemdUnitSearchPath {
 		unitPath := path.Join(searchPath, name)
 		if _, err := m.Fs.Stat(unitPath); err != nil {
@@ -685,4 +742,21 @@ func systemdListProperty(name string) bool {
 		return true
 	}
 	return false
+}
+
+// systemdUnitTypes are the unit type suffixes systemd knows.
+var systemdUnitTypes = []string{
+	".service", ".socket", ".device", ".mount", ".automount", ".swap",
+	".target", ".path", ".timer", ".slice", ".scope",
+}
+
+// withSystemdUnitType appends ".service" to a unit name that carries no unit
+// type, the way systemctl completes it.
+func withSystemdUnitType(name string) string {
+	for _, suffix := range systemdUnitTypes {
+		if strings.HasSuffix(name, suffix) {
+			return name
+		}
+	}
+	return name + ".service"
 }
