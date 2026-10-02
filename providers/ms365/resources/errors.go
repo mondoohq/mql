@@ -9,6 +9,7 @@ import (
 	"github.com/cockroachdb/errors"
 	betaodataerrors "github.com/microsoftgraph/msgraph-beta-sdk-go/models/odataerrors"
 	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
+	"go.mondoo.com/mql/llx"
 )
 
 // graphErrorCode returns the Microsoft Graph error code carried by an
@@ -96,4 +97,36 @@ func transformError(err error) error {
 		}
 	}
 	return err
+}
+
+// graphStatusCode returns the HTTP status Graph answered with, or 0 when err is
+// not an ODataError (a transport failure, a decode error).
+func graphStatusCode(err error) int {
+	var betaOdataErr *betaodataerrors.ODataError
+	if errors.As(err, &betaOdataErr) && betaOdataErr != nil {
+		return betaOdataErr.ResponseStatusCode
+	}
+	var oDataErr *odataerrors.ODataError
+	if errors.As(err, &oDataErr) && oDataErr != nil {
+		return oDataErr.ResponseStatusCode
+	}
+	return 0
+}
+
+// classifyGraphError turns a failed Graph call into the error a field returns.
+// A 401 is unauthenticated and a 403 is forbidden, naming the Graph application
+// permissions the call needs; anything else, including a transport failure, is
+// left unclassified. The message is the one transformError builds either way.
+func classifyGraphError(err error, permissions ...string) error {
+	if err == nil {
+		return nil
+	}
+	transformed := transformError(err)
+	switch graphStatusCode(err) {
+	case 401:
+		return llx.Unauthenticated(transformed)
+	case 403:
+		return llx.Forbidden(transformed, llx.WithPermissions(permissions...))
+	}
+	return transformed
 }

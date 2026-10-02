@@ -1764,6 +1764,20 @@ microsoft.application @defaults("id name hasExpiredCredentials") {
   owners() []microsoft.user
   // Managed application in local directory
   servicePrincipal() microsoft.serviceprincipal
+  // Federated identity credentials trusted by the application
+  //
+  // External identities, such as a GitHub Actions workflow or a Kubernetes
+  // service account, that can sign in as this application with a token from
+  // their own identity provider instead of a secret or certificate. An
+  // application with no federated identity credentials trusts no external
+  // workload.
+  federatedIdentityCredentials() []microsoft.application.federatedIdentityCredential
+  // App management policies assigned to the application
+  //
+  // Custom policies that restrict the secrets and certificates which can be
+  // added to this application. An empty list means only the tenant default in
+  // `microsoft.policies.defaultAppManagementPolicy` applies.
+  appManagementPolicies() []microsoft.policies.appManagementPolicy
   // Whether the application supports device-only authentication
   isDeviceOnlyAuthSupported bool
   // Specifies the fallback application type as public client
@@ -1906,6 +1920,45 @@ private microsoft.passwordCredential @defaults("description expires keyId") {
   startDateTime time
 }
 
+// Microsoft Entra federated identity credential
+//
+// A trust relationship that lets tokens from an external identity provider be
+// exchanged for Microsoft Entra access tokens without a client secret or
+// certificate. This is how GitHub Actions workflows, Kubernetes service
+// accounts, and other OpenID Connect workloads reach a tenant. `issuer` names
+// the external provider, for example
+// `https://token.actions.githubusercontent.com`, and `subject` the exact
+// external identity it trusts, for example
+// `repo:my-org/my-repo:ref:refs/heads/main`. Audit these to find trust granted
+// to an unexpected issuer, or a subject that admits more workloads than
+// intended, such as a pull request or any branch of a repository.
+private microsoft.application.federatedIdentityCredential @defaults("name issuer subject") {
+  // Credential ID
+  id string
+  // Name of the credential, unique within its application
+  name string
+  // URL of the trusted external identity provider
+  //
+  // Must match the `iss` claim of the external token, for example
+  // `https://token.actions.githubusercontent.com` for GitHub Actions or the
+  // OIDC issuer URL of a Kubernetes cluster.
+  issuer string
+  // Identifier of the trusted external workload
+  //
+  // Must match the `sub` claim of the external token. The format depends on
+  // the issuer: for GitHub Actions `repo:<org>/<repo>:environment:<name>`,
+  // `repo:<org>/<repo>:ref:refs/heads/<branch>`, or
+  // `repo:<org>/<repo>:pull_request`, and for Kubernetes
+  // `system:serviceaccount:<namespace>:<name>`.
+  subject string
+  // Audiences the external token must carry in its `aud` claim
+  //
+  // Usually the single value `api://AzureADTokenExchange`.
+  audiences []string
+  // Free-form description of the credential
+  description string
+}
+
 // Microsoft Entra Service Principal
 //
 // Service principal (enterprise application) registered in the tenant,
@@ -2007,6 +2060,27 @@ microsoft.serviceprincipal @defaults("name") {
   // `adminConsentDisplayName`, `adminConsentDescription`,
   // `userConsentDisplayName`, and `userConsentDescription`.
   oauth2PermissionScopes []dict
+  // Users who own the service principal
+  //
+  // Owners can manage the service principal, including adding credentials to
+  // it, without holding an administrator role. Owners that are themselves
+  // service principals are not included.
+  owners() []microsoft.user
+  // Federated identity credentials trusted by the service principal
+  //
+  // External identities that can sign in as this service principal with a
+  // token from their own identity provider instead of a secret or
+  // certificate. Graph keeps these on the service principal only for some
+  // service principal types, such as managed identities. For an app
+  // registration they are kept on the application, so audit the
+  // application's federatedIdentityCredentials.
+  federatedIdentityCredentials() []microsoft.application.federatedIdentityCredential
+  // App management policies assigned to the service principal
+  //
+  // Custom policies that restrict the secrets and certificates which can be
+  // added to this service principal. An empty list means only the tenant
+  // default in `microsoft.policies.defaultAppManagementPolicy` applies.
+  appManagementPolicies() []microsoft.policies.appManagementPolicy
 }
 
 // Microsoft Service Principal Assignment
@@ -2554,6 +2628,13 @@ microsoft.policies {
   defaultAppManagementPolicy() microsoft.defaultAppManagementPolicy
   // Device registration and join settings for the tenant
   deviceRegistrationPolicy() microsoft.deviceRegistrationPolicy
+  // Custom app management policies
+  //
+  // Policies that restrict the secrets and certificates which can be added to
+  // the specific applications and service principals they are assigned to,
+  // overriding the tenant default in defaultAppManagementPolicy for those
+  // objects.
+  appManagementPolicies() []microsoft.policies.appManagementPolicy
 }
 
 // Entra device registration policy
@@ -2698,6 +2779,32 @@ private microsoft.defaultAppManagementPolicy.appManagementConfiguration @default
   // `restrictForAppsCreatedAfterDateTime` (the timestamp after which apps
   // created later are subject to the restriction).
   keyCredentials []dict
+}
+
+// Microsoft Entra app management policy
+//
+// A custom policy that restricts the secrets and certificates which can be
+// added to the applications and service principals it is assigned to,
+// overriding the tenant default in `microsoft.policies.defaultAppManagementPolicy`
+// for those objects. `isEnabled` reports whether the restrictions are enforced,
+// `restrictions` holds the password and key credential rules, and
+// `applications` and `servicePrincipals` list the objects the policy is
+// assigned to.
+private microsoft.policies.appManagementPolicy @defaults("displayName isEnabled") {
+  // Policy ID
+  id string
+  // Policy display name
+  displayName string
+  // Policy description
+  description string
+  // Whether the policy restrictions are enforced
+  isEnabled bool
+  // Credential restrictions enforced on the objects the policy is assigned to
+  restrictions microsoft.defaultAppManagementPolicy.appManagementConfiguration
+  // Applications the policy is assigned to
+  applications() []microsoft.application
+  // Service principals the policy is assigned to
+  servicePrincipals() []microsoft.serviceprincipal
 }
 
 // Tenant-wide policy that controls whether external users can leave a tenant via self-service controls

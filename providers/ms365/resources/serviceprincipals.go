@@ -826,3 +826,75 @@ func (m *mqlMicrosoft) buildServicePrincipalPermissions(
 	}
 	return list, nil
 }
+
+// owners returns the users who own the service principal. Owners that are
+// service principals are skipped for the same reason as on an application.
+// https://learn.microsoft.com/en-us/graph/api/serviceprincipal-list-owners?view=graph-rest-1.0
+func (a *mqlMicrosoftServiceprincipal) owners() ([]any, error) {
+	ms, err := a.microsoftParent()
+	if err != nil {
+		return nil, err
+	}
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	// the same user fields initMicrosoftUser selects, so reading an owner's
+	// details does not cost a Graph call per owner
+	resp, err := graphClient.ServicePrincipals().ByServicePrincipalId(a.Id.Data).Owners().Get(ctx, &serviceprincipals.ItemOwnersRequestBuilderGetRequestConfiguration{
+		QueryParameters: &serviceprincipals.ItemOwnersRequestBuilderGetQueryParameters{
+			Select: userSelectFields,
+		},
+	})
+	if err != nil {
+		return nil, classifyGraphError(err, "Application.Read.All")
+	}
+	owners, err := iterate[models.DirectoryObjectable](ctx, resp, graphClient.GetAdapter(), models.CreateDirectoryObjectCollectionResponseFromDiscriminatorValue)
+	if err != nil {
+		return nil, classifyGraphError(err, "Application.Read.All")
+	}
+	return newMqlOwnerUsers(ms, userOwners(owners))
+}
+
+// https://learn.microsoft.com/en-us/graph/api/resources/federatedidentitycredential?view=graph-rest-1.0
+func (a *mqlMicrosoftServiceprincipal) federatedIdentityCredentials() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	resp, err := graphClient.ServicePrincipals().ByServicePrincipalId(a.Id.Data).FederatedIdentityCredentials().Get(ctx, nil)
+	if err != nil {
+		return nil, classifyGraphError(err, "Application.Read.All")
+	}
+	creds, err := iterate[models.FederatedIdentityCredentialable](ctx, resp, graphClient.GetAdapter(), models.CreateFederatedIdentityCredentialCollectionResponseFromDiscriminatorValue)
+	if err != nil {
+		return nil, classifyGraphError(err, "Application.Read.All")
+	}
+	return newMqlFederatedIdentityCredentials(a.MqlRuntime, a.Id.Data, creds)
+}
+
+// https://learn.microsoft.com/en-us/graph/api/serviceprincipal-list-appmanagementpolicies?view=graph-rest-1.0
+func (a *mqlMicrosoftServiceprincipal) appManagementPolicies() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	resp, err := graphClient.ServicePrincipals().ByServicePrincipalId(a.Id.Data).AppManagementPolicies().Get(ctx, nil)
+	if err != nil {
+		return nil, classifyGraphError(err, "Application.Read.All", "Policy.Read.All")
+	}
+	policies, err := iterate[models.AppManagementPolicyable](ctx, resp, graphClient.GetAdapter(), models.CreateAppManagementPolicyCollectionResponseFromDiscriminatorValue)
+	if err != nil {
+		return nil, classifyGraphError(err, "Application.Read.All", "Policy.Read.All")
+	}
+	return newMqlAppManagementPolicies(a.MqlRuntime, policies)
+}

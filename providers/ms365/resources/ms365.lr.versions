@@ -13,6 +13,7 @@ microsoft.adminConsentRequestPolicy.version 11.1.42
 microsoft.application 9.0.0
 microsoft.application.api 9.0.0
 microsoft.application.appId 9.0.0
+microsoft.application.appManagementPolicies 14.0.2
 microsoft.application.appRoles 9.0.0
 microsoft.application.applicationTemplateId 9.0.0
 microsoft.application.certificates 9.0.0
@@ -21,6 +22,14 @@ microsoft.application.createdAt 9.0.0
 microsoft.application.defaultRedirectUri 9.0.0
 microsoft.application.description 9.0.0
 microsoft.application.disabledByMicrosoftStatus 9.0.0
+microsoft.application.federatedIdentityCredential 14.0.2
+microsoft.application.federatedIdentityCredential.audiences 14.0.2
+microsoft.application.federatedIdentityCredential.description 14.0.2
+microsoft.application.federatedIdentityCredential.id 14.0.2
+microsoft.application.federatedIdentityCredential.issuer 14.0.2
+microsoft.application.federatedIdentityCredential.name 14.0.2
+microsoft.application.federatedIdentityCredential.subject 14.0.2
+microsoft.application.federatedIdentityCredentials 14.0.2
 microsoft.application.groupMembershipClaims 9.0.0
 microsoft.application.hasExpiredCredentials 9.0.0
 microsoft.application.id 9.0.0
@@ -928,6 +937,15 @@ microsoft.policies.activityBasedTimeoutPolicy.displayName 11.1.42
 microsoft.policies.activityBasedTimeoutPolicy.id 11.1.42
 microsoft.policies.activityBasedTimeoutPolicy.isOrganizationDefault 11.1.42
 microsoft.policies.adminConsentRequestPolicy 9.0.0
+microsoft.policies.appManagementPolicies 14.0.2
+microsoft.policies.appManagementPolicy 14.0.2
+microsoft.policies.appManagementPolicy.applications 14.0.2
+microsoft.policies.appManagementPolicy.description 14.0.2
+microsoft.policies.appManagementPolicy.displayName 14.0.2
+microsoft.policies.appManagementPolicy.id 14.0.2
+microsoft.policies.appManagementPolicy.isEnabled 14.0.2
+microsoft.policies.appManagementPolicy.restrictions 14.0.2
+microsoft.policies.appManagementPolicy.servicePrincipals 14.0.2
 microsoft.policies.authenticationMethodsPolicy 11.1.39
 microsoft.policies.authorizationPolicy 9.0.0
 microsoft.policies.consentPolicySettings 9.0.0
@@ -1147,6 +1165,7 @@ microsoft.serviceprincipal 9.0.0
 microsoft.serviceprincipal.alternativeNames 11.2.1
 microsoft.serviceprincipal.appDescription 11.2.1
 microsoft.serviceprincipal.appId 9.0.0
+microsoft.serviceprincipal.appManagementPolicies 14.0.2
 microsoft.serviceprincipal.appOwnerOrganizationId 9.0.0
 microsoft.serviceprincipal.appRoleAssignmentRequired 9.0.0
 microsoft.serviceprincipal.appRoles 9.0.0
@@ -1160,6 +1179,7 @@ microsoft.serviceprincipal.assignments 9.0.0
 microsoft.serviceprincipal.description 9.0.0
 microsoft.serviceprincipal.disabledByMicrosoftStatus 11.2.1
 microsoft.serviceprincipal.enabled 9.0.0
+microsoft.serviceprincipal.federatedIdentityCredentials 14.0.2
 microsoft.serviceprincipal.homepageUrl 9.0.0
 microsoft.serviceprincipal.id 9.0.0
 microsoft.serviceprincipal.isFirstParty 9.0.0
@@ -1170,6 +1190,7 @@ microsoft.serviceprincipal.name 9.0.0
 microsoft.serviceprincipal.notes 9.0.0
 microsoft.serviceprincipal.notificationEmailAddresses 9.0.0
 microsoft.serviceprincipal.oauth2PermissionScopes 13.0.12
+microsoft.serviceprincipal.owners 14.0.2
 microsoft.serviceprincipal.passwordCredentials 13.0.12
 microsoft.serviceprincipal.permissions 9.0.0
 microsoft.serviceprincipal.preferredSingleSignOnMode 9.0.0

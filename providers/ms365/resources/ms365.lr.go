@@ -87,6 +87,7 @@ const (
 	ResourceMicrosoftApplicationRole                                                                     string = "microsoft.application.role"
 	ResourceMicrosoftKeyCredential                                                                       string = "microsoft.keyCredential"
 	ResourceMicrosoftPasswordCredential                                                                  string = "microsoft.passwordCredential"
+	ResourceMicrosoftApplicationFederatedIdentityCredential                                              string = "microsoft.application.federatedIdentityCredential"
 	ResourceMicrosoftServiceprincipal                                                                    string = "microsoft.serviceprincipal"
 	ResourceMicrosoftServiceprincipalAssignment                                                          string = "microsoft.serviceprincipal.assignment"
 	ResourceMicrosoftApplicationPermission                                                               string = "microsoft.application.permission"
@@ -112,6 +113,7 @@ const (
 	ResourceMicrosoftDeviceRegistrationPolicyMembership                                                  string = "microsoft.deviceRegistrationPolicy.membership"
 	ResourceMicrosoftDefaultAppManagementPolicy                                                          string = "microsoft.defaultAppManagementPolicy"
 	ResourceMicrosoftDefaultAppManagementPolicyAppManagementConfiguration                                string = "microsoft.defaultAppManagementPolicy.appManagementConfiguration"
+	ResourceMicrosoftPoliciesAppManagementPolicy                                                         string = "microsoft.policies.appManagementPolicy"
 	ResourceMicrosoftExternalIdentitiesPolicy                                                            string = "microsoft.externalIdentitiesPolicy"
 	ResourceMicrosoftPoliciesActivityBasedTimeoutPolicy                                                  string = "microsoft.policies.activityBasedTimeoutPolicy"
 	ResourceMicrosoftAdminConsentRequestPolicy                                                           string = "microsoft.adminConsentRequestPolicy"
@@ -504,6 +506,10 @@ func init() {
 			// to override args, implement: initMicrosoftPasswordCredential(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftPasswordCredential,
 		},
+		"microsoft.application.federatedIdentityCredential": {
+			// to override args, implement: initMicrosoftApplicationFederatedIdentityCredential(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftApplicationFederatedIdentityCredential,
+		},
 		"microsoft.serviceprincipal": {
 			Init:   initMicrosoftServiceprincipal,
 			Create: createMicrosoftServiceprincipal,
@@ -603,6 +609,10 @@ func init() {
 		"microsoft.defaultAppManagementPolicy.appManagementConfiguration": {
 			// to override args, implement: initMicrosoftDefaultAppManagementPolicyAppManagementConfiguration(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftDefaultAppManagementPolicyAppManagementConfiguration,
+		},
+		"microsoft.policies.appManagementPolicy": {
+			// to override args, implement: initMicrosoftPoliciesAppManagementPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftPoliciesAppManagementPolicy,
 		},
 		"microsoft.externalIdentitiesPolicy": {
 			Init:   initMicrosoftExternalIdentitiesPolicy,
@@ -2520,6 +2530,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.application.servicePrincipal": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftApplication).GetServicePrincipal()).ToDataRes(types.Resource("microsoft.serviceprincipal"))
 	},
+	"microsoft.application.federatedIdentityCredentials": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftApplication).GetFederatedIdentityCredentials()).ToDataRes(types.Array(types.Resource("microsoft.application.federatedIdentityCredential")))
+	},
+	"microsoft.application.appManagementPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftApplication).GetAppManagementPolicies()).ToDataRes(types.Array(types.Resource("microsoft.policies.appManagementPolicy")))
+	},
 	"microsoft.application.isDeviceOnlyAuthSupported": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftApplication).GetIsDeviceOnlyAuthSupported()).ToDataRes(types.Bool)
 	},
@@ -2625,6 +2641,24 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.passwordCredential.startDateTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftPasswordCredential).GetStartDateTime()).ToDataRes(types.Time)
 	},
+	"microsoft.application.federatedIdentityCredential.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftApplicationFederatedIdentityCredential).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.application.federatedIdentityCredential.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftApplicationFederatedIdentityCredential).GetName()).ToDataRes(types.String)
+	},
+	"microsoft.application.federatedIdentityCredential.issuer": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftApplicationFederatedIdentityCredential).GetIssuer()).ToDataRes(types.String)
+	},
+	"microsoft.application.federatedIdentityCredential.subject": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftApplicationFederatedIdentityCredential).GetSubject()).ToDataRes(types.String)
+	},
+	"microsoft.application.federatedIdentityCredential.audiences": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftApplicationFederatedIdentityCredential).GetAudiences()).ToDataRes(types.Array(types.String))
+	},
+	"microsoft.application.federatedIdentityCredential.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftApplicationFederatedIdentityCredential).GetDescription()).ToDataRes(types.String)
+	},
 	"microsoft.serviceprincipal.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftServiceprincipal).GetId()).ToDataRes(types.String)
 	},
@@ -2723,6 +2757,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.serviceprincipal.oauth2PermissionScopes": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftServiceprincipal).GetOauth2PermissionScopes()).ToDataRes(types.Array(types.Dict))
+	},
+	"microsoft.serviceprincipal.owners": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetOwners()).ToDataRes(types.Array(types.Resource("microsoft.user")))
+	},
+	"microsoft.serviceprincipal.federatedIdentityCredentials": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetFederatedIdentityCredentials()).ToDataRes(types.Array(types.Resource("microsoft.application.federatedIdentityCredential")))
+	},
+	"microsoft.serviceprincipal.appManagementPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetAppManagementPolicies()).ToDataRes(types.Array(types.Resource("microsoft.policies.appManagementPolicy")))
 	},
 	"microsoft.serviceprincipal.assignment.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftServiceprincipalAssignment).GetId()).ToDataRes(types.String)
@@ -3207,6 +3250,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.policies.deviceRegistrationPolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftPolicies).GetDeviceRegistrationPolicy()).ToDataRes(types.Resource("microsoft.deviceRegistrationPolicy"))
 	},
+	"microsoft.policies.appManagementPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPolicies).GetAppManagementPolicies()).ToDataRes(types.Array(types.Resource("microsoft.policies.appManagementPolicy")))
+	},
 	"microsoft.deviceRegistrationPolicy.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftDeviceRegistrationPolicy).GetId()).ToDataRes(types.String)
 	},
@@ -3287,6 +3333,27 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.defaultAppManagementPolicy.appManagementConfiguration.keyCredentials": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftDefaultAppManagementPolicyAppManagementConfiguration).GetKeyCredentials()).ToDataRes(types.Array(types.Dict))
+	},
+	"microsoft.policies.appManagementPolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesAppManagementPolicy).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.policies.appManagementPolicy.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesAppManagementPolicy).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.policies.appManagementPolicy.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesAppManagementPolicy).GetDescription()).ToDataRes(types.String)
+	},
+	"microsoft.policies.appManagementPolicy.isEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesAppManagementPolicy).GetIsEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.appManagementPolicy.restrictions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesAppManagementPolicy).GetRestrictions()).ToDataRes(types.Resource("microsoft.defaultAppManagementPolicy.appManagementConfiguration"))
+	},
+	"microsoft.policies.appManagementPolicy.applications": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesAppManagementPolicy).GetApplications()).ToDataRes(types.Array(types.Resource("microsoft.application")))
+	},
+	"microsoft.policies.appManagementPolicy.servicePrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesAppManagementPolicy).GetServicePrincipals()).ToDataRes(types.Array(types.Resource("microsoft.serviceprincipal")))
 	},
 	"microsoft.externalIdentitiesPolicy.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftExternalIdentitiesPolicy).GetId()).ToDataRes(types.String)
@@ -8317,6 +8384,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftApplication).ServicePrincipal, ok = plugin.RawToTValue[*mqlMicrosoftServiceprincipal](v.Value, v.Error)
 		return
 	},
+	"microsoft.application.federatedIdentityCredentials": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftApplication).FederatedIdentityCredentials, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.application.appManagementPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftApplication).AppManagementPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.application.isDeviceOnlyAuthSupported": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftApplication).IsDeviceOnlyAuthSupported, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
@@ -8469,6 +8544,34 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftPasswordCredential).StartDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
 		return
 	},
+	"microsoft.application.federatedIdentityCredential.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftApplicationFederatedIdentityCredential).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.application.federatedIdentityCredential.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftApplicationFederatedIdentityCredential).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.application.federatedIdentityCredential.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftApplicationFederatedIdentityCredential).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.application.federatedIdentityCredential.issuer": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftApplicationFederatedIdentityCredential).Issuer, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.application.federatedIdentityCredential.subject": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftApplicationFederatedIdentityCredential).Subject, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.application.federatedIdentityCredential.audiences": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftApplicationFederatedIdentityCredential).Audiences, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.application.federatedIdentityCredential.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftApplicationFederatedIdentityCredential).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"microsoft.serviceprincipal.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftServiceprincipal).__id, ok = v.Value.(string)
 		return
@@ -8603,6 +8706,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.serviceprincipal.oauth2PermissionScopes": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftServiceprincipal).Oauth2PermissionScopes, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.owners": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).Owners, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.federatedIdentityCredentials": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).FederatedIdentityCredentials, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.appManagementPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).AppManagementPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"microsoft.serviceprincipal.assignment.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -9317,6 +9432,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftPolicies).DeviceRegistrationPolicy, ok = plugin.RawToTValue[*mqlMicrosoftDeviceRegistrationPolicy](v.Value, v.Error)
 		return
 	},
+	"microsoft.policies.appManagementPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPolicies).AppManagementPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.deviceRegistrationPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftDeviceRegistrationPolicy).__id, ok = v.Value.(string)
 		return
@@ -9451,6 +9570,38 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.defaultAppManagementPolicy.appManagementConfiguration.keyCredentials": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftDefaultAppManagementPolicyAppManagementConfiguration).KeyCredentials, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.appManagementPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesAppManagementPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.policies.appManagementPolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesAppManagementPolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.appManagementPolicy.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesAppManagementPolicy).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.appManagementPolicy.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesAppManagementPolicy).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.appManagementPolicy.isEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesAppManagementPolicy).IsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.appManagementPolicy.restrictions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesAppManagementPolicy).Restrictions, ok = plugin.RawToTValue[*mqlMicrosoftDefaultAppManagementPolicyAppManagementConfiguration](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.appManagementPolicy.applications": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesAppManagementPolicy).Applications, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.appManagementPolicy.servicePrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesAppManagementPolicy).ServicePrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"microsoft.externalIdentitiesPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -19433,6 +19584,8 @@ type mqlMicrosoftApplication struct {
 	HasExpiredCredentials             plugin.TValue[bool]
 	Owners                            plugin.TValue[[]any]
 	ServicePrincipal                  plugin.TValue[*mqlMicrosoftServiceprincipal]
+	FederatedIdentityCredentials      plugin.TValue[[]any]
+	AppManagementPolicies             plugin.TValue[[]any]
 	IsDeviceOnlyAuthSupported         plugin.TValue[bool]
 	IsFallbackPublicClient            plugin.TValue[bool]
 	NativeAuthenticationApisEnabled   plugin.TValue[string]
@@ -19593,6 +19746,38 @@ func (c *mqlMicrosoftApplication) GetServicePrincipal() *plugin.TValue[*mqlMicro
 		}
 
 		return c.servicePrincipal()
+	})
+}
+
+func (c *mqlMicrosoftApplication) GetFederatedIdentityCredentials() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.FederatedIdentityCredentials, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.application", c.__id, "federatedIdentityCredentials")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.federatedIdentityCredentials()
+	})
+}
+
+func (c *mqlMicrosoftApplication) GetAppManagementPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AppManagementPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.application", c.__id, "appManagementPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.appManagementPolicies()
 	})
 }
 
@@ -19873,44 +20058,116 @@ func (c *mqlMicrosoftPasswordCredential) GetStartDateTime() *plugin.TValue[*time
 	return &c.StartDateTime
 }
 
+// mqlMicrosoftApplicationFederatedIdentityCredential for the microsoft.application.federatedIdentityCredential resource
+type mqlMicrosoftApplicationFederatedIdentityCredential struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftApplicationFederatedIdentityCredentialInternal it will be used here
+	Id          plugin.TValue[string]
+	Name        plugin.TValue[string]
+	Issuer      plugin.TValue[string]
+	Subject     plugin.TValue[string]
+	Audiences   plugin.TValue[[]any]
+	Description plugin.TValue[string]
+}
+
+// createMicrosoftApplicationFederatedIdentityCredential creates a new instance of this resource
+func createMicrosoftApplicationFederatedIdentityCredential(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftApplicationFederatedIdentityCredential{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.application.federatedIdentityCredential", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftApplicationFederatedIdentityCredential) MqlName() string {
+	return "microsoft.application.federatedIdentityCredential"
+}
+
+func (c *mqlMicrosoftApplicationFederatedIdentityCredential) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftApplicationFederatedIdentityCredential) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftApplicationFederatedIdentityCredential) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlMicrosoftApplicationFederatedIdentityCredential) GetIssuer() *plugin.TValue[string] {
+	return &c.Issuer
+}
+
+func (c *mqlMicrosoftApplicationFederatedIdentityCredential) GetSubject() *plugin.TValue[string] {
+	return &c.Subject
+}
+
+func (c *mqlMicrosoftApplicationFederatedIdentityCredential) GetAudiences() *plugin.TValue[[]any] {
+	return &c.Audiences
+}
+
+func (c *mqlMicrosoftApplicationFederatedIdentityCredential) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
 // mqlMicrosoftServiceprincipal for the microsoft.serviceprincipal resource
 type mqlMicrosoftServiceprincipal struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlMicrosoftServiceprincipalInternal
-	Id                         plugin.TValue[string]
-	Type                       plugin.TValue[string]
-	Name                       plugin.TValue[string]
-	AppId                      plugin.TValue[string]
-	AppOwnerOrganizationId     plugin.TValue[string]
-	Description                plugin.TValue[string]
-	Tags                       plugin.TValue[[]any]
-	Enabled                    plugin.TValue[bool]
-	HomepageUrl                plugin.TValue[string]
-	TermsOfServiceUrl          plugin.TValue[string]
-	ReplyUrls                  plugin.TValue[[]any]
-	AssignmentRequired         plugin.TValue[bool]
-	VisibleToUsers             plugin.TValue[bool]
-	Notes                      plugin.TValue[string]
-	Assignments                plugin.TValue[[]any]
-	ApplicationTemplateId      plugin.TValue[string]
-	VerifiedPublisher          plugin.TValue[any]
-	LoginUrl                   plugin.TValue[string]
-	LogoutUrl                  plugin.TValue[string]
-	ServicePrincipalNames      plugin.TValue[[]any]
-	SignInAudience             plugin.TValue[string]
-	PreferredSingleSignOnMode  plugin.TValue[string]
-	NotificationEmailAddresses plugin.TValue[[]any]
-	AppRoleAssignmentRequired  plugin.TValue[bool]
-	IsFirstParty               plugin.TValue[bool]
-	AppRoles                   plugin.TValue[[]any]
-	Permissions                plugin.TValue[[]any]
-	AlternativeNames           plugin.TValue[[]any]
-	AppDescription             plugin.TValue[string]
-	DisabledByMicrosoftStatus  plugin.TValue[string]
-	KeyCredentials             plugin.TValue[[]any]
-	PasswordCredentials        plugin.TValue[[]any]
-	Oauth2PermissionScopes     plugin.TValue[[]any]
+	Id                           plugin.TValue[string]
+	Type                         plugin.TValue[string]
+	Name                         plugin.TValue[string]
+	AppId                        plugin.TValue[string]
+	AppOwnerOrganizationId       plugin.TValue[string]
+	Description                  plugin.TValue[string]
+	Tags                         plugin.TValue[[]any]
+	Enabled                      plugin.TValue[bool]
+	HomepageUrl                  plugin.TValue[string]
+	TermsOfServiceUrl            plugin.TValue[string]
+	ReplyUrls                    plugin.TValue[[]any]
+	AssignmentRequired           plugin.TValue[bool]
+	VisibleToUsers               plugin.TValue[bool]
+	Notes                        plugin.TValue[string]
+	Assignments                  plugin.TValue[[]any]
+	ApplicationTemplateId        plugin.TValue[string]
+	VerifiedPublisher            plugin.TValue[any]
+	LoginUrl                     plugin.TValue[string]
+	LogoutUrl                    plugin.TValue[string]
+	ServicePrincipalNames        plugin.TValue[[]any]
+	SignInAudience               plugin.TValue[string]
+	PreferredSingleSignOnMode    plugin.TValue[string]
+	NotificationEmailAddresses   plugin.TValue[[]any]
+	AppRoleAssignmentRequired    plugin.TValue[bool]
+	IsFirstParty                 plugin.TValue[bool]
+	AppRoles                     plugin.TValue[[]any]
+	Permissions                  plugin.TValue[[]any]
+	AlternativeNames             plugin.TValue[[]any]
+	AppDescription               plugin.TValue[string]
+	DisabledByMicrosoftStatus    plugin.TValue[string]
+	KeyCredentials               plugin.TValue[[]any]
+	PasswordCredentials          plugin.TValue[[]any]
+	Oauth2PermissionScopes       plugin.TValue[[]any]
+	Owners                       plugin.TValue[[]any]
+	FederatedIdentityCredentials plugin.TValue[[]any]
+	AppManagementPolicies        plugin.TValue[[]any]
 }
 
 // createMicrosoftServiceprincipal creates a new instance of this resource
@@ -20106,6 +20363,54 @@ func (c *mqlMicrosoftServiceprincipal) GetPasswordCredentials() *plugin.TValue[[
 
 func (c *mqlMicrosoftServiceprincipal) GetOauth2PermissionScopes() *plugin.TValue[[]any] {
 	return &c.Oauth2PermissionScopes
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetOwners() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Owners, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.serviceprincipal", c.__id, "owners")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.owners()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetFederatedIdentityCredentials() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.FederatedIdentityCredentials, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.serviceprincipal", c.__id, "federatedIdentityCredentials")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.federatedIdentityCredentials()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetAppManagementPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AppManagementPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.serviceprincipal", c.__id, "appManagementPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.appManagementPolicies()
+	})
 }
 
 // mqlMicrosoftServiceprincipalAssignment for the microsoft.serviceprincipal.assignment resource
@@ -21741,6 +22046,7 @@ type mqlMicrosoftPolicies struct {
 	CrossTenantAccessPolicy                   plugin.TValue[*mqlMicrosoftCrossTenantAccessPolicyDefault]
 	DefaultAppManagementPolicy                plugin.TValue[*mqlMicrosoftDefaultAppManagementPolicy]
 	DeviceRegistrationPolicy                  plugin.TValue[*mqlMicrosoftDeviceRegistrationPolicy]
+	AppManagementPolicies                     plugin.TValue[[]any]
 }
 
 // createMicrosoftPolicies creates a new instance of this resource
@@ -21908,6 +22214,22 @@ func (c *mqlMicrosoftPolicies) GetDeviceRegistrationPolicy() *plugin.TValue[*mql
 		}
 
 		return c.deviceRegistrationPolicy()
+	})
+}
+
+func (c *mqlMicrosoftPolicies) GetAppManagementPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AppManagementPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.policies", c.__id, "appManagementPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.appManagementPolicies()
 	})
 }
 
@@ -22341,6 +22663,104 @@ func (c *mqlMicrosoftDefaultAppManagementPolicyAppManagementConfiguration) GetPa
 
 func (c *mqlMicrosoftDefaultAppManagementPolicyAppManagementConfiguration) GetKeyCredentials() *plugin.TValue[[]any] {
 	return &c.KeyCredentials
+}
+
+// mqlMicrosoftPoliciesAppManagementPolicy for the microsoft.policies.appManagementPolicy resource
+type mqlMicrosoftPoliciesAppManagementPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftPoliciesAppManagementPolicyInternal
+	Id                plugin.TValue[string]
+	DisplayName       plugin.TValue[string]
+	Description       plugin.TValue[string]
+	IsEnabled         plugin.TValue[bool]
+	Restrictions      plugin.TValue[*mqlMicrosoftDefaultAppManagementPolicyAppManagementConfiguration]
+	Applications      plugin.TValue[[]any]
+	ServicePrincipals plugin.TValue[[]any]
+}
+
+// createMicrosoftPoliciesAppManagementPolicy creates a new instance of this resource
+func createMicrosoftPoliciesAppManagementPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftPoliciesAppManagementPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.policies.appManagementPolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftPoliciesAppManagementPolicy) MqlName() string {
+	return "microsoft.policies.appManagementPolicy"
+}
+
+func (c *mqlMicrosoftPoliciesAppManagementPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftPoliciesAppManagementPolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftPoliciesAppManagementPolicy) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftPoliciesAppManagementPolicy) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlMicrosoftPoliciesAppManagementPolicy) GetIsEnabled() *plugin.TValue[bool] {
+	return &c.IsEnabled
+}
+
+func (c *mqlMicrosoftPoliciesAppManagementPolicy) GetRestrictions() *plugin.TValue[*mqlMicrosoftDefaultAppManagementPolicyAppManagementConfiguration] {
+	return &c.Restrictions
+}
+
+func (c *mqlMicrosoftPoliciesAppManagementPolicy) GetApplications() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Applications, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.policies.appManagementPolicy", c.__id, "applications")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.applications()
+	})
+}
+
+func (c *mqlMicrosoftPoliciesAppManagementPolicy) GetServicePrincipals() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ServicePrincipals, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.policies.appManagementPolicy", c.__id, "servicePrincipals")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.servicePrincipals()
+	})
 }
 
 // mqlMicrosoftExternalIdentitiesPolicy for the microsoft.externalIdentitiesPolicy resource

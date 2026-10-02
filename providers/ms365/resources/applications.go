@@ -418,10 +418,17 @@ func (a *mqlMicrosoftApplication) owners() ([]any, error) {
 		return nil, err
 	}
 
+	return newMqlOwnerUsers(mqlMicrosoftResource, userOwners(owners))
+}
+
+// newMqlOwnerUsers turns the user owners of an application or service
+// principal into microsoft.user resources, reusing a user that is already
+// indexed.
+func newMqlOwnerUsers(ms *mqlMicrosoft, users []models.Userable) ([]any, error) {
 	res := []any{}
-	for _, user := range userOwners(owners) {
+	for _, user := range users {
 		// if the user is already indexed, we can reuse it
-		if userResource, ok := mqlMicrosoftResource.userById(*user.GetId()); ok {
+		if userResource, ok := ms.userById(*user.GetId()); ok {
 			res = append(res, userResource)
 			continue
 		}
@@ -429,11 +436,11 @@ func (a *mqlMicrosoftApplication) owners() ([]any, error) {
 		// Build the resource from the data already on the response, which
 		// avoids a second Graph round-trip via initMicrosoftUser when callers
 		// read common user fields.
-		newUser, err := newMqlMicrosoftUser(a.MqlRuntime, user)
+		newUser, err := newMqlMicrosoftUser(ms.MqlRuntime, user)
 		if err != nil {
 			return nil, err
 		}
-		mqlMicrosoftResource.indexUser(newUser)
+		ms.indexUser(newUser)
 		res = append(res, newUser)
 	}
 	return res, nil
@@ -512,4 +519,74 @@ func newMqlMicrosoftPasswordCredential(runtime *plugin.Runtime, app models.Passw
 		return nil, err
 	}
 	return mqlResource.(*mqlMicrosoftPasswordCredential), nil
+}
+
+// https://learn.microsoft.com/en-us/graph/api/application-list-federatedidentitycredentials?view=graph-rest-1.0
+func (a *mqlMicrosoftApplication) federatedIdentityCredentials() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	resp, err := graphClient.Applications().ByApplicationId(a.Id.Data).FederatedIdentityCredentials().Get(ctx, nil)
+	if err != nil {
+		return nil, classifyGraphError(err, "Application.Read.All")
+	}
+	creds, err := iterate[models.FederatedIdentityCredentialable](ctx, resp, graphClient.GetAdapter(), models.CreateFederatedIdentityCredentialCollectionResponseFromDiscriminatorValue)
+	if err != nil {
+		return nil, classifyGraphError(err, "Application.Read.All")
+	}
+	return newMqlFederatedIdentityCredentials(a.MqlRuntime, a.Id.Data, creds)
+}
+
+// newMqlFederatedIdentityCredentials builds the federated identity credentials
+// of one application or service principal. A credential's id is only unique
+// within its parent, so the parent's object id is part of the resource id.
+func newMqlFederatedIdentityCredentials(runtime *plugin.Runtime, parentId string, creds []models.FederatedIdentityCredentialable) ([]any, error) {
+	res := []any{}
+	for _, cred := range creds {
+		if cred == nil || cred.GetId() == nil {
+			continue
+		}
+		audiences := []any{}
+		for _, aud := range cred.GetAudiences() {
+			audiences = append(audiences, aud)
+		}
+		mqlCred, err := CreateResource(runtime, "microsoft.application.federatedIdentityCredential", map[string]*llx.RawData{
+			"__id":        llx.StringData(parentId + "/federatedIdentityCredentials/" + *cred.GetId()),
+			"id":          llx.StringDataPtr(cred.GetId()),
+			"name":        llx.StringDataPtr(cred.GetName()),
+			"issuer":      llx.StringDataPtr(cred.GetIssuer()),
+			"subject":     llx.StringDataPtr(cred.GetSubject()),
+			"audiences":   llx.ArrayData(audiences, types.String),
+			"description": llx.StringDataPtr(cred.GetDescription()),
+		})
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, mqlCred)
+	}
+	return res, nil
+}
+
+// https://learn.microsoft.com/en-us/graph/api/application-list-appmanagementpolicies?view=graph-rest-1.0
+func (a *mqlMicrosoftApplication) appManagementPolicies() ([]any, error) {
+	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
+	graphClient, err := conn.GraphClient()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := context.Background()
+	resp, err := graphClient.Applications().ByApplicationId(a.Id.Data).AppManagementPolicies().Get(ctx, nil)
+	if err != nil {
+		return nil, classifyGraphError(err, "Application.Read.All", "Policy.Read.All")
+	}
+	policies, err := iterate[models.AppManagementPolicyable](ctx, resp, graphClient.GetAdapter(), models.CreateAppManagementPolicyCollectionResponseFromDiscriminatorValue)
+	if err != nil {
+		return nil, classifyGraphError(err, "Application.Read.All", "Policy.Read.All")
+	}
+	return newMqlAppManagementPolicies(a.MqlRuntime, policies)
 }
