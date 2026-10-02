@@ -737,6 +737,26 @@ microsoft.identityAndAccess {
   // connectors it calls. Flows only take effect when self-service sign-up is
   // enabled for the tenant.
   b2xUserFlows() []microsoft.identityAndAccess.b2xUserFlow
+  // Entitlement management settings
+  //
+  // Tenant-wide settings that decide what happens to an external user once
+  // their last access package assignment ends.
+  entitlementManagementSettings() microsoft.identityAndAccess.entitlementManagementSettings
+  // Access package catalogs
+  //
+  // Containers that group access packages and the resources they grant.
+  accessPackageCatalogs() []microsoft.identityAndAccess.accessPackageCatalog
+  // Access packages
+  //
+  // Bundles of resource roles that users request or are assigned through
+  // entitlement management.
+  accessPackages() []microsoft.identityAndAccess.accessPackage
+  // Access package assignment policies
+  //
+  // Every assignment policy across all access packages, describing who can
+  // request access, whether approval is required, when assignments expire,
+  // and whether they are reviewed.
+  accessPackageAssignmentPolicies() []microsoft.identityAndAccess.accessPackageAssignmentPolicy
 }
 
 // External identity provider
@@ -880,6 +900,174 @@ private microsoft.identityAndAccess.apiConnector @defaults("displayName targetUr
   // One of basic, clientCertificate, or unknown when Microsoft Graph reports
   // a method this provider does not model.
   authenticationType string
+}
+
+// Entitlement management settings
+//
+// Tenant-wide lifecycle settings for external users brought in through
+// entitlement management. externalUserLifecycleAction decides whether an
+// external user loses sign-in, or is also deleted, after their last access
+// package assignment ends, and durationUntilExternalUserDeletedAfterBlocked
+// sets how long a blocked external user remains before deletion.
+private microsoft.identityAndAccess.entitlementManagementSettings @defaults("externalUserLifecycleAction durationUntilExternalUserDeletedAfterBlocked") {
+  // Action taken when an external user loses their last access package assignment
+  //
+  // One of none, blockSignIn, blockSignInAndDelete, or unknownFutureValue.
+  externalUserLifecycleAction string
+  // Time a blocked external user remains before deletion
+  //
+  // An ISO 8601 duration, for example `P30D`. Applies when
+  // externalUserLifecycleAction is blockSignInAndDelete.
+  durationUntilExternalUserDeletedAfterBlocked string
+}
+
+// Access package catalog
+//
+// A container of access packages and the resources they can grant. Reports
+// whether the catalog is published, whether it is visible to users in
+// connected organizations, and the access packages it holds.
+private microsoft.identityAndAccess.accessPackageCatalog @defaults("displayName catalogType state") {
+  // Unique identifier of the catalog
+  id string
+  // Display name of the catalog
+  displayName string
+  // Description of the catalog
+  description string
+  // Type of the catalog
+  //
+  // One of userManaged, serviceDefault, serviceManaged, or unknownFutureValue.
+  catalogType string
+  // Whether the access packages in the catalog are available for management
+  //
+  // One of published, unpublished, or unknownFutureValue.
+  state string
+  // Whether the access packages in the catalog can be requested by users outside the tenant
+  isExternallyVisible bool
+  // When the catalog was created
+  createdDateTime time
+  // When the catalog was last modified
+  modifiedDateTime time
+  // Access packages in the catalog
+  accessPackages() []microsoft.identityAndAccess.accessPackage
+}
+
+// Access package
+//
+// A bundle of resource roles, such as group memberships, application roles,
+// and SharePoint site roles, that users obtain through entitlement
+// management. Reports whether the package is hidden from requestors, the
+// catalog it belongs to, and the assignment policies that govern who can
+// request it.
+private microsoft.identityAndAccess.accessPackage @defaults("displayName isHidden") {
+  // Unique identifier of the access package
+  id string
+  // Display name of the access package
+  displayName string
+  // Description of the access package
+  description string
+  // Whether the access package is hidden from requestors browsing the My Access portal
+  isHidden bool
+  // When the access package was created
+  createdDateTime time
+  // When the access package was last modified
+  modifiedDateTime time
+  // Catalog the access package belongs to
+  catalog() microsoft.identityAndAccess.accessPackageCatalog
+  // Assignment policies of the access package
+  assignmentPolicies() []microsoft.identityAndAccess.accessPackageAssignmentPolicy
+}
+
+// Access package assignment policy
+//
+// Rules for how users obtain an access package: which users and service
+// principals can request it (allowedTargetScope and specificAllowedTargets),
+// whether requests need approval and from whom (approvalStages), when
+// assignments expire, whether they are reviewed, and whether assignments are
+// created automatically. allowsExternalRequestors flags policies that let
+// users from outside the directory request access.
+private microsoft.identityAndAccess.accessPackageAssignmentPolicy @defaults("displayName allowedTargetScope isApprovalRequiredForAdd") {
+  // Unique identifier of the policy
+  id string
+  // Display name of the policy
+  displayName string
+  // Description of the policy
+  description string
+  // Who can request the access package under this policy
+  //
+  // One of notSpecified, specificDirectoryUsers, specificConnectedOrganizationUsers,
+  // specificDirectoryServicePrincipals, allMemberUsers, allDirectoryUsers,
+  // allDirectoryServicePrincipals, allConfiguredConnectedOrganizationUsers,
+  // allExternalUsers, allDirectoryAgentIdentities, or unknownFutureValue.
+  allowedTargetScope string
+  // Whether users who are not yet in the directory can request the access package
+  //
+  // True when allowedTargetScope is specificConnectedOrganizationUsers,
+  // allConfiguredConnectedOrganizationUsers, or allExternalUsers. Existing
+  // guest users in the directory are covered by allDirectoryUsers, which
+  // this field does not count.
+  allowsExternalRequestors bool
+  // Users, groups, and connected organizations that can request the access package
+  //
+  // Applies when allowedTargetScope is one of the specific scopes. Each entry
+  // carries its `@odata.type`, for example `#microsoft.graph.singleUser` with
+  // a `userId` or `#microsoft.graph.groupMembers` with a `groupId`.
+  specificAllowedTargets []dict
+  // How assignments made under this policy expire
+  //
+  // One of notSpecified, noExpiration, afterDateTime, or afterDuration.
+  expirationType string
+  // Length of an assignment made under this policy
+  //
+  // An ISO 8601 duration, for example `P365D`. Set when expirationType is
+  // afterDuration.
+  expirationDuration string
+  // When assignments made under this policy end
+  //
+  // Set when expirationType is afterDateTime.
+  expirationEndDateTime time
+  // Settings for who can request, update, or remove access, and on whose behalf
+  //
+  // Carries enableTargetsToSelfAddAccess, enableTargetsToSelfUpdateAccess,
+  // enableTargetsToSelfRemoveAccess, allowCustomAssignmentSchedule,
+  // enableOnBehalfRequestorsToAddAccess, enableOnBehalfRequestorsToUpdateAccess,
+  // enableOnBehalfRequestorsToRemoveAccess, and onBehalfRequestors.
+  requestorSettings dict
+  // Whether a request to add an assignment requires approval
+  isApprovalRequiredForAdd bool
+  // Whether a request to update an assignment requires approval
+  isApprovalRequiredForUpdate bool
+  // Whether the requestor must justify the request
+  isRequestorJustificationRequired bool
+  // Approval stages a request passes through
+  //
+  // Each stage carries durationBeforeAutomaticDenial,
+  // isApproverJustificationRequired, isEscalationEnabled,
+  // durationBeforeEscalation, primaryApprovers, fallbackPrimaryApprovers,
+  // escalationApprovers, fallbackEscalationApprovers, and
+  // approverInformationVisibility. Approvers are subject sets that carry their
+  // `@odata.type`, for example `#microsoft.graph.singleUser` with a `userId`.
+  approvalStages []dict
+  // Whether assignments made under this policy are reviewed periodically
+  isAccessReviewEnabled bool
+  // Access review settings for assignments made under this policy
+  //
+  // Carries isEnabled, expirationBehavior, isRecommendationEnabled,
+  // isReviewerJustificationRequired, isSelfReview, primaryReviewers,
+  // fallbackReviewers, and schedule.
+  reviewSettings dict
+  // Settings for assignments created automatically for users in scope
+  //
+  // Carries requestAccessForAllowedTargets,
+  // removeAccessWhenTargetLeavesAllowedTargets, and
+  // gracePeriodBeforeAccessRemoval. Null for policies that assign access only
+  // on request.
+  automaticRequestSettings dict
+  // When the policy was created
+  createdDateTime time
+  // When the policy was last modified
+  modifiedDateTime time
+  // Access package the policy governs
+  accessPackage() microsoft.identityAndAccess.accessPackage
 }
 
 // External origin resource connector

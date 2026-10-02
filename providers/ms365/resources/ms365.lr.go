@@ -42,6 +42,10 @@ const (
 	ResourceMicrosoftIdentityAndAccessIdentityProvider                                                   string = "microsoft.identityAndAccess.identityProvider"
 	ResourceMicrosoftIdentityAndAccessB2xUserFlow                                                        string = "microsoft.identityAndAccess.b2xUserFlow"
 	ResourceMicrosoftIdentityAndAccessApiConnector                                                       string = "microsoft.identityAndAccess.apiConnector"
+	ResourceMicrosoftIdentityAndAccessEntitlementManagementSettings                                      string = "microsoft.identityAndAccess.entitlementManagementSettings"
+	ResourceMicrosoftIdentityAndAccessAccessPackageCatalog                                               string = "microsoft.identityAndAccess.accessPackageCatalog"
+	ResourceMicrosoftIdentityAndAccessAccessPackage                                                      string = "microsoft.identityAndAccess.accessPackage"
+	ResourceMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy                                      string = "microsoft.identityAndAccess.accessPackageAssignmentPolicy"
 	ResourceMicrosoftIdentityAndAccessExternalOriginResourceConnector                                    string = "microsoft.identityAndAccess.externalOriginResourceConnector"
 	ResourceMicrosoftIdentityAndAccessExternalOriginResourceConnectorConnection                          string = "microsoft.identityAndAccess.externalOriginResourceConnector.connection"
 	ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagement                                       string = "microsoft.identityAndAccess.privilegedIdentityManagement"
@@ -360,6 +364,22 @@ func init() {
 		"microsoft.identityAndAccess.apiConnector": {
 			// to override args, implement: initMicrosoftIdentityAndAccessApiConnector(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftIdentityAndAccessApiConnector,
+		},
+		"microsoft.identityAndAccess.entitlementManagementSettings": {
+			Init:   initMicrosoftIdentityAndAccessEntitlementManagementSettings,
+			Create: createMicrosoftIdentityAndAccessEntitlementManagementSettings,
+		},
+		"microsoft.identityAndAccess.accessPackageCatalog": {
+			// to override args, implement: initMicrosoftIdentityAndAccessAccessPackageCatalog(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessAccessPackageCatalog,
+		},
+		"microsoft.identityAndAccess.accessPackage": {
+			// to override args, implement: initMicrosoftIdentityAndAccessAccessPackage(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessAccessPackage,
+		},
+		"microsoft.identityAndAccess.accessPackageAssignmentPolicy": {
+			// to override args, implement: initMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy,
 		},
 		"microsoft.identityAndAccess.externalOriginResourceConnector": {
 			// to override args, implement: initMicrosoftIdentityAndAccessExternalOriginResourceConnector(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -1802,6 +1822,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.identityAndAccess.b2xUserFlows": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccess).GetB2xUserFlows()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.b2xUserFlow")))
 	},
+	"microsoft.identityAndAccess.entitlementManagementSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccess).GetEntitlementManagementSettings()).ToDataRes(types.Resource("microsoft.identityAndAccess.entitlementManagementSettings"))
+	},
+	"microsoft.identityAndAccess.accessPackageCatalogs": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccess).GetAccessPackageCatalogs()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.accessPackageCatalog")))
+	},
+	"microsoft.identityAndAccess.accessPackages": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccess).GetAccessPackages()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.accessPackage")))
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccess).GetAccessPackageAssignmentPolicies()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.accessPackageAssignmentPolicy")))
+	},
 	"microsoft.identityAndAccess.identityProvider.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetId()).ToDataRes(types.String)
 	},
@@ -1888,6 +1920,123 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.identityAndAccess.apiConnector.authenticationType": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessApiConnector).GetAuthenticationType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.entitlementManagementSettings.externalUserLifecycleAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessEntitlementManagementSettings).GetExternalUserLifecycleAction()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.entitlementManagementSettings.durationUntilExternalUserDeletedAfterBlocked": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessEntitlementManagementSettings).GetDurationUntilExternalUserDeletedAfterBlocked()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).GetDescription()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.catalogType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).GetCatalogType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.state": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).GetState()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.isExternallyVisible": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).GetIsExternallyVisible()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.createdDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).GetCreatedDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.modifiedDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).GetModifiedDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.accessPackages": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).GetAccessPackages()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.accessPackage")))
+	},
+	"microsoft.identityAndAccess.accessPackage.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackage).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessPackage.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackage).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessPackage.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackage).GetDescription()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessPackage.isHidden": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackage).GetIsHidden()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.accessPackage.createdDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackage).GetCreatedDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.accessPackage.modifiedDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackage).GetModifiedDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.accessPackage.catalog": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackage).GetCatalog()).ToDataRes(types.Resource("microsoft.identityAndAccess.accessPackageCatalog"))
+	},
+	"microsoft.identityAndAccess.accessPackage.assignmentPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackage).GetAssignmentPolicies()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.accessPackageAssignmentPolicy")))
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetDescription()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.allowedTargetScope": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetAllowedTargetScope()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.allowsExternalRequestors": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetAllowsExternalRequestors()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.specificAllowedTargets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetSpecificAllowedTargets()).ToDataRes(types.Array(types.Dict))
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.expirationType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetExpirationType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.expirationDuration": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetExpirationDuration()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.expirationEndDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetExpirationEndDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.requestorSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetRequestorSettings()).ToDataRes(types.Dict)
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.isApprovalRequiredForAdd": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetIsApprovalRequiredForAdd()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.isApprovalRequiredForUpdate": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetIsApprovalRequiredForUpdate()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.isRequestorJustificationRequired": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetIsRequestorJustificationRequired()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.approvalStages": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetApprovalStages()).ToDataRes(types.Array(types.Dict))
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.isAccessReviewEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetIsAccessReviewEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.reviewSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetReviewSettings()).ToDataRes(types.Dict)
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.automaticRequestSettings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetAutomaticRequestSettings()).ToDataRes(types.Dict)
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.createdDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetCreatedDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.modifiedDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetModifiedDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.accessPackage": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).GetAccessPackage()).ToDataRes(types.Resource("microsoft.identityAndAccess.accessPackage"))
 	},
 	"microsoft.identityAndAccess.externalOriginResourceConnector.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessExternalOriginResourceConnector).GetId()).ToDataRes(types.String)
@@ -8240,6 +8389,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftIdentityAndAccess).B2xUserFlows, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"microsoft.identityAndAccess.entitlementManagementSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccess).EntitlementManagementSettings, ok = plugin.RawToTValue[*mqlMicrosoftIdentityAndAccessEntitlementManagementSettings](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageCatalogs": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccess).AccessPackageCatalogs, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackages": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccess).AccessPackages, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccess).AccessPackageAssignmentPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.identityAndAccess.identityProvider.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).__id, ok = v.Value.(string)
 		return
@@ -8366,6 +8531,178 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.identityAndAccess.apiConnector.authenticationType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftIdentityAndAccessApiConnector).AuthenticationType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.entitlementManagementSettings.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessEntitlementManagementSettings).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.entitlementManagementSettings.externalUserLifecycleAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessEntitlementManagementSettings).ExternalUserLifecycleAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.entitlementManagementSettings.durationUntilExternalUserDeletedAfterBlocked": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessEntitlementManagementSettings).DurationUntilExternalUserDeletedAfterBlocked, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.catalogType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).CatalogType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.state": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).State, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.isExternallyVisible": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).IsExternallyVisible, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.createdDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).CreatedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.modifiedDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).ModifiedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageCatalog.accessPackages": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog).AccessPackages, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackage.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackage).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackage.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackage).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackage.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackage).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackage.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackage).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackage.isHidden": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackage).IsHidden, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackage.createdDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackage).CreatedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackage.modifiedDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackage).ModifiedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackage.catalog": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackage).Catalog, ok = plugin.RawToTValue[*mqlMicrosoftIdentityAndAccessAccessPackageCatalog](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackage.assignmentPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackage).AssignmentPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.allowedTargetScope": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).AllowedTargetScope, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.allowsExternalRequestors": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).AllowsExternalRequestors, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.specificAllowedTargets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).SpecificAllowedTargets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.expirationType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).ExpirationType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.expirationDuration": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).ExpirationDuration, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.expirationEndDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).ExpirationEndDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.requestorSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).RequestorSettings, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.isApprovalRequiredForAdd": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).IsApprovalRequiredForAdd, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.isApprovalRequiredForUpdate": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).IsApprovalRequiredForUpdate, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.isRequestorJustificationRequired": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).IsRequestorJustificationRequired, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.approvalStages": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).ApprovalStages, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.isAccessReviewEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).IsAccessReviewEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.reviewSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).ReviewSettings, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.automaticRequestSettings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).AutomaticRequestSettings, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.createdDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).CreatedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.modifiedDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).ModifiedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.accessPackageAssignmentPolicy.accessPackage": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy).AccessPackage, ok = plugin.RawToTValue[*mqlMicrosoftIdentityAndAccessAccessPackage](v.Value, v.Error)
 		return
 	},
 	"microsoft.identityAndAccess.externalOriginResourceConnector.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -18811,7 +19148,7 @@ func (c *mqlMicrosoftUsers) GetList() *plugin.TValue[[]any] {
 type mqlMicrosoftIdentityAndAccess struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlMicrosoftIdentityAndAccessInternal it will be used here
+	mqlMicrosoftIdentityAndAccessInternal
 	RoleEligibilityScheduleInstances plugin.TValue[[]any]
 	RoleAssignmentScheduleInstances  plugin.TValue[[]any]
 	PrivilegedIdentityManagement     plugin.TValue[*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagement]
@@ -18820,6 +19157,10 @@ type mqlMicrosoftIdentityAndAccess struct {
 	ExternalOriginResourceConnectors plugin.TValue[[]any]
 	IdentityProviders                plugin.TValue[[]any]
 	B2xUserFlows                     plugin.TValue[[]any]
+	EntitlementManagementSettings    plugin.TValue[*mqlMicrosoftIdentityAndAccessEntitlementManagementSettings]
+	AccessPackageCatalogs            plugin.TValue[[]any]
+	AccessPackages                   plugin.TValue[[]any]
+	AccessPackageAssignmentPolicies  plugin.TValue[[]any]
 }
 
 // createMicrosoftIdentityAndAccess creates a new instance of this resource
@@ -18984,6 +19325,70 @@ func (c *mqlMicrosoftIdentityAndAccess) GetB2xUserFlows() *plugin.TValue[[]any] 
 		}
 
 		return c.b2xUserFlows()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccess) GetEntitlementManagementSettings() *plugin.TValue[*mqlMicrosoftIdentityAndAccessEntitlementManagementSettings] {
+	return plugin.GetOrCompute[*mqlMicrosoftIdentityAndAccessEntitlementManagementSettings](&c.EntitlementManagementSettings, func() (*mqlMicrosoftIdentityAndAccessEntitlementManagementSettings, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess", c.__id, "entitlementManagementSettings")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftIdentityAndAccessEntitlementManagementSettings), nil
+			}
+		}
+
+		return c.entitlementManagementSettings()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccess) GetAccessPackageCatalogs() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessPackageCatalogs, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess", c.__id, "accessPackageCatalogs")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.accessPackageCatalogs()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccess) GetAccessPackages() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessPackages, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess", c.__id, "accessPackages")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.accessPackages()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccess) GetAccessPackageAssignmentPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessPackageAssignmentPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess", c.__id, "accessPackageAssignmentPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.accessPackageAssignmentPolicies()
 	})
 }
 
@@ -19283,6 +19688,405 @@ func (c *mqlMicrosoftIdentityAndAccessApiConnector) GetTargetUrl() *plugin.TValu
 
 func (c *mqlMicrosoftIdentityAndAccessApiConnector) GetAuthenticationType() *plugin.TValue[string] {
 	return &c.AuthenticationType
+}
+
+// mqlMicrosoftIdentityAndAccessEntitlementManagementSettings for the microsoft.identityAndAccess.entitlementManagementSettings resource
+type mqlMicrosoftIdentityAndAccessEntitlementManagementSettings struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftIdentityAndAccessEntitlementManagementSettingsInternal it will be used here
+	ExternalUserLifecycleAction                  plugin.TValue[string]
+	DurationUntilExternalUserDeletedAfterBlocked plugin.TValue[string]
+}
+
+// createMicrosoftIdentityAndAccessEntitlementManagementSettings creates a new instance of this resource
+func createMicrosoftIdentityAndAccessEntitlementManagementSettings(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessEntitlementManagementSettings{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.entitlementManagementSettings", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessEntitlementManagementSettings) MqlName() string {
+	return "microsoft.identityAndAccess.entitlementManagementSettings"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessEntitlementManagementSettings) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessEntitlementManagementSettings) GetExternalUserLifecycleAction() *plugin.TValue[string] {
+	return &c.ExternalUserLifecycleAction
+}
+
+func (c *mqlMicrosoftIdentityAndAccessEntitlementManagementSettings) GetDurationUntilExternalUserDeletedAfterBlocked() *plugin.TValue[string] {
+	return &c.DurationUntilExternalUserDeletedAfterBlocked
+}
+
+// mqlMicrosoftIdentityAndAccessAccessPackageCatalog for the microsoft.identityAndAccess.accessPackageCatalog resource
+type mqlMicrosoftIdentityAndAccessAccessPackageCatalog struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftIdentityAndAccessAccessPackageCatalogInternal it will be used here
+	Id                  plugin.TValue[string]
+	DisplayName         plugin.TValue[string]
+	Description         plugin.TValue[string]
+	CatalogType         plugin.TValue[string]
+	State               plugin.TValue[string]
+	IsExternallyVisible plugin.TValue[bool]
+	CreatedDateTime     plugin.TValue[*time.Time]
+	ModifiedDateTime    plugin.TValue[*time.Time]
+	AccessPackages      plugin.TValue[[]any]
+}
+
+// createMicrosoftIdentityAndAccessAccessPackageCatalog creates a new instance of this resource
+func createMicrosoftIdentityAndAccessAccessPackageCatalog(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessAccessPackageCatalog{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.accessPackageCatalog", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageCatalog) MqlName() string {
+	return "microsoft.identityAndAccess.accessPackageCatalog"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageCatalog) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageCatalog) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageCatalog) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageCatalog) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageCatalog) GetCatalogType() *plugin.TValue[string] {
+	return &c.CatalogType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageCatalog) GetState() *plugin.TValue[string] {
+	return &c.State
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageCatalog) GetIsExternallyVisible() *plugin.TValue[bool] {
+	return &c.IsExternallyVisible
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageCatalog) GetCreatedDateTime() *plugin.TValue[*time.Time] {
+	return &c.CreatedDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageCatalog) GetModifiedDateTime() *plugin.TValue[*time.Time] {
+	return &c.ModifiedDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageCatalog) GetAccessPackages() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AccessPackages, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.accessPackageCatalog", c.__id, "accessPackages")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.accessPackages()
+	})
+}
+
+// mqlMicrosoftIdentityAndAccessAccessPackage for the microsoft.identityAndAccess.accessPackage resource
+type mqlMicrosoftIdentityAndAccessAccessPackage struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftIdentityAndAccessAccessPackageInternal
+	Id                 plugin.TValue[string]
+	DisplayName        plugin.TValue[string]
+	Description        plugin.TValue[string]
+	IsHidden           plugin.TValue[bool]
+	CreatedDateTime    plugin.TValue[*time.Time]
+	ModifiedDateTime   plugin.TValue[*time.Time]
+	Catalog            plugin.TValue[*mqlMicrosoftIdentityAndAccessAccessPackageCatalog]
+	AssignmentPolicies plugin.TValue[[]any]
+}
+
+// createMicrosoftIdentityAndAccessAccessPackage creates a new instance of this resource
+func createMicrosoftIdentityAndAccessAccessPackage(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessAccessPackage{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.accessPackage", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackage) MqlName() string {
+	return "microsoft.identityAndAccess.accessPackage"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackage) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackage) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackage) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackage) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackage) GetIsHidden() *plugin.TValue[bool] {
+	return &c.IsHidden
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackage) GetCreatedDateTime() *plugin.TValue[*time.Time] {
+	return &c.CreatedDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackage) GetModifiedDateTime() *plugin.TValue[*time.Time] {
+	return &c.ModifiedDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackage) GetCatalog() *plugin.TValue[*mqlMicrosoftIdentityAndAccessAccessPackageCatalog] {
+	return plugin.GetOrCompute[*mqlMicrosoftIdentityAndAccessAccessPackageCatalog](&c.Catalog, func() (*mqlMicrosoftIdentityAndAccessAccessPackageCatalog, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.accessPackage", c.__id, "catalog")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftIdentityAndAccessAccessPackageCatalog), nil
+			}
+		}
+
+		return c.catalog()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackage) GetAssignmentPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AssignmentPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.accessPackage", c.__id, "assignmentPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.assignmentPolicies()
+	})
+}
+
+// mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy for the microsoft.identityAndAccess.accessPackageAssignmentPolicy resource
+type mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicyInternal
+	Id                               plugin.TValue[string]
+	DisplayName                      plugin.TValue[string]
+	Description                      plugin.TValue[string]
+	AllowedTargetScope               plugin.TValue[string]
+	AllowsExternalRequestors         plugin.TValue[bool]
+	SpecificAllowedTargets           plugin.TValue[[]any]
+	ExpirationType                   plugin.TValue[string]
+	ExpirationDuration               plugin.TValue[string]
+	ExpirationEndDateTime            plugin.TValue[*time.Time]
+	RequestorSettings                plugin.TValue[any]
+	IsApprovalRequiredForAdd         plugin.TValue[bool]
+	IsApprovalRequiredForUpdate      plugin.TValue[bool]
+	IsRequestorJustificationRequired plugin.TValue[bool]
+	ApprovalStages                   plugin.TValue[[]any]
+	IsAccessReviewEnabled            plugin.TValue[bool]
+	ReviewSettings                   plugin.TValue[any]
+	AutomaticRequestSettings         plugin.TValue[any]
+	CreatedDateTime                  plugin.TValue[*time.Time]
+	ModifiedDateTime                 plugin.TValue[*time.Time]
+	AccessPackage                    plugin.TValue[*mqlMicrosoftIdentityAndAccessAccessPackage]
+}
+
+// createMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy creates a new instance of this resource
+func createMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.accessPackageAssignmentPolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) MqlName() string {
+	return "microsoft.identityAndAccess.accessPackageAssignmentPolicy"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetAllowedTargetScope() *plugin.TValue[string] {
+	return &c.AllowedTargetScope
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetAllowsExternalRequestors() *plugin.TValue[bool] {
+	return &c.AllowsExternalRequestors
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetSpecificAllowedTargets() *plugin.TValue[[]any] {
+	return &c.SpecificAllowedTargets
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetExpirationType() *plugin.TValue[string] {
+	return &c.ExpirationType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetExpirationDuration() *plugin.TValue[string] {
+	return &c.ExpirationDuration
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetExpirationEndDateTime() *plugin.TValue[*time.Time] {
+	return &c.ExpirationEndDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetRequestorSettings() *plugin.TValue[any] {
+	return &c.RequestorSettings
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetIsApprovalRequiredForAdd() *plugin.TValue[bool] {
+	return &c.IsApprovalRequiredForAdd
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetIsApprovalRequiredForUpdate() *plugin.TValue[bool] {
+	return &c.IsApprovalRequiredForUpdate
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetIsRequestorJustificationRequired() *plugin.TValue[bool] {
+	return &c.IsRequestorJustificationRequired
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetApprovalStages() *plugin.TValue[[]any] {
+	return &c.ApprovalStages
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetIsAccessReviewEnabled() *plugin.TValue[bool] {
+	return &c.IsAccessReviewEnabled
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetReviewSettings() *plugin.TValue[any] {
+	return &c.ReviewSettings
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetAutomaticRequestSettings() *plugin.TValue[any] {
+	return &c.AutomaticRequestSettings
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetCreatedDateTime() *plugin.TValue[*time.Time] {
+	return &c.CreatedDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetModifiedDateTime() *plugin.TValue[*time.Time] {
+	return &c.ModifiedDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy) GetAccessPackage() *plugin.TValue[*mqlMicrosoftIdentityAndAccessAccessPackage] {
+	return plugin.GetOrCompute[*mqlMicrosoftIdentityAndAccessAccessPackage](&c.AccessPackage, func() (*mqlMicrosoftIdentityAndAccessAccessPackage, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.accessPackageAssignmentPolicy", c.__id, "accessPackage")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftIdentityAndAccessAccessPackage), nil
+			}
+		}
+
+		return c.accessPackage()
+	})
 }
 
 // mqlMicrosoftIdentityAndAccessExternalOriginResourceConnector for the microsoft.identityAndAccess.externalOriginResourceConnector resource

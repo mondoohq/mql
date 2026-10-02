@@ -122,7 +122,9 @@ func graphStatusCode(err error) int {
 // classified by the status Graph answered with:
 //
 //   - 401 is unauthenticated (the token was rejected),
-//   - 403 is a refusal, naming the permissions the call needs,
+//   - 403 is a refusal, naming the permissions the call needs, unless Graph
+//     says the tenant lacks the license the feature needs, which is not
+//     applicable,
 //   - 429 is throttling, carrying Graph's Retry-After hint when it sent one,
 //   - 5xx is the service being unavailable.
 //
@@ -137,6 +139,9 @@ func classifyGraphError(err error, permissions ...string) error {
 	case status == http.StatusUnauthorized:
 		return llx.Unauthenticated(transformError(err))
 	case status == http.StatusForbidden:
+		if isPremiumLicenseRequired(err) {
+			return llx.NotApplicable(transformError(err))
+		}
 		return llx.Forbidden(transformError(err), llx.WithPermissions(permissions...))
 	case status == http.StatusTooManyRequests:
 		if d, ok := graphRetryAfter(err, time.Now()); ok {
