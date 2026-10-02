@@ -150,3 +150,24 @@ func TestSudoIDIncludesExplicitPath(t *testing.T) {
 	assert.Equal(t, "/usr/bin/sudo", auto.(*mqlSudo).GetPath().Data)
 	assert.Equal(t, "/usr/bin/sudo-rs", rs.(*mqlSudo).GetPath().Data)
 }
+
+// The bare path `sudo.validation` creates the resource without a result. It
+// used to get the id of a failed validate, "sudo.validation/invalid", and read
+// back a null valid on SLES 16 and Leap 16, where stock `visudo -c` fails.
+func TestSudoValidationWithoutResultHasNoID(t *testing.T) {
+	runtime := sudoValidateRuntime(t, debian13SudoFiles)
+
+	_, err := CreateResource(runtime, "sudo.validation", map[string]*llx.RawData{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "sudo.validate")
+
+	rsSudo, err := NewResource(runtime, "sudo", map[string]*llx.RawData{
+		"path": llx.StringData("/usr/bin/sudo-rs"),
+	})
+	require.NoError(t, err)
+	failed := rsSudo.(*mqlSudo).GetValidate()
+	require.NoError(t, failed.Error)
+	require.NotNil(t, failed.Data)
+	assert.False(t, failed.Data.Valid.Data)
+	assert.Equal(t, "sudo.validation//usr/bin/visudo-rs", failed.Data.MqlID())
+}
