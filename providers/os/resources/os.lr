@@ -2240,7 +2240,10 @@ private apache2.conf.virtualHost @defaults("address serverName ssl") {
   sslCertificateKeyFile string
   // Path to the certificate chain (SSLCertificateChainFile, deprecated in favor of full chain in SSLCertificateFile)
   sslCertificateChainFile string
-  // X.509 certificates parsed from sslCertificateFile (empty if the file is unreadable)
+  // X.509 certificates parsed from sslCertificateFile
+  //
+  // Empty when the file does not exist. A file that exists but cannot be
+  // read, for example by a scan without root, is an error.
   certificate() []network.certificate
   // Redirect / RedirectMatch directives within this VirtualHost (target, status, match)
   redirects []dict
@@ -2632,7 +2635,10 @@ private nginx.conf.server @defaults("serverName ssl") {
   sslSessionTickets string
   // ssl_session_timeout directive value (e.g., "1d")
   sslSessionTimeout string
-  // X.509 certificates parsed from sslCertificate (empty if the file is unreadable)
+  // X.509 certificates parsed from sslCertificate
+  //
+  // Empty when the file does not exist. A file that exists but cannot be
+  // read, for example by a scan without root, is an error.
   certificate() []network.certificate
   // Response headers from `add_header NAME VALUE` directives (header name -> values)
   addHeaders map[string][]string
@@ -5090,8 +5096,8 @@ mysql {
 // option group, `serverOptions` merges the groups mysqld itself reads
 // (`[mysqld]`, `[server]`, and the version-suffixed group for the installed
 // server version, such as `[mysqld-8.0]` on 8.0), and `clientOptions`
-// merges `[client]`, `[mysql]`, and `[client-server]`, where a readable
-// `password` exposes credentials to every account that can read the file.
+// merges `[client]`, `[mysql]`, and `[client-server]`, where a
+// `password` option means credentials are stored in the file.
 // Convenience views cover networking, TLS, authentication and password
 // policy, filesystem privileges, logging, binary logging and replication,
 // and encryption at rest. `userFiles` reports the per-user option files
@@ -5099,9 +5105,11 @@ mysql {
 //
 // By default the file is located by probing the well-known paths for
 // Debian/Ubuntu and RPM installations, and returns nothing when the host
-// runs MariaDB rather than MySQL. Pass an explicit path with
-// `mysql.conf("/etc/mysql/my.cnf")` to parse a file regardless of
-// which product it belongs to.
+// runs MariaDB rather than MySQL, or runs no database server at all. The
+// installed server binary decides, so option files that a client library
+// ships (such as `[client-mariadb]` on a RHEL host running MySQL) do not.
+// Pass an explicit path with `mysql.conf("/etc/mysql/my.cnf")` to parse a
+// file regardless of which product it belongs to.
 //
 // Values come from the option files. A setting given on the
 // command line, which is how a container usually configures MySQL,
@@ -5122,6 +5130,10 @@ mysql.conf {
   // version cannot be detected.
   serverOptions(file) map[string]string
   // Options the client programs read, merged last-write-wins
+  //
+  // The value of `password` and of the other options that hold a credential
+  // reads `<redacted>`, so a stored password shows up without being copied
+  // into scan results.
   clientOptions(file) map[string]string
   // Per-user option files found under home directories
   userFiles() []mysql.conf.userOptionFile
@@ -5165,7 +5177,10 @@ mysql.conf {
   tlsVersion(serverOptions) []string
   // tls_ciphersuites option (permitted TLS 1.3 cipher suites)
   tlsCiphersuites(serverOptions) string
-  // X.509 certificates parsed from sslCertFile (empty if the file is unreadable)
+  // X.509 certificates parsed from sslCertFile
+  //
+  // Empty when the file does not exist. A file that exists but cannot be
+  // read, for example by a scan without root, is an error.
   certificate() []network.certificate
 
   // default_authentication_plugin option
@@ -5309,6 +5324,9 @@ private mysql.conf.section @defaults("name") {
   // Group name as written, without the brackets (e.g., "mysqld", "client", "mysqld-8.0")
   name string
   // Options in this group, merged last-write-wins
+  //
+  // A credential such as `password` keeps its key, and its value reads
+  // `<redacted>`.
   options map[string]string
   // Names of the options written with no value at all
   //
@@ -5328,6 +5346,7 @@ private mysql.conf.section @defaults("name") {
 // mysql_config_editor. The server's client programs read these in addition
 // to the system option files, and they frequently hold a plaintext
 // `password`, so their mode and ownership matter as much as their contents.
+// A stored `password` is reported with the value `<redacted>`.
 // Read `file.permissions` to flag files readable beyond their owner.
 private mysql.conf.userOptionFile @defaults("file.path format") {
   // File backing this option file
@@ -5373,14 +5392,16 @@ mariadb {
 // extension of MySQL's, because packaged fragments since 11.0 configure the
 // server under `[mariadbd]` and ship no `[mysqld]` group at all.
 // `galeraOptions` breaks out `[galera]` so cluster transport settings stay
-// separable, and `clientOptions` merges the client groups, where a readable
-// `password` exposes credentials to every account that can read the file.
+// separable, and `clientOptions` merges the client groups, where a
+// `password` option means credentials are stored in the file.
 //
 // By default the file is located by probing the well-known paths for
 // Debian/Ubuntu and RPM installations, and returns nothing when the host
-// runs MySQL rather than MariaDB. Pass an explicit path with
-// `mariadb.conf("/etc/mysql/mariadb.cnf")` to parse a file regardless
-// of which product it belongs to.
+// runs MySQL rather than MariaDB, or runs no database server at all. The
+// installed server binary decides, so option files that a client library
+// ships (such as `[client-mariadb]` on a RHEL host running MySQL) do not.
+// Pass an explicit path with `mariadb.conf("/etc/mysql/mariadb.cnf")` to
+// parse a file regardless of which product it belongs to.
 //
 // Values come from the option files. A setting given on the
 // command line, which is how a container usually configures MariaDB,
@@ -5401,6 +5422,10 @@ mariadb.conf {
   // version cannot be detected.
   serverOptions(file) map[string]string
   // Options the client programs read, merged last-write-wins
+  //
+  // The value of `password` and of the other options that hold a credential
+  // reads `<redacted>`, so a stored password shows up without being copied
+  // into scan results.
   clientOptions(file) map[string]string
   // Options from the `[galera]` group, which a wsrep-enabled server reads
   galeraOptions(file) map[string]string
@@ -5436,7 +5461,10 @@ mariadb.conf {
   sslCipher(serverOptions) string
   // tls_version option split into individual protocol versions
   tlsVersion(serverOptions) []string
-  // X.509 certificates parsed from sslCertFile (empty if the file is unreadable)
+  // X.509 certificates parsed from sslCertFile
+  //
+  // Empty when the file does not exist. A file that exists but cannot be
+  // read, for example by a scan without root, is an error.
   certificate() []network.certificate
 
   // skip_grant_tables option, which starts the server with all access control disabled
@@ -5585,6 +5613,9 @@ private mariadb.conf.section @defaults("name") {
   // Group name as written, without the brackets (e.g., "mariadbd", "galera", "mariadb-11.4")
   name string
   // Options in this group, merged last-write-wins
+  //
+  // A credential such as `password` keeps its key, and its value reads
+  // `<redacted>`.
   options map[string]string
   // Names of the options written with no value at all
   //
@@ -5604,6 +5635,7 @@ private mariadb.conf.section @defaults("name") {
 // mysql_config_editor. The server's client programs read these in addition
 // to the system option files, and they frequently hold a plaintext
 // `password`, so their mode and ownership matter as much as their contents.
+// A stored `password` is reported with the value `<redacted>`.
 // Read `file.permissions` to flag files readable beyond their owner.
 private mariadb.conf.userOptionFile @defaults("file.path format") {
   // File backing this option file
@@ -5720,7 +5752,10 @@ mongodb.conf {
   tlsDisabledProtocols(params) []string
   // net.tls.FIPSMode option
   tlsFipsMode(params) bool
-  // X.509 certificates parsed from tlsCertificateKeyFile (empty if the file is unreadable)
+  // X.509 certificates parsed from tlsCertificateKeyFile
+  //
+  // Empty when the file does not exist. A file that exists but cannot be
+  // read, for example by a scan without root, is an error.
   certificate() []network.certificate
 
   // security.authorization option (enabled, disabled)

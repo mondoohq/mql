@@ -15,6 +15,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/resources/mycnf"
 	"go.mondoo.com/mql/utils/syncx"
 )
 
@@ -96,7 +97,7 @@ func TestMysqlConf_IsEmptyOnMariadbHosts(t *testing.T) {
 
 // The mirror of the above: mariadb.conf must report nothing on a MySQL host.
 func TestMariadbConf_IsEmptyOnMysqlHosts(t *testing.T) {
-	for _, fixture := range []string{"mysql_oracle80.toml", "mysql_ubuntu2404.toml"} {
+	for _, fixture := range []string{"mysql_oracle80.toml", "mysql_ubuntu2404.toml", "mysql_rhel9_mysql.toml"} {
 		t.Run(fixture, func(t *testing.T) {
 			conf := mariadbConf(t, fixture)
 
@@ -115,6 +116,7 @@ func TestMysqlConf_ResolvesOnMysqlHosts(t *testing.T) {
 	for _, tc := range []struct{ fixture, wantPath string }{
 		{"mysql_oracle80.toml", "/etc/my.cnf"},
 		{"mysql_ubuntu2404.toml", "/etc/mysql/my.cnf"},
+		{"mysql_rhel9_mysql.toml", "/etc/my.cnf"},
 	} {
 		t.Run(tc.fixture, func(t *testing.T) {
 			conf := mysqlConf(t, tc.fixture)
@@ -140,6 +142,33 @@ func TestMariadbConf_ResolvesOnMariadbHosts(t *testing.T) {
 			assert.Equal(t, tc.wantPath, file.Data.Path.Data)
 		})
 	}
+}
+
+// On RHEL 8 and later mysql-server pulls in mariadb-connector-c-config, whose
+// [client-mariadb] group made mysql.conf report nothing on a running MySQL
+// server. The server options come from the package's mysql-server.cnf.
+func TestMysqlConf_RhelMysqlWithMariadbConnectorConfig(t *testing.T) {
+	conf := mysqlConf(t, "mysql_rhel9_mysql.toml")
+	opts := serverOptions(t, conf)
+	assert.Equal(t, "/var/lib/mysql", opts["datadir"])
+	assert.Equal(t, "/var/log/mysql/mysqld.log", opts["log_error"])
+}
+
+// RHEL 7's default mariadb-libs installs an /etc/my.cnf holding [mysqld] on a
+// host with no database server. Neither resource may report it.
+func TestConf_IsEmptyWithClientLibrariesOnly(t *testing.T) {
+	mysql := mysqlConf(t, "mysql_rhel7_mariadb_libs.toml")
+	file := mysql.GetFile()
+	require.NoError(t, file.Error)
+	assert.Nil(t, file.Data, "no server is installed")
+	opts := mysql.GetServerOptions()
+	require.NoError(t, opts.Error)
+	assert.Empty(t, opts.Data)
+
+	mariadb := mariadbConf(t, "mysql_rhel7_mariadb_libs.toml")
+	mfile := mariadb.GetFile()
+	require.NoError(t, mfile.Error)
+	assert.Nil(t, mfile.Data)
 }
 
 // Naming a file explicitly bypasses the gate: a caller who says which file to
@@ -460,7 +489,9 @@ func TestMysqlConf_UserFiles(t *testing.T) {
 	require.Len(t, sections.Data, 1)
 	client := sections.Data[0].(*mqlMysqlConfSection)
 	assert.Equal(t, "client", client.Name.Data)
-	assert.Equal(t, "hunter2", client.Options.Data["password"])
+	// The password is reported by name so the finding stays queryable, but
+	// its value never leaves the parser.
+	assert.Equal(t, mycnf.RedactedValue, client.Options.Data["password"])
 }
 
 // A .mylogin.cnf is an encrypted credential store. It is reported so its mode

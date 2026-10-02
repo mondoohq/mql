@@ -1,0 +1,99 @@
+# RHEL 9 with the mysql-server package (8.0). mysql-server pulls in
+# mariadb-connector-c-config, whose /etc/my.cnf and client.cnf declare
+# [client-server] and [client-mariadb]. Only the server binary tells the
+# product apart. /usr/sbin/mysqld is a link to /usr/libexec/mysqld on the host.
+
+[files."/etc"]
+path = "/etc"
+[files."/etc".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/my.cnf.d"]
+path = "/etc/my.cnf.d"
+[files."/etc/my.cnf.d".stat]
+isdir = true
+mode = 16877
+
+[files."/usr"]
+path = "/usr"
+[files."/usr".stat]
+isdir = true
+mode = 16877
+
+[files."/usr/libexec"]
+path = "/usr/libexec"
+[files."/usr/libexec".stat]
+isdir = true
+mode = 16877
+
+[files."/usr/sbin"]
+path = "/usr/sbin"
+[files."/usr/sbin".stat]
+isdir = true
+mode = 16877
+
+[files."/etc/my.cnf"]
+path = "/etc/my.cnf"
+content = '''
+#
+# This group is read both both by the client and the server
+# use it for options that affect everything
+#
+[client-server]
+
+#
+# include all files from the config directory
+#
+!includedir /etc/my.cnf.d
+
+'''
+
+[files."/etc/my.cnf.d/client.cnf"]
+path = "/etc/my.cnf.d/client.cnf"
+content = '''
+#
+# These two groups are read by the client library
+# Use it for options that affect all clients, but not the server
+#
+
+
+[client]
+
+# This group is not read by mysql client library,
+# If you use the same .cnf file for MySQL and MariaDB,
+# use it for MariaDB-only client options
+[client-mariadb]
+
+'''
+
+[files."/etc/my.cnf.d/mysql-server.cnf"]
+path = "/etc/my.cnf.d/mysql-server.cnf"
+content = '''
+#
+# This group are read by MySQL server.
+# Use it for options that only the server (but not clients) should see
+#
+# For advice on how to change settings please see
+# http://dev.mysql.com/doc/refman/en/server-configuration-defaults.html
+
+# Settings user and group are ignored when systemd is used.
+# If you need to run mysqld under a different user or group,
+# customize your systemd unit file for mysqld according to the
+# instructions in http://fedoraproject.org/wiki/Systemd
+
+[mysqld]
+datadir=/var/lib/mysql
+socket=/var/lib/mysql/mysql.sock
+log-error=/var/log/mysql/mysqld.log
+pid-file=/run/mysqld/mysqld.pid
+
+'''
+
+[files."/usr/libexec/mysqld"]
+path = "/usr/libexec/mysqld"
+content = ''
+
+[files."/usr/sbin/mysqld"]
+path = "/usr/sbin/mysqld"
+content = ''

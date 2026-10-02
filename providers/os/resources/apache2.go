@@ -1025,8 +1025,9 @@ func (v *mqlApache2ConfVirtualHost) certificate() ([]any, error) {
 }
 
 // readCertificatesFromPath reads a PEM file via the runtime's file resource
-// and returns the parsed []network.certificate. Returns an empty slice when
-// the file is unreadable so audits don't blow up on a misconfigured path.
+// and returns the parsed []network.certificate. A file that does not exist or
+// holds no certificate yields an empty slice. A file that exists but cannot be
+// read is an error once structured errors are on, see certificateReadError.
 func readCertificatesFromPath(runtime *plugin.Runtime, path string) ([]any, error) {
 	f, err := CreateResource(runtime, "file", map[string]*llx.RawData{
 		"path": llx.StringData(path),
@@ -1036,7 +1037,13 @@ func readCertificatesFromPath(runtime *plugin.Runtime, path string) ([]any, erro
 	}
 	mqlF := f.(*mqlFile)
 	content := mqlF.GetContent()
-	if content.Error != nil || content.Data == "" {
+	if content.Error != nil {
+		if err := certificateReadError(content.Error); err != nil {
+			return nil, err
+		}
+		return []any{}, nil
+	}
+	if content.Data == "" {
 		return []any{}, nil
 	}
 	c, err := runtime.CreateSharedResource("certificates", map[string]*llx.RawData{

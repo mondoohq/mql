@@ -113,6 +113,52 @@ var cumulativeOptions = map[string]bool{
 	"plugin_load_add": true,
 }
 
+// RedactedValue stands in for the value of an option that holds a credential.
+// See IsSecretOption.
+const RedactedValue = "<redacted>"
+
+// secretOptions lists the options whose value is a credential, after
+// NormalizeName. password1 through password3 (the multifactor client
+// passwords) are matched by IsSecretOption rather than listed.
+//
+// The password policy options (password_history, validate_password.length,
+// default_password_lifetime, ...) are deliberately not here: they are
+// settings an audit reads, not secrets.
+var secretOptions = map[string]bool{
+	// The client password, read from [client], [mysql] and the other
+	// client groups, most often in a per-user ~/.my.cnf.
+	"password": true,
+	// Replication credentials, accepted in option files by old servers.
+	"master_password": true,
+	// Galera state snapshot transfer credentials, written as user:password.
+	"wsrep_sst_auth": true,
+	// Bind passwords of MySQL Enterprise's LDAP authentication plugins.
+	"authentication_ldap_sasl_bind_root_pwd":   true,
+	"authentication_ldap_simple_bind_root_pwd": true,
+	// Vault token of MariaDB's HashiCorp key management plugin.
+	"hashicorp_key_management_token": true,
+}
+
+// IsSecretOption reports whether an option's value is a credential. Parse
+// replaces such a value with RedactedValue, so a credential written into an
+// option file never reaches a caller: the option is still reported, which is
+// the finding (a password stored in a file), but not what it is set to.
+func IsSecretOption(name string) bool {
+	if secretOptions[name] {
+		return true
+	}
+	rest, ok := strings.CutPrefix(name, "password")
+	if !ok || rest == "" {
+		return false
+	}
+	for _, r := range rest {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // Parse reads the option file at path and follows every !include and
 // !includedir directive it encounters, returning the options in read order.
 //
@@ -202,6 +248,9 @@ func (c *Conf) parseFile(path string, reader FileReader, dirLister DirLister, vi
 		opt.Section = section
 		opt.File = path
 		opt.Line = i + 1
+		if opt.Value != "" && IsSecretOption(opt.Name) {
+			opt.Value = RedactedValue
+		}
 		c.Options = append(c.Options, opt)
 	}
 	return nil
@@ -245,14 +294,30 @@ func (c *Conf) parseDirective(line, baseDir string, reader FileReader, dirLister
 	}
 }
 
-// isIncludableFile reports whether !includedir should read the entry. MySQL
-// reads only files ending in ".cnf" on Unix, plus ".ini" on Windows. Other
-// suffixes are skipped, which matters because distributions park templates
-// next to live fragments (MariaDB ships an "enable_encryption.preset" and a
+// isIncludableFile reports whether !includedir should read the entry. Both
+// servers read only files ending in ".cnf" on Unix, plus ".ini" on Windows,
+// so an ".ini" file in a Unix fragment directory is not part of the
+// configuration however much it looks like one. Other suffixes are skipped
+// too, which matters because distributions park templates next to live
+// fragments (MariaDB ships an "enable_encryption.preset" and a
 // "99-enable-encryption.cnf.preset" directory inside its fragment directory).
 func isIncludableFile(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
-	return ext == ".cnf" || ext == ".ini"
+	if ext == ".cnf" {
+		return true
+	}
+	return ext == ".ini" && isWindowsPath(path)
+}
+
+// isWindowsPath reports whether path is written the Windows way, with a drive
+// letter or a backslash separator. The parser does not know which platform
+// the target runs, but the paths it is handed are the target's own.
+func isWindowsPath(path string) bool {
+	if strings.Contains(path, `\`) {
+		return true
+	}
+	return len(path) >= 2 && path[1] == ':' &&
+		((path[0] >= 'a' && path[0] <= 'z') || (path[0] >= 'A' && path[0] <= 'Z'))
 }
 
 // parseGroupHeader extracts the group name from a "[name]" line, tolerating

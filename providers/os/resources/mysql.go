@@ -23,6 +23,10 @@ type mqlMysqlInternal struct {
 	// which carry the accessor methods of the same name.
 	cachedVersion string
 	cachedFlavor  string
+	// bannerFlavor is the product the server binary's banner names, kept
+	// even when it is MariaDB so the option file flavor gate can tell a
+	// mysqld that is MariaDB's from MySQL's.
+	bannerFlavor string
 }
 
 func (m *mqlMysql) id() (string, error) {
@@ -45,6 +49,7 @@ func (m *mqlMysql) detect() {
 	m.detected = true
 
 	version, flavor := detectServerVersion(m.MqlRuntime)
+	m.bannerFlavor = flavor
 	if flavor == mycnf.FlavorMariaDB {
 		return
 	}

@@ -168,7 +168,8 @@ func (st *mycnfState) resolve(runtime *plugin.Runtime, wantFlavor string, candid
 			// to tell which product it belongs to.
 			continue
 		}
-		if mycnf.DetectFlavor(conf, probe) != wantFlavor {
+		banner := func() string { return installedServerFlavor(runtime) }
+		if mycnf.DetectFlavor(conf, probe, banner) != wantFlavor {
 			continue
 		}
 		st.rootPath = candidate
@@ -218,6 +219,23 @@ func installedServerVersion(runtime *plugin.Runtime, resourceName string) string
 		}
 	}
 	return ""
+}
+
+// installedServerFlavor returns the product the installed server binary names
+// in its --version banner, MariaDB included, or the empty string when no server
+// binary could be run. It shares the mysql resource's cached detection, so the
+// binary is run once per scan however many resources ask.
+func installedServerFlavor(runtime *plugin.Runtime) string {
+	raw, err := CreateResource(runtime, "mysql", nil)
+	if err != nil {
+		return ""
+	}
+	m, ok := raw.(*mqlMysql)
+	if !ok {
+		return ""
+	}
+	m.detect()
+	return m.bannerFlavor
 }
 
 // ensureFrom resolves using the path of an already-set file resource, which is

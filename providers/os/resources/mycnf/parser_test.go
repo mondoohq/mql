@@ -218,7 +218,10 @@ func TestParseIncludeRelativeAndAbsolute(t *testing.T) {
 	assert.Len(t, conf.Files, 3)
 }
 
-func TestParseIncludeDirOnlyReadsCnfAndIni(t *testing.T) {
+// On Unix both servers read only *.cnf out of an !includedir directory; strace
+// of mysqld --print-defaults on RHEL 9 shows /etc/my.cnf.d/zz-sweep.ini never
+// opened. A .ini fragment there sets nothing the server reads.
+func TestParseIncludeDirOnlyReadsCnfOnUnix(t *testing.T) {
 	reader, dirLister := mapFS(map[string]string{
 		"/etc/my.cnf":                "[mysqld]\n!includedir /etc/conf.d\n",
 		"/etc/conf.d/a.cnf":          "[mysqld]\na=1\n",
@@ -232,9 +235,19 @@ func TestParseIncludeDirOnlyReadsCnfAndIni(t *testing.T) {
 
 	merged := Merge(conf, "mysqld")
 	assert.Equal(t, "1", merged["a"])
-	assert.Equal(t, "1", merged["b"])
+	assert.NotContains(t, merged, "b", ".ini is not read on Unix")
 	assert.NotContains(t, merged, "c", ".preset must be skipped")
 	assert.NotContains(t, merged, "d", "a suffix after .cnf must be skipped")
+	assert.NotContains(t, conf.Files, "/etc/conf.d/b.ini")
+}
+
+// On Windows the servers read .ini fragments as well as .cnf.
+func TestIsIncludableFileWindows(t *testing.T) {
+	assert.True(t, isIncludableFile(`C:\ProgramData\MySQL\conf.d\a.ini`))
+	assert.True(t, isIncludableFile(`C:/ProgramData/MySQL/conf.d/a.ini`))
+	assert.True(t, isIncludableFile(`C:\ProgramData\MySQL\conf.d\a.cnf`))
+	assert.False(t, isIncludableFile("/etc/my.cnf.d/a.ini"))
+	assert.True(t, isIncludableFile("/etc/my.cnf.d/a.cnf"))
 }
 
 // !includedir has no defined read order in MySQL. Sorting makes a scan
@@ -471,11 +484,16 @@ func treeFS(t *testing.T, tree string) (FileReader, DirLister, FileProbe) {
 }
 
 // rootPath is the option file each captured installation actually starts from.
+// Each tree also holds an empty file at every server binary path the
+// installation has, since flavor detection probes for them.
 var fixtureRoots = map[string]string{
 	"mysql80":            "/etc/my.cnf",
 	"mysql84":            "/etc/my.cnf",
 	"percona80":          "/etc/my.cnf",
 	"almalinux9-mariadb": "/etc/my.cnf",
+	"rhel9-mysql":        "/etc/my.cnf",
+	"rhel7-mariadb-libs": "/etc/my.cnf",
+	"rhel7-mariadb55":    "/etc/my.cnf",
 	"mariadb1011":        "/etc/mysql/my.cnf",
 	"mariadb114":         "/etc/mysql/my.cnf",
 	"deb13-mariadb":      "/etc/mysql/my.cnf",
@@ -508,7 +526,7 @@ func TestDetectFlavorAcrossRealInstallations(t *testing.T) {
 	} {
 		t.Run(tc.tree, func(t *testing.T) {
 			conf, probe := parseTree(t, tc.tree)
-			assert.Equal(t, tc.want, DetectFlavor(conf, probe), tc.why)
+			assert.Equal(t, tc.want, DetectFlavor(conf, probe, nil), tc.why)
 		})
 	}
 }
@@ -522,8 +540,8 @@ func TestDetectFlavorDebianAndUbuntuShareTheSameRootPath(t *testing.T) {
 
 	assert.Equal(t, "/etc/mysql/my.cnf", fixtureRoots["deb13-mariadb"])
 	assert.Equal(t, "/etc/mysql/my.cnf", fixtureRoots["ubuntu2404-mysql"])
-	assert.Equal(t, FlavorMariaDB, DetectFlavor(mariadb, mariadbProbe))
-	assert.Equal(t, FlavorMySQL, DetectFlavor(mysql, mysqlProbe))
+	assert.Equal(t, FlavorMariaDB, DetectFlavor(mariadb, mariadbProbe, nil))
+	assert.Equal(t, FlavorMySQL, DetectFlavor(mysql, mysqlProbe, nil))
 }
 
 // The RPM layout is the case that forces detection to run after include
@@ -535,13 +553,83 @@ func TestDetectFlavorRequiresIncludeExpansion(t *testing.T) {
 	// Without expansion the root file alone is not enough to tell.
 	rootOnly, err := Parse("/etc/my.cnf", reader, nil)
 	require.NoError(t, err)
-	assert.NotEqual(t, FlavorMariaDB, DetectFlavor(rootOnly, nil),
+	assert.NotEqual(t, FlavorMariaDB, DetectFlavor(rootOnly, nil, nil),
 		"the root file alone cannot identify the product")
 
 	// With expansion the [mariadb] and [galera] groups settle it.
 	expanded, err := Parse("/etc/my.cnf", reader, dirLister)
 	require.NoError(t, err)
-	assert.Equal(t, FlavorMariaDB, DetectFlavor(expanded, probe))
+	assert.Equal(t, FlavorMariaDB, DetectFlavor(expanded, probe, nil))
+}
+
+// banner returns a BannerProbe reporting flavor, as running the server binary
+// with --version would.
+func banner(flavor string) BannerProbe {
+	return func() string { return flavor }
+}
+
+// RHEL 8 and later and Fedora install mariadb-connector-c-config as a
+// dependency of mysql-server. Its client.cnf declares [client-mariadb], which
+// the old detection read as a MariaDB server: mysql.conf came back empty on a
+// running MySQL server and mariadb.conf reported MySQL's configuration. The
+// fixture is the stock /etc/my.cnf and /etc/my.cnf.d of RHEL 9 with
+// mysql-server 8.0.
+func TestDetectFlavorMysqlServerWithMariadbClientConfig(t *testing.T) {
+	conf, probe := parseTree(t, "rhel9-mysql")
+	require.Contains(t, conf.SectionNames(), "client-mariadb", "the fixture carries the connector's group")
+
+	assert.Equal(t, FlavorMySQL, DetectFlavor(conf, probe, banner(FlavorMySQL)))
+	assert.Equal(t, FlavorMySQL, DetectFlavor(conf, probe, banner("")),
+		"without a banner, a client group must not outvote the mysqld binary")
+	assert.Equal(t, FlavorMySQL, DetectFlavor(conf, probe, nil))
+	assert.Equal(t, "", DetectFlavor(conf, nil, nil),
+		"from the option files alone, [client-mariadb] and [mysqld] identify no server")
+}
+
+// RHEL 7 installs mariadb-libs by default, and with it an /etc/my.cnf holding
+// [mysqld] and [mysqld_safe]. No server is installed, so neither product's
+// configuration resource may claim the file.
+func TestDetectFlavorClientLibrariesOnly(t *testing.T) {
+	conf, probe := parseTree(t, "rhel7-mariadb-libs")
+	require.Contains(t, conf.SectionNames(), "mysqld", "the fixture carries the library's [mysqld] stub")
+
+	assert.Equal(t, "", DetectFlavor(conf, probe, banner("")))
+	assert.Equal(t, "", DetectFlavor(conf, nil, nil))
+}
+
+// MariaDB before 10.4 installs its server only as mysqld (RHEL 7 ships 5.5 at
+// /usr/libexec/mysqld), so a mysqld binary does not identify MySQL. The
+// banner decides when the binary can be run, and the [mariadb] server groups
+// the package ships decide when it cannot.
+func TestDetectFlavorMysqldThatIsMariadb(t *testing.T) {
+	conf, probe := parseTree(t, "rhel7-mariadb55")
+
+	assert.Equal(t, FlavorMariaDB, DetectFlavor(conf, probe, banner(FlavorMariaDB)))
+	assert.Equal(t, FlavorMariaDB, DetectFlavor(conf, probe, banner("")))
+
+	// A banner that names MariaDB wins over option files that name nothing.
+	bare := parseString(t, "[mysqld]\ndatadir=/var/lib/mysql\n")
+	assert.Equal(t, FlavorMariaDB, DetectFlavor(bare, probe, banner(FlavorMariaDB)))
+	assert.Equal(t, FlavorMySQL, DetectFlavor(bare, probe, banner(FlavorPercona)))
+}
+
+// A MariaDB client group is not a MariaDB server group.
+func TestIsMariadbServerGroup(t *testing.T) {
+	for name, want := range map[string]bool{
+		"mariadb":        true,
+		"mariadbd":       true,
+		"mariadb-10.3":   true,
+		"mariadbd-11.4":  true,
+		"galera":         true,
+		"MariaDB":        true,
+		"client-mariadb": false,
+		"mariadb-client": false,
+		"mariadb-dump":   false,
+		"mysqld":         false,
+		"client-server":  false,
+	} {
+		assert.Equal(t, want, isMariadbServerGroup(name), name)
+	}
 }
 
 // MariaDB 11.4 configures the server under [mariadbd] and ships no [mysqld]
@@ -864,4 +952,72 @@ func TestParseUnreadableIncludeIsAnError(t *testing.T) {
 	require.NotNil(t, conf)
 	assert.Equal(t, "3306", Merge(conf, "mysqld")["port"])
 	assert.NotContains(t, conf.Files, "/etc/mysql/mariadb.conf.d/99-sweep.cnf")
+}
+
+// ---------------------------------------------------------------------------
+// credentials
+// ---------------------------------------------------------------------------
+
+// A password written into an option file is reported by name, never by value.
+// The policy options that merely mention passwords are settings and read as
+// written.
+func TestParseRedactsCredentials(t *testing.T) {
+	conf := parseString(t, `[client]
+user = root
+password = "Sweep-pw-123"
+password1 = second-factor
+[mysql]
+password
+[mysqld]
+password_history = 5
+validate_password.length = 14
+default_password_lifetime = 180
+validate-password = FORCE_PLUS_PERMANENT
+[galera]
+wsrep_sst_auth = sst:secret
+loose-authentication-ldap-simple-bind-root-pwd = ldap-secret
+[mariadb]
+password =
+`)
+	client := Merge(conf, "client")
+	assert.Equal(t, RedactedValue, client["password"])
+	assert.Equal(t, RedactedValue, client["password1"])
+	assert.Equal(t, "root", client["user"])
+
+	assert.Equal(t, "ON", Merge(conf, "mysql")["password"],
+		"a bare password asks for one at the prompt and holds no secret")
+	assert.Equal(t, "", Merge(conf, "mariadb")["password"], "an empty password holds no secret")
+
+	server := Merge(conf, "mysqld")
+	assert.Equal(t, "5", server["password_history"])
+	assert.Equal(t, "14", server["validate_password.length"])
+	assert.Equal(t, "180", server["default_password_lifetime"])
+	assert.Equal(t, "FORCE_PLUS_PERMANENT", server["validate_password"])
+
+	galera := Merge(conf, "galera")
+	assert.Equal(t, RedactedValue, galera["wsrep_sst_auth"])
+	assert.Equal(t, RedactedValue, galera["authentication_ldap_simple_bind_root_pwd"])
+
+	for _, opt := range conf.Options {
+		assert.NotContains(t, opt.Value, "Sweep-pw-123")
+		assert.NotContains(t, opt.Value, "secret")
+	}
+}
+
+func TestIsSecretOption(t *testing.T) {
+	for name, want := range map[string]bool{
+		"password":                  true,
+		"password1":                 true,
+		"password3":                 true,
+		"wsrep_sst_auth":            true,
+		"master_password":           true,
+		"password_history":          false,
+		"password_require_current":  false,
+		"passwordx":                 false,
+		"validate_password":         false,
+		"default_password_lifetime": false,
+		"user":                      false,
+	} {
+		assert.Equal(t, want, IsSecretOption(name), name)
+	}
 }

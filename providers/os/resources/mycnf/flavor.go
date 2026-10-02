@@ -36,9 +36,10 @@ var mariadbBinaries = []string{
 	"/opt/homebrew/bin/mariadbd",
 }
 
-// mysqldBinaries are the paths a MySQL or Percona server binary is installed
-// at. Checked only after every MariaDB signal has failed, because MariaDB
-// installs these same names as links to mariadbd.
+// mysqldBinaries are the paths a server binary named mysqld is installed at.
+// That is MySQL's and Percona's only name, but MariaDB installs it too: as a
+// link to mariadbd from 10.4 on, and as its only server binary before that.
+// So a binary here identifies a server without identifying the product.
 var mysqldBinaries = []string{
 	"/usr/sbin/mysqld",
 	"/usr/libexec/mysqld",
@@ -52,31 +53,88 @@ func ServerBinaries() []string {
 	return append(slices.Clone(mariadbBinaries), mysqldBinaries...)
 }
 
-// DetectFlavor decides which product a parsed option file belongs to.
+// BannerProbe returns the product the installed server binary names in its
+// --version banner (FlavorMySQL, FlavorPercona or FlavorMariaDB), or the empty
+// string when no server binary could be run, for example over a transport
+// without command execution. See ParseVersion.
+type BannerProbe func() string
+
+// DetectFlavor decides which server product an option file chain belongs to.
 //
-// Detection runs against the fully expanded configuration, not the root file
-// alone, because on RHEL-family hosts the two products' root files are
-// indistinguishable: both MariaDB and MySQL ship an /etc/my.cnf holding only
-// a [client-server] header and `!includedir /etc/my.cnf.d`, and only the
-// fragments inside that directory name the product.
+// The server binary decides, not the option files. Both products' client
+// libraries ship option files of their own, and those files carry the other
+// product's name: mariadb-connector-c-config, which mysql-server pulls in on
+// RHEL 8 and later and on Fedora, installs a client.cnf holding
+// [client-mariadb], and RHEL 7's mariadb-libs installs an /etc/my.cnf holding
+// [mysqld] on a host with no server at all. Reading the configuration first
+// reported MySQL's configuration as MariaDB's on the former and a MySQL
+// server that does not exist on the latter.
 //
-// It returns FlavorMariaDB, FlavorMySQL, or the empty string when neither
-// product can be identified. Percona is reported as FlavorMySQL here; it is
-// distinguished only by the server binary's version string, which
-// ParseVersion handles.
-func DetectFlavor(c *Conf, probe FileProbe) string {
-	// An option group naming MariaDB is decisive, and it is the only signal
-	// that works on RHEL-family hosts. Groups that declare no options count,
-	// which is why this reads SectionNames rather than the parsed options:
-	// MariaDB's packaged fragments announce the product with bare [mariadb]
-	// and [galera] headers whose bodies are entirely commented out.
-	if slices.ContainsFunc(c.SectionNames(), isMariadbGroup) {
+// So the server binaries are probed first. A mariadbd at any known path is
+// MariaDB. A mysqld is whatever its --version banner says, since MariaDB
+// before 10.4 installs its server only under that name; when the banner
+// cannot be read, the option groups only a MariaDB server reads decide, and
+// MySQL is the answer when there are none. With no server binary at any
+// known path the host runs neither server and DetectFlavor returns the empty
+// string, whatever the client libraries left in /etc.
+//
+// probe may be nil when the caller cannot inspect the filesystem. The option
+// files then decide alone, and only a server group or the fragment directory
+// a distribution includes counts; a [mysqld] group on its own does not,
+// because client-only packages ship one.
+//
+// It returns FlavorMariaDB, FlavorMySQL, or the empty string. Percona is
+// reported as FlavorMySQL here; it is distinguished only by the server
+// binary's version string, which ParseVersion handles.
+func DetectFlavor(c *Conf, probe FileProbe, banner BannerProbe) string {
+	if probe == nil {
+		return flavorFromConfig(c)
+	}
+
+	for _, bin := range mariadbBinaries {
+		if exists, isDir := probe(bin); exists && !isDir {
+			return FlavorMariaDB
+		}
+	}
+
+	hasMysqld := slices.ContainsFunc(mysqldBinaries, func(bin string) bool {
+		exists, isDir := probe(bin)
+		return exists && !isDir
+	})
+	if !hasMysqld {
+		return ""
+	}
+
+	if banner != nil {
+		switch banner() {
+		case FlavorMariaDB:
+			return FlavorMariaDB
+		case FlavorMySQL, FlavorPercona:
+			return FlavorMySQL
+		}
+	}
+	if flavorFromConfig(c) == FlavorMariaDB {
+		return FlavorMariaDB
+	}
+	return FlavorMySQL
+}
+
+// flavorFromConfig names the product from the option files alone, counting
+// only what a server package ships: a group that only a MariaDB server reads,
+// or the fragment directory Debian and Ubuntu include for each product. It
+// returns the empty string when neither is present.
+func flavorFromConfig(c *Conf) string {
+	// Groups that declare no options count, which is why this reads
+	// SectionNames rather than the parsed options: MariaDB's packaged
+	// fragments announce the server with bare [mariadb] and [galera]
+	// headers whose bodies are entirely commented out.
+	if slices.ContainsFunc(c.SectionNames(), isMariadbServerGroup) {
 		return FlavorMariaDB
 	}
 
-	// The fragment directory a distribution includes names the product on
-	// Debian and Ubuntu, where both products otherwise reach their root
-	// config through the same /etc/mysql/my.cnf link.
+	// On Debian and Ubuntu both products reach their root config through
+	// the same /etc/mysql/my.cnf link, and the directory it includes names
+	// the product.
 	for _, dir := range c.Includes {
 		switch strings.ToLower(filepath.Base(strings.TrimSuffix(dir, "/"))) {
 		case "mariadb.conf.d":
@@ -85,42 +143,23 @@ func DetectFlavor(c *Conf, probe FileProbe) string {
 			return FlavorMySQL
 		}
 	}
-
-	if probe != nil {
-		for _, bin := range mariadbBinaries {
-			if exists, isDir := probe(bin); exists && !isDir {
-				return FlavorMariaDB
-			}
-		}
-		for _, bin := range mysqldBinaries {
-			if exists, isDir := probe(bin); exists && !isDir {
-				return FlavorMySQL
-			}
-		}
-	}
-
-	// Fall back to the configuration itself. A [mysqld] group with no
-	// MariaDB signal anywhere is a MySQL server; MariaDB always ships at
-	// least one of the groups isMariadbGroup recognizes.
-	for _, name := range c.SectionNames() {
-		if MatchesGroup(name, "mysqld") || MatchesGroup(name, "server") {
-			return FlavorMySQL
-		}
-	}
-
 	return ""
 }
 
-// isMariadbGroup reports whether an option group name only ever appears in a
-// MariaDB configuration. Any group whose name begins with "mariadb" qualifies
-// ([mariadb], [mariadbd], [mariadb-11.4], [mariadb-client], ...), as do
-// [galera] and [client-mariadb]. No MySQL or Percona distribution ships a
-// group by any of these names.
-func isMariadbGroup(name string) bool {
+// isMariadbServerGroup reports whether an option group is one only a MariaDB
+// server reads: [mariadb], [mariadbd], their version-suffixed forms such as
+// [mariadb-10.3], and [galera]. No MySQL or Percona distribution ships any of
+// them.
+//
+// MariaDB's client groups ([client-mariadb], [mariadb-client]) are left out
+// on purpose. The MariaDB client library's packaged config declares
+// [client-mariadb], and RHEL and Fedora install that package alongside
+// mysql-server, so a client group says nothing about which server runs.
+func isMariadbServerGroup(name string) bool {
 	name = strings.ToLower(strings.TrimSpace(name))
-	return strings.HasPrefix(name, "mariadb") ||
-		name == "galera" ||
-		name == "client-mariadb"
+	return MatchesGroup(name, "mariadb") ||
+		MatchesGroup(name, "mariadbd") ||
+		name == "galera"
 }
 
 // reVersion pulls the version token out of a `mysqld --version` banner, for
