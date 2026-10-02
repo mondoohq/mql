@@ -543,7 +543,12 @@ func TestInstalledVersion(t *testing.T) {
 		}, 241},
 		// Debian 12 and 13, multiarch directory
 		"debian13": {map[string]string{"/usr/lib/x86_64-linux-gnu/systemd/libsystemd-shared-257.so": ""}, 257},
-		"none":     {map[string]string{"/usr/lib/systemd/system/ollama.service": ""}, 0},
+		// SLES 15 SP7 and SLES 16.0 put the library in /usr/lib64 and name it
+		// with the full package version; Leap 15.6 uses the short name there
+		"sles15": {map[string]string{"/usr/lib64/systemd/libsystemd-shared-254.27-150600.4.71.2.so": ""}, 254},
+		"sles16": {map[string]string{"/usr/lib64/systemd/libsystemd-shared-257.13-160000.1.1.so": ""}, 257},
+		"leap15": {map[string]string{"/usr/lib64/systemd/libsystemd-shared-254.so": ""}, 254},
+		"none":   {map[string]string{"/usr/lib/systemd/system/ollama.service": ""}, 0},
 	}
 	for name, c := range cases {
 		assert.Equal(t, c.want, InstalledVersion(testFs(c.files)), name)

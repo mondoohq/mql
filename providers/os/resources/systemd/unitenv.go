@@ -356,7 +356,8 @@ func ParseDropInPaths(out string) ([]string, bool) {
 // sharedLibraryGlobs locate systemd's private shared library, whose file name
 // carries the release (libsystemd-shared-241.so on Debian 10). Debian puts it
 // in /lib/systemd before the /usr merge and under the multiarch directory from
-// Debian 12 on.
+// Debian 12 on. SUSE puts it in /usr/lib64/systemd, on SLES with the full
+// package version (libsystemd-shared-254.27-150600.4.71.2.so).
 var sharedLibraryGlobs = []string{
 	"/usr/lib/systemd/libsystemd-shared-*.so",
 	"/lib/systemd/libsystemd-shared-*.so",
