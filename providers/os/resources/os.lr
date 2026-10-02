@@ -9380,7 +9380,13 @@ sudo @defaults("version path") {
   approvalPlugins(plugins) []sudo.plugin
   // Whether the build supports Python-based plugins
   pythonSupport() bool
-  // Result of `visudo -c`. Null when sudoers files cannot be read (e.g., running unprivileged against a mode-0440 /etc/sudoers).
+  // Result of checking the sudoers files with this implementation's visudo
+  //
+  // Runs `visudo -c` from the sudo installation at `path`, or `visudo-rs -c`
+  // for sudo-rs, since the two accept different settings. Null when sudo is
+  // not installed, when no matching visudo is found, or when the sudoers
+  // files cannot be read (e.g., running unprivileged against a mode-0440
+  // /etc/sudoers).
   validate() sudo.validation
   // Associated sudoers configuration
   sudoers() sudoers
