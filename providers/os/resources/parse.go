@@ -503,8 +503,16 @@ func (a *mqlParseOpenpgp) id() (string, error) {
 }
 
 func (a *mqlParseOpenpgp) content(file plugin.Resource) (string, error) {
-	res := file.(*mqlFile).GetContent()
-	return res.Data, res.Error
+	f := file.(*mqlFile)
+	res := f.GetContent()
+	if res.Error != nil {
+		return "", res.Error
+	}
+	// file.content is null only for a file that does not exist
+	if res.IsNull() {
+		return "", llx.NotFound(errors.New("parse.openpgp: " + f.Path.Data + " does not exist"))
+	}
+	return res.Data, nil
 }
 
 func (p *mqlParseOpenpgp) list(content string) ([]any, error) {

@@ -2693,6 +2693,17 @@ func TestParseOpenpgpPath(t *testing.T) {
 	})
 }
 
+// A missing file must not read as content that holds no armored data.
+func TestParseOpenpgpMissingFile(t *testing.T) {
+	x.TestSimpleErrors(t, []testutils.SimpleTest{
+		{
+			Code:        `parse.openpgp("/missing.asc").content`,
+			ResultIndex: 0,
+			Expectation: "parse.openpgp: /missing.asc does not exist",
+		},
+	})
+}
+
 func TestParseIniMissingFile(t *testing.T) {
 	x.TestSimple(t, []testutils.SimpleTest{
 		{
