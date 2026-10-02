@@ -15,16 +15,16 @@ import (
 	"go.mondoo.com/mql/llx"
 )
 
-func odataErrWithStatus(status int, code string) *odataerrors.ODataError {
+func workloadODataErr(status int, code string) *odataerrors.ODataError {
 	err := odataErrWithCode(code)
 	err.ResponseStatusCode = status
 	return err
 }
 
-func TestClassifyGraphError(t *testing.T) {
+func TestClassifyGraphErrorWorkloadIdentity(t *testing.T) {
 	assert.NoError(t, classifyGraphError(nil, "Policy.Read.All"))
 
-	forbidden := classifyGraphError(odataErrWithStatus(403, "Authorization_RequestDenied"), "Application.Read.All", "Policy.Read.All")
+	forbidden := classifyGraphError(workloadODataErr(403, "Authorization_RequestDenied"), "Application.Read.All", "Policy.Read.All")
 	assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(forbidden))
 	var lerr *llx.Error
 	require.True(t, errors.As(forbidden, &lerr))
@@ -33,10 +33,10 @@ func TestClassifyGraphError(t *testing.T) {
 	assert.Equal(t, "Authorization_RequestDenied", graphErrorCode(forbidden))
 
 	// iterate hands back an error that already went through transformError
-	pageErr := transformError(odataErrWithStatus(403, "Authorization_RequestDenied"))
+	pageErr := transformError(workloadODataErr(403, "Authorization_RequestDenied"))
 	assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(classifyGraphError(pageErr, "Policy.Read.All")))
 
-	notFound := classifyGraphError(odataErrWithStatus(404, "Request_ResourceNotFound"), "Policy.Read.All")
+	notFound := classifyGraphError(workloadODataErr(404, "Request_ResourceNotFound"), "Policy.Read.All")
 	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(notFound))
 
 	transport := classifyGraphError(&net.DNSError{Err: "no such host"}, "Policy.Read.All")
