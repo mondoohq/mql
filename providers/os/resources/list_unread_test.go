@@ -4,10 +4,12 @@
 package resources
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers/os/connection/mock"
 )
 
@@ -172,5 +174,59 @@ func TestReadListIsPopulated(t *testing.T) {
 		require.Len(t, v.Data, 2)
 		assert.True(t, v.Data[0].(*mqlSelinuxBoolean).Value.Data)
 		assert.False(t, v.Data[1].(*mqlSelinuxBoolean).Value.Data)
+	})
+}
+
+// A read the target refused is an error, never a null (ADR 046 §3). Under
+// structured errors a denied mdadm or semodule run is forbidden; without them
+// it stays the unknown null above.
+func TestRefusedListIsForbidden(t *testing.T) {
+	t.Run("mdadm.arrays: scan refused", func(t *testing.T) {
+		withStructuredErrors(t, true)
+		rt := commandRuntime(t, map[string]*mock.Command{
+			"mdadm --detail --scan": {ExitStatus: 1, Stderr: "mdadm: cannot open /dev/md0: Permission denied\n"},
+		})
+		v := mustResource(t, rt, "mdadm").(*mqlMdadm).GetArrays()
+		assert.True(t, errors.Is(v.Error, llx.ErrForbidden), "got %v", v.Error)
+	})
+
+	t.Run("mdadm.arrays: scan not installed stays null", func(t *testing.T) {
+		withStructuredErrors(t, true)
+		rt := commandRuntime(t, map[string]*mock.Command{
+			"mdadm --detail --scan": {ExitStatus: 127, Stderr: "mdadm: not found"},
+		})
+		v := mustResource(t, rt, "mdadm").(*mqlMdadm).GetArrays()
+		require.NoError(t, v.Error)
+		assert.True(t, v.IsNull())
+	})
+
+	t.Run("mdadm.arrays: every detail refused", func(t *testing.T) {
+		withStructuredErrors(t, true)
+		rt := commandRuntime(t, map[string]*mock.Command{
+			"mdadm --detail --scan":     {Stdout: "ARRAY /dev/md0 metadata=1.2 UUID=abc\n"},
+			`mdadm --detail "/dev/md0"`: {ExitStatus: 1, Stderr: "mdadm: cannot open /dev/md0: Permission denied\n"},
+		})
+		v := mustResource(t, rt, "mdadm").(*mqlMdadm).GetArrays()
+		assert.True(t, errors.Is(v.Error, llx.ErrForbidden), "got %v", v.Error)
+	})
+
+	t.Run("mdadm.arrays: every detail refused, v13", func(t *testing.T) {
+		withStructuredErrors(t, false)
+		rt := commandRuntime(t, map[string]*mock.Command{
+			"mdadm --detail --scan":     {Stdout: "ARRAY /dev/md0 metadata=1.2 UUID=abc\n"},
+			`mdadm --detail "/dev/md0"`: {ExitStatus: 1, Stderr: "mdadm: cannot open /dev/md0: Permission denied\n"},
+		})
+		v := mustResource(t, rt, "mdadm").(*mqlMdadm).GetArrays()
+		require.NoError(t, v.Error)
+		assert.True(t, v.IsNull())
+	})
+
+	t.Run("selinux.modules: semodule refused", func(t *testing.T) {
+		withStructuredErrors(t, true)
+		rt := commandRuntime(t, map[string]*mock.Command{
+			semoduleListCmd: {ExitStatus: 1, Stderr: "libsemanage.semanage_create_store: Could not read from module store, active modules subdirectory at /var/lib/selinux/targeted/active/modules. (Permission denied).\n"},
+		})
+		v := mustResource(t, rt, "selinux").(*mqlSelinux).GetModules()
+		assert.True(t, errors.Is(v.Error, llx.ErrForbidden), "got %v", v.Error)
 	})
 }

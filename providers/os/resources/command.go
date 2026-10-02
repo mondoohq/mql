@@ -6,6 +6,7 @@ package resources
 import (
 	"errors"
 	"io"
+	"strings"
 	"sync"
 
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -120,4 +121,10 @@ func commandOutput(cmd *mqlCommand, what string) (string, error) {
 		return "", errors.New(what + " failed: " + run.stderr)
 	}
 	return run.stdout, nil
+}
+
+// commandRefused reports whether a command's output names a refused open, the
+// way a tool run without root says it could not read what it was asked for.
+func commandRefused(output string) bool {
+	return strings.Contains(strings.ToLower(output), "permission denied")
 }
