@@ -221,6 +221,45 @@ func apacheLayoutFromCommand(conn shared.Connection) apacheLayout {
 	return apacheLayout{}
 }
 
+// apacheDebianStaticModules are the modules Debian and Ubuntu compile into
+// apache2, as `apache2 -l` prints them on Ubuntu 16.04 through 26.04 (26.04
+// adds mod_systemd.c). They are used when the binary cannot be asked.
+var apacheDebianStaticModules = []string{
+	"core.c", "mod_so.c", "mod_watchdog.c", "http_core.c",
+	"mod_log_config.c", "mod_logio.c", "mod_version.c", "mod_unixd.c",
+}
+
+// apacheMinimalStaticModules are compiled into every httpd build that can
+// load modules at all.
+var apacheMinimalStaticModules = []string{"core.c", "mod_so.c", "http_core.c"}
+
+// apacheStaticModules returns the modules compiled into the installed httpd,
+// which satisfy <IfModule> without a LoadModule line. `httpd -l` needs no
+// configuration and no privileges; when no binary can be run (an image or
+// filesystem scan) it falls back to the platform's known set.
+func apacheStaticModules(conn shared.Connection, afs *afero.Afero) []string {
+	for _, bin := range apacheBinaries {
+		if ok, _ := afs.Exists(bin); !ok {
+			continue
+		}
+		cmd, err := conn.RunCommand(bin + " -l")
+		if err != nil || cmd.ExitStatus != 0 {
+			continue
+		}
+		data, err := io.ReadAll(cmd.Stdout)
+		if err != nil {
+			continue
+		}
+		if mods := apache2.ParseStaticModuleList(string(data)); len(mods) > 0 {
+			return mods
+		}
+	}
+	if apacheEnvvarsPath(conn) != "" {
+		return apacheDebianStaticModules
+	}
+	return apacheMinimalStaticModules
+}
+
 // apacheDiscoverLayout finds where the installed server keeps its
 // configuration, preferring the binary over running anything.
 func apacheDiscoverLayout(conn shared.Connection, afs *afero.Afero) apacheLayout {
@@ -651,7 +690,16 @@ func (s *mqlApache2Conf) parse(file *mqlFile) error {
 	// directives like `User ${APACHE_RUN_USER}` are resolved.
 	envvars := s.loadEnvvars(fileContent)
 
-	cfg, err := apache2.ParseWithGlob(file.Path.Data, fileContent, globExpand, envvars)
+	// <IfModule> and <IfDefine> are evaluated against the modules compiled
+	// into the binary plus those loaded by LoadModule, and against -D
+	// parameters (Debian passes APACHE_ARGUMENTS from envvars) plus Define.
+	conn := s.MqlRuntime.Connection.(shared.Connection)
+	opts := apache2.ParseOptions{
+		StaticModules: apacheStaticModules(conn, &afero.Afero{Fs: conn.FileSystem()}),
+		Defines:       apache2.DefinesFromArguments(envvars["APACHE_ARGUMENTS"]),
+	}
+
+	cfg, err := apache2.ParseWithGlobOptions(file.Path.Data, fileContent, globExpand, envvars, opts)
 
 	if err != nil {
 		errState := plugin.TValue[map[string]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}

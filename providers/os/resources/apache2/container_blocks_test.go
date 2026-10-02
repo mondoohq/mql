@@ -12,11 +12,12 @@ import (
 
 // The stock Debian/Ubuntu layout wraps the entire TLS VirtualHost in
 // <IfModule mod_ssl.c> (sites-available/default-ssl.conf) and `Listen 443` in
-// <IfModule ssl_module> (ports.conf). Before container blocks were made
-// transparent, both were discarded: virtualHosts came back empty and the TLS
-// port was invisible, so every TLS audit passed over an empty set.
+// <IfModule ssl_module> (ports.conf). Before container blocks were opened up,
+// both were discarded: virtualHosts came back empty and the TLS port was
+// invisible, so every TLS audit passed over an empty set.
 func TestParse_IfModuleWrappedVirtualHost(t *testing.T) {
-	cfg := Parse(`Listen 80
+	cfg := Parse(`LoadModule ssl_module /usr/lib/apache2/modules/mod_ssl.so
+Listen 80
 
 <IfModule ssl_module>
 	Listen 443
@@ -45,7 +46,8 @@ func TestParse_IfModuleWrappedVirtualHost(t *testing.T) {
 }
 
 func TestParse_IfDefineAndIfVersionAreTransparent(t *testing.T) {
-	cfg := Parse(`<IfDefine ENABLE_ADMIN>
+	cfg := Parse(`Define ENABLE_ADMIN
+<IfDefine ENABLE_ADMIN>
 	<VirtualHost *:8080>
 		ServerName admin.example.com
 	</VirtualHost>
@@ -62,7 +64,9 @@ func TestParse_IfDefineAndIfVersionAreTransparent(t *testing.T) {
 }
 
 func TestParse_NestedIfModuleBlocks(t *testing.T) {
-	cfg := Parse(`<IfModule mod_ssl.c>
+	cfg := Parse(`LoadModule ssl_module /usr/lib/apache2/modules/mod_ssl.so
+Define TLS
+<IfModule mod_ssl.c>
 	<IfDefine TLS>
 		<VirtualHost *:443>
 			ServerName deep.example.com
@@ -79,7 +83,8 @@ func TestParse_NestedIfModuleBlocks(t *testing.T) {
 // and must reach cfg.Dirs; otherwise directories.all(...) evaluates over an
 // empty set on a host that does enable Indexes and .htaccess overrides.
 func TestParse_DirectoryInsideVirtualHost(t *testing.T) {
-	cfg := Parse(`<VirtualHost *:80>
+	cfg := Parse(`LoadModule headers_module /usr/lib/apache2/modules/mod_headers.so
+<VirtualHost *:80>
 	ServerName a.example.com
 	<Directory /var/www/secret>
 		AllowOverride All
@@ -162,7 +167,7 @@ func TestParse_NonTransparentBlocksStillScoped(t *testing.T) {
 // An unterminated transparent block must not lose the directives it contains
 // nor loop forever.
 func TestParse_UnclosedIfModule(t *testing.T) {
-	cfg := Parse("<IfModule mod_ssl.c>\n\tListen 443\n")
+	cfg := Parse("LoadModule ssl_module modules/mod_ssl.so\n<IfModule mod_ssl.c>\n\tListen 443\n")
 	assert.Equal(t, "443", cfg.Params["Listen"])
 }
 
@@ -178,6 +183,6 @@ func TestFlattenTransparentBlocks_DepthCap(t *testing.T) {
 		lines = append(lines, "</IfModule>")
 	}
 
-	out := flattenTransparentBlocks(lines)
+	out := flattenTransparentBlocks(lines, nil)
 	assert.NotEmpty(t, out)
 }

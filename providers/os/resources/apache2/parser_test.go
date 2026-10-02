@@ -179,7 +179,8 @@ func TestParseIncludes(t *testing.T) {
 func TestParseComments(t *testing.T) {
 	content := `
 # This is a comment
-ServerName example.com # inline comment
+ServerName example.com
+	# An indented comment
 # Another comment
 Timeout 30
 `
