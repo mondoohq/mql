@@ -6,6 +6,7 @@ package resources
 import (
 	"errors"
 	"io"
+	"io/fs"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -145,8 +146,8 @@ func (st *mycnfState) resolve(runtime *plugin.Runtime, wantFlavor string, candid
 	if explicitPath != "" {
 		conf, err := mycnf.Parse(explicitPath, reader, dirLister)
 		if err != nil {
-			st.parseErr = err
-			return err
+			st.parseErr = classifyOptionFileError(err)
+			return st.parseErr
 		}
 		st.rootPath = explicitPath
 		st.conf = conf
@@ -162,7 +163,9 @@ func (st *mycnfState) resolve(runtime *plugin.Runtime, wantFlavor string, candid
 		// only a [client-server] header and an !includedir, so nothing short
 		// of the expanded configuration identifies the product.
 		conf, err := mycnf.Parse(candidate, reader, dirLister)
-		if err != nil {
+		if err != nil && len(conf.Files) == 0 {
+			// The root file itself could not be read, so there is nothing
+			// to tell which product it belongs to.
 			continue
 		}
 		if mycnf.DetectFlavor(conf, probe) != wantFlavor {
@@ -170,12 +173,51 @@ func (st *mycnfState) resolve(runtime *plugin.Runtime, wantFlavor string, candid
 		}
 		st.rootPath = candidate
 		st.conf = conf
+		if err != nil {
+			// The configuration belongs to this product but an included
+			// fragment could not be read. The server reads that fragment,
+			// so every value derived from the rest would be reported with
+			// confidence it does not have.
+			st.parseErr = classifyOptionFileError(err)
+			return st.parseErr
+		}
 		return nil
 	}
 
 	// Nothing on this host belongs to wantFlavor. Leave rootPath empty so
 	// every dependent field reports empty rather than an error.
 	return nil
+}
+
+// classifyOptionFileError marks a failure to read an option file because of
+// its permissions as a refusal, which is the common case for a scan that does
+// not run as root against a fragment the server's own account can read.
+func classifyOptionFileError(err error) error {
+	if errors.Is(err, fs.ErrPermission) {
+		return llx.Forbidden(err)
+	}
+	return err
+}
+
+// installedServerVersion returns the version of the server the named resource
+// ("mysql" or "mariadb") reports, or the empty string when it reports none.
+// Going through the resource shares its cached version detection.
+func installedServerVersion(runtime *plugin.Runtime, resourceName string) string {
+	raw, err := CreateResource(runtime, resourceName, nil)
+	if err != nil {
+		return ""
+	}
+	switch r := raw.(type) {
+	case *mqlMysql:
+		if v := r.GetVersion(); v.Error == nil {
+			return v.Data
+		}
+	case *mqlMariadb:
+		if v := r.GetVersion(); v.Error == nil {
+			return v.Data
+		}
+	}
+	return ""
 }
 
 // ensureFrom resolves using the path of an already-set file resource, which is
@@ -343,15 +385,15 @@ func userOptionFileSections(runtime *plugin.Runtime, resourceName, format string
 	}
 
 	path := file.Path.Data
-	conf, err := mycnf.Parse(path, func(p string) (string, error) {
+	// The reader serves only the file itself, so the parse cannot fail on the
+	// root. The error it reports names the includes that were deliberately
+	// not followed, and the file's own sections stand without them.
+	conf, _ := mycnf.Parse(path, func(p string) (string, error) {
 		if p == path {
 			return content.Data, nil
 		}
 		return "", errors.New("per-user option files are not followed beyond themselves")
 	}, nil)
-	if err != nil {
-		return []any{}, nil
-	}
 
 	out := []any{}
 	for _, section := range conf.Sections() {
@@ -445,8 +487,26 @@ func optionString(options map[string]any, key string) string {
 
 // optionBool resolves an option to a boolean. Bare options already carry "ON"
 // through Merge, so the merged map is the only source needed here.
+//
+// An unset option reads false. That is only correct for options that default
+// to off in every supported server version; use optionBoolIfSet for the rest.
 func optionBool(options map[string]any, key string) bool {
 	return mycnf.IsTruthy(optionString(options, key), false)
+}
+
+// optionBoolIfSet resolves an option to a boolean and reports whether any
+// option file sets it. It is for options whose server default is on in at
+// least one supported version (local_infile, symbolic_links,
+// automatic_sp_privileges), where reading an unset option as false would
+// report the feature disabled on a server that runs with it enabled. The
+// caller marks the field null when the option is unset.
+func optionBoolIfSet(options map[string]any, key string) (bool, bool) {
+	v, ok := options[key]
+	if !ok {
+		return false, false
+	}
+	s, _ := v.(string)
+	return mycnf.IsTruthy(s, false), true
 }
 
 // optionInt resolves an option to an integer, returning fallback when the

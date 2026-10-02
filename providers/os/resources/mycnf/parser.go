@@ -13,6 +13,9 @@
 package mycnf
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -81,10 +84,14 @@ type Conf struct {
 	// groupFiles maps a group name to the files that declared it, so an
 	// empty group still reports where it came from.
 	groupFiles map[string][]string
+	// errs holds the include files and directories that exist but could not
+	// be read. See Parse.
+	errs []error
 }
 
-// FileReader returns the textual content of path. A non-nil error aborts the
-// include currently being followed; the parser does not interpret the error.
+// FileReader returns the textual content of path. An error wrapping
+// fs.ErrNotExist marks a dangling include, which is skipped. Any other error
+// means the file is there but could not be read, and Parse reports it.
 type FileReader func(path string) (string, error)
 
 // DirLister returns the file paths directly inside dir, excluding
@@ -109,17 +116,20 @@ var cumulativeOptions = map[string]bool{
 // Parse reads the option file at path and follows every !include and
 // !includedir directive it encounters, returning the options in read order.
 //
-// Includes that cannot be read are skipped rather than failing the parse: a
-// dangling !include is a normal state on a host where an optional package was
-// removed, and it should not blind the caller to the rest of the
-// configuration. An unreadable root file does return an error.
+// An include that does not exist is skipped: a dangling !include is a normal
+// state on a host where an optional package was removed. An include that
+// exists but cannot be read is different. The server reads it, so the options
+// it holds are in effect, and leaving it out would report the remaining files
+// as if they were the whole configuration. Parse still reads everything else,
+// so the returned Conf is usable for product detection, but the error names
+// every file it could not read. An unreadable root file is an error as well.
 func Parse(path string, reader FileReader, dirLister DirLister) (*Conf, error) {
 	c := &Conf{}
 	visited := map[string]bool{}
 	if err := c.parseFile(path, reader, dirLister, visited, true); err != nil {
 		return c, err
 	}
-	return c, nil
+	return c, errors.Join(c.errs...)
 }
 
 func (c *Conf) parseFile(path string, reader FileReader, dirLister DirLister, visited map[string]bool, root bool) error {
@@ -136,6 +146,9 @@ func (c *Conf) parseFile(path string, reader FileReader, dirLister DirLister, vi
 	if err != nil {
 		if root {
 			return err
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			c.errs = append(c.errs, fmt.Errorf("cannot read included option file %s: %w", path, err))
 		}
 		return nil
 	}
@@ -215,6 +228,9 @@ func (c *Conf) parseDirective(line, baseDir string, reader FileReader, dirLister
 		}
 		entries, err := dirLister(dir)
 		if err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				c.errs = append(c.errs, fmt.Errorf("cannot list included option directory %s: %w", dir, err))
+			}
 			return
 		}
 		// MySQL does not define the order in which a directory's files are
@@ -267,6 +283,9 @@ func parseOption(line string) (Option, bool) {
 		if normalized == "" {
 			return Option{}, false
 		}
+		if target, value, ok := resolveBooleanPrefix(normalized, "", false); ok {
+			return Option{Name: target, Value: value, Loose: loose}, true
+		}
 		return Option{Name: normalized, Bare: true, Loose: loose}, true
 	}
 
@@ -274,11 +293,78 @@ func parseOption(line string) (Option, bool) {
 	if normalized == "" {
 		return Option{}, false
 	}
+	value := unquoteValue(strings.TrimSpace(rawValue))
+	if target, resolved, ok := resolveBooleanPrefix(normalized, value, true); ok {
+		return Option{Name: target, Value: resolved, Loose: loose}, true
+	}
 	return Option{
 		Name:  normalized,
-		Value: unquoteValue(strings.TrimSpace(rawValue)),
+		Value: value,
 		Loose: loose,
 	}, true
+}
+
+// booleanOptions lists the boolean server options that the enable, disable
+// and skip prefixes are resolved for. The server applies those prefixes to
+// any boolean option it knows; this parser has no copy of the server's option
+// registry, so it resolves them only for the options the mysql.conf and
+// mariadb.conf resources report. Other prefixed names are kept as written.
+var booleanOptions = map[string]bool{
+	"allow_suspicious_udfs":             true,
+	"automatic_sp_privileges":           true,
+	"binlog_encryption":                 true,
+	"default_table_encryption":          true,
+	"encrypt_binlog":                    true,
+	"encrypt_tmp_disk_tables":           true,
+	"general_log":                       true,
+	"gtid_strict_mode":                  true,
+	"innodb_encrypt_log":                true,
+	"innodb_redo_log_encrypt":           true,
+	"innodb_undo_log_encrypt":           true,
+	"local_infile":                      true,
+	"log_bin_trust_function_creators":   true,
+	"password_require_current":          true,
+	"read_only":                         true,
+	"require_secure_transport":          true,
+	"server_audit_logging":              true,
+	"skip_grant_tables":                 true,
+	"skip_name_resolve":                 true,
+	"skip_networking":                   true,
+	"skip_show_database":                true,
+	"slow_query_log":                    true,
+	"super_read_only":                   true,
+	"symbolic_links":                    true,
+	"table_encryption_privilege_check":  true,
+	"validate_password.check_user_name": true,
+	"wsrep_on":                          true,
+}
+
+// resolveBooleanPrefix rewrites `enable-X`, `disable-X` and `skip-X` into an
+// assignment on X when X is a known boolean option, following the server's
+// option parser: `enable-X` turns X on unless its value is exactly "0", and
+// `disable-X` and `skip-X` turn it off unless their value is exactly "0". Any
+// other value is ignored, so `enable-general-log=OFF` still enables the general
+// log, which is what the server does with it.
+//
+// A name that is itself an option keeps its meaning: `skip_name_resolve` is
+// not a prefix on some "name_resolve" option, so it is never rewritten, while
+// `disable-skip-name-resolve` turns skip_name_resolve off.
+func resolveBooleanPrefix(name, value string, hasValue bool) (string, string, bool) {
+	for _, prefix := range []string{"enable_", "disable_", "skip_"} {
+		target, ok := strings.CutPrefix(name, prefix)
+		if !ok || !booleanOptions[target] {
+			continue
+		}
+		on := prefix == "enable_"
+		if hasValue && value == "0" {
+			on = !on
+		}
+		if on {
+			return target, "ON", true
+		}
+		return target, "OFF", true
+	}
+	return "", "", false
 }
 
 // NormalizeName canonicalizes an option name and reports whether it carried
@@ -287,10 +373,11 @@ func parseOption(line string) (Option, bool) {
 // collapse to a single map key. Any leading "--" is tolerated even though
 // option files don't use it.
 //
-// The "skip", "disable" and "enable" prefixes are deliberately left alone:
+// The "skip", "disable" and "enable" prefixes are left alone here:
 // `skip_name_resolve` and `skip_networking` are documented options in their
-// own right, so rewriting them into an assignment on some shorter name would
-// invent options that do not exist.
+// own right, so rewriting every such name into an assignment on some shorter
+// name would invent options that do not exist. parseOption resolves the
+// prefixes for the boolean options it knows, see resolveBooleanPrefix.
 func NormalizeName(name string) (string, bool) {
 	name = strings.ToLower(strings.TrimSpace(name))
 	name = strings.TrimPrefix(name, "--")
@@ -436,12 +523,13 @@ func (c *Conf) SectionNames() []string {
 // option that is in effect as disabled. Flags still reports which options
 // were written that way.
 //
-// Group names match exactly or by version suffix, so passing "mysqld" also
-// picks up "[mysqld-8.0]". See MatchesGroup.
+// Group names match exactly. A version-suffixed group such as [mysqld-8.0] is
+// read only by a server of that version, so a caller that wants it names it;
+// ServerGroups does that for the server version it is given.
 func Merge(c *Conf, groups ...string) map[string]string {
 	out := map[string]string{}
 	for _, opt := range c.Options {
-		if !matchesAny(opt.Section, groups) {
+		if !slices.Contains(groups, opt.Section) {
 			continue
 		}
 		value := opt.Value
@@ -465,7 +553,7 @@ func Merge(c *Conf, groups ...string) map[string]string {
 func Flags(c *Conf, groups ...string) []string {
 	var out []string
 	for _, opt := range c.Options {
-		if opt.Bare && matchesAny(opt.Section, groups) && !contains(out, opt.Name) {
+		if opt.Bare && slices.Contains(groups, opt.Section) && !contains(out, opt.Name) {
 			out = append(out, opt.Name)
 		}
 	}
@@ -477,26 +565,18 @@ func Flags(c *Conf, groups ...string) []string {
 func LooseOptions(c *Conf, groups ...string) []string {
 	var out []string
 	for _, opt := range c.Options {
-		if opt.Loose && matchesAny(opt.Section, groups) && !contains(out, opt.Name) {
+		if opt.Loose && slices.Contains(groups, opt.Section) && !contains(out, opt.Name) {
 			out = append(out, opt.Name)
 		}
 	}
 	return out
 }
 
-func matchesAny(sectionName string, groups []string) bool {
-	for _, g := range groups {
-		if MatchesGroup(sectionName, g) {
-			return true
-		}
-	}
-	return false
-}
-
-// MatchesGroup reports whether an option group named sectionName is read by a
-// program that reads group. A group matches exactly, or when it is the same
-// name with a version suffix: a server running 8.0 reads both [mysqld] and
-// [mysqld-8.0].
+// MatchesGroup reports whether an option group named sectionName is group
+// itself or group with a version suffix, as in [mysqld] and [mysqld-8.0]. It
+// identifies the product a group belongs to; it does not say whether a given
+// server reads the group, because a server reads only the suffix for its own
+// version (ServerGroups).
 //
 // The version suffix must actually look like a version. Matching on the
 // prefix alone would be wrong in both directions and in ways that change

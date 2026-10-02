@@ -130,7 +130,8 @@ func (s *mqlMariadbConf) serverOptions(file *mqlFile) (map[string]any, error) {
 	if err := s.ensure(file); err != nil {
 		return nil, err
 	}
-	return s.optionMap(mycnf.ServerGroups(mycnf.FlavorMariaDB)...), nil
+	version := installedServerVersion(s.MqlRuntime, "mariadb")
+	return s.optionMap(mycnf.ServerGroups(mycnf.FlavorMariaDB, version)...), nil
 }
 
 func (s *mqlMariadbConf) clientOptions(file *mqlFile) (map[string]any, error) {
@@ -316,11 +317,21 @@ func (s *mqlMariadbConf) secureFilePriv(serverOptions map[string]any) (string, e
 }
 
 func (s *mqlMariadbConf) localInfile(serverOptions map[string]any) (bool, error) {
-	return optionBool(serverOptions, "local_infile"), nil
+	v, ok := optionBoolIfSet(serverOptions, "local_infile")
+	if !ok {
+		s.LocalInfile.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMariadbConf) symbolicLinks(serverOptions map[string]any) (bool, error) {
-	return optionBool(serverOptions, "symbolic_links"), nil
+	v, ok := optionBoolIfSet(serverOptions, "symbolic_links")
+	if !ok {
+		s.SymbolicLinks.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMariadbConf) allowSuspiciousUdfs(serverOptions map[string]any) (bool, error) {
@@ -340,7 +351,12 @@ func (s *mqlMariadbConf) skipShowDatabase(serverOptions map[string]any) (bool, e
 }
 
 func (s *mqlMariadbConf) automaticSpPrivileges(serverOptions map[string]any) (bool, error) {
-	return optionBool(serverOptions, "automatic_sp_privileges"), nil
+	v, ok := optionBoolIfSet(serverOptions, "automatic_sp_privileges")
+	if !ok {
+		s.AutomaticSpPrivileges.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMariadbConf) logBinTrustFunctionCreators(serverOptions map[string]any) (bool, error) {

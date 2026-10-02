@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -390,11 +391,13 @@ func TestMysqlConf_DefaultsForUnsetOptions(t *testing.T) {
 	assert.Equal(t, int64(3306), conf.GetPort().Data, "port defaults to 3306")
 	assert.Equal(t, []any{"*"}, conf.GetBindAddress().Data, "unset bind_address means every interface")
 
-	// Unset booleans are false, not null, so an assertion on them fails
-	// closed rather than passing on a null.
+	// Unset booleans that default to off in every server version read
+	// false, which is what the server runs with.
 	assert.False(t, conf.GetSkipGrantTables().Data)
 	assert.False(t, conf.GetRequireSecureTransport().Data)
-	assert.False(t, conf.GetLocalInfile().Data)
+	// local_infile defaults to on in MySQL 5.7, so false would be a guess
+	// that passes `localInfile == false` on a server that allows it.
+	assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, conf.GetLocalInfile().State)
 
 	assert.Equal(t, int64(0), conf.GetMaxConnections().Data)
 	assert.Empty(t, conf.GetSslCertFile().Data)
@@ -767,4 +770,97 @@ func TestMariadbConf_PresentCountsStillRead(t *testing.T) {
 	require.NoError(t, unset.Error)
 	assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, unset.State,
 		"the same fixture leaves max_connections unset, and that has to stay null")
+}
+
+// local_infile, symbolic_links and automatic_sp_privileges default to on in
+// MariaDB (and the first two in MySQL 5.7), so an unset option reads null:
+// false would report LOAD DATA LOCAL disabled on a server that allows it.
+// `mysqld --no-defaults --verbose --help` reports all three TRUE on MariaDB
+// 10.0 through 11.8.
+func TestMariadbConf_DefaultOnBooleansAreNullWhenUnset(t *testing.T) {
+	conf := mariadbConf(t, "mysql_almalinux9_mariadb.toml")
+
+	for _, tc := range []struct {
+		name string
+		get  func() *plugin.TValue[bool]
+	}{
+		{"localInfile", conf.GetLocalInfile},
+		{"symbolicLinks", conf.GetSymbolicLinks},
+		{"automaticSpPrivileges", conf.GetAutomaticSpPrivileges},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			v := tc.get()
+			require.NoError(t, v.Error)
+			assert.Equal(t, plugin.StateIsSet|plugin.StateIsNull, v.State)
+		})
+	}
+
+	// A default-off option still reads false.
+	skip := conf.GetSkipGrantTables()
+	require.NoError(t, skip.Error)
+	assert.Equal(t, plugin.StateIsSet, skip.State)
+	assert.False(t, skip.Data)
+}
+
+// mariadbSweepRuntime builds a MariaDB host from the option files the Ubuntu
+// sweep laid down, with the server binary answering --version with banner.
+func mariadbSweepRuntime(t *testing.T, banner string, sweepCnf string) *plugin.Runtime {
+	t.Helper()
+	dir := func(path string) *mock.MockFileData {
+		return &mock.MockFileData{Path: path, StatData: mock.FileInfo{IsDir: true, Mode: os.ModeDir | 0o755}}
+	}
+	asset := &inventory.Asset{
+		Platform: &inventory.Platform{Name: "ubuntu", Family: []string{"debian", "linux", "unix"}},
+	}
+	conn, err := mock.New(0, asset, mock.WithData(&mock.TomlData{
+		Files: map[string]*mock.MockFileData{
+			"/etc":                      dir("/etc"),
+			"/etc/mysql":                dir("/etc/mysql"),
+			"/etc/mysql/mariadb.conf.d": dir("/etc/mysql/mariadb.conf.d"),
+			"/etc/mysql/my.cnf": {
+				Path:    "/etc/mysql/my.cnf",
+				Content: "[client-server]\n!includedir /etc/mysql/mariadb.conf.d/\n",
+			},
+			"/etc/mysql/mariadb.conf.d/99-sweep.cnf": {
+				Path:    "/etc/mysql/mariadb.conf.d/99-sweep.cnf",
+				Content: sweepCnf,
+			},
+			"/usr/sbin/mysqld": {Path: "/usr/sbin/mysqld", Content: binaryStrings(banner)},
+		},
+		Commands: map[string]*mock.Command{
+			"mysqld --version": {Command: "mysqld --version", Stdout: banner + "\n"},
+		},
+	}))
+	require.NoError(t, err)
+	return &plugin.Runtime{Connection: conn, Resources: &syncx.Map[plugin.Resource]{}}
+}
+
+// The server reads the version-suffixed groups for its own version only, and
+// [mariadbd] only from 10.4 on. The banner and the expected values are from
+// the Ubuntu 20.04 host (MariaDB 10.3.39), where `mysqld --verbose --help`
+// reports port 3308 and max_connections 333 with this file in place.
+func TestMariadbConf_ServerOptionsFollowTheRunningVersion(t *testing.T) {
+	runtime := mariadbSweepRuntime(t,
+		"mysqld  Ver 10.3.39-MariaDB-0ubuntu0.20.04.2-log for debian-linux-gnu on x86_64 (Ubuntu 20.04)",
+		"[mysqld]\nlocal_infile = 0\n[mariadb]\nport = 3308\n[mariadb-10.3]\nmax_connections = 333\n[mariadb-9.9]\nport = 9998\n[mariadbd]\nskip-name-resolve\n")
+	raw, err := CreateResource(runtime, "mariadb.conf", nil)
+	require.NoError(t, err)
+	conf := raw.(*mqlMariadbConf)
+
+	port := conf.GetPort()
+	require.NoError(t, port.Error)
+	assert.Equal(t, int64(3308), port.Data, "[mariadb-9.9] is not read by 10.3")
+
+	maxConn := conf.GetMaxConnections()
+	require.NoError(t, maxConn.Error)
+	assert.Equal(t, int64(333), maxConn.Data, "[mariadb-10.3] is read by 10.3")
+
+	skip := conf.GetSkipNameResolve()
+	require.NoError(t, skip.Error)
+	assert.False(t, skip.Data, "10.3 does not read [mariadbd]")
+
+	local := conf.GetLocalInfile()
+	require.NoError(t, local.Error)
+	assert.Equal(t, plugin.StateIsSet, local.State)
+	assert.False(t, local.Data)
 }

@@ -147,7 +147,8 @@ func (s *mqlMysqlConf) serverOptions(file *mqlFile) (map[string]any, error) {
 	if err := s.ensure(file); err != nil {
 		return nil, err
 	}
-	return s.optionMap(mycnf.ServerGroups(mycnf.FlavorMySQL)...), nil
+	version := installedServerVersion(s.MqlRuntime, "mysql")
+	return s.optionMap(mycnf.ServerGroups(mycnf.FlavorMySQL, version)...), nil
 }
 
 func (s *mqlMysqlConf) clientOptions(file *mqlFile) (map[string]any, error) {
@@ -349,11 +350,21 @@ func (s *mqlMysqlConf) secureFilePriv(serverOptions map[string]any) (string, err
 }
 
 func (s *mqlMysqlConf) localInfile(serverOptions map[string]any) (bool, error) {
-	return optionBool(serverOptions, "local_infile"), nil
+	v, ok := optionBoolIfSet(serverOptions, "local_infile")
+	if !ok {
+		s.LocalInfile.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMysqlConf) symbolicLinks(serverOptions map[string]any) (bool, error) {
-	return optionBool(serverOptions, "symbolic_links"), nil
+	v, ok := optionBoolIfSet(serverOptions, "symbolic_links")
+	if !ok {
+		s.SymbolicLinks.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMysqlConf) allowSuspiciousUdfs(serverOptions map[string]any) (bool, error) {
@@ -373,7 +384,12 @@ func (s *mqlMysqlConf) skipShowDatabase(serverOptions map[string]any) (bool, err
 }
 
 func (s *mqlMysqlConf) automaticSpPrivileges(serverOptions map[string]any) (bool, error) {
-	return optionBool(serverOptions, "automatic_sp_privileges"), nil
+	v, ok := optionBoolIfSet(serverOptions, "automatic_sp_privileges")
+	if !ok {
+		s.AutomaticSpPrivileges.State = plugin.StateIsSet | plugin.StateIsNull
+		return false, nil
+	}
+	return v, nil
 }
 
 func (s *mqlMysqlConf) logBinTrustFunctionCreators(serverOptions map[string]any) (bool, error) {

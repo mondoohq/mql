@@ -4,7 +4,8 @@
 package mycnf
 
 import (
-	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,7 +20,7 @@ func mapFS(files map[string]string) (FileReader, DirLister) {
 	reader := func(path string) (string, error) {
 		content, ok := files[filepath.Clean(path)]
 		if !ok {
-			return "", errors.New("no such file: " + path)
+			return "", fmt.Errorf("no such file %s: %w", path, fs.ErrNotExist)
 		}
 		return content, nil
 	}
@@ -32,7 +33,7 @@ func mapFS(files map[string]string) (FileReader, DirLister) {
 			}
 		}
 		if out == nil {
-			return nil, errors.New("no such directory: " + dir)
+			return nil, fmt.Errorf("no such directory %s: %w", dir, fs.ErrNotExist)
 		}
 		return out, nil
 	}
@@ -83,7 +84,7 @@ func TestParseReopenedGroupRespectsReadOrder(t *testing.T) {
 	conf, err := Parse("/etc/my.cnf", reader, dirLister)
 	require.NoError(t, err)
 
-	merged := Merge(conf, "mysqld")
+	merged := Merge(conf, ServerGroups(FlavorMySQL, "8.0.46")...)
 	assert.Equal(t, "3308", merged["port"], "the last file read must win")
 }
 
@@ -390,7 +391,7 @@ func TestMatchesGroupVersionSuffix(t *testing.T) {
 
 func TestMergeVersionSuffixedGroupWins(t *testing.T) {
 	conf := parseString(t, "[mysqld]\nport=3306\n[mysqld-8.0]\nport=3307\n")
-	assert.Equal(t, "3307", Merge(conf, "mysqld")["port"])
+	assert.Equal(t, "3307", Merge(conf, ServerGroups(FlavorMySQL, "8.0.46")...)["port"])
 }
 
 func TestMergeExcludesUnnamedGroups(t *testing.T) {
@@ -550,11 +551,11 @@ func TestServerScopeOnModernMariaDB(t *testing.T) {
 	conf, _ := parseTree(t, "deb13-mariadb")
 	assert.NotContains(t, conf.SectionNames(), "mysqld")
 
-	mysqlOnly := Merge(conf, ServerGroups(FlavorMySQL)...)
+	mysqlOnly := Merge(conf, ServerGroups(FlavorMySQL, "")...)
 	assert.NotContains(t, mysqlOnly, "bind_address",
 		"MySQL's group set must not find MariaDB's server options")
 
-	mariadb := Merge(conf, ServerGroups(FlavorMariaDB)...)
+	mariadb := Merge(conf, ServerGroups(FlavorMariaDB, "")...)
 	assert.Equal(t, "127.0.0.1", mariadb["bind_address"])
 	assert.Equal(t, "/run/mysqld/mysqld.pid", mariadb["pid_file"])
 	assert.Equal(t, "/run/mysqld/mysqld.sock", mariadb["socket"],
@@ -565,7 +566,7 @@ func TestServerScopeOnModernMariaDB(t *testing.T) {
 // real case cumulative merging exists for.
 func TestRealPluginLoadAddAccumulates(t *testing.T) {
 	conf, _ := parseTree(t, "deb13-mariadb")
-	plugins := SplitList(Merge(conf, ServerGroups(FlavorMariaDB)...)["plugin_load_add"])
+	plugins := SplitList(Merge(conf, ServerGroups(FlavorMariaDB, "")...)["plugin_load_add"])
 	assert.ElementsMatch(t,
 		[]string{"provider_bzip2", "provider_lz4", "provider_lzma", "provider_lzo", "provider_snappy"},
 		plugins)
@@ -573,11 +574,11 @@ func TestRealPluginLoadAddAccumulates(t *testing.T) {
 
 func TestRealMysqlServerScope(t *testing.T) {
 	conf, _ := parseTree(t, "mysql80")
-	merged := Merge(conf, ServerGroups(FlavorMySQL)...)
+	merged := Merge(conf, ServerGroups(FlavorMySQL, "")...)
 	assert.Equal(t, "/var/lib/mysql", merged["datadir"])
 	assert.Equal(t, "/var/lib/mysql-files", merged["secure_file_priv"])
 	assert.Equal(t, "mysql", merged["user"])
-	assert.Contains(t, Flags(conf, ServerGroups(FlavorMySQL)...), "skip_name_resolve")
+	assert.Contains(t, Flags(conf, ServerGroups(FlavorMySQL, "")...), "skip_name_resolve")
 
 	client := Merge(conf, ClientGroups(FlavorMySQL)...)
 	assert.Equal(t, "/var/run/mysqld/mysqld.sock", client["socket"])
@@ -585,7 +586,7 @@ func TestRealMysqlServerScope(t *testing.T) {
 
 func TestRealUbuntuMysqlServerScope(t *testing.T) {
 	conf, _ := parseTree(t, "ubuntu2404-mysql")
-	merged := Merge(conf, ServerGroups(FlavorMySQL)...)
+	merged := Merge(conf, ServerGroups(FlavorMySQL, "")...)
 	assert.Equal(t, "mysql", merged["user"])
 	assert.Equal(t, "127.0.0.1", merged["bind_address"])
 	assert.Equal(t, "/var/log/mysql/error.log", merged["log_error"])
@@ -597,7 +598,7 @@ func TestRealMysqldSafeStaysOutOfServerScope(t *testing.T) {
 	conf, _ := parseTree(t, "deb13-mariadb")
 	require.Contains(t, conf.SectionNames(), "mysqld_safe")
 
-	server := Merge(conf, ServerGroups(FlavorMariaDB)...)
+	server := Merge(conf, ServerGroups(FlavorMariaDB, "")...)
 	safe := Merge(conf, "mysqld_safe")
 	require.NotEmpty(t, safe, "the fixture must actually set something under [mysqld_safe]")
 
@@ -682,4 +683,185 @@ func TestParseVersionNoMatch(t *testing.T) {
 	version, flavor := ParseVersion("command not found")
 	assert.Empty(t, version)
 	assert.Empty(t, flavor)
+}
+
+// ---------------------------------------------------------------------------
+// version-suffixed groups
+// ---------------------------------------------------------------------------
+
+// The expected sets are the "The following groups are read" line that
+// `mysqld --verbose --help` prints on each server, minus [galera], which
+// ServerGroups keeps out of server scope on purpose.
+func TestServerGroupsMatchWhatEachServerReads(t *testing.T) {
+	for _, tc := range []struct {
+		flavor, version string
+		want            []string
+	}{
+		// Ubuntu 16.04: mysqld server mysqld-10.0 mariadb mariadb-10.0 client-server
+		{FlavorMariaDB, "10.0.38", []string{"mysqld", "server", "mysqld-10.0", "mariadb", "mariadb-10.0", "client-server"}},
+		// Ubuntu 20.04: mysqld server mysqld-10.3 mariadb mariadb-10.3 client-server galera
+		{FlavorMariaDB, "10.3.39", []string{"mysqld", "server", "mysqld-10.3", "mariadb", "mariadb-10.3", "client-server"}},
+		// Ubuntu 22.04: mysqld server mysqld-10.6 mariadb mariadb-10.6 mariadbd mariadbd-10.6 client-server galera
+		{FlavorMariaDB, "10.6.23", []string{"mysqld", "server", "mysqld-10.6", "mariadb", "mariadb-10.6", "mariadbd", "mariadbd-10.6", "client-server"}},
+		// Ubuntu 24.04, two-digit minor
+		{FlavorMariaDB, "10.11.14", []string{"mysqld", "server", "mysqld-10.11", "mariadb", "mariadb-10.11", "mariadbd", "mariadbd-10.11", "client-server"}},
+		// Ubuntu 26.04
+		{FlavorMariaDB, "11.8.6", []string{"mysqld", "server", "mysqld-11.8", "mariadb", "mariadb-11.8", "mariadbd", "mariadbd-11.8", "client-server"}},
+		// Unknown version: no suffixed group, and [mariadbd], which every
+		// supported series reads.
+		{FlavorMariaDB, "", []string{"mysqld", "server", "mariadb", "mariadbd", "client-server"}},
+
+		{FlavorMySQL, "8.0.46", []string{"mysqld", "server", "mysqld-8.0"}},
+		{FlavorMySQL, "5.7.42", []string{"mysqld", "server", "mysqld-5.7"}},
+		{FlavorMySQL, "", []string{"mysqld", "server"}},
+	} {
+		t.Run(tc.flavor+"/"+tc.version, func(t *testing.T) {
+			assert.ElementsMatch(t, tc.want, ServerGroups(tc.flavor, tc.version))
+		})
+	}
+}
+
+// A group suffixed with another server version is ignored by the server. The
+// fixture is the one the Ubuntu sweep laid down: `mysqld --verbose --help`
+// reports port 3308 and max_connections 333 on 10.11 with it in place.
+func TestMergeIgnoresGroupsForOtherVersions(t *testing.T) {
+	conf := parseString(t, `
+[mariadb]
+port = 3308
+[mariadb-10.11]
+max_connections = 333
+[mariadb-9.9]
+port = 9998
+[mysqld-9.9]
+port = 4444
+[server-10.11]
+port = 5555
+`)
+	merged := Merge(conf, ServerGroups(FlavorMariaDB, "10.11.14")...)
+	assert.Equal(t, "3308", merged["port"], "[mariadb-9.9], [mysqld-9.9] and [server-10.11] are not read by 10.11")
+	assert.Equal(t, "333", merged["max_connections"], "[mariadb-10.11] is read by 10.11")
+
+	unknown := Merge(conf, ServerGroups(FlavorMariaDB, "")...)
+	assert.Equal(t, "3308", unknown["port"])
+	assert.NotContains(t, unknown, "max_connections", "no suffixed group is read when the version is unknown")
+}
+
+// [mariadbd] is read from 10.4 on. A 10.3 server reports max_connections 151
+// (the compiled-in default) with this file; 10.6 and 11.8 report 777.
+func TestMergeMariadbdGroupOnlyFrom104(t *testing.T) {
+	conf := parseString(t, "[mysqld]\nport=3306\n[mariadbd]\nmax_connections=777\n")
+	assert.NotContains(t, Merge(conf, ServerGroups(FlavorMariaDB, "10.0.38")...), "max_connections")
+	assert.NotContains(t, Merge(conf, ServerGroups(FlavorMariaDB, "10.3.39")...), "max_connections")
+	assert.Equal(t, "777", Merge(conf, ServerGroups(FlavorMariaDB, "10.6.23")...)["max_connections"])
+	assert.Equal(t, "777", Merge(conf, ServerGroups(FlavorMariaDB, "11.8.6")...)["max_connections"])
+}
+
+// A section's own options are the ones written under that header. Folding a
+// [mariadb-9.9] block into the [mariadb] section reported a port no server
+// reads under that header.
+func TestMergeSingleGroupIsExact(t *testing.T) {
+	conf := parseString(t, "[mariadb]\nport=3308\n[mariadb-9.9]\nport=9998\nmax_connections=333\n")
+	assert.Equal(t, map[string]string{"port": "3308"}, Merge(conf, "mariadb"))
+}
+
+// ---------------------------------------------------------------------------
+// enable, disable and skip prefixes
+// ---------------------------------------------------------------------------
+
+// Each expectation is what `mysqld --verbose --help` reports with the line in
+// place, checked on MariaDB 10.0, 10.3 and 11.8.
+func TestParseBooleanPrefixes(t *testing.T) {
+	for _, tc := range []struct {
+		line, option, want string
+	}{
+		{"enable-local-infile", "local_infile", "ON"},
+		{"disable-local-infile", "local_infile", "OFF"},
+		{"disable_symbolic_links", "symbolic_links", "OFF"},
+		{"skip-symbolic-links", "symbolic_links", "OFF"},
+		{"skip-automatic-sp-privileges", "automatic_sp_privileges", "OFF"},
+		{"enable-general-log", "general_log", "ON"},
+		{"loose-enable-read-only", "read_only", "ON"},
+		// Only an exact "0" inverts a prefix; any other value is ignored.
+		{"enable-slow-query-log=0", "slow_query_log", "OFF"},
+		{"enable-general-log=OFF", "general_log", "ON"},
+		{"enable-read-only=false", "read_only", "ON"},
+		{"disable-general-log=0", "general_log", "ON"},
+		{"skip-slow-query-log=0", "slow_query_log", "ON"},
+		{"disable-automatic-sp-privileges=OFF", "automatic_sp_privileges", "OFF"},
+		{"enable-skip-show-database=0", "skip_show_database", "OFF"},
+	} {
+		t.Run(tc.line, func(t *testing.T) {
+			conf := parseString(t, "[mysqld]\n"+tc.line+"\n")
+			assert.Equal(t, map[string]string{tc.option: tc.want}, Merge(conf, "mysqld"))
+		})
+	}
+}
+
+// A prefix is resolved in read order like any other assignment.
+func TestParseBooleanPrefixRespectsReadOrder(t *testing.T) {
+	conf := parseString(t, "[mysqld]\nlocal-infile=0\nenable-local-infile\n")
+	assert.Equal(t, "ON", Merge(conf, "mysqld")["local_infile"])
+
+	conf = parseString(t, "[mysqld]\nskip-name-resolve\ndisable-skip-name-resolve\n")
+	assert.Equal(t, "OFF", Merge(conf, "mysqld")["skip_name_resolve"])
+}
+
+// Options whose own name starts with a prefix keep it, and a prefix on an
+// option this parser does not know as boolean is kept as written rather than
+// guessed at.
+func TestParseBooleanPrefixLeavesOtherNamesAlone(t *testing.T) {
+	conf := parseString(t, "[mysqld]\nskip-name-resolve\nskip_networking\nskip-log-bin\ndisabled_storage_engines=MyISAM\n")
+	assert.Equal(t, map[string]string{
+		"skip_name_resolve":        "ON",
+		"skip_networking":          "ON",
+		"skip_log_bin":             "ON",
+		"disabled_storage_engines": "MyISAM",
+	}, Merge(conf, "mysqld"))
+}
+
+// ---------------------------------------------------------------------------
+// unreadable includes
+// ---------------------------------------------------------------------------
+
+// A fragment that exists but cannot be read is still read by the server, so
+// leaving it out reports the remaining files as the whole configuration. On
+// the sweep hosts a non-root scan of a mode 0600 99-sweep.cnf reported
+// serverAuditLogging true from the other files with no error.
+func TestParseUnreadableIncludeIsAnError(t *testing.T) {
+	files := map[string]string{
+		"/etc/mysql/my.cnf":                       "[client-server]\n!includedir /etc/mysql/mariadb.conf.d/\n!includedir /etc/mysql/locked.d/\n",
+		"/etc/mysql/mariadb.conf.d/50-server.cnf": "[mysqld]\nport=3306\n",
+	}
+	denied := map[string]bool{"/etc/mysql/mariadb.conf.d/99-sweep.cnf": true}
+	reader := func(path string) (string, error) {
+		if denied[path] {
+			return "", &fs.PathError{Op: "open", Path: path, Err: fs.ErrPermission}
+		}
+		content, ok := files[path]
+		if !ok {
+			return "", fs.ErrNotExist
+		}
+		return content, nil
+	}
+	dirLister := func(dir string) ([]string, error) {
+		switch filepath.Clean(dir) {
+		case "/etc/mysql/mariadb.conf.d":
+			return []string{"/etc/mysql/mariadb.conf.d/50-server.cnf", "/etc/mysql/mariadb.conf.d/99-sweep.cnf"}, nil
+		case "/etc/mysql/locked.d":
+			return nil, &fs.PathError{Op: "open", Path: dir, Err: fs.ErrPermission}
+		}
+		return nil, fs.ErrNotExist
+	}
+
+	conf, err := Parse("/etc/mysql/my.cnf", reader, dirLister)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, fs.ErrPermission)
+	assert.Contains(t, err.Error(), "/etc/mysql/mariadb.conf.d/99-sweep.cnf")
+	assert.Contains(t, err.Error(), "/etc/mysql/locked.d")
+
+	// The readable files are still parsed, so the caller can tell which
+	// product the configuration belongs to.
+	require.NotNil(t, conf)
+	assert.Equal(t, "3306", Merge(conf, "mysqld")["port"])
+	assert.NotContains(t, conf.Files, "/etc/mysql/mariadb.conf.d/99-sweep.cnf")
 }

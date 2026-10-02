@@ -5035,8 +5035,8 @@ mysql {
 //
 // Options stay grouped as the server reads them. `sections` holds every
 // option group, `serverOptions` merges the groups mysqld itself reads
-// (`[mysqld]`, `[server]`, and version-suffixed groups such as
-// `[mysqld-8.0]`), and `clientOptions` merges `[client]`, `[mysql]`, and
+// (`[mysqld]`, `[server]`, and the version-suffixed group for the installed
+// server version, such as `[mysqld-8.0]` on 8.0), and `clientOptions` merges `[client]`, `[mysql]`, and
 // `[client-server]`, where a readable `password` exposes credentials to
 // every account that can read the file. Convenience views cover networking,
 // TLS, authentication and password policy, filesystem privileges, logging,
@@ -5062,6 +5062,10 @@ mysql.conf {
   // Option groups, in the order the server reads them
   sections(file) []mysql.conf.section
   // Options mysqld reads, merged last-write-wins
+  //
+  // A version-suffixed group is included only when it names the installed
+  // server's major.minor version, and no such group is included when the
+  // version cannot be detected.
   serverOptions(file) map[string]string
   // Options the client programs read, merged last-write-wins
   clientOptions(file) map[string]string
@@ -5162,8 +5166,14 @@ mysql.conf {
   // statements.
   secureFilePriv(serverOptions) string
   // local_infile option, which allows LOAD DATA LOCAL from client hosts
+  //
+  // Null when no option file sets it. The server default is on in MariaDB and
+  // MySQL 5.7 and off in MySQL 8.0 and later.
   localInfile(serverOptions) bool
   // symbolic_links option, which lets tables be redirected outside the data directory
+  //
+  // Null when no option file sets it. The server default is on in MariaDB and
+  // MySQL 5.7 and off in MySQL 8.0 and later.
   symbolicLinks(serverOptions) bool
   // allow_suspicious_udfs option, which loads user-defined functions carrying only an xxx symbol
   allowSuspiciousUdfs(serverOptions) bool
@@ -5174,6 +5184,8 @@ mysql.conf {
   // skip_show_database option, which restricts SHOW DATABASES to privileged accounts
   skipShowDatabase(serverOptions) bool
   // automatic_sp_privileges option, which grants routine creators access to their routines
+  //
+  // Null when no option file sets it. The server default is on.
   automaticSpPrivileges(serverOptions) bool
   // log_bin_trust_function_creators option, which drops the binary logging safety check on routines
   logBinTrustFunctionCreators(serverOptions) bool
@@ -5301,8 +5313,9 @@ mariadb {
 //
 // Options stay grouped as the server reads them. `sections` holds every
 // option group and `serverOptions` merges the groups mariadbd reads:
-// `[mysqld]`, `[server]`, `[mariadb]`, `[mariadbd]`, `[client-server]`, and
-// version-suffixed groups such as `[mariadb-11.4]`. That set is not an
+// `[mysqld]`, `[server]`, `[mariadb]`, `[mariadbd]` (from 10.4),
+// `[client-server]`, and the version-suffixed groups for the installed server
+// version, such as `[mariadb-11.4]` on 11.4. That set is not an
 // extension of MySQL's, because packaged fragments since 11.0 configure the
 // server under `[mariadbd]` and ship no `[mysqld]` group at all.
 // `galeraOptions` breaks out `[galera]` so cluster transport settings stay
@@ -5328,6 +5341,10 @@ mariadb.conf {
   // Option groups, in the order the server reads them
   sections(file) []mariadb.conf.section
   // Options mariadbd reads, merged last-write-wins
+  //
+  // A version-suffixed group is included only when it names the installed
+  // server's major.minor version, and no such group is included when the
+  // version cannot be detected.
   serverOptions(file) map[string]string
   // Options the client programs read, merged last-write-wins
   clientOptions(file) map[string]string
@@ -5406,8 +5423,14 @@ mariadb.conf {
   // An empty value removes the restriction entirely.
   secureFilePriv(serverOptions) string
   // local_infile option, which allows LOAD DATA LOCAL from client hosts
+  //
+  // Null when no option file sets it. The server default is on in MariaDB and
+  // MySQL 5.7 and off in MySQL 8.0 and later.
   localInfile(serverOptions) bool
   // symbolic_links option, which lets tables be redirected outside the data directory
+  //
+  // Null when no option file sets it. The server default is on in MariaDB and
+  // MySQL 5.7 and off in MySQL 8.0 and later.
   symbolicLinks(serverOptions) bool
   // allow_suspicious_udfs option, which loads user-defined functions carrying only an xxx symbol
   allowSuspiciousUdfs(serverOptions) bool
@@ -5418,6 +5441,8 @@ mariadb.conf {
   // skip_show_database option, which restricts SHOW DATABASES to privileged accounts
   skipShowDatabase(serverOptions) bool
   // automatic_sp_privileges option, which grants routine creators access to their routines
+  //
+  // Null when no option file sets it. The server default is on.
   automaticSpPrivileges(serverOptions) bool
   // log_bin_trust_function_creators option, which drops the binary logging safety check on routines
   logBinTrustFunctionCreators(serverOptions) bool

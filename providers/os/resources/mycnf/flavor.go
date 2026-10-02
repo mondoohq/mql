@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -160,24 +161,79 @@ func ParseVersion(output string) (version string, flavor string) {
 	return version, flavor
 }
 
-// ServerGroups lists the option groups a server of the given flavor reads.
-// The order of the returned names carries no precedence: Merge resolves
-// last-write-wins by the order options were read from the files, which is how
-// the server itself resolves them, so only membership in this set matters.
+// ServerGroups lists the option groups a server of the given flavor and
+// version reads. The order of the returned names carries no precedence: Merge
+// resolves last-write-wins by the order options were read from the files,
+// which is how the server itself resolves them, so only membership in this set
+// matters.
+//
+// A server reads the version-suffixed form of its groups only for its own
+// major.minor version: an 8.0 server reads [mysqld-8.0] and ignores
+// [mysqld-8.4] and [mysqld-9.9]. version is the full server version
+// ("10.11.14"); when it is empty the server version is unknown and no
+// version-suffixed group is included, because a group written for another
+// version would otherwise override the options the server does read.
 //
 // MariaDB's set is not an extension of MySQL's. Since 11.0 its packaged
 // fragments configure the server under [mariadbd] and ship no [mysqld] group
 // at all, so a server-scope view built only from [mysqld] and [server] comes
-// back empty on a current MariaDB host. MariaDB also reads [client-server],
-// which is where its packages put the socket path; Oracle MySQL does not.
+// back empty on a current MariaDB host. [mariadbd] is read from 10.4 on, the
+// first series whose GA release reads it; an older server ignores it, which
+// `mysqld --verbose --help` lists as "The following groups are read". When the
+// version is unknown [mariadbd] is included, since every supported series
+// reads it. MariaDB also reads [client-server], which is where its packages put
+// the socket path; Oracle MySQL does not. Neither product reads a
+// version-suffixed [server] group.
 //
 // [galera] is deliberately excluded even though a wsrep-enabled MariaDB reads
 // it, so that cluster transport settings stay separable from server settings.
-func ServerGroups(flavor string) []string {
+func ServerGroups(flavor string, version string) []string {
+	mm := majorMinor(version)
 	if flavor == FlavorMariaDB {
-		return []string{"client-server", "mysqld", "server", "mariadb", "mariadbd"}
+		groups := []string{"client-server", "mysqld", "server", "mariadb"}
+		readsMariadbd := mm == "" || versionAtLeast(mm, 10, 4)
+		if readsMariadbd {
+			groups = append(groups, "mariadbd")
+		}
+		if mm != "" {
+			groups = append(groups, "mysqld-"+mm, "mariadb-"+mm)
+			if readsMariadbd {
+				groups = append(groups, "mariadbd-"+mm)
+			}
+		}
+		return groups
 	}
-	return []string{"mysqld", "server"}
+	groups := []string{"mysqld", "server"}
+	if mm != "" {
+		groups = append(groups, "mysqld-"+mm)
+	}
+	return groups
+}
+
+// majorMinor reduces a server version such as "10.11.14" to the "10.11" a
+// version-suffixed option group names. It returns the empty string for a
+// version that does not start with two numeric components.
+func majorMinor(version string) string {
+	parts := strings.SplitN(reSemver.FindString(strings.TrimSpace(version)), ".", 3)
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[0] + "." + parts[1]
+}
+
+// versionAtLeast reports whether a "major.minor" version is at least
+// major.minor.
+func versionAtLeast(mm string, major, minor int) bool {
+	a, b, ok := strings.Cut(mm, ".")
+	if !ok {
+		return false
+	}
+	maj, err1 := strconv.Atoi(a)
+	mnr, err2 := strconv.Atoi(b)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	return maj > major || (maj == major && mnr >= minor)
 }
 
 // ClientGroups lists the option groups the client programs read. [client-server]
