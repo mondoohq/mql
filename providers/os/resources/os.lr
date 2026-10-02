@@ -1809,22 +1809,31 @@ snmpd {}
 // Net-SNMP daemon (snmpd) configuration
 //
 // snmpd.conf settings that govern SNMP access: community strings, VACM
-// users, and listen addresses. The configuration is assembled from the
-// main snmpd.conf together with any drop-in files under snmpd.conf.d and
-// files pulled in by includeFile and includeDir directives. A missing
+// users, and listen addresses. The configuration is assembled the way snmpd
+// reads it: the main snmpd.conf, files pulled in by its includeFile and
+// includeDir directives, snmpd.local.conf in the same directory, and the
+// persistent snmpd.conf under /var/lib/snmp. A missing
 // configuration yields empty accessors, so audits such as
 // rwCommunities == [] hold trivially on hosts that don't run snmpd.
 snmpd.config {
   init(path? string)
   // Primary snmpd configuration file
   file() file
-  // All files making up the SNMP daemon configuration (main file, drop-ins, and includes)
+  // All files making up the SNMP daemon configuration (main file, includes, snmpd.local.conf, and the persistent file)
   files(file) []file
   // Merged contents of all configuration files
   content(files) string
-  // Read-only community strings, from rocommunity and rocommunity6 directives
+  // Read-only community strings
+  //
+  // From rocommunity, rocommunity6, and authcommunity read directives, and
+  // from com2sec, com2sec6, and com2secunix mappings whose group reaches a
+  // declared read view but no write view through an access line.
   roCommunities(content) []string
-  // Read-write community strings, from rwcommunity and rwcommunity6 directives
+  // Read-write community strings
+  //
+  // From rwcommunity, rwcommunity6, and authcommunity write directives, and
+  // from com2sec, com2sec6, and com2secunix mappings whose group reaches a
+  // declared write view through an access line.
   rwCommunities(content) []string
   // Read-only VACM users, from rouser directives
   roUsers(content) []string
