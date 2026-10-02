@@ -328,16 +328,56 @@ COMMIT
 }
 
 func TestParseIptablesSave_Negation(t *testing.T) {
+	// Rules captured from `iptables-save -c` on Ubuntu 16.04 through 26.04.
 	input := `*filter
 :INPUT ACCEPT [0:0]
-[0:0] -A INPUT ! -i lo -j DROP
+[0:0] -A INPUT -d 127.0.0.0/8 ! -i lo -j DROP
+[0:0] -A INPUT -s 198.51.100.7/32 -p tcp -m tcp ! --dport 2424 -j DROP
+[0:0] -A INPUT ! -s 192.168.0.0/16 -p tcp -m tcp --dport 2323 -j DROP
+[0:0] -A INPUT ! -d 10.0.0.0/8 -p udp -m udp ! --sport 53 -j ACCEPT
+[0:0] -A INPUT -p tcp -m conntrack ! --ctstate ESTABLISHED,RELATED -m multiport ! --dports 80,443 -j DROP
+[0:0] -A INPUT -m set ! --match-set allowlist src -p tcp -m tcp ! --tcp-flags FIN,SYN,RST,ACK SYN -m multiport ! --sports 1000:2000 -j DROP
+COMMIT
+*nat
+:POSTROUTING ACCEPT [0:0]
+[2:198] -A POSTROUTING ! -o lo -j MASQUERADE
 COMMIT
 `
 	dump, err := ParseIptablesSave(input)
 	require.NoError(t, err)
-	rule := requireRule(t, dump, "filter", "INPUT", 0)
-	// Negation on -i should still surface the interface in the In field.
-	assert.Equal(t, "lo", rule.In)
+
+	r := requireRule(t, dump, "filter", "INPUT", 0)
+	assert.Equal(t, "!lo", r.In, "! -i lo matches every interface except lo")
+	assert.Equal(t, "127.0.0.0/8", r.Destination)
+
+	r = requireRule(t, dump, "filter", "INPUT", 1)
+	assert.Equal(t, "198.51.100.7/32", r.Source)
+	assert.True(t, r.HasDport)
+	assert.Equal(t, 0, r.Dport, "a negated port is not a single-port match")
+	assert.Equal(t, "!2424", r.DportRange)
+
+	r = requireRule(t, dump, "filter", "INPUT", 2)
+	assert.Equal(t, "!192.168.0.0/16", r.Source)
+	assert.Equal(t, 2323, r.Dport)
+	assert.Empty(t, r.DportRange)
+
+	r = requireRule(t, dump, "filter", "INPUT", 3)
+	assert.Equal(t, "!10.0.0.0/8", r.Destination)
+	assert.Equal(t, 0, r.Sport)
+	assert.Equal(t, "!53", r.SportRange)
+
+	r = requireRule(t, dump, "filter", "INPUT", 4)
+	assert.Equal(t, []string{"!ESTABLISHED", "!RELATED"}, r.Ctstate)
+	assert.Equal(t, []string{"!80", "!443"}, r.Dports)
+
+	r = requireRule(t, dump, "filter", "INPUT", 5)
+	assert.Equal(t, "!allowlist", r.MatchSet)
+	assert.Equal(t, []string{"!FIN,SYN,RST,ACK", "SYN"}, r.TCPFlags)
+	assert.Equal(t, []string{"!1000:2000"}, r.Sports)
+
+	r = requireRule(t, dump, "nat", "POSTROUTING", 0)
+	assert.Equal(t, "!lo", r.Out)
+	assert.Empty(t, r.In)
 }
 
 func TestParseIptablesSave_NegatedProtocol(t *testing.T) {
@@ -570,7 +610,7 @@ COMMIT
 	post := requireRule(t, dump, "nat", "POSTROUTING", 0)
 	assert.Equal(t, "MASQUERADE", post.Target)
 	assert.Equal(t, "172.17.0.0/16", post.Source)
-	assert.Equal(t, "docker0", post.Out)
+	assert.Equal(t, "!docker0", post.Out, "! -o docker0 matches every interface except docker0")
 
 	// filter table — verify the ssh rule has the comment, the multiport rule
 	// has both ports, and the REJECT rule populates rejectWith.

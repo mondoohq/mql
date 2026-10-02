@@ -276,14 +276,11 @@ func fetchAllTables(runtime *plugin.Runtime, conn shared.Connection, binary stri
 		}
 		if cmd.ExitStatus != 0 {
 			stderr, _ := io.ReadAll(cmd.Stderr)
-			errMsg := strings.TrimSpace(string(stderr))
-			// Table may not exist on this kernel (e.g., raw or mangle not loaded)
-			if strings.Contains(errMsg, "does not exist") ||
-				strings.Contains(errMsg, "No such file or directory") ||
-				strings.Contains(errMsg, "can't initialize") {
+			if absent, err := classifyIptablesTableError(binary, tableName, string(stderr)); absent {
 				continue
+			} else {
+				return nil, err
 			}
-			return nil, fmt.Errorf("%s -t %s failed: %s", binary, tableName, errMsg)
 		}
 
 		chains, err := parseAllChains(runtime, string(data), tableName, ver, ipv6)
@@ -305,6 +302,28 @@ func fetchAllTables(runtime *plugin.Runtime, conn shared.Connection, binary stri
 		tables = append(tables, tableRes)
 	}
 	return tables, nil
+}
+
+// classifyIptablesTableError decides what a failed `<binary> -t <table> -L`
+// means. It returns absent=true when the table does not exist on this kernel
+// (raw or mangle not loaded), which callers skip. Any other failure is an
+// error. A permission refusal is reported as forbidden: iptables 1.6 words it
+// "can't initialize iptables table `filter': Permission denied (you must be
+// root)", which shares its prefix with the table-missing message, so the
+// refusal has to be checked first or a non-root scan reads as no tables.
+func classifyIptablesTableError(binary, tableName, stderr string) (bool, error) {
+	errMsg := strings.TrimSpace(stderr)
+	err := fmt.Errorf("%s -t %s failed: %s", binary, tableName, errMsg)
+	lower := strings.ToLower(errMsg)
+	if strings.Contains(lower, "permission denied") || strings.Contains(lower, "you must be root") {
+		return false, llx.Forbidden(err)
+	}
+	if strings.Contains(errMsg, "does not exist") ||
+		strings.Contains(errMsg, "No such file or directory") ||
+		strings.Contains(errMsg, "can't initialize") {
+		return true, nil
+	}
+	return false, err
 }
 
 // parseAllChains parses the full output of `iptables -t <table> -L` which
@@ -418,6 +437,13 @@ func loadSavedDump(conn shared.Connection, binary string) (*SavedDump, bool, err
 	dump, err := ParseIptablesSave(string(stdout))
 	if err != nil {
 		return nil, false, err
+	}
+	// iptables-save 1.6 (Ubuntu 16.04) run without root cannot read
+	// /proc/net/ip_tables_names, yet exits 0 with no output. Every kernel
+	// with iptables loaded lists at least one table, so an empty dump is not
+	// trusted: fall back to `-L`, which reports the refusal.
+	if len(dump.Tables) == 0 {
+		return nil, false, nil
 	}
 	return dump, true, nil
 }

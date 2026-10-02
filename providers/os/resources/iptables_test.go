@@ -4,10 +4,14 @@
 package resources
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
+	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers/os/connection/mock"
 )
 
 func TestParseStat(t *testing.T) {
@@ -277,4 +281,68 @@ num      pkts      bytes target     prot opt in     out     source              
 	assert.Equal(t, "SNAT", result.Entries[1].Target)
 	assert.Equal(t, "192.168.1.0/24", result.Entries[1].Source)
 	assert.Contains(t, result.Entries[1].Options, "to:203.0.113.5")
+}
+
+func TestSavedRuleToRawData_NegatedDport(t *testing.T) {
+	dump, err := ParseIptablesSave("*filter\n:INPUT ACCEPT [0:0]\n[0:0] -A INPUT -s 198.51.100.7/32 -p tcp -m tcp ! --dport 2424 -j DROP\n[0:0] -A INPUT ! -i lo -p tcp -m tcp --dport 22 -j ACCEPT\nCOMMIT\n")
+	require.NoError(t, err)
+
+	negated := savedRuleToRawData(requireRule(t, dump, "filter", "INPUT", 0), 1, "input", false)
+	assert.Nil(t, negated["dport"].Value, "`! --dport 2424` must not read as dport == 2424")
+	assert.Equal(t, "!2424", negated["dportRange"].Value)
+	assert.Equal(t, "*", negated["in"].Value)
+
+	plain := savedRuleToRawData(requireRule(t, dump, "filter", "INPUT", 1), 2, "input", false)
+	assert.Equal(t, int64(22), plain["dport"].Value)
+	assert.Equal(t, "!lo", plain["in"].Value)
+}
+
+func TestClassifyIptablesTableError(t *testing.T) {
+	// stderr captured on Ubuntu 16.04 / 18.04 (iptables 1.6) as a non-root user.
+	absent, err := classifyIptablesTableError("iptables", "filter",
+		"iptables v1.6.0: can't initialize iptables table `filter': Permission denied (you must be root)\nPerhaps iptables or your kernel needs to be upgraded.\n")
+	assert.False(t, absent, "a refusal is not a missing table")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, llx.ErrForbidden))
+
+	// iptables 1.8 nf_tables backend (Ubuntu 26.04) as a non-root user.
+	absent, err = classifyIptablesTableError("iptables", "filter",
+		"iptables v1.8.11 (nf_tables): Could not fetch rule set generation id: Permission denied (you must be root)")
+	assert.False(t, absent)
+	assert.True(t, errors.Is(err, llx.ErrForbidden))
+
+	// Table module not loaded, as root.
+	absent, err = classifyIptablesTableError("iptables", "raw",
+		"iptables v1.6.0: can't initialize iptables table `raw': Table does not exist (do you need to insmod?)\nPerhaps iptables or your kernel needs to be upgraded.\n")
+	assert.True(t, absent)
+	assert.NoError(t, err)
+
+	// Anything else stays an unclassified error.
+	absent, err = classifyIptablesTableError("iptables", "filter", "iptables: unknown failure")
+	assert.False(t, absent)
+	require.Error(t, err)
+	assert.False(t, errors.Is(err, llx.ErrForbidden))
+}
+
+func TestLoadSavedDump_EmptyOutputIsNotAnEmptyRuleset(t *testing.T) {
+	newConn := func(stdout string) *mock.Connection {
+		conn, err := mock.New(0, &inventory.Asset{
+			Platform: &inventory.Platform{Name: "ubuntu", Family: []string{"debian", "linux", "unix"}},
+		}, mock.WithData(&mock.TomlData{Commands: map[string]*mock.Command{
+			"iptables-save -c": {Stdout: stdout},
+		}}))
+		require.NoError(t, err)
+		return conn
+	}
+
+	// iptables-save 1.6.0 as a non-root user on Ubuntu 16.04: exit 0, no output.
+	dump, available, err := loadSavedDump(newConn(""), "iptables")
+	require.NoError(t, err)
+	assert.False(t, available, "an empty dump must fall back to `iptables -L`")
+	assert.Nil(t, dump)
+
+	dump, available, err = loadSavedDump(newConn("*filter\n:INPUT ACCEPT [0:0]\nCOMMIT\n"), "iptables")
+	require.NoError(t, err)
+	assert.True(t, available)
+	require.Len(t, dump.Tables, 1)
 }

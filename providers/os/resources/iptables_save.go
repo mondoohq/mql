@@ -193,6 +193,24 @@ func parseRuleLine(line string) (SavedRule, error) {
 
 	var optionParts []string
 
+	// neg renders a negated match the way `iptables -L` prints it: a
+	// leading "!" on the value (`! -i lo` becomes "!lo").
+	neg := func(negated bool, v string) string {
+		if negated {
+			return "!" + v
+		}
+		return v
+	}
+	negAll := func(negated bool, vals []string) []string {
+		if !negated {
+			return vals
+		}
+		for i := range vals {
+			vals[i] = "!" + vals[i]
+		}
+		return vals
+	}
+
 	flushNegation := func(negated bool, parts ...string) {
 		if negated {
 			optionParts = append(optionParts, "!")
@@ -222,19 +240,19 @@ func parseRuleLine(line string) (SavedRule, error) {
 			}
 		case "-s", "--source":
 			if v, ok := nextArg(tokens, &i); ok {
-				rule.Source = v
+				rule.Source = neg(negated, v)
 			}
 		case "-d", "--destination":
 			if v, ok := nextArg(tokens, &i); ok {
-				rule.Destination = v
+				rule.Destination = neg(negated, v)
 			}
 		case "-i", "--in-interface":
 			if v, ok := nextArg(tokens, &i); ok {
-				rule.In = v
+				rule.In = neg(negated, v)
 			}
 		case "-o", "--out-interface":
 			if v, ok := nextArg(tokens, &i); ok {
-				rule.Out = v
+				rule.Out = neg(negated, v)
 			}
 		case "-j", "--jump":
 			if v, ok := nextArg(tokens, &i); ok {
@@ -250,8 +268,10 @@ func parseRuleLine(line string) (SavedRule, error) {
 		case "--dport", "--destination-port":
 			if v, ok := nextArg(tokens, &i); ok {
 				rule.HasDport = true
-				if strings.Contains(v, ":") {
-					rule.DportRange = v
+				// A negated port is not a single port: `dport` stays
+				// null and `dportRange` carries "!<port>".
+				if negated || strings.Contains(v, ":") {
+					rule.DportRange = neg(negated, v)
 				} else if n, err := strconv.Atoi(v); err == nil {
 					rule.Dport = n
 				} else {
@@ -262,8 +282,10 @@ func parseRuleLine(line string) (SavedRule, error) {
 		case "--sport", "--source-port":
 			if v, ok := nextArg(tokens, &i); ok {
 				rule.HasSport = true
-				if strings.Contains(v, ":") {
-					rule.SportRange = v
+				// A negated port is not a single port: `sport` stays
+				// null and `sportRange` carries "!<port>".
+				if negated || strings.Contains(v, ":") {
+					rule.SportRange = neg(negated, v)
 				} else if n, err := strconv.Atoi(v); err == nil {
 					rule.Sport = n
 				} else {
@@ -273,24 +295,24 @@ func parseRuleLine(line string) (SavedRule, error) {
 			}
 		case "--dports":
 			if v, ok := nextArg(tokens, &i); ok {
-				rule.Dports = splitCSV(v)
+				rule.Dports = negAll(negated, splitCSV(v))
 				flushNegation(negated, "dpts:"+v)
 			}
 		case "--sports":
 			if v, ok := nextArg(tokens, &i); ok {
-				rule.Sports = splitCSV(v)
+				rule.Sports = negAll(negated, splitCSV(v))
 				flushNegation(negated, "spts:"+v)
 			}
 		case "--state", "--ctstate":
 			if v, ok := nextArg(tokens, &i); ok {
-				rule.Ctstate = splitCSV(v)
+				rule.Ctstate = negAll(negated, splitCSV(v))
 				flushNegation(negated, "state", v)
 			}
 		case "--tcp-flags":
 			mask, ok1 := nextArg(tokens, &i)
 			comp, ok2 := nextArg(tokens, &i)
 			if ok1 && ok2 {
-				rule.TCPFlags = []string{mask, comp}
+				rule.TCPFlags = []string{neg(negated, mask), comp}
 				flushNegation(negated, "flags:"+mask+"/"+comp)
 			}
 		case "--comment":
@@ -304,7 +326,7 @@ func parseRuleLine(line string) (SavedRule, error) {
 			set, ok1 := nextArg(tokens, &i)
 			dir, ok2 := nextArg(tokens, &i)
 			if ok1 {
-				rule.MatchSet = set
+				rule.MatchSet = neg(negated, set)
 				if ok2 {
 					flushNegation(negated, "match-set", set, dir)
 				} else {

@@ -7963,13 +7963,25 @@ iptables.entry {
   protocol string
   // IP options
   opt string
-  // Input network interface the rule matches on (empty for any)
+  // Input network interface the rule matches on
+  //
+  // "*" when the rule matches any interface. A negated match (`! -i lo`)
+  // is prefixed with "!", for example "!lo", as `iptables -L` prints it.
   in string
-  // Output network interface the rule matches on (empty for any)
+  // Output network interface the rule matches on
+  //
+  // "*" when the rule matches any interface. A negated match (`! -o lo`)
+  // is prefixed with "!", for example "!lo".
   out string
   // Source address field that tells the receiver where the packet came from
+  //
+  // A negated match (`! -s 10.0.0.0/8`) is prefixed with "!", for example
+  // "!10.0.0.0/8", as `iptables -L` prints it.
   source string
   // The destination IP address of the traffic, subnet of the traffic, or anywhere
+  //
+  // A negated match (`! -d 10.0.0.0/8`) is prefixed with "!", for example
+  // "!10.0.0.0/8".
   destination string
   // Optional settings within the header such as internet timestamps, SACK, or record route options
   options string
@@ -7978,37 +7990,49 @@ iptables.entry {
   // Destination port
   //
   // Single port from `--dport`. Null when the rule does not match by
-  // destination port, or when it matches a range or list. See
-  // `dportRange` for ranges and `dports` for multi-port matches.
+  // destination port, when it matches a range or list, or when the match is
+  // negated. See `dportRange` for ranges and negated ports and `dports` for
+  // multi-port matches.
   dport int
   // Destination port range, e.g. "1024:65535"
   //
-  // Set when the rule uses `--dport low:high`. Empty otherwise.
+  // Set when the rule uses `--dport low:high`. A negated match is prefixed
+  // with "!": `! --dport 2424` reads "!2424" here and leaves `dport` null.
+  // Empty otherwise.
   dportRange string
   // Destination port list from `-m multiport --dports`
   //
   // Empty when no `--dports` match is present. Single ports are integers;
-  // ranges (e.g. "1000:2000") remain as strings unchanged.
+  // ranges (e.g. "1000:2000") remain as strings unchanged. When the match is
+  // negated (`! --dports 80,443`), every element is prefixed with "!".
   dports []string
   // Source port
   //
   // Single port from `--sport`. Null when the rule does not match by
-  // source port, or when it matches a range or list.
+  // source port, when it matches a range or list, or when the match is
+  // negated.
   sport int
   // Source port range, e.g. "1024:65535"
+  //
+  // A negated match is prefixed with "!": `! --sport 53` reads "!53" here
+  // and leaves `sport` null. Empty otherwise.
   sportRange string
   // Source port list from `-m multiport --sports`
+  //
+  // When the match is negated, every element is prefixed with "!".
   sports []string
   // Conntrack state list from `-m state --state` or `-m conntrack --ctstate`
   //
   // Values such as NEW, ESTABLISHED, RELATED, INVALID, UNTRACKED. Empty
-  // when no state/ctstate match is present.
+  // when no state/ctstate match is present. When the match is negated
+  // (`! --ctstate NEW`), every element is prefixed with "!", for example
+  // "!NEW".
   ctstate []string
   // TCP flag match from `-m tcp --tcp-flags`
   //
   // Two-element list: [mask, comp] (e.g., ["FIN,SYN,RST,ACK", "SYN"] for
   // `--tcp-flags FIN,SYN,RST,ACK SYN`). Empty when no `--tcp-flags` match
-  // is present.
+  // is present. A negated match prefixes the mask with "!".
   tcpFlags []string
   // Rule comment from `-m comment --comment`
   //
@@ -8016,8 +8040,8 @@ iptables.entry {
   comment string
   // ipset name from `-m set --match-set`
   //
-  // The set name used in a `--match-set` match. Empty when no `-m set`
-  // match is present.
+  // The set name used in a `--match-set` match, prefixed with "!" when the
+  // match is negated. Empty when no `-m set` match is present.
   matchSet string
   // For `-j REJECT`, the `--reject-with` value (e.g., icmp-port-unreachable)
   //
