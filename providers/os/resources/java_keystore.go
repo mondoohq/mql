@@ -326,19 +326,144 @@ func (s *mqlJavaTruststores) paths() ([]any, error) {
 		}
 	}
 
-	// Sorted so the list does not depend on directory iteration order, which
-	// would make a check's output shuffle between scans of the same host.
-	out := make([]string, 0, len(found))
+	candidates := make([]string, 0, len(found))
 	for p := range found {
-		out = append(out, p)
+		candidates = append(candidates, p)
 	}
-	sort.Strings(out)
+
+	// Distributions point every JVM's cacerts at one shared store (RHEL links
+	// all of them to /etc/pki/ca-trust/extracted/java/cacerts, Debian to
+	// /etc/ssl/certs/java/cacerts), and version aliases such as
+	// /usr/lib/jvm/java-21 link to a JDK directory that is listed as well.
+	// Reporting each name would audit one file many times over.
+	out := dedupeByRealPath(candidates, resolveTruststorePaths(conn, candidates))
 
 	res := make([]any, 0, len(out))
 	for _, p := range out {
 		res = append(res, p)
 	}
 	return res, nil
+}
+
+// maxSymlinkHops bounds symlink resolution, as the kernel's own limit does, so
+// that a link loop ends in an error instead of spinning forever.
+const maxSymlinkHops = 40
+
+// resolveTruststorePaths maps each candidate to the file it names once every
+// symlink along the way is followed. A filesystem that can read links is
+// walked directly; otherwise (SSH, sudo through cat) one shell loop asks
+// readlink -f for all of them. A candidate that cannot be resolved is left out
+// of the map and keeps its own name.
+func resolveTruststorePaths(conn shared.Connection, candidates []string) map[string]string {
+	real := make(map[string]string, len(candidates))
+	if len(candidates) == 0 {
+		return real
+	}
+
+	if lr, ok := conn.FileSystem().(afero.LinkReader); ok {
+		for _, p := range candidates {
+			if r, err := resolveSymlinks(lr, p); err == nil {
+				real[p] = r
+			}
+		}
+		return real
+	}
+
+	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
+		return real
+	}
+	var script strings.Builder
+	script.WriteString("for p in")
+	for _, p := range candidates {
+		script.WriteString(" " + shellQuote(p))
+	}
+	script.WriteString(`; do printf '%s\t%s\n' "$p" "$(readlink -f "$p" 2>/dev/null)"; done`)
+	// Run through sh -c so that --sudo elevates the loop as one command rather
+	// than prefixing only its first word.
+	cmd, err := conn.RunCommand("sh -c " + shellQuote(script.String()))
+	if err != nil || cmd.ExitStatus != 0 {
+		return real
+	}
+	data, err := io.ReadAll(cmd.Stdout)
+	if err != nil {
+		return real
+	}
+	return parseReadlinkOutput(string(data))
+}
+
+// parseReadlinkOutput reads the "<path>\t<resolved>" lines the readlink loop
+// prints. An empty resolution (a dangling link, or no readlink -f) is skipped.
+func parseReadlinkOutput(out string) map[string]string {
+	res := map[string]string{}
+	for _, line := range strings.Split(out, "\n") {
+		p, r, ok := strings.Cut(line, "\t")
+		if !ok || p == "" || !strings.HasPrefix(r, "/") {
+			continue
+		}
+		res[p] = r
+	}
+	return res
+}
+
+// resolveSymlinks is filepath.EvalSymlinks over a connection's filesystem: it
+// follows links in every path component, not just the last, resolving a
+// relative target against the directory that holds the link.
+func resolveSymlinks(lr afero.LinkReader, p string) (string, error) {
+	resolved := "/"
+	rest := strings.Split(strings.TrimPrefix(path.Clean(p), "/"), "/")
+	hops := 0
+	for len(rest) > 0 {
+		elem := rest[0]
+		rest = rest[1:]
+		if elem == "" || elem == "." {
+			continue
+		}
+		if elem == ".." {
+			resolved = path.Dir(resolved)
+			continue
+		}
+		next := path.Join(resolved, elem)
+		target, err := lr.ReadlinkIfPossible(next)
+		if err != nil {
+			// Not a link (or not readable as one): keep it as it is.
+			resolved = next
+			continue
+		}
+		hops++
+		if hops > maxSymlinkHops {
+			return "", fmt.Errorf("too many levels of symbolic links resolving %s", p)
+		}
+		if strings.HasPrefix(target, "/") {
+			resolved = "/"
+		}
+		rest = append(strings.Split(strings.TrimPrefix(target, "/"), "/"), rest...)
+	}
+	return resolved, nil
+}
+
+// dedupeByRealPath keeps one name per file. Of the names that resolve to the
+// same file, the lexicographically smallest is kept: it is stable across scans
+// and, since /etc sorts before /opt and /usr, it is the distribution's own
+// name for a shared store (/etc/pki/java/cacerts, /etc/ssl/certs/java/cacerts)
+// whenever that name exists. The result is sorted so a check's output does
+// not shuffle between scans of the same host.
+func dedupeByRealPath(candidates []string, real map[string]string) []string {
+	keep := map[string]string{}
+	for _, p := range candidates {
+		key, ok := real[p]
+		if !ok {
+			key = p
+		}
+		if cur, ok := keep[key]; !ok || p < cur {
+			keep[key] = p
+		}
+	}
+	out := make([]string, 0, len(keep))
+	for _, p := range keep {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (s *mqlJavaTruststores) list(paths []any) ([]any, error) {

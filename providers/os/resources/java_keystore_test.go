@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -114,4 +115,100 @@ func TestJavaKeystoreEntryIDsAreUniqueWhenAliasesCollide(t *testing.T) {
 		ids[id] = struct{}{}
 	}
 	assert.Len(t, ids, 5)
+}
+
+// fakeLinks is a filesystem's symlink table: link path to its target, exactly
+// as readlink prints it. Anything not in the table is not a link.
+type fakeLinks map[string]string
+
+func (f fakeLinks) ReadlinkIfPossible(name string) (string, error) {
+	if t, ok := f[name]; ok {
+		return t, nil
+	}
+	return "", errors.New("not a symlink")
+}
+
+// rhel9Links is the link layout of a RHEL 9 host with OpenJDK 8, 21 and 25
+// installed, taken from `ls -l /usr/lib/jvm /etc/alternatives` on that host:
+// alternatives links for the version aliases, a relative link from the jre-*
+// name into the JDK, and every JDK's cacerts pointing at the store
+// update-ca-trust maintains.
+var rhel9Links = fakeLinks{
+	"/usr/lib/jvm/java":                                                                     "/etc/alternatives/java_sdk",
+	"/etc/alternatives/java_sdk":                                                            "/usr/lib/jvm/java-25-openjdk",
+	"/usr/lib/jvm/java-21":                                                                  "/etc/alternatives/java_sdk_21",
+	"/etc/alternatives/java_sdk_21":                                                         "/usr/lib/jvm/java-21-openjdk-21.0.12.1.1-1.2.el9.x86_64",
+	"/usr/lib/jvm/jre-1.8.0-openjdk-1.8.0.504.b01-1.2.el9.x86_64":                           "java-1.8.0-openjdk-1.8.0.504.b01-1.2.el9.x86_64/jre",
+	"/usr/lib/jvm/java-25-openjdk/lib/security/cacerts":                                     "/etc/pki/java/cacerts",
+	"/usr/lib/jvm/java-21-openjdk-21.0.12.1.1-1.2.el9.x86_64/lib/security/cacerts":          "/etc/pki/java/cacerts",
+	"/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.504.b01-1.2.el9.x86_64/jre/lib/security/cacerts": "../../../../../../../etc/pki/java/cacerts",
+	"/etc/pki/java/cacerts":                                                                 "../ca-trust/extracted/java/cacerts",
+}
+
+// Fails if resolveSymlinks stops after the last path element (directory links
+// such as /usr/lib/jvm/java are then never followed), resolves a relative
+// target against the link itself instead of its directory, or stops after one
+// hop.
+func TestResolveSymlinksFollowsEveryComponent(t *testing.T) {
+	const store = "/etc/pki/ca-trust/extracted/java/cacerts"
+	for _, p := range []string{
+		"/usr/lib/jvm/java/lib/security/cacerts",
+		"/usr/lib/jvm/java-21/lib/security/cacerts",
+		"/usr/lib/jvm/jre-1.8.0-openjdk-1.8.0.504.b01-1.2.el9.x86_64/lib/security/cacerts",
+		"/etc/pki/java/cacerts",
+		store,
+	} {
+		got, err := resolveSymlinks(rhel9Links, p)
+		require.NoError(t, err, p)
+		assert.Equal(t, store, got, p)
+	}
+
+	// A JVM that ships its own store resolves to itself.
+	got, err := resolveSymlinks(rhel9Links, "/opt/java/openjdk/lib/security/cacerts")
+	require.NoError(t, err)
+	assert.Equal(t, "/opt/java/openjdk/lib/security/cacerts", got)
+}
+
+// Fails if the hop limit is removed: a link loop would never return.
+func TestResolveSymlinksStopsOnALoop(t *testing.T) {
+	_, err := resolveSymlinks(fakeLinks{"/a": "/b", "/b": "/a"}, "/a/cacerts")
+	assert.Error(t, err)
+}
+
+// RHEL links every installed JDK's cacerts to one store, so without the dedupe
+// a check over java.truststores.list reads the same file 21 times on a host
+// with three JDKs. Fails if the dedupe is keyed on the discovered path rather
+// than the resolved one, or keeps an arbitrary member of a group.
+func TestDedupeTruststoresByRealPath(t *testing.T) {
+	const store = "/etc/pki/ca-trust/extracted/java/cacerts"
+	got := dedupeByRealPath([]string{
+		"/usr/lib/jvm/java/lib/security/cacerts",
+		"/usr/lib/jvm/java-21/lib/security/cacerts",
+		"/etc/pki/java/cacerts",
+		"/opt/java/openjdk/lib/security/cacerts",
+		"/usr/lib/jvm/java-25-openjdk/lib/security/cacerts",
+	}, map[string]string{
+		"/usr/lib/jvm/java/lib/security/cacerts":            store,
+		"/usr/lib/jvm/java-21/lib/security/cacerts":         store,
+		"/etc/pki/java/cacerts":                             store,
+		"/usr/lib/jvm/java-25-openjdk/lib/security/cacerts": store,
+		// /opt/java/openjdk is unresolved: kept under its own name.
+	})
+	assert.Equal(t, []string{
+		"/etc/pki/java/cacerts",
+		"/opt/java/openjdk/lib/security/cacerts",
+	}, got)
+}
+
+// The SSH path resolves every candidate in one shell loop. Fails if a line
+// whose readlink printed nothing (a dangling link) is taken as a resolution,
+// or if lines are matched up by position rather than by the path they name.
+func TestParseReadlinkOutput(t *testing.T) {
+	got := parseReadlinkOutput("/etc/pki/java/cacerts\t/etc/pki/ca-trust/extracted/java/cacerts\n" +
+		"/usr/lib/jvm/broken/lib/security/cacerts\t\n" +
+		"/usr/lib/jvm/java/lib/security/cacerts\t/etc/pki/ca-trust/extracted/java/cacerts\n")
+	assert.Equal(t, map[string]string{
+		"/etc/pki/java/cacerts":                  "/etc/pki/ca-trust/extracted/java/cacerts",
+		"/usr/lib/jvm/java/lib/security/cacerts": "/etc/pki/ca-trust/extracted/java/cacerts",
+	}, got)
 }
