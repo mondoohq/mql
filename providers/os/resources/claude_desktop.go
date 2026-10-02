@@ -79,7 +79,7 @@ func (r *mqlClaudeDesktop) mcpServers() ([]interface{}, error) {
 	for _, name := range names {
 		srv := servers[name]
 		res, err := NewResource(r.MqlRuntime, "claude.desktop.mcpServer", map[string]*llx.RawData{
-			"__id":    llx.StringData("claude.desktop.mcpServer/" + name),
+			"__id":    llx.StringData(aiChildID("claude.desktop.mcpServer", r.ConfigPath.Data, name)),
 			"name":    llx.StringData(name),
 			"type":    llx.StringData(deriveMcpTransport(srv.Type, srv.Command, srv.URL)),
 			"command": llx.StringData(srv.Command),

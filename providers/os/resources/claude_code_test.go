@@ -541,10 +541,12 @@ func TestWithAuthCacheOnlyServers(t *testing.T) {
 }
 
 func TestClaudeMcpServerID(t *testing.T) {
-	assert.Equal(t, "claude.code.mcpServer/memory", claudeMcpServerID("", "memory"),
-		"user-scope ids must not change")
-	assert.Equal(t, "claude.code.mcpServer//home/alice/src/api/memory", claudeMcpServerID("/home/alice/src/api", "memory"))
-	assert.NotEqual(t, claudeMcpServerID("/a", "memory"), claudeMcpServerID("/b", "memory"))
+	assert.Equal(t, "claude.code.mcpServer//home/alice/.claude//memory", claudeMcpServerID("/home/alice/.claude", "", "memory"))
+	assert.Equal(t, "claude.code.mcpServer//home/alice/.claude//home/alice/src/api/memory",
+		claudeMcpServerID("/home/alice/.claude", "/home/alice/src/api", "memory"))
+	assert.NotEqual(t, claudeMcpServerID("/c", "/a", "memory"), claudeMcpServerID("/c", "/b", "memory"))
+	// Two users' Claude Code instances with a same-named user-scope server.
+	assert.NotEqual(t, claudeMcpServerID("/home/ubuntu/.claude", "", "memory"), claudeMcpServerID("/home/alice/.claude", "", "memory"))
 }
 
 func TestClaudeMcpServersMalformedProjectFile(t *testing.T) {

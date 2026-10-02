@@ -188,7 +188,7 @@ func (r *mqlOpenaiCodex) plugins() ([]interface{}, error) {
 		}
 
 		res, err := NewResource(r.MqlRuntime, "openai.codex.plugin", map[string]*llx.RawData{
-			"__id":         llx.StringData("openai.codex.plugin/" + dir.name),
+			"__id":         llx.StringData(aiChildID("openai.codex.plugin", r.codexDir(), dir.name)),
 			"name":         llx.StringData(dir.name),
 			"version":      llx.StringData(p.version),
 			"description":  llx.StringData(p.description),
@@ -291,7 +291,7 @@ func (r *mqlOpenaiCodex) mcpServers() ([]interface{}, error) {
 	for _, name := range names {
 		srv := cfg.McpServers[name]
 		res, err := NewResource(r.MqlRuntime, "openai.codex.mcpServer", map[string]*llx.RawData{
-			"__id":    llx.StringData("openai.codex.mcpServer//" + name),
+			"__id":    llx.StringData(aiChildID("openai.codex.mcpServer", r.codexDir(), "", name)),
 			"name":    llx.StringData(name),
 			"type":    llx.StringData(deriveMcpTransport("", srv.Command, srv.URL)),
 			"command": llx.StringData(srv.Command),
@@ -334,7 +334,7 @@ func (r *mqlOpenaiCodex) mcpServers() ([]interface{}, error) {
 
 		for name, srv := range mcpConfig.McpServers {
 			res, err := NewResource(r.MqlRuntime, "openai.codex.mcpServer", map[string]*llx.RawData{
-				"__id":    llx.StringData("openai.codex.mcpServer/" + dir.name + "/" + name),
+				"__id":    llx.StringData(aiChildID("openai.codex.mcpServer", r.codexDir(), dir.name, name)),
 				"name":    llx.StringData(name),
 				"type":    llx.StringData(deriveMcpTransport(srv.Type, srv.Command, srv.URL)),
 				"command": llx.StringData(srv.Command),
@@ -378,7 +378,7 @@ func (r *mqlOpenaiCodex) connectors() ([]interface{}, error) {
 
 		for connName, app := range appConfig.Apps {
 			res, err := NewResource(r.MqlRuntime, "openai.codex.connector", map[string]*llx.RawData{
-				"__id":   llx.StringData("openai.codex.connector/" + dir.name + "/" + connName),
+				"__id":   llx.StringData(aiChildID("openai.codex.connector", r.codexDir(), dir.name, connName)),
 				"name":   llx.StringData(connName),
 				"id":     llx.StringData(app.ID),
 				"plugin": llx.StringData(dir.name),
