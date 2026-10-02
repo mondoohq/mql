@@ -193,6 +193,10 @@ func (h *HomebrewPkgManager) brewInfoCommand(brewPath, prefix string) string {
 // brewAsUserCommand runs `brew info` as the user with the given uid. brew
 // also refuses a working directory its user cannot read, which root's home
 // is, so the command changes to / first.
+//
+// brewPath is embedded unquoted in a single-quoted sh -c script. It is always
+// one of the fixed brewBinaryPaths, never input from the scan target or the
+// user; keep it that way or quote it.
 func brewAsUserCommand(uid int64, brewPath string) string {
 	return fmt.Sprintf("sudo -n -H -u '#%d' /bin/sh -c 'cd / && exec %s info --json=v2 --installed'", uid, brewPath)
 }
@@ -413,7 +417,9 @@ type brewCask struct {
 
 // installReceipt represents the INSTALL_RECEIPT.json file found in Cellar directories.
 type installReceipt struct {
-	InstalledOnRequest    bool  `json:"installed_on_request"`
+	InstalledOnRequest bool `json:"installed_on_request"`
+	// nil when the receipt has no installed_as_dependency key, which Homebrew
+	// 4 no longer writes; see installedAsDependency.
 	InstalledAsDependency *bool `json:"installed_as_dependency"`
 	Source                struct {
 		Tap string `json:"tap"`
