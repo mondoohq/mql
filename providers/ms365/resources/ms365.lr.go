@@ -38,6 +38,9 @@ const (
 	ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagement                                       string = "microsoft.identityAndAccess.privilegedIdentityManagement"
 	ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicies                               string = "microsoft.identityAndAccess.privilegedIdentityManagement.policies"
 	ResourceMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance                                    string = "microsoft.identityAndAccess.roleEligibilityScheduleInstance"
+	ResourceMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance                                     string = "microsoft.identityAndAccess.roleAssignmentScheduleInstance"
+	ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance        string = "microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance"
+	ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance       string = "microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance"
 	ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy                                 string = "microsoft.identityAndAccess.privilegedIdentityManagement.policy"
 	ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRule                             string = "microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule"
 	ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicyRuleTarget                       string = "microsoft.identityAndAccess.privilegedIdentityManagement.policy.rule.target"
@@ -307,6 +310,18 @@ func init() {
 		"microsoft.identityAndAccess.roleEligibilityScheduleInstance": {
 			// to override args, implement: initMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance,
+		},
+		"microsoft.identityAndAccess.roleAssignmentScheduleInstance": {
+			// to override args, implement: initMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance,
+		},
+		"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance": {
+			// to override args, implement: initMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance,
+		},
+		"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance": {
+			// to override args, implement: initMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance,
 		},
 		"microsoft.identityAndAccess.privilegedIdentityManagement.policy": {
 			// to override args, implement: initMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -1380,6 +1395,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.identityAndAccess.roleEligibilityScheduleInstances": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccess).GetRoleEligibilityScheduleInstances()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.roleEligibilityScheduleInstance")))
 	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstances": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccess).GetRoleAssignmentScheduleInstances()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.roleAssignmentScheduleInstance")))
+	},
 	"microsoft.identityAndAccess.privilegedIdentityManagement": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccess).GetPrivilegedIdentityManagement()).ToDataRes(types.Resource("microsoft.identityAndAccess.privilegedIdentityManagement"))
 	},
@@ -1446,6 +1464,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.identityAndAccess.privilegedIdentityManagement.policies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagement).GetPolicies()).ToDataRes(types.Resource("microsoft.identityAndAccess.privilegedIdentityManagement.policies"))
 	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstances": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagement).GetGroupAssignmentScheduleInstances()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance")))
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstances": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagement).GetGroupEligibilityScheduleInstances()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance")))
+	},
 	"microsoft.identityAndAccess.privilegedIdentityManagement.policies.filter": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicies).GetFilter()).ToDataRes(types.String)
 	},
@@ -1478,6 +1502,120 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.roleEligibilityScheduleId": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).GetRoleEligibilityScheduleId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.principalId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).GetPrincipalId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.principalType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).GetPrincipalType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.principalUser": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).GetPrincipalUser()).ToDataRes(types.Resource("microsoft.user"))
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.principalGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).GetPrincipalGroup()).ToDataRes(types.Resource("microsoft.group"))
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.principalServicePrincipal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).GetPrincipalServicePrincipal()).ToDataRes(types.Resource("microsoft.serviceprincipal"))
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.roleDefinition": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).GetRoleDefinition()).ToDataRes(types.Resource("microsoft.rolemanagement.roledefinition"))
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.directoryScopeId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).GetDirectoryScopeId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.appScopeId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).GetAppScopeId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.assignmentType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).GetAssignmentType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.memberType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).GetMemberType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.startDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).GetStartDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.endDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).GetEndDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.roleAssignmentOriginId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).GetRoleAssignmentOriginId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.roleAssignmentScheduleId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).GetRoleAssignmentScheduleId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.accessId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).GetAccessId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.group": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).GetGroup()).ToDataRes(types.Resource("microsoft.group"))
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.principalId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).GetPrincipalId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.principalType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).GetPrincipalType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.principalUser": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).GetPrincipalUser()).ToDataRes(types.Resource("microsoft.user"))
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.principalGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).GetPrincipalGroup()).ToDataRes(types.Resource("microsoft.group"))
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.assignmentType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).GetAssignmentType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.memberType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).GetMemberType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.startDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).GetStartDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.endDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).GetEndDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.assignmentScheduleId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).GetAssignmentScheduleId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.accessId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).GetAccessId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.group": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).GetGroup()).ToDataRes(types.Resource("microsoft.group"))
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.principalId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).GetPrincipalId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.principalType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).GetPrincipalType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.principalUser": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).GetPrincipalUser()).ToDataRes(types.Resource("microsoft.user"))
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.principalGroup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).GetPrincipalGroup()).ToDataRes(types.Resource("microsoft.group"))
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.memberType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).GetMemberType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.startDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).GetStartDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.endDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).GetEndDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.eligibilityScheduleId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).GetEligibilityScheduleId()).ToDataRes(types.String)
 	},
 	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy).GetId()).ToDataRes(types.String)
@@ -6593,6 +6731,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftIdentityAndAccess).RoleEligibilityScheduleInstances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccess).RoleAssignmentScheduleInstances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.identityAndAccess.privilegedIdentityManagement": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftIdentityAndAccess).PrivilegedIdentityManagement, ok = plugin.RawToTValue[*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagement](v.Value, v.Error)
 		return
@@ -6693,6 +6835,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagement).Policies, ok = plugin.RawToTValue[*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicies](v.Value, v.Error)
 		return
 	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagement).GroupAssignmentScheduleInstances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstances": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagement).GroupEligibilityScheduleInstances, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.identityAndAccess.privilegedIdentityManagement.policies.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicies).__id, ok = v.Value.(string)
 		return
@@ -6743,6 +6893,170 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.identityAndAccess.roleEligibilityScheduleInstance.roleEligibilityScheduleId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance).RoleEligibilityScheduleId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.principalId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).PrincipalId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.principalType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).PrincipalType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.principalUser": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).PrincipalUser, ok = plugin.RawToTValue[*mqlMicrosoftUser](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.principalGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).PrincipalGroup, ok = plugin.RawToTValue[*mqlMicrosoftGroup](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.principalServicePrincipal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).PrincipalServicePrincipal, ok = plugin.RawToTValue[*mqlMicrosoftServiceprincipal](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.roleDefinition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).RoleDefinition, ok = plugin.RawToTValue[*mqlMicrosoftRolemanagementRoledefinition](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.directoryScopeId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).DirectoryScopeId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.appScopeId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).AppScopeId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.assignmentType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).AssignmentType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.memberType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).MemberType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.startDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).StartDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.endDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).EndDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.roleAssignmentOriginId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).RoleAssignmentOriginId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.roleAssignmentScheduleInstance.roleAssignmentScheduleId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance).RoleAssignmentScheduleId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.accessId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).AccessId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.group": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).Group, ok = plugin.RawToTValue[*mqlMicrosoftGroup](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.principalId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).PrincipalId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.principalType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).PrincipalType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.principalUser": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).PrincipalUser, ok = plugin.RawToTValue[*mqlMicrosoftUser](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.principalGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).PrincipalGroup, ok = plugin.RawToTValue[*mqlMicrosoftGroup](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.assignmentType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).AssignmentType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.memberType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).MemberType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.startDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).StartDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.endDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).EndDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance.assignmentScheduleId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance).AssignmentScheduleId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.accessId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).AccessId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.group": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).Group, ok = plugin.RawToTValue[*mqlMicrosoftGroup](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.principalId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).PrincipalId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.principalType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).PrincipalType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.principalUser": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).PrincipalUser, ok = plugin.RawToTValue[*mqlMicrosoftUser](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.principalGroup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).PrincipalGroup, ok = plugin.RawToTValue[*mqlMicrosoftGroup](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.memberType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).MemberType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.startDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).StartDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.endDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).EndDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance.eligibilityScheduleId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance).EligibilityScheduleId, ok = plugin.RawToTValue[string](v.Value, v.Error)
 		return
 	},
 	"microsoft.identityAndAccess.privilegedIdentityManagement.policy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -15103,6 +15417,7 @@ type mqlMicrosoftIdentityAndAccess struct {
 	__id       string
 	// optional: if you define mqlMicrosoftIdentityAndAccessInternal it will be used here
 	RoleEligibilityScheduleInstances plugin.TValue[[]any]
+	RoleAssignmentScheduleInstances  plugin.TValue[[]any]
 	PrivilegedIdentityManagement     plugin.TValue[*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagement]
 	IdentityAndSignIn                plugin.TValue[*mqlMicrosoftIdentityAndAccessIdentityAndSignIn]
 	Organization                     plugin.TValue[*mqlMicrosoftTenant]
@@ -15159,6 +15474,22 @@ func (c *mqlMicrosoftIdentityAndAccess) GetRoleEligibilityScheduleInstances() *p
 		}
 
 		return c.roleEligibilityScheduleInstances()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccess) GetRoleAssignmentScheduleInstances() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RoleAssignmentScheduleInstances, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess", c.__id, "roleAssignmentScheduleInstances")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.roleAssignmentScheduleInstances()
 	})
 }
 
@@ -15394,7 +15725,9 @@ type mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagement struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementInternal it will be used here
-	Policies plugin.TValue[*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicies]
+	Policies                          plugin.TValue[*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicies]
+	GroupAssignmentScheduleInstances  plugin.TValue[[]any]
+	GroupEligibilityScheduleInstances plugin.TValue[[]any]
 }
 
 // createMicrosoftIdentityAndAccessPrivilegedIdentityManagement creates a new instance of this resource
@@ -15442,6 +15775,38 @@ func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagement) GetPolicies(
 		}
 
 		return c.policies()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagement) GetGroupAssignmentScheduleInstances() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.GroupAssignmentScheduleInstances, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.privilegedIdentityManagement", c.__id, "groupAssignmentScheduleInstances")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.groupAssignmentScheduleInstances()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagement) GetGroupEligibilityScheduleInstances() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.GroupEligibilityScheduleInstances, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.privilegedIdentityManagement", c.__id, "groupEligibilityScheduleInstances")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.groupEligibilityScheduleInstances()
 	})
 }
 
@@ -15605,6 +15970,433 @@ func (c *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) GetMember
 
 func (c *mqlMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance) GetRoleEligibilityScheduleId() *plugin.TValue[string] {
 	return &c.RoleEligibilityScheduleId
+}
+
+// mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance for the microsoft.identityAndAccess.roleAssignmentScheduleInstance resource
+type mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstanceInternal
+	Id                        plugin.TValue[string]
+	PrincipalId               plugin.TValue[string]
+	PrincipalType             plugin.TValue[string]
+	PrincipalUser             plugin.TValue[*mqlMicrosoftUser]
+	PrincipalGroup            plugin.TValue[*mqlMicrosoftGroup]
+	PrincipalServicePrincipal plugin.TValue[*mqlMicrosoftServiceprincipal]
+	RoleDefinition            plugin.TValue[*mqlMicrosoftRolemanagementRoledefinition]
+	DirectoryScopeId          plugin.TValue[string]
+	AppScopeId                plugin.TValue[string]
+	AssignmentType            plugin.TValue[string]
+	MemberType                plugin.TValue[string]
+	StartDateTime             plugin.TValue[*time.Time]
+	EndDateTime               plugin.TValue[*time.Time]
+	RoleAssignmentOriginId    plugin.TValue[string]
+	RoleAssignmentScheduleId  plugin.TValue[string]
+}
+
+// createMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance creates a new instance of this resource
+func createMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.roleAssignmentScheduleInstance", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance) MqlName() string {
+	return "microsoft.identityAndAccess.roleAssignmentScheduleInstance"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance) GetPrincipalId() *plugin.TValue[string] {
+	return &c.PrincipalId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance) GetPrincipalType() *plugin.TValue[string] {
+	return &c.PrincipalType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance) GetPrincipalUser() *plugin.TValue[*mqlMicrosoftUser] {
+	return plugin.GetOrCompute[*mqlMicrosoftUser](&c.PrincipalUser, func() (*mqlMicrosoftUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.roleAssignmentScheduleInstance", c.__id, "principalUser")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftUser), nil
+			}
+		}
+
+		return c.principalUser()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance) GetPrincipalGroup() *plugin.TValue[*mqlMicrosoftGroup] {
+	return plugin.GetOrCompute[*mqlMicrosoftGroup](&c.PrincipalGroup, func() (*mqlMicrosoftGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.roleAssignmentScheduleInstance", c.__id, "principalGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftGroup), nil
+			}
+		}
+
+		return c.principalGroup()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance) GetPrincipalServicePrincipal() *plugin.TValue[*mqlMicrosoftServiceprincipal] {
+	return plugin.GetOrCompute[*mqlMicrosoftServiceprincipal](&c.PrincipalServicePrincipal, func() (*mqlMicrosoftServiceprincipal, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.roleAssignmentScheduleInstance", c.__id, "principalServicePrincipal")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftServiceprincipal), nil
+			}
+		}
+
+		return c.principalServicePrincipal()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance) GetRoleDefinition() *plugin.TValue[*mqlMicrosoftRolemanagementRoledefinition] {
+	return plugin.GetOrCompute[*mqlMicrosoftRolemanagementRoledefinition](&c.RoleDefinition, func() (*mqlMicrosoftRolemanagementRoledefinition, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.roleAssignmentScheduleInstance", c.__id, "roleDefinition")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftRolemanagementRoledefinition), nil
+			}
+		}
+
+		return c.roleDefinition()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance) GetDirectoryScopeId() *plugin.TValue[string] {
+	return &c.DirectoryScopeId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance) GetAppScopeId() *plugin.TValue[string] {
+	return &c.AppScopeId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance) GetAssignmentType() *plugin.TValue[string] {
+	return &c.AssignmentType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance) GetMemberType() *plugin.TValue[string] {
+	return &c.MemberType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance) GetStartDateTime() *plugin.TValue[*time.Time] {
+	return &c.StartDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance) GetEndDateTime() *plugin.TValue[*time.Time] {
+	return &c.EndDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance) GetRoleAssignmentOriginId() *plugin.TValue[string] {
+	return &c.RoleAssignmentOriginId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessRoleAssignmentScheduleInstance) GetRoleAssignmentScheduleId() *plugin.TValue[string] {
+	return &c.RoleAssignmentScheduleId
+}
+
+// mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance for the microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance resource
+type mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstanceInternal
+	Id                   plugin.TValue[string]
+	AccessId             plugin.TValue[string]
+	Group                plugin.TValue[*mqlMicrosoftGroup]
+	PrincipalId          plugin.TValue[string]
+	PrincipalType        plugin.TValue[string]
+	PrincipalUser        plugin.TValue[*mqlMicrosoftUser]
+	PrincipalGroup       plugin.TValue[*mqlMicrosoftGroup]
+	AssignmentType       plugin.TValue[string]
+	MemberType           plugin.TValue[string]
+	StartDateTime        plugin.TValue[*time.Time]
+	EndDateTime          plugin.TValue[*time.Time]
+	AssignmentScheduleId plugin.TValue[string]
+}
+
+// createMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance creates a new instance of this resource
+func createMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance) MqlName() string {
+	return "microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance) GetAccessId() *plugin.TValue[string] {
+	return &c.AccessId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance) GetGroup() *plugin.TValue[*mqlMicrosoftGroup] {
+	return plugin.GetOrCompute[*mqlMicrosoftGroup](&c.Group, func() (*mqlMicrosoftGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance", c.__id, "group")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftGroup), nil
+			}
+		}
+
+		return c.group()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance) GetPrincipalId() *plugin.TValue[string] {
+	return &c.PrincipalId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance) GetPrincipalType() *plugin.TValue[string] {
+	return &c.PrincipalType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance) GetPrincipalUser() *plugin.TValue[*mqlMicrosoftUser] {
+	return plugin.GetOrCompute[*mqlMicrosoftUser](&c.PrincipalUser, func() (*mqlMicrosoftUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance", c.__id, "principalUser")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftUser), nil
+			}
+		}
+
+		return c.principalUser()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance) GetPrincipalGroup() *plugin.TValue[*mqlMicrosoftGroup] {
+	return plugin.GetOrCompute[*mqlMicrosoftGroup](&c.PrincipalGroup, func() (*mqlMicrosoftGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance", c.__id, "principalGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftGroup), nil
+			}
+		}
+
+		return c.principalGroup()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance) GetAssignmentType() *plugin.TValue[string] {
+	return &c.AssignmentType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance) GetMemberType() *plugin.TValue[string] {
+	return &c.MemberType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance) GetStartDateTime() *plugin.TValue[*time.Time] {
+	return &c.StartDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance) GetEndDateTime() *plugin.TValue[*time.Time] {
+	return &c.EndDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupAssignmentScheduleInstance) GetAssignmentScheduleId() *plugin.TValue[string] {
+	return &c.AssignmentScheduleId
+}
+
+// mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance for the microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance resource
+type mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstanceInternal
+	Id                    plugin.TValue[string]
+	AccessId              plugin.TValue[string]
+	Group                 plugin.TValue[*mqlMicrosoftGroup]
+	PrincipalId           plugin.TValue[string]
+	PrincipalType         plugin.TValue[string]
+	PrincipalUser         plugin.TValue[*mqlMicrosoftUser]
+	PrincipalGroup        plugin.TValue[*mqlMicrosoftGroup]
+	MemberType            plugin.TValue[string]
+	StartDateTime         plugin.TValue[*time.Time]
+	EndDateTime           plugin.TValue[*time.Time]
+	EligibilityScheduleId plugin.TValue[string]
+}
+
+// createMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance creates a new instance of this resource
+func createMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance) MqlName() string {
+	return "microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance) GetAccessId() *plugin.TValue[string] {
+	return &c.AccessId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance) GetGroup() *plugin.TValue[*mqlMicrosoftGroup] {
+	return plugin.GetOrCompute[*mqlMicrosoftGroup](&c.Group, func() (*mqlMicrosoftGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance", c.__id, "group")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftGroup), nil
+			}
+		}
+
+		return c.group()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance) GetPrincipalId() *plugin.TValue[string] {
+	return &c.PrincipalId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance) GetPrincipalType() *plugin.TValue[string] {
+	return &c.PrincipalType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance) GetPrincipalUser() *plugin.TValue[*mqlMicrosoftUser] {
+	return plugin.GetOrCompute[*mqlMicrosoftUser](&c.PrincipalUser, func() (*mqlMicrosoftUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance", c.__id, "principalUser")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftUser), nil
+			}
+		}
+
+		return c.principalUser()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance) GetPrincipalGroup() *plugin.TValue[*mqlMicrosoftGroup] {
+	return plugin.GetOrCompute[*mqlMicrosoftGroup](&c.PrincipalGroup, func() (*mqlMicrosoftGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance", c.__id, "principalGroup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftGroup), nil
+			}
+		}
+
+		return c.principalGroup()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance) GetMemberType() *plugin.TValue[string] {
+	return &c.MemberType
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance) GetStartDateTime() *plugin.TValue[*time.Time] {
+	return &c.StartDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance) GetEndDateTime() *plugin.TValue[*time.Time] {
+	return &c.EndDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementGroupEligibilityScheduleInstance) GetEligibilityScheduleId() *plugin.TValue[string] {
+	return &c.EligibilityScheduleId
 }
 
 // mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicy for the microsoft.identityAndAccess.privilegedIdentityManagement.policy resource

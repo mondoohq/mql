@@ -425,6 +425,15 @@ microsoft.users {
 microsoft.identityAndAccess {
   // Get the instances of role eligibilities
   roleEligibilityScheduleInstances() []microsoft.identityAndAccess.roleEligibilityScheduleInstance
+  // Active directory role assignments
+  //
+  // Every directory role assignment currently in effect, whether assigned
+  // permanently, assigned for a bounded period, or activated from an
+  // eligibility through PIM. An assignment with assignmentType `Assigned` and
+  // no endDateTime is a permanent standing assignment, for example
+  // `roleAssignmentScheduleInstances.where(assignmentType == "Assigned" && endDateTime == null)`.
+  // Requires a Microsoft Entra ID P2 or Microsoft Entra ID Governance license.
+  roleAssignmentScheduleInstances() []microsoft.identityAndAccess.roleAssignmentScheduleInstance
   // Privileged Identity Management resources
   privilegedIdentityManagement() microsoft.identityAndAccess.privilegedIdentityManagement
   // Identity and sign-in policies
@@ -533,6 +542,21 @@ private microsoft.identityAndAccess.externalOriginResourceConnector.connection @
 microsoft.identityAndAccess.privilegedIdentityManagement {
   // PIM role management policies
   policies() microsoft.identityAndAccess.privilegedIdentityManagement.policies
+  // Active PIM for Groups membership and ownership assignments
+  //
+  // Every membership and ownership currently in effect on the groups in the
+  // tenant, as PIM for Groups reports them. Standing members and owners
+  // appear with assignmentType `assigned`, and memberships or ownerships
+  // activated from an eligibility with `activated`, for example
+  // `groupAssignmentScheduleInstances.where(accessId == "owner" && endDateTime == null)`.
+  // Requires a Microsoft Entra ID P2 or Microsoft Entra ID Governance license.
+  groupAssignmentScheduleInstances() []microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance
+  // Eligible PIM for Groups membership and ownership assignments
+  //
+  // Every group membership or ownership a principal is eligible to activate
+  // through PIM for Groups, across the groups in the tenant. Requires a
+  // Microsoft Entra ID P2 or Microsoft Entra ID Governance license.
+  groupEligibilityScheduleInstances() []microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance
 }
 
 // PIM role management policies
@@ -569,6 +593,142 @@ private microsoft.identityAndAccess.roleEligibilityScheduleInstance @defaults("m
   memberType string
   // The identifier of the role eligibility schedule from which this instance is created
   roleEligibilityScheduleId string
+}
+
+// Active directory role assignment
+//
+// A directory role assignment in effect now, either a standing assignment or
+// one activated from an eligibility through PIM. assignmentType tells the two
+// apart, and a missing endDateTime marks an assignment that never expires.
+private microsoft.identityAndAccess.roleAssignmentScheduleInstance @defaults("assignmentType principalId") {
+  // Unique identifier of the role assignment schedule instance
+  id string
+  // Identifier of the principal (user, group, or service principal) holding the role
+  principalId string
+  // Directory type of the principal
+  //
+  // Short directory type of the principal, typically `user`, `group`, or
+  // `servicePrincipal`. Empty when the principal no longer exists in the
+  // directory.
+  principalType string
+  // User holding the role, set when principalType is `user`
+  principalUser() microsoft.user
+  // Group holding the role, set when principalType is `group`
+  principalGroup() microsoft.group
+  // Service principal holding the role, set when principalType is `servicePrincipal`
+  principalServicePrincipal() microsoft.serviceprincipal
+  // Role definition the assignment grants
+  roleDefinition() microsoft.rolemanagement.roledefinition
+  // Identifier of the directory object representing the scope of the assignment
+  //
+  // `/` for a tenant-wide assignment, or the ID of an administrative unit or
+  // other directory object the assignment is scoped to.
+  directoryScopeId string
+  // Identifier of the app-specific scope of the assignment
+  appScopeId string
+  // How the assignment came about
+  //
+  // `Assigned` for an assignment made directly, or `Activated` for one a
+  // principal activated from an eligibility.
+  assignmentType string
+  // Whether the assignment is held directly or through a group
+  //
+  // One of `Direct`, `Group`, or `Inherited`. `Direct` when the role is
+  // assigned to the principal itself, `Group` when it is held through a
+  // role-assignable group.
+  memberType string
+  // When the assignment started
+  startDateTime time
+  // When the assignment expires
+  //
+  // Null for an assignment that never expires.
+  endDateTime time
+  // Identifier of the role assignment this instance was created from
+  roleAssignmentOriginId string
+  // Identifier of the role assignment schedule this instance belongs to
+  roleAssignmentScheduleId string
+}
+
+// Active PIM for Groups assignment
+//
+// A group membership or ownership in effect now, as PIM for Groups reports it.
+// accessId names the relationship (`member` or `owner`), assignmentType tells
+// a standing assignment from an activation, and a missing endDateTime marks an
+// assignment that never expires.
+private microsoft.identityAndAccess.privilegedIdentityManagement.groupAssignmentScheduleInstance @defaults("accessId assignmentType principalId") {
+  // Unique identifier of the assignment schedule instance
+  id string
+  // Relationship the assignment grants to the group, either `member` or `owner`
+  accessId string
+  // Group the assignment is for
+  group() microsoft.group
+  // Identifier of the principal (user or group) holding the assignment
+  principalId string
+  // Directory type of the principal
+  //
+  // Short directory type of the principal, typically `user` or `group`.
+  // Empty when the principal no longer exists in the directory.
+  principalType string
+  // User holding the assignment, set when principalType is `user`
+  principalUser() microsoft.user
+  // Group holding the assignment, set when principalType is `group`
+  principalGroup() microsoft.group
+  // How the assignment came about
+  //
+  // `assigned` for an assignment made directly, or `activated` for one a
+  // principal activated from an eligibility.
+  assignmentType string
+  // Whether the assignment is held directly or through a group
+  //
+  // `direct` when the principal itself is assigned, or `group` when the
+  // assignment is inherited through membership of another group.
+  memberType string
+  // When the assignment started
+  startDateTime time
+  // When the assignment expires
+  //
+  // Null for an assignment that never expires.
+  endDateTime time
+  // Identifier of the assignment schedule this instance belongs to
+  assignmentScheduleId string
+}
+
+// Eligible PIM for Groups assignment
+//
+// A group membership or ownership a principal can activate through PIM for
+// Groups. accessId names the relationship (`member` or `owner`), and a missing
+// endDateTime marks an eligibility that never expires.
+private microsoft.identityAndAccess.privilegedIdentityManagement.groupEligibilityScheduleInstance @defaults("accessId principalId") {
+  // Unique identifier of the eligibility schedule instance
+  id string
+  // Relationship the eligibility grants to the group, either `member` or `owner`
+  accessId string
+  // Group the eligibility is for
+  group() microsoft.group
+  // Identifier of the principal (user or group) holding the eligibility
+  principalId string
+  // Directory type of the principal
+  //
+  // Short directory type of the principal, typically `user` or `group`.
+  // Empty when the principal no longer exists in the directory.
+  principalType string
+  // User holding the eligibility, set when principalType is `user`
+  principalUser() microsoft.user
+  // Group holding the eligibility, set when principalType is `group`
+  principalGroup() microsoft.group
+  // Whether the eligibility is held directly or through a group
+  //
+  // `direct` when the principal itself is eligible, or `group` when the
+  // eligibility is inherited through membership of another group.
+  memberType string
+  // When the eligibility started
+  startDateTime time
+  // When the eligibility expires
+  //
+  // Null for an eligibility that never expires.
+  endDateTime time
+  // Identifier of the eligibility schedule this instance belongs to
+  eligibilityScheduleId string
 }
 
 // A PIM role management policy for Microsoft Entra ID roles
