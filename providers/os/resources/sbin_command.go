@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"path"
 	"strings"
 
 	"go.mondoo.com/mql/llx"
@@ -21,14 +22,18 @@ var sbinDirs = []string{"/usr/sbin", "/sbin"}
 // line whose tool already names a path is returned alone.
 func sbinCommandCandidates(cmdline string) []string {
 	cmdline = strings.TrimSpace(cmdline)
-	tool, _, _ := strings.Cut(cmdline, " ")
+	tool, args, hasArgs := strings.Cut(cmdline, " ")
 	if tool == "" || strings.Contains(tool, "/") {
 		return []string{cmdline}
 	}
 	res := make([]string, 0, len(sbinDirs)+1)
 	res = append(res, cmdline)
 	for _, dir := range sbinDirs {
-		res = append(res, dir+"/"+cmdline)
+		c := path.Join(dir, tool)
+		if hasArgs {
+			c += " " + args
+		}
+		res = append(res, c)
 	}
 	return res
 }
