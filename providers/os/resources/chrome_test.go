@@ -427,3 +427,34 @@ func TestResolveExtensionDirAbsolutePaths(t *testing.T) {
 	assert.Equal(t, profile+"/Extensions/eimadpbcbfnmbkopoojfekhnkhdbieeh/4.9.133_0",
 		resolveExtensionDir(profile, "eimadpbcbfnmbkopoojfekhnkhdbieeh/4.9.133_0", "eimadpbcbfnmbkopoojfekhnkhdbieeh"))
 }
+
+func TestLoadChromeExtensionSettingsUnpackedReadsManifestFromDisk(t *testing.T) {
+	// Chromium 154 on RHEL 9 started with --load-extension=/home/alice/unpacked-ext:
+	// Chrome keeps no manifest copy in Preferences for unpacked (4) and
+	// command-line (8) extensions, only the absolute directory they load from.
+	afs := &afero.Afero{Fs: afero.NewMemMapFs()}
+	profile := "/home/alice/.config/chromium/Default"
+	require.NoError(t, afs.WriteFile(profile+"/Preferences", []byte(`{"extensions":{"settings":{
+"hjbnjdnllbljlfnolgdgckpkkfkeadep":{"from_webstore":false,"first_install_time":"13435385453500940","disable_reasons":[],"location":8,"path":"/home/alice/unpacked-ext"},
+"mhjfbmdgcfjbbpaeojofohoefgiehjai":{"location":5,"path":"/usr/lib64/chromium-browser/resources/pdf","manifest":{"name":"Chromium PDF Viewer","version":"1","manifest_version":2}},
+"gone":{"location":4,"path":"/home/alice/deleted-ext"},
+"internal":{"location":1,"path":"internal/1.0_0"}}}}`), 0o600))
+	require.NoError(t, afs.WriteFile("/home/alice/unpacked-ext/manifest.json", []byte(`{"manifest_version": 3, "name": "Unpacked Test", "version": "0.0.1", "description": "local unpacked extension",
+ "permissions": ["storage"], "content_scripts": [{"matches": ["<all_urls>"], "js": ["cs.js"]}]}`), 0o644))
+	// A manifest beside an internal (web store) entry must not be read: its
+	// path is relative to the profile's Extensions directory.
+	require.NoError(t, afs.WriteFile("internal/1.0_0/manifest.json", []byte(`{"name":"wrong","version":"9"}`), 0o644))
+
+	settings, ok := loadChromeExtensionSettings(afs, profile)
+	require.True(t, ok)
+	unpacked := settings["hjbnjdnllbljlfnolgdgckpkkfkeadep"]
+	assert.Equal(t, "Unpacked Test", unpacked.Manifest.Name)
+	assert.Equal(t, "0.0.1", unpacked.Manifest.Version)
+	assert.Equal(t, 3, unpacked.Manifest.ManifestVersion)
+	require.Len(t, unpacked.Manifest.ContentScripts, 1)
+	assert.Equal(t, []string{"cs.js"}, unpacked.Manifest.ContentScripts[0].Js)
+	assert.Equal(t, "Chromium PDF Viewer", settings["mhjfbmdgcfjbbpaeojofohoefgiehjai"].Manifest.Name)
+	// The directory is gone: nothing to read, the entry stays without identity.
+	assert.False(t, settings["gone"].Manifest.hasIdentity())
+	assert.False(t, settings["internal"].Manifest.hasIdentity())
+}

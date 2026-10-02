@@ -97,8 +97,17 @@ type chromePrefsExtension struct {
 	State            *int                `json:"state"`              // 0=disabled, 1=enabled; nil if not present
 	DisableReasons   json.RawMessage     `json:"disable_reasons"`    // Can be int or []int; non-zero/non-empty means disabled
 	Path             string              `json:"path"`
+	Location         int                 `json:"location"` // Chrome's ManifestLocation
 	Manifest         chromePrefsManifest `json:"manifest"`
 }
+
+// Chrome's ManifestLocation values for extensions loaded from a directory on
+// disk: "Load unpacked" and --load-extension. Chrome stores no manifest copy
+// in Preferences for these, only the absolute directory.
+const (
+	chromeLocationUnpacked    = 4
+	chromeLocationCommandLine = 8
+)
 
 // chromePrefsManifest represents the manifest copy inside the Preferences file
 type chromePrefsManifest struct {
@@ -278,7 +287,40 @@ func loadChromeExtensionSettings(afs *afero.Afero, profileDir string) (map[strin
 			merged[extID] = entry
 		}
 	}
+	for extID, entry := range merged {
+		if entry.Manifest.hasIdentity() {
+			continue
+		}
+		if m, found := readUnpackedChromeManifest(afs, entry); found {
+			entry.Manifest = m
+			merged[extID] = entry
+		}
+	}
 	return merged, ok
+}
+
+// readUnpackedChromeManifest reads manifest.json from the directory an
+// unpacked or command-line extension loads from. found is false for other
+// locations, relative paths, and a missing or unparsable manifest.
+func readUnpackedChromeManifest(afs *afero.Afero, entry chromePrefsExtension) (chromePrefsManifest, bool) {
+	var m chromePrefsManifest
+	if entry.Location != chromeLocationUnpacked && entry.Location != chromeLocationCommandLine {
+		return m, false
+	}
+	if !isAbsoluteExtensionPath(entry.Path) {
+		return m, false
+	}
+	manifestPath := filepath.Join(entry.Path, "manifest.json")
+	data, err := afs.ReadFile(manifestPath)
+	if err != nil {
+		log.Debug().Err(err).Str("path", manifestPath).Msg("could not read unpacked Chrome extension manifest")
+		return m, false
+	}
+	if err := json.Unmarshal(data, &m); err != nil {
+		log.Debug().Err(err).Str("path", manifestPath).Msg("could not parse unpacked Chrome extension manifest")
+		return m, false
+	}
+	return m, m.hasIdentity()
 }
 
 // hasIdentity reports whether the manifest copy names a real extension.
