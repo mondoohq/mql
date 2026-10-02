@@ -85,6 +85,10 @@ const (
 	ResourceMicrosoftUserAuditlog                                                                        string = "microsoft.user.auditlog"
 	ResourceMicrosoftUserIdentity                                                                        string = "microsoft.user.identity"
 	ResourceMicrosoftUserSignin                                                                          string = "microsoft.user.signin"
+	ResourceMicrosoftAuditLogsDirectoryAudits                                                            string = "microsoft.auditLogs.directoryAudits"
+	ResourceMicrosoftAuditLogsDirectoryAudit                                                             string = "microsoft.auditLogs.directoryAudit"
+	ResourceMicrosoftAuditLogsProvisioningEvents                                                         string = "microsoft.auditLogs.provisioningEvents"
+	ResourceMicrosoftAuditLogsProvisioningEvent                                                          string = "microsoft.auditLogs.provisioningEvent"
 	ResourceMicrosoftUserAuthenticationMethods                                                           string = "microsoft.user.authenticationMethods"
 	ResourceMicrosoftUserAuthenticationMethodsUserRegistrationDetails                                    string = "microsoft.user.authenticationMethods.userRegistrationDetails"
 	ResourceMicrosoftGroup                                                                               string = "microsoft.group"
@@ -526,6 +530,22 @@ func init() {
 		"microsoft.user.signin": {
 			// to override args, implement: initMicrosoftUserSignin(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftUserSignin,
+		},
+		"microsoft.auditLogs.directoryAudits": {
+			Init:   initMicrosoftAuditLogsDirectoryAudits,
+			Create: createMicrosoftAuditLogsDirectoryAudits,
+		},
+		"microsoft.auditLogs.directoryAudit": {
+			// to override args, implement: initMicrosoftAuditLogsDirectoryAudit(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftAuditLogsDirectoryAudit,
+		},
+		"microsoft.auditLogs.provisioningEvents": {
+			Init:   initMicrosoftAuditLogsProvisioningEvents,
+			Create: createMicrosoftAuditLogsProvisioningEvents,
+		},
+		"microsoft.auditLogs.provisioningEvent": {
+			// to override args, implement: initMicrosoftAuditLogsProvisioningEvent(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftAuditLogsProvisioningEvent,
 		},
 		"microsoft.user.authenticationMethods": {
 			// to override args, implement: initMicrosoftUserAuthenticationMethods(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -2632,6 +2652,108 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.user.signin.countryOrRegion": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftUserSignin).GetCountryOrRegion()).ToDataRes(types.String)
+	},
+	"microsoft.auditLogs.directoryAudits.since": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsDirectoryAudits).GetSince()).ToDataRes(types.Time)
+	},
+	"microsoft.auditLogs.directoryAudits.filter": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsDirectoryAudits).GetFilter()).ToDataRes(types.String)
+	},
+	"microsoft.auditLogs.directoryAudits.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsDirectoryAudits).GetList()).ToDataRes(types.Array(types.Resource("microsoft.auditLogs.directoryAudit")))
+	},
+	"microsoft.auditLogs.directoryAudit.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsDirectoryAudit).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.auditLogs.directoryAudit.activityDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsDirectoryAudit).GetActivityDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.auditLogs.directoryAudit.activityDisplayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsDirectoryAudit).GetActivityDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.auditLogs.directoryAudit.category": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsDirectoryAudit).GetCategory()).ToDataRes(types.String)
+	},
+	"microsoft.auditLogs.directoryAudit.correlationId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsDirectoryAudit).GetCorrelationId()).ToDataRes(types.String)
+	},
+	"microsoft.auditLogs.directoryAudit.loggedByService": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsDirectoryAudit).GetLoggedByService()).ToDataRes(types.String)
+	},
+	"microsoft.auditLogs.directoryAudit.operationType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsDirectoryAudit).GetOperationType()).ToDataRes(types.String)
+	},
+	"microsoft.auditLogs.directoryAudit.result": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsDirectoryAudit).GetResult()).ToDataRes(types.String)
+	},
+	"microsoft.auditLogs.directoryAudit.resultReason": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsDirectoryAudit).GetResultReason()).ToDataRes(types.String)
+	},
+	"microsoft.auditLogs.directoryAudit.initiatedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsDirectoryAudit).GetInitiatedBy()).ToDataRes(types.Dict)
+	},
+	"microsoft.auditLogs.directoryAudit.initiatedByUser": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsDirectoryAudit).GetInitiatedByUser()).ToDataRes(types.Resource("microsoft.user"))
+	},
+	"microsoft.auditLogs.directoryAudit.initiatedByServicePrincipal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsDirectoryAudit).GetInitiatedByServicePrincipal()).ToDataRes(types.Resource("microsoft.serviceprincipal"))
+	},
+	"microsoft.auditLogs.directoryAudit.targetResources": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsDirectoryAudit).GetTargetResources()).ToDataRes(types.Array(types.Dict))
+	},
+	"microsoft.auditLogs.directoryAudit.additionalDetails": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsDirectoryAudit).GetAdditionalDetails()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"microsoft.auditLogs.provisioningEvents.since": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsProvisioningEvents).GetSince()).ToDataRes(types.Time)
+	},
+	"microsoft.auditLogs.provisioningEvents.filter": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsProvisioningEvents).GetFilter()).ToDataRes(types.String)
+	},
+	"microsoft.auditLogs.provisioningEvents.list": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsProvisioningEvents).GetList()).ToDataRes(types.Array(types.Resource("microsoft.auditLogs.provisioningEvent")))
+	},
+	"microsoft.auditLogs.provisioningEvent.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsProvisioningEvent).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.auditLogs.provisioningEvent.activityDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsProvisioningEvent).GetActivityDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.auditLogs.provisioningEvent.changeId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsProvisioningEvent).GetChangeId()).ToDataRes(types.String)
+	},
+	"microsoft.auditLogs.provisioningEvent.cycleId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsProvisioningEvent).GetCycleId()).ToDataRes(types.String)
+	},
+	"microsoft.auditLogs.provisioningEvent.jobId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsProvisioningEvent).GetJobId()).ToDataRes(types.String)
+	},
+	"microsoft.auditLogs.provisioningEvent.durationInMilliseconds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsProvisioningEvent).GetDurationInMilliseconds()).ToDataRes(types.Int)
+	},
+	"microsoft.auditLogs.provisioningEvent.provisioningAction": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsProvisioningEvent).GetProvisioningAction()).ToDataRes(types.String)
+	},
+	"microsoft.auditLogs.provisioningEvent.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsProvisioningEvent).GetStatus()).ToDataRes(types.String)
+	},
+	"microsoft.auditLogs.provisioningEvent.errorInformation": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsProvisioningEvent).GetErrorInformation()).ToDataRes(types.Dict)
+	},
+	"microsoft.auditLogs.provisioningEvent.servicePrincipal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsProvisioningEvent).GetServicePrincipal()).ToDataRes(types.Resource("microsoft.serviceprincipal"))
+	},
+	"microsoft.auditLogs.provisioningEvent.sourceSystem": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsProvisioningEvent).GetSourceSystem()).ToDataRes(types.Dict)
+	},
+	"microsoft.auditLogs.provisioningEvent.targetSystem": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsProvisioningEvent).GetTargetSystem()).ToDataRes(types.Dict)
+	},
+	"microsoft.auditLogs.provisioningEvent.sourceIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsProvisioningEvent).GetSourceIdentity()).ToDataRes(types.Dict)
+	},
+	"microsoft.auditLogs.provisioningEvent.targetIdentity": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftAuditLogsProvisioningEvent).GetTargetIdentity()).ToDataRes(types.Dict)
 	},
 	"microsoft.user.authenticationMethods.count": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftUserAuthenticationMethods).GetCount()).ToDataRes(types.Int)
@@ -9396,6 +9518,158 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.user.signin.countryOrRegion": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftUserSignin).CountryOrRegion, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.directoryAudits.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudits).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.auditLogs.directoryAudits.since": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudits).Since, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.directoryAudits.filter": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudits).Filter, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.directoryAudits.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudits).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.directoryAudit.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudit).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.auditLogs.directoryAudit.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudit).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.directoryAudit.activityDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudit).ActivityDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.directoryAudit.activityDisplayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudit).ActivityDisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.directoryAudit.category": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudit).Category, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.directoryAudit.correlationId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudit).CorrelationId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.directoryAudit.loggedByService": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudit).LoggedByService, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.directoryAudit.operationType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudit).OperationType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.directoryAudit.result": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudit).Result, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.directoryAudit.resultReason": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudit).ResultReason, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.directoryAudit.initiatedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudit).InitiatedBy, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.directoryAudit.initiatedByUser": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudit).InitiatedByUser, ok = plugin.RawToTValue[*mqlMicrosoftUser](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.directoryAudit.initiatedByServicePrincipal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudit).InitiatedByServicePrincipal, ok = plugin.RawToTValue[*mqlMicrosoftServiceprincipal](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.directoryAudit.targetResources": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudit).TargetResources, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.directoryAudit.additionalDetails": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsDirectoryAudit).AdditionalDetails, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvents.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvents).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvents.since": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvents).Since, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvents.filter": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvents).Filter, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvents.list": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvents).List, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvent.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvent).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvent.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvent).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvent.activityDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvent).ActivityDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvent.changeId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvent).ChangeId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvent.cycleId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvent).CycleId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvent.jobId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvent).JobId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvent.durationInMilliseconds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvent).DurationInMilliseconds, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvent.provisioningAction": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvent).ProvisioningAction, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvent.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvent).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvent.errorInformation": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvent).ErrorInformation, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvent.servicePrincipal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvent).ServicePrincipal, ok = plugin.RawToTValue[*mqlMicrosoftServiceprincipal](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvent.sourceSystem": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvent).SourceSystem, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvent.targetSystem": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvent).TargetSystem, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvent.sourceIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvent).SourceIdentity, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"microsoft.auditLogs.provisioningEvent.targetIdentity": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftAuditLogsProvisioningEvent).TargetIdentity, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
 	"microsoft.user.authenticationMethods.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -22341,6 +22615,392 @@ func (c *mqlMicrosoftUserSignin) GetState() *plugin.TValue[string] {
 
 func (c *mqlMicrosoftUserSignin) GetCountryOrRegion() *plugin.TValue[string] {
 	return &c.CountryOrRegion
+}
+
+// mqlMicrosoftAuditLogsDirectoryAudits for the microsoft.auditLogs.directoryAudits resource
+type mqlMicrosoftAuditLogsDirectoryAudits struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftAuditLogsDirectoryAuditsInternal
+	Since  plugin.TValue[*time.Time]
+	Filter plugin.TValue[string]
+	List   plugin.TValue[[]any]
+}
+
+// createMicrosoftAuditLogsDirectoryAudits creates a new instance of this resource
+func createMicrosoftAuditLogsDirectoryAudits(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftAuditLogsDirectoryAudits{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.auditLogs.directoryAudits", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudits) MqlName() string {
+	return "microsoft.auditLogs.directoryAudits"
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudits) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudits) GetSince() *plugin.TValue[*time.Time] {
+	return &c.Since
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudits) GetFilter() *plugin.TValue[string] {
+	return &c.Filter
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudits) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.auditLogs.directoryAudits", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.list()
+	})
+}
+
+// mqlMicrosoftAuditLogsDirectoryAudit for the microsoft.auditLogs.directoryAudit resource
+type mqlMicrosoftAuditLogsDirectoryAudit struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftAuditLogsDirectoryAuditInternal
+	Id                          plugin.TValue[string]
+	ActivityDateTime            plugin.TValue[*time.Time]
+	ActivityDisplayName         plugin.TValue[string]
+	Category                    plugin.TValue[string]
+	CorrelationId               plugin.TValue[string]
+	LoggedByService             plugin.TValue[string]
+	OperationType               plugin.TValue[string]
+	Result                      plugin.TValue[string]
+	ResultReason                plugin.TValue[string]
+	InitiatedBy                 plugin.TValue[any]
+	InitiatedByUser             plugin.TValue[*mqlMicrosoftUser]
+	InitiatedByServicePrincipal plugin.TValue[*mqlMicrosoftServiceprincipal]
+	TargetResources             plugin.TValue[[]any]
+	AdditionalDetails           plugin.TValue[map[string]any]
+}
+
+// createMicrosoftAuditLogsDirectoryAudit creates a new instance of this resource
+func createMicrosoftAuditLogsDirectoryAudit(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftAuditLogsDirectoryAudit{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.auditLogs.directoryAudit", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudit) MqlName() string {
+	return "microsoft.auditLogs.directoryAudit"
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudit) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudit) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudit) GetActivityDateTime() *plugin.TValue[*time.Time] {
+	return &c.ActivityDateTime
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudit) GetActivityDisplayName() *plugin.TValue[string] {
+	return &c.ActivityDisplayName
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudit) GetCategory() *plugin.TValue[string] {
+	return &c.Category
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudit) GetCorrelationId() *plugin.TValue[string] {
+	return &c.CorrelationId
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudit) GetLoggedByService() *plugin.TValue[string] {
+	return &c.LoggedByService
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudit) GetOperationType() *plugin.TValue[string] {
+	return &c.OperationType
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudit) GetResult() *plugin.TValue[string] {
+	return &c.Result
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudit) GetResultReason() *plugin.TValue[string] {
+	return &c.ResultReason
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudit) GetInitiatedBy() *plugin.TValue[any] {
+	return &c.InitiatedBy
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudit) GetInitiatedByUser() *plugin.TValue[*mqlMicrosoftUser] {
+	return plugin.GetOrCompute[*mqlMicrosoftUser](&c.InitiatedByUser, func() (*mqlMicrosoftUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.auditLogs.directoryAudit", c.__id, "initiatedByUser")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftUser), nil
+			}
+		}
+
+		return c.initiatedByUser()
+	})
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudit) GetInitiatedByServicePrincipal() *plugin.TValue[*mqlMicrosoftServiceprincipal] {
+	return plugin.GetOrCompute[*mqlMicrosoftServiceprincipal](&c.InitiatedByServicePrincipal, func() (*mqlMicrosoftServiceprincipal, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.auditLogs.directoryAudit", c.__id, "initiatedByServicePrincipal")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftServiceprincipal), nil
+			}
+		}
+
+		return c.initiatedByServicePrincipal()
+	})
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudit) GetTargetResources() *plugin.TValue[[]any] {
+	return &c.TargetResources
+}
+
+func (c *mqlMicrosoftAuditLogsDirectoryAudit) GetAdditionalDetails() *plugin.TValue[map[string]any] {
+	return &c.AdditionalDetails
+}
+
+// mqlMicrosoftAuditLogsProvisioningEvents for the microsoft.auditLogs.provisioningEvents resource
+type mqlMicrosoftAuditLogsProvisioningEvents struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftAuditLogsProvisioningEventsInternal
+	Since  plugin.TValue[*time.Time]
+	Filter plugin.TValue[string]
+	List   plugin.TValue[[]any]
+}
+
+// createMicrosoftAuditLogsProvisioningEvents creates a new instance of this resource
+func createMicrosoftAuditLogsProvisioningEvents(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftAuditLogsProvisioningEvents{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.auditLogs.provisioningEvents", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvents) MqlName() string {
+	return "microsoft.auditLogs.provisioningEvents"
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvents) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvents) GetSince() *plugin.TValue[*time.Time] {
+	return &c.Since
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvents) GetFilter() *plugin.TValue[string] {
+	return &c.Filter
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvents) GetList() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.List, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.auditLogs.provisioningEvents", c.__id, "list")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.list()
+	})
+}
+
+// mqlMicrosoftAuditLogsProvisioningEvent for the microsoft.auditLogs.provisioningEvent resource
+type mqlMicrosoftAuditLogsProvisioningEvent struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftAuditLogsProvisioningEventInternal
+	Id                     plugin.TValue[string]
+	ActivityDateTime       plugin.TValue[*time.Time]
+	ChangeId               plugin.TValue[string]
+	CycleId                plugin.TValue[string]
+	JobId                  plugin.TValue[string]
+	DurationInMilliseconds plugin.TValue[int64]
+	ProvisioningAction     plugin.TValue[string]
+	Status                 plugin.TValue[string]
+	ErrorInformation       plugin.TValue[any]
+	ServicePrincipal       plugin.TValue[*mqlMicrosoftServiceprincipal]
+	SourceSystem           plugin.TValue[any]
+	TargetSystem           plugin.TValue[any]
+	SourceIdentity         plugin.TValue[any]
+	TargetIdentity         plugin.TValue[any]
+}
+
+// createMicrosoftAuditLogsProvisioningEvent creates a new instance of this resource
+func createMicrosoftAuditLogsProvisioningEvent(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftAuditLogsProvisioningEvent{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.auditLogs.provisioningEvent", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvent) MqlName() string {
+	return "microsoft.auditLogs.provisioningEvent"
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvent) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvent) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvent) GetActivityDateTime() *plugin.TValue[*time.Time] {
+	return &c.ActivityDateTime
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvent) GetChangeId() *plugin.TValue[string] {
+	return &c.ChangeId
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvent) GetCycleId() *plugin.TValue[string] {
+	return &c.CycleId
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvent) GetJobId() *plugin.TValue[string] {
+	return &c.JobId
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvent) GetDurationInMilliseconds() *plugin.TValue[int64] {
+	return &c.DurationInMilliseconds
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvent) GetProvisioningAction() *plugin.TValue[string] {
+	return &c.ProvisioningAction
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvent) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvent) GetErrorInformation() *plugin.TValue[any] {
+	return &c.ErrorInformation
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvent) GetServicePrincipal() *plugin.TValue[*mqlMicrosoftServiceprincipal] {
+	return plugin.GetOrCompute[*mqlMicrosoftServiceprincipal](&c.ServicePrincipal, func() (*mqlMicrosoftServiceprincipal, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.auditLogs.provisioningEvent", c.__id, "servicePrincipal")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftServiceprincipal), nil
+			}
+		}
+
+		return c.servicePrincipal()
+	})
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvent) GetSourceSystem() *plugin.TValue[any] {
+	return &c.SourceSystem
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvent) GetTargetSystem() *plugin.TValue[any] {
+	return &c.TargetSystem
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvent) GetSourceIdentity() *plugin.TValue[any] {
+	return &c.SourceIdentity
+}
+
+func (c *mqlMicrosoftAuditLogsProvisioningEvent) GetTargetIdentity() *plugin.TValue[any] {
+	return &c.TargetIdentity
 }
 
 // mqlMicrosoftUserAuthenticationMethods for the microsoft.user.authenticationMethods resource

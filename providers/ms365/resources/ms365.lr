@@ -1777,6 +1777,135 @@ private microsoft.user.signin {
   countryOrRegion string
 }
 
+// Microsoft Entra ID directory audit log
+//
+// Directory audit events recorded by Microsoft Entra ID: changes to users,
+// groups, applications, roles, policies, and other directory objects, along
+// with who made each change and its outcome. Without arguments the list covers
+// the last 7 days. The `since` argument sets the start of the window, for
+// example `microsoft.auditLogs.directoryAudits(since: time.now - 30 * time.day)`,
+// and the `filter` argument adds an OData condition on top of the window, for
+// example `microsoft.auditLogs.directoryAudits(filter: "category eq 'RoleManagement'")`.
+// The tenant keeps directory audit events for 7 days without a Microsoft Entra
+// ID P1 or P2 license and for 30 days with one.
+microsoft.auditLogs.directoryAudits {
+  []microsoft.auditLogs.directoryAudit
+  init(since? time, filter? string)
+  // Start of the time window; events at or after this time are listed
+  since time
+  // OData filter combined with the time window, e.g., "loggedByService eq 'Core Directory'"
+  filter string
+}
+
+// Microsoft Entra ID directory audit event
+private microsoft.auditLogs.directoryAudit @defaults("activityDateTime activityDisplayName result") {
+  // Unique identifier of the audit event
+  id string
+  // Date and time the activity was performed
+  activityDateTime time
+  // Name of the activity, such as "Add member to role" or "Update user"
+  activityDisplayName string
+  // Category of the activity, such as UserManagement, GroupManagement, ApplicationManagement, RoleManagement, or Policy
+  category string
+  // Identifier that ties together the events of one operation across services
+  correlationId string
+  // Service that recorded the event, such as "Core Directory", "Self-service Password Management", or "PIM"
+  loggedByService string
+  // Type of operation, such as Add, Update, Delete, or Assign
+  operationType string
+  // Outcome of the activity: success, failure, timeout, or unknownFutureValue
+  result string
+  // Reason the activity failed
+  resultReason string
+  // Who performed the activity
+  //
+  // A dict with a `user` key (`id`, `displayName`, `userPrincipalName`,
+  // `ipAddress`) when a user performed the activity, or an `app` key (`appId`,
+  // `displayName`, `servicePrincipalId`, `servicePrincipalName`) when an
+  // application did. The initiator may no longer exist in the directory.
+  initiatedBy dict
+  // User who performed the activity
+  //
+  // Null when an application performed the activity or the user no longer exists.
+  initiatedByUser() microsoft.user
+  // Service principal of the application that performed the activity
+  //
+  // Null when a user performed the activity or the service principal no longer exists.
+  initiatedByServicePrincipal() microsoft.serviceprincipal
+  // Objects the activity changed
+  //
+  // Each entry is a dict with keys `id`, `displayName`, `type` (such as User,
+  // Group, Application, ServicePrincipal, Role, Policy, or Device),
+  // `userPrincipalName`, `groupType`, and `modifiedProperties`, a list of
+  // dicts with `displayName`, `oldValue`, and `newValue`.
+  targetResources []dict
+  // Additional details about the activity as key-value pairs, such as User-Agent
+  additionalDetails map[string]string
+}
+
+// Microsoft Entra ID provisioning log
+//
+// Provisioning events recorded by Microsoft Entra ID when it creates, updates,
+// disables, or deletes identities in connected applications and directories,
+// including the outcome and any error for each event. Without arguments the
+// list covers the last 7 days. The `since` argument sets the start of the
+// window, for example `microsoft.auditLogs.provisioningEvents(since: time.now - 14 * time.day)`,
+// and the `filter` argument adds an OData condition on top of the window, for
+// example `microsoft.auditLogs.provisioningEvents(filter: "provisioningAction eq 'delete'")`.
+// Reading provisioning events requires a Microsoft Entra ID P1 or P2 license.
+microsoft.auditLogs.provisioningEvents {
+  []microsoft.auditLogs.provisioningEvent
+  init(since? time, filter? string)
+  // Start of the time window; events at or after this time are listed
+  since time
+  // OData filter combined with the time window, e.g., "provisioningStatusInfo/status eq 'failure'"
+  filter string
+}
+
+// Microsoft Entra ID provisioning event
+private microsoft.auditLogs.provisioningEvent @defaults("activityDateTime provisioningAction status") {
+  // Unique identifier of the provisioning event
+  id string
+  // Date and time the event occurred
+  activityDateTime time
+  // Identifier of this specific change, shared by the events it produced
+  changeId string
+  // Identifier of the provisioning cycle the event belongs to
+  cycleId string
+  // Identifier of the provisioning job that produced the event
+  jobId string
+  // How long the provisioning operation took, in milliseconds
+  durationInMilliseconds int
+  // Action performed on the identity: create, update, delete, disable, stagedDelete, other, or unknownFutureValue
+  provisioningAction string
+  // Outcome of the event: success, warning, failure, skipped, or unknownFutureValue
+  status string
+  // Error details when the event did not succeed
+  //
+  // A dict with keys `errorCode`, `errorCategory` (failure, nonServiceFailure,
+  // success, or unknownFutureValue), `reason`, `additionalDetails`, and
+  // `recommendedAction`. Null when the event carried no error.
+  errorInformation dict
+  // Service principal of the application the identity was provisioned through
+  servicePrincipal() microsoft.serviceprincipal
+  // System the identity was provisioned from
+  //
+  // A dict with keys `id`, `displayName`, and `details`.
+  sourceSystem dict
+  // System the identity was provisioned to
+  //
+  // A dict with keys `id`, `displayName`, and `details`.
+  targetSystem dict
+  // Identity in the source system
+  //
+  // A dict with keys `id`, `displayName`, `identityType`, and `details`.
+  sourceIdentity dict
+  // Identity in the target system
+  //
+  // A dict with keys `id`, `displayName`, `identityType`, and `details`.
+  targetIdentity dict
+}
+
 // Microsoft Entra authentication methods
 private microsoft.user.authenticationMethods @defaults("count") {
     // Count of authentication methods
