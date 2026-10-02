@@ -141,7 +141,7 @@ func (e *mqlExim) params() (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return parseEximConfig(content, e.builtinMacros())
+	return parseEximConfigFile(configPath.Data, content, e.builtinMacros(), e.readInclude)
 }
 
 // eximBinaries are the names tried, in order, to run Exim. The absolute
@@ -300,7 +300,7 @@ func (e *mqlExim) localInterfaces() ([]any, error) {
 			return nil, err
 		}
 		if content != "" {
-			generated, err := parseEximConfig(content, e.builtinMacros())
+			generated, err := parseEximConfigFile(debianEximGeneratedConfig, content, e.builtinMacros(), e.readInclude)
 			if err != nil {
 				return nil, err
 			}
@@ -534,7 +534,43 @@ func (e *mqlExim) readFile(path string) (string, error) {
 	return string(data), nil
 }
 
-// parseEximConfig parses the macros and main-section options of an Exim config.
+// readInclude reads a file named by .include or .include_if_exists. exists
+// is false when the file is not there; a file that is there but cannot be
+// read is an error.
+func (e *mqlExim) readInclude(path string) (string, bool, error) {
+	conn := e.MqlRuntime.Connection.(shared.Connection)
+	if _, err := conn.FileSystem().Stat(path); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	f, err := conn.FileSystem().Open(path)
+	if err != nil {
+		return "", false, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return "", false, err
+	}
+	return string(data), true, nil
+}
+
+// eximIncludeReader reads a file named by .include or .include_if_exists.
+// exists is false for a file that is not there.
+type eximIncludeReader func(path string) (content string, exists bool, err error)
+
+// eximMaxIncludeDepth bounds .include nesting so a file that includes itself
+// fails instead of recursing forever (Exim itself runs out of file handles).
+const eximMaxIncludeDepth = 32
+
+// parseEximConfig parses content on its own, without following .include.
+func parseEximConfig(content string, builtins eximBuiltinLookup) (map[string]any, error) {
+	return parseEximConfigFile("", content, builtins, nil)
+}
+
+// parseEximConfigFile parses the macros and main-section options of an Exim config.
 // It handles both the Debian `KEY='value'` form and the monolithic `key = value`
 // form, folds backslash continuations, strips comments, and stops at the first
 // `begin <section>` block (routers, transports, acl, …) so only the main
@@ -548,20 +584,74 @@ func (e *mqlExim) readFile(path string) (string, error) {
 // Conditionals on Exim's built-in macros (`.ifdef _HAVE_OPENSSL`) are
 // answered by builtins. It is only called for a conditional whose branch
 // matters, and its error fails the parse rather than guessing a branch.
-func parseEximConfig(content string, builtins eximBuiltinLookup) (map[string]any, error) {
+//
+// `.include` and `.include_if_exists` lines in an active branch are read
+// through include and parsed in place, the way Exim's readconf does: macros
+// and conditionals carry across files, a relative .include resolves against
+// the including file's directory, .include_if_exists needs an absolute path
+// and skips a missing file, and a missing .include file is an error (Exim
+// refuses to start). path is the file content came from. With a nil include
+// the directives are ignored.
+func parseEximConfigFile(path, content string, builtins eximBuiltinLookup, include eximIncludeReader) (map[string]any, error) {
 	params := map[string]any{}
 	macros := map[string]string{}
 	cond := eximConditionals{}
 
-	for _, line := range joinEximContinuations(content) {
+	type eximFile struct {
+		lines []string
+		next  int
+		dir   string
+	}
+	stack := []*eximFile{{lines: joinEximContinuations(content), dir: filepath.Dir(path)}}
+
+lines:
+	for len(stack) > 0 {
+		file := stack[len(stack)-1]
+		if file.next >= len(file.lines) {
+			stack = stack[:len(stack)-1]
+			continue
+		}
+		line := file.lines[file.next]
+		file.next++
+
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
 
 		if strings.HasPrefix(trimmed, ".") {
-			directive, arg, _ := strings.Cut(trimmed, " ")
+			directive, arg, _ := strings.Cut(strings.Replace(trimmed, "\t", " ", 1), " ")
 			name := strings.TrimSpace(arg)
+			if directive == ".include" || directive == ".include_if_exists" {
+				if !cond.active() || include == nil {
+					continue
+				}
+				target := strings.TrimSpace(substituteEximMacros(name, macros))
+				if len(target) >= 2 && target[0] == '"' && target[len(target)-1] == '"' {
+					target = target[1 : len(target)-1]
+				}
+				if !filepath.IsAbs(target) {
+					if directive == ".include_if_exists" {
+						return nil, fmt.Errorf("exim: .include_if_exists specifies a non-absolute path %q", target)
+					}
+					target = filepath.Join(file.dir, target)
+				}
+				if len(stack) > eximMaxIncludeDepth {
+					return nil, fmt.Errorf("exim: .include nested too deeply at %s", target)
+				}
+				included, exists, err := include(target)
+				if err != nil {
+					return nil, err
+				}
+				if !exists {
+					if directive == ".include_if_exists" {
+						continue
+					}
+					return nil, fmt.Errorf("exim: failed to open included configuration file %s", target)
+				}
+				stack = append(stack, &eximFile{lines: joinEximContinuations(included), dir: filepath.Dir(target)})
+				continue
+			}
 			err := cond.apply(directive, func() (bool, error) {
 				if strings.HasPrefix(name, "_") {
 					if builtins == nil {
@@ -575,7 +665,6 @@ func parseEximConfig(content string, builtins eximBuiltinLookup) (map[string]any
 			if err != nil {
 				return nil, err
 			}
-			// other directives (.include, .include_if_exists) are not followed
 			continue
 		}
 		if !cond.active() {
@@ -584,7 +673,7 @@ func parseEximConfig(content string, builtins eximBuiltinLookup) (map[string]any
 
 		// the main section ends at the first `begin <section>` directive
 		if trimmed == "begin" || strings.HasPrefix(trimmed, "begin ") {
-			break
+			break lines
 		}
 
 		idx := strings.Index(trimmed, "=")

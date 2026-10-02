@@ -567,3 +567,69 @@ func TestEximDefaultsDaemonArgs(t *testing.T) {
 		assert.Equal(t, []any{"0.0.0.0.25", "::0.25"}, eximOverrideInterfaces(eximDefaultsDaemonArgs(content, true)))
 	})
 }
+
+// Exim reads .include files in place. On SLES 15 SP7 the main file's
+// `.include /etc/exim/sweep-main.conf` set local_interfaces, and
+// `exim -bP local_interfaces` reported the included value, while mql
+// reported the unset default.
+func TestParseEximConfigIncludes(t *testing.T) {
+	files := map[string]string{
+		"/etc/exim/sweep-main.conf":     "local_interfaces = <; 127.0.0.2\n",
+		"/etc/exim/conf.d/tls.conf":     "tls_advertise_hosts =\n.include_if_exists /etc/exim/conf.d/missing.conf\n",
+		"/etc/exim/conf.d/macro.conf":   "LISTEN = 192.0.2.1\n",
+		"/etc/exim/conf.d/skipped.conf": "smtp_banner = skipped\n",
+		"/etc/exim/conf.d/routers.conf": "begin routers\nnot_main = 1\n",
+	}
+	var opened []string
+	read := func(path string) (string, bool, error) {
+		opened = append(opened, path)
+		c, ok := files[path]
+		return c, ok, nil
+	}
+
+	t.Run("absolute, relative and conditional includes", func(t *testing.T) {
+		opened = nil
+		content := "primary_hostname = mail.example.test\n" +
+			".include /etc/exim/sweep-main.conf\n" +
+			".include conf.d/tls.conf\n" +
+			".include_if_exists /etc/exim/conf.d/macro.conf\n" +
+			"daemon_smtp_ports = LISTEN\n" +
+			".ifdef NOT_DEFINED\n" +
+			".include /etc/exim/conf.d/skipped.conf\n" +
+			".endif\n" +
+			".include \"/etc/exim/conf.d/routers.conf\"\n" +
+			"after_begin = 1\n"
+		got, err := parseEximConfigFile("/etc/exim/exim.conf", content, nil, read)
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{
+			"primary_hostname":    "mail.example.test",
+			"local_interfaces":    "<; 127.0.0.2",
+			"tls_advertise_hosts": "",
+			"LISTEN":              "192.0.2.1",
+			"daemon_smtp_ports":   "192.0.2.1",
+		}, got)
+		assert.NotContains(t, opened, "/etc/exim/conf.d/skipped.conf", "an include in a skipped branch is not read")
+	})
+
+	t.Run("a missing .include is an error", func(t *testing.T) {
+		_, err := parseEximConfigFile("/etc/exim/exim.conf", ".include /etc/exim/nope.conf\n", nil, read)
+		require.Error(t, err)
+	})
+
+	t.Run(".include_if_exists needs an absolute path", func(t *testing.T) {
+		_, err := parseEximConfigFile("/etc/exim/exim.conf", ".include_if_exists conf.d/tls.conf\n", nil, read)
+		require.Error(t, err)
+	})
+
+	t.Run("an unreadable include is an error", func(t *testing.T) {
+		denied := func(string) (string, bool, error) { return "", false, errors.New("permission denied") }
+		_, err := parseEximConfigFile("/etc/exim/exim.conf", ".include /etc/exim/sweep-main.conf\n", nil, denied)
+		require.Error(t, err)
+	})
+
+	t.Run("an include cycle stops", func(t *testing.T) {
+		self := func(string) (string, bool, error) { return ".include /etc/exim/exim.conf\n", true, nil }
+		_, err := parseEximConfigFile("/etc/exim/exim.conf", ".include /etc/exim/exim.conf\n", nil, self)
+		require.Error(t, err)
+	})
+}
