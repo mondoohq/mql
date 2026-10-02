@@ -140,6 +140,10 @@ const (
 	ResourceMicrosoftRolemanagement                                                                      string = "microsoft.rolemanagement"
 	ResourceMicrosoftRolemanagementRoledefinition                                                        string = "microsoft.rolemanagement.roledefinition"
 	ResourceMicrosoftRolemanagementRoleassignment                                                        string = "microsoft.rolemanagement.roleassignment"
+	ResourceMicrosoftExchangeRoleManagement                                                              string = "microsoft.exchangeRoleManagement"
+	ResourceMicrosoftDefenderRoleManagement                                                              string = "microsoft.defenderRoleManagement"
+	ResourceMicrosoftDefenderRoleManagementRoleDefinition                                                string = "microsoft.defenderRoleManagement.roleDefinition"
+	ResourceMicrosoftDefenderRoleManagementRoleAssignment                                                string = "microsoft.defenderRoleManagement.roleAssignment"
 	ResourceMicrosoftDevicemanagement                                                                    string = "microsoft.devicemanagement"
 	ResourceMicrosoftDevicemanagementSettings                                                            string = "microsoft.devicemanagement.settings"
 	ResourceMicrosoftDevicemanagementGroupPolicyConfiguration                                            string = "microsoft.devicemanagement.groupPolicyConfiguration"
@@ -716,6 +720,22 @@ func init() {
 			// to override args, implement: initMicrosoftRolemanagementRoleassignment(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftRolemanagementRoleassignment,
 		},
+		"microsoft.exchangeRoleManagement": {
+			// to override args, implement: initMicrosoftExchangeRoleManagement(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftExchangeRoleManagement,
+		},
+		"microsoft.defenderRoleManagement": {
+			// to override args, implement: initMicrosoftDefenderRoleManagement(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftDefenderRoleManagement,
+		},
+		"microsoft.defenderRoleManagement.roleDefinition": {
+			// to override args, implement: initMicrosoftDefenderRoleManagementRoleDefinition(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftDefenderRoleManagementRoleDefinition,
+		},
+		"microsoft.defenderRoleManagement.roleAssignment": {
+			// to override args, implement: initMicrosoftDefenderRoleManagementRoleAssignment(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftDefenderRoleManagementRoleAssignment,
+		},
 		"microsoft.devicemanagement": {
 			// to override args, implement: initMicrosoftDevicemanagement(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftDevicemanagement,
@@ -1112,6 +1132,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.roles": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoft).GetRoles()).ToDataRes(types.Resource("microsoft.roles"))
+	},
+	"microsoft.exchangeRoleManagement": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoft).GetExchangeRoleManagement()).ToDataRes(types.Resource("microsoft.exchangeRoleManagement"))
+	},
+	"microsoft.defenderRoleManagement": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoft).GetDefenderRoleManagement()).ToDataRes(types.Resource("microsoft.defenderRoleManagement"))
 	},
 	"microsoft.settings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoft).GetSettings()).ToDataRes(types.Dict)
@@ -3675,6 +3701,90 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.rolemanagement.roleassignment.principal": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftRolemanagementRoleassignment).GetPrincipal()).ToDataRes(types.Dict)
 	},
+	"microsoft.rolemanagement.roleassignment.directoryScopeId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftRolemanagementRoleassignment).GetDirectoryScopeId()).ToDataRes(types.String)
+	},
+	"microsoft.rolemanagement.roleassignment.appScopeId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftRolemanagementRoleassignment).GetAppScopeId()).ToDataRes(types.String)
+	},
+	"microsoft.rolemanagement.roleassignment.condition": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftRolemanagementRoleassignment).GetCondition()).ToDataRes(types.String)
+	},
+	"microsoft.rolemanagement.roleassignment.user": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftRolemanagementRoleassignment).GetUser()).ToDataRes(types.Resource("microsoft.user"))
+	},
+	"microsoft.rolemanagement.roleassignment.group": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftRolemanagementRoleassignment).GetGroup()).ToDataRes(types.Resource("microsoft.group"))
+	},
+	"microsoft.rolemanagement.roleassignment.servicePrincipal": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftRolemanagementRoleassignment).GetServicePrincipal()).ToDataRes(types.Resource("microsoft.serviceprincipal"))
+	},
+	"microsoft.exchangeRoleManagement.roleDefinitions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftExchangeRoleManagement).GetRoleDefinitions()).ToDataRes(types.Array(types.Resource("microsoft.rolemanagement.roledefinition")))
+	},
+	"microsoft.exchangeRoleManagement.roleAssignments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftExchangeRoleManagement).GetRoleAssignments()).ToDataRes(types.Array(types.Resource("microsoft.rolemanagement.roleassignment")))
+	},
+	"microsoft.defenderRoleManagement.roleDefinitions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagement).GetRoleDefinitions()).ToDataRes(types.Array(types.Resource("microsoft.defenderRoleManagement.roleDefinition")))
+	},
+	"microsoft.defenderRoleManagement.roleAssignments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagement).GetRoleAssignments()).ToDataRes(types.Array(types.Resource("microsoft.defenderRoleManagement.roleAssignment")))
+	},
+	"microsoft.defenderRoleManagement.roleDefinition.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagementRoleDefinition).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.defenderRoleManagement.roleDefinition.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagementRoleDefinition).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.defenderRoleManagement.roleDefinition.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagementRoleDefinition).GetDescription()).ToDataRes(types.String)
+	},
+	"microsoft.defenderRoleManagement.roleDefinition.isBuiltIn": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagementRoleDefinition).GetIsBuiltIn()).ToDataRes(types.Bool)
+	},
+	"microsoft.defenderRoleManagement.roleDefinition.isEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagementRoleDefinition).GetIsEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.defenderRoleManagement.roleDefinition.rolePermissions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagementRoleDefinition).GetRolePermissions()).ToDataRes(types.Array(types.Dict))
+	},
+	"microsoft.defenderRoleManagement.roleDefinition.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagementRoleDefinition).GetVersion()).ToDataRes(types.String)
+	},
+	"microsoft.defenderRoleManagement.roleDefinition.assignments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagementRoleDefinition).GetAssignments()).ToDataRes(types.Array(types.Resource("microsoft.defenderRoleManagement.roleAssignment")))
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).GetDescription()).ToDataRes(types.String)
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.roleDefinition": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).GetRoleDefinition()).ToDataRes(types.Resource("microsoft.defenderRoleManagement.roleDefinition"))
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.directoryScopeIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).GetDirectoryScopeIds()).ToDataRes(types.Array(types.String))
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.appScopeIds": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).GetAppScopeIds()).ToDataRes(types.Array(types.String))
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.condition": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).GetCondition()).ToDataRes(types.String)
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.users": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).GetUsers()).ToDataRes(types.Array(types.Resource("microsoft.user")))
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.groups": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).GetGroups()).ToDataRes(types.Array(types.Resource("microsoft.group")))
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.servicePrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).GetServicePrincipals()).ToDataRes(types.Array(types.Resource("microsoft.serviceprincipal")))
+	},
 	"microsoft.devicemanagement.managedDevices": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftDevicemanagement).GetManagedDevices()).ToDataRes(types.Array(types.Resource("microsoft.devicemanagement.manageddevice")))
 	},
@@ -6171,6 +6281,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.roles": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoft).Roles, ok = plugin.RawToTValue[*mqlMicrosoftRoles](v.Value, v.Error)
+		return
+	},
+	"microsoft.exchangeRoleManagement": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoft).ExchangeRoleManagement, ok = plugin.RawToTValue[*mqlMicrosoftExchangeRoleManagement](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoft).DefenderRoleManagement, ok = plugin.RawToTValue[*mqlMicrosoftDefenderRoleManagement](v.Value, v.Error)
 		return
 	},
 	"microsoft.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -10081,6 +10199,134 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftRolemanagementRoleassignment).Principal, ok = plugin.RawToTValue[any](v.Value, v.Error)
 		return
 	},
+	"microsoft.rolemanagement.roleassignment.directoryScopeId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftRolemanagementRoleassignment).DirectoryScopeId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.rolemanagement.roleassignment.appScopeId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftRolemanagementRoleassignment).AppScopeId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.rolemanagement.roleassignment.condition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftRolemanagementRoleassignment).Condition, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.rolemanagement.roleassignment.user": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftRolemanagementRoleassignment).User, ok = plugin.RawToTValue[*mqlMicrosoftUser](v.Value, v.Error)
+		return
+	},
+	"microsoft.rolemanagement.roleassignment.group": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftRolemanagementRoleassignment).Group, ok = plugin.RawToTValue[*mqlMicrosoftGroup](v.Value, v.Error)
+		return
+	},
+	"microsoft.rolemanagement.roleassignment.servicePrincipal": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftRolemanagementRoleassignment).ServicePrincipal, ok = plugin.RawToTValue[*mqlMicrosoftServiceprincipal](v.Value, v.Error)
+		return
+	},
+	"microsoft.exchangeRoleManagement.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftExchangeRoleManagement).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.exchangeRoleManagement.roleDefinitions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftExchangeRoleManagement).RoleDefinitions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.exchangeRoleManagement.roleAssignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftExchangeRoleManagement).RoleAssignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagement).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleDefinitions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagement).RoleDefinitions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleAssignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagement).RoleAssignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleDefinition.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleDefinition).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleDefinition.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleDefinition).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleDefinition.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleDefinition).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleDefinition.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleDefinition).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleDefinition.isBuiltIn": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleDefinition).IsBuiltIn, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleDefinition.isEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleDefinition).IsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleDefinition.rolePermissions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleDefinition).RolePermissions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleDefinition.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleDefinition).Version, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleDefinition.assignments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleDefinition).Assignments, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.roleDefinition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).RoleDefinition, ok = plugin.RawToTValue[*mqlMicrosoftDefenderRoleManagementRoleDefinition](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.directoryScopeIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).DirectoryScopeIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.appScopeIds": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).AppScopeIds, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.condition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).Condition, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.users": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).Users, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.groups": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).Groups, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.defenderRoleManagement.roleAssignment.servicePrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDefenderRoleManagementRoleAssignment).ServicePrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.devicemanagement.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftDevicemanagement).__id, ok = v.Value.(string)
 		return
@@ -13672,6 +13918,8 @@ type mqlMicrosoft struct {
 	EnterpriseApplications   plugin.TValue[[]any]
 	Oauth2PermissionGrants   plugin.TValue[[]any]
 	Roles                    plugin.TValue[*mqlMicrosoftRoles]
+	ExchangeRoleManagement   plugin.TValue[*mqlMicrosoftExchangeRoleManagement]
+	DefenderRoleManagement   plugin.TValue[*mqlMicrosoftDefenderRoleManagement]
 	Settings                 plugin.TValue[any]
 	GroupSettings            plugin.TValue[[]any]
 	TenantDomainName         plugin.TValue[string]
@@ -13870,6 +14118,38 @@ func (c *mqlMicrosoft) GetRoles() *plugin.TValue[*mqlMicrosoftRoles] {
 		}
 
 		return c.roles()
+	})
+}
+
+func (c *mqlMicrosoft) GetExchangeRoleManagement() *plugin.TValue[*mqlMicrosoftExchangeRoleManagement] {
+	return plugin.GetOrCompute[*mqlMicrosoftExchangeRoleManagement](&c.ExchangeRoleManagement, func() (*mqlMicrosoftExchangeRoleManagement, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft", c.__id, "exchangeRoleManagement")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftExchangeRoleManagement), nil
+			}
+		}
+
+		return c.exchangeRoleManagement()
+	})
+}
+
+func (c *mqlMicrosoft) GetDefenderRoleManagement() *plugin.TValue[*mqlMicrosoftDefenderRoleManagement] {
+	return plugin.GetOrCompute[*mqlMicrosoftDefenderRoleManagement](&c.DefenderRoleManagement, func() (*mqlMicrosoftDefenderRoleManagement, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft", c.__id, "defenderRoleManagement")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftDefenderRoleManagement), nil
+			}
+		}
+
+		return c.defenderRoleManagement()
 	})
 }
 
@@ -24209,7 +24489,7 @@ func (c *mqlMicrosoftRolemanagement) GetRoleDefinitions() *plugin.TValue[*mqlMic
 type mqlMicrosoftRolemanagementRoledefinition struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
-	// optional: if you define mqlMicrosoftRolemanagementRoledefinitionInternal it will be used here
+	mqlMicrosoftRolemanagementRoledefinitionInternal
 	Id              plugin.TValue[string]
 	Description     plugin.TValue[string]
 	DisplayName     plugin.TValue[string]
@@ -24311,12 +24591,18 @@ type mqlMicrosoftRolemanagementRoleassignment struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlMicrosoftRolemanagementRoleassignmentInternal
-	Id             plugin.TValue[string]
-	RoleDefinition plugin.TValue[*mqlMicrosoftRolemanagementRoledefinition]
-	PrincipalId    plugin.TValue[string]
-	PrincipalType  plugin.TValue[string]
-	PrincipalName  plugin.TValue[string]
-	Principal      plugin.TValue[any]
+	Id               plugin.TValue[string]
+	RoleDefinition   plugin.TValue[*mqlMicrosoftRolemanagementRoledefinition]
+	PrincipalId      plugin.TValue[string]
+	PrincipalType    plugin.TValue[string]
+	PrincipalName    plugin.TValue[string]
+	Principal        plugin.TValue[any]
+	DirectoryScopeId plugin.TValue[string]
+	AppScopeId       plugin.TValue[string]
+	Condition        plugin.TValue[string]
+	User             plugin.TValue[*mqlMicrosoftUser]
+	Group            plugin.TValue[*mqlMicrosoftGroup]
+	ServicePrincipal plugin.TValue[*mqlMicrosoftServiceprincipal]
 }
 
 // createMicrosoftRolemanagementRoleassignment creates a new instance of this resource
@@ -24390,6 +24676,450 @@ func (c *mqlMicrosoftRolemanagementRoleassignment) GetPrincipalName() *plugin.TV
 
 func (c *mqlMicrosoftRolemanagementRoleassignment) GetPrincipal() *plugin.TValue[any] {
 	return &c.Principal
+}
+
+func (c *mqlMicrosoftRolemanagementRoleassignment) GetDirectoryScopeId() *plugin.TValue[string] {
+	return &c.DirectoryScopeId
+}
+
+func (c *mqlMicrosoftRolemanagementRoleassignment) GetAppScopeId() *plugin.TValue[string] {
+	return &c.AppScopeId
+}
+
+func (c *mqlMicrosoftRolemanagementRoleassignment) GetCondition() *plugin.TValue[string] {
+	return &c.Condition
+}
+
+func (c *mqlMicrosoftRolemanagementRoleassignment) GetUser() *plugin.TValue[*mqlMicrosoftUser] {
+	return plugin.GetOrCompute[*mqlMicrosoftUser](&c.User, func() (*mqlMicrosoftUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.rolemanagement.roleassignment", c.__id, "user")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftUser), nil
+			}
+		}
+
+		return c.user()
+	})
+}
+
+func (c *mqlMicrosoftRolemanagementRoleassignment) GetGroup() *plugin.TValue[*mqlMicrosoftGroup] {
+	return plugin.GetOrCompute[*mqlMicrosoftGroup](&c.Group, func() (*mqlMicrosoftGroup, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.rolemanagement.roleassignment", c.__id, "group")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftGroup), nil
+			}
+		}
+
+		return c.group()
+	})
+}
+
+func (c *mqlMicrosoftRolemanagementRoleassignment) GetServicePrincipal() *plugin.TValue[*mqlMicrosoftServiceprincipal] {
+	return plugin.GetOrCompute[*mqlMicrosoftServiceprincipal](&c.ServicePrincipal, func() (*mqlMicrosoftServiceprincipal, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.rolemanagement.roleassignment", c.__id, "servicePrincipal")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftServiceprincipal), nil
+			}
+		}
+
+		return c.servicePrincipal()
+	})
+}
+
+// mqlMicrosoftExchangeRoleManagement for the microsoft.exchangeRoleManagement resource
+type mqlMicrosoftExchangeRoleManagement struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftExchangeRoleManagementInternal
+	RoleDefinitions plugin.TValue[[]any]
+	RoleAssignments plugin.TValue[[]any]
+}
+
+// createMicrosoftExchangeRoleManagement creates a new instance of this resource
+func createMicrosoftExchangeRoleManagement(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftExchangeRoleManagement{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.exchangeRoleManagement", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftExchangeRoleManagement) MqlName() string {
+	return "microsoft.exchangeRoleManagement"
+}
+
+func (c *mqlMicrosoftExchangeRoleManagement) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftExchangeRoleManagement) GetRoleDefinitions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RoleDefinitions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.exchangeRoleManagement", c.__id, "roleDefinitions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.roleDefinitions()
+	})
+}
+
+func (c *mqlMicrosoftExchangeRoleManagement) GetRoleAssignments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RoleAssignments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.exchangeRoleManagement", c.__id, "roleAssignments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.roleAssignments()
+	})
+}
+
+// mqlMicrosoftDefenderRoleManagement for the microsoft.defenderRoleManagement resource
+type mqlMicrosoftDefenderRoleManagement struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftDefenderRoleManagementInternal
+	RoleDefinitions plugin.TValue[[]any]
+	RoleAssignments plugin.TValue[[]any]
+}
+
+// createMicrosoftDefenderRoleManagement creates a new instance of this resource
+func createMicrosoftDefenderRoleManagement(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftDefenderRoleManagement{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+		res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.defenderRoleManagement", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftDefenderRoleManagement) MqlName() string {
+	return "microsoft.defenderRoleManagement"
+}
+
+func (c *mqlMicrosoftDefenderRoleManagement) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftDefenderRoleManagement) GetRoleDefinitions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RoleDefinitions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.defenderRoleManagement", c.__id, "roleDefinitions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.roleDefinitions()
+	})
+}
+
+func (c *mqlMicrosoftDefenderRoleManagement) GetRoleAssignments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.RoleAssignments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.defenderRoleManagement", c.__id, "roleAssignments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.roleAssignments()
+	})
+}
+
+// mqlMicrosoftDefenderRoleManagementRoleDefinition for the microsoft.defenderRoleManagement.roleDefinition resource
+type mqlMicrosoftDefenderRoleManagementRoleDefinition struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftDefenderRoleManagementRoleDefinitionInternal it will be used here
+	Id              plugin.TValue[string]
+	DisplayName     plugin.TValue[string]
+	Description     plugin.TValue[string]
+	IsBuiltIn       plugin.TValue[bool]
+	IsEnabled       plugin.TValue[bool]
+	RolePermissions plugin.TValue[[]any]
+	Version         plugin.TValue[string]
+	Assignments     plugin.TValue[[]any]
+}
+
+// createMicrosoftDefenderRoleManagementRoleDefinition creates a new instance of this resource
+func createMicrosoftDefenderRoleManagementRoleDefinition(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftDefenderRoleManagementRoleDefinition{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.defenderRoleManagement.roleDefinition", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleDefinition) MqlName() string {
+	return "microsoft.defenderRoleManagement.roleDefinition"
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleDefinition) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleDefinition) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleDefinition) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleDefinition) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleDefinition) GetIsBuiltIn() *plugin.TValue[bool] {
+	return &c.IsBuiltIn
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleDefinition) GetIsEnabled() *plugin.TValue[bool] {
+	return &c.IsEnabled
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleDefinition) GetRolePermissions() *plugin.TValue[[]any] {
+	return &c.RolePermissions
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleDefinition) GetVersion() *plugin.TValue[string] {
+	return &c.Version
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleDefinition) GetAssignments() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Assignments, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.defenderRoleManagement.roleDefinition", c.__id, "assignments")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.assignments()
+	})
+}
+
+// mqlMicrosoftDefenderRoleManagementRoleAssignment for the microsoft.defenderRoleManagement.roleAssignment resource
+type mqlMicrosoftDefenderRoleManagementRoleAssignment struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftDefenderRoleManagementRoleAssignmentInternal
+	Id                plugin.TValue[string]
+	DisplayName       plugin.TValue[string]
+	Description       plugin.TValue[string]
+	RoleDefinition    plugin.TValue[*mqlMicrosoftDefenderRoleManagementRoleDefinition]
+	DirectoryScopeIds plugin.TValue[[]any]
+	AppScopeIds       plugin.TValue[[]any]
+	Condition         plugin.TValue[string]
+	Users             plugin.TValue[[]any]
+	Groups            plugin.TValue[[]any]
+	ServicePrincipals plugin.TValue[[]any]
+}
+
+// createMicrosoftDefenderRoleManagementRoleAssignment creates a new instance of this resource
+func createMicrosoftDefenderRoleManagementRoleAssignment(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftDefenderRoleManagementRoleAssignment{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.defenderRoleManagement.roleAssignment", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleAssignment) MqlName() string {
+	return "microsoft.defenderRoleManagement.roleAssignment"
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleAssignment) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleAssignment) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleAssignment) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleAssignment) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleAssignment) GetRoleDefinition() *plugin.TValue[*mqlMicrosoftDefenderRoleManagementRoleDefinition] {
+	return plugin.GetOrCompute[*mqlMicrosoftDefenderRoleManagementRoleDefinition](&c.RoleDefinition, func() (*mqlMicrosoftDefenderRoleManagementRoleDefinition, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.defenderRoleManagement.roleAssignment", c.__id, "roleDefinition")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftDefenderRoleManagementRoleDefinition), nil
+			}
+		}
+
+		return c.roleDefinition()
+	})
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleAssignment) GetDirectoryScopeIds() *plugin.TValue[[]any] {
+	return &c.DirectoryScopeIds
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleAssignment) GetAppScopeIds() *plugin.TValue[[]any] {
+	return &c.AppScopeIds
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleAssignment) GetCondition() *plugin.TValue[string] {
+	return &c.Condition
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleAssignment) GetUsers() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Users, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.defenderRoleManagement.roleAssignment", c.__id, "users")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.users()
+	})
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleAssignment) GetGroups() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Groups, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.defenderRoleManagement.roleAssignment", c.__id, "groups")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.groups()
+	})
+}
+
+func (c *mqlMicrosoftDefenderRoleManagementRoleAssignment) GetServicePrincipals() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ServicePrincipals, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.defenderRoleManagement.roleAssignment", c.__id, "servicePrincipals")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.servicePrincipals()
+	})
 }
 
 // mqlMicrosoftDevicemanagement for the microsoft.devicemanagement resource

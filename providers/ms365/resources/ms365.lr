@@ -42,6 +42,10 @@ microsoft @root {
   oauth2PermissionGrants() []microsoft.oauth2PermissionGrant
   // List of roles
   roles() microsoft.roles
+  // Exchange Online role-based access control
+  exchangeRoleManagement() @maturity("preview") microsoft.exchangeRoleManagement
+  // Microsoft Defender XDR unified role-based access control
+  defenderRoleManagement() @maturity("preview") microsoft.defenderRoleManagement
   // Tenant-wide settings
   //
   // Deprecated in favor of `groupSettings`.
@@ -3276,8 +3280,10 @@ private microsoft.rolemanagement.roleassignment @defaults("id principalId") {
   // Principal type
   //
   // Short directory type of the assigned principal, derived from its
-  // `@odata.type`, typically `user`, `group`, or `servicePrincipal`. Empty
-  // when the API does not return the principal type. Use it to scope
+  // `@odata.type`, typically `user`, `group`, or `servicePrincipal`. Exchange
+  // Online assignments may also hold a `roleGroup` or `roleAssignmentPolicy`,
+  // with principalName set to its name. Empty when the API does not return
+  // the principal type. Use it to scope
   // privileged-role audits, e.g. flag direct `user` assignments to
   // Global Administrator.
   principalType string
@@ -3294,6 +3300,111 @@ private microsoft.rolemanagement.roleassignment @defaults("id principalId") {
   // soft-deleted, null for active principals). See principalType and
   // principalName for the resolved type and display name.
   principal dict
+  // Directory scope of the assignment
+  //
+  // The directory object the assignment is scoped to: `/` for the whole
+  // tenant, or a path such as `/administrativeUnits/<id>`. Empty when the
+  // assignment is scoped through appScopeId instead.
+  directoryScopeId string
+  // Application scope of the assignment
+  //
+  // The application-specific scope the assignment applies to, such as an
+  // Exchange management scope. `/` covers the whole application. Empty when
+  // the assignment is scoped through directoryScopeId instead.
+  appScopeId string
+  // Condition that limits the assignment, empty when none applies
+  condition string
+  // Assigned user, null when the principal is not a user
+  user() microsoft.user
+  // Assigned group, null when the principal is not a group
+  group() microsoft.group
+  // Assigned service principal, null when the principal is not a service principal
+  servicePrincipal() microsoft.serviceprincipal
+}
+
+// Exchange Online role-based access control
+//
+// Exchange Online management roles and their assignments, read from the
+// Exchange provider of Microsoft Entra unified role management.
+// `roleDefinitions` lists the built-in and custom management roles; for these
+// roles `allowedResourceActions` lists the cmdlets and parameters each role
+// grants. `roleAssignments` lists which role groups, role assignment
+// policies, users, groups, and service principals hold each role and at what
+// scope, with principalType telling them apart. Use it to audit who can
+// manage mailboxes, transport rules, or organization settings, for example
+// `microsoft.exchangeRoleManagement.roleAssignments.where(principalName == "Organization Management")`.
+microsoft.exchangeRoleManagement @maturity("preview") {
+  // Exchange Online role definitions
+  roleDefinitions() []microsoft.rolemanagement.roledefinition
+  // Exchange Online role assignments
+  roleAssignments() []microsoft.rolemanagement.roleassignment
+}
+
+// Microsoft Defender XDR unified role-based access control
+//
+// Custom roles and assignments defined in Microsoft Defender XDR unified
+// RBAC. `roleDefinitions` lists the roles with the Defender permissions each
+// grants, and `roleAssignments` lists which users and groups hold each role
+// and over which data sources and device groups. Use it to audit who can
+// respond to incidents, run live response, or manage security settings.
+microsoft.defenderRoleManagement @maturity("preview") {
+  // Defender role definitions
+  roleDefinitions() []microsoft.defenderRoleManagement.roleDefinition
+  // Defender role assignments
+  roleAssignments() []microsoft.defenderRoleManagement.roleAssignment
+}
+
+// Microsoft Defender XDR role definition
+private microsoft.defenderRoleManagement.roleDefinition @defaults("id displayName") {
+  // Role definition ID
+  id string
+  // Role definition display name
+  displayName string
+  // Role definition description
+  description string
+  // Whether the role is built in
+  isBuiltIn bool
+  // Whether the role is enabled
+  isEnabled bool
+  // Role definition permissions
+  //
+  // One entry per permission set granted by the role. Each dict carries
+  // `allowedResourceActions` (list of Defender resource actions the role
+  // grants), `excludedResourceActions` (list of actions explicitly withheld), and
+  // `condition` (a scoping condition string, empty when none applies).
+  rolePermissions []dict
+  // Role definition version
+  version string
+  // Assignments of this role
+  assignments() []microsoft.defenderRoleManagement.roleAssignment
+}
+
+// Microsoft Defender XDR role assignment
+private microsoft.defenderRoleManagement.roleAssignment @defaults("id displayName") {
+  // Role assignment ID
+  id string
+  // Role assignment display name
+  displayName string
+  // Role assignment description
+  description string
+  // Role definition assigned
+  roleDefinition() microsoft.defenderRoleManagement.roleDefinition
+  // Directory scopes of the assignment
+  //
+  // Directory objects the assignment is scoped to, `/` for the whole tenant.
+  directoryScopeIds []string
+  // Application scopes of the assignment
+  //
+  // Defender scopes the assignment covers, `/` for every scope.
+  appScopeIds []string
+  // Condition that limits the assignment, empty when none applies
+  condition string
+  // Assigned users
+  users() []microsoft.user
+  // Assigned groups
+  groups() []microsoft.group
+  // Assigned service principals
+  servicePrincipals() []microsoft.serviceprincipal
 }
 
 // Microsoft Intune Device Management

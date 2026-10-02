@@ -141,6 +141,14 @@ func newUnifiedRolePermissions(p []models.UnifiedRolePermissionable) []UnifiedRo
 	return res
 }
 
+// rolePermissionSource is the part of a unified role permission both the v1
+// and the beta SDK model, so one conversion serves every RBAC provider.
+type rolePermissionSource interface {
+	GetAllowedResourceActions() []string
+	GetCondition() *string
+	GetExcludedResourceActions() []string
+}
+
 func newPrivacyProfile(p models.PrivacyProfileable) PrivacyProfileable {
 	return PrivacyProfileable{
 		ContactEmail: convert.ToValue(p.GetContactEmail()),
@@ -148,7 +156,7 @@ func newPrivacyProfile(p models.PrivacyProfileable) PrivacyProfileable {
 	}
 }
 
-func newUnifiedRolePermission(p models.UnifiedRolePermissionable) UnifiedRolePermission {
+func newUnifiedRolePermission(p rolePermissionSource) UnifiedRolePermission {
 	return UnifiedRolePermission{
 		AllowedResourceActions:  p.GetAllowedResourceActions(),
 		Condition:               convert.ToValue(p.GetCondition()),

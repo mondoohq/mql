@@ -188,6 +188,17 @@ func (m *mqlMicrosoftRolemanagementRoleassignment) id() (string, error) {
 
 type mqlMicrosoftRolemanagementRoleassignmentInternal struct {
 	cacheRoleDefinitionID string
+	// rbacProvider is the unified RBAC provider the assignment was read from;
+	// empty for the directory provider.
+	rbacProvider string
+}
+
+// mqlMicrosoftRolemanagementRoledefinitionInternal records which unified RBAC
+// provider a role definition was read from, so its assignments are listed from
+// the same provider.
+type mqlMicrosoftRolemanagementRoledefinitionInternal struct {
+	// rbacProvider is empty for the directory provider.
+	rbacProvider string
 }
 
 // roleDefinition resolves the role definition this assignment grants.
@@ -196,6 +207,16 @@ func (m *mqlMicrosoftRolemanagementRoleassignment) roleDefinition() (*mqlMicroso
 	if id == "" {
 		m.RoleDefinition.State = plugin.StateIsSet | plugin.StateIsNull
 		return nil, nil
+	}
+	if m.rbacProvider == rbacProviderExchange {
+		def, err := exchangeRoleDefinitionByID(m.MqlRuntime, id)
+		if err != nil {
+			return nil, err
+		}
+		if def == nil {
+			m.RoleDefinition.State = plugin.StateIsSet | plugin.StateIsNull
+		}
+		return def, nil
 	}
 	res, err := NewResource(m.MqlRuntime, "microsoft.rolemanagement.roledefinition", map[string]*llx.RawData{
 		"id": llx.StringData(id),
@@ -217,6 +238,9 @@ func (a *mqlMicrosoftRolemanagement) roleDefinitions() (*mqlMicrosoftRoles, erro
 }
 
 func (a *mqlMicrosoftRolemanagementRoledefinition) assignments() ([]any, error) {
+	if a.rbacProvider == rbacProviderExchange {
+		return exchangeRoleAssignmentsForDefinition(a.MqlRuntime, a.Id.Data)
+	}
 	conn := a.MqlRuntime.Connection.(*connection.Ms365Connection)
 	graphClient, err := conn.GraphClient()
 	if err != nil {
@@ -239,11 +263,14 @@ func (a *mqlMicrosoftRolemanagementRoledefinition) assignments() ([]any, error) 
 		principalType, principalName := directoryPrincipalInfo(directoryPrincipal)
 		mqlResource, err := CreateResource(a.MqlRuntime, "microsoft.rolemanagement.roleassignment",
 			map[string]*llx.RawData{
-				"id":            llx.StringDataPtr(roleAssignment.GetId()),
-				"principalId":   llx.StringDataPtr(roleAssignment.GetPrincipalId()),
-				"principalType": llx.StringData(principalType),
-				"principalName": llx.StringData(principalName),
-				"principal":     llx.DictData(principal),
+				"id":               llx.StringDataPtr(roleAssignment.GetId()),
+				"principalId":      llx.StringDataPtr(roleAssignment.GetPrincipalId()),
+				"principalType":    llx.StringData(principalType),
+				"principalName":    llx.StringData(principalName),
+				"principal":        llx.DictData(principal),
+				"directoryScopeId": llx.StringDataPtr(roleAssignment.GetDirectoryScopeId()),
+				"appScopeId":       llx.StringDataPtr(roleAssignment.GetAppScopeId()),
+				"condition":        llx.StringDataPtr(roleAssignment.GetCondition()),
 			})
 		if err != nil {
 			return nil, err
@@ -364,4 +391,55 @@ func fetchDirectoryObjectsByIds(ctx context.Context, graphClient *msgraphsdkgo.G
 		}
 	}
 	return res, nil
+}
+
+// assignedPrincipal resolves the assignment's principal as resource when its
+// directory type is principalType, and reports false otherwise.
+func (m *mqlMicrosoftRolemanagementRoleassignment) assignedPrincipal(principalType string, resource string) (plugin.Resource, bool, error) {
+	if m.PrincipalType.Data != principalType || m.PrincipalId.Data == "" {
+		return nil, false, nil
+	}
+	res, err := NewResource(m.MqlRuntime, resource, map[string]*llx.RawData{
+		"id": llx.StringData(m.PrincipalId.Data),
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return res, true, nil
+}
+
+func (m *mqlMicrosoftRolemanagementRoleassignment) user() (*mqlMicrosoftUser, error) {
+	res, ok, err := m.assignedPrincipal("user", ResourceMicrosoftUser)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		m.User.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res.(*mqlMicrosoftUser), nil
+}
+
+func (m *mqlMicrosoftRolemanagementRoleassignment) group() (*mqlMicrosoftGroup, error) {
+	res, ok, err := m.assignedPrincipal("group", ResourceMicrosoftGroup)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		m.Group.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res.(*mqlMicrosoftGroup), nil
+}
+
+func (m *mqlMicrosoftRolemanagementRoleassignment) servicePrincipal() (*mqlMicrosoftServiceprincipal, error) {
+	res, ok, err := m.assignedPrincipal("servicePrincipal", ResourceMicrosoftServiceprincipal)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		m.ServicePrincipal.State = plugin.StateIsSet | plugin.StateIsNull
+		return nil, nil
+	}
+	return res.(*mqlMicrosoftServiceprincipal), nil
 }
