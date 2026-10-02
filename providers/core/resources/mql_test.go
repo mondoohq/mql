@@ -1381,6 +1381,10 @@ func TestIP(t *testing.T) {
 			{Code: "[[1, 2]] == [[1, 2]]", Expectation: true},
 			{Code: "[[1, 2]] != [[2, 1]]", Expectation: true},
 			{Code: "[{a: 1}, {a: 2}] - [{a: 1}]", Expectation: []any{map[string]any{"a": int64(2)}}},
+			{Code: "[{a: 1}, {a: 2}].containsAll([{a: 1}])", ResultIndex: 1, Expectation: true},
+			{Code: "[{a: 1}, {a: 2}].containsNone([{a: 1}])", ResultIndex: 1, Expectation: false},
+			{Code: "[[1], [2]].containsAll([[3]])", ResultIndex: 1, Expectation: false},
+			{Code: "[[1], [2]].containsNone([[3]])", ResultIndex: 1, Expectation: true},
 		})
 	})
 
