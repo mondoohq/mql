@@ -378,6 +378,9 @@ func resolveTruststorePaths(conn shared.Connection, candidates []string) map[str
 	if !conn.Capabilities().Has(shared.Capability_RunCommand) {
 		return real
 	}
+	// Candidate names include directory entries read from the target (the
+	// JVM directories under each javaHomeRoots entry), so every name is
+	// shell-quoted rather than trusted.
 	var script strings.Builder
 	script.WriteString("for p in")
 	for _, p := range candidates {
