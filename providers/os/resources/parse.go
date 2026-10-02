@@ -510,7 +510,7 @@ func (a *mqlParseOpenpgp) content(file plugin.Resource) (string, error) {
 	}
 	// file.content is null only for a file that does not exist
 	if res.IsNull() {
-		return "", llx.NotFound(errors.New("parse.openpgp: " + f.Path.Data + " does not exist"))
+		return "", llx.NotFound(fmt.Errorf("parse.openpgp: %s does not exist", f.Path.Data))
 	}
 	return res.Data, nil
 }

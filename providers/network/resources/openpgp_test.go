@@ -43,6 +43,16 @@ func TestReadKeyRingReadsEveryArmoredBlock(t *testing.T) {
 	assert.Equal(t, rhelReleaseFingerprints, fingerprints(entities))
 }
 
+func TestReadKeyRingIgnoresMarkerTextBetweenBlocks(t *testing.T) {
+	asc := readOpenpgpTestdata(t, "rhel9-redhat-release.asc")
+	end := strings.Index(asc, "-----END PGP PUBLIC KEY BLOCK-----") + len("-----END PGP PUBLIC KEY BLOCK-----\n")
+	content := asc[:end] + "\nThe next key starts at -----BEGIN PGP PUBLIC KEY BLOCK----- below.\n-----BEGIN PGP stray\n" + asc[end:]
+
+	entities, err := readKeyRing(content)
+	require.NoError(t, err)
+	assert.Equal(t, rhelReleaseFingerprints, fingerprints(entities))
+}
+
 func TestReadKeyRingReadsBinaryKeyring(t *testing.T) {
 	entities, err := readKeyRing(readOpenpgpTestdata(t, "rhel9-redhat-release.gpg"))
 	require.NoError(t, err)
