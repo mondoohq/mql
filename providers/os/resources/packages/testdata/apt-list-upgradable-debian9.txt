@@ -1,0 +1,9 @@
+Listing...
+g03-bin/unknown 1.0-1+b2 amd64 [upgradable from: 1.0-1+b1]
+g03-epoch/unknown 1:2.0-1 amd64 [upgradable from: 1:1.0-1]
+g03-epochbump/unknown 1:0.9-1 amd64 [upgradable from: 2.0-1]
+g03-hold/unknown 2.0-1 amd64 [upgradable from: 1.0-1]
+g03-keptback/unknown 2.0-1 amd64 [upgradable from: 1.0-1]
+g03-ma/unknown 2.0-1 i386 [upgradable from: 1.0-1]
+g03-plain/unknown 2.0-1 all [upgradable from: 1.0-1]
+g03-tilde/unknown 1.0-1 amd64 [upgradable from: 1.0~rc1-1]

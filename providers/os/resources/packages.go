@@ -251,7 +251,7 @@ func (p *mqlPackage) available() (string, error) {
 	if p.updates == nil {
 		return "", nil
 	}
-	return p.updates.lookup(p.Name.Data, p.Arch.Data), nil
+	return p.updates.lookup(p.Name.Data, p.Arch.Data)
 }
 
 func (p *mqlPackage) outdated() (bool, error) {
@@ -342,14 +342,27 @@ type pkgUpdates struct {
 	once sync.Once
 	// byNameArch maps "<name>/<arch>" to the available version.
 	byNameArch map[string]string
+	// err is why the manager could not report its updates.
+	err error
 }
 
 func (u *pkgUpdates) load() {
 	available, err := u.pm.Available()
 	if err != nil {
-		// As before the check was deferred: a manager that cannot report
-		// updates reports no newer version.
-		log.Debug().Err(err).Str("manager", u.pm.Name()).Msg("mql[packages]> could not retrieve available updates")
+		// A manager that has no update check (pacman, macOS, COS) reports no
+		// newer version, as it always has.
+		if !errors.Is(err, packages.ErrUpdateCheckFailed) {
+			log.Debug().Err(err).Str("manager", u.pm.Name()).Msg("mql[packages]> could not retrieve available updates")
+			return
+		}
+		// A check that ran and failed knows nothing about pending updates.
+		// v13 reported no newer version for every package, which a policy
+		// reads as "everything is patched".
+		if !plugin.StructuredErrors() {
+			log.Warn().Err(err).Str("manager", u.pm.Name()).Msg("mql[packages]> could not retrieve available updates, packages report no newer version")
+			return
+		}
+		u.err = err
 		return
 	}
 	u.byNameArch = make(map[string]string, len(available))
@@ -360,9 +373,12 @@ func (u *pkgUpdates) load() {
 
 // lookup returns the newer version the package manager offers for a package,
 // "" when there is none.
-func (u *pkgUpdates) lookup(name, arch string) string {
+func (u *pkgUpdates) lookup(name, arch string) (string, error) {
 	u.once.Do(u.load)
-	return u.byNameArch[name+"/"+arch]
+	if u.err != nil {
+		return "", u.err
+	}
+	return u.byNameArch[name+"/"+arch], nil
 }
 
 // fillPackageArgs resets args and fills in the resource arguments for one

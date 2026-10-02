@@ -6,6 +6,7 @@ package resources
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -140,6 +141,13 @@ func (f *fakeUpdatesPkgManager) Available() (map[string]packages.PackageUpdate, 
 	return f.updates, f.err
 }
 
+func lookupOK(t *testing.T, u *pkgUpdates, name, arch string) string {
+	t.Helper()
+	v, err := u.lookup(name, arch)
+	require.NoError(t, err)
+	return v
+}
+
 func TestPkgUpdatesLookup(t *testing.T) {
 	t.Run("joins on name and arch", func(t *testing.T) {
 		pm := &fakeUpdatesPkgManager{updates: map[string]packages.PackageUpdate{
@@ -147,18 +155,42 @@ func TestPkgUpdatesLookup(t *testing.T) {
 		}}
 		u := &pkgUpdates{pm: pm}
 
-		assert.Equal(t, "2.39-0ubuntu8.9", u.lookup("libc6", "amd64"))
-		assert.Equal(t, "", u.lookup("libc6", "i386"), "an update for another arch is not this package's update")
+		assert.Equal(t, "2.39-0ubuntu8.9", lookupOK(t, u, "libc6", "amd64"))
+		assert.Equal(t, "", lookupOK(t, u, "libc6", "i386"), "an update for another arch is not this package's update")
 		assert.Equal(t, 1, pm.calls)
 	})
 
 	// Managers with no update support (pacman, macOS, COS) return an error.
 	// They keep reporting no newer version, as they did before.
 	t.Run("a manager that cannot report updates reports no newer version", func(t *testing.T) {
-		pm := &fakeUpdatesPkgManager{err: errors.New("Available() not implemented for pacman")}
+		for _, structured := range []bool{false, true} {
+			withStructuredErrors(t, structured)
+			pm := &fakeUpdatesPkgManager{err: errors.New("Available() not implemented for pacman")}
+			u := &pkgUpdates{pm: pm}
+			assert.Equal(t, "", lookupOK(t, u, "bash", "x86_64"))
+			assert.Equal(t, "", lookupOK(t, u, "openssl", "x86_64"))
+			assert.Equal(t, 1, pm.calls, "a failed check is not retried per package")
+		}
+	})
+
+	// dnf check-update exits 1 as non-root on RHEL 8 to 10 (the RHUI client
+	// certificate is unreadable) and whenever a repository fails. Nothing is
+	// known about pending updates then.
+	t.Run("a failed update check is an error", func(t *testing.T) {
+		failed := fmt.Errorf("%w: check-update exited with status 1", packages.ErrUpdateCheckFailed)
+
+		withStructuredErrors(t, true)
+		pm := &fakeUpdatesPkgManager{err: failed}
 		u := &pkgUpdates{pm: pm}
-		assert.Equal(t, "", u.lookup("bash", "x86_64"))
-		assert.Equal(t, "", u.lookup("openssl", "x86_64"))
+		_, err := u.lookup("bash", "x86_64")
+		require.ErrorIs(t, err, packages.ErrUpdateCheckFailed)
+		_, err = u.lookup("openssl", "x86_64")
+		require.ErrorIs(t, err, packages.ErrUpdateCheckFailed)
 		assert.Equal(t, 1, pm.calls, "a failed check is not retried per package")
+
+		// v13 behavior without the StructuredErrors feature
+		withStructuredErrors(t, false)
+		u = &pkgUpdates{pm: &fakeUpdatesPkgManager{err: failed}}
+		assert.Equal(t, "", lookupOK(t, u, "bash", "x86_64"))
 	})
 }

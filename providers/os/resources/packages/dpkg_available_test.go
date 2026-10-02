@@ -113,20 +113,33 @@ func TestMergeDebUpdatesUbuntu1604(t *testing.T) {
 // aptHostConn answers the commands DebPkgManager.Available runs.
 type aptHostConn struct {
 	shared.Connection
-	listOut  string
-	listExit int
-	dryOut   string
+	listOut    string
+	listExit   int
+	dryOut     string
+	dryExit    int
+	policyOut  string
+	policyExit int
+	noCommands bool
+}
+
+func (c *aptHostConn) Capabilities() shared.Capabilities {
+	if c.noCommands {
+		return shared.Capability_File
+	}
+	return c.Connection.Capabilities()
 }
 
 func (c *aptHostConn) RunCommand(command string) (*shared.Command, error) {
 	out := func(s string, exit int) (*shared.Command, error) {
 		return &shared.Command{Command: command, Stdout: bytes.NewBufferString(s), Stderr: &bytes.Buffer{}, ExitStatus: exit}, nil
 	}
-	switch {
-	case command == aptListUpgradableCmd:
+	switch command {
+	case aptListUpgradableCmd:
 		return out(c.listOut, c.listExit)
-	case strings.Contains(command, "upgrade --dry-run"):
-		return out(c.dryOut, 0)
+	case aptUpgradeDryRunCmd:
+		return out(c.dryOut, c.dryExit)
+	case aptPolicyCmd:
+		return out(c.policyOut, c.policyExit)
 	}
 	return out("", 0)
 }
@@ -155,4 +168,100 @@ func TestDebAvailableUsesAptList(t *testing.T) {
 	got = byNameArch(m)
 	assert.Len(t, got, 12)
 	assert.NotContains(t, got, "g03-hold/all")
+}
+
+func readTestdata(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile("./testdata/" + name)
+	require.NoError(t, err)
+	return string(b)
+}
+
+// apt 1.4 (Debian 9) prints g03-ma, installed for amd64 and i386, once in
+// apt list. The simulated upgrade names both architectures, apt list alone
+// names the held and kept-back packages.
+func TestMergeDebUpdatesDebian9(t *testing.T) {
+	list := parseFile(t, "./testdata/apt-list-upgradable-debian9.txt", aptList)
+	dry := parseFile(t, "./testdata/apt-upgrade-dry-run-debian9.txt", aptDryRun)
+
+	_, inList := list["g03-ma/amd64"]
+	require.False(t, inList, "apt 1.4 collapses the multi-arch package")
+
+	m := byNameArch(mergeDebUpdates(list, dry))
+	assert.Equal(t, "2.0-1", m["g03-ma/amd64"].Available)
+	assert.Equal(t, "2.0-1", m["g03-ma/i386"].Available)
+	assert.Equal(t, "2.0-1", m["g03-hold/amd64"].Available)
+	assert.Equal(t, "2.0-1", m["g03-keptback/amd64"].Available)
+	assert.Equal(t, "1:0.9-1", m["g03-epochbump/amd64"].Available)
+	assert.Len(t, m, 9)
+}
+
+func TestAptHasPackageIndexes(t *testing.T) {
+	ok, err := AptHasPackageIndexes(strings.NewReader(readTestdata(t, "apt-cache-policy-debian9.txt")))
+	require.NoError(t, err)
+	assert.True(t, ok)
+
+	// A stock Debian 12 image before its first `apt-get update`.
+	ok, err = AptHasPackageIndexes(strings.NewReader(readTestdata(t, "apt-cache-policy-debian12-empty-lists.txt")))
+	require.NoError(t, err)
+	assert.False(t, ok, "dpkg's status file is not a package index")
+}
+
+func TestDebAvailableFailedCheck(t *testing.T) {
+	base, err := mock.New(0, &inventory.Asset{})
+	require.NoError(t, err)
+
+	const nothingListed = "Listing...\n"
+	const nothingToUpgrade = "Reading package lists...\nBuilding dependency tree...\nReading state information...\nCalculating upgrade...\n0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.\n"
+	indexes := readTestdata(t, "apt-cache-policy-debian9.txt")
+	noIndexes := readTestdata(t, "apt-cache-policy-debian12-empty-lists.txt")
+
+	// Non-root on a stock image: apt-get update fails on the lock, both
+	// sources succeed and report nothing.
+	t.Run("no package indexes is a failed check", func(t *testing.T) {
+		pm := &DebPkgManager{conn: &aptHostConn{Connection: base, listOut: nothingListed, dryOut: nothingToUpgrade, policyOut: noIndexes}}
+		_, err := pm.Available()
+		require.ErrorIs(t, err, ErrUpdateCheckFailed)
+		assert.Contains(t, err.Error(), "no package indexes")
+	})
+
+	t.Run("nothing pending with indexes is no updates", func(t *testing.T) {
+		pm := &DebPkgManager{conn: &aptHostConn{Connection: base, listOut: nothingListed, dryOut: nothingToUpgrade, policyOut: indexes}}
+		m, err := pm.Available()
+		require.NoError(t, err)
+		assert.Empty(t, m)
+	})
+
+	t.Run("an unreadable policy is a failed check", func(t *testing.T) {
+		pm := &DebPkgManager{conn: &aptHostConn{Connection: base, listOut: nothingListed, dryOut: nothingToUpgrade, policyExit: 100}}
+		_, err := pm.Available()
+		require.ErrorIs(t, err, ErrUpdateCheckFailed)
+	})
+
+	t.Run("both sources exiting non-zero is a failed check", func(t *testing.T) {
+		pm := &DebPkgManager{conn: &aptHostConn{Connection: base, listExit: 100, dryOut: nothingToUpgrade, dryExit: 100, policyOut: indexes}}
+		_, err := pm.Available()
+		require.ErrorIs(t, err, ErrUpdateCheckFailed)
+	})
+
+	t.Run("a failed simulated upgrade leaves apt list's answer", func(t *testing.T) {
+		pm := &DebPkgManager{conn: &aptHostConn{Connection: base, listOut: readTestdata(t, "apt-list-upgradable-debian9.txt"), dryExit: 100, policyOut: indexes}}
+		m, err := pm.Available()
+		require.NoError(t, err)
+		assert.Len(t, m, 8)
+	})
+
+	t.Run("no apt is no update check", func(t *testing.T) {
+		pm := &DebPkgManager{conn: &aptHostConn{Connection: base, listExit: 127, dryExit: 127}}
+		_, err := pm.Available()
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrUpdateCheckFailed)
+	})
+
+	t.Run("a connection without commands has no update check", func(t *testing.T) {
+		pm := &DebPkgManager{conn: &aptHostConn{Connection: base, noCommands: true}}
+		_, err := pm.Available()
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrUpdateCheckFailed)
+	})
 }

@@ -1,0 +1,4 @@
+Package files:
+ 100 /var/lib/dpkg/status
+     release a=now
+Pinned packages:

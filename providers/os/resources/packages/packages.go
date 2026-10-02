@@ -151,6 +151,12 @@ type PackageUpdate struct {
 	Repo      string `json:"repo"`
 }
 
+// ErrUpdateCheckFailed marks an Available error from a package manager that
+// supports update checks and failed one: the check ran and did not finish,
+// so nothing is known about pending updates. It is not returned by managers
+// that have no update check at all.
+var ErrUpdateCheckFailed = errors.New("could not check for package updates")
+
 type OperatingSystemPkgManager interface {
 	Name() string
 	// List returns a list of Packages
