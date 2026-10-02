@@ -238,8 +238,29 @@ func sessionFrame(m sessionMarkers, fileTag string, script sessionScript) string
 		"[Console]::Error.Write([char]13 + [char]10 + '" + errEnd + "' + [char]13 + [char]10); [Console]::Error.Flush() }"
 }
 
-// sessionSetup runs once when a session starts.
-const sessionSetup = "$global:__mqlHome = (Get-Location).Path; $ProgressPreference = 'SilentlyContinue'"
+// sessionSetup runs once when a session starts. It also points the
+// process's stdin handle at NUL (sessionDetachStdin).
+const sessionSetup = "$global:__mqlHome = (Get-Location).Path; $ProgressPreference = 'SilentlyContinue'; " + sessionDetachStdin
+
+// sessionDetachStdin points the session's stdin handle at NUL once
+// PowerShell reads its statements. A native command inherits the stdin
+// handle, and the session's stdin carries the frames: a command that reads
+// stdin (sort.exe, findstr.exe, set /p) would block until the session ends
+// and swallow the frames after it. As its own process over SSH such a
+// command reads end-of-file instead, and with NUL it does in the session too.
+// PowerShell keeps reading from the handle it opened at start. The P/Invoke
+// methods are emitted at runtime, since Add-Type would start csc.exe. When
+// this fails, the session runs as before. It runs in a child scope, so its
+// variables do not outlive it.
+const sessionDetachStdin = "try { & { $ErrorActionPreference = 'Stop'; " +
+	"$t = [AppDomain]::CurrentDomain.DefineDynamicAssembly((New-Object Reflection.AssemblyName 'mqlstdin'), 'Run').DefineDynamicModule('m').DefineType('MqlStdin', 'Public,Class'); " +
+	"foreach ($d in @(@('SetStdHandle', [bool], @([int], [IntPtr])), @('CreateFileW', [IntPtr], @([string], [uint32], [uint32], [IntPtr], [uint32], [uint32], [IntPtr])), @('SetHandleInformation', [bool], @([IntPtr], [uint32], [uint32])))) { " +
+	"$t.DefinePInvokeMethod($d[0], 'kernel32.dll', 'Public,Static,PinvokeImpl', 'Standard', $d[1], [Type[]]$d[2], 'Winapi', 'Unicode').SetImplementationFlags('PreserveSig') }; " +
+	"$t = $t.CreateType(); " +
+	// GENERIC_READ, FILE_SHARE_READ|WRITE, OPEN_EXISTING; then inheritable
+	"$h = $t::CreateFileW('NUL', [uint32]2147483648, 3, [IntPtr]::Zero, 3, 0, [IntPtr]::Zero); " +
+	"if ($h -ne [IntPtr](-1) -and $t::SetHandleInformation($h, 1, 1)) { [void]$t::SetStdHandle(-10, $h) } " +
+	"} } catch { }"
 
 // psSession is one long-lived powershell.exe.
 type psSession struct {
