@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers/os/resources/ovs"
 )
 
@@ -161,4 +162,35 @@ func TestParseVersion(t *testing.T) {
 	assert.Equal(t, "3.3.0", ovs.ParseVersion("ovs-vsctl (Open vSwitch) 3.3.0\nDB Schema 8.5.0\n"))
 	assert.Empty(t, ovs.ParseVersion(""))
 	assert.Empty(t, ovs.ParseVersion("\n  \n"))
+}
+
+func TestVsctlFailure(t *testing.T) {
+	// ovs-vsctl run as a user that cannot open the database socket, captured
+	// on Ubuntu 16.04 through 24.04 with Open vSwitch running
+	err := ovs.VsctlFailure(1, "ovs-vsctl: unix:/var/run/openvswitch/db.sock: database connection failed (Permission denied)\n")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, llx.ErrForbidden)
+	assert.Contains(t, err.Error(), "database connection failed (Permission denied)")
+
+	// ovsdb-server stopped: the socket is gone
+	err = ovs.VsctlFailure(1, "ovs-vsctl: unix:/var/run/openvswitch/db.sock: database connection failed (No such file or directory)\n")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, llx.ErrTargetUnavailable)
+
+	// ovsdb-server killed without removing its socket
+	err = ovs.VsctlFailure(1, "ovs-vsctl: unix:/var/run/openvswitch/db.sock: database connection failed (Connection refused)\n")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, llx.ErrTargetUnavailable)
+
+	// anything else is a failure, but not one we can classify
+	err = ovs.VsctlFailure(1, "ovs-vsctl: no row \"x\" in table Bridge\n")
+	require.Error(t, err)
+	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(err))
+	assert.Contains(t, err.Error(), "exit code 1")
+	assert.Contains(t, err.Error(), `no row "x" in table Bridge`)
+
+	// no stderr at all still reports the exit code
+	err = ovs.VsctlFailure(2, "")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exit code 2")
 }

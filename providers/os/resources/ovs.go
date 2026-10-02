@@ -70,6 +70,27 @@ func (o *mqlOvs) version() (string, error) {
 	return ovs.ParseVersion(stdout), nil
 }
 
+// runOvsVsctl runs an ovs-vsctl command line and returns its stdout. A
+// non-zero exit comes back as failed, carrying the reason ovs-vsctl gave; err
+// is for a command that could not be run at all.
+func runOvsVsctl(runtime *plugin.Runtime, cmdline string) (stdout string, failed error, err error) {
+	o, err := CreateResource(runtime, "command", map[string]*llx.RawData{
+		"command": llx.StringData(cmdline),
+	})
+	if err != nil {
+		return "", nil, err
+	}
+	cmd := o.(*mqlCommand)
+	exit := cmd.GetExitcode()
+	if exit.Error != nil {
+		return "", nil, exit.Error
+	}
+	if exit.Data != 0 {
+		return "", ovs.VsctlFailure(exit.Data, cmd.GetStderr().Data), nil
+	}
+	return cmd.GetStdout().Data, nil, nil
+}
+
 func (o *mqlOvs) load() error {
 	if o.loaded {
 		return o.loadErr
@@ -89,14 +110,27 @@ func (o *mqlOvs) doLoad() error {
 	o.portResources = []any{}
 	o.interfaceResources = []any{}
 
-	stdout, ok, err := runShellCmd(o.MqlRuntime, ovsTableDump)
+	// A host without ovs-vsctl has no switch to report. `--version` does not
+	// touch the database, so it runs for any user wherever the tool exists.
+	_, installed, err := runShellCmd(o.MqlRuntime, ovsVersionCmd)
 	if err != nil {
 		return err
 	}
-	// A host without ovs-vsctl, or one where the database is not reachable,
-	// has no switch to report rather than a failed query.
-	if !ok {
+	if !installed {
 		return nil
+	}
+
+	stdout, failed, err := runOvsVsctl(o.MqlRuntime, ovsTableDump)
+	if err != nil {
+		return err
+	}
+	if failed != nil {
+		if !plugin.StructuredErrors() {
+			// v13 reported a database it could not read as a switch without
+			// bridges; keep that until structured errors are the default
+			return nil
+		}
+		return failed
 	}
 
 	// The script only exits 0 when all three calls ran, so a different number of

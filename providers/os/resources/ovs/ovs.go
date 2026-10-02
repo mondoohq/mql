@@ -11,8 +11,11 @@ package ovs
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+
+	"go.mondoo.com/mql/llx"
 )
 
 // Bridge is one Open vSwitch bridge.
@@ -356,4 +359,24 @@ func ParseVersion(output string) string {
 		return fields[len(fields)-1]
 	}
 	return ""
+}
+
+// VsctlFailure turns a failed ovs-vsctl run into an error. ovs-vsctl names the
+// reason the database could not be reached in parentheses at the end of its
+// message: a socket the user may not open is a refusal, a missing or refusing
+// socket means ovsdb-server is not running. Anything else is returned with the
+// exit code and stderr, unclassified.
+func VsctlFailure(exitCode int64, stderr string) error {
+	msg := strings.TrimSpace(stderr)
+	switch {
+	case strings.Contains(msg, "database connection failed (Permission denied)"):
+		return llx.Forbidden(errors.New(msg))
+	case strings.Contains(msg, "database connection failed (No such file or directory)"),
+		strings.Contains(msg, "database connection failed (Connection refused)"):
+		return llx.Unavailable(errors.New(msg))
+	case msg == "":
+		return fmt.Errorf("ovs-vsctl failed with exit code %d", exitCode)
+	default:
+		return fmt.Errorf("ovs-vsctl failed with exit code %d: %s", exitCode, msg)
+	}
 }
