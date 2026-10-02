@@ -101,3 +101,19 @@ func TestUnixUserManagerNoShadowIsUnknown(t *testing.T) {
 		assert.True(t, u.EnabledUnknown, u.Name)
 	}
 }
+
+func TestOSXUserManagerEnabledIsUnknown(t *testing.T) {
+	conn, err := mock.New(0, &inventory.Asset{
+		Platform: &inventory.Platform{Family: []string{"os", "unix", "darwin"}},
+	}, mock.WithPath("./testdata/osx.toml"))
+	require.NoError(t, err)
+	m, err := users.ResolveManager(conn)
+	require.NoError(t, err)
+
+	list, err := m.List()
+	require.NoError(t, err)
+	require.NotEmpty(t, list)
+	for _, u := range list {
+		assert.True(t, u.EnabledUnknown, u.Name)
+	}
+}
