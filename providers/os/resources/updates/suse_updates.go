@@ -42,9 +42,15 @@ func ParseZypperPatches(input io.Reader) ([]OperatingSystemUpdate, error) {
 		return nil, err
 	}
 
+	// While a patch for the package manager itself (libzypp, zypper) is
+	// pending, zypper lists only those patches in <update-list> and moves every
+	// other needed patch to <blocked-update-list>, because it installs the
+	// package manager stack first. The blocked patches are still pending.
+	all := append(zypper.Updates, zypper.Blocked...)
+
 	var updates []OperatingSystemUpdate
 	// filter for kind patch
-	for _, u := range zypper.Updates {
+	for _, u := range all {
 		if u.Kind != "patch" {
 			continue
 		}
