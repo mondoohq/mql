@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"go.mondoo.com/mql/llx"
 )
 
 // Company is a Gusto company as returned by /v1/companies/{id} and
@@ -351,7 +353,7 @@ func getPaginated[T any](ctx context.Context, c *GustoConnection, path string, o
 
 		var pageItems []T
 		if err := json.Unmarshal(body, &pageItems); err != nil {
-			return err
+			return llx.MalformedData(fmt.Errorf("gusto API %s: decode response: %w", path, err))
 		}
 		*out = append(*out, pageItems...)
 
@@ -364,7 +366,8 @@ func getPaginated[T any](ctx context.Context, c *GustoConnection, path string, o
 // headers and body. A 429 is retried a bounded number of times: Gusto
 // rate-limits per token, and a scan that walks every company x resource list
 // trips that limit often enough that treating one 429 as fatal would abort
-// the whole scan. Every other status is returned to the caller unchanged.
+// the whole scan. Every other error status, and a 429 once the retries are
+// spent, is classified by classifyStatus.
 func fetchPage(ctx context.Context, c *GustoConnection, path, rawURL string) (http.Header, []byte, error) {
 	for attempt := 0; ; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
@@ -378,7 +381,7 @@ func fetchPage(ctx context.Context, c *GustoConnection, path, rawURL string) (ht
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, classifyTransport(err)
 		}
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxBodySize+1))
 		resp.Body.Close()
@@ -395,7 +398,8 @@ func fetchPage(ctx context.Context, c *GustoConnection, path, rawURL string) (ht
 			continue
 		}
 		if resp.StatusCode >= 400 {
-			return nil, nil, fmt.Errorf("gusto API %s returned %d: %s", path, resp.StatusCode, errSnippet(body))
+			err := fmt.Errorf("gusto API %s returned %d: %s", path, resp.StatusCode, errSnippet(body))
+			return nil, nil, classifyStatus(err, resp.StatusCode, resp.Header, time.Now())
 		}
 		return resp.Header, body, nil
 	}
