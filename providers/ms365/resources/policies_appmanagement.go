@@ -65,11 +65,7 @@ func newMqlAppManagementPolicy(runtime *plugin.Runtime, policy models.AppManagem
 
 	// a policy that sets no restrictions still gets an (empty) restriction set,
 	// so that keyCredentials and passwordCredentials read as empty lists
-	var restrictions models.AppManagementConfigurationable
-	if r := policy.GetRestrictions(); r != nil {
-		restrictions = r
-	}
-	mqlRestrictions, err := newAppManagementConfiguration(runtime, restrictions, "appManagementPolicy/"+policyId+"/restrictions")
+	mqlRestrictions, err := newAppManagementConfiguration(runtime, policy.GetRestrictions(), "appManagementPolicy/"+policyId+"/restrictions")
 	if err != nil {
 		return nil, err
 	}
