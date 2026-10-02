@@ -5,8 +5,12 @@ package filesfind
 
 import (
 	"fmt"
+	"path"
+	"sort"
 	"strconv"
 	"strings"
+
+	"go.mondoo.com/mql/providers/os/resources/mount"
 )
 
 var findTypes = map[string]string{
@@ -30,6 +34,19 @@ func shellSingleQuote(s string) string {
 }
 
 func BuildFilesFindCmd(from string, xdev bool, fileType string, regex string, permission int64, search string, depth *int64, hasGNUFind bool) string {
+	return buildFindCmd(from, xdev, nil, fileType, regex, permission, search, depth, hasGNUFind)
+}
+
+// BuildFilesFindCmdPruningMounts builds the command for a search that stays on
+// the filesystem holding from without -xdev: find does not descend into the
+// given mount points, which MountPrunes returns, and enters every other
+// directory, including a Btrfs subvolume that is not mounted. A mount point
+// itself is still tested, as -xdev tests it.
+func BuildFilesFindCmdPruningMounts(from string, mounts []string, fileType string, regex string, permission int64, search string, depth *int64, hasGNUFind bool) string {
+	return buildFindCmd(path.Clean(from), true, mounts, fileType, regex, permission, search, depth, hasGNUFind)
+}
+
+func buildFindCmd(from string, xdev bool, pruneMounts []string, fileType string, regex string, permission int64, search string, depth *int64, hasGNUFind bool) string {
 	var call strings.Builder
 
 	isLinkSearch := false
@@ -64,6 +81,18 @@ func BuildFilesFindCmd(from string, xdev bool, fileType string, regex string, pe
 
 	if !xdev {
 		call.WriteString(" -xdev")
+	}
+
+	if len(pruneMounts) > 0 {
+		call.WriteString(" \\( -type d \\(")
+		for i, m := range pruneMounts {
+			if i > 0 {
+				call.WriteString(" -o")
+			}
+			call.WriteString(" -path ")
+			call.WriteString(shellSingleQuote(globEscape(m)))
+		}
+		call.WriteString(" \\) -prune -o -true \\)")
 	}
 
 	pruneLinks := !isLinkSearch && hasGNUFind
@@ -105,9 +134,92 @@ func BuildFilesFindCmd(from string, xdev bool, fileType string, regex string, pe
 		call.WriteString(strconv.FormatInt(*depth, 10))
 	}
 
-	if pruneLinks {
+	if pruneLinks || len(pruneMounts) > 0 {
 		// -prune suppresses find's implicit -print.
 		call.WriteString(" -print")
 	}
 	return call.String()
+}
+
+// globEscape escapes the characters find's -path treats as a pattern, so a
+// mount point is matched literally.
+func globEscape(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch r {
+		case '*', '?', '[', ']', '\\':
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// Filesystems whose subvolumes each carry a device number of their own,
+// whether or not they are mounted. find's -xdev compares device numbers, so on
+// these it skips a subvolume nested in the directory tree as if it were another
+// mounted filesystem: snapper's .snapshots, the subvolumes podman, docker and
+// systemd-nspawn create under /var/lib, or any `btrfs subvolume create`.
+var subvolumeFsTypes = map[string]bool{
+	"btrfs":    true,
+	"bcachefs": true,
+}
+
+// MountPrunes decides how a search from `from` stays on the filesystem that
+// holds it. On a filesystem with subvolumes it returns the mount points below
+// from, outermost first, and true: the search must prune those rather than use
+// -xdev. Otherwise, and when from is not an absolute path or no mount holds
+// it, it returns false and -xdev is right.
+func MountPrunes(from string, mounts []mount.MountPoint) ([]string, bool) {
+	if !path.IsAbs(from) {
+		return nil, false
+	}
+	from = path.Clean(from)
+
+	// The mount holding from is the one with the longest mount point that is
+	// from or one of its parents. Of several mounts on one path the last is
+	// the one visible.
+	holder := -1
+	for i, m := range mounts {
+		mp := m.MountPoint
+		if mp != from && mp != "/" && !strings.HasPrefix(from, mp+"/") {
+			continue
+		}
+		if holder < 0 || len(mp) >= len(mounts[holder].MountPoint) {
+			holder = i
+		}
+	}
+	if holder < 0 || !subvolumeFsTypes[mounts[holder].FSType] {
+		return nil, false
+	}
+
+	prefix := from + "/"
+	if from == "/" {
+		prefix = "/"
+	}
+	below := []string{}
+	for _, m := range mounts {
+		if m.MountPoint != from && strings.HasPrefix(m.MountPoint, prefix) {
+			below = append(below, m.MountPoint)
+		}
+	}
+	sort.Strings(below)
+
+	// A mount below one that is already pruned is never reached.
+	prunes := []string{}
+	for _, mp := range below {
+		if !underAny(mp, prunes) {
+			prunes = append(prunes, mp)
+		}
+	}
+	return prunes, true
+}
+
+func underAny(p string, dirs []string) bool {
+	for _, d := range dirs {
+		if p == d || strings.HasPrefix(p, d+"/") {
+			return true
+		}
+	}
+	return false
 }
