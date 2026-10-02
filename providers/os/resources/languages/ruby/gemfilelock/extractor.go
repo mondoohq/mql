@@ -59,27 +59,28 @@ func parseGemfileLock(r io.Reader) (*gemfileLock, error) {
 
 	for scanner.Scan() {
 		line := scanner.Text()
-
-		// Detect section headers (no leading whitespace)
 		trimmed := strings.TrimSpace(line)
 
-		// Section transitions
-		switch trimmed {
-		case "GEM":
-			currentSection = sectionGemSpecs
+		// A section header is the only line Bundler writes without leading
+		// whitespace. Every one of them ends the previous section, including
+		// those this parser has no use for: RUBY VERSION and CHECKSUMS (Bundler
+		// 2.5 and later) follow DEPENDENCIES, and their lines would otherwise
+		// be read as more direct dependencies.
+		if trimmed != "" && line[0] != ' ' && line[0] != '\t' {
 			inSpecs = false
-			continue
-		case "PLATFORMS":
-			currentSection = sectionNone
-			continue
-		case "DEPENDENCIES":
-			currentSection = sectionDependencies
-			continue
-		case "BUNDLED WITH":
-			currentSection = sectionBundledWith
-			continue
-		case "GIT", "PATH", "PLUGIN SOURCE":
-			currentSection = sectionNone
+			switch trimmed {
+			// GIT and PATH sources list their gems in the same specs block as
+			// GEM. PLUGIN SOURCE lists Bundler plugins, which are not gems the
+			// project installs.
+			case "GEM", "GIT", "PATH":
+				currentSection = sectionGemSpecs
+			case "DEPENDENCIES":
+				currentSection = sectionDependencies
+			case "BUNDLED WITH":
+				currentSection = sectionBundledWith
+			default:
+				currentSection = sectionNone
+			}
 			continue
 		}
 
@@ -157,8 +158,8 @@ func gemDepName(line string) string {
 // Resolved by name against the same gem set this file emits, so an edge's target
 // is always a package that exists. A name with no spec entry is dropped rather
 // than synthesised: it means the lock referenced a gem it did not resolve here
-// (a git or path source, which this extractor does not inventory), and inventing
-// the node would assert a package the project does not install from RubyGems.
+// (one a platform-specific lock omits), and inventing the node would assert a
+// package the project does not install.
 func dependsOnRefs(deps []string, byName map[string]gemEntry) []string {
 	if len(deps) == 0 {
 		return nil

@@ -5,10 +5,12 @@ package gemfilelock
 
 import (
 	"os"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers/os/resources/languages"
 	"go.mondoo.com/mql/sbom"
 )
 
@@ -143,4 +145,60 @@ func TestGemDepName(t *testing.T) {
 	for in, want := range cases {
 		assert.Equal(t, want, gemDepName(in), "gemDepName(%q)", in)
 	}
+}
+
+func parseLockFile(t *testing.T, name string) *gemfileLock {
+	t.Helper()
+	f, err := os.Open(name)
+	require.NoError(t, err)
+	defer f.Close()
+	lock, err := parseGemfileLock(f)
+	require.NoError(t, err)
+	return lock
+}
+
+func packageNames(pkgs []*languages.Package) []string {
+	out := []string{}
+	for _, p := range pkgs {
+		out = append(out, p.Name+"@"+p.Version)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// A lock written by Bundler 4.0 (CHECKSUMS after DEPENDENCIES) for a Rails
+// app with one gem from a git source. Only the six gems under DEPENDENCIES are
+// direct: the CHECKSUMS lines name every gem in the lock and must not extend
+// the DEPENDENCIES section. The git-sourced rack-test is installed like any
+// other gem and belongs in the inventory.
+func TestGemfileLockChecksumsAndGitSource(t *testing.T) {
+	lock := parseLockFile(t, "testdata/bundler4-checksums-git.Gemfile.lock")
+
+	assert.Equal(t, []string{
+		"nokogiri@1.11.0", "puma@5.6.9", "rack-test@1.1.0", "rack@2.2.3", "rails@6.1.4", "rspec@3.10.0",
+	}, packageNames(lock.Direct()))
+
+	all := lock.Transitive()
+	assert.Len(t, all, 58, "57 GEM specs and 1 GIT spec")
+	rackTest := all.Find("rack-test")
+	require.NotNil(t, rackTest)
+	assert.Equal(t, "1.1.0", rackTest.Version)
+	assert.Equal(t, "pkg:gem/rack-test@1.1.0", rackTest.Purl)
+	assert.Equal(t, []string{"pkg:gem/rack@2.2.3"}, rackTest.DependsOn)
+
+	// actionpack depends on rack-test, which now resolves to the git gem
+	assert.Contains(t, all.Find("actionpack").DependsOn, "pkg:gem/rack-test@1.1.0")
+
+	assert.Equal(t, "4.0.20", lock.BundledWith)
+}
+
+// A PATH source and a RUBY VERSION section after DEPENDENCIES.
+func TestGemfileLockPathSourceAndRubyVersion(t *testing.T) {
+	lock := parseLockFile(t, "testdata/path-ruby-version.Gemfile.lock")
+
+	assert.Equal(t, []string{"billing@0.4.0", "money@6.19.0"}, packageNames(lock.Direct()))
+	assert.Equal(t, []string{"billing@0.4.0", "concurrent-ruby@1.3.3", "i18n@1.14.5", "money@6.19.0"}, packageNames(lock.Transitive()))
+	assert.False(t, lock.DirectDeps["ruby"], "the RUBY VERSION line is not a dependency")
+	assert.Equal(t, []string{"pkg:gem/money@6.19.0"}, lock.Transitive().Find("billing").DependsOn)
+	assert.Equal(t, "2.4.22", lock.BundledWith)
 }
