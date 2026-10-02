@@ -548,10 +548,81 @@ func (x *mqlPackages) refreshCache(all []any) error {
 
 	x.packagesByName = map[string]*mqlPackage{}
 
+	list := make([]*mqlPackage, len(all))
 	for i := range all {
-		u := all[i].(*mqlPackage)
-		x.packagesByName[u.Name.Data] = u
+		list[i] = all[i].(*mqlPackage)
+	}
+	native := dominantArchByFormat(list)
+
+	for _, u := range list {
+		existing, ok := x.packagesByName[u.Name.Data]
+		if !ok || preferForName(existing, u, native) {
+			x.packagesByName[u.Name.Data] = u
+		}
 	}
 
 	return nil
+}
+
+// dominantArchByFormat returns the architecture most packages of each format
+// are built for. That is the system's native architecture: foreign-arch
+// packages (i386 on amd64, multilib i686 on x86_64) are a small minority.
+// Architecture-independent packages ("all", "noarch") are not counted.
+func dominantArchByFormat(list []*mqlPackage) map[string]string {
+	counts := map[string]map[string]int{}
+	for _, p := range list {
+		if isArchIndependent(p.Arch.Data) {
+			continue
+		}
+		c, ok := counts[p.Format.Data]
+		if !ok {
+			c = map[string]int{}
+			counts[p.Format.Data] = c
+		}
+		c[p.Arch.Data]++
+	}
+	res := make(map[string]string, len(counts))
+	for format, c := range counts {
+		best, bestN := "", 0
+		for arch, n := range c {
+			if n > bestN || (n == bestN && arch < best) {
+				best, bestN = arch, n
+			}
+		}
+		res[format] = best
+	}
+	return res
+}
+
+func isArchIndependent(arch string) bool {
+	return arch == "" || arch == "all" || arch == "noarch"
+}
+
+// preferForName decides whether candidate replaces existing as the package
+// package("<name>") resolves to when two installed packages share a name.
+//
+// A package from the system package manager is preferred over a snap or
+// flatpak of the same name: the deb snapd over the snapd snap. Within one
+// format a native or architecture-independent build is preferred over a
+// foreign-architecture one, so the answer does not depend on the order of the
+// status file. Anything else keeps the previous behavior, the later entry wins.
+func preferForName(existing, candidate *mqlPackage, native map[string]string) bool {
+	existingStore := isAppStoreFormat(existing.Format.Data)
+	candidateStore := isAppStoreFormat(candidate.Format.Data)
+	if existingStore != candidateStore {
+		return existingStore
+	}
+	if existing.Format.Data != candidate.Format.Data {
+		return true
+	}
+	isNative := func(p *mqlPackage) bool {
+		return isArchIndependent(p.Arch.Data) || p.Arch.Data == native[p.Format.Data]
+	}
+	return !isNative(existing) || isNative(candidate)
+}
+
+// isAppStoreFormat reports formats installed beside the system package
+// manager rather than by it.
+func isAppStoreFormat(format string) bool {
+	return format == packages.SnapPkgFormat || format == packages.FlatpakPkgFormat
 }

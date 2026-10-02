@@ -1,0 +1,38 @@
+Reading package lists...
+Building dependency tree...
+Reading state information...
+Calculating upgrade...
+The following package was automatically installed and is no longer required:
+  ssl-cert
+Use 'sudo apt autoremove' to remove it.
+The following packages have been kept back:
+  g03-hold g03-keptback linux-aws linux-headers-aws linux-image-aws
+The following packages will be upgraded:
+  dnsmasq-base g03-epoch g03-ma:i386 g03-ma g03-tilde kmod libkmod2
+  ubuntu-advantage-pro ubuntu-advantage-tools ubuntu-pro-auto-attach
+  ubuntu-pro-client ubuntu-pro-client-l10n
+12 upgraded, 0 newly installed, 0 to remove and 5 not upgraded.
+Inst kmod [22-1ubuntu5.2] (22-1ubuntu5.2+esm1 UbuntuESM:16.04/xenial-infra-security [amd64]) []
+Inst libkmod2 [22-1ubuntu5.2] (22-1ubuntu5.2+esm1 UbuntuESM:16.04/xenial-infra-security [amd64])
+Conf libkmod2 (22-1ubuntu5.2+esm1 UbuntuESM:16.04/xenial-infra-security [amd64])
+Inst ubuntu-pro-client-l10n [37.1ubuntu0~16.04] (37.1ubuntu0~16.04.1 Ubuntu:16.04/xenial-updates, Ubuntu:16.04/xenial-security [amd64]) []
+Inst ubuntu-pro-client [37.1ubuntu0~16.04] (37.1ubuntu0~16.04.1 Ubuntu:16.04/xenial-updates, Ubuntu:16.04/xenial-security [amd64])
+Inst ubuntu-pro-auto-attach [37.1ubuntu0~16.04] (37.1ubuntu0~16.04.1 Ubuntu:16.04/xenial-updates, Ubuntu:16.04/xenial-security [all])
+Inst ubuntu-advantage-pro [37.1ubuntu0~16.04] (37.1ubuntu0~16.04.1 Ubuntu:16.04/xenial-updates, Ubuntu:16.04/xenial-security [all])
+Inst ubuntu-advantage-tools [37.1ubuntu0~16.04] (37.1ubuntu0~16.04.1 Ubuntu:16.04/xenial-updates, Ubuntu:16.04/xenial-security [all])
+Inst dnsmasq-base [2.90-0ubuntu0.16.04.1+esm1] (2.90-0ubuntu0.16.04.1+esm3 UbuntuESM:16.04/xenial-infra-security [amd64])
+Inst g03-epoch [2:1.0-1] (2:1.1-1 localhost [all])
+Inst g03-ma:i386 [1.0-1] (1.1-1 localhost [i386]) [g03-ma:i386 on g03-ma:amd64] [g03-ma:amd64 on g03-ma:i386] [g03-ma:amd64 ]
+Inst g03-ma [1.0-1] (1.1-1 localhost [amd64])
+Inst g03-tilde [1.0~rc1-1] (1.0-1 localhost [all])
+Conf kmod (22-1ubuntu5.2+esm1 UbuntuESM:16.04/xenial-infra-security [amd64])
+Conf ubuntu-pro-client (37.1ubuntu0~16.04.1 Ubuntu:16.04/xenial-updates, Ubuntu:16.04/xenial-security [amd64])
+Conf ubuntu-pro-client-l10n (37.1ubuntu0~16.04.1 Ubuntu:16.04/xenial-updates, Ubuntu:16.04/xenial-security [amd64])
+Conf ubuntu-pro-auto-attach (37.1ubuntu0~16.04.1 Ubuntu:16.04/xenial-updates, Ubuntu:16.04/xenial-security [all])
+Conf ubuntu-advantage-pro (37.1ubuntu0~16.04.1 Ubuntu:16.04/xenial-updates, Ubuntu:16.04/xenial-security [all])
+Conf ubuntu-advantage-tools (37.1ubuntu0~16.04.1 Ubuntu:16.04/xenial-updates, Ubuntu:16.04/xenial-security [all])
+Conf dnsmasq-base (2.90-0ubuntu0.16.04.1+esm3 UbuntuESM:16.04/xenial-infra-security [amd64])
+Conf g03-epoch (2:1.1-1 localhost [all])
+Conf g03-ma (1.1-1 localhost [amd64])
+Conf g03-ma:i386 (1.1-1 localhost [i386])
+Conf g03-tilde (1.0-1 localhost [all])

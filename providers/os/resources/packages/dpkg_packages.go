@@ -258,8 +258,13 @@ func ParseDpkgUpdates(input io.Reader) (map[string]PackageUpdate, error) {
 		line := scanner.Text()
 		m := DPKG_UPDATE_REGEX.FindStringSubmatch(line)
 		if m != nil {
+			// apt qualifies a foreign-architecture package as "<name>:<arch>"
+			// (`Inst g03-ma:i386 [...]`), while dpkg's status file lists it
+			// under its bare name. The map key keeps apt's spelling so the
+			// native and foreign entries stay apart; Name is the bare name so
+			// packages.list's "<name>/<arch>" join finds it.
 			pkgs[m[1]] = PackageUpdate{
-				Name:      m[1],
+				Name:      stripDebArchQualifier(m[1]),
 				Version:   m[2],
 				Available: m[3],
 				Arch:      m[5],
@@ -272,6 +277,76 @@ func ParseDpkgUpdates(input io.Reader) (map[string]PackageUpdate, error) {
 	}
 
 	return pkgs, nil
+}
+
+// stripDebArchQualifier drops apt's ":<arch>" multi-arch qualifier from a
+// package name. A Debian package name cannot contain a colon, so everything
+// from the first one on is the qualifier.
+func stripDebArchQualifier(name string) string {
+	if i := strings.IndexByte(name, ':'); i > 0 {
+		return name[:i]
+	}
+	return name
+}
+
+// APT_LIST_UPGRADABLE_REGEX splits one line of `apt list --upgradable`:
+//
+//	linux-aws/noble-updates 7.0.0-1014.14~24.04.1 amd64 [upgradable from: 7.0.0-1013.13~24.04.1]
+//	g03-ma/unknown 1.1-1 i386 [upgradable from: 1.0-1]
+//	libaudit-common/noble-updates,noble-updates 1:3.1.2-2.1ubuntu0.1 all [upgradable from: 1:3.1.2-2.1build1.1]
+//
+// The groups are name, suites, candidate version, architecture and the
+// installed version. Versions are runs of non-space so epochs and tildes match.
+var APT_LIST_UPGRADABLE_REGEX = regexp.MustCompile(`^(\S+?)/(\S+)\s+(\S+)\s+(\S+)\s+\[upgradable from:\s+([^\]\s]+)\]`)
+
+// ParseAptListUpgradable reads `apt list --upgradable`. Unlike a simulated
+// `apt-get upgrade`, it lists every installed package whose candidate is newer:
+// held packages, packages an upgrade keeps back because they need a new
+// dependency (every kernel update), phased updates, and foreign-architecture
+// packages.
+//
+// The result is keyed by "<name>/<arch>": a multi-arch package installed for
+// two architectures appears on two lines under the same name.
+func ParseAptListUpgradable(input io.Reader) (map[string]PackageUpdate, error) {
+	pkgs := map[string]PackageUpdate{}
+	scanner := bufio.NewScanner(input)
+	scanner.Buffer(nil, dpkgMaxLine)
+	for scanner.Scan() {
+		m := APT_LIST_UPGRADABLE_REGEX.FindStringSubmatch(scanner.Text())
+		if m == nil {
+			continue
+		}
+		name := stripDebArchQualifier(m[1])
+		pkgs[name+"/"+m[4]] = PackageUpdate{
+			Name:      name,
+			Version:   m[5],
+			Available: m[3],
+			Arch:      m[4],
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("could not read the apt upgradable list to its end: %w", err)
+	}
+	return pkgs, nil
+}
+
+// mergeDebUpdates joins the updates `apt list --upgradable` and the simulated
+// `apt-get upgrade` report into one map keyed by "<name>/<arch>".
+//
+// apt list is the complete source on apt 2.0 and later, but apt 1.2 and 1.6
+// (Ubuntu 16.04 and 18.04) print a multi-arch package once per name, so a
+// package installed for amd64 and i386 shows only one of the two. The simulated upgrade still names both
+// when neither is held, which is what the merge recovers. Where both report a
+// package, apt list wins: it is the candidate apt would install.
+func mergeDebUpdates(aptList, dryRun map[string]PackageUpdate) map[string]PackageUpdate {
+	res := make(map[string]PackageUpdate, len(aptList)+len(dryRun))
+	for _, u := range dryRun {
+		res[u.Name+"/"+u.Arch] = u
+	}
+	for _, u := range aptList {
+		res[u.Name+"/"+u.Arch] = u
+	}
+	return res
 }
 
 // Debian, Ubuntu
@@ -404,13 +479,42 @@ func (dpm *DebPkgManager) Available() (map[string]PackageUpdate, error) {
 	// DEBIAN_FRONTEND=noninteractive apt-get upgrade --dry-run
 	_, _ = dpm.conn.RunCommand("DEBIAN_FRONTEND=noninteractive apt-get update >/dev/null 2>&1")
 
+	// A simulated upgrade only names what `apt-get upgrade` would install:
+	// it leaves out held packages, packages kept back because they need a
+	// new dependency (every kernel update), and phased updates. apt list
+	// reports them all and needs no root.
+	var aptList map[string]PackageUpdate
+	listCmd, listErr := dpm.conn.RunCommand(aptListUpgradableCmd)
+	if listErr == nil && listCmd.ExitStatus == 0 {
+		aptList, listErr = ParseAptListUpgradable(listCmd.Stdout)
+	} else if listErr == nil {
+		listErr = fmt.Errorf("apt list exited with status %d", listCmd.ExitStatus)
+	}
+	if listErr != nil {
+		log.Debug().Err(listErr).Msg("mql[packages]> could not run apt list --upgradable")
+	}
+
 	cmd, err := dpm.conn.RunCommand("DEBIAN_FRONTEND=noninteractive apt-get upgrade --dry-run")
 	if err != nil {
 		log.Debug().Err(err).Msg("mql[packages]> could not run apt-get upgrade")
-		return nil, fmt.Errorf("could not run apt-get upgrade")
+		if listErr != nil {
+			return nil, fmt.Errorf("could not run apt-get upgrade")
+		}
+		return aptList, nil
 	}
-	return ParseDpkgUpdates(cmd.Stdout)
+	dryRun, err := ParseDpkgUpdates(cmd.Stdout)
+	if err != nil {
+		if listErr != nil {
+			return nil, err
+		}
+		dryRun = nil
+	}
+	return mergeDebUpdates(aptList, dryRun), nil
 }
+
+// aptListUpgradableCmd lists every installed package that has a newer
+// candidate. LC_ALL=C keeps the "[upgradable from: ...]" marker untranslated.
+const aptListUpgradableCmd = "LC_ALL=C apt list --upgradable"
 
 // FindFileOwner implements PkgFileOwnershipResolver via `dpkg -S`, which prints
 // "<name>[:<arch>]: <path>" (possibly across several lines, including diversion
