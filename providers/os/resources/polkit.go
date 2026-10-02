@@ -44,12 +44,23 @@ var (
 
 	polkitLocalAuthorityConfDir = "/etc/polkit-1/localauthority.conf.d"
 
-	// polkitBinaries are checked so a system carrying polkit but shipping no
-	// action files is still reported as having it installed.
+	// polkitBinaries are the files only a polkit installation provides: the
+	// daemon and its command-line tools. Action and rule directories are not
+	// evidence, since systemd, NetworkManager, and other packages ship .policy
+	// and .rules files into them whether or not polkit is installed.
 	polkitBinaries = []string{
-		"/usr/bin/pkexec",
+		"/usr/lib/polkit-1/polkitd",
+		"/usr/libexec/polkit-1/polkitd",
+		"/usr/libexec/polkitd",
+		"/usr/lib/policykit-1/polkitd",
+		"/usr/local/lib/polkit-1/polkitd",
+		"/usr/local/libexec/polkit-1/polkitd",
 		"/usr/bin/pkaction",
+		"/usr/bin/pkexec",
+		"/bin/pkaction",
 		"/bin/pkexec",
+		"/usr/local/bin/pkaction",
+		"/usr/local/bin/pkexec",
 	}
 )
 
@@ -71,12 +82,7 @@ func (p *mqlPolkit) installed() (bool, error) {
 		return false, err
 	}
 
-	candidates := make([]string, 0, len(polkitActionDirs)+len(polkitRuleDirs)+len(polkitBinaries))
-	candidates = append(candidates, polkitActionDirs...)
-	candidates = append(candidates, polkitRuleDirs...)
-	candidates = append(candidates, polkitBinaries...)
-
-	for _, candidate := range candidates {
+	for _, candidate := range polkitBinaries {
 		exists, err := afero.Exists(fs, candidate)
 		if err != nil {
 			log.Debug().Err(err).Str("path", candidate).Msg("polkit> cannot check path")

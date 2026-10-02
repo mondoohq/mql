@@ -9716,9 +9716,11 @@ private selinux.module @defaults("name status") {
 polkit @defaults("installed version") {
   // Whether polkit is present on the system
   //
-  // True when a polkit action directory or the pkexec binary is found. Use it
-  // to guard polkit audits on images that ship no polkit at all, such as
-  // minimal container bases.
+  // True when the polkit daemon (polkitd) or its pkaction or pkexec tool is
+  // found. Action and rule directories alone do not count, since systemd and
+  // other packages ship files into them without polkit. Use it to guard polkit
+  // audits on systems that ship no polkit at all, such as minimal cloud images
+  // and container bases.
   installed() bool
   // Polkit release reported by pkaction
   //
