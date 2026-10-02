@@ -191,3 +191,58 @@ func TestParseContainerIDListWithEmptyLines(t *testing.T) {
 	// Empty lines should be filtered out
 	assert.Equal(t, []string{"container1", "container2"}, containerIDs)
 }
+
+func TestCtrCommand(t *testing.T) {
+	assert.Equal(t, "ctr -n g08ns tasks list", ctrCommand(ctrCLIs[0], "-n", "g08ns", "tasks", "list"))
+	// Debian 10's docker.io 18.09 bundles containerd as docker-containerd, which
+	// does not listen on the containerd default socket
+	assert.Equal(t,
+		"docker-containerd-ctr --address /run/docker/containerd/containerd.sock -n g08ns containers info c-run",
+		ctrCommand(ctrCLIs[1], "-n", "g08ns", "containers", "info", "c-run"))
+	// building a command line leaves the CLI untouched for the next call
+	assert.Equal(t, []string{"docker-containerd-ctr", "--address", "/run/docker/containerd/containerd.sock"}, ctrCLIs[1])
+}
+
+func TestContainerdTaskState(t *testing.T) {
+	// captured from "docker-containerd-ctr -n g08ns tasks list" on Debian 10
+	// (docker.io 18.09), before and after "ctr tasks pause c-run"
+	running := parseTaskList("TASK         PID      STATUS    \n" +
+		"c-run        12308    RUNNING\n" +
+		"c-stopped    12374    STOPPED\n")
+	paused := parseTaskList("TASK         PID      STATUS    \n" +
+		"c-run        12308    PAUSED\n" +
+		"c-stopped    12374    STOPPED\n")
+
+	task, ok := running["c-run"]
+	status, pid := containerdTaskState(task, ok)
+	assert.Equal(t, "running", status)
+	assert.Equal(t, int64(12308), pid)
+
+	task, ok = running["c-stopped"]
+	status, pid = containerdTaskState(task, ok)
+	assert.Equal(t, "stopped", status)
+	assert.Equal(t, int64(0), pid, "a stopped task's process has exited")
+
+	task, ok = paused["c-run"]
+	status, pid = containerdTaskState(task, ok)
+	assert.Equal(t, "paused", status)
+	assert.Equal(t, int64(12308), pid, "a paused task's process still exists")
+
+	// c-created has a container but no task
+	task, ok = running["c-created"]
+	status, pid = containerdTaskState(task, ok)
+	assert.Equal(t, "created", status)
+	assert.Equal(t, int64(0), pid)
+}
+
+func TestIsCtrNotInstalled(t *testing.T) {
+	// "ctr namespaces list -q" on Debian 10 (docker.io 18.09 only), locally and
+	// over SSH with sudo
+	assert.True(t, isCtrNotInstalled("ctr", 127, "sh: 1: ctr: not found\n"))
+	assert.True(t, isCtrNotInstalled("ctr", 1, "sudo: ctr: command not found\n"))
+
+	// containerd is installed but refuses a non-root user (Debian 12)
+	assert.False(t, isCtrNotInstalled("ctr", 1, `ctr: failed to dial "/run/containerd/containerd.sock": connection error: desc = "transport: error while dialing: dial unix /run/containerd/containerd.sock: connect: permission denied"`+"\n"))
+	// the bundled containerd refuses a non-root user (Debian 10)
+	assert.False(t, isCtrNotInstalled("docker-containerd-ctr", 1, `ctr: failed to dial "/run/docker/containerd/containerd.sock": context deadline exceeded`+"\n"))
+}

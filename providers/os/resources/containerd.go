@@ -86,20 +86,82 @@ func parseContainerInfo(jsonData []byte) (*containerInfo, error) {
 	return &info, nil
 }
 
+// ctrCLIs are the containerd command lines to try, in order. Docker 18.09 and
+// older bundle their own containerd under docker-prefixed names, serving its
+// socket from docker's run directory instead of the containerd default.
+var ctrCLIs = [][]string{
+	{"ctr"},
+	{"docker-containerd-ctr", "--address", "/run/docker/containerd/containerd.sock"},
+}
+
+// ctrCommand builds the command line that runs ctr with the given arguments.
+func ctrCommand(cli []string, args ...string) string {
+	return shellquote.Join(append(append([]string{}, cli...), args...)...)
+}
+
+// containerdTaskState returns the status and pid of a container from its task.
+// A container without a task was created but never started. A stopped task
+// keeps the pid of its exited process, which is no process anymore.
+func containerdTaskState(task taskData, ok bool) (string, int64) {
+	if !ok {
+		return "created", 0
+	}
+	status := strings.ToLower(task.status)
+	switch status {
+	case "running", "paused", "pausing":
+		return status, task.pid
+	default:
+		return status, 0
+	}
+}
+
+// listContainerdNamespaces lists the containerd namespaces with the first ctr
+// CLI that is installed, and returns that CLI for every later call.
+func (p *mqlContainerd) listContainerdNamespaces() ([]string, []string, error) {
+	var firstErr error
+	for _, cli := range ctrCLIs {
+		o, err := CreateResource(p.MqlRuntime, "command", map[string]*llx.RawData{
+			"command": llx.StringData(ctrCommand(cli, "namespaces", "list", "-q")),
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		cmd := o.(*mqlCommand)
+		exit := cmd.GetExitcode()
+		if exit.Error != nil {
+			return nil, nil, exit.Error
+		}
+		if exit.Data == 0 {
+			return cli, parseNamespaceList(cmd.Stdout.Data), nil
+		}
+		listErr := errors.New("failed to list namespaces: " + cmd.Stderr.Data)
+		if !isCtrNotInstalled(cli[0], exit.Data, cmd.Stderr.Data) {
+			return nil, nil, listErr
+		}
+		if firstErr == nil {
+			firstErr = listErr
+		}
+	}
+	return nil, nil, firstErr
+}
+
+// isCtrNotInstalled reports whether a ctr call failed because the binary is
+// missing, rather than because containerd refused or is down. Shells exit with
+// 127 for a command they cannot find, but sudo exits with 1 and says so on
+// stderr.
+func isCtrNotInstalled(bin string, exitCode int64, stderr string) bool {
+	if exitCode == 127 {
+		return true
+	}
+	return strings.Contains(stderr, bin+": command not found") ||
+		strings.Contains(stderr, bin+": not found")
+}
+
 func (p *mqlContainerd) containers() ([]any, error) {
-	// Get all namespaces using ctr CLI
-	o, err := CreateResource(p.MqlRuntime, "command", map[string]*llx.RawData{
-		"command": llx.StringData(shellquote.Join("ctr", "namespaces", "list", "-q")),
-	})
+	ctr, namespaces, err := p.listContainerdNamespaces()
 	if err != nil {
 		return nil, err
 	}
-	cmd := o.(*mqlCommand)
-	if exit := cmd.GetExitcode(); exit.Data != 0 {
-		return nil, errors.New("failed to list namespaces: " + cmd.Stderr.Data)
-	}
-
-	namespaces := parseNamespaceList(cmd.Stdout.Data)
 	var containers []any
 
 	for _, ns := range namespaces {
@@ -109,7 +171,7 @@ func (p *mqlContainerd) containers() ([]any, error) {
 
 		// List containers in namespace
 		o, err := CreateResource(p.MqlRuntime, "command", map[string]*llx.RawData{
-			"command": llx.StringData(shellquote.Join("ctr", "-n", ns, "containers", "list", "-q")),
+			"command": llx.StringData(ctrCommand(ctr, "-n", ns, "containers", "list", "-q")),
 		})
 		if err != nil {
 			log.Debug().Str("namespace", ns).Err(err).Msg("skipping namespace, failed to create command")
@@ -127,7 +189,7 @@ func (p *mqlContainerd) containers() ([]any, error) {
 		var taskInfo map[string]taskData
 
 		o, err = CreateResource(p.MqlRuntime, "command", map[string]*llx.RawData{
-			"command": llx.StringData(shellquote.Join("ctr", "-n", ns, "tasks", "list")),
+			"command": llx.StringData(ctrCommand(ctr, "-n", ns, "tasks", "list")),
 		})
 		if err == nil {
 			cmd := o.(*mqlCommand)
@@ -143,7 +205,7 @@ func (p *mqlContainerd) containers() ([]any, error) {
 
 			// Get container info as JSON
 			o, err := CreateResource(p.MqlRuntime, "command", map[string]*llx.RawData{
-				"command": llx.StringData(shellquote.Join("ctr", "-n", ns, "containers", "info", containerID)),
+				"command": llx.StringData(ctrCommand(ctr, "-n", ns, "containers", "info", containerID)),
 			})
 			if err != nil {
 				log.Debug().Str("namespace", ns).Str("container", containerID).Err(err).Msg("skipping container, failed to create command")
@@ -168,13 +230,8 @@ func (p *mqlContainerd) containers() ([]any, error) {
 				labels[k] = v
 			}
 
-			// Get task info - default to "created" if no task exists
-			status := "created"
-			var pid int64
-			if task, ok := taskInfo[containerID]; ok {
-				status = strings.ToLower(task.status)
-				pid = task.pid
-			}
+			task, ok := taskInfo[containerID]
+			status, pid := containerdTaskState(task, ok)
 
 			// Create resource with unique ID combining namespace and container ID
 			resourceID := fmt.Sprintf("%s/%s", ns, containerID)
