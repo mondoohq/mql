@@ -18,7 +18,7 @@ import (
 // The setting comes from the //go:debug line in main.go; without it this fails
 // with "x509: negative serial number".
 func TestParsesNegativeSerialCertificate(t *testing.T) {
-	data, err := os.ReadFile("../network/resources/certificates/testdata/negative-serial.crt")
+	data, err := os.ReadFile("testdata/negative-serial.crt")
 	require.NoError(t, err)
 	block, _ := pem.Decode(data)
 	require.NotNil(t, block)
