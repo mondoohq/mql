@@ -5,6 +5,7 @@ package resources
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -15,6 +16,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/mock"
+	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/utils/syncx"
 )
 
@@ -168,6 +170,60 @@ func TestCronDFileIsSkipped(t *testing.T) {
 	// platforms with neither keep the previous list
 	assert.True(t, cronDFileIsSkipped("x.bak", cronFlavorDefault))
 	assert.False(t, cronDFileIsSkipped("x.conf", cronFlavorDefault))
+}
+
+// Debian's cron skips a system crontab that is group or other writable
+// ("INSECURE MODE") or not owned by root ("WRONG FILE OWNER"), whatever its
+// name. Modes and owners are the Debian 13 fixtures cron refused live.
+func TestDebianCronRefuses(t *testing.T) {
+	info := func(mode os.FileMode, uid int64) shared.FileInfoDetails {
+		return shared.FileInfoDetails{Mode: shared.FileModeDetails{FileMode: mode}, Uid: uid}
+	}
+	assert.False(t, debianCronRefuses(info(0o644, 0)), "g04")
+	assert.False(t, debianCronRefuses(info(0o600, 0)))
+	assert.True(t, debianCronRefuses(info(0o664, 0)), "g04badmode")
+	assert.True(t, debianCronRefuses(info(0o646, 0)), "other writable")
+	assert.True(t, debianCronRefuses(info(0o644, 1000)), "g04notroot")
+	// a symlink is judged by the root-owned 0644 file it points to (g04symlink, loaded)
+	assert.False(t, debianCronRefuses(info(os.ModeSymlink|0o644, 0)), "g04symlink")
+	// an owner the connection could not read is not a wrong owner
+	assert.False(t, debianCronRefuses(info(0o644, -1)))
+}
+
+// On Debian, crontab leaves out the cron.d files cron refuses for their mode
+// or owner, and keeps the ones it loads.
+func TestCrontabDebianRefusedModes(t *testing.T) {
+	fixturePath, err := filepath.Abs("testdata/crontab_debian_modes.toml")
+	require.NoError(t, err)
+
+	asset := &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:   "debian",
+			Family: []string{"debian", "linux", "unix", "os"},
+		},
+	}
+	conn, err := mock.New(0, asset, mock.WithPath(fixturePath))
+	require.NoError(t, err)
+
+	runtime := &plugin.Runtime{
+		Connection: conn,
+		Resources:  &syncx.Map[plugin.Resource]{},
+	}
+	raw, err := CreateResource(runtime, "crontab", nil)
+	require.NoError(t, err)
+	c := raw.(*mqlCrontab)
+
+	files := c.GetFiles()
+	require.NoError(t, files.Error)
+	var paths []string
+	for _, f := range files.Data {
+		paths = append(paths, f.(*mqlFile).Path.Data)
+	}
+	assert.ElementsMatch(t, []string{
+		"/etc/crontab",
+		"/etc/cron.d/g04",
+		"/etc/cron.d/g04-ok_name",
+	}, paths)
 }
 
 func TestCronFlavorOf(t *testing.T) {

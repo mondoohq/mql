@@ -1,0 +1,48 @@
+# /etc/cron.d on Debian 13 with the files Debian's cron refuses, as `ls -ln`
+# showed them on the host (journal lines from cron in the comments):
+#
+#   g04badmode  -rw-rw-r-- 0 0      INSECURE MODE (group/other writable)
+#   g04notroot  -rw-r--r-- 1000 1000 WRONG FILE OWNER
+#   g04, g04-ok_name -rw-r--r-- 0 0  loaded
+
+[files."/etc/crontab"]
+path = "/etc/crontab"
+content = """17 *	* * *	root	cd / && run-parts --report /etc/cron.hourly
+"""
+[files."/etc/crontab".stat]
+mode = 420
+
+[files."/etc/cron.d"]
+path = "/etc/cron.d"
+[files."/etc/cron.d".stat]
+isdir = true
+
+[files."/etc/cron.d/g04"]
+path = "/etc/cron.d/g04"
+content = """*/5 * * * * root /usr/bin/true g04-a
+"""
+[files."/etc/cron.d/g04".stat]
+mode = 420
+
+[files."/etc/cron.d/g04-ok_name"]
+path = "/etc/cron.d/g04-ok_name"
+content = """18 4 * * * root /usr/bin/true g04-ok_name
+"""
+[files."/etc/cron.d/g04-ok_name".stat]
+mode = 420
+
+[files."/etc/cron.d/g04badmode"]
+path = "/etc/cron.d/g04badmode"
+content = """19 4 * * * root /usr/bin/true g04-badmode
+"""
+[files."/etc/cron.d/g04badmode".stat]
+mode = 436
+
+[files."/etc/cron.d/g04notroot"]
+path = "/etc/cron.d/g04notroot"
+content = """20 4 * * * root /usr/bin/true g04-notroot
+"""
+[files."/etc/cron.d/g04notroot".stat]
+mode = 420
+uid = 1000
+gid = 1000

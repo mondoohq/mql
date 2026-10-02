@@ -63,8 +63,13 @@ func (c *mqlCrontab) entries() ([]any, error) {
 	var allEntries []any
 	var allFiles []any
 
+	flavor := cronFlavorOf(conn.Asset())
+
 	// Parse system crontabs (/etc/crontab)
 	for _, path := range systemCrontabPaths {
+		if flavor == cronFlavorDebian && debianCronRefusesFile(conn, path) {
+			continue
+		}
 		entries, fileRes, err := c.parseCrontabFile(afs, path, true, "")
 		if err != nil {
 			continue // Skip files that don't exist or can't be read
@@ -76,9 +81,8 @@ func (c *mqlCrontab) entries() ([]any, error) {
 	}
 
 	// Parse system cron.d directory
-	flavor := cronFlavorOf(conn.Asset())
 	for _, dir := range systemCronDirs {
-		entries, files, err := c.parseCronDir(afs, dir, true, flavor)
+		entries, files, err := c.parseCronDir(conn, afs, dir, true, flavor)
 		if err != nil {
 			continue
 		}
@@ -231,8 +235,31 @@ func cronDFileIsSkipped(name string, flavor cronFlavor) bool {
 	}
 }
 
+// debianCronRefusesFile reports whether Debian's cron refuses to load the
+// system crontab (/etc/crontab or a cron.d file) at path because of its
+// owner or mode. A file that cannot be stat'ed is left to the parser.
+func debianCronRefusesFile(conn shared.Connection, path string) bool {
+	info, err := conn.FileInfo(path)
+	if err != nil {
+		return false
+	}
+	return debianCronRefuses(info)
+}
+
+// debianCronRefuses applies Debian cron's checks on a system crontab: it logs
+// "INSECURE MODE (group/other writable)" and skips the file when its mode has
+// any of the 022 bits, and "WRONG FILE OWNER" when root does not own it. For a
+// symlink the checks apply to the file it points to. An owner of -1 means the
+// connection could not tell, and does not count as wrong.
+func debianCronRefuses(info shared.FileInfoDetails) bool {
+	if info.Mode.Perm()&0o022 != 0 {
+		return true
+	}
+	return info.Uid > 0
+}
+
 // parseCronDir parses all files in a cron directory (like /etc/cron.d)
-func (c *mqlCrontab) parseCronDir(afs *afero.Afero, dir string, hasUserField bool, flavor cronFlavor) ([]any, []any, error) {
+func (c *mqlCrontab) parseCronDir(conn shared.Connection, afs *afero.Afero, dir string, hasUserField bool, flavor cronFlavor) ([]any, []any, error) {
 	files, err := afs.ReadDir(dir)
 	if err != nil {
 		return nil, nil, err
@@ -251,6 +278,9 @@ func (c *mqlCrontab) parseCronDir(afs *afero.Afero, dir string, hasUserField boo
 		}
 
 		path := filepath.Join(dir, name)
+		if flavor == cronFlavorDebian && debianCronRefusesFile(conn, path) {
+			continue
+		}
 		entries, fileRes, err := c.parseCrontabFile(afs, path, hasUserField, "")
 		if err != nil {
 			continue
