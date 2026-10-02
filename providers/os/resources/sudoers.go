@@ -191,6 +191,10 @@ func (s *mqlSudoers) collectSudoersDir(conn shared.Connection, dirPath string, v
 		*errs = append(*errs, fmt.Errorf("failed to check if directory %s exists: %w", dirPath, dirExists.Error))
 		return
 	}
+	if err := sudoersIncludedirRefusal(conn.FileSystem(), dirPath); err != nil {
+		*errs = append(*errs, fmt.Errorf("failed to list files in %s: %w", dirPath, err))
+		return
+	}
 
 	if !dirExists.Data {
 		return
