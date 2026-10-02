@@ -268,6 +268,59 @@ func TestPostgresqlNonNumericDirectoryIsSkipped(t *testing.T) {
 	})
 }
 
+// Debian names a cluster at creation (pg_createcluster 15 prod) or later
+// (pg_renamecluster 15 main prod, Debian 12 with PostgreSQL 15), and its
+// config then lives in /etc/postgresql/15/prod. Looking only for "main" found
+// nothing, so every postgresql.* field was null and hba rules were empty:
+// rules.none(authMethod == "trust") passed. Fails if the search only globs
+// the "main" cluster.
+func TestPostgresqlFindsDebianClusterNotNamedMain(t *testing.T) {
+	t.Run("a renamed cluster is found", func(t *testing.T) {
+		fs := pgFs(t,
+			"/etc/postgresql/15/prod/postgresql.conf",
+			"/etc/postgresql/15/prod/pg_hba.conf",
+			"/etc/postgresql/15/prod/pg_ident.conf",
+		)
+		for _, name := range []string{"postgresql.conf", "pg_hba.conf", "pg_ident.conf"} {
+			assert.Equal(t, "/etc/postgresql/15/prod/"+name, findPg(t, fs, name))
+		}
+	})
+
+	// A "main" cluster keeps winning over other clusters, of any version, so
+	// a host that resolved to 15/main before still does. Fails if the other
+	// clusters are merged into the main group's version ranking.
+	t.Run("main still wins", func(t *testing.T) {
+		fs := pgFs(t,
+			"/etc/postgresql/15/main/postgresql.conf",
+			"/etc/postgresql/15/second/postgresql.conf",
+			"/etc/postgresql/18/second/postgresql.conf",
+		)
+		assert.Equal(t, "/etc/postgresql/15/main/postgresql.conf",
+			findPg(t, fs, "postgresql.conf"))
+	})
+
+	// Without a main cluster: highest version first, then cluster name.
+	// Fails if the other clusters are not ranked by version, or if a
+	// directory that is not a version is offered.
+	t.Run("other clusters by version then name", func(t *testing.T) {
+		fs := pgFs(t,
+			"/etc/postgresql/15/zeta/postgresql.conf",
+			"/etc/postgresql/15/alpha/postgresql.conf",
+			"/etc/postgresql/16/prod/postgresql.conf",
+			"/etc/postgresql/16/beta/postgresql.conf",
+			"/etc/postgresql/backup/prod/postgresql.conf",
+		)
+		paths := postgresqlConfigSearchPaths(fs, "postgresql.conf")
+		assert.Equal(t, []string{
+			"/etc/postgresql/16/beta/postgresql.conf",
+			"/etc/postgresql/16/prod/postgresql.conf",
+			"/etc/postgresql/15/alpha/postgresql.conf",
+			"/etc/postgresql/15/zeta/postgresql.conf",
+		}, paths[:4])
+		assert.NotContains(t, paths, "/etc/postgresql/backup/prod/postgresql.conf")
+	})
+}
+
 // The version-less layouts — container images, an initdb default, homebrew —
 // are what the glob does NOT cover, and they still have to resolve.
 func TestPostgresqlVersionlessPathsStillResolve(t *testing.T) {

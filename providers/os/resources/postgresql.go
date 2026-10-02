@@ -33,7 +33,7 @@ import (
 // the list in order and stops at the first existing file.
 //
 // Distro packages stamp the major version into the directory name
-// (/etc/postgresql/<MAJOR>/main on Debian/Ubuntu, /var/lib/pgsql/<MAJOR>/data
+// (/etc/postgresql/<MAJOR>/<CLUSTER> on Debian/Ubuntu, /var/lib/pgsql/<MAJOR>/data
 // on RHEL, /var/db/postgres/data<MAJOR> on FreeBSD), so those groups are
 // resolved by glob. Enumerating the majors
 // by hand goes stale the day a new one ships: the list previously stopped at
@@ -42,6 +42,7 @@ import (
 // version and stay listed literally.
 func postgresqlConfigSearchPaths(fs afero.Fs, name string) []string {
 	paths := versionedPostgresqlPaths(fs, "/etc/postgresql", "main", name)
+	paths = append(paths, otherDebianClusterPaths(fs, name)...)
 	paths = append(paths,
 		"/var/lib/postgresql/data/"+name,
 		"/var/lib/pgsql/data/"+name,
@@ -71,6 +72,25 @@ func versionedPostgresqlPaths(fs afero.Fs, root, cluster, name string) []string 
 	return postgresqlPathsByMajor(fs, root+"/*/"+cluster+"/"+name, func(match string) (int, bool) {
 		return postgresqlVersionRank(path.Base(path.Dir(path.Dir(match))))
 	})
+}
+
+// otherDebianClusterPaths expands /etc/postgresql/<version>/<cluster>/<name>
+// for every cluster not named "main". Debian names a cluster when it is
+// created (pg_createcluster 15 prod) and pg_renamecluster renames it, so a
+// host may have no "main" at all. These come after every "main" cluster,
+// which keeps the file a host with a main cluster resolved to before, and
+// are ordered by version, highest first, then by cluster name. A running
+// postmaster's config_file, probed before all of these, names the cluster
+// the server actually loads.
+func otherDebianClusterPaths(fs afero.Fs, name string) []string {
+	all := versionedPostgresqlPaths(fs, "/etc/postgresql", "*", name)
+	out := make([]string, 0, len(all))
+	for _, p := range all {
+		if path.Base(path.Dir(p)) != "main" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // postgresqlVersionRank turns a version directory name ("18", "9.6") into a
@@ -135,7 +155,9 @@ func postgresqlPathsByMajor(fs afero.Fs, pattern string, majorOf func(match stri
 		}
 		candidates = append(candidates, candidate{major: major, path: match})
 	}
-	sort.Slice(candidates, func(i, j int) bool {
+	// Glob returns matches in lexical order; a stable sort keeps that order
+	// among matches of the same version (Debian clusters of one major).
+	sort.SliceStable(candidates, func(i, j int) bool {
 		return candidates[i].major > candidates[j].major
 	})
 
