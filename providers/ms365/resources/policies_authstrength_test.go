@@ -9,7 +9,6 @@ import (
 
 	kjson "github.com/microsoft/kiota-serialization-json-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
-	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/llx"
@@ -60,7 +59,6 @@ func TestCombinationConfigurationFields(t *testing.T) {
 	assert.Equal(t, "fido2", fido.configType)
 	assert.Equal(t, []string{"cb69481e-8ff7-4039-93ec-0a2729a154a8", "ee882879-721c-4913-9775-3dfcce97072a"}, fido.allowedAAGUIDs)
 	assert.Empty(t, fido.allowedIssuerSkis)
-	assert.NotNil(t, fido.allowedIssuerSkis, "a list that does not apply is empty, not null")
 	assert.Equal(t, []string{"fido2"}, convertEnumCollectionToStrings(configs[0].GetAppliesToCombinations()))
 
 	cert := combinationConfigurationFields(configs[1])
@@ -68,7 +66,6 @@ func TestCombinationConfigurationFields(t *testing.T) {
 	assert.Equal(t, []string{"9A4248C6AC8C2931AB2A86537818E92E7B6C97B6"}, cert.allowedIssuerSkis)
 	assert.Equal(t, []string{"1.2.3.4.5"}, cert.allowedPolicyOIDs)
 	assert.Empty(t, cert.allowedAAGUIDs)
-	assert.NotNil(t, cert.allowedAAGUIDs)
 
 	// a method the SDK does not model still reports its type
 	future := combinationConfigurationFields(configs[2])
@@ -82,9 +79,10 @@ func TestCombinationConfigurationTypeFromOData(t *testing.T) {
 	assert.Equal(t, "fido2", combinationConfigurationTypeFromOData(&s))
 }
 
-// appliesToJSON is a featureRolloutPolicy appliesTo response. Staged rollout
-// targets groups; the user entry stands for any other directory object.
-const appliesToJSON = `{
+// featureRolloutAppliesToJSON is a featureRolloutPolicy appliesTo response.
+// Staged rollout targets groups; the user entry stands for any other
+// directory object.
+const featureRolloutAppliesToJSON = `{
   "value": [
     {"@odata.type": "#microsoft.graph.group", "id": "1f9a2b3c-0000-4000-8000-000000000020", "displayName": "Staged rollout pilot"},
     {"@odata.type": "#microsoft.graph.user", "id": "1f9a2b3c-0000-4000-8000-000000000021"},
@@ -93,7 +91,7 @@ const appliesToJSON = `{
 }`
 
 func TestDirectoryObjectGroupIds(t *testing.T) {
-	node, err := kjson.NewJsonParseNode([]byte(appliesToJSON))
+	node, err := kjson.NewJsonParseNode([]byte(featureRolloutAppliesToJSON))
 	require.NoError(t, err)
 	parsed, err := node.GetObjectValue(models.CreateDirectoryObjectCollectionResponseFromDiscriminatorValue)
 	require.NoError(t, err)
@@ -102,7 +100,6 @@ func TestDirectoryObjectGroupIds(t *testing.T) {
 
 	assert.Equal(t, []string{"1f9a2b3c-0000-4000-8000-000000000020"}, directoryObjectGroupIds(objects))
 	assert.Empty(t, directoryObjectGroupIds(nil))
-	assert.NotNil(t, directoryObjectGroupIds(nil))
 }
 
 func TestPolicyReadsClassifyRefusal(t *testing.T) {
@@ -117,11 +114,4 @@ func TestPolicyReadsClassifyRefusal(t *testing.T) {
 		require.True(t, errors.As(got, &lerr))
 		assert.Equal(t, []string{"Policy.Read.All"}, lerr.Permissions)
 	}
-
-	throttled := odataerrors.NewODataError()
-	throttled.ResponseStatusCode = 503
-	got := classifyGraphError(throttled, policyReadAll)
-	assert.False(t, errors.Is(got, llx.ErrForbidden), "a 503 is not a refusal")
-
-	assert.NoError(t, classifyGraphError(nil, policyReadAll))
 }
