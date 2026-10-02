@@ -271,6 +271,11 @@ func compareMarkerVersions(left, op, right string, varLeft bool) (tri, bool) {
 		if !leftOK || !rightOK {
 			return triUnknown, false
 		}
+		// a partly known version ("3") that agrees with the prefix as far as
+		// it goes ("3.8") may or may not match it
+		if len(l) < len(r) && compareVersionParts(l, r[:len(l)]) == 0 {
+			return triUnknown, true
+		}
 		match := len(l) >= len(r)
 		for i := 0; match && i < len(r); i++ {
 			match = l[i] == r[i]
