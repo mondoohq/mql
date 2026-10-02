@@ -145,11 +145,11 @@ func TestCommandExitsNonZero_Unchanged(t *testing.T) {
 
 	t.Run("zfs.pools", func(t *testing.T) {
 		rt := commandRuntime(t, map[string]*mock.Command{
-			"zpool get -jp all": {Stderr: "zpool: not found", ExitStatus: 127},
+			"zpool get -jp all": {Stderr: "internal error: failed to initialize ZFS library", ExitStatus: 1},
 		})
 		v := mustResource(t, rt, "zfs").(*mqlZfs).GetPools()
 		require.Error(t, v.Error)
-		assert.Contains(t, v.Error.Error(), "zpool: not found")
+		assert.Contains(t, v.Error.Error(), "failed to initialize ZFS library")
 	})
 }
 
