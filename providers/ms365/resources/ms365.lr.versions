@@ -202,6 +202,13 @@ microsoft.authenticationMethodsPolicy.voice.excludeTargets 13.3.1
 microsoft.authenticationMethodsPolicy.voice.includeTargets 13.3.1
 microsoft.authenticationMethodsPolicy.voice.isOfficePhoneAllowed 13.3.1
 microsoft.authenticationMethodsPolicy.voice.state 13.3.1
+microsoft.bitlockerRecoveryKey 14.0.2
+microsoft.bitlockerRecoveryKey.createdDateTime 14.0.2
+microsoft.bitlockerRecoveryKey.device 14.0.2
+microsoft.bitlockerRecoveryKey.deviceId 14.0.2
+microsoft.bitlockerRecoveryKey.id 14.0.2
+microsoft.bitlockerRecoveryKey.volumeType 14.0.2
+microsoft.bitlockerRecoveryKeys 14.0.2
 microsoft.conditionalAccess 11.0.34
 microsoft.conditionalAccess.authenticationMethodConfiguration 11.1.41
 microsoft.conditionalAccess.authenticationMethodConfiguration.id 11.1.41
@@ -386,6 +393,7 @@ microsoft.defenderRoleManagement.roleDefinitions 14.0.2
 microsoft.device 11.1.21
 microsoft.device.accountEnabled 11.2.1
 microsoft.device.approximateLastSignInDateTime 13.0.12
+microsoft.device.bitlockerRecoveryKeys 14.0.2
 microsoft.device.complianceExpirationDateTime 13.0.12
 microsoft.device.deletedDateTime 11.2.1
 microsoft.device.deviceCategory 11.1.21
@@ -398,6 +406,7 @@ microsoft.device.id 11.1.21
 microsoft.device.isCompliant 11.1.21
 microsoft.device.isManaged 11.1.21
 microsoft.device.isRooted 11.1.21
+microsoft.device.localAdminPasswordBackup 14.0.2
 microsoft.device.manufacturer 11.1.21
 microsoft.device.mdmAppId 11.1.21
 microsoft.device.model 11.1.21
@@ -410,6 +419,13 @@ microsoft.device.profileType 11.2.1
 microsoft.device.registrationDateTime 11.1.21
 microsoft.device.systemLabels 11.1.21
 microsoft.device.trustType 11.1.21
+microsoft.deviceLocalCredential 14.0.2
+microsoft.deviceLocalCredential.device 14.0.2
+microsoft.deviceLocalCredential.deviceName 14.0.2
+microsoft.deviceLocalCredential.id 14.0.2
+microsoft.deviceLocalCredential.lastBackupDateTime 14.0.2
+microsoft.deviceLocalCredential.refreshDateTime 14.0.2
+microsoft.deviceLocalCredentials 14.0.2
 microsoft.deviceRegistrationPolicy 13.12.1
 microsoft.deviceRegistrationPolicy.azureADJoin 13.12.1
 microsoft.deviceRegistrationPolicy.azureADRegistration 13.12.1

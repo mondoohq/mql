@@ -80,6 +80,21 @@ microsoft @root {
   // Microsoft.Intune/diagnosticSettings/read, which is granted separately from
   // the Entra one, so the two lists can succeed and fail independently.
   intuneDiagnosticSettings() []microsoft.diagnosticSetting
+  // Windows LAPS local administrator password backups
+  //
+  // One entry per device that has backed up its local administrator password
+  // to Microsoft Entra ID through Windows LAPS, with the device name and the
+  // backup and rotation timestamps. Only backup metadata is reported: the
+  // password itself is never requested. Requires the
+  // DeviceLocalCredential.ReadBasic.All permission.
+  deviceLocalCredentials() []microsoft.deviceLocalCredential
+  // BitLocker recovery keys escrowed to Microsoft Entra ID
+  //
+  // One entry per escrowed recovery key, with the device it was backed up
+  // from, the volume type it protects, and when it was escrowed. Only key
+  // metadata is reported: the recovery key itself is never requested.
+  // Requires the BitlockerKey.ReadBasic.All permission.
+  bitlockerRecoveryKeys() []microsoft.bitlockerRecoveryKey
 }
 
 // Microsoft Entra ID Access Review Definitions
@@ -2196,6 +2211,71 @@ private microsoft.device @defaults("id displayName") {
   deviceOwnership string
   // Date and time when the device's compliance status expires
   complianceExpirationDateTime time
+  // Windows LAPS local administrator password backup for this device
+  //
+  // The backup record for this device's local administrator password, or
+  // null when the device has never backed one up to Microsoft Entra ID. For
+  // example, `microsoft.devices.where(operatingSystem == "Windows")
+  // .all(localAdminPasswordBackup != null)` finds Windows devices with no
+  // escrowed password. The password itself is never requested.
+  localAdminPasswordBackup() microsoft.deviceLocalCredential
+  // BitLocker recovery keys escrowed from this device
+  //
+  // Empty when the device has no recovery key backed up to Microsoft Entra
+  // ID. For example, `microsoft.devices.where(operatingSystem == "Windows")
+  // .all(bitlockerRecoveryKeys.any(volumeType == "operatingSystemVolume"))`
+  // finds Windows devices whose OS volume key is not escrowed. The recovery
+  // keys themselves are never requested.
+  bitlockerRecoveryKeys() []microsoft.bitlockerRecoveryKey
+}
+
+// Windows LAPS local administrator password backup
+//
+// Backup metadata for a device's local administrator password managed by
+// Windows LAPS and stored in Microsoft Entra ID: the device name, when the
+// password was last backed up, and when it is next due for rotation. The
+// password itself is never requested.
+private microsoft.deviceLocalCredential @defaults("deviceName lastBackupDateTime") {
+  // Microsoft Entra device identifier of the device that backed up the password
+  //
+  // Matches the deviceId field of microsoft.device.
+  id string
+  // Display name of the device
+  deviceName string
+  // Date and time the password was last backed up to Microsoft Entra ID
+  lastBackupDateTime time
+  // Date and time the password is next due to be rotated
+  refreshDateTime time
+  // Device that backed up the password
+  //
+  // Null when the device no longer exists in Microsoft Entra ID.
+  device() microsoft.device
+}
+
+// BitLocker recovery key escrowed to Microsoft Entra ID
+//
+// Metadata for one BitLocker recovery key: the device it was backed up from,
+// the kind of volume it unlocks, and when it was escrowed. The recovery key
+// itself is never requested.
+private microsoft.bitlockerRecoveryKey @defaults("deviceId volumeType createdDateTime") {
+  // Recovery key identifier
+  id string
+  // Date and time the key was escrowed
+  createdDateTime time
+  // Microsoft Entra device identifier of the device the key was backed up from
+  //
+  // Matches the deviceId field of microsoft.device, and stays set when the
+  // device itself has since been deleted.
+  deviceId string
+  // Type of volume the key unlocks
+  //
+  // One of operatingSystemVolume, fixedDataVolume, or removableDataVolume.
+  // Other values may also be returned.
+  volumeType string
+  // Device the key was backed up from
+  //
+  // Null when the device no longer exists in Microsoft Entra ID.
+  device() microsoft.device
 }
 
 // Microsoft Entra domain

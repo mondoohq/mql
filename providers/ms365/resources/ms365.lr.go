@@ -96,6 +96,8 @@ const (
 	ResourceMicrosoftGroupLifecyclePolicy                                                                string = "microsoft.groupLifecyclePolicy"
 	ResourceMicrosoftDevices                                                                             string = "microsoft.devices"
 	ResourceMicrosoftDevice                                                                              string = "microsoft.device"
+	ResourceMicrosoftDeviceLocalCredential                                                               string = "microsoft.deviceLocalCredential"
+	ResourceMicrosoftBitlockerRecoveryKey                                                                string = "microsoft.bitlockerRecoveryKey"
 	ResourceMicrosoftDomain                                                                              string = "microsoft.domain"
 	ResourceMicrosoftDomainFederationConfiguration                                                       string = "microsoft.domain.federationConfiguration"
 	ResourceMicrosoftDomaindnsrecord                                                                     string = "microsoft.domaindnsrecord"
@@ -574,6 +576,14 @@ func init() {
 		"microsoft.device": {
 			Init:   initMicrosoftDevice,
 			Create: createMicrosoftDevice,
+		},
+		"microsoft.deviceLocalCredential": {
+			// to override args, implement: initMicrosoftDeviceLocalCredential(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftDeviceLocalCredential,
+		},
+		"microsoft.bitlockerRecoveryKey": {
+			// to override args, implement: initMicrosoftBitlockerRecoveryKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftBitlockerRecoveryKey,
 		},
 		"microsoft.domain": {
 			// to override args, implement: initMicrosoftDomain(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -1317,6 +1327,12 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.intuneDiagnosticSettings": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoft).GetIntuneDiagnosticSettings()).ToDataRes(types.Array(types.Resource("microsoft.diagnosticSetting")))
+	},
+	"microsoft.deviceLocalCredentials": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoft).GetDeviceLocalCredentials()).ToDataRes(types.Array(types.Resource("microsoft.deviceLocalCredential")))
+	},
+	"microsoft.bitlockerRecoveryKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoft).GetBitlockerRecoveryKeys()).ToDataRes(types.Array(types.Resource("microsoft.bitlockerRecoveryKey")))
 	},
 	"microsoft.identityAndAccess.accessReviews.filter": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessAccessReviews).GetFilter()).ToDataRes(types.String)
@@ -3021,6 +3037,42 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.device.complianceExpirationDateTime": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftDevice).GetComplianceExpirationDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.device.localAdminPasswordBackup": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDevice).GetLocalAdminPasswordBackup()).ToDataRes(types.Resource("microsoft.deviceLocalCredential"))
+	},
+	"microsoft.device.bitlockerRecoveryKeys": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDevice).GetBitlockerRecoveryKeys()).ToDataRes(types.Array(types.Resource("microsoft.bitlockerRecoveryKey")))
+	},
+	"microsoft.deviceLocalCredential.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDeviceLocalCredential).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.deviceLocalCredential.deviceName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDeviceLocalCredential).GetDeviceName()).ToDataRes(types.String)
+	},
+	"microsoft.deviceLocalCredential.lastBackupDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDeviceLocalCredential).GetLastBackupDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.deviceLocalCredential.refreshDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDeviceLocalCredential).GetRefreshDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.deviceLocalCredential.device": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftDeviceLocalCredential).GetDevice()).ToDataRes(types.Resource("microsoft.device"))
+	},
+	"microsoft.bitlockerRecoveryKey.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftBitlockerRecoveryKey).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.bitlockerRecoveryKey.createdDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftBitlockerRecoveryKey).GetCreatedDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.bitlockerRecoveryKey.deviceId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftBitlockerRecoveryKey).GetDeviceId()).ToDataRes(types.String)
+	},
+	"microsoft.bitlockerRecoveryKey.volumeType": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftBitlockerRecoveryKey).GetVolumeType()).ToDataRes(types.String)
+	},
+	"microsoft.bitlockerRecoveryKey.device": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftBitlockerRecoveryKey).GetDevice()).ToDataRes(types.Resource("microsoft.device"))
 	},
 	"microsoft.domain.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftDomain).GetId()).ToDataRes(types.String)
@@ -7468,6 +7520,14 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoft).IntuneDiagnosticSettings, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"microsoft.deviceLocalCredentials": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoft).DeviceLocalCredentials, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.bitlockerRecoveryKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoft).BitlockerRecoveryKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.identityAndAccess.accessReviews.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftIdentityAndAccessAccessReviews).__id, ok = v.Value.(string)
 		return
@@ -10054,6 +10114,62 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.device.complianceExpirationDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftDevice).ComplianceExpirationDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.device.localAdminPasswordBackup": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDevice).LocalAdminPasswordBackup, ok = plugin.RawToTValue[*mqlMicrosoftDeviceLocalCredential](v.Value, v.Error)
+		return
+	},
+	"microsoft.device.bitlockerRecoveryKeys": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDevice).BitlockerRecoveryKeys, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.deviceLocalCredential.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDeviceLocalCredential).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.deviceLocalCredential.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDeviceLocalCredential).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.deviceLocalCredential.deviceName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDeviceLocalCredential).DeviceName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.deviceLocalCredential.lastBackupDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDeviceLocalCredential).LastBackupDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.deviceLocalCredential.refreshDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDeviceLocalCredential).RefreshDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.deviceLocalCredential.device": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftDeviceLocalCredential).Device, ok = plugin.RawToTValue[*mqlMicrosoftDevice](v.Value, v.Error)
+		return
+	},
+	"microsoft.bitlockerRecoveryKey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftBitlockerRecoveryKey).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.bitlockerRecoveryKey.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftBitlockerRecoveryKey).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.bitlockerRecoveryKey.createdDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftBitlockerRecoveryKey).CreatedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.bitlockerRecoveryKey.deviceId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftBitlockerRecoveryKey).DeviceId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.bitlockerRecoveryKey.volumeType": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftBitlockerRecoveryKey).VolumeType, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.bitlockerRecoveryKey.device": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftBitlockerRecoveryKey).Device, ok = plugin.RawToTValue[*mqlMicrosoftDevice](v.Value, v.Error)
 		return
 	},
 	"microsoft.domain.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -16517,6 +16633,8 @@ type mqlMicrosoft struct {
 	AccessReviews            plugin.TValue[*mqlMicrosoftIdentityAndAccessAccessReviews]
 	EntraDiagnosticSettings  plugin.TValue[[]any]
 	IntuneDiagnosticSettings plugin.TValue[[]any]
+	DeviceLocalCredentials   plugin.TValue[[]any]
+	BitlockerRecoveryKeys    plugin.TValue[[]any]
 }
 
 // createMicrosoft creates a new instance of this resource
@@ -16848,6 +16966,38 @@ func (c *mqlMicrosoft) GetIntuneDiagnosticSettings() *plugin.TValue[[]any] {
 		}
 
 		return c.intuneDiagnosticSettings()
+	})
+}
+
+func (c *mqlMicrosoft) GetDeviceLocalCredentials() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.DeviceLocalCredentials, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft", c.__id, "deviceLocalCredentials")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.deviceLocalCredentials()
+	})
+}
+
+func (c *mqlMicrosoft) GetBitlockerRecoveryKeys() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.BitlockerRecoveryKeys, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft", c.__id, "bitlockerRecoveryKeys")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.bitlockerRecoveryKeys()
 	})
 }
 
@@ -23660,6 +23810,8 @@ type mqlMicrosoftDevice struct {
 	ApproximateLastSignInDateTime plugin.TValue[*time.Time]
 	DeviceOwnership               plugin.TValue[string]
 	ComplianceExpirationDateTime  plugin.TValue[*time.Time]
+	LocalAdminPasswordBackup      plugin.TValue[*mqlMicrosoftDeviceLocalCredential]
+	BitlockerRecoveryKeys         plugin.TValue[[]any]
 }
 
 // createMicrosoftDevice creates a new instance of this resource
@@ -23796,6 +23948,190 @@ func (c *mqlMicrosoftDevice) GetDeviceOwnership() *plugin.TValue[string] {
 
 func (c *mqlMicrosoftDevice) GetComplianceExpirationDateTime() *plugin.TValue[*time.Time] {
 	return &c.ComplianceExpirationDateTime
+}
+
+func (c *mqlMicrosoftDevice) GetLocalAdminPasswordBackup() *plugin.TValue[*mqlMicrosoftDeviceLocalCredential] {
+	return plugin.GetOrCompute[*mqlMicrosoftDeviceLocalCredential](&c.LocalAdminPasswordBackup, func() (*mqlMicrosoftDeviceLocalCredential, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.device", c.__id, "localAdminPasswordBackup")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftDeviceLocalCredential), nil
+			}
+		}
+
+		return c.localAdminPasswordBackup()
+	})
+}
+
+func (c *mqlMicrosoftDevice) GetBitlockerRecoveryKeys() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.BitlockerRecoveryKeys, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.device", c.__id, "bitlockerRecoveryKeys")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.bitlockerRecoveryKeys()
+	})
+}
+
+// mqlMicrosoftDeviceLocalCredential for the microsoft.deviceLocalCredential resource
+type mqlMicrosoftDeviceLocalCredential struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftDeviceLocalCredentialInternal it will be used here
+	Id                 plugin.TValue[string]
+	DeviceName         plugin.TValue[string]
+	LastBackupDateTime plugin.TValue[*time.Time]
+	RefreshDateTime    plugin.TValue[*time.Time]
+	Device             plugin.TValue[*mqlMicrosoftDevice]
+}
+
+// createMicrosoftDeviceLocalCredential creates a new instance of this resource
+func createMicrosoftDeviceLocalCredential(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftDeviceLocalCredential{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.deviceLocalCredential", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftDeviceLocalCredential) MqlName() string {
+	return "microsoft.deviceLocalCredential"
+}
+
+func (c *mqlMicrosoftDeviceLocalCredential) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftDeviceLocalCredential) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftDeviceLocalCredential) GetDeviceName() *plugin.TValue[string] {
+	return &c.DeviceName
+}
+
+func (c *mqlMicrosoftDeviceLocalCredential) GetLastBackupDateTime() *plugin.TValue[*time.Time] {
+	return &c.LastBackupDateTime
+}
+
+func (c *mqlMicrosoftDeviceLocalCredential) GetRefreshDateTime() *plugin.TValue[*time.Time] {
+	return &c.RefreshDateTime
+}
+
+func (c *mqlMicrosoftDeviceLocalCredential) GetDevice() *plugin.TValue[*mqlMicrosoftDevice] {
+	return plugin.GetOrCompute[*mqlMicrosoftDevice](&c.Device, func() (*mqlMicrosoftDevice, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.deviceLocalCredential", c.__id, "device")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftDevice), nil
+			}
+		}
+
+		return c.device()
+	})
+}
+
+// mqlMicrosoftBitlockerRecoveryKey for the microsoft.bitlockerRecoveryKey resource
+type mqlMicrosoftBitlockerRecoveryKey struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftBitlockerRecoveryKeyInternal it will be used here
+	Id              plugin.TValue[string]
+	CreatedDateTime plugin.TValue[*time.Time]
+	DeviceId        plugin.TValue[string]
+	VolumeType      plugin.TValue[string]
+	Device          plugin.TValue[*mqlMicrosoftDevice]
+}
+
+// createMicrosoftBitlockerRecoveryKey creates a new instance of this resource
+func createMicrosoftBitlockerRecoveryKey(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftBitlockerRecoveryKey{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.bitlockerRecoveryKey", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftBitlockerRecoveryKey) MqlName() string {
+	return "microsoft.bitlockerRecoveryKey"
+}
+
+func (c *mqlMicrosoftBitlockerRecoveryKey) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftBitlockerRecoveryKey) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftBitlockerRecoveryKey) GetCreatedDateTime() *plugin.TValue[*time.Time] {
+	return &c.CreatedDateTime
+}
+
+func (c *mqlMicrosoftBitlockerRecoveryKey) GetDeviceId() *plugin.TValue[string] {
+	return &c.DeviceId
+}
+
+func (c *mqlMicrosoftBitlockerRecoveryKey) GetVolumeType() *plugin.TValue[string] {
+	return &c.VolumeType
+}
+
+func (c *mqlMicrosoftBitlockerRecoveryKey) GetDevice() *plugin.TValue[*mqlMicrosoftDevice] {
+	return plugin.GetOrCompute[*mqlMicrosoftDevice](&c.Device, func() (*mqlMicrosoftDevice, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.bitlockerRecoveryKey", c.__id, "device")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftDevice), nil
+			}
+		}
+
+		return c.device()
+	})
 }
 
 // mqlMicrosoftDomain for the microsoft.domain resource

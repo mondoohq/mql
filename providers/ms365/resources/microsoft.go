@@ -45,6 +45,8 @@ type mqlMicrosoftInternal struct {
 	auditlogBatches auditlogBatchCaches
 	// directory role id to role template id, read once for administrative units
 	dirRoleTemplates directoryRoleTemplateCache
+	// tenant-wide LAPS and BitLocker escrow listings, fetched once
+	keyEscrow keyEscrowCache
 }
 
 // userBatchCaches holds one cache per per-user field that is resolved through
