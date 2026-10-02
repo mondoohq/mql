@@ -4347,8 +4347,9 @@ haproxy {
 // Parsed haproxy.cfg, every other file haproxy loads with `-f` (read from
 // the running haproxy process or the haproxy systemd service and its
 // environment files; a directory loads its `*.cfg` files), and every file
-// pulled in by `!include` / `!includeglob` directives (HAProxy 2.4+). Exposes each section as a dedicated resource,
-// plus a raw view over every section for types that are not modeled.
+// pulled in by `!include` / `!includeglob` directives (HAProxy 2.4+).
+// Exposes each section as a dedicated resource, plus a raw view over every
+// section for types that are not modeled.
 // Pass `init(path: "...")` to point at a non-default config file.
 haproxy.config {
   init(path? string)

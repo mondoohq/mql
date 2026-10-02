@@ -386,6 +386,9 @@ func haproxyProcessConfigs(afs *afero.Afero, pidFile string) []string {
 	if err != nil {
 		return nil
 	}
+	// A pid file can list several pids (the master first, then workers or
+	// old processes during a reload). They all run with the same `-f`
+	// arguments, so the first readable haproxy command line answers.
 	for _, pid := range strings.Fields(string(data)) {
 		if _, err := strconv.Atoi(pid); err != nil {
 			continue
