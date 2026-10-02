@@ -120,6 +120,137 @@ func PolicyFileCandidates(platform string) []string {
 	}
 }
 
+// Flathub's Firefox runs in a sandbox that has no view of the host's /etc or
+// of any distribution install prefix. Its SysConfD is /app/etc/firefox, which
+// flatpak fills from the org.mozilla.firefox.systemconfig extension, so an
+// administrator deploys its policy file into that extension's directory on the
+// host instead.
+const (
+	// FlatpakAppID is the Flathub application ID of Firefox.
+	FlatpakAppID = "org.mozilla.firefox"
+	// FlatpakSystemConfigID is the extension Flathub's Firefox mounts as
+	// /app/etc/firefox.
+	FlatpakSystemConfigID = "org.mozilla.firefox.systemconfig"
+	// flatpakSystemConfigBranch is the branch the extension point asks for.
+	flatpakSystemConfigBranch = "stable"
+
+	// FlatpakSystemInstallation is the system-wide flatpak installation.
+	FlatpakSystemInstallation = "/var/lib/flatpak"
+	// FlatpakUserInstallation is a user's flatpak installation, relative to
+	// the home directory.
+	FlatpakUserInstallation = ".local/share/flatpak"
+)
+
+// flatpakArches are the architectures Flathub builds Firefox for. Flatpak
+// only mounts the extension for the host's own architecture.
+var flatpakArches = []string{"x86_64", "aarch64"}
+
+// FlatpakApp is the directory a flatpak installation keeps the Firefox app in.
+func FlatpakApp(installation string) string {
+	return installation + "/app/" + FlatpakAppID
+}
+
+// FlatpakSystemConfigDirs are the directories, one per architecture, a
+// flatpak installation mounts as Firefox's /app/etc/firefox. arch narrows the
+// list to the host's architecture; an empty arch keeps every one.
+func FlatpakSystemConfigDirs(installation, arch string) []string {
+	// Container images report Go's architecture names rather than uname's.
+	switch arch {
+	case "amd64":
+		arch = "x86_64"
+	case "arm64":
+		arch = "aarch64"
+	}
+	var res []string
+	for _, a := range flatpakArches {
+		if arch != "" && a != arch {
+			continue
+		}
+		res = append(res, installation+"/extension/"+FlatpakSystemConfigID+"/"+a+"/"+flatpakSystemConfigBranch)
+	}
+	return res
+}
+
+// flatpakPolicyFile is where the policy file sits inside a systemconfig
+// extension directory, mirroring /etc/firefox/policies/policies.json.
+func flatpakPolicyFile(extensionDir string) string {
+	return extensionDir + "/policies/" + PolicyFileName
+}
+
+// LinuxHost answers the questions LinuxPolicyFileCandidates needs about a
+// host: whether a path exists, which home directories it has, and its
+// architecture.
+type LinuxHost struct {
+	Exists func(path string) bool
+	Homes  func() []string
+	Arch   string
+}
+
+// LinuxPolicyFileCandidates returns the policy files to probe on a Linux host,
+// in the order the installed Firefox would consult them.
+//
+// A distribution Firefox (a package under one of the install prefixes, or the
+// snap, which is granted read access to /etc/firefox/policies) reads
+// SystemPolicyFile and then its install prefix. Flathub's Firefox reads
+// neither: it reads its systemconfig extension. Crediting /etc/firefox to a
+// host whose only Firefox is the flatpak reports a policy the browser never
+// loads, so the flatpak locations are used only when no distribution Firefox
+// is installed. On a host that has both, the distribution Firefox is reported,
+// as it was before flatpak was considered.
+//
+// Flatpak resolves an extension from the running user's installation before
+// the system one, and a user's extension directory replaces the system one
+// even when it holds no policy file (verified on Flathub Firefox 157 with
+// flatpak 1.14 and 1.16). So when any user has their own systemconfig
+// extension, that user's Firefox is not governed by the system file; the
+// first such user's policy file is the only candidate, and a missing one
+// reads as unconfigured rather than crediting the administrator's file.
+func LinuxPolicyFileCandidates(host LinuxHost) []string {
+	native := PolicyFileCandidates("linux")
+	for _, prefix := range linuxInstallPrefixes {
+		if host.Exists(prefix) {
+			return native
+		}
+	}
+
+	flatpak := host.Exists(FlatpakApp(FlatpakSystemInstallation))
+	var homes []string
+	if host.Homes != nil {
+		homes = host.Homes()
+	}
+	if !flatpak {
+		for _, home := range homes {
+			if host.Exists(FlatpakApp(userInstallation(home))) {
+				flatpak = true
+				break
+			}
+		}
+	}
+	if !flatpak {
+		// No Firefox found at all. Keep probing the distribution locations,
+		// which is what this resource has always done.
+		return native
+	}
+
+	for _, home := range homes {
+		for _, dir := range FlatpakSystemConfigDirs(userInstallation(home), host.Arch) {
+			if host.Exists(dir) {
+				return []string{flatpakPolicyFile(dir)}
+			}
+		}
+	}
+
+	var res []string
+	for _, dir := range FlatpakSystemConfigDirs(FlatpakSystemInstallation, host.Arch) {
+		res = append(res, flatpakPolicyFile(dir))
+	}
+	return res
+}
+
+func userInstallation(home string) string {
+	return strings.TrimSuffix(home, "/") + "/" + FlatpakUserInstallation
+}
+
 func distributionFiles(prefixes []string, sep string) []string {
 	res := make([]string, 0, len(prefixes))
 	for _, prefix := range prefixes {

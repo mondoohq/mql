@@ -16,6 +16,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -1292,7 +1293,11 @@ func TestResource_FilesFind(t *testing.T) {
 // a copy goes stale silently: add a probe path to the resource and the file
 // still describes the old host, so the new path is never exercised. Building
 // it from PolicyFileCandidates means the fixture cannot drift from the code.
-func firefoxLinuxHost(t *testing.T, files map[string]string) firefoxHost {
+//
+// dirs names directories that exist on the host, which is how the resource
+// tells which Firefox installs are present. Files outside the distribution
+// candidate list are recorded too, so a test can place a flatpak policy file.
+func firefoxLinuxHost(t *testing.T, files map[string]string, dirs ...string) firefoxHost {
 	t.Helper()
 
 	type recordedResource struct {
@@ -1301,8 +1306,25 @@ func firefoxLinuxHost(t *testing.T, files map[string]string) firefoxHost {
 		Fields   map[string]*llx.RawData
 	}
 
+	paths := firefox.PolicyFileCandidates("linux")
+	for path := range files {
+		if !slices.Contains(paths, path) {
+			paths = append(paths, path)
+		}
+	}
+
 	resources := []recordedResource{}
-	for _, path := range firefox.PolicyFileCandidates("linux") {
+	for _, dir := range dirs {
+		resources = append(resources, recordedResource{
+			Resource: "file",
+			ID:       dir,
+			Fields: map[string]*llx.RawData{
+				"path":   llx.StringData(dir),
+				"exists": llx.BoolData(true),
+			},
+		})
+	}
+	for _, path := range paths {
 		fields := map[string]*llx.RawData{
 			"path":   llx.StringData(path),
 			"exists": llx.BoolData(false),
@@ -1512,6 +1534,32 @@ func TestResource_FirefoxPoliciesFirstMatchWins(t *testing.T) {
 // A policy file that exists but declares nothing is not a managed host, and
 // must not be reported as one. The file is still reported, so a permission or
 // ownership check can compose onto it.
+// Flathub's Firefox ignores /etc/firefox and reads its systemconfig
+// extension. On a host where it is the only Firefox, the extension's file is
+// the policy, and an /etc file next to it must not be credited.
+func TestResource_FirefoxPoliciesFlatpakOnly(t *testing.T) {
+	const flatpakPolicyPath = "/var/lib/flatpak/extension/org.mozilla.firefox.systemconfig/aarch64/stable/policies/policies.json"
+	const flatpakApp = "/var/lib/flatpak/app/org.mozilla.firefox"
+
+	t.Run("the systemconfig extension's file is the policy", func(t *testing.T) {
+		x := firefoxLinuxHost(t, map[string]string{flatpakPolicyPath: esrPolicy}, flatpakApp)
+		assert.Equal(t, flatpakPolicyPath, x.value(t, "firefox.policies.file.path").Data.Value)
+		assert.Equal(t, true, x.value(t, "firefox.policies.configured").Data.Value)
+		assert.Equal(t, "tls1.2", x.value(t, `firefox.policies.params["SSLVersionMin"]`).Data.Value)
+	})
+
+	t.Run("an /etc file does not govern a flatpak-only Firefox", func(t *testing.T) {
+		x := firefoxLinuxHost(t, map[string]string{systemPolicyPath: esrPolicy}, flatpakApp)
+		assert.Equal(t, false, x.value(t, "firefox.policies.configured").Data.Value)
+		assert.Nil(t, x.value(t, "firefox.policies.file").Data.Value)
+	})
+
+	t.Run("a distribution Firefox next to the flatpak keeps /etc", func(t *testing.T) {
+		x := firefoxLinuxHost(t, map[string]string{systemPolicyPath: esrPolicy}, flatpakApp, "/usr/lib/firefox-esr")
+		assert.Equal(t, systemPolicyPath, x.value(t, "firefox.policies.file.path").Data.Value)
+	})
+}
+
 func TestResource_FirefoxPoliciesEmptyFile(t *testing.T) {
 	x := firefoxLinuxHost(t, map[string]string{systemPolicyPath: ""})
 

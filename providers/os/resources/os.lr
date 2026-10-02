@@ -17282,7 +17282,13 @@ private firefox.addon @defaults("name version active browser") {
 // for that policy is discarded rather than merged into. On Linux and macOS
 // Firefox reads exactly one policy file — on Linux the administrator-owned
 // `/etc/firefox/policies/policies.json` outranks the install prefix, and the
-// files are never merged with each other.
+// files are never merged with each other. Flathub's Firefox ignores both and
+// reads `policies/policies.json` in its `org.mozilla.firefox.systemconfig`
+// extension (`/var/lib/flatpak/extension/...`, or a user's own
+// `~/.local/share/flatpak/extension/...`, which replaces the system one for
+// that user). Those locations are used when the flatpak is the only Firefox
+// on the host; when a distribution Firefox is installed too, the resource
+// reports the distribution Firefox.
 //
 // A host with no enterprise policy anywhere is the normal unmanaged state,
 // not an error: `configured` is false, `source` is empty, and `params` is

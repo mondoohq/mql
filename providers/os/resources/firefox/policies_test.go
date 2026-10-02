@@ -209,3 +209,85 @@ func TestDescribe(t *testing.T) {
 	assert.Equal(t, "registry", Describe([]Source{registry, registry}),
 		"both registry hives together are still one kind of source")
 }
+
+// fakeLinuxHost answers LinuxPolicyFileCandidates from a fixed set of paths.
+// The layouts are the ones a Leap 15.6 / 16.0 host with Flathub Firefox 157
+// actually has.
+func fakeLinuxHost(arch string, homes []string, paths ...string) LinuxHost {
+	set := map[string]bool{}
+	for _, p := range paths {
+		set[p] = true
+	}
+	return LinuxHost{
+		Exists: func(path string) bool { return set[path] },
+		Homes:  func() []string { return homes },
+		Arch:   arch,
+	}
+}
+
+const (
+	flatpakSystemPolicy = "/var/lib/flatpak/extension/org.mozilla.firefox.systemconfig/x86_64/stable/policies/policies.json"
+	aliceExtension      = "/home/alice/.local/share/flatpak/extension/org.mozilla.firefox.systemconfig/x86_64/stable"
+)
+
+func TestLinuxPolicyFileCandidates(t *testing.T) {
+	homes := []string{"/root", "/home/ec2-user", "/home/alice"}
+
+	t.Run("a distribution Firefox keeps the /etc and prefix lookup", func(t *testing.T) {
+		host := fakeLinuxHost("x86_64", homes, "/usr/lib64/firefox")
+		assert.Equal(t, PolicyFileCandidates("linux"), LinuxPolicyFileCandidates(host))
+	})
+
+	// Both installed: the distribution Firefox is the one reported, so its
+	// /etc file still applies and the flatpak systemconfig is not mixed in.
+	t.Run("a host with both installs reports the distribution Firefox", func(t *testing.T) {
+		host := fakeLinuxHost("x86_64", homes, "/usr/lib64/firefox", "/var/lib/flatpak/app/org.mozilla.firefox")
+		candidates := LinuxPolicyFileCandidates(host)
+		assert.Equal(t, SystemPolicyFile, candidates[0])
+		assert.NotContains(t, candidates, flatpakSystemPolicy)
+	})
+
+	t.Run("no Firefox found keeps the distribution lookup", func(t *testing.T) {
+		host := fakeLinuxHost("x86_64", homes)
+		assert.Equal(t, PolicyFileCandidates("linux"), LinuxPolicyFileCandidates(host))
+	})
+
+	// The false pass: Flathub Firefox ignores /etc/firefox, so a flatpak-only
+	// host must not be credited with it.
+	t.Run("a flatpak-only host reads the systemconfig extension, never /etc", func(t *testing.T) {
+		host := fakeLinuxHost("x86_64", homes, "/var/lib/flatpak/app/org.mozilla.firefox")
+		candidates := LinuxPolicyFileCandidates(host)
+		assert.Equal(t, []string{flatpakSystemPolicy}, candidates)
+		assert.NotContains(t, candidates, SystemPolicyFile)
+	})
+
+	t.Run("a user-installed flatpak counts as a flatpak install", func(t *testing.T) {
+		host := fakeLinuxHost("x86_64", homes, "/home/alice/.local/share/flatpak/app/org.mozilla.firefox")
+		assert.Equal(t, []string{flatpakSystemPolicy}, LinuxPolicyFileCandidates(host))
+	})
+
+	t.Run("the extension path follows the host architecture", func(t *testing.T) {
+		host := fakeLinuxHost("arm64", homes, "/var/lib/flatpak/app/org.mozilla.firefox")
+		assert.Equal(t, []string{
+			"/var/lib/flatpak/extension/org.mozilla.firefox.systemconfig/aarch64/stable/policies/policies.json",
+		}, LinuxPolicyFileCandidates(host))
+	})
+
+	t.Run("an unknown architecture probes every one Flathub builds", func(t *testing.T) {
+		host := fakeLinuxHost("", homes, "/var/lib/flatpak/app/org.mozilla.firefox")
+		assert.Equal(t, []string{
+			flatpakSystemPolicy,
+			"/var/lib/flatpak/extension/org.mozilla.firefox.systemconfig/aarch64/stable/policies/policies.json",
+		}, LinuxPolicyFileCandidates(host))
+	})
+
+	// A user's own systemconfig extension replaces the system one for that
+	// user, even when it carries no policy file, so the administrator's file
+	// is not what governs that user's Firefox.
+	t.Run("a user's systemconfig extension replaces the system one", func(t *testing.T) {
+		host := fakeLinuxHost("x86_64", homes, "/var/lib/flatpak/app/org.mozilla.firefox", aliceExtension)
+		candidates := LinuxPolicyFileCandidates(host)
+		assert.Equal(t, []string{aliceExtension + "/policies/policies.json"}, candidates)
+		assert.NotContains(t, candidates, flatpakSystemPolicy)
+	})
+}

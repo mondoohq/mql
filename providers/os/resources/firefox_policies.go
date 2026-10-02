@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
@@ -69,7 +70,7 @@ func (f *mqlFirefoxPolicies) resolve() ([]firefox.Source, *mqlFile, error) {
 	platform := firefoxPlatform(conn)
 
 	// Lowest precedence first: the policy file.
-	fileRes, params, err := f.readPolicyFile(platform)
+	fileRes, params, err := f.readPolicyFile(conn, platform)
 	if err != nil {
 		f.err = err
 		return nil, nil, err
@@ -136,18 +137,18 @@ func firefoxPlatform(conn shared.Connection) string {
 // that an administrator deployed a policy file is worth reporting on its own,
 // and because permission and ownership checks compose onto the file resource
 // and stay useful for a file whose contents are empty.
-func (f *mqlFirefoxPolicies) readPolicyFile(platform string) (*mqlFile, map[string]any, error) {
-	for _, candidate := range firefox.PolicyFileCandidates(platform) {
-		raw, err := CreateResource(f.MqlRuntime, "file", map[string]*llx.RawData{
-			"path": llx.StringData(candidate),
-		})
+func (f *mqlFirefoxPolicies) readPolicyFile(conn shared.Connection, platform string) (*mqlFile, map[string]any, error) {
+	candidates := firefox.PolicyFileCandidates(platform)
+	if platform == "linux" {
+		candidates = firefox.LinuxPolicyFileCandidates(f.linuxHost(conn))
+	}
+
+	for _, candidate := range candidates {
+		fileRes, exists, err := f.probeFile(candidate)
 		if err != nil {
 			return nil, nil, err
 		}
-		fileRes := raw.(*mqlFile)
-
-		exists := fileRes.GetExists()
-		if exists.Error != nil || !exists.Data {
+		if !exists {
 			continue
 		}
 
@@ -166,6 +167,49 @@ func (f *mqlFirefoxPolicies) readPolicyFile(platform string) (*mqlFile, map[stri
 		return fileRes, params, nil
 	}
 	return nil, nil, nil
+}
+
+// probeFile returns the file resource for path and whether it exists. A path
+// that cannot be stat'ed reads as absent, as it always has for the candidate
+// list: most hosts have none of these paths, and a non-root scan cannot look
+// inside other users' homes.
+func (f *mqlFirefoxPolicies) probeFile(path string) (*mqlFile, bool, error) {
+	raw, err := CreateResource(f.MqlRuntime, "file", map[string]*llx.RawData{
+		"path": llx.StringData(path),
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	fileRes := raw.(*mqlFile)
+	exists := fileRes.GetExists()
+	return fileRes, exists.Error == nil && exists.Data, nil
+}
+
+// linuxHost answers firefox.LinuxPolicyFileCandidates' questions about which
+// Firefox installs this host has.
+func (f *mqlFirefoxPolicies) linuxHost(conn shared.Connection) firefox.LinuxHost {
+	host := firefox.LinuxHost{
+		Exists: func(path string) bool {
+			_, exists, err := f.probeFile(path)
+			return err == nil && exists
+		},
+		Homes: func() []string {
+			users, err := targetUserHomes(f.MqlRuntime)
+			if err != nil {
+				log.Debug().Err(err).Msg("firefox.policies> could not list user homes for flatpak installations")
+				return nil
+			}
+			homes := make([]string, 0, len(users))
+			for _, u := range users {
+				homes = append(homes, u.home)
+			}
+			return homes
+		},
+	}
+	if asset := conn.Asset(); asset != nil && asset.Platform != nil {
+		host.Arch = asset.Platform.Arch
+	}
+	return host
 }
 
 // readRegistryPolicies walks a Mozilla policy key and normalizes it into the
