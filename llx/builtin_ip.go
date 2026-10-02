@@ -286,7 +286,7 @@ func (i RawIP) inRange(other RawIP) bool {
 // prefix length, which is what `ip == ip` compares. RawIP embeds net.IP, a byte
 // slice, so it must never be compared with the == operator.
 func (i RawIP) equal(other RawIP) bool {
-	return i.IP.Equal(other.IP) && i.PrefixLength == other.PrefixLength
+	return i.Equal(other.IP) && i.PrefixLength == other.PrefixLength
 }
 
 func (i RawIP) Cmp(other RawIP) int {
