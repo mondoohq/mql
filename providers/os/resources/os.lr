@@ -10091,8 +10091,14 @@ private nfs.export @defaults("path client readOnly noRootSquash") {
   // Client specification (hostname, IP, CIDR, wildcard, netgroup, or `*`)
   client string
   // Export options as parsed from /etc/exports
+  //
+  // On Linux, the line's default options (a leading `-opts` token) come
+  // first, followed by the client's own options.
   options []string
   // Whether the share is exported read-only
+  //
+  // On Linux, a share is read-only unless `rw` is given, and of
+  // conflicting options the last one wins.
   readOnly bool
   // Whether the share grants remote uid 0 (`no_root_squash`, `maproot=root`, or `root=`)
   noRootSquash bool

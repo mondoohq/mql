@@ -35,7 +35,7 @@ func TestParseLinuxExports(t *testing.T) {
 		{Path: "/srv/data", Client: "backup.example.com", Options: []string{"ro", "sync"}, ReadOnly: true, NoRootSquash: false},
 		{Path: "/srv/public", Client: "*", Options: []string{"ro", "all_squash", "insecure"}, ReadOnly: true, NoRootSquash: false},
 		{Path: "/srv/krb", Client: "client.example.com", Options: []string{"rw", "sec=krb5p"}, ReadOnly: false, NoRootSquash: false},
-		{Path: "/srv/bare", Client: "hostonly", Options: nil, ReadOnly: false, NoRootSquash: false},
+		{Path: "/srv/bare", Client: "hostonly", Options: nil, ReadOnly: true, NoRootSquash: false},
 		{Path: "/srv/anon", Client: "*", Options: []string{"rw", "sync"}, ReadOnly: false, NoRootSquash: false},
 	}
 	assertEntries(t, got, want)
@@ -68,7 +68,7 @@ func TestParseLinuxExports_EdgeCases(t *testing.T) {
 			want: []ExportEntry{
 				{Path: "/share", Client: "a", Options: []string{"ro"}, ReadOnly: true},
 				{Path: "/share", Client: "b", Options: []string{"rw"}},
-				{Path: "/share", Client: "c", Options: nil},
+				{Path: "/share", Client: "c", Options: nil, ReadOnly: true},
 			},
 		},
 		{
@@ -92,6 +92,30 @@ func TestParseLinuxExports_EdgeCases(t *testing.T) {
 			want: []ExportEntry{
 				{Path: "/share", Client: "host1", Options: []string{"rw"}},
 				{Path: "/share", Client: "host2", Options: []string{"ro"}, ReadOnly: true},
+			},
+		},
+		{
+			name:  "neither ro nor rw exports read-only",
+			input: "/share host(sync)\n",
+			want: []ExportEntry{
+				{Path: "/share", Client: "host", Options: []string{"sync"}, ReadOnly: true},
+			},
+		},
+		{
+			name:  "last of conflicting options wins",
+			input: "/share a(ro,rw,root_squash,no_root_squash) b(rw,ro,no_root_squash,root_squash)\n",
+			want: []ExportEntry{
+				{Path: "/share", Client: "a", Options: []string{"ro", "rw", "root_squash", "no_root_squash"}, NoRootSquash: true},
+				{Path: "/share", Client: "b", Options: []string{"rw", "ro", "no_root_squash", "root_squash"}, ReadOnly: true},
+			},
+		},
+		{
+			name:  "leading dash token sets defaults for every client",
+			input: "/share -rw,no_root_squash a b(ro) c(root_squash)\n",
+			want: []ExportEntry{
+				{Path: "/share", Client: "a", Options: []string{"rw", "no_root_squash"}, NoRootSquash: true},
+				{Path: "/share", Client: "b", Options: []string{"rw", "no_root_squash", "ro"}, ReadOnly: true, NoRootSquash: true},
+				{Path: "/share", Client: "c", Options: []string{"rw", "no_root_squash", "root_squash"}},
 			},
 		},
 		{
