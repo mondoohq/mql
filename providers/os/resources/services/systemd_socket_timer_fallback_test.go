@@ -93,7 +93,7 @@ func TestSystemdTimerManager_FallsBackToUnitFilesWhenListUnitsCannotRun(t *testi
 
 func TestSystemdTimerManager_ShowPropertiesFallsBack(t *testing.T) {
 	conn := systemdFallbackConn(t, map[string]*mock.Command{
-		buildShowPropertyCommand("Unit,OnCalendar,Persistent", "dnf-makecache.timer"): {
+		buildShowPropertyCommand("Unit,TimersCalendar,Persistent", "dnf-makecache.timer"): {
 			Stderr:     bootedElsewhere,
 			ExitStatus: 1,
 		},

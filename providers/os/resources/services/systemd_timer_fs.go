@@ -77,7 +77,7 @@ func (m *SystemdFSTimerManager) ShowTimerProperties(name string) (map[string]str
 		if _, err := m.Fs.Stat(unitPath); err != nil {
 			continue
 		}
-		return m.readTimerProperties(unitPath)
+		return m.readTimerProperties(unitName, unitPath)
 	}
 	return nil, fmt.Errorf("%w: %s", ErrServiceNotFound, name)
 }
@@ -122,28 +122,51 @@ func (m *SystemdFSTimerManager) readTimerUnit(name, unitPath string) (*SystemdTi
 	return timer, nil
 }
 
-func (m *SystemdFSTimerManager) readTimerProperties(unitPath string) (map[string]string, error) {
-	f, err := m.Fs.Open(unitPath)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	opts, err := unit.Deserialize(f)
-	if err != nil {
-		return nil, err
-	}
-
+// readTimerProperties reads the timer settings from the unit file and its
+// drop-ins, in the order systemd applies them. OnCalendar is a list: every
+// assignment adds an expression and an empty one clears those before it.
+// Several expressions are joined with a newline.
+func (m *SystemdFSTimerManager) readTimerProperties(unitName, unitPath string) (map[string]string, error) {
 	props := map[string]string{}
-	for _, o := range opts {
-		switch {
-		case o.Section == "Timer" && o.Name == "OnCalendar":
-			props["OnCalendar"] = o.Value
-		case o.Section == "Timer" && o.Name == "Persistent":
-			props["Persistent"] = o.Value
-		case o.Section == "Timer" && o.Name == "Unit":
-			props["Unit"] = o.Value
+	var calendar []string
+
+	files := append([]string{unitPath}, (&SystemdFSUnitManager{Fs: m.Fs}).dropInFiles(unitName)...)
+	for i, file := range files {
+		f, err := m.Fs.Open(file)
+		if err != nil {
+			if i == 0 {
+				return nil, err
+			}
+			// a drop-in that cannot be read does not erase the unit file
+			continue
 		}
+		opts, err := unit.Deserialize(f)
+		f.Close()
+		if err != nil {
+			if i == 0 {
+				return nil, err
+			}
+			continue
+		}
+
+		for _, o := range opts {
+			if o.Section != "Timer" {
+				continue
+			}
+			switch o.Name {
+			case "OnCalendar":
+				if o.Value == "" {
+					calendar = nil
+					continue
+				}
+				calendar = append(calendar, o.Value)
+			case "Persistent", "Unit":
+				props[o.Name] = o.Value
+			}
+		}
+	}
+	if len(calendar) > 0 {
+		props["OnCalendar"] = strings.Join(calendar, "\n")
 	}
 
 	// If Unit is not explicitly set, systemd defaults to <name>.service

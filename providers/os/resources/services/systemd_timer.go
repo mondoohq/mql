@@ -133,10 +133,12 @@ func (m *SystemdTimerManager) Get(name string) (*SystemdTimer, error) {
 	return timer, nil
 }
 
-// ShowTimerProperties runs systemctl show for timer-specific properties.
+// ShowTimerProperties runs systemctl show for timer-specific properties. It
+// returns Unit, Persistent and OnCalendar; OnCalendar is absent for a timer
+// with no calendar trigger.
 func (m *SystemdTimerManager) ShowTimerProperties(name string) (map[string]string, error) {
 	unit := ensureSystemdTimerUnit(name)
-	cmd, err := m.conn.RunCommand(buildShowPropertyCommand("Unit,OnCalendar,Persistent", unit))
+	cmd, err := m.conn.RunCommand(buildShowPropertyCommand("Unit,TimersCalendar,Persistent", unit))
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +148,64 @@ func (m *SystemdTimerManager) ShowTimerProperties(name string) (map[string]strin
 		return m.fsFallback().ShowTimerProperties(name)
 	}
 
-	return parseShowProperties(cmd.Stdout)
+	props, err := parseShowProperties(cmd.Stdout)
+	if err != nil {
+		return nil, err
+	}
+
+	// systemd has no OnCalendar property; the calendar triggers are in
+	// TimersCalendar. Before systemd 245 that property prints as
+	// "[unprintable]", and then the unit files are the only source.
+	calendar, ok := parseTimersCalendar(props["TimersCalendar"])
+	delete(props, "TimersCalendar")
+	if !ok {
+		fsProps, err := m.fsFallback().ShowTimerProperties(name)
+		if err != nil {
+			// systemd knows the timer, so a unit file it does not find is one
+			// generated at runtime or kept outside the search path
+			log.Debug().Err(err).Str("unit", unit).
+				Msg("mql[systemd]> could not read the timer's calendar from its unit file")
+			return props, nil
+		}
+		calendar = fsProps["OnCalendar"]
+	}
+	if calendar != "" {
+		props["OnCalendar"] = calendar
+	}
+
+	return props, nil
+}
+
+// parseTimersCalendar extracts the calendar expressions from systemctl's
+// TimersCalendar property, one per line as parseShowProperties joins them:
+//
+//	{ OnCalendar=*-*-* 03:00:00 ; next_elapse=Sat 2026-10-03 03:00:00 UTC }
+//
+// Several expressions are joined with a newline. An empty value means the
+// timer has no calendar trigger. ok is false when the value cannot be read,
+// which is what systemd before 245 prints ("[unprintable]").
+func parseTimersCalendar(raw string) (string, bool) {
+	if raw == "" {
+		return "", true
+	}
+
+	var exprs []string
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		inner, found := strings.CutPrefix(line, "{ OnCalendar=")
+		if !found {
+			return "", false
+		}
+		expr, _, found := strings.Cut(inner, " ; next_elapse=")
+		if !found {
+			return "", false
+		}
+		exprs = append(exprs, expr)
+	}
+	return strings.Join(exprs, "\n"), true
 }
 
 func ParseSystemdTimerUnitFiles(input io.Reader) ([]*SystemdTimer, error) {
