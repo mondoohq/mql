@@ -5,16 +5,18 @@ package resources
 
 import (
 	"errors"
-	"github.com/spf13/afero"
 	"io"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/spf13/afero"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/bind9"
+	"go.mondoo.com/mql/providers/os/resources/haproxy"
 	"go.mondoo.com/mql/types"
 )
 
@@ -126,10 +128,68 @@ func bind9ConfPath(conn shared.Connection) string {
 	return bind9ConfCandidates[0]
 }
 
+// bind9PidFile is where named records its pid unless the configuration
+// moves it, on Debian and Red Hat alike.
+const bind9PidFile = "/run/named/named.pid"
+
+// bind9ServiceUnits are the systemd units that start named, in the order to
+// try them: named.service on Red Hat and on Debian 11 and later (where
+// bind9.service is an alias of it), bind9.service on Debian 9 and 10.
+var bind9ServiceUnits = []string{"named.service", "bind9.service"}
+
+// bind9LaunchConfig returns the configuration file named loads when its
+// command line names one with -c, or "" when it reads its compiled-in
+// default. The command line comes from the running named when there is one,
+// otherwise from the systemd service that starts it, with OPTIONS from
+// /etc/default/named, /etc/default/bind9 or /etc/sysconfig/named expanded.
+func bind9LaunchConfig(afs *afero.Afero) string {
+	conf, running := bind9ProcessConfig(afs, bind9PidFile)
+	if !running {
+		if argv := systemdServiceArgv(afs, bind9ServiceUnits...); len(argv) > 0 {
+			conf = bind9.ConfigFromArgs(argv[1:])
+		}
+	}
+	if conf != "" && !filepath.IsAbs(conf) {
+		// named resolves -c against its working directory, which is /
+		// under systemd.
+		conf = filepath.Join("/", conf)
+	}
+	return conf
+}
+
+// bind9ProcessConfig reads the -c argument of the named process recorded in
+// pidFile. running is false when the pid file is missing or stale, or the
+// command line cannot be read.
+func bind9ProcessConfig(afs *afero.Afero, pidFile string) (conf string, running bool) {
+	data, err := afs.ReadFile(pidFile)
+	if err != nil {
+		return "", false
+	}
+	pid := strings.TrimSpace(string(data))
+	if _, err := strconv.Atoi(pid); err != nil {
+		return "", false
+	}
+	raw, err := afs.ReadFile(filepath.Join("/proc", pid, "cmdline"))
+	if err != nil {
+		return "", false
+	}
+	argv := haproxy.SplitProcCmdline(raw)
+	// A stale pid file can point at an unrelated process. RHEL 7 runs
+	// named-pkcs11.
+	if len(argv) == 0 || !strings.HasPrefix(filepath.Base(argv[0]), "named") {
+		return "", false
+	}
+	return bind9.ConfigFromArgs(argv[1:]), true
+}
+
 func (b *mqlBind9) file() (*mqlFile, error) {
 	conn := b.MqlRuntime.Connection.(shared.Connection)
+	path := bind9ConfPath(conn)
+	if launched := bind9LaunchConfig(&afero.Afero{Fs: conn.FileSystem()}); launched != "" {
+		path = launched
+	}
 	f, err := CreateResource(b.MqlRuntime, "file", map[string]*llx.RawData{
-		"path": llx.StringData(bind9ConfPath(conn)),
+		"path": llx.StringData(path),
 	})
 	if err != nil {
 		return nil, err

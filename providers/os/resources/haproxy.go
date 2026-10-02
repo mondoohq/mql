@@ -279,15 +279,6 @@ func initHaproxyConfigGlobal(runtime *plugin.Runtime, args map[string]*llx.RawDa
 	return args, global.Data, nil
 }
 
-// haproxyUnitDirs lists where systemd looks for haproxy.service, highest
-// precedence first. Drop-ins live in <dir>/haproxy.service.d/*.conf.
-var haproxyUnitDirs = []string{
-	"/etc/systemd/system",
-	"/run/systemd/system",
-	"/usr/lib/systemd/system",
-	"/lib/systemd/system",
-}
-
 const defaultHaproxyPidFile = "/run/haproxy.pid"
 
 // loadedConfigFiles returns the configuration files haproxy loads, in load
@@ -328,54 +319,11 @@ func (s *mqlHaproxyConfig) loadedConfigFiles() []string {
 // haproxyServiceLaunch reads haproxy.service, its drop-ins and its
 // environment files and returns the arguments ExecStart= passes.
 func haproxyServiceLaunch(afs *afero.Afero) haproxy.LaunchArgs {
-	var unit string
-	for _, dir := range haproxyUnitDirs {
-		data, err := afs.ReadFile(filepath.Join(dir, "haproxy.service"))
-		if err == nil {
-			unit = string(data)
-			break
-		}
-	}
-	if unit == "" {
+	argv := systemdServiceArgv(afs, "haproxy.service")
+	if len(argv) == 0 {
 		return haproxy.LaunchArgs{}
 	}
-
-	// Drop-ins with the same name shadow each other by directory
-	// precedence and apply in file name order.
-	dropIns := map[string]string{}
-	for i := len(haproxyUnitDirs) - 1; i >= 0; i-- {
-		dir := filepath.Join(haproxyUnitDirs[i], "haproxy.service.d")
-		entries, err := afs.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".conf") {
-				continue
-			}
-			if data, err := afs.ReadFile(filepath.Join(dir, e.Name())); err == nil {
-				dropIns[e.Name()] = string(data)
-			}
-		}
-	}
-	names := make([]string, 0, len(dropIns))
-	for name := range dropIns {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	contents := []string{unit}
-	for _, name := range names {
-		contents = append(contents, dropIns[name])
-	}
-
-	svc := haproxy.ParseSystemdService(contents...)
-	var envFiles []string
-	for _, p := range svc.EnvironmentFiles {
-		if data, err := afs.ReadFile(p); err == nil {
-			envFiles = append(envFiles, string(data))
-		}
-	}
-	return haproxy.LaunchFromService(svc, envFiles)
+	return haproxy.ParseLaunchArgs(argv[1:])
 }
 
 // haproxyProcessConfigs returns the `-f` arguments of the running haproxy

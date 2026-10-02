@@ -2278,6 +2278,12 @@ private apache2.conf.location @defaults("path") {
 bind9 {
   init(path? string)
   // Primary configuration file
+  //
+  // The file named loads: the -c argument of the running named, or when
+  // named is not running, of the systemd service that starts it with
+  // OPTIONS from /etc/default/named, /etc/default/bind9, or
+  // /etc/sysconfig/named. Without a -c argument, the distribution's
+  // default location.
   file() file
   // Every file that contributes to the running configuration
   //
@@ -2298,7 +2304,9 @@ bind9 {
   // Version string reported in a version.bind query
   //
   // Empty when the statement is absent, which means the real version is
-  // reported. A server that hides it sets this, often to "".
+  // reported. A server that hides it sets this, often to "none" or a
+  // made-up string. `version "";` also reads empty, so check for a
+  // version key in params to tell it from an absent statement.
   version() string
   // minimal-responses setting ("yes", "no", "no-auth", or "no-auth-recursive")
   minimalResponses() string

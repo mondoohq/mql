@@ -236,11 +236,11 @@ func unquote(v string) string {
 	return v
 }
 
-// LaunchFromService resolves the haproxy command line a systemd service
-// runs. envFiles holds the content of the service's EnvironmentFile=
+// ServiceArgv resolves the command line a systemd service runs, argv[0]
+// included. envFiles holds the content of the service's EnvironmentFile=
 // entries that exist, in order. As in systemd, variables from environment
 // files override Environment= assignments regardless of their position.
-func LaunchFromService(svc SystemdService, envFiles []string) LaunchArgs {
+func ServiceArgv(svc SystemdService, envFiles []string) []string {
 	env := make(map[string]string, len(svc.Environment))
 	for k, v := range svc.Environment {
 		env[k] = v
@@ -250,7 +250,13 @@ func LaunchFromService(svc SystemdService, envFiles []string) LaunchArgs {
 			env[k] = v
 		}
 	}
-	argv := ExpandSystemdCommand(svc.ExecStart, env)
+	return ExpandSystemdCommand(svc.ExecStart, env)
+}
+
+// LaunchFromService resolves the haproxy command line a systemd service
+// runs (see ServiceArgv).
+func LaunchFromService(svc SystemdService, envFiles []string) LaunchArgs {
+	argv := ServiceArgv(svc, envFiles)
 	if len(argv) == 0 {
 		return LaunchArgs{}
 	}
