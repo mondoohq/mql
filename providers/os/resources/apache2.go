@@ -22,6 +22,7 @@ import (
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
 	"go.mondoo.com/mql/providers/os/connection/shared"
 	"go.mondoo.com/mql/providers/os/resources/apache2"
+	"go.mondoo.com/mql/providers/os/resources/haproxy"
 	"go.mondoo.com/mql/types"
 )
 
@@ -351,6 +352,13 @@ type mqlApache2ConfInternal struct {
 	// locating the config file. It is only consulted when the config does not
 	// state a ServerRoot, and is written once by file() before any parsing.
 	binaryServerRoot string
+	// defaultFile is set when file() chose the configuration file, rather
+	// than apache2.conf(path) naming it.
+	defaultFile bool
+	// launch is how httpd is started (see apacheLaunch), read once.
+	launchOnce sync.Once
+	launch     *apache2.Launch
+	launchErr  error
 }
 
 // apacheConfByFamily maps platform families (and a few standalone platform
@@ -504,6 +512,26 @@ func (s *mqlApache2Conf) id() (string, error) {
 // directly, bypassing this method entirely (same pattern as sshd.config).
 func (s *mqlApache2Conf) file() (*mqlFile, error) {
 	conn := s.MqlRuntime.Connection.(shared.Connection)
+	s.defaultFile = true
+
+	// A configuration file named on httpd's command line (-f) is the one it
+	// loads.
+	launch, err := s.launchArgs()
+	if err != nil {
+		return nil, err
+	}
+	if launch != nil && launch.ConfigFile != "" {
+		path := apacheLaunchConfigFile(conn, launch)
+		if ok, _ := (&afero.Afero{Fs: conn.FileSystem()}).Exists(path); ok {
+			f, err := CreateResource(s.MqlRuntime, "file", map[string]*llx.RawData{
+				"path": llx.StringData(path),
+			})
+			if err != nil {
+				return nil, err
+			}
+			return f.(*mqlFile), nil
+		}
+	}
 
 	// Try the platform-preferred path first, then fall back to all known paths.
 	preferred := apacheConfPath(conn)
@@ -573,6 +601,9 @@ func (s *mqlApache2Conf) expandGlob(pattern string) ([]string, error) {
 		}
 		pattern = filepath.Join(serverRoot, pattern)
 	}
+
+	// SUSE's start_apache2 passes "Include /etc/apache2/sysconfig.d//global.conf"
+	pattern = filepath.Clean(pattern)
 
 	if !reApacheGlob.MatchString(pattern) {
 		return []string{pattern}, nil
@@ -712,13 +743,32 @@ func (s *mqlApache2Conf) parse(file *mqlFile) error {
 		defines = append(defines, unitDefines...)
 	}
 
+	// httpd's own command line: the running master's, or on SUSE the one
+	// start_apache2 builds from /etc/sysconfig/apache2. It applies to the
+	// file httpd loads, not to another file named with apache2.conf(path).
+	var preDirectives, postDirectives []string
+	launch, launchErr := s.launchArgs()
+	if launch != nil && (s.defaultFile || (launch.ConfigFile != "" && apacheLaunchConfigFile(conn, launch) == file.Path.Data)) {
+		defines = append(defines, launch.Defines...)
+		preDirectives = launch.PreDirectives
+		postDirectives = launch.PostDirectives
+		if launch.ServerRoot != "" {
+			s.binaryServerRoot = launch.ServerRoot
+		}
+	}
+
 	opts := apache2.ParseOptions{
-		StaticModules: apacheStaticModules(conn, afs),
-		Defines:       defines,
+		StaticModules:  apacheStaticModules(conn, afs),
+		Defines:        defines,
+		PreDirectives:  preDirectives,
+		PostDirectives: postDirectives,
 	}
 
 	var cfg *apache2.Config
 	err := unitErr
+	if err == nil {
+		err = launchErr
+	}
 	if err == nil {
 		cfg, err = apache2.ParseWithGlobOptions(file.Path.Data, fileContent, globExpand, envvars, opts)
 	}
@@ -872,6 +922,154 @@ func (s *mqlApache2Conf) loadEnvvars(fileContent func(string) (string, error)) m
 		return nil
 	}
 	return apache2.ParseEnvvars(content)
+}
+
+// apachePidFiles are where httpd records its master's pid: SUSE's
+// start_apache2 passes -C "PidFile /run/httpd.pid", Red Hat's httpd.conf
+// sets /run/httpd/httpd.pid and Debian's envvars /run/apache2/apache2.pid.
+var apachePidFiles = []string{"/run/httpd.pid", "/run/httpd/httpd.pid", "/run/apache2/apache2.pid"}
+
+const (
+	// apacheSUSEStartScript is the wrapper SUSE's apache2.service runs. It
+	// builds httpd's command line from apacheSUSESysconfig.
+	apacheSUSEStartScript = "/usr/sbin/start_apache2"
+	apacheSUSESysconfig   = "/etc/sysconfig/apache2"
+)
+
+// launchArgs returns how httpd is started, read once per resource.
+func (s *mqlApache2Conf) launchArgs() (*apache2.Launch, error) {
+	s.launchOnce.Do(func() {
+		conn := s.MqlRuntime.Connection.(shared.Connection)
+		s.launch, s.launchErr = apacheLaunch(&afero.Afero{Fs: conn.FileSystem()})
+	})
+	return s.launch, s.launchErr
+}
+
+// apacheLaunch returns the command line httpd runs with: the running
+// master's, found through its pid file, or when no httpd runs on SUSE the one
+// start_apache2 builds from /etc/sysconfig/apache2. It returns nil when
+// neither applies, and httpd then reads its configuration file as is.
+func apacheLaunch(afs *afero.Afero) (*apache2.Launch, error) {
+	if l := apacheRunningLaunch(afs); l != nil {
+		return l, nil
+	}
+	return apacheSUSELaunch(afs)
+}
+
+// apacheRunningLaunch reads the command line of the httpd master recorded in
+// a pid file. A missing or stale pid file gives nil.
+func apacheRunningLaunch(afs *afero.Afero) *apache2.Launch {
+	for _, pidFile := range apachePidFiles {
+		data, err := afs.ReadFile(pidFile)
+		if err != nil {
+			continue
+		}
+		pid := strings.TrimSpace(string(data))
+		if _, err := strconv.Atoi(pid); err != nil {
+			continue
+		}
+		raw, err := afs.ReadFile(filepath.Join("/proc", pid, "cmdline"))
+		if err != nil {
+			continue
+		}
+		argv := haproxy.SplitProcCmdline(raw)
+		if len(argv) == 0 {
+			continue
+		}
+		// SUSE runs httpd-prefork (or -worker, -event), Debian apache2
+		base := filepath.Base(argv[0])
+		if !strings.HasPrefix(base, "httpd") && !strings.HasPrefix(base, "apache2") {
+			continue
+		}
+		l := apache2.ParseLaunchArgs(argv[1:])
+		return &l
+	}
+	return nil
+}
+
+// apacheSUSELaunch returns the command line SUSE's start_apache2 runs httpd
+// with, built from /etc/sysconfig/apache2, or nil on any other layout.
+func apacheSUSELaunch(afs *afero.Afero) (*apache2.Launch, error) {
+	if ok, _ := afs.Exists(apacheSUSEStartScript); !ok {
+		return nil, nil
+	}
+	data, err := afs.ReadFile(apacheSUSESysconfig)
+	if errors.Is(err, fs.ErrNotExist) {
+		// start_apache2 then leaves out -DSYSCONFIG, and httpd.conf loads
+		// the static loadmodule.conf and global.conf itself
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	vars := apache2.ParseEnvironmentFile(string(data))
+	mpm := vars["APACHE_MPM"]
+	if mpm == "" {
+		mpm = apacheSUSEMPM(afs)
+	}
+	var unitArgs []string
+	if argv := systemdServiceArgv(afs, "apache2.service"); len(argv) > 1 {
+		unitArgs = argv[1:]
+	}
+	l := apache2.SUSESysconfig{
+		Vars:     vars,
+		MPM:      mpm,
+		UnitArgs: unitArgs,
+		Exists: func(p string) bool {
+			ok, _ := afs.Exists(p)
+			return ok
+		},
+	}.Launch()
+	return &l, nil
+}
+
+// apacheSUSEMPMs are the httpd binaries SUSE ships, one per MPM.
+var apacheSUSEMPMs = []string{"prefork", "worker", "event"}
+
+// apacheSUSEMPM returns the MPM start_apache2 picks when APACHE_MPM is unset:
+// the target of the /usr/sbin/httpd alternative (/usr/sbin/httpd-prefork).
+// When the link cannot be read, a single installed httpd-<mpm> binary is the
+// answer; otherwise it is unknown.
+func apacheSUSEMPM(afs *afero.Afero) string {
+	if lr, ok := afs.Fs.(afero.LinkReader); ok {
+		target := "/usr/sbin/httpd"
+		for range 2 {
+			next, err := lr.ReadlinkIfPossible(target)
+			if err != nil {
+				break
+			}
+			if !filepath.IsAbs(next) {
+				next = filepath.Join(filepath.Dir(target), next)
+			}
+			target = next
+		}
+		if mpm, ok := strings.CutPrefix(target, "/usr/sbin/httpd-"); ok {
+			return mpm
+		}
+	}
+	found := ""
+	for _, mpm := range apacheSUSEMPMs {
+		if ok, _ := afs.Exists("/usr/sbin/httpd-" + mpm); ok {
+			if found != "" {
+				return ""
+			}
+			found = mpm
+		}
+	}
+	return found
+}
+
+// apacheLaunchConfigFile resolves the -f argument: a relative path is
+// relative to the -d ServerRoot, or the platform's.
+func apacheLaunchConfigFile(conn shared.Connection, launch *apache2.Launch) string {
+	if launch.ConfigFile == "" || filepath.IsAbs(launch.ConfigFile) {
+		return launch.ConfigFile
+	}
+	root := launch.ServerRoot
+	if root == "" {
+		root = apacheServerRoot(conn)
+	}
+	return filepath.Join(root, launch.ConfigFile)
 }
 
 // apacheServiceUnitDirs are where systemd looks for the httpd service unit

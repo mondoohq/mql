@@ -87,6 +87,12 @@ type ParseOptions struct {
 	// Defines are parameters passed on the command line with -D. They
 	// satisfy <IfDefine> like a Define directive does.
 	Defines []string
+	// PreDirectives are directives passed with -C, which httpd processes
+	// before the configuration file, and PostDirectives those passed with
+	// -c, processed after it. SUSE's start_apache2 loads its modules and
+	// sysconfig settings this way.
+	PreDirectives  []string
+	PostDirectives []string
 }
 
 // parseState is the evaluation state threaded through a parse: what has been
@@ -291,7 +297,10 @@ func ParseWithGlobOptions(rootPath string, fileContent fileContentFunc, globExpa
 	st := newParseState(fileContent, globExpand, vars, opts)
 	// The root file is seeded as already-visited.
 	st.visited[rootPath] = true
-	st.parseLines(cfg, splitAndClean(content), 0)
+	lines := splitAndClean(strings.Join(opts.PreDirectives, "\n"))
+	lines = append(lines, splitAndClean(content)...)
+	lines = append(lines, splitAndClean(strings.Join(opts.PostDirectives, "\n"))...)
+	st.parseLines(cfg, lines, 0)
 	return cfg, nil
 }
 

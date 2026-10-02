@@ -313,3 +313,58 @@ func TestApacheUnitEnvironment(t *testing.T) {
 		assert.Equal(t, []string{"FOREGROUND"}, defines)
 	})
 }
+
+func TestApacheLaunch(t *testing.T) {
+	write := func(fs afero.Fs, path, content string) {
+		require.NoError(t, afero.WriteFile(fs, path, []byte(content), 0o644))
+	}
+	suseCmdline := "/usr/sbin/httpd-prefork\x00-DSYSCONFIG\x00-C\x00PidFile /run/httpd.pid\x00" +
+		"-C\x00Include /etc/apache2/sysconfig.d//loadmodule.conf\x00-C\x00Include /etc/apache2/sysconfig.d//global.conf\x00" +
+		"-f\x00/etc/apache2/httpd.conf\x00-c\x00Include /etc/apache2/sysconfig.d//include.conf\x00" +
+		"-DSYSTEMD\x00-DFOREGROUND\x00-k\x00start\x00"
+	suseUnit := "[Service]\nType=notify\nExecStart=/usr/sbin/start_apache2 -DSYSTEMD -DFOREGROUND -k start\n"
+	suseHost := func() afero.Fs {
+		fs := afero.NewMemMapFs()
+		write(fs, "/usr/sbin/start_apache2", "#!/bin/sh\n")
+		write(fs, "/usr/sbin/httpd-prefork", "")
+		write(fs, "/usr/lib/systemd/system/apache2.service", suseUnit)
+		write(fs, "/usr/lib64/apache2-prefork/mod_info.so", "")
+		write(fs, "/etc/sysconfig/apache2", "APACHE_MODULES=\"info\"\nAPACHE_SERVERTOKENS=\"OS\"\nAPACHE_SERVER_FLAGS=\"\"\n")
+		return fs
+	}
+
+	t.Run("the running master's command line", func(t *testing.T) {
+		fs := suseHost()
+		write(fs, "/run/httpd.pid", "20045\n")
+		write(fs, "/proc/20045/cmdline", suseCmdline)
+		l, err := apacheLaunch(&afero.Afero{Fs: fs})
+		require.NoError(t, err)
+		require.NotNil(t, l)
+		assert.Equal(t, []string{"SYSCONFIG", "SYSTEMD", "FOREGROUND"}, l.Defines)
+		assert.Equal(t, "Include /etc/apache2/sysconfig.d//global.conf", l.PreDirectives[2])
+	})
+
+	t.Run("SUSE without a running httpd builds it from sysconfig", func(t *testing.T) {
+		fs := suseHost()
+		// a stale pid file pointing at another process is ignored
+		write(fs, "/run/httpd.pid", "20045\n")
+		write(fs, "/proc/20045/cmdline", "/usr/bin/bash\x00")
+		l, err := apacheLaunch(&afero.Afero{Fs: fs})
+		require.NoError(t, err)
+		require.NotNil(t, l)
+		assert.Equal(t, []string{"SYSCONFIG", "SYSTEMD", "FOREGROUND"}, l.Defines)
+		assert.Equal(t, []string{
+			"PidFile /run/httpd.pid",
+			"LoadModule info_module /usr/lib64/apache2-prefork/mod_info.so",
+			"ServerTokens OS",
+		}, l.PreDirectives)
+	})
+
+	t.Run("other layouts have nothing to add when httpd is not running", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(fs, "/usr/lib/systemd/system/httpd.service", "[Service]\nExecStart=/usr/sbin/httpd $OPTIONS -DFOREGROUND\n")
+		l, err := apacheLaunch(&afero.Afero{Fs: fs})
+		require.NoError(t, err)
+		assert.Nil(t, l)
+	})
+}
