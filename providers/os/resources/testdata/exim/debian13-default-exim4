@@ -1,0 +1,10 @@
+# /etc/default/exim4
+
+# Options/arguments for exim daemon when run from systemd service
+# EXIMSERVICE='-bdf -q30m'
+
+# Options/arguments for exim daemon when run from init script
+# EXIMDAEMONOPTS='-bd -q30m'
+
+# Additional options for update-exim4.conf(8)
+# UPEX4OPTS=''
