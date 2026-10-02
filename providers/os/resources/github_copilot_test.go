@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func createTestCopilotConfig(t *testing.T) string {
@@ -151,4 +152,18 @@ func TestCopilotMcpServerID(t *testing.T) {
 	assert.NotEqual(t,
 		copilotMcpServerID("/home/alice/.copilot/mcp-config.json", "fs"),
 		copilotMcpServerID("/home/alice/.config/Code/User/mcp.json", "fs"))
+}
+
+func TestGithubCopilotChildrenPerUser(t *testing.T) {
+	rt := newAIToolsTestRuntime(t, perUserFiles(map[string]string{
+		"/home/{u}/.config/github-copilot/apps.json": `{"github.com:Iv1.b507a08c87ecfe98":{"user":"{u}","githubAppId":"Iv1.b507a08c87ecfe98"}}`,
+	}))
+	assertPerUser(t, childValues(t, rt, "github.copilot", ".config/github-copilot", func(p plugin.Resource) (string, string, error) {
+		l := p.(*mqlGithubCopilot).GetAccounts()
+		s, err := only[*mqlGithubCopilotAccount](t, l.Data, l.Error)
+		if err != nil {
+			return "", "", err
+		}
+		return s.MqlID(), s.User.Data, nil
+	}), "%s")
 }

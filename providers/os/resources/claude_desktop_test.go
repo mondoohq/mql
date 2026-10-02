@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func TestClaudeDesktopConfigDir(t *testing.T) {
@@ -112,4 +113,18 @@ func TestReadClaudeDesktopExtensionsMissingAndMalformed(t *testing.T) {
 	writeTestFile(t, dir, claudeDesktopExtensionsFile, `{"extensions": [`)
 	_, _, err = readClaudeDesktopExtensions(testAfero(), dir)
 	assert.Error(t, err)
+}
+
+func TestClaudeDesktopChildrenPerUser(t *testing.T) {
+	rt := newAIToolsTestRuntime(t, perUserFiles(map[string]string{
+		"/home/{u}/.config/Claude/claude_desktop_config.json": `{"mcpServers":{"fs":{"command":"{u}-cmd"}}}`,
+	}))
+	assertPerUser(t, childValues(t, rt, "claude.desktop", ".config/Claude", func(p plugin.Resource) (string, string, error) {
+		l := p.(*mqlClaudeDesktop).GetMcpServers()
+		s, err := only[*mqlClaudeDesktopMcpServer](t, l.Data, l.Error)
+		if err != nil {
+			return "", "", err
+		}
+		return s.MqlID(), s.Command.Data, nil
+	}), "%s-cmd")
 }
