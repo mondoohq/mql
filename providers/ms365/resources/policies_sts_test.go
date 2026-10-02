@@ -178,20 +178,20 @@ func graphError(status int, code string) error {
 	return e
 }
 
-func TestStsPolicyError(t *testing.T) {
-	forbidden := stsPolicyError(graphError(403, "Authorization_RequestDenied"))
+func TestClassifyGraphErrorPolicyRead(t *testing.T) {
+	forbidden := classifyGraphError(graphError(403, "Authorization_RequestDenied"), stsPolicyPermission)
 	assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(forbidden))
 	var lerr *llx.Error
 	require.True(t, errors.As(forbidden, &lerr))
 	assert.Equal(t, []string{"Policy.Read.All"}, lerr.Permissions)
 	assert.Equal(t, "Authorization_RequestDenied", graphErrorCode(forbidden), "the Graph error stays in the chain")
 
-	notFound := stsPolicyError(graphError(404, "Request_ResourceNotFound"))
+	notFound := classifyGraphError(graphError(404, "Request_ResourceNotFound"), stsPolicyPermission)
 	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(notFound))
 	assert.True(t, isResourceNotFound(notFound))
 
-	transport := stsPolicyError(errors.New("dial tcp: connection refused"))
+	transport := classifyGraphError(errors.New("dial tcp: connection refused"), stsPolicyPermission)
 	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(transport))
 
-	assert.NoError(t, stsPolicyError(nil))
+	assert.NoError(t, classifyGraphError(nil, stsPolicyPermission))
 }

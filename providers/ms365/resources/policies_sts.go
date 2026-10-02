@@ -7,17 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"slices"
 	"strings"
 	"sync"
 
-	"github.com/cockroachdb/errors"
-	abstractions "github.com/microsoft/kiota-abstractions-go"
-	betaodataerrors "github.com/microsoftgraph/msgraph-beta-sdk-go/models/odataerrors"
 	msgraphsdk "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
-	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
 	"github.com/rs/zerolog/log"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
@@ -30,36 +25,6 @@ import (
 // discovery policies, and the objects they are assigned to, needs this
 // permission.
 const stsPolicyPermission = "Policy.Read.All"
-
-// graphStatusCode returns the HTTP status Graph answered with, or 0 when err
-// carries no Graph API error.
-func graphStatusCode(err error) int {
-	var v1Err *odataerrors.ODataError
-	if errors.As(err, &v1Err) && v1Err != nil {
-		return v1Err.ResponseStatusCode
-	}
-	var betaErr *betaodataerrors.ODataError
-	if errors.As(err, &betaErr) && betaErr != nil {
-		return betaErr.ResponseStatusCode
-	}
-	var apiErr *abstractions.ApiError
-	if errors.As(err, &apiErr) && apiErr != nil {
-		return apiErr.ResponseStatusCode
-	}
-	return 0
-}
-
-// stsPolicyError classifies a failed policy read. A 403 is a refusal naming
-// the permission the scan app lacks; anything else is returned unclassified.
-func stsPolicyError(err error) error {
-	if err == nil {
-		return nil
-	}
-	if graphStatusCode(err) == http.StatusForbidden {
-		return llx.Forbidden(transformError(err), llx.WithPermissions(stsPolicyPermission))
-	}
-	return transformError(err)
-}
 
 // parseStsPolicyDefinition merges the JSON documents of a policy definition
 // into one object. Empty strings are skipped; a definition with no documents
@@ -137,12 +102,12 @@ func (s *stsPolicyAssignments) load(runtime *plugin.Runtime, policyID string, fe
 		ctx := context.Background()
 		resp, err := fetch(ctx, graphClient, policyID)
 		if err != nil {
-			s.err = stsPolicyError(err)
+			s.err = classifyGraphError(err, stsPolicyPermission)
 			return
 		}
 		objs, err := iterate[models.DirectoryObjectable](ctx, resp, graphClient.GetAdapter(), models.CreateDirectoryObjectCollectionResponseFromDiscriminatorValue)
 		if err != nil {
-			s.err = stsPolicyError(err)
+			s.err = classifyGraphError(err, stsPolicyPermission)
 			return
 		}
 		s.spIDs, s.appIDs = splitAppliesTo(objs)
@@ -286,11 +251,11 @@ func (a *mqlMicrosoftPolicies) tokenLifetimePolicies() ([]any, error) {
 	ctx := context.Background()
 	resp, err := graphClient.Policies().TokenLifetimePolicies().Get(ctx, nil)
 	if err != nil {
-		return nil, stsPolicyError(err)
+		return nil, classifyGraphError(err, stsPolicyPermission)
 	}
 	policies, err := iterate[models.TokenLifetimePolicyable](ctx, resp, graphClient.GetAdapter(), models.CreateTokenLifetimePolicyCollectionResponseFromDiscriminatorValue)
 	if err != nil {
-		return nil, stsPolicyError(err)
+		return nil, classifyGraphError(err, stsPolicyPermission)
 	}
 	return createStsPolicies(a.MqlRuntime, ResourceMicrosoftPoliciesTokenLifetimePolicy, policies)
 }
@@ -325,11 +290,11 @@ func (a *mqlMicrosoftPolicies) claimsMappingPolicies() ([]any, error) {
 	ctx := context.Background()
 	resp, err := graphClient.Policies().ClaimsMappingPolicies().Get(ctx, nil)
 	if err != nil {
-		return nil, stsPolicyError(err)
+		return nil, classifyGraphError(err, stsPolicyPermission)
 	}
 	policies, err := iterate[models.ClaimsMappingPolicyable](ctx, resp, graphClient.GetAdapter(), models.CreateClaimsMappingPolicyCollectionResponseFromDiscriminatorValue)
 	if err != nil {
-		return nil, stsPolicyError(err)
+		return nil, classifyGraphError(err, stsPolicyPermission)
 	}
 	return createStsPolicies(a.MqlRuntime, ResourceMicrosoftPoliciesClaimsMappingPolicy, policies)
 }
@@ -364,11 +329,11 @@ func (a *mqlMicrosoftPolicies) tokenIssuancePolicies() ([]any, error) {
 	ctx := context.Background()
 	resp, err := graphClient.Policies().TokenIssuancePolicies().Get(ctx, nil)
 	if err != nil {
-		return nil, stsPolicyError(err)
+		return nil, classifyGraphError(err, stsPolicyPermission)
 	}
 	policies, err := iterate[models.TokenIssuancePolicyable](ctx, resp, graphClient.GetAdapter(), models.CreateTokenIssuancePolicyCollectionResponseFromDiscriminatorValue)
 	if err != nil {
-		return nil, stsPolicyError(err)
+		return nil, classifyGraphError(err, stsPolicyPermission)
 	}
 	return createStsPolicies(a.MqlRuntime, ResourceMicrosoftPoliciesTokenIssuancePolicy, policies)
 }
@@ -403,11 +368,11 @@ func (a *mqlMicrosoftPolicies) homeRealmDiscoveryPolicies() ([]any, error) {
 	ctx := context.Background()
 	resp, err := graphClient.Policies().HomeRealmDiscoveryPolicies().Get(ctx, nil)
 	if err != nil {
-		return nil, stsPolicyError(err)
+		return nil, classifyGraphError(err, stsPolicyPermission)
 	}
 	policies, err := iterate[models.HomeRealmDiscoveryPolicyable](ctx, resp, graphClient.GetAdapter(), models.CreateHomeRealmDiscoveryPolicyCollectionResponseFromDiscriminatorValue)
 	if err != nil {
-		return nil, stsPolicyError(err)
+		return nil, classifyGraphError(err, stsPolicyPermission)
 	}
 	return createStsPolicies(a.MqlRuntime, ResourceMicrosoftPoliciesHomeRealmDiscoveryPolicy, policies)
 }
