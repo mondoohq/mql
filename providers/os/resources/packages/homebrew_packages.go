@@ -62,9 +62,13 @@ type HomebrewPackage struct {
 	InstalledOnRequest    bool
 	InstalledAsDependency bool
 	Outdated              bool
-	Pinned                bool
-	Tap                   string
-	Prefix                string
+	// OutdatedUnknown is set when the listing could not tell whether a newer
+	// version exists (the filesystem fallback has no access to brew's index),
+	// so outdated reads as null rather than as a confident false.
+	OutdatedUnknown bool
+	Pinned          bool
+	Tap             string
+	Prefix          string
 }
 
 // List returns Homebrew packages using brew info CLI with file parsing fallback.
@@ -130,7 +134,10 @@ func (h *HomebrewPkgManager) listFromCLI() ([]HomebrewPackage, error) {
 		return nil, fmt.Errorf("brew binary not found")
 	}
 
-	cmdResult, err := h.Conn.RunCommand(brewPath + " info --json=v2 --installed")
+	// Derive prefix from brew binary path
+	prefix := deriveBrewPrefix(brewPath)
+
+	cmdResult, err := h.Conn.RunCommand(h.brewInfoCommand(brewPath, prefix))
 	if err != nil {
 		return nil, err
 	}
@@ -155,10 +162,51 @@ func (h *HomebrewPkgManager) listFromCLI() ([]HomebrewPackage, error) {
 		return nil, err
 	}
 
-	// Derive prefix from brew binary path
-	prefix := deriveBrewPrefix(brewPath)
-
 	return ParseHomebrewInfo(data, prefix)
+}
+
+// brewInfoCommand returns the command that lists the installed packages.
+//
+// brew refuses to run as root ("Running Homebrew as root is extremely
+// dangerous and no longer supported"), so a scan running as root, locally or
+// through an SSH connection that elevates with sudo, used to fall back to
+// reading the Cellar and lost outdated, pinned, descriptions and latest
+// versions. As root the command runs brew as the user that owns the
+// installation instead. The connection still wraps the whole command in its
+// own sudo where it is configured to, which leaves this command running as
+// root, as it expects.
+func (h *HomebrewPkgManager) brewInfoCommand(brewPath, prefix string) string {
+	if !h.runsAsRoot() {
+		return brewPath + " info --json=v2 --installed"
+	}
+	// The Cellar belongs to the user who installed Homebrew. The prefix
+	// itself does not always: /usr/local is root's on Intel Macs.
+	for _, p := range []string{prefix + "/Cellar", brewPath} {
+		fi, err := h.Conn.FileInfo(p)
+		if err == nil && fi.Uid > 0 {
+			return brewAsUserCommand(fi.Uid, brewPath)
+		}
+	}
+	return brewPath + " info --json=v2 --installed"
+}
+
+// brewAsUserCommand runs `brew info` as the user with the given uid. brew
+// also refuses a working directory its user cannot read, which root's home
+// is, so the command changes to / first.
+func brewAsUserCommand(uid int64, brewPath string) string {
+	return fmt.Sprintf("sudo -n -H -u '#%d' /bin/sh -c 'cd / && exec %s info --json=v2 --installed'", uid, brewPath)
+}
+
+func (h *HomebrewPkgManager) runsAsRoot() bool {
+	cmd, err := h.Conn.RunCommand("id -u")
+	if err != nil || cmd.ExitStatus != 0 || cmd.Stdout == nil {
+		return false
+	}
+	out, err := io.ReadAll(cmd.Stdout)
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(out)) == "0"
 }
 
 func (h *HomebrewPkgManager) listFromFS() ([]HomebrewPackage, error) {
@@ -183,6 +231,10 @@ func (h *HomebrewPkgManager) listFromFS() ([]HomebrewPackage, error) {
 			if err != nil {
 				log.Debug().Err(err).Str("path", cellarPath).Msg("mql[homebrew]> could not parse Cellar")
 			} else {
+				pinned := readBrewPinned(afs, prefix)
+				for i := range formulae {
+					formulae[i].Pinned = pinned[formulae[i].Name]
+				}
 				allPkgs = append(allPkgs, formulae...)
 			}
 		}
@@ -198,7 +250,27 @@ func (h *HomebrewPkgManager) listFromFS() ([]HomebrewPackage, error) {
 		}
 	}
 
+	// Whether a newer version exists is only known to brew, from its index.
+	for i := range allPkgs {
+		allPkgs[i].OutdatedUnknown = true
+	}
+
 	return allPkgs, nil
+}
+
+// readBrewPinned returns the formulae `brew pin` has pinned under prefix.
+// brew records a pin as a symlink named after the formula in
+// var/homebrew/pinned, pointing at the pinned keg.
+func readBrewPinned(afs *afero.Afero, prefix string) map[string]bool {
+	res := map[string]bool{}
+	entries, err := afs.ReadDir(prefix + "/var/homebrew/pinned")
+	if err != nil {
+		return res
+	}
+	for _, e := range entries {
+		res[e.Name()] = true
+	}
+	return res
 }
 
 func (h *HomebrewPkgManager) parseFromCellar(afs *afero.Afero, prefix string) ([]HomebrewPackage, error) {
@@ -319,9 +391,11 @@ type brewFormula struct {
 }
 
 type brewInstalled struct {
-	Version               string `json:"version"`
-	InstalledOnRequest    bool   `json:"installed_on_request"`
-	InstalledAsDependency bool   `json:"installed_as_dependency"`
+	Version            string `json:"version"`
+	InstalledOnRequest bool   `json:"installed_on_request"`
+	// Homebrew 4 no longer writes installed_as_dependency; see
+	// installedAsDependency.
+	InstalledAsDependency *bool `json:"installed_as_dependency"`
 }
 
 type brewCask struct {
@@ -339,8 +413,8 @@ type brewCask struct {
 
 // installReceipt represents the INSTALL_RECEIPT.json file found in Cellar directories.
 type installReceipt struct {
-	InstalledOnRequest    bool `json:"installed_on_request"`
-	InstalledAsDependency bool `json:"installed_as_dependency"`
+	InstalledOnRequest    bool  `json:"installed_on_request"`
+	InstalledAsDependency *bool `json:"installed_as_dependency"`
 	Source                struct {
 		Tap string `json:"tap"`
 	} `json:"source"`
@@ -372,7 +446,7 @@ func ParseHomebrewInfo(data []byte, prefix string) ([]HomebrewPackage, error) {
 				Path:                  prefix + "/Cellar/" + f.Name + "/" + inst.Version,
 				Type:                  "formula",
 				InstalledOnRequest:    inst.InstalledOnRequest,
-				InstalledAsDependency: inst.InstalledAsDependency,
+				InstalledAsDependency: installedAsDependency(inst.InstalledAsDependency, inst.InstalledOnRequest),
 				Outdated:              f.Outdated,
 				Pinned:                f.Pinned,
 				Tap:                   f.Tap,
@@ -418,10 +492,21 @@ func enrichFromReceipt(pkg *HomebrewPackage, data []byte) {
 		return
 	}
 	pkg.InstalledOnRequest = receipt.InstalledOnRequest
-	pkg.InstalledAsDependency = receipt.InstalledAsDependency
+	pkg.InstalledAsDependency = installedAsDependency(receipt.InstalledAsDependency, receipt.InstalledOnRequest)
 	if receipt.Source.Tap != "" {
 		pkg.Tap = receipt.Source.Tap
 	}
+}
+
+// installedAsDependency reads installed_as_dependency where brew still
+// reports it. Homebrew 4 dropped the key from both `brew info` and the
+// install receipt and keeps only installed_on_request, so a keg brew did not
+// install on request was installed as a dependency.
+func installedAsDependency(reported *bool, onRequest bool) bool {
+	if reported != nil {
+		return *reported
+	}
+	return !onRequest
 }
 
 func deriveBrewPrefix(brewPath string) string {
