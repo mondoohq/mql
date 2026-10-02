@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/microsoft/kiota-abstractions-go/serialization"
+	msgraphsdkgo "github.com/microsoftgraph/msgraph-sdk-go"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	"github.com/microsoftgraph/msgraph-sdk-go/policies"
 	"github.com/rs/zerolog/log"
@@ -120,20 +121,25 @@ func (a *mqlMicrosoftPolicies) authenticationMethodsPolicy() (*mqlMicrosoftAuthe
 		return nil, err
 	}
 
-	ctx := context.Background()
-	// expand authenticationMethodConfigurations to get all the details in one call
-	requestConfiguration := &policies.AuthenticationMethodsPolicyRequestBuilderGetRequestConfiguration{
-		QueryParameters: &policies.AuthenticationMethodsPolicyRequestBuilderGetQueryParameters{
-			Expand: []string{"authenticationMethodConfigurations"},
-		},
-	}
-
-	resp, err := graphClient.Policies().AuthenticationMethodsPolicy().Get(ctx, requestConfiguration)
+	resp, err := fetchAuthenticationMethodsPolicy(context.Background(), graphClient)
 	if err != nil {
-		return nil, transformError(err)
+		return nil, err
 	}
 
 	return newAuthenticationMethodsPolicy(a.MqlRuntime, resp)
+}
+
+// fetchAuthenticationMethodsPolicy reads the policy with a plain GET. Graph
+// returns authenticationMethodConfigurations inline, each with its
+// includeTargets. Adding $expand=authenticationMethodConfigurations makes
+// Graph drop includeTargets (a navigation property) from every configuration,
+// so every method would report no included users or groups.
+func fetchAuthenticationMethodsPolicy(ctx context.Context, graphClient *msgraphsdkgo.GraphServiceClient) (models.AuthenticationMethodsPolicyable, error) {
+	resp, err := graphClient.Policies().AuthenticationMethodsPolicy().Get(ctx, nil)
+	if err != nil {
+		return nil, transformError(err)
+	}
+	return resp, nil
 }
 
 func (a *mqlMicrosoftPolicies) activityBasedTimeoutPolicies() ([]any, error) {
