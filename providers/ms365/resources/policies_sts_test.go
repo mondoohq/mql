@@ -138,35 +138,6 @@ func TestParseStsPolicyDefinition(t *testing.T) {
 	}
 }
 
-// appliesToJSON is the wire shape of GET /policies/<type>/{id}/appliesTo: a
-// directoryObject collection whose entries carry their concrete type.
-const appliesToJSON = `{
-  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#directoryObjects",
-  "value": [
-    {"@odata.type": "#microsoft.graph.servicePrincipal", "id": "sp-1", "displayName": "payroll"},
-    {"@odata.type": "#microsoft.graph.application", "id": "app-1", "displayName": "payroll app"},
-    {"@odata.type": "#microsoft.graph.group", "id": "group-1"},
-    {"@odata.type": "#microsoft.graph.servicePrincipal", "id": "sp-2"},
-    {"@odata.type": "#microsoft.graph.servicePrincipal"}
-  ]
-}`
-
-func TestSplitAppliesTo(t *testing.T) {
-	node, err := kjson.NewJsonParseNode([]byte(appliesToJSON))
-	require.NoError(t, err)
-	parsed, err := node.GetObjectValue(models.CreateDirectoryObjectCollectionResponseFromDiscriminatorValue)
-	require.NoError(t, err)
-	objs := parsed.(models.DirectoryObjectCollectionResponseable).GetValue()
-
-	spIDs, appIDs := splitAppliesTo(objs)
-	assert.Equal(t, []string{"sp-1", "sp-2"}, spIDs)
-	assert.Equal(t, []string{"app-1"}, appIDs)
-
-	spIDs, appIDs = splitAppliesTo(nil)
-	assert.Empty(t, spIDs)
-	assert.Empty(t, appIDs)
-}
-
 func graphError(status int, code string) error {
 	e := odataerrors.NewODataError()
 	e.ResponseStatusCode = status

@@ -58,27 +58,6 @@ func parseStsPolicyDefinition(definition []any) (map[string]any, error) {
 	return res, nil
 }
 
-// splitAppliesTo sorts the directory objects a policy is assigned to into
-// service principal and application object ids. Objects of any other type
-// are ignored.
-func splitAppliesTo(objs []models.DirectoryObjectable) (spIDs []string, appIDs []string) {
-	for _, obj := range objs {
-		if obj == nil || obj.GetId() == nil || *obj.GetId() == "" {
-			continue
-		}
-		switch convert.ToValue(obj.GetOdataType()) {
-		case "#microsoft.graph.servicePrincipal":
-			spIDs = append(spIDs, *obj.GetId())
-		case "#microsoft.graph.application":
-			appIDs = append(appIDs, *obj.GetId())
-		default:
-			log.Debug().Str("type", convert.ToValue(obj.GetOdataType())).Str("id", *obj.GetId()).
-				Msg("ms365> ignoring policy assignment of unsupported type")
-		}
-	}
-	return spIDs, appIDs
-}
-
 // stsPolicyAssignments holds the objects a policy is assigned to, fetched
 // once and shared by the policy's own fields and the reverse fields on
 // service principals.
@@ -110,7 +89,7 @@ func (s *stsPolicyAssignments) load(runtime *plugin.Runtime, policyID string, fe
 			s.err = classifyGraphError(err, stsPolicyPermission)
 			return
 		}
-		s.spIDs, s.appIDs = splitAppliesTo(objs)
+		s.appIDs, s.spIDs = splitAppliesTo(objs)
 	})
 	return s.spIDs, s.appIDs, s.err
 }
