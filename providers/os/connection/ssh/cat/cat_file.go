@@ -96,7 +96,7 @@ func (f *File) Readdir(count int) (res []os.FileInfo, err error) {
 		return nil, err
 	}
 
-	res = make([]os.FileInfo, 0, len(names))
+	res = []os.FileInfo{}
 	for _, name := range names {
 		var statPath string
 		if filepath.IsAbs(name) {
@@ -169,7 +169,7 @@ func argPath(path string) string {
 // line breaks separate entries: a name may start or end with a space.
 func parseDirListing(data []byte) []string {
 	lines := strings.Split(string(data), "\n")
-	names := make([]string, 0, len(lines))
+	names := []string{}
 	for _, line := range lines {
 		line = strings.TrimSuffix(line, "\r")
 		if line == "" || line == "." || line == ".." {
