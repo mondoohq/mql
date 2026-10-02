@@ -7,9 +7,11 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -694,12 +696,32 @@ func (s *mqlApache2Conf) parse(file *mqlFile) error {
 	// into the binary plus those loaded by LoadModule, and against -D
 	// parameters (Debian passes APACHE_ARGUMENTS from envvars) plus Define.
 	conn := s.MqlRuntime.Connection.(shared.Connection)
-	opts := apache2.ParseOptions{
-		StaticModules: apacheStaticModules(conn, &afero.Afero{Fs: conn.FileSystem()}),
-		Defines:       apache2.DefinesFromArguments(envvars["APACHE_ARGUMENTS"]),
+	afs := &afero.Afero{Fs: conn.FileSystem()}
+	defines := apache2.DefinesFromArguments(envvars["APACHE_ARGUMENTS"])
+
+	// Without an envvars file, httpd gets its environment and -D parameters
+	// from its systemd unit; RHEL 7's reads /etc/sysconfig/httpd
+	var unitErr error
+	if apacheEnvvarsPath(conn) == "" {
+		var unitEnv map[string]string
+		var unitDefines []string
+		unitEnv, unitDefines, unitErr = apacheUnitEnvironment(afs)
+		if len(unitEnv) > 0 {
+			envvars = unitEnv
+		}
+		defines = append(defines, unitDefines...)
 	}
 
-	cfg, err := apache2.ParseWithGlobOptions(file.Path.Data, fileContent, globExpand, envvars, opts)
+	opts := apache2.ParseOptions{
+		StaticModules: apacheStaticModules(conn, afs),
+		Defines:       defines,
+	}
+
+	var cfg *apache2.Config
+	err := unitErr
+	if err == nil {
+		cfg, err = apache2.ParseWithGlobOptions(file.Path.Data, fileContent, globExpand, envvars, opts)
+	}
 
 	if err != nil {
 		errState := plugin.TValue[map[string]any]{Error: err, State: plugin.StateIsSet | plugin.StateIsNull}
@@ -850,6 +872,86 @@ func (s *mqlApache2Conf) loadEnvvars(fileContent func(string) (string, error)) m
 		return nil
 	}
 	return apache2.ParseEnvvars(content)
+}
+
+// apacheServiceUnitDirs are where systemd looks for the httpd service unit
+// and its httpd.service.d drop-ins, highest priority first.
+var apacheServiceUnitDirs = []string{
+	"/etc/systemd/system",
+	"/run/systemd/system",
+	"/usr/lib/systemd/system",
+	"/lib/systemd/system",
+}
+
+// apacheUnitEnvironment returns the environment systemd starts httpd with
+// (Environment= plus the EnvironmentFile= files, which take precedence) and
+// the -D parameters of its ExecStart line. Apache resolves ${VAR} from that
+// environment. A missing unit or file contributes nothing; one that can't be
+// read is an error. These files are not Apache configuration, so they are
+// read directly rather than listed in files.
+func apacheUnitEnvironment(afs *afero.Afero) (map[string]string, []string, error) {
+	var contents []string
+	for _, dir := range apacheServiceUnitDirs {
+		content, err := afs.ReadFile(dir + "/httpd.service")
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		contents = append(contents, string(content))
+		break
+	}
+	if len(contents) == 0 {
+		return nil, nil, nil
+	}
+
+	// drop-ins apply in file-name order; a name in a higher-priority
+	// directory hides the same name further down
+	dropIns := map[string]string{}
+	for i := len(apacheServiceUnitDirs) - 1; i >= 0; i-- {
+		dir := apacheServiceUnitDirs[i] + "/httpd.service.d"
+		entries, err := afs.ReadDir(dir)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".conf") {
+				dropIns[e.Name()] = dir + "/" + e.Name()
+			}
+		}
+	}
+	names := make([]string, 0, len(dropIns))
+	for name := range dropIns {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		content, err := afs.ReadFile(dropIns[name])
+		if err != nil {
+			return nil, nil, err
+		}
+		contents = append(contents, string(content))
+	}
+
+	unit := apache2.ParseServiceUnit(contents...)
+	env := unit.Environment
+	for _, f := range unit.EnvironmentFiles {
+		data, err := afs.ReadFile(f)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		for k, v := range apache2.ParseEnvironmentFile(string(data)) {
+			env[k] = v
+		}
+	}
+	return env, apache2.UnitDefines(unit.ExecStart, env), nil
 }
 
 // envvars returns the apache2.conf.envvars resource representing the parsed

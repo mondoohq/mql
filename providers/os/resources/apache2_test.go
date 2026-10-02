@@ -266,3 +266,50 @@ func TestApache2ConfDisclosureDefaults(t *testing.T) {
 		assert.Equal(t, "Off", trace)
 	})
 }
+
+func TestApacheUnitEnvironment(t *testing.T) {
+	write := func(fs afero.Fs, path, content string) {
+		require.NoError(t, afero.WriteFile(fs, path, []byte(content), 0o644))
+	}
+	rhel7Unit := "[Service]\nType=notify\nEnvironmentFile=/etc/sysconfig/httpd\n" +
+		"ExecStart=/usr/sbin/httpd $OPTIONS -DFOREGROUND\n"
+
+	t.Run("RHEL 7 reads /etc/sysconfig/httpd", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(fs, "/usr/lib/systemd/system/httpd.service", rhel7Unit)
+		write(fs, "/etc/sysconfig/httpd", "#OPTIONS=\nLANG=C\nSWEEPTOK=Full\nOPTIONS=-DSSL\n")
+		env, defines, err := apacheUnitEnvironment(&afero.Afero{Fs: fs})
+		require.NoError(t, err)
+		assert.Equal(t, "Full", env["SWEEPTOK"])
+		assert.Equal(t, []string{"SSL", "FOREGROUND"}, defines)
+	})
+
+	t.Run("drop-ins apply by name, /etc hides /usr/lib", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(fs, "/usr/lib/systemd/system/httpd.service",
+			"[Service]\nEnvironment=LANG=C\nExecStart=/usr/sbin/httpd $OPTIONS -DFOREGROUND\n")
+		write(fs, "/usr/lib/systemd/system/httpd.service.d/override.conf", "[Service]\nEnvironment=OPTIONS=-DPACKAGED\n")
+		write(fs, "/etc/systemd/system/httpd.service.d/override.conf", "[Service]\nEnvironment=OPTIONS=-DLOCAL\n")
+		write(fs, "/etc/systemd/system/httpd.service.d/zz.conf", "[Service]\nEnvironment=TOKENS=Prod\n")
+		env, defines, err := apacheUnitEnvironment(&afero.Afero{Fs: fs})
+		require.NoError(t, err)
+		assert.Equal(t, "Prod", env["TOKENS"])
+		assert.Equal(t, []string{"LOCAL", "FOREGROUND"}, defines)
+	})
+
+	t.Run("no unit", func(t *testing.T) {
+		env, defines, err := apacheUnitEnvironment(&afero.Afero{Fs: afero.NewMemMapFs()})
+		require.NoError(t, err)
+		assert.Nil(t, env)
+		assert.Nil(t, defines)
+	})
+
+	t.Run("a missing EnvironmentFile contributes nothing", func(t *testing.T) {
+		fs := afero.NewMemMapFs()
+		write(fs, "/usr/lib/systemd/system/httpd.service", rhel7Unit)
+		env, defines, err := apacheUnitEnvironment(&afero.Afero{Fs: fs})
+		require.NoError(t, err)
+		assert.Empty(t, env)
+		assert.Equal(t, []string{"FOREGROUND"}, defines)
+	})
+}
