@@ -2531,6 +2531,12 @@ microsoft.serviceprincipal @defaults("name") {
   // added to this service principal. An empty list means only the tenant
   // default in `microsoft.policies.defaultAppManagementPolicy` applies.
   appManagementPolicies() []microsoft.policies.appManagementPolicy
+  // Token lifetime policies assigned to this service principal
+  tokenLifetimePolicies() []microsoft.policies.tokenLifetimePolicy
+  // Claims mapping policies assigned to this service principal
+  claimsMappingPolicies() []microsoft.policies.claimsMappingPolicy
+  // Home realm discovery policies assigned to this service principal
+  homeRealmDiscoveryPolicies() []microsoft.policies.homeRealmDiscoveryPolicy
 }
 
 // Microsoft Service Principal Assignment
@@ -3178,6 +3184,29 @@ microsoft.policies {
   authenticationMethodsPolicy() microsoft.authenticationMethodsPolicy
   // Activity-based timeout policies
   activityBasedTimeoutPolicies() []microsoft.policies.activityBasedTimeoutPolicy
+  // Token lifetime policies
+  //
+  // Policies that set how long access, ID, and SAML tokens issued to the
+  // applications and service principals they are assigned to stay valid.
+  // `isOrganizationDefault` marks the policy that applies tenant-wide.
+  tokenLifetimePolicies() []microsoft.policies.tokenLifetimePolicy
+  // Claims mapping policies
+  //
+  // Policies that change which claims Microsoft Entra ID emits in tokens
+  // issued to the service principals they are assigned to.
+  claimsMappingPolicies() []microsoft.policies.claimsMappingPolicy
+  // Token issuance policies
+  //
+  // Policies that set the characteristics of SAML tokens issued to the
+  // applications they are assigned to, such as the signing algorithm and the
+  // SAML token version.
+  tokenIssuancePolicies() []microsoft.policies.tokenIssuancePolicy
+  // Home realm discovery policies
+  //
+  // Policies that control how Microsoft Entra ID routes a signing-in user to
+  // a federated identity provider, such as auto-acceleration to a federated
+  // domain and sign-in with an alternate login ID.
+  homeRealmDiscoveryPolicies() []microsoft.policies.homeRealmDiscoveryPolicy
   // Tenant-wide policy that controls whether external users can leave a tenant
   externalIdentitiesPolicy() microsoft.externalIdentitiesPolicy
   // Default configuration of cross-tenant access policy
@@ -3417,6 +3446,146 @@ microsoft.policies.activityBasedTimeoutPolicy @defaults("displayName isOrganizat
   //
   // There can be many policies for the same policy type, but only one can be activated as the organization default.
   isOrganizationDefault bool
+}
+
+// Microsoft Entra token lifetime policy
+//
+// Lifetime settings for access, ID, and SAML tokens. `settings` holds the
+// policy rules, such as `AccessTokenLifetime`, and the
+// `appliesToServicePrincipals` and `appliesToApplications` fields list where
+// the policy is assigned.
+microsoft.policies.tokenLifetimePolicy @defaults("displayName isOrganizationDefault") {
+  // Policy ID
+  id string
+  // Policy display name
+  displayName string
+  // Policy description
+  description string
+  // Whether this policy is the organization default
+  //
+  // Only one policy of a type can be the organization default, which then
+  // applies to every application without a policy of its own.
+  isOrganizationDefault bool
+  // Policy definition
+  //
+  // Each string is a JSON document holding the policy rules, as Microsoft
+  // Entra ID stores them.
+  definition []string
+  // Policy rules from the definition
+  //
+  // The JSON documents in `definition` merged into one object, keyed as they
+  // appear in the definition, for example
+  // `settings.TokenLifetimePolicy.AccessTokenLifetime`.
+  settings() dict
+  // Service principals this policy is assigned to
+  appliesToServicePrincipals() []microsoft.serviceprincipal
+  // Applications this policy is assigned to
+  appliesToApplications() []microsoft.application
+}
+
+// Microsoft Entra claims mapping policy
+//
+// Rules that add, remove, or transform the claims in tokens. `settings`
+// holds the policy rules, such as `IncludeBasicClaimSet` and `ClaimsSchema`,
+// and the `appliesToServicePrincipals` field lists where the policy is
+// assigned.
+microsoft.policies.claimsMappingPolicy @defaults("displayName isOrganizationDefault") {
+  // Policy ID
+  id string
+  // Policy display name
+  displayName string
+  // Policy description
+  description string
+  // Whether this policy is the organization default
+  //
+  // Only one policy of a type can be the organization default, which then
+  // applies to every application without a policy of its own.
+  isOrganizationDefault bool
+  // Policy definition
+  //
+  // Each string is a JSON document holding the policy rules, as Microsoft
+  // Entra ID stores them.
+  definition []string
+  // Policy rules from the definition
+  //
+  // The JSON documents in `definition` merged into one object, keyed as they
+  // appear in the definition, for example
+  // `settings.ClaimsMappingPolicy.IncludeBasicClaimSet`.
+  settings() dict
+  // Service principals this policy is assigned to
+  appliesToServicePrincipals() []microsoft.serviceprincipal
+  // Applications this policy is assigned to
+  appliesToApplications() []microsoft.application
+}
+
+// Microsoft Entra token issuance policy
+//
+// SAML token characteristics such as the signing algorithm, the SAML token
+// version, and which parts of the response are signed. `settings` holds the
+// policy rules, and the `appliesToApplications` field lists where the policy
+// is assigned.
+microsoft.policies.tokenIssuancePolicy @defaults("displayName isOrganizationDefault") {
+  // Policy ID
+  id string
+  // Policy display name
+  displayName string
+  // Policy description
+  description string
+  // Whether this policy is the organization default
+  //
+  // Only one policy of a type can be the organization default, which then
+  // applies to every application without a policy of its own.
+  isOrganizationDefault bool
+  // Policy definition
+  //
+  // Each string is a JSON document holding the policy rules, as Microsoft
+  // Entra ID stores them.
+  definition []string
+  // Policy rules from the definition
+  //
+  // The JSON documents in `definition` merged into one object, keyed as they
+  // appear in the definition, for example
+  // `settings.TokenIssuancePolicy.SigningAlgorithm`.
+  settings() dict
+  // Service principals this policy is assigned to
+  appliesToServicePrincipals() []microsoft.serviceprincipal
+  // Applications this policy is assigned to
+  appliesToApplications() []microsoft.application
+}
+
+// Microsoft Entra home realm discovery policy
+//
+// Sign-in routing rules for federated domains. `settings` holds the policy
+// rules, such as `AccelerateToFederatedDomain`, `PreferredDomain`, and
+// `AlternateIdLogin`, and the `appliesToServicePrincipals` field lists where
+// the policy is assigned.
+microsoft.policies.homeRealmDiscoveryPolicy @defaults("displayName isOrganizationDefault") {
+  // Policy ID
+  id string
+  // Policy display name
+  displayName string
+  // Policy description
+  description string
+  // Whether this policy is the organization default
+  //
+  // Only one policy of a type can be the organization default, which then
+  // applies to every application without a policy of its own.
+  isOrganizationDefault bool
+  // Policy definition
+  //
+  // Each string is a JSON document holding the policy rules, as Microsoft
+  // Entra ID stores them.
+  definition []string
+  // Policy rules from the definition
+  //
+  // The JSON documents in `definition` merged into one object, keyed as they
+  // appear in the definition, for example
+  // `settings.HomeRealmDiscoveryPolicy.AccelerateToFederatedDomain`.
+  settings() dict
+  // Service principals this policy is assigned to
+  appliesToServicePrincipals() []microsoft.serviceprincipal
+  // Applications this policy is assigned to
+  appliesToApplications() []microsoft.application
 }
 
 // Microsoft Entra admin consent request policy

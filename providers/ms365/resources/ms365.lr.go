@@ -125,6 +125,10 @@ const (
 	ResourceMicrosoftPoliciesAppManagementPolicy                                                         string = "microsoft.policies.appManagementPolicy"
 	ResourceMicrosoftExternalIdentitiesPolicy                                                            string = "microsoft.externalIdentitiesPolicy"
 	ResourceMicrosoftPoliciesActivityBasedTimeoutPolicy                                                  string = "microsoft.policies.activityBasedTimeoutPolicy"
+	ResourceMicrosoftPoliciesTokenLifetimePolicy                                                         string = "microsoft.policies.tokenLifetimePolicy"
+	ResourceMicrosoftPoliciesClaimsMappingPolicy                                                         string = "microsoft.policies.claimsMappingPolicy"
+	ResourceMicrosoftPoliciesTokenIssuancePolicy                                                         string = "microsoft.policies.tokenIssuancePolicy"
+	ResourceMicrosoftPoliciesHomeRealmDiscoveryPolicy                                                    string = "microsoft.policies.homeRealmDiscoveryPolicy"
 	ResourceMicrosoftAdminConsentRequestPolicy                                                           string = "microsoft.adminConsentRequestPolicy"
 	ResourceMicrosoftGraphAccessReviewReviewerScope                                                      string = "microsoft.graph.accessReviewReviewerScope"
 	ResourceMicrosoftAuthenticationMethodsPolicy                                                         string = "microsoft.authenticationMethodsPolicy"
@@ -673,6 +677,22 @@ func init() {
 		"microsoft.policies.activityBasedTimeoutPolicy": {
 			// to override args, implement: initMicrosoftPoliciesActivityBasedTimeoutPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftPoliciesActivityBasedTimeoutPolicy,
+		},
+		"microsoft.policies.tokenLifetimePolicy": {
+			// to override args, implement: initMicrosoftPoliciesTokenLifetimePolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftPoliciesTokenLifetimePolicy,
+		},
+		"microsoft.policies.claimsMappingPolicy": {
+			// to override args, implement: initMicrosoftPoliciesClaimsMappingPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftPoliciesClaimsMappingPolicy,
+		},
+		"microsoft.policies.tokenIssuancePolicy": {
+			// to override args, implement: initMicrosoftPoliciesTokenIssuancePolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftPoliciesTokenIssuancePolicy,
+		},
+		"microsoft.policies.homeRealmDiscoveryPolicy": {
+			// to override args, implement: initMicrosoftPoliciesHomeRealmDiscoveryPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftPoliciesHomeRealmDiscoveryPolicy,
 		},
 		"microsoft.adminConsentRequestPolicy": {
 			// to override args, implement: initMicrosoftAdminConsentRequestPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -3189,6 +3209,15 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.serviceprincipal.appManagementPolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftServiceprincipal).GetAppManagementPolicies()).ToDataRes(types.Array(types.Resource("microsoft.policies.appManagementPolicy")))
 	},
+	"microsoft.serviceprincipal.tokenLifetimePolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetTokenLifetimePolicies()).ToDataRes(types.Array(types.Resource("microsoft.policies.tokenLifetimePolicy")))
+	},
+	"microsoft.serviceprincipal.claimsMappingPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetClaimsMappingPolicies()).ToDataRes(types.Array(types.Resource("microsoft.policies.claimsMappingPolicy")))
+	},
+	"microsoft.serviceprincipal.homeRealmDiscoveryPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftServiceprincipal).GetHomeRealmDiscoveryPolicies()).ToDataRes(types.Array(types.Resource("microsoft.policies.homeRealmDiscoveryPolicy")))
+	},
 	"microsoft.serviceprincipal.assignment.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftServiceprincipalAssignment).GetId()).ToDataRes(types.String)
 	},
@@ -3765,6 +3794,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.policies.activityBasedTimeoutPolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftPolicies).GetActivityBasedTimeoutPolicies()).ToDataRes(types.Array(types.Resource("microsoft.policies.activityBasedTimeoutPolicy")))
 	},
+	"microsoft.policies.tokenLifetimePolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPolicies).GetTokenLifetimePolicies()).ToDataRes(types.Array(types.Resource("microsoft.policies.tokenLifetimePolicy")))
+	},
+	"microsoft.policies.claimsMappingPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPolicies).GetClaimsMappingPolicies()).ToDataRes(types.Array(types.Resource("microsoft.policies.claimsMappingPolicy")))
+	},
+	"microsoft.policies.tokenIssuancePolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPolicies).GetTokenIssuancePolicies()).ToDataRes(types.Array(types.Resource("microsoft.policies.tokenIssuancePolicy")))
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPolicies).GetHomeRealmDiscoveryPolicies()).ToDataRes(types.Array(types.Resource("microsoft.policies.homeRealmDiscoveryPolicy")))
+	},
 	"microsoft.policies.externalIdentitiesPolicy": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftPolicies).GetExternalIdentitiesPolicy()).ToDataRes(types.Resource("microsoft.externalIdentitiesPolicy"))
 	},
@@ -3911,6 +3952,102 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.policies.activityBasedTimeoutPolicy.isOrganizationDefault": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftPoliciesActivityBasedTimeoutPolicy).GetIsOrganizationDefault()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tokenLifetimePolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTokenLifetimePolicy).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.policies.tokenLifetimePolicy.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTokenLifetimePolicy).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.policies.tokenLifetimePolicy.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTokenLifetimePolicy).GetDescription()).ToDataRes(types.String)
+	},
+	"microsoft.policies.tokenLifetimePolicy.isOrganizationDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTokenLifetimePolicy).GetIsOrganizationDefault()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tokenLifetimePolicy.definition": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTokenLifetimePolicy).GetDefinition()).ToDataRes(types.Array(types.String))
+	},
+	"microsoft.policies.tokenLifetimePolicy.settings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTokenLifetimePolicy).GetSettings()).ToDataRes(types.Dict)
+	},
+	"microsoft.policies.tokenLifetimePolicy.appliesToServicePrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTokenLifetimePolicy).GetAppliesToServicePrincipals()).ToDataRes(types.Array(types.Resource("microsoft.serviceprincipal")))
+	},
+	"microsoft.policies.tokenLifetimePolicy.appliesToApplications": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTokenLifetimePolicy).GetAppliesToApplications()).ToDataRes(types.Array(types.Resource("microsoft.application")))
+	},
+	"microsoft.policies.claimsMappingPolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesClaimsMappingPolicy).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.policies.claimsMappingPolicy.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesClaimsMappingPolicy).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.policies.claimsMappingPolicy.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesClaimsMappingPolicy).GetDescription()).ToDataRes(types.String)
+	},
+	"microsoft.policies.claimsMappingPolicy.isOrganizationDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesClaimsMappingPolicy).GetIsOrganizationDefault()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.claimsMappingPolicy.definition": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesClaimsMappingPolicy).GetDefinition()).ToDataRes(types.Array(types.String))
+	},
+	"microsoft.policies.claimsMappingPolicy.settings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesClaimsMappingPolicy).GetSettings()).ToDataRes(types.Dict)
+	},
+	"microsoft.policies.claimsMappingPolicy.appliesToServicePrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesClaimsMappingPolicy).GetAppliesToServicePrincipals()).ToDataRes(types.Array(types.Resource("microsoft.serviceprincipal")))
+	},
+	"microsoft.policies.claimsMappingPolicy.appliesToApplications": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesClaimsMappingPolicy).GetAppliesToApplications()).ToDataRes(types.Array(types.Resource("microsoft.application")))
+	},
+	"microsoft.policies.tokenIssuancePolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTokenIssuancePolicy).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.policies.tokenIssuancePolicy.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTokenIssuancePolicy).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.policies.tokenIssuancePolicy.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTokenIssuancePolicy).GetDescription()).ToDataRes(types.String)
+	},
+	"microsoft.policies.tokenIssuancePolicy.isOrganizationDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTokenIssuancePolicy).GetIsOrganizationDefault()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.tokenIssuancePolicy.definition": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTokenIssuancePolicy).GetDefinition()).ToDataRes(types.Array(types.String))
+	},
+	"microsoft.policies.tokenIssuancePolicy.settings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTokenIssuancePolicy).GetSettings()).ToDataRes(types.Dict)
+	},
+	"microsoft.policies.tokenIssuancePolicy.appliesToServicePrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTokenIssuancePolicy).GetAppliesToServicePrincipals()).ToDataRes(types.Array(types.Resource("microsoft.serviceprincipal")))
+	},
+	"microsoft.policies.tokenIssuancePolicy.appliesToApplications": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesTokenIssuancePolicy).GetAppliesToApplications()).ToDataRes(types.Array(types.Resource("microsoft.application")))
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicy.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicy.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicy.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy).GetDescription()).ToDataRes(types.String)
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicy.isOrganizationDefault": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy).GetIsOrganizationDefault()).ToDataRes(types.Bool)
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicy.definition": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy).GetDefinition()).ToDataRes(types.Array(types.String))
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicy.settings": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy).GetSettings()).ToDataRes(types.Dict)
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicy.appliesToServicePrincipals": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy).GetAppliesToServicePrincipals()).ToDataRes(types.Array(types.Resource("microsoft.serviceprincipal")))
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicy.appliesToApplications": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy).GetAppliesToApplications()).ToDataRes(types.Array(types.Resource("microsoft.application")))
 	},
 	"microsoft.adminConsentRequestPolicy.isEnabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftAdminConsentRequestPolicy).GetIsEnabled()).ToDataRes(types.Bool)
@@ -9911,6 +10048,18 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftServiceprincipal).AppManagementPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"microsoft.serviceprincipal.tokenLifetimePolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).TokenLifetimePolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.claimsMappingPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).ClaimsMappingPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.serviceprincipal.homeRealmDiscoveryPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftServiceprincipal).HomeRealmDiscoveryPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.serviceprincipal.assignment.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftServiceprincipalAssignment).__id, ok = v.Value.(string)
 		return
@@ -10755,6 +10904,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftPolicies).ActivityBasedTimeoutPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"microsoft.policies.tokenLifetimePolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPolicies).TokenLifetimePolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.claimsMappingPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPolicies).ClaimsMappingPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tokenIssuancePolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPolicies).TokenIssuancePolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPolicies).HomeRealmDiscoveryPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.policies.externalIdentitiesPolicy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftPolicies).ExternalIdentitiesPolicy, ok = plugin.RawToTValue[*mqlMicrosoftExternalIdentitiesPolicy](v.Value, v.Error)
 		return
@@ -10989,6 +11154,150 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.policies.activityBasedTimeoutPolicy.isOrganizationDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftPoliciesActivityBasedTimeoutPolicy).IsOrganizationDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tokenLifetimePolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTokenLifetimePolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.policies.tokenLifetimePolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTokenLifetimePolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tokenLifetimePolicy.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTokenLifetimePolicy).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tokenLifetimePolicy.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTokenLifetimePolicy).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tokenLifetimePolicy.isOrganizationDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTokenLifetimePolicy).IsOrganizationDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tokenLifetimePolicy.definition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTokenLifetimePolicy).Definition, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tokenLifetimePolicy.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTokenLifetimePolicy).Settings, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tokenLifetimePolicy.appliesToServicePrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTokenLifetimePolicy).AppliesToServicePrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tokenLifetimePolicy.appliesToApplications": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTokenLifetimePolicy).AppliesToApplications, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.claimsMappingPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesClaimsMappingPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.policies.claimsMappingPolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesClaimsMappingPolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.claimsMappingPolicy.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesClaimsMappingPolicy).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.claimsMappingPolicy.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesClaimsMappingPolicy).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.claimsMappingPolicy.isOrganizationDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesClaimsMappingPolicy).IsOrganizationDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.claimsMappingPolicy.definition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesClaimsMappingPolicy).Definition, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.claimsMappingPolicy.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesClaimsMappingPolicy).Settings, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.claimsMappingPolicy.appliesToServicePrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesClaimsMappingPolicy).AppliesToServicePrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.claimsMappingPolicy.appliesToApplications": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesClaimsMappingPolicy).AppliesToApplications, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tokenIssuancePolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTokenIssuancePolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.policies.tokenIssuancePolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTokenIssuancePolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tokenIssuancePolicy.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTokenIssuancePolicy).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tokenIssuancePolicy.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTokenIssuancePolicy).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tokenIssuancePolicy.isOrganizationDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTokenIssuancePolicy).IsOrganizationDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tokenIssuancePolicy.definition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTokenIssuancePolicy).Definition, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tokenIssuancePolicy.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTokenIssuancePolicy).Settings, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tokenIssuancePolicy.appliesToServicePrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTokenIssuancePolicy).AppliesToServicePrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.tokenIssuancePolicy.appliesToApplications": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesTokenIssuancePolicy).AppliesToApplications, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicy.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicy.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicy.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicy.isOrganizationDefault": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy).IsOrganizationDefault, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicy.definition": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy).Definition, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicy.settings": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy).Settings, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicy.appliesToServicePrincipals": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy).AppliesToServicePrincipals, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.policies.homeRealmDiscoveryPolicy.appliesToApplications": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy).AppliesToApplications, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"microsoft.adminConsentRequestPolicy.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -22899,6 +23208,9 @@ type mqlMicrosoftServiceprincipal struct {
 	Owners                       plugin.TValue[[]any]
 	FederatedIdentityCredentials plugin.TValue[[]any]
 	AppManagementPolicies        plugin.TValue[[]any]
+	TokenLifetimePolicies        plugin.TValue[[]any]
+	ClaimsMappingPolicies        plugin.TValue[[]any]
+	HomeRealmDiscoveryPolicies   plugin.TValue[[]any]
 }
 
 // createMicrosoftServiceprincipal creates a new instance of this resource
@@ -23141,6 +23453,54 @@ func (c *mqlMicrosoftServiceprincipal) GetAppManagementPolicies() *plugin.TValue
 		}
 
 		return c.appManagementPolicies()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetTokenLifetimePolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TokenLifetimePolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.serviceprincipal", c.__id, "tokenLifetimePolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.tokenLifetimePolicies()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetClaimsMappingPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ClaimsMappingPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.serviceprincipal", c.__id, "claimsMappingPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.claimsMappingPolicies()
+	})
+}
+
+func (c *mqlMicrosoftServiceprincipal) GetHomeRealmDiscoveryPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.HomeRealmDiscoveryPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.serviceprincipal", c.__id, "homeRealmDiscoveryPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.homeRealmDiscoveryPolicies()
 	})
 }
 
@@ -25074,6 +25434,10 @@ type mqlMicrosoftPolicies struct {
 	ConsentPolicySettings                     plugin.TValue[any]
 	AuthenticationMethodsPolicy               plugin.TValue[*mqlMicrosoftAuthenticationMethodsPolicy]
 	ActivityBasedTimeoutPolicies              plugin.TValue[[]any]
+	TokenLifetimePolicies                     plugin.TValue[[]any]
+	ClaimsMappingPolicies                     plugin.TValue[[]any]
+	TokenIssuancePolicies                     plugin.TValue[[]any]
+	HomeRealmDiscoveryPolicies                plugin.TValue[[]any]
 	ExternalIdentitiesPolicy                  plugin.TValue[*mqlMicrosoftExternalIdentitiesPolicy]
 	CrossTenantAccessPolicy                   plugin.TValue[*mqlMicrosoftCrossTenantAccessPolicyDefault]
 	CrossTenantAccessPolicyPartners           plugin.TValue[[]any]
@@ -25184,6 +25548,70 @@ func (c *mqlMicrosoftPolicies) GetActivityBasedTimeoutPolicies() *plugin.TValue[
 		}
 
 		return c.activityBasedTimeoutPolicies()
+	})
+}
+
+func (c *mqlMicrosoftPolicies) GetTokenLifetimePolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TokenLifetimePolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.policies", c.__id, "tokenLifetimePolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.tokenLifetimePolicies()
+	})
+}
+
+func (c *mqlMicrosoftPolicies) GetClaimsMappingPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ClaimsMappingPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.policies", c.__id, "claimsMappingPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.claimsMappingPolicies()
+	})
+}
+
+func (c *mqlMicrosoftPolicies) GetTokenIssuancePolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TokenIssuancePolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.policies", c.__id, "tokenIssuancePolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.tokenIssuancePolicies()
+	})
+}
+
+func (c *mqlMicrosoftPolicies) GetHomeRealmDiscoveryPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.HomeRealmDiscoveryPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.policies", c.__id, "homeRealmDiscoveryPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.homeRealmDiscoveryPolicies()
 	})
 }
 
@@ -25935,6 +26363,426 @@ func (c *mqlMicrosoftPoliciesActivityBasedTimeoutPolicy) GetDefinition() *plugin
 
 func (c *mqlMicrosoftPoliciesActivityBasedTimeoutPolicy) GetIsOrganizationDefault() *plugin.TValue[bool] {
 	return &c.IsOrganizationDefault
+}
+
+// mqlMicrosoftPoliciesTokenLifetimePolicy for the microsoft.policies.tokenLifetimePolicy resource
+type mqlMicrosoftPoliciesTokenLifetimePolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftPoliciesTokenLifetimePolicyInternal
+	Id                         plugin.TValue[string]
+	DisplayName                plugin.TValue[string]
+	Description                plugin.TValue[string]
+	IsOrganizationDefault      plugin.TValue[bool]
+	Definition                 plugin.TValue[[]any]
+	Settings                   plugin.TValue[any]
+	AppliesToServicePrincipals plugin.TValue[[]any]
+	AppliesToApplications      plugin.TValue[[]any]
+}
+
+// createMicrosoftPoliciesTokenLifetimePolicy creates a new instance of this resource
+func createMicrosoftPoliciesTokenLifetimePolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftPoliciesTokenLifetimePolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.policies.tokenLifetimePolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftPoliciesTokenLifetimePolicy) MqlName() string {
+	return "microsoft.policies.tokenLifetimePolicy"
+}
+
+func (c *mqlMicrosoftPoliciesTokenLifetimePolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftPoliciesTokenLifetimePolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftPoliciesTokenLifetimePolicy) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftPoliciesTokenLifetimePolicy) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlMicrosoftPoliciesTokenLifetimePolicy) GetIsOrganizationDefault() *plugin.TValue[bool] {
+	return &c.IsOrganizationDefault
+}
+
+func (c *mqlMicrosoftPoliciesTokenLifetimePolicy) GetDefinition() *plugin.TValue[[]any] {
+	return &c.Definition
+}
+
+func (c *mqlMicrosoftPoliciesTokenLifetimePolicy) GetSettings() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Settings, func() (any, error) {
+		return c.settings()
+	})
+}
+
+func (c *mqlMicrosoftPoliciesTokenLifetimePolicy) GetAppliesToServicePrincipals() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AppliesToServicePrincipals, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.policies.tokenLifetimePolicy", c.__id, "appliesToServicePrincipals")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.appliesToServicePrincipals()
+	})
+}
+
+func (c *mqlMicrosoftPoliciesTokenLifetimePolicy) GetAppliesToApplications() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AppliesToApplications, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.policies.tokenLifetimePolicy", c.__id, "appliesToApplications")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.appliesToApplications()
+	})
+}
+
+// mqlMicrosoftPoliciesClaimsMappingPolicy for the microsoft.policies.claimsMappingPolicy resource
+type mqlMicrosoftPoliciesClaimsMappingPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftPoliciesClaimsMappingPolicyInternal
+	Id                         plugin.TValue[string]
+	DisplayName                plugin.TValue[string]
+	Description                plugin.TValue[string]
+	IsOrganizationDefault      plugin.TValue[bool]
+	Definition                 plugin.TValue[[]any]
+	Settings                   plugin.TValue[any]
+	AppliesToServicePrincipals plugin.TValue[[]any]
+	AppliesToApplications      plugin.TValue[[]any]
+}
+
+// createMicrosoftPoliciesClaimsMappingPolicy creates a new instance of this resource
+func createMicrosoftPoliciesClaimsMappingPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftPoliciesClaimsMappingPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.policies.claimsMappingPolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftPoliciesClaimsMappingPolicy) MqlName() string {
+	return "microsoft.policies.claimsMappingPolicy"
+}
+
+func (c *mqlMicrosoftPoliciesClaimsMappingPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftPoliciesClaimsMappingPolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftPoliciesClaimsMappingPolicy) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftPoliciesClaimsMappingPolicy) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlMicrosoftPoliciesClaimsMappingPolicy) GetIsOrganizationDefault() *plugin.TValue[bool] {
+	return &c.IsOrganizationDefault
+}
+
+func (c *mqlMicrosoftPoliciesClaimsMappingPolicy) GetDefinition() *plugin.TValue[[]any] {
+	return &c.Definition
+}
+
+func (c *mqlMicrosoftPoliciesClaimsMappingPolicy) GetSettings() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Settings, func() (any, error) {
+		return c.settings()
+	})
+}
+
+func (c *mqlMicrosoftPoliciesClaimsMappingPolicy) GetAppliesToServicePrincipals() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AppliesToServicePrincipals, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.policies.claimsMappingPolicy", c.__id, "appliesToServicePrincipals")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.appliesToServicePrincipals()
+	})
+}
+
+func (c *mqlMicrosoftPoliciesClaimsMappingPolicy) GetAppliesToApplications() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AppliesToApplications, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.policies.claimsMappingPolicy", c.__id, "appliesToApplications")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.appliesToApplications()
+	})
+}
+
+// mqlMicrosoftPoliciesTokenIssuancePolicy for the microsoft.policies.tokenIssuancePolicy resource
+type mqlMicrosoftPoliciesTokenIssuancePolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftPoliciesTokenIssuancePolicyInternal
+	Id                         plugin.TValue[string]
+	DisplayName                plugin.TValue[string]
+	Description                plugin.TValue[string]
+	IsOrganizationDefault      plugin.TValue[bool]
+	Definition                 plugin.TValue[[]any]
+	Settings                   plugin.TValue[any]
+	AppliesToServicePrincipals plugin.TValue[[]any]
+	AppliesToApplications      plugin.TValue[[]any]
+}
+
+// createMicrosoftPoliciesTokenIssuancePolicy creates a new instance of this resource
+func createMicrosoftPoliciesTokenIssuancePolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftPoliciesTokenIssuancePolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.policies.tokenIssuancePolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftPoliciesTokenIssuancePolicy) MqlName() string {
+	return "microsoft.policies.tokenIssuancePolicy"
+}
+
+func (c *mqlMicrosoftPoliciesTokenIssuancePolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftPoliciesTokenIssuancePolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftPoliciesTokenIssuancePolicy) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftPoliciesTokenIssuancePolicy) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlMicrosoftPoliciesTokenIssuancePolicy) GetIsOrganizationDefault() *plugin.TValue[bool] {
+	return &c.IsOrganizationDefault
+}
+
+func (c *mqlMicrosoftPoliciesTokenIssuancePolicy) GetDefinition() *plugin.TValue[[]any] {
+	return &c.Definition
+}
+
+func (c *mqlMicrosoftPoliciesTokenIssuancePolicy) GetSettings() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Settings, func() (any, error) {
+		return c.settings()
+	})
+}
+
+func (c *mqlMicrosoftPoliciesTokenIssuancePolicy) GetAppliesToServicePrincipals() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AppliesToServicePrincipals, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.policies.tokenIssuancePolicy", c.__id, "appliesToServicePrincipals")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.appliesToServicePrincipals()
+	})
+}
+
+func (c *mqlMicrosoftPoliciesTokenIssuancePolicy) GetAppliesToApplications() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AppliesToApplications, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.policies.tokenIssuancePolicy", c.__id, "appliesToApplications")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.appliesToApplications()
+	})
+}
+
+// mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy for the microsoft.policies.homeRealmDiscoveryPolicy resource
+type mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftPoliciesHomeRealmDiscoveryPolicyInternal
+	Id                         plugin.TValue[string]
+	DisplayName                plugin.TValue[string]
+	Description                plugin.TValue[string]
+	IsOrganizationDefault      plugin.TValue[bool]
+	Definition                 plugin.TValue[[]any]
+	Settings                   plugin.TValue[any]
+	AppliesToServicePrincipals plugin.TValue[[]any]
+	AppliesToApplications      plugin.TValue[[]any]
+}
+
+// createMicrosoftPoliciesHomeRealmDiscoveryPolicy creates a new instance of this resource
+func createMicrosoftPoliciesHomeRealmDiscoveryPolicy(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.policies.homeRealmDiscoveryPolicy", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy) MqlName() string {
+	return "microsoft.policies.homeRealmDiscoveryPolicy"
+}
+
+func (c *mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy) GetIsOrganizationDefault() *plugin.TValue[bool] {
+	return &c.IsOrganizationDefault
+}
+
+func (c *mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy) GetDefinition() *plugin.TValue[[]any] {
+	return &c.Definition
+}
+
+func (c *mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy) GetSettings() *plugin.TValue[any] {
+	return plugin.GetOrCompute[any](&c.Settings, func() (any, error) {
+		return c.settings()
+	})
+}
+
+func (c *mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy) GetAppliesToServicePrincipals() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AppliesToServicePrincipals, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.policies.homeRealmDiscoveryPolicy", c.__id, "appliesToServicePrincipals")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.appliesToServicePrincipals()
+	})
+}
+
+func (c *mqlMicrosoftPoliciesHomeRealmDiscoveryPolicy) GetAppliesToApplications() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AppliesToApplications, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.policies.homeRealmDiscoveryPolicy", c.__id, "appliesToApplications")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.appliesToApplications()
+	})
 }
 
 // mqlMicrosoftAdminConsentRequestPolicy for the microsoft.adminConsentRequestPolicy resource
