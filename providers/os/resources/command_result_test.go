@@ -143,6 +143,15 @@ func TestCommandExitsNonZero_Unchanged(t *testing.T) {
 		assert.Contains(t, v.Error.Error(), "fdesetup status failed: not permitted")
 	})
 
+	t.Run("diagnostic on stdout only", func(t *testing.T) {
+		rt := commandRuntime(t, map[string]*mock.Command{
+			"csrutil status": {Stdout: "csrutil: this tool needs to be executed from Recovery OS\n", ExitStatus: 1},
+		})
+		v := mustResource(t, rt, "macos.sip").(*mqlMacosSip).GetEnabled()
+		require.Error(t, v.Error)
+		assert.Contains(t, v.Error.Error(), "csrutil status failed: csrutil: this tool needs to be executed from Recovery OS")
+	})
+
 	t.Run("zfs.pools", func(t *testing.T) {
 		rt := commandRuntime(t, map[string]*mock.Command{
 			"zpool get -jp all": {Stderr: "internal error: failed to initialize ZFS library", ExitStatus: 1},
