@@ -66,6 +66,116 @@ func TestDiscoverStagedDiscoveryWithCommaSeparatedNamespacesStartsClusterStage(t
 	require.Equal(t, "team-b", inv.Spec.Assets[1].Connections[0].Options[shared.OPTION_NAMESPACE])
 }
 
+func TestDiscoverStagedDiscoveryWithNamespaceGlobStartsClusterStage(t *testing.T) {
+	cfg := &inventory.Config{
+		Type: "k8s",
+		Options: map[string]string{
+			plugin.OptionStagedDiscovery: "",
+			shared.OPTION_NAMESPACE:      "team-*",
+		},
+		Discover: &inventory.Discovery{
+			Targets: []string{DiscoveryNamespaces},
+		},
+	}
+	asset := &inventory.Asset{
+		Name:        "K8s Cluster test",
+		Connections: []*inventory.Config{cfg},
+	}
+	conn := &namespaceDiscoveryConnection{
+		Connection: plugin.NewConnection(1, asset),
+		asset:      asset,
+		namespaces: []corev1.Namespace{
+			newTestNamespace("team-a", "uid-team-a"),
+			newTestNamespace("team-b", "uid-team-b"),
+		},
+	}
+	pluginRuntime := &plugin.Runtime{
+		Resources:  &syncx.Map[plugin.Resource]{},
+		Connection: conn,
+	}
+	pluginRuntime.CreateResource = func(runtime *plugin.Runtime, name string, args map[string]*llx.RawData) (plugin.Resource, error) {
+		return &mqlK8s{MqlRuntime: runtime}, nil
+	}
+
+	inv, err := Discover(pluginRuntime, mql.Features{})
+	require.NoError(t, err)
+	require.Len(t, inv.Spec.Assets, 2)
+	require.Empty(t, conn.namespaceGetCalls)
+}
+
+func TestDiscoverKyvernoWithNamespaceFilterUsesNamespaceAssets(t *testing.T) {
+	for _, staged := range []bool{false, true} {
+		t.Run(fmt.Sprintf("staged=%t", staged), func(t *testing.T) {
+			options := map[string]string{shared.OPTION_NAMESPACE: "team-a"}
+			if staged {
+				options[plugin.OptionStagedDiscovery] = ""
+			}
+			cfg := &inventory.Config{
+				Type:    "k8s",
+				Options: options,
+				Discover: &inventory.Discovery{
+					Targets: []string{DiscoveryKyverno},
+				},
+			}
+			asset := &inventory.Asset{
+				Name:        "K8s Cluster test",
+				Connections: []*inventory.Config{cfg},
+			}
+			conn := &namespaceDiscoveryConnection{
+				Connection: plugin.NewConnection(1, asset),
+				asset:      asset,
+				namespaces: []corev1.Namespace{newTestNamespace("team-a", "uid-team-a")},
+			}
+			pluginRuntime := &plugin.Runtime{
+				Resources:  &syncx.Map[plugin.Resource]{},
+				Connection: conn,
+			}
+			pluginRuntime.CreateResource = func(runtime *plugin.Runtime, name string, args map[string]*llx.RawData) (plugin.Resource, error) {
+				return &mqlK8s{MqlRuntime: runtime}, nil
+			}
+
+			inv, err := Discover(pluginRuntime, mql.Features{})
+			require.NoError(t, err)
+			require.Len(t, inv.Spec.Assets, 1)
+			assert.Equal(t, "team-a", inv.Spec.Assets[0].Name)
+			assert.NotEmpty(t, inv.Spec.Assets[0].PlatformIds)
+			assert.Contains(t, inv.Spec.Assets[0].PlatformIds[0], "/namespace/team-a")
+			assert.Equal(t, "team-a", inv.Spec.Assets[0].Connections[0].Options[shared.OPTION_NAMESPACE])
+		})
+	}
+}
+
+func TestDiscoverStagedKyvernoRemovesTargetFromNamespaceAssets(t *testing.T) {
+	cfg := &inventory.Config{
+		Type: "k8s",
+		Options: map[string]string{
+			plugin.OptionStagedDiscovery: "",
+		},
+		Discover: &inventory.Discovery{
+			Targets: []string{DiscoveryKyverno, DiscoveryPods},
+		},
+	}
+	asset := &inventory.Asset{
+		Name:        "K8s Cluster test",
+		Connections: []*inventory.Config{cfg},
+	}
+	conn := &namespaceDiscoveryConnection{
+		Connection: plugin.NewConnection(1, asset),
+		asset:      asset,
+		namespaces: []corev1.Namespace{newTestNamespace("team-a", "uid-team-a")},
+	}
+	pluginRuntime := &plugin.Runtime{
+		Resources:  &syncx.Map[plugin.Resource]{},
+		Connection: conn,
+	}
+
+	inv, err := Discover(pluginRuntime, mql.Features{})
+	require.NoError(t, err)
+	require.Len(t, inv.Spec.Assets, 2)
+	assert.Empty(t, inv.Spec.Assets[0].Connections[0].Discover.Targets)
+	assert.Equal(t, []string{DiscoveryPods}, inv.Spec.Assets[1].Connections[0].Discover.Targets)
+}
+
 func newTestNamespace(name, uid string) corev1.Namespace {
 	return corev1.Namespace{
 		TypeMeta: metav1.TypeMeta{
