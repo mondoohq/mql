@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -36,6 +37,14 @@ var defaultNpmPaths = []string{
 	"/usr/local/lib",
 	"/opt/homebrew/lib",
 	"/usr/lib",
+	// SUSE: nodejs's bundled npm is installed as /usr/lib64/node_modules/npm<major>
+	"/usr/lib64",
+	// Fedora and RHEL 10 nodejs streams, e.g. nodejs24-npm
+	"/usr/lib/node_modules_*",
+	// Debian and Ubuntu packaged modules (node-*, npm)
+	"/usr/share/nodejs",
+	"/usr/lib/nodejs",
+	"/usr/lib/*/nodejs",
 	"/home/*/.npm-global/lib",
 	// Windows
 	"C:\\Users\\*\\AppData\\Roaming\\npm",
@@ -114,13 +123,7 @@ func collectNpmPackagesInPaths(runtime *plugin.Runtime, fs afero.Fs, paths []str
 	var transitivePackageList []*languages.Package
 	evidenceFiles := []string{}
 
-	handler := func(nodeModulesPath string) {
-		// Not found is an expected error and we handle that properly
-		bom, err := collectNpmPackages(runtime, fs, nodeModulesPath)
-		if err != nil {
-			return
-		}
-
+	addBom := func(bom languages.Bom) {
 		root := bom.Root()
 		if root != nil {
 			directPackageList = append(directPackageList, root)
@@ -130,6 +133,33 @@ func collectNpmPackagesInPaths(runtime *plugin.Runtime, fs afero.Fs, paths []str
 			transitivePackageList = append(transitivePackageList, transitive...)
 		}
 	}
+	handler := func(nodeModulesPath string) {
+		// Not found is an expected error and we handle that properly
+		bom, err := collectNpmPackages(runtime, fs, nodeModulesPath)
+		if err != nil {
+			return
+		}
+		addBom(bom)
+	}
+
+	// a module root, such as /usr/lib/node_modules_24 or /usr/share/nodejs,
+	// holds the packages directly
+	walkPaths := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if !isNodeModuleRootPath(p) {
+			walkPaths = append(walkPaths, p)
+			continue
+		}
+		for _, pkg := range nodeModuleRootPackages(fs, p) {
+			bom, err := (&packagejson.Extractor{}).Parse(bytes.NewReader(pkg.manifest), pkg.manifestPath)
+			if err != nil {
+				log.Debug().Err(err).Str("path", pkg.manifestPath).Msg("could not parse package.json")
+				continue
+			}
+			addBom(bom)
+		}
+	}
+	paths = walkPaths
 
 	log.Debug().Msg("searching for npm packages in default locations")
 	err := fsutil.WalkGlob(fs, paths, func(fs afero.Fs, walkPath string) error {
@@ -372,6 +402,15 @@ func (r *mqlNpmPackages) gatherData() error {
 		directDependencies, transitiveDependencies, filePaths, err = collectNpmPackagesInPaths(r.MqlRuntime, fs, paths)
 		if err != nil {
 			return err
+		}
+	} else if isNodeModuleRootPath(paths[0]) {
+		// a directory of packages, such as /usr/share/nodejs, has no root package
+		if _, err := fs.Stat(paths[0]); err == nil {
+			directDependencies, transitiveDependencies, _, err = collectNpmPackagesInPaths(r.MqlRuntime, fs, paths)
+			if err != nil {
+				return err
+			}
+			filePaths = append(filePaths, paths[0])
 		}
 	} else {
 		// do not load anything if the path does not exist
