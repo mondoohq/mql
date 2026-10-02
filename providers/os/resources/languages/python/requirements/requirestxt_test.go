@@ -4,11 +4,13 @@
 package requirements
 
 import (
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/providers/os/resources/languages/python"
 )
 
 func TestRequiresTxt(t *testing.T) {
@@ -24,9 +26,37 @@ pycryptopp>=0.5.12
 cryptography
 `
 
-	dependencies, err := ParseRequiresTxtDependencies(strings.NewReader(data))
+	dependencies, err := ParseRequiresTxtDependencies(strings.NewReader(data), python.MarkerEnvironment{"extra": ""})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"nose", "Mock", "pycryptodome"}, dependencies)
+}
+
+// egg-info requires.txt files from the Debian sweep hosts. A "[:marker]"
+// section is required wherever its marker holds; parsing used to stop at the
+// first section, so keyring's secretstorage was never a dependency.
+func TestRequiresTxtMarkerSections(t *testing.T) {
+	read := func(name string) *os.File {
+		f, err := os.Open("testdata/" + name)
+		require.NoError(t, err)
+		t.Cleanup(func() { f.Close() })
+		return f
+	}
+
+	linux := python.SiteMarkerEnvironment("/usr/lib/python3/dist-packages", "linux")
+	deps, err := ParseRequiresTxtDependencies(read("keyring-10.1-requires.txt"), linux)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"secretstorage"}, deps, "the win32 section does not apply on Linux")
+
+	// "[docs]" and "[jinja2]" are extras; the CPython section's implementation
+	// is unknown and Debian's dist-packages path names only Python 3
+	deps, err = ParseRequiresTxtDependencies(read("ruamel.yaml-0.17.21-requires.txt"), linux)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"ruamel.yaml.clib"}, deps)
+
+	py312 := python.SiteMarkerEnvironment("/usr/lib/python3.12/site-packages", "linux")
+	deps, err = ParseRequiresTxtDependencies(read("ruamel.yaml-0.17.21-requires.txt"), py312)
+	require.NoError(t, err)
+	assert.Empty(t, deps, "python_version<\"3.11\" is false on 3.12")
 }
 
 func TestParseRequirementsTxt_PinnedVersions(t *testing.T) {
