@@ -4149,6 +4149,7 @@ systemd.unit.restrictRealtime 13.40.5
 systemd.unit.restrictSUIDSGID 13.40.5
 systemd.unit.systemCallArchitectures 13.40.5
 systemd.unit.systemCallFilter 13.40.5
+systemd.unit.systemCallFilterIsDenylist 14.14.1
 systemd.unit.type 13.40.5
 systemd.unit.umask 13.40.5
 systemd.unit.unitFileState 13.40.5

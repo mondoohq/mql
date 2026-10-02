@@ -77,7 +77,7 @@ func TestSystemdUnitManager_GetOnSystemd241MarksUnsupported(t *testing.T) {
 func TestMarkUnsupportedShowPropertiesSkipsUnitsWithoutExecSettings(t *testing.T) {
 	record := map[string]string{"Id": "basic.target", "LoadState": "loaded"}
 	markUnsupportedShowProperties(record)
-	u := systemdUnitFromProperties(record)
+	u := systemdUnitFromProperties(record, -1)
 	require.NotNil(t, u)
 	assert.Nil(t, u.Unsupported)
 	assert.True(t, u.Supports("ProtectClock"))

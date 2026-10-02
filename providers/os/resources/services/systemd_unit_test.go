@@ -123,6 +123,18 @@ func TestParseSystemdExecStart(t *testing.T) {
 		},
 		{"plain command", "/usr/bin/true", "/usr/bin/true"},
 		{"empty", "", ""},
+		{
+			// Ubuntu 16.04 emergency.service: the shell command holds a bare ";"
+			"semicolon inside the command",
+			"{ path=/bin/sh ; argv[]=/bin/sh -c /sbin/sulogin; /bin/systemctl --job-mode=fail --no-block default ; ignore_errors=yes ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }",
+			"/bin/sh -c /sbin/sulogin; /bin/systemctl --job-mode=fail --no-block default",
+		},
+		{
+			// Ubuntu 24.04 cloud-init-hotplugd.service
+			"several semicolons inside the command",
+			`{ path=/bin/bash ; argv[]=/bin/bash -c read args <&3; echo "args=$args"; exec /usr/bin/cloud-init devel hotplug-hook $args; exit 0 ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }`,
+			`/bin/bash -c read args <&3; echo "args=$args"; exec /usr/bin/cloud-init devel hotplug-hook $args; exit 0`,
+		},
 	}
 
 	for _, test := range tests {
@@ -151,7 +163,7 @@ func TestSystemdUnitFromProperties(t *testing.T) {
 		"CapabilityBoundingSet": "cap_chown cap_net_bind_service",
 		"SystemCallFilter":      "~@clock @debug",
 		"ReadWritePaths":        "{ /var/lib/sshd }",
-	})
+	}, -1)
 
 	require.NotNil(t, unit)
 	assert.Equal(t, "sshd.service", unit.Name)
@@ -163,7 +175,8 @@ func TestSystemdUnitFromProperties(t *testing.T) {
 	assert.Equal(t, "private", unit.ProtectControlGroups)
 	assert.Equal(t, "cgroup ipc net", unit.RestrictNamespaces)
 	assert.Equal(t, []string{"cap_chown", "cap_net_bind_service"}, unit.CapabilityBoundingSet)
-	assert.Equal(t, []string{"~@clock", "@debug"}, unit.SystemCallFilter)
+	assert.Equal(t, []string{"@clock", "@debug"}, unit.SystemCallFilter)
+	assert.True(t, unit.SystemCallFilterIsDenylist)
 	assert.Equal(t, []string{"/var/lib/sshd"}, unit.ReadWritePaths)
 }
 
@@ -171,7 +184,7 @@ func TestSystemdUnitFromProperties_NotFound(t *testing.T) {
 	unit := systemdUnitFromProperties(map[string]string{
 		"Id":        "nope.service",
 		"LoadState": "not-found",
-	})
+	}, -1)
 
 	require.NotNil(t, unit)
 	assert.False(t, unit.Installed)
@@ -182,7 +195,7 @@ func TestSystemdUnitFromProperties_NotFound(t *testing.T) {
 }
 
 func TestSystemdUnitFromProperties_NoID(t *testing.T) {
-	assert.Nil(t, systemdUnitFromProperties(map[string]string{"LoadState": "loaded"}))
+	assert.Nil(t, systemdUnitFromProperties(map[string]string{"LoadState": "loaded"}, -1))
 }
 
 func TestSystemdFSUnitManager(t *testing.T) {
@@ -358,4 +371,106 @@ func TestSystemdListProperty(t *testing.T) {
 	assert.True(t, systemdListProperty("ReadWritePaths"))
 	assert.False(t, systemdListProperty("ProtectSystem"))
 	assert.False(t, systemdListProperty("User"))
+}
+
+func TestParseSystemdCapabilities(t *testing.T) {
+	tests := []struct {
+		title    string
+		value    string
+		lastCap  int
+		expected []string
+	}{
+		{
+			"names as current systemd prints them",
+			"cap_chown cap_net_bind_service", 40,
+			[]string{"cap_chown", "cap_net_bind_service"},
+		},
+		{
+			// systemd 229, CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_CHOWN
+			"decimal mask from systemd 229",
+			"1025", 37,
+			[]string{"cap_chown", "cap_net_bind_service"},
+		},
+		{
+			// systemd 229, AmbientCapabilities=CAP_NET_BIND_SERVICE
+			"single capability mask",
+			"1024", 37,
+			[]string{"cap_net_bind_service"},
+		},
+		{"zero mask is no capabilities", "0", 37, []string{}},
+		{"empty", "", 37, []string{}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.title, func(t *testing.T) {
+			assert.Equal(t, test.expected, parseSystemdCapabilities(test.value, test.lastCap))
+		})
+	}
+}
+
+// systemd 229 prints a unit holding every capability as 18446744073709551615.
+// Kept as written, none(_ == "cap_sys_admin") passed for it.
+func TestParseSystemdCapabilities_FullMask(t *testing.T) {
+	caps := parseSystemdCapabilities("18446744073709551615", 37)
+	assert.Contains(t, caps, "cap_sys_admin")
+	assert.Len(t, caps, 38)
+	assert.Equal(t, "cap_audit_read", caps[len(caps)-1])
+	// the kernel on that host stops at 37, so later capabilities are not listed
+	assert.NotContains(t, caps, "cap_perfmon")
+}
+
+// CapabilityBoundingSet=~CAP_SYS_ADMIN on systemd 229 prints every bit but 21.
+func TestParseSystemdCapabilities_MaskWithoutSysAdmin(t *testing.T) {
+	caps := parseSystemdCapabilities("18446744073707454463", 37)
+	assert.NotContains(t, caps, "cap_sys_admin")
+	assert.Contains(t, caps, "cap_sys_module")
+	assert.Len(t, caps, 37)
+}
+
+func TestParseSystemdCapabilities_UnknownLastCapDecodesEveryName(t *testing.T) {
+	caps := parseSystemdCapabilities("18446744073709551615", -1)
+	assert.Len(t, caps, len(systemdCapabilityNames))
+	assert.Equal(t, "cap_checkpoint_restore", caps[len(caps)-1])
+}
+
+// systemd 245 on a newer kernel prints the capabilities it has no name for in
+// hex (Ubuntu 20.04: "... cap_audit_read 0x26 0x27 0x28").
+func TestParseSystemdCapabilities_HexEntries(t *testing.T) {
+	caps := parseSystemdCapabilities("cap_block_suspend cap_audit_read 0x26 0x27 0x28", 40)
+	assert.Equal(t, []string{"cap_block_suspend", "cap_audit_read", "cap_perfmon", "cap_bpf", "cap_checkpoint_restore"}, caps)
+}
+
+func TestParseSystemdSystemCallFilter(t *testing.T) {
+	tests := []struct {
+		title    string
+		value    string
+		expected []string
+		deny     bool
+	}{
+		// every release prints a lone "~" for a unit without a filter
+		{"no filter", "~", []string{}, false},
+		{"unset", "", []string{}, false},
+		{
+			"deny list",
+			"~chroot fsconfig fsmount kexec_load mount reboot umount2",
+			[]string{"chroot", "fsconfig", "fsmount", "kexec_load", "mount", "reboot", "umount2"},
+			true,
+		},
+		{"allow list", "execve exit exit_group read rt_sigreturn write", []string{"execve", "exit", "exit_group", "read", "rt_sigreturn", "write"}, false},
+		{"unit file spelling", "~@mount @reboot", []string{"@mount", "@reboot"}, true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.title, func(t *testing.T) {
+			calls, deny := parseSystemdSystemCallFilter(test.value)
+			assert.Equal(t, test.expected, calls)
+			assert.Equal(t, test.deny, deny)
+		})
+	}
+}
+
+func TestNormalizeSystemdAddressFamilies(t *testing.T) {
+	assert.Equal(t, "", normalizeSystemdAddressFamilies("~"))
+	assert.Equal(t, "~AF_PACKET", normalizeSystemdAddressFamilies("~AF_PACKET"))
+	assert.Equal(t, "AF_INET AF_UNIX", normalizeSystemdAddressFamilies("AF_INET AF_UNIX"))
 }

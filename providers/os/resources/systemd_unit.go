@@ -107,20 +107,30 @@ func createSystemdUnitResource(runtime *plugin.Runtime, unit *services.SystemdUn
 		"restrictSUIDSGID":        supported("RestrictSUIDSGID", llx.BoolData(unit.RestrictSUIDSGID)),
 		"restrictRealtime":        supported("RestrictRealtime", llx.BoolData(unit.RestrictRealtime)),
 		"restrictNamespaces":      supported("RestrictNamespaces", llx.StringData(unit.RestrictNamespaces)),
-		"restrictAddressFamilies": supported("RestrictAddressFamilies", llx.StringData(unit.RestrictAddressFamilies)),
+		"restrictAddressFamilies": supported("RestrictAddressFamilies", restrictAddressFamiliesData(unit)),
 		"lockPersonality":         supported("LockPersonality", llx.BoolData(unit.LockPersonality)),
 		"memoryDenyWriteExecute":  supported("MemoryDenyWriteExecute", llx.BoolData(unit.MemoryDenyWriteExecute)),
 		"removeIPC":               supported("RemoveIPC", llx.BoolData(unit.RemoveIPC)),
 		"keyringMode":             supported("KeyringMode", llx.StringData(unit.KeyringMode)),
 
-		"capabilityBoundingSet":   supported("CapabilityBoundingSet", llx.ArrayData(convert.SliceAnyToInterface(unit.CapabilityBoundingSet), types.String)),
-		"ambientCapabilities":     supported("AmbientCapabilities", llx.ArrayData(convert.SliceAnyToInterface(unit.AmbientCapabilities), types.String)),
-		"systemCallFilter":        supported("SystemCallFilter", llx.ArrayData(convert.SliceAnyToInterface(unit.SystemCallFilter), types.String)),
-		"systemCallArchitectures": supported("SystemCallArchitectures", llx.StringData(unit.SystemCallArchitectures)),
-		"readWritePaths":          supported("ReadWritePaths", llx.ArrayData(convert.SliceAnyToInterface(unit.ReadWritePaths), types.String)),
-		"readOnlyPaths":           supported("ReadOnlyPaths", llx.ArrayData(convert.SliceAnyToInterface(unit.ReadOnlyPaths), types.String)),
-		"inaccessiblePaths":       supported("InaccessiblePaths", llx.ArrayData(convert.SliceAnyToInterface(unit.InaccessiblePaths), types.String)),
+		"capabilityBoundingSet":      supported("CapabilityBoundingSet", llx.ArrayData(convert.SliceAnyToInterface(unit.CapabilityBoundingSet), types.String)),
+		"ambientCapabilities":        supported("AmbientCapabilities", llx.ArrayData(convert.SliceAnyToInterface(unit.AmbientCapabilities), types.String)),
+		"systemCallFilter":           supported("SystemCallFilter", llx.ArrayData(convert.SliceAnyToInterface(unit.SystemCallFilter), types.String)),
+		"systemCallFilterIsDenylist": supported("SystemCallFilter", llx.BoolData(unit.SystemCallFilterIsDenylist)),
+		"systemCallArchitectures":    supported("SystemCallArchitectures", llx.StringData(unit.SystemCallArchitectures)),
+		"readWritePaths":             supported("ReadWritePaths", llx.ArrayData(convert.SliceAnyToInterface(unit.ReadWritePaths), types.String)),
+		"readOnlyPaths":              supported("ReadOnlyPaths", llx.ArrayData(convert.SliceAnyToInterface(unit.ReadOnlyPaths), types.String)),
+		"inaccessiblePaths":          supported("InaccessiblePaths", llx.ArrayData(convert.SliceAnyToInterface(unit.InaccessiblePaths), types.String)),
 	})
+}
+
+// restrictAddressFamiliesData is null when the setting could not be read, so
+// it does not read as a unit without any restriction.
+func restrictAddressFamiliesData(unit *services.SystemdUnit) *llx.RawData {
+	if unit.RestrictAddressFamiliesUnknown {
+		return llx.NilData
+	}
+	return llx.StringData(unit.RestrictAddressFamilies)
 }
 
 func (u *mqlSystemdUnits) id() (string, error) {

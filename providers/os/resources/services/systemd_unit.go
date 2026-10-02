@@ -62,13 +62,21 @@ type SystemdUnit struct {
 	RemoveIPC               bool
 	KeyringMode             string
 
-	CapabilityBoundingSet   []string
-	AmbientCapabilities     []string
-	SystemCallFilter        []string
-	SystemCallArchitectures string
-	ReadWritePaths          []string
-	ReadOnlyPaths           []string
-	InaccessiblePaths       []string
+	// RestrictAddressFamiliesUnknown is set when systemd could not print the
+	// setting and the unit files that hold it could not be read either, so the
+	// value is not known rather than empty.
+	RestrictAddressFamiliesUnknown bool
+
+	CapabilityBoundingSet []string
+	AmbientCapabilities   []string
+	SystemCallFilter      []string
+	// SystemCallFilterIsDenylist is true when SystemCallFilter lists the calls
+	// that are denied rather than the only ones allowed.
+	SystemCallFilterIsDenylist bool
+	SystemCallArchitectures    string
+	ReadWritePaths             []string
+	ReadOnlyPaths              []string
+	InaccessiblePaths          []string
 
 	// Unsupported names the properties the running systemd does not have
 	// (ProtectClock on systemd 232, for example). Their values above are
@@ -190,7 +198,8 @@ const systemdUnitShowProperties = "Id,Description,FragmentPath,LoadState,ActiveS
 	"PrivateNetwork,PrivateUsers,ProtectKernelTunables,ProtectKernelModules,ProtectKernelLogs,ProtectControlGroups," +
 	"ProtectClock,ProtectHostname,ProtectProc,ProcSubset,RestrictSUIDSGID,RestrictRealtime,RestrictNamespaces," +
 	"RestrictAddressFamilies,LockPersonality,MemoryDenyWriteExecute,RemoveIPC,KeyringMode,CapabilityBoundingSet," +
-	"AmbientCapabilities,SystemCallFilter,SystemCallArchitectures,ReadWritePaths,ReadOnlyPaths,InaccessiblePaths"
+	"AmbientCapabilities,SystemCallFilter,SystemCallArchitectures,ReadWritePaths,ReadOnlyPaths,InaccessiblePaths," +
+	"DropInPaths"
 
 // systemdUnitShowChunk bounds how many units go into one systemctl invocation,
 // so a host with a very large unit set cannot build a command line past what the
@@ -220,6 +229,9 @@ type SystemdUnitManager struct {
 
 	versionOnce sync.Once
 	version     int
+
+	lastCapOnce sync.Once
+	lastCap     int
 }
 
 // systemdVersion is the release of the systemd on the host, or 0 when
@@ -316,7 +328,7 @@ func (m *SystemdUnitManager) listViaSystemctl() ([]*SystemdUnit, error) {
 		}
 
 		for _, record := range records {
-			u := systemdUnitFromProperties(record)
+			u := m.unitFromProperties(record)
 			if u == nil {
 				continue
 			}
@@ -467,7 +479,7 @@ func (m *SystemdUnitManager) Get(name string) (*SystemdUnit, error) {
 		return nil, fmt.Errorf("%w: %s", ErrServiceNotFound, name)
 	}
 
-	u := systemdUnitFromProperties(records[0])
+	u := m.unitFromProperties(records[0])
 	if u == nil {
 		return nil, fmt.Errorf("%w: %s", ErrServiceNotFound, name)
 	}
@@ -573,13 +585,87 @@ func parseSystemdShowRecords(input io.Reader) ([]map[string]string, error) {
 	return records, scanner.Err()
 }
 
+// systemdUnitUnprintable is what systemctl prints for a property it has no
+// text form for. systemd 229 and 237 (Ubuntu 16.04 and 18.04) print it for
+// every RestrictAddressFamilies value.
+const systemdUnitUnprintable = "[unprintable]"
+
+// unitFromProperties maps a systemctl record onto a unit, filling in what the
+// systemd release could not print from the files the unit was loaded from.
+func (m *SystemdUnitManager) unitFromProperties(props map[string]string) *SystemdUnit {
+	lastCap := -1
+	if isSystemdCapabilityMask(props["CapabilityBoundingSet"]) || isSystemdCapabilityMask(props["AmbientCapabilities"]) {
+		lastCap = m.kernelLastCap()
+	}
+
+	u := systemdUnitFromProperties(props, lastCap)
+	if u == nil {
+		return nil
+	}
+
+	if strings.TrimSpace(props["RestrictAddressFamilies"]) == systemdUnitUnprintable {
+		value, err := m.restrictAddressFamiliesFromFiles(props)
+		if err != nil {
+			log.Debug().Err(err).Str("unit", u.Name).
+				Msg("mql[systemd]> could not read RestrictAddressFamilies from the unit files")
+			u.RestrictAddressFamilies = ""
+			u.RestrictAddressFamiliesUnknown = true
+		} else {
+			u.RestrictAddressFamilies = normalizeSystemdAddressFamilies(value)
+			// the release has the setting, it only cannot print it
+			delete(u.Unsupported, "RestrictAddressFamilies")
+		}
+	}
+
+	return u
+}
+
+// kernelLastCap returns the highest capability the running kernel knows, or -1
+// when it cannot be read. systemd prints a bounding set only up to this
+// capability, so decoding a numeric mask stops there too.
+func (m *SystemdUnitManager) kernelLastCap() int {
+	m.lastCapOnce.Do(func() {
+		m.lastCap = -1
+		data, err := afero.ReadFile(m.conn.FileSystem(), "/proc/sys/kernel/cap_last_cap")
+		if err != nil {
+			return
+		}
+		if n, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil && n >= 0 {
+			m.lastCap = n
+		}
+	})
+	return m.lastCap
+}
+
+// restrictAddressFamiliesFromFiles reads RestrictAddressFamilies from the unit
+// file and its drop-ins, in the order systemd applied them.
+func (m *SystemdUnitManager) restrictAddressFamiliesFromFiles(props map[string]string) (string, error) {
+	files := []string{}
+	if fragment := props["FragmentPath"]; fragment != "" {
+		files = append(files, fragment)
+	}
+	files = append(files, strings.Fields(props["DropInPaths"])...)
+
+	fs := m.fsFallback()
+	merged := map[string]string{}
+	for _, file := range files {
+		if err := fs.foldUnitFile(merged, file); err != nil {
+			return "", err
+		}
+	}
+	return merged["RestrictAddressFamilies"], nil
+}
+
 // systemdUnitFromProperties maps a property record onto a unit, returning nil
-// when the record names no unit.
-func systemdUnitFromProperties(props map[string]string) *SystemdUnit {
+// when the record names no unit. lastCap bounds the capabilities decoded from a
+// numeric mask; -1 decodes every capability with a name.
+func systemdUnitFromProperties(props map[string]string, lastCap int) *SystemdUnit {
 	name := props["Id"]
 	if name == "" {
 		return nil
 	}
+
+	systemCallFilter, systemCallFilterIsDenylist := parseSystemdSystemCallFilter(props["SystemCallFilter"])
 
 	u := &SystemdUnit{
 		Name:          name,
@@ -616,19 +702,20 @@ func systemdUnitFromProperties(props map[string]string) *SystemdUnit {
 		RestrictSUIDSGID:        parseSystemdBool(props["RestrictSUIDSGID"]),
 		RestrictRealtime:        parseSystemdBool(props["RestrictRealtime"]),
 		RestrictNamespaces:      props["RestrictNamespaces"],
-		RestrictAddressFamilies: props["RestrictAddressFamilies"],
+		RestrictAddressFamilies: normalizeSystemdAddressFamilies(props["RestrictAddressFamilies"]),
 		LockPersonality:         parseSystemdBool(props["LockPersonality"]),
 		MemoryDenyWriteExecute:  parseSystemdBool(props["MemoryDenyWriteExecute"]),
 		RemoveIPC:               parseSystemdBool(props["RemoveIPC"]),
 		KeyringMode:             props["KeyringMode"],
 
-		CapabilityBoundingSet:   splitSystemdList(props["CapabilityBoundingSet"]),
-		AmbientCapabilities:     splitSystemdList(props["AmbientCapabilities"]),
-		SystemCallFilter:        splitSystemdList(props["SystemCallFilter"]),
-		SystemCallArchitectures: props["SystemCallArchitectures"],
-		ReadWritePaths:          splitSystemdList(props["ReadWritePaths"]),
-		ReadOnlyPaths:           splitSystemdList(props["ReadOnlyPaths"]),
-		InaccessiblePaths:       splitSystemdList(props["InaccessiblePaths"]),
+		CapabilityBoundingSet:      parseSystemdCapabilities(props["CapabilityBoundingSet"], lastCap),
+		AmbientCapabilities:        parseSystemdCapabilities(props["AmbientCapabilities"], lastCap),
+		SystemCallFilter:           systemCallFilter,
+		SystemCallFilterIsDenylist: systemCallFilterIsDenylist,
+		SystemCallArchitectures:    props["SystemCallArchitectures"],
+		ReadWritePaths:             splitSystemdList(props["ReadWritePaths"]),
+		ReadOnlyPaths:              splitSystemdList(props["ReadOnlyPaths"]),
+		InaccessiblePaths:          splitSystemdList(props["InaccessiblePaths"]),
 	}
 
 	if names := strings.Fields(props[systemdUnsupportedKey]); len(names) > 0 {
@@ -694,13 +781,125 @@ func parseSystemdExecStart(value string) string {
 		value = strings.TrimSpace(value[1 : len(value)-1])
 	}
 
-	for _, part := range strings.Split(value, ";") {
-		part = strings.TrimSpace(part)
-		if argv, ok := strings.CutPrefix(part, "argv[]="); ok {
-			return strings.TrimSpace(argv)
-		}
+	// the fields are separated by " ; ", while the command line itself can hold
+	// a bare ";" (sh -c "a; b"), so cut argv[] at the field that follows it
+	// rather than at the first semicolon
+	_, argv, ok := strings.Cut(value, "argv[]=")
+	if !ok {
+		return value
+	}
+	if end := strings.Index(argv, " ; ignore_errors="); end >= 0 {
+		return strings.TrimSpace(argv[:end])
+	}
+	if end := strings.Index(argv, " ; "); end >= 0 {
+		return strings.TrimSpace(argv[:end])
+	}
+	return strings.TrimSpace(argv)
+}
+
+// systemdCapabilityNames are the Linux capabilities by number, as systemd and
+// libcap name them.
+var systemdCapabilityNames = []string{
+	"cap_chown", "cap_dac_override", "cap_dac_read_search", "cap_fowner",
+	"cap_fsetid", "cap_kill", "cap_setgid", "cap_setuid",
+	"cap_setpcap", "cap_linux_immutable", "cap_net_bind_service", "cap_net_broadcast",
+	"cap_net_admin", "cap_net_raw", "cap_ipc_lock", "cap_ipc_owner",
+	"cap_sys_module", "cap_sys_rawio", "cap_sys_chroot", "cap_sys_ptrace",
+	"cap_sys_pacct", "cap_sys_admin", "cap_sys_boot", "cap_sys_nice",
+	"cap_sys_resource", "cap_sys_time", "cap_sys_tty_config", "cap_mknod",
+	"cap_lease", "cap_audit_write", "cap_audit_control", "cap_setfcap",
+	"cap_mac_override", "cap_mac_admin", "cap_syslog", "cap_wake_alarm",
+	"cap_block_suspend", "cap_audit_read", "cap_perfmon", "cap_bpf",
+	"cap_checkpoint_restore",
+}
+
+// isSystemdCapabilityMask reports whether a capability property is printed as
+// a decimal bit mask, which is how systemd 229 (Ubuntu 16.04) prints it.
+func isSystemdCapabilityMask(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	_, err := strconv.ParseUint(value, 10, 64)
+	return err == nil
+}
+
+// parseSystemdCapabilities reads a capability property into capability names.
+//
+// Current systemd prints names, but systemd 229 prints the set as a decimal bit
+// mask, where 18446744073709551615 is every capability. Reading that as one
+// opaque entry made a check like none(_ == "cap_sys_admin") pass for a unit
+// holding every capability, so the mask is decoded into the names systemd
+// prints today. A systemd whose capability table is older than the kernel
+// prints a capability it has no name for as hex (0x26); that is mapped to its
+// name as well, for the same reason.
+func parseSystemdCapabilities(value string, lastCap int) []string {
+	if isSystemdCapabilityMask(value) {
+		mask, _ := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
+		return decodeSystemdCapabilityMask(mask, lastCap)
 	}
 
+	entries := splitSystemdList(value)
+	for i, entry := range entries {
+		hex, ok := strings.CutPrefix(entry, "0x")
+		if !ok {
+			continue
+		}
+		n, err := strconv.ParseUint(hex, 16, 8)
+		if err == nil && int(n) < len(systemdCapabilityNames) {
+			entries[i] = systemdCapabilityNames[n]
+		}
+	}
+	return entries
+}
+
+// decodeSystemdCapabilityMask lists the capabilities set in mask, in number
+// order, up to lastCap (-1 for every named capability).
+func decodeSystemdCapabilityMask(mask uint64, lastCap int) []string {
+	last := len(systemdCapabilityNames) - 1
+	if lastCap >= 0 && lastCap < last {
+		last = lastCap
+	}
+
+	res := []string{}
+	for bit := 0; bit <= last; bit++ {
+		if mask&(1<<uint(bit)) != 0 {
+			res = append(res, systemdCapabilityNames[bit])
+		}
+	}
+	return res
+}
+
+// parseSystemdSystemCallFilter reads SystemCallFilter into the calls it names
+// and whether they are denied rather than allowed.
+//
+// systemctl marks a deny list with a "~" in front of the first call
+// ("~chroot mount reboot"), and prints a lone "~" (an empty deny list) for a
+// unit with no filter at all. Kept as written, the lone "~" made every unit
+// look filtered, and the first denied call never matched its own name.
+func parseSystemdSystemCallFilter(value string) ([]string, bool) {
+	value = strings.TrimSpace(value)
+	value = strings.TrimPrefix(value, "{")
+	value = strings.TrimSuffix(value, "}")
+	value = strings.TrimSpace(value)
+
+	rest, deny := strings.CutPrefix(value, "~")
+	calls := splitSystemdList(rest)
+	if len(calls) == 0 {
+		return calls, false
+	}
+	return calls, deny
+}
+
+// normalizeSystemdAddressFamilies reads RestrictAddressFamilies. A lone "~"
+// is systemctl's way of saying no restriction applies, which is reported as
+// empty like a unit that never set it. A deny list keeps its "~" prefix, so the
+// value still says which kind of list it is.
+func normalizeSystemdAddressFamilies(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "~" {
+		return ""
+	}
 	return value
 }
 
@@ -768,7 +967,7 @@ func (m *SystemdFSUnitManager) readUnit(name string, unitPath string) (*SystemdU
 	if m.isMasked(unitPath) {
 		props["LoadState"] = "masked"
 		props["UnitFileState"] = "masked"
-		return systemdUnitFromProperties(props), nil
+		return systemdUnitFromProperties(props, -1), nil
 	}
 
 	props["LoadState"] = "loaded"
@@ -786,7 +985,7 @@ func (m *SystemdFSUnitManager) readUnit(name string, unitPath string) (*SystemdU
 	}
 	markUnsupportedFileProperties(props, m.Version)
 
-	return systemdUnitFromProperties(props), nil
+	return systemdUnitFromProperties(props, -1), nil
 }
 
 // isMasked reports whether a unit file is masked, meaning systemd refuses to

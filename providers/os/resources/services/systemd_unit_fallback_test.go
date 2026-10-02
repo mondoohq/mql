@@ -183,3 +183,63 @@ func TestSystemdUnitManager_NoUnitsAtAll(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, units)
 }
+
+// systemd 229 and 237 (Ubuntu 16.04, 18.04) print RestrictAddressFamilies as
+// "[unprintable]" and systemd 229 prints capabilities as a decimal mask. The
+// address families come from the unit file and its drop-ins instead, and the
+// mask is decoded up to the kernel's last capability.
+func TestSystemdUnitManager_OldSystemdValues(t *testing.T) {
+	conn := unitFallbackConn(t, map[string]*mock.Command{
+		buildSystemdUnitShowCommand([]string{"g04-hard2.service"}): {
+			Stdout: `Id=g04-hard2.service
+LoadState=loaded
+FragmentPath=/etc/systemd/system/g04-hard2.service
+DropInPaths=/etc/systemd/system/g04-hard2.service.d/10-extra.conf
+CapabilityBoundingSet=18446744073707454463
+AmbientCapabilities=0
+SystemCallFilter=~
+RestrictAddressFamilies=[unprintable]
+`,
+		},
+	})
+	fs := conn.FileSystem()
+	require.NoError(t, afero.WriteFile(fs, "/etc/systemd/system/g04-hard2.service", []byte(`[Service]
+ExecStart=/bin/sleep infinity
+RestrictAddressFamilies=~AF_PACKET
+`), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/etc/systemd/system/g04-hard2.service.d/10-extra.conf", []byte(`[Service]
+RestrictAddressFamilies=AF_NETLINK
+`), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/proc/sys/kernel/cap_last_cap", []byte("37\n"), 0o444))
+
+	unit, err := (&SystemdUnitManager{conn: conn}).Get("g04-hard2.service")
+	require.NoError(t, err)
+	assert.Equal(t, "~AF_PACKET AF_NETLINK", unit.RestrictAddressFamilies)
+	assert.False(t, unit.RestrictAddressFamiliesUnknown)
+	// the release has the setting and applies it, it only cannot print it
+	assert.True(t, unit.Supports("RestrictAddressFamilies"))
+	assert.NotContains(t, unit.CapabilityBoundingSet, "cap_sys_admin")
+	assert.Len(t, unit.CapabilityBoundingSet, 37)
+	assert.Empty(t, unit.AmbientCapabilities)
+	assert.Empty(t, unit.SystemCallFilter)
+	assert.False(t, unit.SystemCallFilterIsDenylist)
+}
+
+// A unit file that cannot be read leaves the setting unknown rather than
+// reporting the unit as unrestricted.
+func TestSystemdUnitManager_UnprintableAndUnreadable(t *testing.T) {
+	conn := unitFallbackConn(t, map[string]*mock.Command{
+		buildSystemdUnitShowCommand([]string{"gone.service"}): {
+			Stdout: `Id=gone.service
+LoadState=loaded
+FragmentPath=/etc/systemd/system/gone.service
+RestrictAddressFamilies=[unprintable]
+`,
+		},
+	})
+
+	unit, err := (&SystemdUnitManager{conn: conn}).Get("gone.service")
+	require.NoError(t, err)
+	assert.Equal(t, "", unit.RestrictAddressFamilies)
+	assert.True(t, unit.RestrictAddressFamiliesUnknown)
+}

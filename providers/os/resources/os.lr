@@ -6538,7 +6538,9 @@ systemd.unit @defaults("name user noNewPrivileges protectSystem") {
   // Socket address families the unit may use (RestrictAddressFamilies)
   //
   // For example `AF_UNIX AF_INET AF_INET6`. A unit held to AF_UNIX cannot open
-  // a network socket at all.
+  // a network socket at all. A leading `~` marks a deny list, as in
+  // `~AF_PACKET`, and an empty value means no restriction. Null when neither
+  // systemd nor the unit files could say.
   restrictAddressFamilies string
   // Whether the unit is locked to its current execution domain (LockPersonality)
   lockPersonality bool
@@ -6555,18 +6557,23 @@ systemd.unit @defaults("name user noNewPrivileges protectSystem") {
   //
   // An empty list is the strongest setting, leaving the unit no capabilities at
   // all. A unit running as root holding `cap_sys_admin` here has effectively
-  // unrestricted access to the host. Reported as the names systemd lists;
-  // releases old enough to report a numeric mask instead yield that single
-  // value as written.
+  // unrestricted access to the host. Reported as lowercase capability names,
+  // including on releases that print the set as a numeric mask.
   capabilityBoundingSet []string
   // Capabilities passed on to the unit's unprivileged processes (AmbientCapabilities)
   ambientCapabilities []string
   // System call filter applied to the unit (SystemCallFilter)
   //
-  // Entries are call names or predefined sets such as `@system-service`. A
-  // leading `~` on the first entry marks the filter as a deny list rather than
-  // an allow list. An empty list means no filter is applied.
+  // Entries are call names, or predefined sets such as `@system-service` when
+  // read from unit files. `systemCallFilterIsDenylist` says whether the entries
+  // are the calls denied or the only calls allowed. An empty list means no
+  // filter is applied.
   systemCallFilter []string
+  // Whether systemCallFilter lists the denied calls rather than the allowed ones
+  //
+  // True for a filter written with a leading `~`, such as
+  // `SystemCallFilter=~@mount @reboot`.
+  systemCallFilterIsDenylist bool
   // Architectures the system call filter accepts (SystemCallArchitectures)
   systemCallArchitectures string
   // Paths the unit may write to despite protectSystem (ReadWritePaths)

@@ -8410,6 +8410,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"systemd.unit.systemCallFilter": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSystemdUnit).GetSystemCallFilter()).ToDataRes(types.Array(types.String))
 	},
+	"systemd.unit.systemCallFilterIsDenylist": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlSystemdUnit).GetSystemCallFilterIsDenylist()).ToDataRes(types.Bool)
+	},
 	"systemd.unit.systemCallArchitectures": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlSystemdUnit).GetSystemCallArchitectures()).ToDataRes(types.String)
 	},
@@ -25733,6 +25736,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"systemd.unit.systemCallFilter": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlSystemdUnit).SystemCallFilter, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"systemd.unit.systemCallFilterIsDenylist": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlSystemdUnit).SystemCallFilterIsDenylist, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
 	"systemd.unit.systemCallArchitectures": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -62177,49 +62184,50 @@ type mqlSystemdUnit struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	// optional: if you define mqlSystemdUnitInternal it will be used here
-	Name                    plugin.TValue[string]
-	Description             plugin.TValue[string]
-	Installed               plugin.TValue[bool]
-	FragmentPath            plugin.TValue[string]
-	LoadState               plugin.TValue[string]
-	ActiveState             plugin.TValue[string]
-	UnitFileState           plugin.TValue[string]
-	Type                    plugin.TValue[string]
-	ExecStart               plugin.TValue[string]
-	User                    plugin.TValue[string]
-	Group                   plugin.TValue[string]
-	DynamicUser             plugin.TValue[bool]
-	Umask                   plugin.TValue[string]
-	NoNewPrivileges         plugin.TValue[bool]
-	ProtectSystem           plugin.TValue[string]
-	ProtectHome             plugin.TValue[string]
-	PrivateTmp              plugin.TValue[bool]
-	PrivateDevices          plugin.TValue[bool]
-	PrivateNetwork          plugin.TValue[bool]
-	PrivateUsers            plugin.TValue[bool]
-	ProtectKernelTunables   plugin.TValue[bool]
-	ProtectKernelModules    plugin.TValue[bool]
-	ProtectKernelLogs       plugin.TValue[bool]
-	ProtectControlGroups    plugin.TValue[string]
-	ProtectClock            plugin.TValue[bool]
-	ProtectHostname         plugin.TValue[bool]
-	ProtectProc             plugin.TValue[string]
-	ProcSubset              plugin.TValue[string]
-	RestrictSUIDSGID        plugin.TValue[bool]
-	RestrictRealtime        plugin.TValue[bool]
-	RestrictNamespaces      plugin.TValue[string]
-	RestrictAddressFamilies plugin.TValue[string]
-	LockPersonality         plugin.TValue[bool]
-	MemoryDenyWriteExecute  plugin.TValue[bool]
-	RemoveIPC               plugin.TValue[bool]
-	KeyringMode             plugin.TValue[string]
-	CapabilityBoundingSet   plugin.TValue[[]any]
-	AmbientCapabilities     plugin.TValue[[]any]
-	SystemCallFilter        plugin.TValue[[]any]
-	SystemCallArchitectures plugin.TValue[string]
-	ReadWritePaths          plugin.TValue[[]any]
-	ReadOnlyPaths           plugin.TValue[[]any]
-	InaccessiblePaths       plugin.TValue[[]any]
+	Name                       plugin.TValue[string]
+	Description                plugin.TValue[string]
+	Installed                  plugin.TValue[bool]
+	FragmentPath               plugin.TValue[string]
+	LoadState                  plugin.TValue[string]
+	ActiveState                plugin.TValue[string]
+	UnitFileState              plugin.TValue[string]
+	Type                       plugin.TValue[string]
+	ExecStart                  plugin.TValue[string]
+	User                       plugin.TValue[string]
+	Group                      plugin.TValue[string]
+	DynamicUser                plugin.TValue[bool]
+	Umask                      plugin.TValue[string]
+	NoNewPrivileges            plugin.TValue[bool]
+	ProtectSystem              plugin.TValue[string]
+	ProtectHome                plugin.TValue[string]
+	PrivateTmp                 plugin.TValue[bool]
+	PrivateDevices             plugin.TValue[bool]
+	PrivateNetwork             plugin.TValue[bool]
+	PrivateUsers               plugin.TValue[bool]
+	ProtectKernelTunables      plugin.TValue[bool]
+	ProtectKernelModules       plugin.TValue[bool]
+	ProtectKernelLogs          plugin.TValue[bool]
+	ProtectControlGroups       plugin.TValue[string]
+	ProtectClock               plugin.TValue[bool]
+	ProtectHostname            plugin.TValue[bool]
+	ProtectProc                plugin.TValue[string]
+	ProcSubset                 plugin.TValue[string]
+	RestrictSUIDSGID           plugin.TValue[bool]
+	RestrictRealtime           plugin.TValue[bool]
+	RestrictNamespaces         plugin.TValue[string]
+	RestrictAddressFamilies    plugin.TValue[string]
+	LockPersonality            plugin.TValue[bool]
+	MemoryDenyWriteExecute     plugin.TValue[bool]
+	RemoveIPC                  plugin.TValue[bool]
+	KeyringMode                plugin.TValue[string]
+	CapabilityBoundingSet      plugin.TValue[[]any]
+	AmbientCapabilities        plugin.TValue[[]any]
+	SystemCallFilter           plugin.TValue[[]any]
+	SystemCallFilterIsDenylist plugin.TValue[bool]
+	SystemCallArchitectures    plugin.TValue[string]
+	ReadWritePaths             plugin.TValue[[]any]
+	ReadOnlyPaths              plugin.TValue[[]any]
+	InaccessiblePaths          plugin.TValue[[]any]
 }
 
 // createSystemdUnit creates a new instance of this resource
@@ -62413,6 +62421,10 @@ func (c *mqlSystemdUnit) GetAmbientCapabilities() *plugin.TValue[[]any] {
 
 func (c *mqlSystemdUnit) GetSystemCallFilter() *plugin.TValue[[]any] {
 	return &c.SystemCallFilter
+}
+
+func (c *mqlSystemdUnit) GetSystemCallFilterIsDenylist() *plugin.TValue[bool] {
+	return &c.SystemCallFilterIsDenylist
 }
 
 func (c *mqlSystemdUnit) GetSystemCallArchitectures() *plugin.TValue[string] {
