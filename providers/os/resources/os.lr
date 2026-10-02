@@ -690,8 +690,9 @@ os.base @root {
   // patched, so the newest install inside one dates the image build rather
   // than any patching of the workload. Null too wherever the asset keeps no
   // record of a completed update that can be attributed to the vendor: an
-  // rpm host whose package manager writes no transaction log (SUSE, yum-era
-  // RHEL, Photon), image-based systems that update by swapping the OS image
+  // rpm host whose package manager writes no transaction log (yum-era RHEL,
+  // Photon), a SUSE host whose zypper history holds no update run,
+  // image-based systems that update by swapping the OS image
   // (Bottlerocket, CoreOS), a Debian host whose apt history has rotated
   // away or whose newest history log cannot be read, a Windows host whose
   // update agent history cannot be read, an Alpine host whose apk-tools
@@ -726,10 +727,13 @@ os.base @root {
   // a vendor security advisory without an external advisory database;
   // "apt-history" is an operator-run full upgrade, which vendor packages
   // dominate but which can also carry a third-party repository. "apk-log"
-  // is the same kind of operator-run upgrade on Alpine. A policy that
-  // demands the vendor security channel can require "apt-security", where a
-  // looser one takes any non-null answer. Null whenever `lastUpdate` is
-  // null.
+  // is the same kind of operator-run upgrade on Alpine, and "zypp-history"
+  // on SUSE: a `zypper update`, `zypper patch` or `zypper dist-upgrade` run
+  // that installed at least one package, timestamped by its last install.
+  // `zypper install` does not count, even when it satisfies a patch. A
+  // policy that demands the vendor security channel can require
+  // "apt-security", where a looser one takes any non-null answer. Null
+  // whenever `lastUpdate` is null.
   lastUpdateSource() string
   // Whether a reboot is pending
   rebootpending() bool

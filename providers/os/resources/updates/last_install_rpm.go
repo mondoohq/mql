@@ -39,7 +39,7 @@ var dnfUpgradeActions = map[string]struct{}{
 // DnfRpmLogPresent reports whether dnf's rpm transaction log, or any of its
 // logrotate copies, exists. It lets a caller skip the cost of building the
 // vendor attribution (a full package listing) on platforms that never write
-// the log: SUSE's zypper, yum-era RHEL, Photon's tdnf. A probe that cannot
+// the log: yum-era RHEL, Photon's tdnf. A probe that cannot
 // tell reads as absent, which errs toward null, the same direction the walk
 // itself fails.
 func DnfRpmLogPresent(fs afero.Fs) bool {
@@ -60,8 +60,8 @@ func DnfRpmLogPresent(fs afero.Fs) bool {
 // attribute a package there is no evidence to read, so a nil predicate
 // answers nil.
 //
-// A platform whose package manager keeps no such log (SUSE's zypper, yum-era
-// RHEL, Photon's tdnf) and an asset whose log has rotated away both read nil:
+// A platform whose package manager keeps no such log (yum-era RHEL, Photon's
+// tdnf) and an asset whose log has rotated away both read nil:
 // without transaction evidence there is no way to tell an update from an
 // install, and inferring one from install times is exactly the mistake this
 // log exists to avoid.

@@ -89,6 +89,10 @@ func resolveLastInstalledUpdate(runtime *plugin.Runtime) (*updates.LastInstalled
 	var update *updates.LastInstalledUpdate
 	var err error
 	switch {
+	case asset.Platform.IsFamily("suse"):
+		// zypper writes no dnf transaction log; libzypp's own history,
+		// which names the zypper command of every run, answers instead.
+		update, err = updates.ResolveLastInstalledUpdate(conn)
 	case isRpmPlatform(asset.Platform):
 		update, err = lastInstalledRpm(runtime, conn, asset.Platform)
 	case asset.Platform.Name == "windows":
@@ -203,8 +207,8 @@ var rpmVendorAnchors = []string{"glibc", "bash", "coreutils", "systemd", "filesy
 // installing a vendor rpm for the first time, so `dnf install vim` would make
 // the machine look freshly patched. The transaction log is what separates the
 // two: dnf writes an Upgrade/Upgraded line pair only when a package moved to
-// a newer build. A platform that keeps no such log (SUSE's zypper, yum-era
-// RHEL, Photon's tdnf) reads null rather than borrowing the install-time
+// a newer build. A platform that keeps no such log (yum-era RHEL, Photon's
+// tdnf) reads null rather than borrowing the install-time
 // answer, because "installed recently" is not "updated recently".
 //
 // The vendor match is what makes the timestamp mean patch state. Without it a

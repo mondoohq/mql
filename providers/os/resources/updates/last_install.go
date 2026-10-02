@@ -111,9 +111,9 @@ func ValidateLastInstalledUpdate(update *LastInstalledUpdate, now time.Time) *La
 // ResolveLastInstalledUpdate reads the newest operating system update install
 // recorded by the asset's own update mechanism. It covers the platforms whose
 // record lives in a file the connection can read on its own: the apt history
-// log on Debian, apk-tools' transaction log on Alpine, and the install history
-// plist on macOS. rpm-based platforms
-// and Windows are resolved by the os resource instead, because both need a
+// log on Debian, apk-tools' transaction log on Alpine, libzypp's history log
+// on SUSE, and the install history plist on macOS. The other rpm-based
+// platforms and Windows are resolved by the os resource instead, because both need a
 // resource the runtime has likely cached (`packages` carries %{VENDOR} for
 // every rpm, which attributes dnf's log lines to the OS vendor, and
 // `windows.update` carries the update agent history).
@@ -136,6 +136,8 @@ func ResolveLastInstalledUpdate(conn shared.Connection) (*LastInstalledUpdate, e
 		return lastInstalledMacos(conn)
 	case asset.Platform.Name == "nixos":
 		return lastInstalledNixos(conn)
+	case asset.Platform.IsFamily("suse"):
+		return lastInstalledZypp(conn)
 	}
 	return nil, nil
 }
