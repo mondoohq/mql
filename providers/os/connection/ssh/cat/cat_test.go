@@ -44,7 +44,7 @@ func TestCatFs(t *testing.T) {
 	assert.Equal(t, int64(4317), fi.Size())
 	assert.Equal(t, false, fi.IsDir())
 	assert.Equal(t, os.FileMode(0x180), fi.Mode())
-	assert.Equal(t, time.Unix(1590420240, 0), fi.ModTime())
+	assert.Equal(t, time.Unix(1590418792, 0), fi.ModTime())
 
 	// fetch file content
 	f, err := catfs.Open("/etc/ssh/sshd_config")

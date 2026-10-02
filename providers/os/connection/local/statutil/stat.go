@@ -161,7 +161,8 @@ func (s *statHelper) linux(name string) (os.FileInfo, error) {
 		return nil, errors.Wrap(err, "could not stat "+name)
 	}
 
-	mtime, err := strconv.ParseInt(statsData[5], 10, 64)
+	// statsData[5] is the access time (%X), statsData[6] the modification time (%Y)
+	mtime, err := strconv.ParseInt(statsData[6], 10, 64)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not stat "+name)
 	}
@@ -195,7 +196,8 @@ func (s *statHelper) unix(name string) (os.FileInfo, error) {
 		return nil, err
 	}
 
-	statsData := strings.Split(string(data), ":")
+	// Output format: SL:size:mode:uid:gid:atime:mtime
+	statsData := strings.Split(strings.TrimSpace(string(data)), ":")
 	if len(statsData) != 7 {
 		return nil, os.ErrNotExist
 	}
@@ -228,7 +230,8 @@ func (s *statHelper) unix(name string) (os.FileInfo, error) {
 		mode |= fs.ModeSymlink
 	}
 
-	mtime, err := strconv.ParseInt(statsData[5], 10, 64)
+	// statsData[5] is the access time (%a), statsData[6] the modification time (%m)
+	mtime, err := strconv.ParseInt(statsData[6], 10, 64)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not stat "+name)
 	}
