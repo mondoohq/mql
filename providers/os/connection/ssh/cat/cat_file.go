@@ -13,6 +13,8 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/kballard/go-shellquote"
+	"github.com/rs/zerolog/log"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func NewFile(catfs *Fs, path string, useBase64encoding bool) *File {
@@ -28,7 +30,7 @@ type File struct {
 
 func (f *File) readContent() (*bytes.Buffer, error) {
 	// we need shellquote to escape filenames with spaces
-	catCmd := shellquote.Join("cat", f.path)
+	catCmd := shellquote.Join("cat", argPath(f.path))
 	if f.useBase64encoding {
 		catCmd = catCmd + " | base64"
 	}
@@ -94,18 +96,24 @@ func (f *File) Readdir(count int) (res []os.FileInfo, err error) {
 		return nil, err
 	}
 
-	res = make([]os.FileInfo, len(names))
-	for i, name := range names {
+	res = make([]os.FileInfo, 0, len(names))
+	for _, name := range names {
 		var statPath string
 		if filepath.IsAbs(name) {
 			statPath = name
 		} else {
 			statPath = filepath.Join(f.path, name)
 		}
-		res[i], err = f.catfs.Stat(statPath)
+		fi, err := f.catfs.Stat(statPath)
 		if err != nil {
-			return nil, err
+			// An entry can vanish between the listing and the stat (a process
+			// leaving /proc, a rotated log), and a name containing a newline
+			// arrives split across lines. Skip it like os.File.Readdir does for
+			// vanished entries, instead of dropping the whole directory.
+			log.Debug().Err(err).Str("path", statPath).Msg("cat> skip directory entry that cannot be stat'ed")
+			continue
 		}
+		res = append(res, fi)
 	}
 
 	return res, nil
@@ -114,8 +122,7 @@ func (f *File) Readdir(count int) (res []os.FileInfo, err error) {
 func (f *File) Readdirnames(n int) (names []string, err error) {
 	// TODO: input n is ignored
 
-	// we need shellquote to escape directory names with spaces or quotes
-	cmd, err := f.catfs.commandRunner.RunCommand(shellquote.Join("ls", "-1", f.path))
+	cmd, err := f.catfs.commandRunner.RunCommand(listDirCommand(f.path))
 	if err != nil {
 		return nil, err
 	}
@@ -125,27 +132,72 @@ func (f *File) Readdirnames(n int) (names []string, err error) {
 		return nil, err
 	}
 
-	list := strings.Split(strings.TrimSpace(string(data)), "\n")
-
-	if list != nil {
-		// filter . and ..
-		keep := func(x string) bool {
-			if x == "." || x == ".." || x == "" {
-				return false
-			}
-			return true
+	names = parseDirListing(data)
+	if cmd.ExitStatus != 0 && len(names) == 0 {
+		var stderr []byte
+		if cmd.Stderr != nil {
+			stderr, _ = io.ReadAll(cmd.Stderr)
 		}
-		m := 0
-		for _, x := range list {
-			if keep(x) {
-				list[m] = x
-				m++
-			}
+		err = listDirError(f.path, string(stderr))
+		if errors.Is(err, os.ErrPermission) && !plugin.StructuredErrors() {
+			return []string{}, nil
 		}
-		list = list[:m]
+		return nil, err
 	}
 
-	return list, nil
+	return names, nil
+}
+
+// listDirCommand builds the command that lists the entries of a directory,
+// one per line. -A includes dotfiles (but not . and ..), which plain ls
+// hides. The path is quoted so it survives as a single argument.
+func listDirCommand(path string) string {
+	return shellquote.Join("ls", "-1A", argPath(path))
+}
+
+// argPath keeps a path that starts with a dash from being parsed as an
+// option. "./" is used instead of "--" because the same commands also run
+// through PowerShell on WinRM connections.
+func argPath(path string) string {
+	if strings.HasPrefix(path, "-") {
+		return "./" + path
+	}
+	return path
+}
+
+// parseDirListing splits the output of listDirCommand into entry names. Only
+// line breaks separate entries: a name may start or end with a space.
+func parseDirListing(data []byte) []string {
+	lines := strings.Split(string(data), "\n")
+	names := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSuffix(line, "\r")
+		if line == "" || line == "." || line == ".." {
+			continue
+		}
+		names = append(names, line)
+	}
+	return names
+}
+
+// listDirError turns the stderr of a failed listing into an error that
+// errors.Is recognizes as os.ErrNotExist or os.ErrPermission, matching
+// what the sftp and local filesystems return.
+func listDirError(path string, stderr string) error {
+	msg := strings.TrimSpace(stderr)
+	var cause error
+	switch {
+	case strings.Contains(msg, "No such file or directory"):
+		cause = os.ErrNotExist
+	case strings.Contains(msg, "Permission denied"):
+		cause = os.ErrPermission
+	default:
+		if msg == "" {
+			msg = "could not list directory"
+		}
+		cause = errors.New(msg)
+	}
+	return &os.PathError{Op: "readdir", Path: path, Err: cause}
 }
 
 func (f *File) Seek(offset int64, whence int) (int64, error) {

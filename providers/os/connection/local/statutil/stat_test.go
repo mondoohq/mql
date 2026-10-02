@@ -4,9 +4,11 @@
 package statutil
 
 import (
+	"bytes"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -129,4 +131,40 @@ func TestToFileMode(t *testing.T) {
 		assert.False(t, (m&fs.ModeSticky) > 0)
 		assert.Equal(t, fs.FileMode(0o755), (m & 0o777))
 	})
+}
+
+// fixedStatRunner answers uname -s with a fixed OS and every other command
+// (the stat script) with a fixed line of stat output.
+type fixedStatRunner struct {
+	uname string
+	stat  string
+}
+
+func (r fixedStatRunner) RunCommand(command string) (*shared.Command, error) {
+	out := r.stat
+	if strings.HasSuffix(command, "uname -s") {
+		out = r.uname
+	}
+	return &shared.Command{Command: command, Stdout: bytes.NewBufferString(out), Stderr: &bytes.Buffer{}}, nil
+}
+
+func TestStatNameIsNotShellQuoted(t *testing.T) {
+	// The command quotes a path with a space or quote in it. The name of the
+	// returned FileInfo is the plain base name, otherwise a directory listing
+	// built from Stat reports entries that do not exist.
+	tests := []struct {
+		uname string
+		stat  string
+	}{
+		// Ubuntu 24.04, `stat -L -c` on a directory named " lead skill"
+		{"Linux", "0.4096.41ed.1000.1000.1790912768.1790911470.?\n"},
+		{"FreeBSD", "0:512:40755:1000:1000:1790912768:1790911470\n"},
+	}
+	for _, tc := range tests {
+		for _, name := range []string{"/home/ubuntu/.claude/skills/ lead skill", "/srv/it's here"} {
+			fi, err := New(fixedStatRunner{uname: tc.uname, stat: tc.stat}).Stat(name)
+			require.NoError(t, err, tc.uname)
+			assert.Equal(t, filepath.Base(name), fi.Name(), tc.uname)
+		}
+	}
 }

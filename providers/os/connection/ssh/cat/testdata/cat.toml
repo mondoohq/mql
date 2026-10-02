@@ -43,7 +43,7 @@ stdout = """0.4317.8180.0.0.1590420240.1590418792.?
 stdout = """0.271.41ed.0.0.1635245760.1635147499.?
 """
 
-[commands."sudo ls -1 /etc/ssh"]
+[commands."sudo ls -1A /etc/ssh"]
 stdout = """ssh_config
 ssh_config.d
 ssh_host_ecdsa_key

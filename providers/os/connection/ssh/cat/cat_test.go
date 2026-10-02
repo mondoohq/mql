@@ -119,13 +119,13 @@ func TestCatFsReaddirnamesQuotesPath(t *testing.T) {
 	dir := `/home/vagrant/.ssh/od'd dir$(x)`
 
 	f := cat.NewFile(cat.New(cw), dir, false)
-	_, err = f.Readdirnames(-1)
-	require.NoError(t, err)
+	// the mock has no entry for this directory, only the command matters
+	_, _ = f.Readdirnames(-1)
 
 	require.Len(t, cw.commands, 1)
 	args, err := shellquote.Split(cw.commands[0])
 	require.NoError(t, err)
-	assert.Equal(t, []string{"sudo", "ls", "-1", dir}, args)
+	assert.Equal(t, []string{"sudo", "ls", "-1A", dir}, args)
 }
 
 func countCommands(commands []string, target string) int {
