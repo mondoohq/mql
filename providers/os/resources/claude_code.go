@@ -47,7 +47,8 @@ type mqlClaudeCodeInternal struct {
 // the parent's backup state at creation time, so project.models() need not
 // reload it.
 type mqlClaudeCodeProjectInternal struct {
-	modelUsage map[string]claudeModelUsage
+	modelUsage    map[string]claudeModelUsage
+	usageIDPrefix string
 }
 
 func (r *mqlClaudeCode) id() (string, error) {
@@ -187,7 +188,7 @@ func (r *mqlClaudeCode) projects() ([]any, error) {
 		hasMemory := dirHasFilesAfero(afs, memoryDir)
 
 		res, err := NewResource(r.MqlRuntime, "claude.code.project", map[string]*llx.RawData{
-			"__id":      llx.StringData("claude.code.project/" + projectPath),
+			"__id":      llx.StringData(aiChildID("claude.code.project", r.configDir(), projectPath)),
 			"path":      llx.StringData(projectPath),
 			"hasMemory": llx.BoolData(hasMemory),
 		})
@@ -195,6 +196,7 @@ func (r *mqlClaudeCode) projects() ([]any, error) {
 			return nil, err
 		}
 		res.(*mqlClaudeCodeProject).modelUsage = state.Projects[projectPath].LastModelUsage
+		res.(*mqlClaudeCodeProject).usageIDPrefix = r.configDir() + "/" + projectPath + "/"
 		result = append(result, res)
 	}
 	return result, nil
@@ -267,7 +269,7 @@ func (r *mqlClaudeCode) mcpServers() ([]any, error) {
 			source = filepath.Join(r.configDir(), "mcp-needs-auth-cache.json")
 		}
 		fields := map[string]*llx.RawData{
-			"__id":        llx.StringData(claudeMcpServerID(scoped.project, name)),
+			"__id":        llx.StringData(claudeMcpServerID(r.configDir(), scoped.project, name)),
 			"name":        llx.StringData(name),
 			"project":     llx.StringData(scoped.project),
 			"type":        llx.StringData(deriveMcpTransport(srv.Type, srv.Command, srv.URL)),
@@ -306,7 +308,7 @@ func (r *mqlClaudeCode) mcpServers() ([]any, error) {
 		}
 		seen[key] = struct{}{}
 		for _, s := range readAgentPlugin(afs, rec.entry.InstallPath, claudePluginRootVar).mcpServers {
-			res, err := claudePluginMcpServerResource(r.MqlRuntime, rec.name, rec.entry.ProjectPath, s)
+			res, err := claudePluginMcpServerResource(r.MqlRuntime, r.configDir(), rec.name, rec.entry.ProjectPath, s)
 			if err != nil {
 				return nil, err
 			}
@@ -352,11 +354,11 @@ func (r *mqlClaudeCode) models() ([]any, error) {
 			totals[name] = agg
 		}
 	}
-	return claudeModelUsageResources(r.MqlRuntime, "", totals)
+	return claudeModelUsageResources(r.MqlRuntime, r.configDir()+"/", totals)
 }
 
 func (p *mqlClaudeCodeProject) models() ([]any, error) {
-	return claudeModelUsageResources(p.MqlRuntime, p.Path.Data+"/", p.modelUsage)
+	return claudeModelUsageResources(p.MqlRuntime, p.usageIDPrefix, p.modelUsage)
 }
 
 // Helper types and functions
@@ -421,7 +423,8 @@ func (u *claudeModelUsage) add(o claudeModelUsage) {
 
 // claudeModelUsageResources turns a per-model usage map into claude.code.modelUsage
 // resources, sorted by model name. idPrefix disambiguates the cache key between
-// the host-wide aggregate ("") and a per-project breakdown ("<projectPath>/").
+// instances and between the instance-wide aggregate ("<configPath>/") and a
+// per-project breakdown ("<configPath>/<projectPath>/").
 func claudeModelUsageResources(runtime *plugin.Runtime, idPrefix string, usage map[string]claudeModelUsage) ([]any, error) {
 	names := make([]string, 0, len(usage))
 	for name := range usage {
@@ -547,11 +550,8 @@ func withAuthCacheOnlyServers(servers []claudeScopedMcpServer, authNames []strin
 // claudeMcpServerID is the resource id of a Claude Code MCP server. A user-scope
 // server keeps the historical "claude.code.mcpServer/<name>" id; a project-scoped
 // one includes the project path, so the same name in two projects stays distinct.
-func claudeMcpServerID(project, name string) string {
-	if project == "" {
-		return "claude.code.mcpServer/" + name
-	}
-	return "claude.code.mcpServer/" + project + "/" + name
+func claudeMcpServerID(configDir, project, name string) string {
+	return aiChildID("claude.code.mcpServer", configDir, project, name)
 }
 
 // projectDirMap returns a map from original project path to encoded directory name.
@@ -689,15 +689,20 @@ func (r *mqlClaudeCodeSkill) purl() (string, error) {
 	return skillPURL(connectionAfs(r.MqlRuntime), r.Source.Data), nil
 }
 
+// The id methods of claude.code children are fallbacks the runtime uses only
+// when a child is created without an "__id". Every creation site passes one
+// built with aiChildID, scoped to the parent's configPath, which a child cannot
+// see from its own fields; these fallbacks are not reached in practice.
+
 func (r *mqlClaudeCodeProject) id() (string, error) {
 	return "claude.code.project/" + r.Path.Data, nil
 }
 
 func (r *mqlClaudeCodeMcpServer) id() (string, error) {
 	if r.Plugin.Data != "" {
-		return claudeMcpServerID(r.Project.Data, "plugin:"+r.Plugin.Data+":"+r.Name.Data), nil
+		return claudeMcpServerID("", r.Project.Data, "plugin:"+r.Plugin.Data+":"+r.Name.Data), nil
 	}
-	return claudeMcpServerID(r.Project.Data, r.Name.Data), nil
+	return claudeMcpServerID("", r.Project.Data, r.Name.Data), nil
 }
 
 func (r *mqlClaudeCodeRepo) id() (string, error) {
