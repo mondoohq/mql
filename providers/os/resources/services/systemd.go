@@ -30,6 +30,11 @@ var (
 
 const (
 	systemdShowProperties = "Id,LoadState,ActiveState,UnitFileState,Description"
+	// systemdServiceShowProperties adds Names, which lists every name a unit
+	// answers to (sshd.service and ssh.service, syslog.service and
+	// rsyslog.service). Id only ever carries the canonical one, so a record
+	// keyed by Id alone cannot be found again under the alias it was asked for.
+	systemdServiceShowProperties = "Id,Names,LoadState,ActiveState,UnitFileState,Description"
 )
 
 func ResolveSystemdServiceManager(conn shared.Connection) OSServiceManager {
@@ -147,7 +152,15 @@ func ensureSystemdServiceUnit(name string) string {
 }
 
 func buildSystemdShowCommand(units []string) string {
-	args := []string{"systemctl", "show", "--property=" + systemdShowProperties}
+	return buildSystemdShowCommandWith(systemdShowProperties, units)
+}
+
+func buildSystemdServiceShowCommand(units []string) string {
+	return buildSystemdShowCommandWith(systemdServiceShowProperties, units)
+}
+
+func buildSystemdShowCommandWith(properties string, units []string) string {
+	args := []string{"systemctl", "show", "--property=" + properties}
 	args = append(args, units...)
 
 	escaped := make([]string, len(args))
@@ -158,6 +171,12 @@ func buildSystemdShowCommand(units []string) string {
 	return strings.Join(escaped, " ")
 }
 
+// ParseServiceSystemDShow parses "systemctl show" output into services keyed
+// by normalized unit name. Each record is keyed by its Id and, when the Names
+// property was requested, by every alias in Names as well, all pointing at the
+// same Service, whose Name is the canonical Id. That lets a caller find the
+// record for the name it asked about (sshd) although systemctl answers with
+// the canonical unit (ssh.service).
 func ParseServiceSystemDShow(input io.Reader) (map[string]*Service, error) {
 	services := map[string]*Service{}
 	record := map[string]string{}
@@ -172,6 +191,14 @@ func ParseServiceSystemDShow(input io.Reader) (map[string]*Service, error) {
 			return err
 		}
 		services[service.Name] = service
+		for _, alias := range strings.Fields(record["Names"]) {
+			name := normalizeSystemdServiceName(alias)
+			// a canonical record always wins over an alias claim on its name
+			if existing, ok := services[name]; ok && existing.Name == name {
+				continue
+			}
+			services[name] = service
+		}
 		record = map[string]string{}
 		return nil
 	}
@@ -228,12 +255,17 @@ func parseSystemDShowRecord(record map[string]string) (*Service, error) {
 		Type:        "systemd",
 	}
 	applySystemdUnitFileState(service, record["UnitFileState"])
+	// systemd 229 and 237 report a masked unit as LoadState=masked with
+	// UnitFileState=bad, so the unit-file state alone misses it.
+	if service.Installed && record["LoadState"] == "masked" {
+		service.Masked = true
+	}
 
 	return service, nil
 }
 
 func (s *SystemDServiceManager) showUnits(units []string) (map[string]*Service, error) {
-	cmd, err := s.conn.RunCommand(buildSystemdShowCommand(units))
+	cmd, err := s.conn.RunCommand(buildSystemdServiceShowCommand(units))
 	if err != nil {
 		return nil, err
 	}
@@ -247,11 +279,20 @@ func (s *SystemDServiceManager) Get(name string) (*Service, error) {
 		return nil, err
 	}
 
-	service, ok := services[NormalizeServiceLookupName(name)]
+	lookupName := NormalizeServiceLookupName(name)
+	service, ok := services[lookupName]
 	if !ok || !service.Installed {
 		return nil, serviceNotFound(name)
 	}
 
+	// Asked by an alias, the record carries the canonical unit's state; it is
+	// reported under the name that was asked for, the same name the alias row
+	// in List has.
+	if service.Name != lookupName {
+		aliased := *service
+		aliased.Name = lookupName
+		return &aliased, nil
+	}
 	return service, nil
 }
 
@@ -314,12 +355,67 @@ func (s *SystemDServiceManager) List() ([]*Service, error) {
 		}
 	}
 
-	// Step 4: Add loaded units that have no unit file of their own. An
+	// Step 4: list-units reports a unit only under its canonical name, so an
+	// alias row (sshd, syslog, dbus-org.freedesktop.login1) and a unit file
+	// that is not loaded found no state above. Ask systemctl about those.
+	s.resolveUnloadedUnits(services, unitStates)
+
+	// Step 5: Add loaded units that have no unit file of their own. An
 	// instantiated template unit (getty@tty1) is only ever reported by
 	// list-units -- list-unit-files carries the template (getty@) instead --
 	// so without this the running instance is invisible and the template
 	// reads running=false while an instance of it is up.
 	return append(services, s.instanceUnits(unitStates, known)...), nil
+}
+
+// resolveUnloadedUnits fills in the state of unit-file rows that list-units did
+// not report. An alias row takes all of its state from the unit it points at:
+// list-unit-files reports it as "alias" on systemd 245 and later and as the
+// target's state before that, and neither tells whether the service runs. A
+// unit that is merely not loaded gets its description, which list-unit-files
+// does not carry. Templates are left out: "systemctl show" on name@.service
+// yields no record, and a template is never running itself.
+//
+// A failed call leaves the rows as list-unit-files reported them.
+func (s *SystemDServiceManager) resolveUnloadedUnits(services []*Service, unitStates map[string]*Service) {
+	rows := make([]*Service, 0, len(services))
+	units := make([]string, 0, len(services))
+	for _, service := range services {
+		if _, ok := unitStates[service.Name]; ok {
+			continue
+		}
+		unit := ensureSystemdServiceUnit(service.Name)
+		if isSystemdTemplateUnit(unit) {
+			continue
+		}
+		rows = append(rows, service)
+		units = append(units, unit)
+	}
+	if len(units) == 0 {
+		return
+	}
+
+	shown, err := s.showUnits(units)
+	if err != nil {
+		log.Debug().Err(err).Msg("mql[services]> could not read unloaded and aliased units through systemctl show")
+		return
+	}
+
+	for _, row := range rows {
+		record, ok := shown[row.Name]
+		if !ok {
+			continue
+		}
+		if record.Name != row.Name {
+			name := row.Name
+			*row = *record
+			row.Name = name
+			continue
+		}
+		if row.Description == "" {
+			row.Description = record.Description
+		}
+	}
 }
 
 // instanceUnits builds services for loaded units that list-unit-files did not
@@ -356,10 +452,8 @@ func (s *SystemDServiceManager) instanceUnits(unitStates map[string]*Service, kn
 	// A failure here costs the unit-file state, not the unit: report the
 	// service with what list-units already told us rather than dropping it.
 	shown := map[string]*Service{}
-	if cmd, err := s.conn.RunCommand(buildSystemdShowCommand(units)); err == nil {
-		if parsed, err := ParseServiceSystemDShow(cmd.Stdout); err == nil {
-			shown = parsed
-		}
+	if parsed, err := s.showUnits(units); err == nil {
+		shown = parsed
 	}
 
 	instances := make([]*Service, 0, len(names))

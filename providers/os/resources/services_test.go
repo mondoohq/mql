@@ -28,7 +28,7 @@ func (c *serviceRecordingConnection) RunCommand(command string) (*shared.Command
 }
 
 func TestInitServiceUsesTargetedLookup(t *testing.T) {
-	const showCmd = "systemctl show --property=Id,LoadState,ActiveState,UnitFileState,Description dbus.service"
+	const showCmd = "systemctl show --property=Id,Names,LoadState,ActiveState,UnitFileState,Description dbus.service"
 
 	mockConn, err := mock.New(0, &inventory.Asset{
 		Platform: &inventory.Platform{

@@ -66,7 +66,7 @@ func servicesByName(services []*Service) map[string]*Service {
 // only the template (getty@, nut-driver@) was listed, with running=false, so a
 // policy asking whether a getty is running got the wrong answer.
 func TestSystemDServiceManagerListIncludesTemplateInstances(t *testing.T) {
-	const showCmd = "systemctl show --property=Id,LoadState,ActiveState,UnitFileState,Description getty@tty1.service nut-driver@apc.service"
+	const showCmd = "systemctl show --property=Id,Names,LoadState,ActiveState,UnitFileState,Description getty@tty1.service nut-driver@apc.service"
 
 	conn := instanceMock(t, map[string]*mock.Command{
 		showCmd: {Stdout: strings.Join([]string{

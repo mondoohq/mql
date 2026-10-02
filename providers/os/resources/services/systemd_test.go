@@ -269,7 +269,7 @@ func TestParseServiceSystemDShowNotFoundIsNotEnabled(t *testing.T) {
 }
 
 func TestSystemDServiceManagerGetUsesTargetedShow(t *testing.T) {
-	const showCmd = "systemctl show --property=Id,LoadState,ActiveState,UnitFileState,Description dbus.service"
+	const showCmd = "systemctl show --property=Id,Names,LoadState,ActiveState,UnitFileState,Description dbus.service"
 
 	mockConn, err := mock.New(0, &inventory.Asset{
 		Platform: &inventory.Platform{
@@ -311,7 +311,7 @@ func TestSystemDServiceManagerGetUsesTargetedShow(t *testing.T) {
 }
 
 func TestSystemDServiceManagerGetReturnsNotFound(t *testing.T) {
-	const showCmd = "systemctl show --property=Id,LoadState,ActiveState,UnitFileState,Description missing.service"
+	const showCmd = "systemctl show --property=Id,Names,LoadState,ActiveState,UnitFileState,Description missing.service"
 
 	mockConn, err := mock.New(0, &inventory.Asset{
 		Platform: &inventory.Platform{
@@ -434,6 +434,7 @@ func TestParseServiceSystemDShowMergedRecords(t *testing.T) {
 func TestSystemDServiceManagerListUsesListUnits(t *testing.T) {
 	const listFilesCmd = "systemctl list-unit-files --type service --all"
 	const listUnitsCmd = "systemctl list-units --type service --all"
+	const showGammaCmd = "systemctl show --property=Id,Names,LoadState,ActiveState,UnitFileState,Description gamma.service"
 
 	mockConn, err := mock.New(0, &inventory.Asset{
 		Platform: &inventory.Platform{
@@ -442,6 +443,17 @@ func TestSystemDServiceManagerListUsesListUnits(t *testing.T) {
 		},
 	}, mock.WithData(&mock.TomlData{
 		Commands: map[string]*mock.Command{
+			showGammaCmd: {
+				Stdout: strings.Join([]string{
+					"Id=gamma.service",
+					"Names=gamma.service",
+					"Description=Gamma Service",
+					"LoadState=loaded",
+					"ActiveState=inactive",
+					"UnitFileState=disabled",
+					"",
+				}, "\n"),
+			},
 			listFilesCmd: {
 				Stdout: strings.Join([]string{
 					"UNIT FILE STATE PRESET",
@@ -477,8 +489,9 @@ func TestSystemDServiceManagerListUsesListUnits(t *testing.T) {
 	services, err := mgr.List()
 	require.NoError(t, err)
 	require.Len(t, services, 4)
-	// Exactly 2 commands: list-unit-files + list-units
-	assert.Equal(t, []string{listFilesCmd, listUnitsCmd}, conn.commands)
+	// list-unit-files + list-units, then one show for the unit file that is
+	// not loaded (gamma); the template is never shown
+	assert.Equal(t, []string{listFilesCmd, listUnitsCmd, showGammaCmd}, conn.commands)
 
 	servicesMap := map[string]*Service{}
 	for _, service := range services {
@@ -495,10 +508,11 @@ func TestSystemDServiceManagerListUsesListUnits(t *testing.T) {
 	assert.False(t, servicesMap["beta"].Running)
 	assert.True(t, servicesMap["beta"].Static)
 
-	// gamma: only in list-unit-files (not loaded), Running stays false
+	// gamma: only in list-unit-files (not loaded), Running stays false and
+	// the description comes from systemctl show
 	assert.False(t, servicesMap["gamma"].Running)
 	assert.False(t, servicesMap["gamma"].Enabled)
-	assert.Equal(t, "", servicesMap["gamma"].Description)
+	assert.Equal(t, "Gamma Service", servicesMap["gamma"].Description)
 
 	// template@: only in list-unit-files, correctly not running
 	assert.False(t, servicesMap["template@"].Running)
