@@ -55,7 +55,7 @@ func (r *mqlWindsurf) rules() ([]any, error) {
 
 		ruleName := strings.TrimSuffix(name, filepath.Ext(name))
 		res, err := NewResource(r.MqlRuntime, "windsurf.rule", map[string]*llx.RawData{
-			"__id":    llx.StringData("windsurf.rule/" + name),
+			"__id":    llx.StringData(aiChildID("windsurf.rule", r.ConfigPath.Data, name)),
 			"name":    llx.StringData(ruleName),
 			"content": llx.StringData(string(data)),
 			"source":  llx.StringData(rulePath),
@@ -95,7 +95,7 @@ func (r *mqlWindsurf) mcpServers() ([]any, error) {
 		}
 
 		fields := map[string]*llx.RawData{
-			"__id":    llx.StringData("windsurf.mcpServer/" + name),
+			"__id":    llx.StringData(aiChildID("windsurf.mcpServer", configDir, name)),
 			"name":    llx.StringData(name),
 			"type":    llx.StringData(deriveMcpTransport(server.Type, server.Command, url)),
 			"command": llx.StringData(server.Command),

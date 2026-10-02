@@ -221,3 +221,17 @@ func TestGeminiSettingsRedactsSecrets(t *testing.T) {
 	remote := servers["remote"].(map[string]any)
 	assert.Equal(t, redactedValue, remote["headers"].(map[string]any)["Authorization"])
 }
+
+func TestGeminiChildrenPerUser(t *testing.T) {
+	rt := newAIToolsTestRuntime(t, perUserFiles(map[string]string{
+		"/home/{u}/.gemini/settings.json": `{"mcpServers":{"fs":{"command":"{u}-cmd"}}}`,
+	}))
+	assertPerUser(t, childValues(t, rt, "gemini", ".gemini", func(p plugin.Resource) (string, string, error) {
+		l := p.(*mqlGemini).GetMcpServers()
+		s, err := only[*mqlGeminiMcpServer](t, l.Data, l.Error)
+		if err != nil {
+			return "", "", err
+		}
+		return s.MqlID(), s.Command.Data, nil
+	}), "%s-cmd")
+}
