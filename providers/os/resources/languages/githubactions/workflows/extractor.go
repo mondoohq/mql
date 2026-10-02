@@ -53,18 +53,27 @@ func (w *workflow) Direct() languages.Packages {
 	return nil
 }
 
-// Transitive returns all unique action references found in the workflow.
+// Transitive returns all unique action and reusable workflow references found
+// in the workflow.
 func (w *workflow) Transitive() languages.Packages {
 	seen := make(map[string]bool)
 	var packages languages.Packages
 
 	for _, job := range w.Jobs {
+		// a job-level `uses` calls a reusable workflow, which runs the
+		// called repository's code just like a step-level action
+		uses := make([]string, 0, len(job.Steps)+1)
+		if job.Uses != "" {
+			uses = append(uses, job.Uses)
+		}
 		for _, step := range job.Steps {
-			if step.Uses == "" {
-				continue
+			if step.Uses != "" {
+				uses = append(uses, step.Uses)
 			}
+		}
 
-			ref := githubactions.ParseUses(step.Uses)
+		for _, u := range uses {
+			ref := githubactions.ParseUses(u)
 			if ref == nil {
 				continue
 			}
