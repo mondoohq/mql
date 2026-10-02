@@ -1409,6 +1409,8 @@ private microsoft.conditionalAccess.policy.grantControls.authenticationStrength 
   createdDateTime time
   // The time when this policy was last modified
   modifiedDateTime time
+  // Tenant authentication strength policy this requirement refers to
+  authenticationStrengthPolicy() microsoft.policies.authenticationStrengthPolicy
 }
 
 // Session control to enforce sign-in frequency
@@ -3366,6 +3368,23 @@ microsoft.policies {
   // overriding the tenant default in defaultAppManagementPolicy for those
   // objects.
   appManagementPolicies() []microsoft.policies.appManagementPolicy
+  // Authentication strength policies
+  //
+  // The built-in and custom authentication strengths of the tenant. Each one
+  // names the combinations of authentication methods that satisfy it, and
+  // Conditional Access policies require a strength through their grant
+  // controls.
+  authenticationStrengthPolicies() []microsoft.policies.authenticationStrengthPolicy
+  // Authentication flows policy
+  //
+  // Tenant-wide configuration of self-service sign-up for external users.
+  authenticationFlowsPolicy() microsoft.authenticationFlowsPolicy
+  // Feature rollout policies
+  //
+  // Staged rollout policies that move groups of users to cloud authentication
+  // features, such as password hash sync or pass-through authentication,
+  // ahead of the whole organization.
+  featureRolloutPolicies() []microsoft.policies.featureRolloutPolicy
 }
 
 // Entra device registration policy
@@ -3713,6 +3732,121 @@ microsoft.policies.homeRealmDiscoveryPolicy @defaults("displayName isOrganizatio
   appliesToServicePrincipals() []microsoft.serviceprincipal
   // Applications this policy is assigned to
   appliesToApplications() []microsoft.application
+}
+
+// Microsoft Entra authentication strength policy
+//
+// A built-in or custom authentication strength: the combinations of
+// authentication methods that satisfy it (allowedCombinations), whether
+// satisfying it grants the multifactor claim (requirementsSatisfied), and the
+// per-method restrictions of a custom strength (combinationConfigurations),
+// such as the FIDO2 security key models or the certificate issuers it
+// accepts. conditionalAccessPolicies lists the Conditional Access policies
+// that require this strength, so an unused custom strength reads as empty.
+private microsoft.policies.authenticationStrengthPolicy @defaults("displayName policyType requirementsSatisfied") {
+  // Policy identifier
+  id string
+  // Policy display name
+  displayName string
+  // Policy description
+  description string
+  // Whether the strength is built into Microsoft Entra ID or created by an administrator
+  //
+  // One of builtIn, custom, or unknownFutureValue.
+  policyType string
+  // Whether satisfying this strength grants the multifactor authentication claim
+  //
+  // One of none, mfa, or unknownFutureValue.
+  requirementsSatisfied string
+  // Authentication method combinations that satisfy this strength
+  //
+  // Each entry is a comma-separated set of method modes that must be used
+  // together, for example `password,microsoftAuthenticatorPush` or `fido2`.
+  allowedCombinations []string
+  // Time when the policy was created
+  createdDateTime time
+  // Time when the policy was last modified
+  modifiedDateTime time
+  // Per-method restrictions on the allowed combinations
+  //
+  // Present only on custom strengths that narrow a method, for example to
+  // specific FIDO2 security key models or certificate issuers.
+  combinationConfigurations() []microsoft.policies.authenticationStrengthPolicy.combinationConfiguration
+  // Conditional Access policies whose grant controls require this strength
+  conditionalAccessPolicies() []microsoft.conditionalAccess.policy
+}
+
+// Restriction on one method of an authentication strength
+//
+// Narrows which instances of a method satisfy the strength's combinations
+// listed in appliesToCombinations. A `fido2` configuration lists the
+// permitted security key models in allowedAAGUIDs. An `x509Certificate`
+// configuration lists the permitted certificate issuers in allowedIssuerSkis
+// and the permitted certificate policies in allowedPolicyOIDs.
+private microsoft.policies.authenticationStrengthPolicy.combinationConfiguration @defaults("type appliesToCombinations") {
+  // Configuration identifier
+  id string
+  // Method the configuration restricts
+  //
+  // One of fido2 or x509Certificate.
+  type string
+  // Combinations of the strength that this restriction applies to
+  appliesToCombinations []string
+  // Authenticator attestation GUIDs of the FIDO2 security key models permitted
+  //
+  // Empty for a configuration that is not of type fido2.
+  allowedAAGUIDs []string
+  // Subject key identifiers of the certificate issuers permitted
+  //
+  // Empty for a configuration that is not of type x509Certificate.
+  allowedIssuerSkis []string
+  // Certificate policy object identifiers permitted
+  //
+  // Empty for a configuration that is not of type x509Certificate.
+  allowedPolicyOIDs []string
+}
+
+// Microsoft Entra authentication flows policy
+//
+// Tenant-wide configuration of authentication flows. selfServiceSignUpEnabled
+// reports whether external users may sign up for applications through
+// self-service sign-up user flows.
+private microsoft.authenticationFlowsPolicy @defaults("selfServiceSignUpEnabled") {
+  // Policy identifier
+  id string
+  // Policy display name
+  displayName string
+  // Policy description
+  description string
+  // Whether self-service sign-up user flows are enabled for external users
+  selfServiceSignUpEnabled bool
+}
+
+// Microsoft Entra staged rollout policy
+//
+// A staged rollout of a cloud authentication feature to selected groups.
+// The `feature` field names what is rolled out, `isEnabled` whether the
+// rollout is active, and `groups` the groups moved to the feature ahead of
+// the rest of the organization.
+private microsoft.policies.featureRolloutPolicy @defaults("displayName feature isEnabled") {
+  // Policy identifier
+  id string
+  // Policy display name
+  displayName string
+  // Policy description
+  description string
+  // Feature being rolled out
+  //
+  // One of passthroughAuthentication, seamlessSso, passwordHashSync,
+  // emailAsAlternateId, certificateBasedAuthentication,
+  // multiFactorAuthentication, or unknownFutureValue.
+  feature string
+  // Whether the rollout is active
+  isEnabled bool
+  // Whether the rollout applies to the entire organization
+  isAppliedToOrganization bool
+  // Groups the feature is rolled out to
+  groups() []microsoft.group
 }
 
 // Microsoft Entra admin consent request policy
