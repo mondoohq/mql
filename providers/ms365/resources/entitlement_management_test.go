@@ -62,6 +62,11 @@ const approvalPolicyJSON = `{
   "reviewSettings": {
     "isEnabled": true,
     "expirationBehavior": "removeAccess",
+    "schedule": {
+      "startDateTime": "2024-03-01T10:00:00Z",
+      "expiration": {"duration": "P14D", "type": "afterDuration"},
+      "recurrence": {"pattern": {"type": "absoluteMonthly", "interval": 3}}
+    },
     "isRecommendationEnabled": true,
     "isReviewerJustificationRequired": true,
     "isSelfReview": false,
@@ -134,6 +139,9 @@ func TestAccessPackageAssignmentPolicyArgs_ApprovalPolicy(t *testing.T) {
 	assert.Equal(t, true, args["isAccessReviewEnabled"].Value)
 	review := args["reviewSettings"].Value.(map[string]any)
 	assert.Equal(t, "removeAccess", review["expirationBehavior"])
+	// Kiota alone would render this nested duration as P2W.
+	reviewExpiration := review["schedule"].(map[string]any)["expiration"].(map[string]any)
+	assert.Equal(t, "P14D", reviewExpiration["duration"])
 
 	assert.Nil(t, args["automaticRequestSettings"].Value)
 
@@ -160,6 +168,37 @@ func TestAccessPackageAssignmentPolicyArgs_AbsentSettingsReadNull(t *testing.T) 
 	auto := args["automaticRequestSettings"].Value.(map[string]any)
 	assert.Equal(t, true, auto["removeAccessWhenTargetLeavesAllowedTargets"])
 	assert.Equal(t, "P7D", auto["gracePeriodBeforeAccessRemoval"])
+}
+
+// A duration Kiota cannot normalize (P7DT12H folds into 1W12H, and ISO 8601
+// allows weeks only alone) made its JSON writer panic, failing the whole
+// assignment policy list.
+func TestAccessPackageAssignmentPolicyArgs_UnnormalizableDuration(t *testing.T) {
+	policy := parseAssignmentPolicy(t, `{
+  "id": "c3d4e5f6-0000-4000-8000-000000000002",
+  "reviewSettings": {
+    "isEnabled": true,
+    "schedule": {"expiration": {"duration": "P7DT12H", "type": "afterDuration"}}
+  },
+  "automaticRequestSettings": {"gracePeriodBeforeAccessRemoval": "P7DT12H"}
+}`)
+	var args map[string]*llx.RawData
+	require.NotPanics(t, func() {
+		var err error
+		args, err = accessPackageAssignmentPolicyArgs(policy)
+		require.NoError(t, err)
+	})
+
+	review := args["reviewSettings"].Value.(map[string]any)
+	reviewExpiration := review["schedule"].(map[string]any)["expiration"].(map[string]any)
+	assert.Equal(t, "P7DT12H", reviewExpiration["duration"])
+	auto := args["automaticRequestSettings"].Value.(map[string]any)
+	assert.Equal(t, "P7DT12H", auto["gracePeriodBeforeAccessRemoval"])
+
+	// The durations are still on the model after serialization.
+	d := policy.GetReviewSettings().GetSchedule().GetExpiration().GetDuration()
+	require.NotNil(t, d)
+	assert.Equal(t, "P7DT12H", *isoDurationPtr(d))
 }
 
 func TestIsoDurationPtr(t *testing.T) {

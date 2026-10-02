@@ -194,18 +194,6 @@ func isoDurationMonths(d *serialization.ISODuration) (months int) {
 	return (years-d.GetYears())*12 + months
 }
 
-// setDurationKey overwrites a duration in a serialized Graph model with the
-// days form isoDurationPtr renders, leaving an absent duration as Kiota wrote
-// it.
-func setDurationKey(dict map[string]any, key string, d *serialization.ISODuration) {
-	if dict == nil {
-		return
-	}
-	if s := isoDurationPtr(d); s != nil {
-		dict[key] = *s
-	}
-}
-
 func (a *mqlMicrosoftIdentityAndAccess) accessPackageCatalogs() ([]any, error) {
 	em := &a.entitlementManagement
 	em.catalogsOnce.Do(func() {
@@ -439,25 +427,6 @@ func kiotaDictData(p serialization.Parsable) (*llx.RawData, error) {
 	return llx.DictData(d), nil
 }
 
-// approvalStageDicts serializes the approval stages of a policy, rendering
-// their durations in days form.
-func approvalStageDicts(stages []models.AccessPackageApprovalStageable) ([]any, error) {
-	res := []any{}
-	for _, stage := range stages {
-		d, err := kiotaToDict(stage)
-		if err != nil {
-			return nil, err
-		}
-		if d == nil {
-			continue
-		}
-		setDurationKey(d, "durationBeforeAutomaticDenial", stage.GetDurationBeforeAutomaticDenial())
-		setDurationKey(d, "durationBeforeEscalation", stage.GetDurationBeforeEscalation())
-		res = append(res, d)
-	}
-	return res, nil
-}
-
 func accessPackageAssignmentPolicyArgs(policy models.AccessPackageAssignmentPolicyable) (map[string]*llx.RawData, error) {
 	allowedTargetScope := llx.NilData
 	if scope := policy.GetAllowedTargetScope(); scope != nil {
@@ -489,7 +458,7 @@ func accessPackageAssignmentPolicyArgs(policy models.AccessPackageAssignmentPoli
 		approvalRequiredForAdd = llx.BoolDataPtr(approval.GetIsApprovalRequiredForAdd())
 		approvalRequiredForUpdate = llx.BoolDataPtr(approval.GetIsApprovalRequiredForUpdate())
 		justificationRequired = llx.BoolDataPtr(approval.GetIsRequestorJustificationRequired())
-		approvalStages, err = approvalStageDicts(approval.GetStages())
+		approvalStages, err = kiotaListToDicts(approval.GetStages())
 		if err != nil {
 			return nil, err
 		}
@@ -505,16 +474,9 @@ func accessPackageAssignmentPolicyArgs(policy models.AccessPackageAssignmentPoli
 		}
 	}
 
-	automaticRequestSettings := llx.NilData
-	if auto := policy.GetAutomaticRequestSettings(); auto != nil {
-		d, err := kiotaToDict(auto)
-		if err != nil {
-			return nil, err
-		}
-		if d != nil {
-			setDurationKey(d, "gracePeriodBeforeAccessRemoval", auto.GetGracePeriodBeforeAccessRemoval())
-			automaticRequestSettings = llx.DictData(d)
-		}
+	automaticRequestSettings, err := kiotaDictData(policy.GetAutomaticRequestSettings())
+	if err != nil {
+		return nil, err
 	}
 
 	return map[string]*llx.RawData{

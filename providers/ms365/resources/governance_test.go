@@ -78,6 +78,25 @@ func TestTermsOfUseAgreementArgsWithoutExpiry(t *testing.T) {
 	assert.Equal(t, true, args["isPerDeviceAcceptanceRequired"].Value)
 }
 
+// agreementWeeksJSON holds durations Kiota folds into weeks: P14D would read
+// back as P2W, and P7DT12H normalizes to 1W12H, which Kiota refuses to render.
+const agreementWeeksJSON = `{
+  "id": "9a7c2e1d-3b4f-4c5d-8e6f-7a8b9c0d1e2f",
+  "displayName": "Contractor terms",
+  "userReacceptRequiredFrequency": "P14D",
+  "termsExpiration": {
+    "startDateTime": "2026-01-01T00:00:00Z",
+    "frequency": "P7DT12H"
+  }
+}`
+
+func TestTermsOfUseAgreementArgsKeepDaysForm(t *testing.T) {
+	args := newTermsOfUseAgreementArgs(parseAgreement(t, agreementWeeksJSON))
+
+	assert.Equal(t, "P14D", args["userReacceptRequiredFrequency"].Value)
+	assert.Equal(t, "P7DT12H", args["termsExpirationFrequency"].Value)
+}
+
 const workflowJSON = `{
   "category": "leaver",
   "description": "Remove access on the last day of work",

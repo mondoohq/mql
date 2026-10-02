@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/microsoft/kiota-abstractions-go/serialization"
 	"github.com/microsoftgraph/msgraph-sdk-go/identitygovernance"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	igmodels "github.com/microsoftgraph/msgraph-sdk-go/models/identitygovernance"
@@ -50,16 +49,6 @@ func classifyLifecycleWorkflowsError(err error) error {
 		return llx.NotApplicable(transformError(err))
 	}
 	return classifyGraphError(err, permLifecycleWorkflowsReadAll)
-}
-
-// optionalISODuration renders an ISO 8601 duration, keeping an absent value nil
-// rather than rendering the zero duration.
-func optionalISODuration(d *serialization.ISODuration) *string {
-	if d == nil {
-		return nil
-	}
-	s := d.String()
-	return &s
 }
 
 // keyValuePairsToMap turns a list of name/value pairs into a map. A pair
@@ -119,7 +108,7 @@ func newTermsOfUseAgreementArgs(agreement models.Agreementable) map[string]*llx.
 	expirationFrequency := llx.NilData
 	if expiration := agreement.GetTermsExpiration(); expiration != nil {
 		expirationStart = llx.TimeDataPtr(expiration.GetStartDateTime())
-		expirationFrequency = llx.StringDataPtr(optionalISODuration(expiration.GetFrequency()))
+		expirationFrequency = llx.StringDataPtr(isoDurationPtr(expiration.GetFrequency()))
 	}
 	return map[string]*llx.RawData{
 		"__id":                              llx.StringDataPtr(agreement.GetId()),
@@ -129,7 +118,7 @@ func newTermsOfUseAgreementArgs(agreement models.Agreementable) map[string]*llx.
 		"isViewingBeforeAcceptanceRequired": llx.BoolDataPtr(agreement.GetIsViewingBeforeAcceptanceRequired()),
 		"termsExpirationStartDateTime":      expirationStart,
 		"termsExpirationFrequency":          expirationFrequency,
-		"userReacceptRequiredFrequency":     llx.StringDataPtr(optionalISODuration(agreement.GetUserReacceptRequiredFrequency())),
+		"userReacceptRequiredFrequency":     llx.StringDataPtr(isoDurationPtr(agreement.GetUserReacceptRequiredFrequency())),
 	}
 }
 
