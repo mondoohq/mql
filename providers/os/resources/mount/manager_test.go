@@ -38,7 +38,8 @@ func TestManagerMacos(t *testing.T) {
 	mounts, err := mm.List()
 	require.NoError(t, err)
 
-	assert.Equal(t, 4, len(mounts))
+	// includes "map auto_home", whose device name holds a space
+	assert.Equal(t, 5, len(mounts))
 }
 
 func TestManagerFreebsd(t *testing.T) {

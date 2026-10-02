@@ -5,6 +5,7 @@ package resources
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -47,6 +48,7 @@ func (m *mqlMount) list() ([]any, error) {
 		return nil, fmt.Errorf("could not retrieve mount list for platform: %w", err)
 	}
 	log.Debug().Int("mounts", len(osMounts)).Msg("mql[mount]> mounted volumes")
+	mount.MarkOvermounted(osMounts)
 
 	usage := map[string]*mount.DfEntry{}
 
@@ -59,18 +61,25 @@ func (m *mqlMount) list() ([]any, error) {
 			opts[k] = osMount.Options[k]
 		}
 
-		o, err := CreateResource(m.MqlRuntime, "mount.point", map[string]*llx.RawData{
+		args := map[string]*llx.RawData{
 			"device":  llx.StringData(osMount.Device),
 			"path":    llx.StringData(osMount.MountPoint),
 			"fstype":  llx.StringData(osMount.FSType),
 			"options": llx.MapData(opts, types.String),
 			"mounted": llx.BoolData(!osMount.Unmounted),
-		})
+		}
+		if osMount.Overmounted {
+			// The visible mount on a path keeps the path as its id, so a
+			// mount hidden under it needs one of its own. Without it the
+			// cache hands out the first mount on the path for both.
+			args["__id"] = llx.StringData(overmountedMountID(osMount.MountPoint, i))
+		}
+		o, err := CreateResource(m.MqlRuntime, "mount.point", args)
 		if err != nil {
 			return nil, err
 		}
 		mountEntries[i] = o.(*mqlMountPoint)
-		if osMount.Usage != nil {
+		if osMount.Usage != nil && !osMount.Overmounted {
 			usage[osMount.MountPoint] = osMount.Usage
 		}
 	}
@@ -85,6 +94,18 @@ func (m *mqlMount) list() ([]any, error) {
 
 func (m *mqlMountPoint) id() (string, error) {
 	return m.Path.Data, nil
+}
+
+// overmountedMountID is the id of a mount hidden by a later mount on the same
+// path, told apart by its position in the mount table.
+func overmountedMountID(path string, index int) string {
+	return path + "\x00overmounted/" + strconv.Itoa(index)
+}
+
+// overmounted reports whether a later mount on the same path hides this one.
+// Only the visible mount carries the path as its id.
+func (m *mqlMountPoint) overmounted() bool {
+	return m.__id != "" && m.__id != m.Path.Data
 }
 
 func initMountPoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -113,10 +134,12 @@ func initMountPoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[
 		return nil, nil, list.Error
 	}
 
+	// Several mounts can share a path. The one the path shows is the one
+	// asked for, not one hidden underneath it.
 	matches := mountPathMatcher(isWindowsRuntime(runtime), path)
 	for i := range list.Data {
 		mp := list.Data[i].(*mqlMountPoint)
-		if matches(mp.Path.Data) {
+		if matches(mp.Path.Data) && !mp.overmounted() {
 			return nil, mp, nil
 		}
 	}
@@ -205,6 +228,11 @@ func (m *mqlMount) fetchDfEntries() (map[string]*mount.DfEntry, error) {
 }
 
 func (m *mqlMountPoint) fetchDfEntry() (*mount.DfEntry, error) {
+	// df measures what a path shows, which is the mount on top. A mount
+	// hidden underneath it cannot be measured that way.
+	if m.overmounted() {
+		return nil, nil
+	}
 	obj, err := CreateResource(m.MqlRuntime, "mount", map[string]*llx.RawData{})
 	if err != nil {
 		return nil, err

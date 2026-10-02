@@ -52,8 +52,12 @@ func TestMountMacosParser(t *testing.T) {
 	require.NoError(t, err)
 
 	entries := mount.ParseUnixMountCmd(f.Stdout)
-	// NOTE: we do not handle `map auto_home` yet
-	assert.Equal(t, 4, len(entries))
+	assert.Equal(t, 5, len(entries))
+
+	home := findMountpoint(entries, "/System/Volumes/Data/home")
+	require.NotNil(t, home)
+	assert.Equal(t, "map auto_home", home.Device)
+	assert.Equal(t, "autofs", home.FSType)
 
 	expected := &mount.MountPoint{
 		Device:     "/dev/disk1s5",

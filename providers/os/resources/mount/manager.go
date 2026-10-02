@@ -17,6 +17,9 @@ type MountPoint struct {
 	// Unmounted is true for an access path that carries no file system, such
 	// as a Windows drive letter assigned to an empty optical drive.
 	Unmounted bool
+	// Overmounted is true for a mount hidden by a later mount on the same
+	// path. It is still mounted, but the path shows the later mount.
+	Overmounted bool
 	// Usage is the capacity of the mount when the listing itself carries it
 	// (Windows). It is nil where capacity comes from df, or was not measured.
 	Usage *DfEntry
