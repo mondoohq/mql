@@ -114,6 +114,7 @@ To learn about Mondoo Platform, read the [Mondoo Platform docs](https://mondoo.c
 | AWS EC2 Instance Connect      | `aws ec2 instance-connect` | `mql shell aws ec2 instance-connect ec2-user@INSTANCEID`                                                                                        |
 | AWS EC2 instances             | `ssh`                      | `mql shell ssh user@host`                                                                                                                       |
 | Bitwarden organizations       | `bitwarden`                | `mql shell bitwarden --client-id CLIENT_ID --client-secret CLIENT_SECRET`                                                                       |
+| CircleCI organizations        | `circleci`                 | `mql shell circleci --token TOKEN`                                                                                                              |
 | Cisco network devices         | `nd-ssh`                   | `mql shell nd-ssh admin@DEVICE_IP --password PASSWORD`                                                                                          |
 | Cisco Catalyst Center         | `ciscocatalyst`            | `mql shell ciscocatalyst --host HOST --user USER --password PASSWORD`                                                                           |
 | ClickHouse Cloud organization | `clickhousecloud`          | `mql shell clickhousecloud --organization-id ORG_ID --api-key KEY_ID --ask-secret`                                                              |

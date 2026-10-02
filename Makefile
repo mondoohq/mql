@@ -217,6 +217,7 @@ PROVIDERS := \
 	bicep \
 	bitwarden \
 	cassandra \
+	circleci \
 	claude \
 	clickhousecloud \
 	clickhousedb \
