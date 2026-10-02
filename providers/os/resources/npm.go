@@ -4,6 +4,7 @@
 package resources
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -121,6 +122,16 @@ func collectNpmPackagesInPaths(runtime *plugin.Runtime, fs afero.Fs, paths []str
 	var transitivePackageList []*languages.Package
 	evidenceFiles := []string{}
 
+	addBom := func(bom languages.Bom) {
+		root := bom.Root()
+		if root != nil {
+			directPackageList = append(directPackageList, root)
+		}
+		transitive := bom.Transitive()
+		if transitive != nil {
+			transitivePackageList = append(transitivePackageList, transitive...)
+		}
+	}
 	handler := func(nodeModulesPath string) {
 		bom, err := collectNpmPackages(runtime, fs, nodeModulesPath)
 		if err != nil {
@@ -133,15 +144,7 @@ func collectNpmPackagesInPaths(runtime *plugin.Runtime, fs afero.Fs, paths []str
 			}
 			return
 		}
-
-		root := bom.Root()
-		if root != nil {
-			directPackageList = append(directPackageList, root)
-		}
-		transitive := bom.Transitive()
-		if transitive != nil {
-			transitivePackageList = append(transitivePackageList, transitive...)
-		}
+		addBom(bom)
 	}
 
 	// a module root, such as /usr/lib/node_modules_24 or /usr/share/nodejs,
@@ -152,8 +155,13 @@ func collectNpmPackagesInPaths(runtime *plugin.Runtime, fs afero.Fs, paths []str
 			walkPaths = append(walkPaths, p)
 			continue
 		}
-		for _, dir := range nodeModuleRootPackageDirs(fs, p) {
-			handler(dir)
+		for _, pkg := range nodeModuleRootPackages(fs, p) {
+			bom, err := (&packagejson.Extractor{}).Parse(bytes.NewReader(pkg.manifest), pkg.manifestPath)
+			if err != nil {
+				log.Debug().Err(err).Str("path", pkg.manifestPath).Msg("could not parse package.json")
+				continue
+			}
+			addBom(bom)
 		}
 	}
 	paths = walkPaths

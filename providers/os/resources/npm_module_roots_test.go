@@ -165,3 +165,22 @@ func TestIsNodeModuleRootPath(t *testing.T) {
 		assert.False(t, isNodeModuleRootPath(p), p)
 	}
 }
+
+func TestCollectNpmPackagesInPaths_debianPackageWithUpstreamLockfile(t *testing.T) {
+	mockFS := afero.NewMemMapFs()
+	// Debian 12's node-browserslist ships upstream's pnpm-lock.yaml next to
+	// package.json; the installed package is what package.json describes
+	writeNpmManifest(t, mockFS, "/usr/share/nodejs/browserslist", "browserslist", "4.21.4")
+	require.NoError(t, afero.WriteFile(mockFS, "/usr/share/nodejs/browserslist/pnpm-lock.yaml", []byte(`lockfileVersion: 5.4
+
+specifiers:
+  '@logux/eslint-config': ^47.2.0
+  c8: ^7.12.0
+  caniuse-lite: ^1.0.30001400
+`), 0o644))
+
+	r := npmTestRuntime(t, mockFS)
+	direct, _, _, err := collectNpmPackagesInPaths(r, mockFS, defaultNpmPaths)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"browserslist@4.21.4"}, npmNameVersions(direct))
+}
