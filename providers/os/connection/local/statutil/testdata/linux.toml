@@ -12,3 +12,22 @@ stdout = """0.4317.8180.0.0.1590420240.1590418792.?
 [commands."sh -c 'SL=0; test -L \"$1\" && SL=1; test -e \"$1\" -o $SL -eq 1 || exit 1; r=$(stat -L \"$1\" -c \"$SL.%s.%f.%u.%g.%X.%Y.%C\" 2>/dev/null) && printf \"%s\\n\" \"$r\" || { [ -n \"$r\" ] && printf \"%s\\n\" \"$r\" || stat \"$1\" -c \"$SL.%s.%f.%u.%g.%X.%Y.%C\" 2>/dev/null; }' _ /usr/bin/su"]
 stdout = """0.71728.89ed.0.0.1634057181.1629123001.?
 """
+
+# Special files captured from Ubuntu 18.04 with GNU stat. %f is the raw
+# st_mode in hex: 11a4 is a fifo, 21b6 a character device, 61b0 a block
+# device, c1ff a socket.
+[commands."sh -c 'SL=0; test -L \"$1\" && SL=1; test -e \"$1\" -o $SL -eq 1 || exit 1; r=$(stat -L \"$1\" -c \"$SL.%s.%f.%u.%g.%X.%Y.%C\" 2>/dev/null) && printf \"%s\\n\" \"$r\" || { [ -n \"$r\" ] && printf \"%s\\n\" \"$r\" || stat \"$1\" -c \"$SL.%s.%f.%u.%g.%X.%Y.%C\" 2>/dev/null; }' _ /srv/fifo"]
+stdout = """0.0.11a4.0.0.1790911513.1790911513.?
+"""
+
+[commands."sh -c 'SL=0; test -L \"$1\" && SL=1; test -e \"$1\" -o $SL -eq 1 || exit 1; r=$(stat -L \"$1\" -c \"$SL.%s.%f.%u.%g.%X.%Y.%C\" 2>/dev/null) && printf \"%s\\n\" \"$r\" || { [ -n \"$r\" ] && printf \"%s\\n\" \"$r\" || stat \"$1\" -c \"$SL.%s.%f.%u.%g.%X.%Y.%C\" 2>/dev/null; }' _ /dev/null"]
+stdout = """0.0.21b6.0.0.1790910477.1790910477.?
+"""
+
+[commands."sh -c 'SL=0; test -L \"$1\" && SL=1; test -e \"$1\" -o $SL -eq 1 || exit 1; r=$(stat -L \"$1\" -c \"$SL.%s.%f.%u.%g.%X.%Y.%C\" 2>/dev/null) && printf \"%s\\n\" \"$r\" || { [ -n \"$r\" ] && printf \"%s\\n\" \"$r\" || stat \"$1\" -c \"$SL.%s.%f.%u.%g.%X.%Y.%C\" 2>/dev/null; }' _ /dev/loop0"]
+stdout = """0.0.61b0.0.6.1790911812.1790910477.?
+"""
+
+[commands."sh -c 'SL=0; test -L \"$1\" && SL=1; test -e \"$1\" -o $SL -eq 1 || exit 1; r=$(stat -L \"$1\" -c \"$SL.%s.%f.%u.%g.%X.%Y.%C\" 2>/dev/null) && printf \"%s\\n\" \"$r\" || { [ -n \"$r\" ] && printf \"%s\\n\" \"$r\" || stat \"$1\" -c \"$SL.%s.%f.%u.%g.%X.%Y.%C\" 2>/dev/null; }' _ /run/systemd/notify"]
+stdout = """0.0.c1ff.0.0.1790910438.1790910437.?
+"""

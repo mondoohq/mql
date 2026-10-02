@@ -138,6 +138,68 @@ func countRecordedCommands(commands []string, target string) int {
 	return count
 }
 
+// Each file's permissions must describe that file. Two files with the same
+// permission bits but a different type (a regular file and a fifo) must not
+// share one cached file.permissions, and the ls -l string must carry the
+// type character.
+func TestFilePermissionsPerFile(t *testing.T) {
+	fixturePath, err := filepath.Abs("testdata/file_permissions_types.toml")
+	require.NoError(t, err)
+
+	asset := &inventory.Asset{
+		Platform: &inventory.Platform{
+			Name:   "ubuntu",
+			Family: []string{"linux", "unix"},
+		},
+	}
+	conn, err := mock.New(0, asset, mock.WithPath(fixturePath))
+	require.NoError(t, err)
+
+	runtime := &plugin.Runtime{
+		Connection: conn,
+		Resources:  &syncx.Map[plugin.Resource]{},
+	}
+
+	perms := func(path string) *mqlFilePermissions {
+		raw, err := CreateResource(runtime, "file", map[string]*llx.RawData{
+			"path": llx.StringData(path),
+		})
+		require.NoError(t, err)
+		p := raw.(*mqlFile).GetPermissions()
+		require.NoError(t, p.Error)
+		require.NotNil(t, p.Data)
+		return p.Data
+	}
+
+	regular := perms("/srv/regular.txt")
+	fifo := perms("/srv/fifo")
+	other := perms("/srv/other.txt")
+
+	assert.True(t, regular.IsFile.Data)
+	assert.Equal(t, "-rw-r--r--", regular.GetString().Data)
+
+	assert.False(t, fifo.IsFile.Data, "a fifo must not reuse the regular file's permissions")
+	assert.False(t, fifo.IsDirectory.Data)
+	assert.Equal(t, "prw-r--r--", fifo.GetString().Data)
+
+	assert.NotEqual(t, regular.MqlID(), other.MqlID(), "two files with the same mode need their own permissions")
+	assert.True(t, other.IsFile.Data)
+
+	tests := []struct {
+		path string
+		want string
+	}{
+		{"/dev/null", "crw-rw-rw-"},
+		{"/dev/loop0", "brw-rw----"},
+		{"/run/systemd/notify", "srwxrwxrwx"},
+	}
+	for _, tc := range tests {
+		p := perms(tc.path)
+		assert.False(t, p.IsFile.Data, tc.path)
+		assert.Equal(t, tc.want, p.GetString().Data, tc.path)
+	}
+}
+
 // A file that exists but is owned by a uid/gid with no passwd/group entry
 // (common on minimal containers, or files left by a deleted user) must resolve
 // file.user / file.group to null and fail cleanly, rather than erroring the
