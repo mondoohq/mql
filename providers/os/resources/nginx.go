@@ -86,7 +86,25 @@ func (n *mqlNginx) modules() ([]any, error) {
 		return nil, err
 	}
 
-	modules := parseNginxModules(string(data))
+	configured, confPath := parseNginxConfigureModules(string(data))
+
+	// a dynamic module only runs when the configuration loads it
+	var loaded []string
+	for _, m := range configured {
+		if !m.dynamic {
+			continue
+		}
+		if confPath == "" {
+			confPath = nginxConfPath(conn)
+		}
+		loaded, err = n.loadedNginxModules(confPath)
+		if err != nil {
+			return nil, err
+		}
+		break
+	}
+
+	modules := nginxModules(configured, loaded)
 	modulesData := make([]any, len(modules))
 	for i, m := range modules {
 		modulesData[i] = m
@@ -94,24 +112,128 @@ func (n *mqlNginx) modules() ([]any, error) {
 	return modulesData, nil
 }
 
+// loadedNginxModules returns the load_module paths of the nginx config at path.
+func (n *mqlNginx) loadedNginxModules(path string) ([]string, error) {
+	o, err := NewResource(n.MqlRuntime, "nginx.conf", map[string]*llx.RawData{
+		"path": llx.StringData(path),
+	})
+	if err != nil {
+		return nil, err
+	}
+	conf := o.(*mqlNginxConf)
+	if params := conf.GetParams(); params.Error != nil {
+		return nil, params.Error
+	}
+	conf.lock.Lock()
+	defer conf.lock.Unlock()
+	return conf.loadModules, nil
+}
+
+// nginxLoadModules returns the paths of the load_module directives in the
+// main context, in the order nginx loads them.
+func nginxLoadModules(directives []nginx.Directive) []string {
+	var paths []string
+	for _, d := range directives {
+		if d.Name == "load_module" && !d.IsBlock() && len(d.Args) > 0 {
+			paths = append(paths, d.Args[0])
+		}
+	}
+	return paths
+}
+
 // reNginxVersion matches "nginx version: nginx/1.25.3" or "nginx/1.25.3".
 var reNginxVersion = regexp.MustCompile(`nginx/(\S+)`)
 
-// reNginxModule matches --with-*_module flags in configure arguments.
-var reNginxModule = regexp.MustCompile(`--with-(\S+_module)`)
+// reNginxModule matches the module flags in configure arguments:
+// --with-<name>_module, plus --with-stream and --with-mail, which name no
+// _module suffix, each optionally built as a dynamic module with =dynamic.
+var reNginxModule = regexp.MustCompile(`--with-([A-Za-z0-9_]+_module|stream|mail)(=dynamic)?(?:\s|$)`)
 
-// parseNginxModules extracts compiled-in module names from nginx -V output.
-func parseNginxModules(output string) []string {
+// reNginxConfPath matches the configuration path nginx was built with.
+var reNginxConfPath = regexp.MustCompile(`--conf-path=(\S+)`)
+
+// nginxConfigureModule is a module named in nginx's configure arguments.
+type nginxConfigureModule struct {
+	name    string
+	dynamic bool
+}
+
+// parseNginxConfigureModules extracts the modules and the --conf-path from
+// nginx -V output. --with-stream and --with-mail are reported as
+// stream_module and mail_module, the names of their ngx_*_module.so files.
+func parseNginxConfigureModules(output string) ([]nginxConfigureModule, string) {
 	matches := reNginxModule.FindAllStringSubmatch(output, -1)
-	modules := make([]string, 0, len(matches))
+	modules := make([]nginxConfigureModule, 0, len(matches))
 	for _, m := range matches {
-		modules = append(modules, m[1])
+		name := m[1]
+		if name == "stream" || name == "mail" {
+			name += "_module"
+		}
+		modules = append(modules, nginxConfigureModule{name: name, dynamic: m[2] != ""})
+	}
+	confPath := ""
+	if m := reNginxConfPath.FindStringSubmatch(output); m != nil {
+		confPath = strings.Trim(m[1], `'"`)
+	}
+	return modules, confPath
+}
+
+// nginxDynamicModuleFiles names the ngx_*.so file of a dynamic module whose
+// file name differs from its configure flag.
+var nginxDynamicModuleFiles = map[string]string{
+	"http_xslt_module": "http_xslt_filter_module",
+}
+
+// nginxModules returns the modules nginx runs with: every module compiled
+// into the binary, and each dynamic module whose ngx_<name>.so file one of
+// the loaded paths names. When stream or mail is dynamic, their stream_* and
+// mail_* submodules are built into that .so and run only when it is loaded.
+func nginxModules(configured []nginxConfigureModule, loaded []string) []string {
+	loadedSet := map[string]bool{}
+	for _, path := range loaded {
+		name := filepath.Base(strings.Trim(path, `'"`))
+		name = strings.TrimSuffix(name, ".so")
+		loadedSet[strings.TrimPrefix(name, "ngx_")] = true
+	}
+	isLoaded := func(name string) bool {
+		if file, ok := nginxDynamicModuleFiles[name]; ok {
+			name = file
+		}
+		return loadedSet[name]
+	}
+
+	dynamicParent := map[string]bool{}
+	for _, m := range configured {
+		if m.dynamic && (m.name == "stream_module" || m.name == "mail_module") {
+			dynamicParent[strings.TrimSuffix(m.name, "module")] = true
+		}
+	}
+
+	modules := make([]string, 0, len(configured))
+	for _, m := range configured {
+		switch {
+		case m.dynamic:
+			if !isLoaded(m.name) {
+				continue
+			}
+		case dynamicParent["stream_"] && strings.HasPrefix(m.name, "stream_"):
+			if !isLoaded("stream_module") {
+				continue
+			}
+		case dynamicParent["mail_"] && strings.HasPrefix(m.name, "mail_"):
+			if !isLoaded("mail_module") {
+				continue
+			}
+		}
+		modules = append(modules, m.name)
 	}
 	return modules
 }
 
 type mqlNginxConfInternal struct {
 	lock sync.Mutex
+	// loadModules holds the load_module paths of the main context
+	loadModules []string
 }
 
 // nginxConfPaths maps platform names to their default nginx config location.
@@ -302,6 +424,7 @@ func (s *mqlNginxConf) parse(file *mqlFile) error {
 			}
 		}
 	}
+	s.loadModules = nginxLoadModules(cfg.Directives)
 
 	// Merge main + http params for the top-level params field.
 	mergedParams := make(map[string]any, len(mainParams)+len(httpParams))
@@ -847,6 +970,11 @@ var isNginxMultiParam = map[string]bool{
 	"deny":             true,
 	"fastcgi_param":    true,
 	"proxy_set_header": true,
+	// main context: RHEL and Debian load each dynamic module from its own
+	// include file, and error_log and env may be given once per target
+	"load_module": true,
+	"error_log":   true,
+	"env":         true,
 }
 
 // Resource conversion functions.

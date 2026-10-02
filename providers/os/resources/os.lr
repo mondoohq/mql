@@ -2513,7 +2513,14 @@ private bind9.dnssecKey @defaults("zone keyTag isKeySigningKey") {
 nginx {
   // Nginx version (e.g., "1.25.3")
   version() string
-  // Compiled-in modules from configure arguments
+  // Modules nginx runs with, named as in its configure arguments
+  //
+  // Every module compiled into the binary (for example `http_ssl_module`),
+  // plus each dynamic module (`--with-<name>=dynamic`) that the
+  // configuration loads with `load_module`. `--with-stream` and `--with-mail`
+  // are listed as `stream_module` and `mail_module`; when they are dynamic,
+  // their `stream_*` and `mail_*` submodules are listed only while that module
+  // is loaded.
   modules() []string
 }
 
@@ -2533,12 +2540,17 @@ nginx.conf {
   // All configuration files (main + included fragments)
   files(file) []file
   // Flat key-value directives from main + http context
+  //
+  // A directive that may repeat, such as `listen`, `include`, `load_module`,
+  // `error_log`, or `env`, keeps every value, comma-separated.
   params(file) map[string]string
   // User directive
   user(params) string
   // Worker processes setting
   workerProcesses(params) string
   // Error log path
+  //
+  // Several `error_log` directives are comma-separated.
   errorLog(params) string
   // Listen addresses/ports across the http server blocks
   listenAddresses(file) []string

@@ -5,6 +5,8 @@ package resources
 
 import (
 	"io"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -239,6 +241,16 @@ func TestSetNginxParam(t *testing.T) {
 		setNginxParam(m, "listen", "443 ssl")
 		assert.Equal(t, "80,443 ssl", m["listen"])
 	})
+
+	t.Run("error_log and env keep every value", func(t *testing.T) {
+		m := map[string]any{}
+		setNginxParam(m, "error_log", "/var/log/nginx/error.log")
+		setNginxParam(m, "error_log", "syslog:server=unix:/dev/log warn")
+		setNginxParam(m, "env", "TZ")
+		setNginxParam(m, "env", "OPENSSL_CONF=/etc/ssl/nginx.cnf")
+		assert.Equal(t, "/var/log/nginx/error.log,syslog:server=unix:/dev/log warn", m["error_log"])
+		assert.Equal(t, "TZ,OPENSSL_CONF=/etc/ssl/nginx.cnf", m["env"])
+	})
 }
 
 func TestNginxConfPathDefault(t *testing.T) {
@@ -378,6 +390,14 @@ func TestNginxVersionRegex(t *testing.T) {
 	})
 }
 
+func moduleNames(mods []nginxConfigureModule) []string {
+	names := make([]string, len(mods))
+	for i, m := range mods {
+		names[i] = m.name
+	}
+	return names
+}
+
 func TestParseNginxModules(t *testing.T) {
 	output := "nginx version: nginx/1.25.3\n" +
 		"built by gcc 12.2.0 (Debian 12.2.0-14)\n" +
@@ -389,19 +409,135 @@ func TestParseNginxModules(t *testing.T) {
 		"--with-http_gzip_static_module --with-stream_ssl_module " +
 		"--with-mail_ssl_module\n"
 
-	modules := parseNginxModules(output)
-	require.Len(t, modules, 5)
-	assert.Equal(t, "http_ssl_module", modules[0])
-	assert.Equal(t, "http_v2_module", modules[1])
-	assert.Equal(t, "http_gzip_static_module", modules[2])
-	assert.Equal(t, "stream_ssl_module", modules[3])
-	assert.Equal(t, "mail_ssl_module", modules[4])
+	configured, confPath := parseNginxConfigureModules(output)
+	assert.Equal(t, []string{"http_ssl_module", "http_v2_module", "http_gzip_static_module",
+		"stream_ssl_module", "mail_ssl_module"}, moduleNames(configured))
+	assert.Equal(t, "", confPath)
+	// no dynamic module, so nothing depends on the configuration
+	assert.Equal(t, moduleNames(configured), nginxModules(configured, nil))
 }
 
 func TestParseNginxModulesEmpty(t *testing.T) {
 	output := "nginx version: nginx/1.25.3\nconfigure arguments: --prefix=/etc/nginx\n"
-	modules := parseNginxModules(output)
-	assert.Empty(t, modules)
+	configured, _ := parseNginxConfigureModules(output)
+	assert.Empty(t, configured)
+	assert.Empty(t, nginxModules(configured, nil))
+}
+
+func readNginxTestdata(t *testing.T, name string) string {
+	t.Helper()
+	data, err := os.ReadFile("testdata/nginx/" + name)
+	require.NoError(t, err)
+	return string(data)
+}
+
+func TestParseNginxConfigureModulesRHEL(t *testing.T) {
+	// nginx -V of nginx 1.20.1 on RHEL 9
+	configured, confPath := parseNginxConfigureModules(readNginxTestdata(t, "rhel9-nginx-V.txt"))
+	assert.Equal(t, "/etc/nginx/nginx.conf", confPath)
+
+	dynamic := map[string]bool{}
+	for _, m := range configured {
+		dynamic[m.name] = m.dynamic
+	}
+	// --with-stream=dynamic and --with-mail=dynamic carry no _module suffix
+	assert.True(t, dynamic["stream_module"])
+	assert.True(t, dynamic["mail_module"])
+	assert.True(t, dynamic["http_xslt_module"])
+	assert.True(t, dynamic["http_perl_module"])
+	isDynamic, ok := dynamic["http_ssl_module"]
+	assert.True(t, ok)
+	assert.False(t, isDynamic)
+	isDynamic, ok = dynamic["stream_ssl_preread_module"]
+	assert.True(t, ok)
+	assert.False(t, isDynamic)
+}
+
+func TestNginxModulesLoadedDynamic(t *testing.T) {
+	t.Run("RHEL 9: only nginx-mod-stream installed and loaded", func(t *testing.T) {
+		configured, _ := parseNginxConfigureModules(readNginxTestdata(t, "rhel9-nginx-V.txt"))
+		mods := nginxModules(configured, []string{"/usr/lib64/nginx/modules/ngx_stream_module.so"})
+		assert.Contains(t, mods, "http_ssl_module")
+		assert.Contains(t, mods, "stream_module")
+		// built into ngx_stream_module.so, which is loaded
+		assert.Contains(t, mods, "stream_ssl_module")
+		assert.Contains(t, mods, "stream_ssl_preread_module")
+		// built as dynamic modules that no load_module names
+		assert.NotContains(t, mods, "http_perl_module")
+		assert.NotContains(t, mods, "http_xslt_module")
+		assert.NotContains(t, mods, "http_image_filter_module")
+		assert.NotContains(t, mods, "mail_module")
+		// built into ngx_mail_module.so, which is not loaded
+		assert.NotContains(t, mods, "mail_ssl_module")
+	})
+
+	t.Run("RHEL 8: every nginx-mod package installed and loaded", func(t *testing.T) {
+		configured, _ := parseNginxConfigureModules(readNginxTestdata(t, "rhel8-nginx-V.txt"))
+		mods := nginxModules(configured, []string{
+			"/usr/lib64/nginx/modules/ngx_http_image_filter_module.so",
+			"/usr/lib64/nginx/modules/ngx_http_perl_module.so",
+			"/usr/lib64/nginx/modules/ngx_http_xslt_filter_module.so",
+			"/usr/lib64/nginx/modules/ngx_mail_module.so",
+			"/usr/lib64/nginx/modules/ngx_stream_module.so",
+		})
+		for _, m := range []string{"http_image_filter_module", "http_perl_module", "http_xslt_module",
+			"mail_module", "mail_ssl_module", "stream_module", "stream_ssl_module", "http_ssl_module"} {
+			assert.Contains(t, mods, m)
+		}
+	})
+
+	t.Run("relative load_module path", func(t *testing.T) {
+		configured := []nginxConfigureModule{{name: "stream_module", dynamic: true}}
+		assert.Equal(t, []string{"stream_module"}, nginxModules(configured, []string{"modules/ngx_stream_module.so"}))
+	})
+
+	t.Run("static stream keeps its submodules", func(t *testing.T) {
+		configured, _ := parseNginxConfigureModules("configure arguments: --with-stream --with-stream_ssl_module --with-mail")
+		assert.Equal(t, []string{"stream_module", "stream_ssl_module", "mail_module"}, nginxModules(configured, nil))
+	})
+}
+
+func TestNginxLoadModulesAcrossIncludes(t *testing.T) {
+	// RHEL 8: nginx.conf includes one file per nginx-mod-* package
+	files := map[string]string{
+		"/etc/nginx/nginx.conf": "user nginx;\nworker_processes auto;\nerror_log /var/log/nginx/error.log;\n" +
+			"pid /run/nginx.pid;\n\n# Load dynamic modules. See /usr/share/doc/nginx/README.dynamic.\n" +
+			"include /usr/share/nginx/modules/*.conf;\n\nevents {\n    worker_connections 1024;\n}\n",
+		"/usr/share/nginx/modules/mod-http-image-filter.conf": `load_module "/usr/lib64/nginx/modules/ngx_http_image_filter_module.so";` + "\n",
+		"/usr/share/nginx/modules/mod-http-perl.conf":         `load_module "/usr/lib64/nginx/modules/ngx_http_perl_module.so";` + "\n",
+		"/usr/share/nginx/modules/mod-stream.conf":            `load_module "/usr/lib64/nginx/modules/ngx_stream_module.so";` + "\n",
+	}
+	open := func(path string) (io.ReadCloser, error) {
+		c, ok := files[path]
+		if !ok {
+			return nil, os.ErrNotExist
+		}
+		return io.NopCloser(strings.NewReader(c)), nil
+	}
+	glob := func(string) ([]string, error) {
+		return []string{
+			"/usr/share/nginx/modules/mod-http-image-filter.conf",
+			"/usr/share/nginx/modules/mod-http-perl.conf",
+			"/usr/share/nginx/modules/mod-stream.conf",
+		}, nil
+	}
+	cfg, err := nginx.ParseFiles("/etc/nginx/nginx.conf", open, glob)
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"/usr/lib64/nginx/modules/ngx_http_image_filter_module.so",
+		"/usr/lib64/nginx/modules/ngx_http_perl_module.so",
+		"/usr/lib64/nginx/modules/ngx_stream_module.so",
+	}, nginxLoadModules(cfg.Directives))
+
+	params := map[string]any{}
+	for _, d := range cfg.Directives {
+		if !d.IsBlock() {
+			setNginxParam(params, d.Name, strings.Join(d.Args, " "))
+		}
+	}
+	assert.Equal(t, "/usr/lib64/nginx/modules/ngx_http_image_filter_module.so,"+
+		"/usr/lib64/nginx/modules/ngx_http_perl_module.so,"+
+		"/usr/lib64/nginx/modules/ngx_stream_module.so", params["load_module"])
 }
 
 // New tests for TLS, header collection, listen parsing, upstream details, and
