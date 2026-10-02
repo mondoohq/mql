@@ -216,7 +216,7 @@ func pagedReads(reads ...[]string) func() ([]string, error) {
 	}
 }
 
-func identity(s string) string { return s }
+func identityKey(s string) string { return s }
 
 func TestListDistinct(t *testing.T) {
 	t.Run("stable listing is read once", func(t *testing.T) {
@@ -224,7 +224,7 @@ func TestListDistinct(t *testing.T) {
 		got, err := listDistinct(func() ([]string, error) {
 			calls++
 			return []string{"a", "b", "c"}, nil
-		}, identity)
+		}, identityKey)
 		require.NoError(t, err)
 		assert.Equal(t, []string{"a", "b", "c"}, got)
 		assert.Equal(t, 1, calls)
@@ -235,25 +235,25 @@ func TestListDistinct(t *testing.T) {
 		got, err := listDistinct(pagedReads(
 			[]string{"a", "b", "a"},
 			[]string{"b", "c", "c"},
-		), identity)
+		), identityKey)
 		require.NoError(t, err)
 		assert.ElementsMatch(t, []string{"a", "b", "c"}, got)
 	})
 
 	t.Run("a listing that never completes is an error", func(t *testing.T) {
-		_, err := listDistinct(pagedReads([]string{"a", "a", "b"}), identity)
+		_, err := listDistinct(pagedReads([]string{"a", "a", "b"}), identityKey)
 		assert.ErrorContains(t, err, "2 of 3")
 	})
 
 	t.Run("entries without id are dropped", func(t *testing.T) {
-		got, err := listDistinct(pagedReads([]string{"a", "", "b"}), identity)
+		got, err := listDistinct(pagedReads([]string{"a", "", "b"}), identityKey)
 		require.NoError(t, err)
 		assert.Equal(t, []string{"a", "b"}, got)
 	})
 
 	t.Run("read errors are returned", func(t *testing.T) {
 		boom := errors.New("boom")
-		_, err := listDistinct(func() ([]string, error) { return nil, boom }, identity)
+		_, err := listDistinct(func() ([]string, error) { return nil, boom }, identityKey)
 		assert.ErrorIs(t, err, boom)
 	})
 }
