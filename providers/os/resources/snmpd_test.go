@@ -53,6 +53,8 @@ func TestSnmpdConfigPath(t *testing.T) {
 func TestSnmpdConfigMissingExplicitPath(t *testing.T) {
 	newConfig := func(t *testing.T, files map[string]*mock.MockFileData, path string) *mqlSnmpdConfig {
 		t.Helper()
+		// tomcatMockRuntime is a plain mock Linux connection serving files;
+		// nothing in it is specific to Tomcat.
 		runtime := tomcatMockRuntime(t, files)
 		raw, err := NewResource(runtime, "snmpd.config", map[string]*llx.RawData{
 			"path": llx.StringData(path),

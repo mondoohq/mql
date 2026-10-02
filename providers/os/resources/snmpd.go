@@ -160,13 +160,10 @@ func snmpdExplicitConfigExists(file *mqlFile) error {
 	if exists.Error != nil {
 		return exists.Error
 	}
-	if exists.Data {
-		return nil
+	if !exists.Data {
+		return fmt.Errorf("could not read %q: no such file", file.Path.Data)
 	}
-	if content := file.GetContent(); content.Error != nil {
-		return content.Error
-	}
-	return fmt.Errorf("could not read %q: no such file", file.Path.Data)
+	return nil
 }
 
 // collectIfExists collects the file at path when it exists and reports
