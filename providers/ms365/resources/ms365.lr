@@ -757,6 +757,35 @@ microsoft.identityAndAccess {
   // request access, whether approval is required, when assignments expire,
   // and whether they are reviewed.
   accessPackageAssignmentPolicies() []microsoft.identityAndAccess.accessPackageAssignmentPolicy
+  // Terms of use agreements
+  //
+  // The terms of use agreements defined in the tenant, which Conditional
+  // Access policies can require users to accept before they reach an
+  // application. Each entry reports whether acceptance is required per device,
+  // whether the user must open the terms before accepting, and how often
+  // acceptance expires.
+  termsOfUseAgreements() []microsoft.identityAndAccess.termsOfUseAgreement
+  // Lifecycle workflows
+  //
+  // The joiner, mover, and leaver workflows that Microsoft Entra ID Governance
+  // runs against users, for example disabling and removing a departing
+  // employee's account. Each entry reports whether the workflow is enabled and
+  // scheduled, the conditions that start it, and the tasks it runs. Reading
+  // lifecycle workflows needs a Microsoft Entra ID Governance license in the
+  // tenant.
+  lifecycleWorkflows() []microsoft.identityAndAccess.lifecycleWorkflow
+  // Custom security attribute definitions
+  //
+  // The custom security attributes defined in the tenant, used to tag users,
+  // applications, and service principals for attribute-based access control.
+  // Each entry reports its attribute set, data type, status, and whether it
+  // only accepts predefined values.
+  customSecurityAttributeDefinitions() []microsoft.identityAndAccess.customSecurityAttributeDefinition
+  // Custom security attribute sets
+  //
+  // The attribute sets that group custom security attribute definitions and
+  // scope who may manage or assign them.
+  attributeSets() []microsoft.identityAndAccess.attributeSet
 }
 
 // External identity provider
@@ -1152,6 +1181,182 @@ private microsoft.identityAndAccess.externalOriginResourceConnector.connection @
   // The name only. The secret value is never read or reported. Carries a
   // value for the tokenBasedSapIag shape.
   secretName string
+}
+
+// Terms of use agreement
+//
+// A terms of use agreement users accept before they reach an application.
+// isPerDeviceAcceptanceRequired and isViewingBeforeAcceptanceRequired report
+// how acceptance is collected, termsExpirationStartDateTime and
+// termsExpirationFrequency report the schedule on which every acceptance
+// expires, and userReacceptRequiredFrequency reports how long one user's
+// acceptance stays valid. conditionalAccessPolicies lists the Conditional
+// Access policies that require the agreement, so an agreement no policy
+// enforces can be found.
+private microsoft.identityAndAccess.termsOfUseAgreement @defaults("displayName") {
+  // Unique identifier of the agreement
+  id string
+  // Display name of the agreement
+  displayName string
+  // Whether users must accept the agreement on every device they use
+  isPerDeviceAcceptanceRequired bool
+  // Whether users must expand and view the agreement before accepting it
+  isViewingBeforeAcceptanceRequired bool
+  // When the recurring expiration of all acceptances starts
+  termsExpirationStartDateTime time
+  // How often all acceptances of the agreement expire
+  //
+  // An ISO 8601 duration, for example P365D. Null when acceptances never
+  // expire on a schedule.
+  termsExpirationFrequency string
+  // How long a user's acceptance stays valid before they must accept again
+  //
+  // An ISO 8601 duration, for example P90D. Null when acceptance does not
+  // expire.
+  userReacceptRequiredFrequency string
+  // Conditional Access policies that require this agreement
+  conditionalAccessPolicies() []microsoft.conditionalAccess.policy
+}
+
+// Lifecycle workflow
+//
+// A Microsoft Entra ID Governance workflow that runs tasks against users as
+// they join, move within, or leave the organization. category reports which
+// of these the workflow handles, isEnabled and isSchedulingEnabled report
+// whether it runs and whether it runs on its schedule, executionConditions
+// reports the trigger and the users in scope, and tasks lists what it does,
+// such as disabling an account or removing group memberships.
+private microsoft.identityAndAccess.lifecycleWorkflow @defaults("displayName category isEnabled") {
+  // Unique identifier of the workflow
+  id string
+  // Display name of the workflow
+  displayName string
+  // Description of the workflow
+  description string
+  // Lifecycle stage the workflow handles
+  //
+  // One of joiner, mover, leaver, extensibility, or unknownFutureValue.
+  category string
+  // Whether the workflow is enabled
+  isEnabled bool
+  // Whether the workflow runs on its schedule
+  //
+  // When false the workflow only runs on demand.
+  isSchedulingEnabled bool
+  // Conditions that start the workflow
+  //
+  // A dict whose `@odata.type` names the shape. For
+  // `#microsoft.graph.identityGovernance.triggerAndScopeBasedConditions` it
+  // carries `trigger` (the event or time-based attribute that starts the
+  // workflow) and `scope` (the rule selecting the users it processes). For
+  // `#microsoft.graph.identityGovernance.onDemandExecutionOnly` it carries
+  // nothing else.
+  executionConditions dict
+  // Current version number of the workflow
+  version int
+  // When the workflow was created
+  createdDateTime time
+  // When the workflow was last modified
+  lastModifiedDateTime time
+  // When the workflow is next scheduled to run
+  nextScheduleRunDateTime time
+  // User who created the workflow
+  createdBy() microsoft.user
+  // User who last modified the workflow
+  lastModifiedBy() microsoft.user
+  // Tasks the workflow runs, in execution order
+  tasks() []microsoft.identityAndAccess.lifecycleWorkflow.task
+}
+
+// Task run by a lifecycle workflow
+//
+// One step of a lifecycle workflow. taskDefinitionId names the built-in task
+// it runs, for example disabling a user account or removing the user from all
+// groups, and arguments carries the settings that task takes.
+private microsoft.identityAndAccess.lifecycleWorkflow.task @defaults("displayName isEnabled") {
+  // Unique identifier of the task
+  id string
+  // Display name of the task
+  displayName string
+  // Description of the task
+  description string
+  // Lifecycle stages the task applies to
+  //
+  // A comma-separated combination of joiner, leaver, mover, and
+  // unknownFutureValue.
+  category string
+  // Identifier of the built-in task definition the task runs
+  taskDefinitionId string
+  // Whether the task runs when the workflow runs
+  isEnabled bool
+  // Whether the workflow continues with later tasks when this task fails
+  continueOnError bool
+  // Position of the task in the workflow's execution order
+  executionSequence int
+  // Settings the task takes, by name
+  arguments map[string]string
+}
+
+// Custom security attribute definition
+//
+// A custom security attribute that can be assigned to users, applications,
+// and service principals. type reports the data type (Boolean, Integer, or
+// String), status reports whether new assignments are allowed (Available) or
+// not (Deprecated), and usePreDefinedValuesOnly together with allowedValues
+// reports whether assignments are limited to a fixed list.
+private microsoft.identityAndAccess.customSecurityAttributeDefinition @defaults("id type status") {
+  // Unique identifier of the definition
+  //
+  // The attribute set name and the attribute name joined by an underscore,
+  // for example `Engineering_ProjectDate`.
+  id string
+  // Name of the attribute, unique within its attribute set
+  name string
+  // Description of the attribute
+  description string
+  // Data type of the attribute's values
+  //
+  // One of Boolean, Integer, or String.
+  type string
+  // Whether the attribute can be assigned
+  //
+  // Available or Deprecated. A deprecated attribute keeps its existing
+  // assignments but cannot be assigned again.
+  status string
+  // Whether the attribute holds a list of values rather than a single value
+  isCollection bool
+  // Whether the attribute's values are indexed for searching
+  isSearchable bool
+  // Whether only the predefined values in allowedValues can be assigned
+  usePreDefinedValuesOnly bool
+  // Attribute set the attribute belongs to
+  attributeSet() microsoft.identityAndAccess.attributeSet
+  // Predefined values that can be assigned to the attribute
+  allowedValues() []microsoft.identityAndAccess.customSecurityAttributeDefinition.allowedValue
+}
+
+// Predefined value of a custom security attribute
+private microsoft.identityAndAccess.customSecurityAttributeDefinition.allowedValue @defaults("id isActive") {
+  // The value itself
+  id string
+  // Whether the value can still be assigned
+  isActive bool
+}
+
+// Custom security attribute set
+//
+// A named group of custom security attribute definitions. The `id` is the
+// attribute set name, for example `Engineering`. definitions lists the
+// attributes in the set.
+private microsoft.identityAndAccess.attributeSet @defaults("id") {
+  // Name of the attribute set
+  id string
+  // Description of the attribute set
+  description string
+  // Maximum number of attributes the set can hold
+  maxAttributesPerSet int
+  // Custom security attribute definitions in the set
+  definitions() []microsoft.identityAndAccess.customSecurityAttributeDefinition
 }
 
 // Microsoft Entra Privileged Identity Management
@@ -1729,7 +1934,11 @@ private microsoft.conditionalAccess.policy.grantControls @defaults("id") {
   // List of custom controls IDs required by the policy
   customAuthenticationFactors []string
   // List of terms of use IDs required by the policy
-  termsOfUse []string
+  //
+  // Deprecated in favor of termsOfUseAgreements.
+  termsOfUse @maturity("deprecated") []string
+  // Terms of use agreements required by the policy
+  termsOfUseAgreements() []microsoft.identityAndAccess.termsOfUseAgreement
 }
 
 // Microsoft Entra Conditional Access Policy Session Controls

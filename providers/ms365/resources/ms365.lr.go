@@ -48,6 +48,12 @@ const (
 	ResourceMicrosoftIdentityAndAccessAccessPackageAssignmentPolicy                                      string = "microsoft.identityAndAccess.accessPackageAssignmentPolicy"
 	ResourceMicrosoftIdentityAndAccessExternalOriginResourceConnector                                    string = "microsoft.identityAndAccess.externalOriginResourceConnector"
 	ResourceMicrosoftIdentityAndAccessExternalOriginResourceConnectorConnection                          string = "microsoft.identityAndAccess.externalOriginResourceConnector.connection"
+	ResourceMicrosoftIdentityAndAccessTermsOfUseAgreement                                                string = "microsoft.identityAndAccess.termsOfUseAgreement"
+	ResourceMicrosoftIdentityAndAccessLifecycleWorkflow                                                  string = "microsoft.identityAndAccess.lifecycleWorkflow"
+	ResourceMicrosoftIdentityAndAccessLifecycleWorkflowTask                                              string = "microsoft.identityAndAccess.lifecycleWorkflow.task"
+	ResourceMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition                                  string = "microsoft.identityAndAccess.customSecurityAttributeDefinition"
+	ResourceMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionAllowedValue                      string = "microsoft.identityAndAccess.customSecurityAttributeDefinition.allowedValue"
+	ResourceMicrosoftIdentityAndAccessAttributeSet                                                       string = "microsoft.identityAndAccess.attributeSet"
 	ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagement                                       string = "microsoft.identityAndAccess.privilegedIdentityManagement"
 	ResourceMicrosoftIdentityAndAccessPrivilegedIdentityManagementPolicies                               string = "microsoft.identityAndAccess.privilegedIdentityManagement.policies"
 	ResourceMicrosoftIdentityAndAccessRoleEligibilityScheduleInstance                                    string = "microsoft.identityAndAccess.roleEligibilityScheduleInstance"
@@ -388,6 +394,30 @@ func init() {
 		"microsoft.identityAndAccess.externalOriginResourceConnector.connection": {
 			// to override args, implement: initMicrosoftIdentityAndAccessExternalOriginResourceConnectorConnection(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
 			Create: createMicrosoftIdentityAndAccessExternalOriginResourceConnectorConnection,
+		},
+		"microsoft.identityAndAccess.termsOfUseAgreement": {
+			// to override args, implement: initMicrosoftIdentityAndAccessTermsOfUseAgreement(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessTermsOfUseAgreement,
+		},
+		"microsoft.identityAndAccess.lifecycleWorkflow": {
+			// to override args, implement: initMicrosoftIdentityAndAccessLifecycleWorkflow(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessLifecycleWorkflow,
+		},
+		"microsoft.identityAndAccess.lifecycleWorkflow.task": {
+			// to override args, implement: initMicrosoftIdentityAndAccessLifecycleWorkflowTask(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessLifecycleWorkflowTask,
+		},
+		"microsoft.identityAndAccess.customSecurityAttributeDefinition": {
+			// to override args, implement: initMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition,
+		},
+		"microsoft.identityAndAccess.customSecurityAttributeDefinition.allowedValue": {
+			// to override args, implement: initMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionAllowedValue(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionAllowedValue,
+		},
+		"microsoft.identityAndAccess.attributeSet": {
+			// to override args, implement: initMicrosoftIdentityAndAccessAttributeSet(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createMicrosoftIdentityAndAccessAttributeSet,
 		},
 		"microsoft.identityAndAccess.privilegedIdentityManagement": {
 			// to override args, implement: initMicrosoftIdentityAndAccessPrivilegedIdentityManagement(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
@@ -1834,6 +1864,18 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	"microsoft.identityAndAccess.accessPackageAssignmentPolicies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccess).GetAccessPackageAssignmentPolicies()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.accessPackageAssignmentPolicy")))
 	},
+	"microsoft.identityAndAccess.termsOfUseAgreements": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccess).GetTermsOfUseAgreements()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.termsOfUseAgreement")))
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflows": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccess).GetLifecycleWorkflows()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.lifecycleWorkflow")))
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinitions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccess).GetCustomSecurityAttributeDefinitions()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.customSecurityAttributeDefinition")))
+	},
+	"microsoft.identityAndAccess.attributeSets": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccess).GetAttributeSets()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.attributeSet")))
+	},
 	"microsoft.identityAndAccess.identityProvider.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).GetId()).ToDataRes(types.String)
 	},
@@ -2088,6 +2130,147 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.identityAndAccess.externalOriginResourceConnector.connection.secretName": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessExternalOriginResourceConnectorConnection).GetSecretName()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.termsOfUseAgreement.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessTermsOfUseAgreement).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.termsOfUseAgreement.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessTermsOfUseAgreement).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.termsOfUseAgreement.isPerDeviceAcceptanceRequired": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessTermsOfUseAgreement).GetIsPerDeviceAcceptanceRequired()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.termsOfUseAgreement.isViewingBeforeAcceptanceRequired": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessTermsOfUseAgreement).GetIsViewingBeforeAcceptanceRequired()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.termsOfUseAgreement.termsExpirationStartDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessTermsOfUseAgreement).GetTermsExpirationStartDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.termsOfUseAgreement.termsExpirationFrequency": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessTermsOfUseAgreement).GetTermsExpirationFrequency()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.termsOfUseAgreement.userReacceptRequiredFrequency": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessTermsOfUseAgreement).GetUserReacceptRequiredFrequency()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.termsOfUseAgreement.conditionalAccessPolicies": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessTermsOfUseAgreement).GetConditionalAccessPolicies()).ToDataRes(types.Array(types.Resource("microsoft.conditionalAccess.policy")))
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).GetDescription()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.category": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).GetCategory()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.isEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).GetIsEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.isSchedulingEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).GetIsSchedulingEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.executionConditions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).GetExecutionConditions()).ToDataRes(types.Dict)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.version": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).GetVersion()).ToDataRes(types.Int)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.createdDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).GetCreatedDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.lastModifiedDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).GetLastModifiedDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.nextScheduleRunDateTime": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).GetNextScheduleRunDateTime()).ToDataRes(types.Time)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.createdBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).GetCreatedBy()).ToDataRes(types.Resource("microsoft.user"))
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.lastModifiedBy": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).GetLastModifiedBy()).ToDataRes(types.Resource("microsoft.user"))
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.tasks": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).GetTasks()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.lifecycleWorkflow.task")))
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.displayName": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).GetDisplayName()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).GetDescription()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.category": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).GetCategory()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.taskDefinitionId": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).GetTaskDefinitionId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.isEnabled": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).GetIsEnabled()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.continueOnError": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).GetContinueOnError()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.executionSequence": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).GetExecutionSequence()).ToDataRes(types.Int)
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.arguments": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).GetArguments()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).GetName()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).GetDescription()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.type": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).GetType()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.status": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).GetStatus()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.isCollection": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).GetIsCollection()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.isSearchable": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).GetIsSearchable()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.usePreDefinedValuesOnly": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).GetUsePreDefinedValuesOnly()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.attributeSet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).GetAttributeSet()).ToDataRes(types.Resource("microsoft.identityAndAccess.attributeSet"))
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.allowedValues": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).GetAllowedValues()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.customSecurityAttributeDefinition.allowedValue")))
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.allowedValue.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionAllowedValue).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.allowedValue.isActive": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionAllowedValue).GetIsActive()).ToDataRes(types.Bool)
+	},
+	"microsoft.identityAndAccess.attributeSet.id": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAttributeSet).GetId()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.attributeSet.description": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAttributeSet).GetDescription()).ToDataRes(types.String)
+	},
+	"microsoft.identityAndAccess.attributeSet.maxAttributesPerSet": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAttributeSet).GetMaxAttributesPerSet()).ToDataRes(types.Int)
+	},
+	"microsoft.identityAndAccess.attributeSet.definitions": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftIdentityAndAccessAttributeSet).GetDefinitions()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.customSecurityAttributeDefinition")))
 	},
 	"microsoft.identityAndAccess.privilegedIdentityManagement.policies": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagement).GetPolicies()).ToDataRes(types.Resource("microsoft.identityAndAccess.privilegedIdentityManagement.policies"))
@@ -2577,6 +2760,9 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"microsoft.conditionalAccess.policy.grantControls.termsOfUse": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftConditionalAccessPolicyGrantControls).GetTermsOfUse()).ToDataRes(types.Array(types.String))
+	},
+	"microsoft.conditionalAccess.policy.grantControls.termsOfUseAgreements": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlMicrosoftConditionalAccessPolicyGrantControls).GetTermsOfUseAgreements()).ToDataRes(types.Array(types.Resource("microsoft.identityAndAccess.termsOfUseAgreement")))
 	},
 	"microsoft.conditionalAccess.policy.sessionControls.id": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlMicrosoftConditionalAccessPolicySessionControls).GetId()).ToDataRes(types.String)
@@ -8405,6 +8591,22 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 		r.(*mqlMicrosoftIdentityAndAccess).AccessPackageAssignmentPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
+	"microsoft.identityAndAccess.termsOfUseAgreements": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccess).TermsOfUseAgreements, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflows": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccess).LifecycleWorkflows, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinitions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccess).CustomSecurityAttributeDefinitions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.attributeSets": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccess).AttributeSets, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
 	"microsoft.identityAndAccess.identityProvider.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftIdentityAndAccessIdentityProvider).__id, ok = v.Value.(string)
 		return
@@ -8779,6 +8981,218 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.identityAndAccess.externalOriginResourceConnector.connection.secretName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftIdentityAndAccessExternalOriginResourceConnectorConnection).SecretName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.termsOfUseAgreement.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessTermsOfUseAgreement).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.termsOfUseAgreement.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessTermsOfUseAgreement).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.termsOfUseAgreement.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessTermsOfUseAgreement).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.termsOfUseAgreement.isPerDeviceAcceptanceRequired": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessTermsOfUseAgreement).IsPerDeviceAcceptanceRequired, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.termsOfUseAgreement.isViewingBeforeAcceptanceRequired": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessTermsOfUseAgreement).IsViewingBeforeAcceptanceRequired, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.termsOfUseAgreement.termsExpirationStartDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessTermsOfUseAgreement).TermsExpirationStartDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.termsOfUseAgreement.termsExpirationFrequency": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessTermsOfUseAgreement).TermsExpirationFrequency, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.termsOfUseAgreement.userReacceptRequiredFrequency": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessTermsOfUseAgreement).UserReacceptRequiredFrequency, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.termsOfUseAgreement.conditionalAccessPolicies": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessTermsOfUseAgreement).ConditionalAccessPolicies, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.category": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).Category, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.isEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).IsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.isSchedulingEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).IsSchedulingEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.executionConditions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).ExecutionConditions, ok = plugin.RawToTValue[any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.version": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).Version, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.createdDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).CreatedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.lastModifiedDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).LastModifiedDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.nextScheduleRunDateTime": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).NextScheduleRunDateTime, ok = plugin.RawToTValue[*time.Time](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.createdBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).CreatedBy, ok = plugin.RawToTValue[*mqlMicrosoftUser](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.lastModifiedBy": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).LastModifiedBy, ok = plugin.RawToTValue[*mqlMicrosoftUser](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.tasks": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflow).Tasks, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.displayName": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).DisplayName, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.category": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).Category, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.taskDefinitionId": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).TaskDefinitionId, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.isEnabled": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).IsEnabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.continueOnError": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).ContinueOnError, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.executionSequence": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).ExecutionSequence, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.lifecycleWorkflow.task.arguments": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask).Arguments, ok = plugin.RawToTValue[map[string]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.type": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).Type, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.status": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).Status, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.isCollection": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).IsCollection, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.isSearchable": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).IsSearchable, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.usePreDefinedValuesOnly": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).UsePreDefinedValuesOnly, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.attributeSet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).AttributeSet, ok = plugin.RawToTValue[*mqlMicrosoftIdentityAndAccessAttributeSet](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.allowedValues": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition).AllowedValues, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.allowedValue.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionAllowedValue).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.allowedValue.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionAllowedValue).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.customSecurityAttributeDefinition.allowedValue.isActive": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionAllowedValue).IsActive, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.attributeSet.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAttributeSet).__id, ok = v.Value.(string)
+		return
+	},
+	"microsoft.identityAndAccess.attributeSet.id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAttributeSet).Id, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.attributeSet.description": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAttributeSet).Description, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.attributeSet.maxAttributesPerSet": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAttributeSet).MaxAttributesPerSet, ok = plugin.RawToTValue[int64](v.Value, v.Error)
+		return
+	},
+	"microsoft.identityAndAccess.attributeSet.definitions": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftIdentityAndAccessAttributeSet).Definitions, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"microsoft.identityAndAccess.privilegedIdentityManagement.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -9563,6 +9977,10 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool{
 	},
 	"microsoft.conditionalAccess.policy.grantControls.termsOfUse": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 		r.(*mqlMicrosoftConditionalAccessPolicyGrantControls).TermsOfUse, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
+		return
+	},
+	"microsoft.conditionalAccess.policy.grantControls.termsOfUseAgreements": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlMicrosoftConditionalAccessPolicyGrantControls).TermsOfUseAgreements, ok = plugin.RawToTValue[[]any](v.Value, v.Error)
 		return
 	},
 	"microsoft.conditionalAccess.policy.sessionControls.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
@@ -19149,18 +19567,22 @@ type mqlMicrosoftIdentityAndAccess struct {
 	MqlRuntime *plugin.Runtime
 	__id       string
 	mqlMicrosoftIdentityAndAccessInternal
-	RoleEligibilityScheduleInstances plugin.TValue[[]any]
-	RoleAssignmentScheduleInstances  plugin.TValue[[]any]
-	PrivilegedIdentityManagement     plugin.TValue[*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagement]
-	IdentityAndSignIn                plugin.TValue[*mqlMicrosoftIdentityAndAccessIdentityAndSignIn]
-	Organization                     plugin.TValue[*mqlMicrosoftTenant]
-	ExternalOriginResourceConnectors plugin.TValue[[]any]
-	IdentityProviders                plugin.TValue[[]any]
-	B2xUserFlows                     plugin.TValue[[]any]
-	EntitlementManagementSettings    plugin.TValue[*mqlMicrosoftIdentityAndAccessEntitlementManagementSettings]
-	AccessPackageCatalogs            plugin.TValue[[]any]
-	AccessPackages                   plugin.TValue[[]any]
-	AccessPackageAssignmentPolicies  plugin.TValue[[]any]
+	RoleEligibilityScheduleInstances   plugin.TValue[[]any]
+	RoleAssignmentScheduleInstances    plugin.TValue[[]any]
+	PrivilegedIdentityManagement       plugin.TValue[*mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagement]
+	IdentityAndSignIn                  plugin.TValue[*mqlMicrosoftIdentityAndAccessIdentityAndSignIn]
+	Organization                       plugin.TValue[*mqlMicrosoftTenant]
+	ExternalOriginResourceConnectors   plugin.TValue[[]any]
+	IdentityProviders                  plugin.TValue[[]any]
+	B2xUserFlows                       plugin.TValue[[]any]
+	EntitlementManagementSettings      plugin.TValue[*mqlMicrosoftIdentityAndAccessEntitlementManagementSettings]
+	AccessPackageCatalogs              plugin.TValue[[]any]
+	AccessPackages                     plugin.TValue[[]any]
+	AccessPackageAssignmentPolicies    plugin.TValue[[]any]
+	TermsOfUseAgreements               plugin.TValue[[]any]
+	LifecycleWorkflows                 plugin.TValue[[]any]
+	CustomSecurityAttributeDefinitions plugin.TValue[[]any]
+	AttributeSets                      plugin.TValue[[]any]
 }
 
 // createMicrosoftIdentityAndAccess creates a new instance of this resource
@@ -19389,6 +19811,70 @@ func (c *mqlMicrosoftIdentityAndAccess) GetAccessPackageAssignmentPolicies() *pl
 		}
 
 		return c.accessPackageAssignmentPolicies()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccess) GetTermsOfUseAgreements() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TermsOfUseAgreements, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess", c.__id, "termsOfUseAgreements")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.termsOfUseAgreements()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccess) GetLifecycleWorkflows() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.LifecycleWorkflows, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess", c.__id, "lifecycleWorkflows")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.lifecycleWorkflows()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccess) GetCustomSecurityAttributeDefinitions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.CustomSecurityAttributeDefinitions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess", c.__id, "customSecurityAttributeDefinitions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.customSecurityAttributeDefinitions()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccess) GetAttributeSets() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AttributeSets, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess", c.__id, "attributeSets")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.attributeSets()
 	})
 }
 
@@ -20250,6 +20736,559 @@ func (c *mqlMicrosoftIdentityAndAccessExternalOriginResourceConnectorConnection)
 
 func (c *mqlMicrosoftIdentityAndAccessExternalOriginResourceConnectorConnection) GetSecretName() *plugin.TValue[string] {
 	return &c.SecretName
+}
+
+// mqlMicrosoftIdentityAndAccessTermsOfUseAgreement for the microsoft.identityAndAccess.termsOfUseAgreement resource
+type mqlMicrosoftIdentityAndAccessTermsOfUseAgreement struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftIdentityAndAccessTermsOfUseAgreementInternal it will be used here
+	Id                                plugin.TValue[string]
+	DisplayName                       plugin.TValue[string]
+	IsPerDeviceAcceptanceRequired     plugin.TValue[bool]
+	IsViewingBeforeAcceptanceRequired plugin.TValue[bool]
+	TermsExpirationStartDateTime      plugin.TValue[*time.Time]
+	TermsExpirationFrequency          plugin.TValue[string]
+	UserReacceptRequiredFrequency     plugin.TValue[string]
+	ConditionalAccessPolicies         plugin.TValue[[]any]
+}
+
+// createMicrosoftIdentityAndAccessTermsOfUseAgreement creates a new instance of this resource
+func createMicrosoftIdentityAndAccessTermsOfUseAgreement(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessTermsOfUseAgreement{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.termsOfUseAgreement", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessTermsOfUseAgreement) MqlName() string {
+	return "microsoft.identityAndAccess.termsOfUseAgreement"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessTermsOfUseAgreement) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessTermsOfUseAgreement) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessTermsOfUseAgreement) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftIdentityAndAccessTermsOfUseAgreement) GetIsPerDeviceAcceptanceRequired() *plugin.TValue[bool] {
+	return &c.IsPerDeviceAcceptanceRequired
+}
+
+func (c *mqlMicrosoftIdentityAndAccessTermsOfUseAgreement) GetIsViewingBeforeAcceptanceRequired() *plugin.TValue[bool] {
+	return &c.IsViewingBeforeAcceptanceRequired
+}
+
+func (c *mqlMicrosoftIdentityAndAccessTermsOfUseAgreement) GetTermsExpirationStartDateTime() *plugin.TValue[*time.Time] {
+	return &c.TermsExpirationStartDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessTermsOfUseAgreement) GetTermsExpirationFrequency() *plugin.TValue[string] {
+	return &c.TermsExpirationFrequency
+}
+
+func (c *mqlMicrosoftIdentityAndAccessTermsOfUseAgreement) GetUserReacceptRequiredFrequency() *plugin.TValue[string] {
+	return &c.UserReacceptRequiredFrequency
+}
+
+func (c *mqlMicrosoftIdentityAndAccessTermsOfUseAgreement) GetConditionalAccessPolicies() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.ConditionalAccessPolicies, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.termsOfUseAgreement", c.__id, "conditionalAccessPolicies")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.conditionalAccessPolicies()
+	})
+}
+
+// mqlMicrosoftIdentityAndAccessLifecycleWorkflow for the microsoft.identityAndAccess.lifecycleWorkflow resource
+type mqlMicrosoftIdentityAndAccessLifecycleWorkflow struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftIdentityAndAccessLifecycleWorkflowInternal it will be used here
+	Id                      plugin.TValue[string]
+	DisplayName             plugin.TValue[string]
+	Description             plugin.TValue[string]
+	Category                plugin.TValue[string]
+	IsEnabled               plugin.TValue[bool]
+	IsSchedulingEnabled     plugin.TValue[bool]
+	ExecutionConditions     plugin.TValue[any]
+	Version                 plugin.TValue[int64]
+	CreatedDateTime         plugin.TValue[*time.Time]
+	LastModifiedDateTime    plugin.TValue[*time.Time]
+	NextScheduleRunDateTime plugin.TValue[*time.Time]
+	CreatedBy               plugin.TValue[*mqlMicrosoftUser]
+	LastModifiedBy          plugin.TValue[*mqlMicrosoftUser]
+	Tasks                   plugin.TValue[[]any]
+}
+
+// createMicrosoftIdentityAndAccessLifecycleWorkflow creates a new instance of this resource
+func createMicrosoftIdentityAndAccessLifecycleWorkflow(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessLifecycleWorkflow{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.lifecycleWorkflow", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) MqlName() string {
+	return "microsoft.identityAndAccess.lifecycleWorkflow"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) GetCategory() *plugin.TValue[string] {
+	return &c.Category
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) GetIsEnabled() *plugin.TValue[bool] {
+	return &c.IsEnabled
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) GetIsSchedulingEnabled() *plugin.TValue[bool] {
+	return &c.IsSchedulingEnabled
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) GetExecutionConditions() *plugin.TValue[any] {
+	return &c.ExecutionConditions
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) GetVersion() *plugin.TValue[int64] {
+	return &c.Version
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) GetCreatedDateTime() *plugin.TValue[*time.Time] {
+	return &c.CreatedDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) GetLastModifiedDateTime() *plugin.TValue[*time.Time] {
+	return &c.LastModifiedDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) GetNextScheduleRunDateTime() *plugin.TValue[*time.Time] {
+	return &c.NextScheduleRunDateTime
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) GetCreatedBy() *plugin.TValue[*mqlMicrosoftUser] {
+	return plugin.GetOrCompute[*mqlMicrosoftUser](&c.CreatedBy, func() (*mqlMicrosoftUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.lifecycleWorkflow", c.__id, "createdBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftUser), nil
+			}
+		}
+
+		return c.createdBy()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) GetLastModifiedBy() *plugin.TValue[*mqlMicrosoftUser] {
+	return plugin.GetOrCompute[*mqlMicrosoftUser](&c.LastModifiedBy, func() (*mqlMicrosoftUser, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.lifecycleWorkflow", c.__id, "lastModifiedBy")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftUser), nil
+			}
+		}
+
+		return c.lastModifiedBy()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflow) GetTasks() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Tasks, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.lifecycleWorkflow", c.__id, "tasks")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.tasks()
+	})
+}
+
+// mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask for the microsoft.identityAndAccess.lifecycleWorkflow.task resource
+type mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftIdentityAndAccessLifecycleWorkflowTaskInternal it will be used here
+	Id                plugin.TValue[string]
+	DisplayName       plugin.TValue[string]
+	Description       plugin.TValue[string]
+	Category          plugin.TValue[string]
+	TaskDefinitionId  plugin.TValue[string]
+	IsEnabled         plugin.TValue[bool]
+	ContinueOnError   plugin.TValue[bool]
+	ExecutionSequence plugin.TValue[int64]
+	Arguments         plugin.TValue[map[string]any]
+}
+
+// createMicrosoftIdentityAndAccessLifecycleWorkflowTask creates a new instance of this resource
+func createMicrosoftIdentityAndAccessLifecycleWorkflowTask(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.lifecycleWorkflow.task", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask) MqlName() string {
+	return "microsoft.identityAndAccess.lifecycleWorkflow.task"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask) GetDisplayName() *plugin.TValue[string] {
+	return &c.DisplayName
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask) GetCategory() *plugin.TValue[string] {
+	return &c.Category
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask) GetTaskDefinitionId() *plugin.TValue[string] {
+	return &c.TaskDefinitionId
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask) GetIsEnabled() *plugin.TValue[bool] {
+	return &c.IsEnabled
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask) GetContinueOnError() *plugin.TValue[bool] {
+	return &c.ContinueOnError
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask) GetExecutionSequence() *plugin.TValue[int64] {
+	return &c.ExecutionSequence
+}
+
+func (c *mqlMicrosoftIdentityAndAccessLifecycleWorkflowTask) GetArguments() *plugin.TValue[map[string]any] {
+	return &c.Arguments
+}
+
+// mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition for the microsoft.identityAndAccess.customSecurityAttributeDefinition resource
+type mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionInternal
+	Id                      plugin.TValue[string]
+	Name                    plugin.TValue[string]
+	Description             plugin.TValue[string]
+	Type                    plugin.TValue[string]
+	Status                  plugin.TValue[string]
+	IsCollection            plugin.TValue[bool]
+	IsSearchable            plugin.TValue[bool]
+	UsePreDefinedValuesOnly plugin.TValue[bool]
+	AttributeSet            plugin.TValue[*mqlMicrosoftIdentityAndAccessAttributeSet]
+	AllowedValues           plugin.TValue[[]any]
+}
+
+// createMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition creates a new instance of this resource
+func createMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.customSecurityAttributeDefinition", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition) MqlName() string {
+	return "microsoft.identityAndAccess.customSecurityAttributeDefinition"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition) GetType() *plugin.TValue[string] {
+	return &c.Type
+}
+
+func (c *mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition) GetStatus() *plugin.TValue[string] {
+	return &c.Status
+}
+
+func (c *mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition) GetIsCollection() *plugin.TValue[bool] {
+	return &c.IsCollection
+}
+
+func (c *mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition) GetIsSearchable() *plugin.TValue[bool] {
+	return &c.IsSearchable
+}
+
+func (c *mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition) GetUsePreDefinedValuesOnly() *plugin.TValue[bool] {
+	return &c.UsePreDefinedValuesOnly
+}
+
+func (c *mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition) GetAttributeSet() *plugin.TValue[*mqlMicrosoftIdentityAndAccessAttributeSet] {
+	return plugin.GetOrCompute[*mqlMicrosoftIdentityAndAccessAttributeSet](&c.AttributeSet, func() (*mqlMicrosoftIdentityAndAccessAttributeSet, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.customSecurityAttributeDefinition", c.__id, "attributeSet")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.(*mqlMicrosoftIdentityAndAccessAttributeSet), nil
+			}
+		}
+
+		return c.attributeSet()
+	})
+}
+
+func (c *mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinition) GetAllowedValues() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.AllowedValues, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.customSecurityAttributeDefinition", c.__id, "allowedValues")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.allowedValues()
+	})
+}
+
+// mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionAllowedValue for the microsoft.identityAndAccess.customSecurityAttributeDefinition.allowedValue resource
+type mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionAllowedValue struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionAllowedValueInternal it will be used here
+	Id       plugin.TValue[string]
+	IsActive plugin.TValue[bool]
+}
+
+// createMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionAllowedValue creates a new instance of this resource
+func createMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionAllowedValue(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionAllowedValue{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.customSecurityAttributeDefinition.allowedValue", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionAllowedValue) MqlName() string {
+	return "microsoft.identityAndAccess.customSecurityAttributeDefinition.allowedValue"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionAllowedValue) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionAllowedValue) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessCustomSecurityAttributeDefinitionAllowedValue) GetIsActive() *plugin.TValue[bool] {
+	return &c.IsActive
+}
+
+// mqlMicrosoftIdentityAndAccessAttributeSet for the microsoft.identityAndAccess.attributeSet resource
+type mqlMicrosoftIdentityAndAccessAttributeSet struct {
+	MqlRuntime *plugin.Runtime
+	__id       string
+	// optional: if you define mqlMicrosoftIdentityAndAccessAttributeSetInternal it will be used here
+	Id                  plugin.TValue[string]
+	Description         plugin.TValue[string]
+	MaxAttributesPerSet plugin.TValue[int64]
+	Definitions         plugin.TValue[[]any]
+}
+
+// createMicrosoftIdentityAndAccessAttributeSet creates a new instance of this resource
+func createMicrosoftIdentityAndAccessAttributeSet(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlMicrosoftIdentityAndAccessAttributeSet{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	// to override __id implement: id() (string, error)
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("microsoft.identityAndAccess.attributeSet", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAttributeSet) MqlName() string {
+	return "microsoft.identityAndAccess.attributeSet"
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAttributeSet) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAttributeSet) GetId() *plugin.TValue[string] {
+	return &c.Id
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAttributeSet) GetDescription() *plugin.TValue[string] {
+	return &c.Description
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAttributeSet) GetMaxAttributesPerSet() *plugin.TValue[int64] {
+	return &c.MaxAttributesPerSet
+}
+
+func (c *mqlMicrosoftIdentityAndAccessAttributeSet) GetDefinitions() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.Definitions, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.identityAndAccess.attributeSet", c.__id, "definitions")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.definitions()
+	})
 }
 
 // mqlMicrosoftIdentityAndAccessPrivilegedIdentityManagement for the microsoft.identityAndAccess.privilegedIdentityManagement resource
@@ -22695,6 +23734,7 @@ type mqlMicrosoftConditionalAccessPolicyGrantControls struct {
 	AuthenticationStrength      plugin.TValue[*mqlMicrosoftConditionalAccessPolicyGrantControlsAuthenticationStrength]
 	CustomAuthenticationFactors plugin.TValue[[]any]
 	TermsOfUse                  plugin.TValue[[]any]
+	TermsOfUseAgreements        plugin.TValue[[]any]
 }
 
 // createMicrosoftConditionalAccessPolicyGrantControls creates a new instance of this resource
@@ -22756,6 +23796,22 @@ func (c *mqlMicrosoftConditionalAccessPolicyGrantControls) GetCustomAuthenticati
 
 func (c *mqlMicrosoftConditionalAccessPolicyGrantControls) GetTermsOfUse() *plugin.TValue[[]any] {
 	return &c.TermsOfUse
+}
+
+func (c *mqlMicrosoftConditionalAccessPolicyGrantControls) GetTermsOfUseAgreements() *plugin.TValue[[]any] {
+	return plugin.GetOrCompute[[]any](&c.TermsOfUseAgreements, func() ([]any, error) {
+		if c.MqlRuntime.HasRecording {
+			d, err := c.MqlRuntime.FieldResourceFromRecording("microsoft.conditionalAccess.policy.grantControls", c.__id, "termsOfUseAgreements")
+			if err != nil {
+				return nil, err
+			}
+			if d != nil {
+				return d.Value.([]any), nil
+			}
+		}
+
+		return c.termsOfUseAgreements()
+	})
 }
 
 // mqlMicrosoftConditionalAccessPolicySessionControls for the microsoft.conditionalAccess.policy.sessionControls resource
