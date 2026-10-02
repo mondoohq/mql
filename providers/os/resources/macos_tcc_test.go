@@ -5,13 +5,16 @@ package resources
 
 import (
 	"database/sql"
+	"io/fs"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	_ "github.com/glebarez/go-sqlite"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mondoo.com/mql/llx"
 )
 
 func TestTccServiceName(t *testing.T) {
@@ -327,4 +330,25 @@ func TestReadTccStoreUnreadableIsAnError(t *testing.T) {
 	_, err := readTccStore(afs, dbPath)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), dbPath)
+	assert.NotErrorIs(t, err, llx.ErrForbidden)
+}
+
+// tccRefusingFs refuses every open the way macOS does for a TCC store read
+// without Full Disk Access.
+type tccRefusingFs struct{ afero.Fs }
+
+func (f tccRefusingFs) Open(name string) (afero.File, error) {
+	return nil, &fs.PathError{Op: "open", Path: name, Err: syscall.EPERM}
+}
+
+func TestReadTccStoreRefusedIsForbidden(t *testing.T) {
+	// Without Full Disk Access the read is refused. That is a refusal, not an
+	// empty set of grants, so it must surface as a forbidden error.
+	afs := &afero.Afero{Fs: tccRefusingFs{afero.NewMemMapFs()}}
+	path := "/Library/Application Support/com.apple.TCC/TCC.db"
+	rows, err := readTccStore(afs, path)
+	require.Error(t, err)
+	assert.Nil(t, rows)
+	assert.ErrorIs(t, err, llx.ErrForbidden)
+	assert.Contains(t, err.Error(), path)
 }

@@ -239,6 +239,12 @@ func readTccStore(afs *afero.Afero, storePath string) ([]tccRow, error) {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}
+		if errors.Is(err, fs.ErrPermission) {
+			// TCC protects its stores: without Full Disk Access (or root, for
+			// another user's store) the read is refused, which is not an
+			// empty set of grants.
+			return nil, llx.Forbidden(fmt.Errorf("cannot read TCC store %s, reading it requires Full Disk Access: %w", storePath, err))
+		}
 		return nil, fmt.Errorf("cannot read TCC store %s: %w", storePath, err)
 	}
 
