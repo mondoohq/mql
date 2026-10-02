@@ -8167,8 +8167,15 @@ private nftables.set @defaults("family table name") {
   // Set flags (e.g., "constant", "interval", "timeout", "dynamic")
   flags []string
   // Set elements (values as strings)
+  //
+  // Prefixes read "198.51.100.0/24", ranges "1024-65535", concatenations
+  // "192.0.2.10 . 22". Map elements read "key : value", for example
+  // "9001 : drop".
   elements []string
   // Whether this is a map (has both key and value types)
+  //
+  // Named maps (`map portmap { type inet_service : verdict }`) are listed
+  // with the sets, with `valueType` holding the value type.
   isMap bool
   // Set timeout in seconds (0 if not set)
   timeout int

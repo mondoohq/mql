@@ -384,3 +384,79 @@ func TestNftUnsupportedVersionError(t *testing.T) {
 	err := nftUnsupportedVersionError("0.8.2")
 	assert.EqualError(t, err, "nft 0.8.2 cannot list the ruleset as JSON; reading nftables tables, chains, rules, and sets requires nft 0.9.1 or later")
 }
+
+func TestHasEffectiveCapNetAdmin(t *testing.T) {
+	// CapEff lines captured on Ubuntu 20.04: a plain user, then the same user under sudo.
+	has, ok := hasEffectiveCapNetAdmin("Name:\tcat\nUid:\t1000\t1000\t1000\t1000\nCapInh:\t0000000000000000\nCapPrm:\t0000000000000000\nCapEff:\t0000000000000000\nCapBnd:\t000001ffffffffff\n")
+	assert.True(t, ok)
+	assert.False(t, has)
+
+	has, ok = hasEffectiveCapNetAdmin("Name:\tcat\nCapEff:\t000001ffffffffff\n")
+	assert.True(t, ok)
+	assert.True(t, has)
+
+	// CAP_NET_ADMIN alone (bit 12), as an unprivileged process granted only that capability.
+	has, ok = hasEffectiveCapNetAdmin("CapEff:\t0000000000001000\n")
+	assert.True(t, ok)
+	assert.True(t, has)
+
+	// Every capability except CAP_NET_ADMIN.
+	has, ok = hasEffectiveCapNetAdmin("CapEff:\t000001ffffffefff\n")
+	assert.True(t, ok)
+	assert.False(t, has)
+
+	_, ok = hasEffectiveCapNetAdmin("Name:\tcat\n")
+	assert.False(t, ok, "missing CapEff line")
+	_, ok = hasEffectiveCapNetAdmin("CapEff:\tzz\n")
+	assert.False(t, ok, "unparsable CapEff line")
+}
+
+func TestNftRulesetHasTables(t *testing.T) {
+	// nft 0.9.3 run as a non-root user on Ubuntu 20.04: exit 0, metainfo only.
+	empty, err := parseNftRuleset([]byte(`{"nftables": [{"metainfo": {"version": "0.9.3", "release_name": "Topsy", "json_schema_version": 1}}]}`))
+	require.NoError(t, err)
+	assert.False(t, empty.hasTables())
+
+	full, err := parseNftRuleset([]byte(`{"nftables": [{"metainfo": {"version": "0.9.3", "release_name": "Topsy", "json_schema_version": 1}}, {"table": {"family": "ip", "name": "sweepnat", "handle": 2}}]}`))
+	require.NoError(t, err)
+	assert.True(t, full.hasTables())
+}
+
+// Captured from `nft -j list ruleset` on Ubuntu 20.04 (nft 0.9.3) through 26.04.
+const nftSweepSetsJSON = `{"nftables": [
+  {"metainfo": {"version": "0.9.3", "release_name": "Topsy", "json_schema_version": 1}},
+  {"table": {"family": "inet", "name": "sweep", "handle": 1}},
+  {"set": {"family": "inet", "name": "tmo", "table": "sweep", "type": "ipv4_addr", "handle": 6, "flags": ["timeout"], "timeout": 3600, "elem": [{"elem": {"val": "192.0.2.1", "timeout": 1800, "expires": 1599}}, {"elem": {"val": "192.0.2.2", "expires": 3399}}]}},
+  {"map": {"family": "inet", "name": "portmap", "table": "sweep", "type": "inet_service", "handle": 8, "map": "verdict", "elem": [[9001, {"drop": null}], [9002, {"accept": null}]]}}
+]}`
+
+func TestParseNftRuleset_MapsAndTimeoutElements(t *testing.T) {
+	ruleset, err := parseNftRuleset([]byte(nftSweepSetsJSON))
+	require.NoError(t, err)
+
+	var tmo, portmap *nftSet
+	for _, obj := range ruleset.Nftables {
+		if obj.Set != nil && obj.Set.Name == "tmo" {
+			tmo = obj.Set
+		}
+		if obj.Map != nil {
+			portmap = obj.Map
+		}
+	}
+	require.NotNil(t, tmo)
+	require.NotNil(t, portmap, "the map object must decode")
+
+	assert.Equal(t, []string{"192.0.2.1", "192.0.2.2"}, tmo.parseSetElements())
+	assert.EqualValues(t, 3600, tmo.Timeout)
+
+	assert.Equal(t, "portmap", portmap.Name)
+	assert.Equal(t, "inet_service", portmap.parseKeyType())
+	assert.Equal(t, "verdict", portmap.Map)
+	assert.Equal(t, []string{"9001 : drop", "9002 : accept"}, portmap.parseSetElements())
+}
+
+func TestNftElemToString_Verdicts(t *testing.T) {
+	assert.Equal(t, "drop", nftElemToString(map[string]any{"drop": nil}))
+	assert.Equal(t, "jump regular", nftElemToString(map[string]any{"jump": map[string]any{"target": "regular"}}))
+	assert.Equal(t, "goto regular", nftElemToString(map[string]any{"goto": map[string]any{"target": "regular"}}))
+}

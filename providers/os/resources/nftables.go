@@ -6,6 +6,7 @@ package resources
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -30,6 +31,10 @@ type nftObject struct {
 	Chain    *nftChain    `json:"chain,omitempty"`
 	Rule     *nftRule     `json:"rule,omitempty"`
 	Set      *nftSet      `json:"set,omitempty"`
+	// Map is a named map (`map portmap { type inet_service : verdict }`).
+	// nft emits it under its own "map" key with the same shape as a set
+	// plus the value type in nftSet.Map.
+	Map *nftSet `json:"map,omitempty"`
 }
 
 type nftMetainfo struct {
@@ -139,6 +144,12 @@ func (s *nftSet) parseSetElements() []string {
 	}
 	var result []string
 	for _, elem := range elems {
+		// A map element is a [key, value] pair, rendered as nft prints it:
+		// "9001 : drop".
+		if pair, ok := elem.([]any); ok && len(pair) == 2 {
+			result = append(result, nftElemToString(pair[0])+" : "+nftElemToString(pair[1]))
+			continue
+		}
 		result = append(result, nftElemToString(elem))
 	}
 	return result
@@ -175,9 +186,29 @@ func nftElemToString(v any) string {
 			}
 			return strings.Join(parts, " . ")
 		}
-		// Handle elem with map value: {"elem": {"val": x, "timeout": n, ...}}
+		// Handle an element carrying per-element attributes:
+		// {"elem": {"val": x, "timeout": n, "expires": n, ...}}
+		if inner, ok := x["elem"].(map[string]any); ok {
+			if val, ok := inner["val"]; ok {
+				return nftElemToString(val)
+			}
+		}
 		if val, ok := x["val"]; ok {
 			return nftElemToString(val)
+		}
+		// Handle a verdict map value: {"drop": null}, {"accept": null},
+		// {"jump": {"target": "chain"}}, {"goto": {"target": "chain"}}.
+		if len(x) == 1 {
+			for verdict, arg := range x {
+				if arg == nil {
+					return verdict
+				}
+				if m, ok := arg.(map[string]any); ok {
+					if target, ok := m["target"].(string); ok {
+						return verdict + " " + target
+					}
+				}
+			}
 		}
 		// Fallback: JSON encode
 		b, _ := json.Marshal(x)
@@ -418,9 +449,69 @@ func (n *mqlNftables) fetchRuleset() (*nftRuleset, error) {
 	if err != nil {
 		return nil, err
 	}
+	if !ruleset.hasTables() {
+		if err := n.checkEmptyRulesetReadable(); err != nil {
+			return nil, err
+		}
+	}
 	n.cacheRuleset = ruleset
 	n.fetched = true
 	return ruleset, nil
+}
+
+// checkEmptyRulesetReadable tells an empty ruleset from one nft could not
+// read. Listing the ruleset needs CAP_NET_ADMIN. nft 1.0 and later fail with
+// "Operation not permitted" without it, but nft 0.9 (Ubuntu 20.04) swallows
+// the netlink refusal and prints only the metainfo header with exit code 0,
+// which looks exactly like a host without any tables. When the capability
+// set cannot be read the empty ruleset is trusted as before.
+func (n *mqlNftables) checkEmptyRulesetReadable() error {
+	o, err := CreateResource(n.MqlRuntime, "command", map[string]*llx.RawData{
+		"command": llx.StringData("cat /proc/self/status"),
+	})
+	if err != nil {
+		return nil
+	}
+	cmd := o.(*mqlCommand)
+	if exit := cmd.GetExitcode(); exit.Error != nil || exit.Data != 0 {
+		return nil
+	}
+	if has, ok := hasEffectiveCapNetAdmin(cmd.Stdout.Data); ok && !has {
+		return llx.Forbidden(errors.New("nft listed an empty ruleset, but the scan runs without CAP_NET_ADMIN, so the ruleset could not be read (you must be root)"))
+	}
+	return nil
+}
+
+// capNetAdmin is CAP_NET_ADMIN's bit in the Linux capability sets.
+const capNetAdmin = 12
+
+// hasEffectiveCapNetAdmin reads the CapEff line of /proc/<pid>/status and
+// reports whether CAP_NET_ADMIN is in the effective set. ok is false when
+// the line is missing or unparsable.
+func hasEffectiveCapNetAdmin(status string) (has bool, ok bool) {
+	for _, line := range strings.Split(status, "\n") {
+		v, found := strings.CutPrefix(line, "CapEff:")
+		if !found {
+			continue
+		}
+		caps, err := strconv.ParseUint(strings.TrimSpace(v), 16, 64)
+		if err != nil {
+			return false, false
+		}
+		return caps&(1<<capNetAdmin) != 0, true
+	}
+	return false, false
+}
+
+// hasTables reports whether the listing holds at least one table. A ruleset
+// with only the metainfo header is empty.
+func (r *nftRuleset) hasTables() bool {
+	for _, obj := range r.Nftables {
+		if obj.Table != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func nftUnsupportedVersionError(version string) error {
@@ -606,10 +697,13 @@ func nftCollectRules(runtime *plugin.Runtime, ruleset *nftRuleset, family, table
 func nftCollectSets(runtime *plugin.Runtime, ruleset *nftRuleset, family, table string) ([]any, error) {
 	var sets []any
 	for _, obj := range ruleset.Nftables {
-		if obj.Set == nil {
+		s := obj.Set
+		if s == nil {
+			s = obj.Map
+		}
+		if s == nil {
 			continue
 		}
-		s := obj.Set
 		if s.Family != family || s.Table != table {
 			continue
 		}
