@@ -753,12 +753,11 @@ func (s *mqlApache2Conf) traceEnable(params map[string]any) (string, error) {
 }
 
 // apacheParamScalarOr is apacheParamScalar with a default for a directive the
-// config does not set.
+// config does not set. httpd rejects these directives without an argument, so
+// an empty value only occurs when the directive is absent.
 func apacheParamScalarOr(params map[string]any, name string, def string) string {
-	for k, v := range params {
-		if _, ok := v.(string); ok && strings.EqualFold(k, name) {
-			return apacheParamScalar(params, name)
-		}
+	if v := apacheParamScalar(params, name); v != "" {
+		return v
 	}
 	return def
 }
