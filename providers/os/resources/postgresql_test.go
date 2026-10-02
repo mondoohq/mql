@@ -298,3 +298,75 @@ func TestPostgresqlNilFilesystemDoesNotPanic(t *testing.T) {
 		"/usr/local/pgsql/data/postgresql.conf",
 	}, postgresqlConfigSearchPaths(nil, "postgresql.conf"))
 }
+
+// Ubuntu 16.04 ships PostgreSQL 9.5 in /etc/postgresql/9.5/main. Before
+// PostgreSQL 10 the major version had two parts, and an integer-only parse
+// of the directory name skipped it, so every postgresql resource read empty
+// on that host. Fails if postgresqlVersionRank rejects dotted versions.
+func TestPostgresqlFindsPre10Layout(t *testing.T) {
+	for _, name := range []string{"postgresql.conf", "pg_hba.conf", "pg_ident.conf"} {
+		fs := pgFs(t, "/etc/postgresql/9.5/main/"+name)
+		assert.Equal(t, "/etc/postgresql/9.5/main/"+name, findPostgresqlConfigFile(fs, name))
+	}
+
+	fs := pgFs(t, "/var/lib/pgsql/9.6/data/postgresql.conf")
+	assert.Equal(t, "/var/lib/pgsql/9.6/data/postgresql.conf",
+		findPostgresqlConfigFile(fs, "postgresql.conf"))
+}
+
+// Side-by-side clusters across the 9.x/10 boundary: 9.6 is newer than 9.5,
+// and 10 is newer than both.
+func TestPostgresqlPre10VersionOrdering(t *testing.T) {
+	fs := pgFs(t,
+		"/etc/postgresql/9.5/main/postgresql.conf",
+		"/etc/postgresql/9.6/main/postgresql.conf",
+	)
+	assert.Equal(t, "/etc/postgresql/9.6/main/postgresql.conf",
+		findPostgresqlConfigFile(fs, "postgresql.conf"))
+
+	fs = pgFs(t,
+		"/etc/postgresql/9.6/main/postgresql.conf",
+		"/etc/postgresql/10/main/postgresql.conf",
+	)
+	assert.Equal(t, "/etc/postgresql/10/main/postgresql.conf",
+		findPostgresqlConfigFile(fs, "postgresql.conf"))
+}
+
+func TestPostgresqlVersionRank(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		rank int
+		ok   bool
+	}{
+		{"18", 1800, true},
+		{"9.5", 905, true},
+		{"9.6", 906, true},
+		{"backup", 0, false},
+		{"9.", 0, false},
+		{".5", 0, false},
+		{"9.5.1", 0, false},
+		{"0", 0, false},
+	} {
+		rank, ok := postgresqlVersionRank(tc.in)
+		assert.Equal(t, tc.ok, ok, tc.in)
+		assert.Equal(t, tc.rank, rank, tc.in)
+	}
+}
+
+// With no pg_hba.conf or pg_ident.conf found, rules and mappings are null.
+// An empty list made `postgresql.hba.rules.none(authMethod == "trust")`
+// pass on a host nothing was read from. Fails if rules()/mappings() go back
+// to returning an empty list for a nil file.
+func TestPostgresqlHbaIdentNoFileIsNull(t *testing.T) {
+	hba := &mqlPostgresqlHba{}
+	rules, err := hba.rules(nil)
+	require.NoError(t, err)
+	assert.Nil(t, rules)
+	assert.True(t, hba.Rules.State&plugin.StateIsNull != 0, "rules must be null, not []")
+
+	ident := &mqlPostgresqlIdent{}
+	mappings, err := ident.mappings(nil)
+	require.NoError(t, err)
+	assert.Nil(t, mappings)
+	assert.True(t, ident.Mappings.State&plugin.StateIsNull != 0, "mappings must be null, not []")
+}

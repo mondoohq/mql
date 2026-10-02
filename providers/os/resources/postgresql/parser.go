@@ -10,7 +10,10 @@
 package postgresql
 
 import (
+	"errors"
+	"io/fs"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -27,11 +30,48 @@ type Conf struct {
 	Files []string
 }
 
-// FileReader returns the textual content of `path`. Returning an error other
-// than not-found will short-circuit the parser; not-found errors are silently
-// ignored for `include_if_exists` directives. The parser does not interpret
-// the error — it bubbles errors up via the returned slice on the parser.
+// FileReader returns the textual content of `path`. A missing file must be
+// reported with an error that wraps fs.ErrNotExist: `include_if_exists` and
+// `include_dir` skip those, the way PostgreSQL does. Any other error (a
+// permission refusal, a transport failure) aborts the parse, since the
+// fragment it could not read may hold the setting being audited.
 type FileReader func(path string) (string, error)
+
+// DirLister returns the paths of the regular files directly inside dir. A
+// missing directory must be reported with an error that wraps fs.ErrNotExist.
+// The parser applies PostgreSQL's include_dir filter (`*.conf`, no dotfiles)
+// and ordering itself, so the lister may return every entry in any order.
+type DirLister func(dir string) ([]string, error)
+
+func isNotExist(err error) bool {
+	return errors.Is(err, fs.ErrNotExist)
+}
+
+// includeDirFiles returns the files PostgreSQL loads for `include_dir dir`:
+// names ending in `.conf` that do not start with a dot, in byte order. A
+// missing directory yields nothing.
+func includeDirFiles(dir string, dirLister DirLister) ([]string, error) {
+	if dirLister == nil {
+		return nil, nil
+	}
+	entries, err := dirLister(dir)
+	if err != nil {
+		if isNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	out := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		base := filepath.Base(entry)
+		if strings.HasPrefix(base, ".") || !strings.HasSuffix(base, ".conf") {
+			continue
+		}
+		out = append(out, entry)
+	}
+	sort.Strings(out)
+	return out, nil
+}
 
 // GlobExpander expands a single shell-style glob pattern into a list of file
 // paths. PostgreSQL itself does not glob include directives — but providing
@@ -45,14 +85,14 @@ type GlobExpander func(pattern string) ([]string, error)
 // used for both the root file and includes. `dirLister` (optional) expands
 // `include_dir` arguments into a sorted list of files; pass nil when the
 // caller doesn't have a way to enumerate a directory.
-func ParseConf(path string, fileReader FileReader, dirLister func(dir string) ([]string, error)) (*Conf, error) {
+func ParseConf(path string, fileReader FileReader, dirLister DirLister) (*Conf, error) {
 	c := &Conf{Params: map[string]string{}}
 	visited := map[string]bool{}
 	err := parseConfRec(c, path, fileReader, dirLister, visited)
 	return c, err
 }
 
-func parseConfRec(c *Conf, path string, fileReader FileReader, dirLister func(dir string) ([]string, error), visited map[string]bool) error {
+func parseConfRec(c *Conf, path string, fileReader FileReader, dirLister DirLister, visited map[string]bool) error {
 	// Canonicalise the path before checking the cycle guard so equivalent
 	// spellings (`./foo.conf` vs `conf.d/../foo.conf` vs `foo.conf`) collapse
 	// to the same key. Without this the recursive include detection would
@@ -97,27 +137,15 @@ func parseConfRec(c *Conf, path string, fileReader FileReader, dirLister func(di
 			}
 		case "include_if_exists":
 			next := resolveInclude(baseDir, value)
-			if err := parseConfRec(c, next, fileReader, dirLister, visited); err != nil {
-				// Best-effort: only swallow not-found-style errors. We treat
-				// any error as "file does not exist" since the parser has no
-				// portable way to discriminate not-found from other I/O
-				// errors across filesystem implementations.
-				_ = err
+			if err := parseConfRec(c, next, fileReader, dirLister, visited); err != nil && !isNotExist(err) {
+				return err
 			}
 		case "include_dir":
-			dir := resolveInclude(baseDir, value)
-			if dirLister == nil {
-				continue
-			}
-			entries, err := dirLister(dir)
+			entries, err := includeDirFiles(resolveInclude(baseDir, value), dirLister)
 			if err != nil {
-				continue
+				return err
 			}
-			// PostgreSQL loads files in C-locale sort order, *.conf only.
 			for _, entry := range entries {
-				if !strings.HasSuffix(entry, ".conf") {
-					continue
-				}
 				if err := parseConfRec(c, entry, fileReader, dirLister, visited); err != nil {
 					return err
 				}
@@ -229,19 +257,82 @@ func SplitListParam(value string) []string {
 	return fields
 }
 
-// IsTruthy returns whether a postgresql.conf value is one of the truthy
-// tokens PostgreSQL recognises (on, true, yes, 1) — case-insensitive.
-func IsTruthy(value string) bool {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "on", "true", "yes", "1":
-		return true
+// ParseBool reads a boolean parameter value the way PostgreSQL's parse_bool
+// does: case-insensitive, and any unique prefix of true, false, yes, no, on
+// or off is accepted, so `t`, `ye` and `of` are valid. `o` alone is
+// ambiguous and rejected. ok is false for a value PostgreSQL would refuse.
+func ParseBool(value string) (val bool, ok bool) {
+	v := strings.ToLower(strings.TrimSpace(value))
+	if v == "" {
+		return false, false
 	}
-	return false
+	switch v[0] {
+	case 't':
+		return true, strings.HasPrefix("true", v)
+	case 'f':
+		return false, strings.HasPrefix("false", v)
+	case 'y':
+		return true, strings.HasPrefix("yes", v)
+	case 'n':
+		return false, strings.HasPrefix("no", v)
+	case 'o':
+		if len(v) < 2 {
+			return false, false
+		}
+		if strings.HasPrefix("on", v) {
+			return true, true
+		}
+		return false, strings.HasPrefix("off", v)
+	case '1':
+		return true, v == "1"
+	case '0':
+		return false, v == "0"
+	}
+	return false, false
+}
+
+// IsTruthy returns whether a postgresql.conf value is a boolean PostgreSQL
+// reads as true (see ParseBool).
+func IsTruthy(value string) bool {
+	val, ok := ParseBool(value)
+	return ok && val
+}
+
+// LogConnectionsEnabled reports whether a log_connections value logs what
+// `on` logs. Up to PostgreSQL 17 the parameter is a boolean. PostgreSQL 18
+// also accepts a list of the aspects to log (receipt, authentication,
+// authorization, setup_durations) or `all`, where `on` stands for receipt,
+// authentication and authorization; a list counts as enabled when it covers
+// those three. PostgreSQL 18 no longer takes a boolean prefix such as `t`
+// here; the server refuses to start with one, so reading it as the boolean
+// it abbreviates misreports nothing that runs.
+func LogConnectionsEnabled(value string) bool {
+	if val, ok := ParseBool(value); ok {
+		return val
+	}
+	need := map[string]bool{"receipt": false, "authentication": false, "authorization": false}
+	for _, aspect := range SplitListParam(strings.ToLower(value)) {
+		if aspect == "all" {
+			return true
+		}
+		if _, ok := need[aspect]; ok {
+			need[aspect] = true
+		}
+	}
+	for _, seen := range need {
+		if !seen {
+			return false
+		}
+	}
+	return true
 }
 
 // HbaRule is one parsed entry from pg_hba.conf. Fields preserve the file's
 // token order so the consumer can faithfully audit the original line.
 type HbaRule struct {
+	// File is the file the rule was read from: pg_hba.conf itself or a file
+	// it includes. Empty when the rule was parsed from bare content.
+	File       string
 	LineNumber int
 	Type       string
 	Database   string
@@ -328,55 +419,133 @@ func stripCommentAndContinuation(line string) (string, bool) {
 // are merged into a single record, and double-quoted tokens are honored so a
 // `#`, backslash, or whitespace inside quotes stays literal. Lines that don't
 // form a well-formed rule (too few fields, or a leading token that isn't a
-// known connection type, such as an `include` directive) are silently skipped.
-// Each rule's LineNumber is the 1-based line where its record begins.
+// known connection type) are silently skipped, and so are `include`
+// directives: use ParseHbaFile to follow them. Each rule's LineNumber is the
+// 1-based line where its record begins.
 func ParseHba(content string) []HbaRule {
 	var rules []HbaRule
+	for _, rec := range preprocessRecords(content) {
+		if rule, ok := hbaRule(rec); ok {
+			rules = append(rules, rule)
+		}
+	}
+	return rules
+}
+
+// ParseHbaFile parses pg_hba.conf at path and every file it pulls in with
+// `include`, `include_if_exists` and `include_dir` (PostgreSQL 16 and later).
+// Rules come back in the order the server evaluates them, an included file's
+// rules in place of its directive, each tagged with the file it came from.
+func ParseHbaFile(path string, fileReader FileReader, dirLister DirLister) ([]HbaRule, error) {
+	var rules []HbaRule
+	err := walkAuthFile(path, fileReader, dirLister, map[string]bool{}, func(file string, rec record) {
+		if rule, ok := hbaRule(rec); ok {
+			rule.File = file
+			rules = append(rules, rule)
+		}
+	})
+	return rules, err
+}
+
+// walkAuthFile reads an authentication file (pg_hba.conf or pg_ident.conf),
+// hands each record to fn, and follows the inclusion directives PostgreSQL 16
+// added to both files: a record of exactly two tokens whose first is
+// `include`, `include_if_exists` or `include_dir`. A relative target is
+// resolved against the directory of the file that names it. A missing
+// `include` target is an error (the server refuses to load the file); a
+// missing `include_if_exists` target or include_dir directory contributes
+// nothing.
+func walkAuthFile(path string, fileReader FileReader, dirLister DirLister, visited map[string]bool, fn func(file string, rec record)) error {
+	key := filepath.Clean(path)
+	if visited[key] {
+		return nil
+	}
+	visited[key] = true
+
+	content, err := fileReader(path)
+	if err != nil {
+		return err
+	}
+	baseDir := filepath.Dir(path)
+
 	for _, rec := range preprocessRecords(content) {
 		if rec.text == "" {
 			continue
 		}
 		tokens := tokenizeHba(rec.text)
-		if len(tokens) < 4 {
+		if len(tokens) != 2 {
+			fn(path, rec)
 			continue
 		}
-		rule := HbaRule{LineNumber: rec.num, Type: tokens[0]}
 		switch tokens[0] {
-		case "local":
-			// type database user auth-method [options...]
-			if len(tokens) < 4 {
-				continue
+		case "include":
+			if err := walkAuthFile(resolveInclude(baseDir, tokens[1]), fileReader, dirLister, visited, fn); err != nil {
+				return err
 			}
-			rule.Database = tokens[1]
-			rule.User = tokens[2]
-			rule.AuthMethod = tokens[3]
-			rule.Options = parseHbaOptions(tokens[4:])
-		case "host", "hostssl", "hostnossl", "hostgssenc", "hostnogssenc":
-			// type database user address auth-method [options...]
-			// Address may be `IP/CIDR`, `hostname`, `samehost`, `samenet`,
-			// `all`, or an `IP NETMASK` pair (two tokens).
-			if len(tokens) < 5 {
-				continue
+		case "include_if_exists":
+			err := walkAuthFile(resolveInclude(baseDir, tokens[1]), fileReader, dirLister, visited, fn)
+			if err != nil && !isNotExist(err) {
+				return err
 			}
-			rule.Database = tokens[1]
-			rule.User = tokens[2]
-			rule.Address = tokens[3]
-			authIdx := 4
-			// Detect the netmask form: `IP NETMASK` (two tokens). The next
-			// token is a netmask when it looks like an IP/CIDR-ish value and
-			// the token after it would be the auth method.
-			if len(tokens) >= 6 && looksLikeNetmask(tokens[4]) {
-				rule.Address = tokens[3] + " " + tokens[4]
-				authIdx = 5
+		case "include_dir":
+			entries, err := includeDirFiles(resolveInclude(baseDir, tokens[1]), dirLister)
+			if err != nil {
+				return err
 			}
-			rule.AuthMethod = tokens[authIdx]
-			rule.Options = parseHbaOptions(tokens[authIdx+1:])
+			for _, entry := range entries {
+				if err := walkAuthFile(entry, fileReader, dirLister, visited, fn); err != nil {
+					return err
+				}
+			}
 		default:
-			continue
+			fn(path, rec)
 		}
-		rules = append(rules, rule)
 	}
-	return rules
+	return nil
+}
+
+// hbaRule builds a rule from one record, or reports false when the record is
+// blank or not a well-formed rule.
+func hbaRule(rec record) (HbaRule, bool) {
+	if rec.text == "" {
+		return HbaRule{}, false
+	}
+	tokens := tokenizeHba(rec.text)
+	if len(tokens) < 4 {
+		return HbaRule{}, false
+	}
+	rule := HbaRule{LineNumber: rec.num, Type: tokens[0]}
+	switch tokens[0] {
+	case "local":
+		// type database user auth-method [options...]
+		rule.Database = tokens[1]
+		rule.User = tokens[2]
+		rule.AuthMethod = tokens[3]
+		rule.Options = parseHbaOptions(tokens[4:])
+	case "host", "hostssl", "hostnossl", "hostgssenc", "hostnogssenc":
+		// type database user address auth-method [options...]
+		// Address may be `IP/CIDR`, `hostname`, `samehost`, `samenet`,
+		// `all`, or an `IP NETMASK` pair (two tokens).
+		if len(tokens) < 5 {
+			return HbaRule{}, false
+		}
+		rule.Database = tokens[1]
+		rule.User = tokens[2]
+		rule.Address = tokens[3]
+		authIdx := 4
+		// Detect the netmask form: `IP NETMASK` (two tokens). The next
+		// token is a netmask when it looks like an IP/CIDR-ish value and
+		// the token after it would be the auth method.
+		if len(tokens) >= 6 && looksLikeNetmask(tokens[4]) {
+			rule.Address = tokens[3] + " " + tokens[4]
+			authIdx = 5
+		}
+		rule.AuthMethod = tokens[authIdx]
+		rule.Options = parseHbaOptions(tokens[authIdx+1:])
+	default:
+		return HbaRule{}, false
+	}
+	return rule, true
 }
 
 // tokenizeHba splits a pg_hba.conf line into whitespace-separated tokens,
@@ -452,6 +621,9 @@ func looksLikeNetmask(token string) bool {
 
 // IdentMapping is one parsed entry from pg_ident.conf.
 type IdentMapping struct {
+	// File is the file the mapping was read from: pg_ident.conf itself or a
+	// file it includes. Empty when the mapping was parsed from bare content.
+	File           string
 	LineNumber     int
 	MapName        string
 	SystemUsername string
@@ -463,24 +635,47 @@ type IdentMapping struct {
 // comments are stripped, backslash-continued physical lines are joined, and
 // double-quoted tokens (used for regular-expression system-username patterns)
 // are honored. Lines that don't have at least three tokens are silently
-// skipped. Each mapping's LineNumber is the 1-based line where its record
+// skipped, and so are `include` directives: use ParseIdentFile to follow
+// them. Each mapping's LineNumber is the 1-based line where its record
 // begins.
 func ParseIdent(content string) []IdentMapping {
 	var out []IdentMapping
 	for _, rec := range preprocessRecords(content) {
-		if rec.text == "" {
-			continue
+		if m, ok := identMapping(rec); ok {
+			out = append(out, m)
 		}
-		tokens := tokenizeHba(rec.text) // same quoting rules
-		if len(tokens) < 3 {
-			continue
-		}
-		out = append(out, IdentMapping{
-			LineNumber:     rec.num,
-			MapName:        tokens[0],
-			SystemUsername: tokens[1],
-			PgUsername:     tokens[2],
-		})
 	}
 	return out
+}
+
+// ParseIdentFile parses pg_ident.conf at path and every file it pulls in with
+// `include`, `include_if_exists` and `include_dir` (PostgreSQL 16 and later),
+// each mapping tagged with the file it came from.
+func ParseIdentFile(path string, fileReader FileReader, dirLister DirLister) ([]IdentMapping, error) {
+	var out []IdentMapping
+	err := walkAuthFile(path, fileReader, dirLister, map[string]bool{}, func(file string, rec record) {
+		if m, ok := identMapping(rec); ok {
+			m.File = file
+			out = append(out, m)
+		}
+	})
+	return out, err
+}
+
+// identMapping builds a mapping from one record, or reports false when the
+// record has fewer than three tokens.
+func identMapping(rec record) (IdentMapping, bool) {
+	if rec.text == "" {
+		return IdentMapping{}, false
+	}
+	tokens := tokenizeHba(rec.text) // same quoting rules
+	if len(tokens) < 3 {
+		return IdentMapping{}, false
+	}
+	return IdentMapping{
+		LineNumber:     rec.num,
+		MapName:        tokens[0],
+		SystemUsername: tokens[1],
+		PgUsername:     tokens[2],
+	}, true
 }

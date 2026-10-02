@@ -4,6 +4,8 @@
 package postgresql
 
 import (
+	"errors"
+	"io/fs"
 	"reflect"
 	"sort"
 	"testing"
@@ -225,6 +227,64 @@ func TestParseConf_IncludeReadErrorPropagates(t *testing.T) {
 	}
 }
 
+// include_dir loads only `*.conf` files whose name does not start with a dot
+// (PostgreSQL's ParseConfigDirectory). The Ubuntu sweep host carried
+// conf.d/.hidden.conf, which `postgres -C log_min_duration_statement`
+// confirmed the server ignores, and conf.d/30-backup.conf~.
+// Fails if includeDirFiles stops skipping dotfiles.
+func TestParseConf_IncludeDirSkipsDotfiles(t *testing.T) {
+	files := map[string]string{
+		"/etc/postgresql/16/main/postgresql.conf":        "include_dir = 'conf.d'\n",
+		"/etc/postgresql/16/main/conf.d/10-sweep.conf":   "port = 5433\n",
+		"/etc/postgresql/16/main/conf.d/.hidden.conf":    "log_min_duration_statement = 0\n",
+		"/etc/postgresql/16/main/conf.d/30-backup.conf~": "port = 7777\n",
+	}
+	cfg, err := ParseConf("/etc/postgresql/16/main/postgresql.conf", mapReader(files), directoryLister(files))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := cfg.Params["log_min_duration_statement"]; ok {
+		t.Errorf("log_min_duration_statement = %q from a dotfile, want unset", v)
+	}
+	if cfg.Params["port"] != "5433" {
+		t.Errorf("port = %q, want 5433", cfg.Params["port"])
+	}
+	want := []string{"/etc/postgresql/16/main/postgresql.conf", "/etc/postgresql/16/main/conf.d/10-sweep.conf"}
+	if !reflect.DeepEqual(cfg.Files, want) {
+		t.Errorf("Files = %v, want %v", cfg.Files, want)
+	}
+}
+
+// A missing include_if_exists target contributed nothing, so it must not be
+// listed as a configuration file. Fails if parseConfRec appends to Files
+// before the read succeeds.
+func TestParseConf_MissingIncludeIfExistsNotListed(t *testing.T) {
+	files := map[string]string{
+		"/main.conf": "port = 5434\ninclude_if_exists 'missing.conf'\n",
+	}
+	cfg, err := ParseConf("/main.conf", mapReader(files), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(cfg.Files, []string{"/main.conf"}) {
+		t.Errorf("Files = %v, want only /main.conf", cfg.Files)
+	}
+}
+
+// include_if_exists only forgives a missing file. A fragment the scan may not
+// read can hold the very setting under audit, so the refusal must surface.
+// Fails if the include_if_exists branch swallows every error again.
+func TestParseConf_IncludeIfExistsRefusalPropagates(t *testing.T) {
+	files := map[string]string{
+		"/main.conf":   "include_if_exists 'secret.conf'\n",
+		"/secret.conf": "ssl = off\n",
+	}
+	_, err := ParseConf("/main.conf", mapReader(files, "/secret.conf"), nil)
+	if !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("err = %v, want a permission error", err)
+	}
+}
+
 func TestSplitListParam(t *testing.T) {
 	tests := []struct {
 		in   string
@@ -255,9 +315,49 @@ func TestIsTruthy(t *testing.T) {
 		{"true", true}, {"yes", true}, {"1", true},
 		{"off", false}, {"false", false}, {"no", false}, {"0", false},
 		{"", false}, {"  on  ", true}, {"enabled", false},
+		// PostgreSQL accepts any unique prefix (parse_bool). The sweep wrote
+		// `log_connections = t` and `postgres -C log_connections` answered on.
+		{"t", true}, {"tr", true}, {"T", true}, {"y", true}, {"ye", true},
+		{"f", false}, {"n", false}, {"of", false},
+		// `o` is ambiguous between on and off; `01` and `trueish` are not booleans.
+		{"o", false}, {"01", false}, {"trueish", false}, {"onoff", false},
 	} {
 		if got := IsTruthy(tc.in); got != tc.want {
 			t.Errorf("IsTruthy(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestParseBoolRejectsNonBooleans(t *testing.T) {
+	for _, in := range []string{"", "o", "01", "enabled", "all", "receipt"} {
+		if _, ok := ParseBool(in); ok {
+			t.Errorf("ParseBool(%q) accepted a value PostgreSQL rejects", in)
+		}
+	}
+	for _, in := range []string{"of", "OFF", "no", "f", "0"} {
+		if v, ok := ParseBool(in); !ok || v {
+			t.Errorf("ParseBool(%q) = %v, %v, want false, true", in, v, ok)
+		}
+	}
+}
+
+// PostgreSQL 18 turned log_connections into a list. `on` still works and
+// stands for receipt,authentication,authorization.
+func TestLogConnectionsEnabled(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want bool
+	}{
+		{"on", true}, {"t", true}, {"off", false}, {"", false},
+		{"all", true}, {"ALL", true},
+		{"receipt,authentication,authorization", true},
+		{"authorization, receipt, authentication, setup_durations", true},
+		{"receipt", false},
+		{"receipt,authentication", false},
+		{"setup_durations", false},
+	} {
+		if got := LogConnectionsEnabled(tc.in); got != tc.want {
+			t.Errorf("LogConnectionsEnabled(%q) = %v, want %v", tc.in, got, tc.want)
 		}
 	}
 }
@@ -431,6 +531,106 @@ include_dir "hba.d"
 	}
 }
 
+// The PostgreSQL 16 sweep fixture: pg_hba.conf ends with an
+// include_if_exists whose target holds a trust rule. pg_hba_file_rules listed
+// it as file_name=/etc/postgresql/16/main/sweep_hba_extra.conf, line 1, and
+// `postgresql.hba.rules.none(authMethod == "trust")` passed because the
+// include was dropped. Fails if walkAuthFile stops following includes.
+func TestParseHbaFile_FollowsIncludes(t *testing.T) {
+	const dir = "/etc/postgresql/16/main"
+	files := map[string]string{
+		dir + "/pg_hba.conf": `local   all             postgres                                peer
+host    all          all        198.51.100.0/24 \
+        md5
+include_if_exists sweep_hba_extra.conf
+include_if_exists absent.conf
+include /etc/postgresql/shared_hba.conf
+include_dir hba.d
+local   all             all                                     reject
+`,
+		dir + "/sweep_hba_extra.conf":     "host all all 203.0.113.0/24 trust\n",
+		"/etc/postgresql/shared_hba.conf": "hostssl all all 10.0.0.0/8 cert\n",
+		dir + "/hba.d/20-b.conf":          "host all all 192.0.2.2/32 md5\n",
+		dir + "/hba.d/10-a.conf":          "\nhost all all 192.0.2.1/32 md5\n",
+		dir + "/hba.d/.10-hidden.conf":    "host all all 0.0.0.0/0 trust\n",
+		dir + "/hba.d/README":             "host all all 0.0.0.0/0 trust\n",
+	}
+	rules, err := ParseHbaFile(dir+"/pg_hba.conf", mapReader(files), directoryLister(files))
+	if err != nil {
+		t.Fatal(err)
+	}
+	type got struct {
+		file    string
+		line    int
+		address string
+		method  string
+	}
+	var out []got
+	for _, r := range rules {
+		out = append(out, got{r.File, r.LineNumber, r.Address, r.AuthMethod})
+	}
+	want := []got{
+		{dir + "/pg_hba.conf", 1, "", "peer"},
+		{dir + "/pg_hba.conf", 2, "198.51.100.0/24", "md5"},
+		{dir + "/sweep_hba_extra.conf", 1, "203.0.113.0/24", "trust"},
+		{"/etc/postgresql/shared_hba.conf", 1, "10.0.0.0/8", "cert"},
+		{dir + "/hba.d/10-a.conf", 2, "192.0.2.1/32", "md5"},
+		{dir + "/hba.d/20-b.conf", 1, "192.0.2.2/32", "md5"},
+		{dir + "/pg_hba.conf", 8, "", "reject"},
+	}
+	if !reflect.DeepEqual(out, want) {
+		t.Errorf("rules =\n%v\nwant\n%v", out, want)
+	}
+}
+
+func TestParseHbaFile_IncludeErrors(t *testing.T) {
+	t.Run("missing mandatory include", func(t *testing.T) {
+		files := map[string]string{"/pg_hba.conf": "include gone.conf\n"}
+		if _, err := ParseHbaFile("/pg_hba.conf", mapReader(files), nil); err == nil {
+			t.Fatal("want an error for a missing include target")
+		}
+	})
+	t.Run("unreadable include_if_exists", func(t *testing.T) {
+		files := map[string]string{
+			"/pg_hba.conf": "include_if_exists extra.conf\n",
+			"/extra.conf":  "host all all 0.0.0.0/0 trust\n",
+		}
+		_, err := ParseHbaFile("/pg_hba.conf", mapReader(files, "/extra.conf"), nil)
+		if !errors.Is(err, fs.ErrPermission) {
+			t.Fatalf("err = %v, want a permission error", err)
+		}
+	})
+	t.Run("include cycle terminates", func(t *testing.T) {
+		files := map[string]string{
+			"/a.conf": "include b.conf\nlocal all all peer\n",
+			"/b.conf": "include ./a.conf\nlocal all all trust\n",
+		}
+		rules, err := ParseHbaFile("/a.conf", mapReader(files), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rules) != 2 {
+			t.Fatalf("got %d rules, want 2: %+v", len(rules), rules)
+		}
+	})
+}
+
+// A three-token line starting with `include` is not a directive (PostgreSQL
+// requires exactly two fields), and must not be followed.
+func TestParseHbaFile_IncludeNeedsExactlyTwoTokens(t *testing.T) {
+	files := map[string]string{
+		"/pg_hba.conf": "include extra.conf extra\n",
+		"/extra.conf":  "host all all 0.0.0.0/0 trust\n",
+	}
+	rules, err := ParseHbaFile("/pg_hba.conf", mapReader(files), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rules) != 0 {
+		t.Fatalf("got %+v, want no rules", rules)
+	}
+}
+
 func TestParseHba_Empty(t *testing.T) {
 	for _, in := range []string{"", "\n\n\n", "# only comments\n#\n"} {
 		if rules := ParseHba(in); len(rules) != 0 {
@@ -506,6 +706,27 @@ mymap bob postgres
 // preprocessing helpers
 // ---------------------------------------------------------------------------
 
+// pg_ident.conf accepts the same inclusion directives as pg_hba.conf from
+// PostgreSQL 16 on. Fails if ParseIdentFile stops following includes.
+func TestParseIdentFile_FollowsIncludes(t *testing.T) {
+	files := map[string]string{
+		"/etc/pg/pg_ident.conf":  "sweepmap ubuntu postgres\ninclude_dir ident.d\nothermap root admin\n",
+		"/etc/pg/ident.d/a.conf": "# extra\nsweepmap deploy app\n",
+	}
+	maps, err := ParseIdentFile("/etc/pg/pg_ident.conf", mapReader(files), directoryLister(files))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []IdentMapping{
+		{File: "/etc/pg/pg_ident.conf", LineNumber: 1, MapName: "sweepmap", SystemUsername: "ubuntu", PgUsername: "postgres"},
+		{File: "/etc/pg/ident.d/a.conf", LineNumber: 2, MapName: "sweepmap", SystemUsername: "deploy", PgUsername: "app"},
+		{File: "/etc/pg/pg_ident.conf", LineNumber: 3, MapName: "othermap", SystemUsername: "root", PgUsername: "admin"},
+	}
+	if !reflect.DeepEqual(maps, want) {
+		t.Errorf("mappings =\n%+v\nwant\n%+v", maps, want)
+	}
+}
+
 func TestStripCommentAndContinuation(t *testing.T) {
 	tests := []struct {
 		in       string
@@ -536,6 +757,28 @@ func TestStripCommentAndContinuation(t *testing.T) {
 type notFoundError struct{ path string }
 
 func (e *notFoundError) Error() string { return "not found: " + e.path }
+
+// Unwrap lets the parser tell a missing file from a refused one, the way the
+// os provider's reader reports a missing file.
+func (e *notFoundError) Unwrap() error { return fs.ErrNotExist }
+
+// mapReader serves files from an in-memory map. Paths in denied fail with a
+// permission error instead, the way a fragment readable only by the
+// postgres user fails for a non-root scan.
+func mapReader(files map[string]string, denied ...string) FileReader {
+	return func(path string) (string, error) {
+		for _, d := range denied {
+			if d == path {
+				return "", fs.ErrPermission
+			}
+		}
+		v, ok := files[path]
+		if !ok {
+			return "", &notFoundError{path}
+		}
+		return v, nil
+	}
+}
 
 // directoryLister builds a dirLister over an in-memory file map that returns
 // the immediate children of a directory in sorted order, mirroring the
