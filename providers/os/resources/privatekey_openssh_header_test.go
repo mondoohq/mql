@@ -35,7 +35,7 @@ func opensshDSAKey(t *testing.T, encrypted bool) []byte {
 		KeyType        string
 		P, Q, G, Y, X  *big.Int
 		Comment        string
-	}{check, check, ssh.KeyAlgoDSA, key.P, key.Q, key.G, key.Y, key.X, "mql-test-dsa"})
+	}{check, check, "ssh-dss", key.P, key.Q, key.G, key.Y, key.X, "mql-test-dsa"})
 	for i := byte(1); len(priv)%16 != 0; i++ {
 		priv = append(priv, i)
 	}
