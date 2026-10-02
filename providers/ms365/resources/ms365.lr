@@ -7091,7 +7091,7 @@ private ms365.teams.tenantFederationConfig {
   //
   // Deprecated, please use allowTeamsConsumer. Microsoft Teams no longer returns this setting,
   // so it is null on current tenants.
-  allowPublicUsers @maturity("deprecated") bool
+  allowPublicUsers @maturity("deprecated") @replaced_by("ms365.teams.tenantFederationConfig.allowTeamsConsumer") bool
   // Whether to allow external Teams consumers
   allowTeamsConsumer bool
   // Whether to allow inbound communication with external Teams consumers
