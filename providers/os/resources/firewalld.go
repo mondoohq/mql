@@ -55,8 +55,11 @@ func initFirewalldZone(runtime *plugin.Runtime, args map[string]*llx.RawData) (m
 }
 
 type mqlFirewalldInternal struct {
-	fetched      bool
+	fetched bool
+	// cacheStatus is "running" whenever the daemon answers queries, which
+	// includes the FAILED state; status() reports that one as "failed".
 	cacheStatus  string
+	cacheFailed  bool
 	cacheDefault string
 	lock         sync.Mutex
 }
@@ -114,9 +117,13 @@ func (f *mqlFirewalld) fetchStatus() error {
 		if stderr := strings.TrimSpace(cmd.GetStderr().Data); isFirewalldAuthzError(stderr) {
 			return fmt.Errorf("cannot determine firewalld state: %s", stderr)
 		}
-		f.cacheStatus = "not running"
-		f.fetched = true
-		return nil
+		// FAILED (exit 251) is a daemon that is up but could not apply its
+		// ruleset. It still answers queries, so its default zone and zones
+		// are read as for a running firewall.
+		f.cacheFailed = isFirewalldFailedState(cmd.GetStderr().Data)
+		if f.cacheFailed {
+			state = "running"
+		}
 	}
 	if state != "running" {
 		f.cacheStatus = "not running"
@@ -166,9 +173,18 @@ func isFirewalldAuthzError(stderr string) bool {
 	return false
 }
 
+// isFirewalldFailedState reports whether firewall-cmd --state answered
+// "failed", which it prints on stderr with exit code 251.
+func isFirewalldFailedState(stderr string) bool {
+	return strings.TrimSpace(stderr) == "failed"
+}
+
 func (f *mqlFirewalld) status() (string, error) {
 	if err := f.fetchStatus(); err != nil {
 		return "", err
+	}
+	if f.cacheFailed {
+		return "failed", nil
 	}
 	return f.cacheStatus, nil
 }
@@ -287,14 +303,20 @@ type parsedZone struct {
 //	  forward: yes
 //	  masquerade: no
 //	  forward-ports:
+//	    port=2022:proto=tcp:toport=22:toaddr=
 //	  source-ports:
 //	  icmp-blocks:
 //	  rich rules:
 //	    rule family="ipv4" source address="10.0.0.0/8" accept
+//
+// Rich rules are always listed one per line below their key. Forward ports
+// are too since firewalld 0.9; older releases print them space-separated on
+// the key's line.
 func parseFirewalldZones(output string) []parsedZone {
 	var zones []parsedZone
 	var current *parsedZone
 	inRichRules := false
+	inForwardPorts := false
 
 	for line := range strings.SplitSeq(output, "\n") {
 		// Zone header: starts at column 0, non-empty, not indented
@@ -313,6 +335,7 @@ func parseFirewalldZones(output string) []parsedZone {
 			}
 			current = &z
 			inRichRules = false
+			inForwardPorts = false
 			continue
 		}
 
@@ -334,14 +357,23 @@ func parseFirewalldZones(output string) []parsedZone {
 			// If it doesn't start with "rule ", it's a new key
 			inRichRules = false
 		}
+		if inForwardPorts {
+			if strings.HasPrefix(trimmed, "port=") {
+				current.forwardPorts = append(current.forwardPorts, trimmed)
+				continue
+			}
+			inForwardPorts = false
+		}
 
 		// key: value pairs
 		key, value, found := strings.Cut(trimmed, ": ")
 		if !found {
 			// Handle "rich rules:" with no value on same line
-			if strings.TrimSuffix(trimmed, ":") == "rich rules" {
+			switch strings.TrimSuffix(trimmed, ":") {
+			case "rich rules":
 				inRichRules = true
-				continue
+			case "forward-ports":
+				inForwardPorts = true
 			}
 			// Also handle lines like "key:" with no value
 			continue
@@ -367,6 +399,7 @@ func parseFirewalldZones(output string) []parsedZone {
 			current.masquerade = value == "yes"
 		case "forward-ports":
 			current.forwardPorts = splitNonEmpty(value)
+			inForwardPorts = true
 		case "source-ports":
 			current.sourcePorts = splitNonEmpty(value)
 		case "icmp-blocks":
@@ -418,39 +451,72 @@ func parseFirewalldRichRule(rule string) parsedRichRule {
 
 	// Extract source address — prefer the NOT-inverted form so `source NOT address="..."`
 	// isn't misread as a plain source match via a short-circuit on `address="..."`.
-	if _, after, ok := strings.Cut(rule, `source NOT address="`); ok {
-		if val, _, ok := strings.Cut(after, `"`); ok {
-			rr.source = val
-			rr.sourceInverted = true
-		}
-	} else if _, after, ok := strings.Cut(rule, `source address="`); ok {
-		if val, _, ok := strings.Cut(after, `"`); ok {
-			rr.source = val
+	// firewalld 0.6 (RHEL 7) prints an inverted destination as `destination not`.
+	rr.source, rr.sourceInverted = richRuleAddress(rule, "source")
+	rr.destination, rr.destinationInverted = richRuleAddress(rule, "destination")
+
+	// Extract action. The action element follows the match elements and may
+	// carry its own options (`reject type="icmp-host-prohibited"`, `accept
+	// limit value="2/m"`), so it is not always the last token. A rule with a
+	// log element and no action reports "log".
+	hasLog := false
+	for _, tok := range richRuleTokens(rule) {
+		switch tok {
+		case "accept", "reject", "drop", "mark":
+			rr.action = tok
+		case "log":
+			hasLog = true
 		}
 	}
-
-	// Extract destination address (same NOT-first ordering as source)
-	if _, after, ok := strings.Cut(rule, `destination NOT address="`); ok {
-		if val, _, ok := strings.Cut(after, `"`); ok {
-			rr.destination = val
-			rr.destinationInverted = true
-		}
-	} else if _, after, ok := strings.Cut(rule, `destination address="`); ok {
-		if val, _, ok := strings.Cut(after, `"`); ok {
-			rr.destination = val
-		}
-	}
-
-	// Extract action — the terminal action keyword is always the last token
-	// in a rich rule string (e.g., "rule family=... source address=... accept")
-	tokens := strings.Fields(rule)
-	if len(tokens) > 0 {
-		last := tokens[len(tokens)-1]
-		switch last {
-		case "accept", "reject", "drop", "mark", "log":
-			rr.action = last
-		}
+	if rr.action == "" && hasLog {
+		rr.action = "log"
 	}
 
 	return rr
+}
+
+// richRuleAddress returns the address of a rich rule's source or destination
+// element and whether it is inverted with NOT.
+func richRuleAddress(rule, element string) (string, bool) {
+	for _, inv := range []struct {
+		prefix   string
+		inverted bool
+	}{
+		{element + ` NOT address="`, true},
+		{element + ` not address="`, true},
+		{element + ` address="`, false},
+	} {
+		if _, after, ok := strings.Cut(rule, inv.prefix); ok {
+			if val, _, ok := strings.Cut(after, `"`); ok {
+				return val, inv.inverted
+			}
+		}
+	}
+	return "", false
+}
+
+// richRuleTokens splits a rich rule on spaces outside double quotes, so a
+// keyword inside a value such as `prefix="drop "` is not read as a token.
+func richRuleTokens(rule string) []string {
+	var tokens []string
+	var cur strings.Builder
+	inQuote := false
+	for _, r := range rule {
+		switch {
+		case r == '"':
+			inQuote = !inQuote
+			cur.WriteRune(r)
+		case r == ' ' && !inQuote:
+			if cur.Len() > 0 {
+				tokens = append(tokens, cur.String())
+				cur.Reset()
+			}
+		default:
+			cur.WriteRune(r)
+		}
+	}
+	if cur.Len() > 0 {
+		tokens = append(tokens, cur.String())
+	}
+	return tokens
 }

@@ -8291,7 +8291,10 @@ private ufw.application @defaults("name ports") {
 // interfaces and sources. Enumerate `zones` to audit the per-zone services,
 // ports, and rich rules that make up the effective policy.
 firewalld @defaults("status defaultZone") {
-  // Whether firewalld is running ("running", "not running", "not installed")
+  // Whether firewalld is running ("running", "failed", "not running", "not installed")
+  //
+  // "failed" is a daemon that is up but could not apply its ruleset, as
+  // `firewall-cmd --state` reports it. Its zones are still listed.
   status() string
   // Default zone name (e.g., "public", "home", "dmz")
   defaultZone() string
@@ -8362,7 +8365,7 @@ private firewalld.richrule @defaults("family rule") {
   destination string
   // True when the destination address is negated (e.g., `destination NOT address="..."`)
   destinationInverted bool
-  // Action (accept, reject, drop, mark), empty if not specified
+  // Action (accept, reject, drop, mark), "log" for a rule that only logs, empty if not specified
   action string
 }
 
