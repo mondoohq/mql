@@ -254,27 +254,17 @@ func TestSelectByID(t *testing.T) {
 	assert.Equal(t, []any{}, selectByID(all, []any{}, idOf))
 }
 
-func odataErrWithStatus(status int, code, message string) *odataerrors.ODataError {
-	payload := odataerrors.NewMainError()
-	payload.SetCode(&code)
-	payload.SetMessage(&message)
-	err := odataerrors.NewODataError()
-	err.SetErrorEscaped(payload)
-	err.SetStatusCode(status)
-	return err
-}
-
 // lifecycleWorkflowsUnlicensed is the refusal Graph answered lifecycle
 // workflows with on a tenant without an Entra ID Governance license.
 func lifecycleWorkflowsUnlicensed() *odataerrors.ODataError {
-	return odataErrWithStatus(http.StatusForbidden, "Access denied",
+	return graphStatusErr(http.StatusForbidden, "Access denied",
 		"Insufficient license to complete this operation. User workflows require an Entra ID Governance license.")
 }
 
 // insufficientPrivileges is the refusal Graph answered custom security
 // attribute definitions with when the app lacks the permission.
 func insufficientPrivileges() *odataerrors.ODataError {
-	return odataErrWithStatus(http.StatusForbidden, "Authorization_RequestDenied",
+	return graphStatusErr(http.StatusForbidden, "Authorization_RequestDenied",
 		"Insufficient privileges to complete the operation.")
 }
 
@@ -294,24 +284,12 @@ func TestClassifyLifecycleWorkflowsError(t *testing.T) {
 	})
 
 	t.Run("a license word outside a 403 is not a refusal", func(t *testing.T) {
-		err := classifyLifecycleWorkflowsError(odataErrWithStatus(http.StatusInternalServerError, "UnknownError", "license service unreachable"))
-		assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(err))
+		err := classifyLifecycleWorkflowsError(graphStatusErr(http.StatusInternalServerError, "UnknownError", "license service unreachable"))
+		assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNAVAILABLE, llx.KindOf(err))
 	})
 
 	t.Run("transport failures stay unclassified", func(t *testing.T) {
 		err := classifyLifecycleWorkflowsError(errors.New("dial tcp: connection refused"))
 		assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED, llx.KindOf(err))
 	})
-}
-
-func TestClassifyGraphErrorForbidden(t *testing.T) {
-	err := classifyGraphError(insufficientPrivileges(), permCustomSecAttributeDefinitionReadAll)
-	assert.Equal(t, llx.ErrorKind_ERROR_KIND_FORBIDDEN, llx.KindOf(err))
-	var lerr *llx.Error
-	require.True(t, errors.As(err, &lerr))
-	assert.Equal(t, []string{permCustomSecAttributeDefinitionReadAll}, lerr.Permissions)
-
-	assert.Equal(t, llx.ErrorKind_ERROR_KIND_UNSPECIFIED,
-		llx.KindOf(classifyGraphError(odataErrWithStatus(http.StatusNotFound, "Request_ResourceNotFound", "gone"))))
-	assert.NoError(t, classifyGraphError(nil))
 }

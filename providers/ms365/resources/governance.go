@@ -10,13 +10,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cockroachdb/errors"
 	"github.com/microsoft/kiota-abstractions-go/serialization"
-	betaodataerrors "github.com/microsoftgraph/msgraph-beta-sdk-go/models/odataerrors"
 	"github.com/microsoftgraph/msgraph-sdk-go/identitygovernance"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
 	igmodels "github.com/microsoftgraph/msgraph-sdk-go/models/identitygovernance"
-	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers-sdk/v1/util/convert"
@@ -31,24 +28,6 @@ const (
 	permLifecycleWorkflowsReadAll           = "LifecycleWorkflows.Read.All"
 	permCustomSecAttributeDefinitionReadAll = "CustomSecAttributeDefinition.Read.All"
 )
-
-// graphErrorMessage returns the message Microsoft Graph attached to a failed
-// request, or "" when there is none.
-func graphErrorMessage(err error) string {
-	var betaOdataErr *betaodataerrors.ODataError
-	if errors.As(err, &betaOdataErr) && betaOdataErr != nil {
-		if payload := betaOdataErr.GetErrorEscaped(); payload != nil && payload.GetMessage() != nil {
-			return *payload.GetMessage()
-		}
-	}
-	var oDataErr *odataerrors.ODataError
-	if errors.As(err, &oDataErr) && oDataErr != nil {
-		if payload := oDataErr.GetErrorEscaped(); payload != nil && payload.GetMessage() != nil {
-			return *payload.GetMessage()
-		}
-	}
-	return ""
-}
 
 // isGraphLicenseRefusal reports whether Graph refused a request because the
 // tenant lacks the license the feature needs, rather than because the caller

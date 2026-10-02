@@ -11,7 +11,6 @@ import (
 
 	"github.com/microsoftgraph/msgraph-sdk-go/identityprotection"
 	"github.com/microsoftgraph/msgraph-sdk-go/models"
-	"github.com/microsoftgraph/msgraph-sdk-go/models/odataerrors"
 	"go.mondoo.com/mql/llx"
 	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 	"go.mondoo.com/mql/providers/ms365/connection"
@@ -230,18 +229,6 @@ func classifyWorkloadIdentityProtectionError(err error, permission string) error
 		return llx.NotApplicable(transformError(err))
 	}
 	return classifyGraphError(err, permission)
-}
-
-// graphErrorMessage returns the message carried by a v1 Graph ODataError, or
-// "" when there is none.
-func graphErrorMessage(err error) string {
-	var oDataErr *odataerrors.ODataError
-	if errors.As(err, &oDataErr) && oDataErr != nil {
-		if payload := oDataErr.GetErrorEscaped(); payload != nil && payload.GetMessage() != nil {
-			return *payload.GetMessage()
-		}
-	}
-	return ""
 }
 
 // isNotLicensedMessage reports whether a Graph error message says the tenant

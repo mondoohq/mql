@@ -118,6 +118,24 @@ func graphStatusCode(err error) int {
 	return 0
 }
 
+// graphErrorMessage returns the message Microsoft Graph attached to a failed
+// request, from either the v1 or the beta SDK, or "" when there is none.
+func graphErrorMessage(err error) string {
+	var betaOdataErr *betaodataerrors.ODataError
+	if errors.As(err, &betaOdataErr) && betaOdataErr != nil {
+		if payload := betaOdataErr.GetErrorEscaped(); payload != nil && payload.GetMessage() != nil {
+			return *payload.GetMessage()
+		}
+	}
+	var oDataErr *odataerrors.ODataError
+	if errors.As(err, &oDataErr) && oDataErr != nil {
+		if payload := oDataErr.GetErrorEscaped(); payload != nil && payload.GetMessage() != nil {
+			return *payload.GetMessage()
+		}
+	}
+	return ""
+}
+
 // classifyGraphError turns a Graph failure into the error a field returns,
 // classified by the status Graph answered with:
 //
