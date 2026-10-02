@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/mql/providers-sdk/v1/inventory"
+	"go.mondoo.com/mql/providers-sdk/v1/plugin"
 )
 
 func TestDebianImageKernelName(t *testing.T) {
@@ -1535,4 +1536,24 @@ func TestLookupModprobeRule(t *testing.T) {
 			assert.Equal(t, tc.want, lookupModprobeRule(rules, tc.name))
 		})
 	}
+}
+
+// /proc/modules lists usb_storage; a policy written as
+// kernel.module("usb-storage") must find it.
+func TestKernelLoadedModuleNormalizesName(t *testing.T) {
+	loaded := func(name string) *mqlKernelModule {
+		return &mqlKernelModule{Name: plugin.TValue[string]{Data: name, State: plugin.StateIsSet}}
+	}
+	usbStorage := loaded("usb_storage")
+	k := &mqlKernel{}
+	require.NoError(t, k.refreshCache([]any{usbStorage, loaded("nf_conntrack")}))
+
+	for _, name := range []string{"usb_storage", "usb-storage"} {
+		got, ok := k.loadedModule(name)
+		require.Truef(t, ok, "%s not found", name)
+		assert.Same(t, usbStorage, got)
+	}
+
+	_, ok := k.loadedModule("cramfs")
+	assert.False(t, ok)
 }

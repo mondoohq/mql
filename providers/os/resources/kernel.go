@@ -842,10 +842,18 @@ func (x *mqlKernel) refreshCache(all []any) error {
 
 	for i := range all {
 		u := all[i].(*mqlKernelModule)
-		x.moduleByName[u.Name.Data] = u
+		x.moduleByName[normalizeModuleName(u.Name.Data)] = u
 	}
 
 	return nil
+}
+
+// loadedModule finds a loaded module by name. The kernel treats '-' and '_'
+// in module names as the same character and lists modules with underscores,
+// so `usb-storage` finds the loaded `usb_storage`.
+func (x *mqlKernel) loadedModule(name string) (*mqlKernelModule, bool) {
+	res, ok := x.moduleByName[normalizeModuleName(name)]
+	return res, ok
 }
 
 func initKernelModule(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error) {
@@ -869,7 +877,7 @@ func initKernelModule(runtime *plugin.Runtime, args map[string]*llx.RawData) (ma
 		return nil, nil, err
 	}
 
-	if res, ok := kernel.moduleByName[name]; ok {
+	if res, ok := kernel.loadedModule(name); ok {
 		return nil, res, nil
 	}
 
