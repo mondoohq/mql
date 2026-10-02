@@ -44,7 +44,7 @@ func (r *mqlGithubCopilot) accounts() ([]interface{}, error) {
 	var result []interface{}
 	for key, app := range apps {
 		res, err := NewResource(r.MqlRuntime, "github.copilot.account", map[string]*llx.RawData{
-			"__id":        llx.StringData("github.copilot.account/" + key),
+			"__id":        llx.StringData(aiChildID("github.copilot.account", configDir, key)),
 			"user":        llx.StringData(app.User),
 			"githubAppId": llx.StringData(app.GitHubAppID),
 		})
@@ -82,8 +82,11 @@ func (r *mqlGithubCopilot) mcpServers() ([]interface{}, error) {
 		}
 
 		for name, server := range config.Servers {
+			// Keyed by the file rather than configDir: mcp.json and
+			// intellij/mcp.json under one configDir are separate configurations
+			// that can name the same server.
 			res, err := NewResource(r.MqlRuntime, "github.copilot.mcpServer", map[string]*llx.RawData{
-				"__id":    llx.StringData("github.copilot.mcpServer/" + name),
+				"__id":    llx.StringData(aiChildID("github.copilot.mcpServer", mcpPath, name)),
 				"name":    llx.StringData(name),
 				"type":    llx.StringData(deriveMcpTransport(server.Type, server.Command, server.URL)),
 				"command": llx.StringData(server.Command),
