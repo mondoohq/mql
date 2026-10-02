@@ -64,6 +64,14 @@ func initSystemdUnit(runtime *plugin.Runtime, args map[string]*llx.RawData) (map
 // setting as explicitly off rather than as null, so an assertion over several of
 // them fails on a miss instead of passing vacuously.
 func createSystemdUnitResource(runtime *plugin.Runtime, unit *services.SystemdUnit) (plugin.Resource, error) {
+	// a setting the running systemd does not have is null: it neither
+	// applies nor is off by choice
+	supported := func(property string, value *llx.RawData) *llx.RawData {
+		if !unit.Supports(property) {
+			return llx.NilData
+		}
+		return value
+	}
 	return CreateResource(runtime, "systemd.unit", map[string]*llx.RawData{
 		"__id":          llx.StringData("systemd.unit:" + unit.Name),
 		"name":          llx.StringData(unit.Name),
@@ -78,40 +86,40 @@ func createSystemdUnitResource(runtime *plugin.Runtime, unit *services.SystemdUn
 
 		"user":        llx.StringData(unit.User),
 		"group":       llx.StringData(unit.Group),
-		"dynamicUser": llx.BoolData(unit.DynamicUser),
-		"umask":       llx.StringData(unit.UMask),
+		"dynamicUser": supported("DynamicUser", llx.BoolData(unit.DynamicUser)),
+		"umask":       supported("UMask", llx.StringData(unit.UMask)),
 
-		"noNewPrivileges":         llx.BoolData(unit.NoNewPrivileges),
-		"protectSystem":           llx.StringData(unit.ProtectSystem),
-		"protectHome":             llx.StringData(unit.ProtectHome),
-		"privateTmp":              llx.BoolData(unit.PrivateTmp),
-		"privateDevices":          llx.BoolData(unit.PrivateDevices),
-		"privateNetwork":          llx.BoolData(unit.PrivateNetwork),
-		"privateUsers":            llx.BoolData(unit.PrivateUsers),
-		"protectKernelTunables":   llx.BoolData(unit.ProtectKernelTunables),
-		"protectKernelModules":    llx.BoolData(unit.ProtectKernelModules),
-		"protectKernelLogs":       llx.BoolData(unit.ProtectKernelLogs),
-		"protectControlGroups":    llx.StringData(unit.ProtectControlGroups),
-		"protectClock":            llx.BoolData(unit.ProtectClock),
-		"protectHostname":         llx.BoolData(unit.ProtectHostname),
-		"protectProc":             llx.StringData(unit.ProtectProc),
-		"procSubset":              llx.StringData(unit.ProcSubset),
-		"restrictSUIDSGID":        llx.BoolData(unit.RestrictSUIDSGID),
-		"restrictRealtime":        llx.BoolData(unit.RestrictRealtime),
-		"restrictNamespaces":      llx.StringData(unit.RestrictNamespaces),
-		"restrictAddressFamilies": llx.StringData(unit.RestrictAddressFamilies),
-		"lockPersonality":         llx.BoolData(unit.LockPersonality),
-		"memoryDenyWriteExecute":  llx.BoolData(unit.MemoryDenyWriteExecute),
-		"removeIPC":               llx.BoolData(unit.RemoveIPC),
-		"keyringMode":             llx.StringData(unit.KeyringMode),
+		"noNewPrivileges":         supported("NoNewPrivileges", llx.BoolData(unit.NoNewPrivileges)),
+		"protectSystem":           supported("ProtectSystem", llx.StringData(unit.ProtectSystem)),
+		"protectHome":             supported("ProtectHome", llx.StringData(unit.ProtectHome)),
+		"privateTmp":              supported("PrivateTmp", llx.BoolData(unit.PrivateTmp)),
+		"privateDevices":          supported("PrivateDevices", llx.BoolData(unit.PrivateDevices)),
+		"privateNetwork":          supported("PrivateNetwork", llx.BoolData(unit.PrivateNetwork)),
+		"privateUsers":            supported("PrivateUsers", llx.BoolData(unit.PrivateUsers)),
+		"protectKernelTunables":   supported("ProtectKernelTunables", llx.BoolData(unit.ProtectKernelTunables)),
+		"protectKernelModules":    supported("ProtectKernelModules", llx.BoolData(unit.ProtectKernelModules)),
+		"protectKernelLogs":       supported("ProtectKernelLogs", llx.BoolData(unit.ProtectKernelLogs)),
+		"protectControlGroups":    supported("ProtectControlGroups", llx.StringData(unit.ProtectControlGroups)),
+		"protectClock":            supported("ProtectClock", llx.BoolData(unit.ProtectClock)),
+		"protectHostname":         supported("ProtectHostname", llx.BoolData(unit.ProtectHostname)),
+		"protectProc":             supported("ProtectProc", llx.StringData(unit.ProtectProc)),
+		"procSubset":              supported("ProcSubset", llx.StringData(unit.ProcSubset)),
+		"restrictSUIDSGID":        supported("RestrictSUIDSGID", llx.BoolData(unit.RestrictSUIDSGID)),
+		"restrictRealtime":        supported("RestrictRealtime", llx.BoolData(unit.RestrictRealtime)),
+		"restrictNamespaces":      supported("RestrictNamespaces", llx.StringData(unit.RestrictNamespaces)),
+		"restrictAddressFamilies": supported("RestrictAddressFamilies", llx.StringData(unit.RestrictAddressFamilies)),
+		"lockPersonality":         supported("LockPersonality", llx.BoolData(unit.LockPersonality)),
+		"memoryDenyWriteExecute":  supported("MemoryDenyWriteExecute", llx.BoolData(unit.MemoryDenyWriteExecute)),
+		"removeIPC":               supported("RemoveIPC", llx.BoolData(unit.RemoveIPC)),
+		"keyringMode":             supported("KeyringMode", llx.StringData(unit.KeyringMode)),
 
-		"capabilityBoundingSet":   llx.ArrayData(convert.SliceAnyToInterface(unit.CapabilityBoundingSet), types.String),
-		"ambientCapabilities":     llx.ArrayData(convert.SliceAnyToInterface(unit.AmbientCapabilities), types.String),
-		"systemCallFilter":        llx.ArrayData(convert.SliceAnyToInterface(unit.SystemCallFilter), types.String),
-		"systemCallArchitectures": llx.StringData(unit.SystemCallArchitectures),
-		"readWritePaths":          llx.ArrayData(convert.SliceAnyToInterface(unit.ReadWritePaths), types.String),
-		"readOnlyPaths":           llx.ArrayData(convert.SliceAnyToInterface(unit.ReadOnlyPaths), types.String),
-		"inaccessiblePaths":       llx.ArrayData(convert.SliceAnyToInterface(unit.InaccessiblePaths), types.String),
+		"capabilityBoundingSet":   supported("CapabilityBoundingSet", llx.ArrayData(convert.SliceAnyToInterface(unit.CapabilityBoundingSet), types.String)),
+		"ambientCapabilities":     supported("AmbientCapabilities", llx.ArrayData(convert.SliceAnyToInterface(unit.AmbientCapabilities), types.String)),
+		"systemCallFilter":        supported("SystemCallFilter", llx.ArrayData(convert.SliceAnyToInterface(unit.SystemCallFilter), types.String)),
+		"systemCallArchitectures": supported("SystemCallArchitectures", llx.StringData(unit.SystemCallArchitectures)),
+		"readWritePaths":          supported("ReadWritePaths", llx.ArrayData(convert.SliceAnyToInterface(unit.ReadWritePaths), types.String)),
+		"readOnlyPaths":           supported("ReadOnlyPaths", llx.ArrayData(convert.SliceAnyToInterface(unit.ReadOnlyPaths), types.String)),
+		"inaccessiblePaths":       supported("InaccessiblePaths", llx.ArrayData(convert.SliceAnyToInterface(unit.InaccessiblePaths), types.String)),
 	})
 }
 

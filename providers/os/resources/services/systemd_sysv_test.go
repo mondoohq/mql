@@ -40,16 +40,16 @@ func TestSystemdSysVServiceEnabledFromIsEnabled(t *testing.T) {
 	require.Contains(t, services, "g04sysv")
 	svc := services["g04sysv"]
 	require.True(t, svc.Installed)
-	assert.True(t, svc.unitFileStateBad)
+	assert.True(t, svc.needsIsEnabled)
 
 	conn := sysvTestConn(t, map[string]*mock.Command{
 		"systemctl is-enabled -- g04sysv.service": {Stdout: "enabled\n", Stderr: rhel7SysVRedirect},
 	})
-	(&SystemDServiceManager{conn: conn}).resolveBadUnitFileStates([]*Service{svc})
+	(&SystemDServiceManager{conn: conn}).resolveWithIsEnabled([]*Service{svc})
 
 	assert.True(t, svc.Enabled)
 	assert.False(t, svc.Masked)
-	assert.False(t, svc.unitFileStateBad)
+	assert.False(t, svc.needsIsEnabled)
 }
 
 // chkconfig off: is-enabled prints disabled and exits 1. The answer still
@@ -62,10 +62,10 @@ func TestSystemdSysVServiceDisabledFromIsEnabled(t *testing.T) {
 		"systemctl is-enabled -- g04sysv.service": {Stdout: "disabled\n", Stderr: rhel7SysVRedirect, ExitStatus: 1},
 	})
 	mgr := &SystemDServiceManager{conn: conn}
-	mgr.resolveBadUnitFileStates([]*Service{svc, svc})
+	mgr.resolveWithIsEnabled([]*Service{svc, svc})
 
 	assert.False(t, svc.Enabled)
-	assert.False(t, svc.unitFileStateBad)
+	assert.False(t, svc.needsIsEnabled)
 	assert.Len(t, conn.commands, 1)
 }
 
@@ -75,10 +75,40 @@ func TestSystemdResolveBadUnitFileStatesSkipsKnownStates(t *testing.T) {
 	applySystemdUnitFileState(svc, "enabled")
 
 	conn := sysvTestConn(t, nil)
-	(&SystemDServiceManager{conn: conn}).resolveBadUnitFileStates([]*Service{svc})
+	(&SystemDServiceManager{conn: conn}).resolveWithIsEnabled([]*Service{svc})
 
 	assert.True(t, svc.Enabled)
 	assert.Empty(t, conn.commands)
+}
+
+// debian12SysVShow is `systemctl show` on Debian 12 (systemd 252) for an
+// LSB init script in /etc/init.d enabled with update-rc.d. Debian 9 (232) to
+// 13 (257) print the same UnitFileState.
+const debian12SysVShow = `Id=g04sysvon.service
+Description=LSB: g04 sysv service (on)
+LoadState=loaded
+ActiveState=active
+UnitFileState=generated
+`
+
+// is-enabled hands a Debian SysV service to systemd-sysv-install.
+const debianSysVRedirect = "g04sysvon.service is not a native service, redirecting to systemd-sysv-install.\nExecuting: /lib/systemd/systemd-sysv-install is-enabled g04sysvon\n"
+
+func TestSystemdDebianSysVServiceEnabledFromIsEnabled(t *testing.T) {
+	services, err := ParseServiceSystemDShow(strings.NewReader(debian12SysVShow))
+	require.NoError(t, err)
+	require.Contains(t, services, "g04sysvon")
+	svc := services["g04sysvon"]
+	assert.False(t, svc.Enabled)
+	assert.True(t, svc.needsIsEnabled)
+
+	conn := sysvTestConn(t, map[string]*mock.Command{
+		"systemctl is-enabled -- g04sysvon.service": {Stdout: "enabled\n", Stderr: debianSysVRedirect},
+	})
+	(&SystemDServiceManager{conn: conn}).resolveWithIsEnabled([]*Service{svc})
+
+	assert.True(t, svc.Enabled)
+	assert.False(t, svc.needsIsEnabled)
 }
 
 func TestParseSystemdIsEnabled(t *testing.T) {

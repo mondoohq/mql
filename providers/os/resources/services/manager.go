@@ -25,9 +25,10 @@ type Service struct {
 	Static      bool
 	Path        string
 
-	// unitFileStateBad is set while systemctl show has reported the unit-file
-	// state as "bad", which says nothing about whether the service is enabled.
-	unitFileStateBad bool
+	// needsIsEnabled is set while systemctl has reported the unit-file state
+	// as "bad" or "generated", which says nothing about whether the service
+	// is enabled.
+	needsIsEnabled bool
 }
 
 type State string

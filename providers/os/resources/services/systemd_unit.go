@@ -10,7 +10,9 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/coreos/go-systemd/unit"
 	"github.com/rs/zerolog/log"
@@ -67,6 +69,118 @@ type SystemdUnit struct {
 	ReadWritePaths          []string
 	ReadOnlyPaths           []string
 	InaccessiblePaths       []string
+
+	// Unsupported names the properties the running systemd does not have
+	// (ProtectClock on systemd 232, for example). Their values above are
+	// zero and say nothing about the unit.
+	Unsupported map[string]bool
+}
+
+// Supports reports whether the running systemd has the property, so its value
+// on the unit means something.
+func (u *SystemdUnit) Supports(property string) bool {
+	return !u.Unsupported[property]
+}
+
+// systemdUnsupportedKey is a record key no systemctl output or unit file can
+// produce. It carries the space-separated names of the properties the running
+// systemd does not have, from the record into the unit.
+const systemdUnsupportedKey = "\x00unsupported"
+
+// systemdPropertySince is the systemd release that introduced each property
+// read from a unit file that some release still in use does not know. A unit
+// file can set them on any release; an older systemd ignores the line, so the
+// setting does not apply.
+var systemdPropertySince = map[string]int{
+	"AmbientCapabilities":    229,
+	"MemoryDenyWriteExecute": 231,
+	"RestrictRealtime":       231,
+	"ReadWritePaths":         231,
+	"ReadOnlyPaths":          231,
+	"InaccessiblePaths":      231,
+	"DynamicUser":            232,
+	"PrivateUsers":           232,
+	"ProtectKernelTunables":  232,
+	"ProtectKernelModules":   232,
+	"ProtectControlGroups":   232,
+	"RemoveIPC":              232,
+	"RestrictNamespaces":     233,
+	"LockPersonality":        235,
+	"KeyringMode":            235,
+	"ProtectHostname":        242,
+	"RestrictSUIDSGID":       242,
+	"ProtectKernelLogs":      244,
+	"ProtectClock":           245,
+	"ProtectProc":            247,
+	"ProcSubset":             247,
+}
+
+// markUnsupportedShowProperties records which requested properties the
+// running systemd does not have, from what systemctl show left out.
+//
+// systemctl prints every property of a unit's execution settings it knows.
+// An older release leaves out the ones it does not know: systemd 241 (Debian
+// 10) exits 0 without ProtectClock, and the --all retry on systemd 232 (Debian
+// 9) and 219 (RHEL 7) prints neither. Reading those as "no" claims a setting
+// was checked when the release cannot apply it. NoNewPrivileges, which every
+// release in use has, tells a unit with execution settings from one without
+// (a target), whose missing properties are not a gap in the release.
+//
+// systemd before 242 also prints RestrictAddressFamilies as "[unprintable]",
+// which is no value at all.
+func markUnsupportedShowProperties(record map[string]string) {
+	var unsupported []string
+	if _, hasExec := record["NoNewPrivileges"]; hasExec {
+		for _, property := range strings.Split(systemdUnitShowProperties, ",") {
+			if _, ok := record[property]; !ok {
+				unsupported = append(unsupported, property)
+			}
+		}
+	}
+	for property, value := range record {
+		if value == "[unprintable]" {
+			unsupported = append(unsupported, property)
+		}
+	}
+	if len(unsupported) > 0 {
+		record[systemdUnsupportedKey] = strings.Join(unsupported, " ")
+	}
+}
+
+// markUnsupportedFileProperties records which properties a unit file can set
+// that systemd release version does not know. A version of 0 means the
+// release is unknown (an image scan), and the file's settings are taken as
+// written.
+func markUnsupportedFileProperties(props map[string]string, version int) {
+	if version <= 0 {
+		return
+	}
+	var unsupported []string
+	for property, since := range systemdPropertySince {
+		if since > version {
+			unsupported = append(unsupported, property)
+		}
+	}
+	if len(unsupported) > 0 {
+		sort.Strings(unsupported)
+		props[systemdUnsupportedKey] = strings.Join(unsupported, " ")
+	}
+}
+
+// parseSystemctlVersion reads the release number from `systemctl --version`,
+// whose first line is "systemd 232" or "systemd 252 (252.39-1~deb12u2)". It
+// returns 0 when the output is not that.
+func parseSystemctlVersion(output string) int {
+	line, _, _ := strings.Cut(output, "\n")
+	fields := strings.Fields(line)
+	if len(fields) < 2 || fields[0] != "systemd" {
+		return 0
+	}
+	version, err := strconv.Atoi(fields[1])
+	if err != nil {
+		return 0
+	}
+	return version
 }
 
 // systemdUnitShowProperties are the properties fetched for a unit. Naming them
@@ -103,6 +217,26 @@ func ResolveSystemdUnitManager(conn shared.Connection) SystemdUnitLister {
 // values in effect after drop-ins have been merged.
 type SystemdUnitManager struct {
 	conn shared.Connection
+
+	versionOnce sync.Once
+	version     int
+}
+
+// systemdVersion is the release of the systemd on the host, or 0 when
+// systemctl --version does not say.
+func (m *SystemdUnitManager) systemdVersion() int {
+	m.versionOnce.Do(func() {
+		cmd, err := m.conn.RunCommand("systemctl --version")
+		if err != nil || cmd.ExitStatus != 0 {
+			return
+		}
+		out, err := io.ReadAll(cmd.Stdout)
+		if err != nil {
+			return
+		}
+		m.version = parseSystemctlVersion(string(out))
+	})
+	return m.version
 }
 
 // fsFallback reads the unit files off disk. systemctl needs a running systemd
@@ -112,8 +246,11 @@ type SystemdUnitManager struct {
 // unit list -- indistinguishable from a host that genuinely runs no services,
 // and enough to make an assertion over systemd.units pass without ever having
 // read a unit.
+//
+// The host's systemd may be older than the settings in a unit file, and
+// ignores the ones it does not know, so the fallback is told the release.
 func (m *SystemdUnitManager) fsFallback() *SystemdFSUnitManager {
-	return &SystemdFSUnitManager{Fs: m.conn.FileSystem()}
+	return &SystemdFSUnitManager{Fs: m.conn.FileSystem(), Version: m.systemdVersion()}
 }
 
 func (m *SystemdUnitManager) List() ([]*SystemdUnit, error) {
@@ -275,6 +412,9 @@ func (m *SystemdUnitManager) showUnits(units []string) (records []map[string]str
 	}
 	if cmd.ExitStatus == 0 {
 		records, err = parseSystemdShowRecords(cmd.Stdout)
+		for _, record := range records {
+			markUnsupportedShowProperties(record)
+		}
 		return records, nil, err
 	}
 	exitErr = systemctlError("systemctl show", cmd)
@@ -294,6 +434,9 @@ func (m *SystemdUnitManager) showUnits(units []string) (records []map[string]str
 		return nil, systemctlError("systemctl show --all", cmd), nil
 	}
 	records, err = parseSystemdShowRecords(cmd.Stdout)
+	for _, record := range records {
+		markUnsupportedShowProperties(record)
+	}
 	return records, nil, err
 }
 
@@ -438,7 +581,7 @@ func systemdUnitFromProperties(props map[string]string) *SystemdUnit {
 		return nil
 	}
 
-	return &SystemdUnit{
+	u := &SystemdUnit{
 		Name:          name,
 		Description:   props["Description"],
 		Installed:     props["LoadState"] != "not-found" && props["LoadState"] != "",
@@ -487,6 +630,14 @@ func systemdUnitFromProperties(props map[string]string) *SystemdUnit {
 		ReadOnlyPaths:           splitSystemdList(props["ReadOnlyPaths"]),
 		InaccessiblePaths:       splitSystemdList(props["InaccessiblePaths"]),
 	}
+
+	if names := strings.Fields(props[systemdUnsupportedKey]); len(names) > 0 {
+		u.Unsupported = make(map[string]bool, len(names))
+		for _, name := range names {
+			u.Unsupported[name] = true
+		}
+	}
+	return u
 }
 
 // parseSystemdBool reads a systemd boolean. systemctl normalizes to yes/no,
@@ -558,6 +709,9 @@ func parseSystemdExecStart(value string) string {
 // knowable from the filesystem and is left empty.
 type SystemdFSUnitManager struct {
 	Fs afero.Fs
+	// Version is the release of the host's systemd, 0 when unknown. Settings
+	// a unit file makes that this release does not know are not reported.
+	Version int
 }
 
 func (m *SystemdFSUnitManager) List() ([]*SystemdUnit, error) {
@@ -630,6 +784,7 @@ func (m *SystemdFSUnitManager) readUnit(name string, unitPath string) (*SystemdU
 			continue
 		}
 	}
+	markUnsupportedFileProperties(props, m.Version)
 
 	return systemdUnitFromProperties(props), nil
 }

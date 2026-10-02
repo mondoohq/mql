@@ -132,22 +132,26 @@ func applySystemdUnitFileState(service *Service, unitFileState string) {
 	service.Enabled = unitFileState == "enabled" || unitFileState == "enabled-runtime"
 	service.Masked = strings.HasPrefix(unitFileState, "masked")
 	service.Static = unitFileState == "static"
-	service.unitFileStateBad = unitFileState == "bad"
+	service.needsIsEnabled = unitFileState == "bad" || unitFileState == "generated"
 }
 
-// resolveBadUnitFileStates asks `systemctl is-enabled` about each service whose
-// unit-file state systemctl show reported as "bad". systemd 219 (RHEL 7)
-// reports every SysV init script that way, so a service enabled with chkconfig
-// read enabled=false. is-enabled hands a SysV service to chkconfig, which
-// answers from the runlevel links. A unit is asked on its own because systemd
-// 219 prints the SysV answers before the native ones, out of argument order.
-// Where is-enabled has no better answer, the state stays as show reported it.
-func (s *SystemDServiceManager) resolveBadUnitFileStates(services []*Service) {
+// resolveWithIsEnabled asks `systemctl is-enabled` about each service whose
+// unit-file state systemctl reported as "bad" or "generated". Neither says
+// whether the service starts at boot. systemd 219 (RHEL 7) reports every SysV
+// init script as "bad", and Debian's systemd (232 to 257) reports one as
+// "generated" (systemd-sysv-generator wrote its unit), so a service enabled
+// with chkconfig or update-rc.d read enabled=false. is-enabled hands a SysV
+// service to chkconfig or systemd-sysv-install, which answer from the runlevel
+// links. A unit is asked on its own because systemd 219 prints the SysV answers
+// before the native ones, out of argument order. Where is-enabled has no
+// better answer (a unit from another generator prints "generated" again), the
+// state stays as systemctl reported it.
+func (s *SystemDServiceManager) resolveWithIsEnabled(services []*Service) {
 	for _, service := range services {
-		if !service.unitFileStateBad {
+		if !service.needsIsEnabled {
 			continue
 		}
-		service.unitFileStateBad = false
+		service.needsIsEnabled = false
 
 		unit := ensureSystemdServiceUnit(service.Name)
 		cmd, err := s.conn.RunCommand(buildSystemdIsEnabledCommand(unit))
@@ -158,7 +162,7 @@ func (s *SystemDServiceManager) resolveBadUnitFileStates(services []*Service) {
 		// is-enabled exits non-zero for a disabled unit, so the exit status
 		// does not tell an answer from a failure; the printed state does
 		state := parseSystemdIsEnabled(cmd.Stdout)
-		if state == "" || state == "bad" {
+		if state == "" || state == "bad" || state == "generated" {
 			continue
 		}
 		applySystemdUnitFileState(service, state)
@@ -304,7 +308,7 @@ func (s *SystemDServiceManager) showUnits(units []string) (map[string]*Service, 
 	for _, service := range services {
 		shown = append(shown, service)
 	}
-	s.resolveBadUnitFileStates(shown)
+	s.resolveWithIsEnabled(shown)
 	return services, nil
 }
 
@@ -387,7 +391,7 @@ func (s *SystemDServiceManager) List() ([]*Service, error) {
 	// so without this the running instance is invisible and the template
 	// reads running=false while an instance of it is up.
 	services = append(services, s.instanceUnits(unitStates, known)...)
-	s.resolveBadUnitFileStates(services)
+	s.resolveWithIsEnabled(services)
 	return services, nil
 }
 
