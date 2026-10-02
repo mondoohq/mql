@@ -1352,6 +1352,38 @@ func TestIP(t *testing.T) {
 		})
 	})
 
+	// net.IP is a byte slice, so an ip value cannot be compared with ==. These
+	// array operators used to panic the whole scan with "comparing
+	// uncomparable type llx.RawIP".
+	t.Run("ip arrays", func(t *testing.T) {
+		x.TestSimple(t, []testutils.SimpleTest{
+			{Code: "[ip('192.0.2.1'), ip('2001:db8::1')] == [ip('192.0.2.1'), ip('2001:db8::1')]", Expectation: true},
+			{Code: "[ip('192.0.2.1'), ip('2001:db8::1')] != [ip('192.0.2.1'), ip('2001:db8::1')]", Expectation: false},
+			{Code: "[ip('192.0.2.1')] == [ip('192.0.2.2')]", Expectation: false},
+			{Code: "[ip('192.0.2.1')] != [ip('192.0.2.2')]", Expectation: true},
+			// same address, different prefix length: ip == ip says these differ
+			{Code: "[ip('192.0.2.1/24')] == [ip('192.0.2.1/25')]", Expectation: false},
+			{Code: "[ip('192.0.2.1'), ip('192.0.2.2')] == [ip('192.0.2.2'), ip('192.0.2.1')]", Expectation: false},
+			{Code: "[ip('192.0.2.1'), ip('192.0.2.2'), ip('192.0.2.3')] - [ip('192.0.2.2')]", Expectation: []any{llx.ParseIP("192.0.2.1"), llx.ParseIP("192.0.2.3")}},
+			{Code: "[ip('192.0.2.1'), ip('192.0.2.2')].containsAll([ip('192.0.2.2')])", ResultIndex: 1, Expectation: true},
+			{Code: "[ip('192.0.2.1'), ip('192.0.2.2')].containsAll([ip('192.0.2.9')])", ResultIndex: 1, Expectation: false},
+			{Code: "[ip('192.0.2.1'), ip('192.0.2.2')].containsNone([ip('192.0.2.9')])", ResultIndex: 1, Expectation: true},
+			{Code: "[ip('192.0.2.1'), ip('192.0.2.2')].containsNone([ip('192.0.2.2')])", ResultIndex: 1, Expectation: false},
+		})
+	})
+
+	// Dicts and nested arrays hold maps and slices, which the == operator
+	// cannot compare either.
+	t.Run("arrays of uncomparable elements", func(t *testing.T) {
+		x.TestSimple(t, []testutils.SimpleTest{
+			{Code: "[{a: 1}] == [{a: 1}]", Expectation: true},
+			{Code: "[{a: 1}] == [{a: 2}]", Expectation: false},
+			{Code: "[[1, 2]] == [[1, 2]]", Expectation: true},
+			{Code: "[[1, 2]] != [[2, 1]]", Expectation: true},
+			{Code: "[{a: 1}, {a: 2}] - [{a: 1}]", Expectation: []any{map[string]any{"a": int64(2)}}},
+		})
+	})
+
 	t.Run("ipv6", func(t *testing.T) {
 		x.TestSimple(t, []testutils.SimpleTest{
 			{Code: "ip('2001:db8:3c4d:15::1a2f:1a2b').version", Expectation: int64(6)},
