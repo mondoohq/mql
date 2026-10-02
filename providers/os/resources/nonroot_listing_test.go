@@ -67,7 +67,7 @@ func TestGlobDir(t *testing.T) {
 		"/etc/polkit-1/localauthority/50-local.d/x.pkla",
 		"/etc/polkit-1/localauthority/notadir.pkla",
 	}, "/denied")
-	require.NoError(t, fsys.Fs.MkdirAll("/denied", 0o750))
+	require.NoError(t, fsys.MkdirAll("/denied", 0o750))
 
 	got, err := globDir(fsys, "/etc/polkit-1/rules.d", "*.rules", false)
 	require.NoError(t, err)
