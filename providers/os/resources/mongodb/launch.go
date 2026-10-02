@@ -16,6 +16,8 @@ import (
 // A relative path is resolved against the root directory, which is where
 // systemd starts a service that sets no WorkingDirectory=.
 func ConfigFromArgs(argv []string) string {
+	// A repeated -f/--config keeps the last one, as a later option on a
+	// command line overrides an earlier one.
 	var conf string
 	for i := 0; i < len(argv); i++ {
 		arg := argv[i]
