@@ -212,3 +212,43 @@ func TestParseReadlinkOutput(t *testing.T) {
 		"/usr/lib/jvm/java/lib/security/cacerts": "/etc/pki/ca-trust/extracted/java/cacerts",
 	}, got)
 }
+
+// suse15Links is the link layout of a SLES 15 SP7 host with OpenJDK 21 and 25,
+// taken from `ls -l /usr/lib64/jvm` and `readlink -f` on its cacerts files:
+// alternatives directory links, relative version aliases, and every JDK's
+// cacerts pointing at the store update-ca-certificates maintains.
+var suse15Links = fakeLinks{
+	"/usr/lib64/jvm/java":                                    "/etc/alternatives/java_sdk",
+	"/etc/alternatives/java_sdk":                             "/usr/lib64/jvm/java-25-openjdk-25",
+	"/usr/lib64/jvm/java-21":                                 "/etc/alternatives/java_sdk_21",
+	"/etc/alternatives/java_sdk_21":                          "/usr/lib64/jvm/java-21-openjdk-21",
+	"/usr/lib64/jvm/jre-21-openjdk":                          "java-21-openjdk-21",
+	"/usr/lib64/jvm/java-21-openjdk-21/lib/security/cacerts": "/var/lib/ca-certificates/java-cacerts",
+	"/usr/lib64/jvm/java-25-openjdk-25/lib/security/cacerts": "/var/lib/ca-certificates/java-cacerts",
+}
+
+// SUSE keeps its JVMs under /usr/lib64/jvm and its shared store at
+// /var/lib/ca-certificates/java-cacerts. Fails if either location is dropped
+// from discovery (every java.truststores check then passes over an empty
+// list), or if the dedupe keeps the lexicographically smallest name instead of
+// the store's own: /usr sorts before /var, so a JVM alias would be reported.
+func TestDedupeTruststoresSUSE(t *testing.T) {
+	assert.Contains(t, javaHomeRoots, "/usr/lib64/jvm")
+	assert.Contains(t, javaTruststoreFiles, "/var/lib/ca-certificates/java-cacerts")
+
+	candidates := []string{
+		"/usr/lib64/jvm/java/lib/security/cacerts",
+		"/usr/lib64/jvm/java-21/lib/security/cacerts",
+		"/usr/lib64/jvm/jre-21-openjdk/lib/security/cacerts",
+		"/usr/lib64/jvm/java-21-openjdk-21/lib/security/cacerts",
+		"/usr/lib64/jvm/java-25-openjdk-25/lib/security/cacerts",
+		"/var/lib/ca-certificates/java-cacerts",
+	}
+	real := map[string]string{}
+	for _, p := range candidates {
+		r, err := resolveSymlinks(suse15Links, p)
+		require.NoError(t, err, p)
+		real[p] = r
+	}
+	assert.Equal(t, []string{"/var/lib/ca-certificates/java-cacerts"}, dedupeByRealPath(candidates, real))
+}

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -271,6 +272,8 @@ var javaTruststoreDirs = []string{
 // one level deep, since a machine commonly has several runtimes side by side.
 var javaHomeRoots = []string{
 	"/usr/lib/jvm",
+	// SUSE installs its JVMs under lib64.
+	"/usr/lib64/jvm",
 	"/usr/java",
 	"/opt/java",
 	"/opt/jdk",
@@ -282,6 +285,9 @@ var javaHomeRoots = []string{
 var javaTruststoreFiles = []string{
 	"/etc/ssl/certs/java/cacerts",
 	"/etc/pki/java/cacerts",
+	// SUSE's store, maintained by update-ca-certificates. It exists even with
+	// no JVM installed, and every SUSE JVM's cacerts links to it.
+	"/var/lib/ca-certificates/java-cacerts",
 	"/opt/java/openjdk/lib/security/cacerts",
 }
 
@@ -442,11 +448,12 @@ func resolveSymlinks(lr afero.LinkReader, p string) (string, error) {
 }
 
 // dedupeByRealPath keeps one name per file. Of the names that resolve to the
-// same file, the lexicographically smallest is kept: it is stable across scans
-// and, since /etc sorts before /opt and /usr, it is the distribution's own
-// name for a shared store (/etc/pki/java/cacerts, /etc/ssl/certs/java/cacerts)
-// whenever that name exists. The result is sorted so a check's output does
-// not shuffle between scans of the same host.
+// same file, a fixed store location (javaTruststoreFiles) wins over a name
+// reached through a JVM directory, so a shared store is reported under the
+// distribution's own name (/etc/pki/java/cacerts, /etc/ssl/certs/java/cacerts,
+// /var/lib/ca-certificates/java-cacerts). Among equals the lexicographically
+// smallest is kept, which is stable across scans. The result is sorted so a
+// check's output does not shuffle between scans of the same host.
 func dedupeByRealPath(candidates []string, real map[string]string) []string {
 	keep := map[string]string{}
 	for _, p := range candidates {
@@ -454,7 +461,7 @@ func dedupeByRealPath(candidates []string, real map[string]string) []string {
 		if !ok {
 			key = p
 		}
-		if cur, ok := keep[key]; !ok || p < cur {
+		if cur, ok := keep[key]; !ok || preferTruststoreName(p, cur) {
 			keep[key] = p
 		}
 	}
@@ -464,6 +471,17 @@ func dedupeByRealPath(candidates []string, real map[string]string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// preferTruststoreName reports whether a is the better name than b for the
+// same store.
+func preferTruststoreName(a, b string) bool {
+	aFixed := slices.Contains(javaTruststoreFiles, a)
+	bFixed := slices.Contains(javaTruststoreFiles, b)
+	if aFixed != bFixed {
+		return aFixed
+	}
+	return a < b
 }
 
 func (s *mqlJavaTruststores) list(paths []any) ([]any, error) {
