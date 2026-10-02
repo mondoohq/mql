@@ -994,7 +994,10 @@ files.find {
   // Whether to descend into directories on other mounted filesystems
   //
   // When false (the default) the search stays on the filesystem that
-  // holds `from` (find's -xdev). Set true to cross mount points.
+  // holds `from` and does not descend into a directory where another
+  // filesystem is mounted. A Btrfs or bcachefs subvolume that is not mounted
+  // is part of that filesystem and is searched, except by a search for links.
+  // Set true to cross mount points.
   xdev bool
   // Restrict results to a single file type
   //
