@@ -117,6 +117,9 @@ type packageLock struct {
 
 	// evidence is a list of file paths where the package-lock was found
 	evidence []string `json:"-"`
+	// installDir is set for the hidden lockfile in node_modules: the directory
+	// its package keys are relative to
+	installDir string `json:"-"`
 }
 
 type packageLockDependency struct {
